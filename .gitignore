@@ -169,6 +169,10 @@ vite.config.ts.timestamp-*
 .vscode/
 
 # --- Project-specific ---
+# Source under .../Services/Logs/ (not runtime logs): override [Ll]ogs/ for any server project
+!server/**/Services/Logs/
+!server/**/Services/Logs/**
+
 # SPA production output (see client/vite.config.ts)
 server/Api/wwwroot/**
 !server/Api/wwwroot/.gitkeep
