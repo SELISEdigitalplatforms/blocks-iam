@@ -1,4 +1,4 @@
-import { CaptchaLog } from "@blocks-idp/captcha/pages/logs";
+import { CaptchaLog } from "@blocks-idp/captcha/pages/captcha-logs";
 
 export default function CaptchaLogsPage() {
 	return <CaptchaLog />;
