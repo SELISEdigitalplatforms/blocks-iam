@@ -1,6 +1,5 @@
 using BlocksTemplate.Api;
 using Blocks.Genesis;
-using Cloud.DomainService.Utilities;
 using DomainService.Utilities;
 using DomainService.Shared;
 using FluentValidation.AspNetCore;
@@ -37,7 +36,6 @@ Directory.CreateDirectory(wwwrootPath);
 
 services.RegisterAllServices();
 services.AddApplicationServices();
-services.AddCloudDomainServices();
 services.AddCloudLmtServices();
 
 var app = builder.Build();
