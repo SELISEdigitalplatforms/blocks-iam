@@ -1,14 +1,23 @@
 ﻿<Project Sdk="Microsoft.NET.Sdk">
 
-  <PropertyGroup>
-    <RootNamespace>BlocksTemplate.XUnitTest</RootNamespace>
-  </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="coverlet.collector"  />
+    <PackageReference Include="FluentAssertions" />
+    <PackageReference Include="JUnitLogger"  />
+    <PackageReference Include="Microsoft.NET.Test.Sdk"  />
+    <PackageReference Include="Moq"  />
+    <PackageReference Include="xunit"  />
+    <PackageReference Include="xunit.runner.visualstudio"  />
+  </ItemGroup>
+  <ItemGroup>
+    <Using Include="Xunit" />
+  </ItemGroup>
 
   <ItemGroup>
-    <PackageReference Include="coverlet.collector" />
-    <PackageReference Include="Microsoft.NET.Test.Sdk" />
-    <PackageReference Include="xunit" />
-    <PackageReference Include="xunit.runner.visualstudio" />
+	<ProjectReference Include="..\Api\Api.csproj" />
+	<ProjectReference Include="..\Authentication.DomainService\Authentication.DomainService.csproj" />
+	<ProjectReference Include="..\Mfa.DomainService\Mfa.DomainService.csproj" />
+	<ProjectReference Include="..\Worker\Worker.csproj" />
   </ItemGroup>
 
 </Project>

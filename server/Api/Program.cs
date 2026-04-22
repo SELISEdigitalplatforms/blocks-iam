@@ -1,16 +1,20 @@
 using BlocksTemplate.Api;
-using BlocksTemplate.DomainService;
 using Blocks.Genesis;
+using Cloud.DomainService.Utilities;
+using DomainService.Utilities;
+using DomainService.Shared;
 using FluentValidation.AspNetCore;
 using Microsoft.AspNetCore.Http.Features;
 using Microsoft.AspNetCore.Mvc;
+using Cloud.LmtService.Utilities;
 
-var serviceName = "blocks-template-api";
+var serviceName = "blocks-idp-api";
 var secret = await ApplicationConfigurations.ConfigureLogAndSecretsAsync(serviceName, VaultType.Azure);
 var builder = WebApplication.CreateBuilder(args);
 
 
 ApplicationConfigurations.ConfigureApiEnv(builder, args);
+ApplicationConfigurations.ConfigureServices(builder.Services, IdpConstants.GetMessageConfiguration(secret.MessageConnectionString));
 
 builder.Services.Configure<FormOptions>(options =>
 {
@@ -21,9 +25,6 @@ var services = builder.Services;
 
 services.AddHealthChecks();
 
-builder.Services.AddDomainServices();
-builder.Services.AddFluentValidationAutoValidation();
-ApplicationConfigurations.ConfigureServices(services, new MessageConfiguration { });
 ApplicationConfigurations.ConfigureApi(services);
 
 builder.Services.Configure<MvcOptions>(options =>
@@ -34,70 +35,22 @@ builder.Services.Configure<MvcOptions>(options =>
 var wwwrootPath = Path.Combine(builder.Environment.ContentRootPath, "wwwroot");
 Directory.CreateDirectory(wwwrootPath);
 
+services.RegisterAllServices();
+services.AddApplicationServices();
+services.AddCloudDomainServices();
+services.AddCloudLmtServices();
+
 var app = builder.Build();
 
-// Prepare index.html with runtime environment variables injected (once at startup)
-var indexHtmlPath = Path.Combine(app.Environment.WebRootPath ?? "", "index.html");
-byte[]? injectedHtmlBytes = null;
-if (File.Exists(indexHtmlPath))
-{
-    var runtimeEnvVars = new Dictionary<string, string?>
-    {
-        ["BLOCKS_X_BLOCKS_KEY"] = Environment.GetEnvironmentVariable("BLOCKS_X_BLOCKS_KEY"),
-    };
-    var envJson = System.Text.Json.JsonSerializer.Serialize(runtimeEnvVars);
-    var envScript = $"<script>window.__ENV__={envJson};</script>";
-    var originalHtml = File.ReadAllText(indexHtmlPath);
-    var injectedHtml = originalHtml.Replace("<!--__ENV_PLACEHOLDER__-->", envScript);
-    injectedHtmlBytes = System.Text.Encoding.UTF8.GetBytes(injectedHtml);
-}
-
-if (injectedHtmlBytes != null)
-{
-    // Intercept "/" and "/index.html" before static files to serve env-injected version
-    app.Use(async (context, next) =>
-    {
-        var path = context.Request.Path.Value ?? "";
-        if (path == "/" || path.Equals("/index.html", StringComparison.OrdinalIgnoreCase))
-        {
-            context.Response.ContentType = "text/html; charset=utf-8";
-            context.Response.ContentLength = injectedHtmlBytes.Length;
-            await context.Response.Body.WriteAsync(injectedHtmlBytes);
-            return;
-        }
-        await next();
-    });
-}
-
+app.UseDefaultFiles();
 app.UseStaticFiles();
 
-if (injectedHtmlBytes != null)
+var indexHtml = Path.Combine(app.Environment.WebRootPath ?? "", "index.html");
+if (File.Exists(indexHtml))
 {
-    // SPA fallback — serves injected index.html for client-side routes
-    app.MapFallback(async context =>
-    {
-        context.Response.ContentType = "text/html; charset=utf-8";
-        context.Response.ContentLength = injectedHtmlBytes.Length;
-        await context.Response.Body.WriteAsync(injectedHtmlBytes);
-    });
+    app.MapFallbackToFile("/index.html");
 }
 
 ApplicationConfigurations.ConfigureMiddleware(app);
 
-try
-{
-    await app.RunAsync();
-}
-catch (ObjectDisposedException ex) when (IsGenesisMongoTraceExporterShutdownRace(ex))
-{
-    // SeliseBlocks.Genesis OpenTelemetry MongoDBTraceExporter: flush can run after internal semaphore disposal on Ctrl+C.
-    Console.WriteLine("MongoDBTraceExporter shutdown race detected. Ignoring...");
-}
-catch (Exception ex)
-{
-    Console.WriteLine($"Error: {ex.Message}");
-    throw;
-}
-
-static bool IsGenesisMongoTraceExporterShutdownRace(ObjectDisposedException ex) =>
-    ex.StackTrace?.Contains("MongoDBTraceExporter", StringComparison.Ordinal) == true;
+await app.RunAsync();

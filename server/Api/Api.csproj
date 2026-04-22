@@ -4,9 +4,21 @@
     <IsPackable>false</IsPackable>
   </PropertyGroup>
   <ItemGroup>
-    <PackageReference Include="FluentValidation.AspNetCore" />
+    <Content Remove="appsettings.Development.json" />
   </ItemGroup>
   <ItemGroup>
-    <ProjectReference Include="..\DomainService\DomainService.csproj" />
+    <None Include="appsettings.Development.json" />
+  </ItemGroup>
+  <ItemGroup>
+    <PackageReference Include="FluentValidation.AspNetCore"/>
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\Authentication.DomainService\Authentication.DomainService.csproj" />
+    <ProjectReference Include="..\Captcha.DomainService\Captcha.DomainService.csproj" />
+    <ProjectReference Include="..\Cloud.DomainService\Cloud.DomainService.csproj" />
+    <ProjectReference Include="..\Cloud.LmtService\Cloud.LmtService.csproj" />
+    <ProjectReference Include="..\Iam.DomainService\Iam.DomainService.csproj" />
+    <ProjectReference Include="..\Identifier.DomainService\Identifier.DomainService.csproj" />
+    <ProjectReference Include="..\Mfa.DomainService\Mfa.DomainService.csproj" />
   </ItemGroup>
 </Project>
