@@ -32,6 +32,8 @@ export const AuthenticationTabs: { id: string; label: string; value: string }[] 
   { id: "general", label: "General", value: "general" },
   { id: "signin-flow", label: "Signin flow", value: "signin-flow" },
   { id: "signup-flow", label: "Signup flow", value: "signup-flow" },
+  { id: "email-template", label: "Email template", value: "email-template" },
+  { id: "oidc-template", label: "OIDC template", value: "oidc-template" },
   { id: "roles", label: "Roles", value: "roles" },
   { id: "permissions", label: "Permissions", value: "permissions" },
   // {
@@ -101,6 +103,11 @@ export const SecretManagementTabs: { id: string; label: string; value: string }[
     id: "notification",
     label: "Notification",
     value: "notification",
+  },
+  {
+    id: "ai-models",
+    label: "AI Models",
+    value: "ai-models",
   },
 ];
 

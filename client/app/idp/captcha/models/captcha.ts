@@ -1,7 +1,6 @@
 export const CAPTCHA_PROVIDERS = {
   recaptcha: { value: "recaptcha", label: "Google reCAPTCHA" },
   hcaptcha: { value: "hcaptcha", label: "hCAPTCHA" },
-  bcaptcha: { value: "bcaptcha", label: "Captcha" },
 } as const;
 export const CAPTCHA_GENERATOR_TYPE = {
   EasyCaptchaGenerator: { value: "EasyCaptchaGenerator", label: "Easy" },

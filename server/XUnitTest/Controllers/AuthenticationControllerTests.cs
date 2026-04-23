@@ -1,5 +1,6 @@
 using Api.Controllers;
 using Blocks.Genesis;
+using CloudConfiguration.DomainService.Shared.Services;
 using DomainService.Authentication;
 using DomainService.Entities;
 using DomainService.OAuth;
@@ -26,13 +27,14 @@ namespace XUnitTest.Controllers
         private readonly Mock<IAuthenticationDomainService> _domainService = new();
         private readonly Mock<IAuthenticationRepository> _repo = new();
         private readonly Mock<IConfiguration> _config = new();
+        private readonly Mock<IConfigurationService> _cloudConfig = new();
         private readonly Mock<ChangeControllerContext> _context = new(new Mock<ITenants>().Object, new Mock<IDbContextProvider>().Object, new Mock<IHttpContextAccessor>().Object);
         private readonly AuthenticationController _controller;
         private readonly DefaultHttpContext _httpContext;
 
         public AuthenticationControllerTests()  
         {
-            _controller = new AuthenticationController(_tokenProvider.Object, _authService.Object, _config.Object, _domainService.Object, _repo.Object, _context.Object);
+            _controller = new AuthenticationController(_tokenProvider.Object, _authService.Object, _config.Object, _domainService.Object, _repo.Object, _context.Object, _cloudConfig.Object);
             _httpContext = new DefaultHttpContext();
             _controller.ControllerContext = new ControllerContext
             {

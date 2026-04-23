@@ -11,7 +11,7 @@ interface LMTQueryAgentSheetProps {
 }
 
 export const LMTQueryAgentSheet = ({
-  agentName = "Ask AI",
+  agentName = "Blocks Agent",
   questions,
   description,
 }: LMTQueryAgentSheetProps) => {

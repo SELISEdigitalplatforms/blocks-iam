@@ -14,7 +14,7 @@ namespace DomainService.Migration
         public bool ShouldOverWriteExistingData { get; set; } = false;
         public required MigrationServiceNames ServiceName { get; set; }
     }
-    public class OtpGenerationResponse : BaseResponse
+    public class MigrationOtpGenerationResponse : BaseResponse
     {
         public string? VerificationId { get; set; }
     }

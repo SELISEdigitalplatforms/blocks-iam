@@ -63,7 +63,11 @@ export const EndpointRow = ({
             onCheckedChange={(val) => onToggleMfa(endpoint, val)}
           />
           <span className="text-[11px] font-medium text-muted-foreground">MFA</span>
-          {endpoint.isMfaRequired && <Lock className="h-3 w-3 text-amber-500" />}
+          <span style={{ display: "inline-block", width: 16, height: 16 }}>
+            <Lock className={
+              `h-3 w-3 transition-colors ${endpoint.isMfaRequired ? "text-amber-500" : "text-border"}`
+            } />
+          </span>
         </div>
 
         <div className="h-3.5 w-px bg-border" />

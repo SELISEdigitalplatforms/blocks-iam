@@ -49,18 +49,18 @@ namespace DomainService.Migration
             _httpService = httpService;
             _logger = logger;
         }
-        public async Task<OtpGenerationResponse> Migrate(MigrationRequest request)
+        public async Task<MigrationOtpGenerationResponse> Migrate(MigrationRequest request)
         {
             var validationResult = await _migrationRequestValidator.ValidateAsync(request);
             if (!validationResult.IsValid)
             {
-                return new OtpGenerationResponse { IsSuccess = false, Errors = validationResult.Errors.ToDictionary(e => e.PropertyName, e => e.ErrorMessage) };
+                return new MigrationOtpGenerationResponse { IsSuccess = false, Errors = validationResult.Errors.ToDictionary(e => e.PropertyName, e => e.ErrorMessage) };
             }
 
             var bc = BlocksContext.GetContext();
             if (bc == null || string.IsNullOrEmpty(bc.UserName))
             {
-                return new OtpGenerationResponse { IsSuccess = false, Errors = new Dictionary<string, string> { { "message", "invalid_user_context" } } };
+                return new MigrationOtpGenerationResponse { IsSuccess = false, Errors = new Dictionary<string, string> { { "message", "invalid_user_context" } } };
             }
             var code = GenerateSecureRandomNumber();
             var verificationId = Guid.NewGuid().ToString();
@@ -69,7 +69,7 @@ namespace DomainService.Migration
 
             await _cacheClient.AddStringValueAsync(verificationId, serializedData, 600);
             var result = await SendMfaCodeAsync(bc.UserName, code, "en-US");
-            return new OtpGenerationResponse { VerificationId = verificationId, IsSuccess = result };
+            return new MigrationOtpGenerationResponse { VerificationId = verificationId, IsSuccess = result };
         }
         public static string GenerateSecureRandomNumber()
         {
@@ -103,25 +103,25 @@ namespace DomainService.Migration
             return response.IsSuccess;
         }
 
-        public async Task<OtpVerificationResponse> VerifyAsync(VerifyOtpRequest request)
+        public async Task<MigrationOtpVerificationResponse> VerifyAsync(MigrationVerifyOtpRequest request)
         {
             var isKeyExist = await _cacheClient.KeyExistsAsync(request.VerificationId);
 
             if (!isKeyExist)
             {
-                return new OtpVerificationResponse { Errors = new Dictionary<string, string> { { "message", "invalid_two_factor_id" } }, IsSuccess = false, IsValid = false };
+                return new MigrationOtpVerificationResponse { Errors = new Dictionary<string, string> { { "message", "invalid_two_factor_id" } }, IsSuccess = false, IsValid = false };
             }
 
             var keyValue = await _cacheClient.GetStringValueAsync(request.VerificationId);
             if (string.IsNullOrEmpty(keyValue))
             {
-                return new OtpVerificationResponse { Errors = new Dictionary<string, string> { { "message", "invalid_two_factor_id" } }, IsSuccess = false, IsValid = false };
+                return new MigrationOtpVerificationResponse { Errors = new Dictionary<string, string> { { "message", "invalid_two_factor_id" } }, IsSuccess = false, IsValid = false };
             }
 
             var data = JsonSerializer.Deserialize<MigrationOtpData>(keyValue);
             if (data == null)
             {
-                return new OtpVerificationResponse { Errors = new Dictionary<string, string> { { "message", "invalid_two_factor_id" } }, IsSuccess = false, IsValid = false };
+                return new MigrationOtpVerificationResponse { Errors = new Dictionary<string, string> { { "message", "invalid_two_factor_id" } }, IsSuccess = false, IsValid = false };
             }
 
             if (data.Code == request.VerificationCode)
@@ -129,10 +129,10 @@ namespace DomainService.Migration
                 await _cacheClient.RemoveKeyAsync(request.VerificationId);
                 await HandleServiceMigrations(data.Request);
                 await NotifyMigrationStarted(data.Request.ProjectKey, data.Request.TargetedProjectKey);
-                return new OtpVerificationResponse { IsSuccess = true, IsValid = true };
+                return new MigrationOtpVerificationResponse { IsSuccess = true, IsValid = true };
             }
 
-            return new OtpVerificationResponse { Errors = new Dictionary<string, string> { { "message", "invalid_two_factor_code" } }, IsSuccess = false, IsValid = false };
+            return new MigrationOtpVerificationResponse { Errors = new Dictionary<string, string> { { "message", "invalid_two_factor_code" } }, IsSuccess = false, IsValid = false };
         }
 
         private async Task HandleServiceMigrations(MigrationRequest request)

@@ -1,4 +1,5 @@
 import { useForm } from "react-hook-form";
+import { getRuntimeEnv } from "@/lib/runtime-env";
 import { activationFormDefaultValue, activationFormSchema } from "./utils";
 import {
   Form,
@@ -27,7 +28,7 @@ type ActivationFormProps = {
   code: string;
 };
 
-const x_blocks_key = import.meta.env.BLOCKS_X_BLOCKS_KEY;
+const x_blocks_key = getRuntimeEnv("BLOCKS_X_BLOCKS_KEY");
 
 export const ActivationForm = ({ code }: ActivationFormProps) => {
   const navigate = useNavigate();
@@ -39,7 +40,7 @@ export const ActivationForm = ({ code }: ActivationFormProps) => {
   });
   const [requirementsMet, setRequirementsMet] = useState(false);
 
-  const googleSiteKey = import.meta.env.BLOCKS_GOOGLE_SITE_KEY || "";
+  const googleSiteKey = getRuntimeEnv("BLOCKS_GOOGLE_SITE_KEY") || "";
   const {
     captcha,
     code: captchaCode,

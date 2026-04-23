@@ -1,5 +1,5 @@
 import { Menu } from "@/models/menu-models";
-import { Home, Package, Users, BookMinus, Settings, Shield, Key, ShieldCheck, ScanFace, Lock, LayoutDashboard, Zap, Gauge } from "lucide-react";
+import { Home, Package, Users, BookMinus, Settings, Shield, Key, ShieldCheck, ScanFace, Lock, Zap, Gauge } from "lucide-react";
 
 export const navigationMenus: Menu[] = [
   {
@@ -93,12 +93,5 @@ export const navigationMenus: Menu[] = [
     name: "LMT",
     path: "/services/lmt",
     icon: Zap,
-  },
-  {
-    id: "service-identity__apps",
-    type: "menu",
-    name: "Apps",
-    path: "/services/apps",
-    icon: LayoutDashboard,
   },
 ];

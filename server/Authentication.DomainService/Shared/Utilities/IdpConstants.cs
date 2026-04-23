@@ -17,6 +17,15 @@ namespace DomainService.Utilities
         private const string DefaultProvider = "azure";
         private const string RabbitMqProvider = "rabbitmq";
 
+        #region Identifier Service Constants
+        public const string IdentifierQueueName = "blocks_identifier_listener";
+        public const string DataCleanupQueue = "blocks_data_cleanup_listener";
+        public const string LanguageDataMigrationQueue = "blocks_uilm_environment_data_migration_listener";
+        public const string GenericMigrationQueue = "blocks_generic_migration_listener";
+        public const string MigrationCompletionTopic = "migration_topic";
+        public const string ProjectPeopleInvitationMailPurpose = "project_invitation";
+        public const string BlocsDomain = "seliseblocks.com";
+        #endregion
 
         public static MessageConfiguration GetMessageConfiguration(string messageConnectionString)
         {
@@ -48,7 +57,11 @@ namespace DomainService.Utilities
                 {
                     ConsumerSubscriptions = [ConsumerSubscription.BindToQueue(AuthenticationQueue),
                                              ConsumerSubscription.BindToQueue(IamQueue),
-                                             ConsumerSubscription.BindToQueue(MfaQueueName)],
+                                             ConsumerSubscription.BindToQueue(MfaQueueName),
+                                             ConsumerSubscription.BindToQueue(IdentifierQueueName),
+                                             ConsumerSubscription.BindToQueue(DataCleanupQueue),
+                                             ConsumerSubscription.BindToQueue(LanguageDataMigrationQueue),
+                                             ConsumerSubscription.BindToQueue(GenericMigrationQueue)],
                 }
             };
         }
@@ -59,8 +72,8 @@ namespace DomainService.Utilities
             {
                 AzureServiceBusConfiguration = new AzureServiceBusConfiguration
                 {
-                    Queues = [AuthenticationQueue, IamQueue, MfaQueueName],
-                    Topics = []
+                    Queues = [AuthenticationQueue, IamQueue, MfaQueueName, IdentifierQueueName, DataCleanupQueue, LanguageDataMigrationQueue, GenericMigrationQueue],
+                    Topics = [MigrationCompletionTopic]
                 }
             };
         }
