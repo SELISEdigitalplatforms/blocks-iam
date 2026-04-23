@@ -12,6 +12,7 @@ import { BackToConsoleNavigator } from "@/components/back-to-console-navigator/b
 import { SidebarContext } from "@/contexts/dashboard-layout-provider";
 import { Sheet, SheetContent, SheetTrigger } from "@/components/ui-kits/sheet/sheet";
 import { Logo } from "@/components/logo";
+import { BlocksAppLauncher } from "@/components/blocks-app-launcher/blocks-app-launcher";
 import useIsMobile from "@/hooks/use-is-mobile";
 import { cn } from "@/lib/utils";
 
@@ -65,6 +66,7 @@ export function ConsoleHeader() {
               <div className="flex min-w-0 flex-1 flex-wrap items-center justify-end gap-3">
                 <ModeToggle />
                 <Notification />
+                <BlocksAppLauncher />
                 <UserDropdownMenu />
               </div>
             </SheetContent>
@@ -74,6 +76,7 @@ export function ConsoleHeader() {
           {isConsoleButtonVisible && <BackToConsoleNavigator />}
           <ModeToggle />
           <Notification />
+          <BlocksAppLauncher />
           <UserDropdownMenu />
         </div>
       </header>

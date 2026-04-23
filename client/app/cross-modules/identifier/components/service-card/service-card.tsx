@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { getRuntimeEnv } from "@/lib/runtime-env";
 import { useNavigate } from "react-router-dom";
 import { RegisteredService } from "@blocks-identifier/models/service.model";
 import { Button } from "@/components/ui-kits/button/button";
@@ -66,7 +67,7 @@ export const ServiceCard = ({ service }: { service: RegisteredService }) => {
   const [showAllTags, setShowAllTags] = useState(false);
   const navigate = useNavigate();
 
-  const swaggerUrl = `${import.meta.env.BLOCKS_API_BASE_URL}/identifier/v1/swagger/index.html`;
+  const swaggerUrl = `${getRuntimeEnv("BLOCKS_API_BASE_URL")}/identifier/v1/swagger/index.html`;
   const docsUrl = "https://docs.seliseblocks.com/";
 
   return (

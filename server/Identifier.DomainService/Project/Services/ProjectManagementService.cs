@@ -132,6 +132,7 @@ namespace DomainService.Projects
             return project.JwtTokenParameters.CertificateStorageType switch
             {
                 CertificateStorageType.Azure => await UploadPublicCertificateIntoCloudAsync(publicKeyCertificate, project),
+                CertificateStorageType.Mongodb => await UploadPublicCertificateIntoCloudAsync(publicKeyCertificate, project),
                 CertificateStorageType.Filefilesystem => await UploadPublicCertificateIntoFileSystemAsync(publicKeyCertificate, project),
                 _ => throw new NotSupportedException($"Unsupported certificate storage type: {project.JwtTokenParameters.CertificateStorageType}"),
             };

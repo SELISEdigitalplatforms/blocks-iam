@@ -1,4 +1,5 @@
 import { useProjectStore } from "@/store/useProjectStore";
+import { getRuntimeEnv } from "@/lib/runtime-env";
 import { getQueryClient } from "@/providers/query-provider";
 import { useAuthStore } from "@/store/useAuthStore";
 
@@ -301,8 +302,8 @@ class HttpClient {
 }
 
 export const http = new HttpClient(
-  import.meta.env.BLOCKS_API_BASE_URL || "",
-  import.meta.env.BLOCKS_X_BLOCKS_KEY || "",
+  getRuntimeEnv("BLOCKS_API_BASE_URL") || "",
+  getRuntimeEnv("BLOCKS_X_BLOCKS_KEY") || "",
 );
 
 export { HttpClient, HttpError };

@@ -8,6 +8,7 @@ import { UserDropdownMenu } from "@/components/user-dropdown-menu/user-dropdown-
 import { EnvironmentList } from "@/components/environment-list/environment-list";
 import { SidebarMobileView } from "@/layouts/sidebar-mobile-view/sidebar-mobile-view";
 import { SidebarContext } from "@/contexts/dashboard-layout-provider";
+import { BlocksAppLauncher } from "@/components/blocks-app-launcher/blocks-app-launcher";
 import { cn } from "@/lib/utils";
 
 export function DashboardHeader() {
@@ -40,6 +41,7 @@ export function DashboardHeader() {
           </div>
           <ModeToggle />
           <Notification />
+          <BlocksAppLauncher />
           <UserDropdownMenu />
         </div>
       </header>

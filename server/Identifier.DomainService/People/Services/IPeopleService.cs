@@ -8,7 +8,7 @@ namespace DomainService.People
         Task<InviteResponse> InvitePeoplesAsync(InviteRequest requests);
         Task<BaseResponse> RemoveAccessFromProjectAsync(RemoveAccessRequest request);
         Task<GetPeoplesResponse> GetPeoplesAsync(GetPeoplesRequest request);
-        Task<bool> SendProjectInvitationToNewUser(CreateUserByEmailPostEvent @event);
+        Task<bool> SendProjectInvitationToNewUser(CreateUserByEmailPostEvent_Identifier @event);
         Task<ConfirmInvitationResponse> ConfirmInvitationAsync(ConfirmInvitationRequest request);
         Task<BaseResponse> ResendInvitationAsync(ResendInvitationRequest request);
         Task<SignupResponse> SignupAsync(SignupRequest request);

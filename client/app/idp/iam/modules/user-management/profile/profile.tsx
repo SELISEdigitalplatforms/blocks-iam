@@ -1,6 +1,7 @@
 
 import { useQueryState } from "nuqs";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui-kits/tabs/tabs";
+import { getRuntimeEnv } from "@/lib/runtime-env";
 import { useGetUser, useGetUserById } from "@blocks-idp/iam/hooks/use-user";
 import { ProfileDetails } from "@blocks-idp/iam/components/profile-details";
 import { UpdateUser } from "../update-user";
@@ -8,7 +9,7 @@ import { UserDevices } from "../user-devices";
 import { UserHistories } from "../user-histories";
 import { UserPats } from "../user-pat";
 
-const x_blocks_key = import.meta.env.BLOCKS_X_BLOCKS_KEY || "";
+const x_blocks_key = getRuntimeEnv("BLOCKS_X_BLOCKS_KEY") || "";
 
 export const Profile = () => {
   const { isPending, isLoading, data } = useGetUser();

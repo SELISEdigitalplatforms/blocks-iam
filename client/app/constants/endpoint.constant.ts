@@ -1,9 +1,10 @@
+import { getRuntimeEnv } from "@/lib/runtime-env";
 enum Version {
   V1 = "v1",
 }
 
 // Check if using localhost to determine API path structure
-const isLocalhost = import.meta.env.BLOCKS_API_BASE_URL?.includes("localhost");
+const isLocalhost = getRuntimeEnv("BLOCKS_API_BASE_URL")?.includes("localhost");
 
 export const API_BASES = {
   COMMUNICATION: isLocalhost ? "/api" : `/communication/${Version.V1}`,

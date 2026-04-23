@@ -1,4 +1,8 @@
 ﻿using Blocks.Genesis;
+using CloudConfiguration.DomainService.Authentication.RequestModel;
+using CloudConfiguration.DomainService.IAM.RequestModel;
+using CloudConfiguration.DomainService.IAM.ResponseModel;
+using CloudConfiguration.DomainService.Shared.Services;
 using Iam.DomainService.Accounts;
 using Iam.DomainService.Activities;
 using Iam.DomainService.Entities;
@@ -26,6 +30,7 @@ namespace Api.Controllers
         private readonly IResourceMutationService _resourceMutationService;
         private readonly IResourceQueryService _resourceQueryService;
         private readonly ChangeControllerContext _changeControllerContext;
+        private readonly IConfigurationService _configurationService;
 
         public IamController(IAccountService accountService,
                              IUserActivityService userActivityService,
@@ -33,7 +38,7 @@ namespace Api.Controllers
                              IResourceQueryService resourceQueryService,
                              IUserManagementQueryService userManagementQueryService,
                              IUserManagementMutationService userManagementMutationService,
-                             ChangeControllerContext changeControllerContext)
+                             ChangeControllerContext changeControllerContext, IConfigurationService configurationService)
         {
             _changeControllerContext = changeControllerContext;
             _userActivityService = userActivityService;
@@ -42,6 +47,7 @@ namespace Api.Controllers
             _userManagementQueryService = userManagementQueryService;
             _userManagementMutationService = userManagementMutationService;
             _accountService = accountService;
+            _configurationService = configurationService;
         }
 
         #region Account
@@ -399,6 +405,23 @@ namespace Api.Controllers
         }
 
         #endregion
+        #region Cloud configuration
+        [HttpPost]
+        [ProtectedEndPoint]
+        public async Task<IActionResult> Save([FromBody] SaveIamConfigurationRequest request)
+        {
+            _changeControllerContext.ChangeContext(request);
+            var result = await _configurationService.SaveIamConfigurationAsync(request);
+            return result.IsSuccess ? Ok(result) : BadRequest(result);
+        }
 
+        [HttpGet]
+        [ProtectedEndPoint]
+        public async Task<GetConfigurationResponse> Get([FromQuery] GetAuthenticationConfigurationRequest request)
+        {
+            _changeControllerContext.ChangeContext(request);
+            return await _configurationService.GetIamConfigurationAsync();
+        }
+        #endregion
     }
 }

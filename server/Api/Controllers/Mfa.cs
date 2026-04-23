@@ -1,7 +1,11 @@
 ﻿using Blocks.Genesis;
+using CloudConfiguration.DomainService.Authentication.RequestModel;
+using CloudConfiguration.DomainService.MFA.RequestModel;
+using CloudConfiguration.DomainService.MFA.ResponseModel;
+using CloudConfiguration.DomainService.Shared.Services;
 using Mfa.DomainService.Services;
-using Mfa.DomainService.Shared.RequestModel;
 using Mfa.DomainService.Shared;
+using Mfa.DomainService.Shared.RequestModel;
 using Mfa.DomainService.TOTP;
 using Microsoft.AspNetCore.Mvc;
 
@@ -15,14 +19,15 @@ namespace Api.Controllers
         private readonly IMfaManagementService _mfaManagementService;
         private readonly TotpService _totpService;
         private readonly ChangeControllerContext _changeControllerContext;
-
+        private readonly IConfigurationService _configurationService;
         public MfaController(IMfaManagementService mfaManagementService,
                             TotpService totpService,
-                            ChangeControllerContext changeControllerContext)
+                            ChangeControllerContext changeControllerContext, IConfigurationService configurationService)
         {
             _changeControllerContext = changeControllerContext;
             _mfaManagementService = mfaManagementService;
             _totpService = totpService;
+            _configurationService = configurationService;
         }
 
         [ProtectedEndPoint]
@@ -69,5 +74,22 @@ namespace Api.Controllers
 
             return await _mfaManagementService.ResendOtpAsync(request.MfaId, request.SendPhoneNumberAsEmailDomain);
         }
+        #region Cloud Configuration
+        [HttpPost]
+        [ProtectedEndPoint]
+        public async Task<BaseResponse> Save(SaveMfaConfigurationRequest request)
+        {
+            _changeControllerContext.ChangeContext(request);
+            return await _configurationService.SaveMfaConfigurationAsync(request);
+        }
+
+        [HttpGet]
+        [ProtectedEndPoint]
+        public async Task<GetMfaConfigurationResponse> Get([FromQuery] GetAuthenticationConfigurationRequest request)
+        {
+            _changeControllerContext.ChangeContext(request);
+            return await _configurationService.GetMfaConfigurationAsync();
+        }
+        #endregion
     }
 }

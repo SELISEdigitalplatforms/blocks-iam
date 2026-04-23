@@ -8,6 +8,7 @@ import {
 } from "@/components/ui-kits/card/card";
 import { Skeleton } from "@/components/ui-kits/skeleton/skeleton";
 import { showErrorToast } from "@/hooks/use-toast";
+import { getRuntimeEnv } from "@/lib/runtime-env";
 import { GRANT_TYPES } from "@blocks-idp/authentication/constants/authentication.constant";
 import { useGetLoginOptions } from "@blocks-idp/authentication/hooks/use-auth";
 import { useGetSignUpSetting } from "@blocks-idp/iam/hooks/use-user";
@@ -66,7 +67,7 @@ const SigninSkeleton = () => (
 );
 
 export const Signin = ({ ssoError }: SigninProps) => {
-  const projectKey = import.meta.env.BLOCKS_X_BLOCKS_KEY || "";
+  const projectKey = getRuntimeEnv("BLOCKS_X_BLOCKS_KEY") || "";
 
   const { data: loginOption, isLoading: isLoginOptionLoading } = useGetLoginOptions();
   const { data: signUpSetting, isLoading: isSignUpSettingLoading } = useGetSignUpSetting({

@@ -1,4 +1,5 @@
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui-kits/form/form";
+import { getRuntimeEnv } from "@/lib/runtime-env";
 import { useForm } from "react-hook-form";
 import { signinFormDefaultValue, signinFormSchema } from "./schema";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -32,7 +33,7 @@ export const SigninForm = () => {
       if (res.enable_mfa) return navigate(`/mfa-check?mfa_id=${res.mfaId}&mfa_type=${res.mfaType}`);
 
       // For localhost, save tokens in store for Authorization Bearer
-      const isLocalhost = import.meta.env.BLOCKS_API_BASE_URL?.includes("localhost");
+      const isLocalhost = getRuntimeEnv("BLOCKS_API_BASE_URL")?.includes("localhost");
       if (isLocalhost && res.access_token && res.refresh_token) {
         setTokens(res.access_token, res.refresh_token);
       }
@@ -50,7 +51,7 @@ export const SigninForm = () => {
   const {
     formState: { submitCount },
   } = form;
-  const googleSiteKey = import.meta.env.BLOCKS_GOOGLE_SITE_KEY || "";
+  const googleSiteKey = getRuntimeEnv("BLOCKS_GOOGLE_SITE_KEY") || "";
   const isTokenNeed = submitCount >= 3;
 
   return (

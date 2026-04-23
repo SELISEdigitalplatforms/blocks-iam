@@ -3,6 +3,7 @@
 import { useState, useEffect, useMemo } from "react";
 import { useNavigate } from "react-router-dom";
 import { getApiUrl } from "@/lib/get-api-path";
+import { getRuntimeEnv } from "@/lib/runtime-env";
 import { showErrorToast } from "@/hooks/use-toast";
 import { useAuthStore } from "@/store/useAuthStore";
 import { isErrorWithErrors } from "@/lib/error";
@@ -68,9 +69,9 @@ export const SsoActivate = ({ oauthParams }: SsoActivateProps) => {
     if (!oauthParams?.code) return showErrorToast({ errors: "Code is missing" });
     setIsPending(true);
     try {
-      const key = import.meta.env.BLOCKS_X_BLOCKS_KEY;
+      const key = getRuntimeEnv("BLOCKS_X_BLOCKS_KEY");
       const appUrl = import.meta.env.BLOCKS_APP_URL;
-      const isLocalhost = import.meta.env.BLOCKS_API_BASE_URL?.includes("localhost");
+      const isLocalhost = getRuntimeEnv("BLOCKS_API_BASE_URL")?.includes("localhost");
 
       const body = new URLSearchParams();
       body.append("code", oauthParams.code);

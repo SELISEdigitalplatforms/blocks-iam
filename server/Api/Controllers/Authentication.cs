@@ -1,4 +1,7 @@
 ﻿using Blocks.Genesis;
+using CloudConfiguration.DomainService.Authentication;
+using CloudConfiguration.DomainService.Authentication.RequestModel;
+using CloudConfiguration.DomainService.Shared.Services;
 using DomainService.Authentication;
 using DomainService.Entities;
 using DomainService.OAuth;
@@ -28,13 +31,13 @@ namespace Api.Controllers
         private readonly IConfiguration _configuration;
         private readonly IAuthenticationRepository _authenticationRepository;
         private readonly ChangeControllerContext _changeControllerContext;
-
+        public readonly IConfigurationService _confirurationService;
         public AuthenticationController(IOAuthTokenProvider oAuthTokenProvider,
                               IAuthenticationService authenticationService,
                               IConfiguration configuration,
                               IAuthenticationDomainService authenticationDomainService,
                               IAuthenticationRepository authenticationRepository,
-                              ChangeControllerContext changeControllerContext)
+                              ChangeControllerContext changeControllerContext, IConfigurationService confirurationService)
         {
             _oAuthTokenProvider = oAuthTokenProvider;
             _authenticationService = authenticationService;
@@ -43,6 +46,7 @@ namespace Api.Controllers
             _authenticationDomainService = authenticationDomainService;
             _authenticationDomainService = authenticationDomainService;
             _authenticationRepository = authenticationRepository;
+            _confirurationService = confirurationService;
         }
 
         #region Authorization Endpoints
@@ -337,6 +341,23 @@ namespace Api.Controllers
             return await _authenticationService.GetLoginOptionsAsync();
         }
 
+        #endregion
+        #region Cloud Configuration
+        [ProtectedEndPoint]
+        [HttpGet]
+        public async Task<IActionResult> Get([FromQuery] GetAuthenticationConfigurationRequest request)
+        {
+            _changeControllerContext.ChangeContext(request);
+            return await _confirurationService.GetAuthenticationConfigAsync();
+        }
+
+        [ProtectedEndPoint]
+        [HttpPost]
+        public async Task<BaseResponse> Update([FromBody] UpdateAuthenticationConfigurationRequest configuration)
+        {
+            _changeControllerContext.ChangeContext(configuration);
+            return await _confirurationService.UpdateAuthenticationConfigAsync(configuration);
+        }
         #endregion
     }
 }

@@ -1,8 +1,11 @@
 ﻿using Api.Controllers;
+using Blocks.Genesis;
 using Captcha.DomainService.Captcha;
+using CloudConfiguration.DomainService.Shared.Services;
 using FluentAssertions;
 using FluentValidation;
 using FluentValidation.Results;
+using Microsoft.AspNetCore.Http;
 using Moq;
 
 namespace XUnitTest.Controllers
@@ -12,10 +15,12 @@ namespace XUnitTest.Controllers
         private readonly Mock<ICaptchaService> _captchaService = new();
         private readonly Mock<IValidator<CreateCaptchaRequest>> _createCaptchaValidator = new();
         private readonly CaptchaController _captchaController;
+        private readonly Mock<IConfigurationService> _cloudConfig = new();
+        private readonly Mock<ChangeControllerContext> _context = new(new Mock<ITenants>().Object, new Mock<IDbContextProvider>().Object, new Mock<IHttpContextAccessor>().Object);
 
         public CaptchaControllerTests()
         {
-            _captchaController = new CaptchaController(_captchaService.Object);
+            _captchaController = new CaptchaController(_captchaService.Object, _cloudConfig.Object, _context.Object);
         }
 
         [Fact]

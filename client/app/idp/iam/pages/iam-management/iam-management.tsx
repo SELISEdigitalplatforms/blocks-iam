@@ -20,24 +20,7 @@ export const IamManagement = () => {
         <div className="flex items-center gap-2">
           <h3 className="text-2xl font-bold tracking-tight">Identity and Access Management</h3>
         </div>
-        <div className="flex items-center gap-4">
-          <Button
-            size="sm"
-            variant="outline"
-            onClick={() =>
-              window.open(
-                getApiUrl("idp/v1", "swagger/index.html"),
-                "_blank",
-              )
-            }
-          >
-            API Docs
-          </Button>
-          <LogMenu link="/services/iam/logs" />
-          <Link to="/services/iam/configure">
-            <ConfigureButton />
-          </Link>
-        </div>
+      
       </div>
 
       <Tabs

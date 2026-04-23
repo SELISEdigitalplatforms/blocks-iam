@@ -4,8 +4,8 @@ namespace DomainService.Migration
 {
     public interface IMigrationService
     {
-        Task<OtpGenerationResponse> Migrate(MigrationRequest request);
-        Task<OtpVerificationResponse> VerifyAsync(VerifyOtpRequest request);
+        Task<MigrationOtpGenerationResponse> Migrate(MigrationRequest request);
+        Task<MigrationOtpVerificationResponse> VerifyAsync(MigrationVerifyOtpRequest request);
         Task<bool> NotifyDataMigrationProgress(bool response, string projectKey, string targetedProjectKey);
         Task<bool> NotifyEnvironmentDataMigration(bool response, string projectKey, string targetedProjectKey);
         Task<bool> NotifyServiceDataMigrationProgress(bool response, string projectKey, string targetedProjectKey);

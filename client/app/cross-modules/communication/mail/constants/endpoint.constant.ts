@@ -1,7 +1,7 @@
 import { API_BASES } from "@/constants/endpoint.constant";
 
-const MAIL_SUBPATH = "/Mail";
-const TEMPLATE_SUBPATH = "/Template";
+const MAIL_SUBPATH = "Mail";
+const TEMPLATE_SUBPATH = "Template";
 
 // Mail endpoints
 export const MAIL_ENDPOINTS = {
