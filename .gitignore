@@ -168,6 +168,12 @@ vite.config.ts.timestamp-*
 .vscode/
 
 # --- Project-specific ---
+# Ignore all Cursor workspace folders in repo
+**/.cursor/
+
+# Generated graph reports/cache
+client/graphify-out/
+
 # SPA production output (see client/vite.config.ts)
 server/Api/wwwroot/**
 !server/Api/wwwroot/.gitkeep
