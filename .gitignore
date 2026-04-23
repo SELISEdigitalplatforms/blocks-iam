@@ -161,3 +161,6 @@ server/Api/wwwroot/**
 
 client/graphify-out/
 client/.cursor/
+
+#moat
+client/.moat/
