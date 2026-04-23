@@ -1,29 +1,27 @@
-
+"use client";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui-kits/tabs/tabs";
 import { LogMenu } from "@blocks-lmt/components";
 import { TabsContent } from "@radix-ui/react-tabs";
 import { useQueryState } from "nuqs";
-import { getApiUrl } from "@/lib/get-api-path";
 import { GrantTypes } from "./general/grant-types";
 // import { SelfSignup } from "./general/self-signup";
 import { GeneralSettings } from "./general/settings";
+import { SSO } from "./sso";
 import { Button } from "@/components/ui-kits/button/button";
-import { AuthenticationTabs } from "@blocks-idp/authentication/constants/authentication.constant";
-// import { ClientCredentials } from "@blocks-idp/authentication/components/client-credentials";
-// import { CreateClientCredential } from "@blocks-idp/authentication/components/create-client-credential";
+import { Certificates } from "./general/certificates/certificates";
+import { AuthenticationTabs, GRANT_TYPES } from "@blocks-idp/authentication/constants/authentication.constant";
+import { OIDC } from "@blocks-idp/authentication/components/oidc";
+import { ClientCredentials } from "@blocks-idp/authentication/components/client-credentials";
+import { CreateClientCredential } from "@blocks-idp/authentication/components/create-client-credential";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui-kits/select/select";
-import { Permissions } from "@blocks-idp/iam/modules/permission-management";
-import { AddRole, Roles } from "@blocks-idp/iam/modules/role-management";
-import { PrimaryButton } from "@/components/action-buttons/primary-button";
-import { Link } from "react-router-dom";
+import { CreateOIDC } from "@blocks-idp/authentication/components/create-oidc";
 
 export const AuthenticationConfig = () => {
   const [selectedTab, setSelectedTab] = useQueryState("tab", { defaultValue: "general" });
   return (
     <div>
       <div className="mb-[18px] flex items-center justify-between md:mb-[24px]">
-        <h1 className="text-lg font-semibold md:text-2xl">IDP</h1>
-    
+        <h1 className="text-lg font-semibold md:text-2xl">Authentication</h1>
       </div>
       <Tabs value={selectedTab} onValueChange={(value) => setSelectedTab(value)}>
         <div className="mb-4 flex items-start justify-between gap-4">
@@ -52,13 +50,8 @@ export const AuthenticationConfig = () => {
           </>
 
           <>
-            {/* {selectedTab === GRANT_TYPES.clientCredential && <CreateClientCredential />} */}
-            {selectedTab === "roles" && <AddRole />}
-            {selectedTab === "permissions" && (
-              <Link to="/services/iam/permission-detail/new">
-                <PrimaryButton label="Add Permission" />
-              </Link>
-            )}
+            {selectedTab === GRANT_TYPES.clientCredential && <CreateClientCredential />}
+            {selectedTab === GRANT_TYPES.authorizationCode && <CreateOIDC />}
           </>
         </div>
         <TabsContent value="general" className="grid grid-cols-1 gap-6">
@@ -66,39 +59,18 @@ export const AuthenticationConfig = () => {
           <GrantTypes />
           {/* <SelfSignup /> */}
         </TabsContent>
-        <TabsContent value="signin-flow">
-          <div className="rounded-lg border border-border bg-card p-6">
-            <h3 className="text-lg font-semibold">Signin flow</h3>
-            <p className="text-muted-foreground mt-2">Configure your signin flow settings</p>
-          </div>
+        <TabsContent value={GRANT_TYPES.social}>
+          <SSO />
         </TabsContent>
-        <TabsContent value="signup-flow">
-          <div className="rounded-lg border border-border bg-card p-6">
-            <h3 className="text-lg font-semibold">Signup flow</h3>
-            <p className="text-muted-foreground mt-2">Configure your signup flow settings</p>
-          </div>
+        <TabsContent value="external-idp">
+          <Certificates />
         </TabsContent>
-        <TabsContent value="email-template">
-          <div className="rounded-lg border border-border bg-card p-6">
-            <h3 className="text-lg font-semibold">Email template</h3>
-            <p className="text-muted-foreground mt-2">Configure your email template settings</p>
-          </div>
-        </TabsContent>
-        <TabsContent value="oidc-template">
-          <div className="rounded-lg border border-border bg-card p-6">
-            <h3 className="text-lg font-semibold">OIDC template</h3>
-            <p className="text-muted-foreground mt-2">Configure your OIDC template settings</p>
-          </div>
-        </TabsContent>
-        <TabsContent value="roles">
-          <Roles />
-        </TabsContent>
-        <TabsContent value="permissions">
-          <Permissions />
-        </TabsContent>
-        {/* <TabsContent value={GRANT_TYPES.clientCredential}>
+        <TabsContent value={GRANT_TYPES.clientCredential}>
           <ClientCredentials />
-        </TabsContent> */}
+        </TabsContent>
+        <TabsContent value={GRANT_TYPES.authorizationCode}>
+          <OIDC />
+        </TabsContent>
       </Tabs>
     </div>
   );
