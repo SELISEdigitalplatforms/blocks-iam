@@ -2,7 +2,7 @@ import { AuthenticationConfig } from "@blocks-idp/authentication/pages/authentic
 
 export default function AuthenticationConfigPage() {
 	return (
-		<div className="p-6">
+		<div className="h-full w-full min-w-0 p-6">
 			<AuthenticationConfig />
 		</div>
 	);

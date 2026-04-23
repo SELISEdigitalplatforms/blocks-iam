@@ -1,6 +1,6 @@
 import { useMemo } from "react";
-import { ChevronRight, X } from "lucide-react";
 import { Link, useLocation } from "react-router-dom";
+import { ChevronRight, X } from "lucide-react";
 import { Badge } from "@/components/ui-kits/badge/badge";
 import { Separator } from "@/components/ui-kits/separator/separator";
 import {
@@ -24,13 +24,13 @@ function ChildMenuItem({ menu, onClick }: { menu: MenuItemType; onClick?: () => 
     <Link
       to={menu.path}
       className={cn(
-        "flex h-10 items-center py-1.5 text-base transition-colors hover:text-primary",
+        "flex h-10 items-center gap-2 py-1.5 text-base transition-colors hover:text-primary",
         isActiveMenu && "text-primary",
         menu.disabled && "pointer-events-none cursor-not-allowed opacity-50",
       )}
       onClick={onClick}
     >
-      {menu.icon ? <menu.icon className="mr-2 h-5 w-5" /> : null}
+      {menu.icon ? <menu.icon className="h-5 w-5" /> : null}
       <span>{menu.name}</span>
     </Link>
   );
@@ -43,7 +43,9 @@ export function MobileMenuItem({ menu, onClick }: { menu: MenuItemType; onClick?
     const allPaths = [menu.path];
     if (menu.children) {
       menu.children.forEach((child) => {
-        if (child.type === "menu") allPaths.push(child.path);
+        if (child.type === "menu") {
+          allPaths.push(child.path);
+        }
       });
     }
     return allPaths.some((item) => pathname.startsWith(item));
@@ -79,10 +81,11 @@ export function MobileMenuItem({ menu, onClick }: { menu: MenuItemType; onClick?
 
   return (
     <Sheet>
-      <SheetTrigger>
-        <div
+      <SheetTrigger asChild>
+        <button
+          type="button"
           className={cn(
-            "flex h-10 items-center justify-between px-4 py-1.5 text-base text-[hsl(var(--low-emphasis))] hover:text-[hsl(var(--high-emphasis))]",
+            "flex h-10 w-full items-center justify-between px-4 py-1.5 text-left text-base text-[hsl(var(--low-emphasis))] hover:text-[hsl(var(--high-emphasis))]",
             isActiveMenu && "!text-primary",
           )}
         >
@@ -90,8 +93,8 @@ export function MobileMenuItem({ menu, onClick }: { menu: MenuItemType; onClick?
             {menu.icon ? <menu.icon className="h-5 w-5" /> : null}
             <span className="relative">{menu.name}</span>
           </div>
-          <ChevronRight className="aspect-square w-4" />
-        </div>
+          <ChevronRight className="aspect-square w-4 shrink-0" aria-hidden />
+        </button>
       </SheetTrigger>
       <SheetContent className="w-full p-0" aria-describedby={undefined} hideClose>
         <SheetHeader className="flex-row items-center justify-between px-4 py-3">
