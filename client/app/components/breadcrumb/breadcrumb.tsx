@@ -10,7 +10,10 @@ import {
 } from "../ui-kits/breadcrumb/breadcrumb";
 import { Link } from "react-router-dom";
 import useRoutePathSegments from "@/hooks/use-path-segments";
-import { BREADCRUMB_CUSTOM_TITLES } from "@/constants/breadcrumb-custom-title";
+import {
+  BREADCRUMB_CUSTOM_TITLES,
+  BREADCRUMB_LINK_OVERRIDES,
+} from "@/constants/breadcrumb-custom-title";
 
 const PageBreadcrumb: React.FC<{ breadcrumbIndex?: number }> = ({ breadcrumbIndex }) => {
   let breadcrumbs = useRoutePathSegments();
@@ -29,7 +32,10 @@ const PageBreadcrumb: React.FC<{ breadcrumbIndex?: number }> = ({ breadcrumbInde
                 </BreadcrumbPage>
               ) : (
                 <BreadcrumbLink asChild>
-                  <Link to={breadcrumb.href} className="text-foreground hover:text-foreground">
+                  <Link
+                    to={BREADCRUMB_LINK_OVERRIDES[breadcrumb.href] ?? breadcrumb.href}
+                    className="text-foreground hover:text-foreground"
+                  >
                     {BREADCRUMB_CUSTOM_TITLES[breadcrumb.href] || breadcrumb.label}
                   </Link>
                 </BreadcrumbLink>
