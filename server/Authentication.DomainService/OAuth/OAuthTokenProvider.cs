@@ -106,7 +106,7 @@ namespace DomainService.OAuth
                     var accessTokenkey = $"{IdpConstants.AccessTokenCookieName}_{bc.TenantId}";
                     var refreshTokenKey = $"{IdpConstants.RefreshTokenCookieName}_{bc.TenantId}";
                     request.Request.HttpContext.Response.Cookies.Delete(accessTokenkey);
-                    var cookieOptionsForDomain = GetCookieOptions(response.CookieDomain, response.ExpiresUtc);
+                    var cookieOptionsForDomain = GetCookieOptions("blocksdevelopers.com", response.ExpiresUtc);
 
                     request.Request.HttpContext.Response.Cookies.Append(
                         accessTokenkey,
