@@ -147,7 +147,7 @@ namespace DomainService.OAuth
                 Expires = expires,
                 HttpOnly = true,
                 Path = "/",
-                Secure = _configuration?.GetValue<bool>("SecureCookieOptions") ?? false,
+                Secure = true,
                 SameSite = SameSiteMode.None
             };
         }
