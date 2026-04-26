@@ -14,9 +14,9 @@ import { IProject } from "@/models/project.model";
 import { useProjectStore } from "@/store/useProjectStore";
 
 const redirectPaths: Record<string, string> = {
-  "/services/iam/user-detail/*": "/services/iam",
+  "/services/iam/user-detail/*": "/services/authentication?tab=users",
   "/services/iam/role-detail/*": "/services/iam?tab=roles",
-  "/services/iam/organization-detail/*": "/services/iam",
+  "/services/iam/organization-detail/*": "/services/authentication?tab=organizations",
   "/services/iam/permission-detail/*": "/services/iam",
   "/services/authentication/sso-configuration": "/services/authentication?tab=social",
 };

@@ -29,12 +29,14 @@ export const GRANT_TYPES_OPTIONS: { id: GRANT_TYPES; label: string; value: strin
 ];
 
 export const AuthenticationTabs: { id: string; label: string; value: string }[] = [
-  { id: "general", label: "General", value: "general" },
+  // { id: "general", label: "General", value: "general" },
+  { id: "users", label: "Users", value: "users" },
+  { id: "organizations", label: "Organizations", value: "organizations" },
   {
     id: GRANT_TYPES.clientCredential,
     label: "Client Credential",
     value: GRANT_TYPES.clientCredential,
-  }
+  },
 ];
 
 export const SecretManagementTabs: { id: string; label: string; value: string }[] = [
