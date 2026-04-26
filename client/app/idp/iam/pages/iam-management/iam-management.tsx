@@ -1,50 +1,13 @@
-import { ConfigureButton } from "@/components/action-buttons/configure-button";
 import { PrimaryButton } from "@/components/action-buttons/primary-button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui-kits/tabs/tabs";
-import { getApiPath } from "@/lib/get-api-path";
-import { getRuntimeEnv } from "@/lib/runtime-env";
 import { clearQueryString } from "@/lib/utils";
-import { useProjectStore } from "@/store/useProjectStore";
-import { LogMenu } from "@blocks-lmt/components";
 import { Permissions } from "@blocks-idp/iam/modules/permission-management";
-import {
-  Organizations,
-  OrganizationConfig,
-} from "@blocks-idp/iam/modules/organization-management";
 import { AddRole, Roles } from "@blocks-idp/iam/modules/role-management";
-import { useGetOrganizationConfig } from "@blocks-idp/iam/hooks/use-organization";
-import { InviteUser } from "@blocks-idp/iam/modules/user-management/invite-user/invite-user";
-import { Users } from "@blocks-idp/iam/modules/user-management/users";
-import { SignupSettings } from "@blocks-idp/iam/modules/user-management/signup-settings";
-import { IOrganizationConfigResponse } from "@blocks-idp/iam/models/organization-config.model";
 import { Link } from "react-router-dom";
 import { useQueryState } from "nuqs";
 
-interface OrganizationActionsProps {
-  configData: IOrganizationConfigResponse | null | undefined;
-  isLoading: boolean;
-}
-
-const OrganizationActions = ({ configData, isLoading }: OrganizationActionsProps) => {
-  return (
-    <div className="flex items-center gap-2">
-      <OrganizationConfig configData={configData} isLoading={isLoading} />
-    </div>
-  );
-};
-
-
-
 const getActionComponents = (tab: string) => {
   switch (tab) {
-    case "users":
-      // eslint-disable-next-line react/display-name
-      return () => (
-        <div className="flex items-center gap-2">
-          <SignupSettings />
-          <InviteUser />
-        </div>
-      );
     case "roles":
       return AddRole;
     case "permissions":
@@ -60,10 +23,7 @@ const getActionComponents = (tab: string) => {
 };
 
 export const IamManagement = () => {
-  const [tabId, setTabId] = useQueryState("tab", { defaultValue: "users" });
-  const tenantId = useProjectStore().selectedProject?.tenantId || "";
-  const { data: orgConfigData, isLoading: isOrgConfigLoading } = useGetOrganizationConfig(tenantId);
-
+  const [tabId, setTabId] = useQueryState("tab", { defaultValue: "roles" });
   const AddActionComponent = getActionComponents(tabId);
 
   return (
@@ -83,21 +43,11 @@ export const IamManagement = () => {
       >
         <div className="mb-5 mt-6 flex items-center justify-between rounded text-base">
           <TabsList>
-            <TabsTrigger value="users">Users</TabsTrigger>
-            <TabsTrigger value="organizations">Organizations</TabsTrigger>
+            <TabsTrigger value="roles">Roles</TabsTrigger>
+            <TabsTrigger value="permissions">Permissions</TabsTrigger>
           </TabsList>
-          {tabId === "organizations" ? (
-            <OrganizationActions configData={orgConfigData} isLoading={isOrgConfigLoading} />
-          ) : (
-            <AddActionComponent />
-          )}
+          <AddActionComponent />
         </div>
-        <TabsContent value="organizations">
-          <Organizations />
-        </TabsContent>
-        <TabsContent value="users">
-          <Users />
-        </TabsContent>
         <TabsContent value="roles">
           <Roles />
         </TabsContent>

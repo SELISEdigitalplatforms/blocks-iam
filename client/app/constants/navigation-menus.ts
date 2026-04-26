@@ -1,5 +1,5 @@
 import { Menu } from "@/models/menu-models";
-import { Home, Package, Users, BookMinus, Settings, KeyRound, Shield } from "lucide-react";
+import { Home, Package, Users, BookMinus, Settings, KeyRound } from "lucide-react";
 
 export const navigationMenus: Menu[] = [
   {
@@ -48,15 +48,15 @@ export const navigationMenus: Menu[] = [
   {
     type: "menu",
     id: "service-identity__authentication",
-    name: "Authentication",
+    name: "IDP",
     path: "/services/authentication",
     icon: KeyRound,
   },
-  {
-    type: "menu",
-    id: "service-identity__authorization",
-    name: "Access Manager",
-    path: "/services/iam",
-    icon: Shield,
-  },
+  // {
+  //   type: "menu",
+  //   id: "service-identity__authorization",
+  //   name: "Access Manager",
+  //   path: "/services/iam",
+  //   icon: Shield,
+  // },
 ];
