@@ -6,10 +6,10 @@ namespace DomainService.Utilities
     public static class IdpConstants
     {
         public const string TenantTokenPublicCertificateCachePrefix = "tetocertpublic::";
-        public const string AuthenticationQueue = "blocks_authentication_listener";
-        public const string IamQueue = "blocks_iam_listener";
-        public const string MailQueue = "blocks_mail_listener";
-        public const string MfaQueueName = "blocks_mfa_listener";
+        public const string AuthenticationQueue = "blocks_idp_authentication_listener";
+        public const string IamQueue = "blocks_idp_iam_listener";
+        public const string MailQueue = "blocks_idp_mail_listener";
+        public const string MfaQueueName = "blocks_idp_mfa_listener";
 
         public const string AccessTokenCookieName = "access_token";
         public const string RefreshTokenCookieName = "refresh_token";
@@ -18,12 +18,12 @@ namespace DomainService.Utilities
         private const string RabbitMqProvider = "rabbitmq";
 
         #region Identifier Service Constants
-        public const string IdentifierQueueName = "blocks_identifier_listener";
-        public const string DataCleanupQueue = "blocks_data_cleanup_listener";
-        public const string LanguageDataMigrationQueue = "blocks_uilm_environment_data_migration_listener";
-        public const string GenericMigrationQueue = "blocks_generic_migration_listener";
-        public const string MigrationCompletionTopic = "migration_topic";
-        public const string ProjectPeopleInvitationMailPurpose = "project_invitation";
+        public const string IdentifierQueueName = "blocks_idp_identifier_listener";
+        public const string DataCleanupQueue = "blocks_idp_data_cleanup_listener";
+        public const string LanguageDataMigrationQueue = "blocks_idp_uilm_environment_data_migration_listener";
+        public const string GenericMigrationQueue = "blocks_idp_generic_migration_listener";
+        public const string MigrationCompletionTopic = "blocks_idp_migration_topic";
+        public const string ProjectPeopleInvitationMailPurpose = "blocks_idp_project_invitation";
         public const string BlocsDomain = "seliseblocks.com";
         #endregion
 
