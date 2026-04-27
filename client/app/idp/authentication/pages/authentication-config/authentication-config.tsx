@@ -1,20 +1,7 @@
 "use client";
-import { Tabs, TabsList, TabsTrigger } from "@/components/ui-kits/tabs/tabs";
-import { LogMenu } from "@blocks-lmt/components";
-import { TabsContent } from "@radix-ui/react-tabs";
-import { useQueryState } from "nuqs";
-// import { GrantTypes } from "./general/grant-types";
-// import { SelfSignup } from "./general/self-signup";
-// import { GeneralSettings } from "./general/settings";
-import { SSO } from "./sso";
-import { Button } from "@/components/ui-kits/button/button";
-import { Certificates } from "./general/certificates/certificates";
-import { AuthenticationTabs, GRANT_TYPES } from "@blocks-idp/authentication/constants/authentication.constant";
-import { OIDC } from "@blocks-idp/authentication/components/oidc";
+
 import { ClientCredentials } from "@blocks-idp/authentication/components/client-credentials";
 import { CreateClientCredential } from "@blocks-idp/authentication/components/create-client-credential";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui-kits/select/select";
-import { CreateOIDC } from "@blocks-idp/authentication/components/create-oidc";
 import { useProjectStore } from "@/store/useProjectStore";
 import { useGetOrganizationConfig } from "@blocks-idp/iam/hooks/use-organization";
 import {
@@ -25,79 +12,37 @@ import { InviteUser } from "@blocks-idp/iam/modules/user-management/invite-user/
 import { Users } from "@blocks-idp/iam/modules/user-management/users";
 import { SignupSettings } from "@blocks-idp/iam/modules/user-management/signup-settings";
 
-export const AuthenticationConfig = () => {
-  const [selectedTab, setSelectedTab] = useQueryState("tab", { defaultValue: "users" });
+type AuthenticationSection = "users" | "organizations" | "client-credential";
+
+interface AuthenticationConfigProps {
+  section: AuthenticationSection;
+}
+
+export const AuthenticationConfig = ({ section }: AuthenticationConfigProps) => {
   const tenantId = useProjectStore().selectedProject?.tenantId || "";
   const { data: orgConfigData, isLoading: isOrgConfigLoading } = useGetOrganizationConfig(tenantId);
+  const pageTitle = section === "client-credential" ? "Client Credential" : section === "organizations" ? "Organizations" : "Users";
 
   return (
     <div>
-      <div className="mb-[18px] flex items-center justify-between md:mb-[24px]">
-        <h1 className="text-lg font-semibold md:text-2xl">IDP</h1>
-      </div>
-      <Tabs value={selectedTab} onValueChange={(value) => setSelectedTab(value)}>
-        <div className="mb-4 flex items-start justify-between gap-4">
-          <>
-            <TabsList className="hidden w-auto sm:inline-flex">
-              {AuthenticationTabs.map((item) => (
-                <TabsTrigger key={item.id} value={item.value}>
-                  {item.label}
-                </TabsTrigger>
-              ))}
-            </TabsList>
-            <div className="sm:hidden">
-              <Select value={selectedTab} onValueChange={(value) => setSelectedTab(value)}>
-                <SelectTrigger className="w-32 gap-2">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {AuthenticationTabs.map((item) => (
-                    <SelectItem key={item.id} value={item.value}>
-                      {item.label}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-          </>
-
-          <>
-            {selectedTab === GRANT_TYPES.clientCredential && <CreateClientCredential />}
-            {selectedTab === GRANT_TYPES.authorizationCode && <CreateOIDC />}
-            {selectedTab === "users" && (
-              <div className="flex items-center gap-2">
-                <SignupSettings />
-                <InviteUser />
-              </div>
-            )}
-            {selectedTab === "organizations" && (
-              <OrganizationConfig configData={orgConfigData} isLoading={isOrgConfigLoading} />
-            )}
-          </>
+      <div className="mb-4 flex items-start justify-between gap-4 md:mb-6">
+        <h1 className="text-lg font-semibold md:text-2xl">{pageTitle}</h1>
+        <div className="flex items-center gap-2">
+          {section === "client-credential" && <CreateClientCredential />}
+          {section === "users" && (
+            <>
+              <SignupSettings />
+              <InviteUser />
+            </>
+          )}
+          {section === "organizations" && (
+            <OrganizationConfig configData={orgConfigData} isLoading={isOrgConfigLoading} />
+          )}
         </div>
-        {/* <TabsContent value="general" className="grid grid-cols-1 gap-6">
-          <GeneralSettings />
-          <GrantTypes />
-        </TabsContent> */}
-        <TabsContent value={GRANT_TYPES.social}>
-          <SSO />
-        </TabsContent>
-        <TabsContent value="external-idp">
-          <Certificates />
-        </TabsContent>
-        <TabsContent value="users">
-          <Users />
-        </TabsContent>
-        <TabsContent value="organizations">
-          <Organizations />
-        </TabsContent>
-        <TabsContent value={GRANT_TYPES.clientCredential}>
-          <ClientCredentials />
-        </TabsContent>
-        <TabsContent value={GRANT_TYPES.authorizationCode}>
-          <OIDC />
-        </TabsContent>
-      </Tabs>
+      </div>
+      {section === "users" && <Users />}
+      {section === "organizations" && <Organizations />}
+      {section === "client-credential" && <ClientCredentials />}
     </div>
   );
 };
