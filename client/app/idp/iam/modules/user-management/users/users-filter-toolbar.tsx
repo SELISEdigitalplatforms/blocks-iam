@@ -50,33 +50,35 @@ export const UsersFilterToolbar = () => {
 
   return (
     <FilterToolbar<UsersFilter>
-      filters={[
-        {
-          key: "search",
-          type: "DropdownSearchInput",
-          label: "",
-          props: {
-            className: {
-              selectContent: "min-w-fit",
-              SelectItem: "[&>*:first-child]:hidden flex justify-center px-2",
+        filters={[
+          {
+            key: "search",
+            type: "DropdownSearchInput",
+            label: "User search",
+            props: {
+              placeholder: "Minimum 3 characters…",
+              className: {
+                selectContent: "min-w-fit",
+                SelectItem: "[&>*:first-child]:hidden flex justify-center px-2",
+                input: "min-w-[17rem] md:min-w-[20rem]",
+              },
+              options: [
+                { label: <Mail className="aspect-square w-4" />, value: "email" },
+                { label: <User className="aspect-square w-4" />, value: "name" },
+              ],
             },
-            options: [
-              { label: <Mail className="aspect-square w-4" />, value: "email" },
-              { label: <User className="aspect-square w-4" />, value: "name" },
-            ],
           },
-        },
-      ]}
-      values={{
-        search: {
-          selected: queryParams["selected-filter"],
-          value: queryParams["selected-filter"] === "email" ? queryParams.email : queryParams.name,
-        },
-      }}
-      defaultValues={{ search: { selected: "name", value: "" } }}
-      onChange={changeHandler}
-      onReset={resetHandler}
-      hideGlobalResetButton
-    />
+        ]}
+        values={{
+          search: {
+            selected: queryParams["selected-filter"],
+            value: queryParams["selected-filter"] === "email" ? queryParams.email : queryParams.name,
+          },
+        }}
+        defaultValues={{ search: { selected: "name", value: "" } }}
+        onChange={changeHandler}
+        onReset={resetHandler}
+        hideGlobalResetButton
+      />
   );
 };
