@@ -42,6 +42,27 @@ export class AuthService {
     });
   }
 
+  verifyOidc(payload: { code: string; state: string }): Promise<any> {
+    const body = new URLSearchParams();
+    body.append("grant_type", "authorization_code");
+    body.append("code", payload.code);
+    body.append("state", payload.state);
+    body.append("client_secret", "***REMOVED***");
+
+    return http.post(
+      `https://dev-idp.blocksdevelopers.com${AUTH_ENDPOINTS.TOKEN}`,
+      body,
+      {
+        "Content-Type": "application/x-www-form-urlencoded",
+        "Authorization": "Basic c2VsaXNlYmxvY2tzOkJsMDNrc0B1JFU3VjEwUw=="
+      },
+      {
+        absoluteUrl: true,
+
+      },
+    );
+  }
+
   signupByEmail(payload: ISignupByEmailPayload): Promise<ISignupByEmailResponse> {
     return http.post(PEOPLE_ENDPOINTS.SIGNUP, payload);
   }
