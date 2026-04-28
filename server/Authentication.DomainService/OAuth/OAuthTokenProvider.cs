@@ -172,7 +172,8 @@ namespace DomainService.OAuth
                   GrantTypes.Social => !string.IsNullOrWhiteSpace(request.Code) &&
                                        !string.IsNullOrWhiteSpace(request.State),
 
-                  GrantTypes.AuthCode => !string.IsNullOrWhiteSpace(request.Code),
+                  GrantTypes.AuthCode => !string.IsNullOrWhiteSpace(request.Code) &&
+                                         !string.IsNullOrWhiteSpace(request.ClientSecret),
 
                   GrantTypes.BiometricAuthorization => !string.IsNullOrWhiteSpace(request.BiometricId) &&
                                                        !string.IsNullOrWhiteSpace(request.BiometricKey),
