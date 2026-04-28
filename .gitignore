@@ -160,7 +160,9 @@ server/Api/wwwroot/**
 **/appsettings.*.json
 
 client/graphify-out/
-client/.cursor/
+
+# Cursor workspace: keep rules and index versioned; omit local context clones
+client/.cursor/context/
 
 #moat
 client/.moat/

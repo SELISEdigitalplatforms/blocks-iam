@@ -6,13 +6,42 @@ import {
   IGetSignUpSettingPayload,
 } from "@blocks-idp/iam/models/user";
 import { userService } from "@blocks-idp/iam/services/user.service";
+import { normalizeSearchQueryText } from "@/lib/utils";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useCallback, useMemo } from "react";
 
 export const useGetUsers = (option: IGetUsersPayload) => {
+  const { page, pageSize, projectKey, filter, sort } = option;
+
+  const payload = useMemo((): IGetUsersPayload => {
+    if (!filter) {
+      return { page, pageSize, projectKey, sort };
+    }
+    return {
+      page,
+      pageSize,
+      projectKey,
+      sort,
+      filter: {
+        ...filter,
+        email: normalizeSearchQueryText(filter.email ?? ""),
+        name: normalizeSearchQueryText(filter.name ?? ""),
+      },
+    };
+  }, [
+    page,
+    pageSize,
+    projectKey,
+    filter?.email,
+    filter?.name,
+    filter?.organizationId,
+    sort?.property,
+    sort?.isDescending,
+  ]);
+
   return useQuery({
-    queryKey: ["users", option],
-    queryFn: () => userService.getUsers(option),
+    queryKey: ["users", payload],
+    queryFn: () => userService.getUsers(payload),
   });
 };
 
