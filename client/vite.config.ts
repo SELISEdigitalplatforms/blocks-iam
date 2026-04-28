@@ -8,9 +8,11 @@ export default defineConfig(({ mode }) => {
 
   return {
     envPrefix: ["BLOCKS_"],
+    publicDir: path.resolve(__dirname, "app/public"),
     plugins: [react()],
     resolve: {
       alias: {
+        "/assets": path.resolve(__dirname, "app/public/assets"),
         "@": path.resolve(__dirname, "./app"),
         "@blocks-idp": path.resolve(__dirname, "./app/idp"),
         "@blocks-lmt": path.resolve(__dirname, "./app/cross-modules/lmt"),
