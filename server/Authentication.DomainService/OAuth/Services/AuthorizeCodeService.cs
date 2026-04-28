@@ -33,6 +33,11 @@ namespace DomainService.OAuth.Services
                 return new TokenResponse { Error = "invalid_code", ErrorDescription = "The code is either not valid or expire" };
             }
 
+            if(stateInfo.secret != request.ClientSecret)
+            {
+                return new TokenResponse { Error = "invalid_secret", ErrorDescription = "client secret mismatch" };
+            }
+
             request.Scope = stateInfo?.Scope ?? "";
             await _cacheClient.RemoveKeyAsync(request.Code); 
             user = await _oAuthRepository.GetUserByEmailAsync(stateInfo.UserName);

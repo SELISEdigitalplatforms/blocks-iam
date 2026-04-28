@@ -10,6 +10,7 @@
         public string? Scope { get; set; }
         public string? UserName { get; set; }
         public string? Nonce { get; set; }
+        public string secret { get; set; }
         public Dictionary<string, string> Extra { get; set; }
 
     }

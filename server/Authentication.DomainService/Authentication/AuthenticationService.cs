@@ -105,7 +105,7 @@ namespace DomainService.Authentication
         {
             var client = await GetClientCredentialAsync(request.ClientId);
             var code = Guid.NewGuid().ToString("n");
-            var stateInfo = new StateInfo { Scope = request.Scope, State = request.State, Code = code, Nonce = request.Nonce, UserName = request.Username, Audience = client.Audience ?? "", Provider = "SeliseCloud", NextUrl = client.RedirectUri };
+            var stateInfo = new StateInfo { Scope = request.Scope, secret = client.ClientSecret, State = request.State, Code = code, Nonce = request.Nonce, UserName = request.Username, Audience = client.Audience ?? "", Provider = "SeliseCloud", NextUrl = client.RedirectUri };
             await _cacheClient.AddStringValueAsync(code, JsonSerializer.Serialize(stateInfo), 300);
             var uri = $"{client.RedirectUri}?code={code}";
 
