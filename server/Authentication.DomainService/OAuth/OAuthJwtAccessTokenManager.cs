@@ -58,7 +58,7 @@ namespace DomainService.OAuth
             var tenant = _tenants.GetTenantByID(bc?.TenantId ?? "");
             var jwtAccessToken = await _jwtAccessTokenProvider.GetJwtAccessToken(authenticationConfiguration, tenant, user, stateInfo, organizationId: tokenRequest.OrganizationId);
             jwtAccessToken.Audience = !string.IsNullOrWhiteSpace(stateInfo?.Audience) ? stateInfo.Audience : jwtAccessToken.Audience;
-            jwtAccessToken.Issuer = tokenRequest.GrantType == GrantTypes.AuthCode ? _configuration["OpenIdConnect:IssuerUri"] ?? "SeliseBlocks" : jwtAccessToken.Issuer;
+            jwtAccessToken.Issuer =  jwtAccessToken.Issuer;
 
             var accessToken = CreateJwtAccessToken(jwtAccessToken);
             var (refreshToken, refreshValidity) = await ManageRefreshTokenAsync(tokenRequest, jwtAccessToken, authenticationConfiguration, tenant, user);
