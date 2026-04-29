@@ -155,11 +155,14 @@ server/Api/wwwroot/**
 !server/Api/wwwroot/.gitkeep
 
 /server/.claude
+client/.claude/
 
 # Ignore environment-specific app settings, keep base appsettings.json
 **/appsettings.*.json
 
 client/graphify-out/
+client/AGENTS.md
+client/.gitnexus
 
 # Cursor workspace: keep rules and index versioned; omit local context clones
 client/.cursor/context/
