@@ -4,7 +4,7 @@
   </PropertyGroup>
 	<ItemGroup>
 		<PackageReference Include="MongoDB.Driver" />
-		<PackageReference Include="SeliseBlocks.Genesis" />
+		<ProjectReference Include="K:\Selise_Projects\l0\blocks-genesis-net\src\Genesis\Blocks.Genesis.csproj" />
 		<PackageReference Include="FluentValidation" />
 	</ItemGroup>
 </Project>
