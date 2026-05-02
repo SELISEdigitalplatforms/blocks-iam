@@ -37,6 +37,127 @@
             <param name="tenantGroupId">The tenant group ID to check for migrations.</param>
             <returns>List of migration trackers with incomplete services.</returns>
         </member>
+        <member name="M:Blocks.Api.Controllers.AuthorizationController.Authorize(System.String,System.String,System.String,System.String,System.String,System.String,System.String,System.String,System.String)">
+            <summary>
+            OAuth 2.0 Authorization Endpoint (RFC 6749 Section 3.1)
+            Initiates authorization code flow with PKCE
+            </summary>
+        </member>
+        <member name="M:Blocks.Api.Controllers.AuthorizationController.Token(System.String)">
+            <summary>
+            OAuth 2.0 Token Endpoint (RFC 6749 Section 3.2)
+            Supports both authorization_code and refresh_token grants
+            </summary>
+        </member>
+        <member name="M:Blocks.Api.Controllers.AuthorizationController.ExchangeAuthorizationCode">
+            <summary>
+            Exchange authorization code for tokens (RFC 6749 Section 4.1.3)
+            </summary>
+        </member>
+        <member name="M:Blocks.Api.Controllers.AuthorizationController.RotateRefreshToken">
+            <summary>
+            Rotate refresh token (RFC 6749 Section 6)
+            Issues new tokens using refresh_token grant
+            Implements token family tracking for reuse detection
+            </summary>
+        </member>
+        <member name="T:Blocks.Api.Controllers.DiscoveryController">
+            <summary>
+            OpenID Connect Discovery Endpoints
+            RFC 8414: OAuth 2.0 Authorization Server Metadata
+            OIDC Core 1.0: OpenID Connect Discovery 1.0
+            
+            These endpoints provide machine-readable metadata for client discovery
+            and automatic configuration.
+            </summary>
+        </member>
+        <!-- Badly formed XML comment ignored for member "M:Blocks.Api.Controllers.DiscoveryController.OpenIdConfiguration" -->
+        <member name="M:Blocks.Api.Controllers.DiscoveryController.OAuthAuthorizationServer">
+            <summary>
+            OAuth Authorization Server Metadata Endpoint
+            RFC 8414 Section 3.2
+            
+            Provides metadata for OAuth Authorization Servers
+            Compatible with both OAuth and OIDC servers
+            
+            Standard response caching: 1 hour
+            </summary>
+        </member>
+        <!-- Badly formed XML comment ignored for member "M:Blocks.Api.Controllers.DiscoveryController.JwksJson" -->
+        <!-- Badly formed XML comment ignored for member "T:Blocks.Api.Controllers.IdpSessionController" -->
+        <member name="M:Blocks.Api.Controllers.IdpSessionController.GetSession">
+            <summary>
+            Get current session details
+            GET /api/oidc/session
+            </summary>
+        </member>
+        <member name="M:Blocks.Api.Controllers.IdpSessionController.GetAccounts">
+            <summary>
+            Get all accounts in current session
+            GET /api/oidc/session/accounts
+            Supports multi-account SSO - user can see all accounts logged in this session
+            </summary>
+        </member>
+        <member name="M:Blocks.Api.Controllers.IdpSessionController.AddAccount(Blocks.Api.Controllers.AddAccountRequest)">
+            <summary>
+            Add another account to current session
+            POST /api/oidc/session/add-account
+            Allows user to authenticate with another account and add to same session
+            OIDC multi-account SSO support
+            </summary>
+        </member>
+        <member name="M:Blocks.Api.Controllers.IdpSessionController.SelectAccount(Blocks.Api.Controllers.SelectAccountRequest)">
+            <summary>
+            Select which account to use in this session
+            POST /api/oidc/session/select-account
+            For multi-account SSO, switches context to different account
+            CSRF protection required
+            </summary>
+        </member>
+        <member name="M:Blocks.Api.Controllers.IdpSessionController.RemoveAccount(System.String)">
+            <summary>
+            Remove account from session
+            DELETE /api/oidc/session/accounts/{userId}
+            Removes account from multi-account session
+            </summary>
+        </member>
+        <member name="M:Blocks.Api.Controllers.IdpSessionController.RevokeSession(Blocks.Api.Controllers.RevokeSessionRequest)">
+            <summary>
+            Revoke current session (logout)
+            POST /api/oidc/session/revoke
+            Logs out all accounts in this session
+            CSRF protection required
+            </summary>
+        </member>
+        <member name="T:Blocks.Api.Controllers.TokenManagementController">
+            <summary>
+            Token Revocation and Introspection Controller
+            Implements RFC 7009 (Token Revocation) and RFC 7662 (Token Introspection)
+            </summary>
+        </member>
+        <member name="M:Blocks.Api.Controllers.TokenManagementController.RevokeToken(System.String,System.String,System.String)">
+            <summary>
+            RFC 7009: Token Revocation Endpoint
+            Allows clients and resource owners to revoke access and refresh tokens
+            </summary>
+        </member>
+        <member name="M:Blocks.Api.Controllers.TokenManagementController.IntrospectToken(System.String,System.String,System.String)">
+            <summary>
+            RFC 7662: Token Introspection Endpoint
+            Allows authorized clients to introspect tokens and get claims/metadata
+            </summary>
+        </member>
+        <member name="M:Blocks.Api.Controllers.TokenManagementController.RevokeAllUserTokens">
+            <summary>
+            Revoke all tokens for authenticated user (logout endpoint)
+            Closes all sessions across all devices
+            </summary>
+        </member>
+        <member name="M:Blocks.Api.Controllers.TokenManagementController.GetRevocationHistory">
+            <summary>
+            Get revocation history for audit trail
+            </summary>
+        </member>
         <member name="T:BlocksTemplate.Api.GlobalApiRoutePrefixConvention">
             <summary>Prepends a segment (e.g. <c>api</c>) to every controller’s attribute route template.</summary>
         </member>

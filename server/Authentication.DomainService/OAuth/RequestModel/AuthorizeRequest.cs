@@ -21,5 +21,17 @@ namespace DomainService.OAuth.RequestModel
 
         [FromQuery(Name = "nonce")]
         public string? Nonce { get; set; }
+
+        [FromQuery(Name = "code_challenge")]
+        public string? CodeChallenge { get; set; }
+
+        [FromQuery(Name = "code_challenge_method")]
+        public string? CodeChallengeMethod { get; set; }
+
+        [FromQuery(Name = "prompt")]
+        public string? Prompt { get; set; }
+
+        [FromQuery(Name = "tenant_id")]
+        public string? TenantId { get; set; }
     }
 }

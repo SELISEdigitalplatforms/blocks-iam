@@ -379,6 +379,9 @@ Phase 1: Foundation
 - finalize shared contracts and models
 - create repositories and migrations
 - complete utility helpers in genesis
+- **Password Reset Migration**: Move /api/iam/Recover → /api/auth/recover and /api/iam/ResetPassword → /api/auth/reset-password
+- **Route Cleanup**: Remove orphaned /oidc/forgot-password route; consolidate password reset to /forgot-password (mode-agnostic)
+- **FE Logic**: Add mode-detection on /resetpassword page to restore correct post-reset redirect (embedded vs OIDC)
 
 Phase 2: Token rotation first
 - complete refresh service and reuse detection
@@ -652,17 +655,98 @@ Additional strictness:
 
 ---
 
-## 13. FE and BE Route Contract (Production)
+## 13. IdP/OIDC Compliance Requirements
+
+This server is an **Identity Provider (IdP)** implementing OAuth 2.0 and OpenID Connect 1.0. All endpoints must follow standards.
+
+### 13.1 Required Discovery & Metadata Endpoints
+
+```
+GET /.well-known/openid-configuration (OIDC metadata)
+GET /.well-known/oauth-authorization-server (OAuth metadata, RFC 8414)
+GET /.well-known/jwks.json (public signing keys)
+```
+
+**Metadata must include:**
+- issuer (matches token `iss` claim)
+- authorization_endpoint, token_endpoint, userinfo_endpoint
+- revocation_endpoint, introspection_endpoint, jwks_uri
+- scopes_supported: openid, profile, email, offline_access
+- response_types_supported: ["code"]
+- grant_types_supported: ["authorization_code", "refresh_token", "client_credentials"]
+- token_endpoint_auth_methods_supported: ["client_secret_basic", "private_key_jwt"] (NOT client_secret_post for confidential clients)
+- claim_types_supported, claims_supported (name, email, picture, etc.)
+
+**Multi-tenant strategy:** Clarify issuer URL (global vs per-tenant) and JWKS endpoint.
+
+### 13.2 Token Management Endpoints
+
+```
+POST /token (authorization_code, refresh_token, client_credentials grants)
+POST /revoke (token revocation, RFC 7009)
+POST /introspect (token introspection, RFC 7662)
+GET /userinfo (OIDC userinfo endpoint, returns user profile)
+```
+
+**Required behaviors:**
+- `/token`: PKCE code_verifier mandatory, one-time code enforcement, proper error codes
+- `/revoke`: Accept refresh or access token, revoke associated sessions
+- `/introspect`: Return token status (active, exp, iat, scope, aud, sub, etc.)
+- `/userinfo`: Return user profile claims matching scopes requested in authorization
+
+### 13.3 Session & Account Management
+
+```
+GET /session (query active accounts in IdP session)
+POST /session/select-account (select account for SSO)
+POST /session/logout-account (logout single account)
+GET /permission (consent/scope approval UI during authorization)
+POST /social/callback (social provider callback handler)
+```
+
+**IdP Session Model:**
+- `idp_session` cookie (HttpOnly, Secure, SameSite=Strict)
+- Contains: session_id, accounts[] (user_id + tenant_id list)
+- Account selection when multiple accounts available
+- Global logout revokes all accounts in session
+- Single account logout removes account from session
+
+### 13.4 Compliance Gaps Currently in Code
+
+**Critical:** The following are required for production IdP but NOT yet in code:
+
+1. **Discovery endpoints missing** → /. well-known/* endpoints
+2. **JWKS endpoint missing** → Key rotation, JWK format export
+3. **id_token generation broken** → Currently returns access_token instead
+4. **Nonce validation missing** → OIDC requires nonce in id_token
+5. **Revocation endpoint missing** → No way to revoke tokens
+6. **Introspection endpoint missing** → Resource servers can't validate token status
+7. **PKCE validation incomplete** → code_verifier not fully validated
+8. **One-time code enforcement missing** → Code can be reused
+9. **Refresh token reuse detection incomplete** → No family tracking for theft detection
+10. **Account lockout missing** → No failed login attempt tracking
+11. **Audit logging missing** → No auth event audit trail
+12. **Account chooser UI missing** → No multi-account SSO
+13. **Consent display missing** → No scope approval UI
+14. **Social callback handler incomplete** → User provisioning logic unclear
+15. **Per-tenant issuer unclear** → Is issuer global or per-tenant?
+
+See Section 12 for detailed gap map.
+
+---
+
+## 14. FE and BE Route Contract (Production)
 
 This is the target route definition to implement and keep stable.
 
 ### 13.1 Frontend Routes (Browser)
 
-Authentication shell:
+Authentication shell (works for both embedded and OIDC modes):
 - /login
 - /signup
-- /forgot-password
-- /resetpassword
+- /forgot-password (unified for both modes - replace orphaned /oidc/forgot-password)
+- /resetpassword?code=X
+- /reset-password-success
 - /mfa-check
 
 OIDC browser flow:
@@ -670,7 +754,7 @@ OIDC browser flow:
 - /oidc/callback
 - /oidc/permission
 - /oidc/error
-- /oidc/forgot-password
+- /oidc/account-select (account chooser for SSO)
 
 Authenticated app:
 - /console
@@ -692,80 +776,151 @@ Notes:
 - Keep OIDC callback isolated at /oidc/callback.
 - No token values in URL fragments or query beyond standard code and state.
 
-### 13.2 Backend Routes (API)
+### 14.2 Backend Routes (API)
 
 All API routes under /api.
 
-OIDC endpoints:
-- GET /api/oidc/authorize
-- POST /api/oidc/token
-- GET /api/oidc/userinfo
-- GET /api/.well-known/openid-configuration
-- GET /api/.well-known/jwks.json
+**Discovery & Metadata (public):**
+- GET /.well-known/openid-configuration
+- GET /.well-known/oauth-authorization-server
+- GET /.well-known/jwks.json
+- GET /api/auth/config (public client metadata)
 
-Embedded auth endpoints:
-- POST /api/auth/login
-- POST /api/auth/social-login
-- POST /api/auth/refresh
-- POST /api/auth/logout
-- POST /api/auth/logout-all
-- POST /api/auth/switch-org
+OIDC endpoints (public):
+- GET /api/oidc/authorize (start authorization code flow)
+- POST /api/oidc/token (exchange code/refresh token/client credentials)
+- GET /api/oidc/userinfo (get user profile, authenticated required)
+- GET /api/oidc/session (query IdP session accounts, authenticated)
+- POST /api/oidc/session/select-account (choose account in multi-account session)
 
-Impersonation endpoints:
-- POST /api/auth/impersonate
-- POST /api/auth/stop-impersonation
+Embedded auth endpoints (public):
+- POST /api/auth/login (password login, no OIDC redirect)
+- POST /api/auth/social-login (social provider login)
+- POST /api/auth/refresh (refresh access token)
+- POST /api/auth/logout (logout current session)
+- POST /api/auth/logout-all (logout all sessions)
+- POST /api/auth/switch-org (switch organization context)
 
-IdP session endpoints:
-- GET /api/idp/session
-- POST /api/idp/session/select-account
-- POST /api/idp/session/logout-account
-- POST /api/idp/session/logout-all
+Password recovery endpoints (public, no auth required):
+- POST /api/auth/recover (send forgot-password email)
+- POST /api/auth/reset-password (reset password with code)
+- POST /api/auth/change-password (change password while authenticated)
 
-Social provider helper endpoints:
-- POST /api/auth/social/authorize-url
-- GET /api/auth/social/callback
+Token Management (authenticated):
+- POST /api/auth/revoke (revoke access or refresh token, RFC 7009)
+- POST /api/auth/introspect (introspect token status, RFC 7662, authenticated required)
 
-Admin/config endpoints:
-- GET /api/auth/config
-- PUT /api/auth/config
-- GET /api/auth/clients/oidc
-- POST /api/auth/clients/oidc
-- DELETE /api/auth/clients/oidc/{clientId}
+Impersonation endpoints (authenticated):
+- POST /api/auth/impersonate (start impersonation mode)
+- POST /api/auth/stop-impersonation (restore root mode)
 
-### 13.3 Legacy to Target Mapping
+
+Admin/config endpoints (authenticated):
+- GET /api/auth/clients/oidc (list registered OIDC clients)
+- POST /api/auth/clients/oidc (register new OIDC client)
+- PUT /api/auth/clients/oidc/{clientId} (update client)
+- DELETE /api/auth/clients/oidc/{clientId} (delete client)
+- GET /api/auth/config (auth system configuration)
+- PUT /api/auth/config (update auth configuration)
+
+### 14.3 Legacy to Target Mapping
 
 Current controller-action routes should be retained temporarily and mapped to target routes during migration.
 
 Examples:
 - /api/Authentication/Authorize -> /api/oidc/authorize
-- /api/Authentication/Token -> /api/oidc/token
+- /api/Authentication/Token -> /api/oidc/token (OIDC code exchange) or /api/auth/login (embedded password)
 - /api/Authentication/GetUserInfo -> /api/oidc/userinfo
 - /api/Authentication/GetSocialLogInEndPoint -> /api/auth/social/authorize-url
 - /api/Authentication/Logout -> /api/auth/logout
 - /api/Authentication/LogoutAll -> /api/auth/logout-all
+- /api/iam/Recover -> /api/auth/recover (PASSWORD RESET)
+- /api/iam/ResetPassword -> /api/auth/reset-password (PASSWORD RESET)
 
 Migration rules:
 - New FE code calls target routes only.
 - Keep legacy routes for backward compatibility until all clients are moved.
 - Return deprecation headers on legacy route responses.
 
-### 13.4 Route Security Requirements
+### 14.4 Route Security Requirements
 
-Public routes:
+Public routes (no auth required):
+- /.well-known/openid-configuration
+- /.well-known/oauth-authorization-server
+- /.well-known/jwks.json
 - /api/oidc/authorize
 - /api/oidc/token
-- /api/.well-known/openid-configuration
-- /api/.well-known/jwks.json
+- /api/auth/recover
+- /api/auth/reset-password
+- /api/auth/login
+- /api/auth/social-login
+- /api/auth/social/authorize-url
+- /api/auth/social/callback
+- /api/auth/config (public client info only)
 
-Authenticated routes:
-- /api/oidc/userinfo
-- all /api/auth/logout* routes
-- /api/auth/switch-org
-- /api/auth/impersonate*
-- /api/idp/session*
+Authenticated routes (require valid JWT or session cookie):
+- /api/oidc/userinfo (get user profile)
+- /api/oidc/session (query IdP session accounts)
+- /api/oidc/session/select-account (select account in multi-account session)
+- /api/auth/refresh (refresh access token)
+- /api/auth/logout (logout current session, revoke refresh token)
+- /api/auth/logout-all (logout all sessions)
+- /api/auth/revoke (revoke access or refresh token, can be called by authenticated user)
+- /api/auth/introspect (introspect token status)
+- /api/auth/change-password (change password while authenticated)
+- /api/auth/switch-org (switch organization context)
+- /api/auth/impersonate (start impersonation mode)
+- /api/auth/stop-impersonation (restore root mode)
+- /api/auth/clients/oidc (list, create, update, delete OIDC clients - admin only)
+- /api/auth/config (view/update auth configuration - admin only)
 
 Policy requirements:
-- Cookie-based authentication for browser flows.
-- CSRF protection on all state-changing endpoints.
-- Strict CORS allowlist per tenant domain.
-- Rate limiting on /api/oidc/token and auth mutation routes.
+- Cookie-based authentication for browser flows (HttpOnly, Secure, SameSite=Strict).
+- CSRF protection on all state-changing endpoints (POST/PUT/DELETE).
+- Strict CORS allowlist per tenant domain (configurable).
+- Rate limiting:
+  - /api/oidc/authorize: 100 requests/min per IP
+  - /api/oidc/token: 50 requests/min per IP
+  - /api/auth/login: 5 requests/min per (IP + username)
+  - /api/auth/recover: 3 requests/day per email
+  - /api/auth/reset-password: 3 requests/day per email
+- Account lockout: 5 failed attempts → 15 min lockout
+- Audit logging: All auth events (login, token issue, refresh, revoke, impersonation, logout)
+
+### 14.5 Password Reset Flow (Mode-Agnostic)
+
+**Current Status:** Password reset works identically for both embedded and OIDC modes. The flow is mode-agnostic:
+1. User at either /login (embedded) or /oidc/login requests forgot-password
+2. Directed to /forgot-password (single unified route)
+3. Submits email → POST /api/auth/recover (sends reset code via email)
+4. Receives email with reset link: /resetpassword?code=X
+5. Submits new password → POST /api/auth/reset-password
+6. Redirects to /reset-password-success, then back to appropriate login:
+   - If originally embedded: → /login
+   - If originally OIDC: → /oidc/login
+
+**Required FE Implementation:** Detect referrer/session context on /forgot-password to restore correct mode after reset (use sessionStorage or redirect parameter).
+
+**Action Items:**
+- ✅ Password reset endpoints currently exist at /api/iam/Recover and /api/iam/ResetPassword
+- 🔄 Move endpoints to /api/auth/recover and /api/auth/reset-password (Phase 1)
+- 🔄 Remove orphaned /oidc/forgot-password route; consolidate to /forgot-password
+- 🔄 Add mode-detection logic to /resetpassword page for post-reset redirect
+
+**Current Status:** Password reset works identically for both embedded and OIDC modes. The flow is mode-agnostic:
+1. User at either /login (embedded) or /oidc/login requests forgot-password
+2. Directed to /forgot-password (single unified route)
+3. Submits email → POST /api/auth/recover (sends reset code via email)
+4. Receives email with reset link: /resetpassword?code=X
+5. Submits new password → POST /api/auth/reset-password
+6. Redirects to /reset-password-success, then back to appropriate login:
+   - If originally embedded: → /login
+   - If originally OIDC: → /oidc/login
+
+**Required FE Implementation:** Detect referrer/session context on /forgot-password to restore correct mode after reset (use sessionStorage or redirect parameter).
+
+**Action Items:**
+- ✅ Password reset endpoints currently exist at /api/iam/Recover and /api/iam/ResetPassword
+- 🔄 Move endpoints to /api/auth/recover and /api/auth/reset-password (Phase 1)
+- 🔄 Remove orphaned /oidc/forgot-password route; consolidate to /forgot-password
+- 🔄 Add mode-detection logic to /resetpassword page for post-reset redirect

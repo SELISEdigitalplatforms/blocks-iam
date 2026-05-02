@@ -5,10 +5,13 @@ namespace DomainService.OAuth.ResponseModel
     public class TokenResponse
     {
         public string AccessToken { get; set; }
+        public string TokenType { get; set; } = "Bearer";
         public int ExpiresIn { get; set; }
         public DateTime ExpiresUtc { get; set; }
         public string RefreshToken { get; set; }
         public DateTime RefreshExpiresUtc { get; set; }
+        public string IdToken { get; set; }
+        public string Scope { get; set; }
         public string Error { get; set; }
         public string ErrorDescription { get; set; } = string.Empty;
         public string CookieDomain { get; set; }
