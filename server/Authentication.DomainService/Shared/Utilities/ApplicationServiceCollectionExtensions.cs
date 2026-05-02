@@ -1,10 +1,14 @@
 ﻿using Authentication.DomainService.OAuth.SocialServices;
 using Blocks.Extension.DependencyInjection;
 using Blocks.Genesis;
+using Blocks.Genesis.Auth.Services;
 using Captcha.DomainService.Captcha;
 using Captcha.DomainService.Configuration;
 using Captcha.DomainService.Utilities;
 using DomainService.Authentication;
+using DomainService.Oidc.Repositories;
+using DomainService.Oidc.Services;
+using DomainService.Oidc.Validation;
 using DomainService.OAuth;
 using DomainService.OAuth.Services;
 using DomainService.OAuth.SocialServices;
@@ -35,17 +39,31 @@ namespace DomainService.Utilities
             serviceCollection.AddSingleton<IAuthenticationDomainService, AuthenticationDomainService>();
             serviceCollection.AddSingleton<IAuthenticationRepository, AuthenticationRepository>();
 
-            serviceCollection.AddSingleton<IOAuthTokenProvider, OAuthTokenProvider>();
             serviceCollection.AddSingleton<IOAuthJwtAccessTokenManager, OAuthJwtAccessTokenManager>();
             serviceCollection.AddSingleton<IJwtAccessTokenProvider, JwtAccessTokenProvider>();
 
             serviceCollection.AddSingleton<IAuthenticationService, AuthenticationService>();
+            serviceCollection.AddSingleton<AuthorizeRequestValidator>();
+
+            serviceCollection.AddSingleton<OidcSigningKeyMaterial>();
+            serviceCollection.AddSingleton<ITokenGenerationService, TokenGenerationService>();
+            serviceCollection.AddSingleton<IPkceService, PkceService>();
+            serviceCollection.AddSingleton<IDiscoveryService, DiscoveryService>();
+            serviceCollection.AddSingleton<IJwksService, JwksService>();
+
+            serviceCollection.AddSingleton<IAuthorizationCodeRepository, AuthorizationCodeRepository>();
+            serviceCollection.AddSingleton<IRefreshTokenRepository, RefreshTokenRepository>();
+            serviceCollection.AddSingleton<IIdpSessionRepository, IdpSessionRepository>();
+            serviceCollection.AddSingleton<IOAuthClientRepository, OAuthClientRepository>();
+            serviceCollection.AddSingleton<IAuditLogRepository, AuditLogRepository>();
+            serviceCollection.AddSingleton<ITokenRevocationRepository, TokenRevocationRepository>();
+            serviceCollection.AddSingleton<ITokenRevocationService, TokenRevocationService>();
+            serviceCollection.AddSingleton<IIdpSessionService, IdpSessionService>();
 
             serviceCollection.AddSingleton<PasswordAuthenticationService>();
             serviceCollection.AddSingleton<MfaAuthorizationService>();
             serviceCollection.AddSingleton<RefreshTokenAuthenticationService>();
             serviceCollection.AddSingleton<SocialAuthorizationService>();
-            serviceCollection.AddSingleton<AuthorizeCodeService>();
             serviceCollection.AddSingleton<BYOSsoAuthorizationService>();
             serviceCollection.AddSingleton<BiometricAuthorizationService>();
             serviceCollection.AddSingleton<ClientCredentialAuthorizationService>();
