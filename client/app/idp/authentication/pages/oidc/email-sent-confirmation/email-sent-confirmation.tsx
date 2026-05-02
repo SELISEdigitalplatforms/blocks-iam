@@ -25,7 +25,7 @@ function OidcEmailConfirmation({ email }: OidcEmailConfirmationProps) {
         <p className="my-8 text-xl text-foreground">
           Haven&apos;t got an email? Use the button below to resend verification email
         </p>
-        <Link to={buildOIDCNavigationUrl("/oidc/forgot-password")}>
+        <Link to={buildOIDCNavigationUrl("/forgot-password")}>
           <Button className="mt-4 text-sm" style={{ backgroundColor: themeColor }}>
             Resend email
           </Button>

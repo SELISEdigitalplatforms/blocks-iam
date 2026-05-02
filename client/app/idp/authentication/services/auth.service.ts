@@ -14,17 +14,20 @@ import { PEOPLE_ENDPOINTS } from "@blocks-identifier/constants/endpoint.constant
 
 export class AuthService {
   signinByEmail(payload: ISigninByEmailPayload): Promise<ISigninByEmailResponse> {
-    const body = new URLSearchParams();
-    body.append("grant_type", "password");
-    body.append("username", payload.username);
-    body.append("password", payload.password);
+    if (payload.clientId) {
+      sessionStorage.setItem("blocks-auth-client-id", payload.clientId);
+    } else {
+      sessionStorage.removeItem("blocks-auth-client-id");
+    }
 
     return http.post(
-      AUTH_ENDPOINTS.TOKEN,
-      body,
+      AUTH_ENDPOINTS.LOGIN,
       {
-        "Content-Type": "application/x-www-form-urlencoded",
+        username: payload.username,
+        password: payload.password,
+        clientId: payload.clientId || "",
       },
+      undefined,
       {
         skipTokenRotation: true,
       },
@@ -42,23 +45,19 @@ export class AuthService {
     });
   }
 
-  verifyOidc(payload: { code: string; state: string }): Promise<any> {
+  verifyOidc(payload: { code: string; clientId: string; redirectUri: string; codeVerifier: string }): Promise<any> {
     const body = new URLSearchParams();
     body.append("grant_type", "authorization_code");
     body.append("code", payload.code);
-    body.append("state", payload.state);
-    body.append("client_secret", "a2b138f34a144c2da7e4fd331620eebe");
+    body.append("client_id", payload.clientId);
+    body.append("redirect_uri", payload.redirectUri);
+    body.append("code_verifier", payload.codeVerifier);
 
     return http.post(
-      `https://dev-idp.blocksdevelopers.com${AUTH_ENDPOINTS.TOKEN}`,
+      "/api/oidc/token",
       body,
       {
         "Content-Type": "application/x-www-form-urlencoded",
-        "Authorization": "Basic c2VsaXNlYmxvY2tzOkJsMDNrc0B1JFU3VjEwUw=="
-      },
-      {
-        absoluteUrl: true,
-
       },
     );
   }

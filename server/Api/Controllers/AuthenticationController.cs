@@ -3,6 +3,7 @@ using Api.Controllers;
 using Blocks.Genesis;
 using CloudConfiguration.DomainService.Shared.Services;
 using DomainService.Authentication;
+using DomainService.Dtos;
 using DomainService.OAuth;
 using DomainService.OAuth.RequestModel;
 using DomainService.OAuth.ResponseModel;
@@ -11,6 +12,7 @@ using DomainService.Utilities;
 using Iam.DomainService.Accounts;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using System.Text.Json;
 
 namespace Api.Controllers;
 
@@ -159,6 +161,57 @@ public class AuthenticationController : ControllerBase
         return BuildTokenResponse(result);
     }
 
+    [HttpPost("refresh")]
+    [AllowAnonymous]
+    public async Task<IActionResult> Refresh([FromBody] RefreshRequest request)
+    {
+        var configuration = await _authenticationRepository.GetAuthenticationConfigurationAsync();
+        if (configuration == null)
+        {
+            return BadRequest(new { error = "auth_config_missing" });
+        }
+
+        var refreshToken = string.IsNullOrWhiteSpace(request.RefreshToken)
+            ? _authenticationService.CookieToken(Request)
+            : request.RefreshToken;
+
+        if (string.IsNullOrWhiteSpace(refreshToken))
+        {
+            return BadRequest(new { error = OAuthError.InvalidRefreshToken, error_description = "Refresh token is required" });
+        }
+
+        var cacheClient = HttpContext.RequestServices.GetRequiredService<ICacheClient>();
+        var cachedRefreshToken = await cacheClient.GetStringValueAsync(refreshToken);
+        if (string.IsNullOrWhiteSpace(cachedRefreshToken))
+        {
+            return BadRequest(new { error = OAuthError.InvalidRefreshToken, error_description = "Refresh token is invalid or expired" });
+        }
+
+        var tokenCache = JsonSerializer.Deserialize<RefreshTokenCache>(cachedRefreshToken);
+        if (tokenCache == null || string.IsNullOrWhiteSpace(tokenCache.UserId))
+        {
+            return BadRequest(new { error = OAuthError.InvalidRefreshToken, error_description = "Refresh token is invalid or expired" });
+        }
+
+        var user = await _authenticationRepository.GetUserByIdAsync(tokenCache.UserId);
+        if (user == null)
+        {
+            return Unauthorized(new { error = "invalid_user" });
+        }
+
+        var tokenRequest = new TokenRequest
+        {
+            GrantType = GrantTypes.RefreshToken,
+            ClientId = request.ClientId ?? string.Empty,
+            OrganizationId = request.OrganizationId ?? "default",
+            RefreshToken = refreshToken,
+            Request = Request
+        };
+
+        var result = await _refreshTokenAuthenticationService.AuthenticateAsync(tokenRequest, configuration, user);
+        return BuildTokenResponse(result);
+    }
+
     [HttpGet("userinfo")]
     [AllowAnonymous]
     public async Task<IActionResult> GetUserInfo()
@@ -295,4 +348,11 @@ public class SwitchOrganizationRequest
 {
     public string OrganizationId { get; set; } = string.Empty;
     public string ClientId { get; set; } = string.Empty;
+}
+
+public class RefreshRequest
+{
+    public string? RefreshToken { get; set; }
+    public string? ClientId { get; set; }
+    public string? OrganizationId { get; set; }
 }

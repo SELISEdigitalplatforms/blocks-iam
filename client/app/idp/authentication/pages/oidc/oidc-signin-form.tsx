@@ -20,7 +20,7 @@ export const signinByEmail = async (
   payload: ISigninByEmailPayload & { projectKey: string }
 ): Promise<ISigninByEmailResponse> => {
   try {
-    const url = getApiUrl("idp/v1", "Authentication/Login");
+    const url = getApiUrl("idp/v1", "auth/login");
 
     const headers: Record<string, string> = {
       "Content-Type": "application/json",
@@ -112,13 +112,10 @@ export const OidcSigninForm = () => {
         return navigate(buildOIDCNavigationUrl(`/mfa-check?mfa_id=${res.mfaId}&mfa_type=${res.mfaType}`));
       }
 
-      try {
-        localStorage.setItem("oidc-auth-storage", JSON.stringify(res));
-      } catch (e) {
-        console.error("Failed to save token response to localStorage", e);
-      }
-
       setAuthenticated();
+      if (clientId) {
+        sessionStorage.setItem("blocks-auth-client-id", clientId);
+      }
 
       const params = getCurrentOIDCParams();
       // Add userName from the form to the params
@@ -139,6 +136,11 @@ export const OidcSigninForm = () => {
       setIsPending(false);
     }
   };
+
+  const forgotPasswordUrl = (() => {
+    const target = buildOIDCNavigationUrl("/forgot-password");
+    return `${target}${target.includes("?") ? "&" : "?"}mode=oidc`;
+  })();
 
   return (
     <Form {...form}>
@@ -171,7 +173,7 @@ export const OidcSigninForm = () => {
         />
 
         <Link
-          to={buildOIDCNavigationUrl("/oidc/forgot-password")}
+          to={forgotPasswordUrl}
           className="ml-auto inline-block text-sm hover:underline"
           style={{ color: themeColor }}
         >

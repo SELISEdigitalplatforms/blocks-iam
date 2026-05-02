@@ -4,8 +4,20 @@ import { Card, CardContent, CardDescription, CardHeader } from "@/components/ui-
 import { Link } from "react-router-dom";
 import { useState, useEffect, useRef } from "react";
 import { useOIDCContext } from "@/layouts/oidc-layout";
-import { userAcknowledgement } from "@blocks-idp/authentication/services/oidc-auth-flow.service";
-// import { getCurrentOIDCParams } from "@blocks-idp/authentication/utils/oidc-utils";
+
+const base64UrlEncode = (bytes: Uint8Array) => {
+  const binary = String.fromCharCode(...bytes);
+  return btoa(binary).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/g, "");
+};
+
+const generatePkcePair = async () => {
+  const verifierBytes = crypto.getRandomValues(new Uint8Array(32));
+  const verifier = base64UrlEncode(verifierBytes);
+  const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(verifier));
+  const challenge = base64UrlEncode(new Uint8Array(digest));
+
+  return { verifier, challenge };
+};
 
 export const OIDCPermissionScreen = () => {
   const contextValues = useOIDCContext();
@@ -40,40 +52,32 @@ export const OIDCPermissionScreen = () => {
   const handleAllow = async () => {
     const currentContext = contextRef.current;
 
-    if (!currentContext.clientId || !currentContext.projectKey) {
+    if (!currentContext.clientId || !currentContext.redirectUri) {
       return;
     }
 
     setIsSubmitting(true);
     try {
-      const result = await userAcknowledgement({
-        scope: currentContext.scope || "",
-        redirectUri: currentContext.redirectUri || "",
-        clientId: currentContext.clientId || "",
-        state: currentContext.state || "",
-        nonce: currentContext.nonce || "",
-        isAcknowledged: true,
-        username: currentContext.userName || "",
-        projectKey: currentContext.projectKey,
-      });
+      const { verifier, challenge } = await generatePkcePair();
+      sessionStorage.setItem("oidc-code-verifier", verifier);
 
-      if (result.redirectUrl) {
-        window.location.href = result.redirectUrl;
-      } else {
-        console.error("No redirect URL in acknowledgement response:", result);
-      }
+      const authorizeUrl = new URL(`${window.location.origin}/api/oidc/authorize`);
+      authorizeUrl.searchParams.set("client_id", currentContext.clientId);
+      authorizeUrl.searchParams.set("response_type", "code");
+      authorizeUrl.searchParams.set("redirect_uri", currentContext.redirectUri);
+      authorizeUrl.searchParams.set("scope", currentContext.scope || "openid profile email offline_access");
+      authorizeUrl.searchParams.set("state", currentContext.state || crypto.randomUUID());
+      authorizeUrl.searchParams.set("nonce", currentContext.nonce || crypto.randomUUID());
+      authorizeUrl.searchParams.set("code_challenge", challenge);
+      authorizeUrl.searchParams.set("code_challenge_method", "S256");
+
+      window.location.href = authorizeUrl.toString();
     } catch (error) {
-      console.error("Error during acknowledgement:", error);
+      console.error("Error during authorization:", error);
     } finally {
       setIsSubmitting(false);
     }
   };
-
-  // const redirectToLogin = () => {
-  //   const currentParams = getCurrentOIDCParams();
-  //   const loginUrl = `/oidc/login?${currentParams.toString()}`;
-  //   window.location.href = loginUrl;
-  // };
 
   return (
     <Card className="flex h-full flex-col rounded border-solid border-background shadow-none md:min-w-[448px] md:border-[#95ADC4] lg:max-w-md">

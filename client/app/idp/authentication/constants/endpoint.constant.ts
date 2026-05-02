@@ -2,15 +2,18 @@ import { API_BASES } from "@/constants/endpoint.constant";
 
 // ─── Subpaths ─────────────────────────────────────────────────────────────────
 
-const AUTH_SUBPATH = "/Authentication";
+const AUTH_SUBPATH = "/auth";
+const LEGACY_AUTH_SUBPATH = "/Authentication";
 
 // ─── Auth endpoints (auth.service / oauth.service) ───────────────────────────
 
 export const AUTH_ENDPOINTS = {
-  TOKEN: `${API_BASES.IDP}${AUTH_SUBPATH}/Token`,
-  LOGOUT: `${API_BASES.IDP}${AUTH_SUBPATH}/Logout`,
-  GET_SOCIAL_LOGIN_ENDPOINT: `${API_BASES.IDP}${AUTH_SUBPATH}/GetSocialLogInEndPoint`,
-  GET_LOGIN_OPTIONS: `${API_BASES.IDP}${AUTH_SUBPATH}/GetLoginOptions`,
+  TOKEN: `${API_BASES.IDP}${LEGACY_AUTH_SUBPATH}/Token`,
+  LOGIN: `${API_BASES.IDP}${AUTH_SUBPATH}/login`,
+  REFRESH: `${API_BASES.IDP}${AUTH_SUBPATH}/refresh`,
+  LOGOUT: `${API_BASES.IDP}${AUTH_SUBPATH}/logout`,
+  GET_SOCIAL_LOGIN_ENDPOINT: `${API_BASES.IDP}${LEGACY_AUTH_SUBPATH}/GetSocialLogInEndPoint`,
+  GET_LOGIN_OPTIONS: `${API_BASES.IDP}${AUTH_SUBPATH}/login-options`,
 } as const;
 
 // ─── Client credential endpoints (auth-clients.service) ─────────────────────
