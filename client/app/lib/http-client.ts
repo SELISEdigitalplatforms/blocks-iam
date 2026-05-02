@@ -2,6 +2,7 @@ import { useProjectStore } from "@/store/useProjectStore";
 import { getRuntimeEnv } from "@/lib/runtime-env";
 import { getQueryClient } from "@/providers/query-provider";
 import { useAuthStore } from "@/store/useAuthStore";
+import { AUTH_ENDPOINTS } from "@blocks-idp/authentication/constants/endpoint.constant";
 
 class HttpError extends Error {
   status: number;
@@ -90,20 +91,20 @@ class HttpClient {
     try {
       const isLocalhost = this.isLocalhost();
       const authStore = useAuthStore.getState();
-      const formData = new URLSearchParams();
-      formData.append("grant_type", "refresh_token");
-      
+      const clientId = sessionStorage.getItem("blocks-auth-client-id") || "";
+
       // For localhost, use stored refresh token; for remote, use empty string (cookie-based)
       const refreshToken = isLocalhost ? (authStore.refreshToken || '""') : '""';
-      formData.append("refresh_token", refreshToken);
-
-      const url = `${this.baseURL}/api/Authentication/Token`;
+      const url = `${this.baseURL}${AUTH_ENDPOINTS.REFRESH}`;
 
       const response = await fetch(url, {
         method: "POST",
-        body: formData,
+        body: JSON.stringify({
+          refreshToken,
+          clientId,
+        }),
         headers: {
-          "Content-Type": "application/x-www-form-urlencoded",
+          "Content-Type": "application/json",
           "X-Blocks-Key": this.BLOCKS_KEY,
           ...(isLocalhost && authStore.accessToken && {
             Authorization: `Bearer ${authStore.accessToken}`,
@@ -116,12 +117,11 @@ class HttpClient {
         throw new Error("Failed to refresh token");
       }
 
+      const data = await response.json();
+
       // For localhost, save the new tokens
-      if (isLocalhost) {
-        const data = await response.json();
-        if (data.access_token && data.refresh_token) {
-          authStore.setTokens(data.access_token, data.refresh_token);
-        }
+      if (isLocalhost && data.access_token && data.refresh_token) {
+        authStore.setTokens(data.access_token, data.refresh_token);
       }
 
       while (requestQueue.length > 0) {

@@ -376,31 +376,67 @@ Operational policy:
 ## 8. Delivery Plan
 
 Phase 1: Foundation
-- finalize shared contracts and models
-- create repositories and migrations
-- complete utility helpers in genesis
-- **Password Reset Migration**: Move /api/iam/Recover → /api/auth/recover and /api/iam/ResetPassword → /api/auth/reset-password
-- **Route Cleanup**: Remove orphaned /oidc/forgot-password route; consolidate password reset to /forgot-password (mode-agnostic)
-- **FE Logic**: Add mode-detection on /resetpassword page to restore correct post-reset redirect (embedded vs OIDC)
+- Completed:
+	- OIDC contracts, repositories, validation, discovery, JWKS, revocation, introspection, and session services created under Authentication.DomainService/Oidc
+	- password reset endpoints added to /api/auth/recover and /api/auth/reset-password
+	- OIDC-related folders and namespaces rearranged to a domain-oriented structure
+- Still required:
+	- finalize Genesis-side shared helpers and standards alignment
+	- return deprecation headers from legacy IAM/auth routes
+	- remove orphaned /oidc/forgot-password route and standardize FE reset flow
 
 Phase 2: Token rotation first
-- complete refresh service and reuse detection
-- complete refresh tests and revoke flows
+- Backend partially implemented:
+	- /api/oidc/token supports authorization_code and refresh_token
+	- refresh token repository and family model exist in OIDC layer
+- Still required:
+	- standardize embedded auth refresh onto a first-class /api/auth/refresh route
+	- remove interactive body/header refresh token fallbacks in production flows
+	- complete tests and session-family revoke coverage
 
 Phase 3: Embedded auth
-- complete password, social, org switch endpoints and FE flows
+- Backend implemented:
+	- /api/auth/login
+	- /api/auth/social-login
+	- /api/auth/switch-org
+	- /api/auth/recover
+	- /api/auth/reset-password
+	- /api/auth/change-password
+- Still required:
+	- move FE off legacy /Authentication/Token and /Iam/* auth endpoints
+	- standardize logout/refresh behavior for cookie-first interactive sessions
 
 Phase 4: OIDC auth code + PKCE
-- complete authorize, code store, token exchange, and callback integration
+- Backend partially implemented:
+	- /api/oidc/authorize
+	- /api/oidc/token
+	- /.well-known/openid-configuration
+	- /.well-known/oauth-authorization-server
+	- /.well-known/jwks.json
+- Still required:
+	- complete browser-first authorize behavior (login/session/consent/account resolution)
+	- align FE callback handling to PKCE verifier exchange and remove hardcoded client secret/basic auth
+	- implement /api/oidc/userinfo route contract or align the contract to the actual endpoint
 
 Phase 5: IdP session SSO
-- complete session account model, chooser behavior, and lifecycle endpoints
+- Backend partially implemented:
+	- repository/service/controller for IdP session exists
+	- session account selection route exists
+- Still required:
+	- integrate session resolution into /api/oidc/authorize
+	- add FE account chooser UX at /oidc/account-select
+	- finalize single-account and global logout/session cookie semantics
 
 Phase 6: Impersonation
-- complete mode transitions, restore logic, and FE mode UX
+- Not started in runtime code:
+	- /api/auth/impersonate missing
+	- /api/auth/stop-impersonation missing
+	- FE impersonation mode UX missing
 
 Phase 7: Hardening
-- security validation suite, integration tests, and observability tuning
+- Still required:
+	- rate limiting, CSRF, cookie policy normalization, and deprecation strategy
+	- integration and E2E coverage for OIDC, embedded auth, rotation, session SSO, and impersonation
 
 ---
 
@@ -446,13 +482,14 @@ Product done:
 
 ## 11. Immediate Next Execution Order
 
-1. Complete refresh token rotation and reuse detection end-to-end
-2. Complete embedded login and org switch end-to-end
-3. Complete OIDC authorization code with PKCE and discovery endpoints
-4. Complete IdP session account container and chooser behavior
-5. Complete impersonation transitions and restore logic
+1. Standardize FE auth endpoints and constants to /api/auth and /api/oidc; remove /Authentication and /Iam auth-path dependency.
+2. Replace FE token persistence and refresh-token body usage with cookie-first interactive flows and PKCE verifier exchange.
+3. Add a first-class embedded refresh route and align embedded refresh/logout behavior with the OIDC refresh-family model.
+4. Complete browser /api/oidc/authorize behavior: login handoff, session resolution, consent, and account selection.
+5. Implement impersonation start/stop endpoints, token chain separation, and FE mode UX.
+6. Add deprecation headers and remove legacy auth/IAM compatibility routes after FE migration.
 
-This order minimizes risk by stabilizing token safety before broadening flow complexity.
+This order reflects the current codebase: backend OIDC foundations exist, but the remaining standards gap is now primarily FE migration plus unfinished impersonation and browser-session orchestration.
 
 ---
 
@@ -462,91 +499,105 @@ This section is the current-state code audit and exact implementation targets fo
 
 ### 12.1 Critical Backend Gaps
 
-1. OIDC authorize endpoint is not PKCE-compliant.
-- Current: no code_challenge or code_challenge_method in request model and validation path.
+1. /api/oidc/authorize is PKCE-aware but not yet a complete browser-first authorization endpoint.
+- Current:
+	- validates PKCE fields and issues one-time authorization codes
+	- returns 401 when user is unauthenticated instead of orchestrating login/session/consent resolution
 - Files:
-	- server/Authentication.DomainService/OAuth/RequestModel/AuthorizeRequest.cs
-	- server/Api/Controllers/Authentication.cs
+	- server/Api/Controllers/AuthorizationController.cs
+	- server/Authentication.DomainService/Oidc/Validation/AuthorizeRequestValidator.cs
 - Required:
-	- add code_challenge and code_challenge_method=S256 fields
-	- reject missing/weak PKCE for public clients
-	- bind authorization code to code_challenge, redirect_uri, client_id, nonce, state, tenant_id
+	- integrate login handoff, idp_session resolution, consent, and account chooser behavior
+	- use prompt and tenant/account context in the browser flow rather than ignoring them
 
-2. Token endpoint for authorization_code uses client_secret only and no code_verifier.
-- Current: auth code validation in cache compares secret; no PKCE verifier check.
+2. OIDC metadata and token behavior are only partially aligned.
+- Current:
+	- discovery, authorization server metadata, and JWKS endpoints exist
+	- metadata advertises client_credentials but /api/oidc/token currently handles only authorization_code and refresh_token
+	- metadata does not yet include the full production contract such as revocation_endpoint, introspection_endpoint, claims_supported, and claim_types_supported
 - Files:
-	- server/Authentication.DomainService/OAuth/Services/AuthorizeCodeService.cs
-	- server/Authentication.DomainService/OAuth/RequestModel/TokenRequest.cs
-	- server/Authentication.DomainService/OAuth/TokenPayload.cs
+	- server/Api/Controllers/DiscoveryController.cs
+	- server/Api/Controllers/AuthorizationController.cs
+	- server/Authentication.DomainService/Oidc/Contracts/OidcContracts.cs
 - Required:
-	- add code_verifier field to payload/request
-	- validate S256(code_verifier) against stored challenge
-	- reject reused/expired code with one-time atomic consume semantics
+	- either implement client_credentials in /api/oidc/token or remove it from supported metadata
+	- complete metadata fields to match the standard contract actually exposed
 
-3. id_token is currently wrong.
-- Current: id_token is set to access_token.
-- File:
-	- server/Authentication.DomainService/OAuth/ResponseModel/OAuthResponse.cs
-- Required:
-	- generate real id_token with OIDC claims: iss, sub, aud(client_id), exp, iat, nonce, auth_time, acr, amr
-	- include at_hash when returned with access_token
-
-4. Cookie handling is not strict enough and has hardcoded domain.
-- Current: cookie append uses blocksdevelopers.com instead of tenant cookie domain from response.
-- File:
-	- server/Authentication.DomainService/OAuth/OAuthTokenProvider.cs
-- Required:
-	- use response.CookieDomain safely
-	- enforce Secure, HttpOnly, SameSite=None, Path=/
-	- add MaxAge and explicit expiry strategy
-	- add dedicated id_token cookie if FE must read user claims through backend userinfo
-
-5. Refresh token input accepts cookie/header/body fallback.
-- Current: reads refresh token from cookie, then header, then body.
+3. Route contract still differs from the intended standardized API surface.
+- Current:
+	- userinfo is implemented at /api/auth/userinfo, not /api/oidc/userinfo
+	- revoke and introspect are implemented under /api/oidc, while the production contract in this plan targets /api/auth/revoke and /api/auth/introspect
+	- auth config and OIDC client management wrappers under /api/auth/* are not yet standardized
 - Files:
-	- server/Authentication.DomainService/OAuth/OAuthTokenProvider.cs
+	- server/Api/Controllers/AuthenticationController.cs
+	- server/Api/Controllers/TokenManagementController.cs
+- Required:
+	- normalize routes or explicitly revise the contract to match the chosen standard
+	- keep compatibility routes temporary and mark them deprecated
+
+4. Embedded refresh/logout still rely on older auth service semantics.
+- Current:
+	- embedded login, social login, and switch-org exist
+	- no first-class /api/auth/refresh endpoint is exposed yet
+	- AuthenticationService still contains legacy cache-based logout behavior and refresh token cookie/header extraction helpers
+- Files:
+	- server/Api/Controllers/AuthenticationController.cs
 	- server/Authentication.DomainService/Authentication/AuthenticationService.cs
-- Required:
-	- production mode: cookie-only for refresh token
-	- keep header/body only behind development flag if required
-	- add anti-replay jti tracking and family-chain invalidation
-
-6. Refresh token rotation is cache-only and lacks absolute-expiry + family reuse kill-switch.
-- Current: rotates in Redis with remaining TTL; no explicit absolute expiry and no family compromise model.
-- File:
+	- server/Authentication.DomainService/OAuth/Services/RefreshTokenAuthenticationService.cs
 	- server/Authentication.DomainService/OAuth/OAuthJwtAccessTokenManager.cs
 - Required:
-	- store token family and parent token id
-	- detect reuse and revoke full family/session
-	- enforce sliding + absolute session TTL
+	- expose a standardized /api/auth/refresh route
+	- align embedded refresh/logout behavior with the OIDC refresh-family model
+	- remove interactive header/body refresh token fallbacks in production mode
 
-7. Impersonation endpoints and claims model are missing.
-- Current: no /auth/impersonate and no /auth/stop-impersonation implementation.
-- File:
-	- server/Api/Controllers/Authentication.cs
+5. Impersonation is still missing.
+- Current:
+	- no /api/auth/impersonate endpoint
+	- no /api/auth/stop-impersonation endpoint
+	- no impersonation token/service/restore flow
 - Required:
-	- add start/stop endpoints
-	- issue impersonation access/refresh chain separated from root chain
-	- claims: impersonated=true, act.sub, orig_tenant, mode
-	- restore root session automatically on impersonation expiry
+	- implement start/stop endpoints, impersonation claim model, separate refresh chain, and restore behavior
 
-8. IdP session (multi-account SSO container) is not implemented.
-- Current: no idp_session lifecycle endpoints and account container management.
-- File:
-	- server/Api/Controllers/Authentication.cs
+6. IdP session exists but is not fully integrated into the authorization journey.
+- Current:
+	- OIDC session repository, service, and controller exist
+	- account selection and session revoke endpoints exist
+	- /api/oidc/authorize does not yet use the session container to resolve login and chooser behavior
+- Files:
+	- server/Api/Controllers/IdpSessionController.cs
+	- server/Authentication.DomainService/Oidc/Services/IdpSessionService.cs
+	- server/Authentication.DomainService/Oidc/Repositories/IdpSessionRepository.cs
 - Required:
-	- session repository/model
-	- endpoints for session resolve/select/logout
-	- idle + absolute expiry and account list resolution
+	- complete session-aware authorize flow, account chooser redirect, and cookie lifecycle strategy
 
-9. Discovery metadata advertises methods not fully backed by strict implementation.
-- Current: openid config lists broad auth methods; OIDC behavior is partial.
-- File:
-	- server/Api/Controllers/Discovery.cs
+7. Cookie policy is not yet standardized.
+- Current:
+	- auth cookies are HttpOnly and Secure
+	- current code uses SameSite=None for access/refresh cookies
+	- this plan elsewhere still references SameSite=Strict for some session behavior
+- Files:
+	- server/Api/Controllers/AuthenticationController.cs
+	- server/Authentication.DomainService/Authentication/AuthenticationService.cs
 - Required:
-	- align metadata with actual supported methods
-	- expose only production-supported token endpoint auth methods
-	- keep issuer and jwks strict per-tenant resolution rules
+	- choose one browser-safe standard per flow and document it consistently
+	- align CSRF strategy with the final cookie policy
+
+8. Legacy password-reset routes still exist without migration signaling.
+- Current:
+	- /api/auth/recover and /api/auth/reset-password now exist
+	- legacy /Iam/Recover and /Iam/ResetPassword are still active in IamController and FE constants
+- Files:
+	- server/Api/Controllers/AuthenticationController.cs
+	- server/Api/Controllers/Iam.cs
+- Required:
+	- add deprecation headers and migrate FE callers before removing legacy routes
+
+9. Audit logging is present for the OIDC token path but not yet uniform across all auth operations.
+- Current:
+	- OIDC authorization and refresh flows write audit events
+	- embedded login/social/password reset/logout coverage is not yet standardized at the same level
+- Required:
+	- unify audit coverage across OIDC, embedded auth, password recovery, logout, and future impersonation flows
 
 ### 12.2 Critical Frontend Gaps
 
@@ -554,47 +605,79 @@ This section is the current-state code audit and exact implementation targets fo
 - Files:
 	- client/app/store/useAuthStore.ts
 	- client/app/lib/http-client.ts
+	- client/app/idp/authentication/services/oidc-auth-flow.service.ts
 - Required:
 	- production mode: do not store access/refresh token in browser storage
 	- rely on secure httpOnly cookies and backend userinfo/profile endpoints
 
-2. Hardcoded OIDC client secret and Authorization header in FE.
+2. FE still targets legacy auth routes instead of the standardized API surface.
+- Files:
+	- client/app/idp/authentication/constants/endpoint.constant.ts
+	- client/app/idp/iam/constants/endpoint.constant.ts
+	- client/app/lib/http-client.ts
+- Current:
+	- token/logout/login-options/OIDC admin routes still point to /Authentication/*
+	- account recover/reset-password still point to /Iam/*
+	- http-client refresh calls /api/Authentication/Token directly
+- Required:
+	- move FE endpoint constants to /api/auth/* and /api/oidc/*
+	- keep legacy paths temporary only if the backend marks them deprecated
+
+3. Hardcoded OIDC client secret and Authorization header in FE.
 - File:
 	- client/app/idp/authentication/services/auth.service.ts
 - Required:
 	- remove hardcoded client_secret and basic auth credentials immediately
 	- send only authorization code + code_verifier (+ redirect_uri/client_id where required)
 
-3. OIDC callback does not include PKCE code_verifier exchange handling.
+4. OIDC callback does not include PKCE code_verifier exchange handling.
 - Files:
 	- client/app/routes/oidc/index.tsx
 	- client/app/idp/authentication/services/auth.service.ts
-	- client/app/layouts/oidc-layout.tsx
+	- client/app/idp/authentication/services/oidc-auth-flow.service.ts
 - Required:
 	- generate code_verifier/code_challenge on auth start
 	- persist verifier in short-lived session storage
 	- exchange code with code_verifier and clear verifier after use
 
-4. Refresh flow still supports body refresh token path.
+5. Refresh flow still supports body refresh token path and local refresh-token persistence.
 - File:
 	- client/app/lib/http-client.ts
+- Related file:
+	- client/app/idp/authentication/services/oidc-auth-flow.service.ts
 - Required:
 	- cookie-based refresh for production only
 	- remove body refresh_token in production path
 	- keep localhost exceptions gated and explicit
 
-5. No impersonation UX/state model.
+6. No impersonation UX/state model.
 - Required:
 	- mode indicator root vs impersonation
 	- manual stop action
 	- UI reaction to auto-restore reason
 
-6. No IdP session account chooser flow.
+7. Password reset FE is not yet standardized.
+- Current:
+	- /forgot-password and /resetpassword exist
+	- /oidc/forgot-password still exists in router and OIDC sign-in form
+	- FE account service still posts reset/recover to legacy IAM endpoints
+- Files:
+	- client/app/router.tsx
+	- client/app/idp/authentication/pages/oidc/oidc-signin-form.tsx
+	- client/app/idp/iam/services/account.service.ts
+- Required:
+	- remove orphaned /oidc/forgot-password route
+	- route both embedded and OIDC password recovery through /forgot-password
+	- restore correct post-reset redirect target based on login mode
+
+8. No IdP session account chooser flow.
 - Required:
 	- handle multi-account session return
 	- explicit account selection UX
 
 ### 12.3 Genesis Gaps and Required Additions
+
+This section was not re-audited in code during this pass. Keep these items as the shared-library standardization backlog, not as a claim that the current repo already verifies them.
 
 1. Token extraction currently allows Authorization header first.
 - File:
@@ -645,13 +728,12 @@ Additional strictness:
 
 ### 12.5 Execution Order from Current Code State
 
-1. Remove FE secrets + move to PKCE code_verifier exchange.
-2. Fix backend auth code flow (PKCE + code one-time consume + strict client binding).
-3. Generate proper id_token and update discovery metadata accuracy.
-4. Enforce cookie-only refresh in production mode.
-5. Implement refresh token family model and reuse detection revocation.
-6. Add impersonation endpoints, claims, and restore logic.
-7. Add IdP session repository, endpoints, and FE account chooser.
+1. Replace FE /Authentication and /Iam auth endpoints with /api/auth and /api/oidc constants.
+2. Remove FE client secret/basic auth and implement PKCE verifier exchange end-to-end.
+3. Standardize cookie-first refresh and logout for interactive flows; add /api/auth/refresh.
+4. Finish browser /api/oidc/authorize orchestration with session, consent, and account chooser behavior.
+5. Implement impersonation endpoints, claims, and restore logic.
+6. Add deprecation headers and then remove legacy auth/IAM compatibility routes.
 
 ---
 
@@ -705,7 +787,7 @@ POST /social/callback (social provider callback handler)
 ```
 
 **IdP Session Model:**
-- `idp_session` cookie (HttpOnly, Secure, SameSite=Strict)
+- `idp_session` cookie (HttpOnly, Secure, SameSite=None for browser redirect compatibility)
 - Contains: session_id, accounts[] (user_id + tenant_id list)
 - Account selection when multiple accounts available
 - Global logout revokes all accounts in session
@@ -715,21 +797,17 @@ POST /social/callback (social provider callback handler)
 
 **Critical:** The following are required for production IdP but NOT yet in code:
 
-1. **Discovery endpoints missing** → /. well-known/* endpoints
-2. **JWKS endpoint missing** → Key rotation, JWK format export
-3. **id_token generation broken** → Currently returns access_token instead
-4. **Nonce validation missing** → OIDC requires nonce in id_token
-5. **Revocation endpoint missing** → No way to revoke tokens
-6. **Introspection endpoint missing** → Resource servers can't validate token status
-7. **PKCE validation incomplete** → code_verifier not fully validated
-8. **One-time code enforcement missing** → Code can be reused
-9. **Refresh token reuse detection incomplete** → No family tracking for theft detection
-10. **Account lockout missing** → No failed login attempt tracking
-11. **Audit logging missing** → No auth event audit trail
-12. **Account chooser UI missing** → No multi-account SSO
-13. **Consent display missing** → No scope approval UI
-14. **Social callback handler incomplete** → User provisioning logic unclear
-15. **Per-tenant issuer unclear** → Is issuer global or per-tenant?
+1. **Authorize flow is not yet browser-complete** → current endpoint validates and issues codes but does not yet orchestrate login/session/consent/account chooser.
+2. **userinfo route contract mismatch** → current runtime endpoint is /api/auth/userinfo, while the production OIDC contract targets /api/oidc/userinfo.
+3. **client_credentials grant mismatch** → metadata advertises it, but /api/oidc/token does not currently handle it.
+4. **Discovery metadata is incomplete** → revocation_endpoint, introspection_endpoint, claim_types_supported, and claims_supported are not fully surfaced.
+5. **Embedded refresh flow is not standardized** → /api/auth/refresh is still missing and FE still uses legacy token refresh routes.
+6. **Impersonation endpoints are missing** → no /api/auth/impersonate or /api/auth/stop-impersonation.
+7. **FE PKCE and token handling are non-standard** → hardcoded client secret/basic auth, local token persistence, and body refresh-token usage remain.
+8. **Account chooser UI is missing** → backend session endpoints exist, but FE chooser flow is not implemented.
+9. **Consent display is missing** → no finalized permission/approval UI integrated into authorize flow.
+10. **Per-tenant issuer and cookie policy are still unresolved at standards level** → backend behavior and plan text need one final normalized rule set.
+11. **Legacy route migration is incomplete** → old /Authentication and /Iam auth endpoints remain in FE/backend compatibility paths without deprecation headers.
 
 See Section 12 for detailed gap map.
 
@@ -739,7 +817,7 @@ See Section 12 for detailed gap map.
 
 This is the target route definition to implement and keep stable.
 
-### 13.1 Frontend Routes (Browser)
+### 14.1 Frontend Routes (Browser)
 
 Authentication shell (works for both embedded and OIDC modes):
 - /login
@@ -875,7 +953,7 @@ Authenticated routes (require valid JWT or session cookie):
 - /api/auth/config (view/update auth configuration - admin only)
 
 Policy requirements:
-- Cookie-based authentication for browser flows (HttpOnly, Secure, SameSite=Strict).
+- Cookie-based authentication for browser flows (HttpOnly, Secure, SameSite=None, with CSRF protection on state-changing endpoints).
 - CSRF protection on all state-changing endpoints (POST/PUT/DELETE).
 - Strict CORS allowlist per tenant domain (configurable).
 - Rate limiting:
@@ -889,7 +967,7 @@ Policy requirements:
 
 ### 14.5 Password Reset Flow (Mode-Agnostic)
 
-**Current Status:** Password reset works identically for both embedded and OIDC modes. The flow is mode-agnostic:
+**Current Standard:** Password reset must work identically for both embedded and OIDC modes:
 1. User at either /login (embedded) or /oidc/login requests forgot-password
 2. Directed to /forgot-password (single unified route)
 3. Submits email → POST /api/auth/recover (sends reset code via email)
@@ -899,28 +977,13 @@ Policy requirements:
    - If originally embedded: → /login
    - If originally OIDC: → /oidc/login
 
-**Required FE Implementation:** Detect referrer/session context on /forgot-password to restore correct mode after reset (use sessionStorage or redirect parameter).
+**Current Code Status:**
+- Backend endpoints now exist at /api/auth/recover and /api/auth/reset-password.
+- FE still calls legacy IAM endpoints via account service constants.
+- Router still exposes /oidc/forgot-password, which should be removed.
 
 **Action Items:**
-- ✅ Password reset endpoints currently exist at /api/iam/Recover and /api/iam/ResetPassword
-- 🔄 Move endpoints to /api/auth/recover and /api/auth/reset-password (Phase 1)
-- 🔄 Remove orphaned /oidc/forgot-password route; consolidate to /forgot-password
-- 🔄 Add mode-detection logic to /resetpassword page for post-reset redirect
-
-**Current Status:** Password reset works identically for both embedded and OIDC modes. The flow is mode-agnostic:
-1. User at either /login (embedded) or /oidc/login requests forgot-password
-2. Directed to /forgot-password (single unified route)
-3. Submits email → POST /api/auth/recover (sends reset code via email)
-4. Receives email with reset link: /resetpassword?code=X
-5. Submits new password → POST /api/auth/reset-password
-6. Redirects to /reset-password-success, then back to appropriate login:
-   - If originally embedded: → /login
-   - If originally OIDC: → /oidc/login
-
-**Required FE Implementation:** Detect referrer/session context on /forgot-password to restore correct mode after reset (use sessionStorage or redirect parameter).
-
-**Action Items:**
-- ✅ Password reset endpoints currently exist at /api/iam/Recover and /api/iam/ResetPassword
-- 🔄 Move endpoints to /api/auth/recover and /api/auth/reset-password (Phase 1)
+- ✅ Password reset endpoints exist at /api/auth/recover and /api/auth/reset-password
+- 🔄 Migrate FE account service constants from /Iam/Recover and /Iam/ResetPassword to /api/auth/recover and /api/auth/reset-password
 - 🔄 Remove orphaned /oidc/forgot-password route; consolidate to /forgot-password
 - 🔄 Add mode-detection logic to /resetpassword page for post-reset redirect

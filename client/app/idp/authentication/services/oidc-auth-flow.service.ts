@@ -67,19 +67,15 @@ export const refreshAccessToken = async (projectKey: string): Promise<string | n
       return null;
     }
 
-    const body = new URLSearchParams();
-    body.append("grant_type", "refresh_token");
-    body.append("refresh_token", refreshToken);
-
-    const url = `${getRuntimeEnv("BLOCKS_API_BASE_URL")}${AUTH_ENDPOINTS.TOKEN}`;
+    const url = `${getRuntimeEnv("BLOCKS_API_BASE_URL")}${AUTH_ENDPOINTS.REFRESH}`;
 
     const response = await fetch(url, {
       method: "POST",
       headers: {
-        "Content-Type": "application/x-www-form-urlencoded",
+        "Content-Type": "application/json",
         "X-Blocks-Key": projectKey,
       },
-      body,
+      body: JSON.stringify({ refreshToken }),
       credentials: "include",
       referrerPolicy: "no-referrer",
     });

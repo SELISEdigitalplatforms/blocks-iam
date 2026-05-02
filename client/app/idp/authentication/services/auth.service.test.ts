@@ -29,22 +29,21 @@ describe("AuthService", () => {
 
   // ─── signinByEmail ──────────────────────────────────────────────────────────
   describe("signinByEmail", () => {
-    it("should POST form-encoded credentials to TOKEN endpoint", async () => {
+    it("should POST JSON credentials to LOGIN endpoint", async () => {
       vi.mocked(http.post).mockResolvedValue(mockSigninResponse);
 
       const result = await service.signinByEmail(mockSigninPayload);
 
       expect(http.post).toHaveBeenCalledWith(
-        AUTH_ENDPOINTS.TOKEN,
-        expect.any(URLSearchParams),
-        { "Content-Type": "application/x-www-form-urlencoded" },
+        AUTH_ENDPOINTS.LOGIN,
+        {
+          username: mockSigninPayload.username,
+          password: mockSigninPayload.password,
+          clientId: "",
+        },
+        undefined,
         { skipTokenRotation: true },
       );
-
-      const body = vi.mocked(http.post).mock.calls[0][1] as URLSearchParams;
-      expect(body.get("grant_type")).toBe("password");
-      expect(body.get("username")).toBe(mockSigninPayload.username);
-      expect(body.get("password")).toBe(mockSigninPayload.password);
       expect(result).toEqual(mockSigninResponse);
     });
 
