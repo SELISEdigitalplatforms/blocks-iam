@@ -175,7 +175,8 @@ namespace Api.Controllers
                 }
 
                 var claimsPrincipal = await _authenticationService.GetPrincipalFromTokenAsync(Request, BlocksContext.GetContext().TenantId);
-                string redirectUri = $" {_clientRedirectUri}?x-blocks-key={BlocksContext.GetContext()?.TenantId}&clientId={client.ItemId}";
+                var configuredRedirectUri = _configuration["OpenIdConnect:RedirectUri"];
+                string redirectUri = $"{configuredRedirectUri}?x-blocks-key={BlocksContext.GetContext()?.TenantId}&clientId={client.ItemId}";
 
                 if (claimsPrincipal is not null)
                 {
