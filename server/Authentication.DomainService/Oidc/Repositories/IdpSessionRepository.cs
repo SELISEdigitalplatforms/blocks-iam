@@ -62,7 +62,10 @@ namespace DomainService.Oidc.Repositories
             {
                 var collection = GetDatabase().GetCollection<IdpSessionModel>("idp_sessions");
                 var filter = Builders<IdpSessionModel>.Filter.Eq(s => s.SessionId, sessionId);
-                var update = Builders<IdpSessionModel>.Update.Push(s => s.Accounts, account);
+                var update = Builders<IdpSessionModel>.Update
+                    .Push(s => s.Accounts, account)
+                    .Set(s => s.LastActivityAt, DateTime.UtcNow)
+                    .Set(s => s.IdleExpiry, DateTime.UtcNow.AddHours(24));
                 var result = await collection.UpdateOneAsync(filter, update);
                 return result.ModifiedCount > 0;
             }
@@ -73,13 +76,35 @@ namespace DomainService.Oidc.Repositories
             }
         }
 
+        public async Task<bool> RemoveAccountAsync(string sessionId, string userId, string tenantId)
+        {
+            try
+            {
+                var collection = GetDatabase().GetCollection<IdpSessionModel>("idp_sessions");
+                var filter = Builders<IdpSessionModel>.Filter.Eq(s => s.SessionId, sessionId);
+                var update = Builders<IdpSessionModel>.Update
+                    .PullFilter(s => s.Accounts, a => a.UserId == userId && a.TenantId == tenantId)
+                    .Set(s => s.LastActivityAt, DateTime.UtcNow)
+                    .Set(s => s.IdleExpiry, DateTime.UtcNow.AddHours(24));
+                var result = await collection.UpdateOneAsync(filter, update);
+                return result.ModifiedCount > 0;
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, $"Error removing account from IdP session: {sessionId}");
+                throw;
+            }
+        }
+
         public async Task<bool> UpdateActivityAsync(string sessionId)
         {
             try
             {
                 var collection = GetDatabase().GetCollection<IdpSessionModel>("idp_sessions");
                 var filter = Builders<IdpSessionModel>.Filter.Eq(s => s.SessionId, sessionId);
-                var update = Builders<IdpSessionModel>.Update.Set(s => s.LastActivityAt, DateTime.UtcNow);
+                var update = Builders<IdpSessionModel>.Update
+                    .Set(s => s.LastActivityAt, DateTime.UtcNow)
+                    .Set(s => s.IdleExpiry, DateTime.UtcNow.AddHours(24));
                 var result = await collection.UpdateOneAsync(filter, update);
                 return result.ModifiedCount > 0;
             }

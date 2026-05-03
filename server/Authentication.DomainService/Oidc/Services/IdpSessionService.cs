@@ -20,7 +20,7 @@ namespace DomainService.Oidc.Services
         Task<IdpSessionModel> GetSessionAsync(string sessionId);
         Task<bool> AddAccountAsync(string sessionId, string userId, string tenantId, string displayName);
         Task<bool> SelectAccountAsync(string sessionId, string userId);
-        Task<bool> RemoveAccountAsync(string sessionId, string userId);
+        Task<bool> RemoveAccountAsync(string sessionId, string userId, string? tenantId = null);
         Task<IEnumerable<IdpSessionAccount>> GetAccountsAsync(string sessionId);
         Task<bool> UpdateActivityAsync(string sessionId);
         Task<bool> RevokeSessionAsync(string sessionId, string reason);
@@ -186,7 +186,7 @@ namespace DomainService.Oidc.Services
         /// <summary>
         /// Remove account from session
         /// </summary>
-        public async Task<bool> RemoveAccountAsync(string sessionId, string userId)
+        public async Task<bool> RemoveAccountAsync(string sessionId, string userId, string? tenantId = null)
         {
             try
             {
@@ -196,25 +196,29 @@ namespace DomainService.Oidc.Services
                     return false;
                 }
 
-                // Don't allow removing last account
-                if (session.Accounts.Count == 1)
-                {
-                    _logger.LogWarning($"Cannot remove last account from session: {sessionId}");
-                    return false;
-                }
-
-                var accountToRemove = session.Accounts.FirstOrDefault(a => a.UserId == userId);
+                var accountToRemove = session.Accounts.FirstOrDefault(a =>
+                    string.Equals(a.UserId, userId, StringComparison.OrdinalIgnoreCase)
+                    && (string.IsNullOrWhiteSpace(tenantId)
+                        || string.Equals(a.TenantId, tenantId, StringComparison.OrdinalIgnoreCase)));
                 if (accountToRemove == null)
                 {
                     return false;
                 }
 
-                session.Accounts.Remove(accountToRemove);
-                var success = await _sessionRepo.UpdateActivityAsync(sessionId);
+                // Remove just the requested account; delete session if that was the last account.
+                bool success;
+                if (session.Accounts.Count == 1)
+                {
+                    success = await _sessionRepo.DeleteAsync(sessionId);
+                }
+                else
+                {
+                    success = await _sessionRepo.RemoveAccountAsync(sessionId, accountToRemove.UserId, accountToRemove.TenantId);
+                }
 
                 if (success)
                 {
-                    _logger.LogInformation($"Account removed from session: {sessionId}, user: {userId}");
+                    _logger.LogInformation($"Account removed from session: {sessionId}, user: {userId}, tenant: {accountToRemove.TenantId}");
                     await LogSessionEvent("account_removed", userId, sessionId);
                 }
 
@@ -285,7 +289,7 @@ namespace DomainService.Oidc.Services
                     return false;
                 }
 
-                var success = await _sessionRepo.RevokeAsync(sessionId);
+                var success = await _sessionRepo.DeleteAsync(sessionId);
                 if (success)
                 {
                     _logger.LogInformation($"Session revoked: {sessionId}, reason: {reason}");

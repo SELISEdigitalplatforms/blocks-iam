@@ -254,6 +254,8 @@ namespace Iam.DomainService.Users
                 return new BaseMutationResponse();
             }
 
+            await SendEvent(user.ItemId, MutationEventType.Update);
+
             _logger.LogInformation("User update end -- Success");
             return new BaseMutationResponse
             {
@@ -289,6 +291,8 @@ namespace Iam.DomainService.Users
                     IsActive = false
                 }
             }));
+
+            await SendEvent(user.ItemId, MutationEventType.Delete);
 
             return new BaseResponse { IsSuccess = true };
         }
@@ -329,7 +333,7 @@ namespace Iam.DomainService.Users
             var user = await _userRepository.GetUserByIdAsync(command.ItemId);
 
             await SendActivationAsync(user);
-            await SaveUserTimelineAsync(user);
+            await SaveUserTimelineAsync(user, command.Action);
         }
 
         private async Task<bool> SendActivationAsync(User user)
@@ -358,16 +362,16 @@ namespace Iam.DomainService.Users
             return result;
         }
 
-        private async Task<bool> SaveUserTimelineAsync(User user)
+        private async Task<bool> SaveUserTimelineAsync(User user, MutationEventType mutationEventType)
         {
             var blocksContext = BlocksContext.GetContext();
             var timeline = new UserTimeline
             {
                 ItemId = Guid.NewGuid().ToString(),
-                CreatedBy = blocksContext.UserId,
+                CreatedBy = blocksContext?.UserId ?? user.CreatedBy,
                 CreatedDate = DateTime.Now,
                 CurrentData = user,
-                Event = "USER_CREATED"
+                Event = ResolveTimelineEvent(user, mutationEventType)
             };
 
             await _userRepository.InsertUserTimelineAsync(timeline);
@@ -449,7 +453,7 @@ namespace Iam.DomainService.Users
 
             var key = await CreateUserByEmailActivationProcessAsync(user, @event.EventType);
 
-            await SaveUserTimelineAsync(user);
+            await SaveUserTimelineAsync(user, MutationEventType.Create);
 
             await _identityAccessManagementService.SendToQueueAsync(@event.EventQueue, new CreateUserByEmailPostEvent
             {
@@ -666,7 +670,20 @@ namespace Iam.DomainService.Users
             {
                 await SendPostEventAsync(user, command.MailPurpose, command.ProjectKey);
             }
-            await SaveUserTimelineAsync(user);
+            await SaveUserTimelineAsync(user, command.Action);
+        }
+
+        private static string ResolveTimelineEvent(User user, MutationEventType mutationEventType)
+        {
+            return mutationEventType switch
+            {
+                MutationEventType.Create => "USER_CREATED",
+                MutationEventType.Update when user.Active => "USER_UPDATED",
+                MutationEventType.Update => "USER_STATUS_UPDATED",
+                MutationEventType.Delete when !user.Active => "USER_DEACTIVATED",
+                MutationEventType.Delete => "USER_DELETED",
+                _ => "USER_ACTIVITY"
+            };
         }
 
         private async Task<bool> SendPostEventAsync(User user, string mailPurpose, string projectKey)
