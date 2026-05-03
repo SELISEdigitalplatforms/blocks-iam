@@ -2,7 +2,6 @@
 import { useGetAuthOidcCredentials } from "@blocks-idp/authentication/hooks/use-auth-oidc";
 import { OIDCCard } from "./oidc-card";
 import { useMemo } from "react";
-import { useProjectStore } from "@/store/useProjectStore";
 import { Card, CardContent, CardHeader } from "@/components/ui-kits/card/card";
 import { Skeleton } from "@/components/ui-kits/skeleton/skeleton";
 
@@ -57,10 +56,7 @@ const LoadingSkeleton = () => {
 };
 
 export const OidcList = () => {
-  const { tenantId } = useProjectStore().selectedProject || { tenantId: "" };
-  const { isLoading, isFetching, data } = useGetAuthOidcCredentials({
-    projectKey: tenantId,
-  });
+  const { isLoading, isFetching, data } = useGetAuthOidcCredentials();
 
   const sortedOidcData = useMemo(() => {
     if (!data || !data.oIDCClientCredentials) return [];

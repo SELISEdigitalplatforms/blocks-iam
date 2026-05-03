@@ -27,8 +27,7 @@ const LoadingSkelton = () => {
 };
 
 export const ViewAuthConfigure = () => {
-  const { tenantId } = useProjectStore().selectedProject || { tenantId: "" };
-  const { data, isLoading, isFetching } = useGetAuthConfig({ projectKey: tenantId });
+  const { data, isLoading, isFetching } = useGetAuthConfig();
 
   if (isLoading || isFetching) return <LoadingSkelton />;
 

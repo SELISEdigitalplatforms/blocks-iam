@@ -7,6 +7,7 @@ using Blocks.Genesis.Auth.Services;
 using DomainService.OAuth.RequestModel;
 using DomainService.OAuth.ResponseModel;
 using DomainService.OAuth;
+using DomainService.OAuth.Services;
 using Iam.DomainService.Users;
 using System;
 using System.Collections.Generic;
@@ -15,6 +16,8 @@ using System.Security.Cryptography;
 using System.Text;
 using System.Linq;
 using System.IdentityModel.Tokens.Jwt;
+using System.Net.Http.Headers;
+using DomainService.Services;
 
 namespace Blocks.Api.Controllers
 {
@@ -32,6 +35,8 @@ namespace Blocks.Api.Controllers
         private readonly AuthorizeRequestValidator _authorizeValidator;
         private readonly IUserRepository _userRepository;
         private readonly IAuthorizationClaimsResolver _authorizationClaimsResolver;
+        private readonly IAuthenticationRepository _authenticationRepository;
+        private readonly ClientCredentialAuthorizationService _clientCredentialAuthorizationService;
         private readonly ILogger<AuthorizationController> _logger;
 
         public AuthorizationController(
@@ -45,6 +50,8 @@ namespace Blocks.Api.Controllers
             AuthorizeRequestValidator authorizeValidator,
             IUserRepository userRepository,
             IAuthorizationClaimsResolver authorizationClaimsResolver,
+            IAuthenticationRepository authenticationRepository,
+            ClientCredentialAuthorizationService clientCredentialAuthorizationService,
             ILogger<AuthorizationController> logger)
         {
             _authCodeRepo = authCodeRepo;
@@ -57,6 +64,8 @@ namespace Blocks.Api.Controllers
             _authorizeValidator = authorizeValidator;
             _userRepository = userRepository;
             _authorizationClaimsResolver = authorizationClaimsResolver;
+            _authenticationRepository = authenticationRepository;
+            _clientCredentialAuthorizationService = clientCredentialAuthorizationService;
             _logger = logger;
         }
 
@@ -184,7 +193,7 @@ namespace Blocks.Api.Controllers
                 if (string.IsNullOrWhiteSpace(resolvedUserId))
                 {
                     _logger.LogInformation($"Unauthenticated authorization request for {client_id}");
-                    return Unauthorized(new { error = "unauthorized", error_description = "User not authenticated" });
+                    return Redirect(BuildLoginUrl(client_id, response_type, redirect_uri, scope, state, nonce, code_challenge, code_challenge_method, tenant_id));
                 }
 
                 // Validate client
@@ -260,6 +269,10 @@ namespace Blocks.Api.Controllers
                 {
                     return await RotateRefreshToken();
                 }
+                else if (grant_type == "client_credentials")
+                {
+                    return await IssueClientCredentialsToken();
+                }
                 else
                 {
                     return BadRequest(new { error = "unsupported_grant_type", error_description = $"Grant type '{grant_type}' not supported" });
@@ -270,6 +283,64 @@ namespace Blocks.Api.Controllers
                 _logger.LogError(ex, "Error in token endpoint");
                 return StatusCode(500, new { error = "server_error" });
             }
+        }
+
+        private async Task<IActionResult> IssueClientCredentialsToken()
+        {
+            var clientId = Request.Form["client_id"].ToString();
+            var clientSecret = Request.Form["client_secret"].ToString();
+
+            if (string.IsNullOrWhiteSpace(clientId) || string.IsNullOrWhiteSpace(clientSecret))
+            {
+                TryReadBasicClientAuthentication(out clientId, out clientSecret);
+            }
+
+            var organizationId = Request.Form["organization_id"].ToString();
+            if (string.IsNullOrWhiteSpace(organizationId))
+            {
+                organizationId = Request.Form["org_id"].ToString();
+            }
+
+            if (string.IsNullOrWhiteSpace(clientId) || string.IsNullOrWhiteSpace(clientSecret))
+            {
+                return BadRequest(new { error = "invalid_client", error_description = "Missing client authentication" });
+            }
+
+            var authConfiguration = await _authenticationRepository.GetAuthenticationConfigurationAsync();
+            if (authConfiguration == null)
+            {
+                return BadRequest(new { error = "server_error", error_description = "Authentication configuration missing" });
+            }
+
+            var tokenRequest = new TokenRequest
+            {
+                GrantType = GrantTypes.ClientCredential,
+                ClientId = clientId,
+                ClientSecret = clientSecret,
+                OrganizationId = organizationId,
+                Request = Request
+            };
+
+            var result = await _clientCredentialAuthorizationService.AuthenticateAsync(tokenRequest, authConfiguration);
+            if (!string.IsNullOrWhiteSpace(result.Error))
+            {
+                var statusCode = string.Equals(result.Error, "invalid_client", StringComparison.OrdinalIgnoreCase)
+                    ? StatusCodes.Status401Unauthorized
+                    : StatusCodes.Status400BadRequest;
+
+                return StatusCode(statusCode, new
+                {
+                    error = result.Error,
+                    error_description = result.ErrorDescription
+                });
+            }
+
+            return Ok(new TokenResponse
+            {
+                AccessToken = result.AccessToken,
+                TokenType = "Bearer",
+                ExpiresIn = result.ExpiresIn
+            });
         }
 
         /// <summary>
@@ -567,6 +638,66 @@ namespace Blocks.Api.Controllers
             }
 
             return sb.ToString().TrimEnd('&');
+        }
+
+        private string BuildLoginUrl(
+            string clientId,
+            string responseType,
+            string redirectUri,
+            string scope,
+            string state,
+            string nonce,
+            string codeChallenge,
+            string codeChallengeMethod,
+            string tenantId)
+        {
+            var loginUrl = new StringBuilder("/oidc/login?");
+            loginUrl.Append($"client_id={Uri.EscapeDataString(clientId ?? string.Empty)}");
+            loginUrl.Append($"&response_type={Uri.EscapeDataString(responseType ?? string.Empty)}");
+            loginUrl.Append($"&redirect_uri={Uri.EscapeDataString(redirectUri ?? string.Empty)}");
+            loginUrl.Append($"&scope={Uri.EscapeDataString(scope ?? string.Empty)}");
+            loginUrl.Append($"&state={Uri.EscapeDataString(state ?? string.Empty)}");
+            loginUrl.Append($"&nonce={Uri.EscapeDataString(nonce ?? string.Empty)}");
+            loginUrl.Append($"&code_challenge={Uri.EscapeDataString(codeChallenge ?? string.Empty)}");
+            loginUrl.Append($"&code_challenge_method={Uri.EscapeDataString(codeChallengeMethod ?? string.Empty)}");
+
+            if (!string.IsNullOrWhiteSpace(tenantId))
+            {
+                loginUrl.Append($"&tenant_id={Uri.EscapeDataString(tenantId)}");
+            }
+
+            return loginUrl.ToString();
+        }
+
+        private void TryReadBasicClientAuthentication(out string clientId, out string clientSecret)
+        {
+            clientId = string.Empty;
+            clientSecret = string.Empty;
+
+            if (!AuthenticationHeaderValue.TryParse(Request.Headers.Authorization, out var authHeader)
+                || !string.Equals(authHeader.Scheme, "Basic", StringComparison.OrdinalIgnoreCase)
+                || string.IsNullOrWhiteSpace(authHeader.Parameter))
+            {
+                return;
+            }
+
+            try
+            {
+                var rawCredentials = Encoding.UTF8.GetString(Convert.FromBase64String(authHeader.Parameter));
+                var separatorIndex = rawCredentials.IndexOf(':');
+                if (separatorIndex <= 0)
+                {
+                    return;
+                }
+
+                clientId = rawCredentials[..separatorIndex];
+                clientSecret = rawCredentials[(separatorIndex + 1)..];
+            }
+            catch
+            {
+                clientId = string.Empty;
+                clientSecret = string.Empty;
+            }
         }
 
         private string BuildSelectAccountUrl(

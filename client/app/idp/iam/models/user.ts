@@ -267,7 +267,6 @@ export interface IAccountActivationPayload {
   captchaCode?: string;
   mailPurpose?: string;
   preventPostEvent: boolean;
-  projectKey: string;
 }
 
 export interface IAccountActivationResponse {
@@ -278,7 +277,6 @@ export interface IAccountActivationResponse {
 export interface IAccountResendActivationPayload {
   userId: string;
   // mailPurpose: string;
-  projectKey: string;
 }
 export interface IAccountResendActivationResponse {
   errors: unknown | null;
@@ -288,7 +286,6 @@ export interface IAccountRecoverPayload {
   email: string;
   captchaCode?: string;
   mailPurpose?: string;
-  projectKey: string;
 }
 export interface IAccountRecoverResponse {
   errors: unknown | null;
@@ -299,7 +296,6 @@ export interface IAccountResetPasswordPayload {
   password: string;
   captchaCode?: string;
   logoutFromAllDevices: boolean;
-  projectKey: string;
 }
 export interface IAccountResetPasswordResponse {
   errors: unknown | null;
@@ -307,7 +303,6 @@ export interface IAccountResetPasswordResponse {
 }
 export interface IActivationCodeValidationPayload {
   activationCode: string;
-  projectKey: string;
 }
 
 export interface IActivationCodeExpirationResponse {
@@ -319,7 +314,6 @@ export interface IActivationCodeExpirationResponse {
 export interface ISaveSignUpSettingPayload {
   isEmailPasswordSignUpEnabled: boolean;
   isSSoSignUpEnabled: boolean;
-  projectKey: string;
   itemId: string;
 }
 
@@ -329,10 +323,7 @@ export interface ISaveSignUpSettingResponse {
   itemId: string;
 }
 
-export interface IGetSignUpSettingPayload {
-  projectKey: string;
-  // itemId: string;
-}
+export interface IGetSignUpSettingPayload {}
 
 export interface IGetSignUpSettingResponse {
   itemId: string;

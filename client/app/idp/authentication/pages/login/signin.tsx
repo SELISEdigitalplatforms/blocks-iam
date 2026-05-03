@@ -8,7 +8,6 @@ import {
 } from "@/components/ui-kits/card/card";
 import { Skeleton } from "@/components/ui-kits/skeleton/skeleton";
 import { showErrorToast } from "@/hooks/use-toast";
-import { getRuntimeEnv } from "@/lib/runtime-env";
 import { GRANT_TYPES } from "@blocks-idp/authentication/constants/authentication.constant";
 import { useGetLoginOptions } from "@blocks-idp/authentication/hooks/use-auth";
 import { useGetSignUpSetting } from "@blocks-idp/iam/hooks/use-user";
@@ -16,9 +15,19 @@ import { Link } from "react-router-dom";
 import { useEffect } from "react";
 import { SigninForm } from "./signin-form";
 import { SsoSignin } from "./sso-signin";
+import { buildOIDCNavigationUrl } from "@blocks-idp/authentication/utils/oidc-utils";
 
 type SigninProps = {
   ssoError?: string;
+  mode?: "default" | "oidc";
+  oidcContext?: {
+    clientId?: string;
+    scope?: string;
+    state?: string;
+    nonce?: string;
+    redirectUri?: string;
+    themeColor?: string;
+  };
 };
 
 const SigninSkeleton = () => (
@@ -66,13 +75,9 @@ const SigninSkeleton = () => (
   </Card>
 );
 
-export const Signin = ({ ssoError }: SigninProps) => {
-  const projectKey = getRuntimeEnv("BLOCKS_X_BLOCKS_KEY") || "";
-
+export const Signin = ({ ssoError, mode = "default", oidcContext }: SigninProps) => {
   const { data: loginOption, isLoading: isLoginOptionLoading } = useGetLoginOptions();
-  const { data: signUpSetting, isLoading: isSignUpSettingLoading } = useGetSignUpSetting({
-    projectKey,
-  });
+  const { data: signUpSetting, isLoading: isSignUpSettingLoading } = useGetSignUpSetting();
 
   useEffect(() => {
     if (ssoError) {
@@ -86,8 +91,11 @@ export const Signin = ({ ssoError }: SigninProps) => {
 
   if (!loginOption || loginOption.allowedGrantTypes?.length < 1) return null;
 
-  const showSignUp =
-    signUpSetting?.isEmailPasswordSignUpEnabled || signUpSetting?.isSSoSignUpEnabled;
+  const showSignUp = mode !== "oidc" && (
+    signUpSetting?.isEmailPasswordSignUpEnabled || signUpSetting?.isSSoSignUpEnabled
+  );
+
+  const signUpUrl = mode === "oidc" ? buildOIDCNavigationUrl("/signup") : "/signup";
 
   return (
     <Card className="flex h-full flex-col rounded border-solid border-background shadow-none md:min-w-[448px] md:border-[#95ADC4] lg:max-w-md">
@@ -97,7 +105,9 @@ export const Signin = ({ ssoError }: SigninProps) => {
       </CardHeader>
       <CardContent className="flex flex-1 flex-col justify-between">
         <div className="flex flex-1 flex-col justify-center">
-          {loginOption?.allowedGrantTypes.includes(GRANT_TYPES.password) && <SigninForm />}
+          {loginOption?.allowedGrantTypes.includes(GRANT_TYPES.password) && (
+            <SigninForm mode={mode} oidcContext={oidcContext} />
+          )}
           {loginOption?.allowedGrantTypes.includes(GRANT_TYPES.password) && (
             <div className="my-2 mt-4 flex items-center">
               <hr className="flex-grow border" />
@@ -106,14 +116,14 @@ export const Signin = ({ ssoError }: SigninProps) => {
             </div>
           )}
           {loginOption?.allowedGrantTypes.includes(GRANT_TYPES.social) && (
-            <SsoSignin loginOption={loginOption} />
+            <SsoSignin loginOption={loginOption} mode={mode} />
           )}
         </div>
         {showSignUp && (
           <div className="flex items-center justify-center">
             <div className="mt-3 flex items-center text-medium-emphasis">
               <p>Not a member?</p>
-              <Link to="/signup" className="ml-2 inline-block text-sm text-primary">
+              <Link to={signUpUrl} className="ml-2 inline-block text-sm text-primary">
                 Sign up
               </Link>
             </div>

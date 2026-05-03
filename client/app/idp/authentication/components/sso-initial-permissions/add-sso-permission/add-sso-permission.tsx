@@ -23,7 +23,6 @@ import {
   TableRow,
 } from "@/components/ui-kits/table/table";
 import { cn } from "@/lib/utils";
-import { useProjectStore } from "@/store/useProjectStore";
 import { useGetPermissions } from "@blocks-idp/iam/hooks/use-permission";
 import { IPermission, RESOURCE_TYPE } from "@blocks-idp/iam/models/permission";
 import { CirclePlus } from "lucide-react";
@@ -35,7 +34,6 @@ type AddSSOPermissionProps = {
 };
 
 export const AddSSOPermission = ({ onAdd, permissions }: AddSSOPermissionProps) => {
-  const tenantId = useProjectStore().selectedProject?.tenantId || "";
   const [open, setOpen] = useState<boolean>(false);
   const [selectedPermission, setSelectedPermissions] = useState<IPermission[]>([]);
   const [filter, setFilter] = useState({
@@ -47,7 +45,6 @@ export const AddSSOPermission = ({ onAdd, permissions }: AddSSOPermissionProps) 
   });
   const { data, isLoading } = useGetPermissions({
     ...filter,
-    projectKey: tenantId,
   });
 
   const onClickHandler = async () => {

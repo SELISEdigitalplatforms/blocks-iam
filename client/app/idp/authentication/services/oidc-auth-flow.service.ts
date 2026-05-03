@@ -9,7 +9,6 @@ import { ACCOUNT_ENDPOINTS } from "@blocks-idp/iam/constants/endpoint.constant";
 export { redirectToLogin, buildNavigationUrl } from "../utils/oidc-navigation.util";
 
 interface IGetOidcPayload {
-  projectKey: string;
   clientId: string;
 }
 
@@ -36,12 +35,10 @@ interface IUserAcknowledgementPayload {
   redirectUri: string;
   isAcknowledged: boolean;
   username: string;
-  projectKey: string;
 }
 
 interface IAccountRecoverPayload {
   email: string;
-  projectKey: string;
 }
 
 interface IAccountRecoverResponse {
@@ -51,31 +48,16 @@ interface IAccountRecoverResponse {
   [key: string]: any;
 }
 
-export const refreshAccessToken = async (projectKey: string): Promise<string | null> => {
+export const refreshAccessToken = async (): Promise<string | null> => {
   try {
-    const oidcAuthStorage = localStorage.getItem("oidc-auth-storage");
-    if (!oidcAuthStorage) {
-      console.error("No oidc-auth-storage found for refresh");
-      return null;
-    }
-
-    const parsed = JSON.parse(oidcAuthStorage);
-    const refreshToken = parsed.refresh_token;
-
-    if (!refreshToken) {
-      console.error("No refresh_token in oidc-auth-storage");
-      return null;
-    }
-
     const url = `${getRuntimeEnv("BLOCKS_API_BASE_URL")}${AUTH_ENDPOINTS.REFRESH}`;
 
     const response = await fetch(url, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
-        "X-Blocks-Key": projectKey,
       },
-      body: JSON.stringify({ refreshToken }),
+      body: JSON.stringify({}),
       credentials: "include",
       referrerPolicy: "no-referrer",
     });
@@ -96,7 +78,9 @@ export const refreshAccessToken = async (projectKey: string): Promise<string | n
       return null;
     }
 
-    localStorage.setItem("oidc-auth-storage", JSON.stringify(newTokens));
+    const currentStorage = localStorage.getItem("oidc-auth-storage");
+    const parsedStorage = currentStorage ? JSON.parse(currentStorage) : {};
+    localStorage.setItem("oidc-auth-storage", JSON.stringify({ ...parsedStorage, ...newTokens }));
     return newTokens.access_token || null;
   } catch (error) {
     console.error("[Refresh Token] Error:", error);
@@ -116,7 +100,7 @@ export const getOidcCredential = async (
   isSuccess: boolean;
 }> => {
   try {
-    const url = `${getRuntimeEnv("BLOCKS_API_BASE_URL")}${AUTH_OIDC_ENDPOINTS.GET_OIDC_CLIENT}?ProjectKey=${payload.projectKey}&ClientId=${payload.clientId}`;
+    const url = `${getRuntimeEnv("BLOCKS_API_BASE_URL")}${AUTH_OIDC_ENDPOINTS.GET_OIDC_CLIENT}?ClientId=${payload.clientId}`;
 
     let accessToken = "";
     try {
@@ -131,7 +115,6 @@ export const getOidcCredential = async (
 
     const headers: Record<string, string> = {
       "Content-Type": "application/json",
-      "X-Blocks-Key": payload.projectKey,
     };
     if (accessToken) {
       headers["Authorization"] = `Bearer ${accessToken}`;
@@ -145,7 +128,7 @@ export const getOidcCredential = async (
     });
 
     if (response.status === 401) {
-      const newAccessToken = await refreshAccessToken(payload.projectKey);
+      const newAccessToken = await refreshAccessToken();
 
       if (newAccessToken) {
         headers["Authorization"] = `Bearer ${newAccessToken}`;
@@ -178,7 +161,6 @@ export const userAcknowledgement = async (
 
     const headers: Record<string, string> = {
       "Content-Type": "application/json",
-      "X-Blocks-Key": payload.projectKey,
     };
 
     const body = {
@@ -219,7 +201,6 @@ export const accountRecover = async (
 
     const headers: Record<string, string> = {
       "Content-Type": "application/json",
-      "X-Blocks-Key": payload.projectKey,
     };
 
     const response = await fetch(url, {

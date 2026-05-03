@@ -59,7 +59,7 @@ export interface IGetPreSignedUrlForUploadPayload {
   itemId?: string;
   name: string;
   configurationName: string;
-  projectKey: string;
+  projectKey?: string;
   metaData: string;
   parentDirectoryId: string;
   tags: string;
@@ -78,7 +78,7 @@ export interface IGetPreSignedUrlForUploadResponse {
 
 export interface IGetFileByFileIDPayload {
   itemId: string;
-  projectKey: string;
+  projectKey?: string;
   configurationName?: string;
 }
 

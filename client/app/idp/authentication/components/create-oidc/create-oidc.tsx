@@ -50,7 +50,7 @@ export const CreateOIDC = ({ itemId, triggerVariant = "default" }: CreateOIDCPro
   const tenantId = useProjectStore().selectedProject?.tenantId || "";
   const { mutateAsync, isPending } = useSaveAuthOidc();
   const { data: existingOidc, isLoading: isLoadingOidc } = useGetAuthOidcCredential(
-    { projectKey: tenantId, clientId: itemId! },
+    { clientId: itemId! },
     open && !!itemId,
   );
   const { mutateAsync: getPreSign } = useGetPreSignedUrlForUpload();
@@ -130,7 +130,6 @@ export const CreateOIDC = ({ itemId, triggerVariant = "default" }: CreateOIDCPro
         accessModifier: "Public",
         configurationName: "Default",
         name: file.name,
-        projectKey: tenantId ?? "",
         tags: "",
         metaData: "",
         parentDirectoryId: "",
@@ -143,7 +142,6 @@ export const CreateOIDC = ({ itemId, triggerVariant = "default" }: CreateOIDCPro
 
       const fileInfo = await storageService.file.getFileByFileId({
         itemId: preSign.fileId,
-        projectKey: tenantId ?? "",
       });
 
       setClientLogoUrl(fileInfo.url);
@@ -166,7 +164,6 @@ export const CreateOIDC = ({ itemId, triggerVariant = "default" }: CreateOIDCPro
         scope: data.scope,
         isAutoRedirect: false,
         itemId: isEditMode ? itemId : "",
-        projectKey: tenantId,
         clientLogoUrl: clientLogoUrl || undefined,
         clientBrandColor: data.clientBrandColor || undefined,
         clientDisplayName: data.clientDisplayName,

@@ -20,7 +20,7 @@ export class AuthOidc {
       oIDCClientCredentials: IOidcConfigResponse[];
       errors: Record<string, string> | null;
       isSuccess: boolean;
-    }>(`${AUTH_OIDC_ENDPOINTS.GET_OIDC_CLIENTS}?ProjectKey=${payload.projectKey}`);
+    }>(AUTH_OIDC_ENDPOINTS.GET_OIDC_CLIENTS);
   }
 
   async getOidcCredential(payload: IGetOidcPayload): Promise<{
@@ -33,7 +33,7 @@ export class AuthOidc {
       errors: Record<string, string> | null;
       isSuccess: boolean;
     }>(
-      `${AUTH_OIDC_ENDPOINTS.GET_OIDC_CLIENT}?ProjectKey=${payload.projectKey}&ClientId=${payload.clientId}`,
+      `${AUTH_OIDC_ENDPOINTS.GET_OIDC_CLIENT}?ClientId=${payload.clientId}`,
     );
   }
 

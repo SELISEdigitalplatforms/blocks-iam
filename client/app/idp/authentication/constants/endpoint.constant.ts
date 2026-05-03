@@ -4,14 +4,20 @@ import { API_BASES } from "@/constants/endpoint.constant";
 
 const AUTH_SUBPATH = "/auth";
 const LEGACY_AUTH_SUBPATH = "/Authentication";
+const OIDC_SUBPATH = "/oidc";
 
 // ─── Auth endpoints (auth.service / oauth.service) ───────────────────────────
 
 export const AUTH_ENDPOINTS = {
-  TOKEN: `${API_BASES.IDP}${LEGACY_AUTH_SUBPATH}/Token`,
+  TOKEN: `${API_BASES.IDP}${OIDC_SUBPATH}/token`,
+  LEGACY_TOKEN: `${API_BASES.IDP}${LEGACY_AUTH_SUBPATH}/Token`,
+  OIDC_TOKEN: `${API_BASES.IDP}${OIDC_SUBPATH}/token`,
   LOGIN: `${API_BASES.IDP}${AUTH_SUBPATH}/login`,
+  SOCIAL_LOGIN: `${API_BASES.IDP}${AUTH_SUBPATH}/social-login`,
   REFRESH: `${API_BASES.IDP}${AUTH_SUBPATH}/refresh`,
   LOGOUT: `${API_BASES.IDP}${AUTH_SUBPATH}/logout`,
+  IMPERSONATE: `${API_BASES.IDP}${AUTH_SUBPATH}/impersonate`,
+  STOP_IMPERSONATION: `${API_BASES.IDP}${AUTH_SUBPATH}/stop-impersonation`,
   GET_SOCIAL_LOGIN_ENDPOINT: `${API_BASES.IDP}${LEGACY_AUTH_SUBPATH}/GetSocialLogInEndPoint`,
   GET_LOGIN_OPTIONS: `${API_BASES.IDP}${AUTH_SUBPATH}/login-options`,
 } as const;
@@ -61,6 +67,6 @@ export const OIDC_FLOW_ENDPOINTS = {
 export const IDP_ENDPOINTS = {
   AUTHENTICATION: {
     GET_SOCIAL_LOGIN_ENDPOINT: AUTH_ENDPOINTS.GET_SOCIAL_LOGIN_ENDPOINT,
-    TOKEN: AUTH_ENDPOINTS.TOKEN,
+    TOKEN: AUTH_ENDPOINTS.LEGACY_TOKEN,
   },
 };

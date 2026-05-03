@@ -27,7 +27,6 @@ export const SsoProviderConfigForms = ({ provider, id }: SsoConfigFormsProps) =>
   const navigate = useNavigate();
   const { data } = useGetSsoCredentialById({
     itemId: id,
-    projectKey: tenantId,
   });
 
   const { mutateAsync } = useSaveSsoCredential();
@@ -43,7 +42,6 @@ export const SsoProviderConfigForms = ({ provider, id }: SsoConfigFormsProps) =>
         initialRoles: data.userRoles.map((item) => item.slug) || [],
         provider: data.provider,
         redirectUrl: data.redirectUrl,
-        projectKey: tenantId,
       });
       if (!res.isSuccess) return showErrorToast({ errors: res.errors });
       if (!id) navigate(`/services/authentication/sso-configuration?provider=${provider}&id=${res.itemId}`);

@@ -2,7 +2,6 @@
 
 import { Logo } from "@/components/logo";
 import { Button } from "@/components/ui-kits/button/button";
-import { getRuntimeEnv } from "@/lib/runtime-env";
 import { Link } from "react-router-dom";
 import {
   Card,
@@ -23,8 +22,6 @@ type ActivationProps = {
   code?: string;
   lang?: string;
 };
-
-const x_blocks_key = getRuntimeEnv("BLOCKS_X_BLOCKS_KEY");
 
 export const Activation = ({ code }: ActivationProps) => {
   const { isPending: isActivationPending, mutateAsync: activationCodeValidation } =
@@ -51,7 +48,6 @@ export const Activation = ({ code }: ActivationProps) => {
     const validateCode = async () => {
       try {
         const res = await activationCodeValidation({
-          projectKey: x_blocks_key as string,
           activationCode: code,
         });
 
@@ -97,7 +93,6 @@ export const Activation = ({ code }: ActivationProps) => {
 
       const response = await resendActivationLink({
         userId: activationUserId,
-        projectKey: x_blocks_key as string,
       });
 
       if (response?.isSuccess) {

@@ -1,6 +1,4 @@
 import { http } from "@/lib/http-client";
-import { getRuntimeEnv } from "@/lib/runtime-env";
-import { useAuthStore } from "@/store/useAuthStore";
 import {
   ISigninByEmailPayload,
   ISigninByEmailResponse,
@@ -40,7 +38,7 @@ export class AuthService {
     body.append("code", payload.code);
     body.append("mfa_id", payload.mfa_id);
     body.append("mfa_type", payload.mfa_type.toString());
-    return http.post(AUTH_ENDPOINTS.TOKEN, body, {
+    return http.post(AUTH_ENDPOINTS.LEGACY_TOKEN, body, {
       "Content-Type": "application/x-www-form-urlencoded",
     });
   }
@@ -54,7 +52,7 @@ export class AuthService {
     body.append("code_verifier", payload.codeVerifier);
 
     return http.post(
-      "/api/oidc/token",
+      AUTH_ENDPOINTS.OIDC_TOKEN,
       body,
       {
         "Content-Type": "application/x-www-form-urlencoded",
@@ -71,10 +69,15 @@ export class AuthService {
   }
 
   logout() {
-    // For localhost, send actual refresh token; for remote, send empty (uses cookie)
-    const isLocalhost = getRuntimeEnv("BLOCKS_API_BASE_URL")?.includes("localhost");
-    const refreshToken = isLocalhost ? (useAuthStore.getState().refreshToken || "") : "";
-    return http.post(AUTH_ENDPOINTS.LOGOUT, { refreshToken });
+    return http.post(AUTH_ENDPOINTS.LOGOUT, {});
+  }
+
+  stopImpersonation(): Promise<{ mode: "root" | "impersonation"; status: string; reason?: string }> {
+    return http.post(AUTH_ENDPOINTS.STOP_IMPERSONATION, {});
+  }
+
+  startImpersonation(payload: { targetTenantId: string; orgId?: string; clientId?: string }): Promise<any> {
+    return http.post(AUTH_ENDPOINTS.IMPERSONATE, payload);
   }
 }
 

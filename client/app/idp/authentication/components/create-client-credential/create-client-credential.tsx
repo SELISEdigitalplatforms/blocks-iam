@@ -22,7 +22,6 @@ import { Checkbox } from "@/components/ui-kits/checkbox/checkbox";
 import { Search } from "lucide-react";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useEffect, useState } from "react";
-import { useProjectStore } from "@/store/useProjectStore";
 import { useSaveAuthClient } from "@blocks-idp/authentication/hooks/use-auth-clients";
 import { useForm } from "react-hook-form";
 import { Plus } from "lucide-react";
@@ -42,15 +41,11 @@ export const CreateClientCredential = () => {
   const [open, setOpen] = useState<boolean>(false);
   const [filter, setFilter] = useState<string>("");
   const [filteredRoles, setFilteredRoles] = useState<IRole[]>([]);
-  const tenantId = useProjectStore().selectedProject?.tenantId || "";
-  const { mutateAsync: saveServiceClient, isPending } = useSaveAuthClient({
-    projectKey: tenantId,
-  });
+  const { mutateAsync: saveServiceClient, isPending } = useSaveAuthClient();
 
   const { data, isLoading } = useGetRoles({
     page: 0,
     pageSize: 0,
-    projectKey: tenantId,
     sort: { property: "Name", isDescending: false },
     filter: {
       search: filter,
@@ -89,7 +84,6 @@ export const CreateClientCredential = () => {
       const payload: ISaveClientCredentialPayload = {
         name: data.clientNameService,
         roles: data.roles,
-        projectKey: tenantId,
       };
 
       const res = await saveServiceClient(payload);

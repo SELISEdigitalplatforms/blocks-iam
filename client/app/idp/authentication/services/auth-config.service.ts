@@ -8,9 +8,8 @@ import {
 import { AUTH_CONFIG_ENDPOINTS } from "../constants/endpoint.constant";
 
 export class AuthConfiguration {
-  getConfig(payload: IAuthConfigPayload): Promise<IGetAuthConfigResponse> {
-    const url = `${AUTH_CONFIG_ENDPOINTS.GET_CONFIG}?ProjectKey=${payload.projectKey}`;
-    return http.get(url);
+  getConfig(_payload?: IAuthConfigPayload): Promise<IGetAuthConfigResponse> {
+    return http.get(AUTH_CONFIG_ENDPOINTS.GET_CONFIG);
   }
 
   saveAuthConfig(payload: ISaveAuthConfigPayload): Promise<ISaveAuthConfigResponse> {

@@ -18,7 +18,7 @@ export interface GetRolesPayload {
   };
   page?: number;
   pageSize?: number;
-  projectKey: string;
+  projectKey?: string;
 }
 export interface GetRolesResponse {
   data: IRole[];

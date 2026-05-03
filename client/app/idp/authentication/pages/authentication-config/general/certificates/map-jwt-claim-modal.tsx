@@ -206,11 +206,9 @@ const MapJwtClaimModal: React.FC<MapJwtClaimModalProps> = ({ open, onOpenChange 
   const [validationError, setValidationError] = useState<string>("");
 
   const { mutateAsync: saveJWTClaim, isPending: isLoading } = useAddJwtClaim();
-  const projectKey = useProjectStore().selectedProject?.tenantId || "";
 
   const { data: existingJwtClaim, isLoading: isJwtClaimLoading } = useGetJwtClaim(
     {
-      projectKey,
       itemId: "",
     },
     open,
@@ -302,7 +300,6 @@ const MapJwtClaimModal: React.FC<MapJwtClaimModalProps> = ({ open, onOpenChange 
         name: mapping.name,
         userName: mapping.userName,
         roles: mapping.roles,
-        projectKey,
         ...(existingJwtClaim?.itemId && { itemId: existingJwtClaim.itemId }),
       };
 
@@ -317,7 +314,7 @@ const MapJwtClaimModal: React.FC<MapJwtClaimModalProps> = ({ open, onOpenChange 
     } catch (error) {
       showErrorToast({ errors: error });
     }
-  }, [mapping, projectKey, existingJwtClaim, saveJWTClaim, onOpenChange]);
+  }, [mapping, existingJwtClaim, saveJWTClaim, onOpenChange]);
 
   const handleCancel = useCallback(() => {
     onOpenChange(false);

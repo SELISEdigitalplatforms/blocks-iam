@@ -120,5 +120,13 @@ namespace Blocks.Api.Controllers
                 return StatusCode(500, new { error = "server_error", error_description = "Failed to retrieve JWKS" });
             }
         }
+
+        [HttpGet("/jwks.json")]
+        [Produces("application/json")]
+        [ProducesResponseType(typeof(JwksResponse), 200)]
+        public Task<IActionResult> JwksJsonAlias()
+        {
+            return JwksJson();
+        }
     }
 }

@@ -35,17 +35,12 @@ type OIDCCardProps = {
 
 export const OIDCCard = ({ oidc }: OIDCCardProps) => {
   const [open, setOpen] = useState<boolean>(false);
-  const tenantId = useProjectStore().selectedProject?.tenantId || "";
-
-  const { mutateAsync, isPending } = useDeleteAuthOidc({
-    projectKey: tenantId,
-  });
+  const { mutateAsync, isPending } = useDeleteAuthOidc();
 
   const handleConfirmDelete = async (id: string) => {
     try {
       const payload: IDeleteOidcClientPayload = {
         itemId: id,
-        projectKey: tenantId,
       };
 
       const res = await mutateAsync(payload);
@@ -147,10 +142,10 @@ export const OIDCCard = ({ oidc }: OIDCCardProps) => {
               <div className="md:col-span-2">
                 <Item label="Well Known URL">
                   <CopyToClipboardButton
-                    textToCopy={`${getApiUrl("idp/v1", ".well-known/openid-configuration")}?projectKey=${tenantId}`}
+                    textToCopy={getApiUrl("idp/v1", ".well-known/openid-configuration")}
                   >
                     <span className="break-all">
-                      {`${getApiUrl("idp/v1", ".well-known/openid-configuration")}?projectKey=${tenantId}`}
+                      {getApiUrl("idp/v1", ".well-known/openid-configuration")}
                     </span>
                   </CopyToClipboardButton>
                 </Item>

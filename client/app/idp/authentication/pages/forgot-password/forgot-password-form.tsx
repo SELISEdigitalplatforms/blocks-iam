@@ -23,8 +23,6 @@ import { isErrorWithErrors } from "@/lib/error";
 import { useCaptcha } from "@blocks-idp/captcha/hooks/use-captcha";
 
 export const ForgotPasswordForm = () => {
-  const x_blocks_key = getRuntimeEnv("BLOCKS_X_BLOCKS_KEY");
-
   const navigate = useNavigate();
   const form = useForm({
     defaultValues: forgotPasswordFormDefaultValue,
@@ -44,11 +42,9 @@ export const ForgotPasswordForm = () => {
 
   const onSubmitHandler = async (values: z.infer<typeof forgotPasswordFormSchema>) => {
     try {
-      if (!x_blocks_key) return;
       const res = await mutateAsync({
         ...values,
         captchaCode,
-        projectKey: x_blocks_key,
       });
       if (!res.isSuccess) {
         resetCaptcha();

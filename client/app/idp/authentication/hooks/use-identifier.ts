@@ -16,11 +16,10 @@ export const useSavePublicCertificates = () => {
   });
 };
 
-export const useGetSavedPublicCertificates = (projectKey: string) => {
+export const useGetSavedPublicCertificates = () => {
   return useQuery<IGetPublicCertificateResponse | null>({
-    queryKey: ["identifier", "public-certificate-url", "get", projectKey],
-    queryFn: () => projectService.getPublicCertificateInformation(projectKey),
-    enabled: !!projectKey,
+    queryKey: ["identifier", "public-certificate-url", "get"],
+    queryFn: () => projectService.getPublicCertificateInformation(),
   });
 };
 

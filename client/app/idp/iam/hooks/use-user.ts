@@ -91,11 +91,11 @@ export const useUpdateUser = (options: { id: string; projectKey: string; own?: b
 };
 
 export const useGetSignUpSetting = (
-  option: IGetSignUpSettingPayload,
+  option?: IGetSignUpSettingPayload,
   options?: { enabled?: boolean },
 ) => {
   return useQuery({
-    queryKey: ["sign-up-setting", option],
+    queryKey: ["sign-up-setting"],
     queryFn: () => userService.getSignUpSetting(option),
     ...options,
   });

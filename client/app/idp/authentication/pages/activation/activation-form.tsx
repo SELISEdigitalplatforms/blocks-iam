@@ -1,5 +1,4 @@
 import { useForm } from "react-hook-form";
-import { getRuntimeEnv } from "@/lib/runtime-env";
 import { activationFormDefaultValue, activationFormSchema } from "./utils";
 import {
   Form,
@@ -27,8 +26,6 @@ import { zodResolver } from "@hookform/resolvers/zod";
 type ActivationFormProps = {
   code: string;
 };
-
-const x_blocks_key = getRuntimeEnv("BLOCKS_X_BLOCKS_KEY");
 
 export const ActivationForm = ({ code }: ActivationFormProps) => {
   const navigate = useNavigate();
@@ -66,7 +63,6 @@ export const ActivationForm = ({ code }: ActivationFormProps) => {
       const res = await mutateAsync({
         code: code,
         preventPostEvent: true,
-        projectKey: x_blocks_key || "",
         password: values.password,
         firstname: values.firstname,
         lastname: values.lastname,

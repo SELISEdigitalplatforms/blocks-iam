@@ -7,6 +7,7 @@ namespace DomainService.Shared.RequestModel
     {
         public string Name { get; set; }
         public List<string> Roles { get; set; }
+        public Dictionary<string, List<string>> PermissionsByOrg { get; set; } = new(StringComparer.OrdinalIgnoreCase);
         public string ProjectKey { get ; set ; }
     }
 

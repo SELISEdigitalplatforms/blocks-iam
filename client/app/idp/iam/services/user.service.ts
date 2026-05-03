@@ -55,8 +55,8 @@ export class UserService {
     return http.post(USER_ENDPOINTS.UPDATE, payload);
   }
 
-  getSignUpSetting(payload: IGetSignUpSettingPayload): Promise<IGetSignUpSettingResponse> {
-    return http.get(`${USER_ENDPOINTS.GET_SIGNUP_SETTING}?ProjectKey=${payload.projectKey}`);
+  getSignUpSetting(_payload?: IGetSignUpSettingPayload): Promise<IGetSignUpSettingResponse> {
+    return http.get(USER_ENDPOINTS.GET_SIGNUP_SETTING);
   }
 
   saveSignUpSetting(payload: ISaveSignUpSettingPayload): Promise<ISaveSignUpSettingResponse> {

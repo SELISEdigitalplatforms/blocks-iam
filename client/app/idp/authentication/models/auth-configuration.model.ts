@@ -13,9 +13,7 @@ export interface IAuthConfiguration {
   isSelfSignUpAllowed: boolean;
 }
 
-export interface IAuthConfigPayload {
-  projectKey: string;
-}
+export interface IAuthConfigPayload {}
 
 export interface IGetAuthConfigResponse extends IAuthConfiguration {
   errors: unknown | null;
@@ -30,7 +28,6 @@ export interface ISaveAuthConfigPayload {
   accessTokenValidForNumberMinutes: number;
   rememberMeRefreshTokenValidForNumberMinutes: number;
   allowedGrantTypes: string[];
-  projectKey: string;
   isSelfSignUpAllowed: boolean;
 }
 
