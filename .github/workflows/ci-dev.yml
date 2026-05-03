@@ -111,7 +111,7 @@ jobs:
           echo "sonar_project_key=${SONAR_KEY:-}" >> $GITHUB_OUTPUT
           echo "sonar_organization=${AUTHOR:-}" >> $GITHUB_OUTPUT
           echo "solution_name=${SOLUTION_NAME:-YourSolution.sln}" >> $GITHUB_OUTPUT
-          echo "working_directory=${WORKING_DIRECTORY:-./src}" >> $GITHUB_OUTPUT
+          echo "working_directory=${WORKING_DIRECTORY:-./server}" >> $GITHUB_OUTPUT
 
           # Version based on environment (from versions.env)
           ENVIRONMENT="${{ env.ENVIRONMENT }}"
