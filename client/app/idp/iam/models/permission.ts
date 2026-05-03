@@ -73,7 +73,7 @@ export interface IPermission {
 }
 
 export interface IPermissionFilter {
-  projectKey: string;
+  projectKey?: string;
   source?: string[];
   type?: number | null;
   page: number;
@@ -107,7 +107,7 @@ export interface IGetPermissionsPayload {
     permissionSeverity?: number;
   };
   roles: string[];
-  projectKey: string;
+  projectKey?: string;
 }
 export interface IGetPermissionByIdPayload {
   id: string;

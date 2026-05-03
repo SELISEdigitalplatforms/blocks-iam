@@ -48,7 +48,7 @@ const formSchema = z.object({
 type FormData = z.infer<typeof formSchema>;
 
 export const AddEditProviderModal = ({ existingData }: AddEditProviderModalProps) => {
-  const projectKey = useProjectStore().selectedProject?.tenantId ?? "";
+  const tenantId = useProjectStore().selectedProject?.tenantId ?? "";
 
   const [open, setOpen] = useState(false);
   const [selectedProvider, setSelectedProvider] = useState("Keycloak");
@@ -200,7 +200,6 @@ export const AddEditProviderModal = ({ existingData }: AddEditProviderModalProps
         }
 
         const res = await savePublicCertificates({
-          projectKey,
           publicCertificatePassword: password || "",
           issuer: issuer || "",
           audiences,
@@ -232,7 +231,7 @@ export const AddEditProviderModal = ({ existingData }: AddEditProviderModalProps
     }
 
     try {
-      const uploadResponse = await uploadFileMutate({ TenantId: projectKey, file: certificate });
+      const uploadResponse = await uploadFileMutate({ TenantId: tenantId, file: certificate });
 
       if (!uploadResponse || !uploadResponse.downloadUrl) {
         showErrorToast({ errors: "Failed to get upload URL" });
@@ -241,7 +240,6 @@ export const AddEditProviderModal = ({ existingData }: AddEditProviderModalProps
       }
 
       const res = await savePublicCertificates({
-        projectKey,
         publicCertificatePassword: password || "",
         issuer: issuer || "",
         audiences,

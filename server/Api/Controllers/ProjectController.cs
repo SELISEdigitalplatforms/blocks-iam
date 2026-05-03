@@ -1,4 +1,4 @@
-﻿using Blocks.Genesis;
+using Blocks.Genesis;
 using DomainService.Dtos;
 using DomainService.Entities;
 using DomainService.Projects;
@@ -18,17 +18,14 @@ namespace Api.Controllers
         private readonly IProjectManagementService _projectManagementService;
         private readonly IValidator<CreateProjectRequest> _createProjectValidator;
         private readonly IValidator<UpdateProjectRequest> _updateProjectValidator;
-        private readonly ChangeControllerContext _changeControllerContext;
 
         public ProjectController(IProjectManagementService projectManagementService,
                                  IValidator<CreateProjectRequest> createProjectValidator,
-                                 IValidator<UpdateProjectRequest> updateProjectValidator,
-                                 ChangeControllerContext changeControllerContext)
+                                 IValidator<UpdateProjectRequest> updateProjectValidator)
         {
             _projectManagementService = projectManagementService;
             _createProjectValidator = createProjectValidator;
             _updateProjectValidator = updateProjectValidator;
-            _changeControllerContext = changeControllerContext;
         }
 
         [ProtectedEndPoint]
@@ -146,7 +143,6 @@ namespace Api.Controllers
         [ProtectedEndPoint]
         public async Task<SaveThirdPartyJWTClaimsResponse> SaveThirdPartyJWTClaims([FromBody] SaveThirdPartyJWTClaimsRequest request)
         {
-            _changeControllerContext.ChangeContext(request);
             return await _projectManagementService.SaveThirdPartyJWTClaimsAsync(request);
         }
 
@@ -154,7 +150,6 @@ namespace Api.Controllers
         [ProtectedEndPoint]
         public async Task<ThirdPartyJWTClaims?> GetThirdPartyJWTClaims([FromQuery] GetThirdPartyJWTClaimsRequest request)
         {
-            _changeControllerContext.ChangeContext(request);
             return await _projectManagementService.GetThirdPartyJWTClaimsAsync(request);
         }
     }

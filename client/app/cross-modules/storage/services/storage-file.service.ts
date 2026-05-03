@@ -16,8 +16,9 @@ import { STORAGE_FILE_ENDPOINTS } from "../constants/endpoint.constant";
 
 export class StorageFile {
   getFileByFileId(payload: IGetFileByFileIDPayload): Promise<IGetFileByFileIDResponse> {
+    const projectKeyQuery = payload.projectKey ? `&ProjectKey=${payload.projectKey}` : "";
     return http.get(
-      `${STORAGE_FILE_ENDPOINTS.GET_FILE}?FileId=${payload.itemId}&ProjectKey=${payload.projectKey}&ConfigurationName=${payload.configurationName ?? ""}`,
+      `${STORAGE_FILE_ENDPOINTS.GET_FILE}?FileId=${payload.itemId}${projectKeyQuery}&ConfigurationName=${payload.configurationName ?? ""}`,
     );
   }
 

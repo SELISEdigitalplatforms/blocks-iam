@@ -15,7 +15,6 @@ import {
 import { Checkbox } from "@/components/ui-kits/checkbox/checkbox";
 import { Wrench } from "lucide-react";
 import { useGetSignUpSetting, useSaveSignUpSetting } from "@blocks-idp/iam/hooks/use-user";
-import { useProjectStore } from "@/store/useProjectStore";
 
 export const SignupSettings = () => {
   const [open, setOpen] = useState(false);
@@ -24,13 +23,7 @@ export const SignupSettings = () => {
   const [sso, setSso] = useState(false);
   const initializedRef = useRef(false);
 
-  const tenantId = useProjectStore().selectedProject?.tenantId || "";
-
-  const { data: signUpSettingData } = useGetSignUpSetting({
-    projectKey: tenantId
-  }, {
-    enabled: !!tenantId,
-  });
+  const { data: signUpSettingData } = useGetSignUpSetting();
 
   const { mutateAsync: saveSignUpSetting, isPending } = useSaveSignUpSetting();
 
@@ -59,7 +52,6 @@ export const SignupSettings = () => {
     await saveSignUpSetting({
       isEmailPasswordSignUpEnabled: allowSignup && emailPassword,
       isSSoSignUpEnabled: allowSignup && sso,
-      projectKey: tenantId,
       itemId: signUpSettingData?.itemId || "",
     });
     setOpen(false);

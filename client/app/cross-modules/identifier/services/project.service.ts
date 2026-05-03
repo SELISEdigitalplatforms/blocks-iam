@@ -140,11 +140,8 @@ export class ProjectService {
     return http.post(PROJECT_ENDPOINTS.UPDATE_TOKEN_VALIDATION, payload);
   }
 
-  getPublicCertificateInformation(
-    projectKey: string,
-  ): Promise<IGetPublicCertificateResponse | null> {
-    const url = `${PROJECT_ENDPOINTS.GET_TOKEN_VALIDATION}?ProjectKey=${projectKey}`;
-    return http.get<IGetPublicCertificateResponse | null>(url);
+  getPublicCertificateInformation(): Promise<IGetPublicCertificateResponse | null> {
+    return http.get<IGetPublicCertificateResponse | null>(PROJECT_ENDPOINTS.GET_TOKEN_VALIDATION);
   }
 
   async validateJwksUrl(url: string): Promise<{
@@ -202,7 +199,7 @@ export class ProjectService {
   }
 
   getJwtClaim(payload: GetJwtClaimPayload): Promise<JwtClaimResponse> {
-    const url = `${PROJECT_ENDPOINTS.GET_JWT_CLAIMS}?ProjectKey=${payload.projectKey}&ItemId=${payload.itemId}`;
+    const url = `${PROJECT_ENDPOINTS.GET_JWT_CLAIMS}?ItemId=${payload.itemId}`;
     return http.get(url);
   }
 

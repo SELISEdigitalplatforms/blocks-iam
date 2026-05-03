@@ -14,7 +14,6 @@ import {
 } from "@/components/ui-kits/dialog/dialog";
 import { Pagination } from "@/components/ui-kits/pagination/pagination";
 
-import { useProjectStore } from "@/store/useProjectStore";
 import { useGetRoles } from "@blocks-idp/iam/hooks/use-roles";
 import { IRole } from "@blocks-idp/iam/models/role";
 import { CirclePlus } from "lucide-react";
@@ -26,7 +25,6 @@ type AddSSORoleProps = {
 };
 
 export const AddSSORole = ({ onAdd, roles }: AddSSORoleProps) => {
-  const tenantId = useProjectStore().selectedProject?.tenantId || "";
   const [open, setOpen] = useState<boolean>(false);
   const [selectedRolos, setSelectedRoles] = useState<IRole[]>([]);
   const [filter, setFilter] = useState({ page: 0, pageSize: 10, search: "" });
@@ -34,7 +32,6 @@ export const AddSSORole = ({ onAdd, roles }: AddSSORoleProps) => {
   const { data, isLoading } = useGetRoles({
     page: filter.page,
     pageSize: filter.pageSize,
-    projectKey: tenantId,
     sort: { property: "Name", isDescending: false },
     filter: {
       search: filter.search,

@@ -6,13 +6,19 @@ import { oauthService } from "@blocks-idp/authentication/services/oauth.service"
 import { useTheme } from "@/hooks/use-theme";
 import { useCallback, useMemo } from "react";
 import { sanitizeProviderUrl } from "@blocks-idp/authentication/utils/sanitize-provider-url.util";
+import { buildOIDCNavigationUrl } from "@blocks-idp/authentication/utils/oidc-utils";
 
 type SSOSigninCardProps = {
   providerConfig: ISsoProviderConfigurationWithMeta;
   withLabel?: boolean;
+  mode?: "default" | "oidc";
 };
 
-export const SSOSigninCard = ({ providerConfig, withLabel = false }: SSOSigninCardProps) => {
+export const SSOSigninCard = ({
+  providerConfig,
+  withLabel = false,
+  mode = "default",
+}: SSOSigninCardProps) => {
   const { theme } = useTheme();
 
   const onClickHandler = useCallback(async () => {
@@ -27,6 +33,7 @@ export const SSOSigninCard = ({ providerConfig, withLabel = false }: SSOSigninCa
         provider: providerConfig.provider,
         audience: providerConfig.audience,
         sendAsResponse: true,
+        nextUrl: mode === "oidc" ? buildOIDCNavigationUrl("/oidc/login") : undefined,
       });
 
       if (res.error) return showErrorToast({ errors: res.error });
@@ -36,7 +43,7 @@ export const SSOSigninCard = ({ providerConfig, withLabel = false }: SSOSigninCa
       if (isErrorWithErrors(error)) return showErrorToast({ errors: error.errors });
       showErrorToast({ errors: "Something went wrong" });
     }
-  }, [providerConfig]);
+  }, [mode, providerConfig]);
 
   const imageSrc = useMemo(() => {
     return theme === "light" ? providerConfig.imageSrc : providerConfig.imageSrcDark || providerConfig.imageSrc;

@@ -26,8 +26,6 @@ type ResetPasswordFormProps = {
   code: string;
 };
 
-const x_blocks_key = getRuntimeEnv("BLOCKS_X_BLOCKS_KEY");
-
 export const ResetPasswordForm = ({ code }: ResetPasswordFormProps) => {
   const navigate = useNavigate();
   const form = useForm({
@@ -59,7 +57,6 @@ export const ResetPasswordForm = ({ code }: ResetPasswordFormProps) => {
         code: code,
         captchaCode,
         logoutFromAllDevices: true,
-        projectKey: x_blocks_key || "",
         password: values.password,
       });
 

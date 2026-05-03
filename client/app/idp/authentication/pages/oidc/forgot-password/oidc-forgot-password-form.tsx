@@ -22,7 +22,7 @@ import { buildOIDCNavigationUrl } from "@blocks-idp/authentication/utils/oidc-ut
 import { accountRecover } from "@blocks-idp/authentication/services/oidc-auth-flow.service";
 
 export const OidcForgotPasswordForm = () => {
-  const { themeColor, projectKey } = useOIDCContext();
+  const { themeColor } = useOIDCContext();
   const [isPending, setIsPending] = useState(false);
 
   const navigate = useNavigate();
@@ -35,11 +35,9 @@ export const OidcForgotPasswordForm = () => {
 
   const onSubmitHandler = async (values: z.infer<typeof forgotPasswordFormSchema>) => {
     try {
-      if (!projectKey) return;
       setIsPending(true);
       const res = await accountRecover({
         email: values.email,
-        projectKey: projectKey,
       });
       if (!res?.isSuccess) {
         return showErrorToast({ errors: res?.error || "Failed to recover account" });

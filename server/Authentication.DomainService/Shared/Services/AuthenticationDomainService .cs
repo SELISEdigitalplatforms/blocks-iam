@@ -345,6 +345,43 @@ namespace DomainService.Services
             if (string.IsNullOrWhiteSpace(request.Name))
                 return new BaseResponse { IsSuccess = false, Errors = new Dictionary<string, string> { { "invalid_request", "Name is required." } } };
 
+            var normalizedPermissionsByOrg = new Dictionary<string, List<string>>(StringComparer.OrdinalIgnoreCase);
+            if (request.PermissionsByOrg != null)
+            {
+                foreach (var kvp in request.PermissionsByOrg)
+                {
+                    var orgId = kvp.Key?.Trim();
+                    if (string.IsNullOrWhiteSpace(orgId))
+                    {
+                        return new BaseResponse
+                        {
+                            IsSuccess = false,
+                            Errors = new Dictionary<string, string> { { "invalid_request", "permissions_by_org contains an empty org id." } }
+                        };
+                    }
+
+                    var normalizedPermissions = (kvp.Value ?? [])
+                        .Where(permission => !string.IsNullOrWhiteSpace(permission))
+                        .Select(permission => permission.Trim())
+                        .Distinct(StringComparer.OrdinalIgnoreCase)
+                        .ToList();
+
+                    if (normalizedPermissions.Count > 10)
+                    {
+                        return new BaseResponse
+                        {
+                            IsSuccess = false,
+                            Errors = new Dictionary<string, string>
+                            {
+                                { "invalid_request", $"A maximum of 10 permissions is allowed per org. Org '{orgId}' has {normalizedPermissions.Count}." }
+                            }
+                        };
+                    }
+
+                    normalizedPermissionsByOrg[orgId] = normalizedPermissions;
+                }
+            }
+
             var clientCredential = new ClientCredential
             {
                 ItemId = Guid.NewGuid().ToString(),
@@ -354,6 +391,7 @@ namespace DomainService.Services
                 LastUpdatedBy = BlocksContext.GetContext()?.UserId,
                 CreatedDate = DateTime.UtcNow,
                 Roles = request.Roles,
+                PermissionsByOrg = normalizedPermissionsByOrg,
                 IsActive = true,
                 Audiences = _tenants.GetTenantByID(BlocksContext.GetContext()?.TenantId ?? "")?.JwtTokenParameters?.Audiences ?? []
             };

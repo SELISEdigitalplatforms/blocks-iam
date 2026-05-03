@@ -1,4 +1,4 @@
-﻿using Blocks.Genesis;
+using Blocks.Genesis;
 using Captcha.DomainService.Captcha;
 using CloudConfiguration.DomainService.Captcha.RequestModel;
 using CloudConfiguration.DomainService.Captcha.ResponseModel;
@@ -15,12 +15,10 @@ namespace Api.Controllers
     {
         private readonly ICaptchaService _captchaService;
         private readonly IConfigurationService _configurationService;
-        private readonly ChangeControllerContext _changeControllerContext;
-        public CaptchaController(ICaptchaService captchaService, IConfigurationService configurationService, ChangeControllerContext changeControllerContext)
+        public CaptchaController(ICaptchaService captchaService, IConfigurationService configurationService)
         {
             _captchaService = captchaService;
             _configurationService = configurationService;
-            _changeControllerContext = changeControllerContext;
 
         }
 
@@ -49,7 +47,6 @@ namespace Api.Controllers
         [HttpPost]
         public async Task<BaseMutationResponse> Save([FromBody] SaveCaptchaConfigurationRequest request)
         {
-            _changeControllerContext.ChangeContext(request);
             return await _configurationService.SaveCaptchaConfigurationAsync(request);
         }
 
@@ -57,7 +54,6 @@ namespace Api.Controllers
         [HttpPost]
         public async Task<BaseMutationResponse> UpdateStatus([FromBody] UpdateCaptchaConfigurationStatusRequest request)
         {
-            _changeControllerContext.ChangeContext(request);
             return await _configurationService.UpdateCaptchaConfigurationStatusAsync(request);
         }
 
@@ -65,7 +61,6 @@ namespace Api.Controllers
         [HttpGet]
         public async Task<BaseResponse> Get([FromQuery] GetCaptchaConfigurationRequest request)
         {
-            _changeControllerContext.ChangeContext(request);
             return await _configurationService.GetCaptchaConfigurationAsync(request.ProviderName);
         }
 
@@ -73,7 +68,6 @@ namespace Api.Controllers
         [HttpGet]
         public async Task<GetCaptchaConfigurationsResponse> Gets([FromQuery] GetCaptchaConfigurationsRequest request)
         {
-            _changeControllerContext.ChangeContext(request);
             return await _configurationService.GetCaptchaConfigurationsAsync(request);
         }
         #endregion

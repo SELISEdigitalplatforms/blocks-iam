@@ -33,7 +33,6 @@ public class AuthenticationController : ControllerBase
     private readonly ITenants _tenants;
     private readonly IAuditLogRepository _auditLogRepo;
     private readonly IAccountService _accountService;
-    private readonly ChangeControllerContext _changeControllerContext;
     private readonly PasswordAuthenticationService _passwordAuthenticationService;
     private readonly SocialAuthorizationService _socialAuthorizationService;
     private readonly RefreshTokenAuthenticationService _refreshTokenAuthenticationService;
@@ -48,7 +47,6 @@ public class AuthenticationController : ControllerBase
         ITenants tenants,
         IAuditLogRepository auditLogRepo,
         IAccountService accountService,
-        ChangeControllerContext changeControllerContext,
         IConfigurationService cloudConfigurationService,
         PasswordAuthenticationService passwordAuthenticationService,
         SocialAuthorizationService socialAuthorizationService,
@@ -61,7 +59,6 @@ public class AuthenticationController : ControllerBase
         _tenants = tenants;
         _auditLogRepo = auditLogRepo;
         _accountService = accountService;
-        _changeControllerContext = changeControllerContext;
         _passwordAuthenticationService = passwordAuthenticationService;
         _socialAuthorizationService = socialAuthorizationService;
         _refreshTokenAuthenticationService = refreshTokenAuthenticationService;
@@ -73,7 +70,6 @@ public class AuthenticationController : ControllerBase
     [AllowAnonymous]
     public async Task<IActionResult> Recover([FromBody] RecoveryUserRequest command)
     {
-        _changeControllerContext.ChangeContext(command);
         var result = await _accountService.RecoverAccountAsync(command);
         return result.IsSuccess ? Ok(result) : BadRequest(result);
     }
@@ -82,7 +78,6 @@ public class AuthenticationController : ControllerBase
     [AllowAnonymous]
     public async Task<IActionResult> ResetPassword([FromBody] ResetPasswordRequest command)
     {
-        _changeControllerContext.ChangeContext(command);
         var result = await _accountService.ResetAccountPasswordAsync(command);
         return result.IsSuccess ? Ok(result) : BadRequest(result);
     }
@@ -91,7 +86,6 @@ public class AuthenticationController : ControllerBase
     [Authorize]
     public async Task<IActionResult> ChangePassword([FromBody] ChangePasswordRequest command)
     {
-        _changeControllerContext.ChangeContext(command);
         var result = await _accountService.ChangePasswordAsync(command);
         return result.IsSuccess ? Ok(result) : BadRequest(result);
     }

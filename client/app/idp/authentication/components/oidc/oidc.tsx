@@ -4,8 +4,7 @@ import { useGetAuthConfig } from "@blocks-idp/authentication/hooks/use-auth-conf
 import { OidcList } from "./oidc-list";
 
 export const OIDC = () => {
-  const { tenantId } = useProjectStore().selectedProject || { tenantId: "" };
-  const { data: authConfig, isLoading } = useGetAuthConfig({ projectKey: tenantId });
+  const { data: authConfig, isLoading } = useGetAuthConfig();
 
   return (
     <div>

@@ -1,4 +1,4 @@
-﻿using Blocks.Genesis;
+using Blocks.Genesis;
 using CloudConfiguration.DomainService.Authentication.RequestModel;
 using CloudConfiguration.DomainService.MFA.RequestModel;
 using CloudConfiguration.DomainService.MFA.ResponseModel;
@@ -18,13 +18,10 @@ namespace Api.Controllers
     {
         private readonly IMfaManagementService _mfaManagementService;
         private readonly TotpService _totpService;
-        private readonly ChangeControllerContext _changeControllerContext;
         private readonly IConfigurationService _configurationService;
         public MfaController(IMfaManagementService mfaManagementService,
-                            TotpService totpService,
-                            ChangeControllerContext changeControllerContext, IConfigurationService configurationService)
+                            TotpService totpService, IConfigurationService configurationService)
         {
-            _changeControllerContext = changeControllerContext;
             _mfaManagementService = mfaManagementService;
             _totpService = totpService;
             _configurationService = configurationService;
@@ -34,7 +31,6 @@ namespace Api.Controllers
         [HttpPost]
         public async Task<OtpGenerationResponse> GenerateOTP([FromBody] OtpGenerationRequest request)
         {
-            _changeControllerContext.ChangeContext(request);
             return await _mfaManagementService.GenerateOTPAsync(request);
         }
 
@@ -42,7 +38,6 @@ namespace Api.Controllers
         [HttpPost]
         public async Task<OtpVerificationResponse> VerifyOTP([FromBody] VerifyOtpRequest request)
         {
-            _changeControllerContext.ChangeContext(request);
             return await _mfaManagementService.VerifyOTPAsync(request);
         }
 
@@ -50,7 +45,6 @@ namespace Api.Controllers
         [HttpPost]
         public async Task<BaseResponse> DisableUserMfa([FromBody] DisableUserMfaRequest request)
         {
-            _changeControllerContext.ChangeContext(request);
             return await _mfaManagementService.DisableUserMfa(request);
         }
 
@@ -58,7 +52,6 @@ namespace Api.Controllers
         [HttpGet]
         public async Task<SetUpUserTotpResponse> SetUpTotp([FromQuery] SetUpUserTotpRequest request)
         {
-            _changeControllerContext.ChangeContext(request);
 
             if (string.IsNullOrWhiteSpace(request.UserId))
                 return new SetUpUserTotpResponse { IsSuccess = false, Errors = new Dictionary<string, string> { { "empty_user_id", "User id should not be empty" } } };
@@ -79,7 +72,6 @@ namespace Api.Controllers
         [ProtectedEndPoint]
         public async Task<BaseResponse> Save(SaveMfaConfigurationRequest request)
         {
-            _changeControllerContext.ChangeContext(request);
             return await _configurationService.SaveMfaConfigurationAsync(request);
         }
 
@@ -87,7 +79,6 @@ namespace Api.Controllers
         [ProtectedEndPoint]
         public async Task<GetMfaConfigurationResponse> Get([FromQuery] GetAuthenticationConfigurationRequest request)
         {
-            _changeControllerContext.ChangeContext(request);
             return await _configurationService.GetMfaConfigurationAsync();
         }
         #endregion

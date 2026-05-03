@@ -89,7 +89,6 @@ export interface ISaveProjectAuthConfigResponse {
   isSuccess: boolean;
 }
 export interface ISavePublicCertificatePayload {
-  projectKey: string;
   publicCertificatePassword: string;
   issuer: string;
   audiences: string[];

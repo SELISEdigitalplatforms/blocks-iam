@@ -1,7 +1,6 @@
 import { Button } from "@/components/ui-kits/button/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui-kits/card/card";
 import { Checkbox } from "@/components/ui-kits/checkbox/checkbox";
-import { useProjectStore } from "@/store/useProjectStore";
 import { selfSignUpFormDefaultValues, selfSignUpFormSchema, SelfSignUpFormType } from "./utils";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -12,10 +11,9 @@ import { Skeleton } from "@/components/ui-kits/skeleton/skeleton";
 import { useGetAuthConfig, useSaveAuthConfig } from "@blocks-idp/authentication/hooks/use-auth-config";
 
 export const SelfSignup = () => {
-  const { tenantId } = useProjectStore().selectedProject || { tenantId: "", itemId: "" };
-  const { data, isLoading } = useGetAuthConfig({ projectKey: tenantId });
+  const { data, isLoading } = useGetAuthConfig();
 
-  const { mutateAsync, isPending } = useSaveAuthConfig({ projectKey: tenantId });
+  const { mutateAsync, isPending } = useSaveAuthConfig();
 
   const form = useForm<SelfSignUpFormType>({
     defaultValues: selfSignUpFormDefaultValues,
@@ -25,12 +23,11 @@ export const SelfSignup = () => {
 
   const submitHandler = async (values: SelfSignUpFormType) => {
     try {
-      if (!tenantId || !data) return showErrorToast({ errors: "Something went wrong" });
+      if (!data) return showErrorToast({ errors: "Something went wrong" });
 
       const res = await mutateAsync({
         ...data,
         ...values,
-        projectKey: tenantId,
       });
 
       if (!res.isSuccess) return showErrorToast({ errors: res.errors });

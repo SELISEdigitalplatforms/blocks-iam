@@ -48,7 +48,6 @@ export interface ISaveSsoCredentialPayload {
   clientId: string;
   clientSecret: string;
   redirectUrl: string;
-  projectKey: string;
   initialRoles: string[];
   initialPermissions: string[];
 }
@@ -61,7 +60,6 @@ export interface ISaveSsoCredentialResponse {
 
 export interface IDeleteSsoCredentialPayload {
   itemId: string;
-  projectKey: string;
 }
 
 export interface IDeleteSsoCredentialResponse {
@@ -70,20 +68,16 @@ export interface IDeleteSsoCredentialResponse {
 }
 export interface IGetSsoCredentialByIdPayload {
   itemId: string;
-  projectKey: string;
 }
 
 export interface IGetSsoCredentialByIdResponse extends ISsoProviderConfiguration {}
-export interface IGetSsoCredentialsPayload {
-  projectKey: string;
-}
+export interface IGetSsoCredentialsPayload {}
 
 export type IGetSsoCredentialsResponse = ISsoProviderConfiguration[];
 
 export interface IUpdateSsoCredentialStatusPayload {
   itemId: string;
   isEnabled: boolean;
-  projectKey: string;
 }
 
 export interface IUpdateSsoCredentialStatusResponse {

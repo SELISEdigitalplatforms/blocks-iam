@@ -17,7 +17,7 @@ import { PasswordInput } from "@/components/password-input";
 import { getApiUrl } from "@/lib/get-api-path";
 
 export const signinByEmail = async (
-  payload: ISigninByEmailPayload & { projectKey: string }
+  payload: ISigninByEmailPayload
 ): Promise<ISigninByEmailResponse> => {
   try {
     const url = getApiUrl("idp/v1", "auth/login");
@@ -26,10 +26,6 @@ export const signinByEmail = async (
       "Content-Type": "application/json",
       accept: "*/*",
     };
-
-    if (payload.projectKey) {
-      headers["X-Blocks-Key"] = payload.projectKey;
-    }
 
     const body = JSON.stringify({
       username: payload.username,
@@ -79,7 +75,7 @@ export const signinByEmail = async (
 };
 
 export const OidcSigninForm = () => {
-  const { themeColor, projectKey, clientId, scope, state, redirectUri, nonce } = useOIDCContext();
+  const { themeColor, clientId, scope, state, redirectUri, nonce } = useOIDCContext();
   const navigate = useNavigate();
   const { setAuthenticated } = useAuthStore();
   const [isPending, setIsPending] = useState(false);
@@ -91,16 +87,10 @@ export const OidcSigninForm = () => {
 
   const onSubmitHandler = async (values: z.infer<typeof signinFormSchema>) => {
     try {
-      if (!projectKey) {
-        showErrorToast({ errors: "Project key is required" });
-        return;
-      }
-
       setIsPending(true);
       const res = await signinByEmail({
         username: values.username,
         password: values.password,
-        projectKey,
         ...(clientId && { clientId }),
         ...(scope && { scope }),
         ...(state && { state }),

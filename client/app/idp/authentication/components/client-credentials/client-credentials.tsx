@@ -4,8 +4,7 @@ import { useGetAuthConfig } from "@blocks-idp/authentication/hooks/use-auth-conf
 import { ClientCredentialList } from "./client-credentials-list";
 
 export const ClientCredentials = () => {
-  const { tenantId } = useProjectStore().selectedProject || { tenantId: "" };
-  const { isLoading } = useGetAuthConfig({ projectKey: tenantId });
+  const { isLoading } = useGetAuthConfig();
 
   // const isClientCredentialAllowed = authConfig?.allowedGrantTypes?.includes(GRANT_TYPES.clientCredential);
 

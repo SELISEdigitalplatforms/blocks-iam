@@ -8,7 +8,6 @@ import { format } from "date-fns";
 import { IClientCredentialsConfig } from "@blocks-idp/authentication/models/auth.oidc.model";
 import { Button } from "@/components/ui-kits/button/button";
 import { useDeleteAuthClient } from "@blocks-idp/authentication/hooks/use-auth-clients";
-import { useProjectStore } from "@/store/useProjectStore";
 import { showErrorToast, showSuccessToast } from "@/hooks/use-toast";
 import { Dialog } from "@/components/ui-kits/dialog/dialog";
 import ConfirmationModal from "@/components/confirmation-modal/confirmation-modal";
@@ -29,16 +28,12 @@ type ClientInfoCardProps = {
 
 export const ClientCredentialsCard = ({ clientCredential }: ClientInfoCardProps) => {
   const [open, setOpen] = useState<boolean>(false);
-  const tenantId = useProjectStore().selectedProject?.tenantId || "";
-  const { mutateAsync, isPending } = useDeleteAuthClient({
-    projectKey: tenantId,
-  });
+  const { mutateAsync, isPending } = useDeleteAuthClient();
 
   const handleConfirmDelete = async (id: string) => {
     try {
       const payload = {
         itemId: id,
-        projectKey: tenantId,
       };
       const res = await mutateAsync(payload);
       if (!res.isSuccess) return showErrorToast({ errors: res.error });

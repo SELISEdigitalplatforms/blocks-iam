@@ -89,28 +89,23 @@ class HttpClient {
     if (isRefreshing) return;
     isRefreshing = true;
     try {
-      const isLocalhost = this.isLocalhost();
       const authStore = useAuthStore.getState();
       const clientId = sessionStorage.getItem("blocks-auth-client-id") || "";
-
-      // For localhost, use stored refresh token; for remote, use empty string (cookie-based)
-      const refreshToken = isLocalhost ? (authStore.refreshToken || '""') : '""';
       const url = `${this.baseURL}${AUTH_ENDPOINTS.REFRESH}`;
 
       const response = await fetch(url, {
         method: "POST",
         body: JSON.stringify({
-          refreshToken,
           clientId,
         }),
         headers: {
           "Content-Type": "application/json",
           "X-Blocks-Key": this.BLOCKS_KEY,
-          ...(isLocalhost && authStore.accessToken && {
+          ...(authStore.accessToken && {
             Authorization: `Bearer ${authStore.accessToken}`,
           }),
         },
-        credentials: isLocalhost ? "same-origin" : "include",
+        credentials: "include",
       });
 
       if (!response.ok) {
@@ -119,8 +114,11 @@ class HttpClient {
 
       const data = await response.json();
 
-      // For localhost, save the new tokens
-      if (isLocalhost && data.access_token && data.refresh_token) {
+      if (data.mode === "impersonation" || data.mode === "root") {
+        authStore.setAuthMode(data.mode, data.reason ?? null);
+      }
+
+      if (data.access_token && data.refresh_token) {
         authStore.setTokens(data.access_token, data.refresh_token);
       }
 

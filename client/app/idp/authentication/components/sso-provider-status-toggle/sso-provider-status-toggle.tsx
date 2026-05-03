@@ -22,12 +22,11 @@ export const SSoProviderStatusToggle = ({
 
   const udpateStatus = async () => {
     try {
-      if (!configuration.itemId || !tenantId)
+      if (!configuration.itemId)
         return showErrorToast({ errors: "Something went wrong" });
 
       const res = await mutateAsync({
         itemId: configuration.itemId,
-        projectKey: tenantId,
         isEnabled: !configuration.isDisabled,
       });
 

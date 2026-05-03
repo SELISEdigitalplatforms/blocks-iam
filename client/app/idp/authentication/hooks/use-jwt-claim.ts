@@ -17,8 +17,8 @@ export const useAddJwtClaim = () => {
 
 export const useGetJwtClaim = (payload: GetJwtClaimPayload, enabled: boolean = true) => {
   return useQuery({
-    queryKey: ["get-jwt-claim", payload.projectKey],
+    queryKey: ["get-jwt-claim", payload.itemId],
     queryFn: () => projectService.getJwtClaim(payload),
-    enabled: !!payload.projectKey && enabled,
+    enabled: !!payload.itemId && enabled,
   });
 };

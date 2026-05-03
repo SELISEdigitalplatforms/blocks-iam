@@ -16,8 +16,20 @@ import { useState } from "react";
 import { Captcha } from "@/components/captcha";
 import { useTheme } from "@/hooks/use-theme";
 import { isErrorWithErrors } from "@/lib/error";
+import { buildOIDCNavigationUrl, getCurrentOIDCParams } from "@blocks-idp/authentication/utils/oidc-utils";
 
-export const SigninForm = () => {
+type SigninFormProps = {
+  mode?: "default" | "oidc";
+  oidcContext?: {
+    clientId?: string;
+    scope?: string;
+    state?: string;
+    nonce?: string;
+    redirectUri?: string;
+  };
+};
+
+export const SigninForm = ({ mode = "default", oidcContext }: SigninFormProps) => {
   const { theme } = useTheme();
   const navigate = useNavigate();
   const { setAuthenticated, setTokens } = useAuthStore();
@@ -29,8 +41,22 @@ export const SigninForm = () => {
   const { isPending, mutateAsync } = useSigninByEmail();
   const onSubmitHandler = async (values: z.infer<typeof signinFormSchema>) => {
     try {
-      const res = await mutateAsync(values);
-      if (res.enable_mfa) return navigate(`/mfa-check?mfa_id=${res.mfaId}&mfa_type=${res.mfaType}`);
+      const requestPayload = mode === "oidc"
+        ? {
+            ...values,
+            clientId: oidcContext?.clientId,
+            scope: oidcContext?.scope,
+            state: oidcContext?.state,
+            redirectUri: oidcContext?.redirectUri,
+            nonce: oidcContext?.nonce,
+          }
+        : values;
+
+      const res = await mutateAsync(requestPayload);
+      if (res.enable_mfa) {
+        const mfaPath = `/mfa-check?mfa_id=${res.mfaId}&mfa_type=${res.mfaType}`;
+        return navigate(mode === "oidc" ? buildOIDCNavigationUrl(mfaPath) : mfaPath);
+      }
 
       // For localhost, save tokens in store for Authorization Bearer
       const isLocalhost = getRuntimeEnv("BLOCKS_API_BASE_URL")?.includes("localhost");
@@ -39,7 +65,13 @@ export const SigninForm = () => {
       }
 
       setAuthenticated();
-      navigate("/console");
+      if (mode === "oidc") {
+        const params = getCurrentOIDCParams();
+        params.set("userName", values.username);
+        navigate(`/oidc/permission?${params.toString()}`);
+      } else {
+        navigate("/console");
+      }
     } catch (error: unknown) {
       if (isErrorWithErrors(error)) {
         showErrorToast({ errors: error.errors.error_description || `Something went wrong` });
@@ -53,6 +85,12 @@ export const SigninForm = () => {
   } = form;
   const googleSiteKey = getRuntimeEnv("BLOCKS_GOOGLE_SITE_KEY") || "";
   const isTokenNeed = submitCount >= 3;
+  const forgotPasswordUrl = mode === "oidc"
+    ? (() => {
+        const target = buildOIDCNavigationUrl("/forgot-password");
+        return `${target}${target.includes("?") ? "&" : "?"}mode=oidc`;
+      })()
+    : "/forgot-password";
 
   return (
     <Form {...form}>
@@ -84,7 +122,7 @@ export const SigninForm = () => {
           )}
         />
 
-        <Link to="/forgot-password" className="ml-auto inline-block text-sm text-primary">
+        <Link to={forgotPasswordUrl} className="ml-auto inline-block text-sm text-primary">
           Forgot password?
         </Link>
         {isTokenNeed && (

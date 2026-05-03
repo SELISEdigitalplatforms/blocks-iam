@@ -9,7 +9,6 @@ import {
   CardTitle,
 } from "@/components/ui-kits/card/card";
 import { Button } from "@/components/ui-kits/button/button";
-import { useProjectStore } from "@/store/useProjectStore";
 import { useGetSavedPublicCertificates } from "@blocks-idp/authentication/hooks/use-identifier";
 import { Waypoints } from "lucide-react";
 import { Skeleton } from "@/components/ui-kits/skeleton/skeleton";
@@ -61,11 +60,10 @@ const LoadingSkelton = () => {
 };
 
 export const Certificates = () => {
-  const projectKey = useProjectStore().selectedProject?.tenantId ?? "";
-  const { isLoading, data: existingCertificate } = useGetSavedPublicCertificates(projectKey);
+  const { isLoading, data: existingCertificate } = useGetSavedPublicCertificates();
   const { data: jwtClaimData, isLoading: isJwtClaimLoading } = useGetJwtClaim(
-    { projectKey, itemId: "" },
-    !!projectKey && !!existingCertificate?.isConfigured,
+    { itemId: "" },
+    !!existingCertificate?.isConfigured,
   );
   const [isJwtClaimModalOpen, setIsJwtClaimModalOpen] = useState<boolean>(false);
   const handleJwtClaim = () => {

@@ -33,10 +33,9 @@ import { authConfigFormDefaultValues, authConfigFormSchema } from "./utils";
 
 export const EditGeneralSettings = () => {
   const [open, setOpen] = useState<boolean>(false);
-  const { tenantId } = useProjectStore().selectedProject || { tenantId: "" };
-  const { data } = useGetAuthConfig({ projectKey: tenantId });
+  const { data } = useGetAuthConfig();
 
-  const { mutateAsync, isPending } = useSaveAuthConfig({ projectKey: tenantId });
+  const { mutateAsync, isPending } = useSaveAuthConfig();
 
   const form = useForm<z.infer<typeof authConfigFormSchema>>({
     defaultValues: authConfigFormDefaultValues,
@@ -56,12 +55,11 @@ export const EditGeneralSettings = () => {
 
   const submitHandler = async (values: z.infer<typeof authConfigFormSchema>) => {
     try {
-      if (!tenantId || !data) return showErrorToast({ errors: "Something went wrong" });
+      if (!data) return showErrorToast({ errors: "Something went wrong" });
 
       const res = await mutateAsync({
         ...data,
         ...values,
-        projectKey: tenantId,
       });
 
       if (!res.isSuccess) return showErrorToast({ errors: res.errors });

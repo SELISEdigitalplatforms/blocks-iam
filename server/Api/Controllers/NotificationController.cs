@@ -1,4 +1,4 @@
-﻿using Blocks.Genesis;
+using Blocks.Genesis;
 using CloudConfiguration.DomainService.Notification.Entities;
 using CloudConfiguration.DomainService.Notification.RequestModel;
 using CloudConfiguration.DomainService.Notification.ResponseModel;
@@ -13,20 +13,16 @@ namespace BlocksTemplate.Api.Controllers
     public class NotificationController : ControllerBase
     {
         private readonly IConfigurationService _configurationService;
-        private readonly ChangeControllerContext _changeControllerContext;
 
-        public NotificationController(IConfigurationService configurationService,
-                                       ChangeControllerContext changeControllerContext)
+        public NotificationController(IConfigurationService configurationService)
         {
             _configurationService = configurationService;
-            _changeControllerContext = changeControllerContext;
         }
 
         [HttpPost]
         [ProtectedEndPoint]
         public async Task<BaseResponse> Save([FromBody] SaveNotificatonConfigurationRequest request)
         {
-            _changeControllerContext.ChangeContext(request);
             return await _configurationService.SaveNotificationConfigurationAsync(request);
         }
 
@@ -34,7 +30,6 @@ namespace BlocksTemplate.Api.Controllers
         [ProtectedEndPoint]
         public async Task<GetNotificationConfigurationsResponse> Gets([FromQuery] GetNotificationConfigurationsRequest request)
         {
-            _changeControllerContext.ChangeContext(request);
             return await _configurationService.GetNotificationConfigurationsAsync(request);
         }
 
@@ -42,7 +37,6 @@ namespace BlocksTemplate.Api.Controllers
         [ProtectedEndPoint]
         public async Task<NotificationConfiguration> Get([FromQuery] GetNotificationConfigurationRequest request)
         {
-            _changeControllerContext.ChangeContext(request);
             return await _configurationService.GetNotificatoinConfigurationAsync(request);
         }
 
@@ -50,7 +44,6 @@ namespace BlocksTemplate.Api.Controllers
         [ProtectedEndPoint]
         public async Task<BaseResponse> Delete([FromQuery] DeleteNotificatoinConfigurationRequest request)
         {
-            _changeControllerContext.ChangeContext(request);
             return await _configurationService.DeleteNotificationConfigurationAsync(request);
         }
     }

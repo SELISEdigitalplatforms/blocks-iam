@@ -12,10 +12,8 @@ import {
 import { AUTH_CLIENT_ENDPOINTS } from "../constants/endpoint.constant";
 
 export class AuthClientsService {
-  getClientCredentials(payload: IGetClientsPayload): Promise<IClientConfigResponse[]> {
-    return http.get(
-      `${AUTH_CLIENT_ENDPOINTS.GET_CLIENT_CREDENTIALS}?ProjectKey=${payload.projectKey}`,
-    );
+  getClientCredentials(_payload?: IGetClientsPayload): Promise<IClientConfigResponse[]> {
+    return http.get(AUTH_CLIENT_ENDPOINTS.GET_CLIENT_CREDENTIALS);
   }
 
   saveClientCredential(

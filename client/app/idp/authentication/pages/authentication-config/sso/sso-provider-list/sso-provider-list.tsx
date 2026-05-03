@@ -25,10 +25,9 @@ const LoadingSkelton = () => {
 };
 
 export const SSOProviderList = () => {
-  const { tenantId } = useProjectStore().selectedProject || { tenantId: "" };
-  const { isLoading } = useGetAuthConfig({ projectKey: tenantId });
+  const { isLoading } = useGetAuthConfig();
 
-  const { data } = useGetSsoCredentials({ projectKey: tenantId });
+  const { data } = useGetSsoCredentials();
 
   const providers = useMemo(() => {
     const configuredMap = new Map(data?.map((item) => [item.provider, item]));

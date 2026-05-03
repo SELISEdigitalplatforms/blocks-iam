@@ -7,10 +7,14 @@ interface AuthState {
   user: User | null;
   accessToken: string | null;
   refreshToken: string | null;
+  authMode: "root" | "impersonation";
+  restoreReason: string | null;
   setUser: (user: User | null) => void;
   setAuthenticated: () => void;
   setUnAuthenticated: () => void;
   setTokens: (accessToken: string, refreshToken: string) => void;
+  setAuthMode: (mode: "root" | "impersonation", reason?: string | null) => void;
+  clearRestoreReason: () => void;
   clearTokens: () => void;
   reset: () => void;
 }
@@ -22,6 +26,8 @@ export const useAuthStore = create<AuthState>()(
       user: null,
       accessToken: null,
       refreshToken: null,
+      authMode: "root",
+      restoreReason: null,
       setUser: (user: User | null) => {
         set((state) => ({ ...state, user }));
       },
@@ -34,6 +40,12 @@ export const useAuthStore = create<AuthState>()(
       setTokens: (accessToken: string, refreshToken: string) => {
         set((state) => ({ ...state, accessToken, refreshToken }));
       },
+      setAuthMode: (mode: "root" | "impersonation", reason?: string | null) => {
+        set((state) => ({ ...state, authMode: mode, restoreReason: reason ?? null }));
+      },
+      clearRestoreReason: () => {
+        set((state) => ({ ...state, restoreReason: null }));
+      },
       clearTokens: () => {
         set((state) => ({ ...state, accessToken: null, refreshToken: null }));
       },
@@ -43,6 +55,8 @@ export const useAuthStore = create<AuthState>()(
           user: null,
           accessToken: null,
           refreshToken: null,
+          authMode: "root",
+          restoreReason: null,
         });
       },
     }),

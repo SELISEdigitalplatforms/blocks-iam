@@ -1,5 +1,4 @@
 interface OIDCParams {
-  projectKey?: string;
   userName?: string;
   logoUrl?: string;
   themeColor: string;
@@ -67,7 +66,6 @@ export const extractOIDCParams = (debug = false): OIDCParams => {
   const hash = window.location.hash;
   const fullUrl = window.location.href;
 
-  let projectKey = searchParams.get("x-blocks-key") || undefined;
   let userName = searchParams.get("userName") || undefined;
   let clientId = searchParams.get("clientId") || undefined;
   let logoUrl = searchParams.get("logoUrl") || undefined;
@@ -102,9 +100,6 @@ export const extractOIDCParams = (debug = false): OIDCParams => {
         if (!logoUrl) {
           logoUrl = hashParams.get("logoUrl") || undefined;
         }
-        if (!projectKey) {
-          projectKey = hashParams.get("x-blocks-key") || undefined;
-        }
         if (!clientId) {
           clientId = hashParams.get("clientId") || undefined;
         }
@@ -132,9 +127,6 @@ export const extractOIDCParams = (debug = false): OIDCParams => {
           }
           if (!logoUrl && hashParams.has("logoUrl")) {
             logoUrl = hashParams.get("logoUrl") || undefined;
-          }
-          if (!projectKey && hashParams.has("x-blocks-key")) {
-            projectKey = hashParams.get("x-blocks-key") || undefined;
           }
           if (!clientId && hashParams.has("clientId")) {
             clientId = hashParams.get("clientId") || undefined;
@@ -173,7 +165,6 @@ export const extractOIDCParams = (debug = false): OIDCParams => {
   const normalizedThemeColor = normalizeColorValue(themeColor);
 
   const result = {
-    projectKey,
     userName,
     logoUrl,
     themeColor: normalizedThemeColor,
@@ -195,7 +186,6 @@ export const buildOIDCNavigationUrl = (path: string): string => {
   const params = extractOIDCParams(); 
   const searchParams = new URLSearchParams();
 
-  if (params.projectKey) searchParams.set("x-blocks-key", params.projectKey);
   if (params.userName) searchParams.set("userName", params.userName);
   if (params.clientId) searchParams.set("clientId", params.clientId);
   if (params.logoUrl) searchParams.set("logoUrl", params.logoUrl);
@@ -220,7 +210,6 @@ export const getCurrentOIDCParams = (): URLSearchParams => {
   const params = extractOIDCParams(); 
   const searchParams = new URLSearchParams();
 
-  if (params.projectKey) searchParams.set("x-blocks-key", params.projectKey);
   if (params.userName) searchParams.set("userName", params.userName);
   if (params.clientId) searchParams.set("clientId", params.clientId);
   if (params.logoUrl) searchParams.set("logoUrl", params.logoUrl);

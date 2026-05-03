@@ -2,7 +2,6 @@ import { Button } from "@/components/ui-kits/button/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui-kits/card/card";
 import { Form } from "@/components/ui-kits/form/form";
 import { showErrorToast, showSuccessToast } from "@/hooks/use-toast";
-import { useProjectStore } from "@/store/useProjectStore";
 import {
   useSaveGetOIDCCredential,
   useSaveOIDCCredential,
@@ -90,8 +89,7 @@ const schema = ssoProviderConfigBaseSchema.extend({
 });
 
 export const SSOProviderConfigBlocksForm: React.FC<SsoConfigForms> = () => {
-  const tenantId = useProjectStore()?.selectedProject?.tenantId || "";
-  const { data: existingConfiguration } = useSaveGetOIDCCredential(tenantId);
+  const { data: existingConfiguration } = useSaveGetOIDCCredential();
   const { mutateAsync } = useSaveOIDCCredential();
 
   const mapResponseToFormValue = (configuration?: IGetOIDCCredentialResponse): FormValue => ({
@@ -116,7 +114,6 @@ export const SSOProviderConfigBlocksForm: React.FC<SsoConfigForms> = () => {
       scope: data.scope.join(" "),
       isAutoRedirect: data.isAutoRedirect === "true",
       itemId: existingConfiguration?.itemId ?? "",
-      projectKey: tenantId,
     };
     const res = await mutateAsync(payload);
 

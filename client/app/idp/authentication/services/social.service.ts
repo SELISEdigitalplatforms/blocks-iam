@@ -15,16 +15,14 @@ import {
 import { SSO_ENDPOINTS, AUTH_OIDC_ENDPOINTS } from "../constants/endpoint.constant";
 
 export class SSOService {
-  getSsoCredentials(payload: IGetSsoCredentialsPayload): Promise<IGetSsoCredentialsResponse> {
-    return http.get(`${SSO_ENDPOINTS.GET_SSO_CREDENTIALS}?ProjectKey=${payload.projectKey}`);
+  getSsoCredentials(_payload?: IGetSsoCredentialsPayload): Promise<IGetSsoCredentialsResponse> {
+    return http.get(SSO_ENDPOINTS.GET_SSO_CREDENTIALS);
   }
 
   getSsoCredentialId(
     payload: IGetSsoCredentialByIdPayload,
   ): Promise<IGetSsoCredentialByIdResponse> {
-    return http.get(
-      `${SSO_ENDPOINTS.GET_SSO_CREDENTIAL}?itemId=${payload.itemId}&projectKey=${payload.projectKey}`,
-    );
+    return http.get(`${SSO_ENDPOINTS.GET_SSO_CREDENTIAL}?itemId=${payload.itemId}`);
   }
 
   saveSsoCredential(payload: ISaveSsoCredentialPayload): Promise<ISaveSsoCredentialResponse> {
@@ -45,8 +43,8 @@ export class SSOService {
     return http.post(AUTH_OIDC_ENDPOINTS.SAVE_OIDC_CLIENT, payload);
   }
 
-  getBlocksSsoCredential(projectKey: string): Promise<IGetOIDCCredentialResponse> {
-    return http.get(`${AUTH_OIDC_ENDPOINTS.GET_OIDC_CLIENT}?ProjectKey=${projectKey}`);
+  getBlocksSsoCredential(): Promise<IGetOIDCCredentialResponse> {
+    return http.get(AUTH_OIDC_ENDPOINTS.GET_OIDC_CLIENT);
   }
 }
 
