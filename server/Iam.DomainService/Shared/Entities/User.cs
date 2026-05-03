@@ -39,6 +39,7 @@ namespace Iam.DomainService.Entities
         public List<UserMfaEnrollment> MfaMethods { get; set; } = [];
         public DateTime FirstLoggedInTime { get; set; }
         public DateTime LastLoggedInTime { get; set; }
+        public string? LastUsedOrganizationId { get; set; }
         public string LastLoggedInDeviceInfo { get; set; } = string.Empty;
         public int LogInCount { get; set; }
         public List<UserLogInType> AllowedLogInType { get; set; } = new List<UserLogInType>();

@@ -4,40 +4,7 @@
         <name>Api</name>
     </assembly>
     <members>
-        <member name="T:Api.Controllers.MigrationController">
-            <summary>
-            Controller for handling migration operations between projects.
-            </summary>
-        </member>
-        <member name="M:Api.Controllers.MigrationController.#ctor(DomainService.Migration.IMigrationService,DomainService.Migration.Services.IMigrationRepository,Blocks.Genesis.IMessageClient)">
-            <summary>
-            Initializes a new instance of the MigrationController.
-            </summary>
-            <param name="migrationService">The migration service.</param>
-            <param name="migrationRepository">The migration repository.</param>
-        </member>
-        <member name="M:Api.Controllers.MigrationController.Migrate(DomainService.Migration.MigrationRequest)">
-            <summary>
-            
-            </summary>
-            <param name="command"></param>
-            <returns></returns>
-        </member>
-        <member name="M:Api.Controllers.MigrationController.Verify(DomainService.Migration.MigrationVerifyOtpRequest)">
-            <summary>
-            Verifies the OTP code for the migration process.
-            </summary>
-            <param name="command">The OTP verification request containing the verification ID and code.</param>
-            <returns>An <see cref="T:DomainService.Migration.MigrationOtpVerificationResponse"/> indicating whether the OTP is valid.</returns>
-        </member>
-        <member name="M:Api.Controllers.MigrationController.GetMigrationStatus(System.String)">
-            <summary>
-            Gets the migration status for projects with incomplete services.
-            </summary>
-            <param name="tenantGroupId">The tenant group ID to check for migrations.</param>
-            <returns>List of migration trackers with incomplete services.</returns>
-        </member>
-        <member name="M:Blocks.Api.Controllers.AuthorizationController.Authorize(System.String,System.String,System.String,System.String,System.String,System.String,System.String,System.String,System.String,System.String,System.String,System.String,System.String)">
+        <member name="M:Blocks.Api.Controllers.AuthorizationController.Authorize(System.String,System.String,System.String,System.String,System.String,System.String,System.String,System.String,System.String,System.String)">
             <summary>
             OAuth 2.0 Authorization Endpoint (RFC 6749 Section 3.1)
             Initiates authorization code flow with PKCE
@@ -47,18 +14,6 @@
             <summary>
             OAuth 2.0 Token Endpoint (RFC 6749 Section 3.2)
             Supports both authorization_code and refresh_token grants
-            </summary>
-        </member>
-        <member name="M:Blocks.Api.Controllers.AuthorizationController.ExchangeAuthorizationCode">
-            <summary>
-            Exchange authorization code for tokens (RFC 6749 Section 4.1.3)
-            </summary>
-        </member>
-        <member name="M:Blocks.Api.Controllers.AuthorizationController.RotateRefreshToken">
-            <summary>
-            Rotate refresh token (RFC 6749 Section 6)
-            Issues new tokens using refresh_token grant
-            Implements token family tracking for reuse detection
             </summary>
         </member>
         <member name="T:Blocks.Api.Controllers.DiscoveryController">

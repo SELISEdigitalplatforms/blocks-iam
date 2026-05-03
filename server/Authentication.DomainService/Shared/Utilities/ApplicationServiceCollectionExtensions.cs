@@ -43,6 +43,8 @@ namespace DomainService.Utilities
             serviceCollection.AddSingleton<IJwtAccessTokenProvider, JwtAccessTokenProvider>();
 
             serviceCollection.AddSingleton<IAuthenticationService, AuthenticationService>();
+            serviceCollection.AddSingleton<IAuthenticationFlowService, AuthenticationFlowService>();
+            serviceCollection.AddSingleton<IAuthorizationFlowService, AuthorizationFlowService>();
             serviceCollection.AddSingleton<AuthorizeRequestValidator>();
 
             serviceCollection.AddSingleton<OidcSigningKeyMaterial>();
@@ -125,7 +127,6 @@ namespace DomainService.Utilities
             serviceCollection.AddSingleton<IMfaConfigurationService, MfaConfigurationService>();
             serviceCollection.AddSingleton<TotpService>();
             serviceCollection.AddSingleton<EmailOtpService>();
-            serviceCollection.AddSingleton<ChangeControllerContext>();
             serviceCollection.AddHttpContextAccessor();
 
             serviceCollection.AddTransient<IValidator<VerifyOtpRequest>, VerifyOtpRequestValidator>();

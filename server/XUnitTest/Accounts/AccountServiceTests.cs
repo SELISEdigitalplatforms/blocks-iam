@@ -371,7 +371,7 @@ namespace XUnitTest.Accounts
 
             _changePasswordValidatorMock.Setup(x => x.ValidateAsync(request, default)).ReturnsAsync(new ValidationResult());
             _repositoryMock.Setup(x => x.GetUserByIdAsync(user.ItemId)).ReturnsAsync(user);
-            _iamServiceMock.Setup(x => x.HashPassword(request.OldPassword)).Returns("hashed-old-password");
+            _iamServiceMock.Setup(x => x.VerifyPassword(request.OldPassword, user.Password, null)).Returns(true);
             _iamServiceMock.Setup(x => x.HashPassword(request.NewPassword)).Returns("hashed-new-password");
             _repositoryMock.Setup(x => x.UpdateUserAsync(It.IsAny<User>())).ReturnsAsync(true);
             _repositoryMock.Setup(x => x.GetIamConfigurationAsync()).ReturnsAsync(config);
@@ -407,7 +407,7 @@ namespace XUnitTest.Accounts
             var user = new User { ItemId = "user-123", Password = "hashed-old-password" };
             SetupBlocksContext(user.ItemId, "test-tenant");
             _repositoryMock.Setup(x => x.GetUserByIdAsync(user.ItemId)).ReturnsAsync(user);
-            _iamServiceMock.Setup(x => x.HashPassword(request.OldPassword)).Returns("different-hash");
+            _iamServiceMock.Setup(x => x.VerifyPassword(request.OldPassword, user.Password, null)).Returns(false);
 
             // Act
             var result = await _accountService.ProcessChangePasswordAsync(request);
@@ -426,7 +426,7 @@ namespace XUnitTest.Accounts
 
             SetupBlocksContext(user.ItemId, "test-tenant");
             _repositoryMock.Setup(x => x.GetUserByIdAsync(user.ItemId)).ReturnsAsync(user);
-            _iamServiceMock.Setup(x => x.HashPassword(request.OldPassword)).Returns("hashed-old-password");
+            _iamServiceMock.Setup(x => x.VerifyPassword(request.OldPassword, user.Password, null)).Returns(true);
             _iamServiceMock.Setup(x => x.HashPassword(request.NewPassword)).Returns("hashed-new-password");
             _repositoryMock.Setup(x => x.UpdateUserAsync(It.IsAny<User>())).ReturnsAsync(true);
             _repositoryMock.Setup(x => x.GetIamConfigurationAsync()).ReturnsAsync(config);

@@ -278,8 +278,8 @@ namespace Iam.DomainService.Accounts
                 return false;
             }
 
-            var oldhash = _identityAccessManagementService.HashPassword(changePasswordRequest.OldPassword);
-            if (!oldhash.Equals(user.Password))
+            var passwordMatched = _identityAccessManagementService.VerifyPassword(changePasswordRequest.OldPassword, user.Password);
+            if (!passwordMatched)
             {
                 _logger.LogError("Password not matched");
                 return false;

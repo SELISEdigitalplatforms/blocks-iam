@@ -23,7 +23,6 @@
     <ProjectReference Include="..\Authentication.DomainService\Authentication.DomainService.csproj" />
     <ProjectReference Include="..\Captcha.DomainService\Captcha.DomainService.csproj" />
     <ProjectReference Include="..\Cloud.DomainService\Cloud.DomainService.csproj" />
-    <ProjectReference Include="..\Cloud.LmtService\Cloud.LmtService.csproj" />
     <ProjectReference Include="..\CloudConfiguration.DomainService\CloudConfiguration.DomainService.csproj" />
 
     <ProjectReference Include="..\Iam.DomainService\Iam.DomainService.csproj" />

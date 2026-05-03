@@ -57,28 +57,6 @@ namespace Api.Controllers
         }
 
         [HttpPost]
-        public async Task<IActionResult> Recover([FromBody] RecoveryUserRequest command)
-        {
-            var result = await _accountService.RecoverAccountAsync(command);
-            return result.IsSuccess ? Ok(result) : BadRequest(result);
-        }
-
-        [HttpPost]
-        public async Task<IActionResult> ResetPassword([FromBody] ResetPasswordRequest command)
-        {
-            var result = await _accountService.ResetAccountPasswordAsync(command);
-            return result.IsSuccess ? Ok(result) : BadRequest(result);
-        }
-
-        [HttpPost]
-        [ProtectedEndPoint]
-        public async Task<IActionResult> ChangePassword([FromBody] ChangePasswordRequest command)
-        {
-            var result = await _accountService.ChangePasswordAsync(command);
-            return result.IsSuccess ? Ok(result) : BadRequest(result);
-        }
-
-        [HttpPost]
         public async Task<IActionResult> ResendActivation([FromBody] ResendActivationRequest command)
         {
             var result = await _accountService.ResendActivationAsync(command);

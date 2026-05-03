@@ -5,6 +5,7 @@ using DomainService.OAuth.ResponseModel;
 using DomainService.Services;
 using Iam.DomainService.Entities;
 using Microsoft.Extensions.Logging;
+using BCryptNet = BCrypt.Net.BCrypt;
 
 namespace DomainService.OAuth
 {
@@ -48,8 +49,7 @@ namespace DomainService.OAuth
                 };
             }
 
-            var hashedPassword = HashPassword(request.Password);
-            var passwordMatched = user.Password.Equals(hashedPassword);
+            var passwordMatched = VerifyPassword(request.Password, user.Password);
 
             if (!passwordMatched)
             {
@@ -98,11 +98,26 @@ namespace DomainService.OAuth
         private static bool IsUserActiveAndVerified(User user) =>
             user.Active && user.IsVarified;
 
-        public string HashPassword(string password)
+        public string HashPassword(string password, string? optionalSalt = null)
         {
-            var sc = BlocksContext.GetContext();
-            var tenant = _tenants.GetTenantByID(sc?.TenantId);
-            return _cryptoService.Hash(password, tenant?.TenantSalt);
+            return BCryptNet.HashPassword(BuildPasswordMaterial(password, optionalSalt));
+        }
+
+        public bool VerifyPassword(string password, string passwordHash, string? optionalSalt = null)
+        {
+            if (string.IsNullOrWhiteSpace(passwordHash))
+            {
+                return false;
+            }
+
+            return BCryptNet.Verify(BuildPasswordMaterial(password, optionalSalt), passwordHash);
+        }
+
+        private static string BuildPasswordMaterial(string password, string? optionalSalt)
+        {
+            return string.IsNullOrWhiteSpace(optionalSalt)
+                ? password
+                : $"{password}::{optionalSalt}";
         }
     }
 }

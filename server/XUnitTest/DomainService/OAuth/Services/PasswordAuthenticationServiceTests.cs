@@ -8,6 +8,7 @@ using FluentAssertions;
 using Iam.DomainService.Entities;
 using Microsoft.Extensions.Logging;
 using Moq;
+using BCryptNet = BCrypt.Net.BCrypt;
 
 namespace XUnitTest.DomainService.OAuth.Services
 {
@@ -54,7 +55,6 @@ namespace XUnitTest.DomainService.OAuth.Services
             result.Should().NotBeNull();
             result.Error.Should().NotBeNullOrEmpty();
             _oAuthRepository.Verify(x => x.GetUserByUsernameAsync(request.Username, request.OrganizationId), Times.Once);
-            _cryptoService.Verify(x => x.Hash(It.IsAny<string>(), It.IsAny<string>()), Times.Never);
             _oAuthJwtAccessTokenManager.Verify(
                 x => x.ManageTokenAsync(It.IsAny<TokenRequest>(), It.IsAny<AuthenticationConfiguration>(), It.IsAny<User>(), It.IsAny<StateInfo>()),
                 Times.Never);
@@ -72,7 +72,7 @@ namespace XUnitTest.DomainService.OAuth.Services
                 GrantType = "password"
             };
             var authConfig = new AuthenticationConfiguration();
-            var hashedPassword = "hashed-password-xyz";
+            var hashedPassword = BCryptNet.HashPassword(request.Password);
             var tenant = new Tenant
             {
                 TenantId = "tenant-123",
@@ -107,9 +107,6 @@ namespace XUnitTest.DomainService.OAuth.Services
             _tenants
                 .Setup(x => x.GetTenantByID(It.IsAny<string>()))
                 .Returns(tenant);
-            _cryptoService
-                .Setup(x => x.Hash(request.Password, tenant.TenantSalt))
-                .Returns(hashedPassword);
             _oAuthJwtAccessTokenManager
                 .Setup(x => x.ManageTokenAsync(request, authConfig, user, null))
                 .ReturnsAsync(expectedTokenResponse);
@@ -124,65 +121,35 @@ namespace XUnitTest.DomainService.OAuth.Services
             result.RefreshToken.Should().Be("refresh-token-456");
             result.Error.Should().BeNullOrEmpty();
             _oAuthRepository.Verify(x => x.GetUserByUsernameAsync(request.Username, request.OrganizationId), Times.Once);
-            _cryptoService.Verify(x => x.Hash(request.Password, tenant.TenantSalt), Times.Once);
             _oAuthJwtAccessTokenManager.Verify(x => x.ManageTokenAsync(request, authConfig, user, null), Times.Once);
         }
 
         [Fact]
-        public void HashPassword_WithValidTenant_ReturnsHashedPassword()
+        public void HashPassword_ReturnsBcryptHash()
         {
             // Arrange
             var password = "mySecurePassword123";
-            var tenant = new Tenant
-            {
-                TenantId = "tenant-456",
-                TenantSalt = "salt-xyz",
-                ApplicationDomain = "example.com",
-                DbConnectionString = "Server=test;Database=test;",
-                JwtTokenParameters = new JwtTokenParameters()
-                {
-                    PrivateCertificatePassword = "test-private-cert-password",
-                    IssueDate = DateTime.UtcNow
-                }
-            };
-            var expectedHash = "hashed-password-result";
-
-            _tenants
-                .Setup(x => x.GetTenantByID(It.IsAny<string>()))
-                .Returns(tenant);
-            _cryptoService
-                .Setup(x => x.Hash(password, tenant.TenantSalt))
-                .Returns(expectedHash);
 
             // Act
             var result = _service.HashPassword(password);
 
             // Assert
-            result.Should().Be(expectedHash);
-            _tenants.Verify(x => x.GetTenantByID(It.IsAny<string>()), Times.Once);
-            _cryptoService.Verify(x => x.Hash(password, tenant.TenantSalt), Times.Once);
+            result.Should().NotBeNullOrWhiteSpace();
+            BCryptNet.Verify(password, result).Should().BeTrue();
         }
 
         [Fact]
-        public void HashPassword_WithNullTenant_CallsHashWithNullSalt()
+        public void VerifyPassword_WithMatchingHash_ReturnsTrue()
         {
             // Arrange
             var password = "mySecurePassword123";
-            var expectedHash = "hashed-password-without-salt";
-
-            _tenants
-                .Setup(x => x.GetTenantByID(It.IsAny<string>()))
-                .Returns((Tenant)null);
-            _cryptoService
-                .Setup(x => x.Hash(password, null))
-                .Returns(expectedHash);
+            var hash = _service.HashPassword(password);
 
             // Act
-            var result = _service.HashPassword(password);
+            var result = _service.VerifyPassword(password, hash);
 
             // Assert
-            result.Should().Be(expectedHash);
-            _cryptoService.Verify(x => x.Hash(password, null), Times.Once);
+            result.Should().BeTrue();
         }
     }
 }

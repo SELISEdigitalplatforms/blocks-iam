@@ -1,8 +1,0 @@
-﻿<Project Sdk="Microsoft.NET.Sdk">
-
-	<ItemGroup>
-		<PackageReference Include="MongoDB.Driver" />
-		<ProjectReference Include="K:\Selise_Projects\l0\blocks-genesis-net\src\Genesis\Blocks.Genesis.csproj" />
-	</ItemGroup>
-
-</Project>
