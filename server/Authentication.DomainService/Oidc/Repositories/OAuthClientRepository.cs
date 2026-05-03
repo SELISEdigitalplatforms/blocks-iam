@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Threading.Tasks;
 using MongoDB.Driver;
+using Blocks.Genesis;
 using Blocks.Genesis.Auth;
 using Microsoft.Extensions.Logging;
 using System.Security.Cryptography;
@@ -11,20 +12,26 @@ namespace DomainService.Oidc.Repositories
 {
     public class OAuthClientRepository : IOAuthClientRepository
     {
-        private readonly IMongoDatabase _database;
+        private readonly IDbContextProvider _dbContextProvider;
         private readonly ILogger<OAuthClientRepository> _logger;
 
-        public OAuthClientRepository(IMongoDatabase database, ILogger<OAuthClientRepository> logger)
+        public OAuthClientRepository(
+            IDbContextProvider dbContextProvider,
+            ILogger<OAuthClientRepository> logger)
         {
-            _database = database;
+            _dbContextProvider = dbContextProvider;
             _logger = logger;
         }
+
+        private IMongoDatabase GetDatabase() =>
+            _dbContextProvider.GetDatabase()
+            ?? throw new InvalidOperationException("No active MongoDB database is available in current Genesis context.");
 
         public async Task<string> CreateAsync(OAuthClientModel client)
         {
             try
             {
-                var collection = _database.GetCollection<OAuthClientModel>("oauth_clients");
+                var collection = GetDatabase().GetCollection<OAuthClientModel>("oauth_clients");
                 await collection.InsertOneAsync(client);
                 _logger.LogInformation($"OAuth client created: {client.ClientId}");
                 return client.ClientId;
@@ -40,7 +47,7 @@ namespace DomainService.Oidc.Repositories
         {
             try
             {
-                var collection = _database.GetCollection<OAuthClientModel>("oauth_clients");
+                var collection = GetDatabase().GetCollection<OAuthClientModel>("oauth_clients");
                 var filter = Builders<OAuthClientModel>.Filter.And(
                     Builders<OAuthClientModel>.Filter.Eq(c => c.ClientId, clientId),
                     Builders<OAuthClientModel>.Filter.Eq(c => c.TenantId, tenantId)
@@ -58,7 +65,7 @@ namespace DomainService.Oidc.Repositories
         {
             try
             {
-                var collection = _database.GetCollection<OAuthClientModel>("oauth_clients");
+                var collection = GetDatabase().GetCollection<OAuthClientModel>("oauth_clients");
                 var filter = Builders<OAuthClientModel>.Filter.Eq(c => c.ClientId, clientId);
                 var client = await collection.Find(filter).FirstOrDefaultAsync();
 
@@ -82,7 +89,7 @@ namespace DomainService.Oidc.Repositories
         {
             try
             {
-                var collection = _database.GetCollection<OAuthClientModel>("oauth_clients");
+                var collection = GetDatabase().GetCollection<OAuthClientModel>("oauth_clients");
                 var filter = Builders<OAuthClientModel>.Filter.Eq(c => c.ClientId, clientId);
                 var client = await collection.Find(filter).FirstOrDefaultAsync();
 
@@ -105,7 +112,7 @@ namespace DomainService.Oidc.Repositories
         {
             try
             {
-                var collection = _database.GetCollection<OAuthClientModel>("oauth_clients");
+                var collection = GetDatabase().GetCollection<OAuthClientModel>("oauth_clients");
                 var filter = Builders<OAuthClientModel>.Filter.Eq(c => c.ClientId, client.ClientId);
                 var result = await collection.ReplaceOneAsync(filter, client);
                 return result.ModifiedCount > 0;
@@ -121,7 +128,7 @@ namespace DomainService.Oidc.Repositories
         {
             try
             {
-                var collection = _database.GetCollection<OAuthClientModel>("oauth_clients");
+                var collection = GetDatabase().GetCollection<OAuthClientModel>("oauth_clients");
                 var filter = Builders<OAuthClientModel>.Filter.Eq(c => c.ClientId, clientId);
                 var result = await collection.DeleteOneAsync(filter);
                 return result.DeletedCount > 0;

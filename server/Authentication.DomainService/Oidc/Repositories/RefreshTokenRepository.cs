@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Threading.Tasks;
 using MongoDB.Driver;
+using Blocks.Genesis;
 using Blocks.Genesis.Auth;
 using Microsoft.Extensions.Logging;
 
@@ -9,20 +10,26 @@ namespace DomainService.Oidc.Repositories
 {
     public class RefreshTokenRepository : IRefreshTokenRepository
     {
-        private readonly IMongoDatabase _database;
+        private readonly IDbContextProvider _dbContextProvider;
         private readonly ILogger<RefreshTokenRepository> _logger;
 
-        public RefreshTokenRepository(IMongoDatabase database, ILogger<RefreshTokenRepository> logger)
+        public RefreshTokenRepository(
+            IDbContextProvider dbContextProvider,
+            ILogger<RefreshTokenRepository> logger)
         {
-            _database = database;
+            _dbContextProvider = dbContextProvider;
             _logger = logger;
         }
+
+        private IMongoDatabase GetDatabase() =>
+            _dbContextProvider.GetDatabase()
+            ?? throw new InvalidOperationException("No active MongoDB database is available in current Genesis context.");
 
         public async Task<string> CreateAsync(RefreshTokenModel token)
         {
             try
             {
-                var collection = _database.GetCollection<RefreshTokenModel>("refresh_tokens");
+                var collection = GetDatabase().GetCollection<RefreshTokenModel>("refresh_tokens");
                 await collection.InsertOneAsync(token);
                 _logger.LogInformation($"Refresh token created for user {token.UserId}, client {token.ClientId}, family {token.FamilyId}");
                 return token.TokenId;
@@ -38,7 +45,7 @@ namespace DomainService.Oidc.Repositories
         {
             try
             {
-                var collection = _database.GetCollection<RefreshTokenModel>("refresh_tokens");
+                var collection = GetDatabase().GetCollection<RefreshTokenModel>("refresh_tokens");
                 var filter = Builders<RefreshTokenModel>.Filter.Eq(t => t.TokenId, tokenId);
                 return await collection.Find(filter).FirstOrDefaultAsync();
             }
@@ -53,7 +60,7 @@ namespace DomainService.Oidc.Repositories
         {
             try
             {
-                var collection = _database.GetCollection<RefreshTokenModel>("refresh_tokens");
+                var collection = GetDatabase().GetCollection<RefreshTokenModel>("refresh_tokens");
                 var filter = Builders<RefreshTokenModel>.Filter.And(
                     Builders<RefreshTokenModel>.Filter.Eq(t => t.UserId, userId),
                     Builders<RefreshTokenModel>.Filter.Eq(t => t.TenantId, tenantId)
@@ -71,7 +78,7 @@ namespace DomainService.Oidc.Repositories
         {
             try
             {
-                var collection = _database.GetCollection<RefreshTokenModel>("refresh_tokens");
+                var collection = GetDatabase().GetCollection<RefreshTokenModel>("refresh_tokens");
                 var filter = Builders<RefreshTokenModel>.Filter.Eq(t => t.FamilyId, familyId);
                 return await collection.Find(filter).ToListAsync();
             }
@@ -86,7 +93,7 @@ namespace DomainService.Oidc.Repositories
         {
             try
             {
-                var collection = _database.GetCollection<RefreshTokenModel>("refresh_tokens");
+                var collection = GetDatabase().GetCollection<RefreshTokenModel>("refresh_tokens");
                 var filter = Builders<RefreshTokenModel>.Filter.Eq(t => t.TokenId, tokenId);
                 var update = Builders<RefreshTokenModel>.Update
                     .Set(t => t.IsRevoked, true)
@@ -107,7 +114,7 @@ namespace DomainService.Oidc.Repositories
         {
             try
             {
-                var collection = _database.GetCollection<RefreshTokenModel>("refresh_tokens");
+                var collection = GetDatabase().GetCollection<RefreshTokenModel>("refresh_tokens");
                 var filter = Builders<RefreshTokenModel>.Filter.Eq(t => t.FamilyId, familyId);
                 var update = Builders<RefreshTokenModel>.Update
                     .Set(t => t.IsRevoked, true)
@@ -129,7 +136,7 @@ namespace DomainService.Oidc.Repositories
         {
             try
             {
-                var collection = _database.GetCollection<RefreshTokenModel>("refresh_tokens");
+                var collection = GetDatabase().GetCollection<RefreshTokenModel>("refresh_tokens");
                 var filter = Builders<RefreshTokenModel>.Filter.Eq(t => t.TokenId, tokenId);
                 var update = Builders<RefreshTokenModel>.Update
                     .Set(t => t.SlidingExpiry, DateTime.UtcNow.AddHours(24));
@@ -148,7 +155,7 @@ namespace DomainService.Oidc.Repositories
         {
             try
             {
-                var collection = _database.GetCollection<RefreshTokenModel>("refresh_tokens");
+                var collection = GetDatabase().GetCollection<RefreshTokenModel>("refresh_tokens");
                 var filter = Builders<RefreshTokenModel>.Filter.Eq(t => t.TokenId, tokenId);
                 var result = await collection.DeleteOneAsync(filter);
                 return result.DeletedCount > 0;
@@ -164,7 +171,7 @@ namespace DomainService.Oidc.Repositories
         {
             try
             {
-                var collection = _database.GetCollection<RefreshTokenModel>("refresh_tokens");
+                var collection = GetDatabase().GetCollection<RefreshTokenModel>("refresh_tokens");
                 var filter = Builders<RefreshTokenModel>.Filter.Lt(t => t.AbsoluteExpiry, DateTime.UtcNow);
                 return await collection.Find(filter).ToListAsync();
             }

@@ -66,12 +66,7 @@ static VaultType ResolveVaultType()
         return parsedVaultType;
     }
 
-    var environment = Environment.GetEnvironmentVariable("ASPNETCORE_ENVIRONMENT") ??
-                      Environment.GetEnvironmentVariable("DOTNET_ENVIRONMENT");
-
-    return string.Equals(environment, "Development", StringComparison.OrdinalIgnoreCase)
-        ? VaultType.OnPrem
-        : VaultType.Azure;
+    return VaultType.Azure;
 }
 
 static void ApplyFrontendRuntimeSettings(IConfiguration configuration, string webRootPath)

@@ -1,4 +1,3 @@
-using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using DomainService.Authentication;
 using System.Text.Json.Serialization;
@@ -21,7 +20,6 @@ namespace Blocks.Api.Controllers
         /// Initiates authorization code flow with PKCE
         /// </summary>
         [HttpGet("authorize")]
-        [AllowAnonymous]
         public async Task<IActionResult> Authorize(
             [FromQuery] string client_id,
             [FromQuery] string response_type,
@@ -51,7 +49,6 @@ namespace Blocks.Api.Controllers
         }
 
         [HttpPost("select-account")]
-        [AllowAnonymous]
         public async Task<IActionResult> SelectAccount([FromBody] SelectAccountSelectionRequest? request)
         {
             return await _authorizationFlowService.SelectAccountAsync(request?.UserId ?? string.Empty, request?.TenantId, Request, Response);
@@ -62,7 +59,6 @@ namespace Blocks.Api.Controllers
         /// Supports both authorization_code and refresh_token grants
         /// </summary>
         [HttpPost("token")]
-        [AllowAnonymous]
         public async Task<IActionResult> Token([FromForm] string grant_type)
         {
             return await _authorizationFlowService.TokenAsync(grant_type, Request);
