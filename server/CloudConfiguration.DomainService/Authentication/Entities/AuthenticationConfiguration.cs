@@ -11,6 +11,7 @@ namespace CloudConfiguration.DomainService.Authentication.Entities
         public List<string> AllowedGrantTypes { get; set; } = [];
         public int AccessTokenValidForNumberMinutes { get; init; } = 7;
         public int RefreshTokenValidForNumberMinutes { get; set; } = 30;
+        public int AbsoluteRefreshTokenValidForNumberMinutes { get; set; } = 30 * 60 * 24;
         public int RememberMeRefreshTokenValidForNumberMinutes { get; init; } = 30 * 60 * 24;
         public int GetNumberOfWrongAttemptsToLockTheAccount { get; set; } = 5;
         public int AccountLockDurationInMinutes { get; set; } = 5;

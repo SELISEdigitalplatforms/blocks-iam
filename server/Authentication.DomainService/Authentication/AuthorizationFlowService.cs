@@ -1,4 +1,5 @@
 using Microsoft.AspNetCore.Mvc;
+using Blocks.Genesis;
 using DomainService.Oidc.Repositories;
 using DomainService.Oidc.Validation;
 using Blocks.Genesis.Auth;
@@ -7,6 +8,7 @@ using DomainService.OAuth.RequestModel;
 using DomainService.OAuth.ResponseModel;
 using DomainService.OAuth;
 using DomainService.OAuth.Services;
+using DomainService.Utilities;
 using Iam.DomainService.Users;
 using Iam.DomainService.Entities;
 using System.Security.Claims;
@@ -37,6 +39,7 @@ namespace DomainService.Authentication
         private readonly IAuthorizationClaimsResolver _authorizationClaimsResolver;
         private readonly IAuthenticationRepository _authenticationRepository;
         private readonly ClientCredentialAuthorizationService _clientCredentialAuthorizationService;
+        private readonly ITenants _tenants;
         private readonly ILogger<AuthorizationFlowService> _logger;
 
         public AuthorizationFlowService(
@@ -52,6 +55,7 @@ namespace DomainService.Authentication
             IAuthorizationClaimsResolver authorizationClaimsResolver,
             IAuthenticationRepository authenticationRepository,
             ClientCredentialAuthorizationService clientCredentialAuthorizationService,
+            ITenants tenants,
             ILogger<AuthorizationFlowService> logger)
         {
             _authCodeRepo = authCodeRepo;
@@ -66,6 +70,7 @@ namespace DomainService.Authentication
             _authorizationClaimsResolver = authorizationClaimsResolver;
             _authenticationRepository = authenticationRepository;
             _clientCredentialAuthorizationService = clientCredentialAuthorizationService;
+            _tenants = tenants;
             _logger = logger;
         }
 
@@ -185,6 +190,11 @@ namespace DomainService.Authentication
                 {
                     resolvedUserId = claimUserId;
                     resolvedTenantId = claimTenantId ?? tenantHint;
+                }
+
+                if (!string.IsNullOrWhiteSpace(resolvedUserId) && !string.IsNullOrWhiteSpace(resolvedTenantId))
+                {
+                    await EnsureIdpSessionAsync(request, response, effectiveSessionId, resolvedUserId, resolvedTenantId);
                 }
 
                 if (string.IsNullOrWhiteSpace(resolvedUserId))
@@ -780,6 +790,76 @@ namespace DomainService.Authentication
         {
             response.Cookies.Delete(PendingSelectedUserCookieName);
             response.Cookies.Delete(PendingSelectedTenantCookieName);
+        }
+
+        private async Task EnsureIdpSessionAsync(HttpRequest request, HttpResponse response, string? currentSessionId, string userId, string tenantId)
+        {
+            var session = string.IsNullOrWhiteSpace(currentSessionId)
+                ? null
+                : await _sessionRepo.GetBySessionIdAsync(currentSessionId);
+
+            if (session == null || session.RevokedAt.HasValue || session.IsExpired())
+            {
+                var newSession = new IdpSessionModel
+                {
+                    SessionId = Guid.NewGuid().ToString("n"),
+                    TenantId = tenantId,
+                    Accounts =
+                    [
+                        new IdpSessionAccount
+                        {
+                            UserId = userId,
+                            TenantId = tenantId,
+                            DisplayName = userId,
+                            LoginAt = DateTime.UtcNow
+                        }
+                    ],
+                    IpAddress = GetClientIpAddress(request),
+                    CreatedAt = DateTime.UtcNow,
+                    LastActivityAt = DateTime.UtcNow,
+                    IdleExpiry = DateTime.UtcNow.AddHours(24),
+                    AbsoluteExpiry = DateTime.UtcNow.AddDays(30)
+                };
+
+                await _sessionRepo.CreateAsync(newSession);
+                SetIdpSessionCookie(response, tenantId, newSession.SessionId, newSession.AbsoluteExpiry);
+                return;
+            }
+
+            var accountExists = session.Accounts.Any(a =>
+                string.Equals(a.UserId, userId, StringComparison.OrdinalIgnoreCase)
+                && string.Equals(a.TenantId, tenantId, StringComparison.OrdinalIgnoreCase));
+
+            if (!accountExists)
+            {
+                await _sessionRepo.AddAccountAsync(session.SessionId, new IdpSessionAccount
+                {
+                    UserId = userId,
+                    TenantId = tenantId,
+                    DisplayName = userId,
+                    LoginAt = DateTime.UtcNow
+                });
+            }
+            else
+            {
+                await _sessionRepo.UpdateActivityAsync(session.SessionId);
+            }
+
+            SetIdpSessionCookie(response, tenantId, session.SessionId, session.AbsoluteExpiry);
+        }
+
+        private void SetIdpSessionCookie(HttpResponse response, string tenantId, string sessionId, DateTime absoluteExpiry)
+        {
+            var cookieDomain = _tenants.GetTenantByID(tenantId)?.CookieDomain;
+            response.Cookies.Append(IdpSessionCookieName, sessionId, new CookieOptions
+            {
+                Domain = string.IsNullOrWhiteSpace(cookieDomain) ? null : cookieDomain,
+                HttpOnly = true,
+                Secure = true,
+                SameSite = SameSiteMode.None,
+                Path = "/",
+                Expires = absoluteExpiry == default ? DateTime.UtcNow.AddDays(30) : absoluteExpiry
+            });
         }
 
         private static string? ResolveEffectiveOrganizationId(User user)

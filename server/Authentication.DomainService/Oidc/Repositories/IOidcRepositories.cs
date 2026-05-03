@@ -44,6 +44,7 @@ namespace DomainService.Oidc.Repositories
         Task<string> CreateAsync(IdpSessionModel session);
         Task<IdpSessionModel> GetBySessionIdAsync(string sessionId);
         Task<bool> AddAccountAsync(string sessionId, IdpSessionAccount account);
+        Task<bool> RemoveAccountAsync(string sessionId, string userId, string tenantId);
         Task<bool> UpdateActivityAsync(string sessionId);
         Task<bool> RevokeAsync(string sessionId);
         Task<bool> DeleteAsync(string sessionId);

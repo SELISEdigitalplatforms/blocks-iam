@@ -13,6 +13,8 @@ using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
+using MongoDB.Bson;
+using MongoDB.Driver;
 using System.IdentityModel.Tokens.Jwt;
 using System.Security.Claims;
 using System.Text;
@@ -288,6 +290,20 @@ namespace DomainService.Authentication
                 };
             }
 
+            var isSharedWithUser = await IsTenantSharedWithUserAsync(userId, request.TargetTenantId);
+            if (!isSharedWithUser)
+            {
+                await WriteImpersonationAuditEventAsync(httpRequest, "impersonation_start_denied", userId, request.TargetTenantId, "WARN", "not_shared_with_user");
+                return new ObjectResult(new
+                {
+                    error = "forbidden",
+                    error_description = "Target tenant is not shared with the requesting user"
+                })
+                {
+                    StatusCode = StatusCodes.Status403Forbidden
+                };
+            }
+
             if (!httpRequest.Cookies.TryGetValue($"{IdpConstants.AccessTokenCookieName}_{rootTenantId}", out var rootAccessToken)
                 || !httpRequest.Cookies.TryGetValue($"{IdpConstants.RefreshTokenCookieName}_{rootTenantId}", out var rootRefreshToken)
                 || string.IsNullOrWhiteSpace(rootAccessToken)
@@ -556,6 +572,25 @@ namespace DomainService.Authentication
             }
 
             return true;
+        }
+
+        private async Task<bool> IsTenantSharedWithUserAsync(string userId, string targetTenantId)
+        {
+            try
+            {
+                var collection = _authenticationRepository.GetCollectionByName<BsonDocument>("ProjectPeoples");
+                var filter = Builders<BsonDocument>.Filter.And(
+                    Builders<BsonDocument>.Filter.Eq("UserId", userId),
+                    Builders<BsonDocument>.Filter.Eq("TenantId", targetTenantId)
+                );
+
+                return await collection.Find(filter).Limit(1).AnyAsync();
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Failed to validate ProjectPeople share for user {UserId} and tenant {TenantId}", userId, targetTenantId);
+                return false;
+            }
         }
 
         private async Task<bool> TryRestoreRootSessionAsync(HttpRequest httpRequest, HttpResponse httpResponse, string reason)

@@ -1,4 +1,7 @@
 using DomainService.Oidc.Repositories;
+using DomainService.Dtos;
+using DomainService.Services;
+using DomainService.Utilities;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using System;
@@ -15,13 +18,16 @@ namespace Blocks.Api.Controllers
     public class TokenManagementController : ControllerBase
     {
         private readonly ITokenRevocationService _revocationService;
+        private readonly IAuthenticationDomainService _authenticationDomainService;
         private readonly ILogger<TokenManagementController> _logger;
 
         public TokenManagementController(
             ITokenRevocationService revocationService,
+            IAuthenticationDomainService authenticationDomainService,
             ILogger<TokenManagementController> logger)
         {
             _revocationService = revocationService;
+            _authenticationDomainService = authenticationDomainService;
             _logger = logger;
         }
 
@@ -53,6 +59,12 @@ namespace Blocks.Api.Controllers
                 }
 
                 _logger.LogInformation($"Token revoked successfully, hint: {token_type_hint}");
+
+                var userId = User.FindFirst("sub")?.Value ?? string.Empty;
+                await PublishTimelineAsync(
+                    userId,
+                    $"oidc_revoke_{(string.IsNullOrWhiteSpace(token_type_hint) ? "token" : token_type_hint)}",
+                    "call_api_to_oidc_revoke");
 
                 // RFC 7009: Always return 200 OK on revocation request
                 // Even if token doesn't exist or is invalid
@@ -87,6 +99,12 @@ namespace Blocks.Api.Controllers
                 var result = await _revocationService.IntrospectTokenAsync(token, token_type_hint, client_id);
 
                 _logger.LogInformation($"Token introspection: active={result.Active}, client={client_id}");
+
+                var actorId = User.FindFirst("sub")?.Value ?? client_id;
+                await PublishTimelineAsync(
+                    actorId,
+                    result.Active ? "oidc_introspect_active_token" : "oidc_introspect_inactive_token",
+                    "call_api_to_oidc_introspect");
 
                 // RFC 7662: Return token metadata
                 return Ok(new
@@ -130,7 +148,7 @@ namespace Blocks.Api.Controllers
                     return Unauthorized(new { error = "invalid_request", error_description = "User not authenticated" });
                 }
 
-                var success = await _revocationService.RevokeAllUserTokensAsync(userId, tenantId, "logout_all");
+                var success = await _revocationService.RevokeAllUserTokensAsync(userId, tenantId ?? string.Empty, "logout_all");
 
                 if (!success)
                 {
@@ -138,6 +156,8 @@ namespace Blocks.Api.Controllers
                 }
 
                 _logger.LogInformation($"All tokens revoked for user {userId}");
+
+                await PublishTimelineAsync(userId, "oidc_revoke_access_by_logout_all", "call_api_to_oidc_logout_all");
 
                 return Ok(new { message = "All tokens revoked successfully" });
             }
@@ -184,6 +204,25 @@ namespace Blocks.Api.Controllers
                 _logger.LogError(ex, "Error retrieving revocation history");
                 return StatusCode(500, new { error = "server_error" });
             }
+        }
+
+        private async Task PublishTimelineAsync(string userId, string eventName, string actionBy)
+        {
+            if (string.IsNullOrWhiteSpace(userId))
+            {
+                return;
+            }
+
+            var timelineEvent = new UserAuthenticationTimelineEvent
+            {
+                UserId = userId,
+                Event = eventName,
+                ActionBy = actionBy,
+                DeviceInformation = _authenticationDomainService.GetDeviceInfo(Request?.Headers?.UserAgent.ToString() ?? string.Empty),
+                IpAddresses = string.Join(",", _authenticationDomainService.GetVisitorsIpAddresses(Request.HttpContext))
+            };
+
+            await _authenticationDomainService.SendToQueueAsync(IdpConstants.AuthenticationQueue, timelineEvent);
         }
     }
 }

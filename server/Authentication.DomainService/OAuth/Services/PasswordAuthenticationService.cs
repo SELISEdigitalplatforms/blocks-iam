@@ -1,8 +1,10 @@
 ﻿using Blocks.Genesis;
+using DomainService.Dtos;
 using DomainService.Entities;
 using DomainService.OAuth.RequestModel;
 using DomainService.OAuth.ResponseModel;
 using DomainService.Services;
+using DomainService.Utilities;
 using Iam.DomainService.Entities;
 using Microsoft.Extensions.Logging;
 using BCryptNet = BCrypt.Net.BCrypt;
@@ -16,13 +18,15 @@ namespace DomainService.OAuth
         private readonly ITenants _tenants;
         private readonly IAuthenticationRepository _oAuthRepository;
         private readonly ICryptoService _cryptoService;
+        private readonly IAuthenticationDomainService _authenticationDomainService;
 
         public PasswordAuthenticationService(
             ILogger<PasswordAuthenticationService> logger,
             IOAuthJwtAccessTokenManager oAuthJwtAccessTokenManager,
             ITenants tenants,
             ICryptoService cryptoService,
-            IAuthenticationRepository oAuthRepository
+            IAuthenticationRepository oAuthRepository,
+            IAuthenticationDomainService authenticationDomainService
         )
         {
             _logger = logger;
@@ -30,6 +34,7 @@ namespace DomainService.OAuth
             _tenants = tenants;
             _cryptoService = cryptoService;
             _oAuthRepository = oAuthRepository;
+            _authenticationDomainService = authenticationDomainService;
         }
         public async Task<TokenResponse> AuthenticateAsync(TokenRequest request, AuthenticationConfiguration authenticationConfiguration, User? user = null)
         {
@@ -41,6 +46,7 @@ namespace DomainService.OAuth
 
             if (user.LockoutUntilUtc.HasValue && user.LockoutUntilUtc.Value > DateTime.UtcNow)
             {
+                await SendTimelineEventAsync(request, user.ItemId, "failed_login_account_locked", "password_auth_account_locked");
                 return new TokenResponse
                 {
                     Error = OAuthError.AccountLocked,
@@ -70,6 +76,15 @@ namespace DomainService.OAuth
                         { nameof(User.LastUpdatedDate), DateTime.UtcNow },
                         { nameof(User.LastUpdatedBy), user.ItemId }
                     });
+
+                var eventName = lockoutUntilUtc.HasValue
+                    ? "failed_login_and_account_locked"
+                    : "failed_login_invalid_password";
+                var actionBy = lockoutUntilUtc.HasValue
+                    ? "password_auth_lock_after_failed_attempts"
+                    : "password_auth_failed_attempt";
+
+                await SendTimelineEventAsync(request, user.ItemId, eventName, actionBy);
 
                 return new TokenResponse { Error = OAuthError.InValidUseNamePassword, ErrorDescription = "Invalid username or password", StatusCode = 401 };
             }
@@ -118,6 +133,25 @@ namespace DomainService.OAuth
             return string.IsNullOrWhiteSpace(optionalSalt)
                 ? password
                 : $"{password}::{optionalSalt}";
+        }
+
+        private async Task SendTimelineEventAsync(TokenRequest request, string userId, string eventName, string actionBy)
+        {
+            if (string.IsNullOrWhiteSpace(userId) || request?.Request?.HttpContext == null)
+            {
+                return;
+            }
+
+            var timelineEvent = new UserAuthenticationTimelineEvent
+            {
+                UserId = userId,
+                Event = eventName,
+                ActionBy = actionBy,
+                DeviceInformation = _authenticationDomainService.GetDeviceInfo(request.Request.Headers.UserAgent.ToString()),
+                IpAddresses = string.Join(",", _authenticationDomainService.GetVisitorsIpAddresses(request.Request.HttpContext))
+            };
+
+            await _authenticationDomainService.SendToQueueAsync(IdpConstants.AuthenticationQueue, timelineEvent);
         }
     }
 }

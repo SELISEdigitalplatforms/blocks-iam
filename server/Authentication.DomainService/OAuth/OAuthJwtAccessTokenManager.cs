@@ -138,7 +138,7 @@ namespace DomainService.OAuth
             // Check if this is a refresh token grant type
             if (tokenRequest.GrantType == GrantTypes.RefreshToken || tokenRequest.GrantType == GrantTypes.SwitchOrganization)
             {
-                return await HandleRefreshTokenGrant(tokenRequest, tenant, user, visitorsIpAddresses);
+                return await HandleRefreshTokenGrant(tokenRequest, tenant, user, visitorsIpAddresses, authenticationConfiguration);
             }
             else
             {
@@ -147,7 +147,7 @@ namespace DomainService.OAuth
             }
         }
 
-        private async Task<(string, DateTime)> HandleRefreshTokenGrant(TokenRequest tokenRequest, Tenant tenant, User user, IEnumerable<string> visitorsIpAddresses)
+        private async Task<(string, DateTime)> HandleRefreshTokenGrant(TokenRequest tokenRequest, Tenant tenant, User user, IEnumerable<string> visitorsIpAddresses, AuthenticationConfiguration authenticationConfiguration)
         {
             // Validate refresh token exists
             if (string.IsNullOrWhiteSpace(tokenRequest.RefreshToken))
@@ -171,8 +171,16 @@ namespace DomainService.OAuth
                 return (string.Empty, DateTime.MinValue);
             }
 
-            // Calculate remaining TTL
-            var remainingMinutes = (int)(oldRefreshToken.ExpiresUtc - DateTime.UtcNow).TotalMinutes;
+            var now = DateTime.UtcNow;
+
+            // Sliding window remaining lifetime.
+            var remainingSlidingMinutes = (int)(oldRefreshToken.ExpiresUtc - now).TotalMinutes;
+
+            // Absolute lifetime hard-stop.
+            var absoluteExpiresUtc = oldRefreshToken.AbsoluteExpiresUtc == default
+                ? oldRefreshToken.ExpiresUtc
+                : oldRefreshToken.AbsoluteExpiresUtc;
+            var remainingAbsoluteMinutes = (int)(absoluteExpiresUtc - now).TotalMinutes;
 
             // Security-stamp/token-version invalidation: deny refresh if user credentials/session version changed.
             if (oldRefreshToken.TokenVersion != user.TokenVersion)
@@ -182,7 +190,7 @@ namespace DomainService.OAuth
             }
 
             // Case 3: Token exists but TTL is too low (less than 1 minute)
-            if (remainingMinutes < 1)
+            if (remainingSlidingMinutes < 1 || remainingAbsoluteMinutes < 1)
             {
                 // Delete expired token and send revocation event
                 await _cacheClient.RemoveKeyAsync(tokenRequest.RefreshToken);
@@ -207,25 +215,36 @@ namespace DomainService.OAuth
 
             // Case 1: Token exists and has sufficient TTL - rotate token
             var newRefreshTokenId = Guid.NewGuid().ToString("N");
-            var newRefreshTokenExpireOn = DateTime.UtcNow.AddMinutes(remainingMinutes);
+            var configuredSlidingMinutes = oldRefreshToken.RememberMe
+                ? (authenticationConfiguration.RememberMeRefreshTokenValidForNumberMinutes > 0
+                    ? authenticationConfiguration.RememberMeRefreshTokenValidForNumberMinutes
+                    : authenticationConfiguration.RefreshTokenValidForNumberMinutes)
+                : (authenticationConfiguration.RefreshTokenValidForNumberMinutes > 0
+                    ? authenticationConfiguration.RefreshTokenValidForNumberMinutes
+                    : 15);
+
+            var effectiveSlidingMinutes = Math.Min(configuredSlidingMinutes, remainingAbsoluteMinutes);
+            var newRefreshTokenExpireOn = now.AddMinutes(effectiveSlidingMinutes);
 
             var newRefreshTokenCache = new RefreshTokenCache
             {
                 RefreshToken = newRefreshTokenId,
                 TenantId = oldRefreshToken.TenantId,
-                IssuedUtc = DateTime.UtcNow,
+                IssuedUtc = now,
                 ExpiresUtc = newRefreshTokenExpireOn,
+                AbsoluteExpiresUtc = absoluteExpiresUtc,
                 IpAddresses = string.Join(",", visitorsIpAddresses),
                 UserId = oldRefreshToken.UserId ?? string.Empty,
                 AuthMode = oldRefreshToken.AuthMode,
                 OriginalTenantId = oldRefreshToken.OriginalTenantId,
                 TargetTenantId = oldRefreshToken.TargetTenantId,
                 ImpersonatorUserId = oldRefreshToken.ImpersonatorUserId,
+                RememberMe = oldRefreshToken.RememberMe,
                 TokenVersion = oldRefreshToken.TokenVersion
             };
 
             // Save new token to Redis with remaining TTL
-            await _cacheClient.AddStringValueAsync(newRefreshTokenId, JsonSerializer.Serialize(newRefreshTokenCache), remainingMinutes * 60);
+            await _cacheClient.AddStringValueAsync(newRefreshTokenId, JsonSerializer.Serialize(newRefreshTokenCache), effectiveSlidingMinutes * 60);
 
             // Delete old token from Redis
             await _cacheClient.RemoveKeyAsync(tokenRequest.RefreshToken);
@@ -282,7 +301,17 @@ namespace DomainService.OAuth
                 ? configuredRememberMeLifetime
                 : configuredRefreshTokenLifetime;
 
+            var configuredAbsoluteLifetime = authenticationConfiguration.AbsoluteRefreshTokenValidForNumberMinutes > 0
+                ? authenticationConfiguration.AbsoluteRefreshTokenValidForNumberMinutes
+                : configuredRememberMeLifetime;
+
+            if (configuredAbsoluteLifetime < refreshTokenLifetime)
+            {
+                configuredAbsoluteLifetime = refreshTokenLifetime;
+            }
+
             var refreshTokenExpireOn = DateTime.UtcNow.AddMinutes(refreshTokenLifetime);
+            var absoluteRefreshTokenExpireOn = DateTime.UtcNow.AddMinutes(configuredAbsoluteLifetime);
 
             var refreshTokenCache = new RefreshTokenCache
             {
@@ -290,12 +319,14 @@ namespace DomainService.OAuth
                 TenantId = tenant.TenantId,
                 IssuedUtc = DateTime.UtcNow,
                 ExpiresUtc = refreshTokenExpireOn,
+                AbsoluteExpiresUtc = absoluteRefreshTokenExpireOn,
                 IpAddresses = string.Join(",", visitorsIpAddresses),
                 UserId = user.ItemId ?? string.Empty,
                 AuthMode = tokenRequest.IsImpersonation ? "impersonation" : "root",
                 OriginalTenantId = tokenRequest.OriginalTenantId,
                 TargetTenantId = tokenRequest.TargetTenantId,
                 ImpersonatorUserId = tokenRequest.ImpersonatorUserId,
+                RememberMe = tokenRequest.RememberMe,
                 TokenVersion = user.TokenVersion
             };
 

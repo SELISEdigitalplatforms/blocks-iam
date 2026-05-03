@@ -20,6 +20,8 @@ namespace Blocks.Api.Controllers
     [Authorize(AuthenticationSchemes = "Bearer")]
     public class IdpSessionController : ControllerBase
     {
+        private const string IdpSessionCookieName = "idp_session_id";
+
         private readonly IIdpSessionService _sessionService;
         private readonly ILogger<IdpSessionController> _logger;
 
@@ -301,9 +303,11 @@ namespace Blocks.Api.Controllers
         // Helper method
         private string GetSessionIdFromToken()
         {
-            // Extract session ID from JWT token claims
+            // Prefer sid claim, fallback to browser IdP session cookie.
             var sessionIdClaim = User?.FindFirst("sid")?.Value;
-            return sessionIdClaim;
+            return string.IsNullOrWhiteSpace(sessionIdClaim)
+                ? Request.Cookies[IdpSessionCookieName]
+                : sessionIdClaim;
         }
     }
 

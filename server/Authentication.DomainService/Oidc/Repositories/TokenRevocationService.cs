@@ -2,7 +2,9 @@ using Microsoft.Extensions.Logging;
 using System;
 using System.Collections.Generic;
 using System.IdentityModel.Tokens.Jwt;
+using System.Linq;
 using System.Threading.Tasks;
+using DomainService.Services;
 
 namespace DomainService.Oidc.Repositories
 {
@@ -14,15 +16,18 @@ namespace DomainService.Oidc.Repositories
     {
         private readonly ITokenRevocationRepository _revocationRepo;
         private readonly IRefreshTokenRepository _refreshTokenRepo;
+        private readonly IAuthenticationRepository _authenticationRepository;
         private readonly ILogger<TokenRevocationService> _logger;
 
         public TokenRevocationService(
             ITokenRevocationRepository revocationRepo,
             IRefreshTokenRepository refreshTokenRepo,
+            IAuthenticationRepository authenticationRepository,
             ILogger<TokenRevocationService> logger)
         {
             _revocationRepo = revocationRepo;
             _refreshTokenRepo = refreshTokenRepo;
+            _authenticationRepository = authenticationRepository;
             _logger = logger;
         }
 
@@ -63,6 +68,7 @@ namespace DomainService.Oidc.Repositories
                     if (refreshToken != null && !refreshToken.IsRevoked)
                     {
                         await _refreshTokenRepo.RevokeByFamilyIdAsync(refreshToken.FamilyId, "user_revoked");
+                        await SyncSessionStatusForRevokedFamilyAsync(refreshToken.FamilyId, refreshToken.UserId);
                         _logger.LogInformation($"Refresh token family revoked for token: {token}");
                     }
                 }
@@ -200,6 +206,8 @@ namespace DomainService.Oidc.Repositories
                     await _refreshTokenRepo.RevokeByFamilyIdAsync(familyId, reason);
                 }
 
+                await SyncSessionStatusForRefreshTokensAsync(userTokens.Select(t => t.TokenId));
+
                 _logger.LogInformation($"All tokens revoked for user {userId}, reason: {reason}");
                 return true;
             }
@@ -227,6 +235,8 @@ namespace DomainService.Oidc.Repositories
                 {
                     await _refreshTokenRepo.RevokeByFamilyIdAsync(familyId, reason);
                 }
+
+                await SyncSessionStatusForRefreshTokensAsync(clientTokens.Select(t => t.TokenId));
 
                 _logger.LogInformation($"All tokens revoked for user {userId} on client {clientId}, reason: {reason}");
                 return true;
@@ -308,6 +318,32 @@ namespace DomainService.Oidc.Repositories
             {
                 return "";
             }
+        }
+
+        private async Task SyncSessionStatusForRevokedFamilyAsync(string familyId, string userId)
+        {
+            if (string.IsNullOrWhiteSpace(familyId) || string.IsNullOrWhiteSpace(userId))
+            {
+                return;
+            }
+
+            var familyTokens = await _refreshTokenRepo.GetByFamilyIdAsync(familyId);
+            await SyncSessionStatusForRefreshTokensAsync(familyTokens.Select(t => t.TokenId));
+        }
+
+        private async Task SyncSessionStatusForRefreshTokensAsync(IEnumerable<string> refreshTokenIds)
+        {
+            var tokenIds = refreshTokenIds
+                .Where(id => !string.IsNullOrWhiteSpace(id))
+                .Distinct()
+                .ToList();
+
+            if (tokenIds.Count == 0)
+            {
+                return;
+            }
+
+            await _authenticationRepository.UpdateSessionStatusForAllRefreshTokenAsync(tokenIds);
         }
     }
 }
