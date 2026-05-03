@@ -16,11 +16,10 @@ export const UserDeactivate = ({
   open,
   setOpen,
 }: UserDeactivateProps) => {
-  const tenantId = useProjectStore().selectedProject?.tenantId || "";
   const { mutateAsync, isPending } = useAccountDeactivate();
   const onClickHandler = async () => {
     try {
-      const res = await mutateAsync({ projectKey: tenantId, userId });
+      const res = await mutateAsync({ userId });
       if (res.isSuccess) {
         showSuccessToast(
           { description: "User has been deactivated successfully." }

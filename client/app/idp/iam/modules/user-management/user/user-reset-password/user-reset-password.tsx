@@ -29,7 +29,6 @@ export const UserResetPassword = ({
         throw Error("Email is not provided yet");
       }
       const res = await mutateAsync({
-        projectKey,
         email: data?.data.email,
         captchaCode: "",
       });

@@ -21,14 +21,14 @@ const generatePkcePair = async () => {
 
 export const OIDCPermissionScreen = () => {
   const contextValues = useOIDCContext();
-  const { userName, themeColor, state, nonce, scope, redirectUri } = contextValues;
+  const { userName, themeColor, state, nonce, scope, redirectUri, tenantId } = contextValues;
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   const contextRef = useRef(contextValues);
 
   useEffect(() => {
     contextRef.current = contextValues;
-  }, [contextValues, state, scope, redirectUri, nonce]);
+  }, [contextValues, state, scope, redirectUri, nonce, tenantId]);
 
   const handleDeny = () => {
     const currentContext = contextRef.current;
@@ -58,9 +58,6 @@ export const OIDCPermissionScreen = () => {
 
     setIsSubmitting(true);
     try {
-      const { verifier, challenge } = await generatePkcePair();
-      sessionStorage.setItem("oidc-code-verifier", verifier);
-
       const authorizeUrl = new URL(`${window.location.origin}/api/oidc/authorize`);
       authorizeUrl.searchParams.set("client_id", currentContext.clientId);
       authorizeUrl.searchParams.set("response_type", "code");
@@ -68,6 +65,13 @@ export const OIDCPermissionScreen = () => {
       authorizeUrl.searchParams.set("scope", currentContext.scope || "openid profile email offline_access");
       authorizeUrl.searchParams.set("state", currentContext.state || crypto.randomUUID());
       authorizeUrl.searchParams.set("nonce", currentContext.nonce || crypto.randomUUID());
+
+      if (currentContext.tenantId) {
+        authorizeUrl.searchParams.set("tenant_id", currentContext.tenantId);
+      }
+
+      const { verifier, challenge } = await generatePkcePair();
+      sessionStorage.setItem("oidc-code-verifier", verifier);
       authorizeUrl.searchParams.set("code_challenge", challenge);
       authorizeUrl.searchParams.set("code_challenge_method", "S256");
 
