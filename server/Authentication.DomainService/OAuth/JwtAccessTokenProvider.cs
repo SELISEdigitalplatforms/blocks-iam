@@ -18,6 +18,7 @@ namespace DomainService.OAuth
         private readonly IDatabase _cacheDb;
         private readonly ICryptoService _cryptoService;
         private readonly ICertificateProviderFactory _certificateProviderFactory;
+        private readonly IAuthorizationClaimsResolver _authorizationClaimsResolver;
         private string _key;
 
 
@@ -25,25 +26,28 @@ namespace DomainService.OAuth
             ILogger<JwtAccessTokenProvider> logger,
             ICacheClient cacheClient,
             ICryptoService cryptoService,
-            ICertificateProviderFactory certificateProviderFactory
+            ICertificateProviderFactory certificateProviderFactory,
+            IAuthorizationClaimsResolver authorizationClaimsResolver
         )
         {
             _logger = logger;
             _cacheDb = cacheClient.CacheDatabase();
             _cryptoService = cryptoService;
             _certificateProviderFactory = certificateProviderFactory;
+            _authorizationClaimsResolver = authorizationClaimsResolver;
 
         }
 
-        public async Task<JwtAccessToken> GetJwtAccessToken(AuthenticationConfiguration authenticationConfiguration, Tenant tenant, User user, StateInfo? state = null, string? organizationId = null)
+        public async Task<JwtAccessToken> GetJwtAccessToken(AuthenticationConfiguration authenticationConfiguration, Tenant tenant, User user, StateInfo? state = null, string? organizationId = null, TokenIssuanceContext? issuanceContext = null)
         {
             _key = _cryptoService.Hash(Encoding.UTF8.GetBytes($"{tenant.TenantId}::{tenant.ItemId}"));
             var certificate = await GetOrRetrieveCertAsync(tenant);
             if (certificate == null) return new JwtAccessToken();
-            return MapJwtAccessToken(authenticationConfiguration, tenant, user, certificate, stateInfo: state, organizationId: organizationId);
+            var resolvedClaims = await _authorizationClaimsResolver.ResolveAsync(user, organizationId, state?.Scope);
+            return MapJwtAccessToken(authenticationConfiguration, tenant, user, certificate, resolvedClaims, stateInfo: state, organizationId: organizationId, issuanceContext: issuanceContext);
         }
 
-        public JwtAccessToken MapJwtAccessToken(AuthenticationConfiguration authenticationConfiguration, Tenant tenant, User user, byte[] certificate, StateInfo? stateInfo = null, string? organizationId = null)
+        public JwtAccessToken MapJwtAccessToken(AuthenticationConfiguration authenticationConfiguration, Tenant tenant, User user, byte[] certificate, ResolvedAuthorizationClaims resolvedClaims, StateInfo? stateInfo = null, string? organizationId = null, TokenIssuanceContext? issuanceContext = null)
         {
             var jwtAccessToken = new JwtAccessToken
             {
@@ -58,37 +62,78 @@ namespace DomainService.OAuth
             };
 
             var claimsIdentity = new ClaimsIdentity("seliseblocks-authentication");
-            AddClaims(claimsIdentity, tenant, user, stateInfo: stateInfo, organizationId: organizationId);
+            AddClaims(claimsIdentity, tenant, user, resolvedClaims, stateInfo: stateInfo, organizationId: organizationId, issuanceContext: issuanceContext);
             jwtAccessToken.Claims = claimsIdentity.Claims;
 
             return jwtAccessToken;
         }
 
-        public static void AddClaims(ClaimsIdentity claimsIdentity, Tenant tenant, User user, StateInfo? stateInfo = null, string? organizationId = null)
+        public static void AddClaims(ClaimsIdentity claimsIdentity, Tenant tenant, User user, ResolvedAuthorizationClaims resolvedClaims, StateInfo? stateInfo = null, string? organizationId = null, TokenIssuanceContext? issuanceContext = null)
         {
             claimsIdentity.AddClaim(new Claim(BlocksContext.TENANT_ID_CLAIM, tenant.TenantId));
             claimsIdentity.AddClaim(new Claim(BlocksContext.SUBJECT_CLAIM, $"blocks|{user.ItemId}"));
             claimsIdentity.AddClaim(new Claim(BlocksContext.USER_ID_CLAIM, user.ItemId));
             claimsIdentity.AddClaim(new Claim(BlocksContext.ISSUED_AT_TIME_CLAIM, EpochTime.GetIntDate(DateTime.UtcNow).ToString(), ClaimValueTypes.Integer64));
-            claimsIdentity.AddClaim(new Claim(BlocksContext.ORGANIZATION_ID_CLAIM, user.Memberships.Any(org => org.OrganizationId == organizationId) ? organizationId : "default"));
+            var resolvedOrgId = "default";
+            if (!string.IsNullOrWhiteSpace(organizationId)
+                && (user.Roles.ContainsKey(organizationId)
+                    || user.Permissions.ContainsKey(organizationId)
+                    || user.OrganizationIds.Contains(organizationId)))
+            {
+                resolvedOrgId = organizationId;
+            }
+            claimsIdentity.AddClaim(new Claim(BlocksContext.ORGANIZATION_ID_CLAIM, resolvedOrgId));
             claimsIdentity.AddClaim(new Claim(BlocksContext.EMAIL_CLAIM, user.Email));
             claimsIdentity.AddClaim(new Claim(BlocksContext.USER_NAME_CLAIM, user.UserName));
             claimsIdentity.AddClaim(new Claim(BlocksContext.DISPLAY_NAME_CLAIM, $"{user.FirstName ?? string.Empty} {user.LastName ?? string.Empty}".Trim()));
             claimsIdentity.AddClaim(new Claim(BlocksContext.PHONE_NUMBER_CLAIM, user.PhoneNumber ?? string.Empty));
+            claimsIdentity.AddClaim(new Claim("token_version", user.TokenVersion.ToString(), ClaimValueTypes.Integer32));
+            claimsIdentity.AddClaim(new Claim("security_stamp", user.SecurityStamp ?? string.Empty));
+
+            var audiences = !string.IsNullOrWhiteSpace(stateInfo?.Audience)
+                ? [stateInfo.Audience]
+                : tenant.JwtTokenParameters.Audiences;
+
+            foreach (var audience in audiences.Where(value => !string.IsNullOrWhiteSpace(value)).Distinct(StringComparer.OrdinalIgnoreCase))
+            {
+                claimsIdentity.AddClaim(new Claim("aud", audience));
+            }
 
             if (!string.IsNullOrWhiteSpace(stateInfo?.Nonce)) 
             {
                 claimsIdentity.AddClaim(new Claim("nonce", stateInfo?.Nonce ?? ""));
             }
 
-            foreach (var role in user.Memberships.Where(m => m.OrganizationId == (!string.IsNullOrWhiteSpace(organizationId)? organizationId: "default")).FirstOrDefault()?.Roles ?? [])
+            foreach (var role in resolvedClaims.Roles)
             {
                 claimsIdentity.AddClaim(new Claim(BlocksContext.ROLES_CLAIM, role));
             }
 
-            foreach (var permission in user.Memberships.Where(m => m.OrganizationId == (!string.IsNullOrWhiteSpace(organizationId) ? organizationId : "default")).FirstOrDefault()?.Permissions ?? [])
+            foreach (var resource in resolvedClaims.Resources)
+            {
+                claimsIdentity.AddClaim(new Claim("resource", resource));
+                claimsIdentity.AddClaim(new Claim("resources", resource));
+            }
+
+            foreach (var permission in resolvedClaims.Permissions)
             {
                 claimsIdentity.AddClaim(new Claim(BlocksContext.PERMISSION_CLAIM, permission));
+                claimsIdentity.AddClaim(new Claim("permissions", permission));
+            }
+
+            if (issuanceContext?.IsImpersonation == true)
+            {
+                claimsIdentity.AddClaim(new Claim("impersonated", "true", ClaimValueTypes.Boolean));
+                if (!string.IsNullOrWhiteSpace(issuanceContext.OriginalTenantId))
+                {
+                    claimsIdentity.AddClaim(new Claim("orig_tenant", issuanceContext.OriginalTenantId));
+                }
+
+                if (!string.IsNullOrWhiteSpace(issuanceContext.ActorUserId))
+                {
+                    var actPayload = System.Text.Json.JsonSerializer.Serialize(new { sub = issuanceContext.ActorUserId });
+                    claimsIdentity.AddClaim(new Claim("act", actPayload, "JSON"));
+                }
             }
         }
         

@@ -1,6 +1,6 @@
 ﻿using Blocks.Genesis;
 using Iam.DomainService.Entities;
-using Iam.DomainService.Shared.Entities;
+using System.Text.Json.Serialization;
 
 namespace Iam.DomainService.Users
 {
@@ -25,9 +25,19 @@ namespace Iam.DomainService.Users
         public UserMfaType UserMfaType { get; set; } = UserMfaType.TOTP;
         public bool MfaEnabled { get; set; }
         public List<UserLogInType> AllowedLogInType { get; set; } = new List<UserLogInType> { UserLogInType.Password };
-        public List<OrganizationMembership> Memberships { get; set; } = [];
+        public Dictionary<string, List<string>> Roles { get; set; } = new();
+        public Dictionary<string, List<string>> Permissions { get; set; } = new();
         public string? ProjectKey { get; set; }
-        public string? OrganizationId { get; set; }
+
+        [JsonPropertyName("org_id")]
+        public string? OrgId { get; set; }
+
+        [JsonIgnore]
+        public string? OrganizationId
+        {
+            get => OrgId;
+            set => OrgId = value;
+        }
     }
 
 }

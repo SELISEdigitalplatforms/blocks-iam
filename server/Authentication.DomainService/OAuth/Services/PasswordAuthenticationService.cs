@@ -38,12 +38,54 @@ namespace DomainService.OAuth
             if (!IsValidUser(user)) return OAuthError.InValidResponse(request);
             if (!IsUserActiveAndVerified(user)) return OAuthError.UserNotActiveOrVerifiedResponse();
 
+            if (user.LockoutUntilUtc.HasValue && user.LockoutUntilUtc.Value > DateTime.UtcNow)
+            {
+                return new TokenResponse
+                {
+                    Error = OAuthError.AccountLocked,
+                    ErrorDescription = "Account is temporarily locked due to failed login attempts",
+                    StatusCode = 423
+                };
+            }
+
             var hashedPassword = HashPassword(request.Password);
             var passwordMatched = user.Password.Equals(hashedPassword);
 
             if (!passwordMatched)
             {
+                var nextFailedCount = user.FailedLoginCount + 1;
+                DateTime? lockoutUntilUtc = null;
+                if (nextFailedCount >= authenticationConfiguration.GetNumberOfWrongAttemptsToLockTheAccount)
+                {
+                    lockoutUntilUtc = DateTime.UtcNow.AddMinutes(authenticationConfiguration.AccountLockDurationInMinutes);
+                }
+
+                await _oAuthRepository.UpdatePartialAsync<User>(
+                    user.ItemId,
+                    new Dictionary<string, object>
+                    {
+                        { nameof(User.FailedLoginCount), nextFailedCount },
+                        { nameof(User.LastFailedLoginUtc), DateTime.UtcNow },
+                        { nameof(User.LockoutUntilUtc), lockoutUntilUtc ?? (object?)null },
+                        { nameof(User.LastUpdatedDate), DateTime.UtcNow },
+                        { nameof(User.LastUpdatedBy), user.ItemId }
+                    });
+
                 return new TokenResponse { Error = OAuthError.InValidUseNamePassword, ErrorDescription = "Invalid username or password", StatusCode = 401 };
+            }
+
+            if (user.FailedLoginCount > 0 || user.LastFailedLoginUtc.HasValue || user.LockoutUntilUtc.HasValue)
+            {
+                await _oAuthRepository.UpdatePartialAsync<User>(
+                    user.ItemId,
+                    new Dictionary<string, object>
+                    {
+                        { nameof(User.FailedLoginCount), 0 },
+                        { nameof(User.LastFailedLoginUtc), null! },
+                        { nameof(User.LockoutUntilUtc), null! },
+                        { nameof(User.LastUpdatedDate), DateTime.UtcNow },
+                        { nameof(User.LastUpdatedBy), user.ItemId }
+                    });
             }
 
             return await _oAuthJwtAccessTokenManager.ManageTokenAsync(request, authenticationConfiguration, user);

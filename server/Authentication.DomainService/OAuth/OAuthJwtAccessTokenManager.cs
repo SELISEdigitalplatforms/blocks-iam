@@ -56,7 +56,13 @@ namespace DomainService.OAuth
             }
 
             var tenant = _tenants.GetTenantByID(bc?.TenantId ?? "");
-            var jwtAccessToken = await _jwtAccessTokenProvider.GetJwtAccessToken(authenticationConfiguration, tenant, user, stateInfo, organizationId: tokenRequest.OrganizationId);
+            var issuanceContext = new TokenIssuanceContext
+            {
+                IsImpersonation = tokenRequest.IsImpersonation,
+                OriginalTenantId = tokenRequest.OriginalTenantId,
+                ActorUserId = tokenRequest.ImpersonatorUserId
+            };
+            var jwtAccessToken = await _jwtAccessTokenProvider.GetJwtAccessToken(authenticationConfiguration, tenant, user, stateInfo, organizationId: tokenRequest.OrganizationId, issuanceContext: issuanceContext);
             jwtAccessToken.Audience = !string.IsNullOrWhiteSpace(stateInfo?.Audience) ? stateInfo.Audience : jwtAccessToken.Audience;
 
             var accessToken = CreateJwtAccessToken(jwtAccessToken);
@@ -168,6 +174,13 @@ namespace DomainService.OAuth
             // Calculate remaining TTL
             var remainingMinutes = (int)(oldRefreshToken.ExpiresUtc - DateTime.UtcNow).TotalMinutes;
 
+            // Security-stamp/token-version invalidation: deny refresh if user credentials/session version changed.
+            if (oldRefreshToken.TokenVersion != user.TokenVersion)
+            {
+                await _cacheClient.RemoveKeyAsync(tokenRequest.RefreshToken);
+                return (string.Empty, DateTime.MinValue);
+            }
+
             // Case 3: Token exists but TTL is too low (less than 1 minute)
             if (remainingMinutes < 1)
             {
@@ -203,7 +216,12 @@ namespace DomainService.OAuth
                 IssuedUtc = DateTime.UtcNow,
                 ExpiresUtc = newRefreshTokenExpireOn,
                 IpAddresses = string.Join(",", visitorsIpAddresses),
-                UserId = oldRefreshToken.UserId ?? string.Empty
+                UserId = oldRefreshToken.UserId ?? string.Empty,
+                AuthMode = oldRefreshToken.AuthMode,
+                OriginalTenantId = oldRefreshToken.OriginalTenantId,
+                TargetTenantId = oldRefreshToken.TargetTenantId,
+                ImpersonatorUserId = oldRefreshToken.ImpersonatorUserId,
+                TokenVersion = oldRefreshToken.TokenVersion
             };
 
             // Save new token to Redis with remaining TTL
@@ -273,7 +291,12 @@ namespace DomainService.OAuth
                 IssuedUtc = DateTime.UtcNow,
                 ExpiresUtc = refreshTokenExpireOn,
                 IpAddresses = string.Join(",", visitorsIpAddresses),
-                UserId = user.ItemId ?? string.Empty
+                UserId = user.ItemId ?? string.Empty,
+                AuthMode = tokenRequest.IsImpersonation ? "impersonation" : "root",
+                OriginalTenantId = tokenRequest.OriginalTenantId,
+                TargetTenantId = tokenRequest.TargetTenantId,
+                ImpersonatorUserId = tokenRequest.ImpersonatorUserId,
+                TokenVersion = user.TokenVersion
             };
 
             await _cacheClient.AddStringValueAsync(refreshTokenCache.RefreshToken, JsonSerializer.Serialize(refreshTokenCache), refreshTokenLifetime * 60);

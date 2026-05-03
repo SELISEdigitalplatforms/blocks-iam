@@ -22,6 +22,7 @@ namespace XUnitTest.DomainService.OAuth
         private readonly Mock<ICryptoService> _cryptoService;
         private readonly Mock<ICertificateProviderFactory> _certificateProviderFactory;
         private readonly Mock<ICertificateProvider> _certificateProvider;
+        private readonly Mock<IAuthorizationClaimsResolver> _authorizationClaimsResolver;
         private readonly JwtAccessTokenProvider _provider;
 
         public JwtAccessTokenProviderTests()
@@ -32,14 +33,19 @@ namespace XUnitTest.DomainService.OAuth
             _cryptoService = new Mock<ICryptoService>();
             _certificateProviderFactory = new Mock<ICertificateProviderFactory>();
             _certificateProvider = new Mock<ICertificateProvider>();
+            _authorizationClaimsResolver = new Mock<IAuthorizationClaimsResolver>();
 
             _cacheClient.Setup(x => x.CacheDatabase()).Returns(_cacheDatabase.Object);
+            _authorizationClaimsResolver
+                .Setup(x => x.ResolveAsync(It.IsAny<User>(), It.IsAny<string>(), It.IsAny<string>(), It.IsAny<IEnumerable<string>>(), It.IsAny<bool>()))
+                .ReturnsAsync(CreateResolvedClaims());
 
             _provider = new JwtAccessTokenProvider(
                 _logger.Object,
                 _cacheClient.Object,
                 _cryptoService.Object,
-                _certificateProviderFactory.Object
+                _certificateProviderFactory.Object,
+                _authorizationClaimsResolver.Object
             );
         }
 
@@ -102,9 +108,10 @@ namespace XUnitTest.DomainService.OAuth
             var user = CreateUser();
             var certificate = GenerateTestCertificate();
             var stateInfo = new StateInfo { Provider = "test-provider", Audience = "test-audience", Nonce = "nonce-123" };
+            var resolvedClaims = CreateResolvedClaims();
 
             // Act
-            var result = _provider.MapJwtAccessToken(authConfig, tenant, user, certificate, stateInfo, "org-specific");
+            var result = _provider.MapJwtAccessToken(authConfig, tenant, user, certificate, resolvedClaims, stateInfo, "org-specific");
 
             // Assert
             Assert.Equal(authConfig.AccessTokenValidForNumberMinutes, result.AccessTokenValidForNumberMinute);
@@ -126,9 +133,10 @@ namespace XUnitTest.DomainService.OAuth
             var tenant = CreateTenant();
             var user = CreateUser();
             var stateInfo = new StateInfo { Provider = "test-provider", Audience = "test-audience", Nonce = "nonce-value" };
+            var resolvedClaims = CreateResolvedClaims();
 
             // Act
-            JwtAccessTokenProvider.AddClaims(claimsIdentity, tenant, user, stateInfo, "org-specific");
+            JwtAccessTokenProvider.AddClaims(claimsIdentity, tenant, user, resolvedClaims, stateInfo, "org-specific");
 
             // Assert - Verify all claim types
             Assert.Contains(claimsIdentity.Claims, c => c.Type == BlocksContext.TENANT_ID_CLAIM && c.Value == tenant.TenantId);
@@ -141,8 +149,10 @@ namespace XUnitTest.DomainService.OAuth
             Assert.Contains(claimsIdentity.Claims, c => c.Type == BlocksContext.DISPLAY_NAME_CLAIM);
             Assert.Contains(claimsIdentity.Claims, c => c.Type == BlocksContext.PHONE_NUMBER_CLAIM);
             Assert.Contains(claimsIdentity.Claims, c => c.Type == "nonce" && c.Value == "nonce-value");
+            Assert.Contains(claimsIdentity.Claims, c => c.Type == "aud" && c.Value == "test-audience");
             Assert.Equal(1, claimsIdentity.Claims.Count(c => c.Type == BlocksContext.ROLES_CLAIM));
             Assert.Equal(1, claimsIdentity.Claims.Count(c => c.Type == BlocksContext.PERMISSION_CLAIM));
+            Assert.Equal(1, claimsIdentity.Claims.Count(c => c.Type == "resource" && c.Value == "ai"));
         }
 
         [Theory]
@@ -160,7 +170,7 @@ namespace XUnitTest.DomainService.OAuth
             user.LastName = lastName;
 
             // Act
-            JwtAccessTokenProvider.AddClaims(claimsIdentity, tenant, user);
+            JwtAccessTokenProvider.AddClaims(claimsIdentity, tenant, user, CreateResolvedClaims());
 
             // Assert
             var displayName = claimsIdentity.Claims.First(c => c.Type == BlocksContext.DISPLAY_NAME_CLAIM).Value;
@@ -180,7 +190,7 @@ namespace XUnitTest.DomainService.OAuth
             var stateInfo = string.IsNullOrEmpty(nonce) ? null : new StateInfo { Provider = "test-provider", Audience = "test-audience", Nonce = nonce };
 
             // Act
-            JwtAccessTokenProvider.AddClaims(claimsIdentity, tenant, user, stateInfo);
+            JwtAccessTokenProvider.AddClaims(claimsIdentity, tenant, user, CreateResolvedClaims(), stateInfo);
 
             // Assert
             Assert.DoesNotContain(claimsIdentity.Claims, c => c.Type == "nonce");
@@ -196,7 +206,7 @@ namespace XUnitTest.DomainService.OAuth
             user.PhoneNumber = null;
 
             // Act
-            JwtAccessTokenProvider.AddClaims(claimsIdentity, tenant, user);
+            JwtAccessTokenProvider.AddClaims(claimsIdentity, tenant, user, CreateResolvedClaims());
 
             // Assert
             var phoneClaim = claimsIdentity.Claims.First(c => c.Type == BlocksContext.PHONE_NUMBER_CLAIM);
@@ -213,7 +223,7 @@ namespace XUnitTest.DomainService.OAuth
             user.Memberships = new List<OrganizationMembership>();
 
             // Act
-            JwtAccessTokenProvider.AddClaims(claimsIdentity, tenant, user);
+            JwtAccessTokenProvider.AddClaims(claimsIdentity, tenant, user, new ResolvedAuthorizationClaims());
 
             // Assert
             Assert.Empty(claimsIdentity.Claims.Where(c => c.Type == BlocksContext.ROLES_CLAIM));
@@ -317,6 +327,13 @@ namespace XUnitTest.DomainService.OAuth
                 CertificateValidForNumberOfDays = 365,
                 IssueDate = DateTime.UtcNow.AddDays(-30)
             }
+        };
+
+        private static ResolvedAuthorizationClaims CreateResolvedClaims() => new()
+        {
+            Roles = ["admin"],
+            Permissions = ["ai.predict"],
+            Resources = ["ai"]
         };
 
         private User CreateUser() => new()

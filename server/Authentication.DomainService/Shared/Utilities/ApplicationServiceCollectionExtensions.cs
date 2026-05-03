@@ -69,6 +69,7 @@ namespace DomainService.Utilities
             serviceCollection.AddSingleton<ClientCredentialAuthorizationService>();
             serviceCollection.AddSingleton<ClientUserCodeAuthorizationService>();
             serviceCollection.AddSingleton<SSOConsentAuthenticationService>();
+            serviceCollection.AddSingleton<IAuthorizationClaimsResolver, AuthorizationClaimsResolver>();
 
             serviceCollection.AddSingleton<ICertificateProviderFactory, CertificateProviderFactory>();
             serviceCollection.AddSingleton<ISocialLogInServiceProvider, SocialLogInServiceProvider>();

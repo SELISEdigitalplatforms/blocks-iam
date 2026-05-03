@@ -13,6 +13,9 @@ public class OidcClaims
     public long AuthTime { get; set; }
     public long Iat { get; set; }
     public string? ClientId { get; set; }
+    public string? Audience { get; set; }
+    public string? Scope { get; set; }
+    public List<string> Roles { get; set; } = [];
     public List<string> Resources { get; set; } = [];
     public List<string> Permissions { get; set; } = [];
 }
@@ -49,6 +52,8 @@ public class RefreshTokenModel
     public string? TenantId { get; set; }
     public string? OrgId { get; set; }
     public string? ClientId { get; set; }
+    public string? Audience { get; set; }
+    public string? Scope { get; set; }
     public string? SessionId { get; set; }
     public DateTime SlidingExpiry { get; set; }
     public DateTime AbsoluteExpiry { get; set; }

@@ -6,6 +6,8 @@ using Blocks.Genesis.Auth;
 using Blocks.Genesis.Auth.Services;
 using DomainService.OAuth.RequestModel;
 using DomainService.OAuth.ResponseModel;
+using DomainService.OAuth;
+using Iam.DomainService.Users;
 using System;
 using System.Collections.Generic;
 using System.Threading.Tasks;
@@ -28,6 +30,8 @@ namespace Blocks.Api.Controllers
         private readonly ITokenGenerationService _tokenService;
         private readonly IPkceService _pkceService;
         private readonly AuthorizeRequestValidator _authorizeValidator;
+        private readonly IUserRepository _userRepository;
+        private readonly IAuthorizationClaimsResolver _authorizationClaimsResolver;
         private readonly ILogger<AuthorizationController> _logger;
 
         public AuthorizationController(
@@ -39,6 +43,8 @@ namespace Blocks.Api.Controllers
             ITokenGenerationService tokenService,
             IPkceService pkceService,
             AuthorizeRequestValidator authorizeValidator,
+            IUserRepository userRepository,
+            IAuthorizationClaimsResolver authorizationClaimsResolver,
             ILogger<AuthorizationController> logger)
         {
             _authCodeRepo = authCodeRepo;
@@ -49,6 +55,8 @@ namespace Blocks.Api.Controllers
             _tokenService = tokenService;
             _pkceService = pkceService;
             _authorizeValidator = authorizeValidator;
+            _userRepository = userRepository;
+            _authorizationClaimsResolver = authorizationClaimsResolver;
             _logger = logger;
         }
 
@@ -67,7 +75,11 @@ namespace Blocks.Api.Controllers
             [FromQuery] string nonce,
             [FromQuery] string code_challenge,
             [FromQuery] string code_challenge_method = "S256",
-            [FromQuery] string prompt = null)
+            [FromQuery] string prompt = null,
+            [FromQuery] string session_id = null,
+            [FromQuery] string selected_user_id = null,
+            [FromQuery] string selected_tenant_id = null,
+            [FromQuery] string tenant_id = null)
         {
             try
             {
@@ -99,18 +111,84 @@ namespace Blocks.Api.Controllers
                     return Redirect(BuildRedirectUri(redirect_uri, errorParams));
                 }
 
-                // Check if user is authenticated
-                var userId = User.FindFirst("sub")?.Value;
-                if (string.IsNullOrEmpty(userId))
+                var claimUserId = User.FindFirst("sub")?.Value;
+                var claimTenantId = User.FindFirst("tenant_id")?.Value;
+                var effectiveSessionId = !string.IsNullOrWhiteSpace(session_id)
+                    ? session_id
+                    : Request.Cookies["idp_session_id"];
+
+                string resolvedUserId = null;
+                string resolvedTenantId = null;
+
+                if (!string.IsNullOrWhiteSpace(effectiveSessionId))
+                {
+                    var session = await _sessionRepo.GetBySessionIdAsync(effectiveSessionId);
+                    if (session != null && !session.RevokedAt.HasValue && !session.IsExpired())
+                    {
+                        var sessionAccounts = session.Accounts.AsEnumerable();
+                        if (!string.IsNullOrWhiteSpace(tenant_id))
+                        {
+                            sessionAccounts = sessionAccounts.Where(a => string.Equals(a.TenantId, tenant_id, StringComparison.OrdinalIgnoreCase));
+                        }
+
+                        var filteredAccounts = sessionAccounts.ToList();
+
+                        if (!string.IsNullOrWhiteSpace(selected_user_id))
+                        {
+                            var selectedAccount = filteredAccounts.FirstOrDefault(a =>
+                                string.Equals(a.UserId, selected_user_id, StringComparison.OrdinalIgnoreCase)
+                                && (string.IsNullOrWhiteSpace(selected_tenant_id)
+                                    || string.Equals(a.TenantId, selected_tenant_id, StringComparison.OrdinalIgnoreCase)));
+
+                            if (selectedAccount == null)
+                            {
+                                return BadRequest(new { error = "invalid_request", error_description = "Selected account is not available in this session" });
+                            }
+
+                            resolvedUserId = selectedAccount.UserId;
+                            resolvedTenantId = selectedAccount.TenantId;
+                        }
+                        else if (filteredAccounts.Count > 1 || string.Equals(prompt, "select_account", StringComparison.OrdinalIgnoreCase))
+                        {
+                            await _sessionRepo.UpdateActivityAsync(effectiveSessionId);
+                            var chooserUrl = BuildSelectAccountUrl(
+                                client_id,
+                                response_type,
+                                redirect_uri,
+                                scope,
+                                state,
+                                nonce,
+                                code_challenge,
+                                code_challenge_method,
+                                effectiveSessionId,
+                                prompt,
+                                filteredAccounts);
+
+                            return Redirect(chooserUrl);
+                        }
+                        else if (filteredAccounts.Count == 1)
+                        {
+                            resolvedUserId = filteredAccounts[0].UserId;
+                            resolvedTenantId = filteredAccounts[0].TenantId;
+                            await _sessionRepo.UpdateActivityAsync(effectiveSessionId);
+                        }
+                    }
+                }
+
+                if (string.IsNullOrWhiteSpace(resolvedUserId))
+                {
+                    resolvedUserId = claimUserId;
+                    resolvedTenantId = claimTenantId;
+                }
+
+                if (string.IsNullOrWhiteSpace(resolvedUserId))
                 {
                     _logger.LogInformation($"Unauthenticated authorization request for {client_id}");
                     return Unauthorized(new { error = "unauthorized", error_description = "User not authenticated" });
                 }
 
-                var tenantId = User.FindFirst("tenant_id")?.Value;
-
                 // Validate client
-                var client = await _clientRepo.GetByClientIdAsync(client_id, tenantId);
+                var client = await _clientRepo.GetByClientIdAsync(client_id, resolvedTenantId);
                 if (client == null)
                 {
                     _logger.LogWarning($"Unknown client: {client_id}");
@@ -130,8 +208,8 @@ namespace Blocks.Api.Controllers
                 {
                     Code = authCode,
                     ClientId = client_id,
-                    TenantId = tenantId,
-                    UserId = userId,
+                    TenantId = resolvedTenantId,
+                    UserId = resolvedUserId,
                     RedirectUri = redirect_uri,
                     Scope = scope,
                     Nonce = nonce,
@@ -146,7 +224,7 @@ namespace Blocks.Api.Controllers
 
                 await _authCodeRepo.CreateAsync(codeModel);
 
-                _logger.LogInformation($"Authorization code issued for user {userId}, client {client_id}");
+                _logger.LogInformation($"Authorization code issued for user {resolvedUserId}, client {client_id}");
 
                 // Redirect to callback with code and state
                 var callbackParams = new Dictionary<string, string>
@@ -267,6 +345,19 @@ namespace Blocks.Api.Controllers
             }
 
             // Generate tokens
+            var user = await _userRepository.GetUserByIdAsync(authCode.UserId);
+            if (user == null)
+            {
+                return BadRequest(new { error = "invalid_grant", error_description = "User not found" });
+            }
+
+            var resolvedClaims = await _authorizationClaimsResolver.ResolveAsync(
+                user,
+                organizationId: null,
+                authCode.Scope,
+                client.AllowedScopes,
+                requireExplicitScope: true);
+
             var claims = new OidcClaims
             {
                 Sub = authCode.UserId,
@@ -274,7 +365,12 @@ namespace Blocks.Api.Controllers
                 Nonce = authCode.Nonce,
                 AuthTime = DateTimeOffset.UtcNow.ToUnixTimeSeconds(),
                 Iat = DateTimeOffset.UtcNow.ToUnixTimeSeconds(),
-                ClientId = client_id
+                ClientId = client_id,
+                Audience = client.Audience ?? client_id,
+                Scope = authCode.Scope,
+                Roles = resolvedClaims.Roles,
+                Resources = resolvedClaims.Resources,
+                Permissions = resolvedClaims.Permissions
             };
 
             var issuer = $"https://{Request.Host}/";
@@ -286,6 +382,8 @@ namespace Blocks.Api.Controllers
             refreshTokenModel.UserId = authCode.UserId;
             refreshTokenModel.ClientId = client_id;
             refreshTokenModel.TenantId = authCode.TenantId ?? tenantId;
+            refreshTokenModel.Audience = client.Audience ?? client_id;
+            refreshTokenModel.Scope = authCode.Scope;
             refreshTokenModel.IpAddress = GetClientIpAddress();
             refreshTokenModel.UserAgent = Request.Headers["User-Agent"].ToString();
             await _refreshTokenRepo.CreateAsync(refreshTokenModel);
@@ -353,14 +451,38 @@ namespace Blocks.Api.Controllers
                 return BadRequest(new { error = "invalid_client" });
             }
 
+            if (!string.IsNullOrWhiteSpace(storedToken.ClientId) && !string.Equals(storedToken.ClientId, client_id, StringComparison.Ordinal))
+            {
+                _logger.LogWarning($"Refresh token client mismatch. Presented client: {client_id}, token client: {storedToken.ClientId}");
+                return BadRequest(new { error = "invalid_grant", error_description = "Refresh token does not belong to this client" });
+            }
+
             // Generate new tokens with family tracking
+            var user = await _userRepository.GetUserByIdAsync(storedToken.UserId);
+            if (user == null)
+            {
+                return BadRequest(new { error = "invalid_grant", error_description = "User not found" });
+            }
+
+            var resolvedClaims = await _authorizationClaimsResolver.ResolveAsync(
+                user,
+                storedToken.OrgId,
+                storedToken.Scope,
+                client.AllowedScopes,
+                requireExplicitScope: true);
+
             var claims = new OidcClaims
             {
                 Sub = storedToken.UserId,
                 TenantId = storedToken.TenantId,
                 OrgId = storedToken.OrgId,
                 Iat = DateTimeOffset.UtcNow.ToUnixTimeSeconds(),
-                ClientId = client_id
+                ClientId = client_id,
+                Audience = client.Audience ?? client_id,
+                Scope = storedToken.Scope,
+                Roles = resolvedClaims.Roles,
+                Resources = resolvedClaims.Resources,
+                Permissions = resolvedClaims.Permissions
             };
 
             var issuer = $"https://{Request.Host}/";
@@ -374,6 +496,8 @@ namespace Blocks.Api.Controllers
             newRefreshTokenModel.ClientId = client_id;
             newRefreshTokenModel.TenantId = storedToken.TenantId;
             newRefreshTokenModel.OrgId = storedToken.OrgId;
+            newRefreshTokenModel.Audience = client.Audience ?? client_id;
+            newRefreshTokenModel.Scope = storedToken.Scope;
             newRefreshTokenModel.SessionId = storedToken.SessionId;
             newRefreshTokenModel.IpAddress = GetClientIpAddress();
             newRefreshTokenModel.UserAgent = Request.Headers["User-Agent"].ToString();
@@ -381,9 +505,9 @@ namespace Blocks.Api.Controllers
             // Store new token
             await _refreshTokenRepo.CreateAsync(newRefreshTokenModel);
 
-            // Update parent token with child reference
+            // Revoke parent token after successful rotation (one-time use enforcement)
             storedToken.ChildTokenIds.Add(newRefreshTokenModel.TokenId);
-            await _refreshTokenRepo.UpdateSlidingExpiryAsync(storedToken.TokenId);
+            await _refreshTokenRepo.RevokeByTokenIdAsync(storedToken.TokenId, "rotated");
 
             _logger.LogInformation($"Token rotated for user {storedToken.UserId}, client {client_id}, family {storedToken.FamilyId}");
             await LogAuditEvent("token_refreshed", storedToken.UserId, client_id, storedToken.TenantId, "INFO");
@@ -443,6 +567,48 @@ namespace Blocks.Api.Controllers
             }
 
             return sb.ToString().TrimEnd('&');
+        }
+
+        private string BuildSelectAccountUrl(
+            string clientId,
+            string responseType,
+            string redirectUri,
+            string scope,
+            string state,
+            string nonce,
+            string codeChallenge,
+            string codeChallengeMethod,
+            string sessionId,
+            string prompt,
+            List<IdpSessionAccount> accounts)
+        {
+            var chooserUrl = new StringBuilder("/oidc/select-account?");
+            chooserUrl.Append($"client_id={Uri.EscapeDataString(clientId ?? string.Empty)}");
+            chooserUrl.Append($"&response_type={Uri.EscapeDataString(responseType ?? string.Empty)}");
+            chooserUrl.Append($"&redirect_uri={Uri.EscapeDataString(redirectUri ?? string.Empty)}");
+            chooserUrl.Append($"&scope={Uri.EscapeDataString(scope ?? string.Empty)}");
+            chooserUrl.Append($"&state={Uri.EscapeDataString(state ?? string.Empty)}");
+            chooserUrl.Append($"&nonce={Uri.EscapeDataString(nonce ?? string.Empty)}");
+            chooserUrl.Append($"&code_challenge={Uri.EscapeDataString(codeChallenge ?? string.Empty)}");
+            chooserUrl.Append($"&code_challenge_method={Uri.EscapeDataString(codeChallengeMethod ?? string.Empty)}");
+            chooserUrl.Append($"&session_id={Uri.EscapeDataString(sessionId ?? string.Empty)}");
+
+            if (!string.IsNullOrWhiteSpace(prompt))
+            {
+                chooserUrl.Append($"&prompt={Uri.EscapeDataString(prompt)}");
+            }
+
+            foreach (var account in accounts)
+            {
+                var payload = $"{account.UserId}|{account.TenantId}|{account.DisplayName ?? string.Empty}";
+                var encoded = Convert.ToBase64String(Encoding.UTF8.GetBytes(payload))
+                    .TrimEnd('=')
+                    .Replace('+', '-')
+                    .Replace('/', '_');
+                chooserUrl.Append($"&acct={Uri.EscapeDataString(encoded)}");
+            }
+
+            return chooserUrl.ToString();
         }
 
         private string GetClientIpAddress()

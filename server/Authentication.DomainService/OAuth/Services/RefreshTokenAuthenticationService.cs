@@ -32,7 +32,13 @@ namespace DomainService.OAuth
             _logger.LogInformation("Authenticate start for RefreshToken");
             var bc = BlocksContext.GetContext();
             var tenant = _tenants.GetTenantByID(bc?.TenantId);
-            var jwtAccessToken = await _jwtAccessTokenProvider.GetJwtAccessToken(authenticationConfiguration, tenant, user, organizationId: request.OrganizationId);
+            var issuanceContext = new TokenIssuanceContext
+            {
+                IsImpersonation = request.IsImpersonation,
+                OriginalTenantId = request.OriginalTenantId,
+                ActorUserId = request.ImpersonatorUserId
+            };
+            var jwtAccessToken = await _jwtAccessTokenProvider.GetJwtAccessToken(authenticationConfiguration, tenant, user, organizationId: request.OrganizationId, issuanceContext: issuanceContext);
             var jwtToken = new JwtSecurityToken(
                 jwtAccessToken.Issuer,
                 jwtAccessToken.Audience,
