@@ -5,7 +5,6 @@ import {
   AUTH_OIDC_ENDPOINTS,
   OIDC_FLOW_ENDPOINTS,
 } from "../constants/endpoint.constant";
-import { ACCOUNT_ENDPOINTS } from "@blocks-idp/iam/constants/endpoint.constant";
 export { redirectToLogin, buildNavigationUrl } from "../utils/oidc-navigation.util";
 
 interface IGetOidcPayload {
@@ -197,7 +196,7 @@ export const accountRecover = async (
   payload: IAccountRecoverPayload,
 ): Promise<IAccountRecoverResponse> => {
   try {
-    const url = `${getRuntimeEnv("BLOCKS_API_BASE_URL")}${ACCOUNT_ENDPOINTS.RECOVER}`;
+    const url = `${getRuntimeEnv("BLOCKS_API_BASE_URL")}${AUTH_ENDPOINTS.RECOVER}`;
 
     const headers: Record<string, string> = {
       "Content-Type": "application/json",

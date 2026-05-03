@@ -4,7 +4,6 @@ import {
   AUTH_OIDC_ENDPOINTS,
   OIDC_FLOW_ENDPOINTS,
 } from "../constants/endpoint.constant";
-import { ACCOUNT_ENDPOINTS } from "@blocks-idp/iam/constants/endpoint.constant";
 import {
   mockOidcFlowCredentialPayload,
   mockOidcFlowCredentialResponse,
@@ -191,7 +190,7 @@ describe("oidc-auth-flow.service", () => {
       const result = await accountRecover(mockOidcFlowAccountRecoverPayload);
 
       expect(fetch).toHaveBeenCalledWith(
-        `${MOCK_API_BASE}${ACCOUNT_ENDPOINTS.RECOVER}`,
+          `${MOCK_API_BASE}${AUTH_ENDPOINTS.RECOVER}`,
         expect.objectContaining({
           method: "POST",
           body: expect.any(String),

@@ -6,7 +6,8 @@ namespace Iam.DomainService.Services
 {
     public interface IIdentityAccessManagementService
     {
-        string HashPassword(string password);
+        string HashPassword(string password, string? optionalSalt = null);
+        bool VerifyPassword(string password, string passwordHash, string? optionalSalt = null);
         Task SendToQueueAsync<T>(string queue, T payload) where T : class;
         Task SendToTopicAsync<T>(string queue, T payload) where T : class;
         Task<bool> SendEmailAsync(SendMail sendMailCommand);

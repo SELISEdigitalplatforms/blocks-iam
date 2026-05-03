@@ -42,7 +42,7 @@ export const OIDCSelectAccountScreen = () => {
       .filter((value): value is SessionAccount => Boolean(value));
   }, [params]);
 
-  const handleSelect = (account: SessionAccount) => {
+  const handleSelect = async (account: SessionAccount) => {
     const authorizeUrl = new URL(`${window.location.origin}/api/oidc/authorize`);
 
     [
@@ -54,7 +54,7 @@ export const OIDCSelectAccountScreen = () => {
       "nonce",
       "code_challenge",
       "code_challenge_method",
-      "session_id",
+      "tenant_id",
     ].forEach((key) => {
       const value = params.get(key);
       if (value) {
@@ -62,8 +62,21 @@ export const OIDCSelectAccountScreen = () => {
       }
     });
 
-    authorizeUrl.searchParams.set("selected_user_id", account.userId);
-    authorizeUrl.searchParams.set("selected_tenant_id", account.tenantId);
+    const response = await fetch("/api/oidc/select-account", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      credentials: "include",
+      body: JSON.stringify({
+        user_id: account.userId,
+        tenant_id: account.tenantId,
+      }),
+    });
+
+    if (!response.ok) {
+      return;
+    }
 
     window.location.href = authorizeUrl.toString();
   };

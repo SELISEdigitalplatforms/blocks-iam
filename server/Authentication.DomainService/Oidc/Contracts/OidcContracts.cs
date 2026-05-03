@@ -27,6 +27,7 @@ public class AuthorizationCodeModel
     public string ClientId { get; set; } = string.Empty;
     public string? TenantId { get; set; }
     public string UserId { get; set; } = string.Empty;
+    public string? OrganizationId { get; set; }
     public string RedirectUri { get; set; } = string.Empty;
     public string Scope { get; set; } = string.Empty;
     public string? Nonce { get; set; }

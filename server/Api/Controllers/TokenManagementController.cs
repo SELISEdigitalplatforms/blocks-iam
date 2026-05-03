@@ -30,7 +30,7 @@ namespace Blocks.Api.Controllers
         /// Allows clients and resource owners to revoke access and refresh tokens
         /// </summary>
         [HttpPost("revoke")]
-        [AllowAnonymous]
+        [Authorize]
         [Consumes("application/x-www-form-urlencoded")]
         public async Task<IActionResult> RevokeToken(
             [FromForm] string token,
@@ -70,7 +70,7 @@ namespace Blocks.Api.Controllers
         /// Allows authorized clients to introspect tokens and get claims/metadata
         /// </summary>
         [HttpPost("introspect")]
-        [AllowAnonymous]
+        [Authorize]
         [Consumes("application/x-www-form-urlencoded")]
         public async Task<IActionResult> IntrospectToken(
             [FromForm] string token,
