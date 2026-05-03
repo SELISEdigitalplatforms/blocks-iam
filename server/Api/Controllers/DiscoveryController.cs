@@ -1,7 +1,6 @@
 using System.Threading.Tasks;
 using Blocks.Genesis.Auth;
 using Blocks.Genesis.Auth.Services;
-using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Serilog;
 
@@ -16,7 +15,6 @@ namespace Blocks.Api.Controllers
     /// and automatic configuration.
     /// </summary>
     [ApiController]
-    [AllowAnonymous] // Discovery endpoints must be publicly accessible
     public class DiscoveryController : ControllerBase
     {
         private readonly IDiscoveryService _discoveryService;

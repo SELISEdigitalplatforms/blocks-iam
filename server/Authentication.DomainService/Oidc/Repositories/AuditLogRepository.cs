@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Threading.Tasks;
 using MongoDB.Driver;
+using Blocks.Genesis;
 using Blocks.Genesis.Auth;
 using Microsoft.Extensions.Logging;
 
@@ -9,20 +10,26 @@ namespace DomainService.Oidc.Repositories
 {
     public class AuditLogRepository : IAuditLogRepository
     {
-        private readonly IMongoDatabase _database;
+        private readonly IDbContextProvider _dbContextProvider;
         private readonly ILogger<AuditLogRepository> _logger;
 
-        public AuditLogRepository(IMongoDatabase database, ILogger<AuditLogRepository> logger)
+        public AuditLogRepository(
+            IDbContextProvider dbContextProvider,
+            ILogger<AuditLogRepository> logger)
         {
-            _database = database;
+            _dbContextProvider = dbContextProvider;
             _logger = logger;
         }
+
+        private IMongoDatabase GetDatabase() =>
+            _dbContextProvider.GetDatabase()
+            ?? throw new InvalidOperationException("No active MongoDB database is available in current Genesis context.");
 
         public async Task<string> CreateAsync(AuditLogModel log)
         {
             try
             {
-                var collection = _database.GetCollection<AuditLogModel>("audit_logs");
+                var collection = GetDatabase().GetCollection<AuditLogModel>("audit_logs");
                 await collection.InsertOneAsync(log);
                 return log.Id;
             }
@@ -37,7 +44,7 @@ namespace DomainService.Oidc.Repositories
         {
             try
             {
-                var collection = _database.GetCollection<AuditLogModel>("audit_logs");
+                var collection = GetDatabase().GetCollection<AuditLogModel>("audit_logs");
                 var filter = Builders<AuditLogModel>.Filter.And(
                     Builders<AuditLogModel>.Filter.Eq(l => l.UserId, userId),
                     Builders<AuditLogModel>.Filter.Eq(l => l.TenantId, tenantId),
@@ -57,7 +64,7 @@ namespace DomainService.Oidc.Repositories
         {
             try
             {
-                var collection = _database.GetCollection<AuditLogModel>("audit_logs");
+                var collection = GetDatabase().GetCollection<AuditLogModel>("audit_logs");
                 var filter = Builders<AuditLogModel>.Filter.And(
                     Builders<AuditLogModel>.Filter.Eq(l => l.EventType, eventType),
                     Builders<AuditLogModel>.Filter.Gte(l => l.Timestamp, from),
@@ -76,7 +83,7 @@ namespace DomainService.Oidc.Repositories
         {
             try
             {
-                var collection = _database.GetCollection<AuditLogModel>("audit_logs");
+                var collection = GetDatabase().GetCollection<AuditLogModel>("audit_logs");
                 var filter = Builders<AuditLogModel>.Filter.And(
                     Builders<AuditLogModel>.Filter.Eq(l => l.Severity, severity),
                     Builders<AuditLogModel>.Filter.Gte(l => l.Timestamp, from),
@@ -95,7 +102,7 @@ namespace DomainService.Oidc.Repositories
         {
             try
             {
-                var collection = _database.GetCollection<AuditLogModel>("audit_logs");
+                var collection = GetDatabase().GetCollection<AuditLogModel>("audit_logs");
                 var filterBuilder = Builders<AuditLogModel>.Filter;
                 var filters = new List<FilterDefinition<AuditLogModel>>();
 

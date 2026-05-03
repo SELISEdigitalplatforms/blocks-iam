@@ -29,7 +29,6 @@ public class AuthenticationController : ControllerBase
     }
 
     [HttpPost("recover")]
-    [AllowAnonymous]
     public async Task<IActionResult> Recover([FromBody] RecoveryUserRequest command)
     {
         var result = await _accountService.RecoverAccountAsync(command);
@@ -37,7 +36,6 @@ public class AuthenticationController : ControllerBase
     }
 
     [HttpPost("reset-password")]
-    [AllowAnonymous]
     public async Task<IActionResult> ResetPassword([FromBody] ResetPasswordRequest command)
     {
         var result = await _accountService.ResetAccountPasswordAsync(command);
@@ -53,7 +51,6 @@ public class AuthenticationController : ControllerBase
     }
 
     [HttpPost("login")]
-    [AllowAnonymous]
     public async Task<IActionResult> Login([FromBody] EmbeddedLoginRequest request)
     {
         var result = await _authenticationFlowService.ExecuteEmbeddedLoginAsync(request, Request);
@@ -61,7 +58,6 @@ public class AuthenticationController : ControllerBase
     }
 
     [HttpPost("social-login")]
-    [AllowAnonymous]
     public async Task<IActionResult> SocialLogin([FromBody] SocialLoginRequest request)
     {
         var result = await _authenticationFlowService.ExecuteSocialLoginAsync(request, Request);
@@ -91,14 +87,12 @@ public class AuthenticationController : ControllerBase
     }
 
     [HttpPost("refresh")]
-    [AllowAnonymous]
     public async Task<IActionResult> Refresh([FromBody] RefreshRequest request)
     {
         return await _authenticationFlowService.ExecuteRefreshAsync(request, User, Request, Response);
     }
 
     [HttpGet("userinfo")]
-    [AllowAnonymous]
     public async Task<IActionResult> GetUserInfo()
     {
         var tenantId = BlocksContext.GetContext()?.TenantId;
@@ -123,7 +117,6 @@ public class AuthenticationController : ControllerBase
     }
 
     [HttpGet("login-options")]
-    [AllowAnonymous]
     public Task<IActionResult> GetLoginOptions()
     {
         return _authenticationService.GetLoginOptionsAsync();

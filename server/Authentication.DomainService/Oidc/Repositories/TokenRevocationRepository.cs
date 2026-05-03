@@ -1,4 +1,5 @@
 using Blocks.Genesis.Auth;
+using Blocks.Genesis;
 using Microsoft.Extensions.Logging;
 using MongoDB.Driver;
 using System;
@@ -14,14 +15,20 @@ namespace DomainService.Oidc.Repositories
     /// </summary>
     public class TokenRevocationRepository : ITokenRevocationRepository
     {
-        private readonly IMongoDatabase _database;
+        private readonly IDbContextProvider _dbContextProvider;
         private readonly ILogger<TokenRevocationRepository> _logger;
 
-        public TokenRevocationRepository(IMongoDatabase database, ILogger<TokenRevocationRepository> logger)
+        public TokenRevocationRepository(
+            IDbContextProvider dbContextProvider,
+            ILogger<TokenRevocationRepository> logger)
         {
-            _database = database;
+            _dbContextProvider = dbContextProvider;
             _logger = logger;
         }
+
+        private IMongoDatabase GetDatabase() =>
+            _dbContextProvider.GetDatabase()
+            ?? throw new InvalidOperationException("No active MongoDB database is available in current Genesis context.");
 
         /// <summary>
         /// Revoke a specific token by JTI (RFC 7009)
@@ -30,7 +37,7 @@ namespace DomainService.Oidc.Repositories
         {
             try
             {
-                var collection = _database.GetCollection<TokenRevocationModel>("revoked_tokens");
+                var collection = GetDatabase().GetCollection<TokenRevocationModel>("revoked_tokens");
                 var model = new TokenRevocationModel
                 {
                     Jti = jti,
@@ -57,7 +64,7 @@ namespace DomainService.Oidc.Repositories
         {
             try
             {
-                var collection = _database.GetCollection<TokenRevocationModel>("revoked_tokens");
+                var collection = GetDatabase().GetCollection<TokenRevocationModel>("revoked_tokens");
                 var filter = Builders<TokenRevocationModel>.Filter.Eq(t => t.Jti, jti);
                 var result = await collection.Find(filter).FirstOrDefaultAsync();
                 return result != null;
@@ -77,7 +84,7 @@ namespace DomainService.Oidc.Repositories
         {
             try
             {
-                var collection = _database.GetCollection<TokenRevocationModel>("revoked_tokens");
+                var collection = GetDatabase().GetCollection<TokenRevocationModel>("revoked_tokens");
                 var filter = Builders<TokenRevocationModel>.Filter.Eq(t => t.FamilyId, familyId);
                 var update = Builders<TokenRevocationModel>.Update
                     .Set(t => t.RevokeReason, "family_revoked_for_reuse_detection");
@@ -100,7 +107,7 @@ namespace DomainService.Oidc.Repositories
         {
             try
             {
-                var collection = _database.GetCollection<TokenRevocationModel>("revoked_tokens");
+                var collection = GetDatabase().GetCollection<TokenRevocationModel>("revoked_tokens");
                 var filter = Builders<TokenRevocationModel>.Filter.And(
                     Builders<TokenRevocationModel>.Filter.Eq(t => t.FamilyId, familyId),
                     Builders<TokenRevocationModel>.Filter.Eq(t => t.RevokeReason, "family_revoked_for_reuse_detection")
@@ -122,7 +129,7 @@ namespace DomainService.Oidc.Repositories
         {
             try
             {
-                var collection = _database.GetCollection<TokenRevocationModel>("revoked_tokens");
+                var collection = GetDatabase().GetCollection<TokenRevocationModel>("revoked_tokens");
                 var filter = Builders<TokenRevocationModel>.Filter.Eq(t => t.Jti, jti);
                 var result = await collection.DeleteOneAsync(filter);
                 return result.DeletedCount > 0;
@@ -141,7 +148,7 @@ namespace DomainService.Oidc.Repositories
         {
             try
             {
-                var collection = _database.GetCollection<TokenRevocationModel>("revoked_tokens");
+                var collection = GetDatabase().GetCollection<TokenRevocationModel>("revoked_tokens");
                 var filter = Builders<TokenRevocationModel>.Filter.Eq(t => t.Jti, jti);
                 return await collection.Find(filter).FirstOrDefaultAsync();
             }
@@ -159,7 +166,7 @@ namespace DomainService.Oidc.Repositories
         {
             try
             {
-                var collection = _database.GetCollection<TokenRevocationModel>("revoked_tokens");
+                var collection = GetDatabase().GetCollection<TokenRevocationModel>("revoked_tokens");
                 var filter = Builders<TokenRevocationModel>.Filter.Eq(t => t.UserId, userId);
                 return await collection.Find(filter).SortByDescending(t => t.RevokedAt).ToListAsync();
             }

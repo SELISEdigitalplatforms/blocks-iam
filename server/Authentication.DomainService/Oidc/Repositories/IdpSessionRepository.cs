@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Threading.Tasks;
 using MongoDB.Driver;
+using Blocks.Genesis;
 using Blocks.Genesis.Auth;
 using Microsoft.Extensions.Logging;
 
@@ -9,20 +10,26 @@ namespace DomainService.Oidc.Repositories
 {
     public class IdpSessionRepository : IIdpSessionRepository
     {
-        private readonly IMongoDatabase _database;
+        private readonly IDbContextProvider _dbContextProvider;
         private readonly ILogger<IdpSessionRepository> _logger;
 
-        public IdpSessionRepository(IMongoDatabase database, ILogger<IdpSessionRepository> logger)
+        public IdpSessionRepository(
+            IDbContextProvider dbContextProvider,
+            ILogger<IdpSessionRepository> logger)
         {
-            _database = database;
+            _dbContextProvider = dbContextProvider;
             _logger = logger;
         }
+
+        private IMongoDatabase GetDatabase() =>
+            _dbContextProvider.GetDatabase()
+            ?? throw new InvalidOperationException("No active MongoDB database is available in current Genesis context.");
 
         public async Task<string> CreateAsync(IdpSessionModel session)
         {
             try
             {
-                var collection = _database.GetCollection<IdpSessionModel>("idp_sessions");
+                var collection = GetDatabase().GetCollection<IdpSessionModel>("idp_sessions");
                 await collection.InsertOneAsync(session);
                 _logger.LogInformation($"IdP session created: {session.SessionId}");
                 return session.SessionId;
@@ -38,7 +45,7 @@ namespace DomainService.Oidc.Repositories
         {
             try
             {
-                var collection = _database.GetCollection<IdpSessionModel>("idp_sessions");
+                var collection = GetDatabase().GetCollection<IdpSessionModel>("idp_sessions");
                 var filter = Builders<IdpSessionModel>.Filter.Eq(s => s.SessionId, sessionId);
                 return await collection.Find(filter).FirstOrDefaultAsync();
             }
@@ -53,7 +60,7 @@ namespace DomainService.Oidc.Repositories
         {
             try
             {
-                var collection = _database.GetCollection<IdpSessionModel>("idp_sessions");
+                var collection = GetDatabase().GetCollection<IdpSessionModel>("idp_sessions");
                 var filter = Builders<IdpSessionModel>.Filter.Eq(s => s.SessionId, sessionId);
                 var update = Builders<IdpSessionModel>.Update.Push(s => s.Accounts, account);
                 var result = await collection.UpdateOneAsync(filter, update);
@@ -70,7 +77,7 @@ namespace DomainService.Oidc.Repositories
         {
             try
             {
-                var collection = _database.GetCollection<IdpSessionModel>("idp_sessions");
+                var collection = GetDatabase().GetCollection<IdpSessionModel>("idp_sessions");
                 var filter = Builders<IdpSessionModel>.Filter.Eq(s => s.SessionId, sessionId);
                 var update = Builders<IdpSessionModel>.Update.Set(s => s.LastActivityAt, DateTime.UtcNow);
                 var result = await collection.UpdateOneAsync(filter, update);
@@ -87,7 +94,7 @@ namespace DomainService.Oidc.Repositories
         {
             try
             {
-                var collection = _database.GetCollection<IdpSessionModel>("idp_sessions");
+                var collection = GetDatabase().GetCollection<IdpSessionModel>("idp_sessions");
                 var filter = Builders<IdpSessionModel>.Filter.Eq(s => s.SessionId, sessionId);
                 var update = Builders<IdpSessionModel>.Update.Set(s => s.RevokedAt, DateTime.UtcNow);
                 var result = await collection.UpdateOneAsync(filter, update);
@@ -104,7 +111,7 @@ namespace DomainService.Oidc.Repositories
         {
             try
             {
-                var collection = _database.GetCollection<IdpSessionModel>("idp_sessions");
+                var collection = GetDatabase().GetCollection<IdpSessionModel>("idp_sessions");
                 var filter = Builders<IdpSessionModel>.Filter.Eq(s => s.SessionId, sessionId);
                 var result = await collection.DeleteOneAsync(filter);
                 return result.DeletedCount > 0;
@@ -120,7 +127,7 @@ namespace DomainService.Oidc.Repositories
         {
             try
             {
-                var collection = _database.GetCollection<IdpSessionModel>("idp_sessions");
+                var collection = GetDatabase().GetCollection<IdpSessionModel>("idp_sessions");
                 var filter = Builders<IdpSessionModel>.Filter.And(
                     Builders<IdpSessionModel>.Filter.ElemMatch(s => s.Accounts, 
                         Builders<IdpSessionAccount>.Filter.Eq(a => a.UserId, userId)),
