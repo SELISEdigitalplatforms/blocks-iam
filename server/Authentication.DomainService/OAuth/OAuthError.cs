@@ -81,7 +81,7 @@ namespace DomainService.OAuth
                 GrantTypes.AuthCode => new TokenResponse
                 {
                     Error = "invalid_request_body",
-                    ErrorDescription = "code and secret is required",
+                    ErrorDescription = "Code, auth code required",
                     StatusCode = 400
                 },
 
