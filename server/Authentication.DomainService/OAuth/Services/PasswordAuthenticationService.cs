@@ -103,7 +103,25 @@ namespace DomainService.OAuth
                     });
             }
 
-            return await _oAuthJwtAccessTokenManager.ManageTokenAsync(request, authenticationConfiguration, user);
+            request.OrganizationId = ResolveSignInOrganizationId(user, request.OrganizationId);
+            var tokenResponse = await _oAuthJwtAccessTokenManager.ManageTokenAsync(request, authenticationConfiguration, user);
+
+            if (tokenResponse != null
+                && string.IsNullOrWhiteSpace(tokenResponse.Error)
+                && !string.IsNullOrWhiteSpace(request.OrganizationId)
+                && !string.Equals(user.LastUsedOrganizationId, request.OrganizationId, StringComparison.OrdinalIgnoreCase))
+            {
+                await _oAuthRepository.UpdatePartialAsync<User>(
+                    user.ItemId,
+                    new Dictionary<string, object>
+                    {
+                        { nameof(User.LastUsedOrganizationId), request.OrganizationId },
+                        { nameof(User.LastUpdatedDate), DateTime.UtcNow },
+                        { nameof(User.LastUpdatedBy), user.ItemId }
+                    });
+            }
+
+            return tokenResponse;
 
         }
 
@@ -152,6 +170,41 @@ namespace DomainService.OAuth
             };
 
             await _authenticationDomainService.SendToQueueAsync(IdpConstants.AuthenticationQueue, timelineEvent);
+        }
+
+        private static string ResolveSignInOrganizationId(User user, string? requestedOrganizationId)
+        {
+            if (HasOrganizationAccess(user, requestedOrganizationId))
+            {
+                return requestedOrganizationId!;
+            }
+
+            if (HasOrganizationAccess(user, user.LastUsedOrganizationId))
+            {
+                return user.LastUsedOrganizationId!;
+            }
+
+            if (HasOrganizationAccess(user, "default"))
+            {
+                return "default";
+            }
+
+            return user.OrganizationIds.FirstOrDefault(id => !string.IsNullOrWhiteSpace(id))
+                ?? user.Roles.Keys.FirstOrDefault(key => !string.IsNullOrWhiteSpace(key))
+                ?? user.Permissions.Keys.FirstOrDefault(key => !string.IsNullOrWhiteSpace(key))
+                ?? "default";
+        }
+
+        private static bool HasOrganizationAccess(User user, string? organizationId)
+        {
+            if (string.IsNullOrWhiteSpace(organizationId))
+            {
+                return false;
+            }
+
+            return user.OrganizationIds.Contains(organizationId)
+                || user.Roles.ContainsKey(organizationId)
+                || user.Permissions.ContainsKey(organizationId);
         }
     }
 }

@@ -7,6 +7,16 @@ namespace DomainService.OAuth.RequestModel
         public string Username { get; set; } = string.Empty;
         public string Password { get; set; } = string.Empty;
         public string ClientId { get; set; } = string.Empty;
+
+        [JsonPropertyName("org_id")]
+        public string? OrgId { get; set; }
+
+        [JsonPropertyName("organization_id")]
+        public string? OrganizationId
+        {
+            get => OrgId;
+            set => OrgId = value;
+        }
     }
 
     public class SocialLoginRequest
@@ -14,6 +24,16 @@ namespace DomainService.OAuth.RequestModel
         public string Code { get; set; } = string.Empty;
         public string State { get; set; } = string.Empty;
         public string ClientId { get; set; } = string.Empty;
+
+        [JsonPropertyName("org_id")]
+        public string? OrgId { get; set; }
+
+        [JsonPropertyName("organization_id")]
+        public string? OrganizationId
+        {
+            get => OrgId;
+            set => OrgId = value;
+        }
     }
 
     public class SwitchOrganizationRequest

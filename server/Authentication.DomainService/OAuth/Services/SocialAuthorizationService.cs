@@ -61,6 +61,8 @@ namespace DomainService.OAuth
 
                 if (signUpSetting is not null && signUpSetting.IsSSoSignUpEnabled)
                     return await CreateUser(stateInfo, externalUser);
+
+                return (null, string.Empty);
             }
 
             user.Department = externalUser.Department;

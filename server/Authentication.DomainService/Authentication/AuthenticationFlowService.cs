@@ -73,13 +73,16 @@ namespace DomainService.Authentication
                 };
             }
 
+            var user = await _authenticationRepository.GetUserByUsernameAsync(request.Username);
+            var resolvedOrganizationId = ResolveSignInOrganizationId(user, request.OrgId);
+
             var tokenRequest = new TokenRequest
             {
                 GrantType = GrantTypes.Password,
                 Username = request.Username,
                 Password = request.Password,
                 ClientId = request.ClientId,
-                OrganizationId = "default",
+                OrganizationId = resolvedOrganizationId,
                 Request = httpRequest
             };
 
@@ -107,7 +110,7 @@ namespace DomainService.Authentication
                 Code = request.Code,
                 State = request.State,
                 ClientId = request.ClientId,
-                OrganizationId = "default",
+                OrganizationId = request.OrgId,
                 Request = httpRequest
             };
 
@@ -115,6 +118,46 @@ namespace DomainService.Authentication
             {
                 TokenResponse = await _socialAuthorizationService.AuthenticateAsync(tokenRequest, configuration)
             };
+        }
+
+        private static string ResolveSignInOrganizationId(User? user, string? requestedOrganizationId)
+        {
+            if (user == null)
+            {
+                return string.IsNullOrWhiteSpace(requestedOrganizationId) ? "default" : requestedOrganizationId;
+            }
+
+            if (HasOrganizationAccess(user, requestedOrganizationId))
+            {
+                return requestedOrganizationId!;
+            }
+
+            if (HasOrganizationAccess(user, user.LastUsedOrganizationId))
+            {
+                return user.LastUsedOrganizationId!;
+            }
+
+            if (HasOrganizationAccess(user, "default"))
+            {
+                return "default";
+            }
+
+            return user.OrganizationIds.FirstOrDefault(id => !string.IsNullOrWhiteSpace(id))
+                ?? user.Roles.Keys.FirstOrDefault(key => !string.IsNullOrWhiteSpace(key))
+                ?? user.Permissions.Keys.FirstOrDefault(key => !string.IsNullOrWhiteSpace(key))
+                ?? "default";
+        }
+
+        private static bool HasOrganizationAccess(User user, string? organizationId)
+        {
+            if (string.IsNullOrWhiteSpace(organizationId))
+            {
+                return false;
+            }
+
+            return user.OrganizationIds.Contains(organizationId)
+                || user.Roles.ContainsKey(organizationId)
+                || user.Permissions.ContainsKey(organizationId);
         }
 
         public async Task<AuthenticationFlowResult> ExecuteSwitchOrganizationAsync(SwitchOrganizationRequest request, ClaimsPrincipal principal, HttpRequest httpRequest)
