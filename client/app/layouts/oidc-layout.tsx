@@ -7,7 +7,7 @@ import { extractOIDCParams } from "@blocks-idp/authentication/utils/oidc-utils";
 type OIDCContextType = {
   logoUrl?: string;
   themeColor?: string;
-  projectKey?: string;
+  tenantId?: string;
   userName?: string;
   clientId?: string;
   redirectUri?: string;
@@ -29,7 +29,7 @@ export function useOIDCContext() {
   return {
     logoUrl: context.logoUrl,
     themeColor: context.themeColor || "#124091",
-    projectKey: context.projectKey,
+    tenantId: context.tenantId,
     userName: context.userName,
     clientId: context.clientId,
     redirectUri: context.redirectUri,
@@ -63,7 +63,7 @@ function OIDCProvider({ children }: { children: ReactNode }) {
     }
 
     const mergedParams: OIDCContextType = {
-      projectKey: urlParams.projectKey || stored.projectKey,
+      tenantId: urlParams.tenantId || stored.tenantId,
       userName: urlParams.userName || stored.userName,
       logoUrl: urlParams.logoUrl || stored.logoUrl,
       themeColor: urlParams.themeColor || stored.themeColor || "#124091",

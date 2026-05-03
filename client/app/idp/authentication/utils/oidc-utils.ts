@@ -3,6 +3,7 @@ interface OIDCParams {
   logoUrl?: string;
   themeColor: string;
   clientId?: string;
+  tenantId?: string;
   state?: string;
   nonce?: string;
   scope?: string;
@@ -70,6 +71,7 @@ export const extractOIDCParams = (debug = false): OIDCParams => {
   let clientId = searchParams.get("clientId") || undefined;
   let logoUrl = searchParams.get("logoUrl") || undefined;
   let themeColor = searchParams.get("brandColor") || undefined;
+  let tenantId = searchParams.get("tenant_id") || undefined;
   let state = searchParams.get("state") || undefined;
   let nonce = searchParams.get("nonce") || undefined;
   let scope = searchParams.get("scope") || undefined;
@@ -106,6 +108,9 @@ export const extractOIDCParams = (debug = false): OIDCParams => {
         if (!userName) {
           userName = hashParams.get("userName") || undefined;
         }
+        if (!tenantId) {
+          tenantId = hashParams.get("tenant_id") || undefined;
+        }
         if (!state) {
           state = hashParams.get("state") || undefined;
         }
@@ -133,6 +138,9 @@ export const extractOIDCParams = (debug = false): OIDCParams => {
           }
           if (!userName && hashParams.has("userName")) {
             userName = hashParams.get("userName") || undefined;
+          }
+          if (!tenantId && hashParams.has("tenant_id")) {
+            tenantId = hashParams.get("tenant_id") || undefined;
           }
           if (!state && hashParams.has("state")) {
             state = hashParams.get("state") || undefined;
@@ -169,6 +177,7 @@ export const extractOIDCParams = (debug = false): OIDCParams => {
     logoUrl,
     themeColor: normalizedThemeColor,
     clientId,
+    tenantId,
     state,
     nonce,
     scope,
@@ -189,6 +198,7 @@ export const buildOIDCNavigationUrl = (path: string): string => {
   if (params.userName) searchParams.set("userName", params.userName);
   if (params.clientId) searchParams.set("clientId", params.clientId);
   if (params.logoUrl) searchParams.set("logoUrl", params.logoUrl);
+  if (params.tenantId) searchParams.set("tenant_id", params.tenantId);
   
 
   if (params.themeColor) {
@@ -213,6 +223,7 @@ export const getCurrentOIDCParams = (): URLSearchParams => {
   if (params.userName) searchParams.set("userName", params.userName);
   if (params.clientId) searchParams.set("clientId", params.clientId);
   if (params.logoUrl) searchParams.set("logoUrl", params.logoUrl);
+  if (params.tenantId) searchParams.set("tenant_id", params.tenantId);
   if(params.state) searchParams.set("state", params.state);
   if(params.nonce) searchParams.set("nonce", params.nonce);
   if(params.scope) searchParams.set("scope", params.scope);

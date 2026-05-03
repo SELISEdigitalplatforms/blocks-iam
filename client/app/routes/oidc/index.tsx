@@ -13,7 +13,7 @@ export default function OidcIndexPage() {
   const navigate = useNavigate();
   const { setAuthenticated, setTokens } = useAuthStore();
   const [isExchanging, setIsExchanging] = useState(false);
-  const { clientId, redirectUri } = useOIDCContext();
+  const { clientId, redirectUri, tenantId } = useOIDCContext();
 
   const code = searchParams.get("code");
   const userName = searchParams.get("userName");
@@ -28,7 +28,13 @@ export default function OidcIndexPage() {
     }
 
     setIsExchanging(true);
-    authService.verifyOidc({ code, clientId, redirectUri, codeVerifier })
+    authService.verifyOidc({
+      code,
+      clientId,
+      redirectUri,
+      codeVerifier,
+      tenantId: tenantId || searchParams.get("tenant_id") || undefined,
+    })
       .then((res) => {
         const isLocalhost = getRuntimeEnv("BLOCKS_API_BASE_URL")?.includes("localhost");
 

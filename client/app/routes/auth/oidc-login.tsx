@@ -163,20 +163,46 @@ export default function OidcLogin() {
     return () => clearTimeout(timeoutId);
   }, [titleNumber, titles]);
 
-  const handleLogin = () => {
+  const handleLogin = async () => {
     setIsLoading(true);
-    const blocksKey = getRuntimeEnv("BLOCKS_X_BLOCKS_KEY");
+    const apiBaseUrl = getRuntimeEnv("BLOCKS_API_BASE_URL") || window.location.origin;
+    const currentParams = new URLSearchParams(window.location.search);
+    const tenantId = currentParams.get("tenant_id") || currentParams.get("projectKey");
 
-    const params = new URLSearchParams({
-      response_type: "code",
-      client_id: "94201649-8f4d-4818-be0e-2024e3f9fee2",
-      redirect_uri: "https://dev-idp.blocksdevelopers.com",
-      scope: "openId",
-      state: "039849038",
-      ...(blocksKey ? { "x-blocks-key": blocksKey } : {}),
-    });
+    try {
+      // Generate PKCE pair for secure code exchange at backend
+      const verifierBytes = crypto.getRandomValues(new Uint8Array(32));
+      const base64UrlEncode = (bytes: Uint8Array) => {
+        const binary = String.fromCharCode(...bytes);
+        return btoa(binary).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/g, "");
+      };
+      const verifier = base64UrlEncode(verifierBytes);
+      const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(verifier));
+      const challenge = base64UrlEncode(new Uint8Array(digest));
 
-    window.location.href = `https://dev-idp.blocksdevelopers.com/api/Authentication/Authorize?${params.toString()}`;
+      // Store verifier for token exchange at backend
+      sessionStorage.setItem("oidc-code-verifier", verifier);
+
+      const params = new URLSearchParams({
+        response_type: "code",
+        client_id: "94201649-8f4d-4818-be0e-2024e3f9fee2",
+        redirect_uri: apiBaseUrl,
+        scope: "openid profile email offline_access",
+        state: crypto.randomUUID(),
+        nonce: crypto.randomUUID(),
+        code_challenge: challenge,
+        code_challenge_method: "S256",
+      });
+
+      if (tenantId) {
+        params.set("tenant_id", tenantId);
+      }
+
+      window.location.href = `${apiBaseUrl}/api/oidc/authorize?${params.toString()}`;
+    } catch (error) {
+      console.error("Error during OIDC authorization:", error);
+      setIsLoading(false);
+    }
   };
 
   return (

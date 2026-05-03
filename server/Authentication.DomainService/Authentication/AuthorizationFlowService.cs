@@ -242,9 +242,9 @@ namespace DomainService.Authentication
                 var callbackParams = new Dictionary<string, string>
                 {
                     { "code", authCode },
-                    { "state", state }
+                    { "state", state },
+                    { "tenant_id", resolvedTenantId ?? tenant_id ?? string.Empty }
                 };
-
                 return new RedirectResult(BuildRedirectUri(redirect_uri, callbackParams));
             }
             catch (Exception ex)
@@ -393,19 +393,30 @@ namespace DomainService.Authentication
             var code_verifier = request.Form["code_verifier"].ToString();
             var client_id = request.Form["client_id"].ToString();
             var redirect_uri = request.Form["redirect_uri"].ToString();
+            var tenant_id = request.Form["tenant_id"].ToString();
 
             if (string.IsNullOrEmpty(code) || string.IsNullOrEmpty(code_verifier) || string.IsNullOrEmpty(client_id))
             {
                 return new BadRequestObjectResult(new { error = "invalid_request", error_description = "Missing required parameters" });
             }
 
-            var tenantId = request.HttpContext.User.FindFirst("tenant_id")?.Value;
+            var tenantId = !string.IsNullOrWhiteSpace(tenant_id)
+                ? tenant_id
+                : request.HttpContext.User.FindFirst("tenant_id")?.Value;
 
             var authCode = await _authCodeRepo.GetByCodeAsync(code);
             if (authCode == null)
             {
                 _logger.LogWarning($"Authorization code not found: {code}");
                 return new BadRequestObjectResult(new { error = "invalid_grant", error_description = "Authorization code is invalid or expired" });
+            }
+
+            if (!string.IsNullOrWhiteSpace(tenantId)
+                && !string.IsNullOrWhiteSpace(authCode.TenantId)
+                && !string.Equals(authCode.TenantId, tenantId, StringComparison.OrdinalIgnoreCase))
+            {
+                _logger.LogWarning($"Tenant mismatch for code exchange. Presented tenant: {tenantId}, code tenant: {authCode.TenantId}");
+                return new BadRequestObjectResult(new { error = "invalid_grant", error_description = "Tenant mismatch" });
             }
 
             if (authCode.ExpiresAt < DateTime.UtcNow)

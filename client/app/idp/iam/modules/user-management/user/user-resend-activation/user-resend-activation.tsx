@@ -15,11 +15,10 @@ export const UserResendActivationMail = ({
   open,
   setOpen,
 }: UserResendActivationMailProps) => {
-  const tenantId = useProjectStore().selectedProject?.tenantId || "";
   const { mutateAsync, isPending } = useAccountResendActivation();
   const onClickHandler = async () => {
     try {
-      const res = await mutateAsync({ projectKey: tenantId, userId });
+      const res = await mutateAsync({ userId });
       if (res.isSuccess) {
         toast({
           variant: "success",

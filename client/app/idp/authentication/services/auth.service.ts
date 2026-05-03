@@ -43,13 +43,16 @@ export class AuthService {
     });
   }
 
-  verifyOidc(payload: { code: string; clientId: string; redirectUri: string; codeVerifier: string }): Promise<any> {
+  verifyOidc(payload: { code: string; clientId: string; redirectUri: string; codeVerifier: string; tenantId?: string }): Promise<any> {
     const body = new URLSearchParams();
     body.append("grant_type", "authorization_code");
     body.append("code", payload.code);
     body.append("client_id", payload.clientId);
     body.append("redirect_uri", payload.redirectUri);
     body.append("code_verifier", payload.codeVerifier);
+    if (payload.tenantId) {
+      body.append("tenant_id", payload.tenantId);
+    }
 
     return http.post(
       AUTH_ENDPOINTS.OIDC_TOKEN,
