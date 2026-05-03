@@ -27,8 +27,7 @@ namespace Iam.DomainService.Resources
         Task SaveOrganizationAsync(Organization organization);
         Task<GetOrganizationsResponse> GetOrganizationsAsync(GetOrganizationsRequest request);
         Task SaveOrganizationConfig(OrganizationConfig config);
-        Task<OrganizationConfig> GetOrgConfigByIdAsync(string organizationId);
-        Task<OrganizationConfig> GetOrganizationConfigAsync();
+        Task<OrganizationConfig> GetOrganizationConfigAsync(string tenantId, string organizationId);
         Task<List<PermissionGroupBySeverityResponse>> GetPermissionsGroupBySeverityAsync();
     }
 }

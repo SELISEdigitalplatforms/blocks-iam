@@ -5,6 +5,6 @@ namespace Iam.DomainService.Entities
     [BsonIgnoreExtraElements]
     public class Permission : BuiltInPermission
     {
-        public List<string> Roles { get; set; } = [];
+        public Dictionary<string, List<string>> Roles { get; set; } = [];
     }
 }

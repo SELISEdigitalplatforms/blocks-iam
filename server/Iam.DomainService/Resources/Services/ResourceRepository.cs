@@ -1,4 +1,5 @@
-﻿using Iam.DomainService.Entities;
+﻿using Blocks.Genesis;
+using Iam.DomainService.Entities;
 using Iam.DomainService.Enums;
 using Iam.DomainService.Resources.ResponseModel;
 using Iam.DomainService.Services;
@@ -84,8 +85,9 @@ namespace Iam.DomainService.Resources
         public async Task<(IQueryable<Permission>, long)> GetPermissionsAsync(GetPermissionsRequest query)
         {
             var collection = _identityAccessManagementRepository.GetCollection<Permission>();
+            var organizationId = ResolveOrganizationId();
             var filter = query.Roles.Count != 0
-                ? Builders<Permission>.Filter.AnyIn(x => x.Roles, query.Roles)
+                ? BuildRoleFilterWithFallback(organizationId, query.Roles)
                 : Builders<Permission>.Filter.Empty;
 
             SortDefinition<Permission>? sort = null;
@@ -205,26 +207,33 @@ namespace Iam.DomainService.Resources
 
         public async Task<bool> UpdateRolePermissionByIdsAsync(string slug, List<string> permissions)
         {
-            var collection = _identityAccessManagementRepository.GetCollection<Permission>();
-            var filter = Builders<Permission>.Filter.In(x => x.ItemId, permissions);
-            var update = Builders<Permission>.Update.AddToSet(x => x.Roles, slug);
+            var collection = _identityAccessManagementRepository.GetCollectionByName<BsonDocument>("Permissions");
+            var organizationId = ResolveOrganizationId();
+
+            var filter = Builders<BsonDocument>.Filter.In("ItemId", permissions);
+            await NormalizeLegacyRolesShapeAsync(collection, filter);
+
+            var update = Builders<BsonDocument>.Update.AddToSet($"Roles.{organizationId}", slug);
             var result = await collection.UpdateManyAsync(filter, update);
             return result?.IsAcknowledged ?? false;
         }
 
         public async Task<bool> RemoveRolePermissionByIdsAsync(string slug, List<string> permissions)
         {
-            var collection = _identityAccessManagementRepository.GetCollection<Permission>();
-            var filter = Builders<Permission>.Filter.In(x => x.ItemId, permissions);
-            var update = Builders<Permission>.Update.Pull(x => x.Roles, slug);
+            var collection = _identityAccessManagementRepository.GetCollectionByName<BsonDocument>("Permissions");
+            var organizationId = ResolveOrganizationId();
+
+            var filter = Builders<BsonDocument>.Filter.In("ItemId", permissions);
+            await NormalizeLegacyRolesShapeAsync(collection, filter);
+
+            var update = Builders<BsonDocument>.Update.Pull($"Roles.{organizationId}", slug);
             var result = await collection.UpdateManyAsync(filter, update);
             return result?.IsAcknowledged ?? false;
         }
 
         public async Task<bool> UpdateRolesCountAsync(string slug)
         {
-            var collection = _identityAccessManagementRepository.GetCollection<Permission>();
-            var count = await collection.CountDocumentsAsync(x => x.Roles.Contains(slug));
+            var count = await CountRoleUsageAcrossAllOrganizationsAsync(slug);
 
             var update = Builders<Role>.Update.Set(x => x.Count, count);
             var result = await _identityAccessManagementRepository.GetCollection<Role>()
@@ -280,19 +289,118 @@ namespace Iam.DomainService.Resources
         public async Task SaveOrganizationConfig(OrganizationConfig config)
         {
             var collection = _identityAccessManagementRepository.GetCollection<OrganizationConfig>();
-            await collection.ReplaceOneAsync(r => r.ItemId == config.ItemId, config, new ReplaceOptions { IsUpsert = true });
+            await collection.ReplaceOneAsync(
+                r => r.TenantId == config.TenantId && r.OrganizationId == config.OrganizationId,
+                config,
+                new ReplaceOptions { IsUpsert = true });
         }
 
-        public async Task<OrganizationConfig> GetOrgConfigByIdAsync(string organizationId)
+        public async Task<OrganizationConfig> GetOrganizationConfigAsync(string tenantId, string organizationId)
         {
             var collection = _identityAccessManagementRepository.GetCollection<OrganizationConfig>();
-            return  await (await collection.FindAsync(org=>org.ItemId == organizationId)).FirstOrDefaultAsync();
+            return await (await collection.FindAsync(org => org.TenantId == tenantId && org.OrganizationId == organizationId)).FirstOrDefaultAsync();
         }
 
-        public async Task<OrganizationConfig> GetOrganizationConfigAsync()
+        private static string ResolveOrganizationId()
         {
-            var collection = _identityAccessManagementRepository.GetCollection<OrganizationConfig>();
-            return await (await collection.FindAsync(_=>true)).FirstOrDefaultAsync();
+            var organizationId = BlocksContext.GetContext()?.OrganizationId;
+            return string.IsNullOrWhiteSpace(organizationId) ? "default" : organizationId;
+        }
+
+        private static FilterDefinition<Permission> BuildRoleFilterWithFallback(string organizationId, IEnumerable<string> roles)
+        {
+            var roleList = roles?.Where(role => !string.IsNullOrWhiteSpace(role)).Distinct().ToList() ?? [];
+            if (roleList.Count == 0)
+            {
+                return Builders<Permission>.Filter.Empty;
+            }
+
+            var orgFilter = Builders<Permission>.Filter.AnyIn($"Roles.{organizationId}", roleList);
+            var defaultFilter = Builders<Permission>.Filter.AnyIn("Roles.default", roleList);
+            var legacyFilter = Builders<Permission>.Filter.AnyIn("Roles", roleList);
+            return Builders<Permission>.Filter.Or(orgFilter, defaultFilter, legacyFilter);
+        }
+
+        private static async Task NormalizeLegacyRolesShapeAsync(IMongoCollection<BsonDocument> collection, FilterDefinition<BsonDocument> filter)
+        {
+            var arrayShapeFilter = Builders<BsonDocument>.Filter.And(
+                filter,
+                Builders<BsonDocument>.Filter.Type("Roles", BsonType.Array));
+
+            var legacyDocs = await collection
+                .Find(arrayShapeFilter)
+                .Project(Builders<BsonDocument>.Projection.Include("ItemId").Include("Roles"))
+                .ToListAsync();
+
+            foreach (var doc in legacyDocs)
+            {
+                if (!doc.TryGetValue("ItemId", out var itemIdValue))
+                {
+                    continue;
+                }
+
+                var legacyRoles = doc.GetValue("Roles", new BsonArray())
+                    .AsBsonArray
+                    .Where(value => value.IsString && !string.IsNullOrWhiteSpace(value.AsString))
+                    .Select(value => value.AsString)
+                    .Distinct(StringComparer.OrdinalIgnoreCase)
+                    .ToList();
+
+                var update = Builders<BsonDocument>.Update.Set(
+                    "Roles",
+                    new BsonDocument("default", new BsonArray(legacyRoles)));
+
+                await collection.UpdateOneAsync(
+                    Builders<BsonDocument>.Filter.Eq("ItemId", itemIdValue.AsString),
+                    update);
+            }
+        }
+
+        private async Task<long> CountRoleUsageAcrossAllOrganizationsAsync(string slug)
+        {
+            var collection = _identityAccessManagementRepository.GetCollectionByName<BsonDocument>("Permissions");
+            var docs = await collection
+                .Find(Builders<BsonDocument>.Filter.Exists("Roles"))
+                .Project(Builders<BsonDocument>.Projection.Include("Roles"))
+                .ToListAsync();
+
+            var count = 0L;
+            foreach (var doc in docs)
+            {
+                if (!doc.TryGetValue("Roles", out var rolesValue))
+                {
+                    continue;
+                }
+
+                var matched = false;
+                if (rolesValue.IsBsonArray)
+                {
+                    matched = rolesValue.AsBsonArray.Any(role => role.IsString && string.Equals(role.AsString, slug, StringComparison.OrdinalIgnoreCase));
+                }
+                else if (rolesValue.IsBsonDocument)
+                {
+                    foreach (var orgRoles in rolesValue.AsBsonDocument.Elements)
+                    {
+                        if (!orgRoles.Value.IsBsonArray)
+                        {
+                            continue;
+                        }
+
+                        if (orgRoles.Value.AsBsonArray.Any(role => role.IsString && string.Equals(role.AsString, slug, StringComparison.OrdinalIgnoreCase)))
+                        {
+                            matched = true;
+                            break;
+                        }
+                    }
+                }
+
+                if (matched)
+                {
+                    count++;
+                }
+            }
+
+            return count;
         }
 
         

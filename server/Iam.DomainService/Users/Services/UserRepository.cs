@@ -63,7 +63,11 @@ namespace Iam.DomainService.Users
 
             var collection = _identityAccessManagementRepository.GetCollection<Permission>();
             var project = Builders<Permission>.Projection.As<GetUserPermission>();
-            var filter = Builders<Permission>.Filter.AnyIn(x => x.Roles, roles);
+            var organizationId = ResolvePermissionOrganizationId();
+            var orgFilter = Builders<Permission>.Filter.AnyIn($"Roles.{organizationId}", roles);
+            var defaultFilter = Builders<Permission>.Filter.AnyIn("Roles.default", roles);
+            var legacyFilter = Builders<Permission>.Filter.AnyIn("Roles", roles);
+            var filter = Builders<Permission>.Filter.Or(orgFilter, defaultFilter, legacyFilter);
             return await collection.Find(filter).Project(project).ToListAsync();
         }
 
@@ -270,6 +274,12 @@ namespace Iam.DomainService.Users
             }
 
             return user.Permissions.Values.FirstOrDefault() ?? [];
+        }
+
+        private static string ResolvePermissionOrganizationId()
+        {
+            var orgId = BlocksContext.GetContext()?.OrganizationId;
+            return string.IsNullOrWhiteSpace(orgId) ? "default" : orgId;
         }
     }
 }

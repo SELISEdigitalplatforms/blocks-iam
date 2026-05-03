@@ -499,7 +499,21 @@ namespace Iam.DomainService.Resources
 
         public async Task<BaseResponse> SaveganizationConfigAsync(SaveOrganizationConfigRequest request)
         {
-            var organizationConfig = await MapOrganizationConfigAsync(request);
+            var tenantId = ResolveTenantId(request.ProjectKey);
+            var organizationId = ResolveOrganizationId(request.OrganizationId);
+            if (string.IsNullOrWhiteSpace(tenantId) || string.IsNullOrWhiteSpace(organizationId))
+            {
+                return new BaseResponse
+                {
+                    IsSuccess = false,
+                    Errors = new Dictionary<string, string>
+                    {
+                        { "invalid_request", "Tenant and organization identifiers are required" }
+                    }
+                };
+            }
+
+            var organizationConfig = await MapOrganizationConfigAsync(request, tenantId, organizationId);
             await _resourceRepository.SaveOrganizationConfig(organizationConfig);
 
             return new BaseResponse { IsSuccess = true };
@@ -507,14 +521,31 @@ namespace Iam.DomainService.Resources
 
         public async Task<OrganizationConfig> GetOrganizationConfigAsync(GetOrganizationConfigRequest request)
         {
-            return await _resourceRepository.GetOrganizationConfigAsync();
+            var tenantId = ResolveTenantId(request.ProjectKey);
+            var organizationId = ResolveOrganizationId(request.OrganizationId);
+            if (string.IsNullOrWhiteSpace(tenantId) || string.IsNullOrWhiteSpace(organizationId))
+            {
+                return null;
+            }
+
+            return await _resourceRepository.GetOrganizationConfigAsync(tenantId, organizationId);
         }
 
-        private async Task<OrganizationConfig> MapOrganizationConfigAsync(SaveOrganizationConfigRequest request)
+        private async Task<OrganizationConfig> MapOrganizationConfigAsync(SaveOrganizationConfigRequest request, string tenantId, string organizationId)
         {
             var userId = BlocksContext.GetContext()?.UserId;
-            var organizationConfig = await _resourceRepository.GetOrgConfigByIdAsync(request.ItemId) ?? new OrganizationConfig { ItemId = Guid.NewGuid().ToString(), CreatedDate = DateTime.UtcNow, CreatedBy = userId };
+            var organizationConfig = await _resourceRepository.GetOrganizationConfigAsync(tenantId, organizationId)
+                ?? new OrganizationConfig
+                {
+                    ItemId = Guid.NewGuid().ToString(),
+                    CreatedDate = DateTime.UtcNow,
+                    CreatedBy = userId,
+                    TenantId = tenantId,
+                    OrganizationId = organizationId
+                };
             
+            organizationConfig.TenantId = tenantId;
+            organizationConfig.OrganizationId = organizationId;
             organizationConfig.AllowCreationFromCloud = request.AllowCreationFromCloud;
             organizationConfig.AllowCreationFromConstruct = request.AllowCreationFromConstruct;
             organizationConfig.IsMultiOrgEnabled = request.IsMultiOrgEnabled;
@@ -523,6 +554,26 @@ namespace Iam.DomainService.Resources
             organizationConfig.Roles = request.Roles;
 
             return organizationConfig;
+        }
+
+        private static string ResolveTenantId(string requestProjectKey)
+        {
+            if (!string.IsNullOrWhiteSpace(requestProjectKey))
+            {
+                return requestProjectKey;
+            }
+
+            return BlocksContext.GetContext()?.TenantId;
+        }
+
+        private static string ResolveOrganizationId(string organizationId)
+        {
+            if (!string.IsNullOrWhiteSpace(organizationId))
+            {
+                return organizationId;
+            }
+
+            return BlocksContext.GetContext()?.OrganizationId;
         }
     }
 }

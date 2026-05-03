@@ -5,6 +5,7 @@ namespace Iam.DomainService.Resources
 {
     public class SaveOrganizationConfigRequest : IProjectKey
     {
+        public string? OrganizationId { get; set; }
         public string? ItemId { get; set; }
         public bool AllowCreationFromCloud { get; set; }
         public bool AllowCreationFromConstruct { get; set; }
@@ -15,6 +16,7 @@ namespace Iam.DomainService.Resources
 
     public class GetOrganizationConfigRequest : IProjectKey
     {
+        public string? OrganizationId { get; set; }
         public string ProjectKey { get ; set ; }
     }
 }
