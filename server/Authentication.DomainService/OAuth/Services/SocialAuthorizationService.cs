@@ -6,7 +6,6 @@ using DomainService.OAuth.Services;
 using DomainService.Services;
 using Iam.DomainService.Entities;
 using Iam.DomainService.Services;
-using Iam.DomainService.Shared.Entities;
 using Iam.DomainService.Users;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
@@ -66,7 +65,8 @@ namespace DomainService.OAuth
 
             user.Department = externalUser.Department;
             user.EmployeeId = externalUser.EmployeeId;
-            user.Memberships = [new OrganizationMembership { Roles = externalUser.Roles, OrganizationId = "default" }];
+            user.Roles["default"] = externalUser.Roles ?? [];
+            user.Permissions["default"] = externalUser.Permissions ?? [];
             await _userRepository.UpdateUserAsync(user);
 
             return (user, string.Empty);

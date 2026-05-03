@@ -78,6 +78,8 @@ public class TokenGenerationService : ITokenGenerationService
             UserId = claims.Sub,
             TenantId = claims.TenantId,
             OrgId = claims.OrgId,
+            Audience = claims.Audience,
+            Scope = claims.Scope,
             SlidingExpiry = now.AddMinutes(30),
             AbsoluteExpiry = now.AddHours(8)
         });
@@ -103,6 +105,14 @@ public class TokenGenerationService : ITokenGenerationService
         if (!string.IsNullOrWhiteSpace(claims.ClientId))
         {
             jwtClaims.Add(new Claim("client_id", claims.ClientId));
+        }
+
+        if (!string.IsNullOrWhiteSpace(claims.Audience))
+        {
+            jwtClaims.Add(new Claim("aud", claims.Audience));
+        }
+        else if (!string.IsNullOrWhiteSpace(claims.ClientId))
+        {
             jwtClaims.Add(new Claim("aud", claims.ClientId));
         }
 
@@ -111,19 +121,27 @@ public class TokenGenerationService : ITokenGenerationService
             jwtClaims.Add(new Claim(JwtRegisteredClaimNames.Nonce, claims.Nonce));
         }
 
+        foreach (var role in claims.Roles)
+        {
+            jwtClaims.Add(new Claim("role", role));
+            jwtClaims.Add(new Claim("roles", role));
+        }
+
         foreach (var resource in claims.Resources)
         {
             jwtClaims.Add(new Claim("resource", resource));
+            jwtClaims.Add(new Claim("resources", resource));
         }
 
         foreach (var permission in claims.Permissions)
         {
             jwtClaims.Add(new Claim("permission", permission));
+            jwtClaims.Add(new Claim("permissions", permission));
         }
 
         var token = new JwtSecurityToken(
             issuer: issuer,
-            audience: claims.ClientId,
+            audience: claims.Audience ?? claims.ClientId,
             claims: jwtClaims,
             notBefore: now,
             expires: now.AddSeconds(expiresInSeconds),

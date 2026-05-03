@@ -842,13 +842,14 @@ namespace DomainService.People
                 {
                     Email = request.Email,
                     MailPurpose = string.Empty,
-                    Memberships = new List<Iam.DomainService.Shared.Entities.OrganizationMembership>
+                    OrgId = "default",
+                    Roles = new Dictionary<string, List<string>>
                     {
-                        new Iam.DomainService.Shared.Entities.OrganizationMembership
-                        {
-                            OrganizationId = "default",
-                            Roles = new List<string> { "user" }
-                        }
+                        ["default"] = new List<string> { "user" }
+                    },
+                    Permissions = new Dictionary<string, List<string>>
+                    {
+                        ["default"] = new List<string>()
                     }
                 };
 

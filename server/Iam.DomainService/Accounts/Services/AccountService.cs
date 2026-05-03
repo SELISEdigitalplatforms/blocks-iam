@@ -80,7 +80,16 @@ namespace Iam.DomainService.Accounts
             if (!string.IsNullOrWhiteSpace(activateUserRequest.Password))
             {
                 user.Password = _identityAccessManagementService.HashPassword(activateUserRequest.Password);
+                user.PasswordSetTime = DateTime.Now;
+                user.PasswordChangedAtUtc = DateTime.UtcNow;
+                user.LastCredentialRotationAtUtc = DateTime.UtcNow;
+                user.SecurityStamp = Guid.NewGuid().ToString("N");
+                user.TokenVersion += 1;
             }
+
+            user.FailedLoginCount = 0;
+            user.LastFailedLoginUtc = null;
+            user.LockoutUntilUtc = null;
 
             var result = await _repository.UpdateUserAsync(user);
 
@@ -212,6 +221,14 @@ namespace Iam.DomainService.Accounts
             }
 
             user.Password = _identityAccessManagementService.HashPassword(resetPasswordRequest.Password);
+            user.PasswordSetTime = DateTime.Now;
+            user.PasswordChangedAtUtc = DateTime.UtcNow;
+            user.LastCredentialRotationAtUtc = DateTime.UtcNow;
+            user.SecurityStamp = Guid.NewGuid().ToString("N");
+            user.TokenVersion += 1;
+            user.FailedLoginCount = 0;
+            user.LastFailedLoginUtc = null;
+            user.LockoutUntilUtc = null;
 
             var result = await _repository.UpdateUserAsync(user);
 
@@ -269,6 +286,14 @@ namespace Iam.DomainService.Accounts
             }
 
             user.Password = _identityAccessManagementService.HashPassword(changePasswordRequest.NewPassword);
+            user.PasswordSetTime = DateTime.Now;
+            user.PasswordChangedAtUtc = DateTime.UtcNow;
+            user.LastCredentialRotationAtUtc = DateTime.UtcNow;
+            user.SecurityStamp = Guid.NewGuid().ToString("N");
+            user.TokenVersion += 1;
+            user.FailedLoginCount = 0;
+            user.LastFailedLoginUtc = null;
+            user.LockoutUntilUtc = null;
 
             var result = await _repository.UpdateUserAsync(user);
 

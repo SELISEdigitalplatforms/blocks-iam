@@ -37,7 +37,7 @@
             <param name="tenantGroupId">The tenant group ID to check for migrations.</param>
             <returns>List of migration trackers with incomplete services.</returns>
         </member>
-        <member name="M:Blocks.Api.Controllers.AuthorizationController.Authorize(System.String,System.String,System.String,System.String,System.String,System.String,System.String,System.String,System.String)">
+        <member name="M:Blocks.Api.Controllers.AuthorizationController.Authorize(System.String,System.String,System.String,System.String,System.String,System.String,System.String,System.String,System.String,System.String,System.String,System.String,System.String)">
             <summary>
             OAuth 2.0 Authorization Endpoint (RFC 6749 Section 3.1)
             Initiates authorization code flow with PKCE

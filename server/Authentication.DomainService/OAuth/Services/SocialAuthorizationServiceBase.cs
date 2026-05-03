@@ -4,7 +4,6 @@ using DomainService.OAuth.RequestModel;
 using DomainService.OAuth.ResponseModel;
 using DomainService.Services;
 using Iam.DomainService.Entities;
-using Iam.DomainService.Shared.Entities;
 using Iam.DomainService.Users;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
@@ -142,8 +141,8 @@ namespace DomainService.OAuth.Services
                 SendWelcomeMail = true,
                 Platform = stateInfo.Provider,
                 ProfileImageUrl = externalUser.ProfileImageUrl,
-                Memberships = [new OrganizationMembership { Roles = externalUser.Roles, OrganizationId = "default" }],
-                Permissions = externalUser.Permissions ?? [],
+                Roles = new Dictionary<string, List<string>> { ["default"] = externalUser.Roles ?? [] },
+                Permissions = new Dictionary<string, List<string>> { ["default"] = externalUser.Permissions ?? [] },
                 ProjectKey = blocksContext.TenantId,
                 DepartMent = externalUser.Department,
                 EmployeeId = externalUser.EmployeeId

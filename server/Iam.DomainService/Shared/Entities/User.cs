@@ -7,13 +7,15 @@ namespace Iam.DomainService.Entities
     [BsonIgnoreExtraElements]
     public class User : BaseEntity  
     {
+        public string SubjectId { get; set; } = Guid.NewGuid().ToString("N");
         public string? Salutation { get; set; }
         public string? FirstName { get; set; }
         public string? LastName { get; set; }
         public string? Email { get; set; }
         public string? UserName { get; set; }
         public string? PhoneNumber { get; set; }
-        public List<OrganizationMembership> Memberships { get; set; } = [];
+        public Dictionary<string, List<string>> Roles { get; set; } = new();
+        public Dictionary<string, List<string>> Permissions { get; set; } = new();
         public bool Active { get; set; }
         public bool IsVarified { get; set; }
         public UserVarifiedType VarifiedType { get; set; } = UserVarifiedType.None;
@@ -21,11 +23,20 @@ namespace Iam.DomainService.Entities
         public string? ProfileImageId { get; set; }
         public string? Platform { get; set; }
         public UserCreationType UserCreationType { get; set; } = UserCreationType.None;
+        public UserProvisioningSource ProvisioningSource { get; set; } = UserProvisioningSource.Manual;
         public UserPassType UserPassType { get; set; } = UserPassType.None;
         public string? Password { get; set; }
         public DateTime PasswordSetTime { get; set; }
+        public DateTime? PasswordChangedAtUtc { get; set; }
+        public DateTime? LastCredentialRotationAtUtc { get; set; }
+        public int FailedLoginCount { get; set; }
+        public DateTime? LastFailedLoginUtc { get; set; }
+        public DateTime? LockoutUntilUtc { get; set; }
+        public string SecurityStamp { get; set; } = Guid.NewGuid().ToString("N");
+        public int TokenVersion { get; set; } = 1;
         public UserMfaType UserMfaType { get; set; } = UserMfaType.None;
         public bool MfaEnabled { get; set; }
+        public List<UserMfaEnrollment> MfaMethods { get; set; } = [];
         public DateTime FirstLoggedInTime { get; set; }
         public DateTime LastLoggedInTime { get; set; }
         public string LastLoggedInDeviceInfo { get; set; } = string.Empty;
@@ -34,9 +45,34 @@ namespace Iam.DomainService.Entities
         public bool IsDefault { get; set; }
         public string? MailPurpose { get; set; }
         public bool IsMfaVerified { get; set; }
+        public DateTime? EmailVerifiedAtUtc { get; set; }
+        public DateTime? PhoneVerifiedAtUtc { get; set; }
+        public DateTime? TermsAcceptedAtUtc { get; set; }
+        public DateTime? PrivacyAcceptedAtUtc { get; set; }
+        public UserLifecycleStatus Status { get; set; } = UserLifecycleStatus.Active;
+        public string? StatusReason { get; set; }
+        public DateTime? DeactivatedAtUtc { get; set; }
+        public string? DeactivatedBy { get; set; }
         public string? ExternalUserId { get; set; }
+        public List<ExternalIdentity> ExternalIdentities { get; set; } = [];
         public string? Department { get; set; }
         public string? EmployeeId { get; set; }
+    }
+
+    public class UserMfaEnrollment
+    {
+        public string Method { get; set; } = string.Empty;
+        public DateTime EnrolledAtUtc { get; set; }
+        public DateTime? VerifiedAtUtc { get; set; }
+        public bool Active { get; set; }
+    }
+
+    public class ExternalIdentity
+    {
+        public string Provider { get; set; } = string.Empty;
+        public string ProviderUserId { get; set; } = string.Empty;
+        public string? Issuer { get; set; }
+        public DateTime LinkedAtUtc { get; set; }
     }
 
     public enum UserVarifiedType
@@ -55,6 +91,22 @@ namespace Iam.DomainService.Entities
         Service,
         Social,
         ThirdParty,
+    }
+
+    public enum UserProvisioningSource
+    {
+        Manual,
+        SCIM,
+        Social,
+        API
+    }
+
+    public enum UserLifecycleStatus
+    {
+        PendingVerification,
+        Active,
+        Suspended,
+        Disabled
     }
 
     public enum UserPassType

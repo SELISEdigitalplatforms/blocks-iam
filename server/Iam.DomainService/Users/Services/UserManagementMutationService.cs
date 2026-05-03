@@ -8,8 +8,6 @@ using Iam.DomainService.Utilities;
 using FluentValidation;
 using Microsoft.Extensions.Logging;
 using System.Text.Json;
-using Iam.DomainService.Shared.Entities;
-using System.Security.Cryptography.Xml;
 
 namespace Iam.DomainService.Users
 {
@@ -101,11 +99,29 @@ namespace Iam.DomainService.Users
         public async Task<string> ProcessAsync(CreateUserRequest command)
         {
             var user = await _userRepository.GetUserByEmailAsync(command.Email);
+            var defaultOrganizationId = ResolveOrganizationId(command.OrgId, command.Roles, command.Permissions);
+            var normalizedRoles = NormalizeOrgClaimMap(command.Roles, defaultOrganizationId, ["user"]);
+            var normalizedPermissions = NormalizeOrgClaimMap(command.Permissions, defaultOrganizationId, []);
 
             if(user is not null)
             {
-                user.OrganizationIds = [.. user.OrganizationIds, command.OrganizationId];
-                user.Memberships = [new OrganizationMembership { OrganizationId = command.OrganizationId, Roles = ["user"] }] ;
+                var organizationId = defaultOrganizationId;
+
+                if (!user.OrganizationIds.Contains(organizationId))
+                {
+                    user.OrganizationIds = [.. user.OrganizationIds, organizationId];
+                }
+
+                if (!user.Roles.ContainsKey(organizationId) || user.Roles[organizationId].Count == 0)
+                {
+                    user.Roles[organizationId] = normalizedRoles[organizationId];
+                }
+
+                if (!user.Permissions.ContainsKey(organizationId))
+                {
+                    user.Permissions[organizationId] = normalizedPermissions[organizationId];
+                }
+
                 await _userRepository.UpdateUserAsync(user);
                 return user.ItemId;
             }
@@ -124,9 +140,14 @@ namespace Iam.DomainService.Users
         public User MapUser(CreateUserRequest command)
         {
             var id = Guid.NewGuid().ToString();
+            var organizationId = ResolveOrganizationId(command.OrgId, command.Roles, command.Permissions);
+            var roles = NormalizeOrgClaimMap(command.Roles, organizationId, ["user"]);
+            var permissions = NormalizeOrgClaimMap(command.Permissions, organizationId, []);
+
             var user = new User
             {
                 ItemId = id,
+                SubjectId = $"usr_{Guid.NewGuid():N}",
                 CreatedDate = DateTime.Now,
                 CreatedBy = _blocksContext?.UserId ?? id,
                 LastUpdatedDate = DateTime.Now,
@@ -135,14 +156,17 @@ namespace Iam.DomainService.Users
                 UserName = (string.IsNullOrWhiteSpace(command.UserName) ? command.Email : command.UserName).ToLower(),
                 Password = string.IsNullOrWhiteSpace(command.Password) ? string.Empty : _identityAccessManagementService.HashPassword(command.Password),
                 PasswordSetTime = string.IsNullOrWhiteSpace(command.Password) ? DateTime.MinValue : DateTime.Now,
+                PasswordChangedAtUtc = string.IsNullOrWhiteSpace(command.Password) ? null : DateTime.UtcNow,
+                LastCredentialRotationAtUtc = string.IsNullOrWhiteSpace(command.Password) ? null : DateTime.UtcNow,
                 PhoneNumber = command.PhoneNumber ?? string.Empty,
                 Language = command.Language ?? "en-US",
                 Salutation = command.Salutation ?? string.Empty,
                 FirstName = command.FirstName ?? string.Empty,
                 LastName = command.LastName ?? string.Empty,
                 Platform = command.Platform,
-                OrganizationIds = [command.OrganizationId ?? "default"],
-                Memberships = command.Memberships.Count == 0? [new OrganizationMembership { OrganizationId = command.OrganizationId ?? "default" , Roles = ["user"]}]: command.Memberships,
+                OrganizationIds = BuildOrganizationIds(roles, permissions, organizationId),
+                Roles = roles,
+                Permissions = permissions,
                 UserCreationType = command.UserCreationType,
                 UserPassType = command.UserPassType,
                 Tags = command.Tags ?? [],
@@ -152,7 +176,20 @@ namespace Iam.DomainService.Users
                 AllowedLogInType = command.AllowedLogInType,
                 MfaEnabled = command.MfaEnabled,
                 UserMfaType = command.UserMfaType,
+                MfaMethods = [],
                 MailPurpose = string.IsNullOrWhiteSpace(command.MailPurpose) ? "AccountActivation" : command.MailPurpose,
+                ProvisioningSource = ResolveProvisioningSource(command.UserCreationType),
+                Status = command.VarifiedType == UserVarifiedType.None ? UserLifecycleStatus.PendingVerification : UserLifecycleStatus.Active,
+                EmailVerifiedAtUtc = command.VarifiedType == UserVarifiedType.Email ? DateTime.UtcNow : null,
+                PhoneVerifiedAtUtc = command.VarifiedType is UserVarifiedType.Sms or UserVarifiedType.WhatsApp ? DateTime.UtcNow : null,
+                SecurityStamp = Guid.NewGuid().ToString("N"),
+                TokenVersion = 1,
+                FailedLoginCount = 0,
+                LastFailedLoginUtc = null,
+                LockoutUntilUtc = null,
+                TermsAcceptedAtUtc = null,
+                PrivacyAcceptedAtUtc = null,
+                ExternalIdentities = []
             };
 
             return user;
@@ -199,8 +236,9 @@ namespace Iam.DomainService.Users
             user.ProfileImageUrl = command.ProfileImageUrl ?? string.Empty;
             user.MfaEnabled = command.MfaEnabled;
             
-            user.OrganizationIds = [.. command.Memberships.Select(m => m.OrganizationId).Distinct()];
-            user.Memberships = command.Memberships;
+            user.Roles = NormalizeOrgClaimMap(command.Roles, "default", ["user"]);
+            user.Permissions = NormalizeOrgClaimMap(command.Permissions, "default", []);
+            user.OrganizationIds = BuildOrganizationIds(user.Roles, user.Permissions, "default");
 
             if (command.MfaEnabled)
             {
@@ -233,6 +271,10 @@ namespace Iam.DomainService.Users
             }
 
             user.Active = false;
+            user.Status = UserLifecycleStatus.Disabled;
+            user.StatusReason = "deactivated";
+            user.DeactivatedAtUtc = DateTime.UtcNow;
+            user.DeactivatedBy = BlocksContext.GetContext()?.UserId ?? request.UserId;
             user.LastUpdatedBy = BlocksContext.GetContext()?.UserId ?? request.UserId;
             user.LastUpdatedDate = DateTime.Now;
 
@@ -271,6 +313,9 @@ namespace Iam.DomainService.Users
             user.LogInCount += 1;
             user.LastLoggedInTime = DateTime.Now;
             user.LastLoggedInDeviceInfo = JsonSerializer.Serialize(refreshTokenConsumer.DeviceInformation);
+            user.FailedLoginCount = 0;
+            user.LastFailedLoginUtc = null;
+            user.LockoutUntilUtc = null;
 
             await _userRepository.UpdateUserAsync(user);
 
@@ -346,8 +391,9 @@ namespace Iam.DomainService.Users
                 };
             }
 
-            user.Memberships = command.Memberships;
-            user.OrganizationIds = [.. command.Memberships.Select(m => m.OrganizationId).Distinct()];
+            user.Roles = NormalizeOrgClaimMap(command.Roles, "default", ["user"]);
+            user.Permissions = NormalizeOrgClaimMap(command.Permissions, "default", []);
+            user.OrganizationIds = BuildOrganizationIds(user.Roles, user.Permissions, "default");
             var result = await _userRepository.UpdateUserAsync(user);
 
             if (!result)
@@ -375,7 +421,9 @@ namespace Iam.DomainService.Users
                 Email = @event.Email,
                 UserCreationType = UserCreationType.Service,
                 MailPurpose = @event.EventType,
-                Memberships = [new OrganizationMembership {OrganizationId = "default", Permissions = [], Roles = ["user"] }]
+                OrgId = "default",
+                Roles = new Dictionary<string, List<string>> { ["default"] = ["user"] },
+                Permissions = new Dictionary<string, List<string>> { ["default"] = [] }
             };
 
             _blocksContext = BlocksContext.GetContext();
@@ -469,9 +517,13 @@ namespace Iam.DomainService.Users
         public async Task<string> ProcessSsoUserAsync(CreateUserViaSsoRequest command)
         {
             var id = Guid.NewGuid().ToString();
+            var fallbackOrganizationId = BlocksContext.GetContext()?.OrganizationId ?? "default";
+            var normalizedRoles = NormalizeOrgClaimMap(command.Roles, fallbackOrganizationId, ["user"]);
+            var normalizedPermissions = NormalizeOrgClaimMap(command.Permissions, fallbackOrganizationId, []);
             var user = new User
             {
                 ItemId = id,
+                SubjectId = $"usr_{Guid.NewGuid():N}",
                 CreatedDate = DateTime.Now,
                 CreatedBy = _blocksContext?.UserId ?? id,
                 LastUpdatedDate = DateTime.Now,
@@ -480,14 +532,17 @@ namespace Iam.DomainService.Users
                 UserName = string.IsNullOrWhiteSpace(command.Email) ? string.Empty : command.Email.ToLower(),
                 Password = _identityAccessManagementService.HashPassword(Guid.NewGuid().ToString()),
                 PasswordSetTime = DateTime.Now,
+                PasswordChangedAtUtc = DateTime.UtcNow,
+                LastCredentialRotationAtUtc = DateTime.UtcNow,
                 PhoneNumber = command.PhoneNumber ?? string.Empty,
                 Language = command.Language ?? "en-US",
                 Salutation = command.Salutation ?? string.Empty,
                 FirstName = command.FirstName ?? string.Empty,
                 LastName = command.LastName ?? string.Empty,
                 Platform = command.Platform,
-                OrganizationIds = [BlocksContext.GetContext()?.OrganizationId ?? "default"],
-                Memberships = command.Memberships,
+                Roles = normalizedRoles,
+                Permissions = normalizedPermissions,
+                OrganizationIds = BuildOrganizationIds(normalizedRoles, normalizedPermissions, fallbackOrganizationId),
                 UserCreationType = command.UserCreationType,
                 UserPassType = UserPassType.None,
                 Tags = [],
@@ -498,13 +553,108 @@ namespace Iam.DomainService.Users
                 MailPurpose = command.MailPurpose,
                 Active = command.Active,
                 IsVarified = command.IsVarified,
+                Status = command.Active ? UserLifecycleStatus.Active : UserLifecycleStatus.Suspended,
+                ProvisioningSource = UserProvisioningSource.Social,
+                EmailVerifiedAtUtc = DateTime.UtcNow,
+                FailedLoginCount = 0,
+                SecurityStamp = Guid.NewGuid().ToString("N"),
+                TokenVersion = 1,
                 ExternalUserId = command.ExternalUserId,
+                ExternalIdentities = string.IsNullOrWhiteSpace(command.ExternalUserId)
+                    ? []
+                    :
+                    [
+                        new ExternalIdentity
+                        {
+                            Provider = command.Platform,
+                            ProviderUserId = command.ExternalUserId,
+                            Issuer = command.Platform,
+                            LinkedAtUtc = DateTime.UtcNow
+                        }
+                    ],
                 Department = command.DepartMent,
                 EmployeeId = command.EmployeeId
             };
             await _userRepository.CreateUserAsync(user);
 
             return user.ItemId;
+        }
+
+        private static string ResolveOrganizationId(
+            string? requestedOrganizationId,
+            Dictionary<string, List<string>> roles,
+            Dictionary<string, List<string>> permissions)
+        {
+            if (!string.IsNullOrWhiteSpace(requestedOrganizationId))
+            {
+                return requestedOrganizationId;
+            }
+
+            var roleOrgId = roles.Keys.FirstOrDefault(key => !string.IsNullOrWhiteSpace(key));
+            if (!string.IsNullOrWhiteSpace(roleOrgId))
+            {
+                return roleOrgId;
+            }
+
+            var permissionOrgId = permissions.Keys.FirstOrDefault(key => !string.IsNullOrWhiteSpace(key));
+            if (!string.IsNullOrWhiteSpace(permissionOrgId))
+            {
+                return permissionOrgId;
+            }
+
+            return "default";
+        }
+
+        private static Dictionary<string, List<string>> NormalizeOrgClaimMap(
+            Dictionary<string, List<string>> source,
+            string fallbackOrganizationId,
+            IEnumerable<string> fallbackValues)
+        {
+            var normalized = source
+                .Where(entry => !string.IsNullOrWhiteSpace(entry.Key))
+                .ToDictionary(
+                    entry => entry.Key,
+                    entry => (entry.Value ?? []).Where(value => !string.IsNullOrWhiteSpace(value)).Distinct(StringComparer.OrdinalIgnoreCase).ToList(),
+                    StringComparer.OrdinalIgnoreCase);
+
+            if (normalized.Count == 0)
+            {
+                normalized[fallbackOrganizationId] = fallbackValues
+                    .Where(value => !string.IsNullOrWhiteSpace(value))
+                    .Distinct(StringComparer.OrdinalIgnoreCase)
+                    .ToList();
+            }
+
+            return normalized;
+        }
+
+        private static UserProvisioningSource ResolveProvisioningSource(UserCreationType creationType)
+        {
+            return creationType switch
+            {
+                UserCreationType.Social => UserProvisioningSource.Social,
+                UserCreationType.Api => UserProvisioningSource.API,
+                _ => UserProvisioningSource.Manual
+            };
+        }
+
+        private static List<string> BuildOrganizationIds(
+            Dictionary<string, List<string>> roles,
+            Dictionary<string, List<string>> permissions,
+            string fallbackOrganizationId)
+        {
+            var orgIds = roles.Keys
+                .Concat(permissions.Keys)
+                .Where(key => !string.IsNullOrWhiteSpace(key))
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .ToList();
+
+            if (orgIds.Count == 0)
+            {
+                orgIds.Add(string.IsNullOrWhiteSpace(fallbackOrganizationId) ? "default" : fallbackOrganizationId);
+            }
+
+            return orgIds;
         }
 
         public async Task ExecuteUserMutationViaSsoCommandAsync(CreateUserViaSsoEvent command)

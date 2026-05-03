@@ -28,6 +28,7 @@ import OidcLoginPage from "./routes/oidc/login";
 import OidcPermissionPage from "./routes/oidc/permission";
 import OidcErrorPage from "./routes/oidc/error";
 import OidcEmailSentConfirmationPage from "./routes/oidc/email-sent-confirmation";
+import OidcSelectAccountPage from "./routes/oidc/select-account";
 
 // Dashboard routes (protected)
 import IamPage from "./routes/dashboard/iam";
@@ -100,6 +101,7 @@ export const router = createBrowserRouter([
       { index: true, element: <OidcIndexPage /> },
       { path: "login", element: <OidcLoginPage /> },
       { path: "permission", element: <OidcPermissionPage /> },
+      { path: "select-account", element: <OidcSelectAccountPage /> },
       { path: "error", element: <OidcErrorPage /> },
       { path: "email-sent-confirmation", element: <OidcEmailSentConfirmationPage /> },
     ],
