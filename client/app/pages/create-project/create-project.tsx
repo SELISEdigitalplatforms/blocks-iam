@@ -48,7 +48,7 @@ const CreateProject = () => {
         <div className="mt-16 flex-1 p-5">
           <div className="flex flex-col items-center justify-center md:hidden">
             <div className="flex gap-2">
-              <Link to="/console">
+              <Link to="/services/authentication/users">
                 <X onClick={resetFormData} size={32} strokeWidth={1} />
               </Link>
               <p className="mt-[2px] text-lg font-semibold">Create a project</p>
@@ -70,7 +70,7 @@ const CreateProject = () => {
         <div className="min-h-screen max-w-80 gap-5 bg-background p-5 pt-24 dark:bg-gray-900">
           <div className="mx-2 my-3">
             <div className="flex gap-2">
-              <Link to="/console">
+              <Link to="/services/authentication/users">
                 <X onClick={resetFormData} size={32} strokeWidth={1} />
               </Link>
               <p className="mt-[2px] text-lg font-semibold">Create a project</p>

@@ -10,7 +10,7 @@ export function ProjectGuard({ children }: { children: React.ReactNode }) {
 
   useEffect(() => {
     if (!selectedProject || (environmentList && environmentList.length === 0)) {
-      navigate("/console", { replace: true });
+      navigate("/services/authentication/users", { replace: true });
     }
   }, [selectedProject, navigate, environmentList]);
 

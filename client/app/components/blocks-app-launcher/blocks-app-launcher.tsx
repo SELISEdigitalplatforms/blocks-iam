@@ -230,7 +230,7 @@ export function BlocksAppLauncher() {
   const [isHydrated, setIsHydrated] = useState(false);
   const location = useLocation();
 
-  const isAllowedRoute = !location.pathname.includes("/console") && !location.pathname.includes("/project-overview");
+  const isAllowedRoute = !location.pathname.includes("/project-overview");
 
   useEffect(() => {
     const stored = localStorage.getItem("blocks-app-favourites");
