@@ -86,7 +86,7 @@ namespace Iam.DomainService.Users
                 ConsumerName = Constants.IdentifierQueue,
                 Payload = new UpdateResourceUsageCommand
                 {
-                    Resource = "blocks-idp-api::iam::create",
+                    Resource = "blocks-idp::iam::create",
                     TenantId = _blocksContext.TenantId,
                     Amount = 1
                 }

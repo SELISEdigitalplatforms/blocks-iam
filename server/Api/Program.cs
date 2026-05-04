@@ -1,18 +1,19 @@
-using BlocksTemplate.Api;
 using Blocks.Genesis;
 using Cloud.DomainService.Utilities;
 using DomainService.Utilities;
 using DomainService.Shared;
 using FluentValidation.AspNetCore;
 using Microsoft.AspNetCore.Http.Features;
-using Microsoft.AspNetCore.Mvc;
+using Microsoft.Extensions.Configuration;
 using CloudConfiguration.DomainService.Shared.Utilities;
 
-var serviceName = "blocks-idp-api";
-var vaultType = ResolveVaultType();
+var serviceName = ApplicationConfigurations.ResolveServiceName();
+var vaultType = ApplicationConfigurations.ResolveVaultType();
 Console.WriteLine($"Using Genesis vault type: {vaultType}");
 var secret = await ApplicationConfigurations.ConfigureLogAndSecretsAsync(serviceName, vaultType);
 var builder = WebApplication.CreateBuilder(args);
+
+ApplicationConfigurations.ConfigureApiEnv(builder, args);
 
 ApplicationConfigurations.ConfigureServices(builder.Services, IdpConstants.GetMessageConfiguration(secret.MessageConnectionString));
 
@@ -25,12 +26,9 @@ var services = builder.Services;
 
 services.AddHealthChecks();
 
-ApplicationConfigurations.ConfigureApi(services);
-
-builder.Services.Configure<MvcOptions>(options =>
-{
-    options.Conventions.Insert(0, new GlobalApiRoutePrefixConvention("api"));
-});
+ApplicationConfigurations.ConfigureApi(
+    services,
+    apiRoutePrefix: builder.Configuration["ApiRouting:Prefix"]);
 
 var wwwrootPath = Path.Combine(builder.Environment.ContentRootPath, "wwwroot");
 Directory.CreateDirectory(wwwrootPath);
@@ -57,30 +55,8 @@ ApplicationConfigurations.ConfigureMiddleware(app);
 
 await app.RunAsync();
 
-static VaultType ResolveVaultType()
-{
-    var configuredVaultType = Environment.GetEnvironmentVariable("BLOCKS_VAULT_TYPE");
-    if (!string.IsNullOrWhiteSpace(configuredVaultType) &&
-        Enum.TryParse<VaultType>(configuredVaultType, true, out var parsedVaultType))
-    {
-        return parsedVaultType;
-    }
-
-    return VaultType.Azure;
-}
-
 static void ApplyFrontendRuntimeSettings(IConfiguration configuration, string webRootPath)
 {
-    //var section = configuration.GetSection("FrontendRuntime");
-    //var replacements = new Dictionary<string, string?>
-    //{
-    //    ["__BLOCKS_API_BASE_URL__"] = section["BLOCKS_API_BASE_URL"],
-    //    ["__BLOCKS_X_BLOCKS_KEY__"] = section["BLOCKS_X_BLOCKS_KEY"],
-    //    ["__BLOCKS_GOOGLE_SITE_KEY__"] = section["BLOCKS_GOOGLE_SITE_KEY"],
-    //    ["__BLOCKS_CONSTRUCT_URL__"] = section["BLOCKS_CONSTRUCT_URL"]
-    //};
-
-    DotNetEnv.Env.Load();
 
     var replacements = new Dictionary<string, string?>
     {

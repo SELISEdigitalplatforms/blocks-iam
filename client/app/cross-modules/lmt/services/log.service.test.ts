@@ -70,7 +70,7 @@ describe("LogService", () => {
     it("should GET with correct query params", async () => {
       vi.mocked(http.get).mockResolvedValue(mockLogsResponse);
       const payload = {
-        serviceName: "blocks-idp-api",
+        serviceName: "blocks-idp",
         lastDate: "2026-01-15T10:30:00.000Z",
         projectKey: TEST_PROJECT_KEY,
       };
@@ -87,7 +87,7 @@ describe("LogService", () => {
 
       await expect(
         service.getLiveLog({
-          serviceName: "blocks-idp-api",
+          serviceName: "blocks-idp",
           lastDate: "2026-01-15T10:30:00.000Z",
           projectKey: TEST_PROJECT_KEY,
         }),

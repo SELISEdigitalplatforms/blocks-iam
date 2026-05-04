@@ -37,7 +37,7 @@ describe("use-log hooks", () => {
   describe("useGetLiveLogs", () => {
     it("should fetch live logs successfully", async () => {
       const livePayload = {
-        serviceName: "blocks-idp-api",
+        serviceName: "blocks-idp",
         lastDate: "2026-01-15T10:30:00.000Z",
         projectKey: "test-key",
       };
