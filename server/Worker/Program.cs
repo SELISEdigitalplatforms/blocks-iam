@@ -18,11 +18,11 @@ using Worker.Consumers;
 using Worker.Consumers.Identifier;
 using Worker.Consumers.Users;
 
-const string _serviceName = "blocks-idp-worker";
+var serviceName = ApplicationConfigurations.ResolveServiceName();
 
-var vaultType = ResolveVaultType();
+var vaultType = ApplicationConfigurations.ResolveVaultType();
 Console.WriteLine($"Using Genesis vault type: {vaultType}");
-var secret = await ApplicationConfigurations.ConfigureLogAndSecretsAsync(_serviceName, vaultType);
+var secret = await ApplicationConfigurations.ConfigureLogAndSecretsAsync(serviceName, vaultType);
 
 await CreateHostBuilder(args).Build().RunAsync();
 
@@ -73,15 +73,3 @@ IHostBuilder CreateHostBuilder(string[] args) =>
             //ApplicationConfigurations.ConfigureWorker(services, IdentifierConstants.GetMessageConfiguration(secret.MessageConnectionString));
             #endregion
         });
-
-static VaultType ResolveVaultType()
-{
-    var configuredVaultType = Environment.GetEnvironmentVariable("BLOCKS_VAULT_TYPE");
-    if (!string.IsNullOrWhiteSpace(configuredVaultType) &&
-        Enum.TryParse<VaultType>(configuredVaultType, true, out var parsedVaultType))
-    {
-        return parsedVaultType;
-    }
-
-    return VaultType.Azure;
-}

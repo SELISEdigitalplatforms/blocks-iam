@@ -5,10 +5,10 @@
   </PropertyGroup>
 	
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|AnyCPU'">
-    <DocumentationFile>Blocks.Genesis.xml</DocumentationFile>
+    <DocumentationFile>Api.xml</DocumentationFile>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|AnyCPU'">
-    <DocumentationFile>Blocks.Genesis.xml</DocumentationFile>
+    <DocumentationFile>Api.xml</DocumentationFile>
   </PropertyGroup>
   <ItemGroup>
     <Content Remove="appsettings.Development.json" />

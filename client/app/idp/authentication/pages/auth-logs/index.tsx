@@ -14,12 +14,12 @@ export function AuthLogs() {
       <LogsViewer
         services={[
           {
-            id: "blocks-idp-api",
+            id: "blocks-idp",
             label: "Api",
-            serviceName: "blocks-idp-api",
+            serviceName: "blocks-idp",
           },
           {
-            id: "blocks-idp-api",
+            id: "blocks-idp",
             label: "Worker",
             serviceName: "blocks-idp-worker",
           },

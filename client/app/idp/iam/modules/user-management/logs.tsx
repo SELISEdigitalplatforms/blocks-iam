@@ -12,9 +12,9 @@ export function IamLogs() {
       <LogsViewer
         services={[
           {
-            id: "blocks-idp-api",
+            id: "blocks-idp",
             label: "API",
-            serviceName: "blocks-idp-api",
+            serviceName: "blocks-idp",
           },
           {
             id: "blocks-idp-worker",

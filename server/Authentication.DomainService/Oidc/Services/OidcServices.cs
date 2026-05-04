@@ -2,7 +2,9 @@ using System.IdentityModel.Tokens.Jwt;
 using System.Security.Claims;
 using System.Security.Cryptography;
 using System.Text;
+using Blocks.Genesis;
 using Microsoft.AspNetCore.Http;
+using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.IdentityModel.Tokens;
 
@@ -170,46 +172,97 @@ public class PkceService : IPkceService
 public class DiscoveryService : IDiscoveryService
 {
     private readonly IHttpContextAccessor _httpContextAccessor;
+    private readonly IConfiguration _configuration;
 
-    public DiscoveryService(IHttpContextAccessor httpContextAccessor)
+    public DiscoveryService(IHttpContextAccessor httpContextAccessor, IConfiguration configuration)
     {
         _httpContextAccessor = httpContextAccessor;
+        _configuration = configuration;
     }
 
     public Task<Blocks.Genesis.Auth.DiscoveryMetadata> GetMetadataAsync()
     {
-        var issuer = GetIssuer();
+        var endpoints = ResolveEndpoints();
+
         return Task.FromResult(new Blocks.Genesis.Auth.DiscoveryMetadata
         {
-            Issuer = issuer,
-            AuthorizationEndpoint = $"{issuer}/api/oidc/authorize",
-            TokenEndpoint = $"{issuer}/api/oidc/token",
-            UserInfoEndpoint = $"{issuer}/api/auth/userinfo",
-            JwksUri = $"{issuer}/.well-known/jwks.json"
+            Issuer = endpoints.Issuer,
+            AuthorizationEndpoint = endpoints.AuthorizationEndpoint,
+            TokenEndpoint = endpoints.TokenEndpoint,
+            UserInfoEndpoint = endpoints.UserInfoEndpoint,
+            JwksUri = endpoints.JwksUri
         });
     }
 
     public Task<Blocks.Genesis.Auth.OAuthAuthorizationServerMetadata> GetAuthorizationServerMetadataAsync()
     {
-        var issuer = GetIssuer();
+        var endpoints = ResolveEndpoints();
+
         return Task.FromResult(new Blocks.Genesis.Auth.OAuthAuthorizationServerMetadata
         {
-            Issuer = issuer,
-            AuthorizationEndpoint = $"{issuer}/api/oidc/authorize",
-            TokenEndpoint = $"{issuer}/api/oidc/token",
-            JwksUri = $"{issuer}/.well-known/jwks.json"
+            Issuer = endpoints.Issuer,
+            AuthorizationEndpoint = endpoints.AuthorizationEndpoint,
+            TokenEndpoint = endpoints.TokenEndpoint,
+            JwksUri = endpoints.JwksUri
         });
+    }
+
+    private ResolvedOidcEndpoints ResolveEndpoints()
+    {
+        var issuer = GetIssuer();
+        var apiPrefix = ApplicationConfigurations.NormalizeApiRoutePrefixValue(_configuration["ApiRouting:Prefix"]);
+        var serviceSegment = ApplicationConfigurations.NormalizeServiceSegment(
+            null,
+            ApplicationConfigurations.ResolveServiceName());
+
+        return new ResolvedOidcEndpoints
+        {
+            Issuer = issuer,
+            AuthorizationEndpoint = BuildUrl(issuer, apiPrefix, serviceSegment, "oidc", "authorize"),
+            TokenEndpoint = BuildUrl(issuer, apiPrefix, serviceSegment, "oidc", "token"),
+            UserInfoEndpoint = BuildUrl(issuer, apiPrefix, serviceSegment, "auth", "userinfo"),
+            JwksUri = BuildUrl(issuer, ".well-known", "jwks.json")
+        };
     }
 
     private string GetIssuer()
     {
         var request = _httpContextAccessor.HttpContext?.Request;
-        if (request == null)
+        if (request != null)
         {
-            return "https://localhost";
+            var pathBase = request.PathBase.Value?.TrimEnd('/') ?? string.Empty;
+            return $"{request.Scheme}://{request.Host.Value}{pathBase}";
         }
 
-        return $"{request.Scheme}://{request.Host.Value}";
+        var configuredBaseUrl = Environment.GetEnvironmentVariable("BLOCKS_API_BASE_URL")
+            ?? _configuration["BLOCKS_API_BASE_URL"]
+            ?? _configuration["FrontendRuntime:BLOCKS_API_BASE_URL"];
+
+        if (Uri.TryCreate(configuredBaseUrl, UriKind.Absolute, out var uri))
+        {
+            return configuredBaseUrl!.TrimEnd('/');
+        }
+
+        return "https://localhost:5000";
+    }
+
+    private static string BuildUrl(string issuer, params string[] segments)
+    {
+        var parts = segments
+            .Where(segment => !string.IsNullOrWhiteSpace(segment))
+            .Select(segment => segment.Trim('/'));
+
+        var suffix = string.Join('/', parts);
+        return string.IsNullOrWhiteSpace(suffix) ? issuer : $"{issuer}/{suffix}";
+    }
+
+    private sealed class ResolvedOidcEndpoints
+    {
+        public string Issuer { get; init; } = string.Empty;
+        public string AuthorizationEndpoint { get; init; } = string.Empty;
+        public string TokenEndpoint { get; init; } = string.Empty;
+        public string UserInfoEndpoint { get; init; } = string.Empty;
+        public string JwksUri { get; init; } = string.Empty;
     }
 }
 
