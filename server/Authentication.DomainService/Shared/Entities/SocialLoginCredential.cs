@@ -18,8 +18,8 @@ namespace DomainService.Entities
         public string? WellKnownUrl { get; set; }
         public string? GetEmailUrl { get; set; }
         public required string Scope { get; set; }
-        public List<string> InitialRoles { get; set; }
-        public List<string> InitialPermissions { get; set; }
+        public List<string> InitialRoles { get; set; } = [];
+        public List<string> InitialPermissions { get; set; } = [];
         public bool IsDisabled { get; set; }
         public bool SendAsResponse { get; set; } = true;
         public SSOType SSOType { get; set; }

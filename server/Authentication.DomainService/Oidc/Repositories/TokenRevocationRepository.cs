@@ -180,12 +180,12 @@ namespace DomainService.Oidc.Repositories
 
     public class TokenRevocationModel
     {
-        public string Id { get; set; } // MongoDB ObjectId
-        public string Jti { get; set; } // JWT ID (unique token identifier)
-        public string UserId { get; set; }
-        public string FamilyId { get; set; } // For family revocation
+        public string? Id { get; set; } // MongoDB ObjectId
+        public string? Jti { get; set; } // JWT ID (unique token identifier)
+        public string? UserId { get; set; }
+        public string? FamilyId { get; set; } // For family revocation
         public DateTime RevokedAt { get; set; }
-        public string RevokeReason { get; set; } // "user_revoked", "logout", "reuse_detected", "password_changed"
+        public string? RevokeReason { get; set; } // "user_revoked", "logout", "reuse_detected", "password_changed"
         public DateTime ExpiresAt { get; set; } // After this date, can be deleted from DB
     }
 }

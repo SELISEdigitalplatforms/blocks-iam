@@ -438,11 +438,11 @@ namespace DomainService.Authentication
             if (authCode.IsUsed)
             {
                 _logger.LogCritical($"REUSE ATTACK DETECTED: Code reused by IP {GetClientIpAddress(request)}, original IP {authCode.UsedByIpAddress}. Revoking token family.");
-                await RevokeUserTokens(authCode.UserId, authCode.ClientId, authCode.TenantId ?? tenantId);
+                await RevokeUserTokens(authCode.UserId, authCode.ClientId, authCode.TenantId ?? tenantId ?? string.Empty);
                 return new BadRequestObjectResult(new { error = "invalid_grant", error_description = "Authorization code has already been used" });
             }
 
-            var client = await _clientRepo.GetByClientIdAsync(client_id, tenantId ?? authCode.TenantId);
+            var client = await _clientRepo.GetByClientIdAsync(client_id, tenantId ?? authCode.TenantId ?? string.Empty);
             if (client == null || client.ClientId != authCode.ClientId)
             {
                 _logger.LogWarning("Client validation failed for code exchange");
@@ -548,7 +548,7 @@ namespace DomainService.Authentication
             if (storedToken.IsRevoked)
             {
                 _logger.LogCritical($"REUSE ATTACK DETECTED: Revoked token used again. Original revocation reason: {storedToken.RevokeReason}. Revoking family {storedToken.FamilyId}.");
-                await _refreshTokenRepo.RevokeByFamilyIdAsync(storedToken.FamilyId, "reuse_detected");
+                await _refreshTokenRepo.RevokeByFamilyIdAsync(storedToken.FamilyId ?? string.Empty, "reuse_detected");
                 await LogAuditEvent("token_reuse_detected", storedToken.UserId, client_id, tenantId, "CRITICAL", request);
                 return new BadRequestObjectResult(new { error = "invalid_grant", error_description = "Refresh token has been revoked" });
             }
@@ -559,7 +559,7 @@ namespace DomainService.Authentication
                 return new BadRequestObjectResult(new { error = "invalid_grant", error_description = "Refresh token has expired" });
             }
 
-            var client = await _clientRepo.GetByClientIdAsync(client_id, storedToken.TenantId);
+            var client = await _clientRepo.GetByClientIdAsync(client_id, storedToken.TenantId ?? string.Empty);
             if (client == null)
             {
                 _logger.LogWarning($"Client validation failed for token rotation: {client_id}");

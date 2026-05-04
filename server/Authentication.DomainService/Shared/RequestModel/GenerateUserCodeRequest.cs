@@ -8,8 +8,8 @@ namespace DomainService.Shared.RequestModel
 {
     public class GenerateUserCodeRequest
     {
-        public string ClientId { get; set; }
+        public string? ClientId { get; set; }
         public int CodeTtlInMinute { get; set; } = 10080; // default 7 days 
-        public string Note { get; set; }
+        public string? Note { get; set; }
     }
 }

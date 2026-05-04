@@ -4,6 +4,6 @@ namespace DomainService.Entities
 {
     public class BlocksClientConfig : BaseEntity
     {
-        public string ClientName { get; set; }
+        public string? ClientName { get; set; }
     }
 }

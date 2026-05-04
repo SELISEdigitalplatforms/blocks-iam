@@ -160,7 +160,7 @@ namespace DomainService.OAuth.Services
                 ProfileImageUrl = externalUser.ProfileImageUrl,
                 Roles = new Dictionary<string, List<string>> { ["default"] = externalUser.Roles ?? [] },
                 Permissions = new Dictionary<string, List<string>> { ["default"] = externalUser.Permissions ?? [] },
-                ProjectKey = blocksContext.TenantId,
+                ProjectKey = blocksContext?.TenantId,
                 DepartMent = externalUser.Department,
                 EmployeeId = externalUser.EmployeeId
             };

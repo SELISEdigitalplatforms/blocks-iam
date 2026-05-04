@@ -40,8 +40,8 @@ namespace DomainService.Oidc.Repositories
     public class TokenRevocationResult
     {
         public bool Success { get; set; }
-        public string Error { get; set; }
-        public string ErrorDescription { get; set; }
+        public string? Error { get; set; }
+        public string? ErrorDescription { get; set; }
     }
 
     /// <summary>
@@ -57,22 +57,22 @@ namespace DomainService.Oidc.Repositories
         /// <summary>
         /// OPTIONAL. The scope of the token.
         /// </summary>
-        public string Scope { get; set; }
+        public string? Scope { get; set; }
 
         /// <summary>
         /// OPTIONAL. The client identifier for the token.
         /// </summary>
-        public string ClientId { get; set; }
+        public string? ClientId { get; set; }
 
         /// <summary>
         /// OPTIONAL. The username of the resource owner who authorized this token.
         /// </summary>
-        public string Username { get; set; }
+        public string? Username { get; set; }
 
         /// <summary>
         /// OPTIONAL. The type of the token (e.g., "Bearer").
         /// </summary>
-        public string TokenType { get; set; }
+        public string? TokenType { get; set; }
 
         /// <summary>
         /// OPTIONAL. The expiration time of the token in UTC epoch seconds.
@@ -92,37 +92,37 @@ namespace DomainService.Oidc.Repositories
         /// <summary>
         /// OPTIONAL. A JWT containing the claims about the token holder.
         /// </summary>
-        public string Jwt { get; set; }
+        public string? Jwt { get; set; }
 
         /// <summary>
         /// OPTIONAL. The subject of the token.
         /// </summary>
-        public string Sub { get; set; }
+        public string? Sub { get; set; }
 
         /// <summary>
         /// OPTIONAL. The issuer of the token.
         /// </summary>
-        public string Iss { get; set; }
+        public string? Iss { get; set; }
 
         /// <summary>
         /// OPTIONAL. The audience of the token.
         /// </summary>
-        public string Aud { get; set; }
+        public string? Aud { get; set; }
 
         /// <summary>
         /// OPTIONAL. The JWT ID.
         /// </summary>
-        public string Jti { get; set; }
+        public string? Jti { get; set; }
 
         /// <summary>
         /// Error response (if token is invalid/revoked)
         /// </summary>
-        public string Error { get; set; }
+        public string? Error { get; set; }
 
         /// <summary>
         /// Error description
         /// </summary>
-        public string ErrorDescription { get; set; }
+        public string? ErrorDescription { get; set; }
     }
 }
 

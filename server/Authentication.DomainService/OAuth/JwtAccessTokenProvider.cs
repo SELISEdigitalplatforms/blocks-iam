@@ -19,7 +19,7 @@ namespace DomainService.OAuth
         private readonly ICryptoService _cryptoService;
         private readonly ICertificateProviderFactory _certificateProviderFactory;
         private readonly IAuthorizationClaimsResolver _authorizationClaimsResolver;
-        private string _key;
+        private string? _key;
 
 
         public JwtAccessTokenProvider(
@@ -83,8 +83,8 @@ namespace DomainService.OAuth
                 resolvedOrgId = organizationId;
             }
             claimsIdentity.AddClaim(new Claim(BlocksContext.ORGANIZATION_ID_CLAIM, resolvedOrgId));
-            claimsIdentity.AddClaim(new Claim(BlocksContext.EMAIL_CLAIM, user.Email));
-            claimsIdentity.AddClaim(new Claim(BlocksContext.USER_NAME_CLAIM, user.UserName));
+            claimsIdentity.AddClaim(new Claim(BlocksContext.EMAIL_CLAIM, user.Email ?? string.Empty));
+            claimsIdentity.AddClaim(new Claim(BlocksContext.USER_NAME_CLAIM, user.UserName ?? string.Empty));
             claimsIdentity.AddClaim(new Claim(BlocksContext.DISPLAY_NAME_CLAIM, $"{user.FirstName ?? string.Empty} {user.LastName ?? string.Empty}".Trim()));
             claimsIdentity.AddClaim(new Claim(BlocksContext.PHONE_NUMBER_CLAIM, user.PhoneNumber ?? string.Empty));
             claimsIdentity.AddClaim(new Claim("token_version", user.TokenVersion.ToString(), ClaimValueTypes.Integer32));

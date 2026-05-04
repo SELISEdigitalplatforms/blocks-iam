@@ -85,8 +85,8 @@ namespace DomainService.Authentication
             var bc = BlocksContext.GetContext();
             var eventTimeline = new UserAuthenticationTimelineEvent
             {
-                DeviceInformation = _authenticationDomainService.GetDeviceInfo(httpRequest?.Headers?.UserAgent),
-                IpAddresses = string.Join(",", _authenticationDomainService.GetVisitorsIpAddresses(httpRequest.HttpContext)),
+                DeviceInformation = _authenticationDomainService.GetDeviceInfo(httpRequest?.Headers?.UserAgent ?? string.Empty),
+                IpAddresses = string.Join(",", _authenticationDomainService.GetVisitorsIpAddresses(httpRequest?.HttpContext)),
                 Event = isFromAll ? "revoke_access_by_logout_all" : "revoke_access_by_logout",
                 ActionBy = isFromAll ? "call_api_to_logout_all" : "call_api_to_logout",
                 UserId = bc?.UserId?? ""

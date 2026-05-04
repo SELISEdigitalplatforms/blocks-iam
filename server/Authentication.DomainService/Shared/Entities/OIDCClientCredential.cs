@@ -6,7 +6,7 @@ namespace DomainService.Entities
     [BsonIgnoreExtraElements]
     public class OIDCClientCredential : BaseEntity
     {
-        public string ClientSecret { get; set; }
+        public string? ClientSecret { get; set; }
         public string? RedirectUri { get; set; }
         public string? Scope { get; set; }
         public string? Audience { get; set; }

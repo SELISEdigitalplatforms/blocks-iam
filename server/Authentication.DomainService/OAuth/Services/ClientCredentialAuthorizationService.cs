@@ -88,6 +88,7 @@ namespace DomainService.OAuth.Services
             List<string> orgPermissions)
         {
             var tenant = _tenants.GetTenantByID(BlocksContext.GetContext()?.TenantId ?? "");
+            if (tenant == null) return new JwtAccessToken();
             var certificate = await RetrievePrivateCertAsync(tenant);
             if (certificate == null) return new JwtAccessToken();
             return MapJwtAccessToken(authenticationConfiguration, tenant, client, organizationId, orgPermissions, certificate);

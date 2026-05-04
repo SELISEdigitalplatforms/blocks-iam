@@ -13,10 +13,8 @@ using Iam.DomainService.Shared.Dtos;
 using Iam.DomainService.Users;
 using Mfa.DomainService.Configuration;
 using Worker;
-using Worker.Configuration;
 using Worker.Consumers;
 using Worker.Consumers.Identifier;
-using Worker.Consumers.Users;
 
 var configuration = new ConfigurationBuilder()
     .SetBasePath(Directory.GetCurrentDirectory())
@@ -43,8 +41,6 @@ IHostBuilder CreateHostBuilder(string[] args) =>
         {
             services.AddHttpClient();
 
-            services.Configure<VerioSystemSettings>(services.BuildServiceProvider().GetRequiredService<IConfiguration>().GetSection("VerioSystemSettings"));
-
             services.AddSingleton<IConsumer<RefreshTokenEvent>, RefreshTokenWorkerService>();
             services.AddSingleton<IConsumer<UserAuthenticationTimelineEvent>, UserAuthenticationTimelineWorkerService>();
             services.AddSingleton<IConsumer<MfaActionEvent>, UpdateMfaConfigurationService>();
@@ -56,7 +52,6 @@ IHostBuilder CreateHostBuilder(string[] args) =>
             services.AddSingleton<IConsumer<CreateUserByEmailEvent>, CreateUserByEmailConsumer>();
             services.AddSingleton<IConsumer<CreateUserRequest>, CreateUserConsumer>();
             services.AddSingleton<IConsumer<CreateUserViaSsoEvent>, CreateUserViaSsoConsumer>();
-            services.AddSingleton<IConsumer<UserStatusChangedEvent>, UserStatusChangedConsumer>();
 
             services.AddHostedService<PeriodicPingBackgroundService>();
 

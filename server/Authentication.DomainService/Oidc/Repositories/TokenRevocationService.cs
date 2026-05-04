@@ -265,7 +265,7 @@ namespace DomainService.Oidc.Repositories
         }
 
         // Helper methods
-        private string ExtractJtiFromToken(string token)
+        private string? ExtractJtiFromToken(string token)
         {
             try
             {
@@ -279,7 +279,7 @@ namespace DomainService.Oidc.Repositories
             }
         }
 
-        private string ExtractUserIdFromToken(string token)
+        private string? ExtractUserIdFromToken(string token)
         {
             try
             {
