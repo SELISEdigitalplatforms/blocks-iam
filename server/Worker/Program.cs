@@ -18,7 +18,14 @@ using Worker.Consumers;
 using Worker.Consumers.Identifier;
 using Worker.Consumers.Users;
 
-var serviceName = ApplicationConfigurations.ResolveServiceName();
+var configuration = new ConfigurationBuilder()
+    .SetBasePath(Directory.GetCurrentDirectory())
+    .AddJsonFile("appsettings.json", optional: true, reloadOnChange: false)
+    .AddJsonFile(GetEnvironmentAppSettingsFileName(), optional: true, reloadOnChange: false)
+    .AddEnvironmentVariables()
+    .Build();
+
+var serviceName = ResolveRequiredServiceName(configuration);
 
 var vaultType = ApplicationConfigurations.ResolveVaultType();
 Console.WriteLine($"Using Genesis vault type: {vaultType}");
@@ -69,7 +76,27 @@ IHostBuilder CreateHostBuilder(string[] args) =>
             services.AddSingleton<IConsumer<PublishScheduleCommand>, DataCleanupConsumer>();
             services.AddSingleton<IConsumer<UpdateResourceUsageCommand_Identifier>, UpdateResourceUsageConsumer>();
 
-            ApplicationConfigurations.ConfigureWorker(services, IdpConstants.GetMessageConfiguration(secret.MessageConnectionString));
+            var workerMessageConfiguration = IdpConstants.GetMessageConfiguration(secret.MessageConnectionString);
+            workerMessageConfiguration.ServiceName = serviceName;
+            ApplicationConfigurations.ConfigureWorker(services, workerMessageConfiguration);
             //ApplicationConfigurations.ConfigureWorker(services, IdentifierConstants.GetMessageConfiguration(secret.MessageConnectionString));
             #endregion
         });
+
+static string ResolveRequiredServiceName(IConfiguration configuration)
+{
+    var serviceName = Environment.GetEnvironmentVariable("ServiceName") ?? configuration["ServiceName"];
+    if (string.IsNullOrWhiteSpace(serviceName))
+    {
+        throw new InvalidOperationException("Missing required ServiceName configuration.");
+    }
+
+    return serviceName;
+}
+
+static string GetEnvironmentAppSettingsFileName()
+{
+    var currentEnvironment = Environment.GetEnvironmentVariable("ASPNETCORE_ENVIRONMENT")
+        ?? Environment.GetEnvironmentVariable("DOTNET_ENVIRONMENT");
+    return string.IsNullOrWhiteSpace(currentEnvironment) ? "appsettings.json" : $"appsettings.{currentEnvironment}.json";
+}
