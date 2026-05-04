@@ -183,7 +183,6 @@ public class DiscoveryService : IDiscoveryService
     public Task<Blocks.Genesis.Auth.DiscoveryMetadata> GetMetadataAsync()
     {
         var endpoints = ResolveEndpoints();
-
         return Task.FromResult(new Blocks.Genesis.Auth.DiscoveryMetadata
         {
             Issuer = endpoints.Issuer,
@@ -197,7 +196,6 @@ public class DiscoveryService : IDiscoveryService
     public Task<Blocks.Genesis.Auth.OAuthAuthorizationServerMetadata> GetAuthorizationServerMetadataAsync()
     {
         var endpoints = ResolveEndpoints();
-
         return Task.FromResult(new Blocks.Genesis.Auth.OAuthAuthorizationServerMetadata
         {
             Issuer = endpoints.Issuer,
@@ -211,9 +209,7 @@ public class DiscoveryService : IDiscoveryService
     {
         var issuer = GetIssuer();
         var apiPrefix = ApplicationConfigurations.NormalizeApiRoutePrefixValue(_configuration["ApiRouting:Prefix"]);
-        var serviceSegment = ApplicationConfigurations.NormalizeServiceSegment(
-            null,
-            ApplicationConfigurations.ResolveServiceName());
+        var serviceSegment = ResolveRequiredServiceName(_configuration);
 
         return new ResolvedOidcEndpoints
         {
@@ -223,6 +219,17 @@ public class DiscoveryService : IDiscoveryService
             UserInfoEndpoint = BuildUrl(issuer, apiPrefix, serviceSegment, "auth", "userinfo"),
             JwksUri = BuildUrl(issuer, ".well-known", "jwks.json")
         };
+    }
+
+    private static string ResolveRequiredServiceName(IConfiguration configuration)
+    {
+        var serviceName = Environment.GetEnvironmentVariable("ServiceName") ?? configuration["ServiceName"];
+        if (string.IsNullOrWhiteSpace(serviceName))
+        {
+            throw new InvalidOperationException("Missing required ServiceName configuration.");
+        }
+
+        return serviceName;
     }
 
     private string GetIssuer()

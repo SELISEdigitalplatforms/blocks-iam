@@ -7,15 +7,17 @@ using Microsoft.AspNetCore.Http.Features;
 using Microsoft.Extensions.Configuration;
 using CloudConfiguration.DomainService.Shared.Utilities;
 
-var serviceName = ApplicationConfigurations.ResolveServiceName();
+var builder = WebApplication.CreateBuilder(args);
+ApplicationConfigurations.ConfigureApiEnv(builder, args);
+
+var serviceName = ResolveRequiredServiceName(builder.Configuration);
 var vaultType = ApplicationConfigurations.ResolveVaultType();
 Console.WriteLine($"Using Genesis vault type: {vaultType}");
 var secret = await ApplicationConfigurations.ConfigureLogAndSecretsAsync(serviceName, vaultType);
-var builder = WebApplication.CreateBuilder(args);
 
-ApplicationConfigurations.ConfigureApiEnv(builder, args);
-
-ApplicationConfigurations.ConfigureServices(builder.Services, IdpConstants.GetMessageConfiguration(secret.MessageConnectionString));
+var messageConfiguration = IdpConstants.GetMessageConfiguration(secret.MessageConnectionString);
+messageConfiguration.ServiceName = serviceName;
+ApplicationConfigurations.ConfigureServices(builder.Services, messageConfiguration);
 
 builder.Services.Configure<FormOptions>(options =>
 {
@@ -28,6 +30,7 @@ services.AddHealthChecks();
 
 ApplicationConfigurations.ConfigureApi(
     services,
+    serviceName: serviceName,
     apiRoutePrefix: builder.Configuration["ApiRouting:Prefix"]);
 
 var wwwrootPath = Path.Combine(builder.Environment.ContentRootPath, "wwwroot");
@@ -94,4 +97,15 @@ static void ApplyFrontendRuntimeSettings(IConfiguration configuration, string we
             File.WriteAllText(filePath, updated);
         }
     }
+}
+
+static string ResolveRequiredServiceName(IConfiguration configuration)
+{
+    var serviceName = Environment.GetEnvironmentVariable("ServiceName") ?? configuration["ServiceName"];
+    if (string.IsNullOrWhiteSpace(serviceName))
+    {
+        throw new InvalidOperationException("Missing required ServiceName configuration.");
+    }
+
+    return serviceName;
 }
