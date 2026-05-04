@@ -1,4 +1,4 @@
-﻿using Blocks.Genesis;
+using Blocks.Genesis;
 using DomainService.Dtos;
 using DomainService.Entities;
 using DomainService.OAuth.RequestModel;
@@ -203,7 +203,7 @@ namespace DomainService.OAuth
                     ExpiresUtc = oldRefreshToken.ExpiresUtc,
                     IpAddresses = oldRefreshToken.IpAddresses ?? string.Empty,
                     UserId = oldRefreshToken.UserId ?? string.Empty,
-                    DeviceInformation = _authenticationDomainService.GetDeviceInfo(tokenRequest.Request?.Headers?.UserAgent),
+                    DeviceInformation = _authenticationDomainService.GetDeviceInfo(tokenRequest.Request?.Headers?.UserAgent ?? string.Empty),
                     IsRevoke = true,
                     IsLogin = false,
                     GrantType = tokenRequest.GrantType
@@ -258,7 +258,7 @@ namespace DomainService.OAuth
                 ExpiresUtc = oldRefreshToken.ExpiresUtc,
                 IpAddresses = oldRefreshToken.IpAddresses ?? string.Empty,
                 UserId = oldRefreshToken.UserId ?? string.Empty,
-                DeviceInformation = _authenticationDomainService.GetDeviceInfo(tokenRequest.Request?.Headers?.UserAgent),
+                DeviceInformation = _authenticationDomainService.GetDeviceInfo(tokenRequest.Request?.Headers?.UserAgent ?? string.Empty),
                 IsRevoke = true,
                 IsLogin = false,
                 GrantType = tokenRequest.GrantType
@@ -274,7 +274,7 @@ namespace DomainService.OAuth
                 ExpiresUtc = newRefreshTokenCache.ExpiresUtc,
                 IpAddresses = newRefreshTokenCache.IpAddresses,
                 UserId = newRefreshTokenCache.UserId,
-                DeviceInformation = _authenticationDomainService.GetDeviceInfo(tokenRequest.Request?.Headers?.UserAgent),
+                DeviceInformation = _authenticationDomainService.GetDeviceInfo(tokenRequest.Request?.Headers?.UserAgent ?? string.Empty),
                 IsRevoke = false,
                 IsLogin = false,
                 GrantType = tokenRequest.GrantType
@@ -340,7 +340,7 @@ namespace DomainService.OAuth
                 ExpiresUtc = refreshTokenCache.ExpiresUtc,
                 IpAddresses = refreshTokenCache.IpAddresses,
                 UserId = refreshTokenCache.UserId,
-                DeviceInformation = _authenticationDomainService.GetDeviceInfo(tokenRequest.Request?.Headers?.UserAgent),
+                DeviceInformation = _authenticationDomainService.GetDeviceInfo(tokenRequest.Request?.Headers?.UserAgent ?? string.Empty),
                 IsRevoke = false,
                 IsLogin = true,
                 GrantType = tokenRequest.GrantType

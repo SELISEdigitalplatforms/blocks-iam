@@ -815,15 +815,15 @@ namespace DomainService.Authentication
                     string.Empty,
                     string.Empty,
                     DateTime.UtcNow.AddHours(1),
-                    user.Email,
+                    user.Email ?? string.Empty,
                     Array.Empty<string>(),
-                    user.UserName,
+                    user.UserName ?? string.Empty,
                     string.Empty,
                     $"{user.FirstName} {user.LastName}".Trim(),
                     string.Empty,
                     string.Empty,
                     tenantId
-                });
+                })!;
 
                 BlocksContext.SetContext(context, true);
                 return;
@@ -841,14 +841,14 @@ namespace DomainService.Authentication
                     string.Empty,
                     string.Empty,
                     DateTime.UtcNow.AddHours(1),
-                    user.Email,
+                    user.Email ?? string.Empty,
                     Array.Empty<string>(),
-                    user.UserName,
+                    user.UserName ?? string.Empty,
                     string.Empty,
                     $"{user.FirstName} {user.LastName}".Trim(),
                     string.Empty,
                     tenantId
-                });
+                })!;
 
                 BlocksContext.SetContext(context, true);
             }

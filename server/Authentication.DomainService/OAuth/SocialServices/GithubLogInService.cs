@@ -61,9 +61,9 @@ namespace DomainService.OAuth
             var postData = new Dictionary<string, string>
             {
                 { "code", stateInfo.Code },
-                { "client_id", credential.ClientId },
-                { "client_secret", credential.ClientSecret },
-                { "redirect_uri", credential.RedirectUrl }
+                { "client_id", credential.ClientId ?? string.Empty },
+                { "client_secret", credential.ClientSecret ?? string.Empty },
+                { "redirect_uri", credential.RedirectUrl ?? string.Empty }
             };
 
             // Ask for JSON response
@@ -93,7 +93,7 @@ namespace DomainService.OAuth
             if (string.IsNullOrEmpty(userResponse.Email))
             {
                 var (emailResponse, emailError) = await _httpService.Get<List<GithubEmail>>(
-                credential.GetEmailUrl,
+                credential.GetEmailUrl ?? string.Empty,
                 headers: new Dictionary<string, string> { { "Authorization", $"Bearer {tokenResponse.AccessToken}" },
                 { "User-Agent", $"{credential.Audience}" },{ "Accept", "application/vnd.github.v3+json" } });
 

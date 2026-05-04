@@ -17,8 +17,8 @@ namespace DomainService.ResponseModel
         public required string RedirectUrl { get; set; }
         public string? WellKnownUrl { get; set; }
         public required string Scope { get; set; }
-        public List<GetUserRole> UserRoles { get; set; }
-        public List<GetUserPermission> UserPermissions { get; set; }
+        public List<GetUserRole> UserRoles { get; set; } = [];
+        public List<GetUserPermission> UserPermissions { get; set; } = [];
         public bool IsDisabled { get; set; }
         public bool SendAsResponse { get; set; } = true;
     }

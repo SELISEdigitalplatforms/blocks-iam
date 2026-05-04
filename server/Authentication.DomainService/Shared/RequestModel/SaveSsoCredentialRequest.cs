@@ -4,11 +4,11 @@ namespace DomainService.Shared
 {
     public class SaveSsoCredentialRequest : IProjectKey
     {
-        public string Provider { get; set; }
-        public string Audience { get; set; }
-        public string ClientId { get; set; }
-        public string ClientSecret { get; set; }
-        public string RedirectUrl { get; set; }
+        public string? Provider { get; set; }
+        public string? Audience { get; set; }
+        public string? ClientId { get; set; }
+        public string? ClientSecret { get; set; }
+        public string? RedirectUrl { get; set; }
         public string? WellKnownUrl { get; set; }
         public List<string> InitialRoles { get; set; } = [];
         public List<string> InitialPermissions { get; set; } = [];

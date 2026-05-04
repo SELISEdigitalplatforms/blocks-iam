@@ -31,7 +31,8 @@ namespace DomainService.OAuth
         {
             _logger.LogInformation("Authenticate start for RefreshToken");
             var bc = BlocksContext.GetContext();
-            var tenant = _tenants.GetTenantByID(bc?.TenantId);
+            var tenant = _tenants.GetTenantByID(bc?.TenantId ?? string.Empty);
+            if (tenant == null) return new TokenResponse { Error = "server_error", ErrorDescription = "Tenant not found", StatusCode = 500 };
             var issuanceContext = new TokenIssuanceContext
             {
                 IsImpersonation = request.IsImpersonation,

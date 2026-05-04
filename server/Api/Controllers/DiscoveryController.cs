@@ -36,6 +36,7 @@ namespace Blocks.Api.Controllers
         /// Standard response caching: 1 hour
         /// </summary>
         [HttpGet("/.well-known/openid-configuration")]
+        [HttpGet("/{tenant_id}/.well-known/openid-configuration")]
         [Produces("application/json")]
         [ProducesResponseType(typeof(DiscoveryMetadata), 200)]
         public async Task<IActionResult> OpenIdConfiguration()
@@ -66,6 +67,7 @@ namespace Blocks.Api.Controllers
         /// Standard response caching: 1 hour
         /// </summary>
         [HttpGet("/.well-known/oauth-authorization-server")]
+        [HttpGet("/{tenant_id}/.well-known/oauth-authorization-server")]
         [Produces("application/json")]
         [ProducesResponseType(typeof(OAuthAuthorizationServerMetadata), 200)]
         public async Task<IActionResult> OAuthAuthorizationServer()
@@ -98,6 +100,7 @@ namespace Blocks.Api.Controllers
         /// Standard response caching: 24 hours (keys don't change frequently)
         /// </summary>
         [HttpGet("/.well-known/jwks.json")]
+        [HttpGet("/{tenant_id}/.well-known/jwks.json")]
         [Produces("application/json")]
         [ProducesResponseType(typeof(JwksResponse), 200)]
         public async Task<IActionResult> JwksJson()
@@ -119,7 +122,7 @@ namespace Blocks.Api.Controllers
             }
         }
 
-        [HttpGet("/jwks.json")]
+        [HttpGet("/{tenant_id}/jwks.json")]
         [Produces("application/json")]
         [ProducesResponseType(typeof(JwksResponse), 200)]
         public Task<IActionResult> JwksJsonAlias()

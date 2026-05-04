@@ -55,7 +55,7 @@ namespace DomainService.OAuth
                 };
             }
 
-            var passwordMatched = VerifyPassword(request.Password, user.Password);
+            var passwordMatched = VerifyPassword(request.Password, user.Password ?? string.Empty);
 
             if (!passwordMatched)
             {
@@ -72,7 +72,7 @@ namespace DomainService.OAuth
                     {
                         { nameof(User.FailedLoginCount), nextFailedCount },
                         { nameof(User.LastFailedLoginUtc), DateTime.UtcNow },
-                        { nameof(User.LockoutUntilUtc), lockoutUntilUtc ?? (object?)null },
+                        { nameof(User.LockoutUntilUtc), lockoutUntilUtc ?? (object)DBNull.Value },
                         { nameof(User.LastUpdatedDate), DateTime.UtcNow },
                         { nameof(User.LastUpdatedBy), user.ItemId }
                     });

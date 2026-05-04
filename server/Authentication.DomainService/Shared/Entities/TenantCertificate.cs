@@ -6,8 +6,8 @@ namespace DomainService.Entities
     public class TenantCertificate
     {
         [BsonId]
-        public string ItemId { get; set; }
-        public string Key { get; set; }
-        public string Value { get; set; }
+        public string? ItemId { get; set; }
+        public string? Key { get; set; }
+        public string? Value { get; set; }
     }
 }

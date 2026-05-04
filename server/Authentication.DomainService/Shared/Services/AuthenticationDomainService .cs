@@ -53,7 +53,7 @@ namespace DomainService.Services
         {
             var forwardedForHeader = context.Request.Headers[X_Forwarded_For_Header_Name];
 
-            var visitorsIpAddress = string.IsNullOrWhiteSpace(forwardedForHeader) ? context.Connection.RemoteIpAddress.ToString() : forwardedForHeader.ToString();
+            var visitorsIpAddress = string.IsNullOrWhiteSpace(forwardedForHeader) ? context.Connection.RemoteIpAddress?.ToString() ?? string.Empty : forwardedForHeader.ToString();
 
             var visitorsIpAddresses =
                 visitorsIpAddress
@@ -69,14 +69,16 @@ namespace DomainService.Services
 
             if (!string.IsNullOrWhiteSpace(originHeaderValue))
             {
-                return new Uri(originHeaderValue).Host;
+                if (Uri.TryCreate(originHeaderValue.ToString(), UriKind.Absolute, out var originUri))
+                    return originUri.Host;
             }
 
             var refererHeaderValue = context.Request.Headers[Referer_Header_Name];
 
             if (!string.IsNullOrWhiteSpace(refererHeaderValue))
             {
-                return new Uri(refererHeaderValue).Host;
+                if (Uri.TryCreate(refererHeaderValue.ToString(), UriKind.Absolute, out var refererUri))
+                    return refererUri.Host;
             }
 
             return string.Empty;
@@ -136,7 +138,7 @@ namespace DomainService.Services
             }
 
             var loginCredential = await _authenticationRepository.GetSocialLoginCredentialByIdAsync(credential?.ItemId ?? "");
-            var repoCredential = await MapToSocialLoginCredential(loginCredential, credential);
+            var repoCredential = await MapToSocialLoginCredential(loginCredential, credential ?? new SaveSsoCredentialRequest());
             await _authenticationRepository.SaveSocialLoginCredentialAsync(repoCredential);
 
             return new SaveSsoCredentialResponse { IsSuccess = true, ItemId = repoCredential.ItemId };
@@ -249,7 +251,7 @@ namespace DomainService.Services
         private async Task<SocialLoginCredential> MapToSocialLoginCredential(SocialLoginCredential credential, SaveSsoCredentialRequest saveSocialLoginCredentialRequest)
         {
             var now = DateTime.UtcNow;
-            var userId = BlocksContext.GetContext().UserId;
+            var userId = BlocksContext.GetContext()?.UserId;
             var metaData = !string.IsNullOrWhiteSpace(saveSocialLoginCredentialRequest.WellKnownUrl) ? await GetMetadataAsync(saveSocialLoginCredentialRequest.WellKnownUrl) : null;
 
             credential ??= new SocialLoginCredential

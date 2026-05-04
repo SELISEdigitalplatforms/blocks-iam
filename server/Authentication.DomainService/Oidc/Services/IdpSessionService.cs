@@ -351,12 +351,9 @@ namespace DomainService.Oidc.Services
         // Helper methods
         private string GenerateSessionId()
         {
-            using (var rng = new System.Security.Cryptography.RNGCryptoServiceProvider())
-            {
-                byte[] buffer = new byte[32];
-                rng.GetBytes(buffer);
-                return Convert.ToBase64String(buffer).Replace("/", "_").Replace("+", "-");
-            }
+            byte[] buffer = new byte[32];
+            System.Security.Cryptography.RandomNumberGenerator.Fill(buffer);
+            return Convert.ToBase64String(buffer).Replace("/", "_").Replace("+", "-");
         }
 
         private async Task LogSessionEvent(string eventType, string userId, string sessionId, string details = null)

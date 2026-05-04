@@ -1,8 +1,14 @@
 using System.IdentityModel.Tokens.Jwt;
+using System.IO;
+using System.Net.Http;
 using System.Security.Claims;
 using System.Security.Cryptography;
+using System.Security.Cryptography.X509Certificates;
 using System.Text;
+using System.Text.Json;
 using Blocks.Genesis;
+using DomainService.OAuth;
+using DomainService.Utilities;
 using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
@@ -54,20 +60,36 @@ public sealed class OidcSigningKeyMaterial
 public class TokenGenerationService : ITokenGenerationService
 {
     private readonly OidcSigningKeyMaterial _keyMaterial;
+    private readonly ITenants _tenants;
+    private readonly ICacheClient _cacheClient;
+    private readonly ICryptoService _cryptoService;
+    private readonly ICertificateProviderFactory _certificateProviderFactory;
+    private readonly IHttpContextAccessor _httpContextAccessor;
 
-    public TokenGenerationService(OidcSigningKeyMaterial keyMaterial)
+    public TokenGenerationService(
+        OidcSigningKeyMaterial keyMaterial,
+        ITenants tenants,
+        ICacheClient cacheClient,
+        ICryptoService cryptoService,
+        ICertificateProviderFactory certificateProviderFactory,
+        IHttpContextAccessor httpContextAccessor)
     {
         _keyMaterial = keyMaterial;
+        _tenants = tenants;
+        _cacheClient = cacheClient;
+        _cryptoService = cryptoService;
+        _certificateProviderFactory = certificateProviderFactory;
+        _httpContextAccessor = httpContextAccessor;
     }
 
     public Task<string> GenerateIdTokenAsync(Blocks.Genesis.Auth.OidcClaims claims, string issuer, int expiresInSeconds)
     {
-        return Task.FromResult(GenerateToken(claims, issuer, expiresInSeconds, includeNonce: true));
+        return GenerateTokenAsync(claims, issuer, expiresInSeconds, includeNonce: true);
     }
 
     public Task<string> GenerateAccessTokenAsync(Blocks.Genesis.Auth.OidcClaims claims, string issuer, int expiresInSeconds)
     {
-        return Task.FromResult(GenerateToken(claims, issuer, expiresInSeconds, includeNonce: false));
+        return GenerateTokenAsync(claims, issuer, expiresInSeconds, includeNonce: false);
     }
 
     public Task<Blocks.Genesis.Auth.RefreshTokenModel> GenerateRefreshTokenAsync(Blocks.Genesis.Auth.OidcClaims claims, string issuer)
@@ -87,9 +109,15 @@ public class TokenGenerationService : ITokenGenerationService
         });
     }
 
-    private string GenerateToken(Blocks.Genesis.Auth.OidcClaims claims, string issuer, int expiresInSeconds, bool includeNonce)
+    private async Task<string> GenerateTokenAsync(Blocks.Genesis.Auth.OidcClaims claims, string issuer, int expiresInSeconds, bool includeNonce)
     {
         var now = DateTime.UtcNow;
+        var tenant = ResolveTenant(claims.TenantId);
+        var resolvedIssuer = !string.IsNullOrWhiteSpace(tenant?.JwtTokenParameters?.Issuer)
+            ? tenant.JwtTokenParameters.Issuer
+            : issuer;
+        var signingCredentials = await ResolveSigningCredentialsAsync(tenant) ?? _keyMaterial.SigningCredentials;
+
         var jwtClaims = new List<Claim>
         {
             new(JwtRegisteredClaimNames.Sub, claims.Sub),
@@ -142,14 +170,115 @@ public class TokenGenerationService : ITokenGenerationService
         }
 
         var token = new JwtSecurityToken(
-            issuer: issuer,
+            issuer: resolvedIssuer,
             audience: claims.Audience ?? claims.ClientId,
             claims: jwtClaims,
             notBefore: now,
             expires: now.AddSeconds(expiresInSeconds),
-            signingCredentials: _keyMaterial.SigningCredentials);
+            signingCredentials: signingCredentials);
 
         return new JwtSecurityTokenHandler().WriteToken(token);
+    }
+
+    private Tenant? ResolveTenant(string? tenantId)
+    {
+        var resolvedTenantId = !string.IsNullOrWhiteSpace(tenantId)
+            ? tenantId
+            : ResolveTenantIdFromContext();
+
+        return string.IsNullOrWhiteSpace(resolvedTenantId)
+            ? null
+            : _tenants.GetTenantByID(resolvedTenantId);
+    }
+
+    private string? ResolveTenantIdFromContext()
+    {
+        var request = _httpContextAccessor.HttpContext?.Request;
+        var queryTenantId = request?.Query["tenant_id"].ToString();
+        if (!string.IsNullOrWhiteSpace(queryTenantId))
+        {
+            return queryTenantId;
+        }
+
+        var headerTenantId = request?.Headers["X-Blocks-Key"].ToString();
+        if (!string.IsNullOrWhiteSpace(headerTenantId))
+        {
+            return headerTenantId;
+        }
+
+        return BlocksContext.GetContext()?.TenantId;
+    }
+
+    private async Task<SigningCredentials?> ResolveSigningCredentialsAsync(Tenant? tenant)
+    {
+        if (tenant?.JwtTokenParameters == null)
+        {
+            return null;
+        }
+
+        var certificateBytes = await GetOrRetrievePrivateCertificateAsync(tenant);
+        if (certificateBytes == null || certificateBytes.Length == 0)
+        {
+            return null;
+        }
+
+        var certificate = LoadCertificate(certificateBytes, tenant.JwtTokenParameters.PrivateCertificatePassword);
+        var rsa = certificate.GetRSAPrivateKey();
+        if (rsa == null)
+        {
+            return null;
+        }
+
+        var securityKey = new RsaSecurityKey(rsa)
+        {
+            KeyId = ResolveKeyId(certificate)
+        };
+
+        return new SigningCredentials(securityKey, SecurityAlgorithms.RsaSha256);
+    }
+
+    private async Task<byte[]?> GetOrRetrievePrivateCertificateAsync(Tenant tenant)
+    {
+        var key = _cryptoService.Hash(Encoding.UTF8.GetBytes($"{tenant.TenantId}::{tenant.ItemId}"));
+        var cachedCertificate = _cacheClient.CacheDatabase().StringGet(key);
+        if (cachedCertificate.HasValue)
+        {
+            return cachedCertificate!;
+        }
+
+        var provider = _certificateProviderFactory.GetProvider(tenant.JwtTokenParameters?.CertificateStorageType ?? CertificateStorageType.Azure);
+        var certificate = await provider.GetCertificateAsync(key);
+
+        if (certificate.Length > 0)
+        {
+            _cacheClient.CacheDatabase().StringSet(key, certificate, ResolveCacheLifetime(tenant));
+        }
+
+        return certificate;
+    }
+
+    private static TimeSpan ResolveCacheLifetime(Tenant tenant)
+    {
+        var tokenParameters = tenant.JwtTokenParameters;
+        var expirationDays = tokenParameters?.CertificateValidForNumberOfDays - (DateTime.UtcNow - tokenParameters?.IssueDate)?.Days - 1;
+        return TimeSpan.FromDays(Math.Max(expirationDays ?? 0, 0));
+    }
+
+    private static X509Certificate2 LoadCertificate(byte[] certificateBytes, string? password)
+    {
+        try
+        {
+            return X509CertificateLoader.LoadPkcs12(certificateBytes, password, X509KeyStorageFlags.Exportable);
+        }
+        catch (CryptographicException)
+        {
+            return X509CertificateLoader.LoadCertificate(certificateBytes);
+        }
+    }
+
+    private static string ResolveKeyId(X509Certificate2 certificate)
+    {
+        return Base64UrlEncoder.Encode(certificate.Thumbprint ?? string.Empty);
     }
 }
 
@@ -171,54 +300,148 @@ public class PkceService : IPkceService
 
 public class DiscoveryService : IDiscoveryService
 {
+    private const string DiscoveryCachePrefix = "oidcdiscovery::";
+    private const string OAuthCachePrefix = "oidcoauth::";
+    private static readonly TimeSpan DiscoveryCacheTtl = TimeSpan.FromMinutes(5);
+
     private readonly IHttpContextAccessor _httpContextAccessor;
     private readonly IConfiguration _configuration;
+    private readonly ITenants _tenants;
+    private readonly ICacheClient _cacheClient;
 
-    public DiscoveryService(IHttpContextAccessor httpContextAccessor, IConfiguration configuration)
+    public DiscoveryService(IHttpContextAccessor httpContextAccessor, IConfiguration configuration, ITenants tenants, ICacheClient cacheClient)
     {
         _httpContextAccessor = httpContextAccessor;
         _configuration = configuration;
+        _tenants = tenants;
+        _cacheClient = cacheClient;
     }
 
-    public Task<Blocks.Genesis.Auth.DiscoveryMetadata> GetMetadataAsync()
+    public async Task<Blocks.Genesis.Auth.DiscoveryMetadata> GetMetadataAsync()
     {
-        var endpoints = ResolveEndpoints();
-        return Task.FromResult(new Blocks.Genesis.Auth.DiscoveryMetadata
+        var tenantId = ResolveTenantId();
+        var cacheKey = $"{DiscoveryCachePrefix}{tenantId ?? "_default"}";
+
+        var cached = await _cacheClient.CacheDatabase().StringGetAsync(cacheKey);
+        if (cached.HasValue)
+        {
+            return JsonSerializer.Deserialize<Blocks.Genesis.Auth.DiscoveryMetadata>((string)cached!)!;
+        }
+
+        var endpoints = ResolveEndpoints(tenantId);
+        var metadata = new Blocks.Genesis.Auth.DiscoveryMetadata
         {
             Issuer = endpoints.Issuer,
             AuthorizationEndpoint = endpoints.AuthorizationEndpoint,
             TokenEndpoint = endpoints.TokenEndpoint,
             UserInfoEndpoint = endpoints.UserInfoEndpoint,
             JwksUri = endpoints.JwksUri
-        });
+        };
+
+        await _cacheClient.CacheDatabase().StringSetAsync(cacheKey, JsonSerializer.Serialize(metadata), DiscoveryCacheTtl);
+        return metadata;
     }
 
-    public Task<Blocks.Genesis.Auth.OAuthAuthorizationServerMetadata> GetAuthorizationServerMetadataAsync()
+    public async Task<Blocks.Genesis.Auth.OAuthAuthorizationServerMetadata> GetAuthorizationServerMetadataAsync()
     {
-        var endpoints = ResolveEndpoints();
-        return Task.FromResult(new Blocks.Genesis.Auth.OAuthAuthorizationServerMetadata
+        var tenantId = ResolveTenantId();
+        var cacheKey = $"{OAuthCachePrefix}{tenantId ?? "_default"}";
+
+        var cached = await _cacheClient.CacheDatabase().StringGetAsync(cacheKey);
+        if (cached.HasValue)
+        {
+            return JsonSerializer.Deserialize<Blocks.Genesis.Auth.OAuthAuthorizationServerMetadata>((string)cached!)!;
+        }
+
+        var endpoints = ResolveEndpoints(tenantId);
+        var metadata = new Blocks.Genesis.Auth.OAuthAuthorizationServerMetadata
         {
             Issuer = endpoints.Issuer,
             AuthorizationEndpoint = endpoints.AuthorizationEndpoint,
             TokenEndpoint = endpoints.TokenEndpoint,
             JwksUri = endpoints.JwksUri
-        });
+        };
+
+        await _cacheClient.CacheDatabase().StringSetAsync(cacheKey, JsonSerializer.Serialize(metadata), DiscoveryCacheTtl);
+        return metadata;
     }
 
-    private ResolvedOidcEndpoints ResolveEndpoints()
+    private ResolvedOidcEndpoints ResolveEndpoints(string? tenantId)
     {
-        var issuer = GetIssuer();
+        var tenant = ResolveTenant(tenantId);
+        var issuer = ResolveIssuer(tenant);
         var apiPrefix = ApplicationConfigurations.NormalizeApiRoutePrefixValue(_configuration["ApiRouting:Prefix"]);
         var serviceSegment = ResolveRequiredServiceName(_configuration);
+
+        // Use path-based tenant selector for discovery and endpoint URLs.
+        var tenantScopedPrefix = string.IsNullOrWhiteSpace(tenantId)
+            ? Array.Empty<string>()
+            : [tenantId];
+
+        var jwksUri = string.IsNullOrWhiteSpace(tenantId)
+            ? BuildUrl(issuer, ".well-known", "jwks.json")
+            : BuildUrl(issuer, tenantId, ".well-known", "jwks.json");
+
+        var authorizationEndpoint = BuildUrl(issuer, tenantScopedPrefix.Concat([apiPrefix, serviceSegment, "oidc", "authorize"]).ToArray());
+        var tokenEndpoint = BuildUrl(issuer, tenantScopedPrefix.Concat([apiPrefix, serviceSegment, "oidc", "token"]).ToArray());
+        var userInfoEndpoint = BuildUrl(issuer, tenantScopedPrefix.Concat([apiPrefix, serviceSegment, "auth", "userinfo"]).ToArray());
 
         return new ResolvedOidcEndpoints
         {
             Issuer = issuer,
-            AuthorizationEndpoint = BuildUrl(issuer, apiPrefix, serviceSegment, "oidc", "authorize"),
-            TokenEndpoint = BuildUrl(issuer, apiPrefix, serviceSegment, "oidc", "token"),
-            UserInfoEndpoint = BuildUrl(issuer, apiPrefix, serviceSegment, "auth", "userinfo"),
-            JwksUri = BuildUrl(issuer, ".well-known", "jwks.json")
+            AuthorizationEndpoint = authorizationEndpoint,
+            TokenEndpoint = tokenEndpoint,
+            UserInfoEndpoint = userInfoEndpoint,
+            JwksUri = jwksUri
         };
+    }
+
+    private Tenant? ResolveTenant(string? tenantId)
+    {
+        return string.IsNullOrWhiteSpace(tenantId) ? null : _tenants.GetTenantByID(tenantId);
+    }
+
+    private string? ResolveTenantId()
+    {
+        var request = _httpContextAccessor.HttpContext?.Request;
+
+        // Path-based: /{tenant_id}/.well-known/... (RFC 8414 compliant)
+        var routeTenantId = request?.RouteValues["tenant_id"]?.ToString();
+        if (!string.IsNullOrWhiteSpace(routeTenantId))
+        {
+            return routeTenantId;
+        }
+
+        var queryTenantId = request?.Query["tenant_id"].ToString();
+        if (!string.IsNullOrWhiteSpace(queryTenantId))
+        {
+            return queryTenantId;
+        }
+
+        var headerTenantId = request?.Headers["X-Blocks-Key"].ToString();
+        if (!string.IsNullOrWhiteSpace(headerTenantId))
+        {
+            return headerTenantId;
+        }
+
+        return BlocksContext.GetContext()?.TenantId;
+    }
+
+    private string ResolveIssuer(Tenant? tenant)
+    {
+        if (!string.IsNullOrWhiteSpace(tenant?.JwtTokenParameters?.Issuer)
+            && Uri.TryCreate(tenant.JwtTokenParameters.Issuer, UriKind.Absolute, out _))
+        {
+            return tenant.JwtTokenParameters.Issuer.TrimEnd('/');
+        }
+
+        var requestIssuer = GetIssuerFromRequest();
+        if (!string.IsNullOrWhiteSpace(requestIssuer))
+        {
+            return requestIssuer;
+        }
+
+        return GetConfiguredIssuerFallback();
     }
 
     private static string ResolveRequiredServiceName(IConfiguration configuration)
@@ -232,7 +455,7 @@ public class DiscoveryService : IDiscoveryService
         return serviceName;
     }
 
-    private string GetIssuer()
+    private string? GetIssuerFromRequest()
     {
         var request = _httpContextAccessor.HttpContext?.Request;
         if (request != null)
@@ -240,6 +463,12 @@ public class DiscoveryService : IDiscoveryService
             var pathBase = request.PathBase.Value?.TrimEnd('/') ?? string.Empty;
             return $"{request.Scheme}://{request.Host.Value}{pathBase}";
         }
+
+        return null;
+    }
+
+    private string GetConfiguredIssuerFallback()
+    {
 
         var configuredBaseUrl = Environment.GetEnvironmentVariable("BLOCKS_API_BASE_URL")
             ?? _configuration["BLOCKS_API_BASE_URL"]
@@ -275,27 +504,207 @@ public class DiscoveryService : IDiscoveryService
 
 public class JwksService : IJwksService
 {
-    private readonly OidcSigningKeyMaterial _keyMaterial;
+    private static readonly HttpClient PublicCertificateHttpClient = new();
 
-    public JwksService(OidcSigningKeyMaterial keyMaterial)
+    private readonly OidcSigningKeyMaterial _keyMaterial;
+    private readonly ITenants _tenants;
+    private readonly ICacheClient _cacheClient;
+    private readonly IHttpContextAccessor _httpContextAccessor;
+    private readonly ICryptoService _cryptoService;
+    private readonly ICertificateProviderFactory _certificateProviderFactory;
+
+    public JwksService(
+        OidcSigningKeyMaterial keyMaterial,
+        ITenants tenants,
+        ICacheClient cacheClient,
+        IHttpContextAccessor httpContextAccessor,
+        ICryptoService cryptoService,
+        ICertificateProviderFactory certificateProviderFactory)
     {
         _keyMaterial = keyMaterial;
+        _tenants = tenants;
+        _cacheClient = cacheClient;
+        _httpContextAccessor = httpContextAccessor;
+        _cryptoService = cryptoService;
+        _certificateProviderFactory = certificateProviderFactory;
     }
 
-    public Task<Blocks.Genesis.Auth.JwksResponse> GetKeysAsync()
+    public async Task<Blocks.Genesis.Auth.JwksResponse> GetKeysAsync()
     {
-        var parameters = _keyMaterial.Rsa.ExportParameters(false);
-        return Task.FromResult(new Blocks.Genesis.Auth.JwksResponse
+        var tenant = ResolveTenant();
+        var certificate = tenant == null ? null : await GetPreferredCertificateAsync(tenant);
+        if (certificate == null)
+        {
+            var fallbackParameters = _keyMaterial.Rsa.ExportParameters(false);
+            return new Blocks.Genesis.Auth.JwksResponse
+            {
+                Keys =
+                [
+                    new Blocks.Genesis.Auth.JwkKey
+                    {
+                        Kid = _keyMaterial.SecurityKey.KeyId ?? string.Empty,
+                        N = Base64UrlEncoder.Encode(fallbackParameters.Modulus),
+                        E = Base64UrlEncoder.Encode(fallbackParameters.Exponent)
+                    }
+                ]
+            };
+        }
+
+        using var rsa = certificate.GetRSAPublicKey();
+        if (rsa == null)
+        {
+            throw new InvalidOperationException("The resolved tenant certificate does not contain an RSA public key.");
+        }
+
+        var parameters = rsa.ExportParameters(false);
+        return new Blocks.Genesis.Auth.JwksResponse
         {
             Keys =
             [
                 new Blocks.Genesis.Auth.JwkKey
                 {
-                    Kid = _keyMaterial.SecurityKey.KeyId ?? string.Empty,
+                    Kid = ResolveKeyId(certificate),
                     N = Base64UrlEncoder.Encode(parameters.Modulus),
                     E = Base64UrlEncoder.Encode(parameters.Exponent)
                 }
             ]
-        });
+        };
+    }
+
+    private Tenant? ResolveTenant()
+    {
+        var request = _httpContextAccessor.HttpContext?.Request;
+
+        // Path-based: /{tenant_id}/.well-known/... (RFC 8414 compliant)
+        var tenantId = request?.RouteValues["tenant_id"]?.ToString();
+        if (string.IsNullOrWhiteSpace(tenantId))
+        {
+            tenantId = request?.Query["tenant_id"].ToString();
+        }
+
+        if (string.IsNullOrWhiteSpace(tenantId))
+        {
+            tenantId = request?.Headers["X-Blocks-Key"].ToString();
+        }
+
+        if (string.IsNullOrWhiteSpace(tenantId))
+        {
+            tenantId = BlocksContext.GetContext()?.TenantId;
+        }
+
+        return string.IsNullOrWhiteSpace(tenantId) ? null : _tenants.GetTenantByID(tenantId);
+    }
+
+    private async Task<X509Certificate2?> GetPreferredCertificateAsync(Tenant tenant)
+    {
+        var publicCertificate = await GetPublicCertificateAsync(tenant);
+        if (publicCertificate != null)
+        {
+            return publicCertificate;
+        }
+
+        var privateCertificateBytes = await GetPrivateCertificateBytesAsync(tenant);
+        if (privateCertificateBytes == null || privateCertificateBytes.Length == 0)
+        {
+            return null;
+        }
+
+        return LoadCertificate(privateCertificateBytes, tenant.JwtTokenParameters?.PrivateCertificatePassword);
+    }
+
+    private async Task<X509Certificate2?> GetPublicCertificateAsync(Tenant tenant)
+    {
+        if (tenant.JwtTokenParameters == null)
+        {
+            return null;
+        }
+
+        var cacheKey = $"{IdpConstants.TenantTokenPublicCertificateCachePrefix}{tenant.TenantId}";
+        var cachedCertificate = await _cacheClient.CacheDatabase().StringGetAsync(cacheKey);
+        if (cachedCertificate.HasValue)
+        {
+            return LoadCertificate(cachedCertificate!, tenant.JwtTokenParameters.PublicCertificatePassword);
+        }
+
+        var downloadedCertificate = await DownloadPublicCertificateAsync(tenant.JwtTokenParameters.PublicCertificatePath);
+        if (downloadedCertificate.Length == 0)
+        {
+            return null;
+        }
+
+        _cacheClient.CacheDatabase().StringSet(cacheKey, downloadedCertificate, ResolveCacheLifetime(tenant));
+        return LoadCertificate(downloadedCertificate, tenant.JwtTokenParameters.PublicCertificatePassword);
+    }
+
+    private async Task<byte[]> GetPrivateCertificateBytesAsync(Tenant tenant)
+    {
+        var key = _cryptoService.Hash(Encoding.UTF8.GetBytes($"{tenant.TenantId}::{tenant.ItemId}"));
+        var cachedCertificate = _cacheClient.CacheDatabase().StringGet(key);
+        if (cachedCertificate.HasValue)
+        {
+            return cachedCertificate!;
+        }
+
+        var provider = _certificateProviderFactory.GetProvider(tenant.JwtTokenParameters?.CertificateStorageType ?? CertificateStorageType.Azure);
+        var certificate = await provider.GetCertificateAsync(key);
+        if (certificate.Length > 0)
+        {
+            _cacheClient.CacheDatabase().StringSet(key, certificate, ResolveCacheLifetime(tenant));
+        }
+
+        return certificate;
+    }
+
+    private static async Task<byte[]> DownloadPublicCertificateAsync(string? publicCertificatePath)
+    {
+        if (string.IsNullOrWhiteSpace(publicCertificatePath))
+        {
+            return Array.Empty<byte>();
+        }
+
+        if (Uri.TryCreate(publicCertificatePath, UriKind.Absolute, out var uri))
+        {
+            if (uri.IsFile && File.Exists(uri.LocalPath))
+            {
+                return await File.ReadAllBytesAsync(uri.LocalPath);
+            }
+
+            if (uri.Scheme.Equals(Uri.UriSchemeHttp, StringComparison.OrdinalIgnoreCase)
+                || uri.Scheme.Equals(Uri.UriSchemeHttps, StringComparison.OrdinalIgnoreCase))
+            {
+                return await PublicCertificateHttpClient.GetByteArrayAsync(uri);
+            }
+        }
+
+        if (File.Exists(publicCertificatePath))
+        {
+            return await File.ReadAllBytesAsync(publicCertificatePath);
+        }
+
+        return Array.Empty<byte>();
+    }
+
+    private static TimeSpan ResolveCacheLifetime(Tenant tenant)
+    {
+        var tokenParameters = tenant.JwtTokenParameters;
+        var expirationDays = tokenParameters?.CertificateValidForNumberOfDays - (DateTime.UtcNow - tokenParameters?.IssueDate)?.Days - 1;
+        return TimeSpan.FromDays(Math.Max(expirationDays ?? 0, 0));
+    }
+
+    private static X509Certificate2 LoadCertificate(byte[] certificateBytes, string? password)
+    {
+        try
+        {
+            return X509CertificateLoader.LoadPkcs12(certificateBytes, password, X509KeyStorageFlags.Exportable);
+        }
+        catch (CryptographicException)
+        {
+            return X509CertificateLoader.LoadCertificate(certificateBytes);
+        }
+    }
+
+    private static string ResolveKeyId(X509Certificate2 certificate)
+    {
+        return Base64UrlEncoder.Encode(certificate.Thumbprint ?? string.Empty);
     }
 }
