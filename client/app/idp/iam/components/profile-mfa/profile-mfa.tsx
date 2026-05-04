@@ -1,11 +1,11 @@
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui-kits/card/card";
 import { ProfileMFADetails } from "./profile-mfa-detail";
 import { Skeleton } from "@/components/ui-kits/skeleton/skeleton";
-import { Link } from "react-router-dom";
 import { Button } from "@/components/ui-kits/button/button";
 import { createContext, useState } from "react";
 import { ProfileMfaMethodSelectList } from "./user-mfa-confirmation/profile-mfa-methods-select-list";
 import { useGetMFAConfig } from "@blocks-idp/mfa/hooks/use-mfa-config";
+import { BLOCKS_OS_BASE_URL } from "@/constants/endpoint.constant";
 
 type ProfileMFAProps = {
   userId: string;
@@ -35,7 +35,7 @@ export const ProjectMFA = () => {
         <div className="flex items-center justify-between">
           <CardTitle>Multi-factor Authentication</CardTitle>
           <Button asChild variant="outline" size="sm">
-            <Link to="/services/secret-management?tab=mfa">Go to MFA Settings</Link>
+            <a href={`${BLOCKS_OS_BASE_URL}/services/secret-management?tab=mfa`}>Go to MFA Settings</a>
           </Button>
         </div>
       </CardHeader>
