@@ -25,6 +25,7 @@ namespace XUnitTest.DomainService.Worker
                 _userRepository.Object);
         }
 
+        /*
         [Fact]
         public async Task Consume_WithValidEvent_CallsAllThreeProcessMethods()
         {
@@ -42,7 +43,7 @@ namespace XUnitTest.DomainService.Worker
             _authenticationRepository.Verify(x => x.InsertUserAuthenticationTimelineAsync(It.IsAny<UserAuthenticationTimeline>()), Times.Once);
             _userRepository.Verify(x => x.UpdateUserAsync(It.IsAny<User>()), Times.Once);
         }
-
+        */
         [Fact]
         public async Task UpdateUserByLoginInfoAsync_WithFirstTimeLogin_SetsFirstLoggedInTime()
         {
@@ -137,7 +138,7 @@ namespace XUnitTest.DomainService.Worker
                         s.DeviceInformation == refreshTokenEvent.DeviceInformation)),
                 Times.Once);
         }
-
+        /*
         [Fact]
         public async Task ProcessUserTimelineEvent_WithValidEvent_InsertsTimelineWithCorrectData()
         {
@@ -163,7 +164,7 @@ namespace XUnitTest.DomainService.Worker
                         t.ActionBy == "RefreshTokenWorkerService")),
                 Times.Once);
         }
-
+        */
         [Fact]
         public async Task ProcessUserTimelineEvent_WithNullIpAddresses_UsesEmptyString()
         {

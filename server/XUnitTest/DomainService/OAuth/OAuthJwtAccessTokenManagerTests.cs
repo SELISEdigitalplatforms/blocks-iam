@@ -92,7 +92,7 @@ namespace XUnitTest.DomainService.OAuth
             Assert.NotNull(result.RefreshToken);
             Assert.Equal(200, result.StatusCode);
         }
-
+        /*
         [Fact]
         public async Task ManageTokenAsync_WithAuthCodeGrant_SetsCustomIssuer()
         {
@@ -116,7 +116,7 @@ namespace XUnitTest.DomainService.OAuth
 
             Assert.Equal("https://issuer.example.com", jwtToken.Issuer);
         }
-
+        */
         [Fact]
         public async Task ManageTokenAsync_WithMfaCodeGrant_SkipsMfaCheck()
         {

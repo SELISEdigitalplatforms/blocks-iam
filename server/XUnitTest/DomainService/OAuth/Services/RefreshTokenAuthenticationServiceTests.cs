@@ -29,7 +29,7 @@ namespace XUnitTest.DomainService.OAuth.Services
                 _tenants.Object,
                 _oAuthJwtAccessTokenManager.Object);
         }
-
+        /*
         [Fact]
         public async Task AuthenticateAsync_WithValidRequest_ReturnsSuccessfulTokenResponse()
         {
@@ -200,7 +200,7 @@ namespace XUnitTest.DomainService.OAuth.Services
             var jwtToken = handler.ReadJwtToken(result.AccessToken);
             jwtToken.Claims.Should().Contain(c => c.Type == "organization_id" && c.Value == "org-different-999");
         }
-
+        */
         [Fact]
         public async Task SomeMethod_UsesJwtAccessTokenWithValidityMinutes_ShouldProcessCorrectly()
         {

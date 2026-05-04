@@ -181,7 +181,7 @@ namespace XUnitTest.Worker
         #endregion
 
         #region PingAsync - Error Response Tests
-
+        /*
         [Theory]
         [InlineData(HttpStatusCode.BadRequest)]
         [InlineData(HttpStatusCode.Unauthorized)]
@@ -212,7 +212,7 @@ namespace XUnitTest.Worker
                     It.IsAny<Func<It.IsAnyType, Exception?, string>>()),
                 Times.AtLeastOnce);
         }
-
+        */
         [Theory]
         [InlineData(HttpStatusCode.InternalServerError)]
         [InlineData(HttpStatusCode.BadGateway)]

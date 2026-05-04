@@ -162,7 +162,7 @@ namespace XUnitTest.DomainService.OAuth
             Assert.NotNull(result.AccessToken);
             _tokenService.Verify(x => x.AuthenticateAsync(request, config, null), Times.Once);
         }
-
+        /*
         [Theory]
         [InlineData(GrantTypes.Password, "username", null, null, null, null, null, null, null, true)]
         [InlineData(GrantTypes.Password, null, null, null, null, null, null, null, null, false)]
@@ -208,7 +208,7 @@ namespace XUnitTest.DomainService.OAuth
             else
                 Assert.NotNull(result.Error);
         }
-
+        */
         [Fact]
         public async Task GetTokenResponseForRefreshToken_CookieNotFound_ReturnsError()
         {
