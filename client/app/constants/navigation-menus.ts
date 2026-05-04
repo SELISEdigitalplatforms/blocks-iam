@@ -1,18 +1,18 @@
 import { Menu } from "@/models/menu-models";
-import { Home, Package, Users, BookMinus, Settings, KeyRound, Building2 } from "lucide-react";
+import { BookMinus, Building2, KeyRound, Package, Settings, Users } from "lucide-react";
 
 export const navigationMenus: Menu[] = [
-  {
-    id: "overview-project",
-    type: "menu",
-    name: "Overview",
-    path: "/dashboard",
-    icon: Home,
-  },
-  {
-    type: "separator",
-    id: "separator-overview",
-  },
+  // {
+  //   id: "overview-project",
+  //   type: "menu",
+  //   name: "Overview",
+  //   path: "/dashboard",
+  //   icon: Home,
+  // },
+  // {
+  //   type: "separator",
+  //   id: "separator-overview",
+  // },
   {
     id: "environments",
     type: "menu",
