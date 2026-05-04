@@ -154,14 +154,12 @@ export default function OidcLogin() {
     setIsLoading(true);
     const blocksKey = getRuntimeEnv("BLOCKS_X_BLOCKS_KEY");
 
-    const params = new URLSearchParams({
+     const params = new URLSearchParams({
       response_type: "code",
-      client_id: "44ce2f9b-0ca4-4ad8-b8d4-bb775b61d68e",
-      redirect_uri: "https://dev-os.blocksdevelopers.com/oidc",
+      client_id: "94201649-8f4d-4818-be0e-2024e3f9fee2",
+      redirect_uri: "https://dev-idp.blocksdevelopers.com",
       scope: "openId",
-      audience: "https://dev-os.blocksdevelopers.com",
       state: "039849038",
-      nonce: "35443",
       ...(blocksKey ? { "x-blocks-key": blocksKey } : {}),
     });
 
