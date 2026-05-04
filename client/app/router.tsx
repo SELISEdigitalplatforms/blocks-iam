@@ -4,6 +4,7 @@ import { AuthLayout } from "./layouts/auth-layout";
 import { PublicLayout } from "./layouts/public-layout";
 import { OidcLayout } from "./layouts/oidc-layout";
 import { DashboardLayout } from "./layouts/dashboard-layout";
+import { ConsoleLayout } from "./layouts/console-layout";
 import { ProjectOverviewLayout } from "./layouts/project-overview-layout";
 
 // Auth routes (public, with auth layout)
@@ -134,15 +135,22 @@ export const router = createBrowserRouter([
       { path: "/managed-services", element: <ManagedServicesPage /> },
       { path: "/services/captcha", element: <Navigate to="/services/secret-management?tab=captcha" replace /> },
       { path: "/services/captcha/logs", element: <CaptchaLogsPage /> },
-      { path: "/profile", element: <ProfilePage /> },
-      { path: "/create-project", element: <CreateProjectWrapper /> },
-      { path: "/callback", element: <CallbackPage /> },
       { path: "/dashboard", element: <DashboardOverview /> },
       { path: "/project-overview", element: <Navigate to="/project-overview/environments" replace /> },
       { path: "/project-overview/environments", element: <EnvironmentsPage /> },
       { path: "/project-overview/people", element: <PeopleManagement /> },
       { path: "/project-overview/repositories", element: <RepositoriesPage /> },
       { path: "/project-overview/settings", element: <SettingsPage /> },
+    ],
+  },
+
+  // ── Console layout (profile, create-project, callback without sidebar) ──
+  {
+    element: <ConsoleLayout />,
+    children: [
+      { path: "/profile", element: <ProfilePage /> },
+      { path: "/create-project", element: <CreateProjectWrapper /> },
+      { path: "/callback", element: <CallbackPage /> },
     ],
   },
 
