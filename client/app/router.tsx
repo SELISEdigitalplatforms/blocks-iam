@@ -146,7 +146,7 @@ export const router = createBrowserRouter([
     ],
   },
 
-  // ── Root redirect: authenticated users go to console ──
+  // ── Root redirect: authenticated users go to authentication/users ──
   { path: "/", element: <Navigate to="/services/authentication/users" replace /> },
 
   // ── Catch-all: redirect to login ──
