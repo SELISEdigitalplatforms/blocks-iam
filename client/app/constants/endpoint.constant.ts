@@ -1,3 +1,5 @@
+export const BLOCKS_OS_BASE_URL = "https://dev-os.blocksdevelopers.com";
+
 export const API_BASES = {
   COMMUNICATION: "/api",
   CLOUD_CONFIGURATION: "/api",
