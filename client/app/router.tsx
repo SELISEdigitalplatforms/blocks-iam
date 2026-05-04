@@ -4,7 +4,6 @@ import { AuthLayout } from "./layouts/auth-layout";
 import { PublicLayout } from "./layouts/public-layout";
 import { OidcLayout } from "./layouts/oidc-layout";
 import { DashboardLayout } from "./layouts/dashboard-layout";
-import { ConsoleLayout } from "./layouts/console-layout";
 import { ProjectOverviewLayout } from "./layouts/project-overview-layout";
 
 // Auth routes (public, with auth layout)
@@ -54,7 +53,6 @@ import ManagedServicesPage from "./routes/dashboard/managed-services";
 import ProfilePage from "./routes/dashboard/profile";
 
 // Console pages
-import { Console } from "./pages/console/console";
 import { DashboardOverview } from "./pages/dashboard/dashboard-overview";
 import { EnvironmentsPage } from "./pages/environments/environments";
 import { PeopleManagement } from "./pages/people/people-management";
@@ -136,24 +134,9 @@ export const router = createBrowserRouter([
       { path: "/managed-services", element: <ManagedServicesPage /> },
       { path: "/services/captcha", element: <Navigate to="/services/secret-management?tab=captcha" replace /> },
       { path: "/services/captcha/logs", element: <CaptchaLogsPage /> },
-    ],
-  },
-
-  // ── Console layout (profile, console pages without sidebar) ──
-  {
-    element: <ConsoleLayout />,
-    children: [
       { path: "/profile", element: <ProfilePage /> },
-      { path: "/console", element: <Console /> },
       { path: "/create-project", element: <CreateProjectWrapper /> },
       { path: "/callback", element: <CallbackPage /> },
-    ],
-  },
-
-  // ── Dashboard and project overview in dashboard layout (consolidated sidebar) ──
-  {
-    element: <DashboardLayout />,
-    children: [
       { path: "/dashboard", element: <DashboardOverview /> },
       { path: "/project-overview", element: <Navigate to="/project-overview/environments" replace /> },
       { path: "/project-overview/environments", element: <EnvironmentsPage /> },

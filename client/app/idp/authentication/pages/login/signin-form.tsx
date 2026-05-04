@@ -39,7 +39,7 @@ export const SigninForm = () => {
       }
 
       setAuthenticated();
-      navigate("/console");
+      navigate("/services/authentication/users");
     } catch (error: unknown) {
       if (isErrorWithErrors(error)) {
         showErrorToast({ errors: error.errors.error_description || `Something went wrong` });
