@@ -15,6 +15,7 @@ using DomainService.Shared.ResponseModel;
 using DomainService.Utilities;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using System.Reflection.Metadata;
 using System.Security.Claims;
 using System.Text;
 
@@ -32,6 +33,7 @@ namespace Api.Controllers
         private readonly IAuthenticationRepository _authenticationRepository;
         private readonly ChangeControllerContext _changeControllerContext;
         public readonly IConfigurationService _confirurationService;
+        private const string _clientRedirectUri = "https://dev-idp.blocksdevelopers.com/oidc";
         public AuthenticationController(IOAuthTokenProvider oAuthTokenProvider,
                               IAuthenticationService authenticationService,
                               IConfiguration configuration,
@@ -173,7 +175,7 @@ namespace Api.Controllers
                 }
 
                 var claimsPrincipal = await _authenticationService.GetPrincipalFromTokenAsync(Request, BlocksContext.GetContext().TenantId);
-                string redirectUri = $" {client.RedirectUri}?x-blocks-key={BlocksContext.GetContext()?.TenantId}&clientId={client.ItemId}";
+                string redirectUri = $" {_clientRedirectUri}?x-blocks-key={BlocksContext.GetContext()?.TenantId}&clientId={client.ItemId}";
 
                 if (claimsPrincipal is not null)
                 {

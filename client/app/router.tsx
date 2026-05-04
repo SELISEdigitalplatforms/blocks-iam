@@ -62,17 +62,21 @@ import { RepositoriesPage } from "./pages/repositories/repositories";
 import { SettingsPage } from "./pages/settings/settings";
 import { CreateProjectWrapper } from "./pages/create-project/create-project";
 import CallbackPage from "./routes/callback/callback";
+import OidcLogin from "./routes/auth/oidc-login";
 
 export const router = createBrowserRouter([
   // ── Auth layout (login, signup, sso-activate) ──
   {
     element: <AuthLayout />,
     children: [
-      { path: "/login", element: <LoginPage /> },
+      // { path: "/login", element: <LoginPage /> },
       { path: "/signup", element: <SignupPage /> },
       { path: "/sso-activate", element: <SsoActivatePage /> },
     ],
   },
+  // ── Simple login (no guards, no API calls) ──
+  { path: "/login", element: <OidcLogin /> },
+
 
   // ── Public layout (other public pages with PublicGuard) ──
   {

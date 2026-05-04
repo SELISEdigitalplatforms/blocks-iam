@@ -21,7 +21,6 @@ interface BlocksApp {
   icon: React.ReactNode;
 }
 
-// IDP icon – shield with lock
 function IdpIcon() {
   return (
     <svg viewBox="0 0 40 40" fill="none" xmlns="http://www.w3.org/2000/svg" className="h-9 w-9">
@@ -37,7 +36,6 @@ function IdpIcon() {
   );
 }
 
-// UILM icon – text bubbles / localization
 function UilmIcon() {
   return (
     <svg viewBox="0 0 40 40" fill="none" xmlns="http://www.w3.org/2000/svg" className="h-9 w-9">
@@ -57,7 +55,6 @@ function UilmIcon() {
   );
 }
 
-// AI icon – sparkle / neural
 function AiIcon() {
   return (
     <svg viewBox="0 0 40 40" fill="none" xmlns="http://www.w3.org/2000/svg" className="h-9 w-9">
@@ -80,7 +77,6 @@ function AiIcon() {
   );
 }
 
-// Data Gateway icon – database with arrows
 function DataGatewayIcon() {
   return (
     <svg viewBox="0 0 40 40" fill="none" xmlns="http://www.w3.org/2000/svg" className="h-9 w-9">
@@ -104,34 +100,54 @@ function DataGatewayIcon() {
   );
 }
 
+function BlocksOsIcon() {
+  return (
+    <svg viewBox="0 0 40 40" fill="none" xmlns="http://www.w3.org/2000/svg" className="h-9 w-9">
+      <rect width="40" height="40" rx="10" fill="#059669" />
+      <rect x="8" y="8" width="24" height="18" rx="2" stroke="white" strokeWidth="1.5" fill="none" />
+      <rect x="8" y="28" width="24" height="2" fill="white" opacity="0.8" />
+      <circle cx="15" cy="14" r="1.5" fill="white" opacity="0.7" />
+      <circle cx="20" cy="14" r="1.5" fill="white" opacity="0.7" />
+      <circle cx="25" cy="14" r="1.5" fill="white" opacity="0.7" />
+    </svg>
+  );
+}
+
 const SELISE_APPS: BlocksApp[] = [
   {
     key: "idp",
     label: "IDP",
     description: "Identity & Access",
-    url: "https://idp.seliseblocks.io",
+    url: "https://dev-idp.blocksdevelopers.com",
     icon: <IdpIcon />,
   },
   {
     key: "uilm",
-    label: "UILM",
+    label: "EUROLM",
     description: "Localization",
-    url: "https://uilm.seliseblocks.io",
+    url: "https://dev-eurolm.blocksdevelopers.com",
     icon: <UilmIcon />,
   },
   {
     key: "ai",
-    label: "AI",
+    label: "Blocks Agents",
     description: "AI Platform",
-    url: "https://ai.seliseblocks.io",
+    url: "https://dev-agent.blocksdevelopers.com",
     icon: <AiIcon />,
   },
   {
     key: "data-gateway",
     label: "Data Gateway",
     description: "Data Integration",
-    url: "https://data-gateway.seliseblocks.io",
+    url: "https://dev-data-gateway.blocksdevelopers.com",
     icon: <DataGatewayIcon />,
+  },
+  {
+    key: "blocks-os",
+    label: "Blocks OS",
+    description: "Operating System",
+    url: "https://dev-os.blocksdevelopers.com",
+    icon: <BlocksOsIcon />,
   },
 ];
 
@@ -157,7 +173,6 @@ function AppTile({ app }: AppTileProps) {
   );
 }
 
-// 3×3 dot-grid trigger icon (different from Google's)
 function LauncherTriggerIcon() {
   return (
     <svg
@@ -166,7 +181,7 @@ function LauncherTriggerIcon() {
       xmlns="http://www.w3.org/2000/svg"
       className="h-5 w-5"
     >
-      {/* Honeycomb / squircle grid */}
+
       <rect x="1"  y="1"  width="5" height="5" rx="1.5" />
       <rect x="7.5" y="1"  width="5" height="5" rx="1.5" />
       <rect x="14" y="1"  width="5" height="5" rx="1.5" />
@@ -180,7 +195,6 @@ function LauncherTriggerIcon() {
   );
 }
 
-// Edit icon – pencil
 function EditIcon() {
   return (
     <svg
@@ -194,7 +208,6 @@ function EditIcon() {
   );
 }
 
-// Star icon
 function StarIcon({ filled }: { filled: boolean }) {
   return (
     <svg
@@ -217,10 +230,8 @@ export function BlocksAppLauncher() {
   const [isHydrated, setIsHydrated] = useState(false);
   const location = useLocation();
 
-  // Only show launcher on dashboard and services routes
-  const isAllowedRoute = location.pathname.includes("/dashboard") || location.pathname.includes("/services");
+  const isAllowedRoute = !location.pathname.includes("/console") && !location.pathname.includes("/project-overview");
 
-  // Load favourites from localStorage on mount
   useEffect(() => {
     const stored = localStorage.getItem("blocks-app-favourites");
     const keys = stored
@@ -271,7 +282,6 @@ export function BlocksAppLauncher() {
           sideOffset={8}
           className="w-[260px] overflow-hidden rounded-2xl p-0 shadow-xl"
         >
-          {/* Header with edit button */}
           <div className="flex items-center justify-between bg-background px-3 py-3 border-b">
             <p className="text-[13px] font-semibold text-foreground">Your favourites</p>
             <button
@@ -283,7 +293,6 @@ export function BlocksAppLauncher() {
             </button>
           </div>
 
-          {/* Favourites section */}
           <div className="px-3 pb-2 pt-3">
             <div className="grid grid-cols-3">
               {favourites.map((app) => (
@@ -292,7 +301,6 @@ export function BlocksAppLauncher() {
             </div>
           </div>
 
-          {/* More from SELISE Blocks section */}
           {moreApps.length > 0 && (
             <div className="bg-muted/50 px-3 pb-4 pt-3 border-t">
               <p className="mb-2 px-1 text-[13px] font-semibold text-muted-foreground">
@@ -308,7 +316,6 @@ export function BlocksAppLauncher() {
         </PopoverContent>
       </Popover>
 
-      {/* Edit Favourites Dialog */}
       <Dialog open={editDialogOpen} onOpenChange={setEditDialogOpen}>
         <DialogContent>
           <DialogHeader>
