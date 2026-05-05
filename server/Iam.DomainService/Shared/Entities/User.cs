@@ -7,7 +7,6 @@ namespace Iam.DomainService.Entities
     [BsonIgnoreExtraElements]
     public class User : BaseEntity  
     {
-        public string SubjectId { get; set; } = Guid.NewGuid().ToString("N");
         public string? Salutation { get; set; }
         public string? FirstName { get; set; }
         public string? LastName { get; set; }

@@ -118,7 +118,6 @@ namespace Authentication.DomainService.OAuth
             foreach (var permission in resolvedClaims.Permissions)
             {
                 claimsIdentity.AddClaim(new Claim(BlocksContext.PERMISSION_CLAIM, permission));
-                claimsIdentity.AddClaim(new Claim("permissions", permission));
             }
 
             if (issuanceContext?.IsImpersonation == true)

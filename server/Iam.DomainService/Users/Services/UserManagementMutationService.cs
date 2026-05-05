@@ -184,7 +184,6 @@ namespace Iam.DomainService.Users
             var user = new User
             {
                 ItemId = id,
-                SubjectId = $"usr_{Guid.NewGuid():N}",
                 CreatedDate = DateTime.Now,
                 CreatedBy = _blocksContext?.UserId ?? id,
                 LastUpdatedDate = DateTime.Now,
@@ -593,7 +592,6 @@ namespace Iam.DomainService.Users
             var user = new User
             {
                 ItemId = id,
-                SubjectId = $"usr_{Guid.NewGuid():N}",
                 CreatedDate = DateTime.Now,
                 CreatedBy = _blocksContext?.UserId ?? id,
                 LastUpdatedDate = DateTime.Now,
