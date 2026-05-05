@@ -17,8 +17,10 @@ namespace Authentication.DomainService.OAuth
 {
     public class OAuthJwtAccessTokenManager : IOAuthJwtAccessTokenManager
     {
+        private const string IdpSessionCookieName = "idp_session_id";
         private readonly IJwtAccessTokenProvider _jwtAccessTokenProvider;
         private readonly IAuthenticationDomainService _authenticationDomainService;
+        private readonly IAuthenticationRepository _authenticationRepository;
         private readonly IOtpServiceFactory _otpServiceFactory;
         private readonly IMfaConfigurationService _configurationService;
         private readonly IConfiguration _configuration;
@@ -28,6 +30,7 @@ namespace Authentication.DomainService.OAuth
         public OAuthJwtAccessTokenManager(
             IJwtAccessTokenProvider jwtAccessTokenProvider,
             IAuthenticationDomainService authenticationDomainService,
+            IAuthenticationRepository authenticationRepository,
             IMfaConfigurationService configurationService,
             ICacheClient cacheClient,
             ITenants tenants,
@@ -37,6 +40,7 @@ namespace Authentication.DomainService.OAuth
         {
             _jwtAccessTokenProvider = jwtAccessTokenProvider;
             _authenticationDomainService = authenticationDomainService;
+            _authenticationRepository = authenticationRepository;
             _configurationService = configurationService;
             _cacheClient = cacheClient;
             _tenants = tenants;
@@ -50,7 +54,7 @@ namespace Authentication.DomainService.OAuth
             
             var tokenResponse = await ProcessCheckPoints(tokenRequest, user);
 
-            if (tokenResponse != null && !string.IsNullOrWhiteSpace(tokenResponse.Error))
+            if (tokenResponse != null)
             {
                 return tokenResponse;
             }
@@ -80,31 +84,66 @@ namespace Authentication.DomainService.OAuth
             };
         }
 
-        private async Task<TokenResponse> ProcessCheckPoints(TokenRequest tokenRequest, User user)
+        private async Task<TokenResponse?> ProcessCheckPoints(TokenRequest tokenRequest, User user)
         {
             if (tokenRequest.GrantType != GrantTypes.MfaCode && tokenRequest.GrantType != GrantTypes.ClientCredential && await CheckIfMfaIsApplicable(user))
             {
                 return await HandleMfaAuthentication(user);
             }
 
-            return new TokenResponse(); //Will send proper response after 20.04.2025
-
-            // return ProcessAccountLock(tenant, user); 
+            return null;
         }
 
         private async Task<TokenResponse> HandleMfaAuthentication(User user)
         {
-            var otpService = _otpServiceFactory.GetOTPService(user.UserMfaType);
-            var response = await otpService.GenerateAsync(new UserInfo { Email = user.Email, ItemId = user.ItemId, Language = user.Language ?? "en-US" });
-
-            return new TokenResponse
+            try
             {
-                MfaId = response.MfaId,
-                UserMfa = user.UserMfaType,
-                Error = "mfa_enabled",
-                ErrorDescription = "Mfa code required",
-                StatusCode = 200
-            };
+                var otpService = _otpServiceFactory.GetOTPService(user.UserMfaType);
+                if (otpService == null)
+                {
+                    return new TokenResponse
+                    {
+                        Error = "server_error",
+                        ErrorDescription = "Mfa provider is not available",
+                        StatusCode = 500
+                    };
+                }
+
+                var response = await otpService.GenerateAsync(new UserInfo
+                {
+                    Email = user.Email,
+                    ItemId = user.ItemId,
+                    Language = user.Language ?? "en-US"
+                });
+
+                if (response == null || string.IsNullOrWhiteSpace(response.MfaId))
+                {
+                    return new TokenResponse
+                    {
+                        Error = "server_error",
+                        ErrorDescription = "Failed to generate mfa challenge",
+                        StatusCode = 500
+                    };
+                }
+
+                return new TokenResponse
+                {
+                    MfaId = response.MfaId,
+                    UserMfa = user.UserMfaType,
+                    Error = OAuthError.MfaEnabled,
+                    ErrorDescription = "Mfa code required",
+                    StatusCode = 200
+                };
+            }
+            catch
+            {
+                return new TokenResponse
+                {
+                    Error = "server_error",
+                    ErrorDescription = "Unable to initiate mfa challenge",
+                    StatusCode = 500
+                };
+            }
         }
 
 
@@ -160,7 +199,7 @@ namespace Authentication.DomainService.OAuth
             
             if (string.IsNullOrEmpty(oldRefreshTokenCache))
             {
-                // Case 2: Token doesn't exist - return empty to signal error
+                await HandleRefreshTokenReuseAsync(tokenRequest.RefreshToken);
                 return (string.Empty, DateTime.MinValue);
             }
 
@@ -171,16 +210,19 @@ namespace Authentication.DomainService.OAuth
                 return (string.Empty, DateTime.MinValue);
             }
 
-            var now = DateTime.UtcNow;
+            var presentedSessionId = tokenRequest.Request?.Cookies[IdpSessionCookieName];
+            if (!IsBindingValid(oldRefreshToken, tokenRequest, presentedSessionId))
+            {
+                await _cacheClient.RemoveKeyAsync(tokenRequest.RefreshToken);
+                return (string.Empty, DateTime.MinValue);
+            }
 
-            // Sliding window remaining lifetime.
-            var remainingSlidingMinutes = (int)(oldRefreshToken.ExpiresUtc - now).TotalMinutes;
+            var now = DateTime.UtcNow;
 
             // Absolute lifetime hard-stop.
             var absoluteExpiresUtc = oldRefreshToken.AbsoluteExpiresUtc == default
                 ? oldRefreshToken.ExpiresUtc
                 : oldRefreshToken.AbsoluteExpiresUtc;
-            var remainingAbsoluteMinutes = (int)(absoluteExpiresUtc - now).TotalMinutes;
 
             // Security-stamp/token-version invalidation: deny refresh if user credentials/session version changed.
             if (oldRefreshToken.TokenVersion != user.TokenVersion)
@@ -189,8 +231,8 @@ namespace Authentication.DomainService.OAuth
                 return (string.Empty, DateTime.MinValue);
             }
 
-            // Case 3: Token exists but TTL is too low (less than 1 minute)
-            if (remainingSlidingMinutes < 1 || remainingAbsoluteMinutes < 1)
+            // token valid if: now < expires_at AND now < absolute_expiry
+            if (now >= oldRefreshToken.ExpiresUtc || now >= absoluteExpiresUtc)
             {
                 // Delete expired token and send revocation event
                 await _cacheClient.RemoveKeyAsync(tokenRequest.RefreshToken);
@@ -199,6 +241,9 @@ namespace Authentication.DomainService.OAuth
                 {
                     RefreshToken = tokenRequest.RefreshToken ?? string.Empty,
                     TenantId = oldRefreshToken.TenantId,
+                    OrganizationId = oldRefreshToken.OrganizationId,
+                    ClientId = oldRefreshToken.ClientId,
+                    SessionId = oldRefreshToken.SessionId,
                     IssuedUtc = oldRefreshToken.IssuedUtc,
                     ExpiresUtc = oldRefreshToken.ExpiresUtc,
                     IpAddresses = oldRefreshToken.IpAddresses ?? string.Empty,
@@ -223,13 +268,29 @@ namespace Authentication.DomainService.OAuth
                     ? authenticationConfiguration.RefreshTokenValidForNumberMinutes
                     : 15);
 
-            var effectiveSlidingMinutes = Math.Min(configuredSlidingMinutes, remainingAbsoluteMinutes);
-            var newRefreshTokenExpireOn = now.AddMinutes(effectiveSlidingMinutes);
+            // Sliding expiry always comes from configuration.
+            var newRefreshTokenExpireOn = now.AddMinutes(configuredSlidingMinutes);
+            if (newRefreshTokenExpireOn > absoluteExpiresUtc)
+            {
+                newRefreshTokenExpireOn = absoluteExpiresUtc;
+            }
+
+            var effectiveSliding = newRefreshTokenExpireOn - now;
+            var effectiveSlidingSeconds = (int)Math.Ceiling(effectiveSliding.TotalSeconds);
+
+            if (effectiveSlidingSeconds <= 0)
+            {
+                await _cacheClient.RemoveKeyAsync(tokenRequest.RefreshToken);
+                return (string.Empty, DateTime.MinValue);
+            }
 
             var newRefreshTokenCache = new RefreshTokenCache
             {
                 RefreshToken = newRefreshTokenId,
                 TenantId = oldRefreshToken.TenantId,
+                OrganizationId = oldRefreshToken.OrganizationId,
+                ClientId = oldRefreshToken.ClientId,
+                SessionId = oldRefreshToken.SessionId,
                 IssuedUtc = now,
                 ExpiresUtc = newRefreshTokenExpireOn,
                 AbsoluteExpiresUtc = absoluteExpiresUtc,
@@ -243,8 +304,8 @@ namespace Authentication.DomainService.OAuth
                 TokenVersion = oldRefreshToken.TokenVersion
             };
 
-            // Save new token to Redis with remaining TTL
-            await _cacheClient.AddStringValueAsync(newRefreshTokenId, JsonSerializer.Serialize(newRefreshTokenCache), effectiveSlidingMinutes * 60);
+            // Save new token to Redis with precise remaining TTL
+            await _cacheClient.AddStringValueAsync(newRefreshTokenId, JsonSerializer.Serialize(newRefreshTokenCache), effectiveSlidingSeconds);
 
             // Delete old token from Redis
             await _cacheClient.RemoveKeyAsync(tokenRequest.RefreshToken);
@@ -254,6 +315,9 @@ namespace Authentication.DomainService.OAuth
             {
                 RefreshToken = tokenRequest.RefreshToken ?? string.Empty,
                 TenantId = oldRefreshToken.TenantId,
+                OrganizationId = oldRefreshToken.OrganizationId,
+                ClientId = oldRefreshToken.ClientId,
+                SessionId = oldRefreshToken.SessionId,
                 IssuedUtc = oldRefreshToken.IssuedUtc,
                 ExpiresUtc = oldRefreshToken.ExpiresUtc,
                 IpAddresses = oldRefreshToken.IpAddresses ?? string.Empty,
@@ -270,6 +334,9 @@ namespace Authentication.DomainService.OAuth
             {
                 RefreshToken = newRefreshTokenCache.RefreshToken,
                 TenantId = newRefreshTokenCache.TenantId,
+                OrganizationId = newRefreshTokenCache.OrganizationId,
+                ClientId = newRefreshTokenCache.ClientId,
+                SessionId = newRefreshTokenCache.SessionId,
                 IssuedUtc = newRefreshTokenCache.IssuedUtc,
                 ExpiresUtc = newRefreshTokenCache.ExpiresUtc,
                 IpAddresses = newRefreshTokenCache.IpAddresses,
@@ -317,6 +384,9 @@ namespace Authentication.DomainService.OAuth
             {
                 RefreshToken = refreshTokenId,
                 TenantId = tenant.TenantId,
+                OrganizationId = tokenRequest.OrganizationId,
+                ClientId = tokenRequest.ClientId,
+                SessionId = tokenRequest.Request?.Cookies[IdpSessionCookieName],
                 IssuedUtc = DateTime.UtcNow,
                 ExpiresUtc = refreshTokenExpireOn,
                 AbsoluteExpiresUtc = absoluteRefreshTokenExpireOn,
@@ -336,6 +406,9 @@ namespace Authentication.DomainService.OAuth
             {
                 RefreshToken = refreshTokenCache.RefreshToken,
                 TenantId = refreshTokenCache.TenantId,
+                OrganizationId = refreshTokenCache.OrganizationId,
+                ClientId = refreshTokenCache.ClientId,
+                SessionId = refreshTokenCache.SessionId,
                 IssuedUtc = refreshTokenCache.IssuedUtc,
                 ExpiresUtc = refreshTokenCache.ExpiresUtc,
                 IpAddresses = refreshTokenCache.IpAddresses,
@@ -349,6 +422,77 @@ namespace Authentication.DomainService.OAuth
             await _authenticationDomainService.SendToQueueAsync(Utilities.IdpConstants.AuthenticationQueue, addRefreshTokenCommand);
 
             return (refreshTokenId, refreshTokenExpireOn);
+        }
+
+        private static bool IsBindingValid(RefreshTokenCache cachedToken, TokenRequest request, string? presentedSessionId)
+        {
+            var currentTenantId = BlocksContext.GetContext()?.TenantId;
+            if (!string.IsNullOrWhiteSpace(cachedToken.TenantId)
+                && !string.IsNullOrWhiteSpace(currentTenantId)
+                && !string.Equals(cachedToken.TenantId, currentTenantId, StringComparison.OrdinalIgnoreCase))
+            {
+                return false;
+            }
+
+            if (!string.IsNullOrWhiteSpace(cachedToken.OrganizationId)
+                && !string.IsNullOrWhiteSpace(request.OrganizationId)
+                && !string.Equals(cachedToken.OrganizationId, request.OrganizationId, StringComparison.OrdinalIgnoreCase))
+            {
+                return false;
+            }
+
+            if (!string.IsNullOrWhiteSpace(cachedToken.ClientId)
+                && !string.IsNullOrWhiteSpace(request.ClientId)
+                && !string.Equals(cachedToken.ClientId, request.ClientId, StringComparison.OrdinalIgnoreCase))
+            {
+                return false;
+            }
+
+            if (!string.IsNullOrWhiteSpace(cachedToken.SessionId)
+                && !string.IsNullOrWhiteSpace(presentedSessionId)
+                && !string.Equals(cachedToken.SessionId, presentedSessionId, StringComparison.OrdinalIgnoreCase))
+            {
+                return false;
+            }
+
+            return true;
+        }
+
+        private async Task HandleRefreshTokenReuseAsync(string refreshToken)
+        {
+            var existingSession = await _authenticationRepository.GetSessionByRefreshTokenAsync(refreshToken);
+            if (existingSession == null || existingSession.IsActive)
+            {
+                return;
+            }
+
+            IEnumerable<Session> activeSessions;
+            if (!string.IsNullOrWhiteSpace(existingSession.SessionId))
+            {
+                activeSessions = await _authenticationRepository.GetActiveSessionBySessionIdAsync(existingSession.SessionId);
+            }
+            else
+            {
+                activeSessions = await _authenticationRepository.GetActiveSessionByUserIdAsync(existingSession.UserId);
+            }
+
+            var refreshTokens = activeSessions
+                .Select(x => x.RefreshToken)
+                .Where(x => !string.IsNullOrWhiteSpace(x))
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .ToList();
+
+            if (refreshTokens.Count == 0)
+            {
+                return;
+            }
+
+            await _authenticationRepository.UpdateSessionStatusForAllRefreshTokenAsync(refreshTokens!);
+
+            foreach (var token in refreshTokens)
+            {
+                await _cacheClient.RemoveKeyAsync(token!);
+            }
         }
 
         public TokenResponse ProcessAccountLock(AuthenticationConfiguration authenticationConfiguration, Tenant tenant, User user)

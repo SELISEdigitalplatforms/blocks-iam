@@ -22,7 +22,10 @@ namespace Authentication.DomainService.Services
         Task<T> GetUserByIdAsync<T>(string itemId);
         Task<bool> InsertSessionAsync(Session session);
         Task<bool> InsertUserAuthenticationTimelineAsync(UserAuthenticationTimeline userAuthenticationTimeline);
+        Task<User?> IncrementFailedLoginAndApplyLockoutAsync(string userId, int lockThreshold, int lockDurationInMinutes, DateTime nowUtc);
         Task<IEnumerable<Session>> GetActiveSessionByUserIdAsync(string userId);
+        Task<Session?> GetSessionByRefreshTokenAsync(string refreshToken);
+        Task<IEnumerable<Session>> GetActiveSessionBySessionIdAsync(string sessionId);
         Task<bool> UpdateSessionStatusForAllRefreshTokenAsync(IEnumerable<string> refreshTokens);
         Task<bool> UpdateSessionStatusAsync(string refreshToken, string userId);
         Task<IEnumerable<SocialLoginCredential>> GetSocialLoginCredentials();
