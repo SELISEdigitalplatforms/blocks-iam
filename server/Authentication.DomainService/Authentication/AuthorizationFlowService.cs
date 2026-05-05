@@ -15,6 +15,7 @@ using System.Security.Claims;
 using System.Security.Cryptography;
 using System.Text;
 using System.Net.Http.Headers;
+using System.Collections.Generic;
 using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.Logging;
 using Authentication.DomainService.Services;
@@ -203,11 +204,23 @@ namespace Authentication.DomainService.Authentication
                     return new RedirectResult(BuildLoginUrl(client_id, response_type, redirect_uri, scope, state, nonce, code_challenge, code_challenge_method, tenantHint));
                 }
 
+                var tenantForOriginValidation = !string.IsNullOrWhiteSpace(resolvedTenantId) ? resolvedTenantId : tenantHint;
+                if (!IsOriginAllowedForTenant(request, tenantForOriginValidation))
+                {
+                    return new BadRequestObjectResult(new { error = "invalid_origin", error_description = "Request origin is not allowed for this tenant" });
+                }
+
                 var client = await _clientRepo.GetByClientIdAsync(client_id, resolvedTenantId);
                 if (client == null)
                 {
                     _logger.LogWarning($"Unknown client: {client_id}");
                     return new BadRequestObjectResult(new { error = "invalid_client" });
+                }
+
+                if (!await HasOidcClientConfigurationAsync(client_id))
+                {
+                    _logger.LogWarning($"OIDC client config missing for client: {client_id}");
+                    return new BadRequestObjectResult(new { error = "invalid_client", error_description = "Client configuration not found" });
                 }
 
                 if (!client.RedirectUris.Contains(redirect_uri))
@@ -360,6 +373,16 @@ namespace Authentication.DomainService.Authentication
                 return new BadRequestObjectResult(new { error = "invalid_client", error_description = "Missing client authentication" });
             }
 
+            if (!await HasOidcClientConfigurationAsync(clientId))
+            {
+                return new BadRequestObjectResult(new { error = "invalid_client", error_description = "Client configuration not found" });
+            }
+
+            if (!IsOriginAllowedForTenant(request, BlocksContext.GetContext()?.TenantId))
+            {
+                return new BadRequestObjectResult(new { error = "invalid_origin", error_description = "Request origin is not allowed for this tenant" });
+            }
+
             var authConfiguration = await _authenticationRepository.GetAuthenticationConfigurationAsync();
             if (authConfiguration == null)
             {
@@ -421,6 +444,11 @@ namespace Authentication.DomainService.Authentication
                 return new BadRequestObjectResult(new { error = "invalid_grant", error_description = "Authorization code is invalid or expired" });
             }
 
+            if (!IsOriginAllowedForTenant(request, authCode.TenantId ?? tenantId))
+            {
+                return new BadRequestObjectResult(new { error = "invalid_origin", error_description = "Request origin is not allowed for this tenant" });
+            }
+
             if (!string.IsNullOrWhiteSpace(tenantId)
                 && !string.IsNullOrWhiteSpace(authCode.TenantId)
                 && !string.Equals(authCode.TenantId, tenantId, StringComparison.OrdinalIgnoreCase))
@@ -449,6 +477,12 @@ namespace Authentication.DomainService.Authentication
                 return new BadRequestObjectResult(new { error = "invalid_client" });
             }
 
+            if (!await HasOidcClientConfigurationAsync(client_id))
+            {
+                _logger.LogWarning($"OIDC client config missing for code exchange: {client_id}");
+                return new BadRequestObjectResult(new { error = "invalid_client", error_description = "Client configuration not found" });
+            }
+
             if (authCode.RedirectUri != redirect_uri)
             {
                 _logger.LogWarning("Redirect URI mismatch for code exchange");
@@ -475,12 +509,15 @@ namespace Authentication.DomainService.Authentication
                 return new BadRequestObjectResult(new { error = "invalid_grant", error_description = "User not found" });
             }
 
+            var allowedScopes = await ResolveAllowedScopesAsync(client);
             var resolvedClaims = await _authorizationClaimsResolver.ResolveAsync(
                 user,
                 authCode.OrganizationId,
                 authCode.Scope,
-                client.AllowedScopes,
+                allowedScopes,
                 requireExplicitScope: true);
+
+            var tenantAudience = TenantDomainPolicy.GetAudience(_tenants.GetTenantByID(authCode.TenantId ?? tenantId));
 
             var claims = new OidcClaims
             {
@@ -491,7 +528,7 @@ namespace Authentication.DomainService.Authentication
                 AuthTime = DateTimeOffset.UtcNow.ToUnixTimeSeconds(),
                 Iat = DateTimeOffset.UtcNow.ToUnixTimeSeconds(),
                 ClientId = client_id,
-                Audience = client.Audience ?? client_id,
+                Audience = tenantAudience,
                 Scope = authCode.Scope,
                 Roles = resolvedClaims.Roles,
                 Resources = resolvedClaims.Resources,
@@ -507,7 +544,7 @@ namespace Authentication.DomainService.Authentication
             refreshTokenModel.ClientId = client_id;
             refreshTokenModel.TenantId = authCode.TenantId ?? tenantId;
             refreshTokenModel.OrgId = authCode.OrganizationId;
-            refreshTokenModel.Audience = client.Audience ?? client_id;
+            refreshTokenModel.Audience = tenantAudience;
             refreshTokenModel.Scope = authCode.Scope;
             refreshTokenModel.IpAddress = GetClientIpAddress(request);
             refreshTokenModel.UserAgent = request.Headers["User-Agent"].ToString();
@@ -545,6 +582,11 @@ namespace Authentication.DomainService.Authentication
                 return new BadRequestObjectResult(new { error = "invalid_grant", error_description = "Invalid refresh token" });
             }
 
+            if (!IsOriginAllowedForTenant(request, storedToken.TenantId ?? tenantId))
+            {
+                return new BadRequestObjectResult(new { error = "invalid_origin", error_description = "Request origin is not allowed for this tenant" });
+            }
+
             if (storedToken.IsRevoked)
             {
                 _logger.LogCritical($"REUSE ATTACK DETECTED: Revoked token used again. Original revocation reason: {storedToken.RevokeReason}. Revoking family {storedToken.FamilyId}.");
@@ -566,6 +608,12 @@ namespace Authentication.DomainService.Authentication
                 return new BadRequestObjectResult(new { error = "invalid_client" });
             }
 
+            if (!await HasOidcClientConfigurationAsync(client_id))
+            {
+                _logger.LogWarning($"OIDC client config missing for token rotation: {client_id}");
+                return new BadRequestObjectResult(new { error = "invalid_client", error_description = "Client configuration not found" });
+            }
+
             if (!string.IsNullOrWhiteSpace(storedToken.ClientId) && !string.Equals(storedToken.ClientId, client_id, StringComparison.Ordinal))
             {
                 _logger.LogWarning($"Refresh token client mismatch. Presented client: {client_id}, token client: {storedToken.ClientId}");
@@ -578,12 +626,15 @@ namespace Authentication.DomainService.Authentication
                 return new BadRequestObjectResult(new { error = "invalid_grant", error_description = "User not found" });
             }
 
+            var allowedScopes = await ResolveAllowedScopesAsync(client);
             var resolvedClaims = await _authorizationClaimsResolver.ResolveAsync(
                 user,
                 storedToken.OrgId,
                 storedToken.Scope,
-                client.AllowedScopes,
+                allowedScopes,
                 requireExplicitScope: true);
+
+            var tenantAudience = TenantDomainPolicy.GetAudience(_tenants.GetTenantByID(storedToken.TenantId ?? tenantId));
 
             var claims = new OidcClaims
             {
@@ -592,7 +643,7 @@ namespace Authentication.DomainService.Authentication
                 OrgId = storedToken.OrgId,
                 Iat = DateTimeOffset.UtcNow.ToUnixTimeSeconds(),
                 ClientId = client_id,
-                Audience = client.Audience ?? client_id,
+                Audience = tenantAudience,
                 Scope = storedToken.Scope,
                 Roles = resolvedClaims.Roles,
                 Resources = resolvedClaims.Resources,
@@ -609,7 +660,7 @@ namespace Authentication.DomainService.Authentication
             newRefreshTokenModel.ClientId = client_id;
             newRefreshTokenModel.TenantId = storedToken.TenantId;
             newRefreshTokenModel.OrgId = storedToken.OrgId;
-            newRefreshTokenModel.Audience = client.Audience ?? client_id;
+            newRefreshTokenModel.Audience = tenantAudience;
             newRefreshTokenModel.Scope = storedToken.Scope;
             newRefreshTokenModel.SessionId = storedToken.SessionId;
             newRefreshTokenModel.IpAddress = GetClientIpAddress(request);
@@ -662,6 +713,29 @@ namespace Authentication.DomainService.Authentication
             byte[] buffer = new byte[length];
             RandomNumberGenerator.Fill(buffer);
             return Convert.ToBase64String(buffer).Replace("/", "_").Replace("+", "-").Substring(0, 43);
+        }
+
+        private async Task<IReadOnlyCollection<string>> ResolveAllowedScopesAsync(OAuthClientModel client)
+        {
+            if (client.AllowedScopes is { Count: > 0 })
+            {
+                return client.AllowedScopes
+                    .Where(scope => !string.IsNullOrWhiteSpace(scope))
+                    .Distinct(StringComparer.OrdinalIgnoreCase)
+                    .ToList();
+            }
+
+            var tenantOidcClient = await _authenticationRepository.GetOIDCClientCredentialAsync(client.ClientId);
+            if (tenantOidcClient == null || string.IsNullOrWhiteSpace(tenantOidcClient.Scope))
+            {
+                return [];
+            }
+
+            return tenantOidcClient.Scope
+                .Split([' ', ','], StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+                .Where(scope => !string.IsNullOrWhiteSpace(scope))
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .ToList();
         }
 
         private static string BuildRedirectUri(string baseUri, Dictionary<string, string> parameters)
@@ -918,6 +992,28 @@ namespace Authentication.DomainService.Authentication
                 return request.HttpContext.Connection.RemoteIpAddress.ToString();
             }
             return "unknown";
+        }
+
+        private bool IsOriginAllowedForTenant(HttpRequest request, string? tenantId)
+        {
+            if (string.IsNullOrWhiteSpace(tenantId))
+            {
+                return true;
+            }
+
+            var tenant = _tenants.GetTenantByID(tenantId);
+            return TenantDomainPolicy.IsOriginAllowed(request, tenant);
+        }
+
+        private async Task<bool> HasOidcClientConfigurationAsync(string clientId)
+        {
+            if (string.IsNullOrWhiteSpace(clientId))
+            {
+                return false;
+            }
+
+            var oidcClient = await _authenticationRepository.GetOIDCClientCredentialAsync(clientId);
+            return oidcClient != null;
         }
 
         private async Task RevokeUserTokens(string userId, string clientId, string tenantId)

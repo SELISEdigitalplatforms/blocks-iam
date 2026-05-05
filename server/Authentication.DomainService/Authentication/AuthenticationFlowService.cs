@@ -63,6 +63,27 @@ namespace Authentication.DomainService.Authentication
 
         public async Task<AuthenticationFlowResult> ExecuteEmbeddedLoginAsync(EmbeddedLoginRequest request, HttpRequest httpRequest)
         {
+            var clientId = ResolveClientId(httpRequest, request.ClientId);
+            if (string.IsNullOrWhiteSpace(clientId))
+            {
+                return new AuthenticationFlowResult
+                {
+                    StatusCode = StatusCodes.Status400BadRequest,
+                    Error = "invalid_client",
+                    ErrorDescription = "client_id is required"
+                };
+            }
+
+            if (!await HasOidcClientConfigurationAsync(clientId))
+            {
+                return new AuthenticationFlowResult
+                {
+                    StatusCode = StatusCodes.Status401Unauthorized,
+                    Error = "invalid_client",
+                    ErrorDescription = "Client configuration not found"
+                };
+            }
+
             var configuration = await _authenticationRepository.GetAuthenticationConfigurationAsync();
             if (configuration == null)
             {
@@ -79,6 +100,7 @@ namespace Authentication.DomainService.Authentication
             var tokenRequest = new TokenRequest
             {
                 GrantType = GrantTypes.Password,
+                ClientId = clientId,
                 Username = request.Username,
                 Password = request.Password,
                 OrganizationId = resolvedOrganizationId,
@@ -93,6 +115,27 @@ namespace Authentication.DomainService.Authentication
 
         public async Task<AuthenticationFlowResult> ExecuteSocialLoginAsync(SocialLoginRequest request, HttpRequest httpRequest)
         {
+            var clientId = ResolveClientId(httpRequest, request.ClientId);
+            if (string.IsNullOrWhiteSpace(clientId))
+            {
+                return new AuthenticationFlowResult
+                {
+                    StatusCode = StatusCodes.Status400BadRequest,
+                    Error = "invalid_client",
+                    ErrorDescription = "client_id is required"
+                };
+            }
+
+            if (!await HasOidcClientConfigurationAsync(clientId))
+            {
+                return new AuthenticationFlowResult
+                {
+                    StatusCode = StatusCodes.Status401Unauthorized,
+                    Error = "invalid_client",
+                    ErrorDescription = "Client configuration not found"
+                };
+            }
+
             var configuration = await _authenticationRepository.GetAuthenticationConfigurationAsync();
             if (configuration == null)
             {
@@ -106,6 +149,7 @@ namespace Authentication.DomainService.Authentication
             var tokenRequest = new TokenRequest
             {
                 GrantType = GrantTypes.Social,
+                ClientId = clientId,
                 Code = request.Code,
                 State = request.State,
                 Request = httpRequest
@@ -266,10 +310,21 @@ namespace Authentication.DomainService.Authentication
             var tokenRequest = new TokenRequest
             {
                 GrantType = GrantTypes.SwitchOrganization,
+                ClientId = refreshCache.ClientId,
                 OrganizationId = request.OrganizationId,
                 RefreshToken = refreshToken,
                 Request = httpRequest
             };
+
+            if (string.IsNullOrWhiteSpace(tokenRequest.ClientId) || !await HasOidcClientConfigurationAsync(tokenRequest.ClientId))
+            {
+                return new AuthenticationFlowResult
+                {
+                    StatusCode = StatusCodes.Status401Unauthorized,
+                    Error = "invalid_client",
+                    ErrorDescription = "Client configuration not found"
+                };
+            }
 
             return new AuthenticationFlowResult
             {
@@ -391,9 +446,23 @@ namespace Authentication.DomainService.Authentication
             {
                 SetTenantContextForTokenIssuance(request.TargetTenantId, user);
 
+                var clientId = rootRefreshCache.ClientId;
+                if (string.IsNullOrWhiteSpace(clientId) || !await HasOidcClientConfigurationAsync(clientId))
+                {
+                    return new ObjectResult(new
+                    {
+                        error = "invalid_client",
+                        error_description = "Client configuration not found"
+                    })
+                    {
+                        StatusCode = StatusCodes.Status401Unauthorized
+                    };
+                }
+
                 var tokenRequest = new TokenRequest
                 {
                     GrantType = GrantTypes.Password,
+                    ClientId = clientId,
                     OrganizationId = !string.IsNullOrWhiteSpace(request.OrganizationId)
                         ? request.OrganizationId
                         : (string.IsNullOrWhiteSpace(request.OrgId) ? "default" : request.OrgId),
@@ -521,6 +590,11 @@ namespace Authentication.DomainService.Authentication
                 return new BadRequestObjectResult(new { error = OAuthError.InvalidRefreshToken, error_description = "Refresh token is invalid or expired" });
             }
 
+            if (string.IsNullOrWhiteSpace(tokenCache.ClientId) || !await HasOidcClientConfigurationAsync(tokenCache.ClientId))
+            {
+                return new UnauthorizedObjectResult(new { error = "invalid_client", error_description = "Client configuration not found" });
+            }
+
             var currentTenantId = BlocksContext.GetContext()?.TenantId;
             if (string.IsNullOrWhiteSpace(currentTenantId))
             {
@@ -646,6 +720,45 @@ namespace Authentication.DomainService.Authentication
         {
             return principal.FindFirstValue(BlocksContext.TENANT_ID_CLAIM)
                 ?? BlocksContext.GetContext()?.TenantId;
+        }
+
+        private static string? ResolveClientId(HttpRequest request, string? modelClientId = null)
+        {
+            if (!string.IsNullOrWhiteSpace(modelClientId))
+            {
+                return modelClientId;
+            }
+
+            if (request == null)
+            {
+                return null;
+            }
+
+            var queryClientId = request.Query["client_id"].ToString();
+            if (!string.IsNullOrWhiteSpace(queryClientId))
+            {
+                return queryClientId;
+            }
+
+            var formClientId = request.HasFormContentType ? request.Form["client_id"].ToString() : string.Empty;
+            if (!string.IsNullOrWhiteSpace(formClientId))
+            {
+                return formClientId;
+            }
+
+            var headerClientId = request.Headers["X-Client-Id"].ToString();
+            return string.IsNullOrWhiteSpace(headerClientId) ? null : headerClientId;
+        }
+
+        private async Task<bool> HasOidcClientConfigurationAsync(string clientId)
+        {
+            if (string.IsNullOrWhiteSpace(clientId))
+            {
+                return false;
+            }
+
+            var oidcClient = await _authenticationRepository.GetOIDCClientCredentialAsync(clientId);
+            return oidcClient != null;
         }
 
         private static bool CanImpersonateTargetTenant(string rootTenantId, string targetTenantId, Tenant targetTenant)

@@ -7,6 +7,7 @@ using Iam.DomainService.Entities;
 using Microsoft.IdentityModel.Tokens;
 using System.Security.Claims;
 using System.Text;
+using Authentication.DomainService.Utilities;
 
 namespace Authentication.DomainService.OAuth.Services
 {
@@ -128,7 +129,7 @@ namespace Authentication.DomainService.OAuth.Services
             {
                 AccessTokenValidForNumberMinute = authenticationConfiguration.AccessTokenValidForNumberMinutes,
                 Issuer = tenant.JwtTokenParameters.Issuer,
-                Audience = string.Join(",", tenant.JwtTokenParameters.Audiences),
+                Audience = TenantDomainPolicy.GetAudience(tenant),
                 NotBefore = DateTime.UtcNow,
                 Expires = DateTime.UtcNow.AddMinutes(authenticationConfiguration.AccessTokenValidForNumberMinutes),
                 SigningCredentials = JwtAccessTokenProvider.MakeSigningCredentials(certificate, tenant.JwtTokenParameters.PrivateCertificatePassword)
@@ -224,5 +225,6 @@ namespace Authentication.DomainService.OAuth.Services
                 _ => null 
             };
         }
+
     }
 }

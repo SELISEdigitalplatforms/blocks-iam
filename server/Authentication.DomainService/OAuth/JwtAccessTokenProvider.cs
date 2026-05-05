@@ -9,6 +9,7 @@ using System.Security.Claims;
 using System.Security.Cryptography;
 using System.Security.Cryptography.X509Certificates;
 using System.Text;
+using Authentication.DomainService.Utilities;
 
 namespace Authentication.DomainService.OAuth
 {
@@ -55,7 +56,7 @@ namespace Authentication.DomainService.OAuth
                 AccessTokenValidForNumberMinute = authenticationConfiguration.AccessTokenValidForNumberMinutes,
                 RememberMeRefreshTokenValidForNumberMinute = authenticationConfiguration.RememberMeRefreshTokenValidForNumberMinutes,
                 Issuer = tenant.JwtTokenParameters.Issuer,
-                Audience = string.Join(",", tenant.JwtTokenParameters.Audiences),
+                Audience = TenantDomainPolicy.GetAudience(tenant),
                 NotBefore = DateTime.UtcNow,
                 Expires = DateTime.UtcNow.AddMinutes(authenticationConfiguration.AccessTokenValidForNumberMinutes),
                 SigningCredentials = MakeSigningCredentials(certificate, tenant.JwtTokenParameters.PrivateCertificatePassword)
@@ -90,15 +91,6 @@ namespace Authentication.DomainService.OAuth
             claimsIdentity.AddClaim(new Claim("token_version", user.TokenVersion.ToString(), ClaimValueTypes.Integer32));
             claimsIdentity.AddClaim(new Claim("security_stamp", user.SecurityStamp ?? string.Empty));
 
-            var audiences = !string.IsNullOrWhiteSpace(stateInfo?.Audience)
-                ? [stateInfo.Audience]
-                : tenant.JwtTokenParameters.Audiences;
-
-            foreach (var audience in audiences.Where(value => !string.IsNullOrWhiteSpace(value)).Distinct(StringComparer.OrdinalIgnoreCase))
-            {
-                claimsIdentity.AddClaim(new Claim("aud", audience));
-            }
-
             if (!string.IsNullOrWhiteSpace(stateInfo?.Nonce)) 
             {
                 claimsIdentity.AddClaim(new Claim("nonce", stateInfo?.Nonce ?? ""));
@@ -111,8 +103,7 @@ namespace Authentication.DomainService.OAuth
 
             foreach (var resource in resolvedClaims.Resources)
             {
-                claimsIdentity.AddClaim(new Claim("resource", resource));
-                claimsIdentity.AddClaim(new Claim("resources", resource));
+                claimsIdentity.AddClaim(new Claim("service_access", resource));
             }
 
             foreach (var permission in resolvedClaims.Permissions)
@@ -192,5 +183,6 @@ namespace Authentication.DomainService.OAuth
                     };
             return new SigningCredentials(new RsaSecurityKey(rsa), SecurityAlgorithms.RsaSha256, SecurityAlgorithms.Sha256Digest);
         }
+
     }
 }

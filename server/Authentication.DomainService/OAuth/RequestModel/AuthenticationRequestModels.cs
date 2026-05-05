@@ -4,12 +4,14 @@ namespace Authentication.DomainService.OAuth.RequestModel
 
     public class EmbeddedLoginRequest
     {
+        public string? ClientId { get; set; }
         public string Username { get; set; } = string.Empty;
         public string Password { get; set; } = string.Empty;
     }
 
     public class SocialLoginRequest
     {
+        public string? ClientId { get; set; }
         public string Code { get; set; } = string.Empty;
         public string State { get; set; } = string.Empty;
     }
@@ -40,6 +42,7 @@ namespace Authentication.DomainService.OAuth.RequestModel
 
     public class RefreshRequest
     {
+        public string? ClientId { get; set; }
         public string? RefreshToken { get; set; }
         public string? OrganizationId { get; set; }
     }
