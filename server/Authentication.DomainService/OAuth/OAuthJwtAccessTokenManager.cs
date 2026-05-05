@@ -12,6 +12,7 @@ using Mfa.DomainService.Services;
 using Microsoft.Extensions.Configuration;
 using System.IdentityModel.Tokens.Jwt;
 using System.Text.Json;
+using Authentication.DomainService.Utilities;
 
 namespace Authentication.DomainService.OAuth
 {
@@ -60,6 +61,26 @@ namespace Authentication.DomainService.OAuth
             }
 
             var tenant = _tenants.GetTenantByID(bc?.TenantId ?? "");
+            if (tenant == null)
+            {
+                return new TokenResponse
+                {
+                    Error = "invalid_tenant",
+                    ErrorDescription = "Tenant not found",
+                    StatusCode = 400
+                };
+            }
+
+            if (!TenantDomainPolicy.IsOriginAllowed(tokenRequest.Request, tenant))
+            {
+                return new TokenResponse
+                {
+                    Error = "invalid_origin",
+                    ErrorDescription = "Request origin is not allowed for this tenant",
+                    StatusCode = 400
+                };
+            }
+
             var issuanceContext = new TokenIssuanceContext
             {
                 IsImpersonation = tokenRequest.IsImpersonation,
@@ -67,7 +88,6 @@ namespace Authentication.DomainService.OAuth
                 ActorUserId = tokenRequest.ImpersonatorUserId
             };
             var jwtAccessToken = await _jwtAccessTokenProvider.GetJwtAccessToken(authenticationConfiguration, tenant, user, stateInfo, organizationId: tokenRequest.OrganizationId, issuanceContext: issuanceContext);
-            jwtAccessToken.Audience = !string.IsNullOrWhiteSpace(stateInfo?.Audience) ? stateInfo.Audience : jwtAccessToken.Audience;
 
             var accessToken = CreateJwtAccessToken(jwtAccessToken);
             var (refreshToken, refreshValidity) = await ManageRefreshTokenAsync(tokenRequest, jwtAccessToken, authenticationConfiguration, tenant, user);

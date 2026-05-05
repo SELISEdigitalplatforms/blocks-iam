@@ -239,12 +239,20 @@ code_verifier=original_verifier
   "sub": "u123",
   "tenant_id": "TenantA",
   "org_id": "OrgA",
+  "service_access": ["blocks-idp", "blocks-genesis"],
   "roles": [...],
-  "aud": "api",
+  "permissions": [...],
+  "aud": "blocks-platform",
   "iss": "https://idp.com",
   "exp": ...
 }
 ```
+
+Notes:
+
+* `aud` is platform-level audience validation.
+* `service_access` (or `resources`) is service-level access validation.
+* `roles` and `permissions` are action-level authorization.
 
 **ID Token (OIDC)**
 
@@ -287,8 +295,60 @@ Authorization: Bearer JWT_AT
 **API**
 
 * validate JWT (signature, `iss`, `aud`, `exp`)
-* `tenant_id` → select DB
-* `org_id` → authorize
+* validate `aud` equals platform audience
+* check `service_access` (or `resources`) contains current service name
+* `tenant_id` → select DB/config source
+* `org_id` + `roles` + `permissions` → authorize action
+
+---
+
+# 🗂️ TENANT-WISE OIDC CONFIG STORAGE
+
+All OIDC config is tenant-scoped.
+
+Per tenant maintain two logical config sets:
+
+1. Main IdP OIDC config (issuer/audience/resource policy)
+2. OIDC client/discovery config (client credentials + discovered metadata)
+
+Recommended naming:
+
+* `TenantOidcProviderConfig` (main IdP config)
+* `TenantOidcClientCredentials` (client/discovery config)
+
+Main IdP config stores service/resource access mapping used for access-token issuance and runtime API validation.
+
+Example main config:
+
+```json
+{
+  "tenant_id": "TenantA",
+  "issuer": "https://idp.com",
+  "platform_audience": "blocks-platform",
+  "service_access_map": [
+    { "service": "blocks-idp", "resource_id": "blocks-idp" },
+    { "service": "blocks-genesis", "resource_id": "blocks-genesis" }
+  ]
+}
+```
+
+Runtime rule in Genesis:
+
+* Service name in API must match an item in token `service_access` (or `resources`).
+* Resource id and service name should use same value for easier validation.
+
+---
+
+# 🌳 ROOT TENANT MODEL
+
+`BlocksRootDb` is also a tenant (root tenant).
+
+Lookup order:
+
+1. Resolve tenant from trusted token claim (`tenant_id`)
+2. If tenant is root, read root config from `BlocksRootDb`
+3. Otherwise read tenant-specific config from that tenant scope
+4. Tenant-specific config overrides root defaults when both exist
 
 ---
 

@@ -161,6 +161,10 @@ namespace Authentication.DomainService.Authentication
         {
             var (token, _) =  TokenHelper.GetToken(request, _tenants);
             var tenant = _tenants.GetTenantByID(tenantId);
+            if (tenant == null)
+            {
+                return null;
+            }
 
             if (!string.IsNullOrEmpty(token))
             {
@@ -169,7 +173,7 @@ namespace Authentication.DomainService.Authentication
                 var certificateData = await _cacheClient.CacheDatabase().StringGetAsync(cacheKey);
                 var validationParams = tenant.JwtTokenParameters;
                 var publicCert = X509CertificateLoader.LoadPkcs12(certificateData, validationParams.PublicCertificatePassword);
-                var tokenValidationParameters = !IsUserInfoGetRequest? new TokenValidationParameters { ValidateLifetime = true, ClockSkew = TimeSpan.Zero, IssuerSigningKey = new X509SecurityKey(publicCert), ValidateIssuerSigningKey = true, ValidateIssuer = true, ValidIssuer = validationParams?.Issuer, ValidAudiences = validationParams?.Audiences, ValidateAudience = true, SaveSigninToken = true } :
+                var tokenValidationParameters = !IsUserInfoGetRequest? new TokenValidationParameters { ValidateLifetime = true, ClockSkew = TimeSpan.Zero, IssuerSigningKey = new X509SecurityKey(publicCert), ValidateIssuerSigningKey = true, ValidateIssuer = true, ValidIssuer = validationParams?.Issuer, ValidAudience = TenantDomainPolicy.GetAudience(tenant), ValidateAudience = true, SaveSigninToken = true } :
                                                                       new TokenValidationParameters { ValidateLifetime = true, ClockSkew = TimeSpan.Zero, IssuerSigningKey = new X509SecurityKey(publicCert), ValidateIssuerSigningKey = true, ValidateIssuer = false, ValidateAudience = false, SaveSigninToken = true };
                 return tokenHandler.ValidateToken(token, tokenValidationParameters, out _);
             }
