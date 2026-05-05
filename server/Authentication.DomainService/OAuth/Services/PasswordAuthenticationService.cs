@@ -40,9 +40,8 @@ namespace Authentication.DomainService.OAuth
         {
             _logger.LogInformation("Password Authentication start");
 
-            user = await _oAuthRepository.GetUserByUsernameAsync(request.Username, request.OrganizationId);
-            if (!IsValidUser(user)) return OAuthError.InValidResponse(request);
-            if (!IsUserActiveAndVerified(user)) return OAuthError.UserNotActiveOrVerifiedResponse();
+            user ??= await _oAuthRepository.GetUserByUsernameAsync(request.Username, request.OrganizationId);
+            if (!IsValidUser(user) || !IsUserActiveAndVerified(user!)) return OAuthError.InValidResponse(request);
 
             if (user.LockoutUntilUtc.HasValue && user.LockoutUntilUtc.Value > DateTime.UtcNow)
             {
@@ -59,23 +58,14 @@ namespace Authentication.DomainService.OAuth
 
             if (!passwordMatched)
             {
-                var nextFailedCount = user.FailedLoginCount + 1;
-                DateTime? lockoutUntilUtc = null;
-                if (nextFailedCount >= authenticationConfiguration.GetNumberOfWrongAttemptsToLockTheAccount)
-                {
-                    lockoutUntilUtc = DateTime.UtcNow.AddMinutes(authenticationConfiguration.AccountLockDurationInMinutes);
-                }
-
-                await _oAuthRepository.UpdatePartialAsync<User>(
+                var nowUtc = DateTime.UtcNow;
+                var updatedUser = await _oAuthRepository.IncrementFailedLoginAndApplyLockoutAsync(
                     user.ItemId,
-                    new Dictionary<string, object>
-                    {
-                        { nameof(User.FailedLoginCount), nextFailedCount },
-                        { nameof(User.LastFailedLoginUtc), DateTime.UtcNow },
-                        { nameof(User.LockoutUntilUtc), lockoutUntilUtc ?? (object)DBNull.Value },
-                        { nameof(User.LastUpdatedDate), DateTime.UtcNow },
-                        { nameof(User.LastUpdatedBy), user.ItemId }
-                    });
+                    authenticationConfiguration.GetNumberOfWrongAttemptsToLockTheAccount,
+                    authenticationConfiguration.AccountLockDurationInMinutes,
+                    nowUtc);
+
+                var lockoutUntilUtc = updatedUser?.LockoutUntilUtc;
 
                 var eventName = lockoutUntilUtc.HasValue
                     ? "failed_login_and_account_locked"
@@ -125,7 +115,7 @@ namespace Authentication.DomainService.OAuth
 
         }
 
-        private static bool IsValidUser(User user) =>
+        private static bool IsValidUser(User? user) =>
             user != null;
 
         private static bool IsUserActiveAndVerified(User user) =>
@@ -136,8 +126,13 @@ namespace Authentication.DomainService.OAuth
             return BCryptNet.HashPassword(BuildPasswordMaterial(password, optionalSalt));
         }
 
-        public bool VerifyPassword(string password, string passwordHash, string? optionalSalt = null)
+        public bool VerifyPassword(string? password, string? passwordHash, string? optionalSalt = null)
         {
+            if (string.IsNullOrWhiteSpace(password))
+            {
+                return false;
+            }
+
             if (string.IsNullOrWhiteSpace(passwordHash))
             {
                 return false;

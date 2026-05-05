@@ -1,5 +1,6 @@
 using Blocks.Genesis;
 using Authentication.DomainService.Dtos;
+using Authentication.DomainService.Entities;
 using Authentication.DomainService.OAuth;
 using Authentication.DomainService.OAuth.RequestModel;
 using Authentication.DomainService.OAuth.ResponseModel;
@@ -489,6 +490,8 @@ namespace Authentication.DomainService.Authentication
             var cachedRefreshToken = await cacheClient.GetStringValueAsync(refreshToken);
             if (string.IsNullOrWhiteSpace(cachedRefreshToken))
             {
+                await HandlePotentialRefreshTokenReuseAsync(refreshToken, cacheClient);
+
                 if (await TryRestoreRootSessionAsync(httpRequest, httpResponse, "impersonation_expired"))
                 {
                     return new OkObjectResult(new { mode = "root", status = "restored", reason = "impersonation_expired" });
@@ -551,7 +554,10 @@ namespace Authentication.DomainService.Authentication
             var tokenRequest = new TokenRequest
             {
                 GrantType = GrantTypes.RefreshToken,
-                OrganizationId = request.OrganizationId ?? "default",
+                OrganizationId = string.IsNullOrWhiteSpace(request.OrganizationId)
+                    ? (string.IsNullOrWhiteSpace(tokenCache.OrganizationId) ? "default" : tokenCache.OrganizationId)
+                    : request.OrganizationId,
+                ClientId = tokenCache.ClientId,
                 RefreshToken = refreshToken,
                 IsImpersonation = string.Equals(tokenCache.AuthMode, "impersonation", StringComparison.OrdinalIgnoreCase),
                 OriginalTenantId = tokenCache.OriginalTenantId,
@@ -586,6 +592,43 @@ namespace Authentication.DomainService.Authentication
             }
 
             return BuildTokenResponse(httpResponse, result);
+        }
+
+        private async Task HandlePotentialRefreshTokenReuseAsync(string refreshToken, ICacheClient cacheClient)
+        {
+            var existingSession = await _authenticationRepository.GetSessionByRefreshTokenAsync(refreshToken);
+            if (existingSession == null || existingSession.IsActive)
+            {
+                return;
+            }
+
+            IEnumerable<Session> activeSessions;
+            if (!string.IsNullOrWhiteSpace(existingSession.SessionId))
+            {
+                activeSessions = await _authenticationRepository.GetActiveSessionBySessionIdAsync(existingSession.SessionId);
+            }
+            else
+            {
+                activeSessions = await _authenticationRepository.GetActiveSessionByUserIdAsync(existingSession.UserId);
+            }
+
+            var refreshTokens = activeSessions
+                .Select(x => x.RefreshToken)
+                .Where(x => !string.IsNullOrWhiteSpace(x))
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .ToList();
+
+            if (refreshTokens.Count == 0)
+            {
+                return;
+            }
+
+            await _authenticationRepository.UpdateSessionStatusForAllRefreshTokenAsync(refreshTokens!);
+
+            foreach (var token in refreshTokens)
+            {
+                await cacheClient.RemoveKeyAsync(token!);
+            }
         }
 
         private bool IsCurrentTenantRoot(ClaimsPrincipal principal)

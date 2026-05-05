@@ -121,6 +121,75 @@ namespace Authentication.DomainService.Services
             return await collection.Find(filter).ToListAsync();
         }
 
+        public async Task<User?> IncrementFailedLoginAndApplyLockoutAsync(string userId, int lockThreshold, int lockDurationInMinutes, DateTime nowUtc)
+        {
+            var collection = GetCollection<User>();
+
+            var incrementFilter = Builders<User>.Filter.Eq(x => x.ItemId, userId);
+            var incrementUpdate = Builders<User>.Update
+                .Inc(x => x.FailedLoginCount, 1)
+                .Set(x => x.LastFailedLoginUtc, nowUtc)
+                .Set(x => x.LastUpdatedDate, nowUtc)
+                .Set(x => x.LastUpdatedBy, userId);
+
+            var userAfterIncrement = await collection.FindOneAndUpdateAsync(
+                incrementFilter,
+                incrementUpdate,
+                new FindOneAndUpdateOptions<User>
+                {
+                    ReturnDocument = ReturnDocument.After
+                });
+
+            if (userAfterIncrement == null)
+            {
+                return null;
+            }
+
+            if (userAfterIncrement.FailedLoginCount < lockThreshold)
+            {
+                return userAfterIncrement;
+            }
+
+            if (userAfterIncrement.LockoutUntilUtc.HasValue && userAfterIncrement.LockoutUntilUtc.Value > nowUtc)
+            {
+                return userAfterIncrement;
+            }
+
+            var lockoutUntilUtc = nowUtc.AddMinutes(lockDurationInMinutes);
+            var lockFilter = Builders<User>.Filter.And(
+                Builders<User>.Filter.Eq(x => x.ItemId, userId),
+                Builders<User>.Filter.Eq(x => x.FailedLoginCount, userAfterIncrement.FailedLoginCount));
+
+            var lockUpdate = Builders<User>.Update
+                .Set(x => x.LockoutUntilUtc, lockoutUntilUtc)
+                .Set(x => x.LastUpdatedDate, nowUtc)
+                .Set(x => x.LastUpdatedBy, userId);
+
+            var userAfterLock = await collection.FindOneAndUpdateAsync(
+                lockFilter,
+                lockUpdate,
+                new FindOneAndUpdateOptions<User>
+                {
+                    ReturnDocument = ReturnDocument.After
+                });
+
+            return userAfterLock ?? userAfterIncrement;
+        }
+
+        public async Task<Session?> GetSessionByRefreshTokenAsync(string refreshToken)
+        {
+            var collection = GetCollection<Session>();
+            var filter = Builders<Session>.Filter.Eq(x => x.RefreshToken, refreshToken);
+            return await collection.Find(filter).SortByDescending(x => x.UpdateDate).FirstOrDefaultAsync();
+        }
+
+        public async Task<IEnumerable<Session>> GetActiveSessionBySessionIdAsync(string sessionId)
+        {
+            var collection = GetCollection<Session>();
+            var filter = Builders<Session>.Filter.Eq(x => x.SessionId, sessionId) & Builders<Session>.Filter.Eq(x => x.IsActive, true);
+            return await collection.Find(filter).ToListAsync();
+        }
+
         public async Task<IEnumerable<SocialLoginCredential>> GetSocialLoginCredentials()
         {
             var collection = GetCollection<SocialLoginCredential>();
