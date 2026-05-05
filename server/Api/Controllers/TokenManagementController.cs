@@ -15,7 +15,7 @@ namespace Blocks.Api.Controllers
     /// Implements RFC 7009 (Token Revocation) and RFC 7662 (Token Introspection)
     /// </summary>
     [ApiController]
-    [Route("api/oidc")]
+    [Route("oidc")]
     public class TokenManagementController : ControllerBase
     {
         private readonly ITokenRevocationService _revocationService;

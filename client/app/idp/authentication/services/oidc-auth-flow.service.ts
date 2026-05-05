@@ -99,7 +99,7 @@ export const getOidcCredential = async (
   isSuccess: boolean;
 }> => {
   try {
-    const url = `${getRuntimeEnv("BLOCKS_API_BASE_URL")}${AUTH_OIDC_ENDPOINTS.GET_OIDC_CLIENT}?ClientId=${payload.clientId}`;
+    const url = `${getRuntimeEnv("BLOCKS_API_BASE_URL")}${AUTH_OIDC_ENDPOINTS.GET_OIDC_CLIENT}/${payload.clientId}`;
 
     let accessToken = "";
     try {

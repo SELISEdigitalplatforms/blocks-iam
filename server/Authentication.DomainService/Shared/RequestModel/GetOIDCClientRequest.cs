@@ -22,11 +22,11 @@ namespace Authentication.DomainService.RequestModel
 
     public class GetOIDCClientsResponse : BaseResponse
     {
-        public List<OIDCClientCredential> oIDCClientCredentials { get; set; } = [];
+        public List<OidcClientRegistration> oIDCClientCredentials { get; set; } = [];
     }
 
     public class GetOIDCClientResponse : BaseResponse
     {
-        public OIDCClientCredential? oIDCClientCredential { get; set; }
+        public OidcClientRegistration? oIDCClientCredential { get; set; }
     }
 }

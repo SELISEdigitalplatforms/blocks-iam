@@ -33,7 +33,7 @@ export class AuthOidc {
       errors: Record<string, string> | null;
       isSuccess: boolean;
     }>(
-      `${AUTH_OIDC_ENDPOINTS.GET_OIDC_CLIENT}?ClientId=${payload.clientId}`,
+      `${AUTH_OIDC_ENDPOINTS.GET_OIDC_CLIENT}/${payload.clientId}`,
     );
   }
 
@@ -46,7 +46,7 @@ export class AuthOidc {
   deleteOidcCredential(
     payload: IDeleteOidcClientPayload,
   ): Promise<APIResponse<IDeleteOidcClientResponse>> {
-    return http.post(AUTH_OIDC_ENDPOINTS.DELETE_OIDC_CLIENT, payload);
+    return http.delete(`${AUTH_OIDC_ENDPOINTS.DELETE_OIDC_CLIENT}/${payload.itemId}`);
   }
 }
 

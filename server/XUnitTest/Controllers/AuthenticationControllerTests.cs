@@ -575,7 +575,7 @@ namespace XUnitTest.Controllers
 
             _authService
                 .Setup(x => x.GetClientCredentialAsync(It.IsAny<string>()))
-                .ReturnsAsync((OIDCClientCredential)null);
+                .ReturnsAsync((OidcClientRegistration)null);
 
             var result = await _controller.Login(new LoginRequest
             {
@@ -595,7 +595,7 @@ namespace XUnitTest.Controllers
 
             _authService
                 .Setup(x => x.GetClientCredentialAsync(It.IsAny<string>()))
-                .ReturnsAsync(new OIDCClientCredential
+                .ReturnsAsync(new OidcClientRegistration
                 {
                     ItemId = "client",
                     RedirectUri = "uri",
@@ -687,16 +687,16 @@ namespace XUnitTest.Controllers
 
             var expectedResponse = new GetOIDCClientsResponse
             {
-                oIDCClientCredentials = new List<OIDCClientCredential>
+                oIDCClientCredentials = new List<OidcClientRegistration>
                 {
-                    new OIDCClientCredential
+                    new OidcClientRegistration
                     {
                         ItemId = "client-1",
                         ClientDisplayName = "Test Client 1",
                         ClientLogoUrl = "https://example.com/logo1.png",
                         ClientBrandColor = "#FF5733"
                     },
-                    new OIDCClientCredential
+                    new OidcClientRegistration
                     {
                         ItemId = "client-2",
                         ClientDisplayName = "Test Client 2",
@@ -729,7 +729,7 @@ namespace XUnitTest.Controllers
 
             var expectedResponse = new GetOIDCClientsResponse
             {
-                oIDCClientCredentials = new List<OIDCClientCredential>(),
+                oIDCClientCredentials = new List<OidcClientRegistration>(),
                 IsSuccess = true
             };
 
@@ -755,7 +755,7 @@ namespace XUnitTest.Controllers
 
             var expectedResponse = new GetOIDCClientsResponse
             {
-                oIDCClientCredentials = new List<OIDCClientCredential>(),
+                oIDCClientCredentials = new List<OidcClientRegistration>(),
                 IsSuccess = true
             };
 
@@ -781,9 +781,9 @@ namespace XUnitTest.Controllers
 
             var domainServiceResponse = new GetOIDCClientsResponse
             {
-                oIDCClientCredentials = new List<OIDCClientCredential>
+                oIDCClientCredentials = new List<OidcClientRegistration>
                 {
-                    new OIDCClientCredential
+                    new OidcClientRegistration
                     {
                         ItemId = "client-123",
                         ClientDisplayName = "Domain Client",
@@ -1284,7 +1284,7 @@ namespace XUnitTest.Controllers
                 Nonce = "test-nonce"
             };
 
-            var clientCredential = new OIDCClientCredential
+            var clientCredential = new OidcClientRegistration
             {
                 ItemId = "test-client-id",
                 RedirectUri = "https://example.com/callback",
@@ -1355,7 +1355,7 @@ namespace XUnitTest.Controllers
 
             _authService
                 .Setup(x => x.GetClientCredentialAsync(request.ClientId))
-                .ReturnsAsync((OIDCClientCredential)null);
+                .ReturnsAsync((OidcClientRegistration)null);
 
             _config
                 .Setup(x => x["OpenIdConnect:ErrorPageRedirectonUri"])

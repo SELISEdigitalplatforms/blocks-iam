@@ -25,13 +25,14 @@ builder.Services.Configure<FormOptions>(options =>
 });
 
 var services = builder.Services;
+var apiRoutePrefix = builder.Configuration["ApiRouting:Prefix"];
 
 services.AddHealthChecks();
 
 ApplicationConfigurations.ConfigureApi(
     services,
     serviceName: serviceName,
-    apiRoutePrefix: builder.Configuration["ApiRouting:Prefix"]);
+    apiRoutePrefix: apiRoutePrefix);
 
 var wwwrootPath = Path.Combine(builder.Environment.ContentRootPath, "wwwroot");
 Directory.CreateDirectory(wwwrootPath);
@@ -54,7 +55,10 @@ if (File.Exists(indexHtml))
     app.MapFallbackToFile("/index.html");
 }
 
-ApplicationConfigurations.ConfigureMiddleware(app);
+var normalizedApiRoutePrefix = ApplicationConfigurations.NormalizeApiRoutePrefixValue(apiRoutePrefix);
+ApplicationConfigurations.ConfigureMiddleware(
+    app,
+    tenantValidationPrefixes: new[] { normalizedApiRoutePrefix });
 
 await app.RunAsync();
 

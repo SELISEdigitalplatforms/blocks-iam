@@ -10,6 +10,8 @@ namespace Authentication.DomainService.Services
 {
     public class AuthenticationRepository : IAuthenticationRepository
     {
+        private const string OidcClientRegistrationsCollectionName = "OidcClientRegistrations";
+
         private readonly IDbContextProvider _dbContextProvider;
 
         public AuthenticationRepository(IDbContextProvider dbContextProvider)
@@ -262,37 +264,37 @@ namespace Authentication.DomainService.Services
             await collection.ReplaceOneAsync(filter, authenticationConfiguration);
         }
 
-        public async Task<OIDCClientCredential> GetOIDCClientCredentialAsync(string clientId)
+        public async Task<OidcClientRegistration> GetOidcClientRegistrationAsync(string clientId)
         {
-            var collection = GetCollection<OIDCClientCredential>();
-            var filter = Builders<OIDCClientCredential>.Filter.Eq(x => x.ItemId, clientId);
+            var collection = GetCollectionByName<OidcClientRegistration>(OidcClientRegistrationsCollectionName);
+            var filter = Builders<OidcClientRegistration>.Filter.Eq(x => x.ItemId, clientId);
             return await collection.Find(filter).FirstOrDefaultAsync();
         }
 
-        public async Task SaveOIDCClientCredentialAsync(OIDCClientCredential credential)
+        public async Task SaveOidcClientRegistrationAsync(OidcClientRegistration credential)
         {
-            var collection = GetCollection<OIDCClientCredential>();
+            var collection = GetCollectionByName<OidcClientRegistration>(OidcClientRegistrationsCollectionName);
             var result = await collection.ReplaceOneAsync(x => x.ItemId == credential.ItemId, credential, new ReplaceOptions { IsUpsert = true });
         }
 
-        public async Task<OIDCClientCredential> GetOIDCCredentialByIdAsync(string itemId)
+        public async Task<OidcClientRegistration> GetOIDCCredentialByIdAsync(string itemId)
         {
-            var collection = GetCollection<OIDCClientCredential>();
-            var filter = Builders<OIDCClientCredential>.Filter.Eq(it => it.ItemId, itemId);
+            var collection = GetCollectionByName<OidcClientRegistration>(OidcClientRegistrationsCollectionName);
+            var filter = Builders<OidcClientRegistration>.Filter.Eq(it => it.ItemId, itemId);
             return await (await collection.FindAsync(filter)).FirstOrDefaultAsync();
         }
 
-        public async Task<List<OIDCClientCredential>> GetOIDCCredentialsByTenantAsync()
+        public async Task<List<OidcClientRegistration>> GetOIDCCredentialsByTenantAsync()
         {
-            var collection = GetCollection<OIDCClientCredential>();
-            var filter = Builders<OIDCClientCredential>.Filter.Empty;
+            var collection = GetCollectionByName<OidcClientRegistration>(OidcClientRegistrationsCollectionName);
+            var filter = Builders<OidcClientRegistration>.Filter.Empty;
             return await (await collection.FindAsync(filter)).ToListAsync();
         }
 
         public async Task DeleteOidcCliantAsync(DeleteOIDCClientRequest request)
         {
-            var collection = GetCollection<OIDCClientCredential>();
-            var filter = Builders<OIDCClientCredential>.Filter.Eq(it => it.ItemId, request.ItemId);
+            var collection = GetCollectionByName<OidcClientRegistration>(OidcClientRegistrationsCollectionName);
+            var filter = Builders<OidcClientRegistration>.Filter.Eq(it => it.ItemId, request.ItemId);
             await collection.DeleteOneAsync(filter);
         }
 

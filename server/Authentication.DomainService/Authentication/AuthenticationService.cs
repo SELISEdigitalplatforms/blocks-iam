@@ -96,18 +96,20 @@ namespace Authentication.DomainService.Authentication
             return true;
         }
 
-        public async Task<OIDCClientCredential> GetClientCredentialAsync(string clientId)
+        public async Task<OidcClientRegistration> GetClientCredentialAsync(string clientId)
         {
-            return await _authenticationRepository.GetOIDCClientCredentialAsync(clientId);
+            return await _authenticationRepository.GetOidcClientRegistrationAsync(clientId);
         }
 
         public async Task<string> ConstructRedirectUriAsync(string clientId, AcknowledgeRequest request)
         {
             var client = await GetClientCredentialAsync(request.ClientId);
             var code = Guid.NewGuid().ToString("n");
-            var stateInfo = new StateInfo { Scope = request.Scope, secret = client.ClientSecret, State = request.State, Code = code, Nonce = request.Nonce, UserName = request.Username, Audience = client.Audience ?? "", Provider = "SeliseCloud", NextUrl = client.RedirectUri };
+            var nextUrl = client.RedirectUris.FirstOrDefault() ?? string.Empty;
+            var audience = client.AllowedAudiences.FirstOrDefault() ?? string.Empty;
+            var stateInfo = new StateInfo { Scope = request.Scope, secret = client.ClientSecret, State = request.State, Code = code, Nonce = request.Nonce, UserName = request.Username, Audience = audience, Provider = "SeliseCloud", NextUrl = nextUrl };
             await _cacheClient.AddStringValueAsync(code, JsonSerializer.Serialize(stateInfo), 300);
-            var uri = $"{client.RedirectUri}?code={code}";
+            var uri = $"{nextUrl}?code={code}";
 
             if (!string.IsNullOrEmpty(request.State))
                 uri += $"&state={request.State}";

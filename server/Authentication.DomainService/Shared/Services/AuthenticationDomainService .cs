@@ -174,26 +174,82 @@ namespace Authentication.DomainService.Services
 
         public async Task<SaveOIDCClientResponse> SaveOIDCClientAsync(SaveOIDCClientRequest request)
         {
-            var credential = await _authenticationRepository.GetOIDCClientCredentialAsync(request.ItemId ?? "");
+            var credential = await _authenticationRepository.GetOidcClientRegistrationAsync(request.ItemId ?? "");
+            var clientId = request.ItemId;
 
-            credential = credential ?? new OIDCClientCredential
+            if (string.IsNullOrWhiteSpace(clientId))
             {
-                ItemId = Guid.NewGuid().ToString(),
+                clientId = Guid.NewGuid().ToString();
+            }
+
+            credential = credential ?? new OidcClientRegistration
+            {
+                ItemId = clientId,
+                ClientId = clientId,
                 CreatedBy = BlocksContext.GetContext()?.UserId,
                 CreatedDate = DateTime.UtcNow,
             };
 
-            credential.ClientSecret = Guid.NewGuid().ToString("n");
-            credential.Audience = request.Audience;
-            credential.RedirectUri = request.RedirectUri;
-            credential.Scope = request.Scope;
+            credential.ItemId = clientId;
+            credential.ClientId = clientId;
+
+            credential.ClientSecret = string.IsNullOrWhiteSpace(credential.ClientSecret)
+                ? Guid.NewGuid().ToString("n")
+                : credential.ClientSecret;
+
+            var allowedScopes = request.AllowedScopes.Where(x => !string.IsNullOrWhiteSpace(x)).Distinct(StringComparer.OrdinalIgnoreCase).ToList();
+            if (allowedScopes.Count == 0 && !string.IsNullOrWhiteSpace(request.Scope))
+            {
+                allowedScopes = request.Scope.Split(' ', StringSplitOptions.RemoveEmptyEntries).Distinct(StringComparer.OrdinalIgnoreCase).ToList();
+            }
+
+            var redirectUris = request.RedirectUris.Where(x => !string.IsNullOrWhiteSpace(x)).Distinct(StringComparer.OrdinalIgnoreCase).ToList();
+            if (redirectUris.Count == 0 && !string.IsNullOrWhiteSpace(request.RedirectUri))
+            {
+                redirectUris = [request.RedirectUri];
+            }
+
+            var allowedAudiences = request.AllowedAudiences.Where(x => !string.IsNullOrWhiteSpace(x)).Distinct(StringComparer.OrdinalIgnoreCase).ToList();
+            if (allowedAudiences.Count == 0 && !string.IsNullOrWhiteSpace(request.Audience))
+            {
+                allowedAudiences = [request.Audience];
+            }
+
+            credential.AllowedScopes = allowedScopes;
+            credential.Scope = string.Join(' ', allowedScopes);
+
+            credential.RedirectUris = redirectUris;
+            credential.RedirectUri = redirectUris.FirstOrDefault();
+
+            credential.AllowedAudiences = allowedAudiences;
+            credential.Audience = allowedAudiences.FirstOrDefault();
+
+            credential.AllowedGrantTypes = request.AllowedGrantTypes.Where(x => !string.IsNullOrWhiteSpace(x)).Distinct(StringComparer.OrdinalIgnoreCase).ToList();
+            credential.AllowedResponseTypes = request.AllowedResponseTypes.Where(x => !string.IsNullOrWhiteSpace(x)).Distinct(StringComparer.OrdinalIgnoreCase).ToList();
+            if (credential.AllowedResponseTypes.Count == 0)
+            {
+                credential.AllowedResponseTypes = ["code"];
+            }
+
+            credential.PostLogoutRedirectUris = request.PostLogoutRedirectUris.Where(x => !string.IsNullOrWhiteSpace(x)).Distinct(StringComparer.OrdinalIgnoreCase).ToList();
+            credential.ExternalDiscoveryEndpoint = request.ExternalDiscoveryEndpoint;
+            credential.LoginMode = request.LoginMode;
+            credential.ClientType = request.ClientType;
+            credential.TokenEndpointAuthMethod = string.Equals(request.ClientType, "public", StringComparison.OrdinalIgnoreCase)
+                ? "none"
+                : "client_secret_post";
+            credential.RequirePkce = request.RequirePkce;
+            credential.RequireConsent = request.RequireConsent;
+            credential.FrontChannelLogoutUri = request.FrontChannelLogoutUri;
+            credential.BackChannelLogoutUri = request.BackChannelLogoutUri;
+            credential.IsActive = request.IsActive;
             credential.IsAutoRedirect = request.IsAutoRedirect;
             credential.LastUpdatedBy = BlocksContext.GetContext()?.UserId;
             credential.LastUpdatedDate = DateTime.UtcNow;
-            credential.ClientLogoUrl = request.ClientLogoUrl;
-            credential.ClientDisplayName = request.ClientDisplayName;
-            credential.ClientBrandColor = request.ClientBrandColor;
-            await _authenticationRepository.SaveOIDCClientCredentialAsync(credential);
+            credential.LogoUri = request.ClientLogoUrl;
+            credential.ClientName = request.ClientDisplayName;
+            credential.UiBrandColor = request.ClientBrandColor;
+            await _authenticationRepository.SaveOidcClientRegistrationAsync(credential);
             return new SaveOIDCClientResponse { IsSuccess = true, ItemId = credential.ItemId };
         }
 
