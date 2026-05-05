@@ -65,11 +65,6 @@ public sealed class AuthorizationClaimsResolver : IAuthorizationClaimsResolver
             permissionCatalog.AddRange(await _userRepository.GetPermissionsByResourcesAsync(directPermissionKeys));
         }
 
-        if (roles.Count > 0)
-        {
-            permissionCatalog.AddRange(await _userRepository.GetPermissionsByRolesAsync(roles));
-        }
-
         var resolvedPermissions = permissionCatalog
             .Where(permission => IsNamespacedPermission(permission.Resource))
             .GroupBy(permission => permission.Resource, StringComparer.OrdinalIgnoreCase)
@@ -112,6 +107,8 @@ public sealed class AuthorizationClaimsResolver : IAuthorizationClaimsResolver
             {
                 return requestedRoles;
             }
+
+            return [];
         }
 
         if (user.Roles.TryGetValue("default", out var defaultRoles) && defaultRoles is not null)
@@ -130,6 +127,8 @@ public sealed class AuthorizationClaimsResolver : IAuthorizationClaimsResolver
             {
                 return requestedPermissions;
             }
+
+            return [];
         }
 
         if (user.Permissions.TryGetValue("default", out var defaultPermissions) && defaultPermissions is not null)

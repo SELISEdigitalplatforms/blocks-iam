@@ -16,7 +16,6 @@ namespace Iam.DomainService.Dtos
         public string? LastName { get; set; }
         public string Email { get; set; }
         public string? UserName { get; set; }
-        public string SubjectId { get; set; } = string.Empty;
         public string? PhoneNumber { get; set; }
         public Dictionary<string, List<string>> Roles { get; set; } = new();
         public Dictionary<string, List<string>> Permissions { get; set; } = new();
