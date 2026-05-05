@@ -2,7 +2,7 @@ using Iam.DomainService.Dtos;
 using Iam.DomainService.Entities;
 using Iam.DomainService.Users;
 
-namespace DomainService.OAuth;
+namespace Authentication.DomainService.OAuth;
 
 public sealed class ResolvedAuthorizationClaims
 {

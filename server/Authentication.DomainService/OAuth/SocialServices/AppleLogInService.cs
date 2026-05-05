@@ -1,8 +1,8 @@
-﻿using Blocks.Genesis;
-using DomainService.Entities;
-using DomainService.OAuth;
-using DomainService.OAuth.RequestModel;
-using DomainService.Services;
+using Blocks.Genesis;
+using Authentication.DomainService.Entities;
+using Authentication.DomainService.OAuth;
+using Authentication.DomainService.OAuth.RequestModel;
+using Authentication.DomainService.Services;
 using Microsoft.Extensions.Logging;
 using Microsoft.IdentityModel.Tokens;
 using Newtonsoft.Json;

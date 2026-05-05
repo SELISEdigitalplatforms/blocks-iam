@@ -1,6 +1,6 @@
-﻿using FluentValidation;
+using FluentValidation;
 
-namespace DomainService.Projects
+namespace Identifier.DomainService.Projects
 {
     public class UpdateAuthConfigRequestValidator : AbstractValidator<UpdateAuthConfigRequest>
     {

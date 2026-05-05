@@ -1,4 +1,4 @@
-﻿namespace DomainService.Shared.RequestModel
+namespace Authentication.DomainService.Shared.RequestModel
 {
     public class AcknowledgeRequest
     {

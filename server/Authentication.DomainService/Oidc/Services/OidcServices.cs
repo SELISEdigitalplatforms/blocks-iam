@@ -7,20 +7,20 @@ using System.Security.Cryptography.X509Certificates;
 using System.Text;
 using System.Text.Json;
 using Blocks.Genesis;
-using DomainService.OAuth;
-using DomainService.Utilities;
+using Authentication.DomainService.OAuth;
+using Authentication.DomainService.Utilities;
 using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.IdentityModel.Tokens;
 
-namespace Blocks.Genesis.Auth.Services;
+namespace Idp.DomainService.Oidc.Services;
 
 public interface ITokenGenerationService
 {
-    Task<string> GenerateIdTokenAsync(Blocks.Genesis.Auth.OidcClaims claims, string issuer, int expiresInSeconds);
-    Task<string> GenerateAccessTokenAsync(Blocks.Genesis.Auth.OidcClaims claims, string issuer, int expiresInSeconds);
-    Task<Blocks.Genesis.Auth.RefreshTokenModel> GenerateRefreshTokenAsync(Blocks.Genesis.Auth.OidcClaims claims, string issuer);
+    Task<string> GenerateIdTokenAsync(Idp.DomainService.Oidc.Contracts.OidcClaims claims, string issuer, int expiresInSeconds);
+    Task<string> GenerateAccessTokenAsync(Idp.DomainService.Oidc.Contracts.OidcClaims claims, string issuer, int expiresInSeconds);
+    Task<Idp.DomainService.Oidc.Contracts.RefreshTokenModel> GenerateRefreshTokenAsync(Idp.DomainService.Oidc.Contracts.OidcClaims claims, string issuer);
 }
 
 public interface IPkceService
@@ -30,13 +30,13 @@ public interface IPkceService
 
 public interface IDiscoveryService
 {
-    Task<Blocks.Genesis.Auth.DiscoveryMetadata> GetMetadataAsync();
-    Task<Blocks.Genesis.Auth.OAuthAuthorizationServerMetadata> GetAuthorizationServerMetadataAsync();
+    Task<Idp.DomainService.Oidc.Contracts.DiscoveryMetadata> GetMetadataAsync();
+    Task<Idp.DomainService.Oidc.Contracts.OAuthAuthorizationServerMetadata> GetAuthorizationServerMetadataAsync();
 }
 
 public interface IJwksService
 {
-    Task<Blocks.Genesis.Auth.JwksResponse> GetKeysAsync();
+    Task<Idp.DomainService.Oidc.Contracts.JwksResponse> GetKeysAsync();
 }
 
 public sealed class OidcSigningKeyMaterial
@@ -82,20 +82,20 @@ public class TokenGenerationService : ITokenGenerationService
         _httpContextAccessor = httpContextAccessor;
     }
 
-    public Task<string> GenerateIdTokenAsync(Blocks.Genesis.Auth.OidcClaims claims, string issuer, int expiresInSeconds)
+    public Task<string> GenerateIdTokenAsync(Idp.DomainService.Oidc.Contracts.OidcClaims claims, string issuer, int expiresInSeconds)
     {
         return GenerateTokenAsync(claims, issuer, expiresInSeconds, includeNonce: true);
     }
 
-    public Task<string> GenerateAccessTokenAsync(Blocks.Genesis.Auth.OidcClaims claims, string issuer, int expiresInSeconds)
+    public Task<string> GenerateAccessTokenAsync(Idp.DomainService.Oidc.Contracts.OidcClaims claims, string issuer, int expiresInSeconds)
     {
         return GenerateTokenAsync(claims, issuer, expiresInSeconds, includeNonce: false);
     }
 
-    public Task<Blocks.Genesis.Auth.RefreshTokenModel> GenerateRefreshTokenAsync(Blocks.Genesis.Auth.OidcClaims claims, string issuer)
+    public Task<Idp.DomainService.Oidc.Contracts.RefreshTokenModel> GenerateRefreshTokenAsync(Idp.DomainService.Oidc.Contracts.OidcClaims claims, string issuer)
     {
         var now = DateTime.UtcNow;
-        return Task.FromResult(new Blocks.Genesis.Auth.RefreshTokenModel
+        return Task.FromResult(new Idp.DomainService.Oidc.Contracts.RefreshTokenModel
         {
             TokenId = Guid.NewGuid().ToString("n"),
             FamilyId = Guid.NewGuid().ToString("n"),
@@ -109,7 +109,7 @@ public class TokenGenerationService : ITokenGenerationService
         });
     }
 
-    private async Task<string> GenerateTokenAsync(Blocks.Genesis.Auth.OidcClaims claims, string issuer, int expiresInSeconds, bool includeNonce)
+    private async Task<string> GenerateTokenAsync(Idp.DomainService.Oidc.Contracts.OidcClaims claims, string issuer, int expiresInSeconds, bool includeNonce)
     {
         var now = DateTime.UtcNow;
         var tenant = ResolveTenant(claims.TenantId);
@@ -317,7 +317,7 @@ public class DiscoveryService : IDiscoveryService
         _cacheClient = cacheClient;
     }
 
-    public async Task<Blocks.Genesis.Auth.DiscoveryMetadata> GetMetadataAsync()
+    public async Task<Idp.DomainService.Oidc.Contracts.DiscoveryMetadata> GetMetadataAsync()
     {
         var tenantId = ResolveTenantId();
         var cacheKey = $"{DiscoveryCachePrefix}{tenantId ?? "_default"}";
@@ -325,11 +325,11 @@ public class DiscoveryService : IDiscoveryService
         var cached = await _cacheClient.CacheDatabase().StringGetAsync(cacheKey);
         if (cached.HasValue)
         {
-            return JsonSerializer.Deserialize<Blocks.Genesis.Auth.DiscoveryMetadata>((string)cached!)!;
+            return JsonSerializer.Deserialize<Idp.DomainService.Oidc.Contracts.DiscoveryMetadata>((string)cached!)!;
         }
 
         var endpoints = ResolveEndpoints(tenantId);
-        var metadata = new Blocks.Genesis.Auth.DiscoveryMetadata
+        var metadata = new Idp.DomainService.Oidc.Contracts.DiscoveryMetadata
         {
             Issuer = endpoints.Issuer,
             AuthorizationEndpoint = endpoints.AuthorizationEndpoint,
@@ -342,7 +342,7 @@ public class DiscoveryService : IDiscoveryService
         return metadata;
     }
 
-    public async Task<Blocks.Genesis.Auth.OAuthAuthorizationServerMetadata> GetAuthorizationServerMetadataAsync()
+    public async Task<Idp.DomainService.Oidc.Contracts.OAuthAuthorizationServerMetadata> GetAuthorizationServerMetadataAsync()
     {
         var tenantId = ResolveTenantId();
         var cacheKey = $"{OAuthCachePrefix}{tenantId ?? "_default"}";
@@ -350,11 +350,11 @@ public class DiscoveryService : IDiscoveryService
         var cached = await _cacheClient.CacheDatabase().StringGetAsync(cacheKey);
         if (cached.HasValue)
         {
-            return JsonSerializer.Deserialize<Blocks.Genesis.Auth.OAuthAuthorizationServerMetadata>((string)cached!)!;
+            return JsonSerializer.Deserialize<Idp.DomainService.Oidc.Contracts.OAuthAuthorizationServerMetadata>((string)cached!)!;
         }
 
         var endpoints = ResolveEndpoints(tenantId);
-        var metadata = new Blocks.Genesis.Auth.OAuthAuthorizationServerMetadata
+        var metadata = new Idp.DomainService.Oidc.Contracts.OAuthAuthorizationServerMetadata
         {
             Issuer = endpoints.Issuer,
             AuthorizationEndpoint = endpoints.AuthorizationEndpoint,
@@ -373,18 +373,26 @@ public class DiscoveryService : IDiscoveryService
         var apiPrefix = ApplicationConfigurations.NormalizeApiRoutePrefixValue(_configuration["ApiRouting:Prefix"]);
         var serviceSegment = ResolveRequiredServiceName(_configuration);
 
+        // Use valid URL for building endpoints
+        var urlBase = issuer;
+        if (!Uri.TryCreate(issuer, UriKind.Absolute, out _))
+        {
+            // If issuer is not a valid URL, use request or configured URL
+            urlBase = GetIssuerFromRequest() ?? GetConfiguredIssuerFallback();
+        }
+
         // Use path-based tenant selector for discovery and endpoint URLs.
         var tenantScopedPrefix = string.IsNullOrWhiteSpace(tenantId)
             ? Array.Empty<string>()
             : [tenantId];
 
         var jwksUri = string.IsNullOrWhiteSpace(tenantId)
-            ? BuildUrl(issuer, ".well-known", "jwks.json")
-            : BuildUrl(issuer, tenantId, ".well-known", "jwks.json");
+            ? BuildUrl(urlBase, ".well-known", "jwks.json")
+            : BuildUrl(urlBase, tenantId, ".well-known", "jwks.json");
 
-        var authorizationEndpoint = BuildUrl(issuer, tenantScopedPrefix.Concat([apiPrefix, serviceSegment, "oidc", "authorize"]).ToArray());
-        var tokenEndpoint = BuildUrl(issuer, tenantScopedPrefix.Concat([apiPrefix, serviceSegment, "oidc", "token"]).ToArray());
-        var userInfoEndpoint = BuildUrl(issuer, tenantScopedPrefix.Concat([apiPrefix, serviceSegment, "auth", "userinfo"]).ToArray());
+        var authorizationEndpoint = BuildUrl(urlBase, tenantScopedPrefix.Concat([apiPrefix, serviceSegment, "oidc", "authorize"]).ToArray());
+        var tokenEndpoint = BuildUrl(urlBase, tenantScopedPrefix.Concat([apiPrefix, serviceSegment, "oidc", "token"]).ToArray());
+        var userInfoEndpoint = BuildUrl(urlBase, tenantScopedPrefix.Concat([apiPrefix, serviceSegment, "auth", "userinfo"]).ToArray());
 
         return new ResolvedOidcEndpoints
         {
@@ -429,8 +437,8 @@ public class DiscoveryService : IDiscoveryService
 
     private string ResolveIssuer(Tenant? tenant)
     {
-        if (!string.IsNullOrWhiteSpace(tenant?.JwtTokenParameters?.Issuer)
-            && Uri.TryCreate(tenant.JwtTokenParameters.Issuer, UriKind.Absolute, out _))
+        // Keep tenant issuer if found
+        if (!string.IsNullOrWhiteSpace(tenant?.JwtTokenParameters?.Issuer))
         {
             return tenant.JwtTokenParameters.Issuer.TrimEnd('/');
         }
@@ -529,18 +537,18 @@ public class JwksService : IJwksService
         _certificateProviderFactory = certificateProviderFactory;
     }
 
-    public async Task<Blocks.Genesis.Auth.JwksResponse> GetKeysAsync()
+    public async Task<Idp.DomainService.Oidc.Contracts.JwksResponse> GetKeysAsync()
     {
         var tenant = ResolveTenant();
         var certificate = tenant == null ? null : await GetPreferredCertificateAsync(tenant);
         if (certificate == null)
         {
             var fallbackParameters = _keyMaterial.Rsa.ExportParameters(false);
-            return new Blocks.Genesis.Auth.JwksResponse
+            return new Idp.DomainService.Oidc.Contracts.JwksResponse
             {
                 Keys =
                 [
-                    new Blocks.Genesis.Auth.JwkKey
+                    new Idp.DomainService.Oidc.Contracts.JwkKey
                     {
                         Kid = _keyMaterial.SecurityKey.KeyId ?? string.Empty,
                         N = Base64UrlEncoder.Encode(fallbackParameters.Modulus),
@@ -557,11 +565,11 @@ public class JwksService : IJwksService
         }
 
         var parameters = rsa.ExportParameters(false);
-        return new Blocks.Genesis.Auth.JwksResponse
+        return new Idp.DomainService.Oidc.Contracts.JwksResponse
         {
             Keys =
             [
-                new Blocks.Genesis.Auth.JwkKey
+                new Idp.DomainService.Oidc.Contracts.JwkKey
                 {
                     Kid = ResolveKeyId(certificate),
                     N = Base64UrlEncoder.Encode(parameters.Modulus),

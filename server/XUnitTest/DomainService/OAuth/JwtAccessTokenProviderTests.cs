@@ -1,6 +1,6 @@
 using Blocks.Genesis;
-using DomainService.Entities;
-using DomainService.OAuth;
+using Authentication.DomainService.Entities;
+using Authentication.DomainService.OAuth;
 using Iam.DomainService.Entities;
 using Iam.DomainService.Shared.Entities;
 using Microsoft.Extensions.Logging;

@@ -1,6 +1,6 @@
-﻿using Blocks.Genesis;
+using Blocks.Genesis;
 
-namespace DomainService.Entities
+namespace Authentication.DomainService.Entities
 {
     public class BlocksClientConfig : BaseEntity
     {

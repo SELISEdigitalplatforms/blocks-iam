@@ -1,7 +1,7 @@
-﻿using FluentValidation;
+using FluentValidation;
 using System.Text.Json;
 
-namespace DomainService.ManagedService.Validator
+namespace Identifier.DomainService.ManagedService.Validator
 {
     public class RegisterServiceRequestValidator : AbstractValidator<RegisterServiceRequest>
     {

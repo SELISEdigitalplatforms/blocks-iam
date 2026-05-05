@@ -1,5 +1,5 @@
-﻿using Blocks.Genesis;
-using DomainService.Entities;
+using Blocks.Genesis;
+using Authentication.DomainService.Entities;
 using Iam.DomainService.Entities;
 using Microsoft.Extensions.Logging;
 using Microsoft.IdentityModel.Tokens;
@@ -10,7 +10,7 @@ using System.Security.Cryptography;
 using System.Security.Cryptography.X509Certificates;
 using System.Text;
 
-namespace DomainService.OAuth
+namespace Authentication.DomainService.OAuth
 {
     public class JwtAccessTokenProvider : IJwtAccessTokenProvider
     {

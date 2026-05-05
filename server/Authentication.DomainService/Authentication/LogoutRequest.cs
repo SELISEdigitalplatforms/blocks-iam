@@ -1,4 +1,4 @@
-﻿namespace DomainService.Authentication
+namespace Authentication.DomainService.Authentication
 {
     public class LogoutRequest
     {

@@ -1,7 +1,7 @@
 using Blocks.Genesis;
 using Cloud.DomainService.Utilities;
-using DomainService.Utilities;
-using DomainService.Shared;
+using Authentication.DomainService.Utilities;
+using Identifier.DomainService.Shared;
 using FluentValidation.AspNetCore;
 using Microsoft.AspNetCore.Http.Features;
 using Microsoft.Extensions.Configuration;

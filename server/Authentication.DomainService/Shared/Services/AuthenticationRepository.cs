@@ -1,12 +1,12 @@
-﻿using Blocks.Genesis;
-using DomainService.Entities;
-using DomainService.RequestModel;
-using DomainService.Shared.RequestModel;
-using DomainService.Shared.ResponseModel;
+using Blocks.Genesis;
+using Authentication.DomainService.Entities;
+using Authentication.DomainService.RequestModel;
+using Authentication.DomainService.Shared.RequestModel;
+using Authentication.DomainService.Shared.ResponseModel;
 using Iam.DomainService.Entities;
 using MongoDB.Driver;
 
-namespace DomainService.Services
+namespace Authentication.DomainService.Services
 {
     public class AuthenticationRepository : IAuthenticationRepository
     {

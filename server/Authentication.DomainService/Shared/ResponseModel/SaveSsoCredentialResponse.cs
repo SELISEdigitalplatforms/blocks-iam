@@ -1,6 +1,6 @@
-﻿using Blocks.Genesis;
+using Blocks.Genesis;
 
-namespace DomainService.ResponseModel
+namespace Authentication.DomainService.ResponseModel
 {
     public class SaveSsoCredentialResponse : BaseResponse
     {

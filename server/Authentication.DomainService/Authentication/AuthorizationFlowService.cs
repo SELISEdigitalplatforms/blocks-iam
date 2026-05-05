@@ -1,14 +1,14 @@
 using Microsoft.AspNetCore.Mvc;
 using Blocks.Genesis;
-using DomainService.Oidc.Repositories;
-using DomainService.Oidc.Validation;
-using Blocks.Genesis.Auth;
-using Blocks.Genesis.Auth.Services;
-using DomainService.OAuth.RequestModel;
-using DomainService.OAuth.ResponseModel;
-using DomainService.OAuth;
-using DomainService.OAuth.Services;
-using DomainService.Utilities;
+using Authentication.DomainService.Oidc.Repositories;
+using Authentication.DomainService.Oidc.Validation;
+using Idp.DomainService.Oidc.Contracts;
+using Idp.DomainService.Oidc.Services;
+using Authentication.DomainService.OAuth.RequestModel;
+using Authentication.DomainService.OAuth.ResponseModel;
+using Authentication.DomainService.OAuth;
+using Authentication.DomainService.OAuth.Services;
+using Authentication.DomainService.Utilities;
 using Iam.DomainService.Users;
 using Iam.DomainService.Entities;
 using System.Security.Claims;
@@ -17,9 +17,9 @@ using System.Text;
 using System.Net.Http.Headers;
 using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.Logging;
-using DomainService.Services;
+using Authentication.DomainService.Services;
 
-namespace DomainService.Authentication
+namespace Authentication.DomainService.Authentication
 {
     public class AuthorizationFlowService : IAuthorizationFlowService
     {

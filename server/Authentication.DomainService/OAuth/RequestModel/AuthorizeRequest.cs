@@ -1,6 +1,6 @@
-﻿using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.Mvc;
 
-namespace DomainService.OAuth.RequestModel
+namespace Authentication.DomainService.OAuth.RequestModel
 {
     public class AuthorizeRequest
     {

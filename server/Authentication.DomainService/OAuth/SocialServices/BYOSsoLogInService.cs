@@ -1,12 +1,12 @@
-﻿using Blocks.Genesis;
-using DomainService.OAuth.RequestModel;
-using DomainService.Services;
+using Blocks.Genesis;
+using Authentication.DomainService.OAuth.RequestModel;
+using Authentication.DomainService.Services;
 using Microsoft.Extensions.Logging;
 using System.Net;
 using System.Security.Claims;
 using System.Text.Json;
 
-namespace DomainService.OAuth
+namespace Authentication.DomainService.OAuth
 {
     public class BYOSsoLogInService : SocialLogInServiceBase
     {

@@ -1,5 +1,5 @@
 using Blocks.Genesis;
-using DomainService.OAuth;
+using Authentication.DomainService.OAuth;
 using Microsoft.Extensions.Logging;
 using Moq;
 

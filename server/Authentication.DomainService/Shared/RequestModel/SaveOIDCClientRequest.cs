@@ -1,7 +1,7 @@
-﻿
+
 using Blocks.Genesis;
 
-namespace DomainService.RequestModel
+namespace Authentication.DomainService.RequestModel
 {
     public class SaveOIDCClientRequest : IProjectKey
     {

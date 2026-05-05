@@ -1,7 +1,7 @@
 ﻿using Blocks.Genesis;
-using DomainService.Dtos;
-using DomainService.Migration;
-using DomainService.Migration.Services;
+using Identifier.DomainService.Dtos;
+using Identifier.DomainService.Migration;
+using Identifier.DomainService.Migration.Services;
 using System;
 using System.Collections.Generic;
 using System.Text;

@@ -3,10 +3,10 @@ using System.Collections.Generic;
 using System.Threading.Tasks;
 using MongoDB.Driver;
 using Blocks.Genesis;
-using Blocks.Genesis.Auth;
+using Idp.DomainService.Oidc.Contracts;
 using Microsoft.Extensions.Logging;
 
-namespace DomainService.Oidc.Repositories
+namespace Authentication.DomainService.Oidc.Repositories
 {
     public class AuthorizationCodeRepository : IAuthorizationCodeRepository
     {

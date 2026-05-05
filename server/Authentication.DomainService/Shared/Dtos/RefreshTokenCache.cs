@@ -1,4 +1,4 @@
-﻿namespace DomainService.Dtos
+namespace Authentication.DomainService.Dtos
 {
     public class RefreshTokenCache
     {

@@ -1,4 +1,4 @@
-using Blocks.Genesis.Auth;
+using Idp.DomainService.Oidc.Contracts;
 using Blocks.Genesis;
 using Microsoft.Extensions.Logging;
 using MongoDB.Driver;
@@ -6,7 +6,7 @@ using System;
 using System.Collections.Generic;
 using System.Threading.Tasks;
 
-namespace DomainService.Oidc.Repositories
+namespace Authentication.DomainService.Oidc.Repositories
 {
     /// <summary>
     /// Token Revocation Repository

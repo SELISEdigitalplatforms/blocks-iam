@@ -1,8 +1,8 @@
-﻿using DomainService.Entities;
-using DomainService.OAuth.RequestModel;
+using Authentication.DomainService.Entities;
+using Authentication.DomainService.OAuth.RequestModel;
 using HandlebarsDotNet;
 
-namespace DomainService.Utilities
+namespace Authentication.DomainService.Utilities
 {
     public static class Helper
     {

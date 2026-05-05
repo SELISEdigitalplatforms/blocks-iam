@@ -3,7 +3,7 @@ using Azure.Security.KeyVault.Secrets;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
 
-namespace DomainService.OAuth
+namespace Authentication.DomainService.OAuth
 {
     public class AzureVaultCertificateProvider : ICertificateProvider
     {

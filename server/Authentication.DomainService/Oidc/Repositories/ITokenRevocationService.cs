@@ -1,9 +1,9 @@
-using Blocks.Genesis.Auth;
+using Idp.DomainService.Oidc.Contracts;
 using System;
 using System.Collections.Generic;
 using System.Threading.Tasks;
 
-namespace DomainService.Oidc.Repositories
+namespace Authentication.DomainService.Oidc.Repositories
 {
     /// <summary>
     /// Token Revocation Service Interface

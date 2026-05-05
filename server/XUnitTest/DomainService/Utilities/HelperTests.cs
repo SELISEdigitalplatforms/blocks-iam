@@ -1,6 +1,6 @@
-using DomainService.Entities;
-using DomainService.OAuth.RequestModel;
-using DomainService.Utilities;
+using Authentication.DomainService.Entities;
+using Authentication.DomainService.OAuth.RequestModel;
+using Authentication.DomainService.Utilities;
 using FluentAssertions;
 using Xunit;
 

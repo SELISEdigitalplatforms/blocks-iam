@@ -1,4 +1,4 @@
-﻿using FluentValidation;
+using FluentValidation;
 using Iam.DomainService.Users;
 using System;
 using System.Collections.Generic;
@@ -6,7 +6,7 @@ using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
 
-namespace DomainService.People
+namespace Identifier.DomainService.People
 {
 
     public class TransferOwnershipRequestValidator : AbstractValidator<TransferOwnershipRequest>

@@ -4,9 +4,9 @@ using System.Collections.Generic;
 using System.IdentityModel.Tokens.Jwt;
 using System.Linq;
 using System.Threading.Tasks;
-using DomainService.Services;
+using Authentication.DomainService.Services;
 
-namespace DomainService.Oidc.Repositories
+namespace Authentication.DomainService.Oidc.Repositories
 {
     /// <summary>
     /// Token Revocation Service Implementation

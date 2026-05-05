@@ -1,8 +1,8 @@
-﻿using Iam.DomainService.Dtos;
+using Iam.DomainService.Dtos;
 using MongoDB.Bson;
 using MongoDB.Bson.Serialization.Attributes;
 
-namespace DomainService.Entities
+namespace Authentication.DomainService.Entities
 {
     [BsonIgnoreExtraElements]
     public class Session : RefreshTokenEvent

@@ -1,4 +1,4 @@
-﻿namespace DomainService.OAuth.RequestModel
+namespace Authentication.DomainService.OAuth.RequestModel
 {
     public record GetSocialLogInEndPointRequest
     {

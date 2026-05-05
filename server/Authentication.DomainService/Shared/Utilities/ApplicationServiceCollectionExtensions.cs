@@ -1,19 +1,19 @@
-﻿using Authentication.DomainService.OAuth.SocialServices;
+using Authentication.DomainService.OAuth.SocialServices;
 using Blocks.Extension.DependencyInjection;
 using Blocks.Genesis;
-using Blocks.Genesis.Auth.Services;
+using Idp.DomainService.Oidc.Services;
 using Captcha.DomainService.Captcha;
 using Captcha.DomainService.Configuration;
 using Captcha.DomainService.Utilities;
-using DomainService.Authentication;
-using DomainService.Oidc.Repositories;
-using DomainService.Oidc.Services;
-using DomainService.Oidc.Validation;
-using DomainService.OAuth;
-using DomainService.OAuth.Services;
-using DomainService.OAuth.SocialServices;
-using DomainService.Services;
-using DomainService.Shared;
+using Authentication.DomainService.Authentication;
+using Authentication.DomainService.Oidc.Repositories;
+using Authentication.DomainService.Oidc.Services;
+using Authentication.DomainService.Oidc.Validation;
+using Authentication.DomainService.OAuth;
+using Authentication.DomainService.OAuth.Services;
+using Authentication.DomainService.OAuth.SocialServices;
+using Authentication.DomainService.Services;
+using Authentication.DomainService.Shared;
 using FluentValidation;
 using Iam.DomainService.Accounts;
 using Iam.DomainService.Activities;
@@ -29,7 +29,7 @@ using Mfa.DomainService.TOTP;
 using Mfa.DomainService.Validators;
 using Microsoft.Extensions.DependencyInjection;
 
-namespace DomainService.Utilities
+namespace Authentication.DomainService.Utilities
 {
     public static class ApplicationServiceCollectionExtensions
     {

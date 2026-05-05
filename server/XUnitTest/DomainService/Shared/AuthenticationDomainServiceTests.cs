@@ -1,9 +1,9 @@
 using Blocks.Genesis;
-using DomainService.Entities;
-using DomainService.RequestModel;
-using DomainService.Services;
-using DomainService.Shared;
-using DomainService.Shared.RequestModel;
+using Authentication.DomainService.Entities;
+using Authentication.DomainService.RequestModel;
+using Authentication.DomainService.Services;
+using Authentication.DomainService.Shared;
+using Authentication.DomainService.Shared.RequestModel;
 using FluentValidation;
 using FluentValidation.Results;
 using Iam.DomainService.Dtos;

@@ -1,15 +1,15 @@
-﻿
+
 using Blocks.Genesis;
 using DeviceDetectorNET.Cache;
-using DomainService.Entities;
-using DomainService.OAuth.RequestModel;
-using DomainService.OAuth.ResponseModel;
-using DomainService.Services;
+using Authentication.DomainService.Entities;
+using Authentication.DomainService.OAuth.RequestModel;
+using Authentication.DomainService.OAuth.ResponseModel;
+using Authentication.DomainService.Services;
 using Iam.DomainService.Entities;
 using Iam.DomainService.Users;
 using System.Text.Json;
 
-namespace DomainService.OAuth.Services
+namespace Authentication.DomainService.OAuth.Services
 {
     public class SSOConsentAuthenticationService : ITokenService
     {

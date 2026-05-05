@@ -1,8 +1,8 @@
-﻿using Microsoft.AspNetCore.Http;
+using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc.Controllers;
 using System.Text;
 
-namespace DomainService.Shared
+namespace Identifier.DomainService.Shared
 {
     public static class IdentifierHelper
     {

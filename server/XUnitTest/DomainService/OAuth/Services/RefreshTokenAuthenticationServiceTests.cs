@@ -1,7 +1,7 @@
 using Blocks.Genesis;
-using DomainService.Entities;
-using DomainService.OAuth;
-using DomainService.OAuth.RequestModel;
+using Authentication.DomainService.Entities;
+using Authentication.DomainService.OAuth;
+using Authentication.DomainService.OAuth.RequestModel;
 using FluentAssertions;
 using Iam.DomainService.Entities;
 using Microsoft.Extensions.Logging;

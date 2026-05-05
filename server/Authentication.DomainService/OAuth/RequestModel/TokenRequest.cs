@@ -1,7 +1,7 @@
-﻿using Iam.DomainService.Entities;
+using Iam.DomainService.Entities;
 using Microsoft.AspNetCore.Http;
 
-namespace DomainService.OAuth.RequestModel
+namespace Authentication.DomainService.OAuth.RequestModel
 {
     public class TokenRequest
     {

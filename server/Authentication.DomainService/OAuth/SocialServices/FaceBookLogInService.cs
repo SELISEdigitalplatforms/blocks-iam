@@ -1,7 +1,7 @@
-﻿using Blocks.Genesis;
-using DomainService.OAuth;
-using DomainService.OAuth.RequestModel;
-using DomainService.Services;
+using Blocks.Genesis;
+using Authentication.DomainService.OAuth;
+using Authentication.DomainService.OAuth.RequestModel;
+using Authentication.DomainService.Services;
 using Microsoft.Extensions.Logging;
 using System.Net;
 

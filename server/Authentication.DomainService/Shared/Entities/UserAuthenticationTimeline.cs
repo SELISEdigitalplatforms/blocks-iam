@@ -1,7 +1,7 @@
-﻿using Blocks.Genesis;
+using Blocks.Genesis;
 using Iam.DomainService.Dtos;
 
-namespace DomainService.Entities
+namespace Authentication.DomainService.Entities
 {
     public class UserAuthenticationTimeline : BaseEntity
     {

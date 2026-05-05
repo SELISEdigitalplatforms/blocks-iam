@@ -3,8 +3,8 @@
 
   <ItemGroup>
     <PackageReference Include="MongoDB.Driver" />
-    <!-- <ProjectReference Include="D:\Selise Work\Back end\github\blocks\blocks-genesis-net\src\Genesis\Blocks.Genesis.csproj" /> -->
-    <ProjectReference Include="K:\Selise_Projects\l0\blocks-genesis-net\src\Genesis\Blocks.Genesis.csproj" />
+    <ProjectReference Include="D:\Selise Work\Back end\github\blocks\blocks-genesis-net\src\Genesis\Blocks.Genesis.csproj" />
+    <!-- <ProjectReference Include="K:\Selise_Projects\l0\blocks-genesis-net\src\Genesis\Blocks.Genesis.csproj" /> -->
   </ItemGroup>
 
 </Project>

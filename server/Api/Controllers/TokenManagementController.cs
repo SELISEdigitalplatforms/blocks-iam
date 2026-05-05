@@ -1,10 +1,11 @@
-using DomainService.Oidc.Repositories;
-using DomainService.Dtos;
-using DomainService.Services;
-using DomainService.Utilities;
+using Authentication.DomainService.Oidc.Repositories;
+using Authentication.DomainService.Dtos;
+using Authentication.DomainService.Services;
+using Authentication.DomainService.Utilities;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using System;
+using System.Linq;
 using System.Threading.Tasks;
 
 namespace Blocks.Api.Controllers

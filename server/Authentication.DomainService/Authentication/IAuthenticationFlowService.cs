@@ -1,10 +1,10 @@
-using DomainService.OAuth.RequestModel;
-using DomainService.OAuth.ResponseModel;
+using Authentication.DomainService.OAuth.RequestModel;
+using Authentication.DomainService.OAuth.ResponseModel;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using System.Security.Claims;
 
-namespace DomainService.Authentication
+namespace Authentication.DomainService.Authentication
 {
     public interface IAuthenticationFlowService
     {

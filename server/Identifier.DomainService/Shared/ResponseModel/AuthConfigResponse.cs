@@ -1,11 +1,11 @@
-﻿using Blocks.Genesis;
+using Blocks.Genesis;
 using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
 
-namespace DomainService.Shared
+namespace Identifier.DomainService.Shared
 {
     public class AuthConfigResponse : BaseResponse
     {

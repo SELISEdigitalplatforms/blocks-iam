@@ -1,4 +1,4 @@
-﻿namespace DomainService.ManagedService.Services
+namespace Identifier.DomainService.ManagedService.Services
 {
     public interface IServiceManagement
     {
