@@ -14,7 +14,7 @@ namespace Authentication.DomainService.Authentication
         string CookieToken(HttpRequest request);
         bool DeleteCookie(HttpRequest request);
         Task<IActionResult> GetLoginOptionsAsync();
-        Task<OIDCClientCredential> GetClientCredentialAsync(string clientId);
+        Task<OidcClientRegistration> GetClientCredentialAsync(string clientId);
         Task<ClaimsPrincipal?> GetPrincipalFromTokenAsync(HttpRequest request, string tenantId, bool IsUserInfoGetRequest = false);
         Task<string> ConstructRedirectUriAsync(string clientId, AcknowledgeRequest request);
     }

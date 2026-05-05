@@ -14,7 +14,7 @@ using System.IdentityModel.Tokens.Jwt;
 namespace Api.Controllers;
 
 [ApiController]
-[Route("api/auth")]
+[Route("auth")]
 public class AuthenticationController : ControllerBase
 {
     private const string IdpSessionCookieName = "idp_session_id";
@@ -65,7 +65,7 @@ public class AuthenticationController : ControllerBase
         return await BuildFlowResult(result);
     }
 
-    [HttpPost("social-login")]
+    [HttpPost("login/social")]
     public async Task<IActionResult> SocialLogin([FromBody] SocialLoginRequest request)
     {
         var result = await _authenticationFlowService.ExecuteSocialLoginAsync(request, Request);
@@ -87,7 +87,7 @@ public class AuthenticationController : ControllerBase
         return await _authenticationFlowService.ExecuteImpersonateAsync(request, User, Request, Response);
     }
 
-    [HttpPost("stop-impersonation")]
+    [HttpPost("impersonation/stop")]
     [Authorize]
     public async Task<IActionResult> StopImpersonation()
     {

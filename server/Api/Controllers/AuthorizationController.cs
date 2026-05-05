@@ -5,7 +5,7 @@ using System.Text.Json.Serialization;
 namespace Blocks.Api.Controllers
 {
     [ApiController]
-    [Route("api/oidc")]
+    [Route("oidc")]
     public class AuthorizationController : ControllerBase
     {
         private readonly IAuthorizationFlowService _authorizationFlowService;
@@ -48,7 +48,7 @@ namespace Blocks.Api.Controllers
                 Response);
         }
 
-        [HttpPost("select-account")]
+        [HttpPost("account/select")]
         public async Task<IActionResult> SelectAccount([FromBody] SelectAccountSelectionRequest? request)
         {
             return await _authorizationFlowService.SelectAccountAsync(request?.UserId ?? string.Empty, request?.TenantId, Request, Response);

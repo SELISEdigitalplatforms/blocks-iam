@@ -25,7 +25,7 @@ namespace XUnitTest.DomainService.Utilities
                 ClientId = "client-123",
                 RedirectUri = "https://example.com/callback"
             };
-            var clientCredential = new OIDCClientCredential
+            var clientCredential = new OidcClientRegistration
             {
                 ItemId = "client-123",
                 RedirectUri = "https://example.com/callback",
@@ -71,7 +71,7 @@ namespace XUnitTest.DomainService.Utilities
                 ClientId = "client-456",
                 RedirectUri = "https://app.example.com/callback"
             };
-            var clientCredential = new OIDCClientCredential
+            var clientCredential = new OidcClientRegistration
             {
                 ItemId = "client-456",
                 RedirectUri = "https://app.example.com/callback",
@@ -108,7 +108,7 @@ namespace XUnitTest.DomainService.Utilities
                 State = "test-state",
                 ClientId = "client-123"
             };
-            var clientCredential = new OIDCClientCredential
+            var clientCredential = new OidcClientRegistration
             {
                 ItemId = "client-123",
                 RedirectUri = null,
@@ -136,7 +136,7 @@ namespace XUnitTest.DomainService.Utilities
                 State = "test-state",
                 ClientId = "client-123"
             };
-            var clientCredential = new OIDCClientCredential
+            var clientCredential = new OidcClientRegistration
             {
                 ItemId = "client-123",
                 RedirectUri = "https://example.com/callback",
@@ -165,7 +165,7 @@ namespace XUnitTest.DomainService.Utilities
                 Nonce = null,
                 ClientId = "client-123"
             };
-            var clientCredential = new OIDCClientCredential
+            var clientCredential = new OidcClientRegistration
             {
                 ItemId = "client-123",
                 RedirectUri = "https://example.com/callback",
@@ -212,7 +212,7 @@ namespace XUnitTest.DomainService.Utilities
                 Nonce = "random-nonce",
                 ClientId = "web-client-1"
             };
-            var clientCredential = new OIDCClientCredential
+            var clientCredential = new OidcClientRegistration
             {
                 ItemId = "web-client-1",
                 RedirectUri = "https://webapp.example.com/callback",
@@ -243,7 +243,7 @@ namespace XUnitTest.DomainService.Utilities
             {
                 ClientId = "client-123"
             };
-            var clientCredential = new OIDCClientCredential
+            var clientCredential = new OidcClientRegistration
             {
                 ItemId = "client-123"
             };
@@ -270,7 +270,7 @@ namespace XUnitTest.DomainService.Utilities
                 RedirectUri = "https://example.com/callback",
                 Scope = "openid"
             };
-            OIDCClientCredential clientCredential = null;
+            OidcClientRegistration clientCredential = null;
 
             // Act
             var result = Helper.GetAuthorizationError(errorPageUri, request, clientCredential);
@@ -293,7 +293,7 @@ namespace XUnitTest.DomainService.Utilities
                 RedirectUri = "https://wrong.example.com/callback",
                 Scope = "openid"
             };
-            var clientCredential = new OIDCClientCredential
+            var clientCredential = new OidcClientRegistration
             {
                 ItemId = "client-123",
                 RedirectUri = "https://correct.example.com/callback",
@@ -321,7 +321,7 @@ namespace XUnitTest.DomainService.Utilities
                 RedirectUri = "https://example.com/callback",
                 Scope = "openid profile email"
             };
-            var clientCredential = new OIDCClientCredential
+            var clientCredential = new OidcClientRegistration
             {
                 ItemId = "client-123",
                 RedirectUri = "https://example.com/callback",
@@ -349,7 +349,7 @@ namespace XUnitTest.DomainService.Utilities
                 RedirectUri = "https://example.com/callback",
                 Scope = "openid profile"
             };
-            var clientCredential = new OIDCClientCredential
+            var clientCredential = new OidcClientRegistration
             {
                 ItemId = "client-123",
                 RedirectUri = "https://example.com/callback",
@@ -375,7 +375,7 @@ namespace XUnitTest.DomainService.Utilities
                 RedirectUri = null,
                 Scope = "openid"
             };
-            var clientCredential = new OIDCClientCredential
+            var clientCredential = new OidcClientRegistration
             {
                 ItemId = "client-123",
                 RedirectUri = "https://example.com/callback",
@@ -401,7 +401,7 @@ namespace XUnitTest.DomainService.Utilities
                 RedirectUri = "https://example.com/callback",
                 Scope = null
             };
-            var clientCredential = new OIDCClientCredential
+            var clientCredential = new OidcClientRegistration
             {
                 ItemId = "client-123",
                 RedirectUri = "https://example.com/callback",
@@ -427,7 +427,7 @@ namespace XUnitTest.DomainService.Utilities
                 RedirectUri = "https://wrong.example.com/callback",
                 Scope = "wrong-scope"
             };
-            OIDCClientCredential clientCredential = null;
+            OidcClientRegistration clientCredential = null;
 
             // Act
             var result = Helper.GetAuthorizationError(errorPageUri, request, clientCredential);
@@ -449,7 +449,7 @@ namespace XUnitTest.DomainService.Utilities
                 RedirectUri = "https://wrong.example.com/callback",
                 Scope = "wrong-scope"
             };
-            var clientCredential = new OIDCClientCredential
+            var clientCredential = new OidcClientRegistration
             {
                 ItemId = "client-123",
                 RedirectUri = "https://correct.example.com/callback",
@@ -475,7 +475,7 @@ namespace XUnitTest.DomainService.Utilities
                 RedirectUri = "https://example.com/callback",
                 Scope = "openid"
             };
-            OIDCClientCredential clientCredential = null;
+            OidcClientRegistration clientCredential = null;
 
             // Act
             var result = Helper.GetAuthorizationError(errorPageUri, request, clientCredential);
@@ -495,7 +495,7 @@ namespace XUnitTest.DomainService.Utilities
                 RedirectUri = null,
                 Scope = null
             };
-            var clientCredential = new OIDCClientCredential
+            var clientCredential = new OidcClientRegistration
             {
                 ItemId = "client-123",
                 RedirectUri = null,

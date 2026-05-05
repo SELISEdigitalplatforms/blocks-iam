@@ -757,7 +757,7 @@ namespace Authentication.DomainService.Authentication
                 return false;
             }
 
-            var oidcClient = await _authenticationRepository.GetOIDCClientCredentialAsync(clientId);
+            var oidcClient = await _authenticationRepository.GetOidcClientRegistrationAsync(clientId);
             return oidcClient != null;
         }
 

@@ -35,11 +35,13 @@ export const AUTH_CLIENT_ENDPOINTS = {
 
 // ─── OIDC client endpoints (auth-clients-oidc.service) ──────────────────────
 
+const OIDC_CLIENTS_SUBPATH = "/oidc-clients";
+
 export const AUTH_OIDC_ENDPOINTS = {
-  GET_OIDC_CLIENTS: `${API_BASES.IDP}${AUTH_SUBPATH}/GetOIDCClients`,
-  GET_OIDC_CLIENT: `${API_BASES.IDP}${AUTH_SUBPATH}/GetOIDCClient`,
-  SAVE_OIDC_CLIENT: `${API_BASES.IDP}${AUTH_SUBPATH}/SaveOIDCClient`,
-  DELETE_OIDC_CLIENT: `${API_BASES.IDP}${AUTH_SUBPATH}/DeleteOIDCClient`,
+  GET_OIDC_CLIENTS: `${API_BASES.IDP}${OIDC_CLIENTS_SUBPATH}`,
+  GET_OIDC_CLIENT: `${API_BASES.IDP}${OIDC_CLIENTS_SUBPATH}`,   // append /{clientId} at call site
+  SAVE_OIDC_CLIENT: `${API_BASES.IDP}${OIDC_CLIENTS_SUBPATH}`,
+  DELETE_OIDC_CLIENT: `${API_BASES.IDP}${OIDC_CLIENTS_SUBPATH}`, // append /{clientId} at call site
 } as const;
 
 // ─── Auth configuration endpoints (auth-config.service) ─────────────────────

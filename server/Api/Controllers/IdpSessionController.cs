@@ -16,7 +16,7 @@ namespace Blocks.Api.Controllers
     /// Phase 5: IdP Session & Multi-Account SSO
     /// </summary>
     [ApiController]
-    [Route("api/oidc/session")]
+    [Route("oidc/session")]
     [Authorize(AuthenticationSchemes = "Bearer")]
     public class IdpSessionController : ControllerBase
     {
@@ -35,7 +35,7 @@ namespace Blocks.Api.Controllers
 
         /// <summary>
         /// Get current session details
-        /// GET /api/oidc/session
+        /// GET /oidc/session
         /// </summary>
         [HttpGet]
         [ProducesResponseType(typeof(GetSessionResponse), 200)]
@@ -93,7 +93,7 @@ namespace Blocks.Api.Controllers
 
         /// <summary>
         /// Get all accounts in current session
-        /// GET /api/oidc/session/accounts
+        /// GET /oidc/session/accounts
         /// Supports multi-account SSO - user can see all accounts logged in this session
         /// </summary>
         [HttpGet("accounts")]
@@ -143,7 +143,7 @@ namespace Blocks.Api.Controllers
         /// Allows user to authenticate with another account and add to same session
         /// OIDC multi-account SSO support
         /// </summary>
-        [HttpPost("add-account")]
+        [HttpPost("account/add")]
         [ProducesResponseType(typeof(AddAccountResponse), 200)]
         [ProducesResponseType(400)]
         [ProducesResponseType(401)]
@@ -189,7 +189,7 @@ namespace Blocks.Api.Controllers
         /// For multi-account SSO, switches context to different account
         /// CSRF protection required
         /// </summary>
-        [HttpPost("select-account")]
+        [HttpPost("account/select")]
         [ProducesResponseType(typeof(SelectAccountResponse), 200)]
         [ProducesResponseType(400)]
         [ProducesResponseType(401)]

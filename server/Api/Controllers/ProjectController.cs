@@ -7,7 +7,7 @@ using Microsoft.AspNetCore.Mvc;
 namespace Api.Controllers
 {
     [ApiController]
-    [Route("[controller]/[action]")]
+    [Route("project")]
 
     public class ProjectController : ControllerBase
     {
@@ -19,15 +19,15 @@ namespace Api.Controllers
         }
 
 
-        [HttpGet]
+        [HttpGet("list")]
         [ProtectedEndPoint]
-        public async Task<List<GroupedProjectsDto>> Gets([FromQuery] GetProjectsRequest request)
+        public async Task<List<GroupedProjectsDto>> GetAll([FromQuery] GetProjectsRequest request)
         {
             return await _projectManagementService.GetAllAsync(request);
         }
 
         [ProtectedEndPoint]
-        [HttpGet]
+        [HttpGet("details")]
         public async Task<GetProjectResponse> Get([FromQuery] string projectId)
         {
             if (string.IsNullOrWhiteSpace(projectId))

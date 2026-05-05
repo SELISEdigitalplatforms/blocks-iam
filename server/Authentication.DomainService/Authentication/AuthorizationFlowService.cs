@@ -725,14 +725,13 @@ namespace Authentication.DomainService.Authentication
                     .ToList();
             }
 
-            var tenantOidcClient = await _authenticationRepository.GetOIDCClientCredentialAsync(client.ClientId);
-            if (tenantOidcClient == null || string.IsNullOrWhiteSpace(tenantOidcClient.Scope))
+            var tenantOidcClient = await _authenticationRepository.GetOidcClientRegistrationAsync(client.ClientId);
+            if (tenantOidcClient == null || tenantOidcClient.AllowedScopes.Count == 0)
             {
                 return [];
             }
 
-            return tenantOidcClient.Scope
-                .Split([' ', ','], StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+            return tenantOidcClient.AllowedScopes
                 .Where(scope => !string.IsNullOrWhiteSpace(scope))
                 .Distinct(StringComparer.OrdinalIgnoreCase)
                 .ToList();
@@ -1012,7 +1011,7 @@ namespace Authentication.DomainService.Authentication
                 return false;
             }
 
-            var oidcClient = await _authenticationRepository.GetOIDCClientCredentialAsync(clientId);
+            var oidcClient = await _authenticationRepository.GetOidcClientRegistrationAsync(clientId);
             return oidcClient != null;
         }
 

@@ -807,19 +807,19 @@ namespace XUnitTest.DomainService.Shared
 
         #endregion
 
-        #region GetOIDCClientCredentialAsync
+        #region GetOidcClientRegistrationAsync
 
         [Fact]
-        public async Task GetOIDCClientCredentialAsync_WithValidClientId_ReturnsCredential()
+        public async Task GetOidcClientRegistrationAsync_WithValidClientId_ReturnsCredential()
         {
             // Arrange
             var clientId = "client-123";
-            var expectedCredential = new OIDCClientCredential 
+            var expectedCredential = new OidcClientRegistration 
             { 
                 ItemId = clientId 
             };
-            var mockCollection = new Mock<IMongoCollection<OIDCClientCredential>>();
-            var mockCursor = new Mock<IAsyncCursor<OIDCClientCredential>>();
+            var mockCollection = new Mock<IMongoCollection<OidcClientRegistration>>();
+            var mockCursor = new Mock<IAsyncCursor<OidcClientRegistration>>();
 
             mockCursor.Setup(x => x.Current).Returns(new[] { expectedCredential });
             mockCursor.SetupSequence(x => x.MoveNextAsync(It.IsAny<CancellationToken>()))
@@ -827,16 +827,16 @@ namespace XUnitTest.DomainService.Shared
                 .ReturnsAsync(false);
 
             mockCollection.Setup(x => x.FindAsync(
-                It.IsAny<FilterDefinition<OIDCClientCredential>>(),
-                It.IsAny<FindOptions<OIDCClientCredential>>(),
+                It.IsAny<FilterDefinition<OidcClientRegistration>>(),
+                It.IsAny<FindOptions<OidcClientRegistration>>(),
                 It.IsAny<CancellationToken>()))
                 .ReturnsAsync(mockCursor.Object);
 
-            _dbContextProvider.Setup(x => x.GetCollection<OIDCClientCredential>("OIDCClientCredentials"))
+            _dbContextProvider.Setup(x => x.GetCollection<OidcClientRegistration>("OidcClientRegistrations"))
                 .Returns(mockCollection.Object);
 
             // Act
-            var result = await _repository.GetOIDCClientCredentialAsync(clientId);
+            var result = await _repository.GetOidcClientRegistrationAsync(clientId);
 
             // Assert
             result.Should().NotBeNull();
@@ -845,35 +845,35 @@ namespace XUnitTest.DomainService.Shared
 
         #endregion
 
-        #region SaveOIDCClientCredentialAsync
+        #region SaveOidcClientRegistrationAsync
 
         [Fact]
-        public async Task SaveOIDCClientCredentialAsync_WithValidCredential_SavesSuccessfully()
+        public async Task SaveOidcClientRegistrationAsync_WithValidCredential_SavesSuccessfully()
         {
             // Arrange
-            var credential = new OIDCClientCredential 
+            var credential = new OidcClientRegistration 
             { 
                 ItemId = "client-1" 
             };
-            var mockCollection = new Mock<IMongoCollection<OIDCClientCredential>>();
+            var mockCollection = new Mock<IMongoCollection<OidcClientRegistration>>();
             var replaceResult = new ReplaceOneResult.Acknowledged(1, 1, null);
 
             mockCollection.Setup(x => x.ReplaceOneAsync(
-                It.IsAny<FilterDefinition<OIDCClientCredential>>(),
+                It.IsAny<FilterDefinition<OidcClientRegistration>>(),
                 credential,
                 It.IsAny<ReplaceOptions>(),
                 It.IsAny<CancellationToken>()))
                 .ReturnsAsync(replaceResult);
 
-            _dbContextProvider.Setup(x => x.GetCollection<OIDCClientCredential>("OIDCClientCredentials"))
+            _dbContextProvider.Setup(x => x.GetCollection<OidcClientRegistration>("OidcClientRegistrations"))
                 .Returns(mockCollection.Object);
 
             // Act
-            await _repository.SaveOIDCClientCredentialAsync(credential);
+            await _repository.SaveOidcClientRegistrationAsync(credential);
 
             // Assert
             mockCollection.Verify(x => x.ReplaceOneAsync(
-                It.IsAny<FilterDefinition<OIDCClientCredential>>(),
+                It.IsAny<FilterDefinition<OidcClientRegistration>>(),
                 credential,
                 It.IsAny<ReplaceOptions>(),
                 It.IsAny<CancellationToken>()), Times.Once);
@@ -888,12 +888,12 @@ namespace XUnitTest.DomainService.Shared
         {
             // Arrange
             var itemId = "oidc-123";
-            var expectedCredential = new OIDCClientCredential 
+            var expectedCredential = new OidcClientRegistration 
             { 
                 ItemId = itemId 
             };
-            var mockCollection = new Mock<IMongoCollection<OIDCClientCredential>>();
-            var mockCursor = new Mock<IAsyncCursor<OIDCClientCredential>>();
+            var mockCollection = new Mock<IMongoCollection<OidcClientRegistration>>();
+            var mockCursor = new Mock<IAsyncCursor<OidcClientRegistration>>();
 
             mockCursor.Setup(x => x.Current).Returns(new[] { expectedCredential });
             mockCursor.SetupSequence(x => x.MoveNextAsync(It.IsAny<CancellationToken>()))
@@ -901,12 +901,12 @@ namespace XUnitTest.DomainService.Shared
                 .ReturnsAsync(false);
 
             mockCollection.Setup(x => x.FindAsync(
-                It.IsAny<FilterDefinition<OIDCClientCredential>>(),
-                It.IsAny<FindOptions<OIDCClientCredential>>(),
+                It.IsAny<FilterDefinition<OidcClientRegistration>>(),
+                It.IsAny<FindOptions<OidcClientRegistration>>(),
                 It.IsAny<CancellationToken>()))
                 .ReturnsAsync(mockCursor.Object);
 
-            _dbContextProvider.Setup(x => x.GetCollection<OIDCClientCredential>("OIDCClientCredentials"))
+            _dbContextProvider.Setup(x => x.GetCollection<OidcClientRegistration>("OidcClientRegistrations"))
                 .Returns(mockCollection.Object);
 
             // Act
@@ -925,13 +925,13 @@ namespace XUnitTest.DomainService.Shared
         public async Task GetOIDCCredentialsByTenantAsync_ReturnsAllCredentials()
         {
             // Arrange
-            var expectedCredentials = new List<OIDCClientCredential>
+            var expectedCredentials = new List<OidcClientRegistration>
             {
-                new OIDCClientCredential { ItemId = "oidc-1" },
-                new OIDCClientCredential { ItemId = "oidc-2" }
+                new OidcClientRegistration { ItemId = "oidc-1" },
+                new OidcClientRegistration { ItemId = "oidc-2" }
             };
-            var mockCollection = new Mock<IMongoCollection<OIDCClientCredential>>();
-            var mockCursor = new Mock<IAsyncCursor<OIDCClientCredential>>();
+            var mockCollection = new Mock<IMongoCollection<OidcClientRegistration>>();
+            var mockCursor = new Mock<IAsyncCursor<OidcClientRegistration>>();
 
             mockCursor.Setup(x => x.Current).Returns(expectedCredentials);
             mockCursor.SetupSequence(x => x.MoveNextAsync(It.IsAny<CancellationToken>()))
@@ -939,12 +939,12 @@ namespace XUnitTest.DomainService.Shared
                 .ReturnsAsync(false);
 
             mockCollection.Setup(x => x.FindAsync(
-                It.IsAny<FilterDefinition<OIDCClientCredential>>(),
-                It.IsAny<FindOptions<OIDCClientCredential>>(),
+                It.IsAny<FilterDefinition<OidcClientRegistration>>(),
+                It.IsAny<FindOptions<OidcClientRegistration>>(),
                 It.IsAny<CancellationToken>()))
                 .ReturnsAsync(mockCursor.Object);
 
-            _dbContextProvider.Setup(x => x.GetCollection<OIDCClientCredential>("OIDCClientCredentials"))
+            _dbContextProvider.Setup(x => x.GetCollection<OidcClientRegistration>("OidcClientRegistrations"))
                 .Returns(mockCollection.Object);
 
             // Act
@@ -964,15 +964,15 @@ namespace XUnitTest.DomainService.Shared
         {
             // Arrange
             var request = new DeleteOIDCClientRequest { ItemId = "oidc-123" };
-            var mockCollection = new Mock<IMongoCollection<OIDCClientCredential>>();
+            var mockCollection = new Mock<IMongoCollection<OidcClientRegistration>>();
             var deleteResult = new DeleteResult.Acknowledged(1);
 
             mockCollection.Setup(x => x.DeleteOneAsync(
-                It.IsAny<FilterDefinition<OIDCClientCredential>>(),
+                It.IsAny<FilterDefinition<OidcClientRegistration>>(),
                 It.IsAny<CancellationToken>()))
                 .ReturnsAsync(deleteResult);
 
-            _dbContextProvider.Setup(x => x.GetCollection<OIDCClientCredential>("OIDCClientCredentials"))
+            _dbContextProvider.Setup(x => x.GetCollection<OidcClientRegistration>("OidcClientRegistrations"))
                 .Returns(mockCollection.Object);
 
             // Act
@@ -980,7 +980,7 @@ namespace XUnitTest.DomainService.Shared
 
             // Assert
             mockCollection.Verify(x => x.DeleteOneAsync(
-                It.IsAny<FilterDefinition<OIDCClientCredential>>(),
+                It.IsAny<FilterDefinition<OidcClientRegistration>>(),
                 It.IsAny<CancellationToken>()), Times.Once);
         }
 

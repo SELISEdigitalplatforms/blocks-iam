@@ -37,10 +37,10 @@ namespace Authentication.DomainService.Services
         Task<List<SocialLoginCredential>> GetSocialLoginCredentialsAsync();
         Task<AuthenticationConfiguration> GetAuthenticationConfigurationAsync();
         Task UpdateAuthenticationConfigurationAsync(AuthenticationConfiguration authenticationConfiguration);
-        Task<OIDCClientCredential> GetOIDCClientCredentialAsync(string clientId);
-        Task<List<OIDCClientCredential>> GetOIDCCredentialsByTenantAsync();
-        Task SaveOIDCClientCredentialAsync(OIDCClientCredential credential);
-        Task<OIDCClientCredential> GetOIDCCredentialByIdAsync(string tenantId);
+        Task<OidcClientRegistration> GetOidcClientRegistrationAsync(string clientId);
+        Task<List<OidcClientRegistration>> GetOIDCCredentialsByTenantAsync();
+        Task SaveOidcClientRegistrationAsync(OidcClientRegistration credential);
+        Task<OidcClientRegistration> GetOIDCCredentialByIdAsync(string tenantId);
         Task DeleteOidcCliantAsync(DeleteOIDCClientRequest request);
         Task<BiometricCredential> AuthenticateBiometricCredentialAsync(string biometricId, string biometricKey);
         Task<ClientCredential> GetClientCredentialByIdAsync(string clientId);
