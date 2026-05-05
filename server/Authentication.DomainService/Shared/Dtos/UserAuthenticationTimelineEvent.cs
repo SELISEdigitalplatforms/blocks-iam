@@ -1,6 +1,6 @@
-﻿using Iam.DomainService.Dtos;
+using Iam.DomainService.Dtos;
 
-namespace DomainService.Dtos
+namespace Authentication.DomainService.Dtos
 {
     public class UserAuthenticationTimelineEvent
     {

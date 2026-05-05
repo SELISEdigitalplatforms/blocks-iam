@@ -2,7 +2,7 @@ using System.IdentityModel.Tokens.Jwt;
 using System.Text.Json.Serialization;
 using Microsoft.IdentityModel.Tokens;
 
-namespace Blocks.Genesis.Auth;
+namespace Idp.DomainService.Oidc.Contracts;
 
 public class OidcClaims
 {

@@ -1,7 +1,7 @@
-﻿using DomainService.Shared;
+using Identifier.DomainService.Shared;
 using FluentValidation;
 
-namespace DomainService.Projects
+namespace Identifier.DomainService.Projects
 {
     public class CreateProjectRequestValidator : AbstractValidator<CreateProjectRequest>
     {

@@ -1,23 +1,24 @@
-﻿using Blocks.Extension.DependencyInjection;
-using DomainService.Certificate;
-using DomainService.ManagedService;
-using DomainService.ManagedService.Services;
-using DomainService.ManagedService.Validator;
-using DomainService.Migration;
-using DomainService.Migration.Services;
-using DomainService.People;
-using DomainService.Projects;
-using DomainService.Shared.Services;
-using DomainService.Shared.Utilities;
-using DomainService.Storage;
-using DomainService.Subscription.Services;
+using Blocks.Extension.DependencyInjection;
+using Identifier.DomainService.Certificate;
+using Identifier.DomainService.ManagedService;
+using Identifier.DomainService.ManagedService.Services;
+using Identifier.DomainService.ManagedService.Validator;
+using Identifier.DomainService.Migration;
+using Identifier.DomainService.Migration.Services;
+using Identifier.DomainService.People;
+using Identifier.DomainService.Projects;
+using Identifier.DomainService.Shared.Services;
+using Identifier.DomainService.Shared.Utilities;
+using Identifier.DomainService.Subscription.Services;
 using FluentValidation;
 using Microsoft.Extensions.DependencyInjection;
 using Storage.DomainService.Shared.Services;
+using DomainService.Storage;
+using DomainService.Storage.Validators;
 using Storage.DomainService.Storage;
 using Storage.DomainService.Storage.Validators;
 
-namespace DomainService.Shared
+namespace Identifier.DomainService.Shared
 {
     public static class ApplicationServiceCollectionExtensions
     {

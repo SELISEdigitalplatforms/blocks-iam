@@ -1,22 +1,22 @@
-﻿using Blocks.Genesis;
+using Blocks.Genesis;
 using DeviceDetectorNET;
-using DomainService.Dtos;
-using DomainService.Entities;
-using DomainService.RequestModel;
-using DomainService.ResponseModel;
-using DomainService.Shared;
+using Authentication.DomainService.Dtos;
+using Authentication.DomainService.Entities;
+using Authentication.DomainService.RequestModel;
+using Authentication.DomainService.ResponseModel;
+using Authentication.DomainService.Shared;
 using Iam.DomainService.Users;
 using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.Configuration;
 using Microsoft.IdentityModel.Protocols.OpenIdConnect;
 using System.Text.Json;
-using DomainService.Shared.ResponseModel;
+using Authentication.DomainService.Shared.ResponseModel;
 using FluentValidation;
-using DomainService.Shared.RequestModel;
+using Authentication.DomainService.Shared.RequestModel;
 using Iam.DomainService.Dtos;
 
 
-namespace DomainService.Services
+namespace Authentication.DomainService.Services
 {
     public class AuthenticationDomainService : IAuthenticationDomainService
     {

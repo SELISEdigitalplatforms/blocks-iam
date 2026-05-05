@@ -1,5 +1,5 @@
 using Blocks.Genesis;
-using DomainService.Utilities;
+using Authentication.DomainService.Utilities;
 using FluentAssertions;
 using Xunit;
 

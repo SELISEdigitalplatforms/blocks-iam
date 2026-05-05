@@ -1,8 +1,8 @@
-﻿using Blocks.Genesis;
-using DomainService.Shared;
+using Blocks.Genesis;
+using Authentication.DomainService.Shared;
 using MongoDB.Bson.Serialization.Attributes;
 
-namespace DomainService.Entities
+namespace Authentication.DomainService.Entities
 {
     [BsonIgnoreExtraElements]
     public class SocialLoginCredential : BaseEntity

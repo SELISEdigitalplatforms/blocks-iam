@@ -1,6 +1,6 @@
-﻿using Iam.DomainService.Entities;
+using Iam.DomainService.Entities;
 
-namespace DomainService.OAuth.ResponseModel
+namespace Authentication.DomainService.OAuth.ResponseModel
 {
     public class TokenResponse
     {

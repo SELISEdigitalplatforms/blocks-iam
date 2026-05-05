@@ -1,6 +1,6 @@
 using Blocks.Genesis;
-using DomainService.Dtos;
-using DomainService.Projects;
+using Identifier.DomainService.Dtos;
+using Identifier.DomainService.Projects;
 using Microsoft.AspNetCore.Mvc;
 
 

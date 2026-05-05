@@ -1,6 +1,6 @@
 ﻿using Blocks.Genesis;
-using DomainService.Dtos;
-using DomainService.Migration;
+using Identifier.DomainService.Dtos;
+using Identifier.DomainService.Migration;
 using System;
 using System.Collections.Generic;
 using System.Text;

@@ -1,12 +1,12 @@
-using Blocks.Genesis.Auth;
-using DomainService.Oidc.Repositories;
+using Idp.DomainService.Oidc.Contracts;
+using Authentication.DomainService.Oidc.Repositories;
 using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
 using Microsoft.Extensions.Logging;
 
-namespace DomainService.Oidc.Services
+namespace Authentication.DomainService.Oidc.Services
 {
     /// <summary>
     /// IdP Session Service

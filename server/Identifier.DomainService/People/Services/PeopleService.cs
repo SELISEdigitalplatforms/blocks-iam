@@ -1,8 +1,8 @@
-﻿using Blocks.Genesis;
-using DomainService.Dtos;
-using DomainService.Entities;
-using DomainService.Projects;
-using DomainService.Shared;
+using Blocks.Genesis;
+using Identifier.DomainService.Dtos;
+using Identifier.DomainService.Entities;
+using Identifier.DomainService.Projects;
+using Identifier.DomainService.Shared;
 using FluentValidation;
 using Iam.DomainService.Entities;
 using Iam.DomainService.Users;
@@ -11,7 +11,7 @@ using Microsoft.Extensions.Logging;
 using MongoDB.Driver;
 using System.Text.Json;
 
-namespace DomainService.People
+namespace Identifier.DomainService.People
 {
     /// <summary>
     /// Service for managing people and project invitations

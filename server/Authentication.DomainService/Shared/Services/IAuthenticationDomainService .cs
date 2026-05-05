@@ -1,14 +1,14 @@
-﻿using Blocks.Genesis;
-using DomainService.Entities;
-using DomainService.RequestModel;
-using DomainService.Shared;
-using DomainService.ResponseModel;
+using Blocks.Genesis;
+using Authentication.DomainService.Entities;
+using Authentication.DomainService.RequestModel;
+using Authentication.DomainService.Shared;
+using Authentication.DomainService.ResponseModel;
 using Microsoft.AspNetCore.Http;
-using DomainService.Shared.ResponseModel;
-using DomainService.Shared.RequestModel;
+using Authentication.DomainService.Shared.ResponseModel;
+using Authentication.DomainService.Shared.RequestModel;
 using Iam.DomainService.Dtos;
 
-namespace DomainService.Services
+namespace Authentication.DomainService.Services
 {
     public interface IAuthenticationDomainService
     {

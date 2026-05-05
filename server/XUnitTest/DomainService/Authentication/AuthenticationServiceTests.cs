@@ -1,10 +1,10 @@
 using Blocks.Genesis;
-using DomainService.Authentication;
-using DomainService.Dtos;
-using DomainService.Entities;
-using DomainService.Services;
-using DomainService.Shared.RequestModel;
-using DomainService.Utilities;
+using Authentication.DomainService.Authentication;
+using Authentication.DomainService.Dtos;
+using Authentication.DomainService.Entities;
+using Authentication.DomainService.Services;
+using Authentication.DomainService.Shared.RequestModel;
+using Authentication.DomainService.Utilities;
 using FluentAssertions;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;

@@ -1,9 +1,9 @@
-using DomainService.OAuth.RequestModel;
+using Authentication.DomainService.OAuth.RequestModel;
 using System;
 using System.Collections.Generic;
 using System.Linq;
 
-namespace DomainService.Oidc.Validation
+namespace Authentication.DomainService.Oidc.Validation
 {
     public class AuthorizeRequestValidator
     {

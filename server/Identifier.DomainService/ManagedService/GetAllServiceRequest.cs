@@ -1,7 +1,7 @@
-﻿using Blocks.Genesis;
-using DomainService.Shared.Entities;
+using Blocks.Genesis;
+using Identifier.DomainService.Shared.Entities;
 
-namespace DomainService.ManagedService
+namespace Identifier.DomainService.ManagedService
 {
     public class GetAllServiceRequest : BaseGetsRequest<GetAllServiceFilter>, IProjectKey
     {

@@ -1,8 +1,8 @@
-﻿using Blocks.Genesis;
-using DomainService.Entities;
+using Blocks.Genesis;
+using Authentication.DomainService.Entities;
 using Iam.DomainService.Entities;
 
-namespace DomainService.OAuth
+namespace Authentication.DomainService.OAuth
 {
     public interface IJwtAccessTokenProvider
     {

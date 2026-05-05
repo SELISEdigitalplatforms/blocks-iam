@@ -1,12 +1,12 @@
-﻿using Blocks.Genesis;
-using DomainService.Entities;
-using DomainService.Services;
+using Blocks.Genesis;
+using Authentication.DomainService.Entities;
+using Authentication.DomainService.Services;
 using Iam.DomainService.Dtos;
 using Iam.DomainService.Users;
 using Microsoft.Extensions.Logging;
 using System.Text.Json;
 
-namespace DomainService.Worker
+namespace Authentication.DomainService.Worker
 {
     public class RefreshTokenWorkerService : IConsumer<RefreshTokenEvent>
     {

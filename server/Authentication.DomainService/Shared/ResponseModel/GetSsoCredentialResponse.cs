@@ -1,8 +1,8 @@
-﻿using Blocks.Genesis;
+using Blocks.Genesis;
 using Iam.DomainService.Dtos;
 using MongoDB.Bson.Serialization.Attributes;
 
-namespace DomainService.ResponseModel
+namespace Authentication.DomainService.ResponseModel
 {
     [BsonIgnoreExtraElements]
     public class GetSsoCredentialResponse : BaseEntity

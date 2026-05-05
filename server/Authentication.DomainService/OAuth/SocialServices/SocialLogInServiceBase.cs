@@ -1,7 +1,7 @@
 using Azure;
 using Blocks.Genesis;
-using DomainService.OAuth.RequestModel;
-using DomainService.Services;
+using Authentication.DomainService.OAuth.RequestModel;
+using Authentication.DomainService.Services;
 using Microsoft.Azure.Amqp.Framing;
 using Microsoft.Extensions.Logging;
 using Microsoft.Identity.Client.Platforms.Features.DesktopOs.Kerberos;
@@ -11,7 +11,7 @@ using System.Text.Json;
 using static QRCoder.PayloadGenerator;
 using static System.Runtime.InteropServices.JavaScript.JSType;
 
-namespace DomainService.OAuth
+namespace Authentication.DomainService.OAuth
 {
     public abstract class SocialLogInServiceBase : ISocialLogInService
     {

@@ -1,6 +1,6 @@
-﻿using MongoDB.Bson.Serialization.Attributes;
+using MongoDB.Bson.Serialization.Attributes;
 
-namespace DomainService.Dtos
+namespace Identifier.DomainService.Dtos
 {
     [BsonIgnoreExtraElements]
     public class SsoInfo

@@ -1,15 +1,15 @@
-﻿using Blocks.Genesis;
-using DomainService.Dtos;
-using DomainService.Entities;
-using DomainService.OAuth.RequestModel;
-using DomainService.OAuth.ResponseModel;
-using DomainService.Services;
-using DomainService.Utilities;
+using Blocks.Genesis;
+using Authentication.DomainService.Dtos;
+using Authentication.DomainService.Entities;
+using Authentication.DomainService.OAuth.RequestModel;
+using Authentication.DomainService.OAuth.ResponseModel;
+using Authentication.DomainService.Services;
+using Authentication.DomainService.Utilities;
 using Iam.DomainService.Entities;
 using Microsoft.Extensions.Logging;
 using BCryptNet = BCrypt.Net.BCrypt;
 
-namespace DomainService.OAuth
+namespace Authentication.DomainService.OAuth
 {
     public class PasswordAuthenticationService : ITokenService
     {

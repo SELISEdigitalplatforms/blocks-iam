@@ -1,6 +1,6 @@
 using Blocks.Genesis;
-using DomainService.Entities;
-namespace DomainService.Shared.ResponseModel
+using Authentication.DomainService.Entities;
+namespace Authentication.DomainService.Shared.ResponseModel
 {
     public class GetUserCodesByUserIdResponse
     {

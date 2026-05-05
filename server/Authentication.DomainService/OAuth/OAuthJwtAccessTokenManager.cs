@@ -1,9 +1,9 @@
 using Blocks.Genesis;
-using DomainService.Dtos;
-using DomainService.Entities;
-using DomainService.OAuth.RequestModel;
-using DomainService.OAuth.ResponseModel;
-using DomainService.Services;
+using Authentication.DomainService.Dtos;
+using Authentication.DomainService.Entities;
+using Authentication.DomainService.OAuth.RequestModel;
+using Authentication.DomainService.OAuth.ResponseModel;
+using Authentication.DomainService.Services;
 using Iam.DomainService.Dtos;
 using Iam.DomainService.Entities;
 using Mfa.DomainService.Configuration;
@@ -13,7 +13,7 @@ using Microsoft.Extensions.Configuration;
 using System.IdentityModel.Tokens.Jwt;
 using System.Text.Json;
 
-namespace DomainService.OAuth
+namespace Authentication.DomainService.OAuth
 {
     public class OAuthJwtAccessTokenManager : IOAuthJwtAccessTokenManager
     {

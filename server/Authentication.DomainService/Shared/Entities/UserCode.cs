@@ -1,5 +1,5 @@
-﻿using Blocks.Genesis;
-namespace DomainService.Entities
+using Blocks.Genesis;
+namespace Authentication.DomainService.Entities
 {
     public class UserCode : BaseEntity
     {

@@ -1,7 +1,7 @@
-﻿using Blocks.Genesis;
-using DomainService.Entities;
+using Blocks.Genesis;
+using Authentication.DomainService.Entities;
 
-namespace DomainService.RequestModel
+namespace Authentication.DomainService.RequestModel
 {
     public class GetOIDCClientRequest : IProjectKey
     {

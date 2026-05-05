@@ -1,4 +1,4 @@
-using DomainService.OAuth;
+using Authentication.DomainService.OAuth;
 using Iam.DomainService.Dtos;
 using Iam.DomainService.Entities;
 using Iam.DomainService.Shared.Entities;

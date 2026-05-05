@@ -1,7 +1,7 @@
-﻿using DomainService.Subscription.RequestModel;
-using DomainService.Subscription.ResponseModel;
+using Identifier.DomainService.Subscription.RequestModel;
+using Identifier.DomainService.Subscription.ResponseModel;
 
-namespace DomainService.Subscription.Services
+namespace Identifier.DomainService.Subscription.Services
 {
     public interface ISubscriptionService
     {

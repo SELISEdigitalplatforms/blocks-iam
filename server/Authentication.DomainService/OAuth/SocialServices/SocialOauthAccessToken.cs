@@ -1,6 +1,6 @@
-﻿using System.Text.Json.Serialization;
+using System.Text.Json.Serialization;
 
-namespace DomainService.OAuth
+namespace Authentication.DomainService.OAuth
 {
     public class SocialOauthAccessToken
     {

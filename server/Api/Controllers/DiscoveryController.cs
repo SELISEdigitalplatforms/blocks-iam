@@ -1,6 +1,6 @@
 using System.Threading.Tasks;
-using Blocks.Genesis.Auth;
-using Blocks.Genesis.Auth.Services;
+using Idp.DomainService.Oidc.Contracts;
+using Idp.DomainService.Oidc.Services;
 using Microsoft.AspNetCore.Mvc;
 using Serilog;
 

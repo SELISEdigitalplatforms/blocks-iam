@@ -1,9 +1,9 @@
 using System;
 using System.Collections.Generic;
 using System.Threading.Tasks;
-using Blocks.Genesis.Auth;
+using Idp.DomainService.Oidc.Contracts;
 
-namespace DomainService.Oidc.Repositories
+namespace Authentication.DomainService.Oidc.Repositories
 {
     /// <summary>
     /// Authorization Code Repository

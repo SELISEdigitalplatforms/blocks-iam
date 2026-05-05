@@ -1,8 +1,8 @@
 using Blocks.Genesis;
-using DomainService.Entities;
-using DomainService.RequestModel;
-using DomainService.Services;
-using DomainService.Shared.RequestModel;
+using Authentication.DomainService.Entities;
+using Authentication.DomainService.RequestModel;
+using Authentication.DomainService.Services;
+using Authentication.DomainService.Shared.RequestModel;
 using FluentAssertions;
 using Iam.DomainService.Entities;
 using MongoDB.Bson;

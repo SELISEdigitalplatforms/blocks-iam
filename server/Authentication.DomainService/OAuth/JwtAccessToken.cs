@@ -1,7 +1,7 @@
-﻿using Microsoft.IdentityModel.Tokens;
+using Microsoft.IdentityModel.Tokens;
 using System.Security.Claims;
 
-namespace DomainService.OAuth
+namespace Authentication.DomainService.OAuth
 {
     public class JwtAccessToken
     {

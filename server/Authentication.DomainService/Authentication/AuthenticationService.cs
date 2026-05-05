@@ -1,10 +1,10 @@
-﻿using Blocks.Genesis;
-using DomainService.Dtos;
-using DomainService.Entities;
-using DomainService.OAuth;
-using DomainService.Services;
-using DomainService.Shared.RequestModel;
-using DomainService.Utilities;
+using Blocks.Genesis;
+using Authentication.DomainService.Dtos;
+using Authentication.DomainService.Entities;
+using Authentication.DomainService.OAuth;
+using Authentication.DomainService.Services;
+using Authentication.DomainService.Shared.RequestModel;
+using Authentication.DomainService.Utilities;
 using Iam.DomainService.Entities;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
@@ -15,7 +15,7 @@ using System.Security.Claims;
 using System.Security.Cryptography.X509Certificates;
 using System.Text.Json;
 
-namespace DomainService.Authentication
+namespace Authentication.DomainService.Authentication
 {
     public class AuthenticationService : IAuthenticationService
     {

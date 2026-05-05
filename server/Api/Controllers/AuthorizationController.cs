@@ -1,5 +1,5 @@
 using Microsoft.AspNetCore.Mvc;
-using DomainService.Authentication;
+using Authentication.DomainService.Authentication;
 using System.Text.Json.Serialization;
 
 namespace Blocks.Api.Controllers

@@ -1,10 +1,10 @@
-﻿using Amazon.S3.Model;
+using Amazon.S3.Model;
 using Blocks.Genesis;
-using DomainService.Shared;
-using DomainService.Shared.Entities;
+using Identifier.DomainService.Shared;
+using Identifier.DomainService.Shared.Entities;
 using MongoDB.Driver;
 
-namespace DomainService.ManagedService.Services
+namespace Identifier.DomainService.ManagedService.Services
 {
     public class ServiceManagementRepository : IServiceManagementRepository
     {

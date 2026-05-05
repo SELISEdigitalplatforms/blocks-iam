@@ -1,13 +1,12 @@
 using Blocks.Genesis;
-using Blocks.Genesis.Auth;
-using DomainService.Dtos;
-using DomainService.Oidc.Repositories;
-using DomainService.OAuth;
-using DomainService.OAuth.RequestModel;
-using DomainService.OAuth.ResponseModel;
-using DomainService.Services;
-using DomainService.Utilities;
-using Iam.DomainService.Accounts;
+using Authentication.DomainService.Dtos;
+using Authentication.DomainService.OAuth;
+using Authentication.DomainService.OAuth.RequestModel;
+using Authentication.DomainService.OAuth.ResponseModel;
+using Authentication.DomainService.Oidc.Repositories;
+using Authentication.DomainService.Services;
+using Authentication.DomainService.Utilities;
+using Idp.DomainService.Oidc.Contracts;
 using Iam.DomainService.Entities;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
@@ -20,7 +19,7 @@ using System.Security.Claims;
 using System.Text;
 using System.Text.Json;
 
-namespace DomainService.Authentication
+namespace Authentication.DomainService.Authentication
 {
     public class AuthenticationFlowService : IAuthenticationFlowService
     {
@@ -74,14 +73,13 @@ namespace DomainService.Authentication
             }
 
             var user = await _authenticationRepository.GetUserByUsernameAsync(request.Username);
-            var resolvedOrganizationId = ResolveSignInOrganizationId(user, request.OrgId);
+            var resolvedOrganizationId = ResolveOrgIdFromUser(user);
 
             var tokenRequest = new TokenRequest
             {
                 GrantType = GrantTypes.Password,
                 Username = request.Username,
                 Password = request.Password,
-                ClientId = request.ClientId,
                 OrganizationId = resolvedOrganizationId,
                 Request = httpRequest
             };
@@ -109,8 +107,6 @@ namespace DomainService.Authentication
                 GrantType = GrantTypes.Social,
                 Code = request.Code,
                 State = request.State,
-                ClientId = request.ClientId,
-                OrganizationId = request.OrgId,
                 Request = httpRequest
             };
 
@@ -120,16 +116,11 @@ namespace DomainService.Authentication
             };
         }
 
-        private static string ResolveSignInOrganizationId(User? user, string? requestedOrganizationId)
+        private static string ResolveOrgIdFromUser(User? user)
         {
             if (user == null)
             {
-                return string.IsNullOrWhiteSpace(requestedOrganizationId) ? "default" : requestedOrganizationId;
-            }
-
-            if (HasOrganizationAccess(user, requestedOrganizationId))
-            {
-                return requestedOrganizationId!;
+                return "default";
             }
 
             if (HasOrganizationAccess(user, user.LastUsedOrganizationId))
@@ -146,6 +137,21 @@ namespace DomainService.Authentication
                 ?? user.Roles.Keys.FirstOrDefault(key => !string.IsNullOrWhiteSpace(key))
                 ?? user.Permissions.Keys.FirstOrDefault(key => !string.IsNullOrWhiteSpace(key))
                 ?? "default";
+        }
+
+        private static string ResolveSignInOrganizationId(User? user, string? requestedOrganizationId)
+        {
+            if (user == null)
+            {
+                return string.IsNullOrWhiteSpace(requestedOrganizationId) ? "default" : requestedOrganizationId;
+            }
+
+            if (HasOrganizationAccess(user, requestedOrganizationId))
+            {
+                return requestedOrganizationId!;
+            }
+
+            return ResolveOrgIdFromUser(user);
         }
 
         private static bool HasOrganizationAccess(User user, string? organizationId)
@@ -259,7 +265,6 @@ namespace DomainService.Authentication
             var tokenRequest = new TokenRequest
             {
                 GrantType = GrantTypes.SwitchOrganization,
-                ClientId = request.ClientId,
                 OrganizationId = request.OrganizationId,
                 RefreshToken = refreshToken,
                 Request = httpRequest
@@ -388,7 +393,6 @@ namespace DomainService.Authentication
                 var tokenRequest = new TokenRequest
                 {
                     GrantType = GrantTypes.Password,
-                    ClientId = request.ClientId ?? string.Empty,
                     OrganizationId = !string.IsNullOrWhiteSpace(request.OrganizationId)
                         ? request.OrganizationId
                         : (string.IsNullOrWhiteSpace(request.OrgId) ? "default" : request.OrgId),
@@ -547,7 +551,6 @@ namespace DomainService.Authentication
             var tokenRequest = new TokenRequest
             {
                 GrantType = GrantTypes.RefreshToken,
-                ClientId = request.ClientId ?? string.Empty,
                 OrganizationId = request.OrganizationId ?? "default",
                 RefreshToken = refreshToken,
                 IsImpersonation = string.Equals(tokenCache.AuthMode, "impersonation", StringComparison.OrdinalIgnoreCase),

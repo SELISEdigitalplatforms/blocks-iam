@@ -1,7 +1,7 @@
-﻿using Blocks.Genesis;
+using Blocks.Genesis;
 using Microsoft.Extensions.Configuration;
 
-namespace DomainService.Utilities
+namespace Authentication.DomainService.Utilities
 {
     public static class IdpConstants
     {

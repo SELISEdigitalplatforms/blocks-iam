@@ -1,6 +1,6 @@
-﻿using Blocks.Genesis;
+using Blocks.Genesis;
 
-namespace DomainService.Entities
+namespace Identifier.DomainService.Entities
 {
     
     public class ResourceLimit : BaseEntity

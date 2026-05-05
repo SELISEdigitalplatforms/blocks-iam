@@ -1,8 +1,8 @@
-﻿using Blocks.Genesis;
-using DomainService.Shared.Entities;
+using Blocks.Genesis;
+using Identifier.DomainService.Shared.Entities;
 using MongoDB.Bson.Serialization.Attributes;
 
-namespace DomainService.ManagedService
+namespace Identifier.DomainService.ManagedService
 {
     [BsonIgnoreExtraElements]
     public class RegisterServiceRequest : IProjectKey

@@ -1,9 +1,9 @@
-﻿using DomainService.Shared;
+using Authentication.DomainService.Shared;
 using FluentValidation;
 using System.Net.Http.Json;
 using System.Text.Json;
 
-namespace DomainService.OAuth
+namespace Authentication.DomainService.OAuth
 {
     public class SaveSsoCredentialRequestValidator : AbstractValidator<SaveSsoCredentialRequest>
     {

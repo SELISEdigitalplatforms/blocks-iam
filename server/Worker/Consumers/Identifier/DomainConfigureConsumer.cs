@@ -1,5 +1,5 @@
 ﻿using Blocks.Genesis;
-using DomainService.Shared;
+using Identifier.DomainService.Shared;
 using System;
 using System.Collections.Generic;
 using System.Text;

@@ -1,5 +1,5 @@
-﻿
-namespace DomainService.ManagedService
+
+namespace Identifier.DomainService.ManagedService
 {
     public class ServiceUpdateMessage
     {

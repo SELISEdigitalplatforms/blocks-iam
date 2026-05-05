@@ -1,6 +1,6 @@
-﻿using Blocks.Genesis;
+using Blocks.Genesis;
 
-namespace DomainService.Shared
+namespace Authentication.DomainService.Shared
 {
     public class SaveSsoCredentialRequest : IProjectKey
     {
