@@ -225,15 +225,269 @@ namespace Authentication.DomainService.Authentication
         public async Task<IActionResult> GetLoginOptionsAsync()
         {
             var config = await _authenticationRepository.GetAuthenticationConfigurationAsync();
-            var ssoConfig = (await _authenticationDomainService.GetSocialLoginCredentialsAsync()).Where(c=>c.IsDisabled == false);
+            var identityProviders = await _authenticationRepository.GetIdentityProvidersAsync();
+
+            // Filter to only social providers that are active
+            var socialProviders = identityProviders
+                .Where(p => p.IsActive && p.ProviderType == "social")
+                .ToList();
+
+            // Return only metadata, NOT authorization URLs
+            var ssoInfo = config.AllowedGrantTypes.Contains("social") && socialProviders.Any()
+                          ? socialProviders.Select(provider => new
+                          {
+                              provider = provider.Provider,
+                              displayName = provider.DisplayName,
+                              icon = provider.Provider // Can be URL or icon name
+                          }).ToList()
+                          : null;
 
             return new OkObjectResult(new
             {
                 AllowedGrantTypes = config.AllowedGrantTypes.Except(["mfa_code", "refresh_token"]),
-                SsoInfo = config.AllowedGrantTypes.Contains("social")
-                          ? ssoConfig.Select(info => new { info.Provider, info.Audience })
-                          : null
+                SsoInfo = ssoInfo
             });
+        }
+
+        /// <summary>
+        /// Initialize social provider authorization - generates state, stores in cache, returns authorization URL
+        /// Standard OAuth 2.0 Authorization Code flow initialization
+        /// </summary>
+        public async Task<IActionResult> GetSocialAuthorizationUrlAsync(string provider)
+        {
+            if (string.IsNullOrWhiteSpace(provider))
+                return new BadRequestObjectResult(new { error = "provider_required", error_description = "Provider name is required" });
+
+            try
+            {
+                // Get provider configuration
+                var identityProvider = await _authenticationRepository.GetIdentityProviderAsync(provider);
+                if (identityProvider == null)
+                    return new NotFoundObjectResult(new { error = "provider_not_found", error_description = $"Provider '{provider}' not configured" });
+
+                if (!identityProvider.IsActive)
+                    return new BadRequestObjectResult(new { error = "provider_inactive", error_description = $"Provider '{provider}' is not active" });
+
+                if (identityProvider.ProviderType != "social")
+                    return new BadRequestObjectResult(new { error = "invalid_provider_type", error_description = $"Provider '{provider}' is not a social provider" });
+
+                // Generate state for CSRF protection
+                var state = Guid.NewGuid().ToString("n");
+
+                // Store state in cache (5 minute TTL for authorization flow)
+                var cacheKey = $"oidc_state:{state}";
+                await _cacheClient.AddStringValueAsync(cacheKey, state, 300); // 5 minutes in seconds
+
+                // Build authorization URL
+                var scope = identityProvider.Scope ?? "openid profile email";
+                var authorizationUrl = BuildAuthorizationUrl(identityProvider, state, scope);
+
+                return new OkObjectResult(new
+                {
+                    state,
+                    authorizationUrl,
+                    displayName = identityProvider.DisplayName,
+                    provider
+                });
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error getting social authorization URL for provider: {Provider}", provider);
+                return new BadRequestObjectResult(new { error = "authorization_url_generation_failed", error_description = ex.Message });
+            }
+        }
+
+        /// <summary>
+        /// Initialize OIDC client authorization - generates state, stores in cache, returns authorization URL
+        /// For internal OIDC clients (Service-A, Service-B, etc.)
+        /// </summary>
+        public async Task<IActionResult> GetOidcAuthorizationUrlAsync()
+        {
+            try
+            {
+                // Get internal OIDC provider configuration
+                var identityProvider = await _authenticationRepository.GetIdentityProviderAsync("internal");
+                if (identityProvider == null)
+                    return new NotFoundObjectResult(new { error = "oidc_not_configured", error_description = "Internal OIDC provider not configured" });
+
+                if (!identityProvider.IsActive)
+                    return new BadRequestObjectResult(new { error = "oidc_inactive", error_description = "Internal OIDC provider is not active" });
+
+                // Generate state for CSRF protection
+                var state = Guid.NewGuid().ToString("n");
+
+                // Store state in cache (5 minute TTL for authorization flow)
+                var cacheKey = $"oidc_state:{state}";
+                await _cacheClient.AddStringValueAsync(cacheKey, state, 300); // 5 minutes in seconds
+
+                // Build authorization URL
+                var scope = identityProvider.Scope ?? "openid profile email";
+                var authorizationUrl = BuildAuthorizationUrl(identityProvider, state, scope);
+
+                return new OkObjectResult(new
+                {
+                    state,
+                    authorizationUrl,
+                    displayName = identityProvider.DisplayName ?? "Blocks OIDC",
+                    provider = "internal"
+                });
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error getting OIDC authorization URL");
+                return new BadRequestObjectResult(new { error = "authorization_url_generation_failed", error_description = ex.Message });
+            }
+        }
+
+        /// <summary>
+        /// Initialize OIDC login page - generates OIDC state for tracking through social login flow
+        /// Returns redirect to login page with provider options
+        /// </summary>
+        public async Task<IActionResult> GetOidcLoginPageAsync(string clientId, string state, string redirectUri)
+        {
+            if (string.IsNullOrWhiteSpace(clientId) || string.IsNullOrWhiteSpace(state) || string.IsNullOrWhiteSpace(redirectUri))
+                return new BadRequestObjectResult(new { error = "missing_parameters", error_description = "client_id, state, and redirect_uri are required" });
+
+            try
+            {
+                // Generate OIDC state to track this authentication flow through social provider
+                var oidcState = Guid.NewGuid().ToString("n");
+
+                // Store OIDC context in cache for the entire flow
+                // Key: oidc_context:{oidcState}
+                // Value: { clientId, state, redirectUri } - the original OIDC request parameters
+                var contextKey = $"oidc_context:{oidcState}";
+                var contextValue = System.Text.Json.JsonSerializer.Serialize(new
+                {
+                    clientId,
+                    state,
+                    redirectUri,
+                    createdAt = DateTime.UtcNow
+                });
+                await _cacheClient.AddStringValueAsync(contextKey, contextValue, 600); // 10 minute TTL
+
+                // Return redirect to login page
+                // Frontend will show this as redirect or redirect to it
+                var loginPageUrl = $"/oidc/login?oidc_state={oidcState}&client_id={Uri.EscapeDataString(clientId)}";
+
+                return new OkObjectResult(new
+                {
+                    loginPageUrl,
+                    oidcState
+                });
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error generating OIDC login page URL");
+                return new BadRequestObjectResult(new { error = "login_page_generation_failed", error_description = ex.Message });
+            }
+        }
+
+        /// <summary>
+        /// Initiate OIDC social provider authentication flow
+        /// Called when user selects a provider from OIDC login page
+        /// Generates state for social provider and redirects to social provider
+        /// </summary>
+        public async Task<IActionResult> GetOidcSocialAuthorizationUrlAsync(string provider, string oidcState)
+        {
+            if (string.IsNullOrWhiteSpace(provider))
+                return new BadRequestObjectResult(new { error = "provider_required", error_description = "Provider name is required" });
+
+            if (string.IsNullOrWhiteSpace(oidcState))
+                return new BadRequestObjectResult(new { error = "oidc_state_required", error_description = "OIDC state is required" });
+
+            try
+            {
+                // Retrieve OIDC context from cache
+                var contextKey = $"oidc_context:{oidcState}";
+                var contextJson = await _cacheClient.GetStringValueAsync(contextKey);
+                if (string.IsNullOrWhiteSpace(contextJson))
+                    return new BadRequestObjectResult(new { error = "invalid_oidc_state", error_description = "OIDC flow expired or invalid" });
+
+                // Get provider configuration
+                var identityProvider = await _authenticationRepository.GetIdentityProviderAsync(provider);
+                if (identityProvider == null)
+                    return new NotFoundObjectResult(new { error = "provider_not_found", error_description = $"Provider '{provider}' not configured" });
+
+                if (!identityProvider.IsActive)
+                    return new BadRequestObjectResult(new { error = "provider_inactive", error_description = $"Provider '{provider}' is not active" });
+
+                // Generate state for social provider (separate from OIDC state)
+                var socialState = Guid.NewGuid().ToString("n");
+
+                // Store state with reference to OIDC context
+                // This links the social provider callback back to the OIDC flow
+                var stateKey = $"oidc_social_state:{socialState}";
+                var stateValue = System.Text.Json.JsonSerializer.Serialize(new
+                {
+                    oidcState,
+                    provider,
+                    createdAt = DateTime.UtcNow
+                });
+                await _cacheClient.AddStringValueAsync(stateKey, stateValue, 300); // 5 minute TTL
+
+                // Build authorization URL for social provider
+                // Callback should redirect to /auth/oidc/callback with provider and state
+                var scope = identityProvider.Scope ?? "openid profile email";
+                var authorizationUrl = BuildAuthorizationUrl(identityProvider, socialState, scope);
+
+                return new OkObjectResult(new
+                {
+                    socialState,
+                    authorizationUrl,
+                    provider,
+                    oidcState
+                });
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error getting OIDC social authorization URL for provider: {Provider}", provider);
+                return new BadRequestObjectResult(new { error = "authorization_url_generation_failed", error_description = ex.Message });
+            }
+        }
+
+        /// <summary>
+        /// Build authorization URL with proper OAuth 2.0 parameters
+        /// </summary>
+        private string BuildAuthorizationUrl(IdentityProvider provider, string state, string scope)
+        {
+            try
+            {
+                // Standard OAuth 2.0 Authorization Code flow parameters
+                var authUrl = provider.AuthorizationUrl;
+                var separator = authUrl.Contains("?") ? "&" : "?";
+
+                var authorizationUrl = $"{authUrl}{separator}" +
+                    $"response_type=code&" +
+                    $"client_id={Uri.EscapeDataString(provider.ClientId ?? "")}&" +
+                    $"redirect_uri={Uri.EscapeDataString(provider.RedirectUri ?? "")}&" +
+                    $"scope={Uri.EscapeDataString(scope)}&" +
+                    $"state={Uri.EscapeDataString(state)}";
+
+                // Add PKCE if required
+                if (provider.RequirePkce == true)
+                {
+                    // Note: PKCE code_challenge generation happens on frontend
+                    // Backend just indicates PKCE is required
+                }
+
+                return authorizationUrl;
+            }
+            catch
+            {
+                // Fallback to simple construction
+                return $"{provider.AuthorizationUrl}?response_type=code&client_id={Uri.EscapeDataString(provider.ClientId ?? "")}&state={state}&redirect_uri={Uri.EscapeDataString(provider.RedirectUri ?? "")}&scope={Uri.EscapeDataString(scope)}";
+            }
+        }
+
+        private object BuildSocialProviderInfo(IdentityProvider provider)
+        {
+            // Legacy method - kept for backward compatibility
+            return new
+            {
+                provider = provider.Provider,
+                displayName = provider.DisplayName
+            };
         }
 
         public async Task<bool> TriggerBackchannelLogoutAllAsync(HttpRequest httpRequest)
@@ -499,6 +753,41 @@ namespace Authentication.DomainService.Authentication
             }
 
             httpContext.Response.Cookies.Append(IdpSessionCookieName, sessionId, CreateCookieOptions(tokenResponse.CookieDomain, tokenResponse.RefreshExpiresUtc));
+        }
+
+        public async Task<BaseResponse> CreateIdentityProviderAsync(IdentityProvider provider)
+        {
+            return await _authenticationDomainService.CreateIdentityProviderAsync(provider);
+        }
+
+        public async Task<IdentityProvider?> GetIdentityProviderAsync(string provider)
+        {
+            return await _authenticationDomainService.GetIdentityProviderAsync(provider);
+        }
+
+        public async Task<IdentityProvider?> GetIdentityProviderByIdAsync(string id)
+        {
+            return await _authenticationDomainService.GetIdentityProviderByIdAsync(id);
+        }
+
+        public async Task<List<IdentityProvider>> GetAllIdentityProvidersAsync()
+        {
+            return await _authenticationDomainService.GetAllIdentityProvidersAsync();
+        }
+
+        public async Task<BaseResponse> UpdateIdentityProviderAsync(IdentityProvider provider)
+        {
+            return await _authenticationDomainService.UpdateIdentityProviderAsync(provider);
+        }
+
+        public async Task<BaseResponse> DeleteIdentityProviderAsync(string id)
+        {
+            return await _authenticationDomainService.DeleteIdentityProviderAsync(id);
+        }
+
+        public async Task<BaseResponse> UpdateIdentityProviderStatusAsync(string id, bool isActive)
+        {
+            return await _authenticationDomainService.UpdateIdentityProviderStatusAsync(id, isActive);
         }
     }
 }

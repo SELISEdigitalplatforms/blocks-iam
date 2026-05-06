@@ -30,12 +30,12 @@ namespace Authentication.DomainService.OAuth.SocialServices
 
         public async Task<(string, bool)> GetProviderLogInUriAsync(GetSocialLogInEndPointRequest loginData)
         {
-            var credential = await _authenticationRepository
-                .GetSocialLoginCredentialByProvideAndAudienceAsync(loginData.Provider, loginData.Audience);
+            var identityProvider = await _authenticationRepository
+                .GetIdentityProviderAsync(loginData.Provider);
 
-            if (credential == null)
+            if (identityProvider == null)
             {
-                _logger.LogError("Credential not found for provider {Provider} and audience {Audience}", loginData.Provider, loginData.Audience);
+                _logger.LogError("Identity provider not found for provider {Provider}", loginData.Provider);
                 return (string.Empty, true);
             }
 
@@ -66,21 +66,27 @@ namespace Authentication.DomainService.OAuth.SocialServices
             await _cacheClient.AddStringValueAsync(stateKey, JsonSerializer.Serialize(stateInfo), 300);
 
             var loginUri =
-                $"{credential.AuthorizationUrl}?response_type=code" +
-                $"&client_id={credential.ClientId}" +
-                $"&redirect_uri={WebUtility.UrlEncode(credential.RedirectUrl)}" +
-                $"&scope={WebUtility.UrlEncode(credential.Scope).Replace("+", "%20")}" +
+                $"{identityProvider.AuthorizationUrl}?response_type=code" +
+                $"&client_id={identityProvider.ClientId}" +
+                $"&redirect_uri={WebUtility.UrlEncode(identityProvider.RedirectUri)}" +
+                $"&scope={WebUtility.UrlEncode(identityProvider.Scope).Replace("+", "%20")}" +
                 $"&state={stateKey}" +
                 $"&code_challenge={codeChallenge}" +
                 $"&code_challenge_method=S256";
 
-            return (loginUri, loginData.SendAsResponse || credential.SendAsResponse);
+            return (loginUri, loginData.SendAsResponse);
         }
 
         public async Task<IExternalUserData> HandleSocialLogin(StateInfo stateInfo)
         {
-            var credential = await _authenticationRepository
-                .GetSocialLoginCredentialByProvideAndAudienceAsync(stateInfo.Provider, stateInfo.Audience);
+            var identityProvider = await _authenticationRepository
+                .GetIdentityProviderAsync(stateInfo.Provider);
+
+            if (identityProvider == null)
+            {
+                _logger.LogError("Identity provider not found for provider {Provider}", stateInfo.Provider);
+                return new TwitterUserData();
+            }
 
             if (!stateInfo.Extra.TryGetValue("code_verifier", out var codeVerifier))
             {
@@ -93,17 +99,17 @@ namespace Authentication.DomainService.OAuth.SocialServices
             {
                 { "grant_type", "authorization_code" },
                 { "code", stateInfo.Code },
-                { "redirect_uri", credential.RedirectUrl },
+                { "redirect_uri", identityProvider.RedirectUri },
                 { "code_verifier", codeVerifier }
             };
 
             Dictionary<string, string>? headers = null;
 
             // Detect confidential client (client_secret is available)
-            if (!string.IsNullOrWhiteSpace(credential.ClientSecret))
+            if (!string.IsNullOrWhiteSpace(identityProvider.ClientSecret))
             {
                 var authHeader = Convert.ToBase64String(
-                    Encoding.UTF8.GetBytes($"{credential.ClientId}:{credential.ClientSecret}")
+                    Encoding.UTF8.GetBytes($"{identityProvider.ClientId}:{identityProvider.ClientSecret}")
                 );
 
                 headers = new Dictionary<string, string>
@@ -115,13 +121,13 @@ namespace Authentication.DomainService.OAuth.SocialServices
             else
             {
                 // Public client ? Twitter requires client_id in body
-                postData["client_id"] = credential.ClientId;
+                postData["client_id"] = identityProvider.ClientId;
             }
 
             var (tokenResponse, error) = await _httpService.SendFormUrlEncoded<TwitterOauthAccessToken>(
                 HttpMethod.Post,
                 postData,
-                credential.TokenUrl,
+                identityProvider.TokenUrl,
                 headers
             );
 
@@ -138,7 +144,7 @@ namespace Authentication.DomainService.OAuth.SocialServices
             };
 
             (var userProfile, var profileError) = await _httpService.Get<JsonDocument>(
-                credential.GetProfileUrl,
+                identityProvider.UserInfoUrl,
                 headers: profileHeaders);
 
             if (!string.IsNullOrWhiteSpace(profileError))
@@ -161,8 +167,8 @@ namespace Authentication.DomainService.OAuth.SocialServices
                     UserName = user.GetProperty("username").GetString(),
                     ProfileImageUrl = user.TryGetProperty("profile_image_url", out var img) ? img.GetString() : null,
                     Platform = stateInfo.Provider,
-                    Roles = credential?.InitialRoles ?? [],
-                    Permissions = credential?.InitialPermissions ?? []
+                    Roles = identityProvider?.InitialRoles ?? [],
+                    Permissions = identityProvider?.InitialPermissions ?? []
                 };
 
                 return twitterUser;

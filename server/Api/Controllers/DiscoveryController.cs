@@ -1,6 +1,7 @@
 using System.Threading.Tasks;
 using Idp.DomainService.Oidc.Contracts;
 using Idp.DomainService.Oidc.Services;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Serilog;
 
@@ -37,6 +38,7 @@ namespace Blocks.Api.Controllers
         /// </summary>
         [HttpGet("/.well-known/openid-configuration")]
         [HttpGet("/{tenant_id}/.well-known/openid-configuration")]
+        [AllowAnonymous]
         [Produces("application/json")]
         [ProducesResponseType(typeof(DiscoveryMetadata), 200)]
         public async Task<IActionResult> OpenIdConfiguration()
@@ -68,6 +70,7 @@ namespace Blocks.Api.Controllers
         /// </summary>
         [HttpGet("/.well-known/oauth-authorization-server")]
         [HttpGet("/{tenant_id}/.well-known/oauth-authorization-server")]
+        [AllowAnonymous]
         [Produces("application/json")]
         [ProducesResponseType(typeof(OAuthAuthorizationServerMetadata), 200)]
         public async Task<IActionResult> OAuthAuthorizationServer()

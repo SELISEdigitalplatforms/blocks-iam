@@ -4,6 +4,623 @@
         <name>Api</name>
     </assembly>
     <members>
+        <member name="T:Api.Controllers.AuthenticationController">
+            <summary>
+            Authentication and Authorization Controller
+            
+            Manages all authentication flows:
+            - Password-based authentication (embedded credentials)
+            - Social provider authentication (OAuth 2.0)
+            - OIDC federated identity (OpenID Connect 1.0)
+            
+            All endpoints follow RESTful conventions with professional naming and comprehensive documentation.
+            </summary>
+        </member>
+        <member name="M:Api.Controllers.AuthenticationController.RetrieveLoginOptions">
+            <summary>
+            Retrieve available login options (identity providers and their metadata)
+            No authentication required - public discovery endpoint
+            </summary>
+        </member>
+        <member name="M:Api.Controllers.AuthenticationController.ExecutePasswordLogin(Authentication.DomainService.OAuth.RequestModel.EmbeddedLoginRequest)">
+            <summary>
+            Execute password-based authentication (Embedded Login)
+            Validates username and password against stored user account
+            Issues access and refresh tokens on success
+            </summary>
+        </member>
+        <member name="M:Api.Controllers.AuthenticationController.InitiateAccountRecovery(Iam.DomainService.Accounts.RecoveryUserRequest)">
+            <summary>
+            Initiate account recovery (password reset flow)
+            Sends recovery link to registered email address
+            </summary>
+        </member>
+        <member name="M:Api.Controllers.AuthenticationController.ExecutePasswordReset(Iam.DomainService.Accounts.ResetPasswordRequest)">
+            <summary>
+            Execute password reset with recovery token
+            Validates token before allowing password change
+            </summary>
+        </member>
+        <member name="M:Api.Controllers.AuthenticationController.UpdatePassword(Iam.DomainService.Accounts.ChangePasswordRequest)">
+            <summary>
+            Update password for authenticated user
+            Requires current password for security validation
+            </summary>
+        </member>
+        <member name="M:Api.Controllers.AuthenticationController.InitiateSocialAuthentication(System.String)">
+            <summary>
+            Initiate social provider authentication (OAuth 2.0 Authorization Code Flow)
+            Generates PKCE code challenge and state parameter
+            Returns authorization URL to redirect user to social provider
+            RFC 6749: OAuth 2.0 Framework | RFC 7636: PKCE
+            </summary>
+        </member>
+        <!-- Badly formed XML comment ignored for member "M:Api.Controllers.AuthenticationController.HandleSocialCallback(System.String,System.String,System.String,Authentication.DomainService.OAuth.RequestModel.SocialLoginRequest)" -->
+        <member name="M:Api.Controllers.AuthenticationController.InitiateOidcAuthentication">
+            <summary>
+            Initiate OIDC authentication (Internal OIDC Clients)
+            For services that use Blocks IDP as authentication provider
+            RFC 6749: OAuth 2.0 | RFC 3986: OpenID Connect
+            </summary>
+        </member>
+        <member name="M:Api.Controllers.AuthenticationController.RetrieveOidcLoginPage(System.String,System.String,System.String)">
+            <summary>
+            Retrieve OIDC login page with provider options
+            Displays available social providers for federated authentication
+            RFC 3986: OpenID Connect Discovery
+            </summary>
+        </member>
+        <member name="M:Api.Controllers.AuthenticationController.InitiateOidcSocialAuthentication(System.String,System.String)">
+            <summary>
+            Initiate OIDC social provider authentication
+            Called when user selects provider on OIDC login page
+            Links social authentication to OIDC client context
+            </summary>
+        </member>
+        <member name="M:Api.Controllers.AuthenticationController.HandleOidcCallbackPost(Authentication.DomainService.OAuth.RequestModel.OidcCallbackRequest)">
+            <summary>
+            OIDC callback handler (API Pattern - POST)
+            Receives authorization code from provider via POST request
+            Exchanges code for tokens, validates JWT signature and claims
+            RFC 6749: OAuth 2.0 | RFC 3986: OpenID Connect | RFC 7519: JWT | RFC 5280: X.509
+            </summary>
+        </member>
+        <member name="M:Api.Controllers.AuthenticationController.HandleOidcCallbackGet(System.String,System.String,System.String)">
+            <summary>
+            OIDC callback handler (Browser Redirect Pattern - GET)
+            Receives authorization code from provider via browser redirect
+            Exchanges code for tokens, validates JWT signature and claims
+            RFC 6749: OAuth 2.0 | RFC 3986: OpenID Connect | RFC 7519: JWT | RFC 5280: X.509
+            </summary>
+        </member>
+        <member name="M:Api.Controllers.AuthenticationController.RefreshAccessToken(Authentication.DomainService.OAuth.RequestModel.RefreshRequest)">
+            <summary>
+            Refresh access token using refresh token
+            Validates refresh token and issues new tokens
+            Maintains session continuity without re-authentication
+            RFC 6749: OAuth 2.0 Refresh Token Grant
+            </summary>
+        </member>
+        <member name="M:Api.Controllers.AuthenticationController.ExecuteLogout(Authentication.DomainService.Authentication.LogoutRequest)">
+            <summary>
+            Execute user logout
+            Revokes refresh token, invalidates session, clears cookies
+            </summary>
+        </member>
+        <member name="M:Api.Controllers.AuthenticationController.SwitchOrganizationContext(Authentication.DomainService.OAuth.RequestModel.SwitchOrganizationRequest)">
+            <summary>
+            Switch organization context (Multi-tenant Organization Switching)
+            Authenticated user switches to different organization
+            Reissues tokens with new organization context
+            </summary>
+        </member>
+        <member name="M:Api.Controllers.AuthenticationController.InitiateImpersonation(Authentication.DomainService.OAuth.RequestModel.ImpersonationRequest)">
+            <summary>
+            Initiate user impersonation (Administrator Feature)
+            Allows admins to impersonate users for support/debugging
+            All actions audited and linked back to admin
+            Requires admin role - cannot impersonate other admins
+            </summary>
+        </member>
+        <member name="M:Api.Controllers.AuthenticationController.StopImpersonation">
+            <summary>
+            Stop user impersonation (Revert to Original Admin)
+            Admin stops impersonating user and reverts to original context
+            </summary>
+        </member>
+        <member name="M:Api.Controllers.AuthenticationController.ExecuteIdpLogout(Authentication.DomainService.Authentication.LogoutRequest)">
+            <summary>
+            Execute OIDC IDP logout (Internal Use)
+            Special logout endpoint for OIDC identity provider sessions
+            Clears IDP session state and revokes tokens
+            Internal endpoint - not exposed in Swagger documentation
+            </summary>
+        </member>
+        <member name="M:Api.Controllers.AuthenticationController.ExecuteGlobalLogout(Authentication.DomainService.Authentication.LogoutAllRequest)">
+            <summary>
+            Execute global logout across all sessions (Logout All Devices)
+            Revokes all refresh tokens for user across all devices
+            User must re-authenticate on all devices
+            Optionally triggers backchannel logout notifications
+            </summary>
+        </member>
+        <member name="M:Api.Controllers.AuthenticationController.RetrieveUserInformation">
+            <summary>
+            Retrieve authenticated user information (OIDC UserInfo Endpoint)
+            Returns user claims per OpenID Connect 1.0 specification
+            Includes standard OIDC claims (sub, email, name, picture) and custom Blocks claims
+            RFC 3986: OpenID Connect UserInfo Endpoint
+            </summary>
+        </member>
+        <member name="M:Api.Controllers.AuthenticationController.CreateIdentityProvider(Authentication.DomainService.Entities.IdentityProvider)">
+            <summary>
+            Create identity provider configuration
+            Registers new OAuth 2.0 / OIDC provider for tenant
+            Validates configuration and tests JWKS endpoint
+            Requires authorization (admin role)
+            </summary>
+        </member>
+        <member name="M:Api.Controllers.AuthenticationController.GetIdentityProviderById(System.String)">
+            <summary>
+            Get identity provider by ID
+            Retrieves specific provider configuration
+            Does NOT return sensitive credentials (client_secret)
+            </summary>
+        </member>
+        <member name="M:Api.Controllers.AuthenticationController.UpdateIdentityProvider(System.String,Authentication.DomainService.Entities.IdentityProvider)">
+            <summary>
+            Update identity provider configuration
+            Modifies existing provider settings
+            Validates configuration and tests endpoints if changed
+            </summary>
+        </member>
+        <member name="M:Api.Controllers.AuthenticationController.UpdateIdentityProviderStatus(System.String,Authentication.DomainService.Shared.RequestModel.UpdateStatusRequest)">
+            <summary>
+            Enable or disable identity provider
+            Toggles provider activation status without deleting configuration
+            Preferred over deletion for temporary disabling
+            </summary>
+        </member>
+        <member name="M:Api.Controllers.IamController.Activate(Iam.DomainService.Accounts.ActivateUserRequest)">
+            <summary>
+            Activate user account
+            Validates activation code and marks account as active
+            User can log in after successful activation
+            </summary>
+            <param name="command">Activation request with user email and verification code</param>
+            <returns>Activation result with user details</returns>
+            <response code="200">Account activated successfully</response>
+            <response code="400">Invalid or expired activation code</response>
+        </member>
+        <member name="M:Api.Controllers.IamController.ResendActivation(Iam.DomainService.Accounts.ResendActivationRequest)">
+            <summary>
+            Resend account activation email
+            Generates new activation code and sends to user's email
+            Use if user did not receive initial activation email
+            </summary>
+            <param name="command">Request with user email to resend activation</param>
+            <returns>Activation code send result</returns>
+            <response code="200">Activation email resent successfully</response>
+            <response code="400">User not found or already activated</response>
+        </member>
+        <member name="M:Api.Controllers.IamController.ValidateActivationCode(Iam.DomainService.Accounts.ValidateActivationCodeRequest)">
+            <summary>
+            Validate account activation code
+            Checks if activation code is valid without activating account
+            Use to verify code before user interaction
+            </summary>
+            <param name="command">Request with email and activation code</param>
+            <returns>Validation result indicating code validity</returns>
+            <response code="200">Activation code is valid</response>
+            <response code="400">Invalid or expired activation code</response>
+        </member>
+        <member name="M:Api.Controllers.IamController.GetSessions(Iam.DomainService.Activities.BaseActivityRequest)">
+            <summary>
+            Get user sessions
+            Retrieves all active sessions for authenticated user
+            Shows device information, login time, and activity timestamps
+            </summary>
+            <param name="query">Query parameters for session filtering and pagination</param>
+            <returns>List of user sessions with metadata</returns>
+            <response code="200">Successfully retrieved sessions</response>
+            <response code="401">Authentication required</response>
+        </member>
+        <member name="M:Api.Controllers.IamController.GetHistories(Iam.DomainService.Activities.BaseActivityRequest)">
+            <summary>
+            Get user activity history
+            Retrieves audit log of user actions, logins, and API calls
+            Shows complete activity trail with timestamps
+            </summary>
+            <param name="query">Query parameters for activity filtering and date range</param>
+            <returns>List of activity history entries</returns>
+            <response code="200">Successfully retrieved activity history</response>
+            <response code="401">Authentication required</response>
+        </member>
+        <member name="M:Api.Controllers.IamController.CreatePermission(Iam.DomainService.Resources.CreatePermissionRequest)">
+            <summary>
+            Create new permission
+            Defines granular permissions for role-based access control
+            Requires admin authorization
+            </summary>
+            <param name="command">Permission definition with name, description, severity</param>
+            <returns>Created permission with ID and metadata</returns>
+            <response code="200">Permission created successfully</response>
+            <response code="400">Invalid permission definition or duplicate</response>
+            <response code="401">Authentication required</response>
+        </member>
+        <member name="M:Api.Controllers.IamController.UpdatePermission(Iam.DomainService.Resources.UpdatePermissionRequest)">
+            <summary>
+            Update existing permission
+            Modifies permission definition and description
+            Does not affect already-assigned permissions
+            </summary>
+            <param name="command">Permission update request with new details</param>
+            <returns>Updated permission information</returns>
+            <response code="200">Permission updated successfully</response>
+            <response code="400">Invalid update or permission not found</response>
+            <response code="401">Authentication required</response>
+        </member>
+        <member name="M:Api.Controllers.IamController.CreateRole(Iam.DomainService.Resources.CreateRoleRequest)">
+            <summary>
+            Create new role
+            Defines role template for user group management
+            Roles are assigned to users for permission inheritance
+            </summary>
+            <param name="command">Role definition with name, description, and default permissions</param>
+            <returns>Created role with ID and metadata</returns>
+            <response code="200">Role created successfully</response>
+            <response code="400">Invalid role definition or duplicate</response>
+            <response code="401">Authentication required</response>
+        </member>
+        <member name="M:Api.Controllers.IamController.UpdateRole(Iam.DomainService.Resources.UpdateRoleRequest)">
+            <summary>
+            Update existing role
+            Modifies role definition and assigned permissions
+            Changes apply to all users with this role
+            </summary>
+            <param name="command">Role update request with new definition</param>
+            <returns>Updated role information</returns>
+            <response code="200">Role updated successfully</response>
+            <response code="400">Invalid update or role not found</response>
+            <response code="401">Authentication required</response>
+        </member>
+        <member name="M:Api.Controllers.IamController.GetPermissions(Iam.DomainService.Resources.GetPermissionsRequest)">
+            <summary>
+            Get permissions list
+            Retrieves all system permissions with filtering and pagination
+            Returns permission metadata and severity levels
+            </summary>
+            <param name="query">Query filters by name, category, or severity</param>
+            <returns>Paginated permissions list</returns>
+            <response code="200">Successfully retrieved permissions</response>
+            <response code="401">Authentication required</response>
+        </member>
+        <member name="M:Api.Controllers.IamController.GetPermissionsGroupBySeverity(Iam.DomainService.Resources.RequestModel.GetPermissionGroupBySeverityRequest)">
+            <summary>
+            Get permissions grouped by severity level
+            Returns permissions organized by risk/importance classification
+            Useful for UI display in permission selection dialogs
+            </summary>
+            <returns>Permissions grouped by severity (critical, high, medium, low)</returns>
+            <response code="200">Successfully retrieved grouped permissions</response>
+            <response code="401">Authentication required</response>
+        </member>
+        <member name="M:Api.Controllers.IamController.GetPermission(Iam.DomainService.Resources.GetPermissionRequest)">
+            <summary>
+            Get single permission details
+            Retrieves detailed information about specific permission
+            Shows description, severity, and assigned roles
+            </summary>
+            <param name="query">Request with permission ID</param>
+            <returns>Detailed permission information</returns>
+            <response code="200">Successfully retrieved permission</response>
+            <response code="401">Authentication required</response>
+            <response code="404">Permission not found</response>
+        </member>
+        <member name="M:Api.Controllers.IamController.GetRoles(Iam.DomainService.Resources.GetRolesRequest)">
+            <summary>
+            Get roles list
+            Retrieves all roles with filtering and pagination
+            Shows role definitions and permission assignments
+            </summary>
+            <param name="query">Query filters and pagination options</param>
+            <returns>Paginated roles list</returns>
+            <response code="200">Successfully retrieved roles</response>
+            <response code="401">Authentication required</response>
+        </member>
+        <member name="M:Api.Controllers.IamController.GetRole(Iam.DomainService.Resources.GetRoleRequest)">
+            <summary>
+            Get single role details
+            Retrieves detailed information about specific role
+            Shows all assigned permissions and member count
+            </summary>
+            <param name="query">Request with role ID</param>
+            <returns>Detailed role information with permissions</returns>
+            <response code="200">Successfully retrieved role</response>
+            <response code="401">Authentication required</response>
+            <response code="404">Role not found</response>
+        </member>
+        <member name="M:Api.Controllers.IamController.SetRoles(Iam.DomainService.Resources.SetRolesRequest)">
+            <summary>
+            Assign roles to user
+            Sets user's role membership in single operation
+            Replaces previous role assignments
+            </summary>
+            <param name="command">Request with user ID and role IDs to assign</param>
+            <returns>Role assignment result</returns>
+            <response code="200">Roles assigned successfully</response>
+            <response code="400">Invalid user or role IDs</response>
+            <response code="401">Authentication required</response>
+        </member>
+        <member name="M:Api.Controllers.IamController.GetResourceGroups(Iam.DomainService.Resources.GetResourceGroupRequest)">
+            <summary>
+            Get resource groups
+            Retrieves all resource groups for permission organization
+            Shows grouped resources and their protection levels
+            </summary>
+            <param name="request">Optional filter parameters</param>
+            <returns>List of resource groups with metadata</returns>
+            <response code="200">Successfully retrieved resource groups</response>
+            <response code="401">Authentication required</response>
+        </member>
+        <member name="M:Api.Controllers.IamController.Create(Iam.DomainService.Users.CreateUserRequest)">
+            <summary>
+            Create new user account
+            Registers new user with email, name, and optional roles
+            Sends activation email if email verification is required
+            </summary>
+            <param name="command">User creation request with profile and roles</param>
+            <returns>Created user with ID and profile information</returns>
+            <response code="200">User created successfully</response>
+            <response code="400">Invalid user data or duplicate email</response>
+            <response code="401">Authentication required</response>
+        </member>
+        <member name="M:Api.Controllers.IamController.Update(Iam.DomainService.Users.UpdateUserRequest)">
+            <summary>
+            Update user account information
+            Modifies user profile, email, name, and other metadata
+            Does not modify user's roles (use Assign Roles endpoint)
+            </summary>
+            <param name="command">User update request with new profile data</param>
+            <returns>Updated user information</returns>
+            <response code="200">User updated successfully</response>
+            <response code="400">Invalid update data or user not found</response>
+            <response code="401">Authentication required</response>
+        </member>
+        <member name="M:Api.Controllers.IamController.Deactivate(Iam.DomainService.Users.DeactivateUserRequest)">
+            <summary>
+            Deactivate user account
+            Revokes all active sessions and disables login
+            User data is preserved for re-activation
+            </summary>
+            <param name="request">Request with user ID to deactivate</param>
+            <returns>Deactivation confirmation</returns>
+            <response code="200">User deactivated successfully</response>
+            <response code="400">User not found or already inactive</response>
+            <response code="401">Authentication required</response>
+        </member>
+        <member name="M:Api.Controllers.IamController.UpdateAccount(Iam.DomainService.Users.UpdateUserRequest)">
+            <summary>
+            Update authenticated user's own account
+            Allows users to modify their profile without admin privileges
+            Restricted to user's own account only
+            </summary>
+            <param name="command">Update request with user's new profile data</param>
+            <returns>Updated user information</returns>
+            <response code="200">Account updated successfully</response>
+            <response code="400">Invalid update data</response>
+            <response code="401">Authentication required</response>
+        </member>
+        <member name="M:Api.Controllers.IamController.GetUsers(Iam.DomainService.Users.GetUsersRequest)">
+            <summary>
+            Get users list with filtering
+            Retrieves multiple users with pagination and search
+            Shows user profiles with status and role assignments
+            </summary>
+            <param name="query">Query filters, pagination, and search criteria</param>
+            <returns>Paginated users list</returns>
+            <response code="200">Successfully retrieved users</response>
+            <response code="401">Authentication required</response>
+        </member>
+        <member name="M:Api.Controllers.IamController.GetUser(Iam.DomainService.Users.GetUserRequest)">
+            <summary>
+            Get single user details
+            Retrieves complete user profile information
+            Shows all roles and basic permissions
+            </summary>
+            <param name="query">Request with user ID</param>
+            <returns>Detailed user information with profile</returns>
+            <response code="200">Successfully retrieved user</response>
+            <response code="401">Authentication required</response>
+            <response code="404">User not found</response>
+        </member>
+        <member name="M:Api.Controllers.IamController.GetUserRoles(Iam.DomainService.Users.GetUserRolesRequest)">
+            <summary>
+            Get roles assigned to user
+            Retrieves all roles with detailed permission lists
+            Shows complete permission set inherited from roles
+            </summary>
+            <param name="query">Request with user ID</param>
+            <returns>List of user's roles with permissions</returns>
+            <response code="200">Successfully retrieved user roles</response>
+            <response code="401">Authentication required</response>
+        </member>
+        <member name="M:Api.Controllers.IamController.GetUserPermissions(Iam.DomainService.Users.GetUserPermissionsRequest)">
+            <summary>
+            Get permissions for specific user
+            Returns aggregated permissions from all assigned roles
+            Shows effective permissions for the user
+            </summary>
+            <param name="query">Request with user ID</param>
+            <returns>List of user's effective permissions</returns>
+            <response code="200">Successfully retrieved user permissions</response>
+            <response code="401">Authentication required</response>
+        </member>
+        <member name="M:Api.Controllers.IamController.GetAccounts(Iam.DomainService.Users.GetAccountsRequest)">
+            <summary>
+            Get accounts list (organizations the user belongs to)
+            Retrieves all organizations/accounts the user has access to
+            Shows membership status and roles in each account
+            </summary>
+            <param name="query">Query filters and pagination options</param>
+            <returns>List of user's accounts with roles</returns>
+            <response code="200">Successfully retrieved accounts</response>
+            <response code="401">Authentication required</response>
+        </member>
+        <member name="M:Api.Controllers.IamController.GetAccount">
+            <summary>
+            Get authenticated user's current account details
+            Retrieves account information for the authenticated user
+            Shows current organization membership
+            </summary>
+            <returns>Current account information and profile</returns>
+            <response code="200">Successfully retrieved account</response>
+            <response code="401">Authentication required</response>
+        </member>
+        <member name="M:Api.Controllers.IamController.GetAccountRoles">
+            <summary>
+            Get authenticated user's roles in current account
+            Retrieves roles with full permission details
+            Shows effective permissions in current context
+            </summary>
+            <returns>User's roles in current account</returns>
+            <response code="200">Successfully retrieved account roles</response>
+            <response code="401">Authentication required</response>
+        </member>
+        <member name="M:Api.Controllers.IamController.GetAccountPermissions">
+            <summary>
+            Get authenticated user's permissions in current account
+            Returns effective permissions from all assigned roles
+            For access control decision-making
+            </summary>
+            <returns>User's effective permissions in current account</returns>
+            <response code="200">Successfully retrieved account permissions</response>
+            <response code="401">Authentication required</response>
+        </member>
+        <member name="M:Api.Controllers.IamController.SaveRolesAndPermissions(Iam.DomainService.Users.SaveRolesAndPermissionsRequest)">
+            <summary>
+            Save roles and permissions configuration
+            Bulk operation to set roles and permissions in single call
+            Use for migration or batch updates
+            </summary>
+            <param name="command">Configuration with roles and permissions</param>
+            <returns>Update result and summary</returns>
+            <response code="200">Roles and permissions saved successfully</response>
+            <response code="400">Invalid configuration</response>
+            <response code="401">Authentication required</response>
+        </member>
+        <member name="M:Api.Controllers.IamController.IsEmailAvaiable(Iam.DomainService.Users.IsEmailAvaiableRequest)">
+            <summary>
+            Check if email address is available for registration
+            Validates email uniqueness across the system
+            Use for real-time form validation
+            </summary>
+            <param name="query">Request with email to check</param>
+            <returns>Availability status (available/taken)</returns>
+            <response code="200">Email availability status returned</response>
+            <response code="400">Invalid email format</response>
+        </member>
+        <member name="M:Api.Controllers.IamController.GetUserTimelines(Iam.DomainService.Users.GetUserTimeLineRequest)">
+            <summary>
+            Get user activity timeline (audit log)
+            Retrieves chronological record of user's actions
+            Shows logins, API calls, permission changes, etc.
+            </summary>
+            <param name="request">Query parameters for time range and filters</param>
+            <returns>List of user timeline events</returns>
+            <response code="200">Successfully retrieved user timeline</response>
+            <response code="401">Authentication required</response>
+        </member>
+        <member name="T:Api.Controllers.OidcClientsController">
+            <summary>
+            OIDC Client Management Controller
+            Manages OIDC client registration, configuration, and lifecycle
+            Requires authentication and admin privileges
+            </summary>
+        </member>
+        <member name="M:Api.Controllers.OidcClientsController.GetAll(System.String)">
+            <summary>
+            Retrieve all OIDC clients for the tenant
+            Returns list of registered OAuth 2.0 / OIDC client applications
+            Sensitive fields (client_secret) are excluded from response
+            </summary>
+            <param name="projectKey">Optional filter by project key</param>
+            <returns>List of OIDC clients with configuration metadata</returns>
+            <response code="200">Successfully retrieved clients list</response>
+            <response code="400">Invalid request parameters</response>
+            <response code="401">Authentication required</response>
+        </member>
+        <member name="M:Api.Controllers.OidcClientsController.GetByClientId(System.String)">
+            <summary>
+            Retrieve specific OIDC client by client ID
+            Returns detailed configuration for single client application
+            Sensitive fields (client_secret) are excluded from response
+            </summary>
+            <param name="clientId">Unique identifier of OIDC client</param>
+            <returns>OIDC client configuration with metadata</returns>
+            <response code="200">Successfully retrieved client details</response>
+            <response code="400">client_id is required</response>
+            <response code="401">Authentication required</response>
+            <response code="404">Client not found</response>
+        </member>
+        <member name="M:Api.Controllers.OidcClientsController.Upsert(Authentication.DomainService.RequestModel.SaveOIDCClientRequest)">
+            <summary>
+            Create or update OIDC client configuration (Upsert)
+            Registers new OIDC client or updates existing configuration
+            Validates client metadata and OAuth/OIDC compliance
+            Returns generated or existing client_secret
+            </summary>
+            <param name="request">OIDC client configuration request</param>
+            <returns>Saved OIDC client with credentials</returns>
+            <response code="200">Successfully created/updated client</response>
+            <response code="400">Invalid request payload or validation failure</response>
+            <response code="401">Authentication required</response>
+        </member>
+        <member name="M:Api.Controllers.OidcClientsController.Delete(System.String)">
+            <summary>
+            Delete OIDC client configuration
+            Removes client application and revokes all issued tokens
+            Note: Deletion is irreversible
+            </summary>
+            <param name="clientId">Unique identifier of OIDC client to delete</param>
+            <returns>Deletion confirmation result</returns>
+            <response code="200">Successfully deleted client</response>
+            <response code="400">client_id is required or validation failure</response>
+            <response code="401">Authentication required</response>
+            <response code="404">Client not found</response>
+        </member>
+        <member name="T:Api.Controllers.ProjectController">
+            <summary>
+            Project Management Controller
+            Manages project creation, configuration, and discovery
+            Provides project metadata and organizational structure
+            </summary>
+        </member>
+        <member name="M:Api.Controllers.ProjectController.GetAll(Identifier.DomainService.Projects.GetProjectsRequest)">
+            <summary>
+            Retrieve all projects grouped by hierarchy
+            Returns projects with nested organization structure
+            User must have project access permissions
+            </summary>
+            <param name="request">Query filters and pagination options</param>
+            <returns>Grouped projects by organization</returns>
+            <response code="200">Successfully retrieved projects</response>
+            <response code="400">Invalid query parameters</response>
+            <response code="401">Authentication required</response>
+        </member>
+        <member name="M:Api.Controllers.ProjectController.Get(System.String)">
+            <summary>
+            Retrieve detailed project information
+            Returns complete project configuration and metadata
+            User must have project access permissions
+            </summary>
+            <param name="projectId">Unique identifier of project to retrieve</param>
+            <returns>Detailed project information with configuration</returns>
+            <response code="200">Successfully retrieved project details</response>
+            <response code="400">projectId parameter is required</response>
+            <response code="401">Authentication required</response>
+            <response code="404">Project not found</response>
+        </member>
         <member name="M:Blocks.Api.Controllers.AuthorizationController.OidcLogin(Authentication.DomainService.Authentication.OidcLoginRequest)">
             <summary>
             OIDC Login Endpoint — authenticates credentials, sets IDP session, then issues authorization code.

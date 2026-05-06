@@ -46,19 +46,26 @@ services.AddCloudConfigurationServices();
 
 var app = builder.Build();
 
+// Configure API routes FIRST (before static files) so JSON endpoints return JSON not HTML
+var normalizedApiRoutePrefix = ApplicationConfigurations.NormalizeApiRoutePrefixValue(apiRoutePrefix);
+ApplicationConfigurations.ConfigureMiddleware(
+    app,
+    tenantValidationPrefixes: new[] { normalizedApiRoutePrefix });
+
+// Register controller routes with /idp/v1 prefix for attribute-based routing
+var apiGroup = app.MapGroup(normalizedApiRoutePrefix);
+apiGroup.MapControllers();
+
+// THEN serve static files
 app.UseDefaultFiles();
 app.UseStaticFiles();
 
+// Finally, fallback to index.html for React SPA routing (non-API routes)
 var indexHtml = Path.Combine(app.Environment.WebRootPath ?? "", "index.html");
 if (File.Exists(indexHtml))
 {
     app.MapFallbackToFile("/index.html");
 }
-
-var normalizedApiRoutePrefix = ApplicationConfigurations.NormalizeApiRoutePrefixValue(apiRoutePrefix);
-ApplicationConfigurations.ConfigureMiddleware(
-    app,
-    tenantValidationPrefixes: new[] { normalizedApiRoutePrefix });
 
 await app.RunAsync();
 

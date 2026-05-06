@@ -16,11 +16,6 @@ namespace Authentication.DomainService.Services
         string GetRequestOriginHostName(HttpContext context);
         Task SendToQueueAsync<T>(string queue, T payload) where T : class;
         DeviceInformation? GetDeviceInfo(string userAgent);
-        Task<SaveSsoCredentialResponse> SaveSocialLoginCredentialAsync(SaveSsoCredentialRequest credential);
-        Task<BaseResponse> DeleteSocialLoginCredentialAsync(string itemId);
-        Task<GetSsoCredentialResponse> GetSsoCredentialAsync(string itemId);
-        Task<List<SocialLoginCredential>> GetSocialLoginCredentialsAsync();
-        Task<BaseResponse> UpdateSsoCredentialStatusAsync(UpdateSsoCredentialStatusRequest request);
         Task<SaveOIDCClientResponse> SaveOIDCClientAsync(SaveOIDCClientRequest request);
         Task<BaseResponse> DeleteOIDCClientAsyncAsync(DeleteOIDCClientRequest request);
         Task<BaseResponse> GenerateUserCodeByClientAsync(GenerateUserCodeRequest request);
@@ -29,5 +24,12 @@ namespace Authentication.DomainService.Services
         Task<BaseResponse> SaveClientCredentialAsync(SaveClientCredentialRequest request);
         Task<BaseResponse> DeleteClientCredentialAsync(DeleteClientCredentialRequest request);
         Task<List<ClientCredential>> GetClientCredentialsAsync(GetAllClientCredentialsRequest request);
+        Task<BaseResponse> CreateIdentityProviderAsync(IdentityProvider provider);
+        Task<IdentityProvider?> GetIdentityProviderAsync(string provider);
+        Task<IdentityProvider?> GetIdentityProviderByIdAsync(string id);
+        Task<List<IdentityProvider>> GetAllIdentityProvidersAsync();
+        Task<BaseResponse> UpdateIdentityProviderAsync(IdentityProvider provider);
+        Task<BaseResponse> DeleteIdentityProviderAsync(string id);
+        Task<BaseResponse> UpdateIdentityProviderStatusAsync(string id, bool isActive);
     }
 }

@@ -17,10 +17,21 @@ namespace Authentication.DomainService.Authentication
         string CookieToken(HttpRequest request);
         bool DeleteCookie(HttpRequest request);
         Task<IActionResult> GetLoginOptionsAsync();
+        Task<IActionResult> GetSocialAuthorizationUrlAsync(string provider);
+        Task<IActionResult> GetOidcAuthorizationUrlAsync();
+        Task<IActionResult> GetOidcLoginPageAsync(string clientId, string state, string redirectUri);
+        Task<IActionResult> GetOidcSocialAuthorizationUrlAsync(string provider, string oidcState);
         Task<OidcClientRegistration> GetClientCredentialAsync(string clientId);
         Task<ClaimsPrincipal?> GetPrincipalFromTokenAsync(HttpRequest request, string tenantId, bool IsUserInfoGetRequest = false);
         Task<string> ConstructRedirectUriAsync(string clientId, AcknowledgeRequest request);
         (bool IsValid, Dictionary<string, object> UserInfo) BuildOidcUserInfo(ClaimsPrincipal principal);
         Task<bool> TriggerBackchannelLogoutAllAsync(HttpRequest httpRequest);
+        Task<BaseResponse> CreateIdentityProviderAsync(IdentityProvider provider);
+        Task<IdentityProvider?> GetIdentityProviderAsync(string provider);
+        Task<IdentityProvider?> GetIdentityProviderByIdAsync(string id);
+        Task<List<IdentityProvider>> GetAllIdentityProvidersAsync();
+        Task<BaseResponse> UpdateIdentityProviderAsync(IdentityProvider provider);
+        Task<BaseResponse> DeleteIdentityProviderAsync(string id);
+        Task<BaseResponse> UpdateIdentityProviderStatusAsync(string id, bool isActive);
     }
 }

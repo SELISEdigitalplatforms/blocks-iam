@@ -53,15 +53,27 @@ class HttpClient {
     private BLOCKS_KEY: string,
   ) {}
 
+  private resolveBlocksKey(): string {
+    if (typeof window === "undefined") {
+      return this.BLOCKS_KEY;
+    }
+
+    const search = new URLSearchParams(window.location.search);
+    // For OIDC flows, prefer tenant key from URL params.
+    return search.get("tenant_id") || search.get("x-blocks-key") || this.BLOCKS_KEY || "";
+  }
+
   private isLocalhost(): boolean {
     return this.baseURL.includes("localhost") || this.baseURL.includes("127.0.0.1");
   }
 
   private normalizeHeaders(headers?: HeadersInit, skipBlocksKey?: boolean): Headers {
+    const blocksKey = this.resolveBlocksKey();
+
     const normalizedHeaders = new Headers({
       Accept: "application/json",
       "Content-Type": "application/json",
-      ...(!skipBlocksKey && { "X-Blocks-Key": this.BLOCKS_KEY }),
+      ...(!skipBlocksKey && blocksKey && { "X-Blocks-Key": blocksKey }),
     });
 
     // Add Authorization Bearer token for localhost

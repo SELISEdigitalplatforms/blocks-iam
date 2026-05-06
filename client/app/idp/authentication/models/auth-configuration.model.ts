@@ -39,6 +39,8 @@ export interface ISaveAuthConfigResponse {
 type SSO_INFO = {
   provider: SSO_PROVIDERS;
   audience: string;
+  displayName?: string;
+  authorizationUrl?: string;
 };
 
 export type LoginOption = {
