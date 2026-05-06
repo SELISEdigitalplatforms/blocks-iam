@@ -5,6 +5,7 @@ using System.IdentityModel.Tokens.Jwt;
 using System.Linq;
 using System.Threading.Tasks;
 using Authentication.DomainService.Services;
+using Idp.DomainService.Oidc.Contracts;
 
 namespace Authentication.DomainService.Oidc.Repositories
 {
@@ -49,38 +50,68 @@ namespace Authentication.DomainService.Oidc.Repositories
                     };
                 }
 
+                // RFC 7009: unknown tokens should still return success to avoid token enumeration.
+                // Try refresh token revocation first for explicit/implicit refresh_token flows.
+                var isRefreshHint = string.Equals(tokenTypeHint, "refresh_token", StringComparison.OrdinalIgnoreCase);
+                if (isRefreshHint || string.IsNullOrWhiteSpace(tokenTypeHint))
+                {
+                    var refreshToken = await _refreshTokenRepo.GetByTokenIdAsync(token);
+                    if (refreshToken != null)
+                    {
+                        if (!IsClientAuthorizedForRefreshToken(refreshToken, clientId))
+                        {
+                            return new TokenRevocationResult
+                            {
+                                Success = false,
+                                Error = "invalid_client",
+                                ErrorDescription = "client_id is not authorized for this token"
+                            };
+                        }
+
+                        if (!refreshToken.IsRevoked)
+                        {
+                            await _refreshTokenRepo.RevokeByFamilyIdAsync(refreshToken.FamilyId, "user_revoked");
+                            await SyncSessionStatusForRevokedFamilyAsync(refreshToken.FamilyId, refreshToken.UserId);
+                            _logger.LogInformation("Refresh token family revoked for token id: {TokenId}", token);
+                        }
+
+                        return new TokenRevocationResult { Success = true };
+                    }
+
+                    if (isRefreshHint)
+                    {
+                        return new TokenRevocationResult { Success = true };
+                    }
+                }
+
                 var jti = ExtractJtiFromToken(token);
                 if (string.IsNullOrWhiteSpace(jti))
+                {
+                    return new TokenRevocationResult { Success = true };
+                }
+
+                var handler = new JwtSecurityTokenHandler();
+                var tokenObj = handler.ReadJwtToken(token);
+                if (!IsClientAuthorizedForAccessToken(tokenObj, clientId))
                 {
                     return new TokenRevocationResult
                     {
                         Success = false,
-                        Error = "invalid_request",
-                        ErrorDescription = "Token is invalid or malformed"
+                        Error = "invalid_client",
+                        ErrorDescription = "client_id is not authorized for this token"
                     };
                 }
 
-                // Handle different token types
-                if (tokenTypeHint == "refresh_token")
+                // Revoke access token - add to blacklist
+                var expiresAt = tokenObj.ValidTo == default ? DateTime.UtcNow.AddMinutes(30) : tokenObj.ValidTo;
+                var userId = tokenObj.Subject;
+                if (string.IsNullOrWhiteSpace(userId))
                 {
-                    // Revoke refresh token - this revokes the entire family
-                    var refreshToken = await _refreshTokenRepo.GetByTokenIdAsync(token);
-                    if (refreshToken != null && !refreshToken.IsRevoked)
-                    {
-                        await _refreshTokenRepo.RevokeByFamilyIdAsync(refreshToken.FamilyId, "user_revoked");
-                        await SyncSessionStatusForRevokedFamilyAsync(refreshToken.FamilyId, refreshToken.UserId);
-                        _logger.LogInformation($"Refresh token family revoked for token: {token}");
-                    }
+                    userId = string.Empty;
                 }
-                else
-                {
-                    // Revoke access token - add to blacklist
-                    var expiresAt = ExtractExpiryFromToken(token);
-                    var userId = ExtractUserIdFromToken(token);
-                    
-                    await _revocationRepo.RevokeTokenAsync(jti, userId, "user_revoked", expiresAt);
-                    _logger.LogInformation($"Access token revoked: {jti}");
-                }
+
+                await _revocationRepo.RevokeTokenAsync(jti, userId, "user_revoked", expiresAt);
+                _logger.LogInformation("Access token revoked: {Jti}", jti);
 
                 return new TokenRevocationResult
                 {
@@ -140,6 +171,14 @@ namespace Authentication.DomainService.Oidc.Repositories
                 // Extract claims from token
                 var handler = new JwtSecurityTokenHandler();
                 var token_obj = handler.ReadJwtToken(token);
+
+                if (!IsClientAuthorizedForAccessToken(token_obj, clientId))
+                {
+                    return new TokenIntrospectionResult
+                    {
+                        Active = false
+                    };
+                }
 
                 var expiryTime = token_obj.ValidTo;
                 var isExpired = expiryTime < DateTime.UtcNow;
@@ -262,6 +301,26 @@ namespace Authentication.DomainService.Oidc.Repositories
                 _logger.LogError(ex, $"Error fetching revocation history: {userId}");
                 throw;
             }
+        }
+
+        private static bool IsClientAuthorizedForRefreshToken(RefreshTokenModel refreshToken, string clientId)
+        {
+            if (string.IsNullOrWhiteSpace(clientId))
+            {
+                return true;
+            }
+
+            return string.Equals(refreshToken.ClientId, clientId, StringComparison.OrdinalIgnoreCase);
+        }
+
+        private static bool IsClientAuthorizedForAccessToken(JwtSecurityToken token, string clientId)
+        {
+            if (string.IsNullOrWhiteSpace(clientId))
+            {
+                return true;
+            }
+
+            return token.Audiences.Any(aud => string.Equals(aud, clientId, StringComparison.OrdinalIgnoreCase));
         }
 
         // Helper methods

@@ -1075,8 +1075,8 @@ namespace Authentication.DomainService.Authentication
                     IpAddress = GetClientIpAddress(request),
                     CreatedAt = DateTime.UtcNow,
                     LastActivityAt = DateTime.UtcNow,
-                    IdleExpiry = DateTime.UtcNow.AddHours(24),
-                    AbsoluteExpiry = DateTime.UtcNow.AddDays(30)
+                    IdleExpiry = DateTime.UtcNow.Add(GetIdpSessionIdleTimeout()),
+                    AbsoluteExpiry = DateTime.UtcNow.Add(GetIdpSessionAbsoluteTimeout())
                 };
 
                 await _sessionRepo.CreateAsync(newSession);
@@ -1137,8 +1137,8 @@ namespace Authentication.DomainService.Authentication
                     IpAddress = GetClientIpAddress(request),
                     CreatedAt = DateTime.UtcNow,
                     LastActivityAt = DateTime.UtcNow,
-                    IdleExpiry = DateTime.UtcNow.AddHours(24),
-                    AbsoluteExpiry = DateTime.UtcNow.AddDays(30)
+                    IdleExpiry = DateTime.UtcNow.Add(GetIdpSessionIdleTimeout()),
+                    AbsoluteExpiry = DateTime.UtcNow.Add(GetIdpSessionAbsoluteTimeout())
                 };
 
                 await _sessionRepo.CreateAsync(newSession);
@@ -1179,8 +1179,30 @@ namespace Authentication.DomainService.Authentication
                 Secure = true,
                 SameSite = SameSiteMode.None,
                 Path = "/",
-                Expires = absoluteExpiry == default ? DateTime.UtcNow.AddDays(30) : absoluteExpiry
+                Expires = absoluteExpiry == default ? DateTime.UtcNow.Add(GetIdpSessionAbsoluteTimeout()) : absoluteExpiry
             });
+        }
+
+        private static TimeSpan GetIdpSessionIdleTimeout()
+        {
+            var configured = Environment.GetEnvironmentVariable("IDP_SESSION_IDLE_HOURS");
+            if (double.TryParse(configured, out var hours) && hours > 0 && hours <= 168)
+            {
+                return TimeSpan.FromHours(hours);
+            }
+
+            return TimeSpan.FromHours(24);
+        }
+
+        private static TimeSpan GetIdpSessionAbsoluteTimeout()
+        {
+            var configured = Environment.GetEnvironmentVariable("IDP_SESSION_ABSOLUTE_DAYS");
+            if (double.TryParse(configured, out var days) && days > 0 && days <= 365)
+            {
+                return TimeSpan.FromDays(days);
+            }
+
+            return TimeSpan.FromDays(30);
         }
 
         private static string? ResolveEffectiveOrganizationId(User user)

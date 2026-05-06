@@ -56,6 +56,12 @@ namespace Blocks.Api.Controllers
                 if (!result.Success)
                 {
                     _logger.LogWarning($"Token revocation failed: {result.Error}");
+
+                    if (string.Equals(result.Error, "invalid_client", StringComparison.OrdinalIgnoreCase))
+                    {
+                        return Unauthorized(new { error = result.Error, error_description = result.ErrorDescription });
+                    }
+
                     return BadRequest(new { error = result.Error, error_description = result.ErrorDescription });
                 }
 
@@ -65,7 +71,11 @@ namespace Blocks.Api.Controllers
                 await PublishTimelineAsync(
                     userId,
                     $"oidc_revoke_{(string.IsNullOrWhiteSpace(token_type_hint) ? "token" : token_type_hint)}",
-                    "call_api_to_oidc_revoke");
+                    "call_api_to_oidc_revoke",
+                    "success",
+                    null,
+                    client_id,
+                    token_type_hint);
 
                 // RFC 7009: Always return 200 OK on revocation request
                 // Even if token doesn't exist or is invalid
@@ -105,7 +115,11 @@ namespace Blocks.Api.Controllers
                 await PublishTimelineAsync(
                     actorId,
                     result.Active ? "oidc_introspect_active_token" : "oidc_introspect_inactive_token",
-                    "call_api_to_oidc_introspect");
+                    "call_api_to_oidc_introspect",
+                    result.Active ? "success" : "failed",
+                    result.Active ? null : "inactive_or_unauthorized",
+                    client_id,
+                    token_type_hint);
 
                 // RFC 7662: Return token metadata
                 return Ok(new
@@ -158,7 +172,7 @@ namespace Blocks.Api.Controllers
 
                 _logger.LogInformation($"All tokens revoked for user {userId}");
 
-                await PublishTimelineAsync(userId, "oidc_revoke_access_by_logout_all", "call_api_to_oidc_logout_all");
+                await PublishTimelineAsync(userId, "oidc_revoke_access_by_logout_all", "call_api_to_oidc_logout_all", "success", null, null, "refresh_token");
 
                 return Ok(new { message = "All tokens revoked successfully" });
             }
@@ -207,7 +221,7 @@ namespace Blocks.Api.Controllers
             }
         }
 
-        private async Task PublishTimelineAsync(string userId, string eventName, string actionBy)
+        private async Task PublishTimelineAsync(string userId, string eventName, string actionBy, string outcome, string? reasonCode, string? clientId, string? tokenTypeHint)
         {
             if (string.IsNullOrWhiteSpace(userId))
             {
@@ -220,8 +234,22 @@ namespace Blocks.Api.Controllers
                 Event = eventName,
                 ActionBy = actionBy,
                 DeviceInformation = _authenticationDomainService.GetDeviceInfo(Request?.Headers?.UserAgent.ToString() ?? string.Empty),
-                IpAddresses = string.Join(",", _authenticationDomainService.GetVisitorsIpAddresses(Request.HttpContext))
+                IpAddresses = string.Join(",", _authenticationDomainService.GetVisitorsIpAddresses(Request.HttpContext)),
+                TenantId = User.FindFirst("tenant_id")?.Value,
+                SessionId = Request.Cookies["idp_session_id"],
+                CorrelationId = HttpContext.TraceIdentifier,
+                Outcome = outcome,
+                ReasonCode = reasonCode,
+                RiskLevel = "low",
+                ClientId = clientId
             };
+
+            if (!string.IsNullOrWhiteSpace(tokenTypeHint))
+            {
+                timelineEvent.ReasonCode = string.IsNullOrWhiteSpace(timelineEvent.ReasonCode)
+                    ? $"token_type_{tokenTypeHint}"
+                    : $"{timelineEvent.ReasonCode};token_type_{tokenTypeHint}";
+            }
 
             await _authenticationDomainService.SendToQueueAsync(IdpConstants.AuthenticationQueue, timelineEvent);
         }
