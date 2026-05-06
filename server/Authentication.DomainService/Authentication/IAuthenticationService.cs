@@ -17,5 +17,6 @@ namespace Authentication.DomainService.Authentication
         Task<OidcClientRegistration> GetClientCredentialAsync(string clientId);
         Task<ClaimsPrincipal?> GetPrincipalFromTokenAsync(HttpRequest request, string tenantId, bool IsUserInfoGetRequest = false);
         Task<string> ConstructRedirectUriAsync(string clientId, AcknowledgeRequest request);
+        (bool IsValid, Dictionary<string, object> UserInfo) BuildOidcUserInfo(ClaimsPrincipal principal);
     }
 }

@@ -39,12 +39,20 @@ namespace Authentication.DomainService.OAuth
 
         }
 
-        public async Task<JwtAccessToken> GetJwtAccessToken(AuthenticationConfiguration authenticationConfiguration, Tenant tenant, User user, StateInfo? state = null, string? organizationId = null, TokenIssuanceContext? issuanceContext = null)
+        public async Task<JwtAccessToken> GetJwtAccessToken(
+            AuthenticationConfiguration authenticationConfiguration,
+            Tenant tenant,
+            User user,
+            StateInfo? state = null,
+            string? organizationId = null,
+            TokenIssuanceContext? issuanceContext = null,
+            IEnumerable<string>? clientAllowedScopes = null,
+            IEnumerable<string>? clientAllowedServiceAccessResources = null)
         {
             _key = _cryptoService.Hash(Encoding.UTF8.GetBytes($"{tenant.TenantId}::{tenant.ItemId}"));
             var certificate = await GetOrRetrieveCertAsync(tenant);
             if (certificate == null) return new JwtAccessToken();
-            var resolvedClaims = await _authorizationClaimsResolver.ResolveAsync(user, organizationId, state?.Scope);
+            var resolvedClaims = await _authorizationClaimsResolver.ResolveAsync(user, organizationId, state?.Scope, clientAllowedScopes, clientAllowedServiceAccessResources);
             return MapJwtAccessToken(authenticationConfiguration, tenant, user, certificate, resolvedClaims, stateInfo: state, organizationId: organizationId, issuanceContext: issuanceContext);
         }
 
@@ -103,7 +111,7 @@ namespace Authentication.DomainService.OAuth
 
             foreach (var resource in resolvedClaims.Resources)
             {
-                claimsIdentity.AddClaim(new Claim("service_access", resource));
+                claimsIdentity.AddClaim(new Claim(BlocksContext.SERVICE_ACCESS_CLAIM, resource));
             }
 
             foreach (var permission in resolvedClaims.Permissions)

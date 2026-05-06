@@ -106,8 +106,8 @@ namespace Authentication.DomainService.Authentication
             var client = await GetClientCredentialAsync(request.ClientId);
             var code = Guid.NewGuid().ToString("n");
             var nextUrl = client.RedirectUris.FirstOrDefault() ?? string.Empty;
-            var audience = client.AllowedAudiences.FirstOrDefault() ?? string.Empty;
-            var stateInfo = new StateInfo { Scope = request.Scope, secret = client.ClientSecret, State = request.State, Code = code, Nonce = request.Nonce, UserName = request.Username, Audience = audience, Provider = "SeliseCloud", NextUrl = nextUrl };
+            var serviceAccessResource = client.AllowedServiceAccessResources.FirstOrDefault() ?? string.Empty;
+            var stateInfo = new StateInfo { Scope = request.Scope, secret = client.ClientSecret, State = request.State, Code = code, Nonce = request.Nonce, UserName = request.Username, Audience = serviceAccessResource, Provider = "SeliseCloud", NextUrl = nextUrl };
             await _cacheClient.AddStringValueAsync(code, JsonSerializer.Serialize(stateInfo), 300);
             var uri = $"{nextUrl}?code={code}";
 
@@ -181,6 +181,90 @@ namespace Authentication.DomainService.Authentication
             }
 
             return null;
+        }
+
+        public (bool IsValid, Dictionary<string, object> UserInfo) BuildOidcUserInfo(ClaimsPrincipal principal)
+        {
+            var sub = principal.FindFirst(JwtRegisteredClaimNames.Sub)?.Value
+                ?? principal.FindFirst(BlocksContext.USER_ID_CLAIM)?.Value;
+
+            if (string.IsNullOrWhiteSpace(sub))
+            {
+                return (false, new Dictionary<string, object>());
+            }
+
+            var userInfo = new Dictionary<string, object>
+            {
+                [JwtRegisteredClaimNames.Sub] = sub
+            };
+
+            var grantedScopes = GetGrantedScopes(principal);
+
+            if (HasScope(grantedScopes, "profile"))
+            {
+                AddSingleClaimIfPresent(principal, userInfo, "name", BlocksContext.DISPLAY_NAME_CLAIM);
+                AddSingleClaimIfPresent(principal, userInfo, "preferred_username", BlocksContext.USER_NAME_CLAIM);
+            }
+
+            if (HasScope(grantedScopes, "email"))
+            {
+                AddSingleClaimIfPresent(principal, userInfo, "email", BlocksContext.EMAIL_CLAIM);
+            }
+
+            if (HasScope(grantedScopes, "phone"))
+            {
+                AddSingleClaimIfPresent(principal, userInfo, "phone_number", BlocksContext.PHONE_NUMBER_CLAIM);
+            }
+
+            AddSingleClaimIfPresent(principal, userInfo, BlocksContext.TENANT_ID_CLAIM, BlocksContext.TENANT_ID_CLAIM);
+            AddSingleClaimIfPresent(principal, userInfo, BlocksContext.ORGANIZATION_ID_CLAIM, BlocksContext.ORGANIZATION_ID_CLAIM);
+
+            AddArrayClaimIfPresent(principal, userInfo, BlocksContext.ROLES_CLAIM, BlocksContext.ROLES_CLAIM);
+            AddArrayClaimIfPresent(principal, userInfo, BlocksContext.PERMISSION_CLAIM, BlocksContext.PERMISSION_CLAIM);
+            AddArrayClaimIfPresent(principal, userInfo, BlocksContext.SERVICE_ACCESS_CLAIM, BlocksContext.SERVICE_ACCESS_CLAIM);
+
+            return (true, userInfo);
+        }
+
+        private static HashSet<string> GetGrantedScopes(ClaimsPrincipal principal)
+        {
+            var scopeValues = principal.FindAll("scope")
+                .Concat(principal.FindAll("scp"))
+                .Select(claim => claim.Value)
+                .Where(value => !string.IsNullOrWhiteSpace(value));
+
+            return scopeValues
+                .SelectMany(value => value.Split(' ', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
+                .Where(value => !string.IsNullOrWhiteSpace(value))
+                .ToHashSet(StringComparer.OrdinalIgnoreCase);
+        }
+
+        private static bool HasScope(HashSet<string> grantedScopes, string scope)
+        {
+            return grantedScopes.Count == 0 || grantedScopes.Contains(scope);
+        }
+
+        private static void AddSingleClaimIfPresent(ClaimsPrincipal principal, Dictionary<string, object> userInfo, string outputClaimName, string sourceClaimType)
+        {
+            var value = principal.FindFirst(sourceClaimType)?.Value;
+            if (!string.IsNullOrWhiteSpace(value))
+            {
+                userInfo[outputClaimName] = value;
+            }
+        }
+
+        private static void AddArrayClaimIfPresent(ClaimsPrincipal principal, Dictionary<string, object> userInfo, string outputClaimName, string sourceClaimType)
+        {
+            var values = principal.FindAll(sourceClaimType)
+                .Select(claim => claim.Value)
+                .Where(value => !string.IsNullOrWhiteSpace(value))
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .ToArray();
+
+            if (values.Length > 0)
+            {
+                userInfo[outputClaimName] = values;
+            }
         }
     }
 }

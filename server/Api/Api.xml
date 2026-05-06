@@ -43,13 +43,13 @@
         <member name="M:Blocks.Api.Controllers.IdpSessionController.GetSession">
             <summary>
             Get current session details
-            GET /api/oidc/session
+            GET /oidc/session
             </summary>
         </member>
         <member name="M:Blocks.Api.Controllers.IdpSessionController.GetAccounts">
             <summary>
             Get all accounts in current session
-            GET /api/oidc/session/accounts
+            GET /oidc/session/accounts
             Supports multi-account SSO - user can see all accounts logged in this session
             </summary>
         </member>

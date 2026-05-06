@@ -209,10 +209,10 @@ namespace Authentication.DomainService.Services
                 redirectUris = [request.RedirectUri];
             }
 
-            var allowedAudiences = request.AllowedAudiences.Where(x => !string.IsNullOrWhiteSpace(x)).Distinct(StringComparer.OrdinalIgnoreCase).ToList();
-            if (allowedAudiences.Count == 0 && !string.IsNullOrWhiteSpace(request.Audience))
+            var allowedServiceAccessResources = request.AllowedServiceAccessResources.Where(x => !string.IsNullOrWhiteSpace(x)).Distinct(StringComparer.OrdinalIgnoreCase).ToList();
+            if (allowedServiceAccessResources.Count == 0 && !string.IsNullOrWhiteSpace(request.ServiceAccessResource))
             {
-                allowedAudiences = [request.Audience];
+                allowedServiceAccessResources = [request.ServiceAccessResource];
             }
 
             credential.AllowedScopes = allowedScopes;
@@ -221,8 +221,8 @@ namespace Authentication.DomainService.Services
             credential.RedirectUris = redirectUris;
             credential.RedirectUri = redirectUris.FirstOrDefault();
 
-            credential.AllowedAudiences = allowedAudiences;
-            credential.Audience = allowedAudiences.FirstOrDefault();
+            credential.AllowedServiceAccessResources = allowedServiceAccessResources;
+            credential.ServiceAccessResource = allowedServiceAccessResources.FirstOrDefault();
 
             credential.AllowedGrantTypes = request.AllowedGrantTypes.Where(x => !string.IsNullOrWhiteSpace(x)).Distinct(StringComparer.OrdinalIgnoreCase).ToList();
             credential.AllowedResponseTypes = request.AllowedResponseTypes.Where(x => !string.IsNullOrWhiteSpace(x)).Distinct(StringComparer.OrdinalIgnoreCase).ToList();

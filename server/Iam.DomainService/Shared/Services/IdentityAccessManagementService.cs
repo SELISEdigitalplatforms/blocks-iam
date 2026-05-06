@@ -43,7 +43,15 @@ namespace Iam.DomainService.Services
             }
 
             var passwordMaterial = BuildPasswordMaterial(password, optionalSalt);
-            return BCryptNet.Verify(passwordMaterial, passwordHash);
+            try
+            {
+                return BCryptNet.Verify(passwordMaterial, passwordHash);
+            }
+            catch (BCrypt.Net.SaltParseException ex)
+            {
+                _logger.LogWarning(ex, "Password hash is not a valid BCrypt hash format.");
+                return false;
+            }
         }
 
         private static string BuildPasswordMaterial(string password, string? optionalSalt)

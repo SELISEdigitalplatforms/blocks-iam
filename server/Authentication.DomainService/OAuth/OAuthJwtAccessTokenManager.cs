@@ -87,7 +87,16 @@ namespace Authentication.DomainService.OAuth
                 OriginalTenantId = tokenRequest.OriginalTenantId,
                 ActorUserId = tokenRequest.ImpersonatorUserId
             };
-            var jwtAccessToken = await _jwtAccessTokenProvider.GetJwtAccessToken(authenticationConfiguration, tenant, user, stateInfo, organizationId: tokenRequest.OrganizationId, issuanceContext: issuanceContext);
+            var (clientAllowedScopes, allowedServiceAccessResources) = await ResolveClientAuthorizationConfigAsync(tokenRequest.ClientId);
+            var jwtAccessToken = await _jwtAccessTokenProvider.GetJwtAccessToken(
+                authenticationConfiguration,
+                tenant,
+                user,
+                stateInfo,
+                organizationId: tokenRequest.OrganizationId,
+                issuanceContext: issuanceContext,
+                clientAllowedScopes: clientAllowedScopes,
+                clientAllowedServiceAccessResources: allowedServiceAccessResources);
 
             var accessToken = CreateJwtAccessToken(jwtAccessToken);
             var (refreshToken, refreshValidity) = await ManageRefreshTokenAsync(tokenRequest, jwtAccessToken, authenticationConfiguration, tenant, user);
@@ -102,6 +111,29 @@ namespace Authentication.DomainService.OAuth
                 CookieDomain = tenant.CookieDomain,
                 StatusCode = 200
             };
+        }
+
+        private async Task<(IReadOnlyCollection<string> AllowedScopes, IReadOnlyCollection<string> AllowedServiceAccessResources)> ResolveClientAuthorizationConfigAsync(string? clientId)
+        {
+            if (string.IsNullOrWhiteSpace(clientId))
+            {
+                return ([], []);
+            }
+
+            var oidcClient = await _authenticationRepository.GetOidcClientRegistrationAsync(clientId);
+            var allowedScopes = oidcClient?.AllowedScopes?
+                .Where(scope => !string.IsNullOrWhiteSpace(scope))
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .ToList()
+                ?? [];
+
+            var allowedServiceAccessResources = oidcClient?.AllowedServiceAccessResources?
+                .Where(resource => !string.IsNullOrWhiteSpace(resource))
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .ToList()
+                ?? [];
+
+            return (allowedScopes, allowedServiceAccessResources);
         }
 
         private async Task<TokenResponse?> ProcessCheckPoints(TokenRequest tokenRequest, User user)
