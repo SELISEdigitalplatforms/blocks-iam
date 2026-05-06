@@ -114,13 +114,58 @@ namespace Authentication.DomainService.Authentication
             if (!passwordValid)
                 return new UnauthorizedObjectResult(new { error = "invalid_credentials" });
 
-            var resolvedTenantId = requestedTenantId ?? user.OrganizationIds?.FirstOrDefault() ?? string.Empty;
+            // Check if user has multiple tenant access - if so, return account selector
+            var userTenants = user.OrganizationIds ?? new List<string>();
+            if (!string.IsNullOrWhiteSpace(requestedTenantId))
+            {
+                // Tenant was specified in request, use it directly
+                userTenants = new List<string> { requestedTenantId };
+            }
+            else if (userTenants.Count > 1)
+            {
+                // Multiple tenants available - need account selection
+                // Create IDP session with all tenant accounts
+                var currentSessionId = httpRequest.Cookies[IdpSessionCookieName];
+                await EnsureIdpSessionAsync(httpRequest, httpResponse, currentSessionId, user.ItemId, userTenants);
 
+                // Return account selection response
+                var accounts = new List<OidcAccountInfo>();
+                foreach (var tenantId in userTenants)
+                {
+                    accounts.Add(new OidcAccountInfo
+                    {
+                        UserId = user.ItemId,
+                        TenantId = tenantId,
+                        Email = user.Email ?? request.Username,
+                        DisplayName = user.FirstName,
+                        TenantName = tenantId // Could lookup tenant name if needed
+                    });
+                }
+
+                return new OkObjectResult(new OidcLoginResponse
+                {
+                    Status = "account_selection_required",
+                    Accounts = accounts
+                });
+            }
+
+            var resolvedTenantId = userTenants.FirstOrDefault() ?? string.Empty;
+
+            // Single tenant - proceed with auth code flow
             // Establish IDP session (sets idp_session_id cookie)
-            var currentSessionId = httpRequest.Cookies[IdpSessionCookieName];
-            await EnsureIdpSessionAsync(httpRequest, httpResponse, currentSessionId, user.ItemId, resolvedTenantId);
+            var currentSessionId2 = httpRequest.Cookies[IdpSessionCookieName];
+            await EnsureIdpSessionAsync(httpRequest, httpResponse, currentSessionId2, user.ItemId, resolvedTenantId);
 
-            // Now issue the authorization code directly
+            // Create claims principal with authenticated user (don't rely on cookie in same request)
+            var claims = new[]
+            {
+                new Claim("sub", user.ItemId),
+                new Claim("tenant_id", resolvedTenantId)
+            };
+            var identity = new ClaimsIdentity(claims, "Bearer");
+            var principal = new ClaimsPrincipal(identity);
+
+            // Issue the authorization code directly (skip login UI)
             return await AuthorizeAsync(
                 request.ClientId,
                 "code",
@@ -132,7 +177,7 @@ namespace Authentication.DomainService.Authentication
                 request.CodeChallengeMethod ?? "S256",
                 null,
                 resolvedTenantId,
-                new ClaimsPrincipal(),
+                principal,
                 httpRequest,
                 httpResponse);
         }
@@ -384,6 +429,61 @@ namespace Authentication.DomainService.Authentication
             response.Cookies.Append(PendingSelectedTenantCookieName, selectedAccount.TenantId, cookieOptions);
 
             return new OkObjectResult(new { success = true });
+        }
+
+        public async Task<IActionResult> ContinueOidcLoginAfterAccountSelectionAsync(string userId, string tenantId, string clientId, string redirectUri, string? scope, string? state, string? nonce, string? codeChallenge, string? codeChallengeMethod, HttpRequest request, HttpResponse response)
+        {
+            if (string.IsNullOrWhiteSpace(userId) || string.IsNullOrWhiteSpace(tenantId) || string.IsNullOrWhiteSpace(clientId))
+            {
+                return new BadRequestObjectResult(new { error = "invalid_request", error_description = "user_id, tenant_id, and client_id are required" });
+            }
+
+            var effectiveSessionId = request.Cookies[IdpSessionCookieName];
+            if (string.IsNullOrWhiteSpace(effectiveSessionId))
+            {
+                return new ObjectResult(new { error = "session_not_found" }) { StatusCode = 401 };
+            }
+
+            var session = await _sessionRepo.GetBySessionIdAsync(effectiveSessionId);
+            if (session == null || session.RevokedAt.HasValue || session.IsExpired())
+            {
+                return new ObjectResult(new { error = "session_not_found" }) { StatusCode = 401 };
+            }
+
+            // Verify account exists in session
+            var selectedAccount = session.Accounts.FirstOrDefault(a =>
+                string.Equals(a.UserId, userId, StringComparison.OrdinalIgnoreCase)
+                && string.Equals(a.TenantId, tenantId, StringComparison.OrdinalIgnoreCase));
+
+            if (selectedAccount == null)
+            {
+                return new BadRequestObjectResult(new { error = "invalid_request", error_description = "Selected account is not available in this session" });
+            }
+
+            // Create claims principal from selected account
+            var claims = new[]
+            {
+                new Claim("sub", userId),
+                new Claim("tenant_id", tenantId)
+            };
+            var identity = new ClaimsIdentity(claims, "Bearer");
+            var principal = new ClaimsPrincipal(identity);
+
+            // Issue authorization code
+            return await AuthorizeAsync(
+                clientId,
+                "code",
+                redirectUri,
+                scope ?? "openid profile email offline_access",
+                state ?? string.Empty,
+                nonce ?? string.Empty,
+                codeChallenge ?? string.Empty,
+                codeChallengeMethod ?? "S256",
+                null,
+                tenantId,
+                principal,
+                request,
+                response);
         }
 
         public async Task<IActionResult> TokenAsync(string grantType, HttpRequest request)
@@ -1004,6 +1104,69 @@ namespace Authentication.DomainService.Authentication
             }
 
             SetIdpSessionCookie(response, tenantId, session.SessionId, session.AbsoluteExpiry);
+        }
+
+        private async Task EnsureIdpSessionAsync(HttpRequest request, HttpResponse response, string? currentSessionId, string userId, List<string> tenantIds)
+        {
+            // Overload for multiple tenants (account selection case)
+            var session = string.IsNullOrWhiteSpace(currentSessionId)
+                ? null
+                : await _sessionRepo.GetBySessionIdAsync(currentSessionId);
+
+            var primaryTenantId = tenantIds.FirstOrDefault() ?? string.Empty;
+
+            if (session == null || session.RevokedAt.HasValue || session.IsExpired())
+            {
+                var accounts = new List<IdpSessionAccount>();
+                foreach (var tenantId in tenantIds)
+                {
+                    accounts.Add(new IdpSessionAccount
+                    {
+                        UserId = userId,
+                        TenantId = tenantId,
+                        DisplayName = userId,
+                        LoginAt = DateTime.UtcNow
+                    });
+                }
+
+                var newSession = new IdpSessionModel
+                {
+                    SessionId = Guid.NewGuid().ToString("n"),
+                    TenantId = primaryTenantId,
+                    Accounts = accounts,
+                    IpAddress = GetClientIpAddress(request),
+                    CreatedAt = DateTime.UtcNow,
+                    LastActivityAt = DateTime.UtcNow,
+                    IdleExpiry = DateTime.UtcNow.AddHours(24),
+                    AbsoluteExpiry = DateTime.UtcNow.AddDays(30)
+                };
+
+                await _sessionRepo.CreateAsync(newSession);
+                SetIdpSessionCookie(response, primaryTenantId, newSession.SessionId, newSession.AbsoluteExpiry);
+                return;
+            }
+
+            // Add missing tenant accounts to existing session
+            foreach (var tenantId in tenantIds)
+            {
+                var accountExists = session.Accounts.Any(a =>
+                    string.Equals(a.UserId, userId, StringComparison.OrdinalIgnoreCase)
+                    && string.Equals(a.TenantId, tenantId, StringComparison.OrdinalIgnoreCase));
+
+                if (!accountExists)
+                {
+                    await _sessionRepo.AddAccountAsync(session.SessionId, new IdpSessionAccount
+                    {
+                        UserId = userId,
+                        TenantId = tenantId,
+                        DisplayName = userId,
+                        LoginAt = DateTime.UtcNow
+                    });
+                }
+            }
+
+            await _sessionRepo.UpdateActivityAsync(session.SessionId);
+            SetIdpSessionCookie(response, primaryTenantId, session.SessionId, session.AbsoluteExpiry);
         }
 
         private void SetIdpSessionCookie(HttpResponse response, string tenantId, string sessionId, DateTime absoluteExpiry)

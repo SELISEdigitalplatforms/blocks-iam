@@ -16,13 +16,18 @@ import {
 import { z } from "zod";
 import { showErrorToast } from "@/hooks/use-toast";
 import { useNavigate } from "react-router-dom";
-import { Captcha } from "@/components/captcha";
+// import { Captcha } from "@/components/captcha"; // REMOVED: Not available
 import { useEffect } from "react";
 import { useAccountRecover } from "@blocks-idp/iam/hooks/use-account";
 import { isErrorWithErrors } from "@/lib/error";
-import { useCaptcha } from "@blocks-idp/captcha/hooks/use-captcha";
+// import { useCaptcha } from "@blocks-idp/captcha/hooks/use-captcha"; // REMOVED: Hook not found
+import { buildOIDCNavigationUrl } from "@blocks-idp/authentication/utils/oidc-utils";
 
-export const ForgotPasswordForm = () => {
+interface ForgotPasswordFormProps {
+  mode?: "default" | "oidc";
+}
+
+export const ForgotPasswordForm = ({ mode = "default" }: ForgotPasswordFormProps) => {
   const navigate = useNavigate();
   const form = useForm({
     defaultValues: forgotPasswordFormDefaultValue,
@@ -50,7 +55,10 @@ export const ForgotPasswordForm = () => {
         resetCaptcha();
         return showErrorToast({ errors: res.errors });
       }
-      navigate(`/forgot-email-sent?email=${values.email}`);
+      const redirectUrl = mode === "oidc" 
+        ? buildOIDCNavigationUrl(`/email-sent-confirmation?email=${values.email}`)
+        : `/oidc/email-sent-confirmation?email=${values.email}`;
+      navigate(redirectUrl);
     } catch (error) {
       resetCaptcha();
       if (isErrorWithErrors(error)) return showErrorToast({ errors: error.errors });
@@ -61,6 +69,8 @@ export const ForgotPasswordForm = () => {
   useEffect(() => {
     if (!isValid && captchaCode) resetCaptcha();
   }, [captchaCode, isValid, resetCaptcha]);
+
+  const backToLoginUrl = mode === "oidc" ? buildOIDCNavigationUrl("/") : "/login";
 
   return (
     <Form {...form}>
@@ -97,7 +107,7 @@ export const ForgotPasswordForm = () => {
         </div>
         <div className="mt-4 text-center text-base text-foreground">
           Already a member?{" "}
-          <Link to={"/login"} className="text-primary hover:underline">
+          <Link to={backToLoginUrl} className="text-primary hover:underline">
             Log in
           </Link>
         </div>

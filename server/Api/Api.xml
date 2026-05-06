@@ -10,6 +10,11 @@
             Use this for headless / API-based OIDC flows where the browser UI is not available.
             </summary>
         </member>
+        <member name="M:Blocks.Api.Controllers.AuthorizationController.OidcLoginSelectAccount(Blocks.Api.Controllers.AuthorizationController.OidcLoginSelectAccountRequest)">
+            <summary>
+            OIDC Login Select Account — continues OIDC login after user selects account from multiple options
+            </summary>
+        </member>
         <member name="M:Blocks.Api.Controllers.AuthorizationController.Authorize(System.String,System.String,System.String,System.String,System.String,System.String,System.String,System.String,System.String,System.String)">
             <summary>
             OAuth 2.0 Authorization Endpoint (RFC 6749 Section 3.1)

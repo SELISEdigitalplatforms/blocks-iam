@@ -27,6 +27,29 @@ namespace Blocks.Api.Controllers
         }
 
         /// <summary>
+        /// OIDC Login Select Account — continues OIDC login after user selects account from multiple options
+        /// </summary>
+        [HttpPost("login/select-account")]
+        public async Task<IActionResult> OidcLoginSelectAccount([FromBody] OidcLoginSelectAccountRequest? request)
+        {
+            if (request == null || string.IsNullOrWhiteSpace(request.TenantId))
+                return BadRequest(new { error = "invalid_request", error_description = "tenant_id is required" });
+
+            return await _authorizationFlowService.ContinueOidcLoginAfterAccountSelectionAsync(
+                request.UserId ?? string.Empty,
+                request.TenantId,
+                request.ClientId ?? string.Empty,
+                request.RedirectUri ?? string.Empty,
+                request.Scope,
+                request.State,
+                request.Nonce,
+                request.CodeChallenge,
+                request.CodeChallengeMethod,
+                Request,
+                Response);
+        }
+
+        /// <summary>
         /// OAuth 2.0 Authorization Endpoint (RFC 6749 Section 3.1)
         /// Initiates authorization code flow with PKCE
         /// </summary>
@@ -82,6 +105,36 @@ namespace Blocks.Api.Controllers
 
             [JsonPropertyName("tenant_id")]
             public string? TenantId { get; set; }
+        }
+
+        public class OidcLoginSelectAccountRequest
+        {
+            [JsonPropertyName("user_id")]
+            public string? UserId { get; set; }
+
+            [JsonPropertyName("tenant_id")]
+            public string? TenantId { get; set; }
+
+            [JsonPropertyName("client_id")]
+            public string? ClientId { get; set; }
+
+            [JsonPropertyName("redirect_uri")]
+            public string? RedirectUri { get; set; }
+
+            [JsonPropertyName("scope")]
+            public string? Scope { get; set; }
+
+            [JsonPropertyName("state")]
+            public string? State { get; set; }
+
+            [JsonPropertyName("nonce")]
+            public string? Nonce { get; set; }
+
+            [JsonPropertyName("code_challenge")]
+            public string? CodeChallenge { get; set; }
+
+            [JsonPropertyName("code_challenge_method")]
+            public string? CodeChallengeMethod { get; set; }
         }
     }
 }
