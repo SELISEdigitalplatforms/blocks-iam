@@ -4,8 +4,43 @@ using System.Security.Claims;
 
 namespace Authentication.DomainService.Authentication
 {
+    public class OidcLoginRequest
+    {
+        [System.Text.Json.Serialization.JsonPropertyName("username")]
+        public string? Username { get; set; }
+
+        [System.Text.Json.Serialization.JsonPropertyName("password")]
+        public string? Password { get; set; }
+
+        [System.Text.Json.Serialization.JsonPropertyName("client_id")]
+        public string? ClientId { get; set; }
+
+        [System.Text.Json.Serialization.JsonPropertyName("redirect_uri")]
+        public string? RedirectUri { get; set; }
+
+        [System.Text.Json.Serialization.JsonPropertyName("scope")]
+        public string? Scope { get; set; }
+
+        [System.Text.Json.Serialization.JsonPropertyName("state")]
+        public string? State { get; set; }
+
+        [System.Text.Json.Serialization.JsonPropertyName("nonce")]
+        public string? Nonce { get; set; }
+
+        [System.Text.Json.Serialization.JsonPropertyName("code_challenge")]
+        public string? CodeChallenge { get; set; }
+
+        [System.Text.Json.Serialization.JsonPropertyName("code_challenge_method")]
+        public string? CodeChallengeMethod { get; set; }
+
+        [System.Text.Json.Serialization.JsonPropertyName("tenant_id")]
+        public string? TenantId { get; set; }
+    }
+
     public interface IAuthorizationFlowService
     {
+        Task<IActionResult> ExecuteOidcLoginAsync(OidcLoginRequest request, HttpRequest httpRequest, HttpResponse httpResponse);
+
         Task<IActionResult> AuthorizeAsync(
             string client_id,
             string response_type,

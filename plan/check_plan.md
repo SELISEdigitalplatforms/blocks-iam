@@ -85,6 +85,13 @@ POST /api/blocks-idp/auth/logout
 # 🔄 3. OIDC Flow (if you support SSO / OAuth)
 
 ## Step 7 — Authorize (browser-based normally)
+{
+  "issuer": "http://localhost:5000",
+  "authorization_endpoint": "http://localhost:5000/api/oidc/authorize?tenant_id=f080a1bea04280a72149fd689d50a48c",
+  "token_endpoint": "http://localhost:5000/api/oidc/token?tenant_id=f080a1bea04280a72149fd689d50a48c",
+  "userinfo_endpoint": "http://localhost:5000/api/auth/userinfo?tenant_id=f080a1bea04280a72149fd689d50a48c",
+  "jwks_uri": "http://localhost:5000/f080a1bea04280a72149fd689d50a48c/.well-known/jwks.json",
+}
 
 ```
 GET /api/blocks-idp/oidc/authorize
