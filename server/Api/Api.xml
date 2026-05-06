@@ -4,6 +4,12 @@
         <name>Api</name>
     </assembly>
     <members>
+        <member name="M:Blocks.Api.Controllers.AuthorizationController.OidcLogin(Authentication.DomainService.Authentication.OidcLoginRequest)">
+            <summary>
+            OIDC Login Endpoint — authenticates credentials, sets IDP session, then issues authorization code.
+            Use this for headless / API-based OIDC flows where the browser UI is not available.
+            </summary>
+        </member>
         <member name="M:Blocks.Api.Controllers.AuthorizationController.Authorize(System.String,System.String,System.String,System.String,System.String,System.String,System.String,System.String,System.String,System.String)">
             <summary>
             OAuth 2.0 Authorization Endpoint (RFC 6749 Section 3.1)

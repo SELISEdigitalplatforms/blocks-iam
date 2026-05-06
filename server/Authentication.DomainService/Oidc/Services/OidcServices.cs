@@ -387,9 +387,10 @@ public class DiscoveryService : IDiscoveryService
             ? BuildUrl(issuer, ".well-known", "jwks.json")
             : BuildUrl(issuer, tenantId, ".well-known", "jwks.json");
 
-        var authorizationEndpoint = BuildUrl(issuer, tenantScopedPrefix.Concat([apiPrefix, "oidc", "authorize"]).ToArray());
-        var tokenEndpoint = BuildUrl(issuer, tenantScopedPrefix.Concat([apiPrefix, "oidc", "token"]).ToArray());
-        var userInfoEndpoint = BuildUrl(issuer, tenantScopedPrefix.Concat([apiPrefix, "auth", "userinfo"]).ToArray());
+        var tenantQuery = string.IsNullOrWhiteSpace(tenantId) ? string.Empty : $"?tenant_id={tenantId}";
+        var authorizationEndpoint = BuildUrl(issuer, [apiPrefix, "oidc", "authorize"]) + tenantQuery;
+        var tokenEndpoint = BuildUrl(issuer, [apiPrefix, "oidc", "token"]) + tenantQuery;
+        var userInfoEndpoint = BuildUrl(issuer, [apiPrefix, "auth", "userinfo"]) + tenantQuery;
 
         return new ResolvedOidcEndpoints
         {

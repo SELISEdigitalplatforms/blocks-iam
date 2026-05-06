@@ -1,6 +1,7 @@
 using Microsoft.AspNetCore.Mvc;
 using Authentication.DomainService.Authentication;
 using System.Text.Json.Serialization;
+using Microsoft.AspNetCore.Http;
 
 namespace Blocks.Api.Controllers
 {
@@ -13,6 +14,16 @@ namespace Blocks.Api.Controllers
         public AuthorizationController(IAuthorizationFlowService authorizationFlowService)
         {
             _authorizationFlowService = authorizationFlowService;
+        }
+
+        /// <summary>
+        /// OIDC Login Endpoint — authenticates credentials, sets IDP session, then issues authorization code.
+        /// Use this for headless / API-based OIDC flows where the browser UI is not available.
+        /// </summary>
+        [HttpPost("login")]
+        public async Task<IActionResult> OidcLogin([FromBody] OidcLoginRequest request)
+        {
+            return await _authorizationFlowService.ExecuteOidcLoginAsync(request, Request, Response);
         }
 
         /// <summary>

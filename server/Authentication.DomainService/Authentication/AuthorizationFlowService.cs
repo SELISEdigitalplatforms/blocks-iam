@@ -19,6 +19,7 @@ using System.Collections.Generic;
 using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.Logging;
 using Authentication.DomainService.Services;
+using BCryptNet = BCrypt.Net.BCrypt;
 
 namespace Authentication.DomainService.Authentication
 {
@@ -73,6 +74,67 @@ namespace Authentication.DomainService.Authentication
             _clientCredentialAuthorizationService = clientCredentialAuthorizationService;
             _tenants = tenants;
             _logger = logger;
+        }
+
+        public async Task<IActionResult> ExecuteOidcLoginAsync(OidcLoginRequest request, HttpRequest httpRequest, HttpResponse httpResponse)
+        {
+            if (string.IsNullOrWhiteSpace(request.Username) || string.IsNullOrWhiteSpace(request.Password))
+                return new BadRequestObjectResult(new { error = "invalid_request", error_description = "username and password are required" });
+
+            if (string.IsNullOrWhiteSpace(request.ClientId))
+                return new BadRequestObjectResult(new { error = "invalid_client", error_description = "client_id is required" });
+
+            if (string.IsNullOrWhiteSpace(request.RedirectUri))
+                return new BadRequestObjectResult(new { error = "invalid_request", error_description = "redirect_uri is required" });
+
+            var requestedTenantId = request.TenantId;
+
+            // Validate client exists
+            if (!await HasOidcClientConfigurationAsync(request.ClientId))
+                return new BadRequestObjectResult(new { error = "invalid_client", error_description = $"OIDC client '{request.ClientId}' not found or not configured" });
+
+            // Look up user and verify credentials (no tenant scoping on initial lookup, like embedded login)
+            var user = await _authenticationRepository.GetUserByUsernameAsync(request.Username);
+            if (user == null || !user.Active || !user.IsVarified)
+                return new UnauthorizedObjectResult(new { error = "invalid_credentials" });
+
+            if (user.LockoutUntilUtc.HasValue && user.LockoutUntilUtc.Value > DateTime.UtcNow)
+                return new ObjectResult(new { error = "account_locked" }) { StatusCode = 423 };
+
+            bool passwordValid;
+            try
+            {
+                passwordValid = BCryptNet.Verify(request.Password, user.Password ?? string.Empty);
+            }
+            catch
+            {
+                passwordValid = false;
+            }
+
+            if (!passwordValid)
+                return new UnauthorizedObjectResult(new { error = "invalid_credentials" });
+
+            var resolvedTenantId = requestedTenantId ?? user.OrganizationIds?.FirstOrDefault() ?? string.Empty;
+
+            // Establish IDP session (sets idp_session_id cookie)
+            var currentSessionId = httpRequest.Cookies[IdpSessionCookieName];
+            await EnsureIdpSessionAsync(httpRequest, httpResponse, currentSessionId, user.ItemId, resolvedTenantId);
+
+            // Now issue the authorization code directly
+            return await AuthorizeAsync(
+                request.ClientId,
+                "code",
+                request.RedirectUri,
+                request.Scope ?? "openid profile email offline_access",
+                request.State ?? string.Empty,
+                request.Nonce ?? string.Empty,
+                request.CodeChallenge ?? string.Empty,
+                request.CodeChallengeMethod ?? "S256",
+                null,
+                resolvedTenantId,
+                new ClaimsPrincipal(),
+                httpRequest,
+                httpResponse);
         }
 
         public async Task<IActionResult> AuthorizeAsync(
