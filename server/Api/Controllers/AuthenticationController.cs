@@ -101,27 +101,16 @@ public class AuthenticationController : ControllerBase
     }
 
     [HttpGet("userinfo")]
-    public async Task<IActionResult> GetUserInfo()
+    [Authorize]
+    public IActionResult GetUserInfo()
     {
-        var tenantId = BlocksContext.GetContext()?.TenantId;
-        if (string.IsNullOrWhiteSpace(tenantId))
+        var (isValid, userInfo) = _authenticationService.BuildOidcUserInfo(User);
+        if (!isValid)
         {
-            return Unauthorized(new { error = "tenant_not_resolved" });
+            return Unauthorized(new { error = "invalid_token", error_description = "missing_sub_claim" });
         }
 
-        var principal = await _authenticationService.GetPrincipalFromTokenAsync(Request, tenantId, false);
-        if (principal == null)
-        {
-            return Unauthorized(new { error = "invalid_token" });
-        }
-
-        var claims = principal.Claims
-            .GroupBy(claim => claim.Type)
-            .ToDictionary(
-                group => group.Key,
-                group => group.Count() == 1 ? (object)group.First().Value : group.Select(claim => claim.Value).ToArray());
-
-        return Ok(claims);
+        return Ok(userInfo);
     }
 
     [HttpGet("login-options")]

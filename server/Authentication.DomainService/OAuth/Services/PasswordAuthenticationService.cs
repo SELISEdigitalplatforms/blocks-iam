@@ -138,7 +138,15 @@ namespace Authentication.DomainService.OAuth
                 return false;
             }
 
-            return BCryptNet.Verify(BuildPasswordMaterial(password, optionalSalt), passwordHash);
+            try
+            {
+                return BCryptNet.Verify(BuildPasswordMaterial(password, optionalSalt), passwordHash);
+            }
+            catch (BCrypt.Net.SaltParseException ex)
+            {
+                _logger.LogWarning(ex, "Password hash is not a valid BCrypt hash format.");
+                return false;
+            }
         }
 
         private static string BuildPasswordMaterial(string password, string? optionalSalt)

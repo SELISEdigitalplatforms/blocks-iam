@@ -42,8 +42,6 @@ namespace Authentication.DomainService.OAuth.RequestModel
 
     public class RefreshRequest
     {
-        public string? ClientId { get; set; }
         public string? RefreshToken { get; set; }
-        public string? OrganizationId { get; set; }
     }
 }

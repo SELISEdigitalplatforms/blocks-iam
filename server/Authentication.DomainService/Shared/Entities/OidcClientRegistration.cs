@@ -11,7 +11,7 @@ namespace Authentication.DomainService.Entities
         public List<string> RedirectUris { get; set; } = [];
         public List<string> PostLogoutRedirectUris { get; set; } = [];
         public List<string> AllowedScopes { get; set; } = [];
-        public List<string> AllowedAudiences { get; set; } = [];
+        public List<string> AllowedServiceAccessResources { get; set; } = [];
         public List<string> AllowedGrantTypes { get; set; } = [];
         public List<string> AllowedResponseTypes { get; set; } = ["code"];
         public string? ClientName { get; set; }
@@ -47,10 +47,10 @@ namespace Authentication.DomainService.Entities
         }
 
         [BsonIgnore]
-        public string? Audience
+        public string? ServiceAccessResource
         {
-            get => AllowedAudiences.FirstOrDefault();
-            set => AllowedAudiences = string.IsNullOrWhiteSpace(value) ? [] : [value];
+            get => AllowedServiceAccessResources.FirstOrDefault();
+            set => AllowedServiceAccessResources = string.IsNullOrWhiteSpace(value) ? [] : [value];
         }
 
         [BsonIgnore]

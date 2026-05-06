@@ -510,11 +510,13 @@ namespace Authentication.DomainService.Authentication
             }
 
             var allowedScopes = await ResolveAllowedScopesAsync(client);
+            var allowedServiceAccessResources = await ResolveAllowedServiceAccessResourcesAsync(client.ClientId);
             var resolvedClaims = await _authorizationClaimsResolver.ResolveAsync(
                 user,
                 authCode.OrganizationId,
                 authCode.Scope,
                 allowedScopes,
+                allowedServiceAccessResources,
                 requireExplicitScope: true);
 
             var tenantAudience = TenantDomainPolicy.GetAudience(_tenants.GetTenantByID(authCode.TenantId ?? tenantId));
@@ -627,11 +629,13 @@ namespace Authentication.DomainService.Authentication
             }
 
             var allowedScopes = await ResolveAllowedScopesAsync(client);
+            var allowedServiceAccessResources = await ResolveAllowedServiceAccessResourcesAsync(client.ClientId);
             var resolvedClaims = await _authorizationClaimsResolver.ResolveAsync(
                 user,
                 storedToken.OrgId,
                 storedToken.Scope,
                 allowedScopes,
+                allowedServiceAccessResources,
                 requireExplicitScope: true);
 
             var tenantAudience = TenantDomainPolicy.GetAudience(_tenants.GetTenantByID(storedToken.TenantId ?? tenantId));
@@ -733,6 +737,25 @@ namespace Authentication.DomainService.Authentication
 
             return tenantOidcClient.AllowedScopes
                 .Where(scope => !string.IsNullOrWhiteSpace(scope))
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .ToList();
+        }
+
+        private async Task<IReadOnlyCollection<string>> ResolveAllowedServiceAccessResourcesAsync(string? clientId)
+        {
+            if (string.IsNullOrWhiteSpace(clientId))
+            {
+                return [];
+            }
+
+            var tenantOidcClient = await _authenticationRepository.GetOidcClientRegistrationAsync(clientId);
+            if (tenantOidcClient == null || tenantOidcClient.AllowedServiceAccessResources.Count == 0)
+            {
+                return [];
+            }
+
+            return tenantOidcClient.AllowedServiceAccessResources
+                .Where(resource => !string.IsNullOrWhiteSpace(resource))
                 .Distinct(StringComparer.OrdinalIgnoreCase)
                 .ToList();
         }

@@ -10,8 +10,8 @@ namespace Authentication.DomainService.RequestModel
         public List<string> PostLogoutRedirectUris { get; set; } = [];
         public string? Scope { get; set; }
         public List<string> AllowedScopes { get; set; } = [];
-        public string? Audience { get; set; }
-        public List<string> AllowedAudiences { get; set; } = [];
+        public string? ServiceAccessResource { get; set; }
+        public List<string> AllowedServiceAccessResources { get; set; } = [];
         public List<string> AllowedGrantTypes { get; set; } = [];
         public List<string> AllowedResponseTypes { get; set; } = ["code"];
         public bool RequirePkce { get; set; } = true;

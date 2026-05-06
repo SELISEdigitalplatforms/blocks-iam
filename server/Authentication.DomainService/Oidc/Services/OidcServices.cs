@@ -159,7 +159,7 @@ public class TokenGenerationService : ITokenGenerationService
 
         foreach (var resource in claims.Resources)
         {
-            jwtClaims.Add(new Claim("service_access", resource));
+            jwtClaims.Add(new Claim(BlocksContext.SERVICE_ACCESS_CLAIM, resource));
         }
 
         foreach (var permission in claims.Permissions)

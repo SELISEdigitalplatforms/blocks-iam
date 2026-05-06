@@ -18,6 +18,7 @@ public interface IAuthorizationClaimsResolver
         string? organizationId = null,
         string? requestedScope = null,
         IEnumerable<string>? clientAllowedScopes = null,
+        IEnumerable<string>? clientAllowedServiceAccessResources = null,
         bool requireExplicitScope = false);
 }
 
@@ -46,6 +47,7 @@ public sealed class AuthorizationClaimsResolver : IAuthorizationClaimsResolver
         string? organizationId = null,
         string? requestedScope = null,
         IEnumerable<string>? clientAllowedScopes = null,
+        IEnumerable<string>? clientAllowedServiceAccessResources = null,
         bool requireExplicitScope = false)
     {
         var roles = ResolveRoles(user, organizationId)
@@ -76,17 +78,26 @@ public sealed class AuthorizationClaimsResolver : IAuthorizationClaimsResolver
             .Distinct(StringComparer.OrdinalIgnoreCase)
             .ToList();
 
+        var allowedServiceAccessResources = clientAllowedServiceAccessResources?
+            .Where(resource => !string.IsNullOrWhiteSpace(resource))
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToList();
+
         var filteredPermissions = ApplyScopeFilter(
             resolvedPermissions,
             requestedScope,
             allowedClientScopes,
             requireExplicitScope);
 
-        var resources = filteredPermissions
-            .Select(permission => ExtractResourceNamespace(permission.Resource))
-            .Where(value => !string.IsNullOrWhiteSpace(value))
-            .Distinct(StringComparer.OrdinalIgnoreCase)
-            .ToList();
+        var resources = ResolveServiceResources(requestedScope, allowedClientScopes, allowedServiceAccessResources, requireExplicitScope);
+        if (resources.Count == 0)
+        {
+            resources = filteredPermissions
+                .Select(permission => ExtractResourceNamespace(permission.Resource))
+                .Where(value => !string.IsNullOrWhiteSpace(value))
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .ToList();
+        }
 
         return new ResolvedAuthorizationClaims
         {
@@ -172,6 +183,49 @@ public sealed class AuthorizationClaimsResolver : IAuthorizationClaimsResolver
             .Where(value => !ReservedScopes.Contains(value))
             .ToHashSet(StringComparer.OrdinalIgnoreCase)
             ?? [];
+    }
+
+    private static List<string> ResolveServiceResources(
+        string? requestedScope,
+        IReadOnlyCollection<string>? clientAllowedScopes,
+        IReadOnlyCollection<string>? allowedServiceAccessResources,
+        bool requireExplicitScope)
+    {
+        if (allowedServiceAccessResources is { Count: > 0 })
+        {
+            return allowedServiceAccessResources
+                .Where(resource => !string.IsNullOrWhiteSpace(resource))
+                .Select(resource => resource.Trim())
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .ToList();
+        }
+
+        var allowedCustomScopes = clientAllowedScopes?
+            .Where(scope => !string.IsNullOrWhiteSpace(scope))
+            .Where(scope => !ReservedScopes.Contains(scope))
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToHashSet(StringComparer.OrdinalIgnoreCase)
+            ?? [];
+
+        var requestedCustomScopes = ParseCustomScopes(requestedScope);
+        IEnumerable<string> effectiveScopes;
+
+        if (requestedCustomScopes.Count > 0)
+        {
+            effectiveScopes = allowedCustomScopes.Count > 0
+                ? requestedCustomScopes.Where(scope => allowedCustomScopes.Contains(scope))
+                : requestedCustomScopes;
+        }
+        else
+        {
+            effectiveScopes = requireExplicitScope ? [] : allowedCustomScopes;
+        }
+
+        return effectiveScopes
+            .Select(ExtractResourceNamespace)
+            .Where(value => !string.IsNullOrWhiteSpace(value))
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToList();
     }
 
     private static bool ScopeMatchesPermission(string scope, string permission)
