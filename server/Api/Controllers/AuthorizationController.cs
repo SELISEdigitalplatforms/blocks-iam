@@ -2,6 +2,7 @@ using Microsoft.AspNetCore.Mvc;
 using Authentication.DomainService.Authentication;
 using System.Text.Json.Serialization;
 using Microsoft.AspNetCore.Http;
+using Microsoft.AspNetCore.Authorization;
 
 namespace Blocks.Api.Controllers
 {
@@ -21,6 +22,7 @@ namespace Blocks.Api.Controllers
         /// Use this for headless / API-based OIDC flows where the browser UI is not available.
         /// </summary>
         [HttpPost("login")]
+        [AllowAnonymous]
         public async Task<IActionResult> OidcLogin([FromBody] OidcLoginRequest request)
         {
             return await _authorizationFlowService.ExecuteOidcLoginAsync(request, Request, Response);
@@ -30,6 +32,7 @@ namespace Blocks.Api.Controllers
         /// OIDC Login Select Account — continues OIDC login after user selects account from multiple options
         /// </summary>
         [HttpPost("login/select-account")]
+        [AllowAnonymous]
         public async Task<IActionResult> OidcLoginSelectAccount([FromBody] OidcLoginSelectAccountRequest? request)
         {
             if (request == null || string.IsNullOrWhiteSpace(request.TenantId))
@@ -54,6 +57,7 @@ namespace Blocks.Api.Controllers
         /// Initiates authorization code flow with PKCE
         /// </summary>
         [HttpGet("authorize")]
+        [AllowAnonymous]
         public async Task<IActionResult> Authorize(
             [FromQuery] string client_id,
             [FromQuery] string response_type,
@@ -83,6 +87,7 @@ namespace Blocks.Api.Controllers
         }
 
         [HttpPost("account/select")]
+        [AllowAnonymous]
         public async Task<IActionResult> SelectAccount([FromBody] SelectAccountSelectionRequest? request)
         {
             return await _authorizationFlowService.SelectAccountAsync(request?.UserId ?? string.Empty, request?.TenantId, Request, Response);
@@ -93,6 +98,7 @@ namespace Blocks.Api.Controllers
         /// Supports both authorization_code and refresh_token grants
         /// </summary>
         [HttpPost("token")]
+        [AllowAnonymous]
         public async Task<IActionResult> Token([FromForm] string grant_type)
         {
             return await _authorizationFlowService.TokenAsync(grant_type, Request);

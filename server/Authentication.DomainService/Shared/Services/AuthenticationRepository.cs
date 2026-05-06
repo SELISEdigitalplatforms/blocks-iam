@@ -192,46 +192,56 @@ namespace Authentication.DomainService.Services
             return await collection.Find(filter).ToListAsync();
         }
 
-        public async Task<IEnumerable<SocialLoginCredential>> GetSocialLoginCredentials()
+        public async Task<List<IdentityProvider>> GetIdentityProvidersAsync()
         {
-            var collection = GetCollection<SocialLoginCredential>();
-            return await collection.Find(_ => true).ToListAsync();
-        }
-
-        public async Task<SocialLoginCredential> GetSocialLoginCredentialByProvideAndAudienceAsync(string provider, string audience)
-        {
-            var collection = GetCollection<SocialLoginCredential>();
-            var filter = Builders<SocialLoginCredential>.Filter.Eq(x => x.Provider, provider) & Builders<SocialLoginCredential>.Filter.Eq(x => x.Audience, audience);
-            return await collection.Find(filter).FirstOrDefaultAsync();
-        }
-
-        public async Task<SocialLoginCredential> GetSocialLoginCredentialByIdAsync(string itemId)
-        {
-            var collection = GetCollection<SocialLoginCredential>();
-            var filter = Builders<SocialLoginCredential>.Filter.Eq(x => x.ItemId, itemId);
-            return await collection.Find(filter).FirstOrDefaultAsync();
-        }
-
-        public async Task<List<SocialLoginCredential>> GetSocialLoginCredentialsAsync()
-        {
-            var collection = GetCollection<SocialLoginCredential>();
-            var filter = Builders<SocialLoginCredential>.Filter.Where(_ => true);
+            var collection = GetCollection<IdentityProvider>();
+            var filter = Builders<IdentityProvider>.Filter.Where(_ => true);
             var cursor = await collection.FindAsync(filter);
             return await cursor.ToListAsync();
         }
 
-        public async Task<bool> SaveSocialLoginCredentialAsync(SocialLoginCredential socialLoginCredential)
+        public async Task<IdentityProvider?> GetIdentityProviderAsync(string provider)
         {
-            var collection = GetCollection<SocialLoginCredential>();
-            var result = await collection.ReplaceOneAsync(x => x.ItemId == socialLoginCredential.ItemId, socialLoginCredential, new ReplaceOptions { IsUpsert = true });
-            return result.IsAcknowledged;
+            var collection = GetCollection<IdentityProvider>();
+            var filter = Builders<IdentityProvider>.Filter.Eq(x => x.Provider, provider);
+            return await collection.Find(filter).FirstOrDefaultAsync();
         }
 
-        public async Task<bool> DeleteSocialLoginCredentialAsync(string itemId)
+        public async Task<IdentityProvider?> GetIdentityProviderByIdAsync(string id)
         {
-            var collection = GetCollection<SocialLoginCredential>();
-            var result = await collection.DeleteOneAsync(x => x.ItemId == itemId);
-            return result.IsAcknowledged;
+            var collection = GetCollection<IdentityProvider>();
+            var filter = Builders<IdentityProvider>.Filter.Eq(x => x.ItemId, id);
+            return await collection.Find(filter).FirstOrDefaultAsync();
+        }
+
+        public async Task<IdentityProvider> CreateIdentityProviderAsync(IdentityProvider provider)
+        {
+            provider.ItemId = Guid.NewGuid().ToString();
+            provider.CreatedDate = DateTime.UtcNow;
+            provider.CreatedBy = BlocksContext.GetContext()?.UserId ?? "system";
+            
+            var collection = GetCollection<IdentityProvider>();
+            await collection.InsertOneAsync(provider);
+            return provider;
+        }
+
+        public async Task<IdentityProvider> UpdateIdentityProviderAsync(IdentityProvider provider)
+        {
+            provider.LastUpdatedDate = DateTime.UtcNow;
+            provider.LastUpdatedBy = BlocksContext.GetContext()?.UserId ?? "system";
+            
+            var collection = GetCollection<IdentityProvider>();
+            var filter = Builders<IdentityProvider>.Filter.Eq(x => x.ItemId, provider.ItemId);
+            var options = new ReplaceOptions { IsUpsert = false };
+            await collection.ReplaceOneAsync(filter, provider, options);
+            return provider;
+        }
+
+        public async Task DeleteIdentityProviderAsync(string id)
+        {
+            var collection = GetCollection<IdentityProvider>();
+            var filter = Builders<IdentityProvider>.Filter.Eq(x => x.ItemId, id);
+            await collection.DeleteOneAsync(filter);
         }
 
         public async Task UpdatePartialAsync<T>(string id, Dictionary<string, object> updates, string collectionName = "")

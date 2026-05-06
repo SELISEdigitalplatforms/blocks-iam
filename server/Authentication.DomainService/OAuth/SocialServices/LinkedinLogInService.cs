@@ -28,12 +28,12 @@ namespace Authentication.DomainService.OAuth.SocialServices
 
         public async Task<(string, bool)> GetProviderLogInUriAsync(GetSocialLogInEndPointRequest loginData)
         {
-            var credential = await _authenticationRepository
-                .GetSocialLoginCredentialByProvideAndAudienceAsync(loginData.Provider, loginData.Audience);
+            var identityProvider = await _authenticationRepository
+                .GetIdentityProviderAsync(loginData.Provider);
 
-            if (credential == null)
+            if (identityProvider == null)
             {
-                _logger.LogError("Credential not found for provider {Provider} and audience {Audience}", loginData.Provider, loginData.Audience);
+                _logger.LogError("Identity provider not found for provider {Provider}", loginData.Provider);
                 return (string.Empty, true);
             }
 
@@ -49,35 +49,41 @@ namespace Authentication.DomainService.OAuth.SocialServices
 
             // Build LinkedIn login URL safely (scope must be URL encoded)
             var loginUri =
-                $"{credential.AuthorizationUrl.Split('?')[0]}" +
+                $"{identityProvider.AuthorizationUrl.Split('?')[0]}" +
                 $"?response_type=code" +
-                $"&client_id={credential.ClientId}" +
-                $"&redirect_uri={WebUtility.UrlEncode(credential.RedirectUrl)}" +
-                $"&scope={WebUtility.UrlEncode(credential.Scope).Replace("+", "%20").Replace(" ", "%20")}" +
+                $"&client_id={identityProvider.ClientId}" +
+                $"&redirect_uri={WebUtility.UrlEncode(identityProvider.RedirectUri)}" +
+                $"&scope={WebUtility.UrlEncode(identityProvider.Scope).Replace("+", "%20").Replace(" ", "%20")}" +
                 $"&state={stateKey}";
             _logger.LogError("loginUri for provider {Provider} and loginUri {LoginUri}", loginData.Provider, loginUri);
 
-            return (loginUri, loginData.SendAsResponse || credential.SendAsResponse);
+            return (loginUri, loginData.SendAsResponse);
         }
 
         public async Task<IExternalUserData> HandleSocialLogin(StateInfo stateInfo)
         {
-            var credential = await _authenticationRepository
-                .GetSocialLoginCredentialByProvideAndAudienceAsync(stateInfo.Provider, stateInfo.Audience);
+            var identityProvider = await _authenticationRepository
+                .GetIdentityProviderAsync(stateInfo.Provider);
+
+            if (identityProvider == null)
+            {
+                _logger.LogError("Identity provider not found for provider {Provider}", stateInfo.Provider);
+                return new LinkedinUserData();
+            }
 
             var postData = new Dictionary<string, string>
             {
                 { "code", stateInfo.Code },
-                { "client_id", credential.ClientId },
-                { "client_secret", credential.ClientSecret },
-                { "redirect_uri", credential.RedirectUrl },
+                { "client_id", identityProvider.ClientId },
+                { "client_secret", identityProvider.ClientSecret },
+                { "redirect_uri", identityProvider.RedirectUri },
                 { "grant_type", "authorization_code" }
             };
 
             var (tokenResponse, error) = await _httpService.SendFormUrlEncoded<SocialOauthAccessToken>(
                 HttpMethod.Post,
                 postData,
-                credential.TokenUrl);
+                identityProvider.TokenUrl);
 
             if (!string.IsNullOrWhiteSpace(error))
             {
@@ -85,7 +91,7 @@ namespace Authentication.DomainService.OAuth.SocialServices
                 return new LinkedinUserData();
             }
 
-            var profileUrl = credential.GetProfileUrl + $"oauth2_access_token={tokenResponse.AccessToken}";
+            var profileUrl = identityProvider.UserInfoUrl + $"oauth2_access_token={tokenResponse.AccessToken}";
 
             (var userInfo, var profileError) = await _httpService.Get<LinkedinUserInfo>(
                 profileUrl);
@@ -106,8 +112,8 @@ namespace Authentication.DomainService.OAuth.SocialServices
                 return new LinkedinUserData();
             }
 
-            profile.Permissions = credential?.InitialPermissions ?? [];
-            profile.Roles = credential?.InitialRoles ?? [];
+            profile.Permissions = identityProvider?.InitialPermissions ?? [];
+            profile.Roles = identityProvider?.InitialRoles ?? [];
             profile.Platform = stateInfo.Provider;
 
             return profile;

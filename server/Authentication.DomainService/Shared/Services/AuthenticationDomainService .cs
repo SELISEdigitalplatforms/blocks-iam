@@ -124,52 +124,12 @@ namespace Authentication.DomainService.Services
             };
         }
 
-        public async Task<SaveSsoCredentialResponse> SaveSocialLoginCredentialAsync(SaveSsoCredentialRequest credential)
-        {
-            var validationResult = await _validator.ValidateAsync(credential);
-
-            if (!validationResult.IsValid)
-            {
-                return new SaveSsoCredentialResponse
-                {
-                    IsSuccess = false,
-                    Errors = validationResult.Errors.ToDictionary(e => e.PropertyName, e => e.ErrorMessage)
-                };
-            }
-
-            var loginCredential = await _authenticationRepository.GetSocialLoginCredentialByIdAsync(credential?.ItemId ?? "");
-            var repoCredential = await MapToSocialLoginCredential(loginCredential, credential ?? new SaveSsoCredentialRequest());
-            await _authenticationRepository.SaveSocialLoginCredentialAsync(repoCredential);
-
-            return new SaveSsoCredentialResponse { IsSuccess = true, ItemId = repoCredential.ItemId };
-        }
-
         public static async Task<OpenIdConnectConfiguration?> GetMetadataAsync(string wellKnownUrl)
         {
             var response = await _httpClient.GetAsync(wellKnownUrl);
             string json = await response.Content.ReadAsStringAsync();
 
             return JsonSerializer.Deserialize<OpenIdConnectConfiguration>(json);
-        }
-
-        public async Task<BaseResponse> DeleteSocialLoginCredentialAsync(string itemId)
-        {
-            await _authenticationRepository.DeleteSocialLoginCredentialAsync(itemId);
-            return new BaseResponse { IsSuccess = true, };
-        }
-
-        public async Task<GetSsoCredentialResponse> GetSsoCredentialAsync(string itemId)
-        {
-            var credential = await _authenticationRepository.GetSocialLoginCredentialByIdAsync(itemId);
-
-            var roles = await _userRepository.GetRolesBySlugsAsync(credential.InitialRoles);
-            var permissions = await _userRepository.GetPermissionsByResourcesAsync(credential.InitialPermissions);
-
-            var response = GetResponse(credential);
-            response.UserRoles = roles;
-            response.UserPermissions = permissions;
-
-            return response;
         }
 
         public async Task<SaveOIDCClientResponse> SaveOIDCClientAsync(SaveOIDCClientRequest request)
@@ -250,6 +210,64 @@ namespace Authentication.DomainService.Services
             credential.ClientName = request.ClientDisplayName;
             credential.UiBrandColor = request.ClientBrandColor;
             await _authenticationRepository.SaveOidcClientRegistrationAsync(credential);
+            
+            // Auto-insert/update IdentityProvider for OIDC client
+            // Create provider name from client ID or client name
+            var providerName = !string.IsNullOrWhiteSpace(request.ClientDisplayName) 
+                ? request.ClientDisplayName.ToLower().Replace(" ", "-") 
+                : clientId.ToLower();
+            
+            var existingProvider = await _authenticationRepository.GetIdentityProviderAsync(providerName);
+            
+            if (existingProvider == null)
+            {
+                // Create new IdentityProvider for this OIDC client
+                var newProvider = new IdentityProvider
+                {
+                    Provider = providerName,
+                    ProviderType = "internal",
+                    Protocol = "oidc",
+                    DisplayName = request.ClientDisplayName ?? clientId,
+                    IsActive = request.IsActive,
+                    ClientId = credential.ClientId,
+                    ClientSecret = credential.ClientSecret,
+                    Issuer = request.ExternalDiscoveryEndpoint,
+                    WellKnownUrl = request.ExternalDiscoveryEndpoint,
+                    AuthorizationUrl = request.ExternalDiscoveryEndpoint ?? "",
+                    TokenUrl = request.ExternalDiscoveryEndpoint ?? "",
+                    UserInfoUrl = request.ExternalDiscoveryEndpoint ?? "",
+                    RedirectUri = credential.RedirectUri,
+                    Scope = credential.Scope,
+                    ResponseType = "code",
+                    GrantTypes = credential.AllowedGrantTypes ?? ["authorization_code", "refresh_token"],
+                    RequirePkce = credential.RequirePkce,
+                    TokenEndpointAuthMethod = credential.TokenEndpointAuthMethod,
+                    InitialRoles = [],
+                    InitialPermissions = [],
+                    Icon = null
+                };
+                await _authenticationRepository.CreateIdentityProviderAsync(newProvider);
+            }
+            else
+            {
+                // Update existing provider with latest OIDC client config
+                existingProvider.ClientId = credential.ClientId;
+                existingProvider.ClientSecret = credential.ClientSecret;
+                existingProvider.DisplayName = request.ClientDisplayName ?? clientId;
+                existingProvider.Issuer = request.ExternalDiscoveryEndpoint;
+                existingProvider.WellKnownUrl = request.ExternalDiscoveryEndpoint;
+                existingProvider.AuthorizationUrl = request.ExternalDiscoveryEndpoint ?? "";
+                existingProvider.TokenUrl = request.ExternalDiscoveryEndpoint ?? "";
+                existingProvider.UserInfoUrl = request.ExternalDiscoveryEndpoint ?? "";
+                existingProvider.RedirectUri = credential.RedirectUri;
+                existingProvider.Scope = credential.Scope;
+                existingProvider.GrantTypes = credential.AllowedGrantTypes ?? ["authorization_code", "refresh_token"];
+                existingProvider.RequirePkce = credential.RequirePkce;
+                existingProvider.TokenEndpointAuthMethod = credential.TokenEndpointAuthMethod;
+                existingProvider.IsActive = credential.IsActive;
+                await _authenticationRepository.UpdateIdentityProviderAsync(existingProvider);
+            }
+            
             return new SaveOIDCClientResponse { IsSuccess = true, ItemId = credential.ItemId };
         }
 
@@ -278,96 +296,6 @@ namespace Authentication.DomainService.Services
         public async Task<BaseResponse> DeleteOIDCClientAsyncAsync(DeleteOIDCClientRequest request)
         {
             await _authenticationRepository.DeleteOidcCliantAsync(request);
-
-            return new BaseResponse { IsSuccess = true };
-        }
-
-        private GetSsoCredentialResponse GetResponse(SocialLoginCredential socialLoginCredential)
-        {
-            return new GetSsoCredentialResponse
-            {
-                Audience = socialLoginCredential.Audience,
-                ClientId = socialLoginCredential.ClientId,
-                ClientSecret = socialLoginCredential.ClientSecret,
-                Provider = socialLoginCredential.Provider,
-                RedirectUrl = socialLoginCredential.RedirectUrl,
-                AuthorizationUrl = socialLoginCredential.AuthorizationUrl,
-                WellKnownUrl = socialLoginCredential.WellKnownUrl,
-                TokenUrl = socialLoginCredential.TokenUrl,
-                GetProfileUrl = socialLoginCredential.GetProfileUrl,
-                Scope = socialLoginCredential.Scope,
-                ItemId = socialLoginCredential.ItemId,
-                CreatedBy = socialLoginCredential.CreatedBy,
-                LastUpdatedBy = socialLoginCredential.LastUpdatedBy,
-                CreatedDate = socialLoginCredential.CreatedDate,
-                LastUpdatedDate = socialLoginCredential.LastUpdatedDate
-            };
-        }
-
-        private async Task<SocialLoginCredential> MapToSocialLoginCredential(SocialLoginCredential credential, SaveSsoCredentialRequest saveSocialLoginCredentialRequest)
-        {
-            var now = DateTime.UtcNow;
-            var userId = BlocksContext.GetContext()?.UserId;
-            var metaData = !string.IsNullOrWhiteSpace(saveSocialLoginCredentialRequest.WellKnownUrl) ? await GetMetadataAsync(saveSocialLoginCredentialRequest.WellKnownUrl) : null;
-
-            credential ??= new SocialLoginCredential
-            {
-                ItemId = Guid.NewGuid().ToString(),
-                CreatedBy = userId,
-                CreatedDate = now,
-                LastUpdatedDate = now,
-                LastUpdatedBy = userId,
-                ClientSecret = saveSocialLoginCredentialRequest.ClientSecret,
-                ClientId = saveSocialLoginCredentialRequest.ClientId,
-                Provider = saveSocialLoginCredentialRequest.Provider,
-                Audience = saveSocialLoginCredentialRequest.Audience,
-                AuthorizationUrl = metaData?.AuthorizationEndpoint ?? _configuration[$"{saveSocialLoginCredentialRequest.Provider}:AuthorizationUrl"] ?? "",
-                TokenUrl = metaData?.TokenEndpoint ?? _configuration[$"{saveSocialLoginCredentialRequest.Provider}:TokenUrl"] ?? "",
-                GetProfileUrl = metaData?.UserInfoEndpoint ?? _configuration[$"{saveSocialLoginCredentialRequest.Provider}:GetProfileUrl"] ?? "",
-                GetEmailUrl = _configuration[$"{saveSocialLoginCredentialRequest.Provider}:GetEmailUrl"] ?? "",
-                RedirectUrl = saveSocialLoginCredentialRequest.RedirectUrl,
-                WellKnownUrl = saveSocialLoginCredentialRequest.WellKnownUrl,
-                Scope = metaData?.ScopesSupported.ToString() ?? _configuration[$"{saveSocialLoginCredentialRequest.Provider}:Scope"] ?? ""
-            };
-
-            credential.Audience = saveSocialLoginCredentialRequest.Audience;
-            credential.ClientId = saveSocialLoginCredentialRequest.ClientId;
-            credential.ClientSecret = saveSocialLoginCredentialRequest.ClientSecret;
-            credential.RedirectUrl = saveSocialLoginCredentialRequest.RedirectUrl;
-            credential.WellKnownUrl = saveSocialLoginCredentialRequest.WellKnownUrl;
-            credential.Provider = saveSocialLoginCredentialRequest.Provider;
-            credential.LastUpdatedDate = now;
-            credential.LastUpdatedBy = userId;
-            credential.InitialRoles = saveSocialLoginCredentialRequest.InitialRoles;
-            credential.InitialPermissions = saveSocialLoginCredentialRequest.InitialPermissions;
-            credential.IsDisabled = saveSocialLoginCredentialRequest.IsDisabled;
-            credential.SSOType = saveSocialLoginCredentialRequest.SSOType;
-            credential.TeamId = saveSocialLoginCredentialRequest.TeamId;
-            credential.KeyId = saveSocialLoginCredentialRequest.KeyId;
-            credential.PrivateKey = saveSocialLoginCredentialRequest.PrivateKey;
-            credential.AppleAudience = _configuration[$"{saveSocialLoginCredentialRequest.Provider}:AppleAudience"] ?? "";
-
-            return credential;
-        }
-
-        public async Task<List<SocialLoginCredential>> GetSocialLoginCredentialsAsync()
-        {
-            return await _authenticationRepository.GetSocialLoginCredentialsAsync();
-        }
-
-        public async Task<BaseResponse> UpdateSsoCredentialStatusAsync(UpdateSsoCredentialStatusRequest request)
-        {
-            if (string.IsNullOrWhiteSpace(request.ItemId))
-            {
-                return new BaseResponse { Errors = new Dictionary<string, string> { { "empty_item_id", "ItemId should not be empty" } } };
-            }
-
-            var updates = new Dictionary<string, object>
-                          {
-                             { nameof(SocialLoginCredential.IsDisabled), request.IsEnabled }
-                          };
-
-            await _authenticationRepository.UpdatePartialAsync<SocialLoginCredential>(request.ItemId, updates, "SocialLoginCredentials");
 
             return new BaseResponse { IsSuccess = true };
         }
@@ -466,6 +394,77 @@ namespace Authentication.DomainService.Services
         public async Task<List<ClientCredential>> GetClientCredentialsAsync(GetAllClientCredentialsRequest request)
         {
             return await _authenticationRepository.GetClientCredentialsAsync();
+        }
+
+        public async Task<BaseResponse> CreateIdentityProviderAsync(IdentityProvider provider)
+        {
+            if (string.IsNullOrWhiteSpace(provider.Provider))
+                return new BaseResponse { IsSuccess = false, Errors = new Dictionary<string, string> { { "provider_required", "Provider name is required." } } };
+
+            if (string.IsNullOrWhiteSpace(provider.DisplayName))
+                return new BaseResponse { IsSuccess = false, Errors = new Dictionary<string, string> { { "display_name_required", "Display name is required." } } };
+
+            var existingProvider = await _authenticationRepository.GetIdentityProviderAsync(provider.Provider);
+            if (existingProvider != null)
+                return new BaseResponse { IsSuccess = false, Errors = new Dictionary<string, string> { { "duplicate_provider", $"Provider '{provider.Provider}' already exists." } } };
+
+            await _authenticationRepository.CreateIdentityProviderAsync(provider);
+            return new BaseResponse { IsSuccess = true };
+        }
+
+        public async Task<IdentityProvider?> GetIdentityProviderAsync(string provider)
+        {
+            return await _authenticationRepository.GetIdentityProviderAsync(provider);
+        }
+
+        public async Task<IdentityProvider?> GetIdentityProviderByIdAsync(string id)
+        {
+            return await _authenticationRepository.GetIdentityProviderByIdAsync(id);
+        }
+
+        public async Task<List<IdentityProvider>> GetAllIdentityProvidersAsync()
+        {
+            return await _authenticationRepository.GetIdentityProvidersAsync();
+        }
+
+        public async Task<BaseResponse> UpdateIdentityProviderAsync(IdentityProvider provider)
+        {
+            if (string.IsNullOrWhiteSpace(provider.ItemId))
+                return new BaseResponse { IsSuccess = false, Errors = new Dictionary<string, string> { { "id_required", "Provider ID is required." } } };
+
+            var existing = await _authenticationRepository.GetIdentityProviderByIdAsync(provider.ItemId);
+            if (existing == null)
+                return new BaseResponse { IsSuccess = false, Errors = new Dictionary<string, string> { { "not_found", "Provider not found." } } };
+
+            await _authenticationRepository.UpdateIdentityProviderAsync(provider);
+            return new BaseResponse { IsSuccess = true };
+        }
+
+        public async Task<BaseResponse> DeleteIdentityProviderAsync(string id)
+        {
+            if (string.IsNullOrWhiteSpace(id))
+                return new BaseResponse { IsSuccess = false, Errors = new Dictionary<string, string> { { "id_required", "Provider ID is required." } } };
+
+            var existing = await _authenticationRepository.GetIdentityProviderByIdAsync(id);
+            if (existing == null)
+                return new BaseResponse { IsSuccess = false, Errors = new Dictionary<string, string> { { "not_found", "Provider not found." } } };
+
+            await _authenticationRepository.DeleteIdentityProviderAsync(id);
+            return new BaseResponse { IsSuccess = true };
+        }
+
+        public async Task<BaseResponse> UpdateIdentityProviderStatusAsync(string id, bool isActive)
+        {
+            if (string.IsNullOrWhiteSpace(id))
+                return new BaseResponse { IsSuccess = false, Errors = new Dictionary<string, string> { { "id_required", "Provider ID is required." } } };
+
+            var existing = await _authenticationRepository.GetIdentityProviderByIdAsync(id);
+            if (existing == null)
+                return new BaseResponse { IsSuccess = false, Errors = new Dictionary<string, string> { { "not_found", "Provider not found." } } };
+
+            existing.IsActive = isActive;
+            await _authenticationRepository.UpdateIdentityProviderAsync(existing);
+            return new BaseResponse { IsSuccess = true };
         }
     }
 }

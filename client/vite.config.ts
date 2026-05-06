@@ -4,7 +4,7 @@ import { defineConfig, loadEnv } from "vite";
 
 export default defineConfig(({ mode }) => {
   const env = loadEnv(mode, __dirname, "BLOCKS_");
-  const proxyTarget = env.BLOCKS_API_BASE_URL;
+  const proxyTarget = env.BLOCKS_API_BASE_URL || "http://localhost:5000";
 
   return {
     envPrefix: ["BLOCKS_"],
@@ -38,10 +38,16 @@ export default defineConfig(({ mode }) => {
       ],
       proxy: proxyTarget
         ? {
-            "/api": { 
-              target: proxyTarget, 
-              changeOrigin: true, 
+            "/api": {
+              target: proxyTarget,
+              changeOrigin: true,
               secure: false,
+              configure: (proxy) => {
+                proxy.on("proxyReq", (proxyReq) => {
+                  proxyReq.setHeader("origin", proxyTarget);
+                  proxyReq.setHeader("referer", `${proxyTarget}/`);
+                });
+              },
             },
             "/cloudbuild": {
               target: proxyTarget,

@@ -16,6 +16,13 @@ namespace Authentication.DomainService.OAuth.RequestModel
         public string State { get; set; } = string.Empty;
     }
 
+    public class OidcCallbackRequest
+    {
+        public string Code { get; set; } = string.Empty;
+        public string State { get; set; } = string.Empty;
+        public string Provider { get; set; } = string.Empty;
+    }
+
     public class SwitchOrganizationRequest
     {
         public string OrganizationId { get; set; } = string.Empty;
