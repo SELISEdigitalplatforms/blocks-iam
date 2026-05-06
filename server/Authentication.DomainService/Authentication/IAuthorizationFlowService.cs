@@ -37,6 +37,39 @@ namespace Authentication.DomainService.Authentication
         public string? TenantId { get; set; }
     }
 
+    public class OidcLoginResponse
+    {
+        [System.Text.Json.Serialization.JsonPropertyName("status")]
+        public string Status { get; set; } = "success"; // "success" | "account_selection_required"
+
+        [System.Text.Json.Serialization.JsonPropertyName("accounts")]
+        public List<OidcAccountInfo>? Accounts { get; set; }
+
+        [System.Text.Json.Serialization.JsonPropertyName("redirect_url")]
+        public string? RedirectUrl { get; set; }
+
+        [System.Text.Json.Serialization.JsonPropertyName("code")]
+        public string? Code { get; set; }
+    }
+
+    public class OidcAccountInfo
+    {
+        [System.Text.Json.Serialization.JsonPropertyName("user_id")]
+        public string UserId { get; set; } = string.Empty;
+
+        [System.Text.Json.Serialization.JsonPropertyName("tenant_id")]
+        public string TenantId { get; set; } = string.Empty;
+
+        [System.Text.Json.Serialization.JsonPropertyName("email")]
+        public string Email { get; set; } = string.Empty;
+
+        [System.Text.Json.Serialization.JsonPropertyName("display_name")]
+        public string? DisplayName { get; set; }
+
+        [System.Text.Json.Serialization.JsonPropertyName("tenant_name")]
+        public string? TenantName { get; set; }
+    }
+
     public interface IAuthorizationFlowService
     {
         Task<IActionResult> ExecuteOidcLoginAsync(OidcLoginRequest request, HttpRequest httpRequest, HttpResponse httpResponse);
@@ -57,6 +90,8 @@ namespace Authentication.DomainService.Authentication
             HttpResponse response);
 
         Task<IActionResult> SelectAccountAsync(string userId, string? tenantId, HttpRequest request, HttpResponse response);
+
+        Task<IActionResult> ContinueOidcLoginAfterAccountSelectionAsync(string userId, string tenantId, string clientId, string redirectUri, string? scope, string? state, string? nonce, string? codeChallenge, string? codeChallengeMethod, HttpRequest request, HttpResponse response);
 
         Task<IActionResult> TokenAsync(string grantType, HttpRequest request);
     }

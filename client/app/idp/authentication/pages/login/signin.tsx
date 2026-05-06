@@ -95,7 +95,7 @@ export const Signin = ({ ssoError, mode = "default", oidcContext }: SigninProps)
     signUpSetting?.isEmailPasswordSignUpEnabled || signUpSetting?.isSSoSignUpEnabled
   );
 
-  const signUpUrl = mode === "oidc" ? buildOIDCNavigationUrl("/signup") : "/signup";
+  const signUpUrl = mode === "oidc" ? buildOIDCNavigationUrl("/oidc/signup") : "/oidc/signup";
 
   return (
     <Card className="flex h-full flex-col rounded border-solid border-background shadow-none md:min-w-[448px] md:border-[#95ADC4] lg:max-w-md">

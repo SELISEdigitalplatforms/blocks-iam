@@ -82,6 +82,70 @@ export class AuthService {
   startImpersonation(payload: { targetTenantId: string; orgId?: string; clientId?: string }): Promise<any> {
     return http.post(AUTH_ENDPOINTS.IMPERSONATE, payload);
   }
+
+  signinByOidcEmail(payload: {
+    username: string;
+    password: string;
+    clientId: string;
+    redirectUri: string;
+    scope?: string;
+    state?: string;
+    nonce?: string;
+    code_challenge?: string;
+    code_challenge_method?: string;
+    tenantId?: string;
+  }): Promise<any> {
+    return http.post(
+      AUTH_ENDPOINTS.OIDC_LOGIN,
+      {
+        username: payload.username,
+        password: payload.password,
+        client_id: payload.clientId,
+        redirect_uri: payload.redirectUri,
+        scope: payload.scope,
+        state: payload.state,
+        nonce: payload.nonce,
+        code_challenge: payload.code_challenge,
+        code_challenge_method: payload.code_challenge_method,
+        tenant_id: payload.tenantId,
+      },
+      undefined,
+      {
+        skipTokenRotation: true,
+      },
+    );
+  }
+
+  selectOidcAccount(payload: {
+    userId: string;
+    tenantId: string;
+    clientId: string;
+    redirectUri: string;
+    scope?: string;
+    state?: string;
+    nonce?: string;
+    code_challenge?: string;
+    code_challenge_method?: string;
+  }): Promise<any> {
+    return http.post(
+      AUTH_ENDPOINTS.OIDC_LOGIN_SELECT_ACCOUNT,
+      {
+        user_id: payload.userId,
+        tenant_id: payload.tenantId,
+        client_id: payload.clientId,
+        redirect_uri: payload.redirectUri,
+        scope: payload.scope,
+        state: payload.state,
+        nonce: payload.nonce,
+        code_challenge: payload.code_challenge,
+        code_challenge_method: payload.code_challenge_method,
+      },
+      undefined,
+      {
+        skipTokenRotation: true,
+      },
+    );
+  }
 }
 
 export const authService = new AuthService();

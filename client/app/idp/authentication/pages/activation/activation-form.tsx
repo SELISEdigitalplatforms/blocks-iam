@@ -13,7 +13,7 @@ import { PasswordInput } from "@/components/password-input";
 import { z } from "zod";
 import { Input } from "@/components/ui-kits/input/input";
 
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import { showErrorToast } from "@/hooks/use-toast";
 import { getRuntimeEnv } from "@/lib/runtime-env";
 import { useAccountActivation } from "@blocks-idp/iam/hooks/use-account";
@@ -23,13 +23,18 @@ import { Captcha } from "@/components/captcha";
 import { useCaptcha } from "@blocks-idp/captcha/hooks/use-captcha";
 import { PasswordStrengthChecker } from "../../components/password-strength-checker/password-strength-checker";
 import { zodResolver } from "@hookform/resolvers/zod";
+import { buildOIDCNavigationUrl, getCurrentOIDCParams } from "@blocks-idp/authentication/utils/oidc-utils";
 
 type ActivationFormProps = {
-  code: string;
+  code?: string;
+  mode?: "default" | "oidc";
 };
 
-export const ActivationForm = ({ code }: ActivationFormProps) => {
+export const ActivationForm = ({ code: propCode, mode = "default" }: ActivationFormProps) => {
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
+  const code = propCode || searchParams.get("code") || "";
+
   const form = useForm({
     defaultValues: activationFormDefaultValue,
     mode: "all",
@@ -54,13 +59,11 @@ export const ActivationForm = ({ code }: ActivationFormProps) => {
   }, [captchaCode, requirementsMet, resetCaptcha]);
 
   useEffect(() => {
-    if (!code) return navigate("/login");
-  }, [code, navigate]);
+    if (!code) return navigate(mode === "oidc" ? buildOIDCNavigationUrl("/") : "/login");
+  }, [code, navigate, mode]);
 
   const onSubmitHandler = async (values: z.infer<typeof activationFormSchema>) => {
     try {
-      // console.log("captchaCode", captchaCode);
-      // return;
       const res = await mutateAsync({
         code: code,
         preventPostEvent: true,
@@ -68,13 +71,18 @@ export const ActivationForm = ({ code }: ActivationFormProps) => {
         firstname: values.firstname,
         lastname: values.lastname,
         captchaCode,
-
       });
       if (!res.isSuccess) {
         resetCaptcha();
         return showErrorToast({ errors: res.errors });
       }
-      return navigate("/activate-success");
+      
+      if (mode === "oidc") {
+        // Return to OIDC login flow
+        navigate(buildOIDCNavigationUrl("/"));
+      } else {
+        return navigate("/activate-success");
+      }
     } catch (error: unknown) {
       resetCaptcha();
       if (isErrorWithErrors(error)) {

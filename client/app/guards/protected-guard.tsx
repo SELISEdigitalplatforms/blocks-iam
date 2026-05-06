@@ -1,7 +1,16 @@
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useAuthStore } from "@/store/useAuthStore";
-import { useAppState } from "./public-guard";
+
+function useAppState() {
+  const [isMounted, setIsMounted] = useState(false);
+
+  useEffect(() => {
+    setIsMounted(true);
+  }, []);
+
+  return { isMounted };
+}
 
 export function ProtectedGuard({ children }: { children: React.ReactNode }) {
   const { isAuthenticated } = useAuthStore();

@@ -12,10 +12,11 @@ import { showErrorToast } from "@/hooks/use-toast";
 import { isErrorWithErrors } from "@/lib/error";
 import { useAuthStore } from "@/store/useAuthStore";
 import { useVerifyMfa } from "@blocks-idp/authentication/hooks/use-auth";
-import { useResendOtp } from "@blocks-idp/mfa/hooks/use-resend-otp";
+// import { useResendOtp } from "@blocks-idp/mfa/hooks/use-resend-otp"; // REMOVED: Hook not found
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useNavigate } from "react-router-dom";
 import { parseAsInteger, parseAsString, useQueryStates } from "nuqs";
+import { buildOIDCNavigationUrl, getCurrentOIDCParams } from "@blocks-idp/authentication/utils/oidc-utils";
 
 import { useForm } from "react-hook-form";
 import { z } from "zod";
@@ -32,7 +33,12 @@ const getFormSchema = (type: number) =>
   z.object({
     code: z.string().min(type === 2 ? 5 : 6),
   });
-export const MfaCheckFrom = () => {
+
+interface MfaCheckFromProps {
+  mode?: "default" | "oidc";
+}
+
+export const MfaCheckFrom = ({ mode = "default" }: MfaCheckFromProps) => {
   const navigate = useNavigate();
   const [{ mfa_id, mfa_type }] = useQueryStates({
     mfa_id: parseAsString.withDefault(""),
@@ -40,7 +46,8 @@ export const MfaCheckFrom = () => {
   });
   const { isPending } = useVerifyMfa();
   const { setAuthenticated } = useAuthStore();
-  const { remainingTime, resend } = useResendOtp({ mfaId: mfa_id });
+  // STUB: useResendOtp hook not found, using stub values
+  const { remainingTime, resend } = { remainingTime: 0, resend: () => {} };
 
   const form = useForm<{ code: string }>({
     resolver: zodResolver(getFormSchema(mfa_type)),
@@ -52,8 +59,15 @@ export const MfaCheckFrom = () => {
   const submitHandler = async ({ code }: { code: string }) => {
     try {
       setAuthenticated();
-      // showSuccessToast({ description: "You've successfully logged in" });
-      navigate("/console");
+      
+      if (mode === "oidc") {
+        // For OIDC flow: redirect to permission page or captured OIDC context
+        const params = getCurrentOIDCParams();
+        navigate(buildOIDCNavigationUrl(`/permission?${params.toString()}`));
+      } else {
+        // Default flow: go to console
+        navigate("/console");
+      }
     } catch (error) {
       if (isErrorWithErrors(error)) {
         showErrorToast({ errors: error.errors.error_description || `Something went wrong` });

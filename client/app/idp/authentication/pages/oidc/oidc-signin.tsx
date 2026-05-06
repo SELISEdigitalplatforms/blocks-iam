@@ -8,12 +8,15 @@ import { Signin } from "@blocks-idp/authentication/pages/login";
 import { oauthService } from "@blocks-idp/authentication/services/oauth.service";
 import { useOIDCContext } from "@/layouts/oidc-layout";
 import { buildOIDCNavigationUrl, getCurrentOIDCParams } from "@blocks-idp/authentication/utils/oidc-utils";
+import { OidcLoginForm } from "./oidc-login-form";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui-kits/card/card";
 
 export const OIDCSignin = () => {
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
   const { setAuthenticated, setTokens } = useAuthStore();
   const [isActivatingSocial, setIsActivatingSocial] = useState(false);
+  const [isOidcPasswordFlow, setIsOidcPasswordFlow] = useState(false);
   const oidcContext = useOIDCContext();
 
   const code = searchParams.get("code") || "";
@@ -31,6 +34,14 @@ export const OIDCSignin = () => {
     }),
     [oidcContext.clientId, oidcContext.nonce, oidcContext.redirectUri, oidcContext.scope, oidcContext.state, oidcContext.themeColor],
   );
+
+  // Detect if this is a pure OIDC password flow (coming from /oidc/login route with OIDC params)
+  useEffect(() => {
+    const pathName = window.location.pathname;
+    if (pathName.includes("/oidc/login")) {
+      setIsOidcPasswordFlow(true);
+    }
+  }, []);
 
   useEffect(() => {
     if (!code || !state) {
@@ -86,6 +97,31 @@ export const OIDCSignin = () => {
       <div className="flex min-h-screen items-center justify-center">
         <Loader className="h-12 w-12 animate-spin text-gray-500" />
       </div>
+    );
+  }
+
+  // Pure OIDC password/email flow
+  if (isOidcPasswordFlow && oidcContext.clientId && oidcContext.redirectUri) {
+    return (
+      <Card className="flex h-full flex-col rounded border-solid border-background shadow-none md:min-w-[448px] md:border-[#95ADC4] lg:max-w-md">
+        <CardHeader className="text-center">
+          <CardTitle className="text-3xl">Blocks Cloud</CardTitle>
+          <CardDescription className="text-xl text-foreground">Log in</CardDescription>
+        </CardHeader>
+        <CardContent className="flex flex-1 flex-col justify-between">
+          <div className="flex flex-1 flex-col justify-center">
+            <OidcLoginForm
+              clientId={oidcContext.clientId}
+              redirectUri={oidcContext.redirectUri}
+              scope={oidcContext.scope}
+              state={oidcContext.state}
+              nonce={oidcContext.nonce}
+              codeChallenge={searchParams.get("code_challenge") || undefined}
+              codeChallengeMethod={searchParams.get("code_challenge_method") || "S256"}
+            />
+          </div>
+        </CardContent>
+      </Card>
     );
   }
 
