@@ -3,10 +3,12 @@ using Authentication.DomainService.Dtos;
 using Authentication.DomainService.Entities;
 using Authentication.DomainService.OAuth;
 using Authentication.DomainService.OAuth.ResponseModel;
+using Authentication.DomainService.Oidc.Repositories;
 using Authentication.DomainService.Oidc.Services;
 using Authentication.DomainService.Services;
 using Authentication.DomainService.Shared.RequestModel;
 using Authentication.DomainService.Utilities;
+using Idp.DomainService.Oidc.Contracts;
 using Iam.DomainService.Entities;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
@@ -27,6 +29,7 @@ namespace Authentication.DomainService.Authentication
         private readonly ILogger<AuthenticationService> _logger;
         private readonly ICacheClient _cacheClient;
         private readonly IAuthenticationRepository _authenticationRepository;
+        private readonly IAuditLogRepository _auditLogRepository;
         private readonly IAuthenticationDomainService _authenticationDomainService;
         private readonly IIdpSessionService _idpSessionService;
         private readonly ITenants _tenants;
@@ -37,6 +40,7 @@ namespace Authentication.DomainService.Authentication
             ILogger<AuthenticationService> logger,
             ICacheClient cacheClient,
             IAuthenticationRepository authenticationRepository,
+            IAuditLogRepository auditLogRepository,
             IAuthenticationDomainService authenticationDomainService,
             IIdpSessionService idpSessionService,
             ITenants tenants
@@ -45,6 +49,7 @@ namespace Authentication.DomainService.Authentication
             _logger = logger;
             _cacheClient = cacheClient;
             _authenticationRepository = authenticationRepository;
+            _auditLogRepository = auditLogRepository;
             _authenticationDomainService = authenticationDomainService;
             _idpSessionService = idpSessionService;
             _tenants = tenants;
@@ -493,6 +498,7 @@ namespace Authentication.DomainService.Authentication
         public async Task<bool> TriggerBackchannelLogoutAllAsync(HttpRequest httpRequest)
         {
             var bc = BlocksContext.GetContext();
+            var logoutEventId = Guid.NewGuid().ToString("n");
             var clients = await _authenticationRepository.GetOIDCCredentialsByTenantAsync();
             var backchannelUris = clients
                 .Select(client => client.BackChannelLogoutUri)
@@ -508,6 +514,7 @@ namespace Authentication.DomainService.Authentication
 
             var requestPayload = new
             {
+                logout_event_id = logoutEventId,
                 user_id = bc?.UserId,
                 tenant_id = bc?.TenantId,
                 event_name = "logout_all",
@@ -515,26 +522,109 @@ namespace Authentication.DomainService.Authentication
                 occurred_at_utc = DateTime.UtcNow
             };
 
+            const int maxAttempts = 3;
             var allSucceeded = true;
             foreach (var uri in backchannelUris)
             {
-                try
+                var delivered = false;
+                for (var attempt = 1; attempt <= maxAttempts; attempt++)
                 {
-                    var response = await BackchannelHttpClient.PostAsJsonAsync(uri!, requestPayload);
-                    if (!response.IsSuccessStatusCode)
+                    await PersistBackchannelDeliveryAuditAsync(logoutEventId, uri!, "pending", attempt, null, "dispatching_backchannel_logout");
+
+                    try
                     {
-                        allSucceeded = false;
-                        _logger.LogWarning("Backchannel logout call failed for {Uri} with status code {StatusCode}", uri, (int)response.StatusCode);
+                        var response = await BackchannelHttpClient.PostAsJsonAsync(uri!, requestPayload);
+                        if (response.IsSuccessStatusCode)
+                        {
+                            delivered = true;
+                            await PersistBackchannelDeliveryAuditAsync(logoutEventId, uri!, "sent", attempt, (int)response.StatusCode, "backchannel_logout_delivered");
+                            await PublishSecurityEventAsync(httpRequest, "backchannel_logout_succeeded", "dispatch_backchannel_logout", "success", null, logoutEventId, uri);
+                            _logger.LogInformation(
+                                "SecurityEvent backchannel_logout_succeeded event={LogoutEventId} tenant={TenantId} uri={Uri} attempt={Attempt}",
+                                logoutEventId,
+                                bc?.TenantId,
+                                uri,
+                                attempt);
+                            break;
+                        }
+
+                        await PersistBackchannelDeliveryAuditAsync(logoutEventId, uri!, "failed", attempt, (int)response.StatusCode, "backchannel_logout_delivery_failed");
+                        await PublishSecurityEventAsync(httpRequest, "backchannel_logout_failed", "dispatch_backchannel_logout", "failed", $"status_{(int)response.StatusCode}", logoutEventId, uri);
+                        _logger.LogWarning(
+                            "SecurityEvent backchannel_logout_failed event={LogoutEventId} tenant={TenantId} uri={Uri} status={StatusCode} attempt={Attempt}",
+                            logoutEventId,
+                            bc?.TenantId,
+                            uri,
+                            (int)response.StatusCode,
+                            attempt);
+                    }
+
+                    catch (Exception ex)
+                    {
+                        await PersistBackchannelDeliveryAuditAsync(logoutEventId, uri!, "failed_exception", attempt, null, ex.GetType().Name);
+                        await PublishSecurityEventAsync(httpRequest, "backchannel_logout_exception", "dispatch_backchannel_logout", "failed", ex.GetType().Name, logoutEventId, uri);
+                        _logger.LogWarning(
+                            ex,
+                            "SecurityEvent backchannel_logout_exception event={LogoutEventId} tenant={TenantId} uri={Uri} attempt={Attempt}",
+                            logoutEventId,
+                            bc?.TenantId,
+                            uri,
+                            attempt);
+                    }
+
+                    if (attempt < maxAttempts)
+                    {
+                        await Task.Delay(TimeSpan.FromMilliseconds(250 * attempt));
                     }
                 }
-                catch (Exception ex)
+
+                if (!delivered)
                 {
                     allSucceeded = false;
-                    _logger.LogWarning(ex, "Backchannel logout call threw for {Uri}", uri);
                 }
             }
 
             return allSucceeded;
+        }
+
+        private async Task PersistBackchannelDeliveryAuditAsync(string logoutEventId, string uri, string status, int attempt, int? statusCode, string details)
+        {
+            var bc = BlocksContext.GetContext();
+            var log = new AuditLogModel
+            {
+                EventType = "backchannel_logout_delivery",
+                UserId = bc?.UserId,
+                TenantId = bc?.TenantId,
+                Severity = status.StartsWith("failed", StringComparison.OrdinalIgnoreCase) ? "WARN" : "INFO",
+                Status = status,
+                Message = $"backchannel logout {status}",
+                Details = $"event={logoutEventId};attempt={attempt};uri={uri};status_code={(statusCode?.ToString() ?? "n/a")};reason={details}",
+                Timestamp = DateTime.UtcNow
+            };
+
+            await _auditLogRepository.CreateAsync(log);
+        }
+
+        private async Task PublishSecurityEventAsync(HttpRequest request, string eventName, string actionBy, string outcome, string? reasonCode, string correlationId, string? targetUri = null)
+        {
+            var bc = BlocksContext.GetContext();
+            var timelineEvent = new UserAuthenticationTimelineEvent
+            {
+                DeviceInformation = _authenticationDomainService.GetDeviceInfo(request?.Headers?.UserAgent.ToString() ?? string.Empty),
+                IpAddresses = string.Join(",", _authenticationDomainService.GetVisitorsIpAddresses(request?.HttpContext)),
+                Event = eventName,
+                ActionBy = actionBy,
+                UserId = bc?.UserId,
+                TenantId = bc?.TenantId,
+                SessionId = request?.Cookies[IdpSessionCookieName],
+                CorrelationId = correlationId,
+                Outcome = outcome,
+                ReasonCode = reasonCode,
+                RiskLevel = "low",
+                ClientId = targetUri
+            };
+
+            await _authenticationDomainService.SendToQueueAsync(IdpConstants.AuthenticationQueue, timelineEvent);
         }
 
         public async Task<ClaimsPrincipal?> GetPrincipalFromTokenAsync(HttpRequest request, string tenantId, bool IsUserInfoGetRequest = false)
