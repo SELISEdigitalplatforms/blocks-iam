@@ -2,14 +2,11 @@ using Blocks.Genesis;
 using Idp.DomainService.Oidc.Contracts;
 using Authentication.DomainService.Authentication;
 using Authentication.DomainService.OAuth.RequestModel;
-using Authentication.DomainService.OAuth.ResponseModel;
 using Authentication.DomainService.Oidc.Services;
 using Authentication.DomainService.Services;
-using Authentication.DomainService.Utilities;
 using Iam.DomainService.Accounts;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
-using System.IdentityModel.Tokens.Jwt;
 
 namespace Api.Controllers;
 
@@ -17,23 +14,18 @@ namespace Api.Controllers;
 [Route("auth")]
 public class AuthenticationController : ControllerBase
 {
-    private const string IdpSessionCookieName = "idp_session_id";
-
     private readonly IAuthenticationService _authenticationService;
     private readonly IAccountService _accountService;
     private readonly IAuthenticationFlowService _authenticationFlowService;
-    private readonly IIdpSessionService _idpSessionService;
 
     public AuthenticationController(
         IAuthenticationService authenticationService,
         IAccountService accountService,
-        IAuthenticationFlowService authenticationFlowService,
-        IIdpSessionService idpSessionService)
+        IAuthenticationFlowService authenticationFlowService)
     {
         _authenticationService = authenticationService;
         _accountService = accountService;
         _authenticationFlowService = authenticationFlowService;
-        _idpSessionService = idpSessionService;
     }
 
     [HttpPost("recover")]
@@ -62,14 +54,14 @@ public class AuthenticationController : ControllerBase
     public async Task<IActionResult> Login([FromBody] EmbeddedLoginRequest request)
     {
         var result = await _authenticationFlowService.ExecuteEmbeddedLoginAsync(request, Request);
-        return await BuildFlowResult(result);
+        return await _authenticationService.BuildFlowResultAsync(result, HttpContext);
     }
 
     [HttpPost("login/social")]
     public async Task<IActionResult> SocialLogin([FromBody] SocialLoginRequest request)
     {
         var result = await _authenticationFlowService.ExecuteSocialLoginAsync(request, Request);
-        return await BuildFlowResult(result);
+        return await _authenticationService.BuildFlowResultAsync(result, HttpContext);
     }
 
     [HttpPost("switch-org")]
@@ -77,7 +69,7 @@ public class AuthenticationController : ControllerBase
     public async Task<IActionResult> SwitchOrg([FromBody] SwitchOrganizationRequest request)
     {
         var result = await _authenticationFlowService.ExecuteSwitchOrganizationAsync(request, User, Request);
-        return await BuildFlowResult(result);
+        return await _authenticationService.BuildFlowResultAsync(result, HttpContext);
     }
 
     [HttpPost("impersonate")]
@@ -123,206 +115,99 @@ public class AuthenticationController : ControllerBase
     [Authorize]
     public async Task<IActionResult> Logout([FromBody] LogoutRequest request)
     {
-        var result = await _authenticationService.LogoutUser(request.RefreshToken ?? string.Empty, Request);
-        if (!result.IsSuccess)
+        var refreshToken = string.IsNullOrWhiteSpace(request.RefreshToken)
+            ? _authenticationService.CookieToken(Request)
+            : request.RefreshToken;
+
+        if (string.IsNullOrWhiteSpace(refreshToken))
         {
-            return BadRequest(result);
+            return BadRequest(new
+            {
+                error = "invalid_request",
+                error_description = "refresh token is required for service logout."
+            });
         }
 
-        var shouldClearIdpSessionCookie = await UpdateIdpSessionForLogoutAsync(isGlobalLogout: false);
+        var logoutResult = await _authenticationService.LogoutUser(refreshToken, Request);
+        if (!logoutResult.IsSuccess)
+        {
+            return BadRequest(logoutResult);
+        }
+
+        _authenticationService.DeleteCookie(Request);
+        return Ok(logoutResult);
+    }
+
+    [HttpPost("internal/logout-idp")]
+    [ApiExplorerSettings(IgnoreApi = true)]
+    [Authorize]
+    public async Task<IActionResult> LogoutIdpInternal([FromBody] LogoutRequest request)
+    {
+        var refreshToken = string.IsNullOrWhiteSpace(request.RefreshToken)
+            ? _authenticationService.CookieToken(Request)
+            : request.RefreshToken;
+
+        if (string.IsNullOrWhiteSpace(refreshToken))
+        {
+            return BadRequest(new
+            {
+                error = "invalid_request",
+                error_description = "refresh token is required for idp logout."
+            });
+        }
+
+        var logoutResult = await _authenticationService.LogoutUser(refreshToken, Request);
+        if (!logoutResult.IsSuccess)
+        {
+            return BadRequest(logoutResult);
+        }
+
+        var shouldClearIdpSessionCookie = await _authenticationService.UpdateIdpSessionForLogoutAsync(HttpContext, User, isGlobalLogout: false);
         _authenticationService.DeleteCookie(Request);
         if (shouldClearIdpSessionCookie)
         {
-            ClearIdpSessionCookie();
+            _authenticationService.ClearIdpSessionCookie(Response);
         }
-        return Ok(result);
+
+        return Ok(logoutResult);
     }
 
     [HttpPost("logout-all")]
     [Authorize]
-    public async Task<IActionResult> LogoutAll()
+    public async Task<IActionResult> LogoutAll([FromBody] LogoutAllRequest? request = null)
     {
-        // IDP logout is SSO-session only: do not revoke service refresh tokens.
-        var shouldClearIdpSessionCookie = await UpdateIdpSessionForLogoutAsync(isGlobalLogout: true);
+        request ??= new LogoutAllRequest();
+        var logoutAllResult = await _authenticationService.LogoutUser(string.Empty, Request);
+        if (!logoutAllResult.IsSuccess)
+        {
+            return BadRequest(new
+            {
+                IsSuccess = false,
+                Message = "Service logout-all failed"
+            });
+        }
+
+        _authenticationService.DeleteCookie(Request);
+
+        var shouldClearIdpSessionCookie = await _authenticationService.UpdateIdpSessionForLogoutAsync(HttpContext, User, isGlobalLogout: true);
         if (shouldClearIdpSessionCookie)
         {
-            ClearIdpSessionCookie();
+            _authenticationService.ClearIdpSessionCookie(Response);
+        }
+
+        var backchannelSuccess = true;
+        if (request.UseBackchannel)
+        {
+            backchannelSuccess = await _authenticationService.TriggerBackchannelLogoutAllAsync(Request);
         }
 
         return Ok(new
         {
             IsSuccess = true,
-            Message = "IdP session logged out. Service tokens remain valid until expiry."
+            ServiceLoggedOut = true,
+            SessionLoggedOut = true,
+            BackchannelTriggered = request.UseBackchannel,
+            BackchannelSuccess = backchannelSuccess
         });
-    }
-
-    private async Task<IActionResult> BuildTokenResponse(TokenResponse response)
-    {
-        if (!string.IsNullOrWhiteSpace(response.Error))
-        {
-            var statusCode = response.StatusCode > 0 ? response.StatusCode : StatusCodes.Status400BadRequest;
-            return StatusCode(statusCode, new
-            {
-                error = response.Error,
-                error_description = response.ErrorDescription,
-                redirect_url = response.SsoUserRedirectUrl
-            });
-        }
-
-        AppendCookies(response);
-        await EnsureIdpSessionForLoginAsync(response);
-        return Ok(new
-        {
-            access_token = response.AccessToken,
-            refresh_token = response.RefreshToken,
-            token_type = response.TokenType,
-            expires_in = response.ExpiresIn,
-            expires_utc = response.ExpiresUtc,
-            refresh_expires_utc = response.RefreshExpiresUtc,
-            scope = response.Scope,
-            id_token = response.IdToken
-        });
-    }
-
-    private async Task<IActionResult> BuildFlowResult(AuthenticationFlowResult result)
-    {
-        if (!string.IsNullOrWhiteSpace(result.Error))
-        {
-            return StatusCode(result.StatusCode, new
-            {
-                error = result.Error,
-                error_description = result.ErrorDescription
-            });
-        }
-
-        if (result.TokenResponse == null)
-        {
-            return StatusCode(StatusCodes.Status500InternalServerError, new
-            {
-                error = "server_error",
-                error_description = "Authentication flow returned no response"
-            });
-        }
-
-        return await BuildTokenResponse(result.TokenResponse);
-    }
-
-    private void AppendCookies(TokenResponse response)
-    {
-        var tenantId = BlocksContext.GetContext()?.TenantId ?? "default";
-        var accessCookieOptions = CreateCookieOptions(response.CookieDomain, response.ExpiresUtc);
-        var refreshCookieOptions = CreateCookieOptions(response.CookieDomain, response.RefreshExpiresUtc);
-
-        if (!string.IsNullOrWhiteSpace(response.AccessToken))
-        {
-            Response.Cookies.Append($"{IdpConstants.AccessTokenCookieName}_{tenantId}", response.AccessToken, accessCookieOptions);
-        }
-
-        if (!string.IsNullOrWhiteSpace(response.RefreshToken))
-        {
-            Response.Cookies.Append($"{IdpConstants.RefreshTokenCookieName}_{tenantId}", response.RefreshToken, refreshCookieOptions);
-        }
-    }
-
-    private static CookieOptions CreateCookieOptions(string? domain, DateTime expiresUtc)
-    {
-        return new CookieOptions
-        {
-            Domain = string.IsNullOrWhiteSpace(domain) ? null : domain,
-            HttpOnly = true,
-            Secure = true,
-            SameSite = SameSiteMode.None,
-            Path = "/",
-            Expires = expiresUtc == default ? DateTime.UtcNow.AddHours(1) : expiresUtc
-        };
-    }
-
-    private async Task EnsureIdpSessionForLoginAsync(TokenResponse tokenResponse)
-    {
-        if (string.IsNullOrWhiteSpace(tokenResponse.AccessToken))
-        {
-            return;
-        }
-
-        var handler = new JwtSecurityTokenHandler();
-        var jwt = handler.ReadJwtToken(tokenResponse.AccessToken);
-        var userId = jwt.Claims.FirstOrDefault(c => c.Type == BlocksContext.USER_ID_CLAIM)?.Value;
-        var tenantId = jwt.Claims.FirstOrDefault(c => c.Type == BlocksContext.TENANT_ID_CLAIM)?.Value;
-
-        if (string.IsNullOrWhiteSpace(userId) || string.IsNullOrWhiteSpace(tenantId))
-        {
-            return;
-        }
-
-        var sessionId = Request.Cookies[IdpSessionCookieName];
-        if (string.IsNullOrWhiteSpace(sessionId))
-        {
-            sessionId = await _idpSessionService.CreateSessionAsync(userId, tenantId, HttpContext.Connection.RemoteIpAddress?.ToString() ?? "unknown");
-        }
-        else
-        {
-            var existingSession = await _idpSessionService.GetSessionAsync(sessionId);
-            if (existingSession == null || existingSession.RevokedAt.HasValue || existingSession.IsExpired())
-            {
-                sessionId = await _idpSessionService.CreateSessionAsync(userId, tenantId, HttpContext.Connection.RemoteIpAddress?.ToString() ?? "unknown");
-            }
-            else
-            {
-                var accountExists = existingSession.Accounts.Any(a =>
-                    string.Equals(a.UserId, userId, StringComparison.OrdinalIgnoreCase)
-                    && string.Equals(a.TenantId, tenantId, StringComparison.OrdinalIgnoreCase));
-
-                if (!accountExists)
-                {
-                    await _idpSessionService.AddAccountAsync(sessionId, userId, tenantId, userId);
-                }
-                else
-                {
-                    await _idpSessionService.UpdateActivityAsync(sessionId);
-                }
-            }
-        }
-
-        Response.Cookies.Append(IdpSessionCookieName, sessionId, CreateCookieOptions(tokenResponse.CookieDomain, tokenResponse.RefreshExpiresUtc));
-    }
-
-    private async Task<bool> UpdateIdpSessionForLogoutAsync(bool isGlobalLogout)
-    {
-        var sessionId = Request.Cookies[IdpSessionCookieName];
-        if (string.IsNullOrWhiteSpace(sessionId))
-        {
-            return true;
-        }
-
-        if (isGlobalLogout)
-        {
-            await _idpSessionService.RevokeSessionAsync(sessionId, "logout_all");
-            return true;
-        }
-
-        var userId = User.FindFirst(BlocksContext.USER_ID_CLAIM)?.Value ?? User.FindFirst("sub")?.Value;
-        if (string.IsNullOrWhiteSpace(userId))
-        {
-            return false;
-        }
-
-        var tenantId = User.FindFirst(BlocksContext.TENANT_ID_CLAIM)?.Value
-            ?? User.FindFirst("tenant_id")?.Value
-            ?? BlocksContext.GetContext()?.TenantId;
-
-        await _idpSessionService.RemoveAccountAsync(sessionId, userId, tenantId);
-
-        var session = await _idpSessionService.GetSessionAsync(sessionId);
-        if (session == null || session.RevokedAt.HasValue || session.IsExpired())
-        {
-            return true;
-        }
-
-        return session.Accounts.Count == 0;
-    }
-
-    private void ClearIdpSessionCookie()
-    {
-        Response.Cookies.Delete(IdpSessionCookieName);
     }
 }

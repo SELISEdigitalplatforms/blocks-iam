@@ -2,6 +2,8 @@ using Blocks.Genesis;
 using Authentication.DomainService.Dtos;
 using Authentication.DomainService.Entities;
 using Authentication.DomainService.OAuth;
+using Authentication.DomainService.OAuth.ResponseModel;
+using Authentication.DomainService.Oidc.Services;
 using Authentication.DomainService.Services;
 using Authentication.DomainService.Shared.RequestModel;
 using Authentication.DomainService.Utilities;
@@ -11,6 +13,7 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.Logging;
 using Microsoft.IdentityModel.Tokens;
 using System.IdentityModel.Tokens.Jwt;
+using System.Net.Http.Json;
 using System.Security.Claims;
 using System.Security.Cryptography.X509Certificates;
 using System.Text.Json;
@@ -19,10 +22,13 @@ namespace Authentication.DomainService.Authentication
 {
     public class AuthenticationService : IAuthenticationService
     {
+        private static readonly HttpClient BackchannelHttpClient = new();
+        private const string IdpSessionCookieName = "idp_session_id";
         private readonly ILogger<AuthenticationService> _logger;
         private readonly ICacheClient _cacheClient;
         private readonly IAuthenticationRepository _authenticationRepository;
         private readonly IAuthenticationDomainService _authenticationDomainService;
+        private readonly IIdpSessionService _idpSessionService;
         private readonly ITenants _tenants;
 
         private const string Public_Cert_Cache_Prefix = "tetocertpublic::";
@@ -32,6 +38,7 @@ namespace Authentication.DomainService.Authentication
             ICacheClient cacheClient,
             IAuthenticationRepository authenticationRepository,
             IAuthenticationDomainService authenticationDomainService,
+            IIdpSessionService idpSessionService,
             ITenants tenants
         )
         {
@@ -39,7 +46,77 @@ namespace Authentication.DomainService.Authentication
             _cacheClient = cacheClient;
             _authenticationRepository = authenticationRepository;
             _authenticationDomainService = authenticationDomainService;
+            _idpSessionService = idpSessionService;
             _tenants = tenants;
+        }
+
+        public async Task<IActionResult> BuildFlowResultAsync(AuthenticationFlowResult result, HttpContext httpContext)
+        {
+            if (!string.IsNullOrWhiteSpace(result.Error))
+            {
+                return new ObjectResult(new
+                {
+                    error = result.Error,
+                    error_description = result.ErrorDescription
+                })
+                {
+                    StatusCode = result.StatusCode
+                };
+            }
+
+            if (result.TokenResponse == null)
+            {
+                return new ObjectResult(new
+                {
+                    error = "server_error",
+                    error_description = "Authentication flow returned no response"
+                })
+                {
+                    StatusCode = StatusCodes.Status500InternalServerError
+                };
+            }
+
+            return await BuildTokenResponseAsync(result.TokenResponse, httpContext);
+        }
+
+        public async Task<bool> UpdateIdpSessionForLogoutAsync(HttpContext httpContext, ClaimsPrincipal user, bool isGlobalLogout)
+        {
+            var sessionId = httpContext.Request.Cookies[IdpSessionCookieName];
+            if (string.IsNullOrWhiteSpace(sessionId))
+            {
+                return true;
+            }
+
+            if (isGlobalLogout)
+            {
+                await _idpSessionService.RevokeSessionAsync(sessionId, "logout_all");
+                return true;
+            }
+
+            var userId = user.FindFirst(BlocksContext.USER_ID_CLAIM)?.Value ?? user.FindFirst("sub")?.Value;
+            if (string.IsNullOrWhiteSpace(userId))
+            {
+                return false;
+            }
+
+            var tenantId = user.FindFirst(BlocksContext.TENANT_ID_CLAIM)?.Value
+                ?? user.FindFirst("tenant_id")?.Value
+                ?? BlocksContext.GetContext()?.TenantId;
+
+            await _idpSessionService.RemoveAccountAsync(sessionId, userId, tenantId);
+
+            var session = await _idpSessionService.GetSessionAsync(sessionId);
+            if (session == null || session.RevokedAt.HasValue || session.IsExpired())
+            {
+                return true;
+            }
+
+            return session.Accounts.Count == 0;
+        }
+
+        public void ClearIdpSessionCookie(HttpResponse response)
+        {
+            response.Cookies.Delete(IdpSessionCookieName);
         }
 
         public async Task<LogoutResponse> LogoutUser(string refreshToken, HttpRequest httpRequest)
@@ -159,6 +236,53 @@ namespace Authentication.DomainService.Authentication
             });
         }
 
+        public async Task<bool> TriggerBackchannelLogoutAllAsync(HttpRequest httpRequest)
+        {
+            var bc = BlocksContext.GetContext();
+            var clients = await _authenticationRepository.GetOIDCCredentialsByTenantAsync();
+            var backchannelUris = clients
+                .Select(client => client.BackChannelLogoutUri)
+                .Where(uri => !string.IsNullOrWhiteSpace(uri))
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .ToList();
+
+            if (backchannelUris.Count == 0)
+            {
+                _logger.LogInformation("No backchannel logout URIs configured for tenant {TenantId}", bc?.TenantId);
+                return true;
+            }
+
+            var requestPayload = new
+            {
+                user_id = bc?.UserId,
+                tenant_id = bc?.TenantId,
+                event_name = "logout_all",
+                session_id = httpRequest.Cookies["idp_session_id"],
+                occurred_at_utc = DateTime.UtcNow
+            };
+
+            var allSucceeded = true;
+            foreach (var uri in backchannelUris)
+            {
+                try
+                {
+                    var response = await BackchannelHttpClient.PostAsJsonAsync(uri!, requestPayload);
+                    if (!response.IsSuccessStatusCode)
+                    {
+                        allSucceeded = false;
+                        _logger.LogWarning("Backchannel logout call failed for {Uri} with status code {StatusCode}", uri, (int)response.StatusCode);
+                    }
+                }
+                catch (Exception ex)
+                {
+                    allSucceeded = false;
+                    _logger.LogWarning(ex, "Backchannel logout call threw for {Uri}", uri);
+                }
+            }
+
+            return allSucceeded;
+        }
+
         public async Task<ClaimsPrincipal?> GetPrincipalFromTokenAsync(HttpRequest request, string tenantId, bool IsUserInfoGetRequest = false)
         {
             var (token, _) =  TokenHelper.GetToken(request, _tenants);
@@ -265,6 +389,116 @@ namespace Authentication.DomainService.Authentication
             {
                 userInfo[outputClaimName] = values;
             }
+        }
+
+        private async Task<IActionResult> BuildTokenResponseAsync(TokenResponse response, HttpContext httpContext)
+        {
+            if (!string.IsNullOrWhiteSpace(response.Error))
+            {
+                var statusCode = response.StatusCode > 0 ? response.StatusCode : StatusCodes.Status400BadRequest;
+                return new ObjectResult(new
+                {
+                    error = response.Error,
+                    error_description = response.ErrorDescription,
+                    redirect_url = response.SsoUserRedirectUrl
+                })
+                {
+                    StatusCode = statusCode
+                };
+            }
+
+            AppendCookies(response, httpContext.Response);
+            await EnsureIdpSessionForLoginAsync(response, httpContext);
+            return new OkObjectResult(new
+            {
+                access_token = response.AccessToken,
+                refresh_token = response.RefreshToken,
+                token_type = response.TokenType,
+                expires_in = response.ExpiresIn,
+                expires_utc = response.ExpiresUtc,
+                refresh_expires_utc = response.RefreshExpiresUtc,
+                scope = response.Scope,
+                id_token = response.IdToken
+            });
+        }
+
+        private static void AppendCookies(TokenResponse response, HttpResponse httpResponse)
+        {
+            var tenantId = BlocksContext.GetContext()?.TenantId ?? "default";
+            var accessCookieOptions = CreateCookieOptions(response.CookieDomain, response.ExpiresUtc);
+            var refreshCookieOptions = CreateCookieOptions(response.CookieDomain, response.RefreshExpiresUtc);
+
+            if (!string.IsNullOrWhiteSpace(response.AccessToken))
+            {
+                httpResponse.Cookies.Append($"{IdpConstants.AccessTokenCookieName}_{tenantId}", response.AccessToken, accessCookieOptions);
+            }
+
+            if (!string.IsNullOrWhiteSpace(response.RefreshToken))
+            {
+                httpResponse.Cookies.Append($"{IdpConstants.RefreshTokenCookieName}_{tenantId}", response.RefreshToken, refreshCookieOptions);
+            }
+        }
+
+        private static CookieOptions CreateCookieOptions(string? domain, DateTime expiresUtc)
+        {
+            return new CookieOptions
+            {
+                Domain = string.IsNullOrWhiteSpace(domain) ? null : domain,
+                HttpOnly = true,
+                Secure = true,
+                SameSite = SameSiteMode.None,
+                Path = "/",
+                Expires = expiresUtc == default ? DateTime.UtcNow.AddHours(1) : expiresUtc
+            };
+        }
+
+        private async Task EnsureIdpSessionForLoginAsync(TokenResponse tokenResponse, HttpContext httpContext)
+        {
+            if (string.IsNullOrWhiteSpace(tokenResponse.AccessToken))
+            {
+                return;
+            }
+
+            var handler = new JwtSecurityTokenHandler();
+            var jwt = handler.ReadJwtToken(tokenResponse.AccessToken);
+            var userId = jwt.Claims.FirstOrDefault(c => c.Type == BlocksContext.USER_ID_CLAIM)?.Value;
+            var tenantId = jwt.Claims.FirstOrDefault(c => c.Type == BlocksContext.TENANT_ID_CLAIM)?.Value;
+
+            if (string.IsNullOrWhiteSpace(userId) || string.IsNullOrWhiteSpace(tenantId))
+            {
+                return;
+            }
+
+            var sessionId = httpContext.Request.Cookies[IdpSessionCookieName];
+            if (string.IsNullOrWhiteSpace(sessionId))
+            {
+                sessionId = await _idpSessionService.CreateSessionAsync(userId, tenantId, httpContext.Connection.RemoteIpAddress?.ToString() ?? "unknown");
+            }
+            else
+            {
+                var existingSession = await _idpSessionService.GetSessionAsync(sessionId);
+                if (existingSession == null || existingSession.RevokedAt.HasValue || existingSession.IsExpired())
+                {
+                    sessionId = await _idpSessionService.CreateSessionAsync(userId, tenantId, httpContext.Connection.RemoteIpAddress?.ToString() ?? "unknown");
+                }
+                else
+                {
+                    var accountExists = existingSession.Accounts.Any(a =>
+                        string.Equals(a.UserId, userId, StringComparison.OrdinalIgnoreCase)
+                        && string.Equals(a.TenantId, tenantId, StringComparison.OrdinalIgnoreCase));
+
+                    if (!accountExists)
+                    {
+                        await _idpSessionService.AddAccountAsync(sessionId, userId, tenantId, userId);
+                    }
+                    else
+                    {
+                        await _idpSessionService.UpdateActivityAsync(sessionId);
+                    }
+                }
+            }
+
+            httpContext.Response.Cookies.Append(IdpSessionCookieName, sessionId, CreateCookieOptions(tokenResponse.CookieDomain, tokenResponse.RefreshExpiresUtc));
         }
     }
 }

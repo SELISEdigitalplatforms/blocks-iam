@@ -368,16 +368,14 @@ public class DiscoveryService : IDiscoveryService
     private ResolvedOidcEndpoints ResolveEndpoints(string? tenantId)
     {
         var tenant = ResolveTenant(tenantId);
-        var issuer = ResolveIssuer(tenant);
+        var configuredIssuer = ResolveIssuer(tenant);
         var apiPrefix = ApplicationConfigurations.NormalizeApiRoutePrefixValue(_configuration["ApiRouting:Prefix"]);
-        var serviceSegment = ResolveRequiredServiceName(_configuration);
 
-        // Use valid URL for building endpoints
-        var urlBase = issuer;
-        if (!Uri.TryCreate(issuer, UriKind.Absolute, out _))
+        // If tenant issuer is not a valid URL, always fall back to host-only URL.
+        var issuer = configuredIssuer;
+        if (!Uri.TryCreate(configuredIssuer, UriKind.Absolute, out _))
         {
-            // If issuer is not a valid URL, use request or configured URL
-            urlBase = GetIssuerFromRequest() ?? GetConfiguredIssuerFallback();
+            issuer = GetIssuerFromRequest() ?? GetConfiguredIssuerFallback();
         }
 
         // Use path-based tenant selector for discovery and endpoint URLs.
@@ -386,12 +384,12 @@ public class DiscoveryService : IDiscoveryService
             : [tenantId];
 
         var jwksUri = string.IsNullOrWhiteSpace(tenantId)
-            ? BuildUrl(urlBase, ".well-known", "jwks.json")
-            : BuildUrl(urlBase, tenantId, ".well-known", "jwks.json");
+            ? BuildUrl(issuer, ".well-known", "jwks.json")
+            : BuildUrl(issuer, tenantId, ".well-known", "jwks.json");
 
-        var authorizationEndpoint = BuildUrl(urlBase, tenantScopedPrefix.Concat([apiPrefix, serviceSegment, "oidc", "authorize"]).ToArray());
-        var tokenEndpoint = BuildUrl(urlBase, tenantScopedPrefix.Concat([apiPrefix, serviceSegment, "oidc", "token"]).ToArray());
-        var userInfoEndpoint = BuildUrl(urlBase, tenantScopedPrefix.Concat([apiPrefix, serviceSegment, "auth", "userinfo"]).ToArray());
+        var authorizationEndpoint = BuildUrl(issuer, tenantScopedPrefix.Concat([apiPrefix, "oidc", "authorize"]).ToArray());
+        var tokenEndpoint = BuildUrl(issuer, tenantScopedPrefix.Concat([apiPrefix, "oidc", "token"]).ToArray());
+        var userInfoEndpoint = BuildUrl(issuer, tenantScopedPrefix.Concat([apiPrefix, "auth", "userinfo"]).ToArray());
 
         return new ResolvedOidcEndpoints
         {
@@ -451,24 +449,12 @@ public class DiscoveryService : IDiscoveryService
         return GetConfiguredIssuerFallback();
     }
 
-    private static string ResolveRequiredServiceName(IConfiguration configuration)
-    {
-        var serviceName = Environment.GetEnvironmentVariable("ServiceName") ?? configuration["ServiceName"];
-        if (string.IsNullOrWhiteSpace(serviceName))
-        {
-            throw new InvalidOperationException("Missing required ServiceName configuration.");
-        }
-
-        return serviceName;
-    }
-
     private string? GetIssuerFromRequest()
     {
         var request = _httpContextAccessor.HttpContext?.Request;
         if (request != null)
         {
-            var pathBase = request.PathBase.Value?.TrimEnd('/') ?? string.Empty;
-            return $"{request.Scheme}://{request.Host.Value}{pathBase}";
+            return $"{request.Scheme}://{request.Host.Value}";
         }
 
         return null;
@@ -483,7 +469,7 @@ public class DiscoveryService : IDiscoveryService
 
         if (Uri.TryCreate(configuredBaseUrl, UriKind.Absolute, out var uri))
         {
-            return configuredBaseUrl!.TrimEnd('/');
+            return $"{uri.Scheme}://{uri.Authority}";
         }
 
         return "https://localhost:5000";
