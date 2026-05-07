@@ -52,20 +52,6 @@ namespace Authentication.DomainService.Oidc.Repositories
     }
 
     /// <summary>
-    /// OAuth Client Repository
-    /// Manages OAuth 2.0 client registrations
-    /// </summary>
-    public interface IOAuthClientRepository
-    {
-        Task<string> CreateAsync(OAuthClientModel client);
-        Task<OAuthClientModel> GetByClientIdAsync(string clientId, string tenantId);
-        Task<bool> ValidateClientSecretAsync(string clientId, string clientSecret);
-        Task<bool> ValidateRedirectUriAsync(string clientId, string redirectUri);
-        Task<bool> UpdateAsync(OAuthClientModel client);
-        Task<bool> DeleteAsync(string clientId);
-    }
-
-    /// <summary>
     /// Audit Log Repository
     /// Persists audit logs for compliance and security analysis
     /// </summary>

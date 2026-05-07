@@ -2,7 +2,6 @@
 
 import { useState, useEffect, useMemo } from "react";
 import { useNavigate } from "react-router-dom";
-import { getApiUrl } from "@/lib/get-api-path";
 import { getRuntimeEnv } from "@/lib/runtime-env";
 import { showErrorToast } from "@/hooks/use-toast";
 import { useAuthStore } from "@/store/useAuthStore";
@@ -78,7 +77,7 @@ export const SsoActivate = ({ oauthParams }: SsoActivateProps) => {
       body.append("grant_type", "sso_consent");
 
       const res = await fetch(
-        getApiUrl("idp/v1", "Authentication/Token"),
+        `${getRuntimeEnv("BLOCKS_API_BASE_URL")}/api/oidc/token`,
         {
           method: "POST",
           headers: {

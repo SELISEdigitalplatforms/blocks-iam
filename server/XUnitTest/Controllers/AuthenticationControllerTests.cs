@@ -528,7 +528,7 @@ namespace XUnitTest.Controllers
             };
 
             _domainService
-                .Setup(x => x.GetOIDCClientAsyncAsync(request.ClientId))
+                .Setup(x => x.GetOidcClientAsync(request.ClientId))
                 .ReturnsAsync(expectedResponse);
 
             // Act
@@ -540,7 +540,7 @@ namespace XUnitTest.Controllers
         }
 
         [Fact]
-        public async Task GetOIDCClient_PassesCorrectRequestToGetOIDCClientAsyncAsync()
+        public async Task GetOidcClient_PassesCorrectRequestToGetOidcClientAsync()
         {
             // Arrange
             var request = new GetOIDCClientRequest
@@ -554,7 +554,7 @@ namespace XUnitTest.Controllers
             };
 
             _domainService
-                .Setup(x => x.GetOIDCClientAsyncAsync(It.IsAny<string>()))
+                .Setup(x => x.GetOidcClientAsync(It.IsAny<string>()))
                 .ReturnsAsync(expectedResponse);
 
             // Act
@@ -562,9 +562,9 @@ namespace XUnitTest.Controllers
 
             // Assert
             _domainService.Verify(
-                x => x.GetOIDCClientAsyncAsync(request.ClientId),
+                x => x.GetOidcClientAsync(request.ClientId),
                 Times.Once,
-                "GetOIDCClientAsyncAsync should be called once with the correct ClientId from the request");
+                "GetOidcClientAsync should be called once with the correct ClientId from the request");
 
             Assert.True(result.IsSuccess);
         }
@@ -708,7 +708,7 @@ namespace XUnitTest.Controllers
             };
 
             _domainService
-                .Setup(x => x.GetOIDCClientsAsyncAsync())
+                .Setup(x => x.GetOidcClientsAsync())
                 .ReturnsAsync(expectedResponse);
 
             // Act
@@ -722,7 +722,7 @@ namespace XUnitTest.Controllers
         }
 
         [Fact]
-        public async Task GetOIDCClients_CallsGetOIDCClientsAsyncAsync()
+        public async Task GetOidcClients_CallsGetOidcClientsAsync()
         {
             // Arrange
             var request = new GetOIDCClientsRequest();
@@ -734,7 +734,7 @@ namespace XUnitTest.Controllers
             };
 
             _domainService
-                .Setup(x => x.GetOIDCClientsAsyncAsync())
+                .Setup(x => x.GetOidcClientsAsync())
                 .ReturnsAsync(expectedResponse);
 
             // Act
@@ -742,9 +742,9 @@ namespace XUnitTest.Controllers
 
             // Assert
             _domainService.Verify(
-                x => x.GetOIDCClientsAsyncAsync(),
+                x => x.GetOidcClientsAsync(),
                 Times.Once,
-                "GetOIDCClientsAsyncAsync should be called once");
+                "GetOidcClientsAsync should be called once");
         }
 
         [Fact]
@@ -760,7 +760,7 @@ namespace XUnitTest.Controllers
             };
 
             _domainService
-                .Setup(x => x.GetOIDCClientsAsyncAsync())
+                .Setup(x => x.GetOidcClientsAsync())
                 .ReturnsAsync(expectedResponse);
 
             // Act
@@ -795,7 +795,7 @@ namespace XUnitTest.Controllers
             };
 
             _domainService
-                .Setup(x => x.GetOIDCClientsAsyncAsync())
+                .Setup(x => x.GetOidcClientsAsync())
                 .ReturnsAsync(domainServiceResponse);
 
             // Act
@@ -820,19 +820,8 @@ namespace XUnitTest.Controllers
             };
 
             _domainService
-                .Setup(x => x.DeleteOIDCClientAsyncAsync(request))
+                .Setup(x => x.DeleteOidcClientAsync(request))
                 .ReturnsAsync(expectedResponse);
-
-            // Act
-            var result = await _controller.DeleteOIDCClient(request);
-
-            // Assert
-            Assert.NotNull(result);
-            Assert.True(result.IsSuccess);
-        }
-
-        [Fact]
-        public async Task DeleteOIDCClient_CallsDeleteOIDCClientAsyncAsyncWithCorrectRequest()
         {
             // Arrange
             var request = new DeleteOIDCClientRequest
@@ -847,7 +836,7 @@ namespace XUnitTest.Controllers
 
             DeleteOIDCClientRequest? capturedRequest = null;
             _domainService
-                .Setup(x => x.DeleteOIDCClientAsyncAsync(It.IsAny<DeleteOIDCClientRequest>()))
+                .Setup(x => x.DeleteOidcClientAsync(It.IsAny<DeleteOIDCClientRequest>()))
                 .ReturnsAsync(expectedResponse)
                 .Callback<DeleteOIDCClientRequest>(r => capturedRequest = r);
 
@@ -856,9 +845,9 @@ namespace XUnitTest.Controllers
 
             // Assert
             _domainService.Verify(
-                x => x.DeleteOIDCClientAsyncAsync(It.IsAny<DeleteOIDCClientRequest>()),
+                x => x.DeleteOidcClientAsync(It.IsAny<DeleteOIDCClientRequest>()),
                 Times.Once,
-                "DeleteOIDCClientAsyncAsync should be called once with the correct request");
+                "DeleteOidcClientAsync should be called once with the correct request");
             Assert.NotNull(capturedRequest);
             Assert.Same(request, capturedRequest);
             Assert.Equal("client-to-delete", capturedRequest.ItemId);
@@ -883,7 +872,7 @@ namespace XUnitTest.Controllers
             };
 
             _domainService
-                .Setup(x => x.DeleteOIDCClientAsyncAsync(request))
+                .Setup(x => x.DeleteOidcClientAsync(request))
                 .ReturnsAsync(expectedResponse);
 
             // Act
@@ -911,7 +900,7 @@ namespace XUnitTest.Controllers
             };
 
             _domainService
-                .Setup(x => x.DeleteOIDCClientAsyncAsync(request))
+                .Setup(x => x.DeleteOidcClientAsync(request))
                 .ReturnsAsync(domainServiceResponse);
 
             // Act

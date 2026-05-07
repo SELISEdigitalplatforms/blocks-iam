@@ -51,18 +51,3 @@ export interface PeopleGroupedByEnvironments {
   sharedEnviroments: SharedEnvironment[];
 }
 
-// Legacy interface for backward compatibility
-export interface People {
-  itemId: string;
-  salutation: string;
-  firstName: string;
-  lastName: string;
-  email: string;
-  profileImageUrl: string;
-  userId: string;
-  tenantId: string;
-  role: string;
-  isInvitationSent: boolean;
-  isInvitationConfirmed: boolean;
-  isCreator: boolean;
-}

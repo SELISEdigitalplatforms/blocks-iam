@@ -292,7 +292,8 @@ namespace Authentication.DomainService.Authentication
                     state,
                     authorizationUrl,
                     displayName = identityProvider.DisplayName,
-                    provider
+                    provider,
+                    requirePkce = identityProvider.RequirePkce == true
                 });
             }
             catch (Exception ex)
@@ -334,7 +335,8 @@ namespace Authentication.DomainService.Authentication
                     state,
                     authorizationUrl,
                     displayName = identityProvider.DisplayName ?? "Blocks OIDC",
-                    provider = "internal"
+                    provider = "internal",
+                    requirePkce = identityProvider.RequirePkce == true
                 });
             }
             catch (Exception ex)
@@ -441,7 +443,8 @@ namespace Authentication.DomainService.Authentication
                     socialState,
                     authorizationUrl,
                     provider,
-                    oidcState
+                    oidcState,
+                    requirePkce = identityProvider.RequirePkce == true
                 });
             }
             catch (Exception ex)
@@ -454,7 +457,7 @@ namespace Authentication.DomainService.Authentication
         /// <summary>
         /// Build authorization URL with proper OAuth 2.0 parameters
         /// </summary>
-        private string BuildAuthorizationUrl(IdentityProvider provider, string state, string scope)
+        private string BuildAuthorizationUrl(IdentityProvider provider, string state, string scope, string? codeChallenge = null)
         {
             try
             {
@@ -469,11 +472,10 @@ namespace Authentication.DomainService.Authentication
                     $"scope={Uri.EscapeDataString(scope)}&" +
                     $"state={Uri.EscapeDataString(state)}";
 
-                // Add PKCE if required
-                if (provider.RequirePkce == true)
+                // Add PKCE if required (code_challenge generated on frontend, passed from caller)
+                if (provider.RequirePkce == true && !string.IsNullOrWhiteSpace(codeChallenge))
                 {
-                    // Note: PKCE code_challenge generation happens on frontend
-                    // Backend just indicates PKCE is required
+                    authorizationUrl += $"&code_challenge={Uri.EscapeDataString(codeChallenge)}&code_challenge_method=S256";
                 }
 
                 return authorizationUrl;
@@ -483,16 +485,6 @@ namespace Authentication.DomainService.Authentication
                 // Fallback to simple construction
                 return $"{provider.AuthorizationUrl}?response_type=code&client_id={Uri.EscapeDataString(provider.ClientId ?? "")}&state={state}&redirect_uri={Uri.EscapeDataString(provider.RedirectUri ?? "")}&scope={Uri.EscapeDataString(scope)}";
             }
-        }
-
-        private object BuildSocialProviderInfo(IdentityProvider provider)
-        {
-            // Legacy method - kept for backward compatibility
-            return new
-            {
-                provider = provider.Provider,
-                displayName = provider.DisplayName
-            };
         }
 
         public async Task<bool> TriggerBackchannelLogoutAllAsync(HttpRequest httpRequest)

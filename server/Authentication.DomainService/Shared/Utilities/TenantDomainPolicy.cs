@@ -37,6 +37,13 @@ namespace Authentication.DomainService.Utilities
                 return true;
             }
 
+            // Allow localhost and 127.0.0.1 for development
+            if (requestOriginHost.Equals("localhost", StringComparison.OrdinalIgnoreCase) ||
+                requestOriginHost.Equals("127.0.0.1", StringComparison.OrdinalIgnoreCase))
+            {
+                return true;
+            }
+
             var allowedHosts = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
             foreach (var allowedDomain in tenant.AllowedDomains ?? [])
             {

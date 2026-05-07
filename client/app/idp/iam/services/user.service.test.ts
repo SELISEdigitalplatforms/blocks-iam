@@ -17,7 +17,6 @@ import {
   mockSaveRolesAndPermissionsPayload,
   mockGetSessionsPayload,
   mockGetHistoriesPayload,
-  mockGeneratePATPayload,
   mockGetUserRolesPayload,
   mockGetUserPermissionsPayload,
   mockResendActivationPayload,
@@ -253,46 +252,6 @@ describe("UserService", () => {
       vi.mocked(http.get).mockRejectedValue(new Error("Network error"));
 
       await expect(service.getHistories(mockGetHistoriesPayload)).rejects.toThrow("Network error");
-    });
-  });
-
-  // ─── getPats ──────────────────────────────────────────────────────────────
-  describe("getPats", () => {
-    it("should GET from the correct endpoint", async () => {
-      const mockResponse = { data: [], errors: null };
-      vi.mocked(http.get).mockResolvedValue(mockResponse);
-
-      const result = await service.getPats();
-
-      expect(http.get).toHaveBeenCalledWith(USER_ENDPOINTS.GET_USER_CODES);
-      expect(result).toEqual(mockResponse);
-    });
-
-    it("should throw when the API call fails", async () => {
-      vi.mocked(http.get).mockRejectedValue(new Error("Network error"));
-
-      await expect(service.getPats()).rejects.toThrow("Network error");
-    });
-  });
-
-  // ─── generatePats ─────────────────────────────────────────────────────────
-  describe("generatePats", () => {
-    it("should POST to the correct endpoint with payload", async () => {
-      vi.mocked(http.post).mockResolvedValue(mockSuccessResponse);
-
-      const result = await service.generatePats(mockGeneratePATPayload);
-
-      expect(http.post).toHaveBeenCalledWith(
-        USER_ENDPOINTS.GENERATE_USER_CODE,
-        mockGeneratePATPayload,
-      );
-      expect(result).toEqual(mockSuccessResponse);
-    });
-
-    it("should throw when the API call fails", async () => {
-      vi.mocked(http.post).mockRejectedValue(new Error("Network error"));
-
-      await expect(service.generatePats(mockGeneratePATPayload)).rejects.toThrow("Network error");
     });
   });
 

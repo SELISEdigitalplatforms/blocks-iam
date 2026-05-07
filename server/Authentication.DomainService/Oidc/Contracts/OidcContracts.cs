@@ -71,18 +71,6 @@ public class RefreshTokenModel
     }
 }
 
-public class OAuthClientModel
-{
-    public string Id { get; set; } = Guid.NewGuid().ToString("n");
-    public string ClientId { get; set; } = string.Empty;
-    public string ClientSecret { get; set; } = string.Empty;
-    public string TenantId { get; set; } = string.Empty;
-    public string? DisplayName { get; set; }
-    public string? Audience { get; set; }
-    public List<string> RedirectUris { get; set; } = [];
-    public List<string> AllowedScopes { get; set; } = [];
-}
-
 public class IdpSessionAccount
 {
     public string UserId { get; set; } = string.Empty;

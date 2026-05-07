@@ -91,13 +91,7 @@ export class UserService {
     };
   }
 
-  async getPats(): Promise<IPATResponse> {
-    return http.get(USER_ENDPOINTS.GET_USER_CODES);
-  }
-
-  async generatePats(payload: IGeneratePATPayload): Promise<IPATResponse> {
-    return http.post(USER_ENDPOINTS.GENERATE_USER_CODE, payload);
-  }
+  // PAT endpoints removed: backend does not expose user code/PAT endpoints
 
   getUserRoles(payload: IGetUserRolesPayload): Promise<IGetUserRolesResponse> {
     return http.get(

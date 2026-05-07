@@ -3,7 +3,7 @@ import { Badge } from "@/components/ui-kits/badge/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui-kits/card/card";
 import { MaskedText } from "@/components/masked-text";
 import { ReactNode, useState } from "react";
-import { getApiUrl } from "@/lib/get-api-path";
+import { getRuntimeEnv } from "@/lib/runtime-env";
 import { CopyToClipboardButton } from "@/components/copy-to-clipboard-button";
 import { format } from "date-fns";
 import {
@@ -142,10 +142,10 @@ export const OIDCCard = ({ oidc }: OIDCCardProps) => {
               <div className="md:col-span-2">
                 <Item label="Well Known URL">
                   <CopyToClipboardButton
-                    textToCopy={getApiUrl("idp/v1", ".well-known/openid-configuration")}
+                    textToCopy={`${getRuntimeEnv("BLOCKS_API_BASE_URL")}/api/.well-known/openid-configuration`}
                   >
                     <span className="break-all">
-                      {getApiUrl("idp/v1", ".well-known/openid-configuration")}
+                      {`${getRuntimeEnv("BLOCKS_API_BASE_URL")}/api/.well-known/openid-configuration`}
                     </span>
                   </CopyToClipboardButton>
                 </Item>

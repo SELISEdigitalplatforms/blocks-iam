@@ -21,14 +21,14 @@ const generatePkcePair = async () => {
 
 export const OIDCPermissionScreen = () => {
   const contextValues = useOIDCContext();
-  const { userName, themeColor, state, nonce, scope, redirectUri, tenantId } = contextValues;
+  const { userName, themeColor, state, nonce, scope, redirectUri, clientId, tenantId } = contextValues;
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   const contextRef = useRef(contextValues);
 
   useEffect(() => {
     contextRef.current = contextValues;
-  }, [contextValues, state, scope, redirectUri, nonce, tenantId]);
+  }, [contextValues, state, scope, redirectUri, nonce, clientId, tenantId]);
 
   const handleDeny = () => {
     const currentContext = contextRef.current;
@@ -53,32 +53,44 @@ export const OIDCPermissionScreen = () => {
     const currentContext = contextRef.current;
 
     if (!currentContext.clientId || !currentContext.redirectUri) {
+      console.error("Missing client ID or redirect URI");
       return;
     }
 
     setIsSubmitting(true);
     try {
+      // Generate PKCE pair
+      const { verifier, challenge } = await generatePkcePair();
+      sessionStorage.setItem("oidc-code-verifier", verifier);
+
+      // Build authorization endpoint URL
       const authorizeUrl = new URL(`${window.location.origin}/api/oidc/authorize`);
       authorizeUrl.searchParams.set("client_id", currentContext.clientId);
       authorizeUrl.searchParams.set("response_type", "code");
       authorizeUrl.searchParams.set("redirect_uri", currentContext.redirectUri);
-      authorizeUrl.searchParams.set("scope", currentContext.scope || "openid profile email offline_access");
-      authorizeUrl.searchParams.set("state", currentContext.state || crypto.randomUUID());
-      authorizeUrl.searchParams.set("nonce", currentContext.nonce || crypto.randomUUID());
+      authorizeUrl.searchParams.set("scope", currentContext.scope || "openid profile email");
+      authorizeUrl.searchParams.set("code_challenge", challenge);
+      authorizeUrl.searchParams.set("code_challenge_method", "S256");
 
+      // Add state if present
+      if (currentContext.state) {
+        authorizeUrl.searchParams.set("state", currentContext.state);
+      }
+
+      // Add nonce if present
+      if (currentContext.nonce) {
+        authorizeUrl.searchParams.set("nonce", currentContext.nonce);
+      }
+
+      // Add tenant_id if present
       if (currentContext.tenantId) {
         authorizeUrl.searchParams.set("tenant_id", currentContext.tenantId);
       }
 
-      const { verifier, challenge } = await generatePkcePair();
-      sessionStorage.setItem("oidc-code-verifier", verifier);
-      authorizeUrl.searchParams.set("code_challenge", challenge);
-      authorizeUrl.searchParams.set("code_challenge_method", "S256");
-
+      // Redirect to authorization endpoint
       window.location.href = authorizeUrl.toString();
     } catch (error) {
       console.error("Error during authorization:", error);
-    } finally {
       setIsSubmitting(false);
     }
   };

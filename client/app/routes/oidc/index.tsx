@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useSearchParams, useNavigate } from "react-router-dom";
 import { OIDCPermissionWrapper } from "@blocks-idp/authentication/pages/oidc/permission-wrapper";
 import { OIDCSignin } from "@blocks-idp/authentication/pages/oidc/oidc-signin";
@@ -13,6 +13,7 @@ export default function OidcIndexPage() {
   const navigate = useNavigate();
   const { setAuthenticated, setTokens } = useAuthStore();
   const [isExchanging, setIsExchanging] = useState(false);
+  const hasStartedExchange = useRef(false);
   const { clientId, redirectUri, tenantId } = useOIDCContext();
 
   const code = searchParams.get("code");
@@ -20,6 +21,7 @@ export default function OidcIndexPage() {
 
   useEffect(() => {
     if (!code || !clientId || !redirectUri) return;
+    if (hasStartedExchange.current) return;
 
     const codeVerifier = sessionStorage.getItem("oidc-code-verifier");
     if (!codeVerifier) {
@@ -27,6 +29,7 @@ export default function OidcIndexPage() {
       return;
     }
 
+    hasStartedExchange.current = true;
     setIsExchanging(true);
     authService.verifyOidc({
       code,
@@ -44,9 +47,10 @@ export default function OidcIndexPage() {
         sessionStorage.removeItem("oidc-code-verifier");
         setAuthenticated();
 
-        window.location.href = `${window.location.origin}/services/authentication/users`;
+        window.location.replace(`${window.location.origin}/`);
       })
       .catch(() => {
+        hasStartedExchange.current = false;
         navigate("/oidc/error");
       })
       .finally(() => setIsExchanging(false));

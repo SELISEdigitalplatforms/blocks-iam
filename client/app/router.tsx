@@ -2,8 +2,6 @@ import { createBrowserRouter, Navigate } from "react-router-dom";
 
 import { OidcLayout } from "./layouts/oidc-layout";
 import { DashboardLayout } from "./layouts/dashboard-layout";
-import { ConsoleLayout } from "./layouts/console-layout";
-import { ProjectOverviewLayout } from "./layouts/project-overview-layout";
 
 // OIDC routes (un-guarded)
 import OidcIndexPage from "./routes/oidc/index";
@@ -18,38 +16,8 @@ import { OidcMfaCheck } from "./idp/authentication/pages/oidc/oidc-mfa-check";
 import { OidcForgotPassword } from "./idp/authentication/pages/oidc/oidc-forgot-password";
 import { OidcActivation } from "./idp/authentication/pages/oidc/oidc-activation";
 
-// Dashboard routes (protected) - DISABLED to fix module resolution issues
-// import IamPage from "./routes/dashboard/iam";
-// import IamUserDetailPage from "./routes/dashboard/iam-user-detail";
-// import IamRoleDetailPage from "./routes/dashboard/iam-role-detail";
-// import IamPermissionDetailPage from "./routes/dashboard/iam-permission-detail";
-// import IamAddPermissionPage from "./routes/dashboard/iam-add-permission";
-// import IamOrgDetailPage from "./routes/dashboard/iam-org-detail";
-// import IamLogsPage from "./routes/dashboard/iam-logs";
-// import IamConfigurePage from "./routes/dashboard/iam-configure";
-// import AuthenticationConfigPage from "./routes/dashboard/authentication-config";
-// import SsoConfigurationPage from "./routes/dashboard/sso-configuration";
-// import AuthLogsPage from "./routes/dashboard/auth-logs";
-// import MfaLogsPage from "./routes/dashboard/mfa-logs";
-// import CaptchaLogsPage from "./routes/dashboard/captcha-logs";
-// import ApiSettingsPage from "./routes/dashboard/api-settings"; // DISABLED: Missing @blocks-idp/api-settings module
-// import RateLimiterPage from "./routes/dashboard/rate-limiter";
-// import LmtPage from "./routes/dashboard/lmt";
-// import LmtServiceLogsPage from "./routes/dashboard/lmt-service-logs";
-// import SecretManagementPage from "./routes/dashboard/secret-management";
-// import AiModelSelectedRoute from "./routes/dashboard/ai-model-selected";
-// import ManagedServicesPage from "./routes/dashboard/managed-services";
-// import ProfilePage from "./routes/dashboard/profile";
-
-// Console pages
-import { Console } from "./pages/console/console";
-import { DashboardOverview } from "./pages/dashboard/dashboard-overview";
-import { EnvironmentsPage } from "./pages/environments/environments";
-import { PeopleManagement } from "./pages/people/people-management";
-import { RepositoriesPage } from "./pages/repositories/repositories";
-import { SettingsPage } from "./pages/settings/settings";
-import { CreateProjectWrapper } from "./pages/create-project/create-project";
-import CallbackPage from "./routes/callback/callback";
+// Dashboard routes (protected)
+import AuthenticationConfigPage from "./routes/dashboard/authentication-config";
 import OidcLogin from "./routes/auth/oidc-login";
 
 export const router = createBrowserRouter([
@@ -112,36 +80,24 @@ export const router = createBrowserRouter([
   },
   */
 
-  // ── Console layout (profile, console pages without sidebar) - DISABLED
-  /*
-  {
-    element: <ConsoleLayout />,
-    children: [
-      { path: "/profile", element: <ProfilePage /> },
-      { path: "/console", element: <Console /> },
-      { path: "/create-project", element: <CreateProjectWrapper /> },
-      { path: "/callback", element: <CallbackPage /> },
-    ],
-  },
-  */
-
-  // ── Dashboard and project overview in dashboard layout (consolidated sidebar) - DISABLED
-  /*
+  // ── Identity Management (protected) ──
   {
     element: <DashboardLayout />,
     children: [
-      { path: "/dashboard", element: <DashboardOverview /> },
-      { path: "/project-overview", element: <Navigate to="/project-overview/environments" replace /> },
-      { path: "/project-overview/environments", element: <EnvironmentsPage /> },
-      { path: "/project-overview/people", element: <PeopleManagement /> },
-      { path: "/project-overview/repositories", element: <RepositoriesPage /> },
-      { path: "/project-overview/settings", element: <SettingsPage /> },
+      { path: "/identity", element: <Navigate to="/identity/users" replace /> },
+      { path: "/identity/users", element: <AuthenticationConfigPage section="users" /> },
+      { path: "/identity/organizations", element: <AuthenticationConfigPage section="organizations" /> },
+      { path: "/identity/clients", element: <AuthenticationConfigPage section="client-credential" /> },
+      // Legacy route aliases for backward compatibility
+      { path: "/services/authentication", element: <Navigate to="/identity/users" replace /> },
+      { path: "/services/authentication/users", element: <Navigate to="/identity/users" replace /> },
+      { path: "/services/authentication/organizations", element: <Navigate to="/identity/organizations" replace /> },
+      { path: "/services/authentication/client-credential", element: <Navigate to="/identity/clients" replace /> },
     ],
   },
-  */
 
-  // ── Root redirect: authenticated users go to console ──
-  { path: "/", element: <Navigate to="/console" replace /> },
+  // ── Root redirect: authenticated users go to identity management ──
+  { path: "/", element: <Navigate to="/identity/users" replace /> },
 
   // ── Catch-all: redirect to login ──
   { path: "*", element: <Navigate to="/login" replace /> },

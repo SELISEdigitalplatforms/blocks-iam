@@ -16,7 +16,6 @@ export interface MagicUrl {
   requestByUserId?: string;
   expiredReason?: string | null;
 
-  // Optional/Legacy fields
   shortCode?: string;
   persistent?: boolean;
   updatedAt?: string;
