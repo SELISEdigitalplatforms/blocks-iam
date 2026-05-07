@@ -743,8 +743,28 @@ namespace Authentication.DomainService.Authentication
                 };
             }
 
-            AppendCookies(response, httpContext.Response);
+            var clientId = TryGetClientIdFromAccessToken(response.AccessToken);
+            var useTokensCookie = await ResolveUseTokensCookieAsync(clientId);
+
+            if (useTokensCookie)
+            {
+                AppendCookies(response, httpContext.Response);
+            }
+
             await EnsureIdpSessionForLoginAsync(response, httpContext);
+
+            if (useTokensCookie)
+            {
+                return new OkObjectResult(new
+                {
+                    token_type = response.TokenType,
+                    expires_in = response.ExpiresIn,
+                    scope = response.Scope,
+                    cookie_set = true,
+                    client_id = clientId
+                });
+            }
+
             return new OkObjectResult(new
             {
                 access_token = response.AccessToken,
@@ -754,8 +774,40 @@ namespace Authentication.DomainService.Authentication
                 expires_utc = response.ExpiresUtc,
                 refresh_expires_utc = response.RefreshExpiresUtc,
                 scope = response.Scope,
-                id_token = response.IdToken
+                id_token = response.IdToken,
+                cookie_set = false,
+                client_id = clientId
             });
+        }
+
+        private async Task<bool> ResolveUseTokensCookieAsync(string? clientId)
+        {
+            if (string.IsNullOrWhiteSpace(clientId))
+            {
+                return true;
+            }
+
+            var registration = await _authenticationRepository.GetOidcClientRegistrationAsync(clientId);
+            return registration?.UseTokensCookie ?? true;
+        }
+
+        private static string? TryGetClientIdFromAccessToken(string? accessToken)
+        {
+            if (string.IsNullOrWhiteSpace(accessToken))
+            {
+                return null;
+            }
+
+            try
+            {
+                var jwt = new JwtSecurityTokenHandler().ReadJwtToken(accessToken);
+                return jwt.Claims.FirstOrDefault(c => c.Type == "client_id")?.Value
+                    ?? jwt.Claims.FirstOrDefault(c => c.Type == "azp")?.Value;
+            }
+            catch
+            {
+                return null;
+            }
         }
 
         private static void AppendCookies(TokenResponse response, HttpResponse httpResponse)
@@ -775,17 +827,70 @@ namespace Authentication.DomainService.Authentication
             }
         }
 
+        /// <summary>
+        /// Conditionally append tokens to cookies or return them in a response object
+        /// based on client configuration (UseTokensCookie property from OidcClientRegistration)
+        /// </summary>
+        public Task<object> HandleTokenResponseConditionallyAsync(
+            TokenResponse response,
+            HttpResponse httpResponse,
+            bool useTokensCookie,
+            string? clientId = null)
+        {
+            if (useTokensCookie)
+            {
+                // Set tokens in secure HttpOnly cookies
+                AppendCookies(response, httpResponse);
+
+                // Return metadata only (no token values in response body)
+                return Task.FromResult<object>(new
+                {
+                    token_type = response.TokenType ?? "Bearer",
+                    expires_in = (response.ExpiresUtc - DateTime.UtcNow).TotalSeconds,
+                    scope = response.Scope,
+                    tenant_id = BlocksContext.GetContext()?.TenantId ?? "default",
+                    client_id = clientId,
+                    cookie_set = true
+                });
+            }
+
+            // Return tokens in response body (standard OAuth response)
+            // No cookies set
+            return Task.FromResult<object>(new
+            {
+                access_token = response.AccessToken,
+                token_type = response.TokenType ?? "Bearer",
+                expires_in = (response.ExpiresUtc - DateTime.UtcNow).TotalSeconds,
+                refresh_token = response.RefreshToken,
+                id_token = response.IdToken,
+                scope = response.Scope,
+                tenant_id = BlocksContext.GetContext()?.TenantId ?? "default",
+                client_id = clientId,
+                cookie_set = false
+            });
+        }
+
         private static CookieOptions CreateCookieOptions(string? domain, DateTime expiresUtc)
         {
+            // In Development, don't set domain so cookies work with localhost
+            var cookieDomain = IsLocalhost() ? null : (string.IsNullOrWhiteSpace(domain) ? null : domain);
+            var isSecure = !IsLocalhost();
+            
             return new CookieOptions
             {
-                Domain = string.IsNullOrWhiteSpace(domain) ? null : domain,
+                Domain = cookieDomain,
                 HttpOnly = true,
-                Secure = true,
-                SameSite = SameSiteMode.None,
+                Secure = isSecure,
+                SameSite = isSecure ? SameSiteMode.None : SameSiteMode.Lax,
                 Path = "/",
                 Expires = expiresUtc == default ? DateTime.UtcNow.AddHours(1) : expiresUtc
             };
+        }
+
+        private static bool IsLocalhost()
+        {
+            var hostEnv = Environment.GetEnvironmentVariable("ASPNETCORE_ENVIRONMENT") ?? "";
+            return hostEnv.Equals("Development", StringComparison.OrdinalIgnoreCase);
         }
 
         private async Task EnsureIdpSessionForLoginAsync(TokenResponse tokenResponse, HttpContext httpContext)

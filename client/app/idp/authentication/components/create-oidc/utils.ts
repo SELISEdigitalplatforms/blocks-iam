@@ -24,6 +24,7 @@ audienceUrlOidc: z.string().url("Must be a valid URL").refine((val) => {
   }
 }, "Only HTTP is allowed for localhost. All other URLs must use HTTPS."), 
   scope: z.string().trim(),
+  useTokensCookie: z.boolean(),
   clientBrandColor: z.string().optional(),
   clientDisplayName: z.string().trim().min(1, "Client display name is required"),
 });
@@ -34,6 +35,7 @@ export const createOIDCFormDefaultValue: CreateOIDCFormValues = {
   audienceUrlOidc: "",
   redirectUrlOidc: "",
   scope: "openid",
+  useTokensCookie: true,
   clientBrandColor: "#FFFFFF",
   clientDisplayName: "",
 };

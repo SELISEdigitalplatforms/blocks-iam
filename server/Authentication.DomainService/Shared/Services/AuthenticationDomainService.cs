@@ -204,6 +204,7 @@ namespace Authentication.DomainService.Services
             credential.BackChannelLogoutUri = request.BackChannelLogoutUri;
             credential.IsActive = request.IsActive;
             credential.IsAutoRedirect = request.IsAutoRedirect;
+            credential.UseTokensCookie = request.UseTokensCookie;
             credential.LastUpdatedBy = BlocksContext.GetContext()?.UserId;
             credential.LastUpdatedDate = DateTime.UtcNow;
             credential.LogoUri = request.ClientLogoUrl;

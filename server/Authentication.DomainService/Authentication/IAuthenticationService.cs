@@ -1,5 +1,6 @@
 using Blocks.Genesis;
 using Authentication.DomainService.Entities;
+using Authentication.DomainService.OAuth.ResponseModel;
 using Authentication.DomainService.Shared.RequestModel;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
@@ -22,6 +23,7 @@ namespace Authentication.DomainService.Authentication
         Task<IActionResult> GetOidcLoginPageAsync(string clientId, string state, string redirectUri);
         Task<IActionResult> GetOidcSocialAuthorizationUrlAsync(string provider, string oidcState);
         Task<OidcClientRegistration> GetClientCredentialAsync(string clientId);
+        Task<object> HandleTokenResponseConditionallyAsync(TokenResponse response, HttpResponse httpResponse, bool useTokensCookie, string? clientId = null);
         Task<ClaimsPrincipal?> GetPrincipalFromTokenAsync(HttpRequest request, string tenantId, bool IsUserInfoGetRequest = false);
         Task<string> ConstructRedirectUriAsync(string clientId, AcknowledgeRequest request);
         (bool IsValid, Dictionary<string, object> UserInfo) BuildOidcUserInfo(ClaimsPrincipal principal);

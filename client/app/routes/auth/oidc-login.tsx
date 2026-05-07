@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { motion } from "framer-motion";
+import { v4 as uuidv4 } from "uuid";
 import { Button } from "@/components/ui-kits/button/button";
 import { Logo } from "@/components/logo";
 import { getRuntimeEnv } from "@/lib/runtime-env";
@@ -168,6 +169,10 @@ export default function OidcLogin() {
     const appBaseUrl = window.location.origin;
     const tenantKey = getRuntimeEnv("BLOCKS_X_BLOCKS_KEY");
     const clientId = getRuntimeEnv("BLOCKS_OIDC_CLIENT_ID");
+    
+    // Use the current window origin as redirect URI so it works across any domain
+    // (localhost:4000, idp.seliseblocks.com:4000, etc.) without needing env config
+    const redirectUri = `${window.location.origin}/oidc`;
 
     if (!clientId) {
       console.error("BLOCKS_OIDC_CLIENT_ID is not configured");
@@ -175,9 +180,8 @@ export default function OidcLogin() {
       return;
     }
 
-    const state = crypto.randomUUID();
-    const nonce = crypto.randomUUID();
-    const redirectUri = `${appBaseUrl}/oidc`;
+    const state = uuidv4();
+    const nonce = uuidv4();
     const scope = "openid profile email offline_access";
 
     try {

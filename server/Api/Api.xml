@@ -77,6 +77,13 @@
             Links social authentication to OIDC client context
             </summary>
         </member>
+        <member name="M:Api.Controllers.AuthenticationController.ExchangeOidcCode(Authentication.DomainService.OAuth.RequestModel.OidcCodeExchangeRequest)">
+            <summary>
+            BFF: Exchange PKCE authorization code for tokens (called by this app's own FE)
+            FE never needs to know about /oidc/token — this is the only endpoint it calls.
+            RFC 7636: PKCE | RFC 6749: OAuth 2.0 Authorization Code Grant
+            </summary>
+        </member>
         <member name="M:Api.Controllers.AuthenticationController.HandleOidcCallbackPost(Authentication.DomainService.OAuth.RequestModel.OidcCallbackRequest)">
             <summary>
             OIDC callback handler (API Pattern - POST)
@@ -126,14 +133,6 @@
             <summary>
             Stop user impersonation (Revert to Original Admin)
             Admin stops impersonating user and reverts to original context
-            </summary>
-        </member>
-        <member name="M:Api.Controllers.AuthenticationController.ExecuteIdpLogout(Authentication.DomainService.Authentication.LogoutRequest)">
-            <summary>
-            Execute OIDC IDP logout (Internal Use)
-            Special logout endpoint for OIDC identity provider sessions
-            Clears IDP session state and revokes tokens
-            Internal endpoint - not exposed in Swagger documentation
             </summary>
         </member>
         <member name="M:Api.Controllers.AuthenticationController.ExecuteGlobalLogout(Authentication.DomainService.Authentication.LogoutAllRequest)">
@@ -620,6 +619,21 @@
             <response code="400">projectId parameter is required</response>
             <response code="401">Authentication required</response>
             <response code="404">Project not found</response>
+        </member>
+        <member name="T:Api.Controllers.TokenController">
+            <summary>
+            Token Lifecycle Management Controller
+            Handles OIDC token exchange operations
+            Token refresh and logout are handled via /auth endpoints in AuthenticationController
+            </summary>
+        </member>
+        <member name="M:Api.Controllers.TokenController.ExchangeOidcCode(Authentication.DomainService.OAuth.RequestModel.OidcCodeExchangeRequest)">
+            <summary>
+            Exchange authorization code for tokens (OIDC Authorization Code Flow + PKCE)
+            Validates code, PKCE verifier, and client registration with OIDC provider
+            Tokens handled per client configuration: either secure HttpOnly cookies or response body
+            RFC 6749: OAuth 2.0 Authorization Code Flow | RFC 7636: PKCE
+            </summary>
         </member>
         <member name="M:Blocks.Api.Controllers.AuthorizationController.OidcLogin(Authentication.DomainService.Authentication.OidcLoginRequest)">
             <summary>

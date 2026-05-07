@@ -28,5 +28,6 @@ namespace Authentication.DomainService.RequestModel
         public string? ClientLogoUrl { get; set; }
         public string? ClientDisplayName { get; set; }
         public string? ClientBrandColor { get; set; }
+        public bool UseTokensCookie { get; set; } = true;
     }
 }

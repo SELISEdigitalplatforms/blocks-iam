@@ -4,14 +4,14 @@ import { OIDCPermissionWrapper } from "@blocks-idp/authentication/pages/oidc/per
 import { OIDCSignin } from "@blocks-idp/authentication/pages/oidc/oidc-signin";
 import { authService } from "@blocks-idp/authentication/services/auth.service";
 import { useAuthStore } from "@/store/useAuthStore";
-import { getRuntimeEnv } from "@/lib/runtime-env";
 import { Loader } from "lucide-react";
 import { useOIDCContext } from "@/layouts/oidc-layout";
+import { getRuntimeEnv } from "@/lib/runtime-env";
 
 export default function OidcIndexPage() {
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
-  const { setAuthenticated, setTokens } = useAuthStore();
+  const { setAuthenticated } = useAuthStore();
   const [isExchanging, setIsExchanging] = useState(false);
   const hasStartedExchange = useRef(false);
   const { clientId, redirectUri, tenantId } = useOIDCContext();
@@ -19,8 +19,13 @@ export default function OidcIndexPage() {
   const code = searchParams.get("code");
   const userName = searchParams.get("userName");
 
+  // Derive fallback values so the exchange works even if localStorage is stale/missing
+  const effectiveClientId = clientId || getRuntimeEnv("BLOCKS_OIDC_CLIENT_ID") || undefined;
+  const effectiveRedirectUri = redirectUri || `${window.location.origin}/oidc`;
+  const effectiveTenantId = tenantId || searchParams.get("tenant_id") || undefined;
+
   useEffect(() => {
-    if (!code || !clientId || !redirectUri) return;
+    if (!code || !effectiveClientId) return;
     if (hasStartedExchange.current) return;
 
     const codeVerifier = sessionStorage.getItem("oidc-code-verifier");
@@ -33,20 +38,14 @@ export default function OidcIndexPage() {
     setIsExchanging(true);
     authService.verifyOidc({
       code,
-      clientId,
-      redirectUri,
+      clientId: effectiveClientId,
+      redirectUri: effectiveRedirectUri,
       codeVerifier,
-      tenantId: tenantId || searchParams.get("tenant_id") || undefined,
+      tenantId: effectiveTenantId,
     })
-      .then((res) => {
-        const isLocalhost = getRuntimeEnv("BLOCKS_API_BASE_URL")?.includes("localhost");
-
-        if (isLocalhost && res.access_token && res.refresh_token) {
-          setTokens(res.access_token, res.refresh_token);
-        }
+      .then(() => {
         sessionStorage.removeItem("oidc-code-verifier");
         setAuthenticated();
-
         window.location.replace(`${window.location.origin}/`);
       })
       .catch(() => {
@@ -54,7 +53,7 @@ export default function OidcIndexPage() {
         navigate("/oidc/error");
       })
       .finally(() => setIsExchanging(false));
-  }, [clientId, code, navigate, redirectUri, setAuthenticated, setTokens]);
+  }, [effectiveClientId, code, navigate, effectiveRedirectUri, setAuthenticated]);
 
   if (code) {
     return (

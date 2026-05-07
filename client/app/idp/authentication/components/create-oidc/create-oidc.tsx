@@ -79,6 +79,7 @@ export const CreateOIDC = ({ itemId, triggerVariant = "default" }: CreateOIDCPro
         redirectUrlOidc: credential.redirectUri,
         audienceUrlOidc: credential.audience,
         scope: credential.scope || "",
+        useTokensCookie: credential.useTokensCookie ?? true,
         clientBrandColor: credential.clientBrandColor || "#124091",
         clientDisplayName: credential.clientDisplayName || "",
       });
@@ -86,6 +87,7 @@ export const CreateOIDC = ({ itemId, triggerVariant = "default" }: CreateOIDCPro
     } else if (!isEditMode && open) {
       form.reset({
         ...createOIDCFormDefaultValue,
+        useTokensCookie: true,
         clientBrandColor: "#124091",
       });
       setClientLogoUrl("");
@@ -163,6 +165,7 @@ export const CreateOIDC = ({ itemId, triggerVariant = "default" }: CreateOIDCPro
         redirectUri: data.redirectUrlOidc,
         scope: data.scope,
         isAutoRedirect: false,
+        useTokensCookie: data.useTokensCookie,
         itemId: isEditMode ? itemId : "",
         clientLogoUrl: clientLogoUrl || undefined,
         clientBrandColor: data.clientBrandColor || undefined,
@@ -318,6 +321,29 @@ export const CreateOIDC = ({ itemId, triggerVariant = "default" }: CreateOIDCPro
                         <Checkbox {...field} id="scope" checked={true} disabled={true} />
                         <label htmlFor="scope" className="cursor-pointer">
                           OpenID
+                        </label>
+                      </div>
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+
+              <FormField
+                control={form.control}
+                name="useTokensCookie"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Token Delivery Mode</FormLabel>
+                    <FormControl>
+                      <div className="flex items-center gap-2 rounded border p-4">
+                        <Checkbox
+                          id="useTokensCookie"
+                          checked={!!field.value}
+                          onCheckedChange={(checked) => field.onChange(checked === true)}
+                        />
+                        <label htmlFor="useTokensCookie" className="cursor-pointer">
+                          Store tokens in secure cookies (disable to return tokens in response)
                         </label>
                       </div>
                     </FormControl>

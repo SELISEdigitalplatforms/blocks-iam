@@ -13,6 +13,7 @@ namespace Authentication.DomainService.Utilities
 
         public const string AccessTokenCookieName = "access_token";
         public const string RefreshTokenCookieName = "refresh_token";
+        public const string IdTokenCookieName = "id_token";
 
         private const string DefaultProvider = "azure";
         private const string RabbitMqProvider = "rabbitmq";

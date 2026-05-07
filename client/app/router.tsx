@@ -101,4 +101,8 @@ export const router = createBrowserRouter([
 
   // ── Catch-all: redirect to login ──
   { path: "*", element: <Navigate to="/login" replace /> },
-]);
+], {
+  future: {
+    v7_startTransition: true,
+  },
+});
