@@ -165,42 +165,57 @@ export default function OidcLogin() {
 
   const handleLogin = async () => {
     setIsLoading(true);
-    const apiBaseUrl = getRuntimeEnv("BLOCKS_API_BASE_URL") || window.location.origin;
-    const currentParams = new URLSearchParams(window.location.search);
-    const tenantId = currentParams.get("tenant_id") || currentParams.get("projectKey");
+    const appBaseUrl = window.location.origin;
+    const tenantKey = getRuntimeEnv("BLOCKS_X_BLOCKS_KEY");
+    const clientId = getRuntimeEnv("BLOCKS_OIDC_CLIENT_ID");
+
+    if (!clientId) {
+      console.error("BLOCKS_OIDC_CLIENT_ID is not configured");
+      setIsLoading(false);
+      return;
+    }
+
+    const state = crypto.randomUUID();
+    const nonce = crypto.randomUUID();
+    const redirectUri = `${appBaseUrl}/oidc`;
+    const scope = "openid profile email offline_access";
 
     try {
-      // Generate PKCE pair for secure code exchange at backend
-      const verifierBytes = crypto.getRandomValues(new Uint8Array(32));
-      const base64UrlEncode = (bytes: Uint8Array) => {
-        const binary = String.fromCharCode(...bytes);
-        return btoa(binary).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/g, "");
+      // Call /api/auth/oidc/login-page to create a server-side OIDC session state.
+      // This oidcState is required for social login to work (stored in cache with 10 min TTL).
+      const loginPageHeaders: Record<string, string> = {
+        "Content-Type": "application/json",
       };
-      const verifier = base64UrlEncode(verifierBytes);
-      const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(verifier));
-      const challenge = base64UrlEncode(new Uint8Array(digest));
+      if (tenantKey) loginPageHeaders["X-Blocks-Key"] = tenantKey;
 
-      // Store verifier for token exchange at backend
-      sessionStorage.setItem("oidc-code-verifier", verifier);
-
-      const params = new URLSearchParams({
-        response_type: "code",
-        client_id: "94201649-8f4d-4818-be0e-2024e3f9fee2",
-        redirect_uri: apiBaseUrl,
-        scope: "openid profile email offline_access",
-        state: crypto.randomUUID(),
-        nonce: crypto.randomUUID(),
-        code_challenge: challenge,
-        code_challenge_method: "S256",
-      });
-
-      if (tenantId) {
-        params.set("tenant_id", tenantId);
+      let oidcState: string | undefined;
+      try {
+        const loginPageResp = await fetch(
+          `/api/auth/oidc/login-page?clientId=${encodeURIComponent(clientId)}&state=${encodeURIComponent(state)}&redirectUri=${encodeURIComponent(redirectUri)}`,
+          { method: "GET", headers: loginPageHeaders, credentials: "include" },
+        );
+        if (loginPageResp.ok) {
+          const body = await loginPageResp.json();
+          oidcState = body?.oidcState as string | undefined;
+        }
+      } catch {
+        // Non-fatal — proceed without oidcState (social login won't work but password login still may)
       }
 
-      window.location.href = `${apiBaseUrl}/api/oidc/authorize?${params.toString()}`;
+      const params = new URLSearchParams({
+        client_id: clientId,
+        redirect_uri: redirectUri,
+        scope,
+        state,
+        nonce,
+      });
+
+      if (oidcState) params.set("oidc_state", oidcState);
+      if (tenantKey) params.set("tenant_id", tenantKey);
+
+      window.location.href = `/oidc/login?${params.toString()}`;
     } catch (error) {
-      console.error("Error during OIDC authorization:", error);
+      console.error("Error during OIDC login redirect:", error);
       setIsLoading(false);
     }
   };

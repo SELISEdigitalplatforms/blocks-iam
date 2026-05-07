@@ -104,8 +104,6 @@ export const mockUserServiceFactory = () => ({
     saveRolesAndPermissions: vi.fn(),
     getSessions: vi.fn(),
     getHistories: vi.fn(),
-    getPats: vi.fn(),
-    generatePats: vi.fn(),
     getUserRoles: vi.fn(),
     getUserPermissions: vi.fn(),
     accountDeactivate: vi.fn(),

@@ -11,7 +11,7 @@ export class OAuthService {
   getSocialLoginEndpoint(
     payload: IGetSocialLoginEndpointPayload,
   ): Promise<IGetSocialLoginEndpointResponse> {
-    return http.post(AUTH_ENDPOINTS.GET_SOCIAL_LOGIN_ENDPOINT, payload);
+    return http.post(AUTH_ENDPOINTS.SOCIAL_AUTHORIZE, payload);
   }
 
   signinBySSO(payload: ISigninBySSOPayload & { clientId?: string }): Promise<ISigninBySSOResponse> {

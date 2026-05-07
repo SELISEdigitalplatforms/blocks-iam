@@ -11,6 +11,7 @@ using Authentication.DomainService.OAuth.Services;
 using Authentication.DomainService.Utilities;
 using Iam.DomainService.Users;
 using Iam.DomainService.Entities;
+using Authentication.DomainService.Entities;
 using System.Security.Claims;
 using System.Security.Cryptography;
 using System.Text;
@@ -30,7 +31,6 @@ namespace Authentication.DomainService.Authentication
         private const string PendingSelectedTenantCookieName = "idp_selected_tenant_id";
 
         private readonly IAuthorizationCodeRepository _authCodeRepo;
-        private readonly IOAuthClientRepository _clientRepo;
         private readonly IRefreshTokenRepository _refreshTokenRepo;
         private readonly IIdpSessionRepository _sessionRepo;
         private readonly IAuditLogRepository _auditLogRepo;
@@ -46,7 +46,6 @@ namespace Authentication.DomainService.Authentication
 
         public AuthorizationFlowService(
             IAuthorizationCodeRepository authCodeRepo,
-            IOAuthClientRepository clientRepo,
             IRefreshTokenRepository refreshTokenRepo,
             IIdpSessionRepository sessionRepo,
             IAuditLogRepository auditLogRepo,
@@ -61,7 +60,6 @@ namespace Authentication.DomainService.Authentication
             ILogger<AuthorizationFlowService> logger)
         {
             _authCodeRepo = authCodeRepo;
-            _clientRepo = clientRepo;
             _refreshTokenRepo = refreshTokenRepo;
             _sessionRepo = sessionRepo;
             _auditLogRepo = auditLogRepo;
@@ -317,18 +315,18 @@ namespace Authentication.DomainService.Authentication
                     return new BadRequestObjectResult(new { error = "invalid_origin", error_description = "Request origin is not allowed for this tenant" });
                 }
 
-                var client = await _clientRepo.GetByClientIdAsync(client_id, resolvedTenantId);
-                if (client == null)
-                {
-                    _logger.LogWarning($"Unknown client: {client_id}");
-                    return new BadRequestObjectResult(new { error = "invalid_client" });
-                }
-
                 if (!await HasOidcClientConfigurationAsync(client_id))
                 {
                     _logger.LogWarning($"OIDC client config missing for client: {client_id}");
                     return new BadRequestObjectResult(new { error = "invalid_client", error_description = "Client configuration not found" });
                 }
+
+                    var client = await _authenticationRepository.GetOidcClientRegistrationAsync(client_id);
+                    if (client == null)
+                    {
+                        _logger.LogWarning($"Unknown client: {client_id}");
+                        return new BadRequestObjectResult(new { error = "invalid_client" });
+                    }
 
                 if (!client.RedirectUris.Contains(redirect_uri))
                 {
@@ -632,7 +630,7 @@ namespace Authentication.DomainService.Authentication
                 return new BadRequestObjectResult(new { error = "invalid_grant", error_description = "Authorization code has already been used" });
             }
 
-            var client = await _clientRepo.GetByClientIdAsync(client_id, tenantId ?? authCode.TenantId ?? string.Empty);
+                var client = await _authenticationRepository.GetOidcClientRegistrationAsync(client_id);
             if (client == null || client.ClientId != authCode.ClientId)
             {
                 _logger.LogWarning("Client validation failed for code exchange");
@@ -765,7 +763,7 @@ namespace Authentication.DomainService.Authentication
                 return new BadRequestObjectResult(new { error = "invalid_grant", error_description = "Refresh token has expired" });
             }
 
-            var client = await _clientRepo.GetByClientIdAsync(client_id, storedToken.TenantId ?? string.Empty);
+                var client = await _authenticationRepository.GetOidcClientRegistrationAsync(client_id);
             if (client == null)
             {
                 _logger.LogWarning($"Client validation failed for token rotation: {client_id}");
@@ -881,7 +879,7 @@ namespace Authentication.DomainService.Authentication
             return Convert.ToBase64String(buffer).Replace("/", "_").Replace("+", "-").Substring(0, 43);
         }
 
-        private async Task<IReadOnlyCollection<string>> ResolveAllowedScopesAsync(OAuthClientModel client)
+        private async Task<IReadOnlyCollection<string>> ResolveAllowedScopesAsync(OidcClientRegistration client)
         {
             if (client.AllowedScopes is { Count: > 0 })
             {
@@ -891,16 +889,7 @@ namespace Authentication.DomainService.Authentication
                     .ToList();
             }
 
-            var tenantOidcClient = await _authenticationRepository.GetOidcClientRegistrationAsync(client.ClientId);
-            if (tenantOidcClient == null || tenantOidcClient.AllowedScopes.Count == 0)
-            {
-                return [];
-            }
-
-            return tenantOidcClient.AllowedScopes
-                .Where(scope => !string.IsNullOrWhiteSpace(scope))
-                .Distinct(StringComparer.OrdinalIgnoreCase)
-                .ToList();
+            return [];
         }
 
         private async Task<IReadOnlyCollection<string>> ResolveAllowedServiceAccessResourcesAsync(string? clientId)

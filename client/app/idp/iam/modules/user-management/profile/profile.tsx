@@ -7,7 +7,6 @@ import { ProfileDetails } from "@blocks-idp/iam/components/profile-details";
 import { UpdateUser } from "../update-user";
 import { UserDevices } from "../user-devices";
 import { UserHistories } from "../user-histories";
-import { UserPats } from "../user-pat";
 
 const x_blocks_key = getRuntimeEnv("BLOCKS_X_BLOCKS_KEY") || "";
 
@@ -41,12 +40,6 @@ export const UserProfile = ({ id }: { id: string }) => {
               <TabsTrigger onClick={() => setTabId("history")} value="history">
                 History
               </TabsTrigger>
-              <TabsTrigger
-                onClick={() => setTabId("personalAccessTokens")}
-                value="personalAccessTokens"
-              >
-                PATs
-              </TabsTrigger>
             </TabsList>
             {tabId === "details" && <UpdateUser id={id} projectKey={x_blocks_key} own />}
           </div>
@@ -60,9 +53,6 @@ export const UserProfile = ({ id }: { id: string }) => {
           </TabsContent>
           <TabsContent value="history">
             <UserHistories id={id} projectKey={x_blocks_key} />
-          </TabsContent>
-          <TabsContent value="personalAccessTokens">
-            <UserPats id={id} />
           </TabsContent>
         </Tabs>
       </div>

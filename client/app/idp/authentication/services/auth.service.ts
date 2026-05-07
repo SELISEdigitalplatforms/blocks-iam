@@ -38,7 +38,7 @@ export class AuthService {
     body.append("code", payload.code);
     body.append("mfa_id", payload.mfa_id);
     body.append("mfa_type", payload.mfa_type.toString());
-    return http.post(AUTH_ENDPOINTS.LEGACY_TOKEN, body, {
+    return http.post(AUTH_ENDPOINTS.OIDC_TOKEN, body, {
       "Content-Type": "application/x-www-form-urlencoded",
     });
   }
@@ -67,8 +67,11 @@ export class AuthService {
     return http.post(PEOPLE_ENDPOINTS.SIGNUP, payload);
   }
 
-  getLoginOptions(): Promise<any> {
-    return http.get(AUTH_ENDPOINTS.GET_LOGIN_OPTIONS);
+  getLoginOptions(tenantId?: string): Promise<any> {
+    const url = tenantId 
+      ? `${AUTH_ENDPOINTS.GET_LOGIN_OPTIONS}?tenantId=${encodeURIComponent(tenantId)}`
+      : AUTH_ENDPOINTS.GET_LOGIN_OPTIONS;
+    return http.get(url);
   }
 
   logout() {

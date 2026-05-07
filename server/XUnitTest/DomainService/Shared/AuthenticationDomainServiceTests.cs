@@ -291,50 +291,50 @@ namespace XUnitTest.DomainService.Shared
         }
 
         [Fact]
-        public async Task GetOIDCClientAsyncAsync_ReturnsClient()
+        public async Task GetOidcClientAsync_ReturnsClient()
         {
             var client = new OidcClientRegistration { ItemId = "test-id" };
 
             _authenticationRepository.Setup(x => x.GetOIDCCredentialByIdAsync("test-id")).ReturnsAsync(client);
 
-            var result = await _service.GetOIDCClientAsyncAsync("test-id");
+            var result = await _service.GetOidcClientAsync("test-id");
 
             Assert.True(result.IsSuccess);
             Assert.Equal(client, result.oIDCClientCredential);
         }
 
         [Fact]
-        public async Task GetOIDCClientsAsyncAsync_ReturnsClients()
+        public async Task GetOidcClientsAsync_ReturnsClients()
         {
             var clients = new List<OidcClientRegistration> { new OidcClientRegistration { ItemId = "test-id" } };
 
             _authenticationRepository.Setup(x => x.GetOIDCCredentialsByTenantAsync()).ReturnsAsync(clients);
 
-            var result = await _service.GetOIDCClientsAsyncAsync();
+            var result = await _service.GetOidcClientsAsync();
 
             Assert.True(result.IsSuccess);
             Assert.Equal(clients, result.oIDCClientCredentials);
         }
 
         [Fact]
-        public async Task GetOIDCClientsAsyncAsync_WithNullResult_ReturnsEmptyList()
+        public async Task GetOidcClientsAsync_WithNullResult_ReturnsEmptyList()
         {
             _authenticationRepository.Setup(x => x.GetOIDCCredentialsByTenantAsync()).ReturnsAsync((List<OidcClientRegistration>)null);
 
-            var result = await _service.GetOIDCClientsAsyncAsync();
+            var result = await _service.GetOidcClientsAsync();
 
             Assert.True(result.IsSuccess);
             Assert.Empty(result.oIDCClientCredentials);
         }
 
         [Fact]
-        public async Task DeleteOIDCClientAsyncAsync_DeletesClient()
+        public async Task DeleteOidcClientAsync_DeletesClient()
         {
             var request = new DeleteOIDCClientRequest { ItemId = "test-id" };
 
             _authenticationRepository.Setup(x => x.DeleteOidcCliantAsync(request)).Returns(Task.CompletedTask);
 
-            var result = await _service.DeleteOIDCClientAsyncAsync(request);
+            var result = await _service.DeleteOidcClientAsync(request);
 
             Assert.True(result.IsSuccess);
         }

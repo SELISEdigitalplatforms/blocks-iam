@@ -16,7 +16,6 @@ export const OIDCSignin = () => {
   const navigate = useNavigate();
   const { setAuthenticated, setTokens } = useAuthStore();
   const [isActivatingSocial, setIsActivatingSocial] = useState(false);
-  const [isOidcPasswordFlow, setIsOidcPasswordFlow] = useState(false);
   const oidcContext = useOIDCContext();
 
   const code = searchParams.get("code") || "";
@@ -35,13 +34,10 @@ export const OIDCSignin = () => {
     [oidcContext.clientId, oidcContext.nonce, oidcContext.redirectUri, oidcContext.scope, oidcContext.state, oidcContext.themeColor],
   );
 
-  // Detect if this is a pure OIDC password flow (coming from /oidc/login route with OIDC params)
-  useEffect(() => {
-    const pathName = window.location.pathname;
-    if (pathName.includes("/oidc/login")) {
-      setIsOidcPasswordFlow(true);
-    }
-  }, []);
+  const isOidcPasswordFlow = window.location.pathname.includes("/oidc/login");
+  const urlClientId = searchParams.get("client_id");
+  const urlRedirectUri = searchParams.get("redirect_uri");
+  const effectiveClientId = oidcContext.clientId || urlClientId || "";
 
   useEffect(() => {
     if (!code || !state) {
@@ -100,8 +96,8 @@ export const OIDCSignin = () => {
     );
   }
 
-  // Pure OIDC password/email flow
-  if (isOidcPasswordFlow && oidcContext.clientId && oidcContext.redirectUri) {
+  // Pure OIDC password/email flow - show if on /oidc/login with client_id param
+  if (isOidcPasswordFlow && (oidcContext.clientId || urlClientId) && (oidcContext.redirectUri || urlRedirectUri)) {
     return (
       <Card className="flex h-full flex-col rounded border-solid border-background shadow-none md:min-w-[448px] md:border-[#95ADC4] lg:max-w-md">
         <CardHeader className="text-center">
@@ -111,11 +107,12 @@ export const OIDCSignin = () => {
         <CardContent className="flex flex-1 flex-col justify-between">
           <div className="flex flex-1 flex-col justify-center">
             <OidcLoginForm
-              clientId={oidcContext.clientId}
-              redirectUri={oidcContext.redirectUri}
-              scope={oidcContext.scope}
-              state={oidcContext.state}
-              nonce={oidcContext.nonce}
+              clientId={effectiveClientId}
+              redirectUri={oidcContext.redirectUri || urlRedirectUri || ""}
+              scope={oidcContext.scope || searchParams.get("scope") || undefined}
+              state={oidcContext.state || searchParams.get("state") || undefined}
+              nonce={oidcContext.nonce || searchParams.get("nonce") || undefined}
+              tenantId={oidcContext.tenantId || searchParams.get("tenant_id") || undefined}
               codeChallenge={searchParams.get("code_challenge") || undefined}
               codeChallengeMethod={searchParams.get("code_challenge_method") || "S256"}
             />

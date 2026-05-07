@@ -37,9 +37,10 @@ export const useSignupByEmail = () => {
   });
 };
 
-export const useGetLoginOptions = () => {
+export const useGetLoginOptions = (tenantId?: string, enabled = true) => {
   return useQuery({
-    queryKey: ["login-options"],
-    queryFn: () => authService.getLoginOptions(),
+    queryKey: ["login-options", tenantId],
+    queryFn: () => authService.getLoginOptions(tenantId),
+    enabled,
   });
 };

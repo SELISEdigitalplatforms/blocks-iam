@@ -57,7 +57,6 @@ namespace Authentication.DomainService.Utilities
             serviceCollection.AddSingleton<IAuthorizationCodeRepository, AuthorizationCodeRepository>();
             serviceCollection.AddSingleton<IRefreshTokenRepository, RefreshTokenRepository>();
             serviceCollection.AddSingleton<IIdpSessionRepository, IdpSessionRepository>();
-            serviceCollection.AddSingleton<IOAuthClientRepository, OAuthClientRepository>();
             serviceCollection.AddSingleton<IAuditLogRepository, AuditLogRepository>();
             serviceCollection.AddSingleton<ITokenRevocationRepository, TokenRevocationRepository>();
             serviceCollection.AddSingleton<ITokenRevocationService, TokenRevocationService>();

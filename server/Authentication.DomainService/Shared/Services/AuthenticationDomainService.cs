@@ -271,7 +271,7 @@ namespace Authentication.DomainService.Services
             return new SaveOIDCClientResponse { IsSuccess = true, ItemId = credential.ItemId };
         }
 
-        public async Task<GetOIDCClientResponse> GetOIDCClientAsyncAsync(string tenantId)
+        public async Task<GetOIDCClientResponse> GetOidcClientAsync(string tenantId)
         {
             var client = await _authenticationRepository.GetOIDCCredentialByIdAsync(tenantId);
 
@@ -282,7 +282,7 @@ namespace Authentication.DomainService.Services
             };
         }
 
-        public async Task<GetOIDCClientsResponse> GetOIDCClientsAsyncAsync()
+        public async Task<GetOIDCClientsResponse> GetOidcClientsAsync()
         {
             var clients = await _authenticationRepository.GetOIDCCredentialsByTenantAsync();
 
@@ -293,7 +293,7 @@ namespace Authentication.DomainService.Services
             };
         }
 
-        public async Task<BaseResponse> DeleteOIDCClientAsyncAsync(DeleteOIDCClientRequest request)
+        public async Task<BaseResponse> DeleteOidcClientAsync(DeleteOIDCClientRequest request)
         {
             await _authenticationRepository.DeleteOidcCliantAsync(request);
 

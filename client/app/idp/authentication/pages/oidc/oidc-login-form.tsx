@@ -5,9 +5,10 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { Input } from "@/components/ui-kits/input/input";
 import { PasswordInput } from "@/components/password-input";
 import { Button } from "@/components/ui-kits/button/button";
-import { Link } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 import { z } from "zod";
 import { authService } from "@blocks-idp/authentication/services/auth.service";
+import { AUTH_ENDPOINTS } from "@blocks-idp/authentication/constants/endpoint.constant";
 import { showErrorToast } from "@/hooks/use-toast";
 import { useState } from "react";
 import { Captcha } from "@/components/captcha";
@@ -19,6 +20,21 @@ import { useGetLoginOptions } from "@blocks-idp/authentication/hooks/use-auth";
 import { OidcSocialSignin } from "./oidc-social-signin";
 import { Skeleton } from "@/components/ui-kits/skeleton/skeleton";
 import { GRANT_TYPES } from "@blocks-idp/authentication/constants/authentication.constant";
+import { useAuthStore } from "@/store/useAuthStore";
+
+const base64UrlEncode = (bytes: Uint8Array) => {
+  const binary = String.fromCharCode(...bytes);
+  return btoa(binary).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/g, "");
+};
+
+const generatePkcePair = async () => {
+  const verifierBytes = crypto.getRandomValues(new Uint8Array(32));
+  const verifier = base64UrlEncode(verifierBytes);
+  const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(verifier));
+  const challenge = base64UrlEncode(new Uint8Array(digest));
+
+  return { verifier, challenge };
+};
 
 const oidcLoginFormSchema = z.object({
   username: z.string().email("Invalid email address"),
@@ -35,6 +51,7 @@ interface OidcLoginFormProps {
   nonce?: string;
   codeChallenge?: string;
   codeChallengeMethod?: string;
+  tenantId?: string;
 }
 
 export const OidcLoginForm = ({
@@ -45,15 +62,19 @@ export const OidcLoginForm = ({
   nonce,
   codeChallenge,
   codeChallengeMethod,
+  tenantId,
 }: OidcLoginFormProps) => {
+  const navigate = useNavigate();
   const { theme } = useTheme();
-  const { data: loginOption, isLoading: isLoginOptionLoading } = useGetLoginOptions();
+  const { data: loginOption } = useGetLoginOptions(tenantId, true);
   const [token, setToken] = useState("");
   const [accounts, setAccounts] = useState<OidcAccountInfo[]>([]);
   const [isSelectingAccount, setIsSelectingAccount] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [lastAttemptedEmail, setLastAttemptedEmail] = useState("");
   const [showActivationError, setShowActivationError] = useState(false);
+  const [activeCodeChallenge, setActiveCodeChallenge] = useState(codeChallenge);
+  const [activeCodeChallengeMethod, setActiveCodeChallengeMethod] = useState(codeChallengeMethod || "S256");
 
   const form = useForm<OidcLoginFormValues>({
     defaultValues: {
@@ -67,70 +88,115 @@ export const OidcLoginForm = ({
   const googleSiteKey = getRuntimeEnv("BLOCKS_GOOGLE_SITE_KEY") || "";
   const isTokenNeed = submitCount >= 3;
 
-  const forgotPasswordUrl = buildOIDCNavigationUrl("/forgot-password");
+  const forgotPasswordUrl = buildOIDCNavigationUrl("/oidc/forgot-password");
   const signUpUrl = buildOIDCNavigationUrl("/oidc/signup");
-  const activationUrl = buildOIDCNavigationUrl(`/activation`);
+  const activationUrl = buildOIDCNavigationUrl("/oidc/activation");
+
+  const ensurePkceState = async () => {
+    const existingVerifier = sessionStorage.getItem("oidc-code-verifier");
+
+    if (existingVerifier && activeCodeChallenge) {
+      return {
+        codeChallenge: activeCodeChallenge,
+        codeChallengeMethod: activeCodeChallengeMethod || "S256",
+      };
+    }
+
+    const { verifier, challenge } = await generatePkcePair();
+    sessionStorage.setItem("oidc-code-verifier", verifier);
+    setActiveCodeChallenge(challenge);
+    setActiveCodeChallengeMethod("S256");
+
+    return {
+      codeChallenge: challenge,
+      codeChallengeMethod: "S256",
+    };
+  };
 
   const onSubmitHandler = async (values: OidcLoginFormValues) => {
     setIsLoading(true);
     setShowActivationError(false);
 
     try {
-      const response = await authService.signinByOidcEmail({
+      // Always provide a PKCE pair and keep the verifier in session storage for the callback exchange.
+      const {
+        codeChallenge: effectiveCodeChallenge,
+        codeChallengeMethod: effectiveCodeChallengeMethod,
+      } = await ensurePkceState();
+
+      // Use provided tenantId; if absent, fallback to configured tenant key when available.
+      const finalTenantId = tenantId || getRuntimeEnv("BLOCKS_X_BLOCKS_KEY") || undefined;
+      const codeVerifier = sessionStorage.getItem("oidc-code-verifier");
+      
+      const payload = {
         username: values.username,
         password: values.password,
-        clientId,
-        redirectUri,
-        scope,
-        state,
-        nonce,
-        code_challenge: codeChallenge,
-        code_challenge_method: codeChallengeMethod,
+        client_id: clientId,
+        redirect_uri: redirectUri,
+        scope: scope || '',
+        state: state || '',
+        nonce: nonce || '',
+        code_challenge: effectiveCodeChallenge,
+        code_challenge_method: effectiveCodeChallengeMethod,
+        tenant_id: finalTenantId || '',
+      };
+
+      // Use fetch with redirect: 'follow' to automatically follow the 302 redirect
+      // This will go to /oidc with the authorization code, where the OidcIndexPage 
+      // component will handle the token exchange
+      const response = await fetch(AUTH_ENDPOINTS.OIDC_LOGIN, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          // Include tenant_id as X-Blocks-Key header for tenant validation middleware
+          'X-Blocks-Key': finalTenantId || '',
+        },
+        body: JSON.stringify(payload),
+        redirect: 'follow', // Follow redirects automatically
       });
 
-      // Check for MFA requirement
-      if (response.enable_mfa) {
-        const mfaPath = `/mfa-check?mfa_id=${response.mfaId}&mfa_type=${response.mfaType}`;
-        window.location.href = buildOIDCNavigationUrl(mfaPath);
+      // If the response is OK, the /oidc page should have loaded with the code parameter
+      // and the OidcIndexPage component will handle token exchange
+      if (response.ok || response.status === 200) {
+        // Let the SPA handle the /oidc route - just return and let the page load
         return;
       }
 
-      // Check if account selection is required
-      if (response.status === "account_selection_required" && response.accounts?.length > 1) {
-        setAccounts(response.accounts);
-        setIsSelectingAccount(true);
-      } else if (response.redirect_url) {
-        // Direct redirect (single account case)
-        window.location.href = response.redirect_url;
-      } else if (response.code) {
-        // Handle code response if needed
-        window.location.href = response.redirect_url || redirectUri;
-      } else {
-        showErrorToast({ errors: "Unexpected response from server" });
-      }
-    } catch (error: unknown) {
-      if (isErrorWithErrors(error)) {
-        const errorMsg = error.errors.error_description || "Something went wrong";
-        const errorCode = error.errors.error;
-
-        // Handle account locked
-        if (errorCode === "account_locked") {
-          showErrorToast({ errors: "Your account is locked. Please contact support or reset your password." });
-        }
-        // Handle account not verified
-        else if (errorCode === "account_not_verified") {
-          setLastAttemptedEmail(values.username);
-          setShowActivationError(true);
-        }
-        // Handle invalid credentials
-        else if (errorCode === "invalid_credentials") {
-          showErrorToast({ errors: "Invalid email or password. Please try again." });
+      // Handle error responses
+      let data;
+      try {
+        const contentType = response.headers.get('content-type');
+        if (contentType && contentType.includes('application/json')) {
+          data = await response.json();
         } else {
-          showErrorToast({ errors: errorMsg });
+          showErrorToast({ errors: `Server error (HTTP ${response.status})` });
+          setIsLoading(false);
+          return;
         }
-      } else {
-        showErrorToast({ errors: "Something went wrong" });
+      } catch (parseError) {
+        console.error('Error parsing response:', parseError);
+        showErrorToast({ errors: `Server error: Unable to process response` });
+        setIsLoading(false);
+        return;
       }
+
+      // Handle specific error codes
+      const errorMsg = data?.error_description || data?.message || "Login failed";
+      const errorCode = data?.error;
+
+      if (errorCode === "account_locked") {
+        showErrorToast({ errors: "Your account is locked. Please contact support or reset your password." });
+      } else if (errorCode === "account_not_verified") {
+        setLastAttemptedEmail(values.username);
+        setShowActivationError(true);
+      } else if (errorCode === "invalid_credentials") {
+        showErrorToast({ errors: "Invalid email or password. Please try again." });
+      } else {
+        showErrorToast({ errors: errorMsg });
+      }
+    } catch (error) {
+      console.error('Login error:', error);
+      showErrorToast({ errors: "An unexpected error occurred during login. Please try again." });
     } finally {
       setIsLoading(false);
     }
@@ -138,19 +204,26 @@ export const OidcLoginForm = ({
 
   const handleAccountSelect = async (account: OidcAccountInfo) => {
     try {
+      const {
+        codeChallenge: effectiveCodeChallenge,
+        codeChallengeMethod: effectiveCodeChallengeMethod,
+      } = await ensurePkceState();
+      const effectiveTenantId = account.tenant_id || tenantId || getRuntimeEnv("BLOCKS_X_BLOCKS_KEY") || "";
+
+      // Continue account selection with the same PKCE challenge to keep flow consistent.
       const response = await authService.selectOidcAccount({
         userId: account.user_id,
-        tenantId: account.tenant_id,
+        tenantId: effectiveTenantId,
         clientId,
         redirectUri,
         scope,
         state,
         nonce,
-        code_challenge: codeChallenge,
-        code_challenge_method: codeChallengeMethod,
+        code_challenge: effectiveCodeChallenge,
+        code_challenge_method: effectiveCodeChallengeMethod,
       });
 
-      // Redirect to the authorize endpoint with the code
+      // Redirect to permission screen or authorization endpoint
       if (response.redirect_url) {
         window.location.href = response.redirect_url;
       } else {
@@ -158,43 +231,27 @@ export const OidcLoginForm = ({
       }
     } catch (error: unknown) {
       if (isErrorWithErrors(error)) {
-        const message = Array.isArray(error.errors.error_description)
-          ? error.errors.error_description[0]
-          : error.errors.error_description || "Failed to select account";
-        throw new Error(message);
+        const errorCode = error.errors?.error;
+        const errorDesc = error.errors?.error_description;
+        const message = Array.isArray(errorDesc)
+          ? errorDesc[0]
+          : errorDesc || errorCode || "Failed to select account";
+        showErrorToast({ errors: message });
       } else {
-        throw new Error("Failed to select account");
+        showErrorToast({ errors: "Failed to select account" });
       }
     }
   };
-
-  if (isLoginOptionLoading) {
-    return (
-      <div className="flex flex-col gap-4">
-        {/* Email label + input */}
-        <div className="flex flex-col gap-2">
-          <Skeleton className="h-4 w-10 rounded" />
-          <Skeleton className="h-10 w-full rounded-md" />
-        </div>
-        {/* Password label + input */}
-        <div className="flex flex-col gap-2">
-          <Skeleton className="h-4 w-16 rounded" />
-          <Skeleton className="h-10 w-full rounded-md" />
-        </div>
-        {/* Forgot password */}
-        <Skeleton className="ml-auto h-4 w-28 rounded" />
-        {/* Login button */}
-        <Skeleton className="h-10 w-full rounded-md" />
-      </div>
-    );
-  }
 
   if (isSelectingAccount && accounts.length > 0) {
     return <OidcAccountSelector accounts={accounts} onAccountSelect={handleAccountSelect} isLoading={isLoading} />;
   }
 
-  const showPasswordLogin = loginOption?.allowedGrantTypes.includes(GRANT_TYPES.password);
-  const showSocialLogin = loginOption?.allowedGrantTypes.includes(GRANT_TYPES.social);
+  // Default to showing password login if loginOption is not available or fails to load
+  // Don't wait for login options - show form immediately with sensible defaults
+  const showPasswordLogin = loginOption?.allowedGrantTypes?.includes(GRANT_TYPES.password) ?? true;
+  // Show social login by default - if loginOption is available, check the config; otherwise default to true
+  const showSocialLogin = loginOption?.allowedGrantTypes?.includes(GRANT_TYPES.social) ?? true;
 
   if (showActivationError) {
     return (

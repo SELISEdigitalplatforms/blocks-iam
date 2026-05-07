@@ -17,10 +17,10 @@ namespace Authentication.DomainService.Services
         Task SendToQueueAsync<T>(string queue, T payload) where T : class;
         DeviceInformation? GetDeviceInfo(string userAgent);
         Task<SaveOIDCClientResponse> SaveOIDCClientAsync(SaveOIDCClientRequest request);
-        Task<BaseResponse> DeleteOIDCClientAsyncAsync(DeleteOIDCClientRequest request);
+        Task<BaseResponse> DeleteOidcClientAsync(DeleteOIDCClientRequest request);
         Task<BaseResponse> GenerateUserCodeByClientAsync(GenerateUserCodeRequest request);
-        Task<GetOIDCClientResponse> GetOIDCClientAsyncAsync(string tenantId);
-        Task<GetOIDCClientsResponse> GetOIDCClientsAsyncAsync();
+        Task<GetOIDCClientResponse> GetOidcClientAsync(string tenantId);
+        Task<GetOIDCClientsResponse> GetOidcClientsAsync();
         Task<BaseResponse> SaveClientCredentialAsync(SaveClientCredentialRequest request);
         Task<BaseResponse> DeleteClientCredentialAsync(DeleteClientCredentialRequest request);
         Task<List<ClientCredential>> GetClientCredentialsAsync(GetAllClientCredentialsRequest request);

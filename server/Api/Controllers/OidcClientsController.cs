@@ -35,7 +35,7 @@ public class OidcClientsController : ControllerBase
     [HttpGet]
     public async Task<IActionResult> GetAll([FromQuery] string? projectKey)
     {
-        var response = await _authenticationDomainService.GetOIDCClientsAsyncAsync();
+        var response = await _authenticationDomainService.GetOidcClientsAsync();
 
         if (!response.IsSuccess)
         {
@@ -64,7 +64,7 @@ public class OidcClientsController : ControllerBase
             return BadRequest(new { error = "client_id_required", message = "clientId is required." });
         }
 
-        var response = await _authenticationDomainService.GetOIDCClientAsyncAsync(clientId);
+        var response = await _authenticationDomainService.GetOidcClientAsync(clientId);
 
         if (!response.IsSuccess)
         {
@@ -128,7 +128,7 @@ public class OidcClientsController : ControllerBase
         }
 
         var request = new DeleteOIDCClientRequest { ItemId = clientId };
-        var response = await _authenticationDomainService.DeleteOIDCClientAsyncAsync(request);
+        var response = await _authenticationDomainService.DeleteOidcClientAsync(request);
         if (!response.IsSuccess)
         {
             return BadRequest(response);

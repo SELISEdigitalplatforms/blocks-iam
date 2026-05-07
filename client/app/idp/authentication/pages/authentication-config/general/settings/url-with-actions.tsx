@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { Button } from "@/components/ui-kits/button/button";
 import { Check, Copy, Download } from "lucide-react";
-import { getApiUrl } from "@/lib/get-api-path";
+import { getRuntimeEnv } from "@/lib/runtime-env";
 import { useProjectStore } from "@/store/useProjectStore";
 
 interface UrlWithActionsProps {
@@ -11,7 +11,7 @@ interface UrlWithActionsProps {
 export const UrlWithActions = ({ url }: UrlWithActionsProps) => {
   const [isCopying, setIsCopying] = useState(false);
   const { tenantId } = useProjectStore().selectedProject || { tenantId: "" };
-  const jwksUrl = `${getApiUrl("idp/v1", ".well-known/jwks.json")}?X-Blocks-Key=${tenantId}`;
+  const jwksUrl = `${getRuntimeEnv("BLOCKS_API_BASE_URL")}/api/.well-known/jwks.json?X-Blocks-Key=${tenantId}`;
 
   const handleCopy = async (event: React.MouseEvent<HTMLButtonElement>) => {
     try {

@@ -38,7 +38,13 @@ export const useAuthStore = create<AuthState>()(
         set((state) => ({ ...state, isAuthenticated: false, user: null }));
       },
       setTokens: (accessToken: string, refreshToken: string) => {
+        // Store in localStorage via Zustand persist
         set((state) => ({ ...state, accessToken, refreshToken }));
+        // Also store in cookies for API requests
+        if (typeof document !== 'undefined') {
+          document.cookie = `access_token=${accessToken}; path=/; SameSite=Strict`;
+          document.cookie = `refresh_token=${refreshToken}; path=/; SameSite=Strict`;
+        }
       },
       setAuthMode: (mode: "root" | "impersonation", reason?: string | null) => {
         set((state) => ({ ...state, authMode: mode, restoreReason: reason ?? null }));
@@ -48,6 +54,11 @@ export const useAuthStore = create<AuthState>()(
       },
       clearTokens: () => {
         set((state) => ({ ...state, accessToken: null, refreshToken: null }));
+        // Clear cookies
+        if (typeof document !== 'undefined') {
+          document.cookie = 'access_token=; path=/; expires=Thu, 01 Jan 1970 00:00:00 UTC;';
+          document.cookie = 'refresh_token=; path=/; expires=Thu, 01 Jan 1970 00:00:00 UTC;';
+        }
       },
       reset: () => {
         set({

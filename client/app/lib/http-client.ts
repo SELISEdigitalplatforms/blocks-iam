@@ -163,6 +163,15 @@ class HttpClient {
     } = requestOption;
     const fullUrl = absoluteUrl ? url : `${this.baseURL}${url}`;
     const normalizedHeaders = this.normalizeHeaders(headers, skipBlocksKey);
+
+    // Enforce tenant header for all API endpoints regardless of caller options.
+    if (fullUrl.includes("/api/") && !normalizedHeaders.has("X-Blocks-Key")) {
+      const requiredBlocksKey = this.resolveBlocksKey();
+      if (requiredBlocksKey) {
+        normalizedHeaders.set("X-Blocks-Key", requiredBlocksKey);
+      }
+    }
+
     // Use same-origin for localhost (token in header), include for remote (cookie-based)
     const credentialsMode = this.isLocalhost() ? "same-origin" : (withCredentials ? "include" : "same-origin");
     const config: RequestInit = {
@@ -287,6 +296,15 @@ class HttpClient {
 
     const fullUrl = absoluteUrl ? url : `${this.baseURL}${url}`;
     const normalizedHeaders = this.normalizeHeaders(headers, skipBlocksKey);
+
+    // Enforce tenant header for all API endpoints regardless of caller options.
+    if (fullUrl.includes("/api/") && !normalizedHeaders.has("X-Blocks-Key")) {
+      const requiredBlocksKey = this.resolveBlocksKey();
+      if (requiredBlocksKey) {
+        normalizedHeaders.set("X-Blocks-Key", requiredBlocksKey);
+      }
+    }
+
     // Use same-origin for localhost (token in header), include for remote (cookie-based)
     const credentialsMode = this.isLocalhost() ? "same-origin" : (withCredentials ? "include" : "same-origin");
 
