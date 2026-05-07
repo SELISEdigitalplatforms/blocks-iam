@@ -27,6 +27,7 @@ namespace Authentication.DomainService.Entities
         public string? LoginMode { get; set; }
         public string? ClientType { get; set; }
         public string? UiBrandColor { get; set; }
+        public bool UseTokensCookie { get; set; } = true; // Default: tokens in cookies
 
         [BsonIgnore]
         public string? RedirectUri

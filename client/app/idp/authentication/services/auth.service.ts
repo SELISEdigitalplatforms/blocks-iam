@@ -44,15 +44,19 @@ export class AuthService {
   }
 
   verifyOidc(payload: { code: string; clientId: string; redirectUri: string; codeVerifier: string; tenantId?: string }): Promise<any> {
+    return http.post(AUTH_ENDPOINTS.OIDC_EXCHANGE, {
+      code: payload.code,
+      client_id: payload.clientId,
+      redirect_uri: payload.redirectUri,
+      code_verifier: payload.codeVerifier,
+      ...(payload.tenantId && { tenant_id: payload.tenantId }),
+    });
+  }
+
+  verifySsoConsent(code: string): Promise<any> {
     const body = new URLSearchParams();
-    body.append("grant_type", "authorization_code");
-    body.append("code", payload.code);
-    body.append("client_id", payload.clientId);
-    body.append("redirect_uri", payload.redirectUri);
-    body.append("code_verifier", payload.codeVerifier);
-    if (payload.tenantId) {
-      body.append("tenant_id", payload.tenantId);
-    }
+    body.append("grant_type", "sso_consent");
+    body.append("code", code);
 
     return http.post(
       AUTH_ENDPOINTS.OIDC_TOKEN,

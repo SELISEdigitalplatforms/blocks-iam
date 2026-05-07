@@ -16,6 +16,7 @@ export interface IOidcConfig {
   scope: string;
   audience: string;
   isAutoRedirect: boolean;
+  useTokensCookie: boolean;
   tenantId: string;
   clientLogoUrl?: string;
   clientBrandColor?: string;
@@ -35,6 +36,7 @@ export interface IOidcConfigResponse {
   scope: string;
   audience: string;
   isAutoRedirect: boolean;
+  useTokensCookie: boolean;
   tenantId: string;
   clientLogoUrl?: string;
   clientBrandColor?: string;
@@ -44,6 +46,7 @@ export interface IOidcConfigResponse {
 export interface ISaveOidcCredentialPayload {
   audience: string;
   isAutoRedirect: boolean;
+  useTokensCookie: boolean;
   itemId: string;
   redirectUri: string;
   scope: string;
@@ -55,6 +58,7 @@ export interface ISaveOidcCredentialPayload {
 export interface ISaveOidcCredentialResponse {
   audience: string;
   isAutoRedirect: boolean;
+  useTokensCookie: boolean;
   itemId: string;
   redirectUri: string;
   scope: string;

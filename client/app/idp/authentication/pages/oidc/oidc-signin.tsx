@@ -53,10 +53,7 @@ export const OIDCSignin = () => {
           clientId: oidcContext.clientId,
         });
 
-        const isLocalhost = getRuntimeEnv("BLOCKS_API_BASE_URL")?.includes("localhost");
-        if (isLocalhost && response.access_token && response.refresh_token) {
-          setTokens(response.access_token, response.refresh_token);
-        }
+        // Root tenant FE uses only HttpOnly cookies; no token handling from response needed
 
         setAuthenticated();
 

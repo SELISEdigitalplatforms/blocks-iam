@@ -130,9 +130,8 @@ class HttpClient {
         authStore.setAuthMode(data.mode, data.reason ?? null);
       }
 
-      if (data.access_token && data.refresh_token) {
-        authStore.setTokens(data.access_token, data.refresh_token);
-      }
+      // Root tenant FE uses only HttpOnly cookies for tokens; no response body token handling needed
+      // Automatic credential inclusion handles authentication via cookies
 
       while (requestQueue.length > 0) {
         const { url, requestOption, resolve, reject } = requestQueue.shift()!;

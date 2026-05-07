@@ -30,17 +30,20 @@ public class AuthenticationController : ControllerBase
     private readonly IAccountService _accountService;
     private readonly IAuthenticationFlowService _authenticationFlowService;
     private readonly IOidcCallbackHandler _oidcCallbackHandler;
+    private readonly IAuthorizationFlowService _authorizationFlowService;
 
     public AuthenticationController(
         IAuthenticationService authenticationService,
         IAccountService accountService,
         IAuthenticationFlowService authenticationFlowService,
-        IOidcCallbackHandler oidcCallbackHandler)
+        IOidcCallbackHandler oidcCallbackHandler,
+        IAuthorizationFlowService authorizationFlowService)
     {
         _authenticationService = authenticationService;
         _accountService = accountService;
         _authenticationFlowService = authenticationFlowService;
         _oidcCallbackHandler = oidcCallbackHandler;
+        _authorizationFlowService = authorizationFlowService;
     }
 
     #region Password Authentication
@@ -208,6 +211,37 @@ public class AuthenticationController : ControllerBase
     }
 
     /// <summary>
+    /// BFF: Exchange PKCE authorization code for tokens (called by this app's own FE)
+    /// FE never needs to know about /oidc/token — this is the only endpoint it calls.
+    /// RFC 7636: PKCE | RFC 6749: OAuth 2.0 Authorization Code Grant
+    /// </summary>
+    [HttpPost("oidc/exchange")]
+    [AllowAnonymous]
+    public async Task<IActionResult> ExchangeOidcCode([FromBody] OidcCodeExchangeRequest request)
+    {
+        if (string.IsNullOrWhiteSpace(request?.Code))
+            return BadRequest(new { error = "invalid_request", error_description = "code is required" });
+
+        if (string.IsNullOrWhiteSpace(request.CodeVerifier))
+            return BadRequest(new { error = "invalid_request", error_description = "code_verifier is required" });
+
+        if (string.IsNullOrWhiteSpace(request.ClientId))
+            return BadRequest(new { error = "invalid_request", error_description = "client_id is required" });
+
+        if (string.IsNullOrWhiteSpace(request.RedirectUri))
+            return BadRequest(new { error = "invalid_request", error_description = "redirect_uri is required" });
+
+        return await _authorizationFlowService.ExchangeOidcCodeAsync(
+            request.Code,
+            request.CodeVerifier,
+            request.ClientId,
+            request.RedirectUri,
+            request.TenantId,
+            Request,
+            Response);
+    }
+
+    /// <summary>
     /// OIDC callback handler (API Pattern - POST)
     /// Receives authorization code from provider via POST request
     /// Exchanges code for tokens, validates JWT signature and claims
@@ -337,46 +371,6 @@ public class AuthenticationController : ControllerBase
     public async Task<IActionResult> StopImpersonation()
     {
         return await _authenticationFlowService.ExecuteStopImpersonationAsync(User, Request, Response);
-    }
-
-    /// <summary>
-    /// Execute OIDC IDP logout (Internal Use)
-    /// Special logout endpoint for OIDC identity provider sessions
-    /// Clears IDP session state and revokes tokens
-    /// Internal endpoint - not exposed in Swagger documentation
-    /// </summary>
-    [HttpPost("internal/logout-idp")]
-    [ApiExplorerSettings(IgnoreApi = true)]
-    [Authorize]
-    public async Task<IActionResult> ExecuteIdpLogout([FromBody] LogoutRequest request)
-    {
-        var refreshToken = string.IsNullOrWhiteSpace(request.RefreshToken)
-            ? _authenticationService.CookieToken(Request)
-            : request.RefreshToken;
-
-        if (string.IsNullOrWhiteSpace(refreshToken))
-        {
-            return BadRequest(new
-            {
-                error = "invalid_request",
-                error_description = "refresh token is required for idp logout."
-            });
-        }
-
-        var logoutResult = await _authenticationService.LogoutUser(refreshToken, Request);
-        if (!logoutResult.IsSuccess)
-        {
-            return BadRequest(logoutResult);
-        }
-
-        var shouldClearIdpSessionCookie = await _authenticationService.UpdateIdpSessionForLogoutAsync(HttpContext, User, isGlobalLogout: false);
-        _authenticationService.DeleteCookie(Request);
-        if (shouldClearIdpSessionCookie)
-        {
-            _authenticationService.ClearIdpSessionCookie(Response);
-        }
-
-        return Ok(logoutResult);
     }
 
     /// <summary>

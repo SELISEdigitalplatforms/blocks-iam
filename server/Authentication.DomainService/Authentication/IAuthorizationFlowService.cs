@@ -94,5 +94,7 @@ namespace Authentication.DomainService.Authentication
         Task<IActionResult> ContinueOidcLoginAfterAccountSelectionAsync(string userId, string tenantId, string clientId, string redirectUri, string? scope, string? state, string? nonce, string? codeChallenge, string? codeChallengeMethod, HttpRequest request, HttpResponse response);
 
         Task<IActionResult> TokenAsync(string grantType, HttpRequest request);
+
+        Task<IActionResult> ExchangeOidcCodeAsync(string code, string codeVerifier, string clientId, string redirectUri, string? tenantId, HttpRequest httpRequest, HttpResponse httpResponse);
     }
 }

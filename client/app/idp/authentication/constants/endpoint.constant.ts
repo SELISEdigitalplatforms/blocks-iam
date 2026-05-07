@@ -14,6 +14,7 @@ export const AUTH_ENDPOINTS = {
   SOCIAL_AUTHORIZE: `${API_BASES.IDP}/auth/social/authorize`,
   SOCIAL_CALLBACK: `${API_BASES.IDP}/auth/social/callback`,
   OIDC_TOKEN: `${API_BASES.IDP}/oidc/token`,
+  OIDC_EXCHANGE: `${API_BASES.IDP}/auth/oidc/exchange`,
   OIDC_LOGIN: `${API_BASES.IDP}/oidc/login`,
   OIDC_LOGIN_SELECT_ACCOUNT: `${API_BASES.IDP}/oidc/login/select-account`,
   OIDC_LOGIN_PAGE: `${API_BASES.IDP}/auth/oidc/login-page`,

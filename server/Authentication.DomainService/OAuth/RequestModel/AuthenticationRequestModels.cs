@@ -23,6 +23,24 @@ namespace Authentication.DomainService.OAuth.RequestModel
         public string Provider { get; set; } = string.Empty;
     }
 
+    public class OidcCodeExchangeRequest
+    {
+        [JsonPropertyName("code")]
+        public string Code { get; set; } = string.Empty;
+
+        [JsonPropertyName("code_verifier")]
+        public string CodeVerifier { get; set; } = string.Empty;
+
+        [JsonPropertyName("client_id")]
+        public string ClientId { get; set; } = string.Empty;
+
+        [JsonPropertyName("redirect_uri")]
+        public string RedirectUri { get; set; } = string.Empty;
+
+        [JsonPropertyName("tenant_id")]
+        public string? TenantId { get; set; }
+    }
+
     public class SwitchOrganizationRequest
     {
         public string OrganizationId { get; set; } = string.Empty;

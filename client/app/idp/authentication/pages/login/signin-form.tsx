@@ -58,11 +58,7 @@ export const SigninForm = ({ mode = "default", oidcContext }: SigninFormProps) =
         return navigate(mode === "oidc" ? buildOIDCNavigationUrl(mfaPath) : mfaPath);
       }
 
-      // For localhost, save tokens in store for Authorization Bearer
-      const isLocalhost = getRuntimeEnv("BLOCKS_API_BASE_URL")?.includes("localhost");
-      if (isLocalhost && res.access_token && res.refresh_token) {
-        setTokens(res.access_token, res.refresh_token);
-      }
+      // Root tenant FE uses only HttpOnly cookies; no token handling from response needed
 
       setAuthenticated();
       if (mode === "oidc") {

@@ -339,7 +339,7 @@ namespace Authentication.DomainService.Authentication
                 return new ObjectResult(new
                 {
                     error = "forbidden",
-                    error_description = "Impersonation is allowed only for root tenant"
+                    error_description = "Only root-tenant users are allowed to start impersonation"
                 })
                 {
                     StatusCode = StatusCodes.Status403Forbidden
@@ -381,6 +381,32 @@ namespace Authentication.DomainService.Authentication
                 return new UnauthorizedObjectResult(new { error = "invalid_user" });
             }
 
+            if (string.Equals(rootTenantId, request.TargetTenantId, StringComparison.OrdinalIgnoreCase))
+            {
+                await WriteImpersonationAuditEventAsync(httpRequest, "impersonation_start_denied", userId, request.TargetTenantId, "WARN", "same_tenant_target");
+                return new ObjectResult(new
+                {
+                    error = "forbidden",
+                    error_description = "Impersonation to the same root tenant is not allowed"
+                })
+                {
+                    StatusCode = StatusCodes.Status403Forbidden
+                };
+            }
+
+            if (targetTenant.IsRootTenant)
+            {
+                await WriteImpersonationAuditEventAsync(httpRequest, "impersonation_start_denied", userId, request.TargetTenantId, "WARN", "target_is_root_tenant");
+                return new ObjectResult(new
+                {
+                    error = "forbidden",
+                    error_description = "Impersonation to a root tenant is not allowed"
+                })
+                {
+                    StatusCode = StatusCodes.Status403Forbidden
+                };
+            }
+
             if (!CanImpersonateTargetTenant(rootTenantId, request.TargetTenantId, targetTenant))
             {
                 await WriteImpersonationAuditEventAsync(httpRequest, "impersonation_start_denied", userId, request.TargetTenantId, "WARN", "forbidden_target");
@@ -416,6 +442,20 @@ namespace Authentication.DomainService.Authentication
                 return new UnauthorizedObjectResult(new { error = "session_expired" });
             }
 
+            var rootJwtValidation = ValidateRootImpersonationAuthorization(rootAccessToken, rootTenantId, userId);
+            if (!rootJwtValidation.IsAuthorized)
+            {
+                await WriteImpersonationAuditEventAsync(httpRequest, "impersonation_start_denied", userId, request.TargetTenantId, "WARN", rootJwtValidation.ErrorCode, rootTenantId);
+                return new ObjectResult(new
+                {
+                    error = "forbidden",
+                    error_description = rootJwtValidation.ErrorDescription
+                })
+                {
+                    StatusCode = StatusCodes.Status403Forbidden
+                };
+            }
+
             var cacheClient = httpRequest.HttpContext.RequestServices.GetRequiredService<ICacheClient>();
             var rootRefreshCacheRaw = await cacheClient.GetStringValueAsync(rootRefreshToken);
             var rootRefreshCache = string.IsNullOrWhiteSpace(rootRefreshCacheRaw)
@@ -431,6 +471,21 @@ namespace Authentication.DomainService.Authentication
                 || !string.Equals(rootRefreshCache.AuthMode, "root", StringComparison.OrdinalIgnoreCase))
             {
                 return new UnauthorizedObjectResult(new { error = "session_expired" });
+            }
+
+            // Security rule: root DB-issued tokens cannot start impersonation.
+            var rootSession = await _authenticationRepository.GetSessionByRefreshTokenAsync(rootRefreshToken);
+            if (IsRootDatabaseToken(rootSession?.GrantType))
+            {
+                await WriteImpersonationAuditEventAsync(httpRequest, "impersonation_start_denied", userId, request.TargetTenantId, "WARN", "root_db_token_disallowed", rootTenantId);
+                return new ObjectResult(new
+                {
+                    error = "forbidden",
+                    error_description = "Impersonation is not allowed with root database tokens"
+                })
+                {
+                    StatusCode = StatusCodes.Status403Forbidden
+                };
             }
 
             var authConfiguration = await _authenticationRepository.GetAuthenticationConfigurationAsync();
@@ -476,7 +531,7 @@ namespace Authentication.DomainService.Authentication
                 var tokenResponse = await _oAuthJwtAccessTokenManager.ManageTokenAsync(tokenRequest, authConfiguration, user);
                 if (!string.IsNullOrWhiteSpace(tokenResponse.Error))
                 {
-                    return BuildTokenResponse(httpResponse, tokenResponse);
+                    return await BuildTokenResponseAsync(httpResponse, tokenResponse);
                 }
 
                 var state = new ImpersonationState
@@ -644,10 +699,27 @@ namespace Authentication.DomainService.Authentication
             {
                 if (!string.IsNullOrWhiteSpace(result.Error))
                 {
-                    return BuildTokenResponse(httpResponse, result);
+                    return await BuildTokenResponseAsync(httpResponse, result);
                 }
 
-                AppendCookies(httpResponse, result);
+                var clientId = TryGetClientIdFromAccessToken(result.AccessToken) ?? tokenCache.ClientId;
+                var useTokensCookie = await ResolveUseTokensCookieAsync(clientId);
+
+                if (useTokensCookie)
+                {
+                    AppendCookies(httpResponse, result);
+                    return new OkObjectResult(new
+                    {
+                        mode = "impersonation",
+                        status = "refreshed",
+                        token_type = result.TokenType,
+                        expires_in = result.ExpiresIn,
+                        scope = result.Scope,
+                        client_id = clientId,
+                        cookie_set = true
+                    });
+                }
+
                 return new OkObjectResult(new
                 {
                     mode = "impersonation",
@@ -659,11 +731,13 @@ namespace Authentication.DomainService.Authentication
                     expires_utc = result.ExpiresUtc,
                     refresh_expires_utc = result.RefreshExpiresUtc,
                     scope = result.Scope,
-                    id_token = result.IdToken
+                    id_token = result.IdToken,
+                    client_id = clientId,
+                    cookie_set = false
                 });
             }
 
-            return BuildTokenResponse(httpResponse, result);
+            return await BuildTokenResponseAsync(httpResponse, result);
         }
 
         private async Task HandlePotentialRefreshTokenReuseAsync(string refreshToken, ICacheClient cacheClient)
@@ -791,6 +865,63 @@ namespace Authentication.DomainService.Authentication
                 _logger.LogError(ex, "Failed to validate ProjectPeople share for user {UserId} and tenant {TenantId}", userId, targetTenantId);
                 return false;
             }
+        }
+
+        private static (bool IsAuthorized, string ErrorCode, string ErrorDescription) ValidateRootImpersonationAuthorization(string rootAccessToken, string rootTenantId, string userId)
+        {
+            JwtSecurityToken jwt;
+            try
+            {
+                jwt = new JwtSecurityTokenHandler().ReadJwtToken(rootAccessToken);
+            }
+            catch
+            {
+                return (false, "invalid_root_jwt", "Original root tenant JWT is invalid");
+            }
+
+            var tokenTenantId = jwt.Claims.FirstOrDefault(c =>
+                string.Equals(c.Type, BlocksContext.TENANT_ID_CLAIM, StringComparison.OrdinalIgnoreCase)
+                || string.Equals(c.Type, "tenant_id", StringComparison.OrdinalIgnoreCase))?.Value;
+
+            if (string.IsNullOrWhiteSpace(tokenTenantId)
+                || !string.Equals(tokenTenantId, rootTenantId, StringComparison.OrdinalIgnoreCase))
+            {
+                return (false, "root_tenant_mismatch", "Original JWT tenant does not match root tenant context");
+            }
+
+            var tokenUserId = jwt.Claims.FirstOrDefault(c =>
+                string.Equals(c.Type, BlocksContext.USER_ID_CLAIM, StringComparison.OrdinalIgnoreCase)
+                || string.Equals(c.Type, ClaimTypes.NameIdentifier, StringComparison.OrdinalIgnoreCase)
+                || string.Equals(c.Type, "sub", StringComparison.OrdinalIgnoreCase))?.Value;
+
+            if (string.IsNullOrWhiteSpace(tokenUserId)
+                || !(string.Equals(tokenUserId, userId, StringComparison.OrdinalIgnoreCase)
+                    || string.Equals(tokenUserId, $"blocks|{userId}", StringComparison.OrdinalIgnoreCase)))
+            {
+                return (false, "root_user_mismatch", "Original JWT user does not match authenticated user");
+            }
+
+            var hasRoleClaim = jwt.Claims.Any(c =>
+                string.Equals(c.Type, BlocksContext.ROLES_CLAIM, StringComparison.OrdinalIgnoreCase)
+                || string.Equals(c.Type, ClaimTypes.Role, StringComparison.OrdinalIgnoreCase)
+                || string.Equals(c.Type, "roles", StringComparison.OrdinalIgnoreCase));
+
+            if (!hasRoleClaim)
+            {
+                return (false, "missing_role_claim", "Original root JWT must contain role claims for impersonation");
+            }
+
+            var hasPermissionClaim = jwt.Claims.Any(c =>
+                string.Equals(c.Type, BlocksContext.PERMISSION_CLAIM, StringComparison.OrdinalIgnoreCase)
+                || string.Equals(c.Type, "permission", StringComparison.OrdinalIgnoreCase)
+                || string.Equals(c.Type, "permissions", StringComparison.OrdinalIgnoreCase));
+
+            if (!hasPermissionClaim)
+            {
+                return (false, "missing_permission_claim", "Original root JWT must contain permission claims for impersonation");
+            }
+
+            return (true, string.Empty, string.Empty);
         }
 
         private async Task<bool> TryRestoreRootSessionAsync(HttpRequest httpRequest, HttpResponse httpResponse, string reason)
@@ -1022,7 +1153,7 @@ namespace Authentication.DomainService.Authentication
             BlocksContext.SetContext(originalContext, true);
         }
 
-        private IActionResult BuildTokenResponse(HttpResponse httpResponse, TokenResponse response)
+        private async Task<IActionResult> BuildTokenResponseAsync(HttpResponse httpResponse, TokenResponse response)
         {
             if (!string.IsNullOrWhiteSpace(response.Error))
             {
@@ -1038,7 +1169,22 @@ namespace Authentication.DomainService.Authentication
                 };
             }
 
-            AppendCookies(httpResponse, response);
+            var clientId = TryGetClientIdFromAccessToken(response.AccessToken);
+            var useTokensCookie = await ResolveUseTokensCookieAsync(clientId);
+
+            if (useTokensCookie)
+            {
+                AppendCookies(httpResponse, response);
+                return new OkObjectResult(new
+                {
+                    token_type = response.TokenType,
+                    expires_in = response.ExpiresIn,
+                    scope = response.Scope,
+                    client_id = clientId,
+                    cookie_set = true
+                });
+            }
+
             return new OkObjectResult(new
             {
                 access_token = response.AccessToken,
@@ -1048,8 +1194,51 @@ namespace Authentication.DomainService.Authentication
                 expires_utc = response.ExpiresUtc,
                 refresh_expires_utc = response.RefreshExpiresUtc,
                 scope = response.Scope,
-                id_token = response.IdToken
+                id_token = response.IdToken,
+                client_id = clientId,
+                cookie_set = false
             });
+        }
+
+        private async Task<bool> ResolveUseTokensCookieAsync(string? clientId)
+        {
+            if (string.IsNullOrWhiteSpace(clientId))
+            {
+                return true;
+            }
+
+            var registration = await _authenticationRepository.GetOidcClientRegistrationAsync(clientId);
+            return registration?.UseTokensCookie ?? true;
+        }
+
+        private static string? TryGetClientIdFromAccessToken(string? accessToken)
+        {
+            if (string.IsNullOrWhiteSpace(accessToken))
+            {
+                return null;
+            }
+
+            try
+            {
+                var jwt = new JwtSecurityTokenHandler().ReadJwtToken(accessToken);
+                return jwt.Claims.FirstOrDefault(c => c.Type == "client_id")?.Value
+                    ?? jwt.Claims.FirstOrDefault(c => c.Type == "azp")?.Value;
+            }
+            catch
+            {
+                return null;
+            }
+        }
+
+        private static bool IsRootDatabaseToken(string? grantType)
+        {
+            if (string.IsNullOrWhiteSpace(grantType))
+            {
+                return false;
+            }
+
+            return string.Equals(grantType, GrantTypes.Password, StringComparison.OrdinalIgnoreCase)
+                || string.Equals(grantType, GrantTypes.MfaCode, StringComparison.OrdinalIgnoreCase);
         }
 
         private static void AppendCookies(HttpResponse httpResponse, TokenResponse response)
@@ -1071,15 +1260,24 @@ namespace Authentication.DomainService.Authentication
 
         private static CookieOptions CreateCookieOptions(string? domain, DateTime expiresUtc)
         {
+            // In Development, don't set domain so cookies work with localhost
+            var cookieDomain = IsLocalhost() ? null : (string.IsNullOrWhiteSpace(domain) ? null : domain);
+            
             return new CookieOptions
             {
-                Domain = string.IsNullOrWhiteSpace(domain) ? null : domain,
+                Domain = cookieDomain,
                 HttpOnly = true,
-                Secure = true,
+                Secure = !IsLocalhost(),
                 SameSite = SameSiteMode.None,
                 Path = "/",
                 Expires = expiresUtc == default ? DateTime.UtcNow.AddHours(1) : expiresUtc
             };
+        }
+
+        private static bool IsLocalhost()
+        {
+            var hostEnv = Environment.GetEnvironmentVariable("ASPNETCORE_ENVIRONMENT") ?? "";
+            return hostEnv.Equals("Development", StringComparison.OrdinalIgnoreCase);
         }
     }
 }

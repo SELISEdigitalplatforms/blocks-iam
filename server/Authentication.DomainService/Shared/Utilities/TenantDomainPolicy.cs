@@ -37,9 +37,8 @@ namespace Authentication.DomainService.Utilities
                 return true;
             }
 
-            // Allow localhost and 127.0.0.1 for development
-            if (requestOriginHost.Equals("localhost", StringComparison.OrdinalIgnoreCase) ||
-                requestOriginHost.Equals("127.0.0.1", StringComparison.OrdinalIgnoreCase))
+            // Allow localhost origins in development
+            if (IsLocalhostOrigin(requestOriginHost))
             {
                 return true;
             }
@@ -83,16 +82,53 @@ namespace Authentication.DomainService.Utilities
             var origin = request.Headers.Origin.ToString();
             if (Uri.TryCreate(origin, UriKind.Absolute, out var originUri) && !string.IsNullOrWhiteSpace(originUri.Host))
             {
-                return originUri.Host.ToLower(CultureInfo.InvariantCulture);
+                // Return host:port format to match actual request origin
+                var host = originUri.Host.ToLower(CultureInfo.InvariantCulture);
+                if (originUri.Port != 80 && originUri.Port != 443)
+                {
+                    return $"{host}:{originUri.Port}";
+                }
+                return host;
             }
 
             var referer = request.Headers.Referer.ToString();
             if (Uri.TryCreate(referer, UriKind.Absolute, out var refererUri) && !string.IsNullOrWhiteSpace(refererUri.Host))
             {
-                return refererUri.Host.ToLower(CultureInfo.InvariantCulture);
+                var host = refererUri.Host.ToLower(CultureInfo.InvariantCulture);
+                if (refererUri.Port != 80 && refererUri.Port != 443)
+                {
+                    return $"{host}:{refererUri.Port}";
+                }
+                return host;
             }
 
             return string.Empty;
+        }
+
+        private static bool IsLocalhostOrigin(string? originHost)
+        {
+            if (string.IsNullOrWhiteSpace(originHost))
+            {
+                return false;
+            }
+
+            var trimmedHost = originHost.Trim();
+            
+            // Check for localhost with or without port
+            // Handle formats: localhost, localhost:5000, 127.0.0.1, 127.0.0.1:5000, [::1], [::1]:5000
+            if (trimmedHost.StartsWith("["))
+            {
+                // IPv6 format: [::1] or [::1]:5000
+                return trimmedHost.Contains("::1");
+            }
+
+            var host = trimmedHost.Contains(':') 
+                ? trimmedHost.Substring(0, trimmedHost.IndexOf(':')) 
+                : trimmedHost;
+
+            host = host.Trim().ToLower();
+            
+            return host == "localhost" || host == "127.0.0.1" || host == "::1";
         }
     }
 }

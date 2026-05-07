@@ -43,6 +43,7 @@ namespace Authentication.DomainService.Authentication
         private readonly ClientCredentialAuthorizationService _clientCredentialAuthorizationService;
         private readonly ITenants _tenants;
         private readonly ILogger<AuthorizationFlowService> _logger;
+        private readonly IAuthenticationService _authenticationService;
 
         public AuthorizationFlowService(
             IAuthorizationCodeRepository authCodeRepo,
@@ -57,6 +58,7 @@ namespace Authentication.DomainService.Authentication
             IAuthenticationRepository authenticationRepository,
             ClientCredentialAuthorizationService clientCredentialAuthorizationService,
             ITenants tenants,
+            IAuthenticationService authenticationService,
             ILogger<AuthorizationFlowService> logger)
         {
             _authCodeRepo = authCodeRepo;
@@ -71,6 +73,7 @@ namespace Authentication.DomainService.Authentication
             _authenticationRepository = authenticationRepository;
             _clientCredentialAuthorizationService = clientCredentialAuthorizationService;
             _tenants = tenants;
+            _authenticationService = authenticationService;
             _logger = logger;
         }
 
@@ -580,6 +583,9 @@ namespace Authentication.DomainService.Authentication
             });
         }
 
+        #region OIDC Exchange (Reusable API Block)
+
+        // Legacy form-urlencoded token endpoint path.
         private async Task<IActionResult> ExchangeAuthorizationCode(HttpRequest request)
         {
             var code = request.Form["code"].ToString();
@@ -588,9 +594,63 @@ namespace Authentication.DomainService.Authentication
             var redirect_uri = request.Form["redirect_uri"].ToString();
             var tenant_id = request.Form["tenant_id"].ToString();
 
+            return await ExchangeAuthorizationCodeCore(code, code_verifier, client_id, redirect_uri, tenant_id, request, request.HttpContext.Response);
+        }
+
+        // API-first entrypoint for other services: call this method directly from your endpoint.
+        public async Task<IActionResult> ExchangeOidcCodeAsync(string code, string codeVerifier, string clientId, string redirectUri, string? tenantId, HttpRequest httpRequest, HttpResponse httpResponse)
+        {
+            return await ExchangeAuthorizationCodeCore(code, codeVerifier, clientId, redirectUri, tenantId ?? string.Empty, httpRequest, httpResponse);
+        }
+
+        // Orchestrator: issue token set, write cookies, then return metadata-only response.
+        private async Task<IActionResult> ExchangeAuthorizationCodeCore(string code, string code_verifier, string client_id, string redirect_uri, string tenant_id, HttpRequest request, HttpResponse response)
+        {
+            var exchangeResult = await ExchangeAuthorizationCodeToTokenSetAsync(code, code_verifier, client_id, redirect_uri, tenant_id, request);
+            if (exchangeResult.ErrorResult != null)
+            {
+                return exchangeResult.ErrorResult;
+            }
+
+            // Get client registration to check token delivery mode
+            var clientRegistration = await _authenticationRepository.GetOidcClientRegistrationAsync(client_id);
+            var useTokensCookie = clientRegistration?.UseTokensCookie ?? true;
+
+            if (useTokensCookie)
+            {
+                AppendOidcExchangeCookies(response, exchangeResult);
+                return new OkObjectResult(new
+                {
+                    token_type = "Bearer",
+                    expires_in = exchangeResult.ExpiresIn,
+                    scope = exchangeResult.Scope,
+                    tenant_id = exchangeResult.EffectiveTenantId,
+                    client_id,
+                    cookie_set = true
+                });
+            }
+
+            // Return standard token response, do not set cookies
+            return new OkObjectResult(new
+            {
+                access_token = exchangeResult.AccessToken,
+                id_token = exchangeResult.IdToken,
+                refresh_token = exchangeResult.RefreshToken,
+                token_type = "Bearer",
+                expires_in = exchangeResult.ExpiresIn,
+                scope = exchangeResult.Scope,
+                tenant_id = exchangeResult.EffectiveTenantId,
+                client_id,
+                cookie_set = false
+            });
+        }
+
+        // Grouped issuance block: validate code + PKCE + client, then build access/id/refresh token set.
+        private async Task<OidcExchangeResult> ExchangeAuthorizationCodeToTokenSetAsync(string code, string code_verifier, string client_id, string redirect_uri, string tenant_id, HttpRequest request)
+        {
             if (string.IsNullOrEmpty(code) || string.IsNullOrEmpty(code_verifier) || string.IsNullOrEmpty(client_id))
             {
-                return new BadRequestObjectResult(new { error = "invalid_request", error_description = "Missing required parameters" });
+                return OidcExchangeResult.FromError(new BadRequestObjectResult(new { error = "invalid_request", error_description = "Missing required parameters" }));
             }
 
             var tenantId = !string.IsNullOrWhiteSpace(tenant_id)
@@ -601,12 +661,12 @@ namespace Authentication.DomainService.Authentication
             if (authCode == null)
             {
                 _logger.LogWarning($"Authorization code not found: {code}");
-                return new BadRequestObjectResult(new { error = "invalid_grant", error_description = "Authorization code is invalid or expired" });
+                return OidcExchangeResult.FromError(new BadRequestObjectResult(new { error = "invalid_grant", error_description = "Authorization code is invalid or expired" }));
             }
 
             if (!IsOriginAllowedForTenant(request, authCode.TenantId ?? tenantId))
             {
-                return new BadRequestObjectResult(new { error = "invalid_origin", error_description = "Request origin is not allowed for this tenant" });
+                return OidcExchangeResult.FromError(new BadRequestObjectResult(new { error = "invalid_origin", error_description = "Request origin is not allowed for this tenant" }));
             }
 
             if (!string.IsNullOrWhiteSpace(tenantId)
@@ -614,59 +674,59 @@ namespace Authentication.DomainService.Authentication
                 && !string.Equals(authCode.TenantId, tenantId, StringComparison.OrdinalIgnoreCase))
             {
                 _logger.LogWarning($"Tenant mismatch for code exchange. Presented tenant: {tenantId}, code tenant: {authCode.TenantId}");
-                return new BadRequestObjectResult(new { error = "invalid_grant", error_description = "Tenant mismatch" });
+                return OidcExchangeResult.FromError(new BadRequestObjectResult(new { error = "invalid_grant", error_description = "Tenant mismatch" }));
             }
 
             if (authCode.ExpiresAt < DateTime.UtcNow)
             {
                 _logger.LogWarning($"Authorization code expired: {code}");
-                return new BadRequestObjectResult(new { error = "invalid_grant", error_description = "Authorization code has expired" });
+                return OidcExchangeResult.FromError(new BadRequestObjectResult(new { error = "invalid_grant", error_description = "Authorization code has expired" }));
             }
 
             if (authCode.IsUsed)
             {
                 _logger.LogCritical($"REUSE ATTACK DETECTED: Code reused by IP {GetClientIpAddress(request)}, original IP {authCode.UsedByIpAddress}. Revoking token family.");
                 await RevokeUserTokens(authCode.UserId, authCode.ClientId, authCode.TenantId ?? tenantId ?? string.Empty);
-                return new BadRequestObjectResult(new { error = "invalid_grant", error_description = "Authorization code has already been used" });
+                return OidcExchangeResult.FromError(new BadRequestObjectResult(new { error = "invalid_grant", error_description = "Authorization code has already been used" }));
             }
 
-                var client = await _authenticationRepository.GetOidcClientRegistrationAsync(client_id);
+            var client = await _authenticationRepository.GetOidcClientRegistrationAsync(client_id);
             if (client == null || client.ClientId != authCode.ClientId)
             {
                 _logger.LogWarning("Client validation failed for code exchange");
-                return new BadRequestObjectResult(new { error = "invalid_client" });
+                return OidcExchangeResult.FromError(new BadRequestObjectResult(new { error = "invalid_client" }));
             }
 
             if (!await HasOidcClientConfigurationAsync(client_id))
             {
                 _logger.LogWarning($"OIDC client config missing for code exchange: {client_id}");
-                return new BadRequestObjectResult(new { error = "invalid_client", error_description = "Client configuration not found" });
+                return OidcExchangeResult.FromError(new BadRequestObjectResult(new { error = "invalid_client", error_description = "Client configuration not found" }));
             }
 
             if (authCode.RedirectUri != redirect_uri)
             {
                 _logger.LogWarning("Redirect URI mismatch for code exchange");
-                return new BadRequestObjectResult(new { error = "invalid_grant", error_description = "Redirect URI mismatch" });
+                return OidcExchangeResult.FromError(new BadRequestObjectResult(new { error = "invalid_grant", error_description = "Redirect URI mismatch" }));
             }
 
             var pkceValid = await _pkceService.ValidateVerifierAsync(authCode.CodeChallenge, code_verifier, authCode.CodeChallengeMethod);
             if (!pkceValid)
             {
                 _logger.LogWarning($"PKCE validation failed for client {client_id}");
-                return new BadRequestObjectResult(new { error = "invalid_grant", error_description = "PKCE code_verifier is invalid" });
+                return OidcExchangeResult.FromError(new BadRequestObjectResult(new { error = "invalid_grant", error_description = "PKCE code_verifier is invalid" }));
             }
 
             var markUsedSuccess = await _authCodeRepo.MarkAsUsedAsync(code, DateTime.UtcNow, GetClientIpAddress(request));
             if (!markUsedSuccess)
             {
                 _logger.LogWarning($"Failed to mark authorization code as used: {code}");
-                return new BadRequestObjectResult(new { error = "invalid_grant", error_description = "Could not process authorization code" });
+                return OidcExchangeResult.FromError(new BadRequestObjectResult(new { error = "invalid_grant", error_description = "Could not process authorization code" }));
             }
 
             var user = await _userRepository.GetUserByIdAsync(authCode.UserId);
             if (user == null)
             {
-                return new BadRequestObjectResult(new { error = "invalid_grant", error_description = "User not found" });
+                return OidcExchangeResult.FromError(new BadRequestObjectResult(new { error = "invalid_grant", error_description = "User not found" }));
             }
 
             var allowedScopes = await ResolveAllowedScopesAsync(client);
@@ -714,16 +774,87 @@ namespace Authentication.DomainService.Authentication
 
             _logger.LogInformation($"Tokens issued for user {authCode.UserId}, client {client_id}, family {refreshTokenModel.FamilyId}");
 
-            return new OkObjectResult(new TokenResponse
-            {
-                AccessToken = accessToken,
-                IdToken = idToken,
-                RefreshToken = refreshTokenModel.TokenId,
-                TokenType = "Bearer",
-                ExpiresIn = 3600,
-                Scope = authCode.Scope
-            });
+            var effectiveTenantId = authCode.TenantId ?? tenant_id ?? "default";
+            var tenantDomain = _tenants.GetTenantByID(effectiveTenantId)?.CookieDomain;
+            var cookieDomain = IsLocalhost() ? null : tenantDomain;
+            var accessExpiry = DateTime.UtcNow.AddSeconds(3600);
+            var refreshExpiry = refreshTokenModel.AbsoluteExpiry == default ? DateTime.UtcNow.AddDays(30) : refreshTokenModel.AbsoluteExpiry;
+
+            return OidcExchangeResult.FromTokens(
+                accessToken,
+                idToken,
+                refreshTokenModel.TokenId,
+                effectiveTenantId,
+                cookieDomain,
+                authCode.Scope,
+                3600,
+                accessExpiry,
+                refreshExpiry);
         }
+
+            // Applies the issued token set to secure HttpOnly cookies.
+        private static void AppendOidcExchangeCookies(HttpResponse response, OidcExchangeResult exchangeResult)
+        {
+            var cookieDomain = exchangeResult.CookieDomain;
+            var isSecure = !IsLocalhost();
+
+            // Access token + ID token share the same expiry, and must rotate together.
+            var sameSiteMode = isSecure ? SameSiteMode.None : SameSiteMode.Lax;
+            var accessOptions = new CookieOptions { Domain = string.IsNullOrWhiteSpace(cookieDomain) ? null : cookieDomain, HttpOnly = true, Secure = isSecure, SameSite = sameSiteMode, Path = "/", Expires = exchangeResult.AccessExpiry };
+            var idOptions = new CookieOptions { Domain = string.IsNullOrWhiteSpace(cookieDomain) ? null : cookieDomain, HttpOnly = true, Secure = isSecure, SameSite = sameSiteMode, Path = "/", Expires = exchangeResult.AccessExpiry };
+            var refreshOptions = new CookieOptions { Domain = string.IsNullOrWhiteSpace(cookieDomain) ? null : cookieDomain, HttpOnly = true, Secure = isSecure, SameSite = sameSiteMode, Path = "/", Expires = exchangeResult.RefreshExpiry };
+
+            response.Cookies.Append($"{IdpConstants.AccessTokenCookieName}_{exchangeResult.EffectiveTenantId}", exchangeResult.AccessToken, accessOptions);
+            response.Cookies.Append($"{IdpConstants.IdTokenCookieName}_{exchangeResult.EffectiveTenantId}", exchangeResult.IdToken, idOptions);
+            response.Cookies.Append($"{IdpConstants.RefreshTokenCookieName}_{exchangeResult.EffectiveTenantId}", exchangeResult.RefreshToken, refreshOptions);
+        }
+
+        // Internal transport model for exchange outcome: either error result or issued token set.
+        private sealed class OidcExchangeResult
+        {
+            public IActionResult? ErrorResult { get; private set; }
+            public string AccessToken { get; private set; } = string.Empty;
+            public string IdToken { get; private set; } = string.Empty;
+            public string RefreshToken { get; private set; } = string.Empty;
+            public string EffectiveTenantId { get; private set; } = string.Empty;
+            public string? CookieDomain { get; private set; }
+            public string Scope { get; private set; } = string.Empty;
+            public int ExpiresIn { get; private set; }
+            public DateTime AccessExpiry { get; private set; }
+            public DateTime RefreshExpiry { get; private set; }
+
+            public static OidcExchangeResult FromError(IActionResult errorResult)
+            {
+                return new OidcExchangeResult { ErrorResult = errorResult };
+            }
+
+            public static OidcExchangeResult FromTokens(
+                string accessToken,
+                string idToken,
+                string refreshToken,
+                string effectiveTenantId,
+                string? cookieDomain,
+                string scope,
+                int expiresIn,
+                DateTime accessExpiry,
+                DateTime refreshExpiry)
+            {
+                return new OidcExchangeResult
+                {
+                    AccessToken = accessToken,
+                    IdToken = idToken,
+                    RefreshToken = refreshToken,
+                    EffectiveTenantId = effectiveTenantId,
+                    CookieDomain = cookieDomain,
+                    Scope = scope,
+                    ExpiresIn = expiresIn,
+                    AccessExpiry = accessExpiry,
+                    RefreshExpiry = refreshExpiry
+                };
+            }
+        }
+
+        #endregion
 
         private async Task<IActionResult> RotateRefreshToken(HttpRequest request)
         {
@@ -1160,13 +1291,15 @@ namespace Authentication.DomainService.Authentication
 
         private void SetIdpSessionCookie(HttpResponse response, string tenantId, string sessionId, DateTime absoluteExpiry)
         {
-            var cookieDomain = _tenants.GetTenantByID(tenantId)?.CookieDomain;
+            var tenantDomain = _tenants.GetTenantByID(tenantId)?.CookieDomain;
+            var cookieDomain = IsLocalhost() ? null : tenantDomain;
+            var isSecure = !IsLocalhost();
             response.Cookies.Append(IdpSessionCookieName, sessionId, new CookieOptions
             {
                 Domain = string.IsNullOrWhiteSpace(cookieDomain) ? null : cookieDomain,
                 HttpOnly = true,
-                Secure = true,
-                SameSite = SameSiteMode.None,
+                Secure = isSecure,
+                SameSite = isSecure ? SameSiteMode.None : SameSiteMode.Lax,
                 Path = "/",
                 Expires = absoluteExpiry == default ? DateTime.UtcNow.Add(GetIdpSessionAbsoluteTimeout()) : absoluteExpiry
             });
@@ -1241,6 +1374,11 @@ namespace Authentication.DomainService.Authentication
             {
                 _logger.LogWarning(ex, "Failed to persist last used organization for user {UserId}", user.ItemId);
             }
+        }
+
+        private static bool IsLocalhost()
+        {
+            return string.Equals(Environment.GetEnvironmentVariable("ASPNETCORE_ENVIRONMENT"), "Development", StringComparison.OrdinalIgnoreCase);
         }
 
         private static string GetClientIpAddress(HttpRequest request)

@@ -21,6 +21,7 @@ import { OidcSocialSignin } from "./oidc-social-signin";
 import { Skeleton } from "@/components/ui-kits/skeleton/skeleton";
 import { GRANT_TYPES } from "@blocks-idp/authentication/constants/authentication.constant";
 import { useAuthStore } from "@/store/useAuthStore";
+import sha256 from 'js-sha256';
 
 const base64UrlEncode = (bytes: Uint8Array) => {
   const binary = String.fromCharCode(...bytes);
@@ -30,8 +31,9 @@ const base64UrlEncode = (bytes: Uint8Array) => {
 const generatePkcePair = async () => {
   const verifierBytes = crypto.getRandomValues(new Uint8Array(32));
   const verifier = base64UrlEncode(verifierBytes);
-  const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(verifier));
-  const challenge = base64UrlEncode(new Uint8Array(digest));
+  const digestHex = sha256(verifier);
+  const digestBytes = new Uint8Array(digestHex.match(/.{1,2}/g)!.map(byte => parseInt(byte, 16)));
+  const challenge = base64UrlEncode(digestBytes);
 
   return { verifier, challenge };
 };
@@ -141,9 +143,8 @@ export const OidcLoginForm = ({
         tenant_id: finalTenantId || '',
       };
 
-      // Use fetch with redirect: 'follow' to automatically follow the 302 redirect
-      // This will go to /oidc with the authorization code, where the OidcIndexPage 
-      // component will handle the token exchange
+      // Use fetch with redirect: 'manual' to handle redirects explicitly
+      // The backend will redirect to the redirect_uri with the authorization code
       const response = await fetch(AUTH_ENDPOINTS.OIDC_LOGIN, {
         method: 'POST',
         headers: {
@@ -152,8 +153,18 @@ export const OidcLoginForm = ({
           'X-Blocks-Key': finalTenantId || '',
         },
         body: JSON.stringify(payload),
-        redirect: 'follow', // Follow redirects automatically
+        redirect: 'manual', // Handle redirects manually to deal with cross-origin redirects
       });
+
+      // Handle 3xx redirects (302, 303, etc.)
+      if (response.status >= 300 && response.status < 400) {
+        const location = response.headers.get('Location');
+        if (location) {
+          // Use window.location to navigate - this bypasses CORS and lets the browser handle the redirect
+          window.location.href = location;
+          return;
+        }
+      }
 
       // If the response is OK, the /oidc page should have loaded with the code parameter
       // and the OidcIndexPage component will handle token exchange
