@@ -509,13 +509,12 @@
             Requires authentication and admin privileges
             </summary>
         </member>
-        <member name="M:Api.Controllers.OidcClientsController.GetAll(System.String)">
+        <member name="M:Api.Controllers.OidcClientsController.GetAll">
             <summary>
             Retrieve all OIDC clients for the tenant
             Returns list of registered OAuth 2.0 / OIDC client applications
             Sensitive fields (client_secret) are excluded from response
             </summary>
-            <param name="projectKey">Optional filter by project key</param>
             <returns>List of OIDC clients with configuration metadata</returns>
             <response code="200">Successfully retrieved clients list</response>
             <response code="400">Invalid request parameters</response>
@@ -704,22 +703,16 @@
             Implements RFC 7009 (Token Revocation) and RFC 7662 (Token Introspection)
             </summary>
         </member>
-        <member name="M:Blocks.Api.Controllers.TokenManagementController.RevokeToken(System.String,System.String,System.String)">
+        <member name="M:Blocks.Api.Controllers.TokenManagementController.RevokeToken(System.String,System.String,System.String,System.String)">
             <summary>
             RFC 7009: Token Revocation Endpoint
             Allows clients and resource owners to revoke access and refresh tokens
             </summary>
         </member>
-        <member name="M:Blocks.Api.Controllers.TokenManagementController.IntrospectToken(System.String,System.String,System.String)">
+        <member name="M:Blocks.Api.Controllers.TokenManagementController.IntrospectToken(System.String,System.String,System.String,System.String)">
             <summary>
             RFC 7662: Token Introspection Endpoint
             Allows authorized clients to introspect tokens and get claims/metadata
-            </summary>
-        </member>
-        <member name="M:Blocks.Api.Controllers.TokenManagementController.RevokeAllUserTokens">
-            <summary>
-            Revoke all tokens for authenticated user (logout endpoint)
-            Closes all sessions across all devices
             </summary>
         </member>
         <member name="M:Blocks.Api.Controllers.TokenManagementController.GetRevocationHistory">

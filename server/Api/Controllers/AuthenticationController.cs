@@ -149,6 +149,7 @@ public class AuthenticationController : ControllerBase
         {
             code = request.Code;
             state = request.State;
+            provider ??= request.Provider;
         }
 
         if (string.IsNullOrWhiteSpace(code))
@@ -469,47 +470,17 @@ public class AuthenticationController : ControllerBase
         {
             // OIDC FLOW: Issue authorization code and redirect to original redirect_uri
             // Frontend will receive code and exchange for token
-            var redirectUrl = $"{result.RedirectUri}?code={Uri.EscapeDataString(result.AuthorizationCode)}&state={Uri.EscapeDataString(result.OriginalState)}";
+            var separator = result.RedirectUri.Contains('?') ? "&" : "?";
+            var redirectUrl = $"{result.RedirectUri}{separator}code={Uri.EscapeDataString(result.AuthorizationCode)}&state={Uri.EscapeDataString(result.OriginalState ?? string.Empty)}";
             return Redirect(redirectUrl);
         }
         else
         {
-            // EMBEDDED FLOW: Set secure HTTP-only cookie with access token
-            var cookieOptions = new CookieOptions
-            {
-                HttpOnly = true,
-                Secure = !IsLocalDevelopment(),  // Secure only in production
-                SameSite = SameSiteMode.Lax,
-                Expires = DateTime.UtcNow.AddHours(1),
-                Path = "/"
-            };
-
-            Response.Cookies.Append("oidc_token", result.AccessToken, cookieOptions);
-
-            // Optional: Set refresh token in separate cookie if available
-            if (!string.IsNullOrWhiteSpace(result.RefreshToken))
-            {
-                var refreshCookieOptions = new CookieOptions
-                {
-                    HttpOnly = true,
-                    Secure = !IsLocalDevelopment(),
-                    SameSite = SameSiteMode.Lax,
-                    Expires = DateTime.UtcNow.AddDays(7),
-                    Path = "/"
-                };
-                Response.Cookies.Append("oidc_refresh_token", result.RefreshToken, refreshCookieOptions);
-            }
+            // EMBEDDED FLOW: Use the same tenant-scoped cookie naming and security policy as login/refresh/logout.
+            _authenticationService.AppendSessionCookies(HttpContext, result.AccessToken, result.RefreshToken);
 
             // Redirect to dashboard
             return Redirect("/dashboard");
         }
-    }
-
-    private bool IsLocalDevelopment()
-    {
-        var isDevelopment = Environment.GetEnvironmentVariable("ASPNETCORE_ENVIRONMENT") == "Development";
-        var isLocalhost = HttpContext.Request.Host.Host == "localhost" || 
-                         HttpContext.Request.Host.Host == "127.0.0.1";
-        return isDevelopment && isLocalhost;
     }
 }

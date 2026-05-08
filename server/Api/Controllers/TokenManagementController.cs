@@ -6,6 +6,7 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using System;
 using System.Linq;
+using System.Text;
 using System.Threading.Tasks;
 
 namespace Blocks.Api.Controllers
@@ -19,15 +20,18 @@ namespace Blocks.Api.Controllers
     public class TokenManagementController : ControllerBase
     {
         private readonly ITokenRevocationService _revocationService;
+        private readonly IAuthenticationRepository _authenticationRepository;
         private readonly IAuthenticationDomainService _authenticationDomainService;
         private readonly ILogger<TokenManagementController> _logger;
 
         public TokenManagementController(
             ITokenRevocationService revocationService,
+            IAuthenticationRepository authenticationRepository,
             IAuthenticationDomainService authenticationDomainService,
             ILogger<TokenManagementController> logger)
         {
             _revocationService = revocationService;
+            _authenticationRepository = authenticationRepository;
             _authenticationDomainService = authenticationDomainService;
             _logger = logger;
         }
@@ -37,12 +41,13 @@ namespace Blocks.Api.Controllers
         /// Allows clients and resource owners to revoke access and refresh tokens
         /// </summary>
         [HttpPost("revoke")]
-        [Authorize]
+        [AllowAnonymous]
         [Consumes("application/x-www-form-urlencoded")]
         public async Task<IActionResult> RevokeToken(
             [FromForm] string token,
-            [FromForm] string token_type_hint,
-            [FromForm] string client_id)
+            [FromForm] string? token_type_hint,
+            [FromForm] string? client_id,
+            [FromForm] string? client_secret)
         {
             try
             {
@@ -51,7 +56,13 @@ namespace Blocks.Api.Controllers
                     return BadRequest(new { error = "invalid_request", error_description = "token parameter is required" });
                 }
 
-                var result = await _revocationService.RevokeTokenAsync(token, token_type_hint, client_id);
+                var authenticatedClientId = await AuthenticateClientAsync(client_id, client_secret);
+                if (string.IsNullOrWhiteSpace(authenticatedClientId))
+                {
+                    return Unauthorized(new { error = "invalid_client", error_description = "Client authentication failed" });
+                }
+
+                var result = await _revocationService.RevokeTokenAsync(token, token_type_hint ?? string.Empty, authenticatedClientId);
 
                 if (!result.Success)
                 {
@@ -74,7 +85,7 @@ namespace Blocks.Api.Controllers
                     "call_api_to_oidc_revoke",
                     "success",
                     null,
-                    client_id,
+                    authenticatedClientId,
                     token_type_hint);
 
                 // RFC 7009: Always return 200 OK on revocation request
@@ -93,12 +104,13 @@ namespace Blocks.Api.Controllers
         /// Allows authorized clients to introspect tokens and get claims/metadata
         /// </summary>
         [HttpPost("introspect")]
-        [Authorize]
+        [AllowAnonymous]
         [Consumes("application/x-www-form-urlencoded")]
         public async Task<IActionResult> IntrospectToken(
             [FromForm] string token,
-            [FromForm] string token_type_hint,
-            [FromForm] string client_id)
+            [FromForm] string? token_type_hint,
+            [FromForm] string? client_id,
+            [FromForm] string? client_secret)
         {
             try
             {
@@ -107,18 +119,24 @@ namespace Blocks.Api.Controllers
                     return BadRequest(new { error = "invalid_request", error_description = "token parameter is required" });
                 }
 
-                var result = await _revocationService.IntrospectTokenAsync(token, token_type_hint, client_id);
+                var authenticatedClientId = await AuthenticateClientAsync(client_id, client_secret);
+                if (string.IsNullOrWhiteSpace(authenticatedClientId))
+                {
+                    return Unauthorized(new { error = "invalid_client", error_description = "Client authentication failed" });
+                }
 
-                _logger.LogInformation($"Token introspection: active={result.Active}, client={client_id}");
+                var result = await _revocationService.IntrospectTokenAsync(token, token_type_hint ?? string.Empty, authenticatedClientId);
 
-                var actorId = User.FindFirst("sub")?.Value ?? client_id;
+                _logger.LogInformation($"Token introspection: active={result.Active}, client={authenticatedClientId}");
+
+                var actorId = User.FindFirst("sub")?.Value ?? authenticatedClientId;
                 await PublishTimelineAsync(
                     actorId,
                     result.Active ? "oidc_introspect_active_token" : "oidc_introspect_inactive_token",
                     "call_api_to_oidc_introspect",
                     result.Active ? "success" : "failed",
                     result.Active ? null : "inactive_or_unauthorized",
-                    client_id,
+                    authenticatedClientId,
                     token_type_hint);
 
                 // RFC 7662: Return token metadata
@@ -145,42 +163,58 @@ namespace Blocks.Api.Controllers
             }
         }
 
-        /// <summary>
-        /// Revoke all tokens for authenticated user (logout endpoint)
-        /// Closes all sessions across all devices
-        /// </summary>
-        [HttpPost("logout-all")]
-        [Authorize]
-        public async Task<IActionResult> RevokeAllUserTokens()
+        private async Task<string?> AuthenticateClientAsync(string? clientIdFromForm, string? clientSecretFromForm)
         {
-            try
+            string? basicClientId = null;
+            string? basicClientSecret = null;
+
+            var authHeader = Request.Headers.Authorization.ToString();
+            if (!string.IsNullOrWhiteSpace(authHeader) && authHeader.StartsWith("Basic ", StringComparison.OrdinalIgnoreCase))
             {
-                var userId = User.FindFirst("sub")?.Value;
-                var tenantId = User.FindFirst("tenant_id")?.Value;
-
-                if (string.IsNullOrWhiteSpace(userId))
+                var encoded = authHeader.Substring("Basic ".Length).Trim();
+                try
                 {
-                    return Unauthorized(new { error = "invalid_request", error_description = "User not authenticated" });
+                    var decoded = Encoding.UTF8.GetString(Convert.FromBase64String(encoded));
+                    var separatorIndex = decoded.IndexOf(':');
+                    if (separatorIndex > 0)
+                    {
+                        basicClientId = decoded.Substring(0, separatorIndex);
+                        basicClientSecret = decoded[(separatorIndex + 1)..];
+                    }
                 }
-
-                var success = await _revocationService.RevokeAllUserTokensAsync(userId, tenantId ?? string.Empty, "logout_all");
-
-                if (!success)
+                catch
                 {
-                    return StatusCode(500, new { error = "server_error", error_description = "Failed to revoke tokens" });
+                    return null;
                 }
-
-                _logger.LogInformation($"All tokens revoked for user {userId}");
-
-                await PublishTimelineAsync(userId, "oidc_revoke_access_by_logout_all", "call_api_to_oidc_logout_all", "success", null, null, "refresh_token");
-
-                return Ok(new { message = "All tokens revoked successfully" });
             }
-            catch (Exception ex)
+
+            var resolvedClientId = basicClientId ?? clientIdFromForm;
+            var resolvedClientSecret = basicClientSecret ?? clientSecretFromForm;
+
+            if (string.IsNullOrWhiteSpace(resolvedClientId) || string.IsNullOrWhiteSpace(resolvedClientSecret))
             {
-                _logger.LogError(ex, "Error revoking all user tokens");
-                return StatusCode(500, new { error = "server_error" });
+                return null;
             }
+
+            if (!string.IsNullOrWhiteSpace(basicClientId)
+                && !string.IsNullOrWhiteSpace(clientIdFromForm)
+                && !string.Equals(basicClientId, clientIdFromForm, StringComparison.Ordinal))
+            {
+                return null;
+            }
+
+            var registration = await _authenticationRepository.GetOidcClientRegistrationAsync(resolvedClientId);
+            if (registration == null || !registration.IsActive || string.IsNullOrWhiteSpace(registration.ClientSecret))
+            {
+                return null;
+            }
+
+            if (!string.Equals(registration.ClientSecret, resolvedClientSecret, StringComparison.Ordinal))
+            {
+                return null;
+            }
+
+            return resolvedClientId;
         }
 
         /// <summary>
