@@ -1,5 +1,7 @@
 using Idp.DomainService.Oidc.Contracts;
 using Authentication.DomainService.Oidc.Repositories;
+using Authentication.DomainService.Services;
+using Blocks.Genesis;
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -23,6 +25,7 @@ namespace Authentication.DomainService.Oidc.Services
         Task<bool> RemoveAccountAsync(string sessionId, string userId, string? tenantId = null);
         Task<IEnumerable<IdpSessionAccount>> GetAccountsAsync(string sessionId);
         Task<bool> UpdateActivityAsync(string sessionId);
+        Task<string?> RotateSessionAsync(string sessionId, string reason);
         Task<bool> RevokeSessionAsync(string sessionId, string reason);
         Task<bool> IsSessionActiveAsync(string sessionId);
         Task<IEnumerable<IdpSessionModel>> GetUserSessionsAsync(string userId, string tenantId);
@@ -32,15 +35,24 @@ namespace Authentication.DomainService.Oidc.Services
     {
         private readonly IIdpSessionRepository _sessionRepo;
         private readonly IAuditLogRepository _auditLogRepo;
+        private readonly IAuthenticationRepository _authenticationRepository;
+        private readonly IRefreshTokenRepository _refreshTokenRepo;
+        private readonly ICacheClient _cacheClient;
         private readonly ILogger<IdpSessionService> _logger;
 
         public IdpSessionService(
             IIdpSessionRepository sessionRepo,
             IAuditLogRepository auditLogRepo,
+            IAuthenticationRepository authenticationRepository,
+            IRefreshTokenRepository refreshTokenRepo,
+            ICacheClient cacheClient,
             ILogger<IdpSessionService> logger)
         {
             _sessionRepo = sessionRepo;
             _auditLogRepo = auditLogRepo;
+            _authenticationRepository = authenticationRepository;
+            _refreshTokenRepo = refreshTokenRepo;
+            _cacheClient = cacheClient;
             _logger = logger;
         }
 
@@ -278,6 +290,48 @@ namespace Authentication.DomainService.Oidc.Services
         }
 
         /// <summary>
+        /// Rotate session ID while preserving accounts and expiration windows.
+        /// </summary>
+        public async Task<string?> RotateSessionAsync(string sessionId, string reason)
+        {
+            try
+            {
+                var session = await _sessionRepo.GetBySessionIdAsync(sessionId);
+                if (session == null || session.RevokedAt.HasValue || session.IsExpired())
+                {
+                    return null;
+                }
+
+                var rotated = new IdpSessionModel
+                {
+                    SessionId = GenerateSessionId(),
+                    TenantId = session.TenantId,
+                    Accounts = session.Accounts,
+                    IpAddress = session.IpAddress,
+                    CreatedAt = session.CreatedAt,
+                    LastActivityAt = DateTime.UtcNow,
+                    IdleExpiry = DateTime.UtcNow.Add(GetIdpSessionIdleTimeout()),
+                    AbsoluteExpiry = session.AbsoluteExpiry
+                };
+
+                await _sessionRepo.CreateAsync(rotated);
+                await _sessionRepo.DeleteAsync(sessionId);
+
+                foreach (var account in rotated.Accounts)
+                {
+                    await LogSessionEvent("session_rotated", account.UserId, rotated.SessionId, reason);
+                }
+
+                return rotated.SessionId;
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, $"Error rotating session: {sessionId}");
+                throw;
+            }
+        }
+
+        /// <summary>
         /// Revoke session (logout from all accounts)
         /// </summary>
         public async Task<bool> RevokeSessionAsync(string sessionId, string reason)
@@ -290,11 +344,35 @@ namespace Authentication.DomainService.Oidc.Services
                     return false;
                 }
 
+                // Revoke tokens associated with this session before deleting it.
+                var activeSessions = await _authenticationRepository.GetActiveSessionBySessionIdAsync(sessionId);
+                var refreshTokens = activeSessions
+                    .Select(s => s.RefreshToken)
+                    .Where(token => !string.IsNullOrWhiteSpace(token))
+                    .Distinct(StringComparer.Ordinal)
+                    .ToList();
+
+                foreach (var refreshToken in refreshTokens)
+                {
+                    await _cacheClient.RemoveKeyAsync(refreshToken);
+
+                    var tokenModel = await _refreshTokenRepo.GetByTokenIdAsync(refreshToken);
+                    if (tokenModel != null && !string.IsNullOrWhiteSpace(tokenModel.FamilyId))
+                    {
+                        await _refreshTokenRepo.RevokeByFamilyIdAsync(tokenModel.FamilyId, $"session_revoked:{reason}");
+                    }
+                }
+
+                if (refreshTokens.Count > 0)
+                {
+                    await _authenticationRepository.UpdateSessionStatusForAllRefreshTokenAsync(refreshTokens);
+                }
+
                 var success = await _sessionRepo.DeleteAsync(sessionId);
                 if (success)
                 {
                     _logger.LogInformation($"Session revoked: {sessionId}, reason: {reason}");
-                    
+
                     // Log for each account in session
                     foreach (var account in session.Accounts)
                     {

@@ -87,7 +87,7 @@ namespace Blocks.Api.Controllers
         }
 
         [HttpPost("account/select")]
-        [AllowAnonymous]
+        [Authorize]
         public async Task<IActionResult> SelectAccount([FromBody] SelectAccountSelectionRequest? request)
         {
             return await _authorizationFlowService.SelectAccountAsync(request?.UserId ?? string.Empty, request?.TenantId, Request, Response);

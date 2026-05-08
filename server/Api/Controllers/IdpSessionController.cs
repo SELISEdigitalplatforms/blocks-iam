@@ -156,6 +156,11 @@ namespace Blocks.Api.Controllers
                     return BadRequest(new { error = "invalid_request", error_description = "UserId and TenantId required" });
                 }
 
+                if (!IsSessionMutationRequestTrusted())
+                {
+                    return StatusCode(403, new { error = "csrf_validation_failed" });
+                }
+
                 var sessionId = GetSessionIdFromToken();
                 if (string.IsNullOrEmpty(sessionId))
                 {
@@ -174,6 +179,8 @@ namespace Blocks.Api.Controllers
                 }
 
                 await _sessionService.UpdateActivityAsync(sessionId);
+                var rotatedSessionId = await _sessionService.RotateSessionAsync(sessionId, "account_add") ?? sessionId;
+                Response.Cookies.Append(IdpSessionCookieName, rotatedSessionId, CreateSessionCookieOptions());
                 return Ok(new AddAccountResponse { Success = true });
             }
             catch (Exception ex)
@@ -202,6 +209,11 @@ namespace Blocks.Api.Controllers
                     return BadRequest(new { error = "invalid_request", error_description = "UserId required" });
                 }
 
+                if (!IsSessionMutationRequestTrusted())
+                {
+                    return StatusCode(403, new { error = "csrf_validation_failed" });
+                }
+
                 var sessionId = GetSessionIdFromToken();
                 if (string.IsNullOrEmpty(sessionId))
                 {
@@ -215,6 +227,8 @@ namespace Blocks.Api.Controllers
                 }
 
                 await _sessionService.UpdateActivityAsync(sessionId);
+                var rotatedSessionId = await _sessionService.RotateSessionAsync(sessionId, "account_select") ?? sessionId;
+                Response.Cookies.Append(IdpSessionCookieName, rotatedSessionId, CreateSessionCookieOptions());
                 return Ok(new SelectAccountResponse { Success = true, UserId = request.UserId });
             }
             catch (Exception ex)
@@ -242,6 +256,11 @@ namespace Blocks.Api.Controllers
                     return BadRequest(new { error = "invalid_request", error_description = "UserId required" });
                 }
 
+                if (!IsSessionMutationRequestTrusted())
+                {
+                    return StatusCode(403, new { error = "csrf_validation_failed" });
+                }
+
                 var sessionId = GetSessionIdFromToken();
                 if (string.IsNullOrEmpty(sessionId))
                 {
@@ -255,6 +274,8 @@ namespace Blocks.Api.Controllers
                 }
 
                 await _sessionService.UpdateActivityAsync(sessionId);
+                var rotatedSessionId = await _sessionService.RotateSessionAsync(sessionId, "account_remove") ?? sessionId;
+                Response.Cookies.Append(IdpSessionCookieName, rotatedSessionId, CreateSessionCookieOptions());
                 return Ok(new { success = true });
             }
             catch (Exception ex)
@@ -277,6 +298,11 @@ namespace Blocks.Api.Controllers
         {
             try
             {
+                if (!IsSessionMutationRequestTrusted())
+                {
+                    return StatusCode(403, new { error = "csrf_validation_failed" });
+                }
+
                 var sessionId = GetSessionIdFromToken();
                 if (string.IsNullOrEmpty(sessionId))
                 {
@@ -291,6 +317,7 @@ namespace Blocks.Api.Controllers
                     return BadRequest(new { error = "failed_to_revoke_session" });
                 }
 
+                Response.Cookies.Delete(IdpSessionCookieName);
                 return Ok(new { success = true });
             }
             catch (Exception ex)
@@ -308,6 +335,49 @@ namespace Blocks.Api.Controllers
             return string.IsNullOrWhiteSpace(sessionIdClaim)
                 ? Request.Cookies[IdpSessionCookieName]
                 : sessionIdClaim;
+        }
+
+        private bool IsSessionMutationRequestTrusted()
+        {
+            // Bearer-authorized API calls are not subject to browser CSRF mechanics.
+            if (Request.Headers.TryGetValue("Authorization", out var authorization)
+                && authorization.ToString().StartsWith("Bearer ", StringComparison.OrdinalIgnoreCase))
+            {
+                return true;
+            }
+
+            var origin = Request.Headers.Origin.ToString();
+            if (!string.IsNullOrWhiteSpace(origin)
+                && Uri.TryCreate(origin, UriKind.Absolute, out var originUri)
+                && string.Equals(originUri.Host, Request.Host.Host, StringComparison.OrdinalIgnoreCase)
+                && originUri.Scheme == Request.Scheme)
+            {
+                return true;
+            }
+
+            var referer = Request.Headers.Referer.ToString();
+            if (!string.IsNullOrWhiteSpace(referer)
+                && Uri.TryCreate(referer, UriKind.Absolute, out var refererUri)
+                && string.Equals(refererUri.Host, Request.Host.Host, StringComparison.OrdinalIgnoreCase)
+                && refererUri.Scheme == Request.Scheme)
+            {
+                return true;
+            }
+
+            return false;
+        }
+
+        private CookieOptions CreateSessionCookieOptions()
+        {
+            var isLocal = string.Equals(Environment.GetEnvironmentVariable("ASPNETCORE_ENVIRONMENT"), "Development", StringComparison.OrdinalIgnoreCase);
+            return new CookieOptions
+            {
+                HttpOnly = true,
+                Secure = !isLocal,
+                SameSite = isLocal ? SameSiteMode.None : SameSiteMode.Strict,
+                Path = "/",
+                Expires = DateTime.UtcNow.AddDays(30)
+            };
         }
     }
 
