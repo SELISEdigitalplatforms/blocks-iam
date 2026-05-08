@@ -17,7 +17,7 @@ import { isErrorWithErrors } from "@/lib/error";
 import { OidcAccountSelector, OidcAccountInfo } from "./oidc-account-selector";
 import { getCurrentOIDCParams, buildOIDCNavigationUrl } from "@blocks-idp/authentication/utils/oidc-utils";
 import { useGetLoginOptions } from "@blocks-idp/authentication/hooks/use-auth";
-import { OidcSocialSignin } from "./oidc-social-signin";
+import { SsoSignin } from "@blocks-idp/authentication/pages/login/sso-signin";
 import { Skeleton } from "@/components/ui-kits/skeleton/skeleton";
 import { GRANT_TYPES } from "@blocks-idp/authentication/constants/authentication.constant";
 import { useAuthStore } from "@/store/useAuthStore";
@@ -358,7 +358,22 @@ export const OidcLoginForm = ({
         </div>
       )}
 
-      {showSocialLogin && <OidcSocialSignin clientId={clientId} loginOption={loginOption} />}
+      {showSocialLogin && (
+        <SsoSignin
+          loginOption={loginOption}
+          mode="oidc"
+          oidcContext={{
+            clientId,
+            redirectUri,
+            scope,
+            state,
+            nonce,
+            code_challenge: activeCodeChallenge,
+            code_challenge_method: activeCodeChallengeMethod,
+            tenantId,
+          }}
+        />
+      )}
 
       <div className="mt-3 flex items-center justify-center">
         <div className="flex items-center text-medium-emphasis">

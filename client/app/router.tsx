@@ -18,11 +18,10 @@ import { OidcActivation } from "./idp/authentication/pages/oidc/oidc-activation"
 
 // Dashboard routes (protected)
 import AuthenticationConfigPage from "./routes/dashboard/authentication-config";
-import OidcLogin from "./routes/auth/oidc-login";
 
 export const router = createBrowserRouter([
-  // ── Simple login (no guards, no API calls) ──
-  { path: "/login", element: <OidcLogin /> },
+  // ── Simple login redirect to OIDC login ──
+  { path: "/login", element: <Navigate to="/oidc/login" replace /> },
 
 
 

@@ -44,6 +44,7 @@ namespace Authentication.DomainService.Authentication
         private readonly ITenants _tenants;
         private readonly ILogger<AuthorizationFlowService> _logger;
         private readonly IAuthenticationService _authenticationService;
+        private readonly ICacheClient _cacheClient;
 
         public AuthorizationFlowService(
             IAuthorizationCodeRepository authCodeRepo,
@@ -59,6 +60,7 @@ namespace Authentication.DomainService.Authentication
             ClientCredentialAuthorizationService clientCredentialAuthorizationService,
             ITenants tenants,
             IAuthenticationService authenticationService,
+            ICacheClient cacheClient,
             ILogger<AuthorizationFlowService> logger)
         {
             _authCodeRepo = authCodeRepo;
@@ -74,11 +76,41 @@ namespace Authentication.DomainService.Authentication
             _clientCredentialAuthorizationService = clientCredentialAuthorizationService;
             _tenants = tenants;
             _authenticationService = authenticationService;
+            _cacheClient = cacheClient;
             _logger = logger;
         }
 
         public async Task<IActionResult> ExecuteOidcLoginAsync(OidcLoginRequest request, HttpRequest httpRequest, HttpResponse httpResponse)
         {
+            // If provider is specified, initiate social authentication flow
+            if (!string.IsNullOrWhiteSpace(request.Provider))
+            {
+                // Generate OIDC state to track this authentication flow through social provider
+                var oidcState = Guid.NewGuid().ToString("n");
+
+                // Store OIDC context in cache for the entire flow
+                // Key: oidc_context:{oidcState}
+                // Value: { clientId, state, redirectUri, ... } - the original OIDC request parameters
+                var contextKey = $"oidc_context:{oidcState}";
+                var contextValue = System.Text.Json.JsonSerializer.Serialize(new
+                {
+                    clientId = request.ClientId,
+                    state = request.State,
+                    redirectUri = request.RedirectUri,
+                    scope = request.Scope,
+                    nonce = request.Nonce,
+                    codeChallenge = request.CodeChallenge,
+                    codeChallengeMethod = request.CodeChallengeMethod,
+                    tenantId = request.TenantId,
+                    createdAt = DateTime.UtcNow
+                });
+                await _cacheClient.AddStringValueAsync(contextKey, contextValue, 600); // 10 minute TTL
+
+                // Get social authorization URL
+                return await _authenticationService.GetOidcSocialAuthorizationUrlAsync(request.Provider, oidcState);
+            }
+
+            // Standard password-based OIDC login flow
             if (string.IsNullOrWhiteSpace(request.Username) || string.IsNullOrWhiteSpace(request.Password))
                 return new BadRequestObjectResult(new { error = "invalid_request", error_description = "username and password are required" });
 
@@ -331,7 +363,7 @@ namespace Authentication.DomainService.Authentication
                         return new BadRequestObjectResult(new { error = "invalid_client" });
                     }
 
-                if (!client.RedirectUris.Contains(redirect_uri))
+                    if (!client.RedirectUris.Contains(redirect_uri))
                 {
                     _logger.LogWarning($"Invalid redirect_uri for {client_id}: {redirect_uri}");
                     return new BadRequestObjectResult(new { error = "invalid_request", error_description = "Invalid redirect_uri" });

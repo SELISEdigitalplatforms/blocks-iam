@@ -8,6 +8,16 @@ import { useSsoActivation } from "@blocks-idp/authentication/hooks/use-sso-activ
 type SsoSigninProps = {
   loginOption: LoginOption;
   mode?: "default" | "oidc";
+  oidcContext?: {
+    clientId?: string;
+    redirectUri?: string;
+    scope?: string;
+    state?: string;
+    nonce?: string;
+    code_challenge?: string;
+    code_challenge_method?: string;
+    tenantId?: string;
+  };
 };
 
 // Static map so Tailwind's JIT scanner can detect all class names at build
@@ -21,7 +31,7 @@ const GRID_COLS_MAP: Record<number, string> = {
   6: "grid-cols-3",
 };
 
-export const SsoSignin = ({ loginOption, mode = "default" }: SsoSigninProps) => {
+export const SsoSignin = ({ loginOption, mode = "default", oidcContext }: SsoSigninProps) => {
   const { isPending } = useSsoActivation();
 
   const providers = Object.values(SOCIAL_AUTH_PROVIDERS_CONFIG)
@@ -50,6 +60,7 @@ export const SsoSignin = ({ loginOption, mode = "default" }: SsoSigninProps) => 
             key={item.provider}
             withLabel={providers.length < 3}
             mode={mode}
+            oidcContext={oidcContext}
           />
         ))}
       </div>
