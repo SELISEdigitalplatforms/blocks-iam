@@ -2,6 +2,7 @@ import { createBrowserRouter, Navigate } from "react-router-dom";
 
 import { OidcLayout } from "./layouts/oidc-layout";
 import { DashboardLayout } from "./layouts/dashboard-layout";
+import LoginPage from "./routes/login";
 
 // OIDC routes (un-guarded)
 import OidcIndexPage from "./routes/oidc/index";
@@ -16,12 +17,26 @@ import { OidcMfaCheck } from "./idp/authentication/pages/oidc/oidc-mfa-check";
 import { OidcForgotPassword } from "./idp/authentication/pages/oidc/oidc-forgot-password";
 import { OidcActivation } from "./idp/authentication/pages/oidc/oidc-activation";
 
-// Dashboard routes (protected)
-import AuthenticationConfigPage from "./routes/dashboard/authentication-config";
+// IDP Admin routes (protected)
+import { UsersListPage } from "./idp/admin/users/pages/users-list";
+import { CreateUserPage } from "./idp/admin/users/pages/create-user";
+import { UserDetailPage } from "./idp/admin/users/pages/user-detail";
+import { OrganizationsListPage } from "./idp/admin/organizations/pages/organizations-list";
+import { CreateOrganizationPage } from "./idp/admin/organizations/pages/create-organization";
+import { OrganizationDetailPage } from "./idp/admin/organizations/pages/organization-detail";
+import { OidcClientsListPage } from "./idp/admin/clients/pages/oidc-clients-list";
+import { CreateOidcClientPage } from "./idp/admin/clients/pages/create-oidc-client";
+import { OidcClientDetailPage } from "./idp/admin/clients/pages/oidc-client-detail";
+import { SessionsListPage } from "./idp/admin/sessions/pages/sessions-list";
+import { ActivitiesPage } from "./idp/admin/activities/pages/activities";
 
 export const router = createBrowserRouter([
-  // ── Simple login redirect to OIDC login ──
-  { path: "/login", element: <Navigate to="/oidc/login" replace /> },
+  // ── Public login page (legacy entrypoint) ──
+  {
+    path: "/login",
+    element: <OidcLayout />,
+    children: [{ index: true, element: <LoginPage /> }],
+  },
 
 
 
@@ -79,29 +94,44 @@ export const router = createBrowserRouter([
   },
   */
 
-  // ── Identity Management (protected) ──
+  // ── IDP Admin (protected) ──
   {
     element: <DashboardLayout />,
     children: [
-      { path: "/identity", element: <Navigate to="/identity/users" replace /> },
-      { path: "/identity/users", element: <AuthenticationConfigPage section="users" /> },
-      { path: "/identity/organizations", element: <AuthenticationConfigPage section="organizations" /> },
-      { path: "/identity/clients", element: <AuthenticationConfigPage section="client-credential" /> },
-      // Legacy route aliases for backward compatibility
-      { path: "/services/authentication", element: <Navigate to="/identity/users" replace /> },
-      { path: "/services/authentication/users", element: <Navigate to="/identity/users" replace /> },
-      { path: "/services/authentication/organizations", element: <Navigate to="/identity/organizations" replace /> },
-      { path: "/services/authentication/client-credential", element: <Navigate to="/identity/clients" replace /> },
+      // Users
+      { path: "/idp/admin/users", element: <UsersListPage /> },
+      { path: "/idp/admin/users/create", element: <CreateUserPage /> },
+      { path: "/idp/admin/users/:userId", element: <UserDetailPage /> },
+
+      // Organizations
+      { path: "/idp/admin/organizations", element: <OrganizationsListPage /> },
+      { path: "/idp/admin/organizations/create", element: <CreateOrganizationPage /> },
+      { path: "/idp/admin/organizations/:organizationId", element: <OrganizationDetailPage /> },
+
+      // OIDC Clients
+      { path: "/idp/admin/clients", element: <OidcClientsListPage /> },
+      { path: "/idp/admin/clients/create", element: <CreateOidcClientPage /> },
+      { path: "/idp/admin/clients/:clientId", element: <OidcClientDetailPage /> },
+
+      // Sessions & Activities
+      { path: "/idp/admin/sessions", element: <SessionsListPage /> },
+      { path: "/idp/admin/activities", element: <ActivitiesPage /> },
+
+      // Legacy redirects
+      { path: "/identity", element: <Navigate to="/idp/admin/users" replace /> },
+      { path: "/identity/users", element: <Navigate to="/idp/admin/users" replace /> },
+      { path: "/identity/organizations", element: <Navigate to="/idp/admin/organizations" replace /> },
+      { path: "/identity/clients", element: <Navigate to="/idp/admin/clients" replace /> },
+      { path: "/services/authentication", element: <Navigate to="/idp/admin/users" replace /> },
+      { path: "/services/authentication/users", element: <Navigate to="/idp/admin/users" replace /> },
+      { path: "/services/authentication/organizations", element: <Navigate to="/idp/admin/organizations" replace /> },
+      { path: "/services/authentication/client-credential", element: <Navigate to="/idp/admin/clients" replace /> },
     ],
   },
 
-  // ── Root redirect: authenticated users go to identity management ──
-  { path: "/", element: <Navigate to="/identity/users" replace /> },
+  // ── Root redirect to public page ──
+  { path: "/", element: <Navigate to="/login" replace /> },
 
   // ── Catch-all: redirect to login ──
   { path: "*", element: <Navigate to="/login" replace /> },
-], {
-  future: {
-    v7_startTransition: true,
-  },
-});
+], {});

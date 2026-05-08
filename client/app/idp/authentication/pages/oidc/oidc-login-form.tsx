@@ -10,7 +10,7 @@ import { z } from "zod";
 import { authService } from "@blocks-idp/authentication/services/auth.service";
 import { AUTH_ENDPOINTS } from "@blocks-idp/authentication/constants/endpoint.constant";
 import { showErrorToast } from "@/hooks/use-toast";
-import { useState } from "react";
+import React, { useState } from "react";
 import { Captcha } from "@/components/captcha";
 import { useTheme } from "@/hooks/use-theme";
 import { isErrorWithErrors } from "@/lib/error";
@@ -21,7 +21,7 @@ import { SsoSignin } from "@blocks-idp/authentication/pages/login/sso-signin";
 import { Skeleton } from "@/components/ui-kits/skeleton/skeleton";
 import { GRANT_TYPES } from "@blocks-idp/authentication/constants/authentication.constant";
 import { useAuthStore } from "@/store/useAuthStore";
-import sha256 from 'js-sha256';
+import { sha256 } from 'js-sha256';
 
 const base64UrlEncode = (bytes: Uint8Array) => {
   const binary = String.fromCharCode(...bytes);
@@ -342,16 +342,16 @@ export const OidcLoginForm = ({
               Forgot password?
             </Link>
 
-            {isTokenNeed && (
-              <Captcha
-                type="reCaptcha-v2-checkbox"
-                siteKey={googleSiteKey}
-                theme={theme === "dark" ? "dark" : "light"}
-                onVerify={(token) => setToken(token)}
-                onExpired={() => setToken("")}
-                onError={() => setToken("")}
-              />
-            )}
+            {isTokenNeed &&
+              React.createElement(Captcha, {
+                type: "reCaptcha-v2-checkbox",
+                siteKey: googleSiteKey,
+                theme: theme === "dark" ? "dark" : "light",
+                onVerify: (token: string) => setToken(token),
+                onExpired: () => setToken(""),
+                onError: () => setToken(""),
+              } as any)
+            }
 
             <Button type="submit" className="w-full rounded" disabled={isLoading || (isTokenNeed && !token)}>
               {isLoading ? "Signing in..." : "Log in"}

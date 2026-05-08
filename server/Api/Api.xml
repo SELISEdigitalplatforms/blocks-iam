@@ -502,6 +502,30 @@
             <response code="200">Successfully retrieved user timeline</response>
             <response code="401">Authentication required</response>
         </member>
+        <member name="T:Api.Controllers.IdpController">
+            <summary>
+            IDP Controller
+            Handles identity provider authentication flow and token exchange operations
+            </summary>
+        </member>
+        <member name="M:Api.Controllers.IdpController.#ctor(Authentication.DomainService.Authentication.IIdpService)">
+            <summary>
+            Initialize IDP controller with IDP service
+            </summary>
+        </member>
+        <member name="M:Api.Controllers.IdpController.InitiateAuthenticationFlow(System.String)">
+            <summary>
+            Initiate identity provider authentication flow
+            Delegates to IDP service for OIDC param generation and URL building
+            </summary>
+        </member>
+        <member name="M:Api.Controllers.IdpController.Callback(System.String,System.String,System.String,System.String)">
+            <summary>
+            Handle authorization code callback from IdP
+            Receives authorization code and state, exchanges for tokens, creates session
+            RFC 6749: OAuth 2.0 Authorization Code Flow | RFC 7636: PKCE
+            </summary>
+        </member>
         <member name="T:Api.Controllers.OidcClientsController">
             <summary>
             OIDC Client Management Controller
@@ -590,21 +614,6 @@
             <response code="400">projectId parameter is required</response>
             <response code="401">Authentication required</response>
             <response code="404">Project not found</response>
-        </member>
-        <member name="T:Api.Controllers.TokenController">
-            <summary>
-            Token Lifecycle Management Controller
-            Handles OIDC token exchange operations
-            Token refresh and logout are handled via /auth endpoints in AuthenticationController
-            </summary>
-        </member>
-        <member name="M:Api.Controllers.TokenController.ExchangeOidcCode(Authentication.DomainService.OAuth.RequestModel.OidcCodeExchangeRequest)">
-            <summary>
-            Exchange authorization code for tokens (OIDC Authorization Code Flow + PKCE)
-            Validates code, PKCE verifier, and client registration with OIDC provider
-            Tokens handled per client configuration: either secure HttpOnly cookies or response body
-            RFC 6749: OAuth 2.0 Authorization Code Flow | RFC 7636: PKCE
-            </summary>
         </member>
         <member name="M:Blocks.Api.Controllers.AuthorizationController.OidcLogin(Authentication.DomainService.Authentication.OidcLoginRequest)">
             <summary>

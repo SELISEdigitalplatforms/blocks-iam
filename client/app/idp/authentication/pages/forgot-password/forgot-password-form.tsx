@@ -16,11 +16,11 @@ import {
 import { z } from "zod";
 import { showErrorToast } from "@/hooks/use-toast";
 import { useNavigate } from "react-router-dom";
-// import { Captcha } from "@/components/captcha"; // REMOVED: Not available
+import { Captcha } from "@/components/captcha";
 import { useEffect } from "react";
-import { useAccountRecover } from "@blocks-idp/iam/hooks/use-account";
+import { useAccountRecover } from "@blocks-idp/authentication/hooks/use-auth";
 import { isErrorWithErrors } from "@/lib/error";
-// import { useCaptcha } from "@blocks-idp/captcha/hooks/use-captcha"; // REMOVED: Hook not found
+import { useCaptcha } from "@blocks-idp/captcha/hooks/use-captcha";
 import { buildOIDCNavigationUrl } from "@blocks-idp/authentication/utils/oidc-utils";
 
 interface ForgotPasswordFormProps {

@@ -1,4 +1,4 @@
-import { TEST_PROJECT_KEY, mockSuccessResponse, mockErrorResponse } from "@/test-utils/__mocks__";
+import { mockSuccessResponse, mockErrorResponse } from "@/test-utils/__mocks__";
 import type {
   ICaptchaConfig,
   IGetCaptchaConfigsPayload,
@@ -38,7 +38,6 @@ export const mockEmptyCaptchaConfigsResponse = {
 };
 
 export const mockGetCaptchaConfigsPayload: IGetCaptchaConfigsPayload = {
-  projectKey: TEST_PROJECT_KEY,
 };
 
 export const mockSaveCaptchaPayload: ISaveCaptchaConfigsPayload = {
@@ -47,11 +46,9 @@ export const mockSaveCaptchaPayload: ISaveCaptchaConfigsPayload = {
   provider: "recaptcha",
   captchaGenerator: "EasyCaptchaGenerator",
   isEnable: true,
-  projectKey: TEST_PROJECT_KEY,
 };
 
 export const mockUpdateCaptchaStatusPayload: IEnableCaptchaConfigsStatusPayload = {
   itemId: MOCK_CAPTCHA_ITEM_ID,
   isEnable: false,
-  projectKey: TEST_PROJECT_KEY,
 };

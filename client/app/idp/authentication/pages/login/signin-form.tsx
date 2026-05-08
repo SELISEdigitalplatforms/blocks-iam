@@ -12,7 +12,7 @@ import { useSigninByEmail } from "@blocks-idp/authentication/hooks/use-auth";
 import { useAuthStore } from "@/store/useAuthStore";
 import { showErrorToast } from "@/hooks/use-toast";
 import { useNavigate } from "react-router-dom";
-import { useState } from "react";
+import React, { useState } from "react";
 import { Captcha } from "@/components/captcha";
 import { useTheme } from "@/hooks/use-theme";
 import { isErrorWithErrors } from "@/lib/error";
@@ -121,16 +121,16 @@ export const SigninForm = ({ mode = "default", oidcContext }: SigninFormProps) =
         <Link to={forgotPasswordUrl} className="ml-auto inline-block text-sm text-primary">
           Forgot password?
         </Link>
-        {isTokenNeed && (
-          <Captcha
-            type="reCaptcha-v2-checkbox"
-            siteKey={googleSiteKey}
-            theme={theme === "dark" ? "dark" : "light"}
-            onVerify={(token) => setToken(token)}
-            onExpired={() => setToken("")}
-            onError={() => setToken("")}
-          />
-        )}
+        {isTokenNeed &&
+          React.createElement(Captcha, {
+            type: "reCaptcha-v2-checkbox",
+            siteKey: googleSiteKey,
+            theme: theme === "dark" ? "dark" : "light",
+            onVerify: (token: string) => setToken(token),
+            onExpired: () => setToken(""),
+            onError: () => setToken(""),
+          } as any)
+        }
 
         <Button type="submit" className="w-full rounded" disabled={isPending || (isTokenNeed && !token)}>
           Log in

@@ -1,4 +1,4 @@
-import { TEST_PROJECT_KEY, mockSuccessResponse, mockErrorResponse } from "@/test-utils/__mocks__";
+import { mockSuccessResponse, mockErrorResponse } from "@/test-utils/__mocks__";
 import type {
   IMFAConfiguration,
   IGetConfigurationPayload,
@@ -23,12 +23,10 @@ export const MOCK_MFA_ID = "mfa-id-e5f6-g7h8";
 export const mockMfaConfiguration: IMFAConfiguration = {
   enableMfa: true,
   mfaTemplate: { templateName: "Default MFA", templateId: "tpl-001" },
-  projectKey: TEST_PROJECT_KEY,
   userMfaType: [1, 2],
 };
 
 export const mockGetMfaConfigPayload: IGetConfigurationPayload = {
-  projectKey: TEST_PROJECT_KEY,
 };
 
 export const mockMfaConfigResponse = {
@@ -39,14 +37,12 @@ export const mockSaveMfaConfigPayload: IMFAConfigurationSavePayload = {
   enableMfa: true,
   userMfaType: [1],
   mfaTemplate: { templateName: "Default MFA", templateId: "tpl-001" },
-  projectKey: TEST_PROJECT_KEY,
 };
 
 // ─── MFA Operation Mocks ────────────────────────────────────────────────────
 
 export const mockGenerateOtpPayload: IGenerateUserMFA_OtpPayload = {
   userId: MOCK_MFA_USER_ID,
-  projectKey: TEST_PROJECT_KEY,
   mfaType: 1,
 };
 
@@ -60,11 +56,9 @@ export const mockConfigureUserMfaPayload: IConfigureUserMFAPayload = {
   userId: MOCK_MFA_USER_ID,
   mfaEnabled: true,
   userMfaType: 1,
-  projectKey: TEST_PROJECT_KEY,
 };
 
 export const mockSetupTotpPayload: ISetupUserTotpPayload = {
-  projectKey: TEST_PROJECT_KEY,
   id: MOCK_MFA_USER_ID,
 };
 
@@ -79,7 +73,6 @@ export const mockVerifyOtpPayload: IVerifyMfaOtpPayload = {
   mfaId: MOCK_MFA_ID,
   verificationCode: "123456",
   authType: 1,
-  projectKey: TEST_PROJECT_KEY,
 };
 
 export const mockVerifyOtpResponse = {
@@ -95,5 +88,4 @@ export const mockResendOtpPayload: IResendMfaOtpPayload = {
 
 export const mockDisableMfaPayload: IDisableMFAPayload = {
   userId: MOCK_MFA_USER_ID,
-  projectKey: TEST_PROJECT_KEY,
 };

@@ -1,6 +1,6 @@
 import LoadingSpinner from "@/components/loader-spinner/loader-spinner";
 import { cn } from "@/lib/utils";
-import { LoginOption } from "@blocks-identifier/models/project.model";
+import { LoginOption } from "@blocks-idp/authentication/models/auth.model";
 import { SSOSigninCard } from "@blocks-idp/authentication/components/sso-signin-card";
 import { SOCIAL_AUTH_PROVIDERS_CONFIG } from "@blocks-idp/authentication/constants/sso-providers.constant";
 import { useSsoActivation } from "@blocks-idp/authentication/hooks/use-sso-activation";
@@ -44,7 +44,7 @@ export const SsoSignin = ({ loginOption, mode = "default", oidcContext }: SsoSig
       return {
         ...config,
         audience: sso.audience,
-        provider: sso.provider,
+        provider: sso.provider as typeof config.provider,
       };
     })
     .filter((item) => !!item);

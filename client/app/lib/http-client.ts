@@ -1,4 +1,3 @@
-import { useProjectStore } from "@/store/useProjectStore";
 import { getRuntimeEnv } from "@/lib/runtime-env";
 import { getQueryClient } from "@/providers/query-provider";
 import { useAuthStore } from "@/store/useAuthStore";
@@ -140,7 +139,6 @@ class HttpClient {
     } catch (_error) {
       const queryClient = getQueryClient();
       useAuthStore.getState().reset();
-      useProjectStore.getState().reset();
       queryClient.cancelQueries();
       queryClient.clear();
       window.location.href = "/login";

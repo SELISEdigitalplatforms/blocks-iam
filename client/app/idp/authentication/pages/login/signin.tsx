@@ -10,7 +10,6 @@ import { Skeleton } from "@/components/ui-kits/skeleton/skeleton";
 import { showErrorToast } from "@/hooks/use-toast";
 import { GRANT_TYPES } from "@blocks-idp/authentication/constants/authentication.constant";
 import { useGetLoginOptions } from "@blocks-idp/authentication/hooks/use-auth";
-import { useGetSignUpSetting } from "@blocks-idp/iam/hooks/use-user";
 import { Link } from "react-router-dom";
 import { useEffect } from "react";
 import { SigninForm } from "./signin-form";
@@ -77,7 +76,6 @@ const SigninSkeleton = () => (
 
 export const Signin = ({ ssoError, mode = "default", oidcContext }: SigninProps) => {
   const { data: loginOption, isLoading: isLoginOptionLoading } = useGetLoginOptions();
-  const { data: signUpSetting, isLoading: isSignUpSettingLoading } = useGetSignUpSetting();
 
   useEffect(() => {
     if (ssoError) {
@@ -85,14 +83,15 @@ export const Signin = ({ ssoError, mode = "default", oidcContext }: SigninProps)
     }
   }, [ssoError]);
 
-  if (isLoginOptionLoading || isSignUpSettingLoading) {
+  if (isLoginOptionLoading) {
     return <SigninSkeleton />;
   }
 
   if (!loginOption || loginOption.allowedGrantTypes?.length < 1) return null;
 
   const showSignUp = mode !== "oidc" && (
-    signUpSetting?.isEmailPasswordSignUpEnabled || signUpSetting?.isSSoSignUpEnabled
+    loginOption?.allowedGrantTypes?.includes(GRANT_TYPES.password) ||
+    loginOption?.allowedGrantTypes?.includes(GRANT_TYPES.social)
   );
 
   const signUpUrl = mode === "oidc" ? buildOIDCNavigationUrl("/oidc/signup") : "/oidc/signup";

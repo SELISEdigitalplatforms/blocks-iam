@@ -11,7 +11,6 @@ import { Skeleton } from "@/components/ui-kits/skeleton/skeleton";
 import { ISsoProviderConfigurationWithMeta } from "@blocks-idp/authentication/models/sso.model";
 import { EllipsisVertical } from "lucide-react";
 import { Link } from "react-router-dom";
-import { SSoProviderStatusToggle } from "../sso-provider-status-toggle";
 import { useMemo, useState } from "react";
 import { useTheme } from "@/hooks/use-theme";
 
@@ -104,7 +103,6 @@ export const SSOProviderCard = ({ configuration }: SSOProviderCardProps) => {
           <div className="mt-4 text-medium-emphasis">{configuration.description}</div>
         </CardContent>
       </Card>
-      <SSoProviderStatusToggle open={open} setOpen={setOpen} configuration={configuration} />
     </>
   );
 };

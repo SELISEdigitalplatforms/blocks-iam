@@ -1,6 +1,4 @@
 import { SSO_PROVIDERS } from "@blocks-idp/authentication/constants/sso-providers.constant";
-import { IPermission } from "@blocks-idp/iam/models/permission";
-import { IRole } from "@blocks-idp/iam/models/role";
 
 export interface ISsoProviderConfiguration {
   itemId: string;
@@ -23,8 +21,8 @@ export interface ISsoProviderConfiguration {
   initialRoles: string[];
   initialPermissions: string[];
   isDisabled: boolean;
-  userRoles: IRole[];
-  userPermissions: IPermission[];
+  userRoles: { id: string; name: string; [key: string]: unknown }[];
+  userPermissions: { id: string; name: string; [key: string]: unknown }[];
   isAutoRedirect?: boolean;
   wellKnownUrl?: string;
 }
