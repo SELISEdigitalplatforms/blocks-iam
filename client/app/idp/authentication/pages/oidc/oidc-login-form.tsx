@@ -166,22 +166,18 @@ export const OidcLoginForm = ({
         }
       }
 
-      // If the response is OK, the /oidc page should have loaded with the code parameter
-      // and the OidcIndexPage component will handle token exchange
-      if (response.ok || response.status === 200) {
-        // Let the SPA handle the /oidc route - just return and let the page load
-        return;
-      }
-
-      // Handle error responses
+      // Parse response as JSON
       let data;
       try {
         const contentType = response.headers.get('content-type');
         if (contentType && contentType.includes('application/json')) {
           data = await response.json();
-        } else {
+        } else if (!response.ok) {
           showErrorToast({ errors: `Server error (HTTP ${response.status})` });
           setIsLoading(false);
+          return;
+        } else {
+          // Success but no JSON content - code is in URL
           return;
         }
       } catch (parseError) {
@@ -191,7 +187,21 @@ export const OidcLoginForm = ({
         return;
       }
 
-      // Handle specific error codes
+      // If response is OK, check for account selection required
+      if (response.ok || response.status === 200) {
+        // Check if backend requires account selection
+        if (data?.status === "account_selection_required" && data?.accounts?.length > 0) {
+          setAccounts(data.accounts);
+          setIsSelectingAccount(true);
+          setIsLoading(false);
+          return;
+        }
+        
+        // Otherwise code is already in URL, let the SPA handle it
+        return;
+      }
+
+      // Handle error responses
       const errorMsg = data?.error_description || data?.message || "Login failed";
       const errorCode = data?.error;
 

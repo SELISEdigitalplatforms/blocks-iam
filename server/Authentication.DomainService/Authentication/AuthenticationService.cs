@@ -32,6 +32,7 @@ namespace Authentication.DomainService.Authentication
         private readonly IAuditLogRepository _auditLogRepository;
         private readonly IAuthenticationDomainService _authenticationDomainService;
         private readonly IIdpSessionService _idpSessionService;
+        private readonly ITokenRevocationService _tokenRevocationService;
         private readonly ITenants _tenants;
 
         private const string Public_Cert_Cache_Prefix = "tetocertpublic::";
@@ -43,6 +44,7 @@ namespace Authentication.DomainService.Authentication
             IAuditLogRepository auditLogRepository,
             IAuthenticationDomainService authenticationDomainService,
             IIdpSessionService idpSessionService,
+            ITokenRevocationService tokenRevocationService,
             ITenants tenants
         )
         {
@@ -52,6 +54,7 @@ namespace Authentication.DomainService.Authentication
             _auditLogRepository = auditLogRepository;
             _authenticationDomainService = authenticationDomainService;
             _idpSessionService = idpSessionService;
+            _tokenRevocationService = tokenRevocationService;
             _tenants = tenants;
         }
 
@@ -142,6 +145,13 @@ namespace Authentication.DomainService.Authentication
 
         public async Task<bool> ProcessLogout(string refreshToken)
         {
+            // Revoke refresh token family to align with rotation security and prevent sibling token reuse.
+            var revokeResult = await _tokenRevocationService.RevokeTokenAsync(refreshToken, "refresh_token", string.Empty);
+            if (!revokeResult.Success)
+            {
+                _logger.LogWarning("Refresh-token family revocation failed during logout: {Error}", revokeResult.Error ?? "unknown_error");
+            }
+
             await _cacheClient.RemoveKeyAsync(refreshToken);
             var bc = BlocksContext.GetContext();
 
