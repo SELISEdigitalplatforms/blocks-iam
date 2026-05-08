@@ -5,6 +5,7 @@ using Authentication.DomainService.OAuth;
 using Authentication.DomainService.OAuth.RequestModel;
 using Authentication.DomainService.OAuth.ResponseModel;
 using Authentication.DomainService.Oidc.Repositories;
+using Authentication.DomainService.Oidc.Services;
 using Authentication.DomainService.Services;
 using Authentication.DomainService.Utilities;
 using Idp.DomainService.Oidc.Contracts;
@@ -28,6 +29,7 @@ namespace Authentication.DomainService.Authentication
         private const string RootAccessBackupCookieName = "root_access_token_backup";
         private const string RootRefreshBackupCookieName = "root_refresh_token_backup";
         private const string RootTenantBackupCookieName = "root_tenant_backup";
+        private const string IdpSessionCookieName = "idp_session_id";
 
         private readonly IAuthenticationRepository _authenticationRepository;
         private readonly ITenants _tenants;
@@ -37,6 +39,7 @@ namespace Authentication.DomainService.Authentication
         private readonly RefreshTokenAuthenticationService _refreshTokenAuthenticationService;
         private readonly IOAuthJwtAccessTokenManager _oAuthJwtAccessTokenManager;
         private readonly IAuthenticationService _authenticationService;
+        private readonly IIdpSessionService _idpSessionService;
         private readonly ILogger<AuthenticationFlowService> _logger;
 
         public AuthenticationFlowService(
@@ -48,6 +51,7 @@ namespace Authentication.DomainService.Authentication
             RefreshTokenAuthenticationService refreshTokenAuthenticationService,
             IOAuthJwtAccessTokenManager oAuthJwtAccessTokenManager,
             IAuthenticationService authenticationService,
+            IIdpSessionService idpSessionService,
             ILogger<AuthenticationFlowService> logger)
         {
             _authenticationRepository = authenticationRepository;
@@ -58,6 +62,7 @@ namespace Authentication.DomainService.Authentication
             _refreshTokenAuthenticationService = refreshTokenAuthenticationService;
             _oAuthJwtAccessTokenManager = oAuthJwtAccessTokenManager;
             _authenticationService = authenticationService;
+            _idpSessionService = idpSessionService;
             _logger = logger;
         }
 
@@ -547,6 +552,7 @@ namespace Authentication.DomainService.Authentication
 
                 _logger.LogInformation("Impersonation started by user {UserId} from root tenant {RootTenantId} to target tenant {TargetTenantId}", userId, rootTenantId, request.TargetTenantId);
                 await WriteImpersonationAuditEventAsync(httpRequest, "impersonation_started", userId, request.TargetTenantId, "INFO", "success", rootTenantId);
+                await RotateIdpSessionCookieAsync(httpRequest, httpResponse, "impersonation_start");
 
                 return new OkObjectResult(new
                 {
@@ -585,6 +591,7 @@ namespace Authentication.DomainService.Authentication
 
             _logger.LogInformation("Impersonation stopped manually and root session restored");
             await WriteImpersonationAuditEventAsync(httpRequest, "impersonation_stopped", principal.FindFirstValue(BlocksContext.USER_ID_CLAIM), targetTenantId, "INFO", "success");
+            await RotateIdpSessionCookieAsync(httpRequest, httpResponse, "impersonation_stop");
             return new OkObjectResult(new
             {
                 mode = "root",
@@ -1001,6 +1008,22 @@ namespace Authentication.DomainService.Authentication
             httpResponse.Cookies.Append(RootAccessBackupCookieName, rootAccessToken, CreateCookieOptions(cookieDomain, accessExpiry));
             httpResponse.Cookies.Append(RootRefreshBackupCookieName, rootRefreshToken, CreateCookieOptions(cookieDomain, refreshExpiresUtc));
             httpResponse.Cookies.Append(RootTenantBackupCookieName, rootTenantId, CreateCookieOptions(cookieDomain, refreshExpiresUtc));
+        }
+
+        private async Task RotateIdpSessionCookieAsync(HttpRequest httpRequest, HttpResponse httpResponse, string reason)
+        {
+            if (!httpRequest.Cookies.TryGetValue(IdpSessionCookieName, out var currentSessionId) || string.IsNullOrWhiteSpace(currentSessionId))
+            {
+                return;
+            }
+
+            var rotatedSessionId = await _idpSessionService.RotateSessionAsync(currentSessionId, reason);
+            if (string.IsNullOrWhiteSpace(rotatedSessionId))
+            {
+                return;
+            }
+
+            httpResponse.Cookies.Append(IdpSessionCookieName, rotatedSessionId, CreateCookieOptions(null, DateTime.UtcNow.AddDays(30)));
         }
 
         private static void WriteImpersonationStateCookie(HttpResponse httpResponse, ImpersonationState state, string? cookieDomain, DateTime expiresUtc)

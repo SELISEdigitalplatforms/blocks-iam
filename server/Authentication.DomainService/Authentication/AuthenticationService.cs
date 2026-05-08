@@ -881,6 +881,9 @@ namespace Authentication.DomainService.Authentication
                     {
                         await _idpSessionService.UpdateActivityAsync(sessionId);
                     }
+
+                    // Rotate session id on successful login transition to reduce fixation risk.
+                    sessionId = await _idpSessionService.RotateSessionAsync(sessionId, "login_success") ?? sessionId;
                 }
             }
 
