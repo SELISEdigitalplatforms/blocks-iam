@@ -140,6 +140,12 @@ public class DiscoveryMetadata
     [JsonPropertyName("userinfo_endpoint")]
     public string UserInfoEndpoint { get; set; } = string.Empty;
 
+    [JsonPropertyName("revocation_endpoint")]
+    public string RevocationEndpoint { get; set; } = string.Empty;
+
+    [JsonPropertyName("introspection_endpoint")]
+    public string IntrospectionEndpoint { get; set; } = string.Empty;
+
     [JsonPropertyName("jwks_uri")]
     public string JwksUri { get; set; } = string.Empty;
 
@@ -178,6 +184,12 @@ public class OAuthAuthorizationServerMetadata
 
     [JsonPropertyName("jwks_uri")]
     public string JwksUri { get; set; } = string.Empty;
+
+    [JsonPropertyName("revocation_endpoint")]
+    public string RevocationEndpoint { get; set; } = string.Empty;
+
+    [JsonPropertyName("introspection_endpoint")]
+    public string IntrospectionEndpoint { get; set; } = string.Empty;
 
     [JsonPropertyName("response_types_supported")]
     public IEnumerable<string> ResponseTypesSupported { get; set; } = ["code"];

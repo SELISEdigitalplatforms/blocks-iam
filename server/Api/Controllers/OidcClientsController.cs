@@ -27,13 +27,12 @@ public class OidcClientsController : ControllerBase
     /// Returns list of registered OAuth 2.0 / OIDC client applications
     /// Sensitive fields (client_secret) are excluded from response
     /// </summary>
-    /// <param name="projectKey">Optional filter by project key</param>
     /// <returns>List of OIDC clients with configuration metadata</returns>
     /// <response code="200">Successfully retrieved clients list</response>
     /// <response code="400">Invalid request parameters</response>
     /// <response code="401">Authentication required</response>
     [HttpGet]
-    public async Task<IActionResult> GetAll([FromQuery] string? projectKey)
+    public async Task<IActionResult> GetAll()
     {
         var response = await _authenticationDomainService.GetOidcClientsAsync();
 

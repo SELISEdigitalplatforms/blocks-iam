@@ -14,6 +14,7 @@ namespace Authentication.DomainService.OAuth.RequestModel
         public string? ClientId { get; set; }
         public string Code { get; set; } = string.Empty;
         public string State { get; set; } = string.Empty;
+        public string? Provider { get; set; }
     }
 
     public class OidcCallbackRequest

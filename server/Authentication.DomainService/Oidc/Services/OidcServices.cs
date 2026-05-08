@@ -334,6 +334,8 @@ public class DiscoveryService : IDiscoveryService
             AuthorizationEndpoint = endpoints.AuthorizationEndpoint,
             TokenEndpoint = endpoints.TokenEndpoint,
             UserInfoEndpoint = endpoints.UserInfoEndpoint,
+            RevocationEndpoint = endpoints.RevocationEndpoint,
+            IntrospectionEndpoint = endpoints.IntrospectionEndpoint,
             JwksUri = endpoints.JwksUri
         };
 
@@ -358,6 +360,8 @@ public class DiscoveryService : IDiscoveryService
             Issuer = endpoints.Issuer,
             AuthorizationEndpoint = endpoints.AuthorizationEndpoint,
             TokenEndpoint = endpoints.TokenEndpoint,
+            RevocationEndpoint = endpoints.RevocationEndpoint,
+            IntrospectionEndpoint = endpoints.IntrospectionEndpoint,
             JwksUri = endpoints.JwksUri
         };
 
@@ -391,6 +395,8 @@ public class DiscoveryService : IDiscoveryService
         var authorizationEndpoint = BuildUrl(issuer, [apiPrefix, "oidc", "authorize"]) + tenantQuery;
         var tokenEndpoint = BuildUrl(issuer, [apiPrefix, "oidc", "token"]) + tenantQuery;
         var userInfoEndpoint = BuildUrl(issuer, [apiPrefix, "auth", "userinfo"]) + tenantQuery;
+        var revocationEndpoint = BuildUrl(issuer, [apiPrefix, "oidc", "revoke"]) + tenantQuery;
+        var introspectionEndpoint = BuildUrl(issuer, [apiPrefix, "oidc", "introspect"]) + tenantQuery;
 
         return new ResolvedOidcEndpoints
         {
@@ -398,6 +404,8 @@ public class DiscoveryService : IDiscoveryService
             AuthorizationEndpoint = authorizationEndpoint,
             TokenEndpoint = tokenEndpoint,
             UserInfoEndpoint = userInfoEndpoint,
+            RevocationEndpoint = revocationEndpoint,
+            IntrospectionEndpoint = introspectionEndpoint,
             JwksUri = jwksUri
         };
     }
@@ -492,6 +500,8 @@ public class DiscoveryService : IDiscoveryService
         public string AuthorizationEndpoint { get; init; } = string.Empty;
         public string TokenEndpoint { get; init; } = string.Empty;
         public string UserInfoEndpoint { get; init; } = string.Empty;
+        public string RevocationEndpoint { get; init; } = string.Empty;
+        public string IntrospectionEndpoint { get; init; } = string.Empty;
         public string JwksUri { get; init; } = string.Empty;
     }
 }

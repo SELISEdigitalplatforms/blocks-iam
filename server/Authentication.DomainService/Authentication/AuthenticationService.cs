@@ -220,21 +220,38 @@ namespace Authentication.DomainService.Authentication
 
         public bool DeleteCookie(HttpRequest request)
         {
-            var cookieDomain = _tenants.GetTenantByID(BlocksContext.GetContext()?.TenantId ?? "")?.CookieDomain;
-            var bc = BlocksContext.GetContext();    
-            var cookieOptions = new CookieOptions
-            {
-                Domain = cookieDomain, 
-                Path = "/",              
-                Secure = true,
-                HttpOnly = true,
-                SameSite = SameSiteMode.None
-            };
+            var bc = BlocksContext.GetContext();
+            var tenantId = bc?.TenantId ?? "default";
+            var cookieDomain = _tenants.GetTenantByID(tenantId)?.CookieDomain;
+            var cookieOptions = CreateCookieOptions(cookieDomain, DateTime.UtcNow.AddDays(-1));
 
-            request.HttpContext.Response.Cookies.Delete($"{IdpConstants.RefreshTokenCookieName}_{bc.TenantId}", cookieOptions);
-            request.HttpContext.Response.Cookies.Delete($"{IdpConstants.AccessTokenCookieName}_{bc.TenantId}", cookieOptions);
+            request.HttpContext.Response.Cookies.Delete($"{IdpConstants.RefreshTokenCookieName}_{tenantId}", cookieOptions);
+            request.HttpContext.Response.Cookies.Delete($"{IdpConstants.AccessTokenCookieName}_{tenantId}", cookieOptions);
+
+            // Backward compatibility cleanup for legacy callback cookie names.
+            request.HttpContext.Response.Cookies.Delete("oidc_token", cookieOptions);
+            request.HttpContext.Response.Cookies.Delete("oidc_refresh_token", cookieOptions);
 
             return true;
+        }
+
+        public void AppendSessionCookies(HttpContext httpContext, string? accessToken, string? refreshToken, DateTime? accessExpiresUtc = null, DateTime? refreshExpiresUtc = null)
+        {
+            var tenantId = BlocksContext.GetContext()?.TenantId ?? "default";
+            var cookieDomain = _tenants.GetTenantByID(tenantId)?.CookieDomain;
+
+            var accessCookieOptions = CreateCookieOptions(cookieDomain, accessExpiresUtc ?? DateTime.UtcNow.AddHours(1));
+            var refreshCookieOptions = CreateCookieOptions(cookieDomain, refreshExpiresUtc ?? DateTime.UtcNow.AddDays(7));
+
+            if (!string.IsNullOrWhiteSpace(accessToken))
+            {
+                httpContext.Response.Cookies.Append($"{IdpConstants.AccessTokenCookieName}_{tenantId}", accessToken, accessCookieOptions);
+            }
+
+            if (!string.IsNullOrWhiteSpace(refreshToken))
+            {
+                httpContext.Response.Cookies.Append($"{IdpConstants.RefreshTokenCookieName}_{tenantId}", refreshToken, refreshCookieOptions);
+            }
         }
 
         public async Task<IActionResult> GetLoginOptionsAsync()
@@ -802,13 +819,14 @@ namespace Authentication.DomainService.Authentication
             // In Development, don't set domain so cookies work with localhost
             var cookieDomain = IsLocalhost() ? null : (string.IsNullOrWhiteSpace(domain) ? null : domain);
             var isSecure = !IsLocalhost();
+            var sameSite = isSecure ? SameSiteMode.Strict : SameSiteMode.None;
             
             return new CookieOptions
             {
                 Domain = cookieDomain,
                 HttpOnly = true,
                 Secure = isSecure,
-                SameSite = isSecure ? SameSiteMode.None : SameSiteMode.Lax,
+                SameSite = sameSite,
                 Path = "/",
                 Expires = expiresUtc == default ? DateTime.UtcNow.AddHours(1) : expiresUtc
             };
