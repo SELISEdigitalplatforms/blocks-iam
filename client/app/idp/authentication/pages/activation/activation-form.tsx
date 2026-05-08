@@ -16,7 +16,7 @@ import { Input } from "@/components/ui-kits/input/input";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { showErrorToast } from "@/hooks/use-toast";
 import { getRuntimeEnv } from "@/lib/runtime-env";
-import { useAccountActivation } from "@blocks-idp/iam/hooks/use-account";
+import { useAccountActivation } from "@blocks-idp/authentication/hooks/use-auth";
 import { useEffect, useState } from "react";
 import { isErrorWithErrors } from "@/lib/error";
 import { Captcha } from "@/components/captcha";

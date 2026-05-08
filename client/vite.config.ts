@@ -4,8 +4,12 @@ import { defineConfig, loadEnv } from "vite";
 
 export default defineConfig(({ mode }) => {
   const env = loadEnv(mode, __dirname, "BLOCKS_");
+  // For development, always proxy to localhost:5000 unless explicitly configured otherwise
   const proxyTarget = env.BLOCKS_API_BASE_URL || "http://localhost:5000";
   const backendUrl = "http://localhost:5000";
+  
+  // Always enable proxy for development (even if BLOCKS_API_BASE_URL is empty)
+  const enableProxy = true;
 
   // Helper function to set origin headers for all requests
   const configureProxyOrigin = (proxy: any) => {
@@ -49,7 +53,7 @@ export default defineConfig(({ mode }) => {
         ".seliseblocks.com",
         ".blocksdevelopers.com",
       ],
-      proxy: proxyTarget
+      proxy: enableProxy
         ? {
             "/api": {
               target: proxyTarget,

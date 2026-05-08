@@ -44,3 +44,17 @@ export const useGetLoginOptions = (tenantId?: string, enabled = true) => {
     enabled,
   });
 };
+
+export const useAccountActivation = () => {
+  return useMutation({
+    mutationKey: ["account", "activate"],
+    mutationFn: authService.activateAccount,
+  });
+};
+
+export const useAccountRecover = () => {
+  return useMutation({
+    mutationKey: ["account", "recover"],
+    mutationFn: authService.recoverAccount,
+  });
+};

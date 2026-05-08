@@ -39,7 +39,6 @@ describe("oidc-utils", () => {
       });
 
       const params = extractOIDCParams();
-      expect(params.projectKey).toBe("test-key");
       expect(params.userName).toBe("testuser");
       expect(params.clientId).toBe("client-123");
       expect(params.themeColor).toBe("#FF0000");

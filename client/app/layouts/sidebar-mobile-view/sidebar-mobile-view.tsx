@@ -1,10 +1,8 @@
 import { Fragment, useState } from "react";
 import { Menu, X } from "lucide-react";
 import { Link } from "react-router-dom";
-import { EnvironmentList } from "@/components/environment-list/environment-list";
 import { Logo } from "@/components/logo";
 import { MobileMenuItem } from "@/components/menus/mobile-menu-item";
-import { ProjectList } from "@/components/project-list/project-list";
 import { Button } from "@/components/ui-kits/button/button";
 import { Separator } from "@/components/ui-kits/separator/separator";
 import {
@@ -33,7 +31,7 @@ export function SidebarMobileView() {
       <SheetContent side="left" className="w-full overflow-y-auto p-0" aria-describedby={undefined} hideClose>
         <SheetHeader className="h-[60px] px-4 py-3">
           <SheetTitle className="flex items-center justify-between">
-            <Link to="/services/authentication">
+            <Link to="/idp/admin/users">
               <Logo width={72} height={36} className="h-9 w-auto" />
             </Link>
             <SheetClose className="!mt-0">
@@ -41,15 +39,6 @@ export function SidebarMobileView() {
             </SheetClose>
           </SheetTitle>
         </SheetHeader>
-        <Separator />
-        <div className="mt-3 flex w-full flex-col items-start px-6">
-          <div className="ml-1 text-sm text-[hsl(var(--low-emphasis))]">Project</div>
-          <ProjectList />
-        </div>
-        <div className="my-3 flex w-full flex-col items-start px-6">
-          <div className="ml-1 text-sm text-[hsl(var(--low-emphasis))]">Environment</div>
-          <EnvironmentList />
-        </div>
         <Separator />
         <nav className="grid gap-2">
           {allowedMenu.map((menu) => (

@@ -1,10 +1,7 @@
-using Blocks.Genesis;
-using Idp.DomainService.Oidc.Contracts;
 using Authentication.DomainService.Authentication;
 using Authentication.DomainService.Entities;
 using Authentication.DomainService.OAuth.RequestModel;
 using Authentication.DomainService.Oidc.Services;
-using Authentication.DomainService.Services;
 using Authentication.DomainService.Shared.RequestModel;
 using Iam.DomainService.Accounts;
 using Microsoft.AspNetCore.Authorization;
@@ -418,7 +415,7 @@ public class AuthenticationController : ControllerBase
         var provider = await _authenticationService.GetIdentityProviderByIdAsync(id);
         if (provider == null)
             return NotFound(new { isSuccess = false, message = "Provider not found" });
-        
+
         return Ok(new { data = provider, isSuccess = true });
     }
 
@@ -458,10 +455,10 @@ public class AuthenticationController : ControllerBase
 
         if (!result.IsSuccess)
         {
-            return BadRequest(new 
-            { 
+            return BadRequest(new
+            {
                 error = "token_exchange_failed",
-                error_description = result.ErrorMessage 
+                error_description = result.ErrorMessage
             });
         }
 

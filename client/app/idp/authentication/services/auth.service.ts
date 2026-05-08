@@ -6,9 +6,12 @@ import {
   ISignupByEmailResponse,
   IVerifyMfaPayload,
   IVerifyMfaResponse,
+  IActivateAccountPayload,
+  IActivateAccountResponse,
+  IRecoverAccountPayload,
+  IRecoverAccountResponse,
 } from "@blocks-idp/authentication/models/auth.model";
 import { AUTH_ENDPOINTS } from "../constants/endpoint.constant";
-import { PEOPLE_ENDPOINTS } from "@blocks-identifier/constants/endpoint.constant";
 
 export class AuthService {
   signinByEmail(payload: ISigninByEmailPayload): Promise<ISigninByEmailResponse> {
@@ -68,7 +71,15 @@ export class AuthService {
   }
 
   signupByEmail(payload: ISignupByEmailPayload): Promise<ISignupByEmailResponse> {
-    return http.post(PEOPLE_ENDPOINTS.SIGNUP, payload);
+    return http.post(AUTH_ENDPOINTS.SIGNUP, payload);
+  }
+
+  activateAccount(payload: IActivateAccountPayload): Promise<IActivateAccountResponse> {
+    return http.post(AUTH_ENDPOINTS.ACTIVATE_ACCOUNT, payload);
+  }
+
+  recoverAccount(payload: IRecoverAccountPayload): Promise<IRecoverAccountResponse> {
+    return http.post(AUTH_ENDPOINTS.RECOVER, payload);
   }
 
   getLoginOptions(tenantId?: string): Promise<any> {

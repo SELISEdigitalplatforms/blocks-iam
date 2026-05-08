@@ -1,8 +1,7 @@
-using Microsoft.AspNetCore.Mvc;
 using Authentication.DomainService.Authentication;
-using System.Text.Json.Serialization;
-using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.Mvc;
+using System.Text.Json.Serialization;
 
 namespace Blocks.Api.Controllers
 {

@@ -36,7 +36,7 @@ describe("SSOService", () => {
       const result = await service.getSsoCredentials(mockGetSsoCredentialsPayload);
 
       expect(http.get).toHaveBeenCalledWith(
-        `${SSO_ENDPOINTS.GET_SSO_CREDENTIALS}?ProjectKey=${mockGetSsoCredentialsPayload.projectKey}`,
+        `${SSO_ENDPOINTS.GET_SSO_CREDENTIALS}`,
       );
       expect(result).toEqual(mockSsoCredentialsResponse);
     });
@@ -52,13 +52,13 @@ describe("SSOService", () => {
 
   // ─── getSsoCredentialId ───────────────────────────────────────────────────
   describe("getSsoCredentialId", () => {
-    it("should GET with itemId and projectKey query params", async () => {
+    it("should GET with itemId query param", async () => {
       vi.mocked(http.get).mockResolvedValue(mockSsoCredential);
 
       const result = await service.getSsoCredentialId(mockGetSsoCredentialByIdPayload);
 
       expect(http.get).toHaveBeenCalledWith(
-        `${SSO_ENDPOINTS.GET_SSO_CREDENTIAL}?itemId=${mockGetSsoCredentialByIdPayload.itemId}&projectKey=${mockGetSsoCredentialByIdPayload.projectKey}`,
+        `${SSO_ENDPOINTS.GET_SSO_CREDENTIAL}?itemId=${mockGetSsoCredentialByIdPayload.itemId}`,
       );
       expect(result).toEqual(mockSsoCredential);
     });
@@ -164,7 +164,7 @@ describe("SSOService", () => {
       const result = await service.getBlocksSsoCredential(projectKey);
 
       expect(http.get).toHaveBeenCalledWith(
-        `${AUTH_OIDC_ENDPOINTS.GET_OIDC_CLIENT}?ProjectKey=${projectKey}`,
+        `${AUTH_OIDC_ENDPOINTS.GET_OIDC_CLIENT}`,
       );
       expect(result).toEqual(mockSuccessResponse);
     });

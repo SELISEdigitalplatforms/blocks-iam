@@ -3,9 +3,7 @@ import { PanelLeft } from "lucide-react";
 import { Button } from "@/components/ui-kits/button/button";
 import { ModeToggle } from "@/components/mode-toggle/mode-toggle";
 import { Notification } from "@/components/notification/notification";
-import { ProjectList } from "@/components/project-list/project-list";
 import { UserDropdownMenu } from "@/components/user-dropdown-menu/user-dropdown-menu";
-import { EnvironmentList } from "@/components/environment-list/environment-list";
 import { SidebarMobileView } from "@/layouts/sidebar-mobile-view/sidebar-mobile-view";
 import { SidebarContext } from "@/contexts/dashboard-layout-provider";
 import { BlocksAppLauncher } from "@/components/blocks-app-launcher/blocks-app-launcher";
@@ -48,15 +46,9 @@ export function DashboardHeader() {
           >
             <PanelLeft className="h-6 w-6" />
           </Button>
-          <div className="w-52">
-            <ProjectList />
-          </div>
         </div>
 
         <div className="flex items-center gap-4">
-          <div className="hidden h-fit max-w-40 md:flex">
-            <EnvironmentList />
-          </div>
           <ModeToggle />
           {authMode === "impersonation" && (
             <Button
@@ -86,13 +78,6 @@ export function DashboardHeader() {
           </div>
         </div>
       )}
-      {/* Mobile project/environment selectors */}
-      <div className="border-b bg-background px-5 sm:px-6 py-3 md:hidden">
-        <div className="grid gap-3">
-          <ProjectList />
-          <EnvironmentList />
-        </div>
-      </div>
     </>
   );
 }

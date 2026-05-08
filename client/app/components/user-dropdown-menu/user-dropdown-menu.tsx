@@ -10,17 +10,16 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui-kits/dropdown-menu/dropdown-menu";
-import { useGetUser } from "@/idp/iam/hooks/use-user";
+import { useAuthStore } from "@/store/useAuthStore";
 
 function UserDropdownMenuLogo() {
-  const { data } = useGetUser({ enabled: true });
-  const userData = data?.data || { firstName: "", lastName: "", profileImageUrl: "" };
-  const initials = `${userData.firstName?.[0] || ""}${userData.lastName?.[0] || ""}`.toUpperCase();
+  const user = useAuthStore((s) => s.user);
+  const initials = `${user?.first_name?.[0] || ""}${user?.last_name?.[0] || ""}`.toUpperCase();
 
-  if (userData.profileImageUrl) {
+  if (user?.profile_picture) {
     return (
       <img
-        src={userData.profileImageUrl}
+        src={user.profile_picture}
         alt="Profile"
         className="h-full w-full object-cover"
       />

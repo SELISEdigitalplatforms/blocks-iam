@@ -41,3 +41,41 @@ export interface IVerifyMfaResponse {
   expires_in: number;
   refresh_token: string;
 }
+
+export interface LoginOptionSsoInfo {
+  provider: string;
+  audience: string;
+  isAvailable?: boolean;
+  [key: string]: unknown;
+}
+
+export interface LoginOption {
+  allowedGrantTypes: string[];
+  ssoInfo?: LoginOptionSsoInfo[];
+  [key: string]: unknown;
+}
+
+export interface IActivateAccountPayload {
+  code: string;
+  password: string;
+  firstname?: string;
+  lastname?: string;
+  captchaCode?: string;
+  preventPostEvent?: boolean;
+}
+
+export interface IActivateAccountResponse {
+  isSuccess: boolean;
+  errors?: unknown;
+}
+
+export interface IRecoverAccountPayload {
+  email: string;
+  captchaCode?: string;
+}
+
+export interface IRecoverAccountResponse {
+  isSuccess: boolean;
+  errors?: unknown;
+}
+

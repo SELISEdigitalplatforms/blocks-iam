@@ -1,4 +1,4 @@
-import { TEST_PROJECT_KEY, mockSuccessResponse, mockErrorResponse } from "@/test-utils/__mocks__";
+import { mockSuccessResponse, mockErrorResponse } from "@/test-utils/__mocks__";
 import type {
   User,
   IGetUsersPayload,
@@ -112,7 +112,6 @@ export const mockEmptyUsersResponse = {
 export const mockGetUsersPayload: IGetUsersPayload = {
   page: 1,
   pageSize: 20,
-  projectKey: TEST_PROJECT_KEY,
 };
 
 export const mockCreateUserPayload: ICreateUserPayload = {
@@ -122,12 +121,10 @@ export const mockCreateUserPayload: ICreateUserPayload = {
   userPassType: 1,
   userCreationType: 1,
   platform: "cloud",
-  projectKey: TEST_PROJECT_KEY,
 };
 
 export const mockUpdateUserPayload: IUpdateUserPayload = {
   itemId: MOCK_USER_ITEM_ID,
-  projectKey: TEST_PROJECT_KEY,
   firstName: "Updated",
 };
 
@@ -135,21 +132,18 @@ export const mockSaveRolesAndPermissionsPayload: ISaveRolesAndPermissionsPayload
   userId: MOCK_USER_ITEM_ID,
   roles: ["admin"],
   permissions: ["read"],
-  projectKey: TEST_PROJECT_KEY,
 };
 
 export const mockGetSessionsPayload: IGetSessionPayload = {
   page: 1,
   pageSize: 10,
   filter: { UserId: MOCK_USER_ITEM_ID },
-  projectKey: TEST_PROJECT_KEY,
 };
 
 export const mockGetHistoriesPayload: IGetHistoriesPayload = {
   page: 1,
   pageSize: 10,
   filter: { UserId: MOCK_USER_ITEM_ID },
-  projectKey: TEST_PROJECT_KEY,
 };
 
 export const mockGeneratePATPayload: IGeneratePATPayload = {
@@ -160,12 +154,10 @@ export const mockGeneratePATPayload: IGeneratePATPayload = {
 
 export const mockGetUserRolesPayload: IGetUserRolesPayload = {
   userId: MOCK_USER_ITEM_ID,
-  projectKey: TEST_PROJECT_KEY,
 };
 
 export const mockGetUserPermissionsPayload: IGetUserPermissionsPayload = {
   userId: MOCK_USER_ITEM_ID,
-  projectKey: TEST_PROJECT_KEY,
 };
 
 export const mockSignUpSettingResponse = {
@@ -182,13 +174,11 @@ export const mockSignUpSettingResponse = {
 };
 
 export const mockGetSignUpSettingPayload: IGetSignUpSettingPayload = {
-  projectKey: TEST_PROJECT_KEY,
 };
 
 export const mockSaveSignUpSettingPayload: ISaveSignUpSettingPayload = {
   isEmailPasswordSignUpEnabled: true,
   isSSoSignUpEnabled: false,
-  projectKey: TEST_PROJECT_KEY,
   itemId: "signup-001",
 };
 
@@ -198,31 +188,26 @@ export const mockAccountActivationPayload: IAccountActivationPayload = {
   code: "activation-code-123",
   password: "NewPass@1234",
   preventPostEvent: false,
-  projectKey: TEST_PROJECT_KEY,
   firstname: "Test",
   lastname: "User",
 };
 
 export const mockAccountRecoverPayload: IAccountRecoverPayload = {
   email: "test@blocks.com",
-  projectKey: TEST_PROJECT_KEY,
 };
 
 export const mockAccountResetPasswordPayload: IAccountResetPasswordPayload = {
   code: "reset-code-456",
   password: "NewPass@5678",
   logoutFromAllDevices: true,
-  projectKey: TEST_PROJECT_KEY,
 };
 
 export const mockResendActivationPayload: IAccountResendActivationPayload = {
   userId: MOCK_USER_ITEM_ID,
-  projectKey: TEST_PROJECT_KEY,
 };
 
 export const mockActivationCodeValidationPayload: IActivationCodeValidationPayload = {
   activationCode: "activation-code-123",
-  projectKey: TEST_PROJECT_KEY,
 };
 
 export const mockActivationCodeExpirationResponse = {
@@ -238,7 +223,6 @@ export const mockRole: IRole = {
   name: "Admin",
   description: "Administrator role",
   slug: "admin",
-  projectKey: TEST_PROJECT_KEY,
 };
 
 export const mockRole2: IRole = {
@@ -246,7 +230,6 @@ export const mockRole2: IRole = {
   name: "User",
   description: "Standard user role",
   slug: "user",
-  projectKey: TEST_PROJECT_KEY,
 };
 
 export const mockRolesResponse = {
@@ -258,12 +241,10 @@ export const mockRolesResponse = {
 export const mockGetRolesPayload: GetRolesPayload = {
   page: 1,
   pageSize: 20,
-  projectKey: TEST_PROJECT_KEY,
 };
 
 export const mockGetRolePayload: IGetRolePayload = {
   id: MOCK_ROLE_ITEM_ID,
-  projectKey: TEST_PROJECT_KEY,
 };
 
 export const mockGetRoleResponse = {
@@ -275,7 +256,6 @@ export const mockCreateRolePayload: CreateRolePayload = {
   name: "New Role",
   description: "New role description",
   slug: "new-role",
-  projectKey: TEST_PROJECT_KEY,
 };
 
 export const mockUpdateRolePayload: UpdateRolePayload = {
@@ -287,7 +267,6 @@ export const mockSetRolesPayload: SetRoles = {
   addPermissions: [MOCK_PERMISSION_ITEM_ID],
   removePermissions: [],
   slug: "admin",
-  projectKey: TEST_PROJECT_KEY,
 };
 
 // ─── Permission Mocks ────────────────────────────────────────────────────────
@@ -299,7 +278,6 @@ export const mockPermission: IPermission = {
   description: "Read users permission",
   resource: "/api/users",
   resourceGroup: "Users",
-  projectKey: TEST_PROJECT_KEY,
   tags: [],
   roles: ["admin"],
   dependentPermissions: [],
@@ -329,12 +307,10 @@ export const mockGetPermissionsPayload: IGetPermissionsPayload = {
   pageSize: 20,
   filter: { search: "", isBuiltIn: "false" },
   roles: [],
-  projectKey: TEST_PROJECT_KEY,
 };
 
 export const mockGetPermissionByIdPayload: IGetPermissionByIdPayload = {
   id: MOCK_PERMISSION_ITEM_ID,
-  projectKey: TEST_PROJECT_KEY,
 };
 
 export const mockGetPermissionByIdResponse = {
@@ -351,7 +327,6 @@ export const mockCreatePermissionPayload: CreatePermissionPayload = {
   tags: [],
   dependentPermissions: [],
   isBuiltIn: false,
-  projectKey: TEST_PROJECT_KEY,
 };
 
 export const mockUpdatePermissionPayload: UpdatePermissionPayload = {
@@ -360,7 +335,6 @@ export const mockUpdatePermissionPayload: UpdatePermissionPayload = {
 };
 
 export const mockResourceGroupPayload: IGetResourceGroupPayload = {
-  projectKey: TEST_PROJECT_KEY,
 };
 
 export const mockResourceGroupResponse = [
@@ -391,13 +365,11 @@ export const mockOrganizationsResponse = {
 };
 
 export const mockGetOrganizationsPayload: IGetOrganizationsParams = {
-  projectKey: TEST_PROJECT_KEY,
   page: 1,
   pageSize: 20,
 };
 
 export const mockGetOrganizationByIdPayload: IGetOrganizationByIdParams = {
-  projectKey: TEST_PROJECT_KEY,
   itemId: MOCK_ORGANIZATION_ITEM_ID,
 };
 
@@ -408,7 +380,6 @@ export const mockGetOrganizationByIdResponse = {
 };
 
 export const mockSaveOrganizationPayload: ICreateOrUpdateOrganizationPayload = {
-  projectKey: TEST_PROJECT_KEY,
   name: "New Organization",
   itemId: "",
   isEnable: true,
@@ -433,7 +404,6 @@ export const mockSaveOrganizationConfigPayload: IOrganizationConfigPayload = {
   allowCreationFromCloud: true,
   allowCreationFromConstruct: false,
   isMultiOrgEnabled: false,
-  projectKey: TEST_PROJECT_KEY,
 };
 
 // ─── IAM Configuration Mocks ────────────────────────────────────────────────
@@ -454,5 +424,4 @@ export const mockGetIamConfigResponse = {
 
 export const mockSaveIamConfigPayload: IIAMConfigurationSavePayload = {
   ...mockIamConfiguration,
-  projectKey: TEST_PROJECT_KEY,
 };

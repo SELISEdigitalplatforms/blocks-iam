@@ -68,7 +68,7 @@ export const extractOIDCParams = (debug = false): OIDCParams => {
   const fullUrl = window.location.href;
 
   let userName = searchParams.get("userName") || undefined;
-  let clientId = searchParams.get("clientId") || undefined;
+  let clientId = searchParams.get("client_id") || searchParams.get("clientId") || undefined;
   let logoUrl = searchParams.get("logoUrl") || undefined;
   let themeColor = searchParams.get("brandColor") || undefined;
   let tenantId = searchParams.get("tenant_id") || undefined;
@@ -103,7 +103,7 @@ export const extractOIDCParams = (debug = false): OIDCParams => {
           logoUrl = hashParams.get("logoUrl") || undefined;
         }
         if (!clientId) {
-          clientId = hashParams.get("clientId") || undefined;
+          clientId = hashParams.get("client_id") || hashParams.get("clientId") || undefined;
         }
         if (!userName) {
           userName = hashParams.get("userName") || undefined;
@@ -133,8 +133,8 @@ export const extractOIDCParams = (debug = false): OIDCParams => {
           if (!logoUrl && hashParams.has("logoUrl")) {
             logoUrl = hashParams.get("logoUrl") || undefined;
           }
-          if (!clientId && hashParams.has("clientId")) {
-            clientId = hashParams.get("clientId") || undefined;
+          if (!clientId && (hashParams.has("client_id") || hashParams.has("clientId"))) {
+            clientId = hashParams.get("client_id") || hashParams.get("clientId") || undefined;
           }
           if (!userName && hashParams.has("userName")) {
             userName = hashParams.get("userName") || undefined;
