@@ -76,9 +76,8 @@ export const OidcAccountSelector = ({ accounts, onAccountSelect, isLoading = fal
             >
               <div className="flex items-center justify-between">
                 <div className="flex-1">
-                  <p className="font-semibold text-foreground">{account.email}</p>
-                  {account.display_name && <p className="text-sm text-medium-emphasis">{account.display_name}</p>}
-                  {account.tenant_name && <p className="text-xs text-low-emphasis">{account.tenant_name}</p>}
+                  {account.display_name && <p className="font-semibold text-foreground">{account.display_name}</p>}
+                  <p className="text-sm text-medium-emphasis">{account.email}</p>
                 </div>
                 {selectedAccount?.user_id === account.user_id && selectedAccount?.tenant_id === account.tenant_id && isSubmitting && (
                   <Loader className="ml-2 h-5 w-5 animate-spin text-primary" />
