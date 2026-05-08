@@ -35,6 +35,9 @@ namespace Authentication.DomainService.Authentication
 
         [System.Text.Json.Serialization.JsonPropertyName("tenant_id")]
         public string? TenantId { get; set; }
+
+        [System.Text.Json.Serialization.JsonPropertyName("provider")]
+        public string? Provider { get; set; }
     }
 
     public class OidcLoginResponse

@@ -44,7 +44,7 @@ export class AuthService {
   }
 
   verifyOidc(payload: { code: string; clientId: string; redirectUri: string; codeVerifier: string; tenantId?: string }): Promise<any> {
-    return http.post(AUTH_ENDPOINTS.OIDC_EXCHANGE, {
+    return http.post(AUTH_ENDPOINTS.TOKEN_EXCHANGE, {
       code: payload.code,
       client_id: payload.clientId,
       redirect_uri: payload.redirectUri,
@@ -91,8 +91,9 @@ export class AuthService {
   }
 
   signinByOidcEmail(payload: {
-    username: string;
-    password: string;
+    username?: string;
+    password?: string;
+    provider?: string;
     clientId: string;
     redirectUri: string;
     scope?: string;
@@ -105,8 +106,9 @@ export class AuthService {
     return http.post(
       AUTH_ENDPOINTS.OIDC_LOGIN,
       {
-        username: payload.username,
-        password: payload.password,
+        ...(payload.provider && { provider: payload.provider }),
+        ...(payload.username && { username: payload.username }),
+        ...(payload.password && { password: payload.password }),
         client_id: payload.clientId,
         redirect_uri: payload.redirectUri,
         scope: payload.scope,

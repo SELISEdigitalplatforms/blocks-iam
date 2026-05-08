@@ -56,27 +56,6 @@
             </summary>
         </member>
         <!-- Badly formed XML comment ignored for member "M:Api.Controllers.AuthenticationController.HandleSocialCallback(System.String,System.String,System.String,Authentication.DomainService.OAuth.RequestModel.SocialLoginRequest)" -->
-        <member name="M:Api.Controllers.AuthenticationController.InitiateOidcAuthentication">
-            <summary>
-            Initiate OIDC authentication (Internal OIDC Clients)
-            For services that use Blocks IDP as authentication provider
-            RFC 6749: OAuth 2.0 | RFC 3986: OpenID Connect
-            </summary>
-        </member>
-        <member name="M:Api.Controllers.AuthenticationController.RetrieveOidcLoginPage(System.String,System.String,System.String)">
-            <summary>
-            Retrieve OIDC login page with provider options
-            Displays available social providers for federated authentication
-            RFC 3986: OpenID Connect Discovery
-            </summary>
-        </member>
-        <member name="M:Api.Controllers.AuthenticationController.InitiateOidcSocialAuthentication(System.String,System.String)">
-            <summary>
-            Initiate OIDC social provider authentication
-            Called when user selects provider on OIDC login page
-            Links social authentication to OIDC client context
-            </summary>
-        </member>
         <member name="M:Api.Controllers.AuthenticationController.ExchangeOidcCode(Authentication.DomainService.OAuth.RequestModel.OidcCodeExchangeRequest)">
             <summary>
             BFF: Exchange PKCE authorization code for tokens (called by this app's own FE)

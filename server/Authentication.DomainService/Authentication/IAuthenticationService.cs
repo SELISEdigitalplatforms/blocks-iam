@@ -19,8 +19,6 @@ namespace Authentication.DomainService.Authentication
         bool DeleteCookie(HttpRequest request);
         Task<IActionResult> GetLoginOptionsAsync();
         Task<IActionResult> GetSocialAuthorizationUrlAsync(string provider);
-        Task<IActionResult> GetOidcAuthorizationUrlAsync();
-        Task<IActionResult> GetOidcLoginPageAsync(string clientId, string state, string redirectUri);
         Task<IActionResult> GetOidcSocialAuthorizationUrlAsync(string provider, string oidcState);
         Task<OidcClientRegistration> GetClientCredentialAsync(string clientId);
         Task<object> HandleTokenResponseConditionallyAsync(TokenResponse response, HttpResponse httpResponse, bool useTokensCookie, string? clientId = null);
