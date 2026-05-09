@@ -111,7 +111,7 @@ class HttpClient {
         }),
         headers: {
           "Content-Type": "application/json",
-          "X-Blocks-Key": this.BLOCKS_KEY,
+          "X-Blocks-Key": this.resolveBlocksKey(),
           ...(authStore.accessToken && {
             Authorization: `Bearer ${authStore.accessToken}`,
           }),
@@ -169,8 +169,8 @@ class HttpClient {
       }
     }
 
-    // Use same-origin for localhost (token in header), include for remote (cookie-based)
-    const credentialsMode = this.isLocalhost() ? "same-origin" : (withCredentials ? "include" : "same-origin");
+    // Always honor withCredentials so cookie-based auth works in localhost and remote setups.
+    const credentialsMode = withCredentials ? "include" : "same-origin";
     const config: RequestInit = {
       method,
       headers: normalizedHeaders,
