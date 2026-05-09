@@ -2,10 +2,12 @@ import { useEffect, useRef } from "react";
 import { useSearchParams } from "react-router-dom";
 import { Loader } from "lucide-react";
 import { getRuntimeEnv } from "@/lib/runtime-env";
+import { useAuthStore } from "@/store/useAuthStore";
 
 export default function LoginCallbackPage() {
   const [searchParams] = useSearchParams();
   const hasProcessed = useRef(false);
+  const { setAuthenticated } = useAuthStore();
 
   const code = searchParams.get("code");
   const state = searchParams.get("state");
@@ -36,6 +38,9 @@ export default function LoginCallbackPage() {
     fetch(callbackUrl.toString(), { headers, credentials: "include" })
       .then((res) => {
         if (res.ok) {
+          // Tokens are in HttpOnly cookies set by backend
+          // Update auth store to reflect authenticated state
+          setAuthenticated();
           window.location.href = "/idp/admin/users";
         } else {
           window.location.href = "/login?error=callback_failed";
@@ -44,7 +49,7 @@ export default function LoginCallbackPage() {
       .catch(() => {
         window.location.href = "/login?error=callback_error";
       });
-  }, [code, state, error, tenantId]);
+  }, [code, state, error, tenantId, setAuthenticated]);
 
   return (
     <div className="flex min-h-screen items-center justify-center">
