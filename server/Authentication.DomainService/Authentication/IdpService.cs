@@ -6,8 +6,10 @@ using Blocks.Genesis;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.Logging;
+using System.Net.Http;
 using System.Security.Cryptography;
 using System.Text;
+using System.Text.Json;
 using System.Text.Json.Serialization;
 
 namespace Authentication.DomainService.Authentication
@@ -130,7 +132,7 @@ namespace Authentication.DomainService.Authentication
                 if (string.IsNullOrWhiteSpace(flowContextJson))
                 {
                     _logger.LogWarning($"Flow context not found or expired for state: {state}");
-                    return new BadRequestObjectResult(new { error = "invalid_state", error_description = "State not found or expired (10 minute timeout)" });
+                    return new BadRequestObjectResult(new { error = "invalid_state", error_description = "State not found or expired (5 minute timeout)" });
                 }
 
                 // Deserialize flow context
@@ -172,7 +174,23 @@ namespace Authentication.DomainService.Authentication
                     form["code_verifier"] = flowContext.CodeVerifier;
                 }
 
-                var (tokenResponse, tokenError) = await _httpService.SendFormUrlEncoded<OidcTokenEndpointResponse>(HttpMethod.Post, form, tokenEndpoint);
+                OidcTokenEndpointResponse? tokenResponse;
+                string tokenError;
+                try
+                {
+                    var timeoutSeconds = (int)GetOutboundRequestTimeout().TotalSeconds;
+                    (tokenResponse, tokenError) = await ExchangeCodeForTokenAsync(
+                        tokenEndpoint,
+                        form,
+                        httpRequest.HttpContext.RequestAborted,
+                        timeoutSeconds: timeoutSeconds);
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogWarning(ex, "Token exchange request failed");
+                    return new BadRequestObjectResult(new { error = "invalid_grant", error_description = "Failed to exchange authorization code" });
+                }
+
                 if (!string.IsNullOrWhiteSpace(tokenError) || tokenResponse == null || string.IsNullOrWhiteSpace(tokenResponse.AccessToken))
                 {
                     _logger.LogWarning($"Token exchange failed: {tokenError ?? "empty token response"}");
@@ -180,7 +198,7 @@ namespace Authentication.DomainService.Authentication
                 }
 
                 // Resolve tenant_id: flowContext > BlocksContext > default
-                var resolvedTenantId = flowContext.TenantId ?? BlocksContext.GetContext()?.TenantId;
+                var resolvedTenantId = flowContext.TenantId ?? BlocksContext.GetContext()?.TenantId ?? string.Empty;
                 
                 var cookieDomain = _tenants.GetTenantByID(resolvedTenantId)?.CookieDomain;
                 var tokenResponseObj = new TokenResponse
@@ -326,6 +344,32 @@ namespace Authentication.DomainService.Authentication
         {
             var hostEnv = Environment.GetEnvironmentVariable("ASPNETCORE_ENVIRONMENT") ?? "";
             return hostEnv.Equals("Development", StringComparison.OrdinalIgnoreCase);
+        }
+
+        private static TimeSpan GetOutboundRequestTimeout()
+        {
+            return IsLocalhost() ? TimeSpan.FromMinutes(5) : TimeSpan.FromSeconds(100);
+        }
+
+        private async Task<(OidcTokenEndpointResponse? Response, string Error)> ExchangeCodeForTokenAsync(
+            string tokenEndpoint,
+            Dictionary<string, string> form,
+            CancellationToken cancellationToken,
+            int? timeoutSeconds = null)
+        {
+            (var response, var error) = await _httpService.SendFormUrlEncoded<OidcTokenEndpointResponse>(
+                HttpMethod.Post,
+                form,
+                tokenEndpoint,
+                cancellationToken: cancellationToken,
+                timeoutSeconds: timeoutSeconds);
+
+            if (!string.IsNullOrWhiteSpace(error))
+            {
+                return (null, error);
+            }
+
+            return (response, error);
         }
 
         private string BuildAuthorizeUrl(IdentityProvider provider, string state, string nonce, string? codeChallenge)
