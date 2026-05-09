@@ -3,6 +3,7 @@ import { createBrowserRouter, Navigate } from "react-router-dom";
 import { OidcLayout } from "./layouts/oidc-layout";
 import { DashboardLayout } from "./layouts/dashboard-layout";
 import LoginPage from "./routes/login";
+import LoginCallbackPage from "./routes/login/callback";
 
 // OIDC routes (un-guarded)
 import OidcIndexPage from "./routes/oidc/index";
@@ -31,11 +32,14 @@ import { SessionsListPage } from "./idp/admin/sessions/pages/sessions-list";
 import { ActivitiesPage } from "./idp/admin/activities/pages/activities";
 
 export const router = createBrowserRouter([
-  // ── Public login page (legacy entrypoint) ──
+  // ── IDP service login (initiates OIDC flow + handles callback) ──
   {
     path: "/login",
     element: <OidcLayout />,
-    children: [{ index: true, element: <LoginPage /> }],
+    children: [
+      { index: true, element: <LoginPage /> },
+      { path: "callback", element: <LoginCallbackPage /> },
+    ],
   },
 
 

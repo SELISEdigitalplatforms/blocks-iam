@@ -38,17 +38,18 @@ namespace Authentication.DomainService.Authentication
             _logger = logger;
         }
 
-        public async Task<IActionResult> StartAuthenticationFlowAsync(string? provider = null)
+        public async Task<IActionResult> StartAuthenticationFlowAsync()
         {
             try
             {
                 var effectiveTenantId = BlocksContext.GetContext()?.TenantId;
 
-                // Default to blocksoidc if not specified
-                var providerName = provider ?? "blocksoidc";
+                // Provider is always the IDP's own OIDC provider — not taken from FE
+                var providerName = "idp";
+                var providerType = "oidc";
 
-                // Get identity provider config
-                var identityProvider = await _authenticationRepository.GetIdentityProviderAsync(providerName);
+                // Get identity provider config by both provider name and type for exact match
+                var identityProvider = await _authenticationRepository.GetIdentityProviderAsync(providerName, providerType);
                 if (identityProvider == null || !identityProvider.IsActive)
                 {
                     _logger.LogWarning($"Identity provider not found or inactive: {providerName}");
@@ -140,6 +141,12 @@ namespace Authentication.DomainService.Authentication
                     return new BadRequestObjectResult(new { error = "server_error", error_description = "Invalid flow context" });
                 }
 
+                if (string.IsNullOrWhiteSpace(flowContext.Provider))
+                {
+                    _logger.LogWarning($"Flow context missing provider for state: {state}");
+                    return new BadRequestObjectResult(new { error = "invalid_provider", error_description = "Provider missing in flow context" });
+                }
+
                 // Get IdP config
                 var identityProvider = await _authenticationRepository.GetIdentityProviderAsync(flowContext.Provider);
                 if (identityProvider == null || !identityProvider.IsActive)
@@ -172,9 +179,10 @@ namespace Authentication.DomainService.Authentication
                     return new BadRequestObjectResult(new { error = "invalid_grant", error_description = "Failed to exchange authorization code" });
                 }
 
-                // Build token response for session/cookie handling
-                var tenantId = flowContext.TenantId ?? BlocksContext.GetContext()?.TenantId ?? "default";
-                var cookieDomain = _tenants.GetTenantByID(tenantId)?.CookieDomain;
+                // Resolve tenant_id: flowContext > BlocksContext > default
+                var resolvedTenantId = flowContext.TenantId ?? BlocksContext.GetContext()?.TenantId;
+                
+                var cookieDomain = _tenants.GetTenantByID(resolvedTenantId)?.CookieDomain;
                 var tokenResponseObj = new TokenResponse
                 {
                     AccessToken = tokenResponse.AccessToken,
@@ -194,14 +202,14 @@ namespace Authentication.DomainService.Authentication
                 object responseBody;
                 if (useTokensCookie)
                 {
-                    AppendCookies(tokenResponseObj, httpResponse, tenantId);
+                    AppendCookies(tokenResponseObj, httpResponse, resolvedTenantId);
                     // Return metadata only (no token values in response body)
                     responseBody = new
                     {
                         token_type = tokenResponseObj.TokenType ?? "Bearer",
                         expires_in = (tokenResponseObj.ExpiresUtc - DateTime.UtcNow).TotalSeconds,
                         scope = tokenResponseObj.Scope,
-                        tenant_id = tenantId,
+                        tenant_id = resolvedTenantId,
                         client_id = identityProvider.ClientId,
                         cookie_set = true
                     };
@@ -217,7 +225,7 @@ namespace Authentication.DomainService.Authentication
                         refresh_token = tokenResponseObj.RefreshToken,
                         id_token = tokenResponseObj.IdToken,
                         scope = tokenResponseObj.Scope,
-                        tenant_id = tenantId,
+                        tenant_id = resolvedTenantId,
                         client_id = identityProvider.ClientId,
                         cookie_set = false
                     };
@@ -339,7 +347,12 @@ namespace Authentication.DomainService.Authentication
             }
 
             var queryString = string.Join("&", queryParams.Select(kvp => $"{kvp.Key}={Uri.EscapeDataString(kvp.Value)}"));
-            return $"{provider.AuthorizationUrl}?{queryString}";
+            var baseUrl = provider.AuthorizationUrl ?? string.Empty;
+            var separator = baseUrl.EndsWith("?") || baseUrl.EndsWith("&")
+                ? string.Empty
+                : (baseUrl.Contains('?') ? "&" : "?");
+
+            return $"{baseUrl}{separator}{queryString}";
         }
 
         private sealed class OidcTokenEndpointResponse

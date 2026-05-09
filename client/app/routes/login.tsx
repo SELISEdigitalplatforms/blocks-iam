@@ -7,36 +7,32 @@ import { useState } from "react";
 export default function LoginPage() {
   const [isStarting, setIsStarting] = useState(false);
 
-  const startOidcLogin = async () => {
+  const startLogin = async () => {
     try {
       if (isStarting) return;
       setIsStarting(true);
 
-      // Call backend to initiate authentication flow
-      // Backend will generate OIDC params, store state, and redirect to provider
       const search = new URLSearchParams(window.location.search);
-      const blocksKey =
-        search.get("x-blocks-key") ||
-        getRuntimeEnv("BLOCKS_X_BLOCKS_KEY");
+      const blocksKey = search.get("x-blocks-key") || getRuntimeEnv("BLOCKS_X_BLOCKS_KEY");
+      const apiBaseUrl = getRuntimeEnv("BLOCKS_API_BASE_URL") || "http://localhost:5000";
 
-      const initiateUrl = new URL("/api/idp/initiate", window.location.origin);
-      if (blocksKey) {
-        initiateUrl.searchParams.set("x-blocks-key", blocksKey);
-      }
+      const initiateUrl = new URL("/api/idp/initiate", apiBaseUrl);
+      if (blocksKey) initiateUrl.searchParams.set("x-blocks-key", blocksKey);
 
-      // Fetch the initiate endpoint - backend will return redirect URL
-      const response = await fetch(initiateUrl.toString());
+      const headers: Record<string, string> = {};
+      if (blocksKey) headers["X-Blocks-Key"] = blocksKey;
+
+      const response = await fetch(initiateUrl.toString(), { headers });
       const data = await response.json();
 
       if (data.redirect_uri) {
-        // Redirect to IdP authorize endpoint
         window.location.href = data.redirect_uri;
       } else {
-        showErrorToast({ errors: "Failed to get authorization URL from backend" });
+        showErrorToast({ errors: "Failed to get authorization URL" });
         setIsStarting(false);
       }
     } catch {
-      showErrorToast({ errors: "Unable to start login flow. Please try again." });
+      showErrorToast({ errors: "Unable to start login. Please try again." });
       setIsStarting(false);
     }
   };
@@ -51,10 +47,11 @@ export default function LoginPage() {
         <p className="text-center text-sm text-medium-emphasis">
           Secure sign-in for your applications using OpenID Connect.
         </p>
-        <Button onClick={startOidcLogin} className="w-full" disabled={isStarting}>
+        <Button onClick={startLogin} className="w-full" disabled={isStarting}>
           {isStarting ? "Starting..." : "Login"}
         </Button>
       </CardContent>
     </Card>
   );
 }
+

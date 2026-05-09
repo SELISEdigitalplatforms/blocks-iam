@@ -23,20 +23,6 @@ export const mockOidcFlowCredentialResponse = {
   isSuccess: true,
 };
 
-export const mockUserAcknowledgementPayload = {
-  clientId: MOCK_OIDC_CLIENT_ID,
-  state: MOCK_OIDC_STATE,
-  nonce: MOCK_OIDC_NONCE,
-  scope: "openid profile email",
-  redirectUri: "https://app.blocks.com/callback",
-  isAcknowledged: true,
-  username: "testuser",
-};
-
-export const mockUserAcknowledgementResponse = {
-  redirectUrl: "https://app.blocks.com/callback?code=abc123&state=oidc-state-abc",
-};
-
 export const mockOidcFlowAccountRecoverPayload = {
   email: "test@blocks.com",
 };

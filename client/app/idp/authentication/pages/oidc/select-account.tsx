@@ -62,10 +62,12 @@ export const OIDCSelectAccountScreen = () => {
       }
     });
 
+    const blocksKey = account.tenantId;
     const response = await fetch("/api/oidc/select-account", {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
+        ...(blocksKey ? { "X-Blocks-Key": blocksKey } : {}),
       },
       credentials: "include",
       body: JSON.stringify({

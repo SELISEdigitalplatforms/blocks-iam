@@ -207,6 +207,15 @@ namespace Authentication.DomainService.Services
             return await collection.Find(filter).FirstOrDefaultAsync();
         }
 
+        public async Task<IdentityProvider?> GetIdentityProviderAsync(string provider, string providerType)
+        {
+            var collection = GetCollection<IdentityProvider>();
+            var filter = Builders<IdentityProvider>.Filter.And(
+                Builders<IdentityProvider>.Filter.Eq(x => x.Provider, provider),
+                Builders<IdentityProvider>.Filter.Eq(x => x.ProviderType, providerType));
+            return await collection.Find(filter).FirstOrDefaultAsync();
+        }
+
         public async Task<IdentityProvider?> GetIdentityProviderByIdAsync(string id)
         {
             var collection = GetCollection<IdentityProvider>();
