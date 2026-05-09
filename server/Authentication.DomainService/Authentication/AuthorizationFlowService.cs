@@ -637,12 +637,6 @@ namespace Authentication.DomainService.Authentication
             return await ExchangeAuthorizationCodeCore(code, code_verifier, client_id, redirect_uri, tenant_id, request, request.HttpContext.Response);
         }
 
-        // API-first entrypoint for other services: call this method directly from your endpoint.
-        public async Task<IActionResult> ExchangeOidcCodeAsync(string code, string codeVerifier, string clientId, string redirectUri, string? tenantId, HttpRequest httpRequest, HttpResponse httpResponse)
-        {
-            return await ExchangeAuthorizationCodeCore(code, codeVerifier, clientId, redirectUri, tenantId ?? string.Empty, httpRequest, httpResponse);
-        }
-
         // Orchestrator: issue token set, write cookies, then return metadata-only response.
         private async Task<IActionResult> ExchangeAuthorizationCodeCore(string code, string code_verifier, string client_id, string redirect_uri, string tenant_id, HttpRequest request, HttpResponse response)
         {
@@ -659,18 +653,9 @@ namespace Authentication.DomainService.Authentication
             if (useTokensCookie)
             {
                 AppendOidcExchangeCookies(response, exchangeResult);
-                return new OkObjectResult(new
-                {
-                    token_type = "Bearer",
-                    expires_in = exchangeResult.ExpiresIn,
-                    scope = exchangeResult.Scope,
-                    tenant_id = exchangeResult.EffectiveTenantId,
-                    client_id,
-                    cookie_set = true
-                });
             }
 
-            // Return standard token response, do not set cookies
+            // Always return the full token response. When enabled, cookies are set in addition to body response.
             return new OkObjectResult(new
             {
                 access_token = exchangeResult.AccessToken,
@@ -681,7 +666,7 @@ namespace Authentication.DomainService.Authentication
                 scope = exchangeResult.Scope,
                 tenant_id = exchangeResult.EffectiveTenantId,
                 client_id,
-                cookie_set = false
+                cookie_set = useTokensCookie
             });
         }
 
