@@ -36,7 +36,7 @@ export default function LoginCallbackPage() {
     fetch(callbackUrl.toString(), { headers, credentials: "include" })
       .then((res) => {
         if (res.ok) {
-          window.location.href = "/";
+          window.location.href = "/idp/admin/users";
         } else {
           window.location.href = "/login?error=callback_failed";
         }

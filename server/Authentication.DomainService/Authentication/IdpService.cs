@@ -214,7 +214,7 @@ namespace Authentication.DomainService.Authentication
                 };
 
                 // Always use secure cookies for token delivery in IdP callback flow.
-                AppendCookies(tokenResponseObj, httpResponse, resolvedTenantId);
+                AppendCookies(tokenResponseObj, httpResponse, httpRequest, resolvedTenantId);
 
                 // Clear cache entry
                 await _cacheClient.RemoveKeyAsync(cacheKey);
@@ -267,14 +267,14 @@ namespace Authentication.DomainService.Authentication
             return base64.Replace("+", "-").Replace("/", "_").TrimEnd('=');
         }
 
-        private static void AppendCookies(TokenResponse response, HttpResponse httpResponse, string? tenantId = null)
+        private static void AppendCookies(TokenResponse response, HttpResponse httpResponse, HttpRequest httpRequest, string? tenantId = null)
         {
             var resolvedTenantId = string.IsNullOrWhiteSpace(tenantId)
                 ? BlocksContext.GetContext()?.TenantId ?? "default"
                 : tenantId;
-            var accessCookieOptions = CreateCookieOptions(response.CookieDomain, response.ExpiresUtc);
-            var idCookieOptions = CreateCookieOptions(response.CookieDomain, response.ExpiresUtc);
-            var refreshCookieOptions = CreateCookieOptions(response.CookieDomain, response.RefreshExpiresUtc);
+            var accessCookieOptions = CreateCookieOptions(response.CookieDomain, response.ExpiresUtc, httpRequest);
+            var idCookieOptions = CreateCookieOptions(response.CookieDomain, response.ExpiresUtc, httpRequest);
+            var refreshCookieOptions = CreateCookieOptions(response.CookieDomain, response.RefreshExpiresUtc, httpRequest);
 
             if (!string.IsNullOrWhiteSpace(response.AccessToken))
             {
@@ -292,11 +292,12 @@ namespace Authentication.DomainService.Authentication
             }
         }
 
-        private static CookieOptions CreateCookieOptions(string? domain, DateTime expiresUtc)
+        private static CookieOptions CreateCookieOptions(string? domain, DateTime expiresUtc, HttpRequest httpRequest)
         {
-            var cookieDomain = IsLocalhost() ? null : (string.IsNullOrWhiteSpace(domain) ? null : domain);
-            var isSecure = !IsLocalhost();
-            var sameSite = isSecure ? SameSiteMode.Strict : SameSiteMode.None;
+            var isLocalRequest = IsLocalRequest(httpRequest);
+            var cookieDomain = isLocalRequest ? null : (string.IsNullOrWhiteSpace(domain) ? null : domain);
+            var isSecure = !isLocalRequest && httpRequest.IsHttps;
+            var sameSite = isSecure ? SameSiteMode.None : SameSiteMode.Lax;
 
             return new CookieOptions
             {
@@ -307,6 +308,14 @@ namespace Authentication.DomainService.Authentication
                 Path = "/",
                 Expires = expiresUtc == default ? DateTime.UtcNow.AddHours(1) : expiresUtc
             };
+        }
+
+        private static bool IsLocalRequest(HttpRequest request)
+        {
+            var host = request.Host.Host ?? string.Empty;
+            return string.Equals(host, "localhost", StringComparison.OrdinalIgnoreCase)
+                || string.Equals(host, "127.0.0.1", StringComparison.OrdinalIgnoreCase)
+                || string.Equals(host, "::1", StringComparison.OrdinalIgnoreCase);
         }
 
         private static bool IsLocalhost()
