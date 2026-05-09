@@ -120,16 +120,17 @@ public class TokenGenerationService : ITokenGenerationService
 
         var jwtClaims = new List<Claim>
         {
-            new(JwtRegisteredClaimNames.Sub, claims.Sub),
-            new("tenant_id", claims.TenantId),
-            new(JwtRegisteredClaimNames.Iat, claims.Iat.ToString(), ClaimValueTypes.Integer64),
+            new(BlocksContext.SUBJECT_CLAIM, claims.Sub),
+            new(BlocksContext.USER_ID_CLAIM, ExtractUserId(claims.Sub)),
+            new(BlocksContext.TENANT_ID_CLAIM, claims.TenantId),
+            new(BlocksContext.ISSUED_AT_TIME_CLAIM, claims.Iat.ToString(), ClaimValueTypes.Integer64),
             new("auth_time", claims.AuthTime.ToString(), ClaimValueTypes.Integer64),
             new(JwtRegisteredClaimNames.Jti, Guid.NewGuid().ToString("n"))
         };
 
         if (!string.IsNullOrWhiteSpace(claims.OrgId))
         {
-            jwtClaims.Add(new Claim("org_id", claims.OrgId));
+            jwtClaims.Add(new Claim(BlocksContext.ORGANIZATION_ID_CLAIM, claims.OrgId));
         }
 
         if (!string.IsNullOrWhiteSpace(claims.ClientId))
@@ -153,8 +154,7 @@ public class TokenGenerationService : ITokenGenerationService
 
         foreach (var role in claims.Roles)
         {
-            jwtClaims.Add(new Claim("role", role));
-            jwtClaims.Add(new Claim("roles", role));
+            jwtClaims.Add(new Claim(BlocksContext.ROLES_CLAIM, role));
         }
 
         foreach (var resource in claims.Resources)
@@ -164,8 +164,7 @@ public class TokenGenerationService : ITokenGenerationService
 
         foreach (var permission in claims.Permissions)
         {
-            jwtClaims.Add(new Claim("permission", permission));
-            jwtClaims.Add(new Claim("permissions", permission));
+            jwtClaims.Add(new Claim(BlocksContext.PERMISSION_CLAIM, permission));
         }
 
         var token = new JwtSecurityToken(
@@ -177,6 +176,19 @@ public class TokenGenerationService : ITokenGenerationService
             signingCredentials: signingCredentials);
 
         return new JwtSecurityTokenHandler().WriteToken(token);
+    }
+
+    private static string ExtractUserId(string subject)
+    {
+        if (string.IsNullOrWhiteSpace(subject))
+        {
+            return string.Empty;
+        }
+
+        const string prefix = "blocks|";
+        return subject.StartsWith(prefix, StringComparison.OrdinalIgnoreCase)
+            ? subject[prefix.Length..]
+            : subject;
     }
 
     private Tenant? ResolveTenant(string? tenantId)

@@ -779,7 +779,7 @@ namespace Authentication.DomainService.Authentication
                 allowedServiceAccessResources,
                 requireExplicitScope: true);
 
-            var tenantAudience = TenantDomainPolicy.GetAudience(_tenants.GetTenantByID(authCode.TenantId ?? tenantId));
+            var tenantAudience = TenantDomainPolicy.GetAudience(_tenants.GetTenantByID(authCode.TenantId ?? tenantId ?? string.Empty));
 
             var claims = new OidcClaims
             {
@@ -924,7 +924,7 @@ namespace Authentication.DomainService.Authentication
             {
                 _logger.LogCritical($"REUSE ATTACK DETECTED: Revoked token used again. Original revocation reason: {storedToken.RevokeReason}. Revoking family {storedToken.FamilyId}.");
                 await _refreshTokenRepo.RevokeByFamilyIdAsync(storedToken.FamilyId ?? string.Empty, "reuse_detected");
-                await LogAuditEvent("token_reuse_detected", storedToken.UserId, client_id, tenantId, "CRITICAL", request);
+                await LogAuditEvent("token_reuse_detected", storedToken.UserId, client_id, tenantId ?? string.Empty, "CRITICAL", request);
                 return new BadRequestObjectResult(new { error = "invalid_grant", error_description = "Refresh token has been revoked" });
             }
 
@@ -993,7 +993,7 @@ namespace Authentication.DomainService.Authentication
             newRefreshTokenModel.ParentTokenId = storedToken.TokenId;
             newRefreshTokenModel.UserId = storedToken.UserId;
             newRefreshTokenModel.ClientId = client_id;
-            newRefreshTokenModel.TenantId = storedToken.TenantId;
+            newRefreshTokenModel.TenantId = storedToken.TenantId ?? string.Empty;
             newRefreshTokenModel.OrgId = storedToken.OrgId;
             newRefreshTokenModel.Audience = tenantAudience;
             newRefreshTokenModel.Scope = storedToken.Scope;
@@ -1007,7 +1007,7 @@ namespace Authentication.DomainService.Authentication
             await _refreshTokenRepo.RevokeByTokenIdAsync(storedToken.TokenId, "rotated");
 
             _logger.LogInformation($"Token rotated for user {storedToken.UserId}, client {client_id}, family {storedToken.FamilyId}");
-            await LogAuditEvent("token_refreshed", storedToken.UserId, client_id, storedToken.TenantId, "INFO", request);
+            await LogAuditEvent("token_refreshed", storedToken.UserId, client_id, storedToken.TenantId ?? string.Empty, "INFO", request);
 
             return new OkObjectResult(new TokenResponse
             {
@@ -1358,13 +1358,13 @@ namespace Authentication.DomainService.Authentication
 
         private static TimeSpan GetIdpSessionAbsoluteTimeout()
         {
-            var configured = Environment.GetEnvironmentVariable("IDP_SESSION_ABSOLUTE_DAYS");
-            if (double.TryParse(configured, out var days) && days > 0 && days <= 365)
+            var configured = Environment.GetEnvironmentVariable("IDP_SESSION_ABSOLUTE_HOURS");
+            if (double.TryParse(configured, out var hours) && hours > 0 && hours <= 168)
             {
-                return TimeSpan.FromDays(days);
+                return TimeSpan.FromHours(hours);
             }
 
-            return TimeSpan.FromDays(30);
+            return TimeSpan.FromHours(5); // Default to 5 hours
         }
 
         private static string? ResolveEffectiveOrganizationId(User user)

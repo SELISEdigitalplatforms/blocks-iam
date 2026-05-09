@@ -303,10 +303,12 @@ namespace Authentication.DomainService.Oidc.Services
                     { "redirect_uri", provider.RedirectUri ?? "" }
                 };
 
+                var timeoutSeconds = (int)GetOutboundRequestTimeout().TotalSeconds;
                 var (response, error) = await _httpService.SendFormUrlEncoded<OidcTokenResponse>(
                     HttpMethod.Post,
                     tokenRequest,
-                    provider.TokenUrl
+                    provider.TokenUrl,
+                    timeoutSeconds: timeoutSeconds
                 );
 
                 if (!string.IsNullOrWhiteSpace(error))
@@ -399,6 +401,17 @@ namespace Authentication.DomainService.Oidc.Services
                 _logger.LogError(ex, "Error validating ID token");
                 return (false, null, ex.Message);
             }
+        }
+
+        private static bool IsLocalhost()
+        {
+            var hostEnv = Environment.GetEnvironmentVariable("ASPNETCORE_ENVIRONMENT") ?? "";
+            return hostEnv.Equals("Development", StringComparison.OrdinalIgnoreCase);
+        }
+
+        private static TimeSpan GetOutboundRequestTimeout()
+        {
+            return IsLocalhost() ? TimeSpan.FromMinutes(5) : TimeSpan.FromSeconds(120);
         }
     }
 
