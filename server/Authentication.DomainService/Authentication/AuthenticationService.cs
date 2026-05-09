@@ -235,13 +235,16 @@ namespace Authentication.DomainService.Authentication
             return true;
         }
 
-        public void AppendSessionCookies(HttpContext httpContext, string? accessToken, string? refreshToken, DateTime? accessExpiresUtc = null, DateTime? refreshExpiresUtc = null)
+        public async Task AppendSessionCookies(HttpContext httpContext, string? accessToken, string? refreshToken, DateTime? accessExpiresUtc = null, DateTime? refreshExpiresUtc = null)
         {
             var tenantId = BlocksContext.GetContext()?.TenantId ?? "default";
             var cookieDomain = _tenants.GetTenantByID(tenantId)?.CookieDomain;
+            var authConfiguration = await _authenticationRepository.GetAuthenticationConfigurationAsync();
+            var accessLifetimeMinutes = Math.Max(authConfiguration?.AccessTokenValidForNumberMinutes ?? AuthenticationConfiguration.DefaultAccessTokenValidForNumberMinutes, 1);
+            var refreshLifetimeMinutes = Math.Max(authConfiguration?.AbsoluteRefreshTokenValidForNumberMinutes ?? AuthenticationConfiguration.DefaultRememberMeRefreshTokenValidForNumberMinutes, 1);
 
-            var accessCookieOptions = CreateCookieOptions(cookieDomain, accessExpiresUtc ?? DateTime.UtcNow.AddHours(1));
-            var refreshCookieOptions = CreateCookieOptions(cookieDomain, refreshExpiresUtc ?? DateTime.UtcNow.AddDays(7));
+            var accessCookieOptions = CreateCookieOptions(cookieDomain, accessExpiresUtc ?? DateTime.UtcNow.AddMinutes(accessLifetimeMinutes));
+            var refreshCookieOptions = CreateCookieOptions(cookieDomain, refreshExpiresUtc ?? DateTime.UtcNow.AddMinutes(refreshLifetimeMinutes));
 
             if (!string.IsNullOrWhiteSpace(accessToken))
             {
@@ -828,7 +831,7 @@ namespace Authentication.DomainService.Authentication
                 Secure = isSecure,
                 SameSite = sameSite,
                 Path = "/",
-                Expires = expiresUtc == default ? DateTime.UtcNow.AddHours(1) : expiresUtc
+                Expires = expiresUtc == default ? DateTime.UtcNow : expiresUtc
             };
         }
 

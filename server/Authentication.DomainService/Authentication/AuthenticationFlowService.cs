@@ -1023,7 +1023,7 @@ namespace Authentication.DomainService.Authentication
                 return;
             }
 
-            httpResponse.Cookies.Append(IdpSessionCookieName, rotatedSessionId, CreateCookieOptions(null, DateTime.UtcNow.AddDays(30)));
+            httpResponse.Cookies.Append(IdpSessionCookieName, rotatedSessionId, CreateCookieOptions(null, GetIdpSessionAbsoluteExpiryUtc()));
         }
 
         private static void WriteImpersonationStateCookie(HttpResponse httpResponse, ImpersonationState state, string? cookieDomain, DateTime expiresUtc)
@@ -1281,6 +1281,17 @@ namespace Authentication.DomainService.Authentication
             }
         }
 
+        private static DateTime GetIdpSessionAbsoluteExpiryUtc()
+        {
+            var configured = Environment.GetEnvironmentVariable("IDP_SESSION_ABSOLUTE_DAYS");
+            if (double.TryParse(configured, out var days) && days > 0 && days <= 365)
+            {
+                return DateTime.UtcNow.AddDays(days);
+            }
+
+            return DateTime.UtcNow.AddDays(30);
+        }
+
         private static CookieOptions CreateCookieOptions(string? domain, DateTime expiresUtc)
         {
             // In Development, don't set domain so cookies work with localhost
@@ -1293,7 +1304,7 @@ namespace Authentication.DomainService.Authentication
                 Secure = !IsLocalhost(),
                 SameSite = SameSiteMode.None,
                 Path = "/",
-                Expires = expiresUtc == default ? DateTime.UtcNow.AddHours(1) : expiresUtc
+                Expires = expiresUtc == default ? DateTime.UtcNow : expiresUtc
             };
         }
 

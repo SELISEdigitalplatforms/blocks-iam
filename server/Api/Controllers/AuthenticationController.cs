@@ -474,7 +474,7 @@ public class AuthenticationController : ControllerBase
         else
         {
             // EMBEDDED FLOW: Use the same tenant-scoped cookie naming and security policy as login/refresh/logout.
-            _authenticationService.AppendSessionCookies(HttpContext, result.AccessToken, result.RefreshToken);
+            await _authenticationService.AppendSessionCookies(HttpContext, result.AccessToken, result.RefreshToken);
 
             // Redirect to dashboard
             return Redirect("/dashboard");

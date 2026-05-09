@@ -7,7 +7,9 @@ using System.Security.Cryptography.X509Certificates;
 using System.Text;
 using System.Text.Json;
 using Blocks.Genesis;
+using Authentication.DomainService.Entities;
 using Authentication.DomainService.OAuth;
+using Authentication.DomainService.Services;
 using Authentication.DomainService.Utilities;
 using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.Configuration;
@@ -65,6 +67,7 @@ public class TokenGenerationService : ITokenGenerationService
     private readonly ICryptoService _cryptoService;
     private readonly ICertificateProviderFactory _certificateProviderFactory;
     private readonly IHttpContextAccessor _httpContextAccessor;
+    private readonly IAuthenticationRepository _authenticationRepository;
 
     public TokenGenerationService(
         OidcSigningKeyMaterial keyMaterial,
@@ -72,7 +75,8 @@ public class TokenGenerationService : ITokenGenerationService
         ICacheClient cacheClient,
         ICryptoService cryptoService,
         ICertificateProviderFactory certificateProviderFactory,
-        IHttpContextAccessor httpContextAccessor)
+        IHttpContextAccessor httpContextAccessor,
+        IAuthenticationRepository authenticationRepository)
     {
         _keyMaterial = keyMaterial;
         _tenants = tenants;
@@ -80,6 +84,7 @@ public class TokenGenerationService : ITokenGenerationService
         _cryptoService = cryptoService;
         _certificateProviderFactory = certificateProviderFactory;
         _httpContextAccessor = httpContextAccessor;
+        _authenticationRepository = authenticationRepository;
     }
 
     public Task<string> GenerateIdTokenAsync(Idp.DomainService.Oidc.Contracts.OidcClaims claims, string issuer, int expiresInSeconds)
@@ -92,10 +97,14 @@ public class TokenGenerationService : ITokenGenerationService
         return GenerateTokenAsync(claims, issuer, expiresInSeconds, includeNonce: false);
     }
 
-    public Task<Idp.DomainService.Oidc.Contracts.RefreshTokenModel> GenerateRefreshTokenAsync(Idp.DomainService.Oidc.Contracts.OidcClaims claims, string issuer)
+    public async Task<Idp.DomainService.Oidc.Contracts.RefreshTokenModel> GenerateRefreshTokenAsync(Idp.DomainService.Oidc.Contracts.OidcClaims claims, string issuer)
     {
         var now = DateTime.UtcNow;
-        return Task.FromResult(new Idp.DomainService.Oidc.Contracts.RefreshTokenModel
+        var authConfiguration = await _authenticationRepository.GetAuthenticationConfigurationAsync();
+        var slidingMinutes = Math.Max(authConfiguration?.RefreshTokenValidForNumberMinutes ?? AuthenticationConfiguration.DefaultRefreshTokenValidForNumberMinutes, 1);
+        var absoluteMinutes = Math.Max(authConfiguration?.AbsoluteRefreshTokenValidForNumberMinutes ?? AuthenticationConfiguration.DefaultRememberMeRefreshTokenValidForNumberMinutes, slidingMinutes);
+
+        return new Idp.DomainService.Oidc.Contracts.RefreshTokenModel
         {
             TokenId = Guid.NewGuid().ToString("n"),
             FamilyId = Guid.NewGuid().ToString("n"),
@@ -104,9 +113,9 @@ public class TokenGenerationService : ITokenGenerationService
             OrgId = claims.OrgId,
             Audience = claims.Audience,
             Scope = claims.Scope,
-            SlidingExpiry = now.AddMinutes(30),
-            AbsoluteExpiry = now.AddHours(8)
-        });
+            SlidingExpiry = now.AddMinutes(slidingMinutes),
+            AbsoluteExpiry = now.AddMinutes(absoluteMinutes)
+        };
     }
 
     private async Task<string> GenerateTokenAsync(Idp.DomainService.Oidc.Contracts.OidcClaims claims, string issuer, int expiresInSeconds, bool includeNonce)
@@ -136,15 +145,6 @@ public class TokenGenerationService : ITokenGenerationService
         if (!string.IsNullOrWhiteSpace(claims.ClientId))
         {
             jwtClaims.Add(new Claim("client_id", claims.ClientId));
-        }
-
-        if (!string.IsNullOrWhiteSpace(claims.Audience))
-        {
-            jwtClaims.Add(new Claim("aud", claims.Audience));
-        }
-        else if (!string.IsNullOrWhiteSpace(claims.ClientId))
-        {
-            jwtClaims.Add(new Claim("aud", claims.ClientId));
         }
 
         if (includeNonce && !string.IsNullOrWhiteSpace(claims.Nonce))

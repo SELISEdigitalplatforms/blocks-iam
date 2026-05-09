@@ -3,6 +3,8 @@ using System.Collections.Generic;
 using System.Threading.Tasks;
 using MongoDB.Driver;
 using Blocks.Genesis;
+using Authentication.DomainService.Entities;
+using Authentication.DomainService.Services;
 using Idp.DomainService.Oidc.Contracts;
 using Microsoft.Extensions.Logging;
 
@@ -11,13 +13,16 @@ namespace Authentication.DomainService.Oidc.Repositories
     public class RefreshTokenRepository : IRefreshTokenRepository
     {
         private readonly IDbContextProvider _dbContextProvider;
+        private readonly IAuthenticationRepository _authenticationRepository;
         private readonly ILogger<RefreshTokenRepository> _logger;
 
         public RefreshTokenRepository(
             IDbContextProvider dbContextProvider,
+            IAuthenticationRepository authenticationRepository,
             ILogger<RefreshTokenRepository> logger)
         {
             _dbContextProvider = dbContextProvider;
+            _authenticationRepository = authenticationRepository;
             _logger = logger;
         }
 
@@ -136,10 +141,12 @@ namespace Authentication.DomainService.Oidc.Repositories
         {
             try
             {
+                var authConfiguration = await _authenticationRepository.GetAuthenticationConfigurationAsync();
+                var slidingMinutes = Math.Max(authConfiguration?.RefreshTokenValidForNumberMinutes ?? AuthenticationConfiguration.DefaultRefreshTokenValidForNumberMinutes, 1);
                 var collection = GetDatabase().GetCollection<RefreshTokenModel>("refresh_tokens");
                 var filter = Builders<RefreshTokenModel>.Filter.Eq(t => t.TokenId, tokenId);
                 var update = Builders<RefreshTokenModel>.Update
-                    .Set(t => t.SlidingExpiry, DateTime.UtcNow.AddHours(24));
+                    .Set(t => t.SlidingExpiry, DateTime.UtcNow.AddMinutes(slidingMinutes));
 
                 var result = await collection.UpdateOneAsync(filter, update);
                 return result.ModifiedCount > 0;
