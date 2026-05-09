@@ -31,6 +31,7 @@ namespace Authentication.DomainService.Services
         Task UpdatePartialAsync<T>(string id, Dictionary<string, object> updates, string collectionName = "");
         Task<List<IdentityProvider>> GetIdentityProvidersAsync();
         Task<IdentityProvider?> GetIdentityProviderAsync(string provider);
+        Task<IdentityProvider?> GetIdentityProviderAsync(string provider, string providerType);
         Task<IdentityProvider?> GetIdentityProviderByIdAsync(string id);
         Task<IdentityProvider> CreateIdentityProviderAsync(IdentityProvider provider);
         Task<IdentityProvider> UpdateIdentityProviderAsync(IdentityProvider provider);

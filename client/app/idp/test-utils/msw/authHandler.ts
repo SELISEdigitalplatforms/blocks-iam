@@ -18,7 +18,6 @@ import {
   AUTH_OIDC_ENDPOINTS,
   AUTH_CONFIG_ENDPOINTS,
   SSO_ENDPOINTS,
-  OIDC_FLOW_ENDPOINTS,
 } from "../../authentication/constants/endpoint.constant";
 import { PEOPLE_ENDPOINTS } from "@blocks-identifier/constants/endpoint.constant";
 
@@ -52,9 +51,6 @@ const SAVE_SSO_CREDENTIAL_PATTERN = new RegExp(SSO_ENDPOINTS.SAVE_SSO_CREDENTIAL
 const DELETE_SSO_CREDENTIAL_PATTERN = new RegExp(SSO_ENDPOINTS.DELETE_SSO_CREDENTIAL);
 const UPDATE_SSO_STATUS_PATTERN = new RegExp(SSO_ENDPOINTS.UPDATE_STATUS);
 
-// OIDC Flow
-const USER_ACKNOWLEDGEMENT_PATTERN = new RegExp(OIDC_FLOW_ENDPOINTS.USER_ACKNOWLEDGEMENT);
-
 // ─── Default Handlers (happy-path) ───────────────────────────────────────────
 
 export const authHandlers = [
@@ -85,11 +81,6 @@ export const authHandlers = [
   http.post(SAVE_SSO_CREDENTIAL_PATTERN, () => HttpResponse.json(mockSuccessResponseWithItemId)),
   http.post(DELETE_SSO_CREDENTIAL_PATTERN, () => HttpResponse.json(mockSuccessResponse)),
   http.post(UPDATE_SSO_STATUS_PATTERN, () => HttpResponse.json(mockSuccessResponse)),
-
-  // OIDC Flow
-  http.post(USER_ACKNOWLEDGEMENT_PATTERN, () =>
-    HttpResponse.json({ redirectUrl: "https://app.blocks.com/callback?code=abc123" }),
-  ),
 ];
 
 // ─── Per-Test Override Factories ──────────────────────────────────────────────
@@ -184,13 +175,3 @@ export const deleteSsoCredentialHandler = (response: JsonBodyType = mockSuccessR
 
 export const updateSsoStatusHandler = (response: JsonBodyType = mockSuccessResponse) =>
   http.post(UPDATE_SSO_STATUS_PATTERN, () => HttpResponse.json(response));
-
-// OIDC Flow
-export const userAcknowledgementHandler = (
-  response: JsonBodyType = { redirectUrl: "https://app.blocks.com/callback?code=abc123" },
-) => http.post(USER_ACKNOWLEDGEMENT_PATTERN, () => HttpResponse.json(response));
-
-export const userAcknowledgementErrorHandler = (status = 500) =>
-  http.post(USER_ACKNOWLEDGEMENT_PATTERN, () =>
-    HttpResponse.json({ message: "Internal server error" }, { status }),
-  );

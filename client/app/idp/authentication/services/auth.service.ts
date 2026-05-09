@@ -46,14 +46,26 @@ export class AuthService {
     });
   }
 
-  verifyOidc(payload: { code: string; clientId: string; redirectUri: string; codeVerifier: string; tenantId?: string }): Promise<any> {
-    return http.post(AUTH_ENDPOINTS.TOKEN_EXCHANGE, {
+  verifyOidc(payload: { code: string; clientId?: string; redirectUri?: string; codeVerifier?: string; tenantId?: string; state?: string }): Promise<any> {
+    const body: any = {
       code: payload.code,
-      client_id: payload.clientId,
-      redirect_uri: payload.redirectUri,
-      code_verifier: payload.codeVerifier,
-      ...(payload.tenantId && { tenant_id: payload.tenantId }),
-    });
+    };
+
+    // If state is provided, backend will use it to retrieve code_verifier from cache
+    if (payload.state) {
+      body.state = payload.state;
+    } else {
+      // Legacy support: send clientId, redirectUri, codeVerifier if no state
+      if (payload.clientId) body.client_id = payload.clientId;
+      if (payload.redirectUri) body.redirect_uri = payload.redirectUri;
+      if (payload.codeVerifier) body.code_verifier = payload.codeVerifier;
+    }
+
+    if (payload.tenantId) {
+      body.tenant_id = payload.tenantId;
+    }
+
+    return http.post(AUTH_ENDPOINTS.TOKEN_EXCHANGE, body);
   }
 
   verifySsoConsent(code: string): Promise<any> {

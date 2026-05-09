@@ -3,7 +3,6 @@ import { getRuntimeEnv } from "@/lib/runtime-env";
 import {
   AUTH_ENDPOINTS,
   AUTH_OIDC_ENDPOINTS,
-  OIDC_FLOW_ENDPOINTS,
 } from "../constants/endpoint.constant";
 export { redirectToLogin, buildNavigationUrl } from "../utils/oidc-navigation.util";
 
@@ -22,20 +21,6 @@ interface IOidcConfigResponse {
   [key: string]: any;
 }
 
-interface IUserAcknowledgementResponse {
-  redirectUrl?: string;
-}
-
-interface IUserAcknowledgementPayload {
-  clientId: string;
-  state: string;
-  nonce: string;
-  scope: string;
-  redirectUri: string;
-  isAcknowledged: boolean;
-  username: string;
-}
-
 interface IAccountRecoverPayload {
   email: string;
 }
@@ -51,10 +36,12 @@ export const refreshAccessToken = async (): Promise<string | null> => {
   try {
     const url = `${getRuntimeEnv("BLOCKS_API_BASE_URL")}${AUTH_ENDPOINTS.REFRESH}`;
 
+    const blocksKey = getRuntimeEnv("BLOCKS_X_BLOCKS_KEY") || "";
     const response = await fetch(url, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
+        ...(blocksKey ? { "X-Blocks-Key": blocksKey } : {}),
       },
       body: JSON.stringify({}),
       credentials: "include",
@@ -119,6 +106,10 @@ export const getOidcCredential = async (
       headers["Authorization"] = `Bearer ${accessToken}`;
     }
 
+    const blocksKey = getRuntimeEnv("BLOCKS_X_BLOCKS_KEY") || "";
+    if (blocksKey) {
+      headers["X-Blocks-Key"] = blocksKey;
+    }
     let response = await fetch(url, {
       method: "GET",
       headers,
@@ -152,46 +143,6 @@ export const getOidcCredential = async (
   }
 };
 
-export const userAcknowledgement = async (
-  payload: IUserAcknowledgementPayload,
-): Promise<IUserAcknowledgementResponse> => {
-  try {
-    const url = `${getRuntimeEnv("BLOCKS_API_BASE_URL")}${OIDC_FLOW_ENDPOINTS.USER_ACKNOWLEDGEMENT}`;
-
-    const headers: Record<string, string> = {
-      "Content-Type": "application/json",
-    };
-
-    const body = {
-      clientId: payload.clientId || "",
-      state: payload.state || "",
-      nonce: payload.nonce || "",
-      redirectUri: payload.redirectUri || "",
-      scope: payload.scope || "",
-      isAcknowledged: payload.isAcknowledged,
-      username: payload.username,
-    };
-
-    const response = await fetch(url, {
-      method: "POST",
-      headers,
-      body: JSON.stringify(body),
-      credentials: "include",
-      referrerPolicy: "no-referrer",
-    });
-
-    if (!response.ok) {
-      throw new Error(`HTTP ${response.status}: ${response.statusText}`);
-    }
-
-    return await response.json();
-  } catch (error) {
-    console.error("[User Acknowledgement] Error:", error);
-    showErrorToast({ errors: "Failed to process permission. Please try again." });
-    throw error;
-  }
-};
-
 export const accountRecover = async (
   payload: IAccountRecoverPayload,
 ): Promise<IAccountRecoverResponse> => {
@@ -202,6 +153,10 @@ export const accountRecover = async (
       "Content-Type": "application/json",
     };
 
+    const blocksKey = getRuntimeEnv("BLOCKS_X_BLOCKS_KEY") || "";
+    if (blocksKey) {
+      headers["X-Blocks-Key"] = blocksKey;
+    }
     const response = await fetch(url, {
       method: "POST",
       headers,
@@ -224,8 +179,6 @@ export const accountRecover = async (
 export type {
   IGetOidcPayload,
   IOidcConfigResponse,
-  IUserAcknowledgementResponse,
-  IUserAcknowledgementPayload,
   IAccountRecoverPayload,
   IAccountRecoverResponse,
 };

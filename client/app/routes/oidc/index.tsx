@@ -21,7 +21,7 @@ export default function OidcIndexPage() {
 
   // Derive fallback values so the exchange works even if localStorage is stale/missing
   const effectiveClientId = clientId || getRuntimeEnv("BLOCKS_OIDC_CLIENT_ID") || undefined;
-  const effectiveRedirectUri = redirectUri || `${window.location.origin}/oidc`;
+  const effectiveRedirectUri = redirectUri || `${window.location.origin}`;
   const effectiveTenantId = tenantId || searchParams.get("tenant_id") || undefined;
 
   useEffect(() => {

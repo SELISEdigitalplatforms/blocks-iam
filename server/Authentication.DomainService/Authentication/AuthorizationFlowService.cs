@@ -624,7 +624,15 @@ namespace Authentication.DomainService.Authentication
             var code_verifier = request.Form["code_verifier"].ToString();
             var client_id = request.Form["client_id"].ToString();
             var redirect_uri = request.Form["redirect_uri"].ToString();
-            var tenant_id = request.Form["tenant_id"].ToString();
+            
+            // Tenant ID resolution: form > query > header (X-Blocks-Key)
+            var tenant_id = !string.IsNullOrWhiteSpace(request.Form["tenant_id"].ToString())
+                ? request.Form["tenant_id"].ToString()
+                : (!string.IsNullOrWhiteSpace(request.Query["tenant_id"].ToString())
+                    ? request.Query["tenant_id"].ToString()
+                    : (request.Headers.TryGetValue("X-Blocks-Key", out var headerValue)
+                        ? headerValue.ToString()
+                        : string.Empty));
 
             return await ExchangeAuthorizationCodeCore(code, code_verifier, client_id, redirect_uri, tenant_id, request, request.HttpContext.Response);
         }
