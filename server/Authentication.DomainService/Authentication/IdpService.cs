@@ -213,49 +213,23 @@ namespace Authentication.DomainService.Authentication
                     CookieDomain = cookieDomain
                 };
 
-                // Resolve token handling policy per client registration
-                var useTokensCookie = await ResolveUseTokensCookieAsync(identityProvider.ClientId);
-
-                // Handle tokens: set in secure HttpOnly cookies (BFF pattern)
-                object responseBody;
-                if (useTokensCookie)
-                {
-                    AppendCookies(tokenResponseObj, httpResponse, resolvedTenantId);
-                    // Return metadata only (no token values in response body)
-                    responseBody = new
-                    {
-                        token_type = tokenResponseObj.TokenType ?? "Bearer",
-                        expires_in = (tokenResponseObj.ExpiresUtc - DateTime.UtcNow).TotalSeconds,
-                        scope = tokenResponseObj.Scope,
-                        tenant_id = resolvedTenantId,
-                        client_id = identityProvider.ClientId,
-                        cookie_set = true
-                    };
-                }
-                else
-                {
-                    // Return tokens in response body (non-BFF mode)
-                    responseBody = new
-                    {
-                        access_token = tokenResponseObj.AccessToken,
-                        token_type = tokenResponseObj.TokenType ?? "Bearer",
-                        expires_in = (tokenResponseObj.ExpiresUtc - DateTime.UtcNow).TotalSeconds,
-                        refresh_token = tokenResponseObj.RefreshToken,
-                        id_token = tokenResponseObj.IdToken,
-                        scope = tokenResponseObj.Scope,
-                        tenant_id = resolvedTenantId,
-                        client_id = identityProvider.ClientId,
-                        cookie_set = false
-                    };
-                }
+                // Always use secure cookies for token delivery in IdP callback flow.
+                AppendCookies(tokenResponseObj, httpResponse, resolvedTenantId);
 
                 // Clear cache entry
                 await _cacheClient.RemoveKeyAsync(cacheKey);
 
                 _logger.LogInformation($"Successfully completed authentication flow for state: {state}");
 
-                // Return success response - Frontend decides where to navigate
-                return new OkObjectResult(new { success = true, message = "Authentication successful" });
+                return new OkObjectResult(new
+                {
+                    token_type = tokenResponseObj.TokenType ?? "Bearer",
+                    expires_in = (tokenResponseObj.ExpiresUtc - DateTime.UtcNow).TotalSeconds,
+                    scope = tokenResponseObj.Scope,
+                    tenant_id = resolvedTenantId,
+                    client_id = identityProvider.ClientId,
+                    cookie_set = true
+                });
             }
             catch (Exception ex)
             {
@@ -293,23 +267,13 @@ namespace Authentication.DomainService.Authentication
             return base64.Replace("+", "-").Replace("/", "_").TrimEnd('=');
         }
 
-        private async Task<bool> ResolveUseTokensCookieAsync(string? clientId)
-        {
-            if (string.IsNullOrWhiteSpace(clientId))
-            {
-                return true;
-            }
-
-            var registration = await _authenticationRepository.GetOidcClientRegistrationAsync(clientId);
-            return registration?.UseTokensCookie ?? true;
-        }
-
         private static void AppendCookies(TokenResponse response, HttpResponse httpResponse, string? tenantId = null)
         {
             var resolvedTenantId = string.IsNullOrWhiteSpace(tenantId)
                 ? BlocksContext.GetContext()?.TenantId ?? "default"
                 : tenantId;
             var accessCookieOptions = CreateCookieOptions(response.CookieDomain, response.ExpiresUtc);
+            var idCookieOptions = CreateCookieOptions(response.CookieDomain, response.ExpiresUtc);
             var refreshCookieOptions = CreateCookieOptions(response.CookieDomain, response.RefreshExpiresUtc);
 
             if (!string.IsNullOrWhiteSpace(response.AccessToken))
@@ -320,6 +284,11 @@ namespace Authentication.DomainService.Authentication
             if (!string.IsNullOrWhiteSpace(response.RefreshToken))
             {
                 httpResponse.Cookies.Append($"{IdpConstants.RefreshTokenCookieName}_{resolvedTenantId}", response.RefreshToken, refreshCookieOptions);
+            }
+
+            if (!string.IsNullOrWhiteSpace(response.IdToken))
+            {
+                httpResponse.Cookies.Append($"{IdpConstants.IdTokenCookieName}_{resolvedTenantId}", response.IdToken, idCookieOptions);
             }
         }
 
