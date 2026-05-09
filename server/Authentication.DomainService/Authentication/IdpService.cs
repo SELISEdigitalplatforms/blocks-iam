@@ -199,6 +199,12 @@ namespace Authentication.DomainService.Authentication
 
                 // Resolve tenant_id: flowContext > BlocksContext > default
                 var resolvedTenantId = flowContext.TenantId ?? BlocksContext.GetContext()?.TenantId ?? string.Empty;
+                var authConfiguration = await _authenticationRepository.GetAuthenticationConfigurationAsync();
+                var configuredAccessLifetimeSeconds = Math.Max((authConfiguration?.AccessTokenValidForNumberMinutes ?? AuthenticationConfiguration.DefaultAccessTokenValidForNumberMinutes) * 60, 60);
+                var configuredRefreshLifetimeMinutes = Math.Max(authConfiguration?.AbsoluteRefreshTokenValidForNumberMinutes ?? AuthenticationConfiguration.DefaultRememberMeRefreshTokenValidForNumberMinutes, 1);
+                var resolvedAccessLifetimeSeconds = tokenResponse.ExpiresIn.HasValue
+                    ? Math.Max(tokenResponse.ExpiresIn.Value, 60)
+                    : configuredAccessLifetimeSeconds;
                 
                 var cookieDomain = _tenants.GetTenantByID(resolvedTenantId)?.CookieDomain;
                 var tokenResponseObj = new TokenResponse
@@ -207,8 +213,8 @@ namespace Authentication.DomainService.Authentication
                     RefreshToken = tokenResponse.RefreshToken,
                     IdToken = tokenResponse.IdToken,
                     TokenType = tokenResponse.TokenType ?? "Bearer",
-                    ExpiresUtc = DateTime.UtcNow.AddSeconds(tokenResponse.ExpiresIn ?? 3600),
-                    RefreshExpiresUtc = DateTime.UtcNow.AddDays(30),
+                    ExpiresUtc = DateTime.UtcNow.AddSeconds(resolvedAccessLifetimeSeconds),
+                    RefreshExpiresUtc = DateTime.UtcNow.AddMinutes(configuredRefreshLifetimeMinutes),
                     Scope = tokenResponse.Scope,
                     CookieDomain = cookieDomain
                 };
@@ -306,7 +312,7 @@ namespace Authentication.DomainService.Authentication
                 Secure = isSecure,
                 SameSite = sameSite,
                 Path = "/",
-                Expires = expiresUtc == default ? DateTime.UtcNow.AddHours(1) : expiresUtc
+                Expires = expiresUtc == default ? DateTime.UtcNow : expiresUtc
             };
         }
 

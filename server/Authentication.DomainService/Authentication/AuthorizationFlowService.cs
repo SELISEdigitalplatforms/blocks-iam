@@ -782,9 +782,13 @@ namespace Authentication.DomainService.Authentication
                 Permissions = resolvedClaims.Permissions
             };
 
+            var authConfiguration = await _authenticationRepository.GetAuthenticationConfigurationAsync();
+            var accessTokenLifetimeSeconds = Math.Max((authConfiguration?.AccessTokenValidForNumberMinutes ?? AuthenticationConfiguration.DefaultAccessTokenValidForNumberMinutes) * 60, 60);
+            var absoluteRefreshTokenLifetimeMinutes = Math.Max(authConfiguration?.AbsoluteRefreshTokenValidForNumberMinutes ?? AuthenticationConfiguration.DefaultRememberMeRefreshTokenValidForNumberMinutes, 1);
+
             var issuer = $"https://{request.Host}/";
-            var idToken = await _tokenService.GenerateIdTokenAsync(claims, issuer, 3600);
-            var accessToken = await _tokenService.GenerateAccessTokenAsync(claims, issuer, 3600);
+            var idToken = await _tokenService.GenerateIdTokenAsync(claims, issuer, accessTokenLifetimeSeconds);
+            var accessToken = await _tokenService.GenerateAccessTokenAsync(claims, issuer, accessTokenLifetimeSeconds);
             var refreshTokenModel = await _tokenService.GenerateRefreshTokenAsync(claims, issuer);
 
             refreshTokenModel.UserId = authCode.UserId;
@@ -802,8 +806,10 @@ namespace Authentication.DomainService.Authentication
             var effectiveTenantId = authCode.TenantId ?? tenant_id ?? "default";
             var tenantDomain = _tenants.GetTenantByID(effectiveTenantId)?.CookieDomain;
             var cookieDomain = IsLocalhost() ? null : tenantDomain;
-            var accessExpiry = DateTime.UtcNow.AddSeconds(3600);
-            var refreshExpiry = refreshTokenModel.AbsoluteExpiry == default ? DateTime.UtcNow.AddDays(30) : refreshTokenModel.AbsoluteExpiry;
+            var accessExpiry = DateTime.UtcNow.AddSeconds(accessTokenLifetimeSeconds);
+            var refreshExpiry = refreshTokenModel.AbsoluteExpiry == default
+                ? DateTime.UtcNow.AddMinutes(absoluteRefreshTokenLifetimeMinutes)
+                : refreshTokenModel.AbsoluteExpiry;
 
             return OidcExchangeResult.FromTokens(
                 accessToken,
@@ -812,7 +818,7 @@ namespace Authentication.DomainService.Authentication
                 effectiveTenantId,
                 cookieDomain,
                 authCode.Scope,
-                3600,
+                accessTokenLifetimeSeconds,
                 accessExpiry,
                 refreshExpiry);
         }
@@ -970,8 +976,11 @@ namespace Authentication.DomainService.Authentication
                 Permissions = resolvedClaims.Permissions
             };
 
+            var authConfiguration = await _authenticationRepository.GetAuthenticationConfigurationAsync();
+            var accessTokenLifetimeSeconds = Math.Max((authConfiguration?.AccessTokenValidForNumberMinutes ?? AuthenticationConfiguration.DefaultAccessTokenValidForNumberMinutes) * 60, 60);
+
             var issuer = $"https://{request.Host}/";
-            var accessToken = await _tokenService.GenerateAccessTokenAsync(claims, issuer, 3600);
+            var accessToken = await _tokenService.GenerateAccessTokenAsync(claims, issuer, accessTokenLifetimeSeconds);
             var newRefreshTokenModel = await _tokenService.GenerateRefreshTokenAsync(claims, issuer);
 
             newRefreshTokenModel.FamilyId = storedToken.FamilyId;
@@ -999,7 +1008,7 @@ namespace Authentication.DomainService.Authentication
                 AccessToken = accessToken,
                 RefreshToken = newRefreshTokenModel.TokenId,
                 TokenType = "Bearer",
-                ExpiresIn = 3600,
+                ExpiresIn = accessTokenLifetimeSeconds,
                 Scope = "openid profile email"
             });
         }

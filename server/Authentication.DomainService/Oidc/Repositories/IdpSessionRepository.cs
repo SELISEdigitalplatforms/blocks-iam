@@ -62,10 +62,11 @@ namespace Authentication.DomainService.Oidc.Repositories
             {
                 var collection = GetDatabase().GetCollection<IdpSessionModel>("idp_sessions");
                 var filter = Builders<IdpSessionModel>.Filter.Eq(s => s.SessionId, sessionId);
+                var idleExpiry = DateTime.UtcNow.Add(GetIdpSessionIdleTimeout());
                 var update = Builders<IdpSessionModel>.Update
                     .Push(s => s.Accounts, account)
                     .Set(s => s.LastActivityAt, DateTime.UtcNow)
-                    .Set(s => s.IdleExpiry, DateTime.UtcNow.AddHours(24));
+                    .Set(s => s.IdleExpiry, idleExpiry);
                 var result = await collection.UpdateOneAsync(filter, update);
                 return result.ModifiedCount > 0;
             }
@@ -82,10 +83,11 @@ namespace Authentication.DomainService.Oidc.Repositories
             {
                 var collection = GetDatabase().GetCollection<IdpSessionModel>("idp_sessions");
                 var filter = Builders<IdpSessionModel>.Filter.Eq(s => s.SessionId, sessionId);
+                var idleExpiry = DateTime.UtcNow.Add(GetIdpSessionIdleTimeout());
                 var update = Builders<IdpSessionModel>.Update
                     .PullFilter(s => s.Accounts, a => a.UserId == userId && a.TenantId == tenantId)
                     .Set(s => s.LastActivityAt, DateTime.UtcNow)
-                    .Set(s => s.IdleExpiry, DateTime.UtcNow.AddHours(24));
+                    .Set(s => s.IdleExpiry, idleExpiry);
                 var result = await collection.UpdateOneAsync(filter, update);
                 return result.ModifiedCount > 0;
             }
@@ -102,9 +104,10 @@ namespace Authentication.DomainService.Oidc.Repositories
             {
                 var collection = GetDatabase().GetCollection<IdpSessionModel>("idp_sessions");
                 var filter = Builders<IdpSessionModel>.Filter.Eq(s => s.SessionId, sessionId);
+                var idleExpiry = DateTime.UtcNow.Add(GetIdpSessionIdleTimeout());
                 var update = Builders<IdpSessionModel>.Update
                     .Set(s => s.LastActivityAt, DateTime.UtcNow)
-                    .Set(s => s.IdleExpiry, DateTime.UtcNow.AddHours(24));
+                    .Set(s => s.IdleExpiry, idleExpiry);
                 var result = await collection.UpdateOneAsync(filter, update);
                 return result.ModifiedCount > 0;
             }
@@ -165,6 +168,17 @@ namespace Authentication.DomainService.Oidc.Repositories
                 _logger.LogError(ex, $"Error fetching IdP sessions for user: {userId}");
                 throw;
             }
+        }
+
+        private static TimeSpan GetIdpSessionIdleTimeout()
+        {
+            var configured = Environment.GetEnvironmentVariable("IDP_SESSION_IDLE_HOURS");
+            if (double.TryParse(configured, out var hours) && hours > 0 && hours <= 168)
+            {
+                return TimeSpan.FromHours(hours);
+            }
+
+            return TimeSpan.FromHours(24);
         }
     }
 }
