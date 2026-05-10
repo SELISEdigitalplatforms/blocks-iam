@@ -104,10 +104,12 @@ class HttpClient {
       const clientId = sessionStorage.getItem("blocks-auth-client-id") || "";
       const url = `${this.baseURL}${AUTH_ENDPOINTS.REFRESH}`;
 
+      debugger; // Debug: Refresh token call about to execute
+
       const response = await fetch(url, {
         method: "POST",
         body: JSON.stringify({
-          clientId,
+          client_id: clientId,
         }),
         headers: {
           "Content-Type": "application/json",

@@ -37,6 +37,7 @@ export const refreshAccessToken = async (): Promise<string | null> => {
     const url = `${getRuntimeEnv("BLOCKS_API_BASE_URL")}${AUTH_ENDPOINTS.REFRESH}`;
 
     const blocksKey = getRuntimeEnv("BLOCKS_X_BLOCKS_KEY") || "";
+    debugger; // Debug: OIDC refresh token call about to execute
     const response = await fetch(url, {
       method: "POST",
       headers: {

@@ -657,6 +657,13 @@ namespace Authentication.DomainService.Authentication
                 return new UnauthorizedObjectResult(new { error = "invalid_client", error_description = "Client configuration not found" });
             }
 
+            // Defense-in-depth: Validate sent client_id matches the cached/bound client_id
+            if (!string.IsNullOrWhiteSpace(request.ClientId) && 
+                !string.Equals(request.ClientId, tokenCache.ClientId, StringComparison.OrdinalIgnoreCase))
+            {
+                return new UnauthorizedObjectResult(new { error = "invalid_client", error_description = "Client mismatch: sent client_id does not match token binding" });
+            }
+
             var currentTenantId = BlocksContext.GetContext()?.TenantId;
             if (string.IsNullOrWhiteSpace(currentTenantId))
             {
@@ -735,8 +742,6 @@ namespace Authentication.DomainService.Authentication
                     refresh_token = result.RefreshToken,
                     token_type = result.TokenType,
                     expires_in = result.ExpiresIn,
-                    expires_utc = result.ExpiresUtc,
-                    refresh_expires_utc = result.RefreshExpiresUtc,
                     scope = result.Scope,
                     id_token = result.IdToken,
                     client_id = clientId,
@@ -1214,8 +1219,6 @@ namespace Authentication.DomainService.Authentication
                 refresh_token = response.RefreshToken,
                 token_type = response.TokenType,
                 expires_in = response.ExpiresIn,
-                expires_utc = response.ExpiresUtc,
-                refresh_expires_utc = response.RefreshExpiresUtc,
                 scope = response.Scope,
                 id_token = response.IdToken,
                 client_id = clientId,
