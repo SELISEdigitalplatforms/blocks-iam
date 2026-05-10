@@ -300,7 +300,23 @@ namespace Authentication.DomainService.Services
 
         public async Task<BaseResponse> DeleteOidcClientAsync(DeleteOIDCClientRequest request)
         {
+            // Get the OIDC client before deletion to know the ClientId
+            var credential = await _authenticationRepository.GetOidcClientRegistrationAsync(request.ItemId ?? "");
+            
+            // Delete the OIDC client registration
             await _authenticationRepository.DeleteOidcCliantAsync(request);
+
+            // Delete the related IdentityProvider by ClientId
+            if (credential != null && !string.IsNullOrWhiteSpace(credential.ClientId))
+            {
+                var allProviders = await _authenticationRepository.GetIdentityProvidersAsync();
+                var relatedProvider = allProviders?.FirstOrDefault(p => p.ClientId == credential.ClientId);
+                
+                if (relatedProvider != null && !string.IsNullOrWhiteSpace(relatedProvider.ItemId))
+                {
+                    await _authenticationRepository.DeleteIdentityProviderAsync(relatedProvider.ItemId);
+                }
+            }
 
             return new BaseResponse { IsSuccess = true };
         }
@@ -454,7 +470,21 @@ namespace Authentication.DomainService.Services
             if (existing == null)
                 return new BaseResponse { IsSuccess = false, Errors = new Dictionary<string, string> { { "not_found", "Provider not found." } } };
 
+            // Delete the IdentityProvider
             await _authenticationRepository.DeleteIdentityProviderAsync(id);
+
+            // Delete related OidcClientRegistration by ClientId
+            if (!string.IsNullOrWhiteSpace(existing.ClientId))
+            {
+                var relatedCredential = await _authenticationRepository.GetOidcClientRegistrationAsync(existing.ClientId);
+                if (relatedCredential != null)
+                {
+                    var deleteRequest = new DeleteOIDCClientRequest { ItemId = existing.ClientId };
+                    // Call repository directly to avoid recursive sync logic
+                    await _authenticationRepository.DeleteOidcCliantAsync(deleteRequest);
+                }
+            }
+
             return new BaseResponse { IsSuccess = true };
         }
 
