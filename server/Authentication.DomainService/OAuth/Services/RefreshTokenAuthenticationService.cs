@@ -2,6 +2,7 @@ using Blocks.Genesis;
 using Authentication.DomainService.Entities;
 using Authentication.DomainService.OAuth.RequestModel;
 using Authentication.DomainService.OAuth.ResponseModel;
+using Authentication.DomainService.Shared.Services;
 using Iam.DomainService.Entities;
 using Microsoft.Extensions.Logging;
 using System.IdentityModel.Tokens.Jwt;
@@ -14,18 +15,21 @@ namespace Authentication.DomainService.OAuth
         private readonly IJwtAccessTokenProvider _jwtAccessTokenProvider;
         private readonly ITenants _tenants;
         private readonly IOAuthJwtAccessTokenManager _oAuthJwtAccessTokenManager;
+        private readonly IAuthenticationRepository _authenticationRepository;
         
         public RefreshTokenAuthenticationService(
             ILogger<RefreshTokenAuthenticationService> logger,
             IJwtAccessTokenProvider jwtAccessTokenProvider,
             ITenants tenants,
-            IOAuthJwtAccessTokenManager oAuthJwtAccessTokenManager
+            IOAuthJwtAccessTokenManager oAuthJwtAccessTokenManager,
+            IAuthenticationRepository authenticationRepository
         )
         {
             _logger = logger;
             _jwtAccessTokenProvider = jwtAccessTokenProvider;
             _tenants = tenants;
             _oAuthJwtAccessTokenManager = oAuthJwtAccessTokenManager;
+            _authenticationRepository = authenticationRepository;
         }
         public async Task<TokenResponse> AuthenticateAsync(TokenRequest request, AuthenticationConfiguration authenticationConfiguration, User user)
         {
@@ -33,13 +37,26 @@ namespace Authentication.DomainService.OAuth
             var bc = BlocksContext.GetContext();
             var tenant = _tenants.GetTenantByID(bc?.TenantId ?? string.Empty);
             if (tenant == null) return new TokenResponse { Error = "server_error", ErrorDescription = "Tenant not found", StatusCode = 500 };
+            
+            // Get client registration to extract AllowedScopes and AllowedServiceAccessResources
+            var clientRegistration = await _authenticationRepository.GetOidcClientRegistrationAsync(request.ClientId);
+            var clientAllowedScopes = clientRegistration?.AllowedScopes;
+            var clientAllowedServiceAccessResources = clientRegistration?.AllowedServiceAccessResources;
+            
             var issuanceContext = new TokenIssuanceContext
             {
                 IsImpersonation = request.IsImpersonation,
                 OriginalTenantId = request.OriginalTenantId,
                 ActorUserId = request.ImpersonatorUserId
             };
-            var jwtAccessToken = await _jwtAccessTokenProvider.GetJwtAccessToken(authenticationConfiguration, tenant, user, organizationId: request.OrganizationId, issuanceContext: issuanceContext);
+            var jwtAccessToken = await _jwtAccessTokenProvider.GetJwtAccessToken(
+                authenticationConfiguration,
+                tenant,
+                user,
+                organizationId: request.OrganizationId,
+                issuanceContext: issuanceContext,
+                clientAllowedScopes: clientAllowedScopes,
+                clientAllowedServiceAccessResources: clientAllowedServiceAccessResources);
             var jwtToken = new JwtSecurityToken(
                 jwtAccessToken.Issuer,
                 jwtAccessToken.Audience,

@@ -152,19 +152,26 @@ public class TokenGenerationService : ITokenGenerationService
             jwtClaims.Add(new Claim(JwtRegisteredClaimNames.Nonce, claims.Nonce));
         }
 
-        foreach (var role in claims.Roles)
-        {
-            jwtClaims.Add(new Claim(BlocksContext.ROLES_CLAIM, role));
-        }
+        // Add token_use claim to distinguish id_token from access_token
+        jwtClaims.Add(new Claim("token_use", includeNonce ? "id_token" : "access_token"));
 
-        foreach (var resource in claims.Resources)
+        // Authorization claims (roles, resources, permissions) should only be in access_token, not id_token
+        if (!includeNonce)
         {
-            jwtClaims.Add(new Claim(BlocksContext.SERVICE_ACCESS_CLAIM, resource));
-        }
+            foreach (var role in claims.Roles)
+            {
+                jwtClaims.Add(new Claim(BlocksContext.ROLES_CLAIM, role));
+            }
 
-        foreach (var permission in claims.Permissions)
-        {
-            jwtClaims.Add(new Claim(BlocksContext.PERMISSION_CLAIM, permission));
+            foreach (var resource in claims.Resources)
+            {
+                jwtClaims.Add(new Claim(BlocksContext.SERVICE_ACCESS_CLAIM, resource));
+            }
+
+            foreach (var permission in claims.Permissions)
+            {
+                jwtClaims.Add(new Claim(BlocksContext.PERMISSION_CLAIM, permission));
+            }
         }
 
         var token = new JwtSecurityToken(
