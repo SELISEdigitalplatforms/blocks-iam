@@ -68,6 +68,10 @@ namespace Authentication.DomainService.OAuth.RequestModel
 
     public class RefreshRequest
     {
+        [JsonPropertyName("refresh_token")]
         public string? RefreshToken { get; set; }
+
+        [JsonPropertyName("client_id")]
+        public string? ClientId { get; set; }
     }
 }
