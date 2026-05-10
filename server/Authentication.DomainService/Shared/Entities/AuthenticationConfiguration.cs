@@ -12,6 +12,8 @@ namespace Authentication.DomainService.Entities
         public const int DefaultRememberMeRefreshTokenValidForNumberMinutes = 30 * 60 * 24;
         public const int DefaultGetNumberOfWrongAttemptsToLockTheAccount = 5;
         public const int DefaultAccountLockDurationInMinutes = 5;
+        public const int DefaultTokenRotationGracePeriodMinutes = 5;
+        public const int DefaultMaxTokenRotationAttempts = 3;
 
         [BsonId]
         public ObjectId ItemId { get; set; }
@@ -22,5 +24,7 @@ namespace Authentication.DomainService.Entities
         public int RememberMeRefreshTokenValidForNumberMinutes { get; init; } = DefaultRememberMeRefreshTokenValidForNumberMinutes;
         public int GetNumberOfWrongAttemptsToLockTheAccount { get; set; } = DefaultGetNumberOfWrongAttemptsToLockTheAccount;
         public int AccountLockDurationInMinutes { get; set; } = DefaultAccountLockDurationInMinutes;
+        public int TokenRotationGracePeriodMinutes { get; set; } = DefaultTokenRotationGracePeriodMinutes;
+        public int MaxTokenRotationAttempts { get; set; } = DefaultMaxTokenRotationAttempts;
     }
 }
