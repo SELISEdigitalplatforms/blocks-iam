@@ -47,14 +47,22 @@ namespace Authentication.DomainService.Authentication
                 var effectiveTenantId = BlocksContext.GetContext()?.TenantId;
 
                 // Provider is always the IDP's own OIDC provider — not taken from FE
-                var providerName = "idp";
-                var providerType = "oidc";
+                var providerName = IdpConstants.BlocksProviderName;
+                var providerType = IdpConstants.BlocksProviderType;
 
                 // Get identity provider config by both provider name and type for exact match
                 var identityProvider = await _authenticationRepository.GetIdentityProviderAsync(providerName, providerType);
+                if (identityProvider == null)
+                {
+                    // Backward compatibility: support legacy records stored as (blocks, oidc).
+                    providerName = IdpConstants.BlocksProviderType;
+                    providerType = IdpConstants.OidcProtocol;
+                    identityProvider = await _authenticationRepository.GetIdentityProviderAsync(providerName, providerType);
+                }
+
                 if (identityProvider == null || !identityProvider.IsActive)
                 {
-                    _logger.LogWarning($"Identity provider not found or inactive: {providerName}");
+                    _logger.LogWarning($"Identity provider not found or inactive: {providerName} ({providerType})");
                     return new BadRequestObjectResult(new { error = "invalid_provider", error_description = "Provider not found or not active" });
                 }
 

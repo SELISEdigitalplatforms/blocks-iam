@@ -1,15 +1,12 @@
-using Blocks.Genesis;
 using Authentication.DomainService.Dtos;
 using Authentication.DomainService.Entities;
-using Authentication.DomainService.OAuth;
 using Authentication.DomainService.OAuth.ResponseModel;
 using Authentication.DomainService.Oidc.Repositories;
 using Authentication.DomainService.Oidc.Services;
 using Authentication.DomainService.Services;
-using Authentication.DomainService.Shared.RequestModel;
 using Authentication.DomainService.Utilities;
+using Blocks.Genesis;
 using Idp.DomainService.Oidc.Contracts;
-using Iam.DomainService.Entities;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.Logging;
@@ -18,7 +15,6 @@ using System.IdentityModel.Tokens.Jwt;
 using System.Net.Http.Json;
 using System.Security.Claims;
 using System.Security.Cryptography.X509Certificates;
-using System.Text.Json;
 
 namespace Authentication.DomainService.Authentication
 {
@@ -181,7 +177,7 @@ namespace Authentication.DomainService.Authentication
                 IpAddresses = string.Join(",", _authenticationDomainService.GetVisitorsIpAddresses(httpRequest?.HttpContext)),
                 Event = isFromAll ? "revoke_access_by_logout_all" : "revoke_access_by_logout",
                 ActionBy = isFromAll ? "call_api_to_logout_all" : "call_api_to_logout",
-                UserId = bc?.UserId?? ""
+                UserId = bc?.UserId ?? ""
             };
 
             await _authenticationDomainService.SendToQueueAsync(IdpConstants.AuthenticationQueue, eventTimeline);
@@ -193,25 +189,9 @@ namespace Authentication.DomainService.Authentication
             return await _authenticationRepository.GetOidcClientRegistrationAsync(clientId);
         }
 
-        public async Task<string> ConstructRedirectUriAsync(string clientId, AcknowledgeRequest request)
-        {
-            var client = await GetClientCredentialAsync(request.ClientId);
-            var code = Guid.NewGuid().ToString("n");
-            var nextUrl = client.RedirectUris.FirstOrDefault() ?? string.Empty;
-            var serviceAccessResource = client.AllowedServiceAccessResources.FirstOrDefault() ?? string.Empty;
-            var stateInfo = new StateInfo { Scope = request.Scope, secret = client.ClientSecret, State = request.State, Code = code, Nonce = request.Nonce, UserName = request.Username, Audience = serviceAccessResource, Provider = "SeliseCloud", NextUrl = nextUrl };
-            await _cacheClient.AddStringValueAsync(code, JsonSerializer.Serialize(stateInfo), 300);
-            var uri = $"{nextUrl}?code={code}";
-
-            if (!string.IsNullOrEmpty(request.State))
-                uri += $"&state={request.State}";
-
-            return uri;
-        }
-
         public string CookieToken(HttpRequest request)
         {
-            var bc = BlocksContext.GetContext();  
+            var bc = BlocksContext.GetContext();
             var refreshToken = request.HttpContext.Request.Cookies[$"{IdpConstants.RefreshTokenCookieName}_{bc.TenantId}"];
             refreshToken = string.IsNullOrEmpty(refreshToken) ? request.HttpContext.Request.Headers[$"{IdpConstants.RefreshTokenCookieName}_{bc.TenantId}"] : refreshToken;
 
@@ -568,7 +548,7 @@ namespace Authentication.DomainService.Authentication
 
         public async Task<ClaimsPrincipal?> GetPrincipalFromTokenAsync(HttpRequest request, string tenantId, bool IsUserInfoGetRequest = false)
         {
-            var (token, _) =  TokenHelper.GetToken(request, _tenants);
+            var (token, _) = TokenHelper.GetToken(request, _tenants);
             var tenant = _tenants.GetTenantByID(tenantId);
             if (tenant == null)
             {
@@ -582,7 +562,7 @@ namespace Authentication.DomainService.Authentication
                 var certificateData = await _cacheClient.CacheDatabase().StringGetAsync(cacheKey);
                 var validationParams = tenant.JwtTokenParameters;
                 var publicCert = X509CertificateLoader.LoadPkcs12(certificateData, validationParams.PublicCertificatePassword);
-                var tokenValidationParameters = !IsUserInfoGetRequest? new TokenValidationParameters { ValidateLifetime = true, ClockSkew = TimeSpan.Zero, IssuerSigningKey = new X509SecurityKey(publicCert), ValidateIssuerSigningKey = true, ValidateIssuer = true, ValidIssuer = validationParams?.Issuer, ValidAudience = TenantDomainPolicy.GetAudience(tenant), ValidateAudience = true, SaveSigninToken = true } :
+                var tokenValidationParameters = !IsUserInfoGetRequest ? new TokenValidationParameters { ValidateLifetime = true, ClockSkew = TimeSpan.Zero, IssuerSigningKey = new X509SecurityKey(publicCert), ValidateIssuerSigningKey = true, ValidateIssuer = true, ValidIssuer = validationParams?.Issuer, ValidAudience = TenantDomainPolicy.GetAudience(tenant), ValidateAudience = true, SaveSigninToken = true } :
                                                                       new TokenValidationParameters { ValidateLifetime = true, ClockSkew = TimeSpan.Zero, IssuerSigningKey = new X509SecurityKey(publicCert), ValidateIssuerSigningKey = true, ValidateIssuer = false, ValidateAudience = false, SaveSigninToken = true };
                 return tokenHandler.ValidateToken(token, tokenValidationParameters, out _);
             }
@@ -823,7 +803,7 @@ namespace Authentication.DomainService.Authentication
             var cookieDomain = IsLocalhost() ? null : (string.IsNullOrWhiteSpace(domain) ? null : domain);
             var isSecure = !IsLocalhost();
             var sameSite = isSecure ? SameSiteMode.Strict : SameSiteMode.None;
-            
+
             return new CookieOptions
             {
                 Domain = cookieDomain,

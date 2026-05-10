@@ -15,6 +15,10 @@ namespace Authentication.DomainService.Utilities
         public const string RefreshTokenCookieName = "refresh_token";
         public const string IdTokenCookieName = "id_token";
 
+        public const string BlocksProviderName = "blocks-idp";
+        public const string BlocksProviderType = "blocks";
+        public const string OidcProtocol = "oidc";
+
         private const string DefaultProvider = "azure";
         private const string RabbitMqProvider = "rabbitmq";
 
