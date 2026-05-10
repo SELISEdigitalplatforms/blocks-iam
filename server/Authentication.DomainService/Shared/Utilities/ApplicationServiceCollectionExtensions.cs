@@ -46,6 +46,7 @@ namespace Authentication.DomainService.Utilities
             serviceCollection.AddSingleton<IAuthenticationFlowService, AuthenticationFlowService>();
             serviceCollection.AddSingleton<IAuthorizationFlowService, AuthorizationFlowService>();
             serviceCollection.AddSingleton<IIdpService, IdpService>();
+            serviceCollection.AddSingleton<IImpersonationBackupService, ImpersonationBackupService>();
             serviceCollection.AddSingleton<AuthorizeRequestValidator>();
 
             serviceCollection.AddSingleton<OidcSigningKeyMaterial>();
