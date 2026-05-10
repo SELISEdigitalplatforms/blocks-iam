@@ -32,7 +32,7 @@ namespace Api.Controllers
         /// <response code="400">Invalid query parameters</response>
         /// <response code="401">Authentication required</response>
         [HttpGet("list")]
-        [ProtectedEndPoint]
+        [ProtectedEndPoint("blocks-idp::project::getall")]
         public async Task<List<GroupedProjectsDto>> GetAll([FromQuery] GetProjectsRequest request)
         {
             return await _projectManagementService.GetAllAsync(request);
@@ -49,7 +49,7 @@ namespace Api.Controllers
         /// <response code="400">projectId parameter is required</response>
         /// <response code="401">Authentication required</response>
         /// <response code="404">Project not found</response>
-        [ProtectedEndPoint]
+        [ProtectedEndPoint("blocks-idp::project::get")]
         [HttpGet("details")]
         public async Task<GetProjectResponse> Get([FromQuery] string projectId)
         {

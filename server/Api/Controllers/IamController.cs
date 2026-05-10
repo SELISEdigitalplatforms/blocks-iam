@@ -47,60 +47,7 @@ namespace Api.Controllers
             _configurationService = configurationService;
         }
 
-        #region Account
 
-        /// <summary>
-        /// Activate user account
-        /// Validates activation code and marks account as active
-        /// User can log in after successful activation
-        /// </summary>
-        /// <param name="command">Activation request with user email and verification code</param>
-        /// <returns>Activation result with user details</returns>
-        /// <response code="200">Account activated successfully</response>
-        /// <response code="400">Invalid or expired activation code</response>
-        [HttpPost("activate")]
-        [AllowAnonymous]
-        public async Task<IActionResult> Activate([FromBody] ActivateUserRequest command)
-        {
-            var result = await _accountService.ActivateAccountAsync(command);
-            return result.IsSuccess ? Ok(result) : BadRequest(result);
-        }
-
-        /// <summary>
-        /// Resend account activation email
-        /// Generates new activation code and sends to user's email
-        /// Use if user did not receive initial activation email
-        /// </summary>
-        /// <param name="command">Request with user email to resend activation</param>
-        /// <returns>Activation code send result</returns>
-        /// <response code="200">Activation email resent successfully</response>
-        /// <response code="400">User not found or already activated</response>
-        [HttpPost("resend-activation")]
-        [AllowAnonymous]
-        public async Task<IActionResult> ResendActivation([FromBody] ResendActivationRequest command)
-        {
-            var result = await _accountService.ResendActivationAsync(command);
-            return result.IsSuccess ? Ok(result) : BadRequest(result);
-        }
-
-        /// <summary>
-        /// Validate account activation code
-        /// Checks if activation code is valid without activating account
-        /// Use to verify code before user interaction
-        /// </summary>
-        /// <param name="command">Request with email and activation code</param>
-        /// <returns>Validation result indicating code validity</returns>
-        /// <response code="200">Activation code is valid</response>
-        /// <response code="400">Invalid or expired activation code</response>
-        [HttpPost("validate-activation")]
-        [AllowAnonymous]
-        public async Task<IActionResult> ValidateActivationCode([FromBody] ValidateActivationCodeRequest command)
-        {
-            var result = await _accountService.ValidateAccountActivationCodeAsync(command);
-            return result.IsSuccess ? Ok(result) : BadRequest(result);
-        }
-
-        #endregion
 
         #region Activity
 
@@ -114,7 +61,7 @@ namespace Api.Controllers
         /// <response code="200">Successfully retrieved sessions</response>
         /// <response code="401">Authentication required</response>
         [HttpGet("sessions")]
-        [ProtectedEndPoint]
+        [ProtectedEndPoint("blocks-idp::iam::getsessions")]
         public async Task<GetSessionsResponse> GetSessions([FromQuery] BaseActivityRequest query)
         {
             return await _userActivityService.GetSessionsAsync(query);
@@ -130,7 +77,7 @@ namespace Api.Controllers
         /// <response code="200">Successfully retrieved activity history</response>
         /// <response code="401">Authentication required</response>
         [HttpGet("history")]
-        [ProtectedEndPoint]
+        [ProtectedEndPoint("blocks-idp::iam::gethistories")]
         public async Task<GetHistorysResponse> GetHistories([FromQuery] BaseActivityRequest query)
         {
             return await _userActivityService.GetHistoriesAsync(query);
@@ -151,7 +98,7 @@ namespace Api.Controllers
         /// <response code="400">Invalid permission definition or duplicate</response>
         /// <response code="401">Authentication required</response>
         [HttpPost("permissions/create")]
-        [ProtectedEndPoint]
+        [ProtectedEndPoint("blocks-idp::iam::createpermission")]
         public async Task<IActionResult> CreatePermission([FromBody] CreatePermissionRequest command)
         {
             var result = await _resourceMutationService.CreatePermissionAsync(command);
@@ -169,7 +116,7 @@ namespace Api.Controllers
         /// <response code="400">Invalid update or permission not found</response>
         /// <response code="401">Authentication required</response>
         [HttpPost("permissions/update")]
-        [ProtectedEndPoint]
+        [ProtectedEndPoint("blocks-idp::iam::updatepermission")]
         public async Task<IActionResult> UpdatePermission([FromBody] UpdatePermissionRequest command)
         {
             var result = await _resourceMutationService.UpdatePermissionAsync(command);
@@ -187,7 +134,7 @@ namespace Api.Controllers
         /// <response code="400">Invalid role definition or duplicate</response>
         /// <response code="401">Authentication required</response>
         [HttpPost("roles/create")]
-        [ProtectedEndPoint]
+        [ProtectedEndPoint("blocks-idp::iam::createrole")]
         public async Task<IActionResult> CreateRole([FromBody] CreateRoleRequest command)
         {
             var result = await _resourceMutationService.CreateRoleAsync(command);
@@ -205,7 +152,7 @@ namespace Api.Controllers
         /// <response code="400">Invalid update or role not found</response>
         /// <response code="401">Authentication required</response>
         [HttpPost("roles/update")]
-        [ProtectedEndPoint]
+        [ProtectedEndPoint("blocks-idp::iam::updaterole")]
         public async Task<IActionResult> UpdateRole([FromBody] UpdateRoleRequest command)
         {
             var result = await _resourceMutationService.UpdateRoleAsync(command);
@@ -222,7 +169,7 @@ namespace Api.Controllers
         /// <response code="200">Successfully retrieved permissions</response>
         /// <response code="401">Authentication required</response>
         [HttpPost("permissions")]
-        [ProtectedEndPoint]
+        [ProtectedEndPoint("blocks-idp::iam::getpermissions")]
         public async Task<GetPermissionsResponse> GetPermissions([FromBody] GetPermissionsRequest query)
         {
             return await _resourceQueryService.GetPermissionsAsync(query);
@@ -254,7 +201,7 @@ namespace Api.Controllers
         /// <response code="401">Authentication required</response>
         /// <response code="404">Permission not found</response>
         [HttpGet("permission")]
-        [ProtectedEndPoint]
+        [ProtectedEndPoint("blocks-idp::iam::getpermission")]
         public async Task<GetPermissionResponse> GetPermission([FromQuery] GetPermissionRequest query)
         {
             return await _resourceQueryService.GetPermissionAsync(query.Id);
@@ -270,7 +217,7 @@ namespace Api.Controllers
         /// <response code="200">Successfully retrieved roles</response>
         /// <response code="401">Authentication required</response>
         [HttpPost("roles")]
-        [ProtectedEndPoint]
+        [ProtectedEndPoint("blocks-idp::iam::getroles")]
         public async Task<GetRolesResponse> GetRoles([FromBody] GetRolesRequest query)
         {
             return await _resourceQueryService.GetRolesAsync(query);
@@ -287,7 +234,7 @@ namespace Api.Controllers
         /// <response code="401">Authentication required</response>
         /// <response code="404">Role not found</response>
         [HttpGet("role")]
-        [ProtectedEndPoint]
+        [ProtectedEndPoint("blocks-idp::iam::getrole")]
         public async Task<GetRoleResponse> GetRole([FromQuery] GetRoleRequest query)
         {
             return await _resourceQueryService.GetRoleAsync(query.Id);
@@ -304,7 +251,7 @@ namespace Api.Controllers
         /// <response code="400">Invalid user or role IDs</response>
         /// <response code="401">Authentication required</response>
         [HttpPost("roles/assign")]
-        [ProtectedEndPoint]
+        [ProtectedEndPoint("blocks-idp::iam::setroles")]
         public async Task<IActionResult> SetRoles([FromBody] SetRolesRequest command)
         {
             var result = await _resourceMutationService.SetRolesAsync(command);
@@ -321,7 +268,7 @@ namespace Api.Controllers
         /// <response code="200">Successfully retrieved resource groups</response>
         /// <response code="401">Authentication required</response>
         [HttpGet("resource-groups")]
-        [ProtectedEndPoint]
+        [ProtectedEndPoint("blocks-idp::iam::getresourcegroups")]
         public async Task<List<GetResourceGroupResponse>> GetResourceGroups([FromQuery] GetResourceGroupRequest request)
         {
             return await _resourceQueryService.GetResourceGroupsAsync();
@@ -342,7 +289,7 @@ namespace Api.Controllers
         /// <response code="400">Invalid user data or duplicate email</response>
         /// <response code="401">Authentication required</response>
         [HttpPost("users/create")]
-        [ProtectedEndPoint]
+        [ProtectedEndPoint("blocks-idp::iam::create")]
         public async Task<IActionResult> Create([FromBody] CreateUserRequest command)
         {
             var result = await _userManagementMutationService.CreateUserAsync(command);
@@ -360,7 +307,7 @@ namespace Api.Controllers
         /// <response code="400">Invalid update data or user not found</response>
         /// <response code="401">Authentication required</response>
         [HttpPost("users/update")]
-        [ProtectedEndPoint]
+        [ProtectedEndPoint("blocks-idp::iam::update")]
         public async Task<IActionResult> Update([FromBody] UpdateUserRequest command)
         {
             var result = await _userManagementMutationService.UpdateUserAsync(command);
@@ -396,7 +343,7 @@ namespace Api.Controllers
         /// <response code="400">Invalid update data</response>
         /// <response code="401">Authentication required</response>
         [HttpPost("account/update")]
-        [ProtectedEndPoint]
+        [ProtectedEndPoint("blocks-idp::iam::updateaccount")]
         public async Task<IActionResult> UpdateAccount([FromBody] UpdateUserRequest command)
         {
             var result = await _userManagementMutationService.UpdateUserAsync(command);
@@ -413,7 +360,7 @@ namespace Api.Controllers
         /// <response code="200">Successfully retrieved users</response>
         /// <response code="401">Authentication required</response>
         [HttpPost("users")]
-        [ProtectedEndPoint]
+        [ProtectedEndPoint("blocks-idp::iam::getusers")]
         public async Task<GetUsersResponse> GetUsers([FromBody] GetUsersRequest query)
         {
             return await _userManagementQueryService.GetUsersAsync(query);
@@ -430,7 +377,7 @@ namespace Api.Controllers
         /// <response code="401">Authentication required</response>
         /// <response code="404">User not found</response>
         [HttpGet("user")]
-        [ProtectedEndPoint]
+        [ProtectedEndPoint("blocks-idp::iam::getuser")]
         public async Task<GetUserResponse> GetUser([FromQuery] GetUserRequest query)
         {
             return await _userManagementQueryService.GetUserAsync(query.Id);
@@ -446,7 +393,7 @@ namespace Api.Controllers
         /// <response code="200">Successfully retrieved user roles</response>
         /// <response code="401">Authentication required</response>
         [HttpGet("user/roles")]
-        [ProtectedEndPoint]
+        [ProtectedEndPoint("blocks-idp::iam::getuserroles")]
         public async Task<GetUserRolesResponse> GetUserRoles([FromQuery] GetUserRolesRequest query)
         {
             return await _userManagementQueryService.GetUserRolesAsync(query.Id);
@@ -462,7 +409,7 @@ namespace Api.Controllers
         /// <response code="200">Successfully retrieved user permissions</response>
         /// <response code="401">Authentication required</response>
         [HttpGet("user/permissions")]
-        [ProtectedEndPoint]
+        [ProtectedEndPoint("blocks-idp::iam::getuserpermissions")]
         public async Task<GetUserPermissionsResponse> GetUserPermissions([FromQuery] GetUserPermissionsRequest query)
         {
             return await _userManagementQueryService.GetUserPermissionsAsync(query.Id);
@@ -478,7 +425,7 @@ namespace Api.Controllers
         /// <response code="200">Successfully retrieved accounts</response>
         /// <response code="401">Authentication required</response>
         [HttpPost("accounts")]
-        [ProtectedEndPoint]
+        [ProtectedEndPoint("blocks-idp::iam::getaccounts")]
         public async Task<GetAccountsResponse> GetAccounts([FromBody] GetAccountsRequest query)
         {
             return await _userManagementQueryService.GetAccountsAsync(query);
@@ -493,7 +440,7 @@ namespace Api.Controllers
         /// <response code="200">Successfully retrieved account</response>
         /// <response code="401">Authentication required</response>
         [HttpGet("account")]
-        [ProtectedEndPoint]
+        [ProtectedEndPoint("blocks-idp::iam::getaccount")]
         public async Task<GetAccountResponse> GetAccount()
         {
             return await _userManagementQueryService.GetAccountAsync();
@@ -508,7 +455,7 @@ namespace Api.Controllers
         /// <response code="200">Successfully retrieved account roles</response>
         /// <response code="401">Authentication required</response>
         [HttpGet("account/roles")]
-        [ProtectedEndPoint]
+        [ProtectedEndPoint("blocks-idp::iam::getaccountroles")]
         public async Task<GetAccountRolesResponse> GetAccountRoles()
         {
             return await _userManagementQueryService.GetAccountRolesAsync();
@@ -523,7 +470,7 @@ namespace Api.Controllers
         /// <response code="200">Successfully retrieved account permissions</response>
         /// <response code="401">Authentication required</response>
         [HttpGet("account/permissions")]
-        [ProtectedEndPoint]
+        [ProtectedEndPoint("blocks-idp::iam::getaccountpermissions")]
         public async Task<GetAccountPermissionsResponse> GetAccountPermissions()
         {
             return await _userManagementQueryService.GetAccountPermissionsAsync();
@@ -540,7 +487,7 @@ namespace Api.Controllers
         /// <response code="400">Invalid configuration</response>
         /// <response code="401">Authentication required</response>
         [HttpPost("roles-permissions")]
-        [ProtectedEndPoint]
+        [ProtectedEndPoint("blocks-idp::iam::saverolesandpermissions")]
         public async Task<IActionResult> SaveRolesAndPermissions(SaveRolesAndPermissionsRequest command)
         {
             var result = await _userManagementMutationService.SaveRolesAndPermissionsAsync(command);
@@ -576,7 +523,7 @@ namespace Api.Controllers
         /// <response code="200">Successfully retrieved user timeline</response>
         /// <response code="401">Authentication required</response>
         [Authorize]
-        [ProtectedEndPoint]
+        [ProtectedEndPoint("blocks-idp::iam::getusertimelines")]
         [HttpGet("user/timelines")]
         public async Task<List<UserTimeline>> GetUserTimelines(GetUserTimeLineRequest request)
         {
@@ -623,7 +570,7 @@ namespace Api.Controllers
         }
 
         [HttpPost("signup-settings")]
-        [ProtectedEndPoint]
+        [ProtectedEndPoint("blocks-idp::iam::savesignupsetting")]
         public async Task<SaveSignUpSettingResponse> SaveSignUpSetting([FromBody] SaveSignUpSettingRequest request)
         {
             return await _accountService.SaveSingUpSettingAsync(request);
@@ -638,7 +585,7 @@ namespace Api.Controllers
         #endregion
         #region Cloud configuration
         [HttpPost("config")]
-        [ProtectedEndPoint]
+        [ProtectedEndPoint("blocks-idp::iam::save")]
         public async Task<IActionResult> Save([FromBody] SaveIamConfigurationRequest request)
         {
             var result = await _configurationService.SaveIamConfigurationAsync(request);
@@ -646,7 +593,7 @@ namespace Api.Controllers
         }
 
         [HttpGet("config")]
-        [ProtectedEndPoint]
+        [ProtectedEndPoint("blocks-idp::iam::get")]
         public async Task<GetConfigurationResponse> Get([FromQuery] GetAuthenticationConfigurationRequest request)
         {
             return await _configurationService.GetIamConfigurationAsync();
