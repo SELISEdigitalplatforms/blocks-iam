@@ -5,6 +5,7 @@ using Authentication.DomainService.Entities;
 using Authentication.DomainService.RequestModel;
 using Authentication.DomainService.ResponseModel;
 using Authentication.DomainService.Shared;
+using Authentication.DomainService.Utilities;
 using Iam.DomainService.Users;
 using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.Configuration;
@@ -218,7 +219,7 @@ namespace Authentication.DomainService.Services
                 ? request.ClientDisplayName.ToLower().Replace(" ", "-") 
                 : clientId.ToLower();
             
-            var existingProvider = await _authenticationRepository.GetIdentityProviderAsync(providerName);
+            var existingProvider = await _authenticationRepository.GetIdentityProviderAsync(providerName, IdpConstants.BlocksProviderType);
             
             if (existingProvider == null)
             {
@@ -226,8 +227,8 @@ namespace Authentication.DomainService.Services
                 var newProvider = new IdentityProvider
                 {
                     Provider = providerName,
-                    ProviderType = "internal",
-                    Protocol = "oidc",
+                    ProviderType = IdpConstants.BlocksProviderType,
+                    Protocol = IdpConstants.OidcProtocol,
                     DisplayName = request.ClientDisplayName ?? clientId,
                     IsActive = request.IsActive,
                     ClientId = credential.ClientId,
@@ -252,6 +253,9 @@ namespace Authentication.DomainService.Services
             else
             {
                 // Update existing provider with latest OIDC client config
+                existingProvider.Provider = providerName;
+                existingProvider.ProviderType = IdpConstants.BlocksProviderType;
+                existingProvider.Protocol = IdpConstants.OidcProtocol;
                 existingProvider.ClientId = credential.ClientId;
                 existingProvider.ClientSecret = credential.ClientSecret;
                 existingProvider.DisplayName = request.ClientDisplayName ?? clientId;
