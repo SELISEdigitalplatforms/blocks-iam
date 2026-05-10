@@ -2,10 +2,10 @@ using Blocks.Genesis;
 using Authentication.DomainService.Entities;
 using Authentication.DomainService.OAuth.RequestModel;
 using Authentication.DomainService.OAuth.ResponseModel;
-using Authentication.DomainService.Shared.Services;
 using Iam.DomainService.Entities;
 using Microsoft.Extensions.Logging;
 using System.IdentityModel.Tokens.Jwt;
+using Authentication.DomainService.Services;
 
 namespace Authentication.DomainService.OAuth
 {
