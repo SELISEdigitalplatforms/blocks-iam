@@ -157,13 +157,22 @@ namespace Authentication.DomainService.Services
                 return userAfterIncrement;
             }
 
-            var lockoutUntilUtc = nowUtc.AddMinutes(lockDurationInMinutes);
+            // Calculate actual lockout duration with exponential backoff
+            var actualLockoutDurationInMinutes = CalculateExponentialBackoffLockoutDuration(
+                userAfterIncrement.LockoutCount,
+                userAfterIncrement.LastLockoutUtc,
+                lockDurationInMinutes,
+                7); // 7-day reset window
+
+            var lockoutUntilUtc = nowUtc.AddMinutes(actualLockoutDurationInMinutes);
             var lockFilter = Builders<User>.Filter.And(
                 Builders<User>.Filter.Eq(x => x.ItemId, userId),
                 Builders<User>.Filter.Eq(x => x.FailedLoginCount, userAfterIncrement.FailedLoginCount));
 
             var lockUpdate = Builders<User>.Update
                 .Set(x => x.LockoutUntilUtc, lockoutUntilUtc)
+                .Inc(x => x.LockoutCount, 1) // Increment lockout count for next time
+                .Set(x => x.LastLockoutUtc, nowUtc)
                 .Set(x => x.LastUpdatedDate, nowUtc)
                 .Set(x => x.LastUpdatedBy, userId);
 
@@ -176,6 +185,39 @@ namespace Authentication.DomainService.Services
                 });
 
             return userAfterLock ?? userAfterIncrement;
+        }
+
+        /// <summary>
+        /// Calculates exponential backoff lockout duration.
+        /// - 1st lockout: baseDuration (5 min)
+        /// - 2nd lockout: 3x baseDuration (15 min)
+        /// - 3rd lockout: 12x baseDuration (60 min)
+        /// - 4th+ lockout: 288x baseDuration (24 hours)
+        /// Resets counter if last lockout was > resetWindowDays ago.
+        /// </summary>
+        private int CalculateExponentialBackoffLockoutDuration(
+            int currentLockoutCount,
+            DateTime? lastLockoutUtc,
+            int baseDurationMinutes,
+            int resetWindowDays)
+        {
+            var now = DateTime.UtcNow;
+            
+            // Reset counter if last lockout was too long ago
+            if (lastLockoutUtc.HasValue && (now - lastLockoutUtc.Value).TotalDays >= resetWindowDays)
+            {
+                // Reset to 1st lockout duration
+                return baseDurationMinutes;
+            }
+
+            // Exponential backoff based on lockout count
+            return currentLockoutCount switch
+            {
+                0 => baseDurationMinutes,              // 5 minutes
+                1 => baseDurationMinutes * 3,          // 15 minutes
+                2 => baseDurationMinutes * 12,         // 60 minutes (1 hour)
+                _ => baseDurationMinutes * 288         // 1440 minutes (24 hours)
+            };
         }
 
         public async Task<Session?> GetSessionByRefreshTokenAsync(string refreshToken)

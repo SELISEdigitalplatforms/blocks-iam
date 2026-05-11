@@ -31,6 +31,8 @@ namespace Iam.DomainService.Entities
         public int FailedLoginCount { get; set; }
         public DateTime? LastFailedLoginUtc { get; set; }
         public DateTime? LockoutUntilUtc { get; set; }
+        public int LockoutCount { get; set; } // Tracks how many times account has been locked (for exponential backoff)
+        public DateTime? LastLockoutUtc { get; set; } // When the last lockout was applied
         public string SecurityStamp { get; set; } = Guid.NewGuid().ToString("N");
         public int TokenVersion { get; set; } = 1;
         public UserMfaType UserMfaType { get; set; } = UserMfaType.None;
