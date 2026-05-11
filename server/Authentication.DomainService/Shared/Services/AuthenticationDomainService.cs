@@ -5,6 +5,7 @@ using Authentication.DomainService.Entities;
 using Authentication.DomainService.RequestModel;
 using Authentication.DomainService.ResponseModel;
 using Authentication.DomainService.Shared;
+using Authentication.DomainService.Utilities;
 using Iam.DomainService.Users;
 using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.Configuration;
@@ -218,7 +219,7 @@ namespace Authentication.DomainService.Services
                 ? request.ClientDisplayName.ToLower().Replace(" ", "-") 
                 : clientId.ToLower();
             
-            var existingProvider = await _authenticationRepository.GetIdentityProviderAsync(providerName);
+            var existingProvider = await _authenticationRepository.GetIdentityProviderAsync(providerName, IdpConstants.BlocksProviderType);
             
             if (existingProvider == null)
             {
@@ -226,8 +227,8 @@ namespace Authentication.DomainService.Services
                 var newProvider = new IdentityProvider
                 {
                     Provider = providerName,
-                    ProviderType = "internal",
-                    Protocol = "oidc",
+                    ProviderType = IdpConstants.BlocksProviderType,
+                    Protocol = IdpConstants.OidcProtocol,
                     DisplayName = request.ClientDisplayName ?? clientId,
                     IsActive = request.IsActive,
                     ClientId = credential.ClientId,
@@ -252,6 +253,9 @@ namespace Authentication.DomainService.Services
             else
             {
                 // Update existing provider with latest OIDC client config
+                existingProvider.Provider = providerName;
+                existingProvider.ProviderType = IdpConstants.BlocksProviderType;
+                existingProvider.Protocol = IdpConstants.OidcProtocol;
                 existingProvider.ClientId = credential.ClientId;
                 existingProvider.ClientSecret = credential.ClientSecret;
                 existingProvider.DisplayName = request.ClientDisplayName ?? clientId;
@@ -296,7 +300,23 @@ namespace Authentication.DomainService.Services
 
         public async Task<BaseResponse> DeleteOidcClientAsync(DeleteOIDCClientRequest request)
         {
+            // Get the OIDC client before deletion to know the ClientId
+            var credential = await _authenticationRepository.GetOidcClientRegistrationAsync(request.ItemId ?? "");
+            
+            // Delete the OIDC client registration
             await _authenticationRepository.DeleteOidcCliantAsync(request);
+
+            // Delete the related IdentityProvider by ClientId
+            if (credential != null && !string.IsNullOrWhiteSpace(credential.ClientId))
+            {
+                var allProviders = await _authenticationRepository.GetIdentityProvidersAsync();
+                var relatedProvider = allProviders?.FirstOrDefault(p => p.ClientId == credential.ClientId);
+                
+                if (relatedProvider != null && !string.IsNullOrWhiteSpace(relatedProvider.ItemId))
+                {
+                    await _authenticationRepository.DeleteIdentityProviderAsync(relatedProvider.ItemId);
+                }
+            }
 
             return new BaseResponse { IsSuccess = true };
         }
@@ -450,7 +470,21 @@ namespace Authentication.DomainService.Services
             if (existing == null)
                 return new BaseResponse { IsSuccess = false, Errors = new Dictionary<string, string> { { "not_found", "Provider not found." } } };
 
+            // Delete the IdentityProvider
             await _authenticationRepository.DeleteIdentityProviderAsync(id);
+
+            // Delete related OidcClientRegistration by ClientId
+            if (!string.IsNullOrWhiteSpace(existing.ClientId))
+            {
+                var relatedCredential = await _authenticationRepository.GetOidcClientRegistrationAsync(existing.ClientId);
+                if (relatedCredential != null)
+                {
+                    var deleteRequest = new DeleteOIDCClientRequest { ItemId = existing.ClientId };
+                    // Call repository directly to avoid recursive sync logic
+                    await _authenticationRepository.DeleteOidcCliantAsync(deleteRequest);
+                }
+            }
+
             return new BaseResponse { IsSuccess = true };
         }
 
