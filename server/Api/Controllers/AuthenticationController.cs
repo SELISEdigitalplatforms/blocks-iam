@@ -3,6 +3,7 @@ using Authentication.DomainService.Entities;
 using Authentication.DomainService.OAuth.RequestModel;
 using Authentication.DomainService.Oidc.Services;
 using Authentication.DomainService.Shared.RequestModel;
+using CloudConfiguration.DomainService.Authentication.RequestModel;
 using Iam.DomainService.Accounts;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
@@ -102,6 +103,61 @@ public class AuthenticationController : ControllerBase
     public async Task<IActionResult> UpdatePassword([FromBody] ChangePasswordRequest request)
     {
         var result = await _accountService.ChangePasswordAsync(request);
+        return result.IsSuccess ? Ok(result) : BadRequest(result);
+    }
+
+    #endregion
+
+    #region Account Activation
+
+    /// <summary>
+    /// Activate user account
+    /// Validates activation code and marks account as active
+    /// User can log in after successful activation
+    /// </summary>
+    /// <param name="command">Activation request with user email and verification code</param>
+    /// <returns>Activation result with user details</returns>
+    /// <response code="200">Account activated successfully</response>
+    /// <response code="400">Invalid or expired activation code</response>
+    [HttpPost("activate")]
+    [AllowAnonymous]
+    public async Task<IActionResult> Activate([FromBody] ActivateUserRequest command)
+    {
+        var result = await _accountService.ActivateAccountAsync(command);
+        return result.IsSuccess ? Ok(result) : BadRequest(result);
+    }
+
+    /// <summary>
+    /// Resend account activation email
+    /// Generates new activation code and sends to user's email
+    /// Use if user did not receive initial activation email
+    /// </summary>
+    /// <param name="command">Request with user email to resend activation</param>
+    /// <returns>Activation code send result</returns>
+    /// <response code="200">Activation email resent successfully</response>
+    /// <response code="400">User not found or already activated</response>
+    [HttpPost("resend-activation")]
+    [AllowAnonymous]
+    public async Task<IActionResult> ResendActivation([FromBody] ResendActivationRequest command)
+    {
+        var result = await _accountService.ResendActivationAsync(command);
+        return result.IsSuccess ? Ok(result) : BadRequest(result);
+    }
+
+    /// <summary>
+    /// Validate account activation code
+    /// Checks if activation code is valid without activating account
+    /// Use to verify code before user interaction
+    /// </summary>
+    /// <param name="command">Request with email and activation code</param>
+    /// <returns>Validation result indicating code validity</returns>
+    /// <response code="200">Activation code is valid</response>
+    /// <response code="400">Invalid or expired activation code</response>
+    [HttpPost("validate-activation")]
+    [AllowAnonymous]
+    public async Task<IActionResult> ValidateActivationCode([FromBody] ValidateActivationCodeRequest command)
+    {
+        var result = await _accountService.ValidateAccountActivationCodeAsync(command);
         return result.IsSuccess ? Ok(result) : BadRequest(result);
     }
 

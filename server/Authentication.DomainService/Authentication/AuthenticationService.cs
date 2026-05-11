@@ -1,15 +1,12 @@
-using Blocks.Genesis;
 using Authentication.DomainService.Dtos;
 using Authentication.DomainService.Entities;
-using Authentication.DomainService.OAuth;
 using Authentication.DomainService.OAuth.ResponseModel;
 using Authentication.DomainService.Oidc.Repositories;
 using Authentication.DomainService.Oidc.Services;
 using Authentication.DomainService.Services;
-using Authentication.DomainService.Shared.RequestModel;
 using Authentication.DomainService.Utilities;
+using Blocks.Genesis;
 using Idp.DomainService.Oidc.Contracts;
-using Iam.DomainService.Entities;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.Logging;
@@ -18,7 +15,6 @@ using System.IdentityModel.Tokens.Jwt;
 using System.Net.Http.Json;
 using System.Security.Claims;
 using System.Security.Cryptography.X509Certificates;
-using System.Text.Json;
 
 namespace Authentication.DomainService.Authentication
 {
@@ -34,6 +30,7 @@ namespace Authentication.DomainService.Authentication
         private readonly IIdpSessionService _idpSessionService;
         private readonly ITokenRevocationService _tokenRevocationService;
         private readonly ITenants _tenants;
+        private readonly IImpersonationBackupService _impersonationBackupService;
 
         private const string Public_Cert_Cache_Prefix = "tetocertpublic::";
 
@@ -45,7 +42,8 @@ namespace Authentication.DomainService.Authentication
             IAuthenticationDomainService authenticationDomainService,
             IIdpSessionService idpSessionService,
             ITokenRevocationService tokenRevocationService,
-            ITenants tenants
+            ITenants tenants,
+            IImpersonationBackupService impersonationBackupService
         )
         {
             _logger = logger;
@@ -56,6 +54,7 @@ namespace Authentication.DomainService.Authentication
             _idpSessionService = idpSessionService;
             _tokenRevocationService = tokenRevocationService;
             _tenants = tenants;
+            _impersonationBackupService = impersonationBackupService;
         }
 
         public async Task<IActionResult> BuildFlowResultAsync(AuthenticationFlowResult result, HttpContext httpContext)
@@ -133,7 +132,7 @@ namespace Authentication.DomainService.Authentication
 
             var isAll = string.IsNullOrWhiteSpace(refreshToken);
 
-            var result = isAll ? await ProcessLogoutAll() : await ProcessLogout(refreshToken);
+            var result = isAll ? await ProcessLogoutAll(httpRequest) : await ProcessLogout(refreshToken, httpRequest);
 
             await ProcessTimeline(httpRequest, isAll);
             return new LogoutResponse
@@ -143,8 +142,36 @@ namespace Authentication.DomainService.Authentication
 
         }
 
-        public async Task<bool> ProcessLogout(string refreshToken)
+        public async Task<bool> ProcessLogout(string refreshToken, HttpRequest httpRequest)
         {
+            var bc = BlocksContext.GetContext();
+
+            // Phase 4: Handle logout during impersonation
+            if (httpRequest != null && httpRequest.Cookies.TryGetValue("impersonation_session_id", out var impersonationSessionId) && !string.IsNullOrWhiteSpace(impersonationSessionId))
+            {
+                try
+                {
+                    var impersonationSession = await _authenticationRepository.GetImpersonationSessionByIdAsync(impersonationSessionId);
+                    if (impersonationSession != null && impersonationSession.Status == "active")
+                    {
+                        // Invalidate root session and cleanup backup
+                        await ImpersonationFlowHelper.InvalidateRootSessionAndBackupAsync(
+                            impersonationSessionId,
+                            bc?.UserId ?? string.Empty,
+                            _authenticationRepository,
+                            _impersonationBackupService,
+                            _logger);
+
+                        _logger.LogInformation("Impersonation session {SessionId} invalidated due to logout during impersonation", impersonationSessionId);
+                    }
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogWarning(ex, "Failed to invalidate impersonation session during logout, but continuing with session logout");
+                    // Don't fail logout - impersonation cleanup is not critical
+                }
+            }
+
             // Revoke refresh token family to align with rotation security and prevent sibling token reuse.
             var revokeResult = await _tokenRevocationService.RevokeTokenAsync(refreshToken, "refresh_token", string.Empty);
             if (!revokeResult.Success)
@@ -153,16 +180,41 @@ namespace Authentication.DomainService.Authentication
             }
 
             await _cacheClient.RemoveKeyAsync(refreshToken);
-            var bc = BlocksContext.GetContext();
 
             var result = await _authenticationRepository.UpdateSessionStatusAsync(refreshToken, bc?.UserId ?? "");
 
             return result;
         }
 
-        public async Task<bool> ProcessLogoutAll()
+        public async Task<bool> ProcessLogoutAll(HttpRequest httpRequest)
         {
             var bc = BlocksContext.GetContext();
+
+            // Phase 4: Handle logout all during impersonation
+            if (httpRequest != null && httpRequest.Cookies.TryGetValue("impersonation_session_id", out var impersonationSessionId) && !string.IsNullOrWhiteSpace(impersonationSessionId))
+            {
+                try
+                {
+                    var impersonationSession = await _authenticationRepository.GetImpersonationSessionByIdAsync(impersonationSessionId);
+                    if (impersonationSession != null && impersonationSession.Status == "active")
+                    {
+                        // Invalidate root session and cleanup backup
+                        await ImpersonationFlowHelper.InvalidateRootSessionAndBackupAsync(
+                            impersonationSessionId,
+                            bc?.UserId ?? string.Empty,
+                            _authenticationRepository,
+                            _impersonationBackupService,
+                            _logger);
+
+                        _logger.LogInformation("Impersonation session {SessionId} invalidated due to logout all", impersonationSessionId);
+                    }
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogWarning(ex, "Failed to invalidate impersonation session during logout all, but continuing with session logout");
+                    // Don't fail logout all - impersonation cleanup is not critical
+                }
+            }
 
             var refreshTokens = (await _authenticationRepository.GetActiveSessionByUserIdAsync(bc.UserId)).Select(x => x.RefreshToken).ToList();
             var cacheTask = refreshTokens.Select(async x => await _cacheClient.RemoveKeyAsync(x));
@@ -181,7 +233,7 @@ namespace Authentication.DomainService.Authentication
                 IpAddresses = string.Join(",", _authenticationDomainService.GetVisitorsIpAddresses(httpRequest?.HttpContext)),
                 Event = isFromAll ? "revoke_access_by_logout_all" : "revoke_access_by_logout",
                 ActionBy = isFromAll ? "call_api_to_logout_all" : "call_api_to_logout",
-                UserId = bc?.UserId?? ""
+                UserId = bc?.UserId ?? ""
             };
 
             await _authenticationDomainService.SendToQueueAsync(IdpConstants.AuthenticationQueue, eventTimeline);
@@ -193,25 +245,9 @@ namespace Authentication.DomainService.Authentication
             return await _authenticationRepository.GetOidcClientRegistrationAsync(clientId);
         }
 
-        public async Task<string> ConstructRedirectUriAsync(string clientId, AcknowledgeRequest request)
-        {
-            var client = await GetClientCredentialAsync(request.ClientId);
-            var code = Guid.NewGuid().ToString("n");
-            var nextUrl = client.RedirectUris.FirstOrDefault() ?? string.Empty;
-            var serviceAccessResource = client.AllowedServiceAccessResources.FirstOrDefault() ?? string.Empty;
-            var stateInfo = new StateInfo { Scope = request.Scope, secret = client.ClientSecret, State = request.State, Code = code, Nonce = request.Nonce, UserName = request.Username, Audience = serviceAccessResource, Provider = "SeliseCloud", NextUrl = nextUrl };
-            await _cacheClient.AddStringValueAsync(code, JsonSerializer.Serialize(stateInfo), 300);
-            var uri = $"{nextUrl}?code={code}";
-
-            if (!string.IsNullOrEmpty(request.State))
-                uri += $"&state={request.State}";
-
-            return uri;
-        }
-
         public string CookieToken(HttpRequest request)
         {
-            var bc = BlocksContext.GetContext();  
+            var bc = BlocksContext.GetContext();
             var refreshToken = request.HttpContext.Request.Cookies[$"{IdpConstants.RefreshTokenCookieName}_{bc.TenantId}"];
             refreshToken = string.IsNullOrEmpty(refreshToken) ? request.HttpContext.Request.Headers[$"{IdpConstants.RefreshTokenCookieName}_{bc.TenantId}"] : refreshToken;
 
@@ -568,7 +604,7 @@ namespace Authentication.DomainService.Authentication
 
         public async Task<ClaimsPrincipal?> GetPrincipalFromTokenAsync(HttpRequest request, string tenantId, bool IsUserInfoGetRequest = false)
         {
-            var (token, _) =  TokenHelper.GetToken(request, _tenants);
+            var (token, _) = TokenHelper.GetToken(request, _tenants);
             var tenant = _tenants.GetTenantByID(tenantId);
             if (tenant == null)
             {
@@ -582,7 +618,7 @@ namespace Authentication.DomainService.Authentication
                 var certificateData = await _cacheClient.CacheDatabase().StringGetAsync(cacheKey);
                 var validationParams = tenant.JwtTokenParameters;
                 var publicCert = X509CertificateLoader.LoadPkcs12(certificateData, validationParams.PublicCertificatePassword);
-                var tokenValidationParameters = !IsUserInfoGetRequest? new TokenValidationParameters { ValidateLifetime = true, ClockSkew = TimeSpan.Zero, IssuerSigningKey = new X509SecurityKey(publicCert), ValidateIssuerSigningKey = true, ValidateIssuer = true, ValidIssuer = validationParams?.Issuer, ValidAudience = TenantDomainPolicy.GetAudience(tenant), ValidateAudience = true, SaveSigninToken = true } :
+                var tokenValidationParameters = !IsUserInfoGetRequest ? new TokenValidationParameters { ValidateLifetime = true, ClockSkew = TimeSpan.Zero, IssuerSigningKey = new X509SecurityKey(publicCert), ValidateIssuerSigningKey = true, ValidateIssuer = true, ValidIssuer = validationParams?.Issuer, ValidAudience = TenantDomainPolicy.GetAudience(tenant), ValidateAudience = true, SaveSigninToken = true } :
                                                                       new TokenValidationParameters { ValidateLifetime = true, ClockSkew = TimeSpan.Zero, IssuerSigningKey = new X509SecurityKey(publicCert), ValidateIssuerSigningKey = true, ValidateIssuer = false, ValidateAudience = false, SaveSigninToken = true };
                 return tokenHandler.ValidateToken(token, tokenValidationParameters, out _);
             }
@@ -823,7 +859,7 @@ namespace Authentication.DomainService.Authentication
             var cookieDomain = IsLocalhost() ? null : (string.IsNullOrWhiteSpace(domain) ? null : domain);
             var isSecure = !IsLocalhost();
             var sameSite = isSecure ? SameSiteMode.Strict : SameSiteMode.None;
-            
+
             return new CookieOptions
             {
                 Domain = cookieDomain,
