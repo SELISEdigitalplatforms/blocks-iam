@@ -14,6 +14,17 @@ namespace Iam.DomainService.Resources
         Task<Role> GetRoleByIdAsync(string id);
         Task<(IQueryable<Role>, long)> GetRolesAsync(GetRolesRequest query);
         Task<Role> GetRoleBySlugAsync(string slug);
+        
+        /// <summary>
+        /// Get role by slug and organization. Enforces org-scoped lookup.
+        /// </summary>
+        Task<Role> GetRoleBySlugAndOrgAsync(string slug, string organizationId);
+        
+        /// <summary>
+        /// Get all roles in a specific organization.
+        /// </summary>
+        Task<List<Role>> GetRolesByOrgAsync(string organizationId);
+        
         Task<bool> InsertRoleAsync(Role role);
         Task<bool> UpdateRoleAsync(Role role);
         Task<ResourceTimeline<T>> GetResourceTimelineAsync<T>(string itemId);
