@@ -205,6 +205,27 @@ namespace Iam.DomainService.Resources
             return (roles.AsQueryable(), count);
         }
 
+        /// <summary>
+        /// Get role by slug and organization. Org-scoped lookup.
+        /// </summary>
+        public async Task<Role> GetRoleBySlugAndOrgAsync(string slug, string organizationId)
+        {
+            var collection = _identityAccessManagementRepository.GetCollection<Role>();
+            var filter = Builders<Role>.Filter.Eq(x => x.Slug, slug) &
+                         Builders<Role>.Filter.Eq(x => x.OrganizationId, organizationId);
+            return await collection.Find(filter).FirstOrDefaultAsync();
+        }
+
+        /// <summary>
+        /// Get all roles in a specific organization.
+        /// </summary>
+        public async Task<List<Role>> GetRolesByOrgAsync(string organizationId)
+        {
+            var collection = _identityAccessManagementRepository.GetCollection<Role>();
+            var filter = Builders<Role>.Filter.Eq(x => x.OrganizationId, organizationId);
+            return await collection.Find(filter).ToListAsync();
+        }
+
         public async Task<bool> UpdateRolePermissionByIdsAsync(string slug, List<string> permissions)
         {
             var collection = _identityAccessManagementRepository.GetCollectionByName<BsonDocument>("Permissions");

@@ -134,6 +134,14 @@ namespace Iam.DomainService.Resources
         public async Task<string> ProcessRoleAsync(CreateRoleRequest command)
         {
             var blocksContext = BlocksContext.GetContext();
+            var tenantId = blocksContext?.TenantId;
+            var organizationId = blocksContext?.OrganizationId;
+
+            if (string.IsNullOrWhiteSpace(tenantId) || string.IsNullOrWhiteSpace(organizationId))
+            {
+                throw new InvalidOperationException("TenantId and OrganizationId are required to create a role");
+            }
+
             var role = new Role
             {
                 ItemId = Guid.NewGuid().ToString(),
@@ -141,6 +149,8 @@ namespace Iam.DomainService.Resources
                 CreatedBy = blocksContext?.UserId,
                 LastUpdatedDate = DateTime.Now,
                 LastUpdatedBy = blocksContext?.UserId,
+                TenantId = tenantId,
+                OrganizationId = organizationId,  // Role is org-scoped
                 Name = command.Name,
                 Description = command.Description,
                 Slug = command.Slug.ToLower(),
@@ -465,6 +475,59 @@ namespace Iam.DomainService.Resources
             };
         }
 
+        public async Task<BaseResponse> CreateOrganizationAsync(CreateOrganizationRequest request)
+        {
+            var context = BlocksContext.GetContext();
+            var tenantId = context?.TenantId;
+            var userId = context?.UserId;
+
+            if (string.IsNullOrWhiteSpace(tenantId) || string.IsNullOrWhiteSpace(userId))
+            {
+                return new BaseResponse
+                {
+                    IsSuccess = false,
+                    Errors = new Dictionary<string, string>
+                    {
+                        { "invalid_context", "Tenant and user context are required" }
+                    }
+                };
+            }
+
+            // Create organization
+            var organization = new Organization
+            {
+                ItemId = Guid.NewGuid().ToString(),
+                CreatedBy = userId,
+                CreatedDate = DateTime.UtcNow,
+                Name = request.Name,
+                IsEnable = true,
+                LastUpdatedDate = DateTime.UtcNow,
+                LastUpdatedBy = userId
+            };
+            await _resourceRepository.SaveOrganizationAsync(organization);
+
+            // Create organization config with explicit role initialization mode
+            var organizationConfig = new OrganizationConfig
+            {
+                ItemId = Guid.NewGuid().ToString(),
+                CreatedDate = DateTime.UtcNow,
+                CreatedBy = userId,
+                TenantId = tenantId,
+                OrganizationId = organization.ItemId,
+                LastUpdatedBy = userId,
+                LastUpdatedDate = DateTime.UtcNow,
+                AllowCreationFromCloud = false,
+                AllowCreationFromConstruct = false,
+                IsMultiOrgEnabled = false,
+                DefaultRoleSlugsForNewMembers = request.InitializeRolesMode == "CopySelected" 
+                    ? request.RoleSlugsToCopy ?? [] 
+                    : []
+            };
+            await _resourceRepository.SaveOrganizationConfig(organizationConfig);
+
+            return new BaseResponse { IsSuccess = true };
+        }
+
         public async Task<BaseResponse> SaveOrganizationAsync(SaveOrganizationRequest request)
         {
             var organization = await MapOrganizationAsync(request);
@@ -551,7 +614,7 @@ namespace Iam.DomainService.Resources
             organizationConfig.IsMultiOrgEnabled = request.IsMultiOrgEnabled;
             organizationConfig.LastUpdatedBy = userId;
             organizationConfig.LastUpdatedDate = DateTime.UtcNow;
-            organizationConfig.Roles = request.Roles;
+            organizationConfig.DefaultRoleSlugsForNewMembers = request.DefaultRoleSlugsForNewMembers;
 
             return organizationConfig;
         }

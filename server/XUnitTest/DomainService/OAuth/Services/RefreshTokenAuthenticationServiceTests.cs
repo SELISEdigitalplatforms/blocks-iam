@@ -49,7 +49,7 @@ namespace XUnitTest.DomainService.OAuth.Services
                 ItemId = "user-789",
                 Email = "test@example.com",
                 Active = true,
-                IsVarified = true
+                IsVerified = true
             };
             var tenant = new Tenant
             {
@@ -134,7 +134,7 @@ namespace XUnitTest.DomainService.OAuth.Services
                 ItemId = "user-123",
                 Email = "admin@example.com",
                 Active = true,
-                IsVarified = true
+                IsVerified = true
             };
             var tenant = new Tenant
             {

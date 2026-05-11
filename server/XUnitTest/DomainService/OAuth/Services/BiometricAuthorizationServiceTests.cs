@@ -99,7 +99,7 @@ namespace XUnitTest.DomainService.OAuth.Services
                 ItemId = "user-123",
                 Email = "test@example.com",
                 Active = false,
-                IsVarified = true
+                IsVerified = true
             };
 
             _authenticationRepository
@@ -148,7 +148,7 @@ namespace XUnitTest.DomainService.OAuth.Services
                 ItemId = "user-123",
                 Email = "test@example.com",
                 Active = true,
-                IsVarified = true
+                IsVerified = true
             };
             var expectedTokenResponse = new TokenResponse
             {
