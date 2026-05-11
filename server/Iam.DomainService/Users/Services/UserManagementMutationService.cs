@@ -24,6 +24,7 @@ namespace Iam.DomainService.Users
         private readonly IResourceRepository? _resourceRepository;
         private readonly IMessageClient _messageClient;
         private readonly ICacheClient _cacheClient;
+        private readonly ITenants _tenants;
         private BlocksContext _blocksContext;
 
         public UserManagementMutationService(
@@ -34,6 +35,7 @@ namespace Iam.DomainService.Users
             IUserRepository userRepository,
             IMessageClient messageClient,
             ICacheClient cacheClient,
+            ITenants tenants,
             IIdentityAccessManagementRepository? identityAccessManagementRepository = null,
             IResourceRepository? resourceRepository = null
         )
@@ -45,6 +47,7 @@ namespace Iam.DomainService.Users
             _userRepository = userRepository;
             _messageClient = messageClient;
             _cacheClient = cacheClient;
+            _tenants = tenants;
             _identityAccessManagementRepository = identityAccessManagementRepository;
             _resourceRepository = resourceRepository;
         }
@@ -180,6 +183,8 @@ namespace Iam.DomainService.Users
             var organizationId = ResolveOrganizationId(command.OrgId, command.Roles, command.Permissions);
             var roles = NormalizeOrgClaimMap(command.Roles, organizationId, defaultRoles is { Count: > 0 } ? defaultRoles : ["user"]);
             var permissions = NormalizeOrgClaimMap(command.Permissions, organizationId, []);
+            var tenantId = _blocksContext?.TenantId ?? BlocksContext.GetContext()?.TenantId;
+            var tenant = !string.IsNullOrWhiteSpace(tenantId) ? _tenants.GetTenantByID(tenantId) : null;
 
             var user = new User
             {
@@ -190,7 +195,7 @@ namespace Iam.DomainService.Users
                 LastUpdatedBy = _blocksContext?.UserId ?? id,
                 Email = string.IsNullOrWhiteSpace(command.Email) ? string.Empty : command.Email.ToLower(),
                 UserName = (string.IsNullOrWhiteSpace(command.UserName) ? command.Email : command.UserName).ToLower(),
-                Password = string.IsNullOrWhiteSpace(command.Password) ? string.Empty : _identityAccessManagementService.HashPassword(command.Password),
+                Password = string.IsNullOrWhiteSpace(command.Password) ? string.Empty : _identityAccessManagementService.HashPassword(command.Password, tenant?.TenantSalt),
                 PasswordSetTime = string.IsNullOrWhiteSpace(command.Password) ? DateTime.MinValue : DateTime.Now,
                 PasswordChangedAtUtc = string.IsNullOrWhiteSpace(command.Password) ? null : DateTime.UtcNow,
                 LastCredentialRotationAtUtc = string.IsNullOrWhiteSpace(command.Password) ? null : DateTime.UtcNow,
@@ -589,6 +594,9 @@ namespace Iam.DomainService.Users
             var fallbackOrganizationId = BlocksContext.GetContext()?.OrganizationId ?? "default";
             var normalizedRoles = NormalizeOrgClaimMap(command.Roles, fallbackOrganizationId, defaultRoles.Count > 0 ? defaultRoles : ["user"]);
             var normalizedPermissions = NormalizeOrgClaimMap(command.Permissions, fallbackOrganizationId, []);
+            var tenantId = BlocksContext.GetContext()?.TenantId;
+            var tenant = !string.IsNullOrWhiteSpace(tenantId) ? _tenants.GetTenantByID(tenantId) : null;
+            
             var user = new User
             {
                 ItemId = id,
@@ -598,7 +606,7 @@ namespace Iam.DomainService.Users
                 LastUpdatedBy = _blocksContext?.UserId ?? id,
                 Email = string.IsNullOrWhiteSpace(command.Email) ? string.Empty : command.Email.ToLower(),
                 UserName = string.IsNullOrWhiteSpace(command.Email) ? string.Empty : command.Email.ToLower(),
-                Password = _identityAccessManagementService.HashPassword(Guid.NewGuid().ToString()),
+                Password = _identityAccessManagementService.HashPassword(Guid.NewGuid().ToString(), tenant?.TenantSalt),
                 PasswordSetTime = DateTime.Now,
                 PasswordChangedAtUtc = DateTime.UtcNow,
                 LastCredentialRotationAtUtc = DateTime.UtcNow,
