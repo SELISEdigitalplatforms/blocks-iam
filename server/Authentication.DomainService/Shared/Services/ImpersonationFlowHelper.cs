@@ -1,9 +1,7 @@
-using Authentication.DomainService.Dtos;
 using Authentication.DomainService.Entities;
-using Blocks.Genesis;
 using Microsoft.AspNetCore.Http;
+using Microsoft.Extensions.Logging;
 using System.IdentityModel.Tokens.Jwt;
-using System.Text.Json;
 
 namespace Authentication.DomainService.Services
 {
@@ -26,7 +24,7 @@ namespace Authentication.DomainService.Services
             IImpersonationBackupService backupService)
         {
             var sessionId = Guid.NewGuid().ToString();
-            
+
             // Create impersonation session record
             var impersonationSession = new ImpersonationSession
             {
@@ -152,12 +150,8 @@ namespace Authentication.DomainService.Services
                     { "revoked_at", DateTime.UtcNow },
                     { "revocation_reason", "logout_during_impersonation" }
                 };
-                
-                var updateSuccess = await repository.UpdateSessionAsync(rootSessionId, rootSessionUpdates);
-                if (!updateSuccess)
-                {
-                    logger.LogWarning("Failed to mark root session as revoked for session {SessionId}", rootSessionId);
-                }
+
+                await repository.UpdatePartialAsync<Session>(rootSessionId, rootSessionUpdates);
 
                 // Delete backup from Redis (prevents accidental reuse)
                 var deleteSuccess = await backupService.DeleteBackupTokenAsync(impersonationSessionId);
@@ -173,7 +167,7 @@ namespace Authentication.DomainService.Services
                     { "ended_at", DateTime.UtcNow },
                     { "reason", "logout_during_impersonation" }
                 };
-                
+
                 await repository.UpdateImpersonationSessionAsync(impersonationSessionId, impersonationUpdates);
 
                 logger.LogInformation("Invalidated root session and backup for impersonation {ImpersonationSessionId}", impersonationSessionId);
@@ -223,7 +217,7 @@ namespace Authentication.DomainService.Services
                     { "status", "ended_by_admin_stop" },
                     { "ended_at", DateTime.UtcNow }
                 };
-                
+
                 await repository.UpdateImpersonationSessionAsync(impersonationSessionId, impersonationUpdates);
 
                 logger.LogInformation("Successfully restored root session and ended impersonation {ImpersonationSessionId}", impersonationSessionId);

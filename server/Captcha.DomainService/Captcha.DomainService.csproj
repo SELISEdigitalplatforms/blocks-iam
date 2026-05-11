@@ -13,8 +13,8 @@
   <ItemGroup>
 	<PackageReference Include="FluentValidation" />
 	<PackageReference Include="Newtonsoft.Json" />
-  <!-- <ProjectReference Include="D:\Selise Work\Back end\github\blocks\blocks-genesis-net\src\Genesis\Blocks.Genesis.csproj" /> -->
-  <ProjectReference Include="K:\Selise_Projects\l0\blocks-genesis-net\src\Genesis\Blocks.Genesis.csproj" />
+  <ProjectReference Include="D:\Selise Work\Back end\github\blocks\blocks-genesis-net\src\Genesis\Blocks.Genesis.csproj" />
+  <!-- <ProjectReference Include="K:\Selise_Projects\l0\blocks-genesis-net\src\Genesis\Blocks.Genesis.csproj" /> -->
 	<PackageReference Include="SixLabors.Fonts" />
 	<PackageReference Include="SixLabors.ImageSharp" />
 	<PackageReference Include="SixLabors.ImageSharp.Drawing" />

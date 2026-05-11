@@ -1,15 +1,13 @@
+using Authentication.DomainService.Entities;
 using Authentication.DomainService.OAuth.ResponseModel;
 using Authentication.DomainService.Services;
-using Authentication.DomainService.Entities;
 using Authentication.DomainService.Utilities;
 using Blocks.Genesis;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.Logging;
-using System.Net.Http;
 using System.Security.Cryptography;
 using System.Text;
-using System.Text.Json;
 using System.Text.Json.Serialization;
 
 namespace Authentication.DomainService.Authentication
@@ -213,7 +211,7 @@ namespace Authentication.DomainService.Authentication
                 var resolvedAccessLifetimeSeconds = tokenResponse.ExpiresIn.HasValue
                     ? Math.Max(tokenResponse.ExpiresIn.Value, 60)
                     : configuredAccessLifetimeSeconds;
-                
+
                 var cookieDomain = _tenants.GetTenantByID(resolvedTenantId)?.CookieDomain;
                 var tokenResponseObj = new TokenResponse
                 {

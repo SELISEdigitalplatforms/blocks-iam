@@ -791,7 +791,7 @@ namespace Authentication.DomainService.Authentication
                         if (backupToken != null && backupToken.ExpiresUtc > DateTime.UtcNow)
                         {
                             // Check if rotation is needed (within grace period or past attempts exceeded)
-                            var gracePeriodMinutes = configuration.TokenRotationGracePeriodMinutes ?? 5;
+                            var gracePeriodMinutes = configuration.TokenRotationGracePeriodMinutes;
                             var rotationThreshold = backupToken.ExpiresUtc.AddMinutes(-gracePeriodMinutes);
                             
                             if (DateTime.UtcNow >= rotationThreshold)
@@ -813,7 +813,8 @@ namespace Authentication.DomainService.Authentication
                                         var rotationResult = await _refreshTokenAuthenticationService.AuthenticateAsync(rootTokenRequest, configuration, rootUser);
                                         return (rotationResult.AccessToken ?? string.Empty, rotationResult.RefreshToken ?? string.Empty, rotationResult.RefreshExpiresUtc);
                                     },
-                                    configuration);
+                                    configuration,
+                                    _logger);
                                 
                                 if (rotationSuccess)
                                 {
