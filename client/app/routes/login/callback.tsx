@@ -41,8 +41,8 @@ export default function LoginCallbackPage() {
           // Tokens are in HttpOnly cookies set by backend
           // Update auth store to reflect authenticated state
           setAuthenticated();
-          // window.location.href = "/idp/admin/users";
-          window.location.href = `${window.location.origin}/login`;
+          window.location.href = "/idp/admin/users";
+          // window.location.href = `${window.location.origin}/login`;
 
         } else {
           window.location.href = "/login?error=callback_failed";
