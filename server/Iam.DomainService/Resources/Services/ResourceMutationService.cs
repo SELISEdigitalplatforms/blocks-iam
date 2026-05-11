@@ -562,7 +562,7 @@ namespace Iam.DomainService.Resources
 
         public async Task<BaseResponse> SaveganizationConfigAsync(SaveOrganizationConfigRequest request)
         {
-            var tenantId = ResolveTenantId(request.ProjectKey);
+            var tenantId = BlocksContext.GetContext()?.TenantId;
             var organizationId = ResolveOrganizationId(request.OrganizationId);
             if (string.IsNullOrWhiteSpace(tenantId) || string.IsNullOrWhiteSpace(organizationId))
             {
@@ -584,7 +584,7 @@ namespace Iam.DomainService.Resources
 
         public async Task<OrganizationConfig> GetOrganizationConfigAsync(GetOrganizationConfigRequest request)
         {
-            var tenantId = ResolveTenantId(request.ProjectKey);
+            var tenantId = BlocksContext.GetContext()?.TenantId;
             var organizationId = ResolveOrganizationId(request.OrganizationId);
             if (string.IsNullOrWhiteSpace(tenantId) || string.IsNullOrWhiteSpace(organizationId))
             {
