@@ -534,6 +534,33 @@ namespace Api.Controllers
 
         #region Organization
 
+        /// <summary>
+        /// Create new organization
+        /// Creates a new organization with explicit role initialization mode
+        /// Requires authentication and proper tenant/org context
+        /// </summary>
+        /// <param name="request">Organization creation request with InitializeRolesMode</param>
+        /// <returns>Success response with newly created org metadata</returns>
+        /// <response code="200">Organization created successfully</response>
+        /// <response code="400">Invalid initialization mode or missing context</response>
+        /// <response code="401">Authentication required</response>
+        [HttpPost("organizations/create")]
+        [Authorize]
+        public async Task<BaseResponse> CreateOrganization([FromBody] CreateOrganizationRequest request)
+        {
+            return await _resourceMutationService.CreateOrganizationAsync(request);
+        }
+
+        /// <summary>
+        /// Update organization metadata
+        /// Updates mutable fields like name and enable/disable status
+        /// Does not affect membership or roles
+        /// </summary>
+        /// <param name="request">Organization update request with name and enable status</param>
+        /// <returns>Success response</returns>
+        /// <response code="200">Organization updated successfully</response>
+        /// <response code="400">Invalid organization ID or missing context</response>
+        /// <response code="401">Authentication required</response>
         [HttpPost("organizations")]
         [Authorize]
         public async Task<BaseResponse> SaveOrganization([FromBody]  SaveOrganizationRequest request)
@@ -541,6 +568,15 @@ namespace Api.Controllers
             return await _resourceMutationService.SaveOrganizationAsync(request);
         }
 
+        /// <summary>
+        /// Get all organizations
+        /// Lists organizations accessible to the current user
+        /// Returns minimal org summaries (id, name, enable status)
+        /// </summary>
+        /// <param name="request">Query parameters for filtering and pagination</param>
+        /// <returns>List of organizations</returns>
+        /// <response code="200">Successfully retrieved organizations</response>
+        /// <response code="401">Authentication required</response>
         [HttpGet("organizations")]
         [Authorize]
         public async Task<GetOrganizationsResponse> GetOrganizations([FromQuery] GetOrganizationsRequest request)
@@ -548,6 +584,16 @@ namespace Api.Controllers
             return await _resourceMutationService.GetOrganizationsAsync(request);
         }
 
+        /// <summary>
+        /// Get single organization details
+        /// Retrieves organization metadata and basic information
+        /// Caller must have access to this organization
+        /// </summary>
+        /// <param name="request">Organization ID to retrieve</param>
+        /// <returns>Organization details</returns>
+        /// <response code="200">Successfully retrieved organization</response>
+        /// <response code="404">Organization not found</response>
+        /// <response code="401">Authentication required</response>
         [HttpGet("organization")]
         [Authorize]
         public async Task<GetOrganizationResponse> GetOrganization([FromQuery]  GetOrganizationRequest request)
@@ -555,6 +601,21 @@ namespace Api.Controllers
             return await _resourceMutationService.GetOrganizationAsync(request);
         }
 
+        /// <summary>
+        /// Save organization configuration
+        /// Configures org-specific defaults and policies:
+        /// - DefaultRoleSlugsForNewMembers: Auto-assigned roles when new members join
+        /// - AllowCreationFromCloud: Whether new signups can create this org
+        /// - AllowCreationFromConstruct: Whether API/service calls can create this org
+        /// - IsMultiOrgEnabled: Whether users can have multiple org memberships
+        /// 
+        /// These settings control role initialization and membership behavior
+        /// </summary>
+        /// <param name="request">Organization config with default roles and policies</param>
+        /// <returns>Success response</returns>
+        /// <response code="200">Organization config saved successfully</response>
+        /// <response code="400">Invalid configuration values</response>
+        /// <response code="401">Authentication required</response>
         [HttpPost("organization/config")]
         [Authorize]
         public async Task<BaseResponse> SaveOrganizationConfig([FromBody] SaveOrganizationConfigRequest request)
@@ -562,6 +623,20 @@ namespace Api.Controllers
             return await _resourceMutationService.SaveganizationConfigAsync(request);
         }
 
+        /// <summary>
+        /// Get organization configuration
+        /// Retrieves org-specific settings:
+        /// - DefaultRoleSlugsForNewMembers: Roles auto-assigned to new members
+        /// - Signup/API creation policies
+        /// - Multi-org setting
+        /// 
+        /// Used by clients to determine role initialization and membership rules
+        /// </summary>
+        /// <param name="request">Organization ID to retrieve config for</param>
+        /// <returns>Organization configuration</returns>
+        /// <response code="200">Successfully retrieved org config</response>
+        /// <response code="404">Organization config not found</response>
+        /// <response code="401">Authentication required</response>
         [HttpGet("organization/config")]
         [Authorize]
         public async Task<OrganizationConfig> GetOrganizationConfig([FromQuery] GetOrganizationConfigRequest request)

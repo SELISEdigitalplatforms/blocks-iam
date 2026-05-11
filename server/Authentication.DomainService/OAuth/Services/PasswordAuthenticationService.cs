@@ -160,7 +160,7 @@ namespace Authentication.DomainService.OAuth
             user != null;
 
         private static bool IsUserActiveAndVerified(User user) =>
-            user.Active && user.IsVarified;
+            user.Active && user.IsVerified;
 
         public string HashPassword(string password, string? optionalSalt = null)
         {

@@ -76,7 +76,7 @@ export const mockUser: User = {
   roles: ["admin"],
   permissions: ["read", "write"],
   active: true,
-  isVarified: true,
+  isVerified: true,
   profileImageUrl: "",
   mfaEnabled: false,
   lastLoggedInTime: "2026-01-15T10:00:00Z",

@@ -825,7 +825,7 @@ namespace Identifier.DomainService.People
 
                 var existingUsers = await _peopleRepository.GetUsersByEmailAsync(new List<string> { request.Email });
 
-                if (existingUsers != null && existingUsers.Count > 0 && existingUsers.All(u=>u.Active) && existingUsers.All(u=>u.IsVarified))
+                if (existingUsers != null && existingUsers.Count > 0 && existingUsers.All(u=>u.Active) && existingUsers.All(u=>u.IsVerified))
                 {
                     _logger.LogWarning("User already exists with email: {Email}", request.Email);
                     return new SignupResponse
