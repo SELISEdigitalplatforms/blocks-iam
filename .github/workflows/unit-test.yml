@@ -1,0 +1,101 @@
+name: CI - Analysis (feature/unit-test-mahmud)
+
+on:
+  push:
+    branches: [feature/unit-test-mahmud]
+
+env:
+  ENVIRONMENT: "dev"
+  RUN_SONARQUBE: "true"
+  RUN_SCA_SCAN: "true"
+  LOAD_CUSTOM_VARS: "true"
+
+concurrency:
+  group: ${{ github.ref_name }}
+  cancel-in-progress: true
+
+jobs:
+  initialization:
+    runs-on: ubuntu-latest
+    outputs:
+      run_sonarqube: ${{ steps.config.outputs.run_sonarqube }}
+      run_sca_scan: ${{ steps.config.outputs.run_sca_scan }}
+      solution_name: ${{ steps.config.outputs.solution_name }}
+      working_directory: ${{ steps.config.outputs.working_directory }}
+      dotnet_version: ${{ steps.config.outputs.dotnet_version }}
+      sonar_project_key: ${{ steps.config.outputs.sonar_project_key }}
+      sonar_organization: ${{ steps.config.outputs.sonar_organization }}
+      sonarqube_host: ${{ steps.config.outputs.sonarqube_host }}
+      project_name: ${{ steps.config.outputs.project_name }}
+      project_version: ${{ steps.config.outputs.project_version }}
+      dependency_track_host: ${{ steps.config.outputs.dependency_track_host }}
+      dependency_track_frontend_url: ${{ steps.config.outputs.dependency_track_frontend_url }}
+      has_submodules: ${{ steps.config.outputs.has_submodules }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Load Shared Configuration
+        if: env.LOAD_CUSTOM_VARS == 'true'
+        uses: SELISEdigitalplatforms/blocks-inventory/.github/actions/setvars@main
+        with:
+          varFilePath: ./.github/variables/
+
+      - name: Set Configuration Outputs
+        id: config
+        run: |
+          echo "run_sonarqube=${{ env.RUN_SONARQUBE }}" >> $GITHUB_OUTPUT
+          echo "run_sca_scan=${{ env.RUN_SCA_SCAN }}" >> $GITHUB_OUTPUT
+
+          echo "dotnet_version=${DOTNET_VERSION:-10.0.x}" >> $GITHUB_OUTPUT
+          echo "has_submodules=${HAS_SUBMODULES:-true}" >> $GITHUB_OUTPUT
+
+          echo "project_name=${PROJECT_NAME:-${{ github.repository }}}" >> $GITHUB_OUTPUT
+          echo "project_version=${PROJECT_VERSION:-${{ github.ref_name }}}" >> $GITHUB_OUTPUT
+
+          echo "dependency_track_host=${DEPENDENCY_TRACK_HOST:-api-dt.seliseblocks.com}" >> $GITHUB_OUTPUT
+          echo "dependency_track_frontend_url=${DEPENDENCY_TRACK_FRONTEND_URL:-sca.seliseblocks.com}" >> $GITHUB_OUTPUT
+
+          echo "sonar_project_key=${SONAR_KEY:-}" >> $GITHUB_OUTPUT
+          echo "sonar_organization=${AUTHOR:-}" >> $GITHUB_OUTPUT
+          echo "sonarqube_host=${SONARQUBE_HOST:-}" >> $GITHUB_OUTPUT
+
+          echo "solution_name=${SOLUTION_NAME:-YourSolution.sln}" >> $GITHUB_OUTPUT
+          echo "working_directory=${WORKING_DIRECTORY:-./server}" >> $GITHUB_OUTPUT
+
+  sonarqube:
+    if: needs.initialization.outputs.run_sonarqube == 'true'
+    needs: initialization
+    uses: SELISEdigitalplatforms/blocks-inventory/.github/workflows/sonarqube-dotnet.yml@main
+    with:
+      SOLUTION_NAME: ${{ needs.initialization.outputs.solution_name }}
+      SONARQUBE_HOST: ${{ needs.initialization.outputs.sonarqube_host }}
+      SONAR_PROJECT_KEY: ${{ needs.initialization.outputs.sonar_project_key }}
+      SONAR_ORGANIZATION: ${{ needs.initialization.outputs.sonar_organization }}
+      WORKING_DIRECTORY: ${{ needs.initialization.outputs.working_directory }}
+      DOTNET_VERSION: ${{ needs.initialization.outputs.dotnet_version }}
+      JAVA_VERSION: "17"
+      HAS_SUBMODULES: ${{ needs.initialization.outputs.has_submodules == 'true' }}
+    secrets:
+      SONAR_TOKEN: ${{ secrets.SONAR_TOKEN_GLOBAL }}
+      SELISE_GITHUB_PAT: ${{ secrets.SELISE_GITHUB_PAT }}
+
+  sca-scan:
+    if: needs.initialization.outputs.run_sca_scan == 'true'
+    needs: initialization
+    uses: SELISEdigitalplatforms/blocks-inventory/.github/workflows/sca-scan-dotnet.yml@main
+    with:
+      PROJECT_NAME: ${{ needs.initialization.outputs.project_name }}
+      PROJECT_VERSION: ${{ needs.initialization.outputs.project_version }}
+      DOTNET_VERSION: ${{ needs.initialization.outputs.dotnet_version }}
+      WORKING_DIRECTORY: ${{ needs.initialization.outputs.working_directory }}
+      SOLUTION_NAME: ${{ needs.initialization.outputs.solution_name }}
+      USE_DOCKER: false
+      INCLUDE_FORMULATION: true
+      DEPENDENCY_TRACK_HOST: ${{ needs.initialization.outputs.dependency_track_host }}
+      DEPENDENCY_TRACK_FRONTEND_URL: ${{ needs.initialization.outputs.dependency_track_frontend_url }}
+      AUTO_CREATE_PROJECT: true
+      HAS_SUBMODULES: ${{ needs.initialization.outputs.has_submodules == 'true' }}
+    secrets:
+      DEPENDENCY_TRACK_API_KEY: ${{ secrets.DEPENDENCY_TRACK_API_KEY }}
+      SELISE_GITHUB_PAT: ${{ secrets.SELISE_GITHUB_PAT }}
