@@ -18,4 +18,3 @@ namespace Iam.DomainService.Resources
         public string? OrganizationId { get; set; }
     }
 }
-}
