@@ -1,7 +1,6 @@
 using Authentication.DomainService.Dtos;
 using Blocks.Genesis;
-using Microsoft.AspNetCore.Http;
-using StackExchange.Redis;
+using Microsoft.Extensions.Logging;
 using System.Text.Json;
 
 namespace Authentication.DomainService.Services
@@ -50,7 +49,7 @@ namespace Authentication.DomainService.Services
                 var ttl = expiresUtc - DateTime.UtcNow;
                 var json = JsonSerializer.Serialize(backup);
 
-                await _cacheClient.SetStringValueAsync(key, json, ttl);
+                await _cacheClient.AddStringValueAsync(key, json, (long)ttl.TotalSeconds);
                 _logger.LogInformation("Backed up root refresh token for impersonation session {SessionId}", sessionId);
                 return true;
             }
@@ -98,7 +97,7 @@ namespace Authentication.DomainService.Services
                 var ttl = newExpiresUtc - DateTime.UtcNow;
                 var json = JsonSerializer.Serialize(backup);
 
-                await _cacheClient.SetStringValueAsync(key, json, ttl);
+                await _cacheClient.AddStringValueAsync(key, json, (long)ttl.TotalSeconds);
                 _logger.LogInformation("Updated backup root token for impersonation session {SessionId}", sessionId);
                 return true;
             }

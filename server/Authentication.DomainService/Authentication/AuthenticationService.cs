@@ -159,7 +159,8 @@ namespace Authentication.DomainService.Authentication
                             impersonationSessionId,
                             bc?.UserId ?? string.Empty,
                             _authenticationRepository,
-                            _impersonationBackupService);
+                            _impersonationBackupService,
+                            _logger);
 
                         _logger.LogInformation("Impersonation session {SessionId} invalidated due to logout during impersonation", impersonationSessionId);
                     }
@@ -202,7 +203,8 @@ namespace Authentication.DomainService.Authentication
                             impersonationSessionId,
                             bc?.UserId ?? string.Empty,
                             _authenticationRepository,
-                            _impersonationBackupService);
+                            _impersonationBackupService,
+                            _logger);
 
                         _logger.LogInformation("Impersonation session {SessionId} invalidated due to logout all", impersonationSessionId);
                     }

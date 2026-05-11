@@ -546,7 +546,7 @@ If restore fails (backup missing/expired):
 | `SessionTtl` | 7 days | IDP session expiration | Phase 1 - session creation |
 | `BackupTokenTtl` | RefreshTokenTtl | Impersonation backup cache TTL | Phase 2 - backup cache TTL |
 | `MaxTokenRotationAttempts` | 3 | Max retries on token rotation | Phase 3 - rotate root during refresh |
-| `TokenRotationGracePeriod` | 5 minutes | Grace period before actual expiry | Phase 3, 6 - check backup expiry |
+| `TokenRotationGracePeriodMinutes` | 5 minutes | Grace window before backup token expiry triggers proactive rotation | Phase 3, 6 - check backup expiry |
 
 **Usage Examples**:
 ```csharp
@@ -565,16 +565,59 @@ redis.SetString(
     expiry: ttl
 );
 
-// Phase 3: Refresh during impersonation - restore backup
-var backup = redis.GetString($"impersonation_backup_{sessionId}");
-if (backup.ExpiresUtc <= DateTime.UtcNow.AddMinutes(AuthConfig.TokenRotationGracePeriod))
+// Phase 3: Refresh during impersonation - rotate root backup token proactively
+// TokenRotationGracePeriodMinutes defines how many minutes BEFORE the backup token
+// expires the system should attempt rotation. This ensures the root session stays
+// alive even if the admin is mid-impersonation and the token would otherwise silently expire.
+//
+// Timeline example (default = 5 minutes):
+//   backup.ExpiresUtc = 14:00
+//   rotationThreshold  = 14:00 - 5min = 13:55
+//   At 13:56 UTC → DateTime.UtcNow (13:56) >= rotationThreshold (13:55) → ROTATE
+//   At 13:54 UTC → 13:54 < 13:55 → skip (still safe)
+var rotationThreshold = backup.ExpiresUtc.AddMinutes(-config.TokenRotationGracePeriodMinutes);
+if (DateTime.UtcNow >= rotationThreshold)
 {
-    // Try to rotate root token
+    // Call OAuth refresh for root token → update Redis backup with new token + new TTL
 }
 ```
 
-**Session Lifecycle**:
-- **Created**: Phase 1 (login) with `expires_at = now + RefreshTokenTtl`
+---
+
+### `TokenRotationGracePeriodMinutes` Explained
+
+During Phase 3 (refresh while impersonating), the backup root refresh token sitting dormant in Redis could silently expire if the admin stays impersonating long enough. `TokenRotationGracePeriodMinutes` (default **5**) defines a **proactive rotation window**: when the backup token has ≤ N minutes left before expiry, the system immediately rotates it by calling the OAuth refresh endpoint and writing the new token back to Redis.
+
+**Why this matters:**
+- Without rotation, the backup token expires → Phase 5 (Stop Impersonation) fails → admin is stuck with no way to restore their root session.
+- With rotation, every impersonation refresh call checks and extends the backup token's lifetime, matching it to the root `RefreshTokenTtl`.
+
+**Decision logic (Phase 3, `AuthenticationFlowService.ExecuteRefreshAsync`):**
+```
+rotationThreshold = backup.ExpiresUtc - TokenRotationGracePeriodMinutes
+
+if (now >= rotationThreshold)  →  ROTATE
+else                           →  skip (token still has plenty of time left)
+```
+
+**Timeline example** (RefreshTokenTtl = 60 min, GracePeriod = 5 min):
+```
+backup issued at  12:00  →  ExpiresUtc = 13:00
+rotationThreshold        =  12:55
+
+FE refreshes at 12:30  →  12:30 < 12:55  →  skip
+FE refreshes at 12:56  →  12:56 ≥ 12:55  →  ROTATE
+  └─ new ExpiresUtc = 13:56
+```
+
+**Where it is configured:**
+`Authentication.DomainService/Shared/Entities/AuthenticationConfiguration.cs`
+```csharp
+public const int DefaultTokenRotationGracePeriodMinutes = 5;
+public int TokenRotationGracePeriodMinutes { get; set; } = DefaultTokenRotationGracePeriodMinutes;
+```
+
+**Session Lifecycle**:- **Created**: Phase 1 (login) with `expires_at = now + RefreshTokenTtl`
 - **Invalidated during impersonation stop (Phase 5)**: Root session marked `is_revoked=true` after backup cleanup
 - **Invalidated on logout (Phase 4)**: Both impersonation AND root sessions marked `is_revoked=true`
 

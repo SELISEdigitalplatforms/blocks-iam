@@ -47,6 +47,39 @@
             Requires current password for security validation
             </summary>
         </member>
+        <member name="M:Api.Controllers.AuthenticationController.Activate(Iam.DomainService.Accounts.ActivateUserRequest)">
+            <summary>
+            Activate user account
+            Validates activation code and marks account as active
+            User can log in after successful activation
+            </summary>
+            <param name="command">Activation request with user email and verification code</param>
+            <returns>Activation result with user details</returns>
+            <response code="200">Account activated successfully</response>
+            <response code="400">Invalid or expired activation code</response>
+        </member>
+        <member name="M:Api.Controllers.AuthenticationController.ResendActivation(Iam.DomainService.Accounts.ResendActivationRequest)">
+            <summary>
+            Resend account activation email
+            Generates new activation code and sends to user's email
+            Use if user did not receive initial activation email
+            </summary>
+            <param name="command">Request with user email to resend activation</param>
+            <returns>Activation code send result</returns>
+            <response code="200">Activation email resent successfully</response>
+            <response code="400">User not found or already activated</response>
+        </member>
+        <member name="M:Api.Controllers.AuthenticationController.ValidateActivationCode(Iam.DomainService.Accounts.ValidateActivationCodeRequest)">
+            <summary>
+            Validate account activation code
+            Checks if activation code is valid without activating account
+            Use to verify code before user interaction
+            </summary>
+            <param name="command">Request with email and activation code</param>
+            <returns>Validation result indicating code validity</returns>
+            <response code="200">Activation code is valid</response>
+            <response code="400">Invalid or expired activation code</response>
+        </member>
         <member name="M:Api.Controllers.AuthenticationController.InitiateSocialAuthentication(System.String)">
             <summary>
             Initiate social provider authentication (OAuth 2.0 Authorization Code Flow)
@@ -151,39 +184,6 @@
             Toggles provider activation status without deleting configuration
             Preferred over deletion for temporary disabling
             </summary>
-        </member>
-        <member name="M:Api.Controllers.IamController.Activate(Iam.DomainService.Accounts.ActivateUserRequest)">
-            <summary>
-            Activate user account
-            Validates activation code and marks account as active
-            User can log in after successful activation
-            </summary>
-            <param name="command">Activation request with user email and verification code</param>
-            <returns>Activation result with user details</returns>
-            <response code="200">Account activated successfully</response>
-            <response code="400">Invalid or expired activation code</response>
-        </member>
-        <member name="M:Api.Controllers.IamController.ResendActivation(Iam.DomainService.Accounts.ResendActivationRequest)">
-            <summary>
-            Resend account activation email
-            Generates new activation code and sends to user's email
-            Use if user did not receive initial activation email
-            </summary>
-            <param name="command">Request with user email to resend activation</param>
-            <returns>Activation code send result</returns>
-            <response code="200">Activation email resent successfully</response>
-            <response code="400">User not found or already activated</response>
-        </member>
-        <member name="M:Api.Controllers.IamController.ValidateActivationCode(Iam.DomainService.Accounts.ValidateActivationCodeRequest)">
-            <summary>
-            Validate account activation code
-            Checks if activation code is valid without activating account
-            Use to verify code before user interaction
-            </summary>
-            <param name="command">Request with email and activation code</param>
-            <returns>Validation result indicating code validity</returns>
-            <response code="200">Activation code is valid</response>
-            <response code="400">Invalid or expired activation code</response>
         </member>
         <member name="M:Api.Controllers.IamController.GetSessions(Iam.DomainService.Activities.BaseActivityRequest)">
             <summary>
