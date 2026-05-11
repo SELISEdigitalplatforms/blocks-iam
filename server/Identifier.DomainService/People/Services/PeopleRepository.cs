@@ -92,7 +92,7 @@ namespace Identifier.DomainService.People
                     projectPeople.peopleDetails.LastName = user.LastName;
                     projectPeople.peopleDetails.Salutation = user.Salutation;
                     projectPeople.peopleDetails.ProfileImageUrl = user.ProfileImageUrl;
-                    projectPeople.peopleDetails.AllowResendActivation = !user.Active || !user.IsVarified;
+                    projectPeople.peopleDetails.AllowResendActivation = !user.Active || !user.IsVerified;
                 }
                 return projectPeople;
             });

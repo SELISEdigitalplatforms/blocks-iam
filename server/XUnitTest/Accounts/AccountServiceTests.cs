@@ -123,7 +123,7 @@ namespace XUnitTest.Accounts
             // Arrange
             var request = new ActivateUserRequest { Code = "test-code", Password = "NewPass123!" };
             var userId = "user-123";
-            var user = new User { ItemId = userId, Active = false, IsVarified = false };
+            var user = new User { ItemId = userId, Active = false, IsVerified = false };
 
             _accountValidatorMock.Setup(x => x.ValidateAsync(request, default)).ReturnsAsync(new ValidationResult());
             _cacheClientMock.Setup(x => x.GetStringValueAsync(request.Code)).ReturnsAsync(userId);
@@ -138,7 +138,7 @@ namespace XUnitTest.Accounts
 
             // Assert
             result.IsSuccess.Should().BeTrue();
-            _repositoryMock.Verify(x => x.UpdateUserAsync(It.Is<User>(u => u.Active && u.IsVarified)), Times.Once);
+            _repositoryMock.Verify(x => x.UpdateUserAsync(It.Is<User>(u => u.Active && u.IsVerified)), Times.Once);
         }
 
         [Fact]

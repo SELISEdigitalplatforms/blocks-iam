@@ -391,7 +391,7 @@ namespace XUnitTest.DomainService.OAuth
         {
             ItemId = "user-123",
             Active = active,
-            IsVarified = verified,
+            IsVerified = verified,
             Memberships = new List<OrganizationMembership>
             {
                 new() { OrganizationId = "org-123" }

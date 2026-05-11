@@ -18,7 +18,7 @@ namespace Iam.DomainService.Users
         public string? MailPurpose { get; set; }
         public UserPassType UserPassType { get; set; } = UserPassType.Password;
         public UserCreationType UserCreationType { get; set; } = UserCreationType.Portal;
-        public UserVarifiedType VarifiedType { get; set; } = UserVarifiedType.Email;
+        public UserVerifiedType VerifiedType { get; set; } = UserVerifiedType.Email;
         public string? Platform { get; set; }
         public string? ProfileImageUrl { get; set; }
         public string? ProfileImageId { get; set; }

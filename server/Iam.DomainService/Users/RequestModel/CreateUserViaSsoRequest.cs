@@ -22,7 +22,7 @@ namespace Iam.DomainService.Users
         public Dictionary<string, List<string>> Permissions { get; set; } = new();
         public required string ProjectKey { get; set; }
         public bool Active { get; set; } = true;
-        public bool IsVarified { get; set; } = true;
+        public bool IsVerified { get; set; } = true;
         public string? ExternalUserId { get; set; }
         public string? DepartMent { get; set; }
         public string? EmployeeId { get; set; }
