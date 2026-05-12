@@ -268,6 +268,30 @@ namespace XUnitTest.DomainService.Authentication
         }
 
         
+
+        [Fact]
+        public async Task GetPrincipalFromTokenAsync_ReturnsNull_WhenTokenIsEmpty()
+        {
+            var httpRequest = new DefaultHttpContext().Request;
+            _mockTenants.Setup(x => x.GetTenantByID(It.IsAny<string>())).Returns(new Tenant {
+                TenantId = "tid",
+                ApplicationDomain = "app",
+                DbConnectionString = "conn",
+                CookieDomain = "cookie",
+                JwtTokenParameters = new JwtTokenParameters {
+                    PrivateCertificatePassword = "p",
+                    PublicCertificatePassword = "p",
+                    IssueDate = System.DateTime.UtcNow,
+                    Issuer = "issuer",
+                    Audiences = new List<string> { "aud" }
+                }
+            });
+            // This test covers the path where TokenHelper.GetToken returns empty token.
+            var result = await _service.GetPrincipalFromTokenAsync(httpRequest, "tid");
+            Assert.Null(result);
+        }
+
+
         [Fact]
         public async Task LogoutUser_WithRefreshToken_Should_ProcessLogout()
         {
