@@ -366,7 +366,7 @@ export default function LoginSimplePage() {
       <main className="relative z-10 flex flex-1 flex-col items-start justify-center gap-16 px-6 py-12 lg:flex-row lg:items-center lg:gap-16 lg:py-0 xl:px-[154px]">
         <div className="flex flex-1 flex-col items-start gap-6">
           <div className="flex flex-col gap-2">
-            <p className="text-sm font-semibold uppercase tracking-[0.1em] text-primary">Blocks OS Platform</p>
+            <p className="text-sm font-semibold uppercase tracking-[0.1em] text-primary">Blocks Identity Provider</p>
             <h1 className="max-w-xl text-5xl font-semibold tracking-tight text-[hsl(var(--high-emphasis))] lg:text-6xl">
               Backends that are
             </h1>
@@ -389,9 +389,7 @@ export default function LoginSimplePage() {
             </div>
           </div>
           <p className="max-w-lg text-lg leading-relaxed tracking-tight text-muted-foreground">
-            Blocks OS is a modern platform for building and deploying secure, scalable applications with built-in observability, AI
-            capabilities, and comprehensive identity management. Focus on your application logic
-            while Blocks OS handles the infrastructure.
+            Blocks Identity Provider is a modern identity and access management platform for secure authentication, authorization, and user management. Easily integrate single sign-on (SSO), multi-factor authentication (MFA), social logins, and role-based access control into your applications while Blocks Identity Provider handles security, scalability, and compliance.
           </p>
           <div className="flex flex-wrap gap-2">
             {pillars.map(({ icon: Icon, label }) => (
