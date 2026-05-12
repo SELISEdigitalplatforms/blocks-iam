@@ -44,17 +44,11 @@ import SsoConfigurationPage from "./routes/dashboard/sso-configuration";
 import AuthLogsPage from "./routes/dashboard/auth-logs";
 import MfaLogsPage from "./routes/dashboard/mfa-logs";
 import CaptchaLogsPage from "./routes/dashboard/captcha-logs";
-import ApiSettingsPage from "./routes/dashboard/api-settings";
 import RateLimiterPage from "./routes/dashboard/rate-limiter";
-import LmtPage from "./routes/dashboard/lmt";
-import LmtServiceLogsPage from "./routes/dashboard/lmt-service-logs";
-import SecretManagementPage from "./routes/dashboard/secret-management";
-import AiModelSelectedRoute from "./routes/dashboard/ai-model-selected";
 import ManagedServicesPage from "./routes/dashboard/managed-services";
 import ProfilePage from "./routes/dashboard/profile";
 
 // Console pages
-import { Console } from "./pages/console/console";
 import { DashboardOverview } from "./pages/dashboard/dashboard-overview";
 import { EnvironmentsPage } from "./pages/environments/environments";
 import { PeopleManagement } from "./pages/people/people-management";
@@ -119,41 +113,15 @@ export const router = createBrowserRouter([
       { path: "/services/iam/organization-detail/:itemId", element: <IamOrgDetailPage /> },
       { path: "/services/iam/logs", element: <IamLogsPage /> },
       { path: "/services/iam/configure", element: <IamConfigurePage /> },
-      { path: "/services/authentication", element: <Navigate to="/services/authentication/users" replace /> },
       { path: "/services/authentication/users", element: <AuthenticationConfigPage section="users" /> },
       { path: "/services/authentication/organizations", element: <AuthenticationConfigPage section="organizations" /> },
       { path: "/services/authentication/client-credential", element: <AuthenticationConfigPage section="client-credential" /> },
       { path: "/services/authentication/sso-configuration", element: <SsoConfigurationPage /> },
       { path: "/services/authentication/logs", element: <AuthLogsPage /> },
-      { path: "/services/mfa", element: <Navigate to="/services/secret-management?tab=mfa" replace /> },
       { path: "/services/mfa/logs", element: <MfaLogsPage /> },
-      { path: "/services/api-settings", element: <ApiSettingsPage /> },
       { path: "/services/rate-limiter", element: <RateLimiterPage /> },
-      { path: "/services/lmt", element: <LmtPage /> },
-      { path: "/services/lmt/logs/:serviceName", element: <LmtServiceLogsPage /> },
-      { path: "/services/secret-management", element: <SecretManagementPage /> },
-      { path: "/services/secret-management/ai-models/:provider", element: <AiModelSelectedRoute /> },
       { path: "/managed-services", element: <ManagedServicesPage /> },
-      { path: "/services/captcha", element: <Navigate to="/services/secret-management?tab=captcha" replace /> },
       { path: "/services/captcha/logs", element: <CaptchaLogsPage /> },
-    ],
-  },
-
-  // ── Console layout (profile, console pages without sidebar) ──
-  {
-    element: <ConsoleLayout />,
-    children: [
-      { path: "/profile", element: <ProfilePage /> },
-      { path: "/console", element: <Console /> },
-      { path: "/create-project", element: <CreateProjectWrapper /> },
-      { path: "/callback", element: <CallbackPage /> },
-    ],
-  },
-
-  // ── Dashboard and project overview in dashboard layout (consolidated sidebar) ──
-  {
-    element: <DashboardLayout />,
-    children: [
       { path: "/dashboard", element: <DashboardOverview /> },
       { path: "/project-overview", element: <Navigate to="/project-overview/environments" replace /> },
       { path: "/project-overview/environments", element: <EnvironmentsPage /> },
@@ -163,8 +131,18 @@ export const router = createBrowserRouter([
     ],
   },
 
-  // ── Root redirect: authenticated users go to console ──
-  { path: "/", element: <Navigate to="/console" replace /> },
+  // ── Console layout (profile, create-project, callback without sidebar) ──
+  {
+    element: <ConsoleLayout />,
+    children: [
+      { path: "/profile", element: <ProfilePage /> },
+      { path: "/create-project", element: <CreateProjectWrapper /> },
+      { path: "/callback", element: <CallbackPage /> },
+    ],
+  },
+
+  // ── Root redirect: authenticated users go to authentication/users ──
+  { path: "/", element: <Navigate to="/services/authentication/users" replace /> },
 
   // ── Catch-all: redirect to login ──
   { path: "*", element: <Navigate to="/login" replace /> },

@@ -56,9 +56,10 @@ const ResourcesPanel = () => {
   ];
 
   return (
-    <aside className="mt-6 w-full min-w-0 shrink-0 sm:mt-8 lg:mt-0 lg:max-w-md lg:flex-1 lg:basis-[min(100%,380px)] xl:basis-[420px]">
+    <aside className="mt-8 w-full shrink-0 lg:mt-0 lg:w-[380px] xl:w-[420px]">
       <div className="overflow-hidden rounded-2xl border border-[hsl(var(--border-default))] bg-[hsl(var(--card))] shadow-md">
-        <div className="relative overflow-hidden bg-primary px-4 py-5 sm:px-6 sm:py-6">
+        
+        <div className="relative overflow-hidden bg-primary px-6 py-6">
           <div className="absolute -right-8 -top-8 h-32 w-32 rounded-full bg-white/5" />
           <div className="absolute -bottom-6 -right-2 h-20 w-20 rounded-full bg-white/5" />
           <p className="relative text-[10px] font-semibold uppercase tracking-[0.15em] text-primary-foreground/60">
@@ -73,7 +74,6 @@ const ResourcesPanel = () => {
           <Link
             to="https://docs.seliseblocks.com/"
             target="_blank"
-            rel="noopener noreferrer"
             className="relative mt-4 inline-flex items-center gap-2 rounded-lg bg-white/15 px-4 py-2 text-xs font-semibold text-white backdrop-blur-sm transition-colors hover:bg-white/25"
           >
             <BookOpenText className="h-3.5 w-3.5" />
@@ -85,11 +85,8 @@ const ResourcesPanel = () => {
         
         <div className="divide-y divide-[hsl(var(--border-default))]">
           {sdks.map((sdk) => (
-            <div
-              key={sdk.name}
-              className="flex flex-col gap-3 px-4 py-3.5 sm:flex-row sm:items-center sm:justify-between sm:gap-3 sm:px-6"
-            >
-              <div className="flex min-w-0 items-center gap-3">
+            <div key={sdk.name} className="flex items-center justify-between px-6 py-3.5">
+              <div className="flex items-center gap-3">
                 <div
                   className={`flex h-8 w-8 items-center justify-center rounded-lg border border-[hsl(var(--border-default))] bg-[hsl(var(--card))] shadow-sm ${!sdk.available ? "opacity-35" : ""}`}
                 >
@@ -102,20 +99,11 @@ const ResourcesPanel = () => {
                 </span>
               </div>
               {sdk.available ? (
-                <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-xs sm:justify-end">
+                <div className="flex items-center gap-2.5 text-xs">
                   {sdk.links.map((link, i) => (
                     <span key={link.label} className="flex items-center gap-2.5">
-                      {i > 0 && (
-                        <span aria-hidden className="select-none text-[hsl(var(--low-emphasis))]">
-                          ·
-                        </span>
-                      )}
-                      <Link
-                        to={link.to}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="whitespace-nowrap font-medium text-primary hover:underline"
-                      >
+                      {i > 0 && <span className="h-3 w-px bg-[hsl(var(--border-default))]" />}
+                      <Link to={link.to} target="_blank" className="font-medium text-primary hover:underline">
                         {link.label}
                       </Link>
                     </span>
@@ -131,13 +119,12 @@ const ResourcesPanel = () => {
         </div>
 
         
-        <div className="flex flex-col gap-3 bg-[hsl(var(--surface-app))] px-4 py-3.5 sm:flex-row sm:items-center sm:justify-between sm:px-6">
+        <div className="flex items-center justify-between bg-[hsl(var(--surface-app))] px-6 py-3.5">
           <span className="text-xs text-[hsl(var(--medium-emphasis))]">Fully open source</span>
           <Link
             to="https://github.com/SELISEdigitalplatforms"
             target="_blank"
-            rel="noopener noreferrer"
-            className="inline-flex w-fit items-center gap-1.5 rounded-lg border border-[hsl(var(--border-default))] bg-[hsl(var(--card))] px-3 py-1.5 text-xs font-medium text-[hsl(var(--high-emphasis))] shadow-sm transition-all hover:border-primary/40 hover:shadow-md"
+            className="inline-flex items-center gap-1.5 rounded-lg border border-[hsl(var(--border-default))] bg-[hsl(var(--card))] px-3 py-1.5 text-xs font-medium text-[hsl(var(--high-emphasis))] shadow-sm transition-all hover:border-primary/40 hover:shadow-md"
           >
             <Github className="h-4 w-4" />
             View on GitHub
@@ -167,7 +154,7 @@ export default function OidcLogin() {
     setIsLoading(true);
     const blocksKey = getRuntimeEnv("BLOCKS_X_BLOCKS_KEY");
 
-    const params = new URLSearchParams({
+     const params = new URLSearchParams({
       response_type: "code",
       client_id: "94201649-8f4d-4818-be0e-2024e3f9fee2",
       redirect_uri: "https://dev-idp.blocksdevelopers.com",
@@ -180,36 +167,36 @@ export default function OidcLogin() {
   };
 
   return (
-    <div className="relative flex min-h-[100dvh] min-h-screen flex-col bg-[hsl(var(--surface-app))] pb-[env(safe-area-inset-bottom)] pt-[env(safe-area-inset-top)]">
-      <header className="relative z-10 flex w-full max-w-[100vw] items-center justify-between gap-4 px-4 py-4 sm:px-6 sm:py-5 xl:px-[clamp(1.5rem,8vw,9.625rem)]">
-        <Logo
-          width={120}
-          height={52}
-          className="h-8 max-h-[40px] w-auto max-w-[min(240px,40vw)] sm:h-[52px] sm:max-h-none sm:w-[120px]"
-        />
-        <ModeToggle />
+    <div className="relative flex min-h-screen flex-col bg-[hsl(var(--surface-app))]">
+      
+      <header className="relative z-10 flex items-center px-6 py-5 xl:px-[154px]">
+        <Logo width={120} height={52} />
+        <div className="absolute right-6 top-5 xl:right-[154px]">
+          <ModeToggle />
+        </div>
       </header>
 
-      <main className="relative z-10 flex w-full max-w-[100vw] flex-1 flex-col items-start justify-center gap-10 px-4 py-10 sm:gap-14 sm:px-6 sm:py-12 lg:flex-row lg:items-center lg:gap-14 lg:py-16 xl:gap-16 xl:px-[clamp(1.5rem,8vw,9.625rem)] xl:py-24">
-        <div className="flex w-full min-w-0 flex-1 flex-col items-start gap-5 sm:gap-6 lg:max-w-[min(100%,42rem)]">
-          <div className="flex w-full flex-col gap-2">
-            <p className="text-xs font-semibold uppercase tracking-[0.1em] text-primary sm:text-sm">
-              Blocks OS Platform
-            </p>
-            <h1 className="max-w-xl text-[clamp(2rem,6vw,3rem)] font-semibold leading-[1.1] tracking-tight text-[hsl(var(--high-emphasis))] sm:text-5xl xl:text-6xl">
+      
+      <main className="relative z-10 flex flex-1 flex-col items-start justify-center gap-16 px-6 py-12 lg:flex-row lg:items-center lg:gap-16 lg:py-0 xl:px-[154px]">
+        
+        <div className="flex flex-1 flex-col items-start gap-6">
+          
+          <div className="flex flex-col gap-2">
+            <p className="text-sm font-semibold uppercase tracking-[0.1em] text-primary">Blocks OS Platform</p>
+            <h1 className="max-w-xl text-5xl font-semibold tracking-tight text-[hsl(var(--high-emphasis))] lg:text-6xl">
               Backends that are
             </h1>
-            <div className="relative min-h-[4.75rem] w-full overflow-visible sm:min-h-[5rem] lg:min-h-[5.25rem]">
+            <div className="relative flex h-[80px] overflow-visible lg:h-[88px]">
               {titles.map((title, index) => (
                 <motion.span
                   key={index}
-                  className="absolute inset-x-0 top-0 text-[clamp(2rem,6vw,3rem)] font-semibold leading-[1.1] tracking-tight text-primary sm:text-5xl xl:text-6xl"
+                  className="absolute text-5xl font-semibold tracking-tight text-primary lg:text-6xl"
                   initial={{ opacity: 0, y: 28, filter: "blur(6px)" }}
                   transition={{ duration: 0.75, ease: [0.22, 1, 0.36, 1] }}
                   animate={
                     titleNumber === index
                       ? { y: 0, opacity: 1, filter: "blur(0px)" }
-                      : { y: titleNumber > index ? -24 : 24, opacity: 0, filter: "blur(6px)" }
+                      : { y: titleNumber > index ? -28 : 28, opacity: 0, filter: "blur(6px)" }
                   }
                 >
                   {title}.
@@ -218,17 +205,18 @@ export default function OidcLogin() {
             </div>
           </div>
 
-          <p className="max-w-lg text-base leading-relaxed tracking-tight text-muted-foreground sm:text-lg">
+          <p className="max-w-lg text-lg leading-relaxed tracking-tight text-muted-foreground">
             Blocks OS is a modern platform for building and deploying secure, scalable applications with built-in observability, AI
             capabilities, and comprehensive identity management. Focus on your application logic
             while Blocks OS handles the infrastructure.
           </p>
 
-          <div className="flex w-full flex-wrap gap-2">
+          
+          <div className="flex flex-wrap gap-2">
             {pillars.map(({ icon: Icon, label }) => (
               <div
                 key={label}
-                className="inline-flex max-w-full items-center gap-1.5 rounded-full border border-[hsl(var(--border-default))] bg-[hsl(var(--card))] px-2.5 py-1.5 text-[11px] font-medium leading-tight text-[hsl(var(--high-emphasis))] shadow-sm sm:px-3 sm:text-xs"
+                className="inline-flex items-center gap-1.5 rounded-full border border-[hsl(var(--border-default))] bg-[hsl(var(--card))] px-3 py-1.5 text-xs font-medium text-[hsl(var(--high-emphasis))] shadow-sm"
               >
                 <Icon className="h-3.5 w-3.5 text-primary" />
                 {label}
@@ -236,18 +224,22 @@ export default function OidcLogin() {
             ))}
           </div>
 
-          <div className="flex w-full flex-col gap-3 pt-1 sm:flex-row sm:items-center sm:pt-2">
-            <Button
-              size="lg"
-              className="group w-full gap-2 sm:w-auto"
-              disabled={isLoading}
-              onClick={handleLogin}
-            >
-              {isLoading ? "Redirecting…" : "Log in to your account"}
-              {!isLoading && (
-                <MoveRight className="h-4 w-4 transition-transform group-hover:translate-x-1" />
-              )}
-            </Button>
+          
+          <div className="flex flex-col gap-2 pt-2">
+            <div className="flex flex-row gap-3">
+              <Button
+                size="lg"
+                className="group gap-2"
+                disabled={isLoading}
+                onClick={handleLogin}
+              >
+                {isLoading ? "Redirecting…" : "Log in to your account"}
+                {!isLoading && (
+                  <MoveRight className="h-4 w-4 transition-transform group-hover:translate-x-1" />
+                )}
+              </Button>
+            </div>
+          
           </div>
         </div>
 
