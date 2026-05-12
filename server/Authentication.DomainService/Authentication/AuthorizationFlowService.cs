@@ -408,7 +408,11 @@ namespace Authentication.DomainService.Authentication
                     { "state", state },
                     { "tenant_id", resolvedTenantId ?? tenant_id ?? string.Empty }
                 };
-                return new RedirectResult(BuildRedirectUri(redirect_uri, callbackParams));
+                //return new RedirectResult(BuildRedirectUri(redirect_uri, callbackParams));
+                return new OkObjectResult(new
+                {
+                    redirect_uri = BuildRedirectUri(redirect_uri, callbackParams)
+                });
             }
             catch (Exception ex)
             {
