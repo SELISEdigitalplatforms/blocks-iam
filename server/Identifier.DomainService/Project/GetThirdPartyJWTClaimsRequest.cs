@@ -1,7 +1,7 @@
-﻿using Blocks.Genesis;
+using Blocks.Genesis;
 
 
-namespace DomainService.Projects
+namespace Identifier.DomainService.Projects
 {
     public class GetThirdPartyJWTClaimsRequest : IProjectKey
     {

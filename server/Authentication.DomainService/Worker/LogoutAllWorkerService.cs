@@ -1,10 +1,10 @@
-﻿using Blocks.Genesis;
-using DomainService.Dtos;
-using DomainService.Services;
-using DomainService.Utilities;
+using Blocks.Genesis;
+using Authentication.DomainService.Dtos;
+using Authentication.DomainService.Services;
+using Authentication.DomainService.Utilities;
 using Iam.DomainService.Dtos;
 
-namespace DomainService.Worker
+namespace Authentication.DomainService.Worker
 {
     public class LogoutAllWorkerService : IConsumer<LogoutAllEvent>
     {

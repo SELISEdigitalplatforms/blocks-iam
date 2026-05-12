@@ -1,8 +1,8 @@
-﻿using Blocks.Genesis;
-using DomainService.Entities;
+using Blocks.Genesis;
+using Identifier.DomainService.Entities;
 
 
-namespace DomainService.Projects
+namespace Identifier.DomainService.Projects
 {
     public class GetProjectRequest
     {

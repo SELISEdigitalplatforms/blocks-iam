@@ -1,6 +1,6 @@
-using DomainService.Migration.Entities;
+using Identifier.DomainService.Migration.Entities;
 
-namespace DomainService.Migration
+namespace Identifier.DomainService.Migration
 {
     public interface IMigrationService
     {

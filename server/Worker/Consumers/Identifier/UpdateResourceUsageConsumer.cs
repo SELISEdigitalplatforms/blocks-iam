@@ -1,6 +1,6 @@
 ﻿using Blocks.Genesis;
-using DomainService.Entities;
-using DomainService.Shared.Dtos;
+using Identifier.DomainService.Entities;
+using Identifier.DomainService.Shared.Dtos;
 using MongoDB.Driver;
 using System;
 using System.Collections.Generic;

@@ -1,7 +1,7 @@
-﻿
+
 using Blocks.Genesis;
 
-namespace DomainService.Shared
+namespace Identifier.DomainService.Shared
 {
     public class ConfigureDomainRequest : IProjectKey
     {

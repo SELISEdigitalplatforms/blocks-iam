@@ -1,7 +1,7 @@
 using Blocks.Genesis;
 using MongoDB.Bson.Serialization.Attributes;
 
-namespace DomainService.Migration.Entities
+namespace Identifier.DomainService.Migration.Entities
 {
     [BsonIgnoreExtraElements]
     public class MigrationTracker : BaseEntity

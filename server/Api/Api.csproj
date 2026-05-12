@@ -5,10 +5,10 @@
   </PropertyGroup>
 	
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|AnyCPU'">
-    <DocumentationFile>Blocks.Genesis.xml</DocumentationFile>
+    <DocumentationFile>Api.xml</DocumentationFile>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|AnyCPU'">
-    <DocumentationFile>Blocks.Genesis.xml</DocumentationFile>
+    <DocumentationFile>Api.xml</DocumentationFile>
   </PropertyGroup>
   <ItemGroup>
     <Content Remove="appsettings.Development.json" />
@@ -23,7 +23,6 @@
     <ProjectReference Include="..\Authentication.DomainService\Authentication.DomainService.csproj" />
     <ProjectReference Include="..\Captcha.DomainService\Captcha.DomainService.csproj" />
     <ProjectReference Include="..\Cloud.DomainService\Cloud.DomainService.csproj" />
-    <ProjectReference Include="..\Cloud.LmtService\Cloud.LmtService.csproj" />
     <ProjectReference Include="..\CloudConfiguration.DomainService\CloudConfiguration.DomainService.csproj" />
 
     <ProjectReference Include="..\Iam.DomainService\Iam.DomainService.csproj" />

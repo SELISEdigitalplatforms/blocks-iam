@@ -1,6 +1,5 @@
 ﻿using Blocks.Genesis;
 using Iam.DomainService.Entities;
-using Iam.DomainService.Shared.Entities;
 
 namespace Iam.DomainService.Users
 {
@@ -19,11 +18,11 @@ namespace Iam.DomainService.Users
         public string? ProfileImageUrl { get; set; }
         public string? ProfileImageId { get; set; }
         public List<UserLogInType> AllowedLogInType { get; set; } = new List<UserLogInType> { UserLogInType.SSO };
-        public List<OrganizationMembership> Memberships { get; set; } = [];
-        public List<string> Permissions { get; set; } = new List<string>();
+        public Dictionary<string, List<string>> Roles { get; set; } = new();
+        public Dictionary<string, List<string>> Permissions { get; set; } = new();
         public required string ProjectKey { get; set; }
         public bool Active { get; set; } = true;
-        public bool IsVarified { get; set; } = true;
+        public bool IsVerified { get; set; } = true;
         public string? ExternalUserId { get; set; }
         public string? DepartMent { get; set; }
         public string? EmployeeId { get; set; }

@@ -1,10 +1,10 @@
-﻿using Azure.Identity;
+using Azure.Identity;
 using Azure.Security.KeyVault.Secrets;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
 using System.Security.Cryptography.X509Certificates;
 
-namespace DomainService.Certificate
+namespace Identifier.DomainService.Certificate
 {
     public class AzureKeyVaultStorage : ICertificateStorage
     {

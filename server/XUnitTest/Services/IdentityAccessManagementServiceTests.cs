@@ -8,6 +8,7 @@ using Iam.DomainService.Utilities;
 using Microsoft.Extensions.Logging;
 using Moq;
 using Tenant = Blocks.Genesis.Tenant;
+using BCryptNet = BCrypt.Net.BCrypt;
 
 namespace XUnitTest.Services
 {
@@ -15,7 +16,6 @@ namespace XUnitTest.Services
     {
         private readonly Mock<ILogger<IdentityAccessManagementService>> _loggerMock;
         private readonly Mock<ITenants> _tenantsMock;
-        private readonly Mock<ICryptoService> _cryptoServiceMock;
         private readonly Mock<IMessageClient> _messageClientMock;
         private readonly Mock<IUserRepository> _userRepositoryMock;
         private readonly IdentityAccessManagementService _service;
@@ -24,14 +24,13 @@ namespace XUnitTest.Services
         {
             _loggerMock = new Mock<ILogger<IdentityAccessManagementService>>();
             _tenantsMock = new Mock<ITenants>();
-            _cryptoServiceMock = new Mock<ICryptoService>();
             _messageClientMock = new Mock<IMessageClient>();
             _userRepositoryMock = new Mock<IUserRepository>();
 
             _service = new IdentityAccessManagementService(
                 _loggerMock.Object,
                 _tenantsMock.Object,
-                _cryptoServiceMock.Object,
+                Mock.Of<ICryptoService>(),
                 _messageClientMock.Object,
                 _userRepositoryMock.Object
             );
@@ -111,62 +110,60 @@ namespace XUnitTest.Services
         #region HashPassword Tests
 
         [Fact]
-        public void HashPassword_WithValidPassword_ReturnsHashedPassword()
+        public void HashPassword_WithValidPassword_ReturnsBcryptHash()
         {
             // Arrange
             var password = "TestPassword123!";
-            var tenantSalt = "tenant-salt-123";
-            var expectedHash = "hashed-password";
-            var tenantId = "tenant-123";
-
-            SetupBlocksContext(tenantId: tenantId);
-            _tenantsMock.Setup(x => x.GetTenantByID(tenantId)).Returns(CreateTestTenant(tenantSalt: tenantSalt));
-            _cryptoServiceMock.Setup(x => x.Hash(password, tenantSalt)).Returns(expectedHash);
 
             // Act
             var result = _service.HashPassword(password);
 
             // Assert
-            result.Should().Be(expectedHash);
-            _cryptoServiceMock.Verify(x => x.Hash(password, tenantSalt), Times.Once);
+            result.Should().NotBeNullOrWhiteSpace();
+            result.Should().NotBe(password);
+            BCryptNet.Verify(password, result).Should().BeTrue();
         }
 
         [Fact]
-        public void HashPassword_WithNullTenant_PassesNullSalt()
+        public void HashPassword_WithOptionalSalt_UsesPasswordMaterialWithSalt()
         {
             // Arrange
             var password = "TestPassword123!";
-            var expectedHash = "hashed-password";
-            var tenantId = "tenant-123";
-
-            SetupBlocksContext(tenantId: tenantId);
-            _tenantsMock.Setup(x => x.GetTenantByID(tenantId)).Returns((Tenant)null);
-            _cryptoServiceMock.Setup(x => x.Hash(password, null)).Returns(expectedHash);
+            var optionalSalt = "tenant-salt-123";
 
             // Act
-            var result = _service.HashPassword(password);
+            var result = _service.HashPassword(password, optionalSalt);
 
             // Assert
-            result.Should().Be(expectedHash);
-            _cryptoServiceMock.Verify(x => x.Hash(password, null), Times.Once);
+            BCryptNet.Verify($"{password}::{optionalSalt}", result).Should().BeTrue();
         }
 
         [Fact]
-        public void HashPassword_WithNoContext_HandlesNullContext()
+        public void VerifyPassword_WithValidHash_ReturnsTrue()
         {
             // Arrange
             var password = "TestPassword123!";
-            var expectedHash = "hashed-password";
-
-            _tenantsMock.Setup(x => x.GetTenantByID(null)).Returns((Tenant)null);
-            _cryptoServiceMock.Setup(x => x.Hash(password, null)).Returns(expectedHash);
+            var passwordHash = _service.HashPassword(password);
 
             // Act
-            var result = _service.HashPassword(password);
+            var result = _service.VerifyPassword(password, passwordHash);
 
             // Assert
-            result.Should().Be(expectedHash);
-            _tenantsMock.Verify(x => x.GetTenantByID(null), Times.Once);
+            result.Should().BeTrue();
+        }
+
+        [Fact]
+        public void VerifyPassword_WithOptionalSaltMismatch_ReturnsFalse()
+        {
+            // Arrange
+            var password = "TestPassword123!";
+            var passwordHash = _service.HashPassword(password, "salt-a");
+
+            // Act
+            var result = _service.VerifyPassword(password, passwordHash, "salt-b");
+
+            // Assert
+            result.Should().BeFalse();
         }
 
         #endregion

@@ -1,6 +1,6 @@
-﻿using Blocks.Genesis;
+using Blocks.Genesis;
 
-namespace DomainService.Shared
+namespace Identifier.DomainService.Shared
 {
     public static class IdentifierConstants
     {

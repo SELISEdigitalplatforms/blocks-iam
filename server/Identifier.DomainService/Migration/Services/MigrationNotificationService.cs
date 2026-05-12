@@ -1,9 +1,9 @@
 using Blocks.Genesis;
-using DomainService.Dtos;
-using DomainService.Migration;
-using DomainService.Shared;
+using Identifier.DomainService.Dtos;
+using Identifier.DomainService.Migration;
+using Identifier.DomainService.Shared;
 
-namespace DomainService.Migration.Services
+namespace Identifier.DomainService.Migration.Services
 {
     public interface IMigrationNotificationService
     {

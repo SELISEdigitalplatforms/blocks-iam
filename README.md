@@ -93,6 +93,10 @@ For local development with the same two steps in one command:
 
 (`run.sh` runs a **Debug** `dotnet run`; use the commands above for **Release** publish.)
 
+## Migration Snapshot
+
+For IAM schema transition details (what we had vs what we have now), see [migrtaion.md](migrtaion.md).
+
 ## API
 
 - **`/api/events`** — Events CRUD, pagination, `search` (name/location/organizer, ≥3 characters), date range overlap, sorting (FluentValidation on create/update).

@@ -1,10 +1,10 @@
-﻿using Azure.Identity;
+using Azure.Identity;
 using Azure.Messaging.ServiceBus.Administration;
 using Azure.ResourceManager;
 using Azure.ResourceManager.ServiceBus;
 using Blocks.Genesis;
-using DomainService.Shared;
-using DomainService.Shared.Entities;
+using Identifier.DomainService.Shared;
+using Identifier.DomainService.Shared.Entities;
 using FluentValidation;
 using Microsoft.Extensions.Configuration;
 using MongoDB.Driver.Linq;
@@ -13,7 +13,7 @@ using StackExchange.Redis;
 using System.Diagnostics.CodeAnalysis;
 using System.Text.Json;
 
-namespace DomainService.ManagedService.Services
+namespace Identifier.DomainService.ManagedService.Services
 {
     public class ServiceManagement : IServiceManagement
     {
