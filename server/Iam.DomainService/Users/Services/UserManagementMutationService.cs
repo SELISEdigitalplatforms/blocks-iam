@@ -15,6 +15,7 @@ namespace Iam.DomainService.Users
 {
     public class UserManagementMutationService : IUserManagementMutationService
     {
+        private const string DefaultOrganizationId = "default";
         private readonly ILogger<UserManagementMutationService> _logger;
         private readonly IValidator<CreateUserRequest> _createValidator;
         private readonly IValidator<UpdateUserRequest> _updateValidator;
@@ -123,9 +124,27 @@ namespace Iam.DomainService.Users
         public async Task<string> ProcessAsync(CreateUserRequest command)
         {
             var user = await _userRepository.GetUserByEmailAsync(command.Email);
-            var defaultOrganizationId = ResolveOrganizationId(command.OrgId, command.Roles, command.Permissions);
-            var orgConfig = await GetOrganizationConfigAsync(command, defaultOrganizationId);
-            var signUpPolicyError = await ValidateSignUpPolicyAsync(command, user, defaultOrganizationId, orgConfig);
+            var requestedOrganizationId = ResolveOrganizationId(command.OrgId, command.Roles, command.Permissions);
+            var rootConfig = await GetOrganizationConfigAsync(command, DefaultOrganizationId);
+
+            var effectiveOrganizationId = (rootConfig?.IsMultiOrgEnabled ?? false)
+                ? requestedOrganizationId
+                : DefaultOrganizationId;
+
+            if (!string.Equals(effectiveOrganizationId, DefaultOrganizationId, StringComparison.OrdinalIgnoreCase)
+                && _resourceRepository is not null)
+            {
+                var organization = await _resourceRepository.GetOrganizationById(effectiveOrganizationId);
+                if (organization is null || !organization.IsEnable)
+                {
+                    throw new ValidationException([
+                        new ValidationFailure(nameof(CreateUserRequest.OrgId), $"Organization '{effectiveOrganizationId}' is not available.")
+                    ]);
+                }
+            }
+
+            var orgConfig = await GetOrganizationConfigAsync(command, effectiveOrganizationId) ?? rootConfig;
+            var signUpPolicyError = await ValidateSignUpPolicyAsync(command, user, effectiveOrganizationId, orgConfig);
 
             if (signUpPolicyError != null)
             {
@@ -133,20 +152,20 @@ namespace Iam.DomainService.Users
             }
 
             var defaultRoles = ResolveDefaultRoles(orgConfig);
-            var normalizedRoles = NormalizeOrgClaimMap(command.Roles, defaultOrganizationId, ["user"]);
-            var normalizedPermissions = NormalizeOrgClaimMap(command.Permissions, defaultOrganizationId, []);
+            var normalizedRoles = NormalizeOrgClaimMap(command.Roles, effectiveOrganizationId, ["user"]);
+            var normalizedPermissions = NormalizeOrgClaimMap(command.Permissions, effectiveOrganizationId, []);
 
-            if (normalizedRoles.TryGetValue(defaultOrganizationId, out var scopedRoles)
+            if (normalizedRoles.TryGetValue(effectiveOrganizationId, out var scopedRoles)
                 && scopedRoles.Count == 0
                 && defaultRoles.Count > 0)
             {
-                normalizedRoles[defaultOrganizationId] = defaultRoles;
+                normalizedRoles[effectiveOrganizationId] = defaultRoles;
             }
 
             // EXISTING USER PATH: Add directly to org, active immediately, auto-assign defaults, silent notify
             if(user is not null)
             {
-                var organizationId = defaultOrganizationId;
+                var organizationId = effectiveOrganizationId;
 
                 // Add org membership (active immediately, no pending state)
                 if (!user.OrganizationIds.Contains(organizationId))
@@ -285,10 +304,11 @@ namespace Iam.DomainService.Users
             user.ProfileImageId = command.ProfileImageId ?? string.Empty;
             user.ProfileImageUrl = command.ProfileImageUrl ?? string.Empty;
             user.MfaEnabled = command.MfaEnabled;
-            
-            user.Roles = NormalizeOrgClaimMap(command.Roles, "default", ["user"]);
-            user.Permissions = NormalizeOrgClaimMap(command.Permissions, "default", []);
-            user.OrganizationIds = BuildOrganizationIds(user.Roles, user.Permissions, "default");
+
+            var organizationId = ResolveOrganizationId(null, command.Roles, command.Permissions);
+            user.Roles = NormalizeOrgClaimMap(command.Roles, organizationId, ["user"]);
+            user.Permissions = NormalizeOrgClaimMap(command.Permissions, organizationId, []);
+            user.OrganizationIds = BuildOrganizationIds(user.Roles, user.Permissions, organizationId);
 
             if (command.MfaEnabled)
             {
@@ -445,9 +465,11 @@ namespace Iam.DomainService.Users
                 };
             }
 
-            user.Roles = NormalizeOrgClaimMap(command.Roles, "default", ["user"]);
-            user.Permissions = NormalizeOrgClaimMap(command.Permissions, "default", []);
-            user.OrganizationIds = BuildOrganizationIds(user.Roles, user.Permissions, "default");
+            var contextOrgId = BlocksContext.GetContext()?.OrganizationId;
+            var organizationId = ResolveOrganizationId(null, command.Roles, command.Permissions, contextOrgId);
+            user.Roles = NormalizeOrgClaimMap(command.Roles, organizationId, ["user"]);
+            user.Permissions = NormalizeOrgClaimMap(command.Permissions, organizationId, []);
+            user.OrganizationIds = BuildOrganizationIds(user.Roles, user.Permissions, organizationId);
             var result = await _userRepository.UpdateUserAsync(user);
 
             if (!result)
@@ -475,9 +497,9 @@ namespace Iam.DomainService.Users
                 Email = @event.Email,
                 UserCreationType = UserCreationType.Service,
                 MailPurpose = @event.EventType,
-                OrgId = "default",
-                Roles = new Dictionary<string, List<string>> { ["default"] = ["user"] },
-                Permissions = new Dictionary<string, List<string>> { ["default"] = [] }
+                OrgId = DefaultOrganizationId,
+                Roles = new Dictionary<string, List<string>> { [DefaultOrganizationId] = ["user"] },
+                Permissions = new Dictionary<string, List<string>> { [DefaultOrganizationId] = [] }
             };
 
             _blocksContext = BlocksContext.GetContext();
@@ -551,7 +573,7 @@ namespace Iam.DomainService.Users
 
             _blocksContext = BlocksContext.GetContext();
 
-            var fallbackOrganizationId = BlocksContext.GetContext()?.OrganizationId ?? "default";
+            var fallbackOrganizationId = BlocksContext.GetContext()?.OrganizationId ?? DefaultOrganizationId;
             var orgConfig = await GetOrganizationConfigAsync(command.ProjectKey, fallbackOrganizationId);
             var signUpPolicyError = await ValidateSignUpPolicyAsync(command.UserCreationType, null, fallbackOrganizationId, orgConfig);
 
@@ -600,7 +622,7 @@ namespace Iam.DomainService.Users
         public async Task<string> ProcessSsoUserAsync(CreateUserViaSsoRequest command, List<string> defaultRoles)
         {
             var id = Guid.NewGuid().ToString();
-            var fallbackOrganizationId = BlocksContext.GetContext()?.OrganizationId ?? "default";
+            var fallbackOrganizationId = BlocksContext.GetContext()?.OrganizationId ?? DefaultOrganizationId;
             var normalizedRoles = NormalizeOrgClaimMap(command.Roles, fallbackOrganizationId, defaultRoles.Count > 0 ? defaultRoles : ["user"]);
             var normalizedPermissions = NormalizeOrgClaimMap(command.Permissions, fallbackOrganizationId, []);
             var tenantId = BlocksContext.GetContext()?.TenantId;
@@ -668,7 +690,8 @@ namespace Iam.DomainService.Users
         private static string ResolveOrganizationId(
             string? requestedOrganizationId,
             Dictionary<string, List<string>> roles,
-            Dictionary<string, List<string>> permissions)
+            Dictionary<string, List<string>> permissions,
+            string? contextOrganizationId = null)
         {
             if (!string.IsNullOrWhiteSpace(requestedOrganizationId))
             {
@@ -687,7 +710,12 @@ namespace Iam.DomainService.Users
                 return permissionOrgId;
             }
 
-            return "default";
+            if (!string.IsNullOrWhiteSpace(contextOrganizationId))
+            {
+                return contextOrganizationId;
+            }
+
+            return DefaultOrganizationId;
         }
 
         private static Dictionary<string, List<string>> NormalizeOrgClaimMap(

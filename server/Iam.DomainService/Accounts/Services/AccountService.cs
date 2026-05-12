@@ -405,34 +405,46 @@ namespace Iam.DomainService.Accounts
             };
         }
 
-        public async Task<SaveSignUpSettingResponse> SaveSingUpSettingAsync(SaveSignUpSettingRequest request)
+        public async Task<SaveSignUpSettingResponse> SaveSignUpSettingAsync(SaveSignUpSettingRequest request)
         {
-            if(string.IsNullOrWhiteSpace(request.ItemId) && await _repository.SingnUpSettingAlreadyExist())
+            var settings = await _repository.GetTenantConfigurationAsync();
+
+            if(settings == null)
             {
                 return new SaveSignUpSettingResponse
                 {
                     IsSuccess = false,
-                    Errors = new Dictionary<string, string>{ { "sing_up_setting_exist", "SignUpSetting already exist" }}
+                    Errors = new Dictionary<string, string>{ { "sign_up_setting_exist", "SignUpSetting already exist" }}
                 };
             }
-
-            var settings = !string.IsNullOrWhiteSpace(request.ItemId) ?
-                          await _repository.GetSingUpSettingByIdAsync(request.ItemId) :
-                          new SignUpSetting { CreatedDate = DateTime.UtcNow, CreatedBy = BlocksContext.GetContext()?.UserId, ItemId = Guid.NewGuid().ToString() };
 
             settings.IsEmailPasswordSignUpEnabled = request.IsEmailPasswordSignUpEnabled;
             settings.IsSSoSignUpEnabled = request.IsSSoSignUpEnabled;
             settings.LastUpdatedBy = BlocksContext.GetContext()?.UserId;
             settings.LastUpdatedDate = DateTime.UtcNow;
 
-            await _repository.SaveSingUpSettingAsync(settings);
+            await _repository.SaveSignUpSettingAsync(settings);
 
             return new SaveSignUpSettingResponse { IsSuccess = true, ItemId = settings.ItemId };
         }
 
-        public async Task<SignUpSetting> GetSignUpSettingAsync(GetSignUpSettingRequest request)
+        public async Task<Dictionary<string, object>> GetSignUpSettingAsync(GetSignUpSettingRequest request)
         {
-            return  await _repository.GetSignUpSettingAsync(request.ItemId);
+            var tenantConfiguration = await _repository.GetTenantConfigurationAsync();
+            if (tenantConfiguration == null)
+            {
+                return new Dictionary<string, object>
+                {
+                    { "IsEmailPasswordSignUpEnabled", false },
+                    { "IsSSoSignUpEnabled", false }
+                };
+            }
+
+            return new Dictionary<string, object>
+            {
+                { "IsEmailPasswordSignUpEnabled", tenantConfiguration.IsEmailPasswordSignUpEnabled },
+                { "IsSSoSignUpEnabled", tenantConfiguration.IsSSoSignUpEnabled }
+            };
         }
 
         /// <summary>
