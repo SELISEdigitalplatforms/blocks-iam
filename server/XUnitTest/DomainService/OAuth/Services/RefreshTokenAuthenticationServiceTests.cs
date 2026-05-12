@@ -29,7 +29,6 @@ namespace XUnitTest.DomainService.OAuth.Services
                 _tenants.Object,
                 _oAuthJwtAccessTokenManager.Object);
         }
-        /*
         [Fact]
         public async Task AuthenticateAsync_WithValidRequest_ReturnsSuccessfulTokenResponse()
         {
@@ -90,6 +89,9 @@ namespace XUnitTest.DomainService.OAuth.Services
             _jwtAccessTokenProvider
                 .Setup(x => x.GetJwtAccessToken(authConfig, tenant, user, null, request.OrganizationId))
                 .ReturnsAsync(jwtAccessToken);
+            _oAuthJwtAccessTokenManager
+                .Setup(x => x.ManageRefreshTokenAsync(request, jwtAccessToken, authConfig, tenant, user))
+                .ReturnsAsync(("refresh-token-xyz", DateTime.UtcNow.AddDays(7)));
 
             // Act
             var result = await _service.AuthenticateAsync(request, authConfig, user);
@@ -101,11 +103,14 @@ namespace XUnitTest.DomainService.OAuth.Services
             result.ExpiresUtc.Should().BeCloseTo(jwtAccessToken.Expires, TimeSpan.FromSeconds(1));
             result.CookieDomain.Should().Be(".example.com");
             result.Error.Should().BeNullOrEmpty();
+            result.RefreshToken.Should().Be("refresh-token-xyz");
+            result.RefreshExpiresUtc.Should().BeAfter(DateTime.UtcNow);
 
             _tenants.Verify(x => x.GetTenantByID(It.IsAny<string>()), Times.Once);
             _jwtAccessTokenProvider.Verify(
                 x => x.GetJwtAccessToken(authConfig, tenant, user, null, request.OrganizationId),
                 Times.Once);
+            _oAuthJwtAccessTokenManager.Verify(x => x.ManageRefreshTokenAsync(request, jwtAccessToken, authConfig, tenant, user), Times.Once);
 
             // Verify JWT token structure
             var handler = new JwtSecurityTokenHandler();
@@ -115,6 +120,7 @@ namespace XUnitTest.DomainService.OAuth.Services
             jwtToken.Claims.Should().Contain(c => c.Type == ClaimTypes.Email && c.Value == user.Email);
         }
 
+        /*
         [Fact]
         public async Task AuthenticateAsync_WithDifferentOrganization_GeneratesTokenWithOrganizationContext()
         {
