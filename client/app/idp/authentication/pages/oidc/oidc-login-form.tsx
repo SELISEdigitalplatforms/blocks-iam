@@ -153,18 +153,24 @@ export const OidcLoginForm = ({
           'X-Blocks-Key': finalTenantId || '',
         },
         body: JSON.stringify(payload),
-        redirect: 'manual', // Handle redirects manually to deal with cross-origin redirects
       });
 
-      // Handle 3xx redirects (302, 303, etc.)
-      if (response.status >= 300 && response.status < 400) {
-        const location = response.headers.get('Location');
-        if (location) {
-          // Use window.location to navigate - this bypasses CORS and lets the browser handle the redirect
-          window.location.href = location;
-          return;
-        }
+      console.log('Login response status:', response);
+
+      if(response.ok){
+        const data = await response.json()
+         window.location.href=data.redirect_uri
       }
+
+      // Handle 3xx redirects (302, 303, etc.)
+      // if (response.status >= 300 && response.status < 400) {
+      //   const location = response.headers.get('Location');
+      //   if (location) {
+      //     // Use window.location to navigate - this bypasses CORS and lets the browser handle the redirect
+      //     window.location.href = location;
+      //     return;
+      //   }
+      // }
 
       // Parse response as JSON
       let data;
