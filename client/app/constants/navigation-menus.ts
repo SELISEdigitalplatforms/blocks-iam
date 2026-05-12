@@ -59,13 +59,13 @@ export const navigationMenus: Menu[] = [
     path: "/services/authentication/organizations",
     icon: Building2,
   },
-  {
-    type: "menu",
-    id: "service-identity__authentication-client-credential",
-    name: "Client Credential",
-    path: "/services/authentication/client-credential",
-    icon: KeyRound,
-  },
+  // {
+  //   type: "menu",
+  //   id: "service-identity__authentication-client-credential",
+  //   name: "Client Credential",
+  //   path: "/services/authentication/client-credential",
+  //   icon: KeyRound,
+  // },
   // {
   //   type: "menu",
   //   id: "service-identity__authorization",
