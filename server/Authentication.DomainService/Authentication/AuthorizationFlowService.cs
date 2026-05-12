@@ -128,7 +128,7 @@ namespace Authentication.DomainService.Authentication
 
             // Look up user and verify credentials (no tenant scoping on initial lookup, like embedded login)
             var user = await _authenticationRepository.GetUserByUsernameAsync(request.Username);
-            if (user == null || !user.Active || !user.IsVarified)
+            if (user == null || !user.Active || !user.IsVerified)
                 return new UnauthorizedObjectResult(new { error = "invalid_credentials" });
 
             if (user.LockoutUntilUtc.HasValue && user.LockoutUntilUtc.Value > DateTime.UtcNow)

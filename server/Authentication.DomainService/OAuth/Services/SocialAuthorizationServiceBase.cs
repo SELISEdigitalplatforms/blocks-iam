@@ -98,7 +98,7 @@ namespace Authentication.DomainService.OAuth.Services
                 return CreateUserNotFoundError(externalUser.Email?? "");
             }
 
-            if (!user.Active || !user.IsVarified)
+            if (!user.Active || !user.IsVerified)
             {
                 return new TokenResponse { Error = "There is a user with external user id but is not active.", ErrorDescription = "There is a user with external user id but is not active", StatusCode = 401 };
             }
@@ -152,7 +152,7 @@ namespace Authentication.DomainService.OAuth.Services
                 FirstName = externalUser.FirstName,
                 LastName = externalUser.LastName,
                 PhoneNumber = externalUser.PhoneNumber,
-                IsVarified = true,
+                IsVerified = true,
                 Active = true,
                 MailPurpose = "AccountActivated",
                 SendWelcomeMail = true,

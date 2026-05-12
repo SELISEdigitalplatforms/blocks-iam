@@ -215,7 +215,7 @@ namespace Authentication.DomainService.Oidc.Services
                     existingUser.LastName = externalUserData.LastName ?? existingUser.LastName;
                     existingUser.ProfileImageUrl = externalUserData.ProfileImageUrl ?? existingUser.ProfileImageUrl;
                     existingUser.Platform = provider;
-                    existingUser.IsVarified = true;  // Trust social provider's email
+                    existingUser.IsVerified = true;  // Trust social provider's email
                     
                     // Update roles and permissions
                     if (existingUser.Roles == null) existingUser.Roles = new Dictionary<string, List<string>>();
@@ -237,7 +237,7 @@ namespace Authentication.DomainService.Oidc.Services
                     ProfileImageUrl = externalUserData.ProfileImageUrl,
                     PhoneNumber = externalUserData.PhoneNumber,
                     Platform = provider,
-                    IsVarified = true,  // Trust social provider's email
+                    IsVerified = true,  // Trust social provider's email
                     Roles = new Dictionary<string, List<string>>
                     {
                         { "default", externalUserData.Roles ?? [] }

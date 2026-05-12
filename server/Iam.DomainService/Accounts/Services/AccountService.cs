@@ -76,7 +76,7 @@ namespace Iam.DomainService.Accounts
             }
 
             user.Active = true;
-            user.IsVarified = true;
+            user.IsVerified = true;
             user.FirstName = activateUserRequest.FirstName;
             user.LastName = activateUserRequest.LastName;
 

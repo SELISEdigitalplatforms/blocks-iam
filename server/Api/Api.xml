@@ -502,6 +502,86 @@
             <response code="200">Successfully retrieved user timeline</response>
             <response code="401">Authentication required</response>
         </member>
+        <member name="M:Api.Controllers.IamController.CreateOrganization(Iam.DomainService.Resources.CreateOrganizationRequest)">
+            <summary>
+            Create new organization
+            Creates a new organization with explicit role initialization mode
+            Requires authentication and proper tenant/org context
+            </summary>
+            <param name="request">Organization creation request with InitializeRolesMode</param>
+            <returns>Success response with newly created org metadata</returns>
+            <response code="200">Organization created successfully</response>
+            <response code="400">Invalid initialization mode or missing context</response>
+            <response code="401">Authentication required</response>
+        </member>
+        <member name="M:Api.Controllers.IamController.SaveOrganization(Iam.DomainService.Resources.SaveOrganizationRequest)">
+            <summary>
+            Update organization metadata
+            Updates mutable fields like name and enable/disable status
+            Does not affect membership or roles
+            </summary>
+            <param name="request">Organization update request with name and enable status</param>
+            <returns>Success response</returns>
+            <response code="200">Organization updated successfully</response>
+            <response code="400">Invalid organization ID or missing context</response>
+            <response code="401">Authentication required</response>
+        </member>
+        <member name="M:Api.Controllers.IamController.GetOrganizations(Iam.DomainService.Resources.GetOrganizationsRequest)">
+            <summary>
+            Get all organizations
+            Lists organizations accessible to the current user
+            Returns minimal org summaries (id, name, enable status)
+            </summary>
+            <param name="request">Query parameters for filtering and pagination</param>
+            <returns>List of organizations</returns>
+            <response code="200">Successfully retrieved organizations</response>
+            <response code="401">Authentication required</response>
+        </member>
+        <member name="M:Api.Controllers.IamController.GetOrganization(Iam.DomainService.Resources.GetOrganizationRequest)">
+            <summary>
+            Get single organization details
+            Retrieves organization metadata and basic information
+            Caller must have access to this organization
+            </summary>
+            <param name="request">Organization ID to retrieve</param>
+            <returns>Organization details</returns>
+            <response code="200">Successfully retrieved organization</response>
+            <response code="404">Organization not found</response>
+            <response code="401">Authentication required</response>
+        </member>
+        <member name="M:Api.Controllers.IamController.SaveOrganizationConfig(Iam.DomainService.Resources.SaveOrganizationConfigRequest)">
+            <summary>
+            Save organization configuration
+            Configures org-specific defaults and policies:
+            - DefaultRoleSlugsForNewMembers: Auto-assigned roles when new members join
+            - AllowCreationFromCloud: Whether new signups can create this org
+            - AllowCreationFromConstruct: Whether API/service calls can create this org
+            - IsMultiOrgEnabled: Whether users can have multiple org memberships
+            
+            These settings control role initialization and membership behavior
+            </summary>
+            <param name="request">Organization config with default roles and policies</param>
+            <returns>Success response</returns>
+            <response code="200">Organization config saved successfully</response>
+            <response code="400">Invalid configuration values</response>
+            <response code="401">Authentication required</response>
+        </member>
+        <member name="M:Api.Controllers.IamController.GetOrganizationConfig(Iam.DomainService.Resources.GetOrganizationConfigRequest)">
+            <summary>
+            Get organization configuration
+            Retrieves org-specific settings:
+            - DefaultRoleSlugsForNewMembers: Roles auto-assigned to new members
+            - Signup/API creation policies
+            - Multi-org setting
+            
+            Used by clients to determine role initialization and membership rules
+            </summary>
+            <param name="request">Organization ID to retrieve config for</param>
+            <returns>Organization configuration</returns>
+            <response code="200">Successfully retrieved org config</response>
+            <response code="404">Organization config not found</response>
+            <response code="401">Authentication required</response>
+        </member>
         <member name="T:Api.Controllers.IdpController">
             <summary>
             IDP Controller

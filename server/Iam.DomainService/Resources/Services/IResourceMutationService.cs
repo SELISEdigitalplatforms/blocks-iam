@@ -15,6 +15,7 @@ namespace Iam.DomainService.Resources
         Task<SetRolesResponse> SetRolesAsync(SetRolesRequest command);
         Task ExecuteResourceMutationCommandAsync(ResourceMutationEvent command);
         Task<bool> ProcessPermissionAsync(ResourceSetToPermissionMutationEvent command);
+        Task<BaseResponse> CreateOrganizationAsync(CreateOrganizationRequest request);
         Task<BaseResponse> SaveOrganizationAsync(SaveOrganizationRequest request);
         Task<GetOrganizationsResponse> GetOrganizationsAsync(GetOrganizationsRequest request);
         Task<GetOrganizationResponse> GetOrganizationAsync(GetOrganizationRequest request);
