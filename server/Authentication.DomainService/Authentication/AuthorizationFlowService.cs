@@ -897,12 +897,26 @@ namespace Authentication.DomainService.Authentication
 
         private async Task<IActionResult> RotateRefreshToken(HttpRequest request)
         {
-            var refresh_token = request.Form["refresh_token"].ToString();
             var client_id = request.Form["client_id"].ToString();
+            string refresh_token = ""; 
 
-            if (string.IsNullOrEmpty(refresh_token) || string.IsNullOrEmpty(client_id))
+            if ( string.IsNullOrEmpty(client_id))
             {
-                return new BadRequestObjectResult(new { error = "invalid_request", error_description = "Missing refresh_token or client_id" });
+                return new BadRequestObjectResult(new { error = "invalid_request", error_description = "Missing client_id" });
+            }
+
+            var client = await _authenticationRepository.GetOidcClientRegistrationAsync(client_id);
+
+            if(client is null)
+            {
+                return new BadRequestObjectResult(new { error = "invalid_client", error_description = "client not found" });
+            }
+
+            refresh_token = client.UseTokensCookie? request.HttpContext.Request.Cookies[$"{IdpConstants.RefreshTokenCookieName}_{BlocksContext.GetContext()?.TenantId}"]: request.Form[IdpConstants.RefreshTokenCookieName].ToString(); ;
+            
+            if(string.IsNullOrWhiteSpace(refresh_token))
+            {
+                return new BadRequestObjectResult(new { error = "invalid_request", error_description = "refresh token not found" });
             }
 
             var tenantId = request.HttpContext.User.FindFirst("tenant_id")?.Value;
@@ -931,13 +945,6 @@ namespace Authentication.DomainService.Authentication
             {
                 _logger.LogWarning($"Refresh token expired: {refresh_token}");
                 return new BadRequestObjectResult(new { error = "invalid_grant", error_description = "Refresh token has expired" });
-            }
-
-                var client = await _authenticationRepository.GetOidcClientRegistrationAsync(client_id);
-            if (client == null)
-            {
-                _logger.LogWarning($"Client validation failed for token rotation: {client_id}");
-                return new BadRequestObjectResult(new { error = "invalid_client" });
             }
 
             if (!await HasOidcClientConfigurationAsync(client_id))
