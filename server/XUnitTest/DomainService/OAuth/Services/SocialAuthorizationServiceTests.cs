@@ -106,5 +106,41 @@ namespace XUnitTest.DomainService.OAuth.Services
             _socialLogInServiceProvider.Verify(x => x.HandleSocialLogin(It.IsAny<StateInfo>()), Times.Once);
             _oAuthRepository.Verify(x => x.GetUserByEmailAsync(externalUser.Object.Email), Times.Once);
         }
+        // Helper methods to access protected methods for testing
+        private class TestableSocialAuthorizationService : SocialAuthorizationService
+        {
+            public TestableSocialAuthorizationService(
+                ILogger<SocialAuthorizationService> logger,
+                IOAuthJwtAccessTokenManager oAuthJwtAccessTokenManager,
+                IAuthenticationRepository oAuthRepository,
+                ICacheClient cacheClient,
+                ISocialLogInServiceProvider socialLogInServiceProvider,
+                IUserManagementMutationService userManagementMutationService,
+                IIdentityAccessManagementRepository repository,
+                IConfiguration configuration,
+                IUserRepository userRepository)
+                : base(logger, oAuthJwtAccessTokenManager, oAuthRepository, cacheClient, socialLogInServiceProvider, userManagementMutationService, repository, configuration, userRepository)
+            {
+            }
+
+            public TokenResponse InvokeCreateEmailNotProvidedError() => CreateEmailNotProvidedError();
+            public TokenResponse InvokeCreateUserNotFoundError(string userName) => CreateUserNotFoundError(userName);
+        }
+
+        // Replace _service with testable version for protected method tests
+        private TestableSocialAuthorizationService _testableService => new TestableSocialAuthorizationService(
+            _logger.Object,
+            _oAuthJwtAccessTokenManager.Object,
+            _oAuthRepository.Object,
+            _cacheClient.Object,
+            _socialLogInServiceProvider.Object,
+            _userManagementMutationService.Object,
+            _repository.Object,
+            _configuration.Object,
+            _userRepository.Object);
+
+        // Expose helper for test methods
+        private TokenResponse InvokeCreateEmailNotProvidedError() => _testableService.InvokeCreateEmailNotProvidedError();
+        private TokenResponse InvokeCreateUserNotFoundError(string userName) => _testableService.InvokeCreateUserNotFoundError(userName);
     }
 }
