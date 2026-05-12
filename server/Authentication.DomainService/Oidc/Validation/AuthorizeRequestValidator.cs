@@ -39,10 +39,8 @@ namespace Authentication.DomainService.Oidc.Validation
             if (string.IsNullOrWhiteSpace(request.State))
                 errors.Add("state is recommended");
 
-            // code_challenge required (PKCE RFC 7636)
-            if (string.IsNullOrWhiteSpace(request.CodeChallenge))
-                errors.Add("code_challenge is required (PKCE)");
-            else if (!ValidatePkceFormat(request.CodeChallenge))
+
+            else if (!string.IsNullOrWhiteSpace(request.CodeChallenge) && !ValidatePkceFormat(request.CodeChallenge))
                 errors.Add("code_challenge has invalid format");
 
             // code_challenge_method must be S256
