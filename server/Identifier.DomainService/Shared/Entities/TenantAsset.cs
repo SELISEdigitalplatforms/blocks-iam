@@ -1,7 +1,7 @@
-﻿using Blocks.Genesis;
-using DomainService.Projects;
+using Blocks.Genesis;
+using Identifier.DomainService.Projects;
 
-namespace DomainService.Shared.Entities
+namespace Identifier.DomainService.Shared.Entities
 {
     public class TenantAsset : BaseEntity
     {

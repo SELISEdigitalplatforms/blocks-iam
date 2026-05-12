@@ -1,15 +1,15 @@
-﻿using Blocks.Genesis;
-using DomainService.Dtos;
-using DomainService.Entities;
-using DomainService.Shared;
-using DomainService.Shared.Entities;
-using DomainService.Shared.Services;
+using Blocks.Genesis;
+using Identifier.DomainService.Dtos;
+using Identifier.DomainService.Entities;
+using Identifier.DomainService.Shared;
+using Identifier.DomainService.Shared.Entities;
+using Identifier.DomainService.Shared.Services;
 using Microsoft.Extensions.Configuration;
 using MongoDB.Bson;
 using MongoDB.Driver;
 using Pipelines.Sockets.Unofficial.Arenas;
 
-namespace DomainService.Projects
+namespace Identifier.DomainService.Projects
 {
     public class ProjectRepository : IProjectRepository
     {

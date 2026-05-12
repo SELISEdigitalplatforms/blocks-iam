@@ -1,7 +1,7 @@
-﻿using Blocks.Genesis;
+using Blocks.Genesis;
 using Captcha.DomainService.Captcha;
 using Captcha.DomainService.Configuration;
-using DomainService.People;
+using Identifier.DomainService.People;
 using FluentValidation;
 using MongoDB.Driver;
 

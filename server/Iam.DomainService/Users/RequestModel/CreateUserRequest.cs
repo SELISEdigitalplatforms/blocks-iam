@@ -1,6 +1,6 @@
 ﻿using Blocks.Genesis;
 using Iam.DomainService.Entities;
-using Iam.DomainService.Shared.Entities;
+using System.Text.Json.Serialization;
 
 namespace Iam.DomainService.Users
 {
@@ -18,16 +18,26 @@ namespace Iam.DomainService.Users
         public string? MailPurpose { get; set; }
         public UserPassType UserPassType { get; set; } = UserPassType.Password;
         public UserCreationType UserCreationType { get; set; } = UserCreationType.Portal;
-        public UserVarifiedType VarifiedType { get; set; } = UserVarifiedType.Email;
+        public UserVerifiedType VerifiedType { get; set; } = UserVerifiedType.Email;
         public string? Platform { get; set; }
         public string? ProfileImageUrl { get; set; }
         public string? ProfileImageId { get; set; }
         public UserMfaType UserMfaType { get; set; } = UserMfaType.TOTP;
         public bool MfaEnabled { get; set; }
         public List<UserLogInType> AllowedLogInType { get; set; } = new List<UserLogInType> { UserLogInType.Password };
-        public List<OrganizationMembership> Memberships { get; set; } = [];
+        public Dictionary<string, List<string>> Roles { get; set; } = new();
+        public Dictionary<string, List<string>> Permissions { get; set; } = new();
         public string? ProjectKey { get; set; }
-        public string? OrganizationId { get; set; }
+
+        [JsonPropertyName("org_id")]
+        public string? OrgId { get; set; }
+
+        [JsonIgnore]
+        public string? OrganizationId
+        {
+            get => OrgId;
+            set => OrgId = value;
+        }
     }
 
 }

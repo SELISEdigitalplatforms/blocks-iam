@@ -1,6 +1,6 @@
-﻿using DomainService.Shared.Entities;
+using Identifier.DomainService.Shared.Entities;
 
-namespace DomainService.ManagedService.Services
+namespace Identifier.DomainService.ManagedService.Services
 {
     public interface IServiceManagementRepository
     {

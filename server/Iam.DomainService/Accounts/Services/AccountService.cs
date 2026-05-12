@@ -19,6 +19,7 @@ namespace Iam.DomainService.Accounts
         private readonly IIdentityAccessManagementRepository _repository;
         private readonly IIdentityAccessManagementService _identityAccessManagementService;
         private readonly ICacheClient _cacheClient;
+        private readonly ITenants _tenants;
         private readonly IValidator<BaseAccountRequest> _accountValidator;
         private readonly IValidator<ChangePasswordRequest> _changePasswordValidator;
         private readonly IValidator<RecoveryUserRequest> _recoverUserValidator;
@@ -28,6 +29,7 @@ namespace Iam.DomainService.Accounts
             IIdentityAccessManagementRepository repository,
             IIdentityAccessManagementService identityAccessManagementService,
             ICacheClient cacheClient,
+            ITenants tenants,
             IValidator<BaseAccountRequest> accountValidator,
             IValidator<ChangePasswordRequest> changePasswordValidator,
             IValidator<RecoveryUserRequest> recoverUserValidator
@@ -37,6 +39,7 @@ namespace Iam.DomainService.Accounts
             _repository = repository;
             _identityAccessManagementService = identityAccessManagementService;
             _cacheClient = cacheClient;
+            _tenants = tenants;
             _accountValidator = accountValidator;
             _changePasswordValidator = changePasswordValidator;
             _recoverUserValidator = recoverUserValidator;
@@ -73,14 +76,26 @@ namespace Iam.DomainService.Accounts
             }
 
             user.Active = true;
-            user.IsVarified = true;
+            user.IsVerified = true;
             user.FirstName = activateUserRequest.FirstName;
             user.LastName = activateUserRequest.LastName;
 
             if (!string.IsNullOrWhiteSpace(activateUserRequest.Password))
             {
-                user.Password = _identityAccessManagementService.HashPassword(activateUserRequest.Password);
+                var bc = BlocksContext.GetContext();
+                var tenantId = bc?.TenantId;
+                var tenant = !string.IsNullOrWhiteSpace(tenantId) ? _tenants.GetTenantByID(tenantId) : null;
+                user.Password = _identityAccessManagementService.HashPassword(activateUserRequest.Password, tenant?.TenantSalt);
+                user.PasswordSetTime = DateTime.Now;
+                user.PasswordChangedAtUtc = DateTime.UtcNow;
+                user.LastCredentialRotationAtUtc = DateTime.UtcNow;
+                user.SecurityStamp = Guid.NewGuid().ToString("N");
+                user.TokenVersion += 1;
             }
+
+            user.FailedLoginCount = 0;
+            user.LastFailedLoginUtc = null;
+            user.LockoutUntilUtc = null;
 
             var result = await _repository.UpdateUserAsync(user);
 
@@ -211,7 +226,18 @@ namespace Iam.DomainService.Accounts
                 return false;
             }
 
-            user.Password = _identityAccessManagementService.HashPassword(resetPasswordRequest.Password);
+            var bc = BlocksContext.GetContext();
+            var tenantId = bc?.TenantId;
+            var tenant = !string.IsNullOrWhiteSpace(tenantId) ? _tenants.GetTenantByID(tenantId) : null;
+            user.Password = _identityAccessManagementService.HashPassword(resetPasswordRequest.Password, tenant?.TenantSalt);
+            user.PasswordSetTime = DateTime.Now;
+            user.PasswordChangedAtUtc = DateTime.UtcNow;
+            user.LastCredentialRotationAtUtc = DateTime.UtcNow;
+            user.SecurityStamp = Guid.NewGuid().ToString("N");
+            user.TokenVersion += 1;
+            user.FailedLoginCount = 0;
+            user.LastFailedLoginUtc = null;
+            user.LockoutUntilUtc = null;
 
             var result = await _repository.UpdateUserAsync(user);
 
@@ -261,14 +287,24 @@ namespace Iam.DomainService.Accounts
                 return false;
             }
 
-            var oldhash = _identityAccessManagementService.HashPassword(changePasswordRequest.OldPassword);
-            if (!oldhash.Equals(user.Password))
+            var tenantId = bc?.TenantId;
+            var tenant = !string.IsNullOrWhiteSpace(tenantId) ? _tenants.GetTenantByID(tenantId) : null;
+            var passwordMatched = _identityAccessManagementService.VerifyPassword(changePasswordRequest.OldPassword, user.Password, tenant?.TenantSalt);
+            if (!passwordMatched)
             {
                 _logger.LogError("Password not matched");
                 return false;
             }
 
-            user.Password = _identityAccessManagementService.HashPassword(changePasswordRequest.NewPassword);
+            user.Password = _identityAccessManagementService.HashPassword(changePasswordRequest.NewPassword, tenant?.TenantSalt);
+            user.PasswordSetTime = DateTime.Now;
+            user.PasswordChangedAtUtc = DateTime.UtcNow;
+            user.LastCredentialRotationAtUtc = DateTime.UtcNow;
+            user.SecurityStamp = Guid.NewGuid().ToString("N");
+            user.TokenVersion += 1;
+            user.FailedLoginCount = 0;
+            user.LastFailedLoginUtc = null;
+            user.LockoutUntilUtc = null;
 
             var result = await _repository.UpdateUserAsync(user);
 
@@ -397,6 +433,130 @@ namespace Iam.DomainService.Accounts
         public async Task<SignUpSetting> GetSignUpSettingAsync(GetSignUpSettingRequest request)
         {
             return  await _repository.GetSignUpSettingAsync(request.ItemId);
+        }
+
+        /// <summary>
+        /// Admin method to unlock a locked account.
+        /// Resets FailedLoginCount, LockoutUntilUtc, and LockoutCount.
+        /// </summary>
+        public async Task<BaseAccountResponse> UnlockAccountAsync(string userId)
+        {
+            if (string.IsNullOrWhiteSpace(userId))
+            {
+                return new BaseAccountResponse
+                {
+                    Errors = new Dictionary<string, string> { { "UserId", "UserId_Required" } }
+                };
+            }
+
+            var user = await _repository.GetUserByIdAsync(userId);
+            if (user == null)
+            {
+                _logger.LogWarning("User not found for unlock request: {UserId}", userId);
+                return new BaseAccountResponse
+                {
+                    Errors = new Dictionary<string, string> { { "UserId", "User_Not_Found" } }
+                };
+            }
+
+            // Reset lockout and failed login counters
+            user.FailedLoginCount = 0;
+            user.LastFailedLoginUtc = null;
+            user.LockoutUntilUtc = null;
+            user.LockoutCount = 0; // Reset exponential backoff counter
+            user.LastUpdatedDate = DateTime.UtcNow;
+            user.LastUpdatedBy = BlocksContext.GetContext()?.UserId ?? "system";
+
+            var result = await _repository.UpdateUserAsync(user);
+
+            if (result)
+            {
+                _logger.LogInformation("Account unlocked by admin for user: {UserId}", userId);
+                
+                // Send notification email to user
+                try
+                {
+                    await SendAccountUnlockedNotificationAsync(user);
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogWarning(ex, "Failed to send account unlock notification for user: {UserId}", userId);
+                    // Don't fail the unlock operation if email fails
+                }
+            }
+
+            return new BaseAccountResponse { IsSuccess = result };
+        }
+
+        /// <summary>
+        /// Sends email notification when account is locked due to failed login attempts.
+        /// </summary>
+        public async Task SendAccountLockedNotificationAsync(User user, DateTime lockoutUntilUtc)
+        {
+            try
+            {
+                var sendMailCommand = new SendMail
+                {
+                    Cc = Array.Empty<string>(),
+                    Bcc = Array.Empty<string>(),
+                    BodyDataContext = new Dictionary<string, string>
+                    {
+                        { "User.DisplayName", $"{user.FirstName} {user.LastName}" },
+                        { "LockoutUntil", lockoutUntilUtc.ToString("g") },
+                        { "LockoutReason", "Too many failed login attempts" }
+                    },
+                    Language = user.Language ?? "en-US",
+                    Purpose = "AccountLockedNotification",
+                    To = new[] { user.Email?.ToLower() ?? string.Empty },
+                    ProjectKey = "default"
+                };
+
+                var recipientEmail = sendMailCommand.To.FirstOrDefault();
+                if (!string.IsNullOrWhiteSpace(recipientEmail))
+                {
+                    await _identityAccessManagementService.SendEmailAsync(sendMailCommand);
+                    _logger.LogInformation("Account locked notification sent to user: {UserId}", user.ItemId);
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "Failed to send account locked notification for user: {UserId}", user.ItemId);
+            }
+        }
+
+        /// <summary>
+        /// Sends email notification when account is unlocked by admin.
+        /// </summary>
+        public async Task SendAccountUnlockedNotificationAsync(User user)
+        {
+            try
+            {
+                var sendMailCommand = new SendMail
+                {
+                    Cc = Array.Empty<string>(),
+                    Bcc = Array.Empty<string>(),
+                    BodyDataContext = new Dictionary<string, string>
+                    {
+                        { "User.DisplayName", $"{user.FirstName} {user.LastName}" },
+                        { "UnlockTime", DateTime.UtcNow.ToString("g") }
+                    },
+                    Language = user.Language ?? "en-US",
+                    Purpose = "AccountUnlockedNotification",
+                    To = new[] { user.Email?.ToLower() ?? string.Empty },
+                    ProjectKey = "default"
+                };
+
+                var recipientEmail = sendMailCommand.To.FirstOrDefault();
+                if (!string.IsNullOrWhiteSpace(recipientEmail))
+                {
+                    await _identityAccessManagementService.SendEmailAsync(sendMailCommand);
+                    _logger.LogInformation("Account unlocked notification sent to user: {UserId}", user.ItemId);
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "Failed to send account unlocked notification for user: {UserId}", user.ItemId);
+            }
         }
     }
 }

@@ -27,7 +27,7 @@ import OidcIndexPage from "./routes/oidc/index";
 import OidcLoginPage from "./routes/oidc/login";
 import OidcPermissionPage from "./routes/oidc/permission";
 import OidcErrorPage from "./routes/oidc/error";
-import OidcForgotPasswordPage from "./routes/oidc/forgot-password";
+// import OidcForgotPasswordPage from "./routes/oidc/forgot-password";
 import OidcEmailSentConfirmationPage from "./routes/oidc/email-sent-confirmation";
 
 // Dashboard routes (protected)
@@ -107,7 +107,7 @@ export const router = createBrowserRouter([
       { path: "login", element: <OidcLoginPage /> },
       { path: "permission", element: <OidcPermissionPage /> },
       { path: "error", element: <OidcErrorPage /> },
-      { path: "forgot-password", element: <OidcForgotPasswordPage /> },
+      // { path: "forgot-password", element: <OidcForgotPasswordPage /> },
       { path: "email-sent-confirmation", element: <OidcEmailSentConfirmationPage /> },
     ],
   },

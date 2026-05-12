@@ -1,7 +1,7 @@
-﻿using Blocks.Genesis;
-using DomainService.Shared.Entities;
+using Blocks.Genesis;
+using Identifier.DomainService.Shared.Entities;
 
-namespace DomainService.Projects
+namespace Identifier.DomainService.Projects
 {
     public class GetAssetRequest : BaseGetsRequest<GetAssetFilter>
     {

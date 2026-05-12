@@ -1,7 +1,7 @@
-﻿using Blocks.Genesis;
-using DomainService.Shared.Entities;
+using Blocks.Genesis;
+using Identifier.DomainService.Shared.Entities;
 
-namespace DomainService.Shared
+namespace Identifier.DomainService.Shared
 {
     public interface IDomainManagementService
     {

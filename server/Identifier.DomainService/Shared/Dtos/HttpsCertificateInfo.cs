@@ -1,10 +1,10 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
 
-namespace DomainService.Shared.Dtos
+namespace Identifier.DomainService.Shared.Dtos
 {
     public class HttpsCertificateInfo
     {

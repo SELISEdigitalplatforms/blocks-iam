@@ -1,7 +1,7 @@
-﻿using Blocks.Genesis;
-using DomainService.Dtos;
+using Blocks.Genesis;
+using Identifier.DomainService.Dtos;
 
-namespace DomainService.People
+namespace Identifier.DomainService.People
 {
     public interface IPeopleService
     {

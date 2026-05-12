@@ -1,6 +1,6 @@
-using DomainService.Entities;
-using DomainService.Services;
-using DomainService.Worker;
+using Authentication.DomainService.Entities;
+using Authentication.DomainService.Services;
+using Authentication.DomainService.Worker;
 using FluentAssertions;
 using Mfa.DomainService.Configuration;
 using Moq;

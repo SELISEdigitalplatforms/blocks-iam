@@ -1,15 +1,15 @@
-﻿
+
 using Blocks.Genesis;
 using DeviceDetectorNET.Cache;
-using DomainService.Entities;
-using DomainService.OAuth.RequestModel;
-using DomainService.OAuth.ResponseModel;
-using DomainService.Services;
+using Authentication.DomainService.Entities;
+using Authentication.DomainService.OAuth.RequestModel;
+using Authentication.DomainService.OAuth.ResponseModel;
+using Authentication.DomainService.Services;
 using Iam.DomainService.Entities;
 using Iam.DomainService.Users;
 using System.Text.Json;
 
-namespace DomainService.OAuth.Services
+namespace Authentication.DomainService.OAuth.Services
 {
     public class SSOConsentAuthenticationService : ITokenService
     {
@@ -43,6 +43,7 @@ namespace DomainService.OAuth.Services
             var ssoUserData = await _cacheClient.GetStringValueAsync(request.Code);
 
              var ssoUser = JsonSerializer.Deserialize<CreateUserViaSsoRequest>(ssoUserData);
+             if (ssoUser == null) return new TokenResponse { Error = "invalid_request", ErrorDescription = "Invalid SSO session", StatusCode = 400 };
              var result = await _userManagementMutationService.CreateUserViaSsoAsync(ssoUser);
              user = await _authenticationRepository.GetUserByIdAsync(result.ItemId ?? "");
 

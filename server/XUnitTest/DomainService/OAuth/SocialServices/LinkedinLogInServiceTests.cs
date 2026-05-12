@@ -1,9 +1,9 @@
 using Blocks.Genesis;
-using DomainService.Entities;
-using DomainService.OAuth;
-using DomainService.OAuth.RequestModel;
-using DomainService.OAuth.SocialServices;
-using DomainService.Services;
+using Authentication.DomainService.Entities;
+using Authentication.DomainService.OAuth;
+using Authentication.DomainService.OAuth.RequestModel;
+using Authentication.DomainService.OAuth.SocialServices;
+using Authentication.DomainService.Services;
 using Microsoft.Extensions.Logging;
 using Moq;
 

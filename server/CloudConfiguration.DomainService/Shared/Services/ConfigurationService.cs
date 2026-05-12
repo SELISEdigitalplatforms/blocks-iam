@@ -74,6 +74,7 @@ namespace CloudConfiguration.DomainService.Shared.Services
             {
                 ItemId = config.ItemId.ToString(),
                 config.RefreshTokenValidForNumberMinutes,
+                config.AbsoluteRefreshTokenValidForNumberMinutes,
                 config.AccessTokenValidForNumberMinutes,
                 config.RememberMeRefreshTokenValidForNumberMinutes,
                 config.AllowedGrantTypes,
@@ -89,6 +90,7 @@ namespace CloudConfiguration.DomainService.Shared.Services
             {
                 ItemId = ObjectId.Parse(configuration.ItemId),
                 RefreshTokenValidForNumberMinutes = configuration.RefreshTokenValidForNumberMinutes,
+                AbsoluteRefreshTokenValidForNumberMinutes = configuration.AbsoluteRefreshTokenValidForNumberMinutes,
                 AccessTokenValidForNumberMinutes = configuration.AccessTokenValidForNumberMinutes,
                 RememberMeRefreshTokenValidForNumberMinutes = configuration.RememberMeRefreshTokenValidForNumberMinutes,
                 AllowedGrantTypes = configuration.AllowedGrantTypes,

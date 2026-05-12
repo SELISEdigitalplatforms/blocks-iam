@@ -1,9 +1,9 @@
 using Blocks.Genesis;
 using Blocks.MailDriver;
-using DomainService.Dtos;
-using DomainService.Migration.Entities;
-using DomainService.Migration.Services;
-using DomainService.Shared;
+using Identifier.DomainService.Dtos;
+using Identifier.DomainService.Migration.Entities;
+using Identifier.DomainService.Migration.Services;
+using Identifier.DomainService.Shared;
 using FluentValidation;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
@@ -11,7 +11,7 @@ using System.Security.Cryptography;
 using System.Text.Json;
 using SendMail = Blocks.MailDriver.SendMail;
 
-namespace DomainService.Migration
+namespace Identifier.DomainService.Migration
 {
     public class MigrationService : IMigrationService
     {
