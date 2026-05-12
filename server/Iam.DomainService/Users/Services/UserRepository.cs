@@ -65,9 +65,11 @@ namespace Iam.DomainService.Users
             var project = Builders<Permission>.Projection.As<GetUserPermission>();
             var organizationId = ResolvePermissionOrganizationId();
             var orgFilter = Builders<Permission>.Filter.AnyIn($"Roles.{organizationId}", roles);
-            var defaultFilter = Builders<Permission>.Filter.AnyIn("Roles.default", roles);
-            var legacyFilter = Builders<Permission>.Filter.AnyIn("Roles", roles);
-            var filter = Builders<Permission>.Filter.Or(orgFilter, defaultFilter, legacyFilter);
+            var filter = Builders<Permission>.Filter.Or(
+                orgFilter,
+                organizationId == "default"
+                    ? Builders<Permission>.Filter.AnyIn("Roles.default", roles)
+                    : Builders<Permission>.Filter.Where(_ => false));
             return await collection.Find(filter).Project(project).ToListAsync();
         }
 
@@ -77,7 +79,18 @@ namespace Iam.DomainService.Users
             if (user == null || user.Roles.Count == 0) return [];
             var collection = _identityAccessManagementRepository.GetCollection<Role>();
             var project = Builders<Role>.Projection.As<GetUserRole>();
-            var filter = Builders<Role>.Filter.In(x => x.Slug, GetOrgSpecficRoles(user));
+            var context = BlocksContext.GetContext();
+            var orgId = string.IsNullOrWhiteSpace(context?.OrganizationId) ? "default" : context.OrganizationId;
+            var tenantId = context?.TenantId;
+
+            var filter = Builders<Role>.Filter.In(x => x.Slug, GetOrgSpecficRoles(user))
+                & Builders<Role>.Filter.Eq(x => x.OrganizationId, orgId);
+
+            if (!string.IsNullOrWhiteSpace(tenantId))
+            {
+                filter &= Builders<Role>.Filter.Eq(x => x.TenantId, tenantId);
+            }
+
             return await collection.Find(filter).Project(project).ToListAsync();
         }
 
@@ -85,7 +98,18 @@ namespace Iam.DomainService.Users
         {
             var collection = _identityAccessManagementRepository.GetCollection<Role>();
             var project = Builders<Role>.Projection.As<GetUserRole>();
-            var filter = Builders<Role>.Filter.In(x => x.Slug, roles);
+            var context = BlocksContext.GetContext();
+            var orgId = string.IsNullOrWhiteSpace(context?.OrganizationId) ? "default" : context.OrganizationId;
+            var tenantId = context?.TenantId;
+
+            var filter = Builders<Role>.Filter.In(x => x.Slug, roles)
+                & Builders<Role>.Filter.Eq(x => x.OrganizationId, orgId);
+
+            if (!string.IsNullOrWhiteSpace(tenantId))
+            {
+                filter &= Builders<Role>.Filter.Eq(x => x.TenantId, tenantId);
+            }
+
             return await collection.Find(filter).Project(project).ToListAsync();
         }
 
@@ -143,8 +167,14 @@ namespace Iam.DomainService.Users
         {
             var builder = Builders<User>.Filter;
             var filters = new List<FilterDefinition<User>>();
+            var contextOrgId = ResolveOrganizationId(filter?.OrgId);
 
-            if (filter == null) return builder.Empty;
+            filters.Add(builder.AnyEq("OrganizationIds", contextOrgId));
+
+            if (filter == null)
+            {
+                return builder.And(filters);
+            }
 
             if (!string.IsNullOrWhiteSpace(filter.Name))
             {
@@ -186,7 +216,7 @@ namespace Iam.DomainService.Users
                 filters.Add(builder.In("_id", filter.UserIds));
 
             if (!string.IsNullOrWhiteSpace(filter.OrgId))
-                filters.Add(builder.AnyEq("OrganizationIds", filter.OrgId));
+                filters.Add(builder.AnyEq("OrganizationIds", contextOrgId));
 
             return filters.Any() ? builder.And(filters) : builder.Empty;
         }
@@ -278,6 +308,17 @@ namespace Iam.DomainService.Users
 
         private static string ResolvePermissionOrganizationId()
         {
+            var orgId = BlocksContext.GetContext()?.OrganizationId;
+            return string.IsNullOrWhiteSpace(orgId) ? "default" : orgId;
+        }
+
+        private static string ResolveOrganizationId(string? requestedOrgId = null)
+        {
+            if (!string.IsNullOrWhiteSpace(requestedOrgId))
+            {
+                return requestedOrgId;
+            }
+
             var orgId = BlocksContext.GetContext()?.OrganizationId;
             return string.IsNullOrWhiteSpace(orgId) ? "default" : orgId;
         }

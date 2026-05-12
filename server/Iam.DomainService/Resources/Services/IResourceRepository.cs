@@ -34,11 +34,16 @@ namespace Iam.DomainService.Resources
         Task<bool> RemoveRolePermissionByIdsAsync(string slug, List<string> permissions);
         Task<bool> UpdateRolesCountAsync(string slug);
         Task<List<GetResourceGroupResponse>> GetResourceGroupsAsync();
-        Task<Organization> GetOrganizationById(string resourceId);
+        Task<Organization> GetOrganizationById(string id);
         Task SaveOrganizationAsync(Organization organization);
         Task<GetOrganizationsResponse> GetOrganizationsAsync(GetOrganizationsRequest request);
-        Task SaveOrganizationConfig(OrganizationConfig config);
-        Task<OrganizationConfig> GetOrganizationConfigAsync(string tenantId, string organizationId);
+        Task SaveOrganizationConfig(TenantConfiguration tenantConfiguration);
         Task<List<PermissionGroupBySeverityResponse>> GetPermissionsGroupBySeverityAsync();
+        Task<TenantConfiguration> GetTenantConfigurationAsync();
+        Task<List<Role>> GetRolesBySlugAndOrgAsync(List<string> slugs, string organizationId);
+        Task<bool> InsertRolesAsync(List<Role> roles);
+        Task<bool> UpdateAllSamePermissionAsync(Permission permission);
+        Task<List<Permission>> GetPermissionsByRoleAsync(string roleSlug, string organizationId);
+        Task<bool> InsertPermissionsAsync(List<Permission> permissions);
     }
 }

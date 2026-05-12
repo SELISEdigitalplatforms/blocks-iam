@@ -6,6 +6,5 @@ namespace Iam.DomainService.Users.RequestModel
     {
         public bool IsEmailPasswordSignUpEnabled { get; set; }
         public bool IsSSoSignUpEnabled { get; set; }
-        public string? ItemId { get; set; }
     }
 }

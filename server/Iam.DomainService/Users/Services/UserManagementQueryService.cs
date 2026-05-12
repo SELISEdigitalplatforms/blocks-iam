@@ -65,6 +65,10 @@ namespace Iam.DomainService.Users
         {
             _logger.LogInformation("User get start");
 
+            query.Filter ??= new GetUsersFilter();
+            var contextOrgId = ResolveOrganizationId(query.Filter.OrgId);
+            query.Filter.OrgId = contextOrgId;
+
             var (data, count) = await _userRepository.GetUsersAsync<GetUser, GetUsersRequest>(query);
 
             _logger.LogInformation("User get end");
@@ -83,6 +87,12 @@ namespace Iam.DomainService.Users
             var bc = BlocksContext.GetContext();
             var userId = string.IsNullOrWhiteSpace(id) ? bc.UserId : id;
             var user = await _userRepository.GetUserByIdAsync<GetUser>(userId);
+            var contextOrgId = ResolveOrganizationId();
+
+            if (user is null || (user.OrganizationIds?.Count > 0 && !user.OrganizationIds.Contains(contextOrgId)))
+            {
+                user = null;
+            }
 
             _logger.LogInformation("User get end");
 
@@ -139,6 +149,17 @@ namespace Iam.DomainService.Users
         public async Task<List<UserTimeline>> GetUserTimelinesAsync(GetUserTimeLineRequest request)
         {
             return await _userRepository.GetUserTimelinesAsync(request);
+        }
+
+        private static string ResolveOrganizationId(string? requestedOrgId = null)
+        {
+            if (!string.IsNullOrWhiteSpace(requestedOrgId))
+            {
+                return requestedOrgId;
+            }
+
+            var contextOrgId = BlocksContext.GetContext()?.OrganizationId;
+            return string.IsNullOrWhiteSpace(contextOrgId) ? "default" : contextOrgId;
         }
     }
 }
