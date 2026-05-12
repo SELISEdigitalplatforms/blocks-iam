@@ -143,31 +143,40 @@ namespace Iam.DomainService.Users
                 normalizedRoles[defaultOrganizationId] = defaultRoles;
             }
 
+            // EXISTING USER PATH: Add directly to org, active immediately, auto-assign defaults, silent notify
             if(user is not null)
             {
                 var organizationId = defaultOrganizationId;
 
+                // Add org membership (active immediately, no pending state)
                 if (!user.OrganizationIds.Contains(organizationId))
                 {
                     user.OrganizationIds = [.. user.OrganizationIds, organizationId];
                 }
 
+                // Auto-assign default roles from org config
                 if (!user.Roles.ContainsKey(organizationId) || user.Roles[organizationId].Count == 0)
                 {
                     user.Roles[organizationId] = normalizedRoles[organizationId];
                 }
 
+                // Derive permissions from roles
                 if (!user.Permissions.ContainsKey(organizationId))
                 {
                     user.Permissions[organizationId] = normalizedPermissions[organizationId];
                 }
 
                 await _userRepository.UpdateUserAsync(user);
+                
+                // TODO: Send silent notification (no email) for existing user
                 return user.ItemId;
             }
 
-           user = await CreateNewUser(command, defaultRoles);
-           return user.ItemId;
+            // NON-USER PATH: Create in PendingVerification, attach org membership (active), auto-assign defaults, send activation email
+            user = await CreateNewUser(command, defaultRoles);
+            
+            // TODO: Send account activation email (not org invite)
+            return user.ItemId;
         }
 
         private async Task<User> CreateNewUser(CreateUserRequest command, List<string> defaultRoles)
@@ -211,7 +220,7 @@ namespace Iam.DomainService.Users
                 UserCreationType = command.UserCreationType,
                 UserPassType = command.UserPassType,
                 Tags = command.Tags ?? [],
-                VarifiedType = command.VarifiedType,
+                VerifiedType = command.VerifiedType,
                 ProfileImageUrl = command.ProfileImageUrl,
                 ProfileImageId = command.ProfileImageId,
                 AllowedLogInType = command.AllowedLogInType,
@@ -220,9 +229,9 @@ namespace Iam.DomainService.Users
                 MfaMethods = [],
                 MailPurpose = string.IsNullOrWhiteSpace(command.MailPurpose) ? "AccountActivation" : command.MailPurpose,
                 ProvisioningSource = ResolveProvisioningSource(command.UserCreationType),
-                Status = command.VarifiedType == UserVarifiedType.None ? UserLifecycleStatus.PendingVerification : UserLifecycleStatus.Active,
-                EmailVerifiedAtUtc = command.VarifiedType == UserVarifiedType.Email ? DateTime.UtcNow : null,
-                PhoneVerifiedAtUtc = command.VarifiedType is UserVarifiedType.Sms or UserVarifiedType.WhatsApp ? DateTime.UtcNow : null,
+                Status = command.VerifiedType == UserVerifiedType.None ? UserLifecycleStatus.PendingVerification : UserLifecycleStatus.Active,
+                EmailVerifiedAtUtc = command.VerifiedType == UserVerifiedType.Email ? DateTime.UtcNow : null,
+                PhoneVerifiedAtUtc = command.VerifiedType is UserVerifiedType.Sms or UserVerifiedType.WhatsApp ? DateTime.UtcNow : null,
                 SecurityStamp = Guid.NewGuid().ToString("N"),
                 TokenVersion = 1,
                 FailedLoginCount = 0,
@@ -622,13 +631,13 @@ namespace Iam.DomainService.Users
                 UserCreationType = command.UserCreationType,
                 UserPassType = UserPassType.None,
                 Tags = [],
-                VarifiedType = UserVarifiedType.None,
+                VerifiedType = UserVerifiedType.None,
                 ProfileImageUrl = command.ProfileImageUrl,
                 ProfileImageId = command.ProfileImageId,
                 AllowedLogInType = command.AllowedLogInType,
                 MailPurpose = command.MailPurpose,
                 Active = command.Active,
-                IsVarified = command.IsVarified,
+                IsVerified = command.IsVerified,
                 Status = command.Active ? UserLifecycleStatus.Active : UserLifecycleStatus.Suspended,
                 ProvisioningSource = UserProvisioningSource.Social,
                 EmailVerifiedAtUtc = DateTime.UtcNow,
@@ -794,11 +803,65 @@ namespace Iam.DomainService.Users
 
         private static List<string> ResolveDefaultRoles(OrganizationConfig? orgConfig)
         {
-            return orgConfig?.Roles?
+            return orgConfig?.DefaultRoleSlugsForNewMembers?
                 .Where(role => !string.IsNullOrWhiteSpace(role))
                 .Distinct(StringComparer.OrdinalIgnoreCase)
                 .ToList()
                 ?? [];
+        }
+
+        /// <summary>
+        /// Derives permissions from assigned role slugs in an organization.
+        /// Write path: User.Roles[orgId] → lookup via Permission.Roles[orgId] → User.Permissions[orgId]
+        /// </summary>
+        /// <param name="organizationId">Organization context for role lookup</param>
+        /// <param name="roleSlugs">Role slugs assigned to user in this org</param>
+        /// <returns>Flattened list of permission names</returns>
+        private async Task<List<string>> DerivePermissionsFromRolesAsync(string organizationId, List<string> roleSlugs)
+        {
+            if (roleSlugs is null || roleSlugs.Count == 0)
+                return [];
+
+            var derivedPermissions = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+            try
+            {
+                // Get all permissions from the repository (TODO: optimize with org-scoped query if available)
+                var allPermissions = await _resourceRepository.GetPermissionsAsync(
+                    new GetPermissionsRequest { Page = 0, PageSize = 10000 }
+                );
+
+                if (allPermissions.Item1 == null)
+                    return [];
+
+                var permissionList = allPermissions.Item1.ToList();
+
+                // For each permission, check if any of the user's role slugs match
+                foreach (var permission in permissionList)
+                {
+                    if (permission.Roles == null || !permission.Roles.TryGetValue(organizationId, out var rolesForPermission))
+                        continue;
+
+                    // Check if any user role slug is in this permission's role list for the org
+                    var hasMatchingRole = roleSlugs.Any(slug => 
+                        rolesForPermission.Any(permRole => 
+                            string.Equals(permRole, slug, StringComparison.OrdinalIgnoreCase)
+                        )
+                    );
+
+                    if (hasMatchingRole)
+                    {
+                        // Add permission name (or ItemId) to derived permissions
+                        derivedPermissions.Add(permission.Name ?? permission.ItemId);
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error deriving permissions from roles for org {OrgId}", organizationId);
+            }
+
+            return derivedPermissions.ToList();
         }
 
         private string ResolveTenantId(string? projectKey)

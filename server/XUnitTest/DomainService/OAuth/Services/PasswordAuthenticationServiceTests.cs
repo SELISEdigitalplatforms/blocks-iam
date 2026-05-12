@@ -114,7 +114,7 @@ namespace XUnitTest.DomainService.OAuth.Services
                 UserName = "test@example.com",
                 Password = BCryptNet.HashPassword("password123"),
                 Active = true,
-                IsVarified = true
+                IsVerified = true
             };
 
             _oAuthRepository
@@ -157,7 +157,7 @@ namespace XUnitTest.DomainService.OAuth.Services
                 UserName = "lockme@example.com",
                 Password = BCryptNet.HashPassword("correct-password"),
                 Active = true,
-                IsVarified = true
+                IsVerified = true
             };
 
             var lockoutUntil = DateTime.UtcNow.AddMinutes(5);
@@ -169,7 +169,7 @@ namespace XUnitTest.DomainService.OAuth.Services
                 LastName = "User",
                 LockoutUntilUtc = lockoutUntil,
                 Active = true,
-                IsVarified = true
+                IsVerified = true
             };
 
             _oAuthRepository

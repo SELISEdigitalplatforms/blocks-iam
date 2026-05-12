@@ -77,7 +77,7 @@ namespace XUnitTest.DomainService.OAuth.Services
                 ItemId = "user-789",
                 Email = "test@example.com",
                 Active = true,
-                IsVarified = true
+                IsVerified = true
             };
             var expectedTokenResponse = new TokenResponse
             {

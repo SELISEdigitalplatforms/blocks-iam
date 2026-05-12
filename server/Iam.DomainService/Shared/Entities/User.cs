@@ -16,8 +16,8 @@ namespace Iam.DomainService.Entities
         public Dictionary<string, List<string>> Roles { get; set; } = new();
         public Dictionary<string, List<string>> Permissions { get; set; } = new();
         public bool Active { get; set; }
-        public bool IsVarified { get; set; }
-        public UserVarifiedType VarifiedType { get; set; } = UserVarifiedType.None;
+        public bool IsVerified { get; set; }
+        public UserVerifiedType VerifiedType { get; set; } = UserVerifiedType.None;
         public string? ProfileImageUrl { get; set; }
         public string? ProfileImageId { get; set; }
         public string? Platform { get; set; }
@@ -77,7 +77,7 @@ namespace Iam.DomainService.Entities
         public DateTime LinkedAtUtc { get; set; }
     }
 
-    public enum UserVarifiedType
+    public enum UserVerifiedType
     {
         None,
         Email,
