@@ -408,7 +408,11 @@ namespace Authentication.DomainService.Authentication
                     { "state", state },
                     { "tenant_id", resolvedTenantId ?? tenant_id ?? string.Empty }
                 };
-                return new RedirectResult(BuildRedirectUri(redirect_uri, callbackParams));
+                //return new RedirectResult(BuildRedirectUri(redirect_uri, callbackParams));
+                return new OkObjectResult(new
+                {
+                    redirect_uri = BuildRedirectUri(redirect_uri, callbackParams)
+                });
             }
             catch (Exception ex)
             {
@@ -673,7 +677,7 @@ namespace Authentication.DomainService.Authentication
         // Grouped issuance block: validate code + PKCE + client, then build access/id/refresh token set.
         private async Task<OidcExchangeResult> ExchangeAuthorizationCodeToTokenSetAsync(string code, string code_verifier, string client_id, string redirect_uri, string tenant_id, HttpRequest request)
         {
-            if (string.IsNullOrEmpty(code) || string.IsNullOrEmpty(code_verifier) || string.IsNullOrEmpty(client_id))
+            if (string.IsNullOrEmpty(code) || string.IsNullOrEmpty(client_id))
             {
                 return OidcExchangeResult.FromError(new BadRequestObjectResult(new { error = "invalid_request", error_description = "Missing required parameters" }));
             }
@@ -734,12 +738,16 @@ namespace Authentication.DomainService.Authentication
                 return OidcExchangeResult.FromError(new BadRequestObjectResult(new { error = "invalid_grant", error_description = "Redirect URI mismatch" }));
             }
 
-            var pkceValid = await _pkceService.ValidateVerifierAsync(authCode.CodeChallenge, code_verifier, authCode.CodeChallengeMethod);
-            if (!pkceValid)
+            if(!string.IsNullOrWhiteSpace(code_verifier))
             {
-                _logger.LogWarning($"PKCE validation failed for client {client_id}");
-                return OidcExchangeResult.FromError(new BadRequestObjectResult(new { error = "invalid_grant", error_description = "PKCE code_verifier is invalid" }));
+                var pkceValid = await _pkceService.ValidateVerifierAsync(authCode.CodeChallenge, code_verifier, authCode.CodeChallengeMethod);
+                if (!pkceValid)
+                {
+                    _logger.LogWarning($"PKCE validation failed for client {client_id}");
+                    return OidcExchangeResult.FromError(new BadRequestObjectResult(new { error = "invalid_grant", error_description = "PKCE code_verifier is invalid" }));
+                }
             }
+            
 
             var markUsedSuccess = await _authCodeRepo.MarkAsUsedAsync(code, DateTime.UtcNow, GetClientIpAddress(request));
             if (!markUsedSuccess)
