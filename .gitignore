@@ -142,6 +142,7 @@ vite.config.ts.timestamp-*
 # .NET build artifacts
 **/bin/
 **/obj/
+*.lscache
 .DS_Store
 # Visual Studio files
 .vs/

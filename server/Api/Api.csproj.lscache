@@ -13,19 +13,7 @@ primary
 lastDtbSucceeded
 
 [properties]
-AssemblyName=Api
 CommandLineArgsForDesignTimeEvaluation=-langversion:14.0 -define:TRACE -doc:"Api.xml"
-CompilerGeneratedFilesOutputPath=
-MaxSupportedLangVersion=14.0
-ProjectAssetsFile=<PATH>obj/project.assets.json
-RootNamespace=BlocksTemplate.Api
-RunAnalyzers=
-RunAnalyzersDuringLiveAnalysis=
-SolutionPath=*Undefined*
-TargetFrameworkIdentifier=.NETCoreApp
-TargetPath=<PATH>bin/Debug/net10.0/Api.dll
-TargetRefPath=<PATH>obj/Debug/net10.0/ref/Api.dll
-TemporaryDependencyNodeTargetIdentifier=net10.0
 
 [commandLineArguments]
 /noconfig
