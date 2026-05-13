@@ -1,8 +1,8 @@
-﻿using Blocks.Genesis;
-using DomainService.Dtos;
-using DomainService.Entities;
-using DomainService.Projects;
-using DomainService.Shared;
+using Blocks.Genesis;
+using Identifier.DomainService.Dtos;
+using Identifier.DomainService.Entities;
+using Identifier.DomainService.Projects;
+using Identifier.DomainService.Shared;
 using FluentValidation;
 using Iam.DomainService.Entities;
 using Iam.DomainService.Users;
@@ -11,7 +11,7 @@ using Microsoft.Extensions.Logging;
 using MongoDB.Driver;
 using System.Text.Json;
 
-namespace DomainService.People
+namespace Identifier.DomainService.People
 {
     /// <summary>
     /// Service for managing people and project invitations
@@ -825,7 +825,7 @@ namespace DomainService.People
 
                 var existingUsers = await _peopleRepository.GetUsersByEmailAsync(new List<string> { request.Email });
 
-                if (existingUsers != null && existingUsers.Count > 0 && existingUsers.All(u=>u.Active) && existingUsers.All(u=>u.IsVarified))
+                if (existingUsers != null && existingUsers.Count > 0 && existingUsers.All(u=>u.Active) && existingUsers.All(u=>u.IsVerified))
                 {
                     _logger.LogWarning("User already exists with email: {Email}", request.Email);
                     return new SignupResponse
@@ -842,13 +842,14 @@ namespace DomainService.People
                 {
                     Email = request.Email,
                     MailPurpose = string.Empty,
-                    Memberships = new List<Iam.DomainService.Shared.Entities.OrganizationMembership>
+                    OrgId = "default",
+                    Roles = new Dictionary<string, List<string>>
                     {
-                        new Iam.DomainService.Shared.Entities.OrganizationMembership
-                        {
-                            OrganizationId = "default",
-                            Roles = new List<string> { "user" }
-                        }
+                        ["default"] = new List<string> { "user" }
+                    },
+                    Permissions = new Dictionary<string, List<string>>
+                    {
+                        ["default"] = new List<string>()
                     }
                 };
 

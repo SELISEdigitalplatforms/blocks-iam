@@ -1,8 +1,8 @@
-﻿using Blocks.Genesis;
-using DomainService.Projects;
+using Blocks.Genesis;
+using Identifier.DomainService.Projects;
 using Microsoft.Extensions.Logging;
 
-namespace DomainService.Certificate
+namespace Identifier.DomainService.Certificate
 {
     public class CertificateStorageFactory : ICertificateStorageFactory
     {

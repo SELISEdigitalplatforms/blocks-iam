@@ -1,19 +1,19 @@
-﻿using System.Net;
+using System.Net;
 using System.Net.Security;
 using System.Net.Sockets;
 using System.Security.Cryptography.X509Certificates;
 using System.Text.Json;
 using Blocks.Genesis;
 using DnsClient;
-using DomainService.Projects;
-using DomainService.Shared.Dtos;
-using DomainService.Shared.Entities;
+using Identifier.DomainService.Projects;
+using Identifier.DomainService.Shared.Dtos;
+using Identifier.DomainService.Shared.Entities;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
 using MongoDB.Driver;
 using Renci.SshNet;
 
-namespace DomainService.Shared
+namespace Identifier.DomainService.Shared
 {
     public class DomainManagementService : IDomainManagementService
     {

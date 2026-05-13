@@ -1,10 +1,10 @@
-﻿using Blocks.Genesis;
-using DomainService.Dtos;
-using DomainService.Entities;
-using DomainService.Services;
+using Blocks.Genesis;
+using Authentication.DomainService.Dtos;
+using Authentication.DomainService.Entities;
+using Authentication.DomainService.Services;
 using Microsoft.Extensions.Logging;
 
-namespace DomainService.Worker
+namespace Authentication.DomainService.Worker
 {
     public class UserAuthenticationTimelineWorkerService : IConsumer<UserAuthenticationTimelineEvent>
     {

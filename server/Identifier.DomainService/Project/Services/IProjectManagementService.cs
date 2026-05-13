@@ -1,12 +1,12 @@
-﻿using Blocks.Genesis;
-using DomainService.Dtos;
-using DomainService.Entities;
-using DomainService.Shared;
-using DomainService.Shared.Entities;
+using Blocks.Genesis;
+using Identifier.DomainService.Dtos;
+using Identifier.DomainService.Entities;
+using Identifier.DomainService.Shared;
+using Identifier.DomainService.Shared.Entities;
 using Microsoft.AspNetCore.Mvc;
 using System.Threading.Tasks;
 
-namespace DomainService.Projects
+namespace Identifier.DomainService.Projects
 {
     public interface IProjectManagementService
     {

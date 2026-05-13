@@ -5,9 +5,11 @@ namespace Iam.DomainService.Entities
 {
     public class OrganizationConfig : BaseEntity
     {
+        public string TenantId { get; set; } = string.Empty;
+        public string OrganizationId { get; set; } = string.Empty;
         public bool AllowCreationFromCloud { get; set; }
         public bool AllowCreationFromConstruct { get; set; }
         public bool IsMultiOrgEnabled { get; set; }
-        public List<string> Roles { get; set; } = [];
+        public List<string> DefaultRoleSlugsForNewMembers { get; set; } = [];
     }
 }

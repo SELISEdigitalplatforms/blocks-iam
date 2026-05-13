@@ -1,9 +1,9 @@
-﻿using Blocks.Genesis;
+using Blocks.Genesis;
 
-namespace DomainService.Entities
+namespace Authentication.DomainService.Entities
 {
     public class BlocksClientConfig : BaseEntity
     {
-        public string ClientName { get; set; }
+        public string? ClientName { get; set; }
     }
 }

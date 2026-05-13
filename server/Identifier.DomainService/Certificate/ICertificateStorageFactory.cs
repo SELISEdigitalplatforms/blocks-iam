@@ -1,6 +1,6 @@
-﻿using Blocks.Genesis;
+using Blocks.Genesis;
 
-namespace DomainService.Certificate
+namespace Identifier.DomainService.Certificate
 {
     public interface ICertificateStorageFactory
     {

@@ -1,16 +1,15 @@
 using Blocks.Genesis;
-using DomainService.Entities;
-using DomainService.OAuth.RequestModel;
-using DomainService.OAuth.ResponseModel;
-using DomainService.Services;
+using Authentication.DomainService.Entities;
+using Authentication.DomainService.OAuth.RequestModel;
+using Authentication.DomainService.OAuth.ResponseModel;
+using Authentication.DomainService.Services;
 using Iam.DomainService.Entities;
-using Iam.DomainService.Shared.Entities;
 using Iam.DomainService.Users;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
 using System.Text.Json;
 
-namespace DomainService.OAuth.Services
+namespace Authentication.DomainService.OAuth.Services
 {
     public abstract class SocialAuthorizationServiceBase : ITokenService
     {
@@ -99,12 +98,29 @@ namespace DomainService.OAuth.Services
                 return CreateUserNotFoundError(externalUser.Email?? "");
             }
 
-            if (!user.Active || !user.IsVarified)
+            if (!user.Active || !user.IsVerified)
             {
                 return new TokenResponse { Error = "There is a user with external user id but is not active.", ErrorDescription = "There is a user with external user id but is not active", StatusCode = 401 };
             }
 
-            return await _oAuthJwtAccessTokenManager.ManageTokenAsync(request, authenticationConfiguration, user);
+            request.OrganizationId = ResolveSignInOrganizationId(user, request.OrganizationId);
+            var tokenResponse = await _oAuthJwtAccessTokenManager.ManageTokenAsync(request, authenticationConfiguration, user);
+
+            if (string.IsNullOrWhiteSpace(tokenResponse.Error)
+                && !string.IsNullOrWhiteSpace(request.OrganizationId)
+                && !string.Equals(user.LastUsedOrganizationId, request.OrganizationId, StringComparison.OrdinalIgnoreCase))
+            {
+                await _oAuthRepository.UpdatePartialAsync<User>(
+                    user.ItemId,
+                    new Dictionary<string, object>
+                    {
+                        { nameof(User.LastUsedOrganizationId), request.OrganizationId },
+                        { nameof(User.LastUpdatedDate), DateTime.UtcNow },
+                        { nameof(User.LastUpdatedBy), user.ItemId }
+                    });
+            }
+
+            return tokenResponse;
         }
 
         protected virtual void NormalizeExternalUserEmail(IExternalUserData externalUser)
@@ -136,15 +152,15 @@ namespace DomainService.OAuth.Services
                 FirstName = externalUser.FirstName,
                 LastName = externalUser.LastName,
                 PhoneNumber = externalUser.PhoneNumber,
-                IsVarified = true,
+                IsVerified = true,
                 Active = true,
                 MailPurpose = "AccountActivated",
                 SendWelcomeMail = true,
                 Platform = stateInfo.Provider,
                 ProfileImageUrl = externalUser.ProfileImageUrl,
-                Memberships = [new OrganizationMembership { Roles = externalUser.Roles, OrganizationId = "default" }],
-                Permissions = externalUser.Permissions ?? [],
-                ProjectKey = blocksContext.TenantId,
+                Roles = new Dictionary<string, List<string>> { ["default"] = externalUser.Roles ?? [] },
+                Permissions = new Dictionary<string, List<string>> { ["default"] = externalUser.Permissions ?? [] },
+                ProjectKey = blocksContext?.TenantId,
                 DepartMent = externalUser.Department,
                 EmployeeId = externalUser.EmployeeId
             };
@@ -153,6 +169,41 @@ namespace DomainService.OAuth.Services
             await _cacheClient.AddStringValueAsync(code, JsonSerializer.Serialize(userPayload), 5000);
             var redirectUrl = $"{_configuration["SsoSignUpUri"]}?code={code}&username={externalUser.Email}&firstname={externalUser.FirstName}&lastname={externalUser.LastName}";
             return (null, redirectUrl);
+        }
+
+        private static string ResolveSignInOrganizationId(User user, string? requestedOrganizationId)
+        {
+            if (HasOrganizationAccess(user, requestedOrganizationId))
+            {
+                return requestedOrganizationId!;
+            }
+
+            if (HasOrganizationAccess(user, user.LastUsedOrganizationId))
+            {
+                return user.LastUsedOrganizationId!;
+            }
+
+            if (HasOrganizationAccess(user, "default"))
+            {
+                return "default";
+            }
+
+            return user.OrganizationIds.FirstOrDefault(id => !string.IsNullOrWhiteSpace(id))
+                ?? user.Roles.Keys.FirstOrDefault(key => !string.IsNullOrWhiteSpace(key))
+                ?? user.Permissions.Keys.FirstOrDefault(key => !string.IsNullOrWhiteSpace(key))
+                ?? "default";
+        }
+
+        private static bool HasOrganizationAccess(User user, string? organizationId)
+        {
+            if (string.IsNullOrWhiteSpace(organizationId))
+            {
+                return false;
+            }
+
+            return user.OrganizationIds.Contains(organizationId)
+                || user.Roles.ContainsKey(organizationId)
+                || user.Permissions.ContainsKey(organizationId);
         }
     }
 }

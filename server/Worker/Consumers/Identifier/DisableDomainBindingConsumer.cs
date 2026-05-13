@@ -1,6 +1,6 @@
 ﻿using Blocks.Genesis;
-using DomainService.Shared;
-using DomainService.Shared.Entities;
+using Identifier.DomainService.Shared;
+using Identifier.DomainService.Shared.Entities;
 using System;
 using System.Collections.Generic;
 using System.Text;

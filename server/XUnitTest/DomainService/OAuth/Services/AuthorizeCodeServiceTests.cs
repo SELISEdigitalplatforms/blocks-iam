@@ -1,10 +1,10 @@
 using Blocks.Genesis;
-using DomainService.Entities;
-using DomainService.OAuth;
-using DomainService.OAuth.RequestModel;
-using DomainService.OAuth.ResponseModel;
-using DomainService.OAuth.Services;
-using DomainService.Services;
+using Authentication.DomainService.Entities;
+using Authentication.DomainService.OAuth;
+using Authentication.DomainService.OAuth.RequestModel;
+using Authentication.DomainService.OAuth.ResponseModel;
+using Authentication.DomainService.OAuth.Services;
+using Authentication.DomainService.Services;
 using FluentAssertions;
 using Iam.DomainService.Entities;
 using Moq;
@@ -108,7 +108,7 @@ namespace XUnitTest.DomainService.OAuth.Services
             var authConfig = new AuthenticationConfiguration();
             var stateInfo = new StateInfo { UserName = "test@example.com", Scope = "openid", Provider = "test-provider", Audience = "test-audience" };
             var serializedState = JsonSerializer.Serialize(stateInfo);
-            var user = new User { Email = "test@example.com", Active = false, IsVarified = true };
+            var user = new User { Email = "test@example.com", Active = false, IsVerified = true };
 
             _cacheClient.Setup(x => x.GetStringValueAsync(request.Code))
                 .ReturnsAsync(serializedState);
@@ -137,7 +137,7 @@ namespace XUnitTest.DomainService.OAuth.Services
             var authConfig = new AuthenticationConfiguration();
             var stateInfo = new StateInfo { UserName = "test@example.com", Scope = "openid", Provider = "test-provider", Audience = "test-audience" };
             var serializedState = JsonSerializer.Serialize(stateInfo);
-            var user = new User { Email = "test@example.com", Active = true, IsVarified = false };
+            var user = new User { Email = "test@example.com", Active = true, IsVerified = false };
 
             _cacheClient.Setup(x => x.GetStringValueAsync(request.Code))
                 .ReturnsAsync(serializedState);
@@ -170,7 +170,7 @@ namespace XUnitTest.DomainService.OAuth.Services
             {
                 Email = "test@example.com",
                 Active = true,
-                IsVarified = true,
+                IsVerified = true,
                 ItemId = "user123"
             };
             var expectedTokenResponse = new TokenResponse
@@ -234,7 +234,7 @@ namespace XUnitTest.DomainService.OAuth.Services
             var authConfig = new AuthenticationConfiguration();
             var stateInfo = new StateInfo { UserName = "test@example.com", Scope = "openid", Provider = "test-provider", Audience = "test-audience" };
             var serializedState = JsonSerializer.Serialize(stateInfo);
-            var user = new User { Email = "test@example.com", Active = true, IsVarified = true };
+            var user = new User { Email = "test@example.com", Active = true, IsVerified = true };
 
             _cacheClient.Setup(x => x.GetStringValueAsync(request.Code))
                 .ReturnsAsync(serializedState);
@@ -265,7 +265,7 @@ namespace XUnitTest.DomainService.OAuth.Services
             var expectedScope = "openid profile email";
             var stateInfo = new StateInfo { UserName = "test@example.com", Scope = expectedScope, Provider = "test-provider", Audience = "test-audience" };
             var serializedState = JsonSerializer.Serialize(stateInfo);
-            var user = new User { Email = "test@example.com", Active = true, IsVarified = true };
+            var user = new User { Email = "test@example.com", Active = true, IsVerified = true };
 
             _cacheClient.Setup(x => x.GetStringValueAsync(request.Code))
                 .ReturnsAsync(serializedState);

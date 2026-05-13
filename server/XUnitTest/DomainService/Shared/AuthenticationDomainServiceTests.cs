@@ -1,9 +1,9 @@
 using Blocks.Genesis;
-using DomainService.Entities;
-using DomainService.RequestModel;
-using DomainService.Services;
-using DomainService.Shared;
-using DomainService.Shared.RequestModel;
+using Authentication.DomainService.Entities;
+using Authentication.DomainService.RequestModel;
+using Authentication.DomainService.Services;
+using Authentication.DomainService.Shared;
+using Authentication.DomainService.Shared.RequestModel;
 using FluentValidation;
 using FluentValidation.Results;
 using Iam.DomainService.Dtos;
@@ -266,8 +266,8 @@ namespace XUnitTest.DomainService.Shared
         {
             var request = new SaveOIDCClientRequest { Audience = "test-audience" };
 
-            _authenticationRepository.Setup(x => x.GetOIDCClientCredentialAsync(It.IsAny<string>())).ReturnsAsync((OIDCClientCredential)null);
-            _authenticationRepository.Setup(x => x.SaveOIDCClientCredentialAsync(It.IsAny<OIDCClientCredential>())).Returns(Task.CompletedTask);
+            _authenticationRepository.Setup(x => x.GetOidcClientRegistrationAsync(It.IsAny<string>())).ReturnsAsync((OidcClientRegistration)null);
+            _authenticationRepository.Setup(x => x.SaveOidcClientRegistrationAsync(It.IsAny<OidcClientRegistration>())).Returns(Task.CompletedTask);
 
             var result = await _service.SaveOIDCClientAsync(request);
 
@@ -279,10 +279,10 @@ namespace XUnitTest.DomainService.Shared
         public async Task SaveOIDCClientAsync_WithExistingClient_UpdatesClient()
         {
             var request = new SaveOIDCClientRequest { ItemId = "existing-id", Audience = "test-audience" };
-            var existingClient = new OIDCClientCredential { ItemId = "existing-id" };
+            var existingClient = new OidcClientRegistration { ItemId = "existing-id" };
 
-            _authenticationRepository.Setup(x => x.GetOIDCClientCredentialAsync("existing-id")).ReturnsAsync(existingClient);
-            _authenticationRepository.Setup(x => x.SaveOIDCClientCredentialAsync(It.IsAny<OIDCClientCredential>())).Returns(Task.CompletedTask);
+            _authenticationRepository.Setup(x => x.GetOidcClientRegistrationAsync("existing-id")).ReturnsAsync(existingClient);
+            _authenticationRepository.Setup(x => x.SaveOidcClientRegistrationAsync(It.IsAny<OidcClientRegistration>())).Returns(Task.CompletedTask);
 
             var result = await _service.SaveOIDCClientAsync(request);
 
@@ -291,50 +291,50 @@ namespace XUnitTest.DomainService.Shared
         }
 
         [Fact]
-        public async Task GetOIDCClientAsyncAsync_ReturnsClient()
+        public async Task GetOidcClientAsync_ReturnsClient()
         {
-            var client = new OIDCClientCredential { ItemId = "test-id" };
+            var client = new OidcClientRegistration { ItemId = "test-id" };
 
             _authenticationRepository.Setup(x => x.GetOIDCCredentialByIdAsync("test-id")).ReturnsAsync(client);
 
-            var result = await _service.GetOIDCClientAsyncAsync("test-id");
+            var result = await _service.GetOidcClientAsync("test-id");
 
             Assert.True(result.IsSuccess);
             Assert.Equal(client, result.oIDCClientCredential);
         }
 
         [Fact]
-        public async Task GetOIDCClientsAsyncAsync_ReturnsClients()
+        public async Task GetOidcClientsAsync_ReturnsClients()
         {
-            var clients = new List<OIDCClientCredential> { new OIDCClientCredential { ItemId = "test-id" } };
+            var clients = new List<OidcClientRegistration> { new OidcClientRegistration { ItemId = "test-id" } };
 
             _authenticationRepository.Setup(x => x.GetOIDCCredentialsByTenantAsync()).ReturnsAsync(clients);
 
-            var result = await _service.GetOIDCClientsAsyncAsync();
+            var result = await _service.GetOidcClientsAsync();
 
             Assert.True(result.IsSuccess);
             Assert.Equal(clients, result.oIDCClientCredentials);
         }
 
         [Fact]
-        public async Task GetOIDCClientsAsyncAsync_WithNullResult_ReturnsEmptyList()
+        public async Task GetOidcClientsAsync_WithNullResult_ReturnsEmptyList()
         {
-            _authenticationRepository.Setup(x => x.GetOIDCCredentialsByTenantAsync()).ReturnsAsync((List<OIDCClientCredential>)null);
+            _authenticationRepository.Setup(x => x.GetOIDCCredentialsByTenantAsync()).ReturnsAsync((List<OidcClientRegistration>)null);
 
-            var result = await _service.GetOIDCClientsAsyncAsync();
+            var result = await _service.GetOidcClientsAsync();
 
             Assert.True(result.IsSuccess);
             Assert.Empty(result.oIDCClientCredentials);
         }
 
         [Fact]
-        public async Task DeleteOIDCClientAsyncAsync_DeletesClient()
+        public async Task DeleteOidcClientAsync_DeletesClient()
         {
             var request = new DeleteOIDCClientRequest { ItemId = "test-id" };
 
             _authenticationRepository.Setup(x => x.DeleteOidcCliantAsync(request)).Returns(Task.CompletedTask);
 
-            var result = await _service.DeleteOIDCClientAsyncAsync(request);
+            var result = await _service.DeleteOidcClientAsync(request);
 
             Assert.True(result.IsSuccess);
         }

@@ -1,28 +1,34 @@
 using Blocks.Genesis;
-using DomainService.Dtos;
-using DomainService.Migration;
-using DomainService.Projects;
-using DomainService.Shared;
-using DomainService.Shared.Dtos;
-using DomainService.Shared.Entities;
-using DomainService.Utilities;
-using DomainService.Worker;
+using Authentication.DomainService.Dtos;
+using Identifier.DomainService.Migration;
+using Identifier.DomainService.Projects;
+using Identifier.DomainService.Shared;
+using Identifier.DomainService.Dtos;
+using Identifier.DomainService.Shared.Dtos;
+using Identifier.DomainService.Shared.Entities;
+using Authentication.DomainService.Utilities;
+using Authentication.DomainService.Worker;
 using Iam.DomainService.Accounts;
 using Iam.DomainService.Dtos;
 using Iam.DomainService.Shared.Dtos;
 using Iam.DomainService.Users;
 using Mfa.DomainService.Configuration;
 using Worker;
-using Worker.Configuration;
 using Worker.Consumers;
 using Worker.Consumers.Identifier;
-using Worker.Consumers.Users;
 
-const string _serviceName = "blocks-idp-worker";
+var configuration = new ConfigurationBuilder()
+    .SetBasePath(Directory.GetCurrentDirectory())
+    .AddJsonFile("appsettings.json", optional: true, reloadOnChange: false)
+    .AddJsonFile(GetEnvironmentAppSettingsFileName(), optional: true, reloadOnChange: false)
+    .AddEnvironmentVariables()
+    .Build();
 
-var vaultType = ResolveVaultType();
+var serviceName = ResolveRequiredServiceName(configuration);
+
+var vaultType = ApplicationConfigurations.ResolveVaultType();
 Console.WriteLine($"Using Genesis vault type: {vaultType}");
-var secret = await ApplicationConfigurations.ConfigureLogAndSecretsAsync(_serviceName, vaultType);
+var secret = await ApplicationConfigurations.ConfigureLogAndSecretsAsync(serviceName, vaultType);
 
 await CreateHostBuilder(args).Build().RunAsync();
 
@@ -36,8 +42,6 @@ IHostBuilder CreateHostBuilder(string[] args) =>
         {
             services.AddHttpClient();
 
-            services.Configure<VerioSystemSettings>(services.BuildServiceProvider().GetRequiredService<IConfiguration>().GetSection("VerioSystemSettings"));
-
             services.AddSingleton<IConsumer<RefreshTokenEvent>, RefreshTokenWorkerService>();
             services.AddSingleton<IConsumer<UserAuthenticationTimelineEvent>, UserAuthenticationTimelineWorkerService>();
             services.AddSingleton<IConsumer<MfaActionEvent>, UpdateMfaConfigurationService>();
@@ -49,7 +53,6 @@ IHostBuilder CreateHostBuilder(string[] args) =>
             services.AddSingleton<IConsumer<CreateUserByEmailEvent>, CreateUserByEmailConsumer>();
             services.AddSingleton<IConsumer<CreateUserRequest>, CreateUserConsumer>();
             services.AddSingleton<IConsumer<CreateUserViaSsoEvent>, CreateUserViaSsoConsumer>();
-            services.AddSingleton<IConsumer<UserStatusChangedEvent>, UserStatusChangedConsumer>();
 
             services.AddHostedService<PeriodicPingBackgroundService>();
 
@@ -69,24 +72,27 @@ IHostBuilder CreateHostBuilder(string[] args) =>
             services.AddSingleton<IConsumer<PublishScheduleCommand>, DataCleanupConsumer>();
             services.AddSingleton<IConsumer<UpdateResourceUsageCommand_Identifier>, UpdateResourceUsageConsumer>();
 
-            ApplicationConfigurations.ConfigureWorker(services, IdpConstants.GetMessageConfiguration(secret.MessageConnectionString));
+            var workerMessageConfiguration = IdpConstants.GetMessageConfiguration(secret.MessageConnectionString);
+            workerMessageConfiguration.ServiceName = serviceName;
+            ApplicationConfigurations.ConfigureWorker(services, workerMessageConfiguration);
             //ApplicationConfigurations.ConfigureWorker(services, IdentifierConstants.GetMessageConfiguration(secret.MessageConnectionString));
             #endregion
         });
 
-static VaultType ResolveVaultType()
+static string ResolveRequiredServiceName(IConfiguration configuration)
 {
-    var configuredVaultType = Environment.GetEnvironmentVariable("BLOCKS_VAULT_TYPE");
-    if (!string.IsNullOrWhiteSpace(configuredVaultType) &&
-        Enum.TryParse<VaultType>(configuredVaultType, true, out var parsedVaultType))
+    var serviceName = Environment.GetEnvironmentVariable("ServiceName") ?? configuration["ServiceName"];
+    if (string.IsNullOrWhiteSpace(serviceName))
     {
-        return parsedVaultType;
+        throw new InvalidOperationException("Missing required ServiceName configuration.");
     }
 
-    var environment = Environment.GetEnvironmentVariable("ASPNETCORE_ENVIRONMENT") ??
-                      Environment.GetEnvironmentVariable("DOTNET_ENVIRONMENT");
+    return serviceName;
+}
 
-    return string.Equals(environment, "Development", StringComparison.OrdinalIgnoreCase)
-        ? VaultType.OnPrem
-        : VaultType.Azure;
+static string GetEnvironmentAppSettingsFileName()
+{
+    var currentEnvironment = Environment.GetEnvironmentVariable("ASPNETCORE_ENVIRONMENT")
+        ?? Environment.GetEnvironmentVariable("DOTNET_ENVIRONMENT");
+    return string.IsNullOrWhiteSpace(currentEnvironment) ? "appsettings.json" : $"appsettings.{currentEnvironment}.json";
 }

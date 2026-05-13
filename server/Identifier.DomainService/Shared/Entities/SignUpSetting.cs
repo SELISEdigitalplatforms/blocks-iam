@@ -1,6 +1,6 @@
-﻿using Blocks.Genesis;
+using Blocks.Genesis;
 
-namespace DomainService.Shared.Entities
+namespace Identifier.DomainService.Shared.Entities
 {
     public class SignUpSetting : BaseEntity
     {

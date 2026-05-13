@@ -1,10 +1,10 @@
-﻿using Blocks.Genesis;
-using DomainService.Entities;
-using DomainService.Projects;
+using Blocks.Genesis;
+using Identifier.DomainService.Entities;
+using Identifier.DomainService.Projects;
 using Microsoft.Extensions.Logging;
 using System.Security.Cryptography.X509Certificates;
 
-namespace DomainService.Certificate
+namespace Identifier.DomainService.Certificate
 {
     public class MongoDBStorage : ICertificateStorage
     {

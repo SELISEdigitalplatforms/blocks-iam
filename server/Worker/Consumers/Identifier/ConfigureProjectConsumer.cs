@@ -2,8 +2,8 @@
 using System;
 using System.Collections.Generic;
 using System.Text;
-using DomainService.Projects;
-using DomainService.Shared;
+using Identifier.DomainService.Projects;
+using Identifier.DomainService.Shared;
 namespace Worker.Consumers.Identifier
 {
     public class ConfigureProjectConsumer : IConsumer<Tenant>
