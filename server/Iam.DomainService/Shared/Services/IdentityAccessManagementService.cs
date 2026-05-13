@@ -4,6 +4,7 @@ using Iam.DomainService.Entities;
 using Iam.DomainService.Users;
 using Iam.DomainService.Utilities;
 using Microsoft.Extensions.Logging;
+using BCryptNet = BCrypt.Net.BCrypt;
 
 namespace Iam.DomainService.Services
 {
@@ -11,7 +12,6 @@ namespace Iam.DomainService.Services
     {
         private readonly ILogger<IdentityAccessManagementService> _logger;
         private readonly ITenants _tenants;
-        private readonly ICryptoService _cryptoService;
         private readonly IMessageClient _messageClient;
         private readonly IUserRepository _userRepository;
 
@@ -25,16 +25,40 @@ namespace Iam.DomainService.Services
         {
             _logger = logger;
             _tenants = tenants;
-            _cryptoService = cryptoService;
             _messageClient = messageClient;
             _userRepository = userRepository;
         }
 
-        public string HashPassword(string password)
+        public string HashPassword(string password, string? optionalSalt = null)
         {
-            var sc = BlocksContext.GetContext();
-            var tenant = _tenants.GetTenantByID(sc?.TenantId);
-            return _cryptoService.Hash(password, tenant?.TenantSalt);
+            var passwordMaterial = BuildPasswordMaterial(password, optionalSalt);
+            return BCryptNet.HashPassword(passwordMaterial);
+        }
+
+        public bool VerifyPassword(string password, string passwordHash, string? optionalSalt = null)
+        {
+            if (string.IsNullOrWhiteSpace(passwordHash))
+            {
+                return false;
+            }
+
+            var passwordMaterial = BuildPasswordMaterial(password, optionalSalt);
+            try
+            {
+                return BCryptNet.Verify(passwordMaterial, passwordHash);
+            }
+            catch (BCrypt.Net.SaltParseException ex)
+            {
+                _logger.LogWarning(ex, "Password hash is not a valid BCrypt hash format.");
+                return false;
+            }
+        }
+
+        private static string BuildPasswordMaterial(string password, string? optionalSalt)
+        {
+            return string.IsNullOrWhiteSpace(optionalSalt)
+                ? password
+                : $"{password}::{optionalSalt}";
         }
 
         public async Task SendToQueueAsync<T>(string queue, T payload) where T : class

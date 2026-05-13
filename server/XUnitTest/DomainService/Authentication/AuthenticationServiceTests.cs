@@ -1,10 +1,10 @@
 using Blocks.Genesis;
-using DomainService.Authentication;
-using DomainService.Dtos;
-using DomainService.Entities;
-using DomainService.Services;
-using DomainService.Shared.RequestModel;
-using DomainService.Utilities;
+using Authentication.DomainService.Authentication;
+using Authentication.DomainService.Dtos;
+using Authentication.DomainService.Entities;
+using Authentication.DomainService.Services;
+using Authentication.DomainService.Shared.RequestModel;
+using Authentication.DomainService.Utilities;
 using FluentAssertions;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
@@ -112,13 +112,13 @@ namespace XUnitTest.DomainService.Authentication
         [Fact]
         public async Task ConstructRedirectUriAsync_ReturnsCorrectUri_AndCachesState()
         {
-            var client = new OIDCClientCredential
+            var client = new OidcClientRegistration
             {
                 RedirectUri = "https://client.com/callback",
                 Audience = "aud"
             };
 
-            _mockAuthenticationRepository.Setup(x => x.GetOIDCClientCredentialAsync("client1"))
+            _mockAuthenticationRepository.Setup(x => x.GetOidcClientRegistrationAsync("client1"))
                  .ReturnsAsync(client);
 
             var request = new AcknowledgeRequest
@@ -467,14 +467,14 @@ namespace XUnitTest.DomainService.Authentication
         {
             // Arrange
             var clientId = "test-client-id";
-            var expectedCredential = new OIDCClientCredential
+            var expectedCredential = new OidcClientRegistration
             {
                 ClientSecret = "secret",
                 Audience = "test-audience",
                 RedirectUri = "https://example.com/callback"
             };
 
-            _mockAuthenticationRepository.Setup(x => x.GetOIDCClientCredentialAsync(clientId))
+            _mockAuthenticationRepository.Setup(x => x.GetOidcClientRegistrationAsync(clientId))
                 .ReturnsAsync(expectedCredential);
 
             // Act
@@ -498,14 +498,14 @@ namespace XUnitTest.DomainService.Authentication
                 Nonce = "test-nonce",
                 Username = "testuser"
             };
-            var client = new OIDCClientCredential
+            var client = new OidcClientRegistration
             {
                 ClientSecret = "secret",
                 RedirectUri = "https://example.com/callback",
                 Audience = "test-audience"
             };
 
-            _mockAuthenticationRepository.Setup(x => x.GetOIDCClientCredentialAsync(clientId))
+            _mockAuthenticationRepository.Setup(x => x.GetOidcClientRegistrationAsync(clientId))
                 .ReturnsAsync(client);
             _mockCacheClient.Setup(x => x.AddStringValueAsync(
                 It.IsAny<string>(),
@@ -537,14 +537,14 @@ namespace XUnitTest.DomainService.Authentication
                 State = null,
                 Username = "testuser"
             };
-            var client = new OIDCClientCredential
+            var client = new OidcClientRegistration
             {
                 ClientSecret = "secret",
                 RedirectUri = "https://example.com/callback",
                 Audience = "test-audience"
             };
 
-            _mockAuthenticationRepository.Setup(x => x.GetOIDCClientCredentialAsync(clientId))
+            _mockAuthenticationRepository.Setup(x => x.GetOidcClientRegistrationAsync(clientId))
                 .ReturnsAsync(client);
             _mockCacheClient.Setup(x => x.AddStringValueAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<int>()))
                 .ReturnsAsync(true);

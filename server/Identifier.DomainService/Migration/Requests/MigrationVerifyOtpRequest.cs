@@ -1,6 +1,6 @@
 using Blocks.Genesis;
 
-namespace DomainService.Migration
+namespace Identifier.DomainService.Migration
 {
     public class MigrationVerifyOtpRequest
     {

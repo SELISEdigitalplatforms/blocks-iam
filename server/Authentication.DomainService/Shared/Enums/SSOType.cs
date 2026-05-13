@@ -1,4 +1,4 @@
-﻿namespace DomainService.Shared
+namespace Authentication.DomainService.Shared
 {
     public enum SSOType
     {

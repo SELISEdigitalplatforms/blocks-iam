@@ -1,7 +1,7 @@
-﻿using Blocks.Genesis;
-using DomainService.OAuth;
-using DomainService.OAuth.RequestModel;
-using DomainService.Services;
+using Blocks.Genesis;
+using Authentication.DomainService.OAuth;
+using Authentication.DomainService.OAuth.RequestModel;
+using Authentication.DomainService.Services;
 using Microsoft.Extensions.Logging;
 using System.Net;
 
@@ -28,11 +28,11 @@ namespace Authentication.DomainService.OAuth.SocialServices
         }
         public async Task<(string, bool)> GetProviderLogInUriAsync(GetSocialLogInEndPointRequest loginData)
         {
-            var credential = await _authenticationRepository.GetSocialLoginCredentialByProvideAndAudienceAsync(loginData.Provider, loginData.Audience);
+            var identityProvider = await _authenticationRepository.GetIdentityProviderAsync(loginData.Provider);
 
-            if (credential == null)
+            if (identityProvider == null)
             {
-                _logger.LogError("Credential not found for provider {Provider} and audience {Audience}", loginData.Provider, loginData.Audience);
+                _logger.LogError("Identity provider not found for provider {Provider}", loginData.Provider);
                 return (string.Empty, true);
             }
 
@@ -47,21 +47,27 @@ namespace Authentication.DomainService.OAuth.SocialServices
             await _cacheClient.AddStringValueAsync(stateKey, System.Text.Json.JsonSerializer.Serialize(stateInfo), 300);
 
             var loginUri = string.Format(
-                credential.AuthorizationUrl,
-                credential.ClientId,
-                WebUtility.UrlEncode(credential.RedirectUrl),
-                WebUtility.UrlEncode(credential.Scope),
+                identityProvider.AuthorizationUrl,
+                identityProvider.ClientId,
+                WebUtility.UrlEncode(identityProvider.RedirectUri),
+                WebUtility.UrlEncode(identityProvider.Scope),
                 stateKey
             );
 
-            return (loginUri, loginData.SendAsResponse || credential.SendAsResponse);
+            return (loginUri, loginData.SendAsResponse);
         }
 
         public async Task<IExternalUserData> HandleSocialLogin(StateInfo stateInfo)
         {
-            var credential = await _authenticationRepository.GetSocialLoginCredentialByProvideAndAudienceAsync(stateInfo.Provider, stateInfo.Audience);
+            var identityProvider = await _authenticationRepository.GetIdentityProviderAsync(stateInfo.Provider);
 
-            string faceBookGetAccessTokenUri = string.Format("{0}?client_id={1}&redirect_uri={2}&client_secret={3}&code={4}",credential.TokenUrl, credential.ClientId, credential.RedirectUrl, credential.ClientSecret, stateInfo.Code);
+            if (identityProvider == null)
+            {
+                _logger.LogError("Identity provider not found for provider {Provider}", stateInfo.Provider);
+                return new FaceBookUserData();
+            }
+
+            string faceBookGetAccessTokenUri = string.Format("{0}?client_id={1}&redirect_uri={2}&client_secret={3}&code={4}",identityProvider.TokenUrl, identityProvider.ClientId, identityProvider.RedirectUri, identityProvider.ClientSecret, stateInfo.Code);
             _logger.LogInformation("faceBook Access Token Uri {AccessTokenUri}", faceBookGetAccessTokenUri);
             var (tokenResponse, error) = await _httpService.Get<SocialOauthAccessToken>(faceBookGetAccessTokenUri);
 
@@ -76,7 +82,7 @@ namespace Authentication.DomainService.OAuth.SocialServices
             };
 
             (var faceBookUserData, var profileError) = await _httpService.Get<FaceBookUserData>(
-                credential.GetProfileUrl,
+                identityProvider.UserInfoUrl,
                 headers: profileHeaders);
 
             if (!string.IsNullOrWhiteSpace(profileError))

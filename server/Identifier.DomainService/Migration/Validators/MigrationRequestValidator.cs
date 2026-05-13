@@ -1,7 +1,7 @@
-using DomainService.Projects;
+using Identifier.DomainService.Projects;
 using FluentValidation;
 
-namespace DomainService.Migration
+namespace Identifier.DomainService.Migration
 {
     public class MigrationRequestValidator : AbstractValidator<MigrationRequest>
     {

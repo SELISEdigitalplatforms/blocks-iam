@@ -1,7 +1,7 @@
-﻿using Iam.DomainService.Entities;
+using Iam.DomainService.Entities;
 using Microsoft.AspNetCore.Mvc;
 
-namespace DomainService.OAuth
+namespace Authentication.DomainService.OAuth
 {
     public class TokenPayload
     {

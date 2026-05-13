@@ -1,6 +1,6 @@
-﻿using DomainService.OAuth.RequestModel;
+using Authentication.DomainService.OAuth.RequestModel;
 
-namespace DomainService.OAuth
+namespace Authentication.DomainService.OAuth
 {
     public interface ISocialLogInServiceProvider
     {

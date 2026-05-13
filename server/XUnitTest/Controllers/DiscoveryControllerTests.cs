@@ -1,6 +1,6 @@
 using Api.Controllers;
 using Blocks.Genesis;
-using DomainService.Utilities;
+using Authentication.DomainService.Utilities;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.Configuration;

@@ -1,10 +1,10 @@
-﻿using Blocks.Genesis;
-using DomainService.Dtos;
-using DomainService.Entities;
-using DomainService.Shared.Entities;
+using Blocks.Genesis;
+using Identifier.DomainService.Dtos;
+using Identifier.DomainService.Entities;
+using Identifier.DomainService.Shared.Entities;
 using Iam.DomainService.Entities;
 
-namespace DomainService.People
+namespace Identifier.DomainService.People
 {
     public interface IPeopleRepository
     {

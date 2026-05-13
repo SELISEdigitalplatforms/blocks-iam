@@ -1,8 +1,8 @@
-﻿using Blocks.Genesis;
-using DomainService.Services;
+using Blocks.Genesis;
+using Authentication.DomainService.Services;
 using Mfa.DomainService.Configuration;
 
-namespace DomainService.Worker
+namespace Authentication.DomainService.Worker
 {
     public class UpdateMfaConfigurationService : IConsumer<MfaActionEvent>
     {

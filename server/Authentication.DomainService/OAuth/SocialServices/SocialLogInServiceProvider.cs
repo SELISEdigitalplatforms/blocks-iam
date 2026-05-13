@@ -1,10 +1,10 @@
-﻿using Authentication.DomainService.OAuth.SocialServices;
+using Authentication.DomainService.OAuth.SocialServices;
 using Azure.Core;
-using DomainService.OAuth.RequestModel;
-using DomainService.OAuth.SocialServices;
+using Authentication.DomainService.OAuth.RequestModel;
+using Authentication.DomainService.OAuth.SocialServices;
 using Microsoft.Extensions.DependencyInjection;
 
-namespace DomainService.OAuth
+namespace Authentication.DomainService.OAuth
 {
     public class SocialLogInServiceProvider : ISocialLogInServiceProvider
     {

@@ -1,6 +1,6 @@
-﻿using System.Security.Cryptography.X509Certificates;
+using System.Security.Cryptography.X509Certificates;
 
-namespace DomainService.Certificate
+namespace Identifier.DomainService.Certificate
 {
     public interface ICertificateStorage
     {

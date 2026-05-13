@@ -1,15 +1,15 @@
-﻿using Blocks.Genesis;
-using DomainService.Dtos;
-using DomainService.Entities;
-using DomainService.Projects;
-using DomainService.Shared;
-using DomainService.Shared.Entities;
+using Blocks.Genesis;
+using Identifier.DomainService.Dtos;
+using Identifier.DomainService.Entities;
+using Identifier.DomainService.Projects;
+using Identifier.DomainService.Shared;
+using Identifier.DomainService.Shared.Entities;
 using Iam.DomainService.Entities;
 using MongoDB.Bson;
 using MongoDB.Driver;
 using Pipelines.Sockets.Unofficial.Arenas;
 
-namespace DomainService.People
+namespace Identifier.DomainService.People
 {
     public class PeopleRepository : IPeopleRepository
     {
@@ -92,7 +92,7 @@ namespace DomainService.People
                     projectPeople.peopleDetails.LastName = user.LastName;
                     projectPeople.peopleDetails.Salutation = user.Salutation;
                     projectPeople.peopleDetails.ProfileImageUrl = user.ProfileImageUrl;
-                    projectPeople.peopleDetails.AllowResendActivation = !user.Active || !user.IsVarified;
+                    projectPeople.peopleDetails.AllowResendActivation = !user.Active || !user.IsVerified;
                 }
                 return projectPeople;
             });

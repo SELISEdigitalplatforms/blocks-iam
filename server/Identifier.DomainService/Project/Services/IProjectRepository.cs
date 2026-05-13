@@ -1,11 +1,11 @@
-﻿using Blocks.Genesis;
-using DomainService.Entities;
-using DomainService.Dtos;
-using DomainService.Shared.Entities;
+using Blocks.Genesis;
+using Identifier.DomainService.Entities;
+using Identifier.DomainService.Dtos;
+using Identifier.DomainService.Shared.Entities;
 using MongoDB.Driver;
-using DomainService.Shared;
+using Identifier.DomainService.Shared;
 
-namespace DomainService.Projects
+namespace Identifier.DomainService.Projects
 {
     public interface IProjectRepository
     {

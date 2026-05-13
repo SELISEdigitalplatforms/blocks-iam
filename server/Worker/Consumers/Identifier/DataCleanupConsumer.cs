@@ -1,5 +1,5 @@
 ﻿using Blocks.Genesis;
-using DomainService.Migration;
+using Identifier.DomainService.Migration;
 using System;
 using System.Collections.Generic;
 using System.Text;

@@ -1,6 +1,6 @@
-﻿using Blocks.Genesis;
+using Blocks.Genesis;
 
-namespace DomainService.People
+namespace Identifier.DomainService.People
 {
     public class InviteRequest
     {
