@@ -500,5 +500,12 @@ namespace Authentication.DomainService.Services
                 return false;
             }
         }
+
+        public async Task<IdentityProvider> GetIdentityProviderByClientAsync(string clientId)
+        {
+            var collection = GetCollection<IdentityProvider>();
+            var filter = Builders<IdentityProvider>.Filter.Eq(x => x.ClientId, clientId);
+            return await (await collection.FindAsync(filter)).FirstOrDefaultAsync();
+        }
     }
 }
