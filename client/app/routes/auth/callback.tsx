@@ -3,6 +3,7 @@ import { useSearchParams } from "react-router-dom";
 import { Loader } from "lucide-react";
 import { getRuntimeEnv } from "@/lib/runtime-env";
 import { useAuthStore } from "@/store/useAuthStore";
+import { API_BASES } from "@/constants/endpoint.constant";
 
 export default function LoginCallbackPage() {
   const [searchParams] = useSearchParams();
@@ -18,7 +19,7 @@ export default function LoginCallbackPage() {
     if (hasProcessed.current) return;
     hasProcessed.current = true;
 
-    const apiBaseUrl = getRuntimeEnv("BLOCKS_API_BASE_URL") || "http://localhost:5000";
+    const apiBaseUrl = API_BASES.IDP;
     const callbackUrl = new URL("/api/idp/callback", apiBaseUrl);
 
     // Forward the callback parameters to backend
@@ -38,12 +39,8 @@ export default function LoginCallbackPage() {
     fetch(callbackUrl.toString(), { headers, credentials: "include" })
       .then((res) => {
         if (res.ok) {
-          // Tokens are in HttpOnly cookies set by backend
-          // Update auth store to reflect authenticated state
           setAuthenticated();
           window.location.href = "/services/authentication/users";
-          // window.location.href = `${window.location.origin}/login`;
-
         } else {
           window.location.href = "/login?error=callback_failed";
         }
@@ -53,9 +50,37 @@ export default function LoginCallbackPage() {
       });
   }, [code, state, error, tenantId, setAuthenticated]);
 
-  return (
-    <div className="flex min-h-screen items-center justify-center">
-      <Loader className="h-12 w-12 animate-spin text-gray-500" />
-    </div>
-  );
+  // return (
+  //   <div className="flex min-h-screen items-center justify-center">
+  //     <Loader className="h-12 w-12 animate-spin text-gray-500" />
+  //   </div>
+  // );
+
+  if (code && state) {
+    return (
+      <>
+        <style>{`
+          @keyframes breathe {
+            0%, 100% {
+              transform: scaleY(1);
+            }
+            50% {
+              transform: scaleY(0.85);
+            }
+          }
+          .animate-breathe {
+            animation: breathe 2s ease-in-out infinite;
+            transform-origin: center;
+          }
+        `}</style>
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-background">
+          <img
+            src="/Icon.svg"
+            alt="Loading"
+            className="h-16 w-16 animate-breathe"
+          />
+        </div>
+      </>
+    );
+  }
 }
