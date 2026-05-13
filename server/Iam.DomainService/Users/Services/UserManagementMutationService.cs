@@ -575,45 +575,45 @@ namespace Iam.DomainService.Users
             };
         }
 
-        public async Task<bool> CreateUserByEmailAsync(CreateUserByEmailEvent @event)
-        {
-            _logger.LogInformation("User creation start from CreateUserByEmail");
+        // public async Task<bool> CreateUserByEmailAsync(CreateUserByEmailEvent @event)
+        // {
+        //     _logger.LogInformation("User creation start from CreateUserByEmail");
 
-            var command = new CreateUserRequest
-            {
-                Email = @event.Email,
-                UserCreationType = UserCreationType.Service,
-                MailPurpose = @event.EventType,
-                OrgId = DefaultOrganizationId,
-                Roles = new Dictionary<string, List<string>> { [DefaultOrganizationId] = ["user"] },
-                Permissions = new Dictionary<string, List<string>> { [DefaultOrganizationId] = [] }
-            };
+        //     var command = new CreateUserRequest
+        //     {
+        //         Email = @event.Email,
+        //         UserCreationType = UserCreationType.Service,
+        //         MailPurpose = @event.EventType,
+        //         OrgId = DefaultOrganizationId,
+        //         Roles = new Dictionary<string, List<string>> { [DefaultOrganizationId] = ["user"] },
+        //         Permissions = new Dictionary<string, List<string>> { [DefaultOrganizationId] = [] }
+        //     };
 
-            _blocksContext = BlocksContext.GetContext();
+        //     _blocksContext = BlocksContext.GetContext();
 
-            var validationResult = await _createValidator.ValidateAsync(command);
-            if (!validationResult.IsValid)
-            {
-                _logger.LogInformation("User creation end -- Validation Error -- CreateUserByEmail");
-                return false;
-            }
+        //     var validationResult = await _createValidator.ValidateAsync(command);
+        //     if (!validationResult.IsValid)
+        //     {
+        //         _logger.LogInformation("User creation end -- Validation Error -- CreateUserByEmail");
+        //         return false;
+        //     }
 
-            string itemId;
-            try
-            {
-                itemId = await ProcessAsync(command);
-            }
-            catch (ValidationException)
-            {
-                _logger.LogInformation("User creation end -- Signup Policy Validation Error -- CreateUserByEmail");
-                return false;
-            }
+        //     string itemId;
+        //     try
+        //     {
+        //         itemId = await ProcessAsync(command);
+        //     }
+        //     catch (ValidationException)
+        //     {
+        //         _logger.LogInformation("User creation end -- Signup Policy Validation Error -- CreateUserByEmail");
+        //         return false;
+        //     }
 
-            await ProcessCreateUserByEmailAfterActionAsync(@event, itemId);
+        //     await ProcessCreateUserByEmailAfterActionAsync(@event, itemId);
 
-            _logger.LogInformation("User creation end -- Success -- CreateUserByEmail");
-            return true;
-        }
+        //     _logger.LogInformation("User creation end -- Success -- CreateUserByEmail");
+        //     return true;
+        // }
 
         public async Task<bool> ProcessCreateUserByEmailAfterActionAsync(CreateUserByEmailEvent @event, string userId)
         {
@@ -654,11 +654,11 @@ namespace Iam.DomainService.Users
             return key;
         }
 
-        public async Task<BaseMutationResponse> CreateUserViaSsoAsync(CreateUserViaSsoRequest command)
+        public async Task<BaseMutationResponse> CreateUserFromSsoAsync(CreateUserViaSsoRequest command)
         {
             _logger.LogInformation("User creation start");
 
-            _blocksContext = BlocksContext.GetContext();
+            blocksContext = BlocksContext.GetContext();
 
             var fallbackOrganizationId = BlocksContext.GetContext()?.OrganizationId ?? DefaultOrganizationId;
             var orgConfig = await GetOrganizationConfigAsync(command.ProjectKey, fallbackOrganizationId);
