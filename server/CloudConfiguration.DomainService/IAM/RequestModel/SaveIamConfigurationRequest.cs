@@ -1,8 +1,6 @@
-﻿using Blocks.Genesis;
-
-namespace CloudConfiguration.DomainService.IAM.RequestModel
+﻿namespace CloudConfiguration.DomainService.IAM.RequestModel
 {
-    public class SaveIamConfigurationRequest : IProjectKey
+    public class SaveIamConfigurationRequest
     {
         public string AccountActivationUrl { get; set; }
         public string AccountVerificationUrl { get; set; }

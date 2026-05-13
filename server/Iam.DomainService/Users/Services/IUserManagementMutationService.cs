@@ -12,7 +12,7 @@ namespace Iam.DomainService.Users
         Task ExecuteUserMutationCommandAsync(UserMutationEvent command);
         Task<BaseMutationResponse> SaveRolesAndPermissionsAsync(SaveRolesAndPermissionsRequest command);
         Task<bool> CreateUserByEmailAsync(CreateUserByEmailEvent @event);
-        Task<BaseMutationResponse> CreateUserViaSsoAsync(CreateUserViaSsoRequest command);
+        Task<BaseMutationResponse> CreateUserFromSsoAsync(CreateUserViaSsoRequest command);
         Task ExecuteUserMutationViaSsoCommandAsync(CreateUserViaSsoEvent command);
         Task<bool> ProcessCreateUserByEmailAfterActionAsync(CreateUserByEmailEvent @event, string userId);
         Task<BaseResponse> DeactivateUserAsync(DeactivateUserRequest request);

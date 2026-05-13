@@ -428,7 +428,7 @@ namespace Iam.DomainService.Accounts
             return new SaveSignUpSettingResponse { IsSuccess = true, ItemId = settings.ItemId };
         }
 
-        public async Task<Dictionary<string, object>> GetSignUpSettingAsync(GetSignUpSettingRequest request)
+        public async Task<Dictionary<string, object>> GetSignUpSettingAsync()
         {
             var tenantConfiguration = await _repository.GetTenantConfigurationAsync();
             if (tenantConfiguration == null)
