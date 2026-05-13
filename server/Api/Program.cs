@@ -78,10 +78,10 @@ static void ApplyFrontendRuntimeSettings(IConfiguration configuration, string we
     var replacements = new Dictionary<string, string?>
     {
         ["__BLOCKS_API_BASE_URL__"] = ResolveEnvOrConfig(configuration, "BLOCKS_API_BASE_URL", "FrontendRuntime:BLOCKS_API_BASE_URL"),
-        // ["__BLOCKS_X_BLOCKS_KEY__"] = ResolveEnvOrConfig(configuration, "BLOCKS_X_BLOCKS_KEY", "FrontendRuntime:BLOCKS_X_BLOCKS_KEY"),
+        ["__BLOCKS_X_BLOCKS_KEY__"] = ResolveEnvOrConfig(configuration, "BLOCKS_X_BLOCKS_KEY", "FrontendRuntime:BLOCKS_X_BLOCKS_KEY"),
         ["__BLOCKS_GOOGLE_SITE_KEY__"] = ResolveEnvOrConfig(configuration, "BLOCKS_GOOGLE_SITE_KEY", "FrontendRuntime:BLOCKS_GOOGLE_SITE_KEY"),
         ["__BLOCKS_CONSTRUCT_URL__"] = ResolveEnvOrConfig(configuration, "BLOCKS_CONSTRUCT_URL", "FrontendRuntime:BLOCKS_CONSTRUCT_URL"),
-        // ["__BLOCKS_OIDC_CLIENT_ID__"] = ResolveEnvOrConfig(configuration, "BLOCKS_OIDC_CLIENT_ID", "FrontendRuntime:BLOCKS_OIDC_CLIENT_ID"),
+        ["__BLOCKS_OIDC_CLIENT_ID__"] = ResolveEnvOrConfig(configuration, "BLOCKS_OIDC_CLIENT_ID", "FrontendRuntime:BLOCKS_OIDC_CLIENT_ID"),
     };
 
     var files = Directory.EnumerateFiles(webRootPath, "*", SearchOption.AllDirectories)
