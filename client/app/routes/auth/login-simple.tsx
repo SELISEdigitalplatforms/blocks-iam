@@ -16,6 +16,7 @@ import {
 import { Link } from "react-router-dom";
 import { ModeToggle } from "@/components/mode-toggle/mode-toggle";
 import { ServiceCarousel } from "@/components/service-carousel";
+import { API_BASES } from "@/constants/endpoint.constant";
 const pillars = [
   { icon: ShieldCheck, label: "Authentication" },
   { icon: KeyRound, label: "Secrets Management" },
@@ -38,18 +39,13 @@ export default function LoginSimplePage() {
     return () => clearTimeout(timeoutId);
   }, [titleNumber, titles]);
 
-  const startLogin = async () => {
+ const startLogin = async () => {
     try {
       if (isStarting) return;
       setIsStarting(true);
 
-      const search = new URLSearchParams(window.location.search);
-      const blocksKey = search.get("x-blocks-key") || getRuntimeEnv("BLOCKS_X_BLOCKS_KEY");
-      const apiBaseUrl = getRuntimeEnv("BLOCKS_API_BASE_URL") || "http://localhost:5000";
-
-      const initiateUrl = new URL("/api/idp/initiate", apiBaseUrl);
-      if (blocksKey) initiateUrl.searchParams.set("x-blocks-key", blocksKey);
-
+      const blocksKey = getRuntimeEnv("BLOCKS_X_BLOCKS_KEY");
+      const initiateUrl = `${API_BASES.IDP}/idp/initiate?x-blocks-key=${blocksKey}`;
       const headers: Record<string, string> = {};
       if (blocksKey) headers["X-Blocks-Key"] = blocksKey;
 
@@ -62,7 +58,8 @@ export default function LoginSimplePage() {
         showErrorToast({ errors: "Failed to get authorization URL" });
         setIsStarting(false);
       }
-    } catch {
+    } catch (errors) {
+      console.error("Login initiation error:", errors);
       showErrorToast({ errors: "Unable to start login. Please try again." });
       setIsStarting(false);
     }

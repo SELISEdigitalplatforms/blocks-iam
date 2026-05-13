@@ -1,5 +1,6 @@
 import { http } from "@/lib/http-client";
 import { parseMongoDBString } from "@/lib/utils";
+import { API_BASES } from "@/constants/endpoint.constant";
 import {
   IAccountResendActivationPayload,
   IAccountResendActivationResponse,
@@ -31,6 +32,7 @@ import {
 } from "@blocks-idp/iam/models/user";
 import { UserAccountService } from "./account.service";
 import { USER_ENDPOINTS } from "../constants/endpoint.constant";
+import { AUTH_ENDPOINTS } from "@/idp/authentication/constants/endpoint.constant";
 
 export class UserService {
   constructor(public account: UserAccountService) {}
@@ -40,11 +42,23 @@ export class UserService {
   }
 
   getUser(): Promise<{ data: User }> {
-    return http.get(USER_ENDPOINTS.GET_USER);
+    return http.get(`${USER_ENDPOINTS.GET_USER}`, undefined, {
+      absoluteUrl: true,
+    });
+  }
+
+  getUserInfo(): Promise<User> {
+    return http.get(`${AUTH_ENDPOINTS.USER_INFO}`, undefined, {
+      absoluteUrl: true,
+    });
   }
 
   getUserById(payload: IGetUserByIdPayload): Promise<IGetUserByIdResponse> {
-    return http.get(`${USER_ENDPOINTS.GET_USER}?id=${payload.id}&ProjectKey=${payload.projectKey}`);
+    return http.get(
+      `${USER_ENDPOINTS.GET_USER}?id=${payload.id}&ProjectKey=${payload.projectKey}`,
+      undefined,
+      { absoluteUrl: true },
+    );
   }
 
   addUser(createPayload: ICreateUserPayload): Promise<ICreateUserResponse> {
@@ -55,11 +69,17 @@ export class UserService {
     return http.post(USER_ENDPOINTS.UPDATE, payload);
   }
 
-  getSignUpSetting(payload: IGetSignUpSettingPayload): Promise<IGetSignUpSettingResponse> {
-    return http.get(`${USER_ENDPOINTS.GET_SIGNUP_SETTING}?ProjectKey=${payload.projectKey}`);
+  getSignUpSetting(
+    payload: IGetSignUpSettingPayload,
+  ): Promise<IGetSignUpSettingResponse> {
+    return http.get(
+      `${USER_ENDPOINTS.GET_SIGNUP_SETTING}?ProjectKey=${payload.projectKey}`,
+    );
   }
 
-  saveSignUpSetting(payload: ISaveSignUpSettingPayload): Promise<ISaveSignUpSettingResponse> {
+  saveSignUpSetting(
+    payload: ISaveSignUpSettingPayload,
+  ): Promise<ISaveSignUpSettingResponse> {
     return http.post(USER_ENDPOINTS.SAVE_SIGNUP_SETTING, payload);
   }
 
@@ -69,8 +89,14 @@ export class UserService {
     return http.post(USER_ENDPOINTS.SAVE_ROLES_AND_PERMISSIONS, payload);
   }
 
-  async getSessions(payload: IGetSessionPayload): Promise<IDeviceSessionResponse> {
-    const res = await http.get<{ data: string[]; errors: unknown; totalCount: number }>(
+  async getSessions(
+    payload: IGetSessionPayload,
+  ): Promise<IDeviceSessionResponse> {
+    const res = await http.get<{
+      data: string[];
+      errors: unknown;
+      totalCount: number;
+    }>(
       `${USER_ENDPOINTS.GET_SESSIONS}?page=${payload.page}&pageSize=${payload.pageSize}&projectkey=${payload.projectKey}&filter.userId=${payload.filter.UserId}`,
     );
     return {
@@ -80,8 +106,14 @@ export class UserService {
     };
   }
 
-  async getHistories(payload: IGetHistoriesPayload): Promise<IHistoriesResponse> {
-    const res = await http.get<{ data: string[]; errors: unknown; totalCount: number }>(
+  async getHistories(
+    payload: IGetHistoriesPayload,
+  ): Promise<IHistoriesResponse> {
+    const res = await http.get<{
+      data: string[];
+      errors: unknown;
+      totalCount: number;
+    }>(
       `${USER_ENDPOINTS.GET_HISTORIES}?page=${payload.page}&pageSize=${payload.pageSize}&projectkey=${payload.projectKey}&filter.userId=${payload.filter.UserId}`,
     );
     return {
@@ -105,7 +137,9 @@ export class UserService {
     );
   }
 
-  getUserPermissions(payload: IGetUserPermissionsPayload): Promise<IGetUserPermissionsResponse> {
+  getUserPermissions(
+    payload: IGetUserPermissionsPayload,
+  ): Promise<IGetUserPermissionsResponse> {
     return http.get(
       `${USER_ENDPOINTS.GET_USER_PERMISSIONS}?Id=${payload.userId}&ProjectKey=${payload.projectKey}`,
     );

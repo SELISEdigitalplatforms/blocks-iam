@@ -1,9 +1,14 @@
+import { API_BASES } from "@/constants/endpoint.constant";
+
 // Inline base path (empty — HttpClient prepends BLOCKS_API_BASE_URL at runtime)
 const IDP_BASE = "";
+// ─── Subpaths ─────────────────────────────────────────────────────────────────
 
+const AUTH_OIDC_SUBPATH = "/oidc";
 // ─── Auth endpoints (backend: /api/auth/*) ──────────────────────────────────
 
 export const AUTH_ENDPOINTS = {
+   USER_INFO: `${API_BASES.IDP}/idp/UserInfo`,
   LOGIN: `${IDP_BASE}/api/auth/login`,
   RECOVER: `${IDP_BASE}/api/auth/recover`,
   RESET_PASSWORD: `${IDP_BASE}/api/auth/reset-password`,
@@ -31,6 +36,8 @@ export const AUTH_OIDC_ENDPOINTS = {
   GET_OIDC_CLIENT: `${IDP_BASE}/api/oidc-clients`,   // append /{clientId} at call site
   SAVE_OIDC_CLIENT: `${IDP_BASE}/api/oidc-clients`,
   DELETE_OIDC_CLIENT: `${IDP_BASE}/api/oidc-clients`, // append /{clientId} at call site
+   OIDC_TOKEN: `${API_BASES.IDP}${AUTH_OIDC_SUBPATH}/token`,
+   
 } as const;
 
 // ─── Auth configuration endpoints ───────────────────────────────────────────
