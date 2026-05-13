@@ -344,7 +344,7 @@ export const OidcLoginForm = ({
               )}
             />
 
-            <Link to={forgotPasswordUrl} className="ml-auto inline-block text-sm text-primary">
+            <Link to={forgotPasswordUrl} className="ml-auto inline-block text-sm text-primary pointer-events-none opacity-50 cursor-not-allowed" aria-disabled="true" tabIndex={-1}>
               Forgot password?
             </Link>
 
@@ -366,13 +366,13 @@ export const OidcLoginForm = ({
         </Form>
       )}
 
-      {showPasswordLogin && showSocialLogin && (
+      {/* {showPasswordLogin && showSocialLogin && (
         <div className="my-2 mt-4 flex items-center">
           <hr className="flex-grow border" />
           <span className="mx-2 text-xs text-low-emphasis">OR</span>
           <hr className="flex-grow border" />
         </div>
-      )}
+      )} */}
 
       {showSocialLogin && (
         <SsoSignin
@@ -394,7 +394,7 @@ export const OidcLoginForm = ({
       <div className="mt-3 flex items-center justify-center">
         <div className="flex items-center text-medium-emphasis">
           <p>Not a member?</p>
-          <Link to={signUpUrl} className="ml-2 inline-block text-sm text-primary">
+          <Link to={signUpUrl} className="ml-2 inline-block text-sm text-primary pointers-event-none opacity-50 cursor-pointer-none" aria-disabled="true">
             Sign up
           </Link>
         </div>
