@@ -38,29 +38,31 @@ namespace Authentication.DomainService.Authentication
             _logger = logger;
         }
 
-        public async Task<IActionResult> StartAuthenticationFlowAsync()
+        public async Task<IActionResult> StartAuthenticationFlowAsync(string clientId)
         {
             try
             {
                 var effectiveTenantId = BlocksContext.GetContext()?.TenantId;
 
                 // Provider is always the IDP's own OIDC provider — not taken from FE
-                var providerName = IdpConstants.BlocksProviderName;
-                var providerType = IdpConstants.BlocksProviderType;
+                //var providerName = IdpConstants.BlocksProviderName;
+                //var providerType = IdpConstants.BlocksProviderType;
 
-                // Get identity provider config by both provider name and type for exact match
-                var identityProvider = await _authenticationRepository.GetIdentityProviderAsync(providerName, providerType);
-                if (identityProvider == null)
-                {
-                    // Backward compatibility: support legacy records stored as (blocks, oidc).
-                    providerName = IdpConstants.BlocksProviderType;
-                    providerType = IdpConstants.OidcProtocol;
-                    identityProvider = await _authenticationRepository.GetIdentityProviderAsync(providerName, providerType);
-                }
+                //// Get identity provider config by both provider name and type for exact match
+                //var identityProvider = await _authenticationRepository.GetIdentityProviderAsync(providerName, providerType);
+                //if (identityProvider == null)
+                //{
+                //    // Backward compatibility: support legacy records stored as (blocks, oidc).
+                //    providerName = IdpConstants.BlocksProviderType;
+                //    providerType = IdpConstants.OidcProtocol;
+                //    identityProvider = await _authenticationRepository.GetIdentityProviderAsync(providerName, providerType);
+                //}
+
+                var identityProvider = await _authenticationRepository.GetIdentityProviderByClientAsync(clientId);
 
                 if (identityProvider == null || !identityProvider.IsActive)
                 {
-                    _logger.LogWarning($"Identity provider not found or inactive: {providerName} ({providerType})");
+                    _logger.LogWarning($"Identity provider not found or inactive for client: {clientId}");
                     return new BadRequestObjectResult(new { error = "invalid_provider", error_description = "Provider not found or not active" });
                 }
 
@@ -76,7 +78,7 @@ namespace Authentication.DomainService.Authentication
                     state,
                     nonce,
                     codeVerifier,
-                    provider = providerName,
+                    provider = identityProvider.Provider,
                     tenantId = effectiveTenantId,
                     clientId = identityProvider.ClientId,
                     redirectUri = identityProvider.RedirectUri,
@@ -88,7 +90,7 @@ namespace Authentication.DomainService.Authentication
                 // Build authorization URL
                 var authorizeUrl = BuildAuthorizeUrl(identityProvider, state, nonce, codeChallenge);
 
-                _logger.LogInformation($"Started authentication flow for provider {providerName} with state {state}");
+                _logger.LogInformation($"Started authentication flow for provider {identityProvider.Provider} with state {state}");
 
                 // Return authorize URL - Frontend will redirect to IdP
                 return new OkObjectResult(new { redirect_uri = authorizeUrl });
