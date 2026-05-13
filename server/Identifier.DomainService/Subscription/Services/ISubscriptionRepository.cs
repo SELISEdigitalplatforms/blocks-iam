@@ -1,6 +1,6 @@
-﻿using DomainService.Entities;
+using Identifier.DomainService.Entities;
 
-namespace DomainService.Subscription.Services
+namespace Identifier.DomainService.Subscription.Services
 {
     public interface ISubscriptionRepository
     {

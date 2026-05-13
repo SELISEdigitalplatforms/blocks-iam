@@ -1,5 +1,5 @@
-using DomainService.OAuth.RequestModel;
-using DomainService.OAuth.ResponseModel;
+using Authentication.DomainService.OAuth.RequestModel;
+using Authentication.DomainService.OAuth.ResponseModel;
 using FluentAssertions;
 using Iam.DomainService.Entities;
 using Microsoft.AspNetCore.Mvc;

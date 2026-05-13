@@ -1,4 +1,4 @@
-﻿namespace DomainService.Projects
+namespace Identifier.DomainService.Projects
 {
     public class UpdateAuthConfigRequest
     {

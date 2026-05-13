@@ -1,7 +1,7 @@
-﻿using Blocks.Genesis;
-using DomainService.Entities;
+using Blocks.Genesis;
+using Identifier.DomainService.Entities;
 
-namespace DomainService.Subscription.ResponseModel
+namespace Identifier.DomainService.Subscription.ResponseModel
 {
     public class GetSubscriptionsResponse : BaseResponse
     {

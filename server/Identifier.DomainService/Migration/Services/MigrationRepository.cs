@@ -1,10 +1,10 @@
 using Blocks.Genesis;
-using DomainService.Migration.Entities;
-using DomainService.Shared;
+using Identifier.DomainService.Migration.Entities;
+using Identifier.DomainService.Shared;
 using MongoDB.Driver;
 using MongoDB.Bson;
 
-namespace DomainService.Migration.Services
+namespace Identifier.DomainService.Migration.Services
 {
     public class MigrationRepository : IMigrationRepository
     {

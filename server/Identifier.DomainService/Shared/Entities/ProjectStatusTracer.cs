@@ -1,11 +1,11 @@
-﻿using MongoDB.Bson.Serialization.Attributes;
+using MongoDB.Bson.Serialization.Attributes;
 using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
 
-namespace DomainService.Entities
+namespace Identifier.DomainService.Entities
 {
     public class ProjectStatusTracer
     {

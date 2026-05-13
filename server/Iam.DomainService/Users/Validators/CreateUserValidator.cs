@@ -65,7 +65,8 @@ namespace Iam.DomainService.Users
 
         private async Task<bool> NotAnExistingUser(CreateUserRequest model, string userName, CancellationToken cancellationToken)
         {
-            var user = await _userRepository.GetUserByUserNameOrgIdAsync(userName, model.OrganizationId ?? "");
+            var organizationId = ResolveOrganizationId(model);
+            var user = await _userRepository.GetUserByUserNameOrgIdAsync(userName, organizationId);
 
             return user == null;
         }
@@ -99,8 +100,31 @@ namespace Iam.DomainService.Users
 
         private async Task<bool> BeAnUniqueEmail(CreateUserRequest model, string email, CancellationToken cancellationToken)
         {
-            var user = await _userRepository.GetUserByUserNameOrgIdAsync(email.ToLower(), model.OrganizationId ?? "");
+            var organizationId = ResolveOrganizationId(model);
+            var user = await _userRepository.GetUserByUserNameOrgIdAsync(email.ToLower(), organizationId);
             return user == null;
+        }
+
+        private static string ResolveOrganizationId(CreateUserRequest model)
+        {
+            if (!string.IsNullOrWhiteSpace(model.OrgId))
+            {
+                return model.OrgId;
+            }
+
+            var orgIdFromRoles = model.Roles.Keys.FirstOrDefault(key => !string.IsNullOrWhiteSpace(key));
+            if (!string.IsNullOrWhiteSpace(orgIdFromRoles))
+            {
+                return orgIdFromRoles;
+            }
+
+            var orgIdFromPermissions = model.Permissions.Keys.FirstOrDefault(key => !string.IsNullOrWhiteSpace(key));
+            if (!string.IsNullOrWhiteSpace(orgIdFromPermissions))
+            {
+                return orgIdFromPermissions;
+            }
+
+            return "default";
         }
 
         private static bool BeStartedWithPlusCharacter(string phoneNumber)

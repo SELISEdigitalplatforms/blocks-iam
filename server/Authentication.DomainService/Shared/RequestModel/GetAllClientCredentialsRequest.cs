@@ -1,9 +1,9 @@
-﻿using Blocks.Genesis;
+using Blocks.Genesis;
 
-namespace DomainService.Shared.RequestModel
+namespace Authentication.DomainService.Shared.RequestModel
 {
     public class GetAllClientCredentialsRequest : IProjectKey
     {
-        public string ProjectKey { get ; set ; }
+        public string? ProjectKey { get ; set ; }
     }
 }

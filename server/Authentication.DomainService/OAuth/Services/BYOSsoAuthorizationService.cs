@@ -1,12 +1,12 @@
-﻿using Blocks.Genesis;
-using DomainService.Entities;
-using DomainService.Services;
+using Blocks.Genesis;
+using Authentication.DomainService.Entities;
+using Authentication.DomainService.Services;
 using Iam.DomainService.Entities;
 using Iam.DomainService.Users;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
 
-namespace DomainService.OAuth.Services
+namespace Authentication.DomainService.OAuth.Services
 {
     public class BYOSsoAuthorizationService : SocialAuthorizationServiceBase
     {

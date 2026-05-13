@@ -1,4 +1,4 @@
-namespace DomainService.Dtos
+namespace Identifier.DomainService.Dtos
 {
     public class NotificationResponse
     {

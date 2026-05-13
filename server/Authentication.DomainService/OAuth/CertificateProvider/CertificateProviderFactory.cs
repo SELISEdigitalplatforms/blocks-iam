@@ -2,7 +2,7 @@
 using Blocks.Genesis;
 using Microsoft.Extensions.Logging;
 
-namespace DomainService.OAuth
+namespace Authentication.DomainService.OAuth
 {
     public class CertificateProviderFactory : ICertificateProviderFactory
     {

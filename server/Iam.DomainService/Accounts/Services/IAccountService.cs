@@ -1,4 +1,5 @@
 ﻿using Iam.DomainService.Shared.Entities;
+using Iam.DomainService.Entities;
 using Iam.DomainService.Users.RequestModel;
 using Iam.DomainService.Users.ResponseModel;
 
@@ -14,5 +15,7 @@ namespace Iam.DomainService.Accounts
         Task<ActivationCodeValidationResponse> ValidateAccountActivationCodeAsync(ValidateActivationCodeRequest validateActivationCodeRequest);
         Task<SaveSignUpSettingResponse> SaveSingUpSettingAsync(SaveSignUpSettingRequest request);
         Task<SignUpSetting> GetSignUpSettingAsync(GetSignUpSettingRequest request);
+        Task<BaseAccountResponse> UnlockAccountAsync(string userId); // Admin method to unlock a locked account
+        Task SendAccountLockedNotificationAsync(User user, DateTime lockoutUntilUtc); // Send email when account is locked
     }
 }
