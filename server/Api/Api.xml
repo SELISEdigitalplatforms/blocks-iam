@@ -593,7 +593,7 @@
             Initialize IDP controller with IDP service
             </summary>
         </member>
-        <member name="M:Api.Controllers.IdpController.InitiateAuthenticationFlow">
+        <member name="M:Api.Controllers.IdpController.InitiateAuthenticationFlow(System.String)">
             <summary>
             Initiate identity provider authentication flow
             Delegates to IDP service for OIDC param generation and URL building
