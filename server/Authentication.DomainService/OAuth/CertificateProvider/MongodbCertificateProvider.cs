@@ -1,9 +1,9 @@
-﻿using Blocks.Genesis;
-using DomainService.Entities;
+using Blocks.Genesis;
+using Authentication.DomainService.Entities;
 using Microsoft.Extensions.Logging;
 using MongoDB.Driver;
 
-namespace DomainService.OAuth
+namespace Authentication.DomainService.OAuth
 {
     public class MongodbCertificateProvider : ICertificateProvider
     {

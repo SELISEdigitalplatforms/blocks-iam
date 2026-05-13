@@ -1,9 +1,9 @@
 using Blocks.Genesis;
-using DomainService.Dtos;
-using DomainService.Entities;
-using DomainService.Services;
-using DomainService.Utilities;
-using DomainService.Worker;
+using Authentication.DomainService.Dtos;
+using Authentication.DomainService.Entities;
+using Authentication.DomainService.Services;
+using Authentication.DomainService.Utilities;
+using Authentication.DomainService.Worker;
 using FluentAssertions;
 using Iam.DomainService.Dtos;
 using Moq;

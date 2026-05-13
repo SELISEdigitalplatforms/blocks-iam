@@ -1,6 +1,6 @@
 ﻿using Blocks.Genesis;
-using DomainService.Dtos;
-using DomainService.People;
+using Identifier.DomainService.Dtos;
+using Identifier.DomainService.People;
 using System;
 using System.Collections.Generic;
 using System.Text;

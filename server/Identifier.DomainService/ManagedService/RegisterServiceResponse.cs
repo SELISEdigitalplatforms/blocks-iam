@@ -1,6 +1,6 @@
-﻿using Blocks.Genesis;
+using Blocks.Genesis;
 
-namespace DomainService.ManagedService
+namespace Identifier.DomainService.ManagedService
 {
     public class RegisterServiceResponse : BaseResponse
     {

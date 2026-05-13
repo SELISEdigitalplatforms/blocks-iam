@@ -1,9 +1,9 @@
-﻿using Blocks.Genesis;
-using DomainService.Entities;
-using DomainService.Subscription.Services;
+using Blocks.Genesis;
+using Identifier.DomainService.Entities;
+using Identifier.DomainService.Subscription.Services;
 using MongoDB.Driver;
 
-namespace DomainService.Subscription.Services
+namespace Identifier.DomainService.Subscription.Services
 {
     public class SubscriptionRepository : ISubscriptionRepository
     {

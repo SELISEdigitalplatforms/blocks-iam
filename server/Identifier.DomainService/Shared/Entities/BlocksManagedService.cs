@@ -1,7 +1,7 @@
-﻿using Blocks.Genesis;
+using Blocks.Genesis;
 using MongoDB.Bson.Serialization.Attributes;
 
-namespace DomainService.Shared.Entities
+namespace Identifier.DomainService.Shared.Entities
 {
     [BsonIgnoreExtraElements]
     public class BlocksManagedService : BaseEntity

@@ -1,10 +1,10 @@
-﻿using Blocks.Genesis;
-using DomainService.Shared.Services;
+using Blocks.Genesis;
+using Identifier.DomainService.Shared.Services;
 using MongoDB.Driver;
 using System.Numerics;
 using System.Text;
 
-namespace DomainService.Shared.Utilities;
+namespace Identifier.DomainService.Shared.Utilities;
 
 public class EncodingService : IEncodingService
 {

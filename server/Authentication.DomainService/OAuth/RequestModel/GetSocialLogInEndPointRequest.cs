@@ -1,4 +1,4 @@
-﻿namespace DomainService.OAuth.RequestModel
+namespace Authentication.DomainService.OAuth.RequestModel
 {
     public record GetSocialLogInEndPointRequest
     {
@@ -11,7 +11,7 @@
     public class GetSocialLogInEndPointResponse
     {
         public bool IsAResponse { get; set; }
-        public string ProviderUrl { get; set; }
-        public string Error { get; set; }
+        public string? ProviderUrl { get; set; }
+        public string? Error { get; set; }
     }
 }

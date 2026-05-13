@@ -1,10 +1,10 @@
-﻿using Blocks.Genesis;
-using DomainService.Certificate;
-using DomainService.Dtos;
-using DomainService.Entities;
-using DomainService.Shared;
-using DomainService.Shared.Entities;
-using DomainService.Shared.Services;
+using Blocks.Genesis;
+using Identifier.DomainService.Certificate;
+using Identifier.DomainService.Dtos;
+using Identifier.DomainService.Entities;
+using Identifier.DomainService.Shared;
+using Identifier.DomainService.Shared.Entities;
+using Identifier.DomainService.Shared.Services;
 using DomainService.Storage;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
@@ -14,7 +14,7 @@ using StorageDriver;
 using System.Net.Http.Headers;
 using System.Security.Cryptography.X509Certificates;
 
-namespace DomainService.Projects
+namespace Identifier.DomainService.Projects
 {
     public class ProjectManagementService : IProjectManagementService
     {

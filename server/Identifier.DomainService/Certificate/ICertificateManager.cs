@@ -1,7 +1,7 @@
-﻿using Blocks.Genesis;
+using Blocks.Genesis;
 using System.Security.Cryptography.X509Certificates;
 
-namespace DomainService.Certificate
+namespace Identifier.DomainService.Certificate
 {
     public interface ICertificateManager
     {

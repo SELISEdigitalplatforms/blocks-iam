@@ -1,8 +1,8 @@
-﻿using Blocks.Genesis;
-using DomainService.Dtos;
+using Blocks.Genesis;
+using Identifier.DomainService.Dtos;
 using MongoDB.Bson.Serialization.Attributes;
 
-namespace DomainService.People
+namespace Identifier.DomainService.People
 {
     public class GetPeoplesRequest : BaseGetsRequest<string>
     {
