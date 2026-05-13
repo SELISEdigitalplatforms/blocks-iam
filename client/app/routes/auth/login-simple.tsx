@@ -65,7 +65,8 @@ export default function LoginSimplePage() {
       setIsStarting(false);
     }
   };
-
+  
+  console.log(getRuntimeEnv("BLOCKS_X_BLOCKS_KEY"))
 
   return (
     <div className="relative flex min-h-screen flex-col bg-[hsl(var(--surface-app))]">
