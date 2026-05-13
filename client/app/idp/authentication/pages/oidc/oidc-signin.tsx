@@ -37,7 +37,7 @@ export const OIDCSignin = () => {
   const isOidcPasswordFlow = window.location.pathname.includes("/oidc/login");
   const urlClientId = searchParams.get("client_id");
   const urlRedirectUri = searchParams.get("redirect_uri");
-  const effectiveClientId = oidcContext.clientId || urlClientId || "";
+  const effectiveClientId =  urlClientId || "";
 
   useEffect(() => {
     if (!code || !state) {
@@ -90,7 +90,6 @@ export const OIDCSignin = () => {
       </div>
     );
   }
-
   // Pure OIDC password/email flow — centered single-column layout
   if (isOidcPasswordFlow && (oidcContext.clientId || urlClientId) && (oidcContext.redirectUri || urlRedirectUri)) {
     return (
