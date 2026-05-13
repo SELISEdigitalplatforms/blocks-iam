@@ -83,7 +83,7 @@ export function ImpersonateGuard({ children }: { children: React.ReactNode }) {
     stopImpersonation,
   ]);
 
-  if (!ready) return null;
+  if (selectedProject?.tenantId && !ready) return null;
 
   return <>{children}</>;
 }
