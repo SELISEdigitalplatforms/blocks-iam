@@ -44,6 +44,9 @@ namespace Iam.DomainService.Resources
         Task<bool> InsertRolesAsync(List<Role> roles);
         Task<bool> UpdateAllSamePermissionAsync(Permission permission);
         Task<List<Permission>> GetPermissionsByRoleAsync(string roleSlug, string organizationId);
+        Task<List<Permission>> GetPermissionsByRolesAsync(List<string> roleSlugs, string organizationId, int pageNumber = 1, int pageSize = 10);
+        Task<List<Permission>> GetPermissionsByGroupsAsync(List<string> groups, string organizationId, int pageNumber = 1, int pageSize = 10);
+        Task<List<Permission>> GetPermissionsByIdsAsync(List<string> ids);
         Task<bool> InsertPermissionsAsync(List<Permission> permissions);
     }
 }

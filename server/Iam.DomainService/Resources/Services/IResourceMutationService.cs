@@ -13,11 +13,13 @@ namespace Iam.DomainService.Resources
         Task<SetRolesResponse> SetRolesAsync(SetRolesRequest command);
         Task ExecuteResourceMutationCommandAsync(ResourceMutationEvent command);
         Task<bool> ProcessPermissionAsync(ResourceSetToPermissionMutationEvent command);
-        Task<BaseMutationResponse> CreateOrganizationAsync(CreateOrganizationRequest request);
+        Task<BaseMutationResponse> CreateOrganizationAsync(CreateOrganizationRequest request, string? creatorId = null);
         Task<BaseResponse> UpdateOrganizationAsync(string id, SaveOrganizationRequest request);
         Task<GetOrganizationsResponse> GetOrganizationsAsync(GetOrganizationsRequest request);
         Task<GetOrganizationResponse> GetOrganizationAsync(string id);
         Task<BaseResponse> SaveOrganizationConfigAsync(SaveOrganizationConfigRequest request);
         Task<Dictionary<string, object>> GetOrganizationConfigAsync();
+        Task<BaseResponse> AssignPermissionsToOrganizationAsync(AssignPermissionsToOrganizationRequest request);
+        Task<BaseResponse> AssignRolesToOrganizationAsync(AssignRolesToOrganizationRequest request);
     }
 }

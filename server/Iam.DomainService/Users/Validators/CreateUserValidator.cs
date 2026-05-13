@@ -107,9 +107,9 @@ namespace Iam.DomainService.Users
 
         private static string ResolveOrganizationId(CreateUserRequest model)
         {
-            if (!string.IsNullOrWhiteSpace(model.OrgId))
+            if (!string.IsNullOrWhiteSpace(model.OrganizationId))
             {
-                return model.OrgId;
+                return model.OrganizationId;
             }
 
             var orgIdFromRoles = model.Roles.Keys.FirstOrDefault(key => !string.IsNullOrWhiteSpace(key));

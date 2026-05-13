@@ -439,6 +439,40 @@ namespace Iam.DomainService.Resources
             return await collection.Find(filter).ToListAsync();
         }
 
+
+        public async Task<List<Permission>> GetPermissionsByRolesAsync(List<string> roleSlugs, string organizationId, int pageNumber = 1, int pageSize = 10)
+        {
+            var collection = _identityAccessManagementRepository.GetCollectionByName<Permission>("Permissions");
+
+            var filter = Builders<Permission>.Filter.Eq("OrganizationId", organizationId) &
+                        Builders<Permission>.Filter.In("Roles", roleSlugs) &
+                        Builders<Permission>.Filter.Eq("IsArchived", false);
+
+            var skip = (pageNumber - 1) * pageSize;
+            return await collection.Find(filter).Skip(skip).Limit(pageSize).ToListAsync();
+        }
+
+        public async Task<List<Permission>> GetPermissionsByGroupsAsync(List<string> groups, string organizationId, int pageNumber = 1, int pageSize = 10)
+        {
+            var collection = _identityAccessManagementRepository.GetCollectionByName<Permission>("Permissions");
+
+            var filter = Builders<Permission>.Filter.Eq("OrganizationId", organizationId) &
+                        Builders<Permission>.Filter.In("ResourceGroups", groups) &
+                        Builders<Permission>.Filter.Eq("IsArchived", false);
+
+            var skip = (pageNumber - 1) * pageSize;
+            return await collection.Find(filter).Skip(skip).Limit(pageSize).ToListAsync();
+        }
+
+        public async Task<List<Permission>> GetPermissionsByIdsAsync(List<string> ids)
+        {
+            var collection = _identityAccessManagementRepository.GetCollectionByName<Permission>("Permissions");
+
+            var filter = Builders<Permission>.Filter.In("ItemId", ids) &
+                        Builders<Permission>.Filter.Eq("IsArchived", false);
+            return await collection.Find(filter).ToListAsync();
+        }
+
         public async Task<bool> InsertPermissionsAsync(List<Permission> permissions)
         {
             var collection = _identityAccessManagementRepository.GetCollection<Permission>();
