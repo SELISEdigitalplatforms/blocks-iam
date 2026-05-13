@@ -394,7 +394,7 @@ export const OidcLoginForm = ({
       <div className="mt-3 flex items-center justify-center">
         <div className="flex items-center text-medium-emphasis">
           <p>Not a member?</p>
-          <Link to={signUpUrl} className="ml-2 inline-block text-sm text-primary pointers-event-none opacity-50 cursor-pointer-none" aria-disabled="true">
+          <Link to={signUpUrl} className="ml-2 inline-block text-sm text-primary pointers-event-none opacity-50 cursor-not-allowed" aria-disabled="true">
             Sign up
           </Link>
         </div>

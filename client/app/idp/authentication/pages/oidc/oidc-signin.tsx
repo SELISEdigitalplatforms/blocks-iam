@@ -1,7 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
-import { Loader } from "lucide-react";
-import { getRuntimeEnv } from "@/lib/runtime-env";
+import { KeyRound, Loader, Lock, ShieldCheck } from "lucide-react";
 import { showErrorToast } from "@/hooks/use-toast";
 import { useAuthStore } from "@/store/useAuthStore";
 import { Signin } from "@blocks-idp/authentication/pages/login";
@@ -9,7 +8,8 @@ import { oauthService } from "@blocks-idp/authentication/services/oauth.service"
 import { useOIDCContext } from "@/layouts/oidc-layout";
 import { buildOIDCNavigationUrl, getCurrentOIDCParams } from "@blocks-idp/authentication/utils/oidc-utils";
 import { OidcLoginForm } from "./oidc-login-form";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui-kits/card/card";
+import { Logo } from "@/components/logo";
+import { ModeToggle } from "@/components/mode-toggle/mode-toggle";
 
 export const OIDCSignin = () => {
   const [searchParams] = useSearchParams();
@@ -53,8 +53,6 @@ export const OIDCSignin = () => {
           clientId: oidcContext.clientId,
         });
 
-        // Root tenant FE uses only HttpOnly cookies; no token handling from response needed
-
         setAuthenticated();
 
         if ((response as any)?.enable_mfa) {
@@ -93,57 +91,92 @@ export const OIDCSignin = () => {
     );
   }
 
-  // Pure OIDC password/email flow - show if on /oidc/login with client_id param
+  // Pure OIDC password/email flow — centered single-column layout
   if (isOidcPasswordFlow && (oidcContext.clientId || urlClientId) && (oidcContext.redirectUri || urlRedirectUri)) {
     return (
-      <Card className="flex h-full flex-col rounded border-solid border-background shadow-none md:min-w-[448px] md:border-[#95ADC4] lg:max-w-md">
-        <CardHeader className="text-center">
-          <CardTitle className="text-3xl">Blocks Cloud</CardTitle>
-          <CardDescription className="text-xl text-foreground">Log in</CardDescription>
-        </CardHeader>
-        <CardContent className="flex flex-1 flex-col justify-between">
-          <div className="flex flex-1 flex-col justify-center">
-            <OidcLoginForm
-              clientId={effectiveClientId}
-              redirectUri={oidcContext.redirectUri || urlRedirectUri || ""}
-              scope={oidcContext.scope || searchParams.get("scope") || undefined}
-              state={oidcContext.state || searchParams.get("state") || undefined}
-              nonce={oidcContext.nonce || searchParams.get("nonce") || undefined}
-              tenantId={oidcContext.tenantId || searchParams.get("tenant_id") || undefined}
-              codeChallenge={searchParams.get("code_challenge") || undefined}
-              codeChallengeMethod={searchParams.get("code_challenge_method") || "S256"}
-            />
+      <div className="fixed inset-0 z-50 flex flex-col bg-[hsl(var(--surface-app))]">
+        {/* Background decorations */}
+        <div className="pointer-events-none absolute inset-0 overflow-hidden">
+          <div className="absolute -left-40 -top-40 h-96 w-96 rounded-full bg-primary/5 blur-3xl" />
+          <div className="absolute -bottom-40 right-10 h-80 w-80 rounded-full bg-primary/5 blur-3xl" />
+          <div className="absolute left-1/2 top-1/4 h-64 w-64 -translate-x-1/2 rounded-full bg-primary/3 blur-3xl" />
+        </div>
+
+        {/* Header — same as LoginSimplePage */}
+        <header className="relative z-10 flex items-center px-6 py-5 xl:px-[154px]">
+          <Logo width={120} height={52} />
+          <div className="absolute right-6 top-5 xl:right-[154px]">
+            <ModeToggle />
           </div>
-        </CardContent>
-      </Card>
+        </header>
+
+        {/* Main — centered */}
+        <main className="relative z-10 flex flex-1 flex-col items-center justify-center overflow-auto px-6 py-12">
+          <div className="w-full max-w-[420px]">
+
+            {/* Card */}
+            <div className="overflow-hidden rounded-2xl border border-[hsl(var(--border-default))] bg-[hsl(var(--card))] shadow-md">
+
+              {/* Card header — matches carousel card style */}
+              <div className="relative overflow-hidden bg-primary px-6 py-7">
+                <div className="absolute -right-8 -top-8 h-32 w-32 rounded-full bg-white/5" />
+                <div className="absolute -bottom-6 right-4 h-20 w-20 rounded-full bg-white/5" />
+                <span className="relative inline-flex items-center rounded-full bg-white/15 px-2.5 py-0.5 text-[10px] font-semibold uppercase tracking-widest text-primary-foreground/80">
+                  Secure Authentication
+                </span>
+                <div className="relative mt-3 flex items-center gap-3">
+                  {/* <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-white/20 backdrop-blur-sm">
+                    <ShieldCheck className="h-5 w-5 text-primary-foreground" />
+                  </div> */}
+                  <div>
+                    <h1 className="text-lg font-bold leading-tight text-primary-foreground">Blocks Identity Provider</h1>
+                    <p className="mt-0.5 text-xs text-primary-foreground/70">Sign in to continue</p>
+                  </div>
+                </div>
+              </div>
+
+              {/* Card body — form */}
+              <div className="p-6">
+                <OidcLoginForm
+                  clientId={effectiveClientId}
+                  redirectUri={oidcContext.redirectUri || urlRedirectUri || ""}
+                  scope={oidcContext.scope || searchParams.get("scope") || undefined}
+                  state={oidcContext.state || searchParams.get("state") || undefined}
+                  nonce={oidcContext.nonce || searchParams.get("nonce") || undefined}
+                  tenantId={oidcContext.tenantId || searchParams.get("tenant_id") || undefined}
+                  codeChallenge={searchParams.get("code_challenge") || undefined}
+                  codeChallengeMethod={searchParams.get("code_challenge_method") || "S256"}
+                />
+              </div>
+            </div>
+
+            {/* Trust row */}
+            <div className="mt-5 flex items-center justify-center gap-4">
+              <div className="flex items-center gap-1.5 text-[11px] text-[hsl(var(--low-emphasis))]">
+                <ShieldCheck className="h-3.5 w-3.5 text-primary/60" />
+                MFA Ready
+              </div>
+              <span className="h-3 w-px bg-[hsl(var(--border-default))]" />
+              <div className="flex items-center gap-1.5 text-[11px] text-[hsl(var(--low-emphasis))]">
+                <KeyRound className="h-3.5 w-3.5 text-primary/60" />
+                SSO Enabled
+              </div>
+              <span className="h-3 w-px bg-[hsl(var(--border-default))]" />
+              <div className="flex items-center gap-1.5 text-[11px] text-[hsl(var(--low-emphasis))]">
+                <Lock className="h-3.5 w-3.5 text-primary/60" />
+                Encrypted
+              </div>
+            </div>
+
+            {/* Copyright */}
+            <p className="mt-4 text-center text-[11px] text-[hsl(var(--low-emphasis))]">
+              © {new Date().getFullYear()} SELISE Digital Platforms. All rights reserved.
+            </p>
+          </div>
+        </main>
+      </div>
     );
   }
 
   return <Signin ssoError={ssoError} mode="oidc" oidcContext={contextPayload} />;
 };
-// import {
-//   Card,
-//   CardContent,
-//   CardDescription,
-//   CardHeader,
-//   CardTitle,
-// } from "@/components/ui-kits/card/card";
-
-// import { OidcSigninForm } from "./oidc-signin-form";
-
-// export const OIDCSignin = () => {
-//   return (
-//     <Card className="flex h-full flex-col rounded border-solid border-background shadow-none md:min-w-[448px] md:border-[#95ADC4] lg:max-w-md">
-//       <CardHeader className="text-center">
-//         <CardTitle className="text-3xl">Blocks Cloud</CardTitle>
-//         <CardDescription className="text-xl text-foreground">Log in</CardDescription>
-//       </CardHeader>
-//       <CardContent className="flex flex-1 flex-col justify-between">
-//         <div className="flex flex-1 flex-col justify-center">
-//           <OidcSigninForm />
-//         </div>
-//         <div className="mb-3 flex items-center justify-center"></div>
-//       </CardContent>
-//     </Card>
-//   );
-// };
