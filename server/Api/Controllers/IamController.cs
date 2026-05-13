@@ -9,7 +9,6 @@ using Iam.DomainService.Entities;
 using Iam.DomainService.Resources;
 using Iam.DomainService.Resources.RequestModel;
 using Iam.DomainService.Resources.ResponseModel;
-using Iam.DomainService.Shared.Entities;
 using Iam.DomainService.Users;
 using Iam.DomainService.Users.RequestModel;
 using Iam.DomainService.Users.ResponseModel;
@@ -51,33 +50,15 @@ namespace Api.Controllers
 
         #region Activity
 
-        /// <summary>
-        /// Get user sessions
-        /// Retrieves all active sessions for authenticated user
-        /// Shows device information, login time, and activity timestamps
-        /// </summary>
-        /// <param name="query">Query parameters for session filtering and pagination</param>
-        /// <returns>List of user sessions with metadata</returns>
-        /// <response code="200">Successfully retrieved sessions</response>
-        /// <response code="401">Authentication required</response>
         [HttpGet("sessions")]
-        [ProtectedEndPoint("blocks-idp::iam::getsessions")]
+        [ProtectedEndPoint("blocks-idp::getsessions")]
         public async Task<GetSessionsResponse> GetSessions([FromQuery] BaseActivityRequest query)
         {
             return await _userActivityService.GetSessionsAsync(query);
         }
 
-        /// <summary>
-        /// Get user activity history
-        /// Retrieves audit log of user actions, logins, and API calls
-        /// Shows complete activity trail with timestamps
-        /// </summary>
-        /// <param name="query">Query parameters for activity filtering and date range</param>
-        /// <returns>List of activity history entries</returns>
-        /// <response code="200">Successfully retrieved activity history</response>
-        /// <response code="401">Authentication required</response>
         [HttpGet("history")]
-        [ProtectedEndPoint("blocks-idp::iam::gethistories")]
+        [ProtectedEndPoint("blocks-idp::gethistories")]
         public async Task<GetHistorysResponse> GetHistories([FromQuery] BaseActivityRequest query)
         {
             return await _userActivityService.GetHistoriesAsync(query);
@@ -156,12 +137,28 @@ namespace Api.Controllers
             return await _resourceQueryService.GetRoleAsync(id);
         }
 
-        [HttpPost("roles/assign")]
-        [ProtectedEndPoint("blocks-idp::setroles")]
+        [HttpPost("roles/assign-permissions")]
+        [ProtectedEndPoint("blocks-idp::assign-roles-to-permission")]
         public async Task<IActionResult> SetRoles([FromBody] SetRolesRequest command)
         {
             var result = await _resourceMutationService.SetRolesAsync(command);
             return result.Success ? Ok(result) : BadRequest(result);
+        }
+
+        [HttpPost("permissions/assign-org")]
+        [ProtectedEndPoint("blocks-idp::assign-permissions-to-organization")]
+        public async Task<IActionResult> AssignPermissionsToOrganization([FromBody] AssignPermissionsToOrganizationRequest command)
+        {
+            var result = await _resourceMutationService.AssignPermissionsToOrganizationAsync(command);
+            return result.IsSuccess ? Ok(result) : BadRequest(result);
+        }
+
+        [HttpPost("roles/assign-org")]
+        [ProtectedEndPoint("blocks-idp::assign-roles-to-organization")]
+        public async Task<IActionResult> AssignRolesToOrganization([FromBody] AssignRolesToOrganizationRequest command)
+        {
+            var result = await _resourceMutationService.AssignRolesToOrganizationAsync(command);
+            return result.IsSuccess ? Ok(result) : BadRequest(result);
         }
 
         [HttpGet("resource-groups")]
@@ -175,69 +172,23 @@ namespace Api.Controllers
 
         #region User
 
-        /// <summary>
-        /// Create new user account
-        /// Registers new user with email, name, and optional roles
-        /// Sends activation email if email verification is required
-        /// </summary>
-        /// <param name="command">User creation request with profile and roles</param>
-        /// <returns>Created user with ID and profile information</returns>
-        /// <response code="200">User created successfully</response>
-        /// <response code="400">Invalid user data or duplicate email</response>
-        /// <response code="401">Authentication required</response>
         [HttpPost("users/create")]
-        [ProtectedEndPoint("blocks-idp::iam::create")]
+        [ProtectedEndPoint("blocks-idp::createuser")]
         public async Task<IActionResult> Create([FromBody] CreateUserRequest command)
         {
             var result = await _userManagementMutationService.CreateUserAsync(command);
             return result.IsSuccess ? Ok(result) : BadRequest(result);
         }
 
-        [HttpPost("users")]
-        [ProtectedEndPoint("blocks-idp::iam::create")]
-        public async Task<IActionResult> CreateUser([FromBody] CreateUserRequest command)
-        {
-            var result = await _userManagementMutationService.CreateUserAsync(command);
-            return result.IsSuccess ? Ok(result) : BadRequest(result);
-        }
-
-        /// <summary>
-        /// Update user account information
-        /// Modifies user profile, email, name, and other metadata
-        /// Does not modify user's roles (use Assign Roles endpoint)
-        /// </summary>
-        /// <param name="command">User update request with new profile data</param>
-        /// <returns>Updated user information</returns>
-        /// <response code="200">User updated successfully</response>
-        /// <response code="400">Invalid update data or user not found</response>
-        /// <response code="401">Authentication required</response>
-        [HttpPost("users/update")]
-        [ProtectedEndPoint("blocks-idp::iam::update")]
-        public async Task<IActionResult> Update([FromBody] UpdateUserRequest command)
-        {
-            var result = await _userManagementMutationService.UpdateUserAsync(command);
-            return result.IsSuccess ? Ok(result) : BadRequest(result);
-        }
-
-        [HttpPatch("users/{id}")]
-        [ProtectedEndPoint("blocks-idp::iam::update")]
-        public async Task<IActionResult> UpdateUser([FromRoute] string id, [FromBody] UpdateUserRequest command)
+        [HttpPost("users/{id}")]
+        [ProtectedEndPoint("blocks-idp::updateuser")]
+        public async Task<IActionResult> Update([FromRoute] string id, [FromBody] UpdateUserRequest command)
         {
             command.ItemId = id;
             var result = await _userManagementMutationService.UpdateUserAsync(command);
             return result.IsSuccess ? Ok(result) : BadRequest(result);
         }
 
-        /// <summary>
-        /// Deactivate user account
-        /// Revokes all active sessions and disables login
-        /// User data is preserved for re-activation
-        /// </summary>
-        /// <param name="request">Request with user ID to deactivate</param>
-        /// <returns>Deactivation confirmation</returns>
-        /// <response code="200">User deactivated successfully</response>
-        /// <response code="400">User not found or already inactive</response>
-        /// <response code="401">Authentication required</response>
         [HttpPost("users/deactivate")]
         [Authorize]
         public async Task<IActionResult> Deactivate([FromBody] DeactivateUserRequest request)
@@ -246,204 +197,65 @@ namespace Api.Controllers
             return result.IsSuccess ? Ok(result) : BadRequest(result);
         }
 
-        [HttpPatch("users/{id}/deactivate")]
-        [Authorize]
-        public async Task<IActionResult> DeactivateUser([FromRoute] string id)
-        {
-            var result = await _userManagementMutationService.DeactivateUserAsync(new DeactivateUserRequest
-            {
-                UserId = id
-            });
-            return result.IsSuccess ? Ok(result) : BadRequest(result);
-        }
-
-        /// <summary>
-        /// Update authenticated user's own account
-        /// Allows users to modify their profile without admin privileges
-        /// Restricted to user's own account only
-        /// </summary>
-        /// <param name="command">Update request with user's new profile data</param>
-        /// <returns>Updated user information</returns>
-        /// <response code="200">Account updated successfully</response>
-        /// <response code="400">Invalid update data</response>
-        /// <response code="401">Authentication required</response>
-        [HttpPost("account/update")]
-        [ProtectedEndPoint("blocks-idp::iam::updateaccount")]
-        public async Task<IActionResult> UpdateAccount([FromBody] UpdateUserRequest command)
-        {
-            var result = await _userManagementMutationService.UpdateUserAsync(command);
-            return result.IsSuccess ? Ok(result) : BadRequest(result);
-        }
-
-        /// <summary>
-        /// Get users list with filtering
-        /// Retrieves multiple users with pagination and search
-        /// Shows user profiles with status and role assignments
-        /// </summary>
-        /// <param name="query">Query filters, pagination, and search criteria</param>
-        /// <returns>Paginated users list</returns>
-        /// <response code="200">Successfully retrieved users</response>
-        /// <response code="401">Authentication required</response>
-        [HttpPost("users/search")]
-        [ProtectedEndPoint("blocks-idp::iam::getusers")]
-        public async Task<GetUsersResponse> SearchUsers([FromBody] GetUsersRequest query)
-        {
-            return await _userManagementQueryService.GetUsersAsync(query);
-        }
-
         [HttpGet("users")]
-        [ProtectedEndPoint("blocks-idp::iam::getusers")]
+        [ProtectedEndPoint("blocks-idp::getusers")]
         public async Task<GetUsersResponse> GetUsers([FromQuery] GetUsersRequest query)
         {
             return await _userManagementQueryService.GetUsersAsync(query);
         }
 
-        /// <summary>
-        /// Get single user details
-        /// Retrieves complete user profile information
-        /// Shows all roles and basic permissions
-        /// </summary>
-        /// <param name="query">Request with user ID</param>
-        /// <returns>Detailed user information with profile</returns>
-        /// <response code="200">Successfully retrieved user</response>
-        /// <response code="401">Authentication required</response>
-        /// <response code="404">User not found</response>
-        [HttpGet("user")]
-        [ProtectedEndPoint("blocks-idp::iam::getuser")]
-        public async Task<GetUserResponse> GetUser([FromQuery] GetUserRequest query)
-        {
-            return await _userManagementQueryService.GetUserAsync(query.Id);
-        }
-
         [HttpGet("users/{id}")]
         [ProtectedEndPoint("blocks-idp::iam::getuser")]
-        public async Task<GetUserResponse> GetUserById([FromRoute] string id)
+        public async Task<GetUserResponse> GetUser([FromRoute] string id)
         {
             return await _userManagementQueryService.GetUserAsync(id);
         }
 
-        /// <summary>
-        /// Get roles assigned to user
-        /// Retrieves all roles with detailed permission lists
-        /// Shows complete permission set inherited from roles
-        /// </summary>
-        /// <param name="query">Request with user ID</param>
-        /// <returns>List of user's roles with permissions</returns>
-        /// <response code="200">Successfully retrieved user roles</response>
-        /// <response code="401">Authentication required</response>
-        /// <summary>
-        /// Get accounts list (organizations the user belongs to)
-        /// Retrieves all organizations/accounts the user has access to
-        /// Shows membership status and roles in each account
-        /// </summary>
-        /// <param name="query">Query filters and pagination options</param>
-        /// <returns>List of user's accounts with roles</returns>
-        /// <response code="200">Successfully retrieved accounts</response>
-        /// <response code="401">Authentication required</response>
-        [HttpPost("accounts")]
-        [ProtectedEndPoint("blocks-idp::iam::getaccounts")]
-        public async Task<GetAccountsResponse> GetAccounts([FromBody] GetAccountsRequest query)
-        {
-            return await _userManagementQueryService.GetAccountsAsync(query);
-        }
-
-        /// <summary>
-        /// Get authenticated user's current account details
-        /// Retrieves account information for the authenticated user
-        /// Shows current organization membership
-        /// </summary>
-        /// <returns>Current account information and profile</returns>
-        /// <response code="200">Successfully retrieved account</response>
-        /// <response code="401">Authentication required</response>
-        [HttpGet("account")]
-        [ProtectedEndPoint("blocks-idp::iam::getaccount")]
-        public async Task<GetAccountResponse> GetAccount()
-        {
-            return await _userManagementQueryService.GetAccountAsync();
-        }
-
-        /// <summary>
-        /// Get authenticated user's roles in current account
-        /// Retrieves roles with full permission details
-        /// Shows effective permissions in current context
-        /// </summary>
-        /// <returns>User's roles in current account</returns>
-        /// <response code="200">Successfully retrieved account roles</response>
-        /// <response code="401">Authentication required</response>
         [HttpGet("me")]
-        [ProtectedEndPoint("blocks-idp::iam::getaccount")]
+        [ProtectedEndPoint("blocks-idp::getmyaccount")]
         public async Task<GetAccountResponse> GetMyAccount()
         {
             return await _userManagementQueryService.GetAccountAsync();
         }
 
         [HttpPatch("me")]
-        [ProtectedEndPoint("blocks-idp::iam::updateaccount")]
+        [ProtectedEndPoint("blocks-idp::updatemyaccount")]
         public async Task<IActionResult> UpdateMyAccount([FromBody] UpdateUserRequest command)
         {
             var bc = BlocksContext.GetContext();
-            command.ItemId = bc?.UserId ?? command.ItemId;
+            command.ItemId = bc?.UserId;
             var result = await _userManagementMutationService.UpdateUserAsync(command);
             return result.IsSuccess ? Ok(result) : BadRequest(result);
         }
 
-        /// <summary>
-        /// Save roles and permissions configuration
-        /// Bulk operation to set roles and permissions in single call
-        /// Use for migration or batch updates
-        /// </summary>
-        /// <param name="command">Configuration with roles and permissions</param>
-        /// <returns>Update result and summary</returns>
-        /// <response code="200">Roles and permissions saved successfully</response>
-        /// <response code="400">Invalid configuration</response>
-        /// <response code="401">Authentication required</response>
-        [HttpPost("users/access")]
-        [ProtectedEndPoint("blocks-idp::iam::saverolesandpermissions")]
-        public async Task<IActionResult> SaveUserAccess(SaveRolesAndPermissionsRequest command)
-        {
-            var result = await _userManagementMutationService.SaveRolesAndPermissionsAsync(command);
-            return result.IsSuccess ? Ok(result) : BadRequest(result);
-        }
-
-        [HttpPost("roles-permissions")]
-        [ProtectedEndPoint("blocks-idp::iam::saverolesandpermissions")]
+        [HttpPost("users/roles-and-permissions")]
+        [ProtectedEndPoint("blocks-idp::role-and-permission-management")]
         public async Task<IActionResult> SaveRolesAndPermissions(SaveRolesAndPermissionsRequest command)
         {
             var result = await _userManagementMutationService.SaveRolesAndPermissionsAsync(command);
             return result.IsSuccess ? Ok(result) : BadRequest(result);
         }
 
-        /// <summary>
-        /// Check if email address is available for registration
-        /// Validates email uniqueness across the system
-        /// Use for real-time form validation
-        /// </summary>
-        /// <param name="query">Request with email to check</param>
-        /// <returns>Availability status (available/taken)</returns>
-        /// <response code="200">Email availability status returned</response>
-        /// <response code="400">Invalid email format</response>
+        [HttpPost("users/org-update")]
+        [ProtectedEndPoint("blocks-idp::update-organization-user")]
+        public async Task<IActionResult> UpdateOrganizationUser(UpdateOrganizationUserRequest command)
+        {
+            var result = await _userManagementMutationService.UpdateOrganizationUserAsync(command);
+            return result.IsSuccess ? Ok(result) : BadRequest(result);
+        }
+
         [HttpGet("email/available")]
-        public async Task<IActionResult> IsEmailAvaiable([FromQuery] IsEmailAvaiableRequest query)
+        public async Task<IActionResult> IsEmailAvailable([FromQuery] IsEmailAvailableRequest query)
         {
             var result = await _userManagementQueryService.IsUserAvailableAsync(query);
-            return Ok(new IsEmailAvaiableResponse
+            return Ok(new IsEmailAvailableResponse
             {
                 IsAvailable = result
             });
         }
 
-        /// <summary>
-        /// Get user activity timeline (audit log)
-        /// Retrieves chronological record of user's actions
-        /// Shows logins, API calls, permission changes, etc.
-        /// </summary>
-        /// <param name="request">Query parameters for time range and filters</param>
-        /// <returns>List of user timeline events</returns>
-        /// <response code="200">Successfully retrieved user timeline</response>
-        /// <response code="401">Authentication required</response>
-        [Authorize]
-        [ProtectedEndPoint("blocks-idp::iam::getusertimelines")]
-        [HttpGet("user/timelines")]
+        [HttpGet("users/timeline")]
+        [ProtectedEndPoint("blocks-idp::users-timeline")]
         public async Task<List<UserTimeline>> GetUserTimelines(GetUserTimeLineRequest request)
         {
             return await _userManagementQueryService.GetUserTimelinesAsync(request);

@@ -1,10 +1,8 @@
-﻿using Blocks.Genesis;
-using Iam.DomainService.Entities;
-using System.Text.Json.Serialization;
+﻿using Iam.DomainService.Entities;
 
 namespace Iam.DomainService.Users
 {
-    public class CreateUserRequest : IProjectKey
+    public class CreateUserRequest
     {
         public string? Language { get; set; } = "en-US";
         public List<string>? Tags { get; set; }
@@ -25,19 +23,9 @@ namespace Iam.DomainService.Users
         public UserMfaType UserMfaType { get; set; } = UserMfaType.TOTP;
         public bool MfaEnabled { get; set; }
         public List<UserLogInType> AllowedLogInType { get; set; } = new List<UserLogInType> { UserLogInType.Password };
-        public Dictionary<string, List<string>> Roles { get; set; } = new();
-        public Dictionary<string, List<string>> Permissions { get; set; } = new();
-        public string? ProjectKey { get; set; }
-
-        [JsonPropertyName("org_id")]
-        public string? OrgId { get; set; }
-
-        [JsonIgnore]
-        public string? OrganizationId
-        {
-            get => OrgId;
-            set => OrgId = value;
-        }
+        public List<string> Roles { get; set; } = new();
+        public List<string> Permissions { get; set; } = new();
+        public string? OrganizationId { get; set; } = "default";
     }
 
 }

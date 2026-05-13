@@ -1,6 +1,4 @@
-﻿using Blocks.Genesis;
-
-namespace Iam.DomainService.Users.RequestModel
+﻿namespace Iam.DomainService.Users.RequestModel
 {
     public class SaveSignUpSettingRequest
     {

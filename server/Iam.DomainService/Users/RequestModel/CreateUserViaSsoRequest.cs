@@ -1,9 +1,8 @@
-﻿using Blocks.Genesis;
-using Iam.DomainService.Entities;
+﻿using Iam.DomainService.Entities;
 
 namespace Iam.DomainService.Users
 {
-    public class CreateUserViaSsoRequest : IProjectKey
+    public class CreateUserViaSsoRequest
     {
         public string? Language { get; set; } = "en-US";
         public required string Email { get; set; }
@@ -20,7 +19,6 @@ namespace Iam.DomainService.Users
         public List<UserLogInType> AllowedLogInType { get; set; } = new List<UserLogInType> { UserLogInType.SSO };
         public Dictionary<string, List<string>> Roles { get; set; } = new();
         public Dictionary<string, List<string>> Permissions { get; set; } = new();
-        public required string ProjectKey { get; set; }
         public bool Active { get; set; } = true;
         public bool IsVerified { get; set; } = true;
         public string? ExternalUserId { get; set; }

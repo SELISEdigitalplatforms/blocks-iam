@@ -167,7 +167,7 @@ namespace Iam.DomainService.Users
         {
             var builder = Builders<User>.Filter;
             var filters = new List<FilterDefinition<User>>();
-            var contextOrgId = ResolveOrganizationId(filter?.OrgId);
+            var contextOrgId = ResolveOrganizationId(filter?.OrganizationId);
 
             filters.Add(builder.AnyEq("OrganizationIds", contextOrgId));
 
@@ -215,9 +215,6 @@ namespace Iam.DomainService.Users
             if (filter.UserIds is not null && filter.UserIds.Count > 0)
                 filters.Add(builder.In("_id", filter.UserIds));
 
-            if (!string.IsNullOrWhiteSpace(filter.OrgId))
-                filters.Add(builder.AnyEq("OrganizationIds", contextOrgId));
-
             return filters.Any() ? builder.And(filters) : builder.Empty;
         }
 
@@ -252,7 +249,10 @@ namespace Iam.DomainService.Users
         {
             var collection = _identityAccessManagementRepository.GetCollection<UserTimeline>();
             var builder = Builders<UserTimeline>.Filter;
-            var filter = FilterDefinition<UserTimeline>.Empty;
+            var contextOrgId = ResolveOrganizationId(null);
+            var userId = BlocksContext.GetContext()?.UserId;
+            var filter = FilterDefinition<UserTimeline>.Equals(x => x.OrganizationId, contextOrgId)
+                         & builder.Eq(x => x.UserId, userId);
 
             if (!string.IsNullOrWhiteSpace(request?.Filter.Event))
                 filter = builder.Eq(x => x.Event, request.Filter.Event);
@@ -314,13 +314,18 @@ namespace Iam.DomainService.Users
 
         private static string ResolveOrganizationId(string? requestedOrgId = null)
         {
+            var orgId = BlocksContext.GetContext()?.OrganizationId;
+            orgId = string.IsNullOrWhiteSpace(orgId) ? "default" : orgId;
+
             if (!string.IsNullOrWhiteSpace(requestedOrgId))
             {
-                return requestedOrgId;
+                if (orgId == "default" || orgId == requestedOrgId)
+                {
+                    return requestedOrgId;
+                }
             }
 
-            var orgId = BlocksContext.GetContext()?.OrganizationId;
-            return string.IsNullOrWhiteSpace(orgId) ? "default" : orgId;
+            return orgId;
         }
     }
 }

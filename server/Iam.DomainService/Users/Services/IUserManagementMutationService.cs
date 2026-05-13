@@ -16,5 +16,6 @@ namespace Iam.DomainService.Users
         Task ExecuteUserMutationViaSsoCommandAsync(CreateUserViaSsoEvent command);
         Task<bool> ProcessCreateUserByEmailAfterActionAsync(CreateUserByEmailEvent @event, string userId);
         Task<BaseResponse> DeactivateUserAsync(DeactivateUserRequest request);
+        Task<BaseMutationResponse> UpdateOrganizationUserAsync(UpdateOrganizationUserRequest command);
     }
 }
