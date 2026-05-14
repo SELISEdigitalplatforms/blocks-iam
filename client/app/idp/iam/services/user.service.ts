@@ -1,6 +1,5 @@
 import { http } from "@/lib/http-client";
 import { parseMongoDBString } from "@/lib/utils";
-import { API_BASES } from "@/constants/endpoint.constant";
 import {
   IAccountResendActivationPayload,
   IAccountResendActivationResponse,
