@@ -2,9 +2,7 @@ using Blocks.Genesis;
 using Cloud.DomainService.Utilities;
 using Authentication.DomainService.Utilities;
 using Identifier.DomainService.Shared;
-using FluentValidation.AspNetCore;
 using Microsoft.AspNetCore.Http.Features;
-using Microsoft.Extensions.Configuration;
 using CloudConfiguration.DomainService.Shared.Utilities;
 
 var builder = WebApplication.CreateBuilder(args);
