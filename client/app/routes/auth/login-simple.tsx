@@ -44,8 +44,12 @@ export default function LoginSimplePage() {
       if (isStarting) return;
       setIsStarting(true);
 
-      const blocksKey = getRuntimeEnv("BLOCKS_X_BLOCKS_KEY");
-      const clientId = getRuntimeEnv("BLOCKS_OIDC_CLIENT_ID");
+      // const blocksKey = getRuntimeEnv("BLOCKS_X_BLOCKS_KEY");
+      // const clientId = getRuntimeEnv("BLOCKS_OIDC_CLIENT_ID");
+
+       const blocksKey ="f080a1bea04280a72149fd689d50a48c";
+      const clientId = "57214b67-aa9c-4307-92ab-a25e35180fac";
+
       const initiateUrl = `${API_BASES.IDP}/idp/initiate?x-blocks-key=${blocksKey}&clientId=${clientId}`;
       const headers: Record<string, string> = {};
       if (blocksKey) headers["X-Blocks-Key"] = blocksKey;
