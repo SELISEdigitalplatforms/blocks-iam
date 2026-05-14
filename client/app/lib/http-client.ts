@@ -6,7 +6,6 @@ import {
   AUTH_ENDPOINTS,
   AUTH_OIDC_ENDPOINTS,
 } from "@/idp/authentication/constants/endpoint.constant";
-import { API_BASES } from "@/constants/endpoint.constant";
 
 class HttpError extends Error {
   status: number;
