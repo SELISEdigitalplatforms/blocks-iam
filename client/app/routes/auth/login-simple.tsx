@@ -48,7 +48,7 @@ export default function LoginSimplePage() {
       // const clientId = getRuntimeEnv("BLOCKS_OIDC_CLIENT_ID");
 
        const blocksKey ="***REMOVED***";
-      const clientId = "57214b67-aa9c-4307-92ab-a25e35180fac";
+      const clientId = "a5831e15-e193-4a4f-8e10-d04a4ad1705b";
 
       const initiateUrl = `${API_BASES.IDP}/idp/initiate?x-blocks-key=${blocksKey}&clientId=${clientId}`;
       const headers: Record<string, string> = {};
