@@ -9,7 +9,7 @@ const IAM_CONFIG_SUBPATH = "/IAM";
 // ─── User endpoints (user.service) ──────────────────────────────────────────
 
 export const USER_ENDPOINTS = {
-  GET_USERS: `${API_BASES.IDP}${IAM_SUBPATH}/GetUsers`,
+  GET_USERS: `${API_BASES.IDP}${IAM_SUBPATH}/users`,
   // GET_USER: `${API_BASES.IDP}${IAM_SUBPATH}/GetUser`,
   GET_USER: `${API_BASES.IDP}${IAM_SUBPATH}/user`,
   CREATE: `${API_BASES.IDP}${IAM_SUBPATH}/Create`,
@@ -39,11 +39,11 @@ export const ACCOUNT_ENDPOINTS = {
 // ─── Role endpoints (role.service) ──────────────────────────────────────────
 
 export const ROLE_ENDPOINTS = {
-  GET_ROLES: `${API_BASES.IDP}${IAM_SUBPATH}/GetRoles`,
-  GET_ROLE: `${API_BASES.IDP}${IAM_SUBPATH}/GetRole`,
-  CREATE_ROLE: `${API_BASES.IDP}${IAM_SUBPATH}/CreateRole`,
-  UPDATE_ROLE: `${API_BASES.IDP}${IAM_SUBPATH}/UpdateRole`,
-  SET_ROLES: `${API_BASES.IDP}${IAM_SUBPATH}/SetRoles`,
+  GET_ROLES: `${API_BASES.IDP}${IAM_SUBPATH}/roles`,
+  GET_ROLE: `${API_BASES.IDP}${IAM_SUBPATH}/role`,
+  CREATE_ROLE: `${API_BASES.IDP}${IAM_SUBPATH}/roles/create`,
+  UPDATE_ROLE: `${API_BASES.IDP}${IAM_SUBPATH}/roles/update`,
+  SET_ROLES: `${API_BASES.IDP}${IAM_SUBPATH}/roles/assign`,
 } as const;
 
 // ─── Permission endpoints (permission.service) ─────────────────────────────
