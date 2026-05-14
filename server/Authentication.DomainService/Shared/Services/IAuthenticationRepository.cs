@@ -33,6 +33,9 @@ namespace Authentication.DomainService.Services
         Task<IdentityProvider?> GetIdentityProviderAsync(string provider);
         Task<IdentityProvider?> GetIdentityProviderAsync(string provider, string providerType);
         Task<IdentityProvider?> GetIdentityProviderByIdAsync(string id);
+        Task<IdentityProvider?> GetIdentityProviderByClientIdAsync(string clientId);
+        Task<IdentityProvider?> GetIdentityProviderByClientIdAndRedirectUriAsync(string clientId, string redirectUri);
+        Task<List<IdentityProvider>> GetIdentityProvidersByClientIdAsync(string clientId);
         Task<IdentityProvider> CreateIdentityProviderAsync(IdentityProvider provider);
         Task<IdentityProvider> UpdateIdentityProviderAsync(IdentityProvider provider);
         Task DeleteIdentityProviderAsync(string id);

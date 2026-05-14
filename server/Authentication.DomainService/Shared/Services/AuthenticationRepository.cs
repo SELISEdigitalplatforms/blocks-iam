@@ -249,6 +249,30 @@ namespace Authentication.DomainService.Services
             return await collection.Find(filter).FirstOrDefaultAsync();
         }
 
+        public async Task<IdentityProvider?> GetIdentityProviderByClientIdAsync(string clientId)
+        {
+            var collection = GetCollection<IdentityProvider>();
+            var filter = Builders<IdentityProvider>.Filter.Eq(x => x.ClientId, clientId);
+            return await collection.Find(filter).FirstOrDefaultAsync();
+        }
+
+        public async Task<IdentityProvider?> GetIdentityProviderByClientIdAndRedirectUriAsync(string clientId, string redirectUri)
+        {
+            var collection = GetCollection<IdentityProvider>();
+            var filter = Builders<IdentityProvider>.Filter.And(
+                Builders<IdentityProvider>.Filter.Eq(x => x.ClientId, clientId),
+                Builders<IdentityProvider>.Filter.AnyEq(x => x.RedirectUris, redirectUri));
+            return await collection.Find(filter).FirstOrDefaultAsync();
+        }
+
+        public async Task<List<IdentityProvider>> GetIdentityProvidersByClientIdAsync(string clientId)
+        {
+            var collection = GetCollection<IdentityProvider>();
+            var filter = Builders<IdentityProvider>.Filter.Eq(x => x.ClientId, clientId);
+            var cursor = await collection.FindAsync(filter);
+            return await cursor.ToListAsync();
+        }
+
         public async Task<IdentityProvider?> GetIdentityProviderAsync(string provider, string providerType)
         {
             var collection = GetCollection<IdentityProvider>();
