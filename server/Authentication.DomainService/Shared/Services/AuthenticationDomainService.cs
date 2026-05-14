@@ -165,9 +165,9 @@ namespace Authentication.DomainService.Services
             }
 
             var redirectUris = request.RedirectUris.Where(x => !string.IsNullOrWhiteSpace(x)).Distinct(StringComparer.OrdinalIgnoreCase).ToList();
-            if (redirectUris.Count == 0 && !string.IsNullOrWhiteSpace(request.RedirectUri))
+            if (redirectUris.Count == 0)
             {
-                redirectUris = [request.RedirectUri];
+                redirectUris = new() { request.RedirectUri };
             }
 
             var allowedServiceAccessResources = request.AllowedServiceAccessResources.Where(x => !string.IsNullOrWhiteSpace(x)).Distinct(StringComparer.OrdinalIgnoreCase).ToList();
