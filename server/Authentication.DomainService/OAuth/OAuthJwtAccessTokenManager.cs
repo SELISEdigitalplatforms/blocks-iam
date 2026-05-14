@@ -71,16 +71,6 @@ namespace Authentication.DomainService.OAuth
                 };
             }
 
-            if (!TenantDomainPolicy.IsOriginAllowed(tokenRequest.Request, tenant))
-            {
-                return new TokenResponse
-                {
-                    Error = "invalid_origin",
-                    ErrorDescription = "Request origin is not allowed for this tenant",
-                    StatusCode = 400
-                };
-            }
-
             var issuanceContext = new TokenIssuanceContext
             {
                 IsImpersonation = tokenRequest.IsImpersonation,
@@ -100,6 +90,7 @@ namespace Authentication.DomainService.OAuth
 
             var accessToken = CreateJwtAccessToken(jwtAccessToken);
             var (refreshToken, refreshValidity) = await ManageRefreshTokenAsync(tokenRequest, jwtAccessToken, authenticationConfiguration, tenant, user);
+            var (_, cookieDomain, _) = DomainResolver.ResolveDomain(tenant, tokenRequest.Request, null);
 
             return new TokenResponse
             {
@@ -108,7 +99,7 @@ namespace Authentication.DomainService.OAuth
                 ExpiresUtc = jwtAccessToken.Expires,
                 RefreshToken = refreshToken,
                 RefreshExpiresUtc = refreshValidity,
-                CookieDomain = tenant.CookieDomain,
+                CookieDomain = cookieDomain,
                 StatusCode = 200
             };
         }

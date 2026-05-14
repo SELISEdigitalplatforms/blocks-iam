@@ -64,7 +64,7 @@ namespace Authentication.DomainService.OAuth
                 AccessTokenValidForNumberMinute = authenticationConfiguration.AccessTokenValidForNumberMinutes,
                 RememberMeRefreshTokenValidForNumberMinute = authenticationConfiguration.RememberMeRefreshTokenValidForNumberMinutes,
                 Issuer = tenant.JwtTokenParameters.Issuer,
-                Audience = TenantDomainPolicy.GetAudience(tenant),
+                Audience = DomainResolver.GetAudience(tenant),
                 NotBefore = DateTime.UtcNow,
                 Expires = DateTime.UtcNow.AddMinutes(authenticationConfiguration.AccessTokenValidForNumberMinutes),
                 SigningCredentials = MakeSigningCredentials(certificate, tenant.JwtTokenParameters.PrivateCertificatePassword)

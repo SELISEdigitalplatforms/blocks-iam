@@ -34,7 +34,7 @@ namespace Authentication.DomainService.Oidc.Repositories
         {
             try
             {
-                var collection = GetDatabase().GetCollection<RefreshTokenModel>("refresh_tokens");
+                var collection = GetDatabase().GetCollection<RefreshTokenModel>("IdpRefreshTokens");
                 await collection.InsertOneAsync(token);
                 _logger.LogInformation($"Refresh token created for user {token.UserId}, client {token.ClientId}, family {token.FamilyId}");
                 return token.TokenId;
@@ -50,7 +50,7 @@ namespace Authentication.DomainService.Oidc.Repositories
         {
             try
             {
-                var collection = GetDatabase().GetCollection<RefreshTokenModel>("refresh_tokens");
+                var collection = GetDatabase().GetCollection<RefreshTokenModel>("IdpRefreshTokens");
                 var filter = Builders<RefreshTokenModel>.Filter.Eq(t => t.TokenId, tokenId);
                 return await collection.Find(filter).FirstOrDefaultAsync();
             }
@@ -65,7 +65,7 @@ namespace Authentication.DomainService.Oidc.Repositories
         {
             try
             {
-                var collection = GetDatabase().GetCollection<RefreshTokenModel>("refresh_tokens");
+                var collection = GetDatabase().GetCollection<RefreshTokenModel>("IdpRefreshTokens");
                 var filter = Builders<RefreshTokenModel>.Filter.And(
                     Builders<RefreshTokenModel>.Filter.Eq(t => t.UserId, userId),
                     Builders<RefreshTokenModel>.Filter.Eq(t => t.TenantId, tenantId)
@@ -83,7 +83,7 @@ namespace Authentication.DomainService.Oidc.Repositories
         {
             try
             {
-                var collection = GetDatabase().GetCollection<RefreshTokenModel>("refresh_tokens");
+                var collection = GetDatabase().GetCollection<RefreshTokenModel>("IdpRefreshTokens");
                 var filter = Builders<RefreshTokenModel>.Filter.Eq(t => t.FamilyId, familyId);
                 return await collection.Find(filter).ToListAsync();
             }
@@ -98,7 +98,7 @@ namespace Authentication.DomainService.Oidc.Repositories
         {
             try
             {
-                var collection = GetDatabase().GetCollection<RefreshTokenModel>("refresh_tokens");
+                var collection = GetDatabase().GetCollection<RefreshTokenModel>("IdpRefreshTokens");
                 var filter = Builders<RefreshTokenModel>.Filter.Eq(t => t.TokenId, tokenId);
                 var update = Builders<RefreshTokenModel>.Update
                     .Set(t => t.IsRevoked, true)
@@ -119,7 +119,7 @@ namespace Authentication.DomainService.Oidc.Repositories
         {
             try
             {
-                var collection = GetDatabase().GetCollection<RefreshTokenModel>("refresh_tokens");
+                var collection = GetDatabase().GetCollection<RefreshTokenModel>("IdpRefreshTokens");
                 var filter = Builders<RefreshTokenModel>.Filter.Eq(t => t.FamilyId, familyId);
                 var update = Builders<RefreshTokenModel>.Update
                     .Set(t => t.IsRevoked, true)
@@ -143,7 +143,7 @@ namespace Authentication.DomainService.Oidc.Repositories
             {
                 var authConfiguration = await _authenticationRepository.GetAuthenticationConfigurationAsync();
                 var slidingMinutes = Math.Max(authConfiguration?.RefreshTokenValidForNumberMinutes ?? AuthenticationConfiguration.DefaultRefreshTokenValidForNumberMinutes, 1);
-                var collection = GetDatabase().GetCollection<RefreshTokenModel>("refresh_tokens");
+                var collection = GetDatabase().GetCollection<RefreshTokenModel>("IdpRefreshTokens");
                 var filter = Builders<RefreshTokenModel>.Filter.Eq(t => t.TokenId, tokenId);
                 var update = Builders<RefreshTokenModel>.Update
                     .Set(t => t.SlidingExpiry, DateTime.UtcNow.AddMinutes(slidingMinutes));
@@ -162,7 +162,7 @@ namespace Authentication.DomainService.Oidc.Repositories
         {
             try
             {
-                var collection = GetDatabase().GetCollection<RefreshTokenModel>("refresh_tokens");
+                var collection = GetDatabase().GetCollection<RefreshTokenModel>("IdpRefreshTokens");
                 var filter = Builders<RefreshTokenModel>.Filter.Eq(t => t.TokenId, tokenId);
                 var result = await collection.DeleteOneAsync(filter);
                 return result.DeletedCount > 0;
@@ -178,7 +178,7 @@ namespace Authentication.DomainService.Oidc.Repositories
         {
             try
             {
-                var collection = GetDatabase().GetCollection<RefreshTokenModel>("refresh_tokens");
+                var collection = GetDatabase().GetCollection<RefreshTokenModel>("IdpRefreshTokens");
                 var filter = Builders<RefreshTokenModel>.Filter.Lt(t => t.AbsoluteExpiry, DateTime.UtcNow);
                 return await collection.Find(filter).ToListAsync();
             }

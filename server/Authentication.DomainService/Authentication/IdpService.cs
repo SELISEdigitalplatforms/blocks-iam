@@ -210,7 +210,8 @@ namespace Authentication.DomainService.Authentication
                     ? Math.Max(tokenResponse.ExpiresIn.Value, 60)
                     : configuredAccessLifetimeSeconds;
 
-                var cookieDomain = _tenants.GetTenantByID(resolvedTenantId)?.CookieDomain;
+                var tenant = _tenants.GetTenantByID(resolvedTenantId);
+                var (domain, cookieDomain, isResolved) = DomainResolver.ResolveDomain(tenant, httpRequest, null);
                 var tokenResponseObj = new TokenResponse
                 {
                     AccessToken = tokenResponse.AccessToken,
@@ -223,8 +224,10 @@ namespace Authentication.DomainService.Authentication
                     CookieDomain = cookieDomain
                 };
 
-                // Always use secure cookies for token delivery in IdP callback flow.
-                AppendCookies(tokenResponseObj, httpResponse, httpRequest, resolvedTenantId);
+                if (isResolved && !string.IsNullOrWhiteSpace(domain))
+                {
+                    AppendCookies(tokenResponseObj, httpResponse, httpRequest, domain);
+                }
 
                 // Clear cache entry
                 await _cacheClient.RemoveKeyAsync(cacheKey);
@@ -233,12 +236,14 @@ namespace Authentication.DomainService.Authentication
 
                 return new OkObjectResult(new
                 {
+                    access_token = tokenResponseObj.AccessToken,
+                    refresh_token = tokenResponseObj.RefreshToken,
+                    id_token = tokenResponseObj.IdToken,
                     token_type = tokenResponseObj.TokenType ?? "Bearer",
                     expires_in = (tokenResponseObj.ExpiresUtc - DateTime.UtcNow).TotalSeconds,
                     scope = tokenResponseObj.Scope,
                     tenant_id = resolvedTenantId,
-                    client_id = identityProvider.ClientId,
-                    cookie_set = true
+                    client_id = identityProvider.ClientId
                 });
             }
             catch (Exception ex)
@@ -277,28 +282,26 @@ namespace Authentication.DomainService.Authentication
             return base64.Replace("+", "-").Replace("/", "_").TrimEnd('=');
         }
 
-        private static void AppendCookies(TokenResponse response, HttpResponse httpResponse, HttpRequest httpRequest, string? tenantId = null)
+        private static void AppendCookies(TokenResponse response, HttpResponse httpResponse, HttpRequest httpRequest, string? domain = null)
         {
-            var resolvedTenantId = string.IsNullOrWhiteSpace(tenantId)
-                ? BlocksContext.GetContext()?.TenantId ?? "default"
-                : tenantId;
+            var normalizedDomain = domain ?? BlocksContext.GetContext()?.TenantId ?? "default";
             var accessCookieOptions = CreateCookieOptions(response.CookieDomain, response.ExpiresUtc, httpRequest);
             var idCookieOptions = CreateCookieOptions(response.CookieDomain, response.ExpiresUtc, httpRequest);
             var refreshCookieOptions = CreateCookieOptions(response.CookieDomain, response.RefreshExpiresUtc, httpRequest);
 
             if (!string.IsNullOrWhiteSpace(response.AccessToken))
             {
-                httpResponse.Cookies.Append($"{IdpConstants.AccessTokenCookieName}_{resolvedTenantId}", response.AccessToken, accessCookieOptions);
+                httpResponse.Cookies.Append($"{normalizedDomain}", response.AccessToken, accessCookieOptions);
             }
 
             if (!string.IsNullOrWhiteSpace(response.RefreshToken))
             {
-                httpResponse.Cookies.Append($"{IdpConstants.RefreshTokenCookieName}_{resolvedTenantId}", response.RefreshToken, refreshCookieOptions);
+                httpResponse.Cookies.Append($"{IdpConstants.RefreshTokenCookieName}_{normalizedDomain}", response.RefreshToken, refreshCookieOptions);
             }
 
             if (!string.IsNullOrWhiteSpace(response.IdToken))
             {
-                httpResponse.Cookies.Append($"{IdpConstants.IdTokenCookieName}_{resolvedTenantId}", response.IdToken, idCookieOptions);
+                httpResponse.Cookies.Append($"{IdpConstants.IdTokenCookieName}_{normalizedDomain}", response.IdToken, idCookieOptions);
             }
         }
 
