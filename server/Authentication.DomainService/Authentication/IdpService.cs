@@ -38,17 +38,28 @@ namespace Authentication.DomainService.Authentication
             _logger = logger;
         }
 
-        public async Task<IActionResult> StartAuthenticationFlowAsync(string clientId)
+        public async Task<IActionResult> StartAuthenticationFlowAsync(string clientId, string redirectUri)
         {
             try
             {
                 var effectiveTenantId = BlocksContext.GetContext()?.TenantId;
 
-                // Get identity provider config by both provider name and type for exact match
-                var identityProvider = await _authenticationRepository.GetIdentityProviderByIdAsync(clientId);
-                if (identityProvider == null  || !identityProvider.IsActive)
+                // One ClientId maps to one provider entry.
+                var identityProvider = await _authenticationRepository.GetIdentityProviderByClientIdAsync(clientId);
+                if (identityProvider == null || !identityProvider.IsActive)
                 {
-                    return new BadRequestObjectResult(new { error = "invalid_client", error_description = "Client not found" });
+                    return new BadRequestObjectResult(new { error = "invalid_client", error_description = "ClientId not found or inactive" });
+                }
+
+                if (string.IsNullOrWhiteSpace(redirectUri))
+                {
+                    return new BadRequestObjectResult(new { error = "invalid_request", error_description = "redirectUri is required" });
+                }
+
+                var allowedRedirectUris = identityProvider.RedirectUris ?? [];
+                if (!allowedRedirectUris.Any(x => string.Equals(x, redirectUri, StringComparison.OrdinalIgnoreCase)))
+                {
+                    return new BadRequestObjectResult(new { error = "invalid_redirect_uri", error_description = "redirectUri is not registered for this client" });
                 }
 
                 // Generate OIDC flow parameters
@@ -66,14 +77,14 @@ namespace Authentication.DomainService.Authentication
                     provider = identityProvider.Provider,
                     tenantId = effectiveTenantId,
                     clientId = identityProvider.ClientId,
-                    redirectUri = identityProvider.RedirectUri,
+                    redirectUri,
                     createdAt = DateTime.UtcNow
                 };
                 var cacheKey = $"idp_flow:{state}";
                 await _cacheClient.AddStringValueAsync(cacheKey, System.Text.Json.JsonSerializer.Serialize(flowContext), 600);
 
                 // Build authorization URL
-                var authorizeUrl = BuildAuthorizeUrl(identityProvider, state, nonce, codeChallenge);
+                var authorizeUrl = BuildAuthorizeUrl(identityProvider, redirectUri, state, nonce, codeChallenge);
 
                 _logger.LogInformation($"Started authentication flow for provider {identityProvider.Provider} with state {state}");
 
@@ -158,7 +169,7 @@ namespace Authentication.DomainService.Authentication
                     { "code", code },
                     { "client_id", identityProvider.ClientId ?? string.Empty },
                     { "client_secret", identityProvider.ClientSecret ?? string.Empty },
-                    { "redirect_uri", identityProvider.RedirectUri ?? string.Empty }
+                    { "redirect_uri", flowContext.RedirectUri ?? string.Empty }
                 };
 
                 // Add PKCE code_verifier if present
@@ -349,13 +360,13 @@ namespace Authentication.DomainService.Authentication
             return (response, error);
         }
 
-        private string BuildAuthorizeUrl(IdentityProvider provider, string state, string nonce, string? codeChallenge)
+        private string BuildAuthorizeUrl(IdentityProvider provider, string redirectUri, string state, string nonce, string? codeChallenge)
         {
             var queryParams = new Dictionary<string, string>
             {
                 { "client_id", provider.ClientId ?? string.Empty },
                 { "response_type", provider.ResponseType ?? "code" },
-                { "redirect_uri", provider.RedirectUri ?? string.Empty },
+                { "redirect_uri", redirectUri },
                 { "scope", provider.Scope ?? "openid profile email" },
                 { "state", state },
                 { "nonce", nonce }
