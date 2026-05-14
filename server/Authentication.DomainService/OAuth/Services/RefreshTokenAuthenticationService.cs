@@ -83,6 +83,8 @@ namespace Authentication.DomainService.OAuth
                 };
             }
 
+            var (_, cookieDomain, _) = DomainResolver.ResolveDomain(tenant, request.Request, null);
+
             return new TokenResponse
             {
                 AccessToken = accessToken,
@@ -90,7 +92,7 @@ namespace Authentication.DomainService.OAuth
                 ExpiresUtc = jwtAccessToken.Expires,
                 RefreshToken = newRefreshToken,
                 RefreshExpiresUtc = refreshTokenExpiry,
-                CookieDomain = tenant.CookieDomain,
+                CookieDomain = cookieDomain,
             };
         }
     }

@@ -37,7 +37,7 @@ namespace Authentication.DomainService.Oidc.Repositories
         {
             try
             {
-                var collection = GetDatabase().GetCollection<TokenRevocationModel>("revoked_tokens");
+                var collection = GetDatabase().GetCollection<TokenRevocationModel>("IdpRevokedTokens");
                 var model = new TokenRevocationModel
                 {
                     Jti = jti,
@@ -64,7 +64,7 @@ namespace Authentication.DomainService.Oidc.Repositories
         {
             try
             {
-                var collection = GetDatabase().GetCollection<TokenRevocationModel>("revoked_tokens");
+                var collection = GetDatabase().GetCollection<TokenRevocationModel>("IdpRevokedTokens");
                 var filter = Builders<TokenRevocationModel>.Filter.Eq(t => t.Jti, jti);
                 var result = await collection.Find(filter).FirstOrDefaultAsync();
                 return result != null;
@@ -84,7 +84,7 @@ namespace Authentication.DomainService.Oidc.Repositories
         {
             try
             {
-                var collection = GetDatabase().GetCollection<TokenRevocationModel>("revoked_tokens");
+                var collection = GetDatabase().GetCollection<TokenRevocationModel>("IdpRevokedTokens");
                 var filter = Builders<TokenRevocationModel>.Filter.Eq(t => t.FamilyId, familyId);
                 var update = Builders<TokenRevocationModel>.Update
                     .Set(t => t.RevokeReason, "family_revoked_for_reuse_detection");
@@ -107,7 +107,7 @@ namespace Authentication.DomainService.Oidc.Repositories
         {
             try
             {
-                var collection = GetDatabase().GetCollection<TokenRevocationModel>("revoked_tokens");
+                var collection = GetDatabase().GetCollection<TokenRevocationModel>("IdpRevokedTokens");
                 var filter = Builders<TokenRevocationModel>.Filter.And(
                     Builders<TokenRevocationModel>.Filter.Eq(t => t.FamilyId, familyId),
                     Builders<TokenRevocationModel>.Filter.Eq(t => t.RevokeReason, "family_revoked_for_reuse_detection")
@@ -129,7 +129,7 @@ namespace Authentication.DomainService.Oidc.Repositories
         {
             try
             {
-                var collection = GetDatabase().GetCollection<TokenRevocationModel>("revoked_tokens");
+                var collection = GetDatabase().GetCollection<TokenRevocationModel>("IdpRevokedTokens");
                 var filter = Builders<TokenRevocationModel>.Filter.Eq(t => t.Jti, jti);
                 var result = await collection.DeleteOneAsync(filter);
                 return result.DeletedCount > 0;
@@ -148,7 +148,7 @@ namespace Authentication.DomainService.Oidc.Repositories
         {
             try
             {
-                var collection = GetDatabase().GetCollection<TokenRevocationModel>("revoked_tokens");
+                var collection = GetDatabase().GetCollection<TokenRevocationModel>("IdpRevokedTokens");
                 var filter = Builders<TokenRevocationModel>.Filter.Eq(t => t.Jti, jti);
                 return await collection.Find(filter).FirstOrDefaultAsync();
             }
@@ -166,7 +166,7 @@ namespace Authentication.DomainService.Oidc.Repositories
         {
             try
             {
-                var collection = GetDatabase().GetCollection<TokenRevocationModel>("revoked_tokens");
+                var collection = GetDatabase().GetCollection<TokenRevocationModel>("IdpRevokedTokens");
                 var filter = Builders<TokenRevocationModel>.Filter.Eq(t => t.UserId, userId);
                 return await collection.Find(filter).SortByDescending(t => t.RevokedAt).ToListAsync();
             }

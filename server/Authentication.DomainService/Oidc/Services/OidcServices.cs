@@ -391,31 +391,21 @@ public class DiscoveryService : IDiscoveryService
     private ResolvedOidcEndpoints ResolveEndpoints(string? tenantId)
     {
         var tenant = ResolveTenant(tenantId);
-        var configuredIssuer = ResolveIssuer(tenant);
         var apiPrefix = ApplicationConfigurations.NormalizeApiRoutePrefixValue(_configuration["ApiRouting:Prefix"]);
 
-        // If tenant issuer is not a valid URL, always fall back to host-only URL.
-        var issuer = configuredIssuer;
-        if (!Uri.TryCreate(configuredIssuer, UriKind.Absolute, out _))
-        {
-            issuer = GetIssuerFromRequest() ?? GetConfiguredIssuerFallback();
-        }
-
-        // Use path-based tenant selector for discovery and endpoint URLs.
-        var tenantScopedPrefix = string.IsNullOrWhiteSpace(tenantId)
-            ? Array.Empty<string>()
-            : [tenantId];
+        var issuer = tenant?.JwtTokenParameters?.Issuer?.TrimEnd('/');
+        var apiBase = GetIssuerFromRequest() ?? GetConfiguredIssuerFallback();
 
         var jwksUri = string.IsNullOrWhiteSpace(tenantId)
-            ? BuildUrl(issuer, ".well-known", "jwks.json")
-            : BuildUrl(issuer, tenantId, ".well-known", "jwks.json");
+            ? BuildUrl(apiBase, ".well-known", "jwks.json")
+            : BuildUrl(apiBase, tenantId, ".well-known", "jwks.json");
 
         var tenantQuery = string.IsNullOrWhiteSpace(tenantId) ? string.Empty : $"?tenant_id={tenantId}";
-        var authorizationEndpoint = BuildUrl(issuer, [apiPrefix, "oidc", "authorize"]) + tenantQuery;
-        var tokenEndpoint = BuildUrl(issuer, [apiPrefix, "oidc", "token"]) + tenantQuery;
-        var userInfoEndpoint = BuildUrl(issuer, [apiPrefix, "auth", "userinfo"]) + tenantQuery;
-        var revocationEndpoint = BuildUrl(issuer, [apiPrefix, "oidc", "revoke"]) + tenantQuery;
-        var introspectionEndpoint = BuildUrl(issuer, [apiPrefix, "oidc", "introspect"]) + tenantQuery;
+        var authorizationEndpoint = BuildUrl(apiBase, [apiPrefix, "oidc", "authorize"]) + tenantQuery;
+        var tokenEndpoint = BuildUrl(apiBase, [apiPrefix, "oidc", "token"]) + tenantQuery;
+        var userInfoEndpoint = BuildUrl(apiBase, [apiPrefix, "auth", "userinfo"]) + tenantQuery;
+        var revocationEndpoint = BuildUrl(apiBase, [apiPrefix, "oidc", "revoke"]) + tenantQuery;
+        var introspectionEndpoint = BuildUrl(apiBase, [apiPrefix, "oidc", "introspect"]) + tenantQuery;
 
         return new ResolvedOidcEndpoints
         {
@@ -458,23 +448,6 @@ public class DiscoveryService : IDiscoveryService
         }
 
         return BlocksContext.GetContext()?.TenantId;
-    }
-
-    private string ResolveIssuer(Tenant? tenant)
-    {
-        // Keep tenant issuer if found
-        if (!string.IsNullOrWhiteSpace(tenant?.JwtTokenParameters?.Issuer))
-        {
-            return tenant.JwtTokenParameters.Issuer.TrimEnd('/');
-        }
-
-        var requestIssuer = GetIssuerFromRequest();
-        if (!string.IsNullOrWhiteSpace(requestIssuer))
-        {
-            return requestIssuer;
-        }
-
-        return GetConfiguredIssuerFallback();
     }
 
     private string? GetIssuerFromRequest()
