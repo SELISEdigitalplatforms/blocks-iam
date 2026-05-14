@@ -156,7 +156,7 @@ namespace Iam.DomainService.Users
 
         public User MapUser(CreateUserRequest command)
         {
-            var id = Guid.NewGuid().ToString();
+            var id = string.IsNullOrWhiteSpace(command.UserId) ? Guid.NewGuid().ToString() : command.UserId;
             var bc = BlocksContext.GetContext();
             var tenantId = bc?.TenantId;
             var tenant = !string.IsNullOrWhiteSpace(tenantId) ? _tenants.GetTenantByID(tenantId) : null;

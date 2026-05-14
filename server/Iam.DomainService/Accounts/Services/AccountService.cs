@@ -4,12 +4,17 @@ using Iam.DomainService.Dtos;
 using Iam.DomainService.Entities;
 using Iam.DomainService.Services;
 using Iam.DomainService.Utilities;
+using Captcha.DomainService.Captcha;
+using Captcha.DomainService.Configuration;
 using FluentValidation;
 using Microsoft.Extensions.Logging;
 using Iam.DomainService.Users.RequestModel;
 using System.Security.Cryptography.Xml;
 using Iam.DomainService.Users.ResponseModel;
 using Iam.DomainService.Shared.Entities;
+using Iam.DomainService.Users;
+using MongoDB.Driver;
+using Iam.DomainService.Resources;
 
 namespace Iam.DomainService.Accounts
 {
@@ -23,6 +28,10 @@ namespace Iam.DomainService.Accounts
         private readonly IValidator<BaseAccountRequest> _accountValidator;
         private readonly IValidator<ChangePasswordRequest> _changePasswordValidator;
         private readonly IValidator<RecoveryUserRequest> _recoverUserValidator;
+        private readonly IUserManagementMutationService _userManagementMutationService;
+        private readonly IResourceMutationService _resourceMutationService;
+        private readonly ICaptchaService _captchaService;
+        private readonly IDbContextProvider _dbContextProvider;
 
         public AccountService(
             ILogger<AccountService> logger,
@@ -32,7 +41,11 @@ namespace Iam.DomainService.Accounts
             ITenants tenants,
             IValidator<BaseAccountRequest> accountValidator,
             IValidator<ChangePasswordRequest> changePasswordValidator,
-            IValidator<RecoveryUserRequest> recoverUserValidator
+            IValidator<RecoveryUserRequest> recoverUserValidator,
+            IUserManagementMutationService userManagementMutationService,
+            IResourceMutationService resourceMutationService,
+            ICaptchaService captchaService,
+            IDbContextProvider dbContextProvider
         )
         {
             _logger = logger;
@@ -43,7 +56,355 @@ namespace Iam.DomainService.Accounts
             _accountValidator = accountValidator;
             _changePasswordValidator = changePasswordValidator;
             _recoverUserValidator = recoverUserValidator;
+            _userManagementMutationService = userManagementMutationService;
+            _resourceMutationService = resourceMutationService;
+            _captchaService = captchaService;
+            _dbContextProvider = dbContextProvider;
         }
+
+        public async Task<BaseAccountResponse> SignupAccountAsync(SignupUserRequest signupUserRequest)
+        {
+            var basicValidationError = ValidateSignupRequest(signupUserRequest);
+            if (basicValidationError != null)
+            {
+                return basicValidationError;
+            }
+
+            var policyValidation = await ValidateSignupPolicyAsync(signupUserRequest);
+            if (policyValidation != null)
+            {
+                return policyValidation;
+            }
+
+            var captchaValidationError = await ValidateCaptchaAsync(signupUserRequest.CaptchaCode);
+            if (captchaValidationError != null)
+            {
+                return new BaseAccountResponse
+                {
+                    IsSuccess = false,
+                    Errors = captchaValidationError
+                };
+            }
+
+            var normalizedEmail = signupUserRequest.Email.Trim().ToLowerInvariant();
+            var existingHandlingResult = await HandleExistingSignupUserAsync(normalizedEmail, signupUserRequest.ProjectKey ?? string.Empty);
+            if (existingHandlingResult != null)
+            {
+                return existingHandlingResult;
+            }
+
+            // Generate user id first so org creation can receive creator id in the same signup flow.
+            var signupUserId = Guid.NewGuid().ToString();
+
+            var organizationId = "default";
+            if (signupUserRequest.CreateOrganizationDuringSignup)
+            {
+                var orgResult = await CreateOrganizationForSignupAsync(signupUserRequest, signupUserId);
+                if (!orgResult.IsSuccess)
+                {
+                    return orgResult;
+                }
+
+                organizationId = orgResult.ItemId ?? "default";
+            }
+
+            return signupUserRequest.IsSsoSignup
+                ? await CreateSsoSignupUserAsync(signupUserRequest, normalizedEmail, signupUserId, organizationId)
+                : await CreateEmailSignupUserAsync(signupUserRequest, normalizedEmail, signupUserId, organizationId);
+        }
+
+        private static BaseAccountResponse? ValidateSignupRequest(SignupUserRequest signupUserRequest)
+        {
+            if (signupUserRequest == null || string.IsNullOrWhiteSpace(signupUserRequest.Email))
+            {
+                return new BaseAccountResponse
+                {
+                    IsSuccess = false,
+                    Errors = new Dictionary<string, string>
+                    {
+                        { "Email", "Email is required." }
+                    }
+                };
+            }
+
+            if (signupUserRequest.IsSsoSignup && string.IsNullOrWhiteSpace(signupUserRequest.Provider))
+            {
+                return new BaseAccountResponse
+                {
+                    IsSuccess = false,
+                    Errors = new Dictionary<string, string>
+                    {
+                        { "Provider", "Provider is required for SSO signup." }
+                    }
+                };
+            }
+
+            if (signupUserRequest.CreateOrganizationDuringSignup && string.IsNullOrWhiteSpace(signupUserRequest.OrganizationName))
+            {
+                return new BaseAccountResponse
+                {
+                    IsSuccess = false,
+                    Errors = new Dictionary<string, string>
+                    {
+                        { "OrganizationName", "Organization name is required when organization creation is enabled." }
+                    }
+                };
+            }
+
+            return null;
+        }
+
+        private async Task<BaseAccountResponse?> ValidateSignupPolicyAsync(SignupUserRequest signupUserRequest)
+        {
+            var tenantConfiguration = await _repository.GetTenantConfigurationAsync();
+            if (tenantConfiguration == null)
+            {
+                return null;
+            }
+
+            if (signupUserRequest.IsSsoSignup && !tenantConfiguration.IsSSoSignUpEnabled)
+            {
+                return new BaseAccountResponse
+                {
+                    IsSuccess = false,
+                    Errors = new Dictionary<string, string>
+                    {
+                        { "signup_disabled", "sso sign-up is disabled." }
+                    }
+                };
+            }
+
+            if (!signupUserRequest.IsSsoSignup && !tenantConfiguration.IsEmailPasswordSignUpEnabled)
+            {
+                return new BaseAccountResponse
+                {
+                    IsSuccess = false,
+                    Errors = new Dictionary<string, string>
+                    {
+                        { "signup_disabled", "sign-up is disabled." }
+                    }
+                };
+            }
+
+            return null;
+        }
+
+        private async Task<BaseAccountResponse?> HandleExistingSignupUserAsync(string normalizedEmail, string projectKey)
+        {
+            var existingUser = await _repository.GetUserByEmailAsync(normalizedEmail);
+            if (existingUser == null)
+            {
+                return null;
+            }
+
+            if (existingUser.Active && existingUser.IsVerified)
+            {
+                _logger.LogWarning("User already exists with email: {Email}", normalizedEmail);
+                return new BaseAccountResponse
+                {
+                    IsSuccess = false,
+                    Errors = new Dictionary<string, string>
+                    {
+                        { "already_signed_up", $"{normalizedEmail} is already registered" }
+                    }
+                };
+            }
+
+            var reactivationSent = await SendReActivationAsync(existingUser, projectKey);
+            return new BaseAccountResponse
+            {
+                IsSuccess = reactivationSent,
+                ItemId = existingUser.ItemId,
+                Errors = reactivationSent
+                    ? null
+                    : new Dictionary<string, string>
+                    {
+                        { "reactivation_failed", "Failed to send activation email." }
+                    }
+            };
+        }
+
+        private async Task<BaseAccountResponse> CreateOrganizationForSignupAsync(SignupUserRequest signupUserRequest, string creatorUserId)
+        {
+            var orgRequest = new CreateOrganizationRequest
+            {
+                Name = signupUserRequest.OrganizationName!,
+                Description = signupUserRequest.OrganizationDescription,
+                CreatedFrom = CreatedFrom.ConstructSignup,
+                DefaultRoleForMembers = signupUserRequest.OrganizationDefaultRoles ?? new List<string> { "user" }
+            };
+
+            var orgResponse = await _resourceMutationService.CreateOrganizationAsync(orgRequest, creatorUserId);
+            if (!orgResponse.IsSuccess)
+            {
+                return new BaseAccountResponse
+                {
+                    IsSuccess = false,
+                    Errors = orgResponse.Errors ?? new Dictionary<string, string>
+                    {
+                        { "organization_creation_failed", "Organization creation failed during signup." }
+                    }
+                };
+            }
+
+            return new BaseAccountResponse
+            {
+                IsSuccess = true,
+                ItemId = orgResponse.ItemId
+            };
+        }
+
+        private async Task<BaseAccountResponse> CreateEmailSignupUserAsync(
+            SignupUserRequest signupUserRequest,
+            string normalizedEmail,
+            string signupUserId,
+            string organizationId)
+        {
+            var createUserRequest = new CreateUserRequest
+            {
+                UserId = signupUserId,
+                Email = normalizedEmail,
+                MailPurpose = string.IsNullOrWhiteSpace(signupUserRequest.MailPurpose) ? "AccountActivation" : signupUserRequest.MailPurpose,
+                UserCreationType = UserCreationType.Portal,
+                UserPassType = UserPassType.Password,
+                VerifiedType = UserVerifiedType.None,
+                OrganizationId = organizationId,
+                Roles = new List<string> { "user" },
+                Permissions = new List<string>(),
+                FirstName = signupUserRequest.FirstName,
+                LastName = signupUserRequest.LastName,
+                PhoneNumber = signupUserRequest.PhoneNumber
+            };
+
+            var result = await _userManagementMutationService.CreateUserAsync(createUserRequest);
+            if (!result.IsSuccess || string.IsNullOrWhiteSpace(result.ItemId))
+            {
+                _logger.LogWarning("Signup user creation failed for email: {Email}", normalizedEmail);
+                return new BaseAccountResponse
+                {
+                    IsSuccess = false,
+                    Errors = result.Errors ?? new Dictionary<string, string>
+                    {
+                        { "creation_failed", "User creation failed" }
+                    }
+                };
+            }
+
+            var createdUser = await _repository.GetUserByIdAsync(result.ItemId);
+            var activationSent = createdUser != null && await SendReActivationAsync(createdUser, signupUserRequest.ProjectKey ?? string.Empty);
+
+            if (!activationSent)
+            {
+                return new BaseAccountResponse
+                {
+                    IsSuccess = false,
+                    ItemId = result.ItemId,
+                    Errors = new Dictionary<string, string>
+                    {
+                        { "activation_email_failed", "User created but activation email could not be sent." }
+                    }
+                };
+            }
+
+            return new BaseAccountResponse
+            {
+                IsSuccess = true,
+                ItemId = result.ItemId,
+                Errors = null
+            };
+        }
+
+        private async Task<BaseAccountResponse> CreateSsoSignupUserAsync(
+            SignupUserRequest signupUserRequest,
+            string normalizedEmail,
+            string signupUserId,
+            string organizationId)
+        {
+            var ssoRequest = new CreateUserViaSsoRequest
+            {
+                Email = normalizedEmail,
+                Platform = signupUserRequest.Provider!,
+                MailPurpose = string.IsNullOrWhiteSpace(signupUserRequest.MailPurpose) ? "AccountActivation" : signupUserRequest.MailPurpose,
+                SendWelcomeMail = true,
+                UserCreationType = UserCreationType.Social,
+                Active = true,
+                IsVerified = true,
+                ExternalUserId = signupUserRequest.ExternalUserId,
+                FirstName = signupUserRequest.FirstName,
+                LastName = signupUserRequest.LastName,
+                PhoneNumber = signupUserRequest.PhoneNumber,
+                Roles = new Dictionary<string, List<string>>
+                {
+                    [organizationId] = new List<string> { "user" }
+                },
+                Permissions = new Dictionary<string, List<string>>
+                {
+                    [organizationId] = new List<string>()
+                }
+            };
+
+            // Outline note: CreateUserFromSsoAsync currently generates its own user id internally.
+            // signupUserId is generated and passed to org-creation step above for consistent creator attribution.
+            _ = signupUserId;
+
+            var result = await _userManagementMutationService.CreateUserFromSsoAsync(ssoRequest);
+            if (!result.IsSuccess || string.IsNullOrWhiteSpace(result.ItemId))
+            {
+                return new BaseAccountResponse
+                {
+                    IsSuccess = false,
+                    Errors = result.Errors ?? new Dictionary<string, string>
+                    {
+                        { "sso_creation_failed", "SSO user creation failed." }
+                    }
+                };
+            }
+
+            return new BaseAccountResponse
+            {
+                IsSuccess = true,
+                ItemId = result.ItemId,
+                Errors = null
+            };
+        }
+
+        private async Task<Dictionary<string, string>?> ValidateCaptchaAsync(string? captchaCode)
+        {
+            var captchaConfigurationCollection = _dbContextProvider.GetCollection<CaptchaConfiguration>("CaptchaConfigurations");
+            var captchaConfiguration = await (await captchaConfigurationCollection
+                .FindAsync(Builders<CaptchaConfiguration>.Filter.Eq(mc => mc.IsEnable, true)))
+                .FirstOrDefaultAsync();
+
+            if (captchaConfiguration == null)
+            {
+                return null;
+            }
+
+            if (string.IsNullOrWhiteSpace(captchaCode))
+            {
+                return new Dictionary<string, string>
+                {
+                    { "CaptchaCode", "Captcha verification is required. Please complete the captcha and try again." }
+                };
+            }
+
+            var verifyCaptchaQueryResponse = await _captchaService.VerifyCaptchaAsync(new VerifyCaptchaRequest
+            {
+                VerificationCode = captchaCode,
+                ConfigurationName = captchaConfiguration.Provider
+            });
+
+            if (verifyCaptchaQueryResponse.Verified)
+            {
+                return null;
+            }
+
+            return new Dictionary<string, string>
+            {
+                { "CaptchaCode", "Captcha verification is required. Please complete the captcha and try again." }
+            };
+        }
+
         public async Task<BaseAccountResponse> ActivateAccountAsync(ActivateUserRequest activateUserRequest)
         {
             var validatorResult = await _accountValidator.ValidateAsync(activateUserRequest);

@@ -8,6 +8,7 @@ namespace Iam.DomainService.Accounts
     public interface IAccountService
     {
         Task<BaseAccountResponse> ActivateAccountAsync(ActivateUserRequest activateUserRequest);
+        Task<BaseAccountResponse> SignupAccountAsync(SignupUserRequest signupUserRequest);
         Task<BaseAccountResponse> RecoverAccountAsync(RecoveryUserRequest recoveryRequest);
         Task<BaseAccountResponse> ResetAccountPasswordAsync(ResetPasswordRequest resetPasswordRequest);
         Task<BaseAccountResponse> ChangePasswordAsync(ChangePasswordRequest changePasswordRequest);

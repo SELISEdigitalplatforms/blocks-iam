@@ -2,7 +2,6 @@ using Authentication.DomainService.Authentication;
 using Authentication.DomainService.Entities;
 using Authentication.DomainService.OAuth.RequestModel;
 using Authentication.DomainService.Oidc.Services;
-using Authentication.DomainService.Shared.RequestModel;
 using CloudConfiguration.DomainService.Authentication.RequestModel;
 using Iam.DomainService.Accounts;
 using Microsoft.AspNetCore.Authorization;
@@ -42,6 +41,19 @@ public class AuthenticationController : ControllerBase
         _authenticationFlowService = authenticationFlowService;
         _oidcCallbackHandler = oidcCallbackHandler;
         _authorizationFlowService = authorizationFlowService;
+    }
+
+    /// <summary>
+    /// Execute user registration (Sign Up)
+    /// Creates new user account with provided credentials
+    /// Issues access and refresh tokens on success
+    /// </summary>
+    [HttpPost("signup")]
+    [AllowAnonymous]
+    public async Task<IActionResult> ExecuteSignup([FromBody] SignupUserRequest request)
+    {
+        var result = await _accountService.SignupAccountAsync(request);
+        return result.IsSuccess ? Ok(result) : BadRequest(result);
     }
 
     #region Password Authentication
@@ -496,7 +508,7 @@ public class AuthenticationController : ControllerBase
     /// </summary>
     [HttpPatch("identity-providers/{id}/status")]
     [Authorize]
-    public async Task<IActionResult> UpdateIdentityProviderStatus([FromRoute] string id, [FromBody] UpdateStatusRequest request)
+    public async Task<IActionResult> UpdateIdentityProviderStatus([FromRoute] string id, [FromBody] Authentication.DomainService.Shared.RequestModel.UpdateStatusRequest request)
     {
         var result = await _authenticationService.UpdateIdentityProviderStatusAsync(id, request.IsActive);
         return result.IsSuccess ? Ok(result) : BadRequest(result);

@@ -4,6 +4,7 @@ namespace Iam.DomainService.Users
 {
     public class CreateUserRequest
     {
+        public string? UserId { get; set; }
         public string? Language { get; set; } = "en-US";
         public List<string>? Tags { get; set; }
         public string Email { get; set; }
