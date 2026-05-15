@@ -10,6 +10,7 @@ namespace Authentication.DomainService.Entities
         public const int DefaultRefreshTokenValidForNumberMinutes = 30;
         public const int DefaultAbsoluteRefreshTokenValidForNumberMinutes = 7 * 60 * 24;
         public const int DefaultRememberMeRefreshTokenValidForNumberMinutes = 30 * 60 * 24;
+        public const int DefaultRememberMeAbsoluteRefreshTokenValidForNumberMinutes = 3 * 30 * 60 * 24;
         public const int DefaultGetNumberOfWrongAttemptsToLockTheAccount = 5;
         public const int DefaultAccountLockDurationInMinutes = 5;
         public const int DefaultTokenRotationGracePeriodMinutes = 5;
@@ -33,6 +34,7 @@ namespace Authentication.DomainService.Entities
         public int RefreshTokenValidForNumberMinutes { get; set; } = DefaultRefreshTokenValidForNumberMinutes;
         public int AbsoluteRefreshTokenValidForNumberMinutes { get; set; } = DefaultAbsoluteRefreshTokenValidForNumberMinutes;
         public int RememberMeRefreshTokenValidForNumberMinutes { get; init; } = DefaultRememberMeRefreshTokenValidForNumberMinutes;
+        public int RememberMeAbsoluteRefreshTokenValidForNumberMinutes { get; init; } = DefaultRememberMeAbsoluteRefreshTokenValidForNumberMinutes;
         public int GetNumberOfWrongAttemptsToLockTheAccount { get; set; } = DefaultGetNumberOfWrongAttemptsToLockTheAccount;
         public int AccountLockDurationInMinutes { get; set; } = DefaultAccountLockDurationInMinutes;
         public int TokenRotationGracePeriodMinutes { get; set; } = DefaultTokenRotationGracePeriodMinutes;
