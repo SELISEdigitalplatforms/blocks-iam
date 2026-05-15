@@ -11,16 +11,18 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui-kits/dropdown-menu/dropdown-menu";
 import { useGetUser } from "@/idp/iam/hooks/use-user";
+import { useProfileImageSrc } from "@/hooks/use-profile-image-src";
 
 function UserDropdownMenuLogo() {
   const { data } = useGetUser({ enabled: true });
   const userData = data?.data || { firstName: "", lastName: "", profileImageUrl: "" };
   const initials = `${userData.firstName?.[0] || ""}${userData.lastName?.[0] || ""}`.toUpperCase();
+  const imageSrc = useProfileImageSrc(userData.profileImageUrl);
 
-  if (userData.profileImageUrl) {
+  if (imageSrc) {
     return (
       <img
-        src={userData.profileImageUrl}
+        src={imageSrc}
         alt="Profile"
         className="h-full w-full object-cover"
       />
