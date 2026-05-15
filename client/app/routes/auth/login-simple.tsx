@@ -22,7 +22,6 @@ const pillars = [
   { icon: KeyRound, label: "OAuth 2.0 / OIDC" },
   { icon: Users, label: "User Management" },
   { icon: Lock, label: "Access Control" },
-  { icon: ScrollText, label: "Audit Logs" },
 ];
 export default function LoginSimplePage() {
   const [isStarting, setIsStarting] = useState(false);
