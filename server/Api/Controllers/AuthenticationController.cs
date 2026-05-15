@@ -184,9 +184,9 @@ public class AuthenticationController : ControllerBase
     /// </summary>
     [HttpGet("social/authorize")]
     [AllowAnonymous]
-    public Task<IActionResult> InitiateSocialAuthentication([FromQuery] string provider)
+    public Task<IActionResult> InitiateSocialAuthentication([FromQuery] string provider, [FromQuery] string redirectUri)
     {
-        return _authenticationService.GetSocialAuthorizationUrlAsync(provider);
+        return _authenticationService.GetSocialAuthorizationUrlAsync(provider, redirectUri);
     }
 
     /// <summary>
@@ -235,40 +235,27 @@ public class AuthenticationController : ControllerBase
     #region OIDC Federated Authentication (OpenID Connect 1.0)
 
     /// <summary>
-    /// OIDC callback handler (API Pattern - POST)
-    /// Receives authorization code from provider via POST request
-    /// Exchanges code for tokens, validates JWT signature and claims
-    /// RFC 6749: OAuth 2.0 | RFC 3986: OpenID Connect | RFC 7519: JWT | RFC 5280: X.509
-    /// </summary>
-    [HttpPost("oidc/callback")]
-    [AllowAnonymous]
-    public async Task<IActionResult> HandleOidcCallbackPost([FromBody] OidcCallbackRequest request)
-    {
-        if (string.IsNullOrWhiteSpace(request?.Code))
-            return BadRequest(new { error = "authorization_code_missing", error_description = "Authorization code is required" });
-
-        if (string.IsNullOrWhiteSpace(request.State))
-            return BadRequest(new { error = "state_missing", error_description = "State parameter is required" });
-
-        if (string.IsNullOrWhiteSpace(request.Provider))
-            return BadRequest(new { error = "provider_missing", error_description = "Provider name is required" });
-
-        return await ProcessOidcCallback(request.Code, request.State, request.Provider);
-    }
-
-    /// <summary>
     /// OIDC callback handler (Browser Redirect Pattern - GET)
     /// Receives authorization code from provider via browser redirect
     /// Exchanges code for tokens, validates JWT signature and claims
     /// RFC 6749: OAuth 2.0 | RFC 3986: OpenID Connect | RFC 7519: JWT | RFC 5280: X.509
     /// </summary>
     [HttpGet("oidc/callback")]
+    [HttpPost("oidc/callback")]
     [AllowAnonymous]
     public async Task<IActionResult> HandleOidcCallbackGet(
         [FromQuery] string code,
         [FromQuery] string state,
-        [FromQuery] string provider)
+        [FromQuery] string provider,
+        [FromBody] OidcCallbackRequest? request = null)
     {
+        if (request != null)
+        {
+            code = request.Code;
+            state = request.State;
+            provider = request.Provider;
+        }
+
         if (string.IsNullOrWhiteSpace(code))
             return BadRequest(new { error = "authorization_code_missing", error_description = "Authorization code is required" });
 
@@ -543,8 +530,8 @@ public class AuthenticationController : ControllerBase
             // EMBEDDED FLOW: Use the same tenant-scoped cookie naming and security policy as login/refresh/logout.
             await _authenticationService.AppendSessionCookies(HttpContext, result.AccessToken, result.RefreshToken);
 
-            // Redirect to dashboard
-            return Redirect("/dashboard");
+            // Redirect to home page or original URL if state contains it (optional enhancement)
+            return Redirect("/");
         }
     }
 }

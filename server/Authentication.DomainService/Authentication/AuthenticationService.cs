@@ -764,8 +764,7 @@ namespace Authentication.DomainService.Authentication
                     token_type = response.TokenType,
                     expires_in = response.ExpiresIn,
                     scope = response.Scope,
-                    cookie_set = true,
-                    client_id = clientId
+                    id_token = response.IdToken
                 });
             }
 
@@ -778,9 +777,7 @@ namespace Authentication.DomainService.Authentication
                 expires_utc = response.ExpiresUtc,
                 refresh_expires_utc = response.RefreshExpiresUtc,
                 scope = response.Scope,
-                id_token = response.IdToken,
-                cookie_set = false,
-                client_id = clientId
+                id_token = response.IdToken
             });
         }
 
