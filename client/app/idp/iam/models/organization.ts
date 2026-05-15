@@ -23,7 +23,6 @@ export interface IOrganizationFilter {
 }
 
 export interface IGetOrganizationsParams {
-  projectKey: string;
   page: number;
   pageSize: number;
   searchText?: string;
