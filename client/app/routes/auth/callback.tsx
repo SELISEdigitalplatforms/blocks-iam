@@ -16,7 +16,10 @@ export default function LoginCallbackPage() {
     if (hasProcessed.current) return;
     hasProcessed.current = true;
 
-    const callbackUrl = new URL("/api/idp/callback", window.location.origin);
+    const apiBaseUrl = import.meta.env.BLOCKS_API_BASE_URL?.startsWith("http")
+      ? import.meta.env.BLOCKS_API_BASE_URL
+      : window.location.origin;
+    const callbackUrl = new URL("/api/idp/callback", apiBaseUrl);
 
     // Forward the callback parameters to backend
     if (code) callbackUrl.searchParams.set("code", code);
