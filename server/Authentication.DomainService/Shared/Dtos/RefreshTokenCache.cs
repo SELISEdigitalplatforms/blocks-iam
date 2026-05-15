@@ -18,5 +18,7 @@ namespace Authentication.DomainService.Dtos
         public string? ImpersonatorUserId { get; set; }
         public bool RememberMe { get; set; }
         public int TokenVersion { get; set; }
+        public DateTime? RememberMeIssuedUtc { get; set; }
+        public DateTime? RememberMeExpiresUtc { get; set; }
     }
 }
