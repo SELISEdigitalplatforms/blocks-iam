@@ -5,24 +5,24 @@ import { Logo } from "@/components/logo";
 import { getRuntimeEnv } from "@/lib/runtime-env";
 import { showErrorToast } from "@/hooks/use-toast";
 import {
-  BarChart3,
-  KeyRound,
-  ScrollText,
-  Settings2,
   ShieldCheck,
-  Sliders,
+  KeyRound,
+  Users,
+  Lock,
+  Fingerprint,
+  ScrollText,
   type LucideIcon,
 } from "lucide-react";
 import { Link } from "react-router-dom";
 import { ModeToggle } from "@/components/mode-toggle/mode-toggle";
 import { ServiceCarousel } from "@/components/service-carousel";
 const pillars = [
-  { icon: ShieldCheck, label: "Authentication" },
-  { icon: KeyRound, label: "Secrets Management" },
-  { icon: Sliders, label: "Configuration" },
-  { icon: Settings2, label: "API Console" },
-  { icon: BarChart3, label: "Usage" },
-  { icon: ScrollText, label: "Logs & Tracing" },
+  { icon: ShieldCheck, label: "Single Sign-On" },
+  { icon: Fingerprint, label: "Multi-Factor Auth" },
+  { icon: KeyRound, label: "OAuth 2.0 / OIDC" },
+  { icon: Users, label: "User Management" },
+  { icon: Lock, label: "Access Control" },
+  { icon: ScrollText, label: "Audit Logs" },
 ];
 export default function LoginSimplePage() {
   const [isStarting, setIsStarting] = useState(false);
