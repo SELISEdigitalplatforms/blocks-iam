@@ -74,7 +74,6 @@ export interface IPermission {
 
 export interface IPermissionFilter {
   projectKey: string;
-  source?: string[];
   type?: number | null;
   page: number;
   pageSize: number;
@@ -82,6 +81,9 @@ export interface IPermissionFilter {
   isBuiltIn: string;
   roles: string[];
   resourceGroup?: string;
+  tags?: string[];
+  resources?: string[];
+  isArchived?: boolean;
   sort?: {
     property: string;
     isDescending: boolean;
@@ -190,10 +192,6 @@ export type IGetResourceGroupResponse = {
   resourceGroup: string;
   count: number;
 }[];
-
-export interface IGetPermissionsSeverityRequestPayload {
-  projectKey: string;
-}
 
 export type IGetPermissionsSeverityResponse = {
   severityLevel: string;
