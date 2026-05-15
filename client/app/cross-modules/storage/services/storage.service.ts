@@ -40,7 +40,7 @@ export class StorageService {
       },
       new FormData(),
     );
-    return http.post(STORAGE_FILE_ENDPOINTS.UPLOAD_TO_LOCAL_STORAGE, formData, undefined, { absoluteUrl: true });
+    return http.post(STORAGE_FILE_ENDPOINTS.UPLOAD_TO_LOCAL_STORAGE, formData);
   }
 
   uploadPublicCertificateFile(
@@ -57,20 +57,19 @@ export class StorageService {
       `${STORAGE_FILE_ENDPOINTS.UPLOAD_PUBLIC_CERTIFICATE}?TenantId=${payload.TenantId}&IsThirdParty=true`,
       formData,
       { Accept: "*/*" },
-      { absoluteUrl: true },
     );
   }
 
   getFilesAndFolders(payload: IGetDmsFileAndFolderPayload): Promise<IGetDmsFileAndFolderResponse> {
-    return http.post(STORAGE_FILE_ENDPOINTS.GET_DMS_FILE_AND_FOLDER, payload, undefined, { absoluteUrl: true });
+    return http.post(STORAGE_FILE_ENDPOINTS.GET_DMS_FILE_AND_FOLDER, payload);
   }
 
   uploadDmsFile(payload: IUploadDmsFilePayload): Promise<IUploadDmsFileResponse> {
-    return http.post(STORAGE_FILE_ENDPOINTS.UPLOAD_DMS_FILE, payload, undefined, { absoluteUrl: true });
+    return http.post(STORAGE_FILE_ENDPOINTS.UPLOAD_DMS_FILE, payload);
   }
 
   createDmsFolder(payload: ICreateDmsFolderPayload): Promise<IUploadDmsFileResponse> {
-    return http.post(STORAGE_FILE_ENDPOINTS.CREATE_FOLDER, payload, undefined, { absoluteUrl: true });
+    return http.post(STORAGE_FILE_ENDPOINTS.CREATE_FOLDER, payload);
   }
 }
 

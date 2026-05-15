@@ -5,6 +5,7 @@ import { defineConfig, loadEnv } from "vite";
 export default defineConfig(({ mode }) => {
   const env = loadEnv(mode, __dirname, "BLOCKS_");
   const proxyTarget = env.BLOCKS_API_BASE_URL;
+  const logicTarget = env.BLOCKS_LOGIC_BASE_URL || "https://dev-logic.blocksdevelopers.com";
 
   return {
     envPrefix: ["BLOCKS_"],
@@ -38,9 +39,15 @@ export default defineConfig(({ mode }) => {
       ],
       proxy: proxyTarget
         ? {
-            "/api": { 
-              target: proxyTarget, 
-              changeOrigin: true, 
+            "/logic": {
+              target: logicTarget,
+              changeOrigin: true,
+              rewrite: (path) => path.replace(/^\/logic/, ""),
+              secure: false,
+            },
+            "/api": {
+              target: proxyTarget,
+              changeOrigin: true,
               secure: false,
             },
             "/cloudbuild": {
