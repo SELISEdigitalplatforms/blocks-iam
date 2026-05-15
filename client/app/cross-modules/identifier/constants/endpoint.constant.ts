@@ -1,3 +1,5 @@
+import { BLOCKS_OS_BASE_URL } from "@/constants/endpoint.constant";
+
 // ─── People endpoints ─────────────────────────────────────────────────────────
 
 const PEOPLE_SUBPATH = "/People";
@@ -17,21 +19,21 @@ export const PEOPLE_ENDPOINTS = {
 const PROJECT_SUBPATH = "/Project";
 
 export const PROJECT_ENDPOINTS = {
-  GETS: `/api${PROJECT_SUBPATH}/Gets`,
-  GET: `/api${PROJECT_SUBPATH}/Get`,
-  CREATE: `/api${PROJECT_SUBPATH}/Create`,
-  UPDATE: `/api${PROJECT_SUBPATH}/UpdateProject`,
-  UPDATE_TENANT_GROUP: `/api${PROJECT_SUBPATH}/UpdateTenantGroup`,
-  DISABLE: `/api${PROJECT_SUBPATH}/Disable`,
+  GETS: `${BLOCKS_OS_BASE_URL}/api${PROJECT_SUBPATH}/Gets`,
+  GET: `${BLOCKS_OS_BASE_URL}/api${PROJECT_SUBPATH}/Get`,
+  CREATE: `${BLOCKS_OS_BASE_URL}/api${PROJECT_SUBPATH}/Create`,
+  UPDATE: `${BLOCKS_OS_BASE_URL}/api${PROJECT_SUBPATH}/UpdateProject`,
+  UPDATE_TENANT_GROUP: `${BLOCKS_OS_BASE_URL}/api${PROJECT_SUBPATH}/UpdateTenantGroup`,
+  DISABLE: `${BLOCKS_OS_BASE_URL}/api${PROJECT_SUBPATH}/Disable`,
 
-  GET_ASSET: `/api${PROJECT_SUBPATH}/GetAsset`,
-  ADD_ASSET: `/api${PROJECT_SUBPATH}/AddAsset`,
-  GET_LOGIN_OPTIONS: `/api${PROJECT_SUBPATH}/GetLoginOptions`,
-  UPDATE_TOKEN_VALIDATION: `/api${PROJECT_SUBPATH}/UpdateTokenValidationParameters`,
-  GET_TOKEN_VALIDATION: `/api${PROJECT_SUBPATH}/GetTokenValidationParameters`,
-  ADD_JWT_CLAIM: `/api${PROJECT_SUBPATH}/AddJwtClaim`,
-  GET_JWT_CLAIMS: `/api${PROJECT_SUBPATH}/GetThirdPartyJWTClaims`,
-  SAVE_JWT_CLAIMS: `/api${PROJECT_SUBPATH}/SaveThirdPartyJWTClaims`,
+  GET_ASSET: `${BLOCKS_OS_BASE_URL}/api${PROJECT_SUBPATH}/GetAsset`,
+  ADD_ASSET: `${BLOCKS_OS_BASE_URL}/api${PROJECT_SUBPATH}/AddAsset`,
+  GET_LOGIN_OPTIONS: `${BLOCKS_OS_BASE_URL}/api${PROJECT_SUBPATH}/GetLoginOptions`,
+  UPDATE_TOKEN_VALIDATION: `${BLOCKS_OS_BASE_URL}/api${PROJECT_SUBPATH}/UpdateTokenValidationParameters`,
+  GET_TOKEN_VALIDATION: `${BLOCKS_OS_BASE_URL}/api${PROJECT_SUBPATH}/GetTokenValidationParameters`,
+  ADD_JWT_CLAIM: `${BLOCKS_OS_BASE_URL}/api${PROJECT_SUBPATH}/AddJwtClaim`,
+  GET_JWT_CLAIMS: `${BLOCKS_OS_BASE_URL}/api${PROJECT_SUBPATH}/GetThirdPartyJWTClaims`,
+  SAVE_JWT_CLAIMS: `${BLOCKS_OS_BASE_URL}/api${PROJECT_SUBPATH}/SaveThirdPartyJWTClaims`,
 } as const;
 
 // ─── Domain endpoints ─────────────────────────────────────────────────────────
