@@ -728,6 +728,7 @@ namespace Iam.DomainService.Resources
                 Name = request.Name,
                 IsEnable = true,
                 DefaultRoleForMembers = request.DefaultRoleForMembers,
+                DefaultPermissionsForMembers = request.DefaultPermissionsForMembers,
                 LastUpdatedDate = DateTime.UtcNow,
                 LastUpdatedBy = createdByUserId
             };
@@ -779,6 +780,21 @@ namespace Iam.DomainService.Resources
                 }
             }
 
+            if(tenantConfig.DefaultPermissionOnOrgCreation != null && tenantConfig.DefaultPermissionOnOrgCreation.Any())
+            {
+                var permissions = await _resourceRepository.GetPermissionsByResourcesAsync(tenantConfig.DefaultPermissionOnOrgCreation, DefaultOrganizationId);
+                foreach (var permission in permissions)
+                {
+                    permission.ItemId = Guid.NewGuid().ToString();
+                    permission.LastUpdatedBy = createdByUserId;
+                    permission.LastUpdatedDate = DateTime.UtcNow;
+                    permission.OrganizationId = organization.ItemId; // Assign to new org
+                    permission.Roles = (permission?.Roles?.Where(r => tenantConfig.DefaultRoleOnOrgCreation.Contains(r)).ToList()) ?? new List<string>();
+                }
+
+                await _resourceRepository.InsertPermissionsAsync(permissions);
+            }
+
             await _resourceRepository.SaveOrganizationAsync(organization);
 
             if(request.CreatedFrom == CreatedFrom.ConstructSignup && tenantConfig.AllowOrgCreationFromSignup)
@@ -788,13 +804,14 @@ namespace Iam.DomainService.Resources
             
             if (request.CreatedFrom == CreatedFrom.ConstructPortal && tenantConfig.AllowOrgCreationFromPortal)
             {
-                await _userManagementMutationService.UpdateOrganizationUserAsync(new UpdateOrganizationUserRequest
-                {
-                    OrganizationId = organization.ItemId,
-                    UserId = creatorId ?? contextUserId,
-                    Roles = tenantConfig.DefaultRoleOnOrgCreation,
-                    Permissions = new List<string>()
-                });
+                // NOTE: We have to update the user by following code but _userManagementMutationService is in AccountService which will cause circular reference if we inject it here. We can consider to move the user management related code to a separate service to avoid circular reference in the future.
+                // await _userManagementMutationService.UpdateOrganizationUserAsync(new UpdateOrganizationUserRequest
+                // {
+                //     OrganizationId = organization.ItemId,
+                //     UserId = creatorId ?? contextUserId,
+                //     Roles = tenantConfig.DefaultRoleOnOrgCreation,
+                //     Permissions = new List<string>()
+                // });
             }
 
             return new BaseMutationResponse { IsSuccess = true, ItemId = organization.ItemId };
@@ -881,6 +898,7 @@ namespace Iam.DomainService.Resources
             tenantConfig.AllowOrgCreationFromPortal = request.AllowOrgCreationFromPortal;
             tenantConfig.IsMultiOrgEnabled = request.IsMultiOrgEnabled;
             tenantConfig.DefaultRoleOnOrgCreation = request.DefaultRoleOnOrgCreation;
+            tenantConfig.DefaultPermissionOnOrgCreation = request.DefaultPermissionOnOrgCreation;
             tenantConfig.LastUpdatedBy = BlocksContext.GetContext()?.UserId;
             tenantConfig.LastUpdatedDate = DateTime.UtcNow;
             
@@ -900,7 +918,8 @@ namespace Iam.DomainService.Resources
                 { "AllowOrgCreationFromSignup", tenantConfig?.AllowOrgCreationFromSignup ?? false },
                 { "AllowOrgCreationFromPortal", tenantConfig?.AllowOrgCreationFromPortal ?? false },
                 { "IsMultiOrgEnabled", tenantConfig?.IsMultiOrgEnabled ?? false },
-                { "DefaultRoleOnOrgCreation", tenantConfig?.DefaultRoleOnOrgCreation ?? new List<string>() }
+                { "DefaultRoleOnOrgCreation", tenantConfig?.DefaultRoleOnOrgCreation ?? new List<string>() },
+                { "DefaultPermissionOnOrgCreation", tenantConfig?.DefaultPermissionOnOrgCreation ?? new List<string>() }
             };
         }
 

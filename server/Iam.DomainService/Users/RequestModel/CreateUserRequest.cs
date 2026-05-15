@@ -27,6 +27,7 @@ namespace Iam.DomainService.Users
         public List<string> Roles { get; set; } = new();
         public List<string> Permissions { get; set; } = new();
         public string? OrganizationId { get; set; } = "default";
+        public Dictionary<string, object> Attributes { get; set; } = new Dictionary<string, object>(); // For any additional info that doesn't fit into existing properties
     }
 
 }

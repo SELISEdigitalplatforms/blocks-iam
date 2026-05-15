@@ -2,11 +2,10 @@
 
 namespace Iam.DomainService.Accounts
 {
-    public class ChangePasswordRequest : IProjectKey
+    public class ChangePasswordRequest
     {
         public string NewPassword { get; set; }
         public string OldPassword { get; set; }
-        public string? ProjectKey { get; set; }
     }
 
 

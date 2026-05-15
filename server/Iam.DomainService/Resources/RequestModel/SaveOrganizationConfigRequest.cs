@@ -8,6 +8,7 @@
         public bool AllowOrgCreationFromPortal { get; set; }
         public bool IsMultiOrgEnabled { get; set; }
         public List<string> DefaultRoleOnOrgCreation { get; set; } = new List<string>();
+        public List<string> DefaultPermissionOnOrgCreation { get; set; } = new List<string>();
     }
 
 }

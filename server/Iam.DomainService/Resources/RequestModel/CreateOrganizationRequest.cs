@@ -4,6 +4,7 @@ namespace Iam.DomainService.Resources
     {
         public string Name { get; set; }
         public List<string> DefaultRoleForMembers { get; set; } = new List<string>();
+        public List<string> DefaultPermissionsForMembers { get; set; } = new List<string>();
         public CreatedFrom CreatedFrom { get; set; } = 0;
         public string? Description { get; set; }
     }

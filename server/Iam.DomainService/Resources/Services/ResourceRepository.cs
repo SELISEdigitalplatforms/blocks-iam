@@ -18,11 +18,26 @@ namespace Iam.DomainService.Resources
             _identityAccessManagementRepository = identityAccessManagementRepository;
         }
 
-        public async Task<Permission> GetPermissionByResourceAsync(string resource)
+        public async Task<Permission> GetPermissionByResourceAsync(string resource, string? organizationId = "default")
         {
             var collection = _identityAccessManagementRepository.GetCollection<Permission>();
             var filter = Builders<Permission>.Filter.Eq(x => x.Resource, resource);
+            if (!string.IsNullOrEmpty(organizationId))
+            {
+                filter = Builders<Permission>.Filter.And(filter, Builders<Permission>.Filter.Eq(x => x.OrganizationId, organizationId));
+            }
             return await collection.Find(filter).FirstOrDefaultAsync();
+        }
+
+        public async Task<List<Permission>> GetPermissionsByResourcesAsync(List<string> resources, string? organizationId = "default")
+        {
+            var collection = _identityAccessManagementRepository.GetCollection<Permission>();
+            var filter = Builders<Permission>.Filter.In(x => x.Resource, resources);
+            if (!string.IsNullOrEmpty(organizationId))
+            {
+                filter = Builders<Permission>.Filter.And(filter, Builders<Permission>.Filter.Eq(x => x.OrganizationId, organizationId));
+            }
+            return await collection.Find(filter).ToListAsync();
         }
 
         public async Task<Permission> GetPermissionByIdAsync(string id)
@@ -351,6 +366,7 @@ namespace Iam.DomainService.Resources
                     .Set(c => c.AllowOrgCreationFromPortal, config.AllowOrgCreationFromPortal)
                     .Set(c => c.IsMultiOrgEnabled, config.IsMultiOrgEnabled)
                     .Set(c => c.DefaultRoleOnOrgCreation, config.DefaultRoleOnOrgCreation)
+                    .Set(c => c.DefaultPermissionOnOrgCreation, config.DefaultPermissionOnOrgCreation)
                     .Set(c => c.LastUpdatedBy, config.LastUpdatedBy)
                     .Set(c => c.LastUpdatedDate, config.LastUpdatedDate));
         }

@@ -5,10 +5,9 @@ namespace Iam.DomainService.Accounts
         public string Email { get; set; } = string.Empty;
         public string? CaptchaCode { get; set; }
         public string? MailPurpose { get; set; }
-        public string ProjectKey { get; set; } = string.Empty;
 
         // Flow selector: false = email signup, true = SSO signup
-        public bool IsSsoSignup { get; set; }
+        public bool IsSsoSignup { get; set; } // Need clarification on whether this is necessary, as Provider field can also indicate this
 
         // SSO-related optional fields
         public string? Provider { get; set; }
@@ -23,6 +22,6 @@ namespace Iam.DomainService.Accounts
         public bool CreateOrganizationDuringSignup { get; set; }
         public string? OrganizationName { get; set; }
         public string? OrganizationDescription { get; set; }
-        public List<string>? OrganizationDefaultRoles { get; set; }
+        public Dictionary<string, object> Attributes { get; set; } = new Dictionary<string, object>(); // For any additional info from client that doesn't fit into existing properties
     }
 }
