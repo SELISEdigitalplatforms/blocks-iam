@@ -7,6 +7,7 @@ import { storageService } from "@blocks-storage/services/storage.service";
 import { useGetUserById, useUpdateUser } from "@blocks-idp/iam/hooks/use-user";
 import { showErrorToast, showSuccessToast } from "@/hooks/use-toast";
 import { isErrorWithErrors } from "@/lib/error";
+import { http } from "@/lib/http-client";
 
 const emptyProfilePhoto = "/assets/images/empty-profile-photo.png";
 import { ModuleName } from "@/constants/modules.constants";
@@ -23,10 +24,31 @@ export const ProfileImageUploader = ({ projectKey, id }: ProfileImageUploaderPro
   const [isProfileImageUploading, setIsProfileImageUploading] = useState<boolean>(false);
 
   useEffect(() => {
-    if (data?.data) {
-      setImage(data.data.profileImageUrl);
-    }
-  }, [data?.data, data?.data.profileImageUrl]);
+    const url = data?.data?.profileImageUrl;
+    if (!url) return;
+
+    let cancelled = false;
+    let objectUrl: string | null = null;
+
+    http.get<Blob>(url, undefined, { absoluteUrl: url.startsWith("http"), skipTokenRotation: true })
+      .then((result) => {
+        if (cancelled) return;
+        if (result instanceof Blob) {
+          objectUrl = URL.createObjectURL(result);
+          setImage(objectUrl);
+        } else {
+          setImage(url);
+        }
+      })
+      .catch(() => {
+        if (!cancelled) setImage(url);
+      });
+
+    return () => {
+      cancelled = true;
+      if (objectUrl) URL.revokeObjectURL(objectUrl);
+    };
+  }, [data?.data?.profileImageUrl]);
 
   const uploadImage = async (file: File) => {
     try {
