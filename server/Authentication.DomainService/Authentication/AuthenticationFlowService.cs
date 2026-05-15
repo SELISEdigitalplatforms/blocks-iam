@@ -877,8 +877,6 @@ namespace Authentication.DomainService.Authentication
                             token_type = result.TokenType,
                             expires_in = result.ExpiresIn,
                             scope = result.Scope,
-                            client_id = clientId,
-                            cookie_set = true
                         });
                     }
                 }
@@ -893,8 +891,6 @@ namespace Authentication.DomainService.Authentication
                     expires_in = result.ExpiresIn,
                     scope = result.Scope,
                     id_token = result.IdToken,
-                    client_id = clientId,
-                    cookie_set = false
                 });
             }
 
