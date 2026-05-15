@@ -1,4 +1,5 @@
 import { http } from "@/lib/http-client";
+import { getRuntimeEnv } from "@/lib/runtime-env";
 import {
   IDeleteFilePayload,
   IDeleteFolderPayload,
@@ -14,7 +15,8 @@ import {
 } from "../models/storage.model";
 import { STORAGE_FILE_ENDPOINTS } from "../constants/endpoint.constant";
 
-const toLogicUrl = (path: string) => `${window.location.origin}${path}`;
+const toLogicUrl = (path: string) =>
+  `${getRuntimeEnv("BLOCKS_LOGIC_BASE_URL") || "https://dev-logic.blocksdevelopers.com"}${path}`;
 
 export class StorageFile {
   getFileByFileId(payload: IGetFileByFileIDPayload): Promise<IGetFileByFileIDResponse> {
