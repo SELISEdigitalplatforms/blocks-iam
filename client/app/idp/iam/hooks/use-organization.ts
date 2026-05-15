@@ -10,9 +10,9 @@ export const useGetOrganizations = (options: IOrganizationFilter) => {
       iamService.organization.getOrganizations({
         page: options.page,
         pageSize: options.pageSize,
-        projectKey: options.projectKey,
         searchText: options.search,
       }),
+    enabled: !!options.projectKey,
     placeholderData: keepPreviousData,
   });
 };
