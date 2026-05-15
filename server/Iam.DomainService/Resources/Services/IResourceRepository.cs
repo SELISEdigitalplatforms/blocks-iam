@@ -6,7 +6,8 @@ namespace Iam.DomainService.Resources
 {
     public interface IResourceRepository
     {
-        Task<Permission> GetPermissionByResourceAsync(string resource);
+        Task<Permission> GetPermissionByResourceAsync(string resource, string? organizationId = "default");
+        Task<List<Permission>> GetPermissionsByResourcesAsync(List<string> resources, string? organizationId = "default");
         Task<Permission> GetPermissionByIdAsync(string id);
         Task<(IQueryable<Permission>, long)> GetPermissionsAsync(GetPermissionsRequest query);
         Task<bool> InsertPermissionAsync(Permission permission);

@@ -2,7 +2,6 @@ using Authentication.DomainService.Authentication;
 using Authentication.DomainService.Entities;
 using Authentication.DomainService.OAuth.RequestModel;
 using Authentication.DomainService.Oidc.Services;
-using CloudConfiguration.DomainService.Authentication.RequestModel;
 using Iam.DomainService.Accounts;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;

@@ -70,7 +70,22 @@ namespace Iam.DomainService.Accounts
                 return basicValidationError;
             }
 
-            var policyValidation = await ValidateSignupPolicyAsync(signupUserRequest);
+            var tenantConfiguration = await _repository.GetTenantConfigurationAsync();
+
+            if (tenantConfiguration == null)
+            {
+                _logger.LogError("Tenant configuration not found during signup.");
+                return new BaseAccountResponse
+                {
+                    IsSuccess = false,
+                    Errors = new Dictionary<string, string>
+                    {
+                        { "signup_configuration", "Signup configuration is not set up. Please contact support." }
+                    }
+                };
+            }
+
+            var policyValidation = await ValidateSignupPolicyAsync(signupUserRequest, tenantConfiguration);
             if (policyValidation != null)
             {
                 return policyValidation;
@@ -87,7 +102,7 @@ namespace Iam.DomainService.Accounts
             }
 
             var normalizedEmail = signupUserRequest.Email.Trim().ToLowerInvariant();
-            var existingHandlingResult = await HandleExistingSignupUserAsync(normalizedEmail, signupUserRequest.ProjectKey ?? string.Empty);
+            var existingHandlingResult = await HandleExistingSignupUserAsync(normalizedEmail);
             if (existingHandlingResult != null)
             {
                 return existingHandlingResult;
@@ -109,8 +124,8 @@ namespace Iam.DomainService.Accounts
             }
 
             return signupUserRequest.IsSsoSignup
-                ? await CreateSsoSignupUserAsync(signupUserRequest, normalizedEmail, signupUserId, organizationId)
-                : await CreateEmailSignupUserAsync(signupUserRequest, normalizedEmail, signupUserId, organizationId);
+                ? await CreateSsoSignupUserAsync(signupUserRequest, tenantConfiguration, normalizedEmail, signupUserId, organizationId)
+                : await CreateEmailSignupUserAsync(signupUserRequest, tenantConfiguration, normalizedEmail, signupUserId, organizationId);
         }
 
         private static BaseAccountResponse? ValidateSignupRequest(SignupUserRequest signupUserRequest)
@@ -154,14 +169,8 @@ namespace Iam.DomainService.Accounts
             return null;
         }
 
-        private async Task<BaseAccountResponse?> ValidateSignupPolicyAsync(SignupUserRequest signupUserRequest)
+        private async Task<BaseAccountResponse?> ValidateSignupPolicyAsync(SignupUserRequest signupUserRequest, TenantConfiguration tenantConfiguration)
         {
-            var tenantConfiguration = await _repository.GetTenantConfigurationAsync();
-            if (tenantConfiguration == null)
-            {
-                return null;
-            }
-
             if (signupUserRequest.IsSsoSignup && !tenantConfiguration.IsSSoSignUpEnabled)
             {
                 return new BaseAccountResponse
@@ -189,7 +198,7 @@ namespace Iam.DomainService.Accounts
             return null;
         }
 
-        private async Task<BaseAccountResponse?> HandleExistingSignupUserAsync(string normalizedEmail, string projectKey)
+        private async Task<BaseAccountResponse?> HandleExistingSignupUserAsync(string normalizedEmail)
         {
             var existingUser = await _repository.GetUserByEmailAsync(normalizedEmail);
             if (existingUser == null)
@@ -210,13 +219,13 @@ namespace Iam.DomainService.Accounts
                 };
             }
 
-            var reactivationSent = await SendReActivationAsync(existingUser, projectKey);
+            var reactivationSent = await SendReActivationAsync(existingUser);
             return new BaseAccountResponse
             {
                 IsSuccess = reactivationSent,
                 ItemId = existingUser.ItemId,
                 Errors = reactivationSent
-                    ? null
+                    ? new Dictionary<string, string>()
                     : new Dictionary<string, string>
                     {
                         { "reactivation_failed", "Failed to send activation email." }
@@ -230,8 +239,7 @@ namespace Iam.DomainService.Accounts
             {
                 Name = signupUserRequest.OrganizationName!,
                 Description = signupUserRequest.OrganizationDescription,
-                CreatedFrom = CreatedFrom.ConstructSignup,
-                DefaultRoleForMembers = signupUserRequest.OrganizationDefaultRoles ?? new List<string> { "user" }
+                CreatedFrom = CreatedFrom.ConstructSignup
             };
 
             var orgResponse = await _resourceMutationService.CreateOrganizationAsync(orgRequest, creatorUserId);
@@ -240,7 +248,7 @@ namespace Iam.DomainService.Accounts
                 return new BaseAccountResponse
                 {
                     IsSuccess = false,
-                    Errors = orgResponse.Errors ?? new Dictionary<string, string>
+                    Errors = (orgResponse.Errors as Dictionary<string, string>) ?? new Dictionary<string, string>
                     {
                         { "organization_creation_failed", "Organization creation failed during signup." }
                     }
@@ -256,6 +264,7 @@ namespace Iam.DomainService.Accounts
 
         private async Task<BaseAccountResponse> CreateEmailSignupUserAsync(
             SignupUserRequest signupUserRequest,
+            TenantConfiguration tenantConfiguration,
             string normalizedEmail,
             string signupUserId,
             string organizationId)
@@ -269,8 +278,8 @@ namespace Iam.DomainService.Accounts
                 UserPassType = UserPassType.Password,
                 VerifiedType = UserVerifiedType.None,
                 OrganizationId = organizationId,
-                Roles = new List<string> { "user" },
-                Permissions = new List<string>(),
+                Roles = tenantConfiguration.DefaultRolesForNewUserOnSignUp ?? new List<string> { },
+                Permissions = tenantConfiguration.DefaultPermissionsForNewUserOnSignUp ?? new List<string> { },
                 FirstName = signupUserRequest.FirstName,
                 LastName = signupUserRequest.LastName,
                 PhoneNumber = signupUserRequest.PhoneNumber
@@ -283,7 +292,7 @@ namespace Iam.DomainService.Accounts
                 return new BaseAccountResponse
                 {
                     IsSuccess = false,
-                    Errors = result.Errors ?? new Dictionary<string, string>
+                    Errors = result.Errors?.ToDictionary() ?? new Dictionary<string, string>
                     {
                         { "creation_failed", "User creation failed" }
                     }
@@ -291,7 +300,7 @@ namespace Iam.DomainService.Accounts
             }
 
             var createdUser = await _repository.GetUserByIdAsync(result.ItemId);
-            var activationSent = createdUser != null && await SendReActivationAsync(createdUser, signupUserRequest.ProjectKey ?? string.Empty);
+            var activationSent = createdUser != null && await SendReActivationAsync(createdUser);
 
             if (!activationSent)
             {
@@ -316,12 +325,14 @@ namespace Iam.DomainService.Accounts
 
         private async Task<BaseAccountResponse> CreateSsoSignupUserAsync(
             SignupUserRequest signupUserRequest,
+            TenantConfiguration tenantConfiguration,
             string normalizedEmail,
             string signupUserId,
             string organizationId)
         {
             var ssoRequest = new CreateUserViaSsoRequest
             {
+                UserId = signupUserId,
                 Email = normalizedEmail,
                 Platform = signupUserRequest.Provider!,
                 MailPurpose = string.IsNullOrWhiteSpace(signupUserRequest.MailPurpose) ? "AccountActivation" : signupUserRequest.MailPurpose,
@@ -333,19 +344,11 @@ namespace Iam.DomainService.Accounts
                 FirstName = signupUserRequest.FirstName,
                 LastName = signupUserRequest.LastName,
                 PhoneNumber = signupUserRequest.PhoneNumber,
-                Roles = new Dictionary<string, List<string>>
-                {
-                    [organizationId] = new List<string> { "user" }
-                },
-                Permissions = new Dictionary<string, List<string>>
-                {
-                    [organizationId] = new List<string>()
-                }
+                Roles = tenantConfiguration.DefaultRolesForNewUserOnSignUp ?? new List<string> { },
+                Permissions = tenantConfiguration.DefaultPermissionsForNewUserOnSignUp ?? new List<string> { },
+                OrganizationId = organizationId,
+                Attributes = signupUserRequest.Attributes
             };
-
-            // Outline note: CreateUserFromSsoAsync currently generates its own user id internally.
-            // signupUserId is generated and passed to org-creation step above for consistent creator attribution.
-            _ = signupUserId;
 
             var result = await _userManagementMutationService.CreateUserFromSsoAsync(ssoRequest);
             if (!result.IsSuccess || string.IsNullOrWhiteSpace(result.ItemId))
@@ -353,7 +356,7 @@ namespace Iam.DomainService.Accounts
                 return new BaseAccountResponse
                 {
                     IsSuccess = false,
-                    Errors = result.Errors ?? new Dictionary<string, string>
+                    Errors = (Dictionary<string, string>?)result.Errors ?? new Dictionary<string, string>
                     {
                         { "sso_creation_failed", "SSO user creation failed." }
                     }
@@ -503,7 +506,7 @@ namespace Iam.DomainService.Accounts
                 };
             }
 
-            var result = await ProcessRecoverAccountAsync(user, recoveryRequest.MailPurpose, recoveryRequest.ProjectKey);
+            var result = await ProcessRecoverAccountAsync(user, recoveryRequest.MailPurpose);
 
             return new BaseAccountResponse
             {
@@ -511,7 +514,7 @@ namespace Iam.DomainService.Accounts
             };
         }
 
-        public async Task<bool> ProcessRecoverAccountAsync(User user, string emailPurpose, string projectKey)
+        public async Task<bool> ProcessRecoverAccountAsync(User user, string emailPurpose)
         {
             var config = await _repository.GetIamConfigurationAsync();
             var key = Guid.NewGuid().ToString("n");
@@ -520,7 +523,7 @@ namespace Iam.DomainService.Accounts
             await _cacheClient.AddStringValueAsync(key, user.ItemId, config.RecoverAccountUrlLifetimeInMinutes * 60);
 
             emailPurpose = string.IsNullOrWhiteSpace(emailPurpose) ? "RecoverAccount" : emailPurpose;
-            var result = await SendActivationToEmailAsync(user, recoverAccountUrl, emailPurpose, projectKey);
+            var result = await SendActivationToEmailAsync(user, recoverAccountUrl, emailPurpose);
 
             await _repository.InsertUserKeyMapAsync(new UserKeyMap
             {
@@ -536,7 +539,7 @@ namespace Iam.DomainService.Accounts
             return true;
         }
 
-        public async Task<bool> SendActivationToEmailAsync(User user, string recoverAccountUrl, string emailPurpose, string projectKey)
+        public async Task<bool> SendActivationToEmailAsync(User user, string recoverAccountUrl, string emailPurpose)
         {
             _logger.LogInformation("Sending recovery for {Aid} by email: {MPurpose}", user.ItemId, emailPurpose);
             var sendMailCommand = new SendMail
@@ -550,8 +553,7 @@ namespace Iam.DomainService.Accounts
                 },
                 Language = user.Language ?? "en-US",
                 Purpose = emailPurpose,
-                To = new string[] { user.Email.ToLower() },
-                ProjectKey = projectKey
+                To = new string[] { user.Email.ToLower() }
             };
 
             return await _identityAccessManagementService.SendEmailAsync(sendMailCommand);
@@ -702,7 +704,7 @@ namespace Iam.DomainService.Accounts
                 return new BaseAccountResponse();
             }
 
-            var result = await SendReActivationAsync(user, resendActivationRequest.ProjectKey);
+            var result = await SendReActivationAsync(user);
 
             return new BaseAccountResponse
             {
@@ -710,7 +712,7 @@ namespace Iam.DomainService.Accounts
             };
         }
 
-        public async Task<bool> SendReActivationAsync(User user, string projectKey)
+        public async Task<bool> SendReActivationAsync(User user)
         {
             var config = await _repository.GetIamConfigurationAsync();
             var key = Guid.NewGuid().ToString("n");
@@ -719,7 +721,7 @@ namespace Iam.DomainService.Accounts
             await _cacheClient.AddStringValueAsync(key, user.ItemId, config.ActivationUrlLifetimeInMinutes * 60);
 
             var emailPurpose = string.IsNullOrWhiteSpace(user.MailPurpose) ? "AccountActivation" : user.MailPurpose;
-            var result = await _identityAccessManagementService.SendActivationToEmailAsync(user, accountActivationUri, emailPurpose, projectKey);
+            var result = await _identityAccessManagementService.SendActivationToEmailAsync(user, accountActivationUri, emailPurpose);
 
             await _repository.InsertUserKeyMapAsync(new UserKeyMap
             {
@@ -781,6 +783,8 @@ namespace Iam.DomainService.Accounts
 
             settings.IsEmailPasswordSignUpEnabled = request.IsEmailPasswordSignUpEnabled;
             settings.IsSSoSignUpEnabled = request.IsSSoSignUpEnabled;
+            settings.DefaultPermissionsForNewUserOnSignUp = request.DefaultPermissionsForNewUserOnSignUp;
+            settings.DefaultRolesForNewUserOnSignUp = request.DefaultRolesForNewUserOnSignUp;
             settings.LastUpdatedBy = BlocksContext.GetContext()?.UserId;
             settings.LastUpdatedDate = DateTime.UtcNow;
 
@@ -797,14 +801,18 @@ namespace Iam.DomainService.Accounts
                 return new Dictionary<string, object>
                 {
                     { "IsEmailPasswordSignUpEnabled", false },
-                    { "IsSSoSignUpEnabled", false }
+                    { "IsSSoSignUpEnabled", false },
+                    { "DefaultRolesForNewUser", new List<string>() },
+                    { "DefaultPermissionsForNewUser", new List<string>() }
                 };
             }
 
             return new Dictionary<string, object>
             {
                 { "IsEmailPasswordSignUpEnabled", tenantConfiguration.IsEmailPasswordSignUpEnabled },
-                { "IsSSoSignUpEnabled", tenantConfiguration.IsSSoSignUpEnabled }
+                { "IsSSoSignUpEnabled", tenantConfiguration.IsSSoSignUpEnabled },
+                { "DefaultRolesForNewUser", tenantConfiguration.DefaultRolesForNewUser },
+                { "DefaultPermissionsForNewUser", tenantConfiguration.DefaultPermissionsForNewUser }
             };
         }
 
@@ -880,8 +888,7 @@ namespace Iam.DomainService.Accounts
                     },
                     Language = user.Language ?? "en-US",
                     Purpose = "AccountLockedNotification",
-                    To = new[] { user.Email?.ToLower() ?? string.Empty },
-                    ProjectKey = "default"
+                    To = new[] { user.Email?.ToLower() ?? string.Empty }
                 };
 
                 var recipientEmail = sendMailCommand.To.FirstOrDefault();
@@ -915,8 +922,7 @@ namespace Iam.DomainService.Accounts
                     },
                     Language = user.Language ?? "en-US",
                     Purpose = "AccountUnlockedNotification",
-                    To = new[] { user.Email?.ToLower() ?? string.Empty },
-                    ProjectKey = "default"
+                    To = new[] { user.Email?.ToLower() ?? string.Empty }
                 };
 
                 var recipientEmail = sendMailCommand.To.FirstOrDefault();

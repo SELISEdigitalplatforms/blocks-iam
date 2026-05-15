@@ -9,5 +9,6 @@ namespace Iam.DomainService.Shared.Entities
         public string Name { get; set; }
         public bool IsEnable { get; set; } = true;
         public List<string> DefaultRoleForMembers { get; set; } = new List<string>();
+        public List<string> DefaultPermissionsForMembers { get; set; } = new List<string>();
     }
 }
