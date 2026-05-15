@@ -30,7 +30,7 @@ import {
   User,
 } from "@blocks-idp/iam/models/user";
 import { UserAccountService } from "./account.service";
-import { USER_ENDPOINTS } from "../constants/endpoint.constant";
+import { USER_ENDPOINTS, ORGANIZATION_ENDPOINTS } from "../constants/endpoint.constant";
 import { AUTH_ENDPOINTS } from "@/idp/authentication/constants/endpoint.constant";
 
 export class UserService {
@@ -72,14 +72,14 @@ export class UserService {
     payload: IGetSignUpSettingPayload,
   ): Promise<IGetSignUpSettingResponse> {
     return http.get(
-      `${USER_ENDPOINTS.GET_SIGNUP_SETTING}?ProjectKey=${payload.projectKey}`,
+      `${ORGANIZATION_ENDPOINTS.GET_SIGNUP_SETTING}?ProjectKey=${payload.projectKey}`,
     );
   }
 
   saveSignUpSetting(
     payload: ISaveSignUpSettingPayload,
   ): Promise<ISaveSignUpSettingResponse> {
-    return http.post(USER_ENDPOINTS.SAVE_SIGNUP_SETTING, payload);
+    return http.post(ORGANIZATION_ENDPOINTS.SAVE_SIGNUP_SETTING, payload);
   }
 
   saveRolesAndPermissions(

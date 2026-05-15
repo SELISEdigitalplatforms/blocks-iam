@@ -3,7 +3,7 @@ import { mockHttpClientFactory } from "@/test-utils/__mocks__";
 import { http } from "@/lib/http-client";
 import { UserService } from "./user.service";
 import { UserAccountService } from "./account.service";
-import { USER_ENDPOINTS } from "../constants/endpoint.constant";
+import { USER_ENDPOINTS, ORGANIZATION_ENDPOINTS } from "../constants/endpoint.constant";
 import { TEST_PROJECT_KEY } from "@/test-utils/__mocks__/data.mock";
 import {
   mockGetUsersPayload,
@@ -146,7 +146,7 @@ describe("UserService", () => {
       const result = await service.getSignUpSetting(mockGetSignUpSettingPayload);
 
       expect(http.get).toHaveBeenCalledWith(
-        `${USER_ENDPOINTS.GET_SIGNUP_SETTING}?ProjectKey=${mockGetSignUpSettingPayload.projectKey}`,
+        `${ORGANIZATION_ENDPOINTS.GET_SIGNUP_SETTING}?ProjectKey=${mockGetSignUpSettingPayload.projectKey}`,
       );
       expect(result).toEqual(mockSignUpSettingResponse);
     });
@@ -168,7 +168,7 @@ describe("UserService", () => {
       const result = await service.saveSignUpSetting(mockSaveSignUpSettingPayload);
 
       expect(http.post).toHaveBeenCalledWith(
-        USER_ENDPOINTS.SAVE_SIGNUP_SETTING,
+        ORGANIZATION_ENDPOINTS.SAVE_SIGNUP_SETTING,
         mockSaveSignUpSettingPayload,
       );
       expect(result).toEqual(mockSuccessResponse);
