@@ -86,11 +86,6 @@ namespace Iam.DomainService.Users
             var filter = Builders<Role>.Filter.In(x => x.Slug, GetOrgSpecficRoles(user))
                 & Builders<Role>.Filter.Eq(x => x.OrganizationId, orgId);
 
-            if (!string.IsNullOrWhiteSpace(tenantId))
-            {
-                filter &= Builders<Role>.Filter.Eq(x => x.TenantId, tenantId);
-            }
-
             return await collection.Find(filter).Project(project).ToListAsync();
         }
 
@@ -104,11 +99,6 @@ namespace Iam.DomainService.Users
 
             var filter = Builders<Role>.Filter.In(x => x.Slug, roles)
                 & Builders<Role>.Filter.Eq(x => x.OrganizationId, orgId);
-
-            if (!string.IsNullOrWhiteSpace(tenantId))
-            {
-                filter &= Builders<Role>.Filter.Eq(x => x.TenantId, tenantId);
-            }
 
             return await collection.Find(filter).Project(project).ToListAsync();
         }
@@ -251,7 +241,7 @@ namespace Iam.DomainService.Users
             var builder = Builders<UserTimeline>.Filter;
             var contextOrgId = ResolveOrganizationId(null);
             var userId = BlocksContext.GetContext()?.UserId;
-            var filter = FilterDefinition<UserTimeline>.Equals(x => x.OrganizationId, contextOrgId)
+            var filter = builder.Eq(x => x.OrganizationId, contextOrgId)
                          & builder.Eq(x => x.UserId, userId);
 
             if (!string.IsNullOrWhiteSpace(request?.Filter.Event))

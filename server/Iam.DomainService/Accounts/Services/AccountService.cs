@@ -811,8 +811,8 @@ namespace Iam.DomainService.Accounts
             {
                 { "IsEmailPasswordSignUpEnabled", tenantConfiguration.IsEmailPasswordSignUpEnabled },
                 { "IsSSoSignUpEnabled", tenantConfiguration.IsSSoSignUpEnabled },
-                { "DefaultRolesForNewUser", tenantConfiguration.DefaultRolesForNewUser },
-                { "DefaultPermissionsForNewUser", tenantConfiguration.DefaultPermissionsForNewUser }
+                { "DefaultRolesForNewUser", tenantConfiguration.DefaultRolesForNewUserOnSignUp },
+                { "DefaultPermissionsForNewUser", tenantConfiguration.DefaultPermissionsForNewUserOnSignUp }
             };
         }
 

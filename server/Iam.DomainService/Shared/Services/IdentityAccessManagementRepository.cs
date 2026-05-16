@@ -126,8 +126,8 @@ namespace Iam.DomainService.Services
                 Builders<TenantConfiguration>.Update
                     .Set(t => t.IsEmailPasswordSignUpEnabled, tenantConfiguration.IsEmailPasswordSignUpEnabled)
                     .Set(t => t.IsSSoSignUpEnabled, tenantConfiguration.IsSSoSignUpEnabled)
-                    .Set(t => t.DefaultRolesForNewUser, tenantConfiguration.DefaultRolesForNewUser)
-                    .Set(t => t.DefaultPermissionsForNewUser, tenantConfiguration.DefaultPermissionsForNewUser)
+                    .Set(t => t.DefaultRolesForNewUserOnSignUp, tenantConfiguration.DefaultRolesForNewUserOnSignUp)
+                    .Set(t => t.DefaultPermissionsForNewUserOnSignUp, tenantConfiguration.DefaultPermissionsForNewUserOnSignUp)
                     .Set(t => t.LastUpdatedBy, tenantConfiguration.LastUpdatedBy)
                     .Set(t => t.LastUpdatedDate, tenantConfiguration.LastUpdatedDate));
         }

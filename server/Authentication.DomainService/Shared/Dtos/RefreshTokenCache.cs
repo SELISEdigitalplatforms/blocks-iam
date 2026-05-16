@@ -20,5 +20,6 @@ namespace Authentication.DomainService.Dtos
         public int TokenVersion { get; set; }
         public DateTime? RememberMeIssuedUtc { get; set; }
         public DateTime? RememberMeExpiresUtc { get; set; }
+        public string? Scope { get; set; }
     }
 }

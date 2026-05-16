@@ -512,7 +512,7 @@ namespace Authentication.DomainService.Authentication
             }
 
             // Security rule: root DB-issued tokens cannot start impersonation.
-            var rootSession = await _authenticationRepository.GetSessionByRefreshTokenAsync(rootRefreshToken);
+            var rootSession = await _authenticationRepository.GetIdentitySessionByRefreshTokenAsync(rootRefreshToken);
             if (IsRootDatabaseToken(rootSession?.GrantType))
             {
                 await WriteImpersonationAuditEventAsync(httpRequest, "impersonation_start_denied", userId, request.TargetTenantId, "WARN", "root_db_token_disallowed", rootTenantId);
@@ -899,20 +899,20 @@ namespace Authentication.DomainService.Authentication
 
         private async Task HandlePotentialRefreshTokenReuseAsync(string refreshToken, ICacheClient cacheClient)
         {
-            var existingSession = await _authenticationRepository.GetSessionByRefreshTokenAsync(refreshToken);
+            var existingSession = await _authenticationRepository.GetIdentitySessionByRefreshTokenAsync(refreshToken);
             if (existingSession == null || existingSession.IsActive)
             {
                 return;
             }
 
-            IEnumerable<Session> activeSessions;
+            IEnumerable<IdentitySession> activeSessions;
             if (!string.IsNullOrWhiteSpace(existingSession.SessionId))
             {
-                activeSessions = await _authenticationRepository.GetActiveSessionBySessionIdAsync(existingSession.SessionId);
+                activeSessions = await _authenticationRepository.GetActiveIdentitySessionBySessionIdAsync(existingSession.SessionId);
             }
             else
             {
-                activeSessions = await _authenticationRepository.GetActiveSessionByUserIdAsync(existingSession.UserId);
+                activeSessions = await _authenticationRepository.GetActiveIdentitySessionByUserIdAsync(existingSession.UserId);
             }
 
             var refreshTokens = activeSessions
@@ -926,7 +926,7 @@ namespace Authentication.DomainService.Authentication
                 return;
             }
 
-            await _authenticationRepository.UpdateSessionStatusForAllRefreshTokenAsync(refreshTokens!);
+            await _authenticationRepository.RevokeIdentitySessionsByRefreshTokensAsync(refreshTokens!);
 
             foreach (var token in refreshTokens)
             {

@@ -345,7 +345,7 @@ namespace Authentication.DomainService.Oidc.Services
                 }
 
                 // Revoke tokens associated with this session before deleting it.
-                var activeSessions = await _authenticationRepository.GetActiveSessionBySessionIdAsync(sessionId);
+                var activeSessions = await _authenticationRepository.GetActiveIdentitySessionBySessionIdAsync(sessionId);
                 var refreshTokens = activeSessions
                     .Select(s => s.RefreshToken)
                     .Where(token => !string.IsNullOrWhiteSpace(token))
@@ -365,7 +365,7 @@ namespace Authentication.DomainService.Oidc.Services
 
                 if (refreshTokens.Count > 0)
                 {
-                    await _authenticationRepository.UpdateSessionStatusForAllRefreshTokenAsync(refreshTokens);
+                    await _authenticationRepository.RevokeIdentitySessionsByRefreshTokensAsync(refreshTokens);
                 }
 
                 var success = await _sessionRepo.DeleteAsync(sessionId);

@@ -112,13 +112,13 @@ namespace Iam.DomainService.Users
                 return model.OrganizationId;
             }
 
-            var orgIdFromRoles = model.Roles.Keys.FirstOrDefault(key => !string.IsNullOrWhiteSpace(key));
+            var orgIdFromRoles = model.Roles.FirstOrDefault(key => !string.IsNullOrWhiteSpace(key));
             if (!string.IsNullOrWhiteSpace(orgIdFromRoles))
             {
                 return orgIdFromRoles;
             }
 
-            var orgIdFromPermissions = model.Permissions.Keys.FirstOrDefault(key => !string.IsNullOrWhiteSpace(key));
+            var orgIdFromPermissions = model.Permissions.FirstOrDefault(key => !string.IsNullOrWhiteSpace(key));
             if (!string.IsNullOrWhiteSpace(orgIdFromPermissions))
             {
                 return orgIdFromPermissions;
