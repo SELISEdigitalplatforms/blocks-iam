@@ -1,44 +1,76 @@
 import { Menu } from "@/models/menu-models";
-import { Activity, Building2, KeyRound, Monitor, Users } from "lucide-react";
+import { BookMinus, Building2, KeyRound, Package, Settings, Users } from "lucide-react";
 
 export const navigationMenus: Menu[] = [
+  // {
+  //   id: "overview-project",
+  //   type: "menu",
+  //   name: "Overview",
+  //   path: "/dashboard",
+  //   icon: Home,
+  // },
+  // {
+  //   type: "separator",
+  //   id: "separator-overview",
+  // },
+  {
+    id: "environments",
+    type: "menu",
+    name: "Environments",
+    path: "/project-overview/environments",
+    icon: Package,
+  },
+  {
+    id: "people",
+    type: "menu",
+    name: "People",
+    path: "/project-overview/people",
+    icon: Users,
+  },
+  {
+    id: "repositories",
+    type: "menu",
+    name: "Repositories",
+    path: "/project-overview/repositories",
+    icon: BookMinus,
+  },
+  {
+    id: "settings",
+    type: "menu",
+    name: "Project Settings",
+    path: "/project-overview/settings",
+    icon: Settings,
+  },
+  {
+    type: "separator",
+    id: "separator-identity",
+  },
   {
     type: "menu",
-    id: "admin-users",
+    id: "service-identity__authentication-users",
     name: "Users",
-    path: "/idp/admin/users",
+    path: "/services/authentication/users",
     icon: Users,
   },
   {
     type: "menu",
-    id: "admin-organizations",
+    id: "service-identity__authentication-organizations",
     name: "Organizations",
-    path: "/idp/admin/organizations",
+    path: "/services/authentication/organizations",
     icon: Building2,
   },
-  {
-    type: "menu",
-    id: "admin-clients",
-    name: "OIDC Clients",
-    path: "/idp/admin/clients",
-    icon: KeyRound,
-  },
-  {
-    type: "separator",
-    id: "separator-monitoring",
-  },
-  {
-    type: "menu",
-    id: "admin-sessions",
-    name: "Sessions",
-    path: "/idp/admin/sessions",
-    icon: Monitor,
-  },
-  {
-    type: "menu",
-    id: "admin-activities",
-    name: "Activity Log",
-    path: "/idp/admin/activities",
-    icon: Activity,
-  },
+  // {
+  //   type: "menu",
+  //   id: "service-identity__authentication-client-credential",
+  //   name: "Client Credential",
+  //   path: "/services/authentication/client-credential",
+  //   icon: KeyRound,
+  // },
+  // {
+  //   type: "menu",
+  //   id: "service-identity__authorization",
+  //   name: "Access Manager",
+  //   path: "/services/iam",
+  //   icon: Shield,
+  // },
 ];

@@ -4,20 +4,8 @@ import { defineConfig, loadEnv } from "vite";
 
 export default defineConfig(({ mode }) => {
   const env = loadEnv(mode, __dirname, "BLOCKS_");
-  // For development, always proxy to localhost:5000 unless explicitly configured otherwise
-  const proxyTarget = env.BLOCKS_API_BASE_URL || "http://localhost:5000";
-  const backendUrl = "http://localhost:5000";
-  
-  // Always enable proxy for development (even if BLOCKS_API_BASE_URL is empty)
-  const enableProxy = true;
-
-  // Helper function to set origin headers for all requests
-  const configureProxyOrigin = (proxy: any) => {
-    proxy.on("proxyReq", (proxyReq: any) => {
-      proxyReq.setHeader("origin", backendUrl);
-      proxyReq.setHeader("referer", `${backendUrl}/`);
-    });
-  };
+  const proxyTarget = env.BLOCKS_API_BASE_URL;
+  const logicTarget = env.BLOCKS_LOGIC_BASE_URL || "https://dev-logic.blocksdevelopers.com";
 
   return {
     envPrefix: ["BLOCKS_"],
@@ -42,63 +30,59 @@ export default defineConfig(({ mode }) => {
       emptyOutDir: true,
     },
     server: {
-      host: "0.0.0.0", // Listen on all addresses explicitly
+      host: true, // Listen on all addresses (0.0.0.0)
       port: 4000,
       allowedHosts: [
         "dev-cloud.seliseblocks.com",
         "localhost",
-        "127.0.0.1",
-        "idp.blocksdevelopers.com",
-        "idp.seliseblocks.com",
         ".seliseblocks.com",
-        ".blocksdevelopers.com",
       ],
-      proxy: enableProxy
+      proxy: proxyTarget
         ? {
+            "/logic": {
+              target: logicTarget,
+              changeOrigin: true,
+              rewrite: (path) => path.replace(/^\/logic/, ""),
+              secure: false,
+            },
             "/api": {
               target: proxyTarget,
               changeOrigin: true,
               secure: false,
-              configure: configureProxyOrigin,
             },
             "/cloudbuild": {
               target: proxyTarget,
               changeOrigin: true,
               secure: false,
-              configure: configureProxyOrigin,
             },
             "/idp": { 
               target: proxyTarget, 
               changeOrigin: true, 
               secure: false,
-              configure: configureProxyOrigin,
             },
             "/identifier": { 
               target: proxyTarget, 
               changeOrigin: true, 
               secure: false,
-              configure: configureProxyOrigin,
             },
             "/communication": { 
               target: proxyTarget, 
               changeOrigin: true, 
               secure: false,
-              configure: configureProxyOrigin,
             },
             "/cloudconfiguration": { 
               target: proxyTarget, 
               changeOrigin: true, 
               secure: false,
-              configure: configureProxyOrigin,
             },
-            "/uilm": { target: proxyTarget, changeOrigin: true, secure: false, configure: configureProxyOrigin },
-            "/utilities": { target: proxyTarget, changeOrigin: true, secure: false, configure: configureProxyOrigin },
-            "/lmt": { target: proxyTarget, changeOrigin: true, secure: false, configure: configureProxyOrigin },
-            "/mfa": { target: proxyTarget, changeOrigin: true, secure: false, configure: configureProxyOrigin },
-            "/alert": { target: proxyTarget, changeOrigin: true, secure: false, configure: configureProxyOrigin },
-            "/blocksai-api": { target: proxyTarget, changeOrigin: true, secure: false, configure: configureProxyOrigin },
-            "/studio": { target: proxyTarget, changeOrigin: true, secure: false, configure: configureProxyOrigin },
-            "/uds": { target: proxyTarget, changeOrigin: true, secure: false, configure: configureProxyOrigin },
+            "/uilm": { target: proxyTarget, changeOrigin: true, secure: false },
+            "/utilities": { target: proxyTarget, changeOrigin: true, secure: false },
+            "/lmt": { target: proxyTarget, changeOrigin: true, secure: false },
+            "/mfa": { target: proxyTarget, changeOrigin: true, secure: false },
+            "/alert": { target: proxyTarget, changeOrigin: true, secure: false },
+            "/blocksai-api": { target: proxyTarget, changeOrigin: true, secure: false },
+            "/studio": { target: proxyTarget, changeOrigin: true, secure: false },
+            "/uds": { target: proxyTarget, changeOrigin: true, secure: false },
           }
         : undefined,
     },

@@ -37,24 +37,17 @@ export const useSignupByEmail = () => {
   });
 };
 
+// export const useGetLoginOptions = () => {
+//   return useQuery({
+//     queryKey: ["login-options"],
+//     queryFn: () => authService.getLoginOptions(),
+//   });
+// };
+
 export const useGetLoginOptions = (tenantId?: string, enabled = true) => {
   return useQuery({
     queryKey: ["login-options", tenantId],
     queryFn: () => authService.getLoginOptions(tenantId),
     enabled,
-  });
-};
-
-export const useAccountActivation = () => {
-  return useMutation({
-    mutationKey: ["account", "activate"],
-    mutationFn: authService.activateAccount,
-  });
-};
-
-export const useAccountRecover = () => {
-  return useMutation({
-    mutationKey: ["account", "recover"],
-    mutationFn: authService.recoverAccount,
   });
 };

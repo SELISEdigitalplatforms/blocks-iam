@@ -14,7 +14,6 @@ import React, { useState } from "react";
 import { Captcha } from "@/components/captcha";
 import { useTheme } from "@/hooks/use-theme";
 import { isErrorWithErrors } from "@/lib/error";
-import { OidcAccountSelector, OidcAccountInfo } from "./oidc-account-selector";
 import { getCurrentOIDCParams, buildOIDCNavigationUrl } from "@blocks-idp/authentication/utils/oidc-utils";
 import { useGetLoginOptions } from "@blocks-idp/authentication/hooks/use-auth";
 import { SsoSignin } from "@blocks-idp/authentication/pages/login/sso-signin";
@@ -22,6 +21,7 @@ import { Skeleton } from "@/components/ui-kits/skeleton/skeleton";
 import { GRANT_TYPES } from "@blocks-idp/authentication/constants/authentication.constant";
 import { useAuthStore } from "@/store/useAuthStore";
 import { sha256 } from 'js-sha256';
+import { OidcAccountInfo, OidcAccountSelector } from "./oidc-account-selector";
 
 const base64UrlEncode = (bytes: Uint8Array) => {
   const binary = String.fromCharCode(...bytes);
@@ -32,7 +32,7 @@ const generatePkcePair = async () => {
   const verifierBytes = crypto.getRandomValues(new Uint8Array(32));
   const verifier = base64UrlEncode(verifierBytes);
   const digestHex = sha256(verifier);
-  const digestBytes = new Uint8Array(digestHex.match(/.{1,2}/g)!.map(byte => parseInt(byte, 16)));
+  const digestBytes = new Uint8Array(digestHex.match(/.{1,2}/g)!.map((byte: string) => parseInt(byte, 16)));
   const challenge = base64UrlEncode(digestBytes);
 
   return { verifier, challenge };
@@ -344,7 +344,7 @@ export const OidcLoginForm = ({
               )}
             />
 
-            <Link to={forgotPasswordUrl} className="ml-auto inline-block text-sm text-primary">
+            <Link to={forgotPasswordUrl} className="ml-auto inline-block text-sm text-primary pointer-events-none opacity-50 cursor-not-allowed" aria-disabled="true" tabIndex={-1}>
               Forgot password?
             </Link>
 
@@ -366,13 +366,13 @@ export const OidcLoginForm = ({
         </Form>
       )}
 
-      {showPasswordLogin && showSocialLogin && (
+      {/* {showPasswordLogin && showSocialLogin && (
         <div className="my-2 mt-4 flex items-center">
           <hr className="flex-grow border" />
           <span className="mx-2 text-xs text-low-emphasis">OR</span>
           <hr className="flex-grow border" />
         </div>
-      )}
+      )} */}
 
       {showSocialLogin && (
         <SsoSignin
@@ -394,7 +394,7 @@ export const OidcLoginForm = ({
       <div className="mt-3 flex items-center justify-center">
         <div className="flex items-center text-medium-emphasis">
           <p>Not a member?</p>
-          <Link to={signUpUrl} className="ml-2 inline-block text-sm text-primary">
+          <Link to={signUpUrl} className="ml-2 inline-block text-sm text-primary pointers-event-none opacity-50 cursor-not-allowed" aria-disabled="true">
             Sign up
           </Link>
         </div>
