@@ -1,13 +1,20 @@
+import { useProjectStore } from "@/store/useProjectStore";
 import { getRuntimeEnv } from "@/lib/runtime-env";
 import { getQueryClient } from "@/providers/query-provider";
 import { useAuthStore } from "@/store/useAuthStore";
-import { AUTH_ENDPOINTS } from "@blocks-idp/authentication/constants/endpoint.constant";
+import {
+  AUTH_ENDPOINTS,
+  AUTH_OIDC_ENDPOINTS,
+} from "@/idp/authentication/constants/endpoint.constant";
 
 class HttpError extends Error {
   status: number;
   errors: Record<string, string | string[]>;
 
-  constructor(status: number, error: { errors: Record<string, string | string[]> }) {
+  constructor(
+    status: number,
+    error: { errors: Record<string, string | string[]> },
+  ) {
     super(error.toString());
     this.status = status;
     this.errors = error.errors;
@@ -52,36 +59,15 @@ class HttpClient {
     private BLOCKS_KEY: string,
   ) {}
 
-  private resolveBlocksKey(): string {
-    if (typeof window === "undefined") {
-      return this.BLOCKS_KEY;
-    }
-
-    const search = new URLSearchParams(window.location.search);
-    // For OIDC flows, prefer tenant key from URL params.
-    return search.get("tenant_id") || search.get("x-blocks-key") || this.BLOCKS_KEY || "";
-  }
-
-  private isLocalhost(): boolean {
-    return this.baseURL.includes("localhost") || this.baseURL.includes("127.0.0.1");
-  }
-
-  private normalizeHeaders(headers?: HeadersInit, skipBlocksKey?: boolean): Headers {
-    const blocksKey = this.resolveBlocksKey();
-
+  private normalizeHeaders(
+    headers?: HeadersInit,
+    skipBlocksKey?: boolean,
+  ): Headers {
     const normalizedHeaders = new Headers({
       Accept: "application/json",
       "Content-Type": "application/json",
-      ...(!skipBlocksKey && blocksKey && { "X-Blocks-Key": blocksKey }),
+      ...(!skipBlocksKey && { "X-Blocks-Key": this.BLOCKS_KEY }),
     });
-
-    // Add Authorization Bearer token for localhost
-    if (this.isLocalhost()) {
-      const accessToken = useAuthStore.getState().accessToken;
-      if (accessToken) {
-        normalizedHeaders.set("Authorization", `Bearer ${accessToken}`);
-      }
-    }
 
     if (headers) {
       if (headers instanceof Headers) {
@@ -89,7 +75,9 @@ class HttpClient {
       } else if (Array.isArray(headers)) {
         headers.forEach(([key, value]) => normalizedHeaders.set(key, value));
       } else {
-        Object.entries(headers).forEach(([key, value]) => normalizedHeaders.set(key, value));
+        Object.entries(headers).forEach(([key, value]) =>
+          normalizedHeaders.set(key, value),
+        );
       }
     }
 
@@ -98,41 +86,30 @@ class HttpClient {
 
   private async refreshAccessToken() {
     if (isRefreshing) return;
-    isRefreshing = true;
+
     try {
-      const authStore = useAuthStore.getState();
-      const clientId = sessionStorage.getItem("blocks-auth-client-id") || "";
-      const url = `${this.baseURL}${AUTH_ENDPOINTS.REFRESH}`;
+      isRefreshing = true;
 
-      debugger; // Debug: Refresh token call about to execute
+      const formData = new URLSearchParams();
+      formData.append("grant_type", "refresh_token");
+      formData.append("refresh_token", '""');
+      formData.append(
+        "client_id",
+        getRuntimeEnv("BLOCKS_OIDC_CLIENT_ID") || "",
+      );
 
+      const url = `${AUTH_OIDC_ENDPOINTS.OIDC_TOKEN}?tenant_id=${this.BLOCKS_KEY}`;
       const response = await fetch(url, {
         method: "POST",
-        body: JSON.stringify({
-          client_id: clientId,
-        }),
+        body: formData,
         headers: {
-          "Content-Type": "application/json",
-          "X-Blocks-Key": this.resolveBlocksKey(),
-          ...(authStore.accessToken && {
-            Authorization: `Bearer ${authStore.accessToken}`,
-          }),
+          "Content-Type": "application/x-www-form-urlencoded",
+          "X-Blocks-Key": this.BLOCKS_KEY,
         },
         credentials: "include",
       });
 
-      if (!response.ok) {
-        throw new Error("Failed to refresh token");
-      }
-
-      const data = await response.json();
-
-      if (data.mode === "impersonation" || data.mode === "root") {
-        authStore.setAuthMode(data.mode, data.reason ?? null);
-      }
-
-      // Root tenant FE uses only HttpOnly cookies for tokens; no response body token handling needed
-      // Automatic credential inclusion handles authentication via cookies
+      if (!response.ok) throw new Error("Failed to refresh token");
 
       while (requestQueue.length > 0) {
         const { url, requestOption, resolve, reject } = requestQueue.shift()!;
@@ -141,16 +118,20 @@ class HttpClient {
     } catch (_error) {
       const queryClient = getQueryClient();
       useAuthStore.getState().reset();
+      useProjectStore.getState().reset();
       queryClient.cancelQueries();
       queryClient.clear();
-      window.location.href = "/login";
+      window.location.href = `/login`;
     } finally {
       isRefreshing = false;
       requestQueue = [];
     }
   }
 
-  private async request<T = unknown>(url: string, requestOption: RequestOptions): Promise<T> {
+  private async request<T = unknown>(
+    url: string,
+    requestOption: RequestOptions,
+  ): Promise<T> {
     const {
       method,
       body,
@@ -162,21 +143,10 @@ class HttpClient {
     } = requestOption;
     const fullUrl = absoluteUrl ? url : `${this.baseURL}${url}`;
     const normalizedHeaders = this.normalizeHeaders(headers, skipBlocksKey);
-
-    // Enforce tenant header for all API endpoints regardless of caller options.
-    if (fullUrl.includes("/api/") && !normalizedHeaders.has("X-Blocks-Key")) {
-      const requiredBlocksKey = this.resolveBlocksKey();
-      if (requiredBlocksKey) {
-        normalizedHeaders.set("X-Blocks-Key", requiredBlocksKey);
-      }
-    }
-
-    // Always honor withCredentials so cookie-based auth works in localhost and remote setups.
-    const credentialsMode = withCredentials ? "include" : "same-origin";
     const config: RequestInit = {
       method,
       headers: normalizedHeaders,
-      credentials: credentialsMode,
+      credentials: "include",
     };
 
     if (body) {
@@ -210,15 +180,20 @@ class HttpClient {
 
       if (!response.ok) {
         const errorBody = await response.json().catch(() => ({}));
-        throw new HttpError(response.status, { errors: errorBody?.errors || errorBody });
+        throw new HttpError(response.status, {
+          errors: errorBody?.errors || errorBody,
+        });
       }
 
       const contentType = response.headers.get("content-type")?.toLowerCase();
       if (!contentType) return { success: true, status: response.status } as T;
       if (contentType.includes("text/html")) {
-        throw new HttpError(response.status, { errors: { general: "Unexpected HTML response from server" } });
+        throw new HttpError(response.status, {
+          errors: { general: "Unexpected HTML response from server" },
+        });
       }
-      if (contentType.includes("text/")) return (await response.text()) as unknown as T;
+      if (contentType.includes("text/"))
+        return (await response.text()) as unknown as T;
       if (
         contentType.includes("image/") ||
         contentType.includes("application/octet-stream") ||
@@ -241,7 +216,11 @@ class HttpClient {
     }
   }
 
-  get<T = unknown>(url: string, headers?: HeadersInit, options?: Options): Promise<T> {
+  get<T = unknown>(
+    url: string,
+    headers?: HeadersInit,
+    options?: Options,
+  ): Promise<T> {
     return this.request<T>(url, { method: "GET", headers, ...options });
   }
 
@@ -277,7 +256,11 @@ class HttpClient {
     return this.request<T>(url, { method: "PATCH", body, headers, ...options });
   }
 
-  delete<T = unknown>(url: string, headers?: HeadersInit, options?: Options): Promise<T> {
+  delete<T = unknown>(
+    url: string,
+    headers?: HeadersInit,
+    options?: Options,
+  ): Promise<T> {
     return this.request<T>(url, { method: "DELETE", headers, ...options });
   }
 
@@ -296,27 +279,18 @@ class HttpClient {
     const fullUrl = absoluteUrl ? url : `${this.baseURL}${url}`;
     const normalizedHeaders = this.normalizeHeaders(headers, skipBlocksKey);
 
-    // Enforce tenant header for all API endpoints regardless of caller options.
-    if (fullUrl.includes("/api/") && !normalizedHeaders.has("X-Blocks-Key")) {
-      const requiredBlocksKey = this.resolveBlocksKey();
-      if (requiredBlocksKey) {
-        normalizedHeaders.set("X-Blocks-Key", requiredBlocksKey);
-      }
-    }
-
-    // Use same-origin for localhost (token in header), include for remote (cookie-based)
-    const credentialsMode = this.isLocalhost() ? "same-origin" : (withCredentials ? "include" : "same-origin");
-
     const response = await fetch(fullUrl, {
       method: "POST",
       headers: normalizedHeaders,
-      credentials: credentialsMode,
+      credentials: "include",
       body: JSON.stringify(body),
     });
 
     if (!response.ok) {
       const errorBody = await response.json().catch(() => ({}));
-      throw new HttpError(response.status, { errors: errorBody?.errors || errorBody });
+      throw new HttpError(response.status, {
+        errors: errorBody?.errors || errorBody,
+      });
     }
 
     if (!response.body) {

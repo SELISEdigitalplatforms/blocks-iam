@@ -772,12 +772,12 @@ namespace Iam.DomainService.Accounts
         {
             var settings = await _repository.GetTenantConfigurationAsync();
 
-            if(settings == null)
+            if (settings == null)
             {
                 return new SaveSignUpSettingResponse
                 {
                     IsSuccess = false,
-                    Errors = new Dictionary<string, string>{ { "sign_up_setting_exist", "SignUpSetting already exist" }}
+                    Errors = new Dictionary<string, string> { { "sign_up_setting_exist", "SignUpSetting already exist" } }
                 };
             }
 
@@ -853,7 +853,7 @@ namespace Iam.DomainService.Accounts
             if (result)
             {
                 _logger.LogInformation("Account unlocked by admin for user: {UserId}", userId);
-                
+
                 // Send notification email to user
                 try
                 {

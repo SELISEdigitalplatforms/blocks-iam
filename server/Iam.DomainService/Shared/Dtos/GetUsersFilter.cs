@@ -1,4 +1,6 @@
-﻿namespace Iam.DomainService.Dtos
+﻿using System.Text.Json.Serialization;
+
+namespace Iam.DomainService.Dtos
 {
     public class GetUsersFilter
     {
@@ -9,7 +11,15 @@
         public MFA? Mfa { get; set; }
         public DateTime? JoinedOn { get; set; }
         public DateTime? LastLogin { get; set; }
-        public string? OrganizationId { get; set; } = null;
+        [JsonPropertyName("org_id")]
+        public string? OrgId { get; set; } = null;
+
+        [JsonIgnore]
+        public string? OrganizationId
+        {
+            get => OrgId;
+            set => OrgId = value;
+        }
     }
 
     public class Status

@@ -2,10 +2,14 @@ const PLACEHOLDER_PREFIX = "__BLOCKS_";
 
 type RuntimeKey =
   | "BLOCKS_API_BASE_URL"
+  | "BLOCKS_LOGIC_BASE_URL"
   | "BLOCKS_X_BLOCKS_KEY"
   | "BLOCKS_GOOGLE_SITE_KEY"
   | "BLOCKS_CONSTRUCT_URL"
+  | "BLOCKS_GITHUB_SSO_CLIENT_ID"
+  | "BLOCKS_IDP_BASE_URL"
   | "BLOCKS_OIDC_CLIENT_ID";
+  
 
 declare global {
   interface Window {
