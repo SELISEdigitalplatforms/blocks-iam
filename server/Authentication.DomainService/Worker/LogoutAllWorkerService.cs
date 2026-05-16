@@ -23,7 +23,7 @@ namespace Authentication.DomainService.Worker
         }
         public async Task Consume(LogoutAllEvent context)
         {
-            var refreshTokens = (await _authenticationRepository.GetActiveSessionByUserIdAsync(context.UserId)).Select(x => x.RefreshToken).ToList();
+            var refreshTokens = (await _authenticationRepository.GetActiveIdentitySessionByUserIdAsync(context.UserId)).Select(x => x.RefreshToken).ToList();
             var cacheTask = refreshTokens.Select(async x => await _cacheClient.RemoveKeyAsync(x));
             await Task.WhenAll(cacheTask);
 

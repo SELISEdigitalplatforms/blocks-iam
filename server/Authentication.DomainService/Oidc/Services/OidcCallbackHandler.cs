@@ -150,7 +150,7 @@ namespace Authentication.DomainService.Oidc.Services
                 // 6. Issue OIDC authorization code for the original client
                 var authorizationCode = Guid.NewGuid().ToString("n");
                 var authCodeKey = $"oidc_auth_code:{authorizationCode}";
-                var authCodeValue = System.Text.Json.JsonSerializer.Serialize(new
+                var authCodeValue = JsonSerializer.Serialize(new
                 {
                     clientId,
                     userId = blocksUserId,  // Use Blocks user ID, not provider's user ID
@@ -300,7 +300,7 @@ namespace Authentication.DomainService.Oidc.Services
                     { "code", code },
                     { "client_id", provider.ClientId },
                     { "client_secret", provider.ClientSecret },
-                    { "redirect_uri", provider.RedirectUri ?? "" }
+                    { "redirect_uri", provider.RedirectUris?.FirstOrDefault() ?? "" }
                 };
 
                 var timeoutSeconds = (int)GetOutboundRequestTimeout().TotalSeconds;

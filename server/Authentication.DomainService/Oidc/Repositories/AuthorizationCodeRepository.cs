@@ -29,7 +29,7 @@ namespace Authentication.DomainService.Oidc.Repositories
         {
             try
             {
-                var collection = GetDatabase().GetCollection<AuthorizationCodeModel>("authorization_codes");
+                var collection = GetDatabase().GetCollection<AuthorizationCodeModel>("IdpAuthorizationCodes");
                 await collection.InsertOneAsync(code);
                 _logger.LogInformation($"Authorization code created for user {code.UserId}, client {code.ClientId}");
                 return code.Code;
@@ -45,7 +45,7 @@ namespace Authentication.DomainService.Oidc.Repositories
         {
             try
             {
-                var collection = GetDatabase().GetCollection<AuthorizationCodeModel>("authorization_codes");
+                var collection = GetDatabase().GetCollection<AuthorizationCodeModel>("IdpAuthorizationCodes");
                 var filter = Builders<AuthorizationCodeModel>.Filter.Eq(c => c.Code, code);
                 return await collection.Find(filter).FirstOrDefaultAsync();
             }
@@ -60,7 +60,7 @@ namespace Authentication.DomainService.Oidc.Repositories
         {
             try
             {
-                var collection = GetDatabase().GetCollection<AuthorizationCodeModel>("authorization_codes");
+                var collection = GetDatabase().GetCollection<AuthorizationCodeModel>("IdpAuthorizationCodes");
                 var filter = Builders<AuthorizationCodeModel>.Filter.Eq(c => c.Code, code);
                 var update = Builders<AuthorizationCodeModel>.Update
                     .Set(c => c.IsUsed, true)
@@ -81,7 +81,7 @@ namespace Authentication.DomainService.Oidc.Repositories
         {
             try
             {
-                var collection = GetDatabase().GetCollection<AuthorizationCodeModel>("authorization_codes");
+                var collection = GetDatabase().GetCollection<AuthorizationCodeModel>("IdpAuthorizationCodes");
                 var filter = Builders<AuthorizationCodeModel>.Filter.Eq(c => c.Code, code);
                 var result = await collection.DeleteOneAsync(filter);
                 return result.DeletedCount > 0;
@@ -97,7 +97,7 @@ namespace Authentication.DomainService.Oidc.Repositories
         {
             try
             {
-                var collection = GetDatabase().GetCollection<AuthorizationCodeModel>("authorization_codes");
+                var collection = GetDatabase().GetCollection<AuthorizationCodeModel>("IdpAuthorizationCodes");
                 var filter = Builders<AuthorizationCodeModel>.Filter.Lt(c => c.ExpiresAt, DateTime.UtcNow);
                 return await collection.Find(filter).ToListAsync();
             }

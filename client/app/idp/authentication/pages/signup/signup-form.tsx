@@ -23,8 +23,9 @@ import { isErrorWithErrors } from "@/lib/error";
 import { getRuntimeEnv } from "@/lib/runtime-env";
 import { GRANT_TYPES } from "@blocks-idp/authentication/constants/authentication.constant";
 import { useSignupByEmail } from "@blocks-idp/authentication/hooks/use-auth";
-import { LoginOption } from "@blocks-idp/authentication/models/auth-configuration.model";
+import { LoginOption } from "@blocks-idp/authentication/models/auth.model";
 import { useCaptcha } from "@blocks-idp/captcha/hooks/use-captcha";
+import { buildOIDCNavigationUrl } from "@blocks-idp/authentication/utils/oidc-utils";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { Link } from "react-router-dom";
 import { useNavigate } from "react-router-dom";
@@ -73,7 +74,7 @@ export const SignupForm = ({
         resetCaptcha();
         return showErrorToast({ errors: res.errors });
       }
-      navigate(`/signup-email-sent?email=${values.email}`);
+      navigate(buildOIDCNavigationUrl(`/oidc/email-sent-confirmation?email=${values.email}`));
     } catch (error) {
       resetCaptcha();
       if (isErrorWithErrors(error)) {
@@ -168,7 +169,7 @@ export const SignupForm = ({
 
         <div className="mt-4 text-center text-base text-foreground">
           Already a member?{" "}
-          <Link to={"/login"} className="text-primary hover:underline">
+          <Link to={buildOIDCNavigationUrl("/oidc/login")} className="text-primary hover:underline">
             Log in
           </Link>
         </div>

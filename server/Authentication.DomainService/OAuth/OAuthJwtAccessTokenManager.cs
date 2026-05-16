@@ -71,16 +71,6 @@ namespace Authentication.DomainService.OAuth
                 };
             }
 
-            if (!TenantDomainPolicy.IsOriginAllowed(tokenRequest.Request, tenant))
-            {
-                return new TokenResponse
-                {
-                    Error = "invalid_origin",
-                    ErrorDescription = "Request origin is not allowed for this tenant",
-                    StatusCode = 400
-                };
-            }
-
             var issuanceContext = new TokenIssuanceContext
             {
                 IsImpersonation = tokenRequest.IsImpersonation,
@@ -100,6 +90,7 @@ namespace Authentication.DomainService.OAuth
 
             var accessToken = CreateJwtAccessToken(jwtAccessToken);
             var (refreshToken, refreshValidity) = await ManageRefreshTokenAsync(tokenRequest, jwtAccessToken, authenticationConfiguration, tenant, user);
+            var (_, cookieDomain, _) = DomainResolver.ResolveDomain(tenant, tokenRequest.Request, bc?.ApplicationDomain);
 
             return new TokenResponse
             {
@@ -108,7 +99,7 @@ namespace Authentication.DomainService.OAuth
                 ExpiresUtc = jwtAccessToken.Expires,
                 RefreshToken = refreshToken,
                 RefreshExpiresUtc = refreshValidity,
-                CookieDomain = tenant.CookieDomain,
+                CookieDomain = cookieDomain,
                 StatusCode = 200
             };
         }
@@ -276,6 +267,33 @@ namespace Authentication.DomainService.OAuth
                 ? oldRefreshToken.ExpiresUtc
                 : oldRefreshToken.AbsoluteExpiresUtc;
 
+            // Check RememberMe absolute expiry if applicable
+            if (oldRefreshToken.RememberMe && oldRefreshToken.RememberMeExpiresUtc.HasValue && now >= oldRefreshToken.RememberMeExpiresUtc.Value)
+            {
+                // RememberMe window has expired
+                await _cacheClient.RemoveKeyAsync(tokenRequest.RefreshToken);
+                
+                var revokeRememberMeEvent = new RefreshTokenEvent
+                {
+                    RefreshToken = tokenRequest.RefreshToken ?? string.Empty,
+                    TenantId = oldRefreshToken.TenantId,
+                    OrganizationId = oldRefreshToken.OrganizationId,
+                    ClientId = oldRefreshToken.ClientId,
+                    SessionId = oldRefreshToken.SessionId,
+                    IssuedUtc = oldRefreshToken.IssuedUtc,
+                    ExpiresUtc = oldRefreshToken.ExpiresUtc,
+                    IpAddresses = oldRefreshToken.IpAddresses ?? string.Empty,
+                    UserId = oldRefreshToken.UserId ?? string.Empty,
+                    DeviceInformation = _authenticationDomainService.GetDeviceInfo(tokenRequest.Request?.Headers?.UserAgent ?? string.Empty),
+                    IsRevoke = true,
+                    IsLogin = false,
+                    GrantType = tokenRequest.GrantType
+                };
+                await _authenticationDomainService.SendToQueueAsync(Utilities.IdpConstants.AuthenticationQueue, revokeRememberMeEvent);
+                
+                return (string.Empty, DateTime.MinValue);
+            }
+
             // Security-stamp/token-version invalidation: deny refresh if user credentials/session version changed.
             if (oldRefreshToken.TokenVersion != user.TokenVersion)
             {
@@ -353,7 +371,10 @@ namespace Authentication.DomainService.OAuth
                 TargetTenantId = oldRefreshToken.TargetTenantId,
                 ImpersonatorUserId = oldRefreshToken.ImpersonatorUserId,
                 RememberMe = oldRefreshToken.RememberMe,
-                TokenVersion = oldRefreshToken.TokenVersion
+                TokenVersion = oldRefreshToken.TokenVersion,
+                RememberMeIssuedUtc = oldRefreshToken.RememberMeIssuedUtc,
+                RememberMeExpiresUtc = oldRefreshToken.RememberMeExpiresUtc,
+                Scope = oldRefreshToken.Scope
             };
 
             // Save new token to Redis with precise remaining TTL
@@ -420,17 +441,22 @@ namespace Authentication.DomainService.OAuth
                 ? configuredRememberMeLifetime
                 : configuredRefreshTokenLifetime;
 
-            var configuredAbsoluteLifetime = authenticationConfiguration.AbsoluteRefreshTokenValidForNumberMinutes > 0
-                ? authenticationConfiguration.AbsoluteRefreshTokenValidForNumberMinutes
-                : configuredRememberMeLifetime;
+            var configuredAbsoluteLifetime = tokenRequest.RememberMe
+                ? (authenticationConfiguration.RememberMeAbsoluteRefreshTokenValidForNumberMinutes > 0
+                    ? authenticationConfiguration.RememberMeAbsoluteRefreshTokenValidForNumberMinutes
+                    : authenticationConfiguration.AbsoluteRefreshTokenValidForNumberMinutes)
+                : (authenticationConfiguration.AbsoluteRefreshTokenValidForNumberMinutes > 0
+                    ? authenticationConfiguration.AbsoluteRefreshTokenValidForNumberMinutes
+                    : configuredRememberMeLifetime);
 
             if (configuredAbsoluteLifetime < refreshTokenLifetime)
             {
                 configuredAbsoluteLifetime = refreshTokenLifetime;
             }
 
-            var refreshTokenExpireOn = DateTime.UtcNow.AddMinutes(refreshTokenLifetime);
-            var absoluteRefreshTokenExpireOn = DateTime.UtcNow.AddMinutes(configuredAbsoluteLifetime);
+            var now = DateTime.UtcNow;
+            var refreshTokenExpireOn = now.AddMinutes(refreshTokenLifetime);
+            var absoluteRefreshTokenExpireOn = now.AddMinutes(configuredAbsoluteLifetime);
 
             var refreshTokenCache = new RefreshTokenCache
             {
@@ -439,7 +465,7 @@ namespace Authentication.DomainService.OAuth
                 OrganizationId = tokenRequest.OrganizationId,
                 ClientId = tokenRequest.ClientId,
                 SessionId = tokenRequest.Request?.Cookies[IdpSessionCookieName],
-                IssuedUtc = DateTime.UtcNow,
+                IssuedUtc = now,
                 ExpiresUtc = refreshTokenExpireOn,
                 AbsoluteExpiresUtc = absoluteRefreshTokenExpireOn,
                 IpAddresses = string.Join(",", visitorsIpAddresses),
@@ -449,7 +475,10 @@ namespace Authentication.DomainService.OAuth
                 TargetTenantId = tokenRequest.TargetTenantId,
                 ImpersonatorUserId = tokenRequest.ImpersonatorUserId,
                 RememberMe = tokenRequest.RememberMe,
-                TokenVersion = user.TokenVersion
+                TokenVersion = user.TokenVersion,
+                RememberMeIssuedUtc = tokenRequest.RememberMe ? now : null,
+                RememberMeExpiresUtc = tokenRequest.RememberMe ? absoluteRefreshTokenExpireOn : null,
+                Scope = tokenRequest.Scope
             };
 
             await _cacheClient.AddStringValueAsync(refreshTokenCache.RefreshToken, JsonSerializer.Serialize(refreshTokenCache), refreshTokenLifetime * 60);
@@ -512,20 +541,20 @@ namespace Authentication.DomainService.OAuth
 
         private async Task HandleRefreshTokenReuseAsync(string refreshToken)
         {
-            var existingSession = await _authenticationRepository.GetSessionByRefreshTokenAsync(refreshToken);
+            var existingSession = await _authenticationRepository.GetIdentitySessionByRefreshTokenAsync(refreshToken);
             if (existingSession == null || existingSession.IsActive)
             {
                 return;
             }
 
-            IEnumerable<Session> activeSessions;
+            IEnumerable<IdentitySession> activeSessions;
             if (!string.IsNullOrWhiteSpace(existingSession.SessionId))
             {
-                activeSessions = await _authenticationRepository.GetActiveSessionBySessionIdAsync(existingSession.SessionId);
+                activeSessions = await _authenticationRepository.GetActiveIdentitySessionBySessionIdAsync(existingSession.SessionId);
             }
             else
             {
-                activeSessions = await _authenticationRepository.GetActiveSessionByUserIdAsync(existingSession.UserId);
+                activeSessions = await _authenticationRepository.GetActiveIdentitySessionByUserIdAsync(existingSession.UserId);
             }
 
             var refreshTokens = activeSessions
@@ -539,7 +568,7 @@ namespace Authentication.DomainService.OAuth
                 return;
             }
 
-            await _authenticationRepository.UpdateSessionStatusForAllRefreshTokenAsync(refreshTokens!);
+            await _authenticationRepository.RevokeIdentitySessionsByRefreshTokensAsync(refreshTokens!);
 
             foreach (var token in refreshTokens)
             {

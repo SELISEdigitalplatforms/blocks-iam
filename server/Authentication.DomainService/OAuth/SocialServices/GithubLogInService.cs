@@ -38,17 +38,18 @@ namespace Authentication.DomainService.OAuth
             }
 
             var stateKey = Guid.NewGuid().ToString("n");
+            var providerRedirectUri = loginData.RedirectUri ?? identityProvider.RedirectUris.FirstOrDefault() ?? string.Empty;
             var stateInfo = new StateInfo
             {
                 Audience = loginData.Audience,
                 Provider = loginData.Provider,
                 NextUrl = loginData.NextUrl,
+                RedirectUri = providerRedirectUri
             };
 
             await _cacheClient.AddStringValueAsync(stateKey, JsonSerializer.Serialize(stateInfo), 300);
-
             // GitHub auth URL 
-            var loginUri = $"{identityProvider.AuthorizationUrl.Split("?")[0]}?scope={identityProvider.Scope}&state={stateKey}&redirect_uri={WebUtility.UrlEncode(identityProvider.RedirectUri)}&client_id={identityProvider.ClientId}&response_type=code";
+            var loginUri = $"{identityProvider.AuthorizationUrl.Split("?")[0]}?scope={identityProvider.Scope}&state={stateKey}&redirect_uri={WebUtility.UrlEncode(providerRedirectUri)}&client_id={identityProvider.ClientId}&response_type=code";
 
             return (loginUri, loginData.SendAsResponse);
         }
@@ -69,7 +70,7 @@ namespace Authentication.DomainService.OAuth
                 { "code", stateInfo.Code },
                 { "client_id", identityProvider.ClientId ?? string.Empty },
                 { "client_secret", identityProvider.ClientSecret ?? string.Empty },
-                { "redirect_uri", identityProvider.RedirectUri ?? string.Empty }
+                { "redirect_uri", stateInfo.RedirectUri ?? string.Empty }
             };
 
             // Ask for JSON response

@@ -181,7 +181,7 @@ namespace Authentication.DomainService.Authentication
 
             await _cacheClient.RemoveKeyAsync(refreshToken);
 
-            var result = await _authenticationRepository.UpdateSessionStatusAsync(refreshToken, bc?.UserId ?? "");
+            var result = await _authenticationRepository.RevokeIdentitySessionAsync(refreshToken, bc?.UserId ?? "");
 
             return result;
         }
@@ -216,11 +216,11 @@ namespace Authentication.DomainService.Authentication
                 }
             }
 
-            var refreshTokens = (await _authenticationRepository.GetActiveSessionByUserIdAsync(bc.UserId)).Select(x => x.RefreshToken).ToList();
+            var refreshTokens = (await _authenticationRepository.GetActiveIdentitySessionByUserIdAsync(bc?.UserId ?? string.Empty)).Select(x => x.RefreshToken).ToList();
             var cacheTask = refreshTokens.Select(async x => await _cacheClient.RemoveKeyAsync(x));
             await Task.WhenAll(cacheTask);
 
-            var result = await _authenticationRepository.UpdateSessionStatusForAllRefreshTokenAsync(refreshTokens);
+            var result = await _authenticationRepository.RevokeIdentitySessionsByRefreshTokensAsync(refreshTokens);
             return result;
         }
 
@@ -248,8 +248,16 @@ namespace Authentication.DomainService.Authentication
         public string CookieToken(HttpRequest request)
         {
             var bc = BlocksContext.GetContext();
-            var refreshToken = request.HttpContext.Request.Cookies[$"{IdpConstants.RefreshTokenCookieName}_{bc.TenantId}"];
-            refreshToken = string.IsNullOrEmpty(refreshToken) ? request.HttpContext.Request.Headers[$"{IdpConstants.RefreshTokenCookieName}_{bc.TenantId}"] : refreshToken;
+            var tenant = _tenants.GetTenantByID(bc?.TenantId ?? "default");
+            var (domain, _, isResolved) = DomainResolver.ResolveDomain(tenant, request, bc?.ApplicationDomain);
+            if (!isResolved || string.IsNullOrWhiteSpace(domain))
+            {
+                return string.Empty;
+            }
+
+            var cookieKey = $"{IdpConstants.RefreshTokenCookieName}_{domain}";
+            var refreshToken = request.HttpContext.Request.Cookies[cookieKey];
+            refreshToken = string.IsNullOrEmpty(refreshToken) ? request.HttpContext.Request.Headers[cookieKey] : refreshToken;
 
             return refreshToken;
         }
@@ -258,11 +266,15 @@ namespace Authentication.DomainService.Authentication
         {
             var bc = BlocksContext.GetContext();
             var tenantId = bc?.TenantId ?? "default";
-            var cookieDomain = _tenants.GetTenantByID(tenantId)?.CookieDomain;
+            var tenant = _tenants.GetTenantByID(tenantId);
+            var (domain, cookieDomain, isResolved) = DomainResolver.ResolveDomain(tenant, request, bc?.ApplicationDomain);
             var cookieOptions = CreateCookieOptions(cookieDomain, DateTime.UtcNow.AddDays(-1));
 
-            request.HttpContext.Response.Cookies.Delete($"{IdpConstants.RefreshTokenCookieName}_{tenantId}", cookieOptions);
-            request.HttpContext.Response.Cookies.Delete($"{IdpConstants.AccessTokenCookieName}_{tenantId}", cookieOptions);
+            if (isResolved && !string.IsNullOrWhiteSpace(domain))
+            {
+                request.HttpContext.Response.Cookies.Delete($"{IdpConstants.RefreshTokenCookieName}_{domain}", cookieOptions);
+                request.HttpContext.Response.Cookies.Delete($"{domain}", cookieOptions);
+            }
 
             // Backward compatibility cleanup for legacy callback cookie names.
             request.HttpContext.Response.Cookies.Delete("oidc_token", cookieOptions);
@@ -273,8 +285,14 @@ namespace Authentication.DomainService.Authentication
 
         public async Task AppendSessionCookies(HttpContext httpContext, string? accessToken, string? refreshToken, DateTime? accessExpiresUtc = null, DateTime? refreshExpiresUtc = null)
         {
-            var tenantId = BlocksContext.GetContext()?.TenantId ?? "default";
-            var cookieDomain = _tenants.GetTenantByID(tenantId)?.CookieDomain;
+            var bc = BlocksContext.GetContext();
+            var tenantId = bc?.TenantId ?? "default";
+            var tenant = _tenants.GetTenantByID(tenantId);
+            var (domain, cookieDomain, isResolved) = DomainResolver.ResolveDomain(tenant, httpContext.Request, bc?.ApplicationDomain);
+            if (!isResolved || string.IsNullOrWhiteSpace(domain))
+            {
+                return;
+            }
             var authConfiguration = await _authenticationRepository.GetAuthenticationConfigurationAsync();
             var accessLifetimeMinutes = Math.Max(authConfiguration?.AccessTokenValidForNumberMinutes ?? AuthenticationConfiguration.DefaultAccessTokenValidForNumberMinutes, 1);
             var refreshLifetimeMinutes = Math.Max(authConfiguration?.AbsoluteRefreshTokenValidForNumberMinutes ?? AuthenticationConfiguration.DefaultRememberMeRefreshTokenValidForNumberMinutes, 1);
@@ -284,12 +302,12 @@ namespace Authentication.DomainService.Authentication
 
             if (!string.IsNullOrWhiteSpace(accessToken))
             {
-                httpContext.Response.Cookies.Append($"{IdpConstants.AccessTokenCookieName}_{tenantId}", accessToken, accessCookieOptions);
+                httpContext.Response.Cookies.Append($"{domain}", accessToken, accessCookieOptions);
             }
 
             if (!string.IsNullOrWhiteSpace(refreshToken))
             {
-                httpContext.Response.Cookies.Append($"{IdpConstants.RefreshTokenCookieName}_{tenantId}", refreshToken, refreshCookieOptions);
+                httpContext.Response.Cookies.Append($"{IdpConstants.RefreshTokenCookieName}_{domain}", refreshToken, refreshCookieOptions);
             }
         }
 
@@ -324,7 +342,7 @@ namespace Authentication.DomainService.Authentication
         /// Initialize social provider authorization - generates state, stores in cache, returns authorization URL
         /// Standard OAuth 2.0 Authorization Code flow initialization
         /// </summary>
-        public async Task<IActionResult> GetSocialAuthorizationUrlAsync(string provider)
+        public async Task<IActionResult> GetSocialAuthorizationUrlAsync(string provider, string redirectUri)
         {
             if (string.IsNullOrWhiteSpace(provider))
                 return new BadRequestObjectResult(new { error = "provider_required", error_description = "Provider name is required" });
@@ -351,7 +369,8 @@ namespace Authentication.DomainService.Authentication
 
                 // Build authorization URL
                 var scope = identityProvider.Scope ?? "openid profile email";
-                var authorizationUrl = BuildAuthorizationUrl(identityProvider, state, scope);
+                redirectUri = string.IsNullOrWhiteSpace(redirectUri) ? identityProvider.RedirectUris.FirstOrDefault() : redirectUri;
+                var authorizationUrl = BuildAuthorizationUrl(identityProvider, state, redirectUri, scope);
 
                 return new OkObjectResult(new
                 {
@@ -378,7 +397,7 @@ namespace Authentication.DomainService.Authentication
         /// Called when user selects a provider from OIDC login page
         /// Generates state for social provider and redirects to social provider
         /// </summary>
-        public async Task<IActionResult> GetOidcSocialAuthorizationUrlAsync(string provider, string oidcState)
+        public async Task<IActionResult> GetOidcSocialAuthorizationUrlAsync(string provider, string oidcState, string redirectUri)
         {
             if (string.IsNullOrWhiteSpace(provider))
                 return new BadRequestObjectResult(new { error = "provider_required", error_description = "Provider name is required" });
@@ -419,7 +438,8 @@ namespace Authentication.DomainService.Authentication
                 // Build authorization URL for social provider
                 // Callback should redirect to /auth/oidc/callback with provider and state
                 var scope = identityProvider.Scope ?? "openid profile email";
-                var authorizationUrl = BuildAuthorizationUrl(identityProvider, socialState, scope);
+                redirectUri = string.IsNullOrWhiteSpace(redirectUri) ? identityProvider.RedirectUris.FirstOrDefault() : redirectUri;
+                var authorizationUrl = BuildAuthorizationUrl(identityProvider, socialState, redirectUri, scope);
 
                 return new OkObjectResult(new
                 {
@@ -440,7 +460,7 @@ namespace Authentication.DomainService.Authentication
         /// <summary>
         /// Build authorization URL with proper OAuth 2.0 parameters
         /// </summary>
-        private string BuildAuthorizationUrl(IdentityProvider provider, string state, string scope, string? codeChallenge = null)
+        private string BuildAuthorizationUrl(IdentityProvider provider, string state, string redirectUri, string scope, string? codeChallenge = null)
         {
             try
             {
@@ -451,7 +471,7 @@ namespace Authentication.DomainService.Authentication
                 var authorizationUrl = $"{authUrl}{separator}" +
                     $"response_type=code&" +
                     $"client_id={Uri.EscapeDataString(provider.ClientId ?? "")}&" +
-                    $"redirect_uri={Uri.EscapeDataString(provider.RedirectUri ?? "")}&" +
+                    $"redirect_uri={Uri.EscapeDataString(redirectUri ?? "")}&" +
                     $"scope={Uri.EscapeDataString(scope)}&" +
                     $"state={Uri.EscapeDataString(state)}";
 
@@ -466,7 +486,7 @@ namespace Authentication.DomainService.Authentication
             catch
             {
                 // Fallback to simple construction
-                return $"{provider.AuthorizationUrl}?response_type=code&client_id={Uri.EscapeDataString(provider.ClientId ?? "")}&state={state}&redirect_uri={Uri.EscapeDataString(provider.RedirectUri ?? "")}&scope={Uri.EscapeDataString(scope)}";
+                return $"{provider.AuthorizationUrl}?response_type=code&client_id={Uri.EscapeDataString(provider.ClientId ?? "")}&state={state}&redirect_uri={Uri.EscapeDataString(redirectUri)}&scope={Uri.EscapeDataString(scope)}";
             }
         }
 
@@ -618,7 +638,7 @@ namespace Authentication.DomainService.Authentication
                 var certificateData = await _cacheClient.CacheDatabase().StringGetAsync(cacheKey);
                 var validationParams = tenant.JwtTokenParameters;
                 var publicCert = X509CertificateLoader.LoadPkcs12(certificateData, validationParams.PublicCertificatePassword);
-                var tokenValidationParameters = !IsUserInfoGetRequest ? new TokenValidationParameters { ValidateLifetime = true, ClockSkew = TimeSpan.Zero, IssuerSigningKey = new X509SecurityKey(publicCert), ValidateIssuerSigningKey = true, ValidateIssuer = true, ValidIssuer = validationParams?.Issuer, ValidAudience = TenantDomainPolicy.GetAudience(tenant), ValidateAudience = true, SaveSigninToken = true } :
+                var tokenValidationParameters = !IsUserInfoGetRequest ? new TokenValidationParameters { ValidateLifetime = true, ClockSkew = TimeSpan.Zero, IssuerSigningKey = new X509SecurityKey(publicCert), ValidateIssuerSigningKey = true, ValidateIssuer = true, ValidIssuer = validationParams?.Issuer, ValidAudience = DomainResolver.GetAudience(tenant), ValidateAudience = true, SaveSigninToken = true } :
                                                                       new TokenValidationParameters { ValidateLifetime = true, ClockSkew = TimeSpan.Zero, IssuerSigningKey = new X509SecurityKey(publicCert), ValidateIssuerSigningKey = true, ValidateIssuer = false, ValidateAudience = false, SaveSigninToken = true };
                 return tokenHandler.ValidateToken(token, tokenValidationParameters, out _);
             }
@@ -729,22 +749,22 @@ namespace Authentication.DomainService.Authentication
             var clientId = TryGetClientIdFromAccessToken(response.AccessToken);
             var useTokensCookie = await ResolveUseTokensCookieAsync(clientId);
 
+            var cookiesSet = false;
             if (useTokensCookie)
             {
-                AppendCookies(response, httpContext.Response);
+                cookiesSet = AppendCookies(response, httpContext);
             }
 
             await EnsureIdpSessionForLoginAsync(response, httpContext);
 
-            if (useTokensCookie)
+            if (cookiesSet)
             {
                 return new OkObjectResult(new
                 {
                     token_type = response.TokenType,
                     expires_in = response.ExpiresIn,
                     scope = response.Scope,
-                    cookie_set = true,
-                    client_id = clientId
+                    id_token = response.IdToken
                 });
             }
 
@@ -757,9 +777,7 @@ namespace Authentication.DomainService.Authentication
                 expires_utc = response.ExpiresUtc,
                 refresh_expires_utc = response.RefreshExpiresUtc,
                 scope = response.Scope,
-                id_token = response.IdToken,
-                cookie_set = false,
-                client_id = clientId
+                id_token = response.IdToken
             });
         }
 
@@ -793,21 +811,30 @@ namespace Authentication.DomainService.Authentication
             }
         }
 
-        private static void AppendCookies(TokenResponse response, HttpResponse httpResponse)
+        private bool AppendCookies(TokenResponse response, HttpContext httpContext)
         {
-            var tenantId = BlocksContext.GetContext()?.TenantId ?? "default";
+            var bc = BlocksContext.GetContext();
+            var tenant = _tenants.GetTenantByID(bc?.TenantId ?? "default");
+            var (domain, _, isResolved) = DomainResolver.ResolveDomain(tenant, httpContext.Request, bc?.ApplicationDomain);
+            if (!isResolved || string.IsNullOrWhiteSpace(domain))
+            {
+                return false;
+            }
+
             var accessCookieOptions = CreateCookieOptions(response.CookieDomain, response.ExpiresUtc);
             var refreshCookieOptions = CreateCookieOptions(response.CookieDomain, response.RefreshExpiresUtc);
 
             if (!string.IsNullOrWhiteSpace(response.AccessToken))
             {
-                httpResponse.Cookies.Append($"{IdpConstants.AccessTokenCookieName}_{tenantId}", response.AccessToken, accessCookieOptions);
+                httpContext.Response.Cookies.Append($"{domain}", response.AccessToken, accessCookieOptions);
             }
 
             if (!string.IsNullOrWhiteSpace(response.RefreshToken))
             {
-                httpResponse.Cookies.Append($"{IdpConstants.RefreshTokenCookieName}_{tenantId}", response.RefreshToken, refreshCookieOptions);
+                httpContext.Response.Cookies.Append($"{IdpConstants.RefreshTokenCookieName}_{domain}", response.RefreshToken, refreshCookieOptions);
             }
+
+            return true;
         }
 
         /// <summary>
@@ -820,12 +847,14 @@ namespace Authentication.DomainService.Authentication
             bool useTokensCookie,
             string? clientId = null)
         {
+            var cookiesSet = false;
             if (useTokensCookie)
             {
-                // Set tokens in secure HttpOnly cookies
-                AppendCookies(response, httpResponse);
+                cookiesSet = AppendCookies(response, httpResponse.HttpContext);
+            }
 
-                // Return metadata only (no token values in response body)
+            if (cookiesSet)
+            {
                 return Task.FromResult<object>(new
                 {
                     token_type = response.TokenType ?? "Bearer",
@@ -837,8 +866,6 @@ namespace Authentication.DomainService.Authentication
                 });
             }
 
-            // Return tokens in response body (standard OAuth response)
-            // No cookies set
             return Task.FromResult<object>(new
             {
                 access_token = response.AccessToken,

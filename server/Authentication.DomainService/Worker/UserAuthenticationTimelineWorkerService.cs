@@ -27,6 +27,7 @@ namespace Authentication.DomainService.Worker
             var userAuthenticationTimeline = new UserAuthenticationTimeline 
             {
                 ItemId = Guid.NewGuid().ToString(),
+                UserId = context?.UserId ?? string.Empty,
                 CreatedDate = DateTime.Now,
                 CreatedBy = context?.UserId,
                 LastUpdatedDate = DateTime.Now,

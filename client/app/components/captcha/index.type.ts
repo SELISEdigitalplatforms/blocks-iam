@@ -15,4 +15,4 @@ export type HCaptchaProps = CoreCaptchaProps & { type: "hCaptcha" };
 
 export type ReCaptchaProps = CoreCaptchaProps & { type: "reCaptcha-v2-checkbox" };
 
-export type CaptchaProps = ReCaptchaProps | HCaptchaProps;
+export type CaptchaProps = CoreCaptchaProps & { type: "reCaptcha-v2-checkbox" | "hCaptcha" };

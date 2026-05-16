@@ -3,7 +3,16 @@ namespace Iam.DomainService.Resources
     public class CreateOrganizationRequest
     {
         public string Name { get; set; }
-        public string InitializeRolesMode { get; set; } = "Empty";  // "Empty" or "CopySelected"
-        public List<string> RoleSlugsToCopy { get; set; } = [];     // Only used if InitializeRolesMode = "CopySelected"
+        public List<string> DefaultRoleForMembers { get; set; } = new List<string>();
+        public List<string> DefaultPermissionsForMembers { get; set; } = new List<string>();
+        public CreatedFrom CreatedFrom { get; set; } = 0;
+        public string? Description { get; set; }
+    }
+
+    public enum CreatedFrom
+    {
+        Cloud = 1,
+        ConstructSignup = 2,
+        ConstructPortal = 3,
     }
 }

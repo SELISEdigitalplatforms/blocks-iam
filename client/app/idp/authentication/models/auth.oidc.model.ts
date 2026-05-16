@@ -1,5 +1,4 @@
 export interface IGetOidcPayload {
-  projectKey: string;
   clientId?: string;
 }
 
@@ -17,6 +16,7 @@ export interface IOidcConfig {
   scope: string;
   audience: string;
   isAutoRedirect: boolean;
+  useTokensCookie: boolean;
   tenantId: string;
   clientLogoUrl?: string;
   clientBrandColor?: string;
@@ -36,6 +36,7 @@ export interface IOidcConfigResponse {
   scope: string;
   audience: string;
   isAutoRedirect: boolean;
+  useTokensCookie: boolean;
   tenantId: string;
   clientLogoUrl?: string;
   clientBrandColor?: string;
@@ -45,8 +46,8 @@ export interface IOidcConfigResponse {
 export interface ISaveOidcCredentialPayload {
   audience: string;
   isAutoRedirect: boolean;
+  useTokensCookie: boolean;
   itemId: string;
-  projectKey: string;
   redirectUri: string;
   scope: string;
   clientLogoUrl?: string;
@@ -57,8 +58,8 @@ export interface ISaveOidcCredentialPayload {
 export interface ISaveOidcCredentialResponse {
   audience: string;
   isAutoRedirect: boolean;
+  useTokensCookie: boolean;
   itemId: string;
-  projectKey: string;
   redirectUri: string;
   scope: string;
   clientLogoUrl?: string;
@@ -66,9 +67,7 @@ export interface ISaveOidcCredentialResponse {
   clientDisplayName: string;
 }
 
-export interface IGetClientsPayload {
-  projectKey: string;
-}
+export interface IGetClientsPayload {}
 
 export interface IClientCredentialsConfig {
   scope: string;
@@ -107,13 +106,11 @@ export interface IClientConfigResponse {
 export interface ISaveClientCredentialPayload {
   name: string;
   roles: string[];
-  projectKey: string;
 }
 
 export interface ISaveClientCredentialResponse {
   name: string;
   roles: [];
-  projectKey: string;
 }
 
 export interface TabValue {
@@ -121,7 +118,6 @@ export interface TabValue {
 }
 export interface IDeleteOidcClientPayload {
   itemId: string | null;
-  projectKey: string;
 }
 export interface IDeleteOidcClientResponse {
   errors: {

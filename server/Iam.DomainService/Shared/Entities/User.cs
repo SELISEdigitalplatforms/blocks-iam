@@ -37,7 +37,7 @@ namespace Iam.DomainService.Entities
         public int TokenVersion { get; set; } = 1;
         public UserMfaType UserMfaType { get; set; } = UserMfaType.None;
         public bool MfaEnabled { get; set; }
-        public List<UserMfaEnrollment> MfaMethods { get; set; } = [];
+        public List<UserMfaEnrollment> MfaMethods { get; set; } = new List<UserMfaEnrollment>();
         public DateTime FirstLoggedInTime { get; set; }
         public DateTime LastLoggedInTime { get; set; }
         public string? LastUsedOrganizationId { get; set; }
@@ -56,9 +56,8 @@ namespace Iam.DomainService.Entities
         public DateTime? DeactivatedAtUtc { get; set; }
         public string? DeactivatedBy { get; set; }
         public string? ExternalUserId { get; set; }
-        public List<ExternalIdentity> ExternalIdentities { get; set; } = [];
-        public string? Department { get; set; }
-        public string? EmployeeId { get; set; }
+        public List<ExternalIdentity> ExternalIdentities { get; set; } = new List<ExternalIdentity>();
+        public Dictionary<string, object> Attributes { get; set; } = new Dictionary<string, object>(); // For any additional info that doesn't fit into existing properties
     }
 
     public class UserMfaEnrollment

@@ -29,7 +29,7 @@ namespace Authentication.DomainService.Oidc.Repositories
         {
             try
             {
-                var collection = GetDatabase().GetCollection<IdpSessionModel>("idp_sessions");
+                var collection = GetDatabase().GetCollection<IdpSessionModel>("IdpSessions");
                 await collection.InsertOneAsync(session);
                 _logger.LogInformation($"IdP session created: {session.SessionId}");
                 return session.SessionId;
@@ -45,7 +45,7 @@ namespace Authentication.DomainService.Oidc.Repositories
         {
             try
             {
-                var collection = GetDatabase().GetCollection<IdpSessionModel>("idp_sessions");
+                var collection = GetDatabase().GetCollection<IdpSessionModel>("IdpSessions");
                 var filter = Builders<IdpSessionModel>.Filter.Eq(s => s.SessionId, sessionId);
                 return await collection.Find(filter).FirstOrDefaultAsync();
             }
@@ -60,7 +60,7 @@ namespace Authentication.DomainService.Oidc.Repositories
         {
             try
             {
-                var collection = GetDatabase().GetCollection<IdpSessionModel>("idp_sessions");
+                var collection = GetDatabase().GetCollection<IdpSessionModel>("IdpSessions");
                 var filter = Builders<IdpSessionModel>.Filter.Eq(s => s.SessionId, sessionId);
                 var idleExpiry = DateTime.UtcNow.Add(GetIdpSessionIdleTimeout());
                 var update = Builders<IdpSessionModel>.Update
@@ -81,7 +81,7 @@ namespace Authentication.DomainService.Oidc.Repositories
         {
             try
             {
-                var collection = GetDatabase().GetCollection<IdpSessionModel>("idp_sessions");
+                var collection = GetDatabase().GetCollection<IdpSessionModel>("IdpSessions");
                 var filter = Builders<IdpSessionModel>.Filter.Eq(s => s.SessionId, sessionId);
                 var idleExpiry = DateTime.UtcNow.Add(GetIdpSessionIdleTimeout());
                 var update = Builders<IdpSessionModel>.Update
@@ -102,7 +102,7 @@ namespace Authentication.DomainService.Oidc.Repositories
         {
             try
             {
-                var collection = GetDatabase().GetCollection<IdpSessionModel>("idp_sessions");
+                var collection = GetDatabase().GetCollection<IdpSessionModel>("IdpSessions");
                 var filter = Builders<IdpSessionModel>.Filter.Eq(s => s.SessionId, sessionId);
                 var idleExpiry = DateTime.UtcNow.Add(GetIdpSessionIdleTimeout());
                 var update = Builders<IdpSessionModel>.Update
@@ -122,7 +122,7 @@ namespace Authentication.DomainService.Oidc.Repositories
         {
             try
             {
-                var collection = GetDatabase().GetCollection<IdpSessionModel>("idp_sessions");
+                var collection = GetDatabase().GetCollection<IdpSessionModel>("IdpSessions");
                 var filter = Builders<IdpSessionModel>.Filter.Eq(s => s.SessionId, sessionId);
                 var update = Builders<IdpSessionModel>.Update.Set(s => s.RevokedAt, DateTime.UtcNow);
                 var result = await collection.UpdateOneAsync(filter, update);
@@ -139,7 +139,7 @@ namespace Authentication.DomainService.Oidc.Repositories
         {
             try
             {
-                var collection = GetDatabase().GetCollection<IdpSessionModel>("idp_sessions");
+                var collection = GetDatabase().GetCollection<IdpSessionModel>("IdpSessions");
                 var filter = Builders<IdpSessionModel>.Filter.Eq(s => s.SessionId, sessionId);
                 var result = await collection.DeleteOneAsync(filter);
                 return result.DeletedCount > 0;
@@ -155,7 +155,7 @@ namespace Authentication.DomainService.Oidc.Repositories
         {
             try
             {
-                var collection = GetDatabase().GetCollection<IdpSessionModel>("idp_sessions");
+                var collection = GetDatabase().GetCollection<IdpSessionModel>("IdpSessions");
                 var filter = Builders<IdpSessionModel>.Filter.And(
                     Builders<IdpSessionModel>.Filter.ElemMatch(s => s.Accounts, 
                         Builders<IdpSessionAccount>.Filter.Eq(a => a.UserId, userId)),

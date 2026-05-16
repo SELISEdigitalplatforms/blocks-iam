@@ -1,0 +1,50 @@
+Tenant Flow:
+User create tenant => default org (does not exist in Organization collection but only name )
+Need Organization Config as seed by default Multi org false. user can only update it under organization. 2 api get and update
+Multi False:
+Normal flow in evrey where except which data in org scoped. like user, roles, permissions currently.
+in User OrganizationId, Roles, permissions. In roles collection doc insert as slug and org scoped check, thatg means same sluge can exist id org different, so for default org must entry samewise.
+For Permissions collection Roles Dict with org scoped.
+So when user, role and permission collection access think about default. 
+we keep in this way so that multi org concept can easily adopted.
+
+Multi Org True:
+During org creation must check Organization Config first. is allowed or not.
+default behave same as no multi, as all structure is compatible for org so just org id chnage.
+
+User creation:
+Signup => user Signup to specific tenant normally if no multi then org defaukt here, if multi org then 2 path one is enable or not. not enable then default enable then ask for org name and create new org.
+In portal => It is easy coz here user can easlly assigned the organization and no need to creat org.
+
+Again in user creation 2 flow => one new user and existing user. if no multi org or no org exist user flow invalid coz new user fall under default.
+If org enable -> for new user, first creat organization, assign org id to that user means update creat user request. For existing user just update nessary properties.
+
+User Update: No org or multi org in both only user related info own can update by profile update. admin/portal can update only their property.
+
+Org Creation: Very crucial, try to decuple 
+When need => from cloud, during sign up (user creation related), customer portal
+Customer and cloud flow it is simple=> create organization -> check organization config, add organization, insert new roles in Roles collection, Update Permission collections based on new roles slug. After that add org related info to the creator. But here is the catch in cloud create org default off coz in cloud who create the org does not exist as user in that tenant. (we will fix that in future)
+in Sign up => first check is multi org enable? is enable first create org -> check organization config, add organization, insert new roles in Roles collection, Update Permission collections based on new roles slug. ->update the user request and send to api of create user. so by do this org ifo exist from start no default entry as this use MUST be under this org.
+
+MUST track everything and show as audit trail
+[HttpGet("sessions")] -> do not exist here 
+User time line -> need to define again or need to fix or check with audit trail and other option
+I need every activity user doing in IAM section
+
+
+Permission Cokkection: 
+Roles => Dict {org_id: [user slug]}
+
+Roles Collection: insert one per org. Currently checking the slug with other but maje sure now in org scope, same slug different org can stay now.
+
+user/account: KEEP one route
+Get => do not give all user/account in gets give only those who are the member of that org, for that see blocks context organization id.
+Same as normal get. Never even show other org roles, permissions. Organization Ids belog only in BE.
+Add other organization info just(name, id) this only for profile one.
+Remove endpoints user/permission, user/roles same for account
+
+[HttpPost("roles-permissions")] => this endpoint can be crucial coz this will help add org in user, but need proper name.
+
+Need Proper Activity Routes for any User
+
+Cloud configuration => seed will place during tenant creationm. just get and update.

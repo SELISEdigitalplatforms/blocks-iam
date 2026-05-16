@@ -5,10 +5,10 @@ import {
 import { ssoService } from "@blocks-idp/authentication/services/social.service";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
-export const useGetSsoCredentials = (option: IGetSsoCredentialsPayload) => {
+export const useGetSsoCredentials = (_option?: IGetSsoCredentialsPayload) => {
   return useQuery({
-    queryKey: ["sso", option],
-    queryFn: () => ssoService.getSsoCredentials(option),
+    queryKey: ["sso"],
+    queryFn: () => ssoService.getSsoCredentials({}),
   });
 };
 
@@ -64,10 +64,9 @@ export const useSaveOIDCCredential = () => {
   })
 }
 
-export const useSaveGetOIDCCredential = (projectKey: string) => {
+export const useSaveGetOIDCCredential = () => {
   return useQuery({
-    queryKey: ["sso", projectKey],
-    queryFn: () => ssoService.getBlocksSsoCredential(projectKey),
-    enabled: !!projectKey,
+    queryKey: ["sso", "oidc-credential"],
+    queryFn: () => ssoService.getBlocksSsoCredential(),
   });
 }
