@@ -59,68 +59,36 @@ obj/Debug/net10.0/
  Identifier.DomainService.AssemblyInfo.cs
  Identifier.DomainService.GlobalUsings.g.cs
 Project/
- AddAssetRequest.cs
- CreateProjectRequest.cs
- DisableProjectRequest.cs
  GetAssetRequest.cs
- GetProjectRequest.cs
  GetProjectsFilter.cs
  GetProjectsRequest.cs
  GetThirdPartyJWTClaimsRequest.cs
- GetTokenValidationParametersRequest.cs
- RestoreProjectRequest.cs
- SaveThirdPartyJWTClaimsRequest.cs
  Services/
   IProjectManagementService.cs
   IProjectRepository.cs
   ProjectManagementService.cs
   ProjectRepository.cs
- UpdateAuthConfigRequest.cs
- UpdateProjectRequest.cs
- UpdateTenantGroupRequest.cs
- UpdateTokenValidationParametersRequest.cs
- Validators/
-  CreateProjectRequestValidator.cs
-  UpdateAuthConfigRequestValidator.cs
-  UpdateProjectRequestValidator.cs
 Shared/Dtos/
- CacheProjectPeopleInvitation.cs
- CreateUserByEmailEvent_Identifier.cs
- CreateUserByEmailPostEvent_Identifier.cs
- EnvironmentDataMigrationEvent.cs
- GetProjectPeople.cs
+ GetAssetResponse.cs
+ GetProjectResponse.cs
  GroupedProjectsDto.cs
- HttpsCertificateInfo.cs
- MigrationCompletionEvent.cs
  NotificationResponse.cs
- SendMail.cs
  SsoInfo.cs
- UpdateResourceUsageCommand_Identifier.cs
 Shared/Entities/
  BlocksGuid.cs
- BlocksManagedService.cs
  Project.cs
  ProjectPeople.cs
  ProjectStatusTracer.cs
- ResourceLimit.cs
- SignUpSetting.cs
  TenantAsset.cs
- TenantCertificate.cs
  ThirdPartyJWTClaims.cs
-Shared/RequestModel/
- ConfigureDomainRequest.cs
- DisableDomainBindingRequest.cs
-Shared/
- ResponseModel/AuthConfigResponse.cs
- Services/
-  EncodingService.cs
-  EncryptionHelper.cs
-  IDomainManagementService.cs
-  IEncodingService.cs
- Utilities/
-  ApplicationServiceCollectionExtensions.cs
-  IdentifierConstants.cs
-  IdentifierHelper.cs
+Shared/Services/
+ EncodingService.cs
+ EncryptionHelper.cs
+ IEncodingService.cs
+Shared/Utilities/
+ ApplicationServiceCollectionExtensions.cs
+ IdentifierConstants.cs
+ IdentifierHelper.cs
 
 [metadataReferences]
 ../../../blocks-genesis-net/src/
