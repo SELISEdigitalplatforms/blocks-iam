@@ -153,7 +153,6 @@ Shared/Entities/
  IdentitySession.cs
  ImpersonationSession.cs
  OidcClientRegistration.cs
- Session.cs
  SocialLoginCredential.cs
  TenantCertificate.cs
  UserAuthenticationTimeline.cs

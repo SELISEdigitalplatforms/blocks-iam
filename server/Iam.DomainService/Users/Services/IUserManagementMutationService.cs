@@ -1,6 +1,7 @@
 ﻿using Blocks.Genesis;
 using Iam.DomainService.Dtos;
 using Iam.DomainService.Entities;
+using Iam.DomainService.Shared.Entities;
 
 namespace Iam.DomainService.Users
 {
@@ -17,5 +18,6 @@ namespace Iam.DomainService.Users
         Task<bool> ProcessCreateUserByEmailAfterActionAsync(CreateUserByEmailEvent @event, string userId);
         Task<BaseResponse> DeactivateUserAsync(DeactivateUserRequest request);
         Task<BaseMutationResponse> UpdateOrganizationUserAsync(UpdateOrganizationUserRequest command);
+        Task<TenantConfiguration> GetTenantConfigurationAsync();
     }
 }

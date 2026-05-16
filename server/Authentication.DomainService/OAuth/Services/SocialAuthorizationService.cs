@@ -1,6 +1,4 @@
 using Blocks.Genesis;
-using Authentication.DomainService.Entities;
-using Authentication.DomainService.OAuth.RequestModel;
 using Authentication.DomainService.OAuth.ResponseModel;
 using Authentication.DomainService.OAuth.Services;
 using Authentication.DomainService.Services;

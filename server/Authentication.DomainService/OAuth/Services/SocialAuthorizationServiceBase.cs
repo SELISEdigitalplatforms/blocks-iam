@@ -143,7 +143,7 @@ namespace Authentication.DomainService.OAuth.Services
 
         public async Task<(User? user, string redirectUrl)> CreateUser(StateInfo stateInfo, IExternalUserData externalUser)
         {
-            var blocksContext = BlocksContext.GetContext();
+            var tenantConfiguration = await _userManagementMutationService.GetTenantConfigurationAsync();
 
             var userPayload = new CreateUserViaSsoRequest
             {
@@ -158,11 +158,15 @@ namespace Authentication.DomainService.OAuth.Services
                 SendWelcomeMail = true,
                 Platform = stateInfo.Provider,
                 ProfileImageUrl = externalUser.ProfileImageUrl,
-                Roles = new Dictionary<string, List<string>> { ["default"] = externalUser.Roles ?? [] },
-                Permissions = new Dictionary<string, List<string>> { ["default"] = externalUser.Permissions ?? [] },
-                ProjectKey = blocksContext?.TenantId,
-                DepartMent = externalUser.Department,
-                EmployeeId = externalUser.EmployeeId
+                Roles = tenantConfiguration.DefaultRolesForNewUserOnSignUp ?? new List<string> { },
+                Permissions = tenantConfiguration.DefaultPermissionsForNewUserOnSignUp ?? new List<string> { },
+                OrganizationId = organizationId,
+                Attributes = new Dictionary<string, object>
+                {
+                    { "SignUpSource", $"SocialLogin_{stateInfo.Provider}" },
+                    {"Department", externalUser.Department ?? string.Empty },
+                    {"EmployeeId", externalUser.EmployeeId ?? string.Empty },
+                }
             };
 
             var code = Guid.NewGuid().ToString("n");

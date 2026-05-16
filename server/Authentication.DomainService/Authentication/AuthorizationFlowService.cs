@@ -344,12 +344,6 @@ namespace Authentication.DomainService.Authentication
                     return new RedirectResult(BuildLoginUrl(client_id, response_type, redirect_uri, scope, state, nonce, code_challenge, code_challenge_method, tenantHint));
                 }
 
-                var tenantForOriginValidation = !string.IsNullOrWhiteSpace(resolvedTenantId) ? resolvedTenantId : tenantHint;
-                if (!IsOriginAllowedForTenant(request, tenantForOriginValidation))
-                {
-                    return new BadRequestObjectResult(new { error = "invalid_origin", error_description = "Request origin is not allowed for this tenant" });
-                }
-
                 if (!await HasOidcClientConfigurationAsync(client_id))
                 {
                     _logger.LogWarning($"OIDC client config missing for client: {client_id}");
@@ -817,7 +811,7 @@ namespace Authentication.DomainService.Authentication
             _logger.LogInformation($"Tokens issued for user {authCode.UserId}, client {client_id}, family {refreshTokenModel.FamilyId}");
 
             var bc = BlocksContext.GetContext();
-            var (domain, cookieDomain, isResolved) = DomainResolver.ResolveDomain(tenant, request, bc.ApplicationDomain);
+            var (domain, cookieDomain, isResolved) = DomainResolver.ResolveDomain(tenant, request, bc?.ApplicationDomain);
             var accessExpiry = DateTime.UtcNow.AddSeconds(accessTokenLifetimeSeconds);
             var refreshExpiry = refreshTokenModel.AbsoluteExpiry == default
                 ? DateTime.UtcNow.AddMinutes(absoluteRefreshTokenLifetimeMinutes)
@@ -926,7 +920,7 @@ namespace Authentication.DomainService.Authentication
 
             if (client.UseTokensCookie)
             {
-                var (domain, _, isResolved) = DomainResolver.ResolveDomain(tenant, request, bc.ApplicationDomain);
+                var (domain, _, isResolved) = DomainResolver.ResolveDomain(tenant, request, bc?.ApplicationDomain);
                 var cookieKey = isResolved && !string.IsNullOrWhiteSpace(domain)
                     ? $"{IdpConstants.RefreshTokenCookieName}_{domain}"
                     : string.Empty;
@@ -1045,7 +1039,7 @@ namespace Authentication.DomainService.Authentication
 
             if (client.UseTokensCookie)
             {
-                var (resolvedDomain, resolvedCookieDomain, resolvedByDomain) = DomainResolver.ResolveDomain(tenant, request, bc.ApplicationDomain);
+                var (resolvedDomain, resolvedCookieDomain, resolvedByDomain) = DomainResolver.ResolveDomain(tenant, request, bc?.ApplicationDomain);
                 var adjustedCookieDomain = IsLocalhost() ? null : resolvedCookieDomain;
                 var absoluteRefreshTokenLifetimeMinutes = Math.Max(authConfiguration?.AbsoluteRefreshTokenValidForNumberMinutes ?? AuthenticationConfiguration.DefaultRememberMeRefreshTokenValidForNumberMinutes, 1);
                 var accessExpiry = DateTime.UtcNow.AddSeconds(accessTokenLifetimeSeconds);

@@ -2,8 +2,6 @@ using Blocks.Genesis;
 using Identifier.DomainService.Dtos;
 using Identifier.DomainService.Entities;
 using Identifier.DomainService.Shared;
-using Identifier.DomainService.Shared.Entities;
-using Identifier.DomainService.Shared.Services;
 using MongoDB.Driver;
 
 namespace Identifier.DomainService.Projects
@@ -23,57 +21,6 @@ namespace Identifier.DomainService.Projects
 
             var filter = Builders<Tenant>.Filter.Eq(mc => mc.ItemId, itemId);
             return await collection.Find(filter).FirstOrDefaultAsync();
-        }
-
-        public async Task<Tenant> GetByDomainAsync(string name)
-        {
-            var collection = _dbContextProvider.GetCollection<Tenant>(IdentifierConstants.TenantCollectionName);
-
-            var filter = Builders<Tenant>.Filter.Eq(mc => mc.ApplicationDomain, name);
-            return await collection.Find(filter).FirstOrDefaultAsync();
-        }
-
-        public async Task<(TenantAsset? assets, long totalCount)> GetTenantAssetAsync(GetAssetRequest request)
-        {
-            var sharedProjects = await GetProjectPeoplesAsync(request.TenantGroupId);
-            if (sharedProjects == null || sharedProjects.Count == 0)
-            {
-                return (null, 0);
-            }
-
-            var collection = _dbContextProvider.GetCollection<TenantAsset>(IdentifierConstants.TenantAssetCollectionName);
-            var documentFilter = Builders<TenantAsset>.Filter.Eq(mc => mc.TenantGroupId, request.TenantGroupId);
-            var tenantAsset = await collection.Find(documentFilter).FirstOrDefaultAsync();
-
-            if (tenantAsset == null)
-                return (null, 0);
-
-            var filteredResources = tenantAsset.Resources?.AsEnumerable() ?? Enumerable.Empty<Resource>();
-
-            if (request.Filter != null)
-            {
-                if (!string.IsNullOrWhiteSpace(request.Filter.Name))
-                {
-                    filteredResources = filteredResources.Where(r =>
-                        r.Name != null && r.Name.Contains(request.Filter.Name.Trim(), StringComparison.OrdinalIgnoreCase));
-                }
-
-                if (!string.IsNullOrWhiteSpace(request.Filter.Link))
-                {
-                    filteredResources = filteredResources.Where(r =>
-                        r.Link != null && r.Link.Contains(request.Filter.Link.Trim(), StringComparison.OrdinalIgnoreCase));
-                }
-            }
-
-            var totalCount = filteredResources.Count();
-
-            var pagedResources = filteredResources
-                .Skip(request.PageSize * request.Page)
-                .Take(request.PageSize)
-                .ToList();
-
-            tenantAsset.Resources = pagedResources;
-            return (tenantAsset, totalCount);
         }
 
         public async Task<List<GroupedProjectsDto>> GetAllByLastModifiedDateAsync(GetProjectsRequest request)

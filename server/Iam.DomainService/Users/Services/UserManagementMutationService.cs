@@ -644,6 +644,11 @@ namespace Iam.DomainService.Users
             return key;
         }
 
+        async Task<TenantConfiguration> IUserManagementMutationService.GetTenantConfigurationAsync()
+        {
+            return await _resourceRepository.GetTenantConfigurationAsync();
+        }
+
         public async Task<BaseMutationResponse> CreateUserFromSsoAsync(CreateUserViaSsoRequest command)
         {
             _logger.LogInformation("User creation start");
