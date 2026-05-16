@@ -148,7 +148,9 @@ Shared/Entities/
  BiometricCredential.cs
  BlocksClientConfig.cs
  ClientCredential.cs
+ IdentityEvent.cs
  IdentityProvider.cs
+ IdentitySession.cs
  ImpersonationSession.cs
  OidcClientRegistration.cs
  Session.cs

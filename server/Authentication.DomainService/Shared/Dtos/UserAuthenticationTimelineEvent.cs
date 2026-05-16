@@ -17,4 +17,4 @@ namespace Authentication.DomainService.Dtos
         public string? ReasonCode { get; set; }
         public string? RiskLevel { get; set; }
     }
-}
+    }

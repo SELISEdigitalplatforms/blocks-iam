@@ -81,45 +81,45 @@ namespace Authentication.DomainService.Services
             return await cursor.FirstOrDefaultAsync();
         }
 
-        public async Task<bool> InsertSessionAsync(Session session)
+        public async Task<bool> InsertIdentitySessionAsync(IdentitySession session)
         {
-            var collection = GetCollection<Session>();
+            var collection = GetCollection<IdentitySession>();
             await collection.InsertOneAsync(session);
             return true;
         }
 
-        public async Task<bool> InsertUserAuthenticationTimelineAsync(UserAuthenticationTimeline userAuthenticationTimeline)
+        public async Task<bool> InsertIdentityEventAsync(IdentityEvent identityEvent)
         {
-            var collection = GetCollection<UserAuthenticationTimeline>();
-            await collection.InsertOneAsync(userAuthenticationTimeline);
+            var collection = GetCollection<IdentityEvent>();
+            await collection.InsertOneAsync(identityEvent);
             return true;
         }
 
-        public async Task<bool> UpdateSessionStatusAsync(string refreshToken, string userId)
+        public async Task<bool> RevokeIdentitySessionAsync(string refreshToken, string userId)
         {
-            var collection = GetCollection<Session>();
-            var update = Builders<Session>.Update.Set(x => x.IsActive, false)
+            var collection = GetCollection<IdentitySession>();
+            var update = Builders<IdentitySession>.Update.Set(x => x.IsActive, false)
                 .Set(x => x.ExpiresUtc, DateTime.UtcNow)
-                .Set(x => x.UpdateDate, DateTime.Now);
+                .Set(x => x.UpdatedAt, DateTime.UtcNow);
             var result = await collection.UpdateManyAsync(x => x.RefreshToken == refreshToken && x.UserId == userId, update);
             return result.IsAcknowledged;
         }
 
-        public async Task<bool> UpdateSessionStatusForAllRefreshTokenAsync(IEnumerable<string> refreshTokens)
+        public async Task<bool> RevokeIdentitySessionsByRefreshTokensAsync(IEnumerable<string> refreshTokens)
         {
-            var collection = GetCollection<Session>();
-            var update = Builders<Session>.Update.Set(x => x.IsActive, false)
+            var collection = GetCollection<IdentitySession>();
+            var update = Builders<IdentitySession>.Update.Set(x => x.IsActive, false)
                 .Set(x => x.ExpiresUtc, DateTime.UtcNow)
-                .Set(x => x.UpdateDate, DateTime.Now);
-            var filter = Builders<Session>.Filter.In(x => x.RefreshToken, refreshTokens);
+                .Set(x => x.UpdatedAt, DateTime.UtcNow);
+            var filter = Builders<IdentitySession>.Filter.In(x => x.RefreshToken, refreshTokens);
             var result = await collection.UpdateManyAsync(filter, update);
             return result.IsAcknowledged;
         }
 
-        public async Task<IEnumerable<Session>> GetActiveSessionByUserIdAsync(string userId)
+        public async Task<IEnumerable<IdentitySession>> GetActiveIdentitySessionByUserIdAsync(string userId)
         {
-            var collection = GetCollection<Session>();
-            var filter = Builders<Session>.Filter.Eq(x => x.UserId, userId) & Builders<Session>.Filter.Eq(x => x.IsActive, true);
+            var collection = GetCollection<IdentitySession>();
+            var filter = Builders<IdentitySession>.Filter.Eq(x => x.UserId, userId) & Builders<IdentitySession>.Filter.Eq(x => x.IsActive, true);
             return await collection.Find(filter).ToListAsync();
         }
 
@@ -220,17 +220,17 @@ namespace Authentication.DomainService.Services
             };
         }
 
-        public async Task<Session?> GetSessionByRefreshTokenAsync(string refreshToken)
+        public async Task<IdentitySession?> GetIdentitySessionByRefreshTokenAsync(string refreshToken)
         {
-            var collection = GetCollection<Session>();
-            var filter = Builders<Session>.Filter.Eq(x => x.RefreshToken, refreshToken);
-            return await collection.Find(filter).SortByDescending(x => x.UpdateDate).FirstOrDefaultAsync();
+            var collection = GetCollection<IdentitySession>();
+            var filter = Builders<IdentitySession>.Filter.Eq(x => x.RefreshToken, refreshToken);
+            return await collection.Find(filter).SortByDescending(x => x.UpdatedAt).FirstOrDefaultAsync();
         }
 
-        public async Task<IEnumerable<Session>> GetActiveSessionBySessionIdAsync(string sessionId)
+        public async Task<IEnumerable<IdentitySession>> GetActiveIdentitySessionBySessionIdAsync(string sessionId)
         {
-            var collection = GetCollection<Session>();
-            var filter = Builders<Session>.Filter.Eq(x => x.SessionId, sessionId) & Builders<Session>.Filter.Eq(x => x.IsActive, true);
+            var collection = GetCollection<IdentitySession>();
+            var filter = Builders<IdentitySession>.Filter.Eq(x => x.SessionId, sessionId) & Builders<IdentitySession>.Filter.Eq(x => x.IsActive, true);
             return await collection.Find(filter).ToListAsync();
         }
 

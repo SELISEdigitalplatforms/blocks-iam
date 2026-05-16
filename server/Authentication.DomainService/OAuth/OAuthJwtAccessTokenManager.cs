@@ -373,7 +373,8 @@ namespace Authentication.DomainService.OAuth
                 RememberMe = oldRefreshToken.RememberMe,
                 TokenVersion = oldRefreshToken.TokenVersion,
                 RememberMeIssuedUtc = oldRefreshToken.RememberMeIssuedUtc,
-                RememberMeExpiresUtc = oldRefreshToken.RememberMeExpiresUtc
+                RememberMeExpiresUtc = oldRefreshToken.RememberMeExpiresUtc,
+                Scope = oldRefreshToken.Scope
             };
 
             // Save new token to Redis with precise remaining TTL
@@ -476,7 +477,8 @@ namespace Authentication.DomainService.OAuth
                 RememberMe = tokenRequest.RememberMe,
                 TokenVersion = user.TokenVersion,
                 RememberMeIssuedUtc = tokenRequest.RememberMe ? now : null,
-                RememberMeExpiresUtc = tokenRequest.RememberMe ? absoluteRefreshTokenExpireOn : null
+                RememberMeExpiresUtc = tokenRequest.RememberMe ? absoluteRefreshTokenExpireOn : null,
+                Scope = tokenRequest.Scope
             };
 
             await _cacheClient.AddStringValueAsync(refreshTokenCache.RefreshToken, JsonSerializer.Serialize(refreshTokenCache), refreshTokenLifetime * 60);
@@ -539,20 +541,20 @@ namespace Authentication.DomainService.OAuth
 
         private async Task HandleRefreshTokenReuseAsync(string refreshToken)
         {
-            var existingSession = await _authenticationRepository.GetSessionByRefreshTokenAsync(refreshToken);
+            var existingSession = await _authenticationRepository.GetIdentitySessionByRefreshTokenAsync(refreshToken);
             if (existingSession == null || existingSession.IsActive)
             {
                 return;
             }
 
-            IEnumerable<Session> activeSessions;
+            IEnumerable<IdentitySession> activeSessions;
             if (!string.IsNullOrWhiteSpace(existingSession.SessionId))
             {
-                activeSessions = await _authenticationRepository.GetActiveSessionBySessionIdAsync(existingSession.SessionId);
+                activeSessions = await _authenticationRepository.GetActiveIdentitySessionBySessionIdAsync(existingSession.SessionId);
             }
             else
             {
-                activeSessions = await _authenticationRepository.GetActiveSessionByUserIdAsync(existingSession.UserId);
+                activeSessions = await _authenticationRepository.GetActiveIdentitySessionByUserIdAsync(existingSession.UserId);
             }
 
             var refreshTokens = activeSessions
@@ -566,7 +568,7 @@ namespace Authentication.DomainService.OAuth
                 return;
             }
 
-            await _authenticationRepository.UpdateSessionStatusForAllRefreshTokenAsync(refreshTokens!);
+            await _authenticationRepository.RevokeIdentitySessionsByRefreshTokensAsync(refreshTokens!);
 
             foreach (var token in refreshTokens)
             {

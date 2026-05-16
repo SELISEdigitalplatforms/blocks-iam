@@ -181,7 +181,7 @@ namespace Authentication.DomainService.Authentication
 
             await _cacheClient.RemoveKeyAsync(refreshToken);
 
-            var result = await _authenticationRepository.UpdateSessionStatusAsync(refreshToken, bc?.UserId ?? "");
+            var result = await _authenticationRepository.RevokeIdentitySessionAsync(refreshToken, bc?.UserId ?? "");
 
             return result;
         }
@@ -216,11 +216,11 @@ namespace Authentication.DomainService.Authentication
                 }
             }
 
-            var refreshTokens = (await _authenticationRepository.GetActiveSessionByUserIdAsync(bc.UserId)).Select(x => x.RefreshToken).ToList();
+            var refreshTokens = (await _authenticationRepository.GetActiveIdentitySessionByUserIdAsync(bc?.UserId ?? string.Empty)).Select(x => x.RefreshToken).ToList();
             var cacheTask = refreshTokens.Select(async x => await _cacheClient.RemoveKeyAsync(x));
             await Task.WhenAll(cacheTask);
 
-            var result = await _authenticationRepository.UpdateSessionStatusForAllRefreshTokenAsync(refreshTokens);
+            var result = await _authenticationRepository.RevokeIdentitySessionsByRefreshTokensAsync(refreshTokens);
             return result;
         }
 
