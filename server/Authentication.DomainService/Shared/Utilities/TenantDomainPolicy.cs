@@ -84,10 +84,10 @@ namespace Authentication.DomainService.Utilities
             {
                 // Return host:port format to match actual request origin
                 var host = originUri.Host.ToLower(CultureInfo.InvariantCulture);
-                if (originUri.Port != 80 && originUri.Port != 443)
-                {
-                    return $"{host}:{originUri.Port}";
-                }
+                // if (originUri.Port != 80 && originUri.Port != 443)
+                // {
+                //     return $"{host}:{originUri.Port}";
+                // }
                 return host;
             }
 
@@ -95,10 +95,10 @@ namespace Authentication.DomainService.Utilities
             if (Uri.TryCreate(referer, UriKind.Absolute, out var refererUri) && !string.IsNullOrWhiteSpace(refererUri.Host))
             {
                 var host = refererUri.Host.ToLower(CultureInfo.InvariantCulture);
-                if (refererUri.Port != 80 && refererUri.Port != 443)
-                {
-                    return $"{host}:{refererUri.Port}";
-                }
+                // if (refererUri.Port != 80 && refererUri.Port != 443)
+                // {
+                //     return $"{host}:{refererUri.Port}";
+                // }
                 return host;
             }
 
