@@ -300,7 +300,7 @@ namespace Authentication.DomainService.Oidc.Services
                     { "code", code },
                     { "client_id", provider.ClientId },
                     { "client_secret", provider.ClientSecret },
-                    { "redirect_uri", provider.RedirectUri ?? "" }
+                    { "redirect_uri", provider.RedirectUris?.FirstOrDefault() ?? "" }
                 };
 
                 var timeoutSeconds = (int)GetOutboundRequestTimeout().TotalSeconds;

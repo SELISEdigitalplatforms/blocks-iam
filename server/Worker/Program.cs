@@ -1,21 +1,14 @@
-using Blocks.Genesis;
 using Authentication.DomainService.Dtos;
-using Identifier.DomainService.Migration;
-using Identifier.DomainService.Projects;
-using Identifier.DomainService.Shared;
-using Identifier.DomainService.Dtos;
-using Identifier.DomainService.Shared.Dtos;
-using Identifier.DomainService.Shared.Entities;
 using Authentication.DomainService.Utilities;
 using Authentication.DomainService.Worker;
+using Blocks.Genesis;
 using Iam.DomainService.Accounts;
 using Iam.DomainService.Dtos;
-using Iam.DomainService.Shared.Dtos;
 using Iam.DomainService.Users;
+using Identifier.DomainService.Shared;
 using Mfa.DomainService.Configuration;
 using Worker;
 using Worker.Consumers;
-using Worker.Consumers.Identifier;
 
 var configuration = new ConfigurationBuilder()
     .SetBasePath(Directory.GetCurrentDirectory())
@@ -58,19 +51,10 @@ IHostBuilder CreateHostBuilder(string[] args) =>
 
             services.RegisterAllServices();
 
-           
+
 
             #region Identifier Service Consumers
             services.AddApplicationServices();
-            services.AddSingleton<IConsumer<Tenant>, ConfigureProjectConsumer>();
-            services.AddSingleton<IConsumer<DisableDomainBindingRequest>, DisableDomainBindingConsumer>();
-            services.AddSingleton<IConsumer<RestoreProjectRequest>, RestoreProjectConsumer>();
-            services.AddSingleton<IConsumer<CreateUserByEmailPostEvent_Identifier>, CreateUserByEmailPostConsumer>();
-            services.AddSingleton<IConsumer<ConfigureDomainRequest>, DomainConfigureConsumer>();
-            services.AddSingleton<IConsumer<MigrationCompletionEvent>, MigrationCompletionConsumer>();
-            services.AddSingleton<IConsumer<EnvironmentDataMigrationEvent>, EnvironmentDataMigrationEventConsumer>();
-            services.AddSingleton<IConsumer<PublishScheduleCommand>, DataCleanupConsumer>();
-            services.AddSingleton<IConsumer<UpdateResourceUsageCommand_Identifier>, UpdateResourceUsageConsumer>();
 
             var workerMessageConfiguration = IdpConstants.GetMessageConfiguration(secret.MessageConnectionString);
             workerMessageConfiguration.ServiceName = serviceName;

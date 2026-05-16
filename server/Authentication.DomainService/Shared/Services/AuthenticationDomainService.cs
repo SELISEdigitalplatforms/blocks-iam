@@ -165,10 +165,6 @@ namespace Authentication.DomainService.Services
             }
 
             var redirectUris = request.RedirectUris.Where(x => !string.IsNullOrWhiteSpace(x)).Distinct(StringComparer.OrdinalIgnoreCase).ToList();
-            if (redirectUris.Count == 0)
-            {
-                redirectUris = new() { request.RedirectUri };
-            }
 
             var allowedServiceAccessResources = request.AllowedServiceAccessResources.Where(x => !string.IsNullOrWhiteSpace(x)).Distinct(StringComparer.OrdinalIgnoreCase).ToList();
             if (allowedServiceAccessResources.Count == 0 && !string.IsNullOrWhiteSpace(request.ServiceAccessResource))
@@ -238,7 +234,7 @@ namespace Authentication.DomainService.Services
                     AuthorizationUrl = request.ExternalDiscoveryEndpoint ?? "",
                     TokenUrl = request.ExternalDiscoveryEndpoint ?? "",
                     UserInfoUrl = request.ExternalDiscoveryEndpoint ?? "",
-                    RedirectUri = credential.RedirectUri,
+                    RedirectUris = redirectUris,
                     Scope = credential.Scope,
                     ResponseType = "code",
                     GrantTypes = credential.AllowedGrantTypes ?? ["authorization_code", "refresh_token"],
@@ -264,7 +260,7 @@ namespace Authentication.DomainService.Services
                 existingProvider.AuthorizationUrl = request.ExternalDiscoveryEndpoint ?? "";
                 existingProvider.TokenUrl = request.ExternalDiscoveryEndpoint ?? "";
                 existingProvider.UserInfoUrl = request.ExternalDiscoveryEndpoint ?? "";
-                existingProvider.RedirectUri = credential.RedirectUri;
+                existingProvider.RedirectUris = redirectUris;
                 existingProvider.Scope = credential.Scope;
                 existingProvider.GrantTypes = credential.AllowedGrantTypes ?? ["authorization_code", "refresh_token"];
                 existingProvider.RequirePkce = credential.RequirePkce;

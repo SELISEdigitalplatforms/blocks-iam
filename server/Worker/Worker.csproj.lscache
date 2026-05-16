@@ -54,16 +54,6 @@ TemporaryDependencyNodeTargetIdentifier=net10.0
 /warnaserror+:NU1605,SYSLIB0011
 
 [sourceFiles]
-Consumers/Identifier/
- ConfigureProjectConsumer.cs
- CreateUserByEmailPostConsumer.cs
- DataCleanupConsumer.cs
- DisableDomainBindingConsumer.cs
- DomainConfigureConsumer.cs
- EnvironmentDataMigrationEventConsumer.cs
- MigrationCompletionConsumer.cs
- RestoreProjectConsumer.cs
- UpdateResourceUsageConsumer.cs
 Consumers/Resources/
  ResourceMutationConsumer.cs
  ResourceSetToPermissionMutationConsumer.cs

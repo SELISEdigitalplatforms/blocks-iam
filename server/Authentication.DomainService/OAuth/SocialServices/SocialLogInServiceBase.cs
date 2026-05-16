@@ -47,26 +47,28 @@ namespace Authentication.DomainService.OAuth
             }
 
             var socialLogInStateKey = Guid.NewGuid().ToString("n");
+            var providerRedirectUri = loginData.RedirectUri ?? identityProvider.RedirectUris?.FirstOrDefault() ?? string.Empty;
             var socialLogInStateInfo = new StateInfo
             {
                 Audience = loginData.Audience,
                 Provider = loginData.Provider,
                 NextUrl = loginData.NextUrl,
+                RedirectUri = providerRedirectUri
             };
 
             await _cacheClient.AddStringValueAsync(socialLogInStateKey, JsonSerializer.Serialize(socialLogInStateInfo), 300);
 
             // Build authorization URL with parameters
-            var authUrl = BuildAuthorizationUrl(identityProvider, socialLogInStateKey);
+            var authUrl = BuildAuthorizationUrl(identityProvider, socialLogInStateKey, providerRedirectUri);
             return (authUrl, loginData.SendAsResponse);
         }
 
-        private string BuildAuthorizationUrl(IdentityProvider provider, string state)
+        private string BuildAuthorizationUrl(IdentityProvider provider, string state, string redirectUri)
         {
-            var redirectUri = WebUtility.UrlEncode(provider.RedirectUri);
+            var encodedRedirectUri = WebUtility.UrlEncode(redirectUri);
             var scope = WebUtility.UrlEncode(provider.Scope);
             
-            return $"{provider.AuthorizationUrl}?client_id={provider.ClientId}&scope={scope}&state={state}&redirect_uri={redirectUri}&response_type={provider.ResponseType}";
+            return $"{provider.AuthorizationUrl}?client_id={provider.ClientId}&scope={scope}&state={state}&redirect_uri={encodedRedirectUri}&response_type={provider.ResponseType}";
         }
 
         public virtual async Task<IExternalUserData> HandleSocialLogin(StateInfo stateInfo)
@@ -84,7 +86,7 @@ namespace Authentication.DomainService.OAuth
                 { "code", stateInfo.Code },
                 { "client_id", identityProvider.ClientId },
                 { "client_secret", identityProvider.ClientSecret },
-                { "redirect_uri", identityProvider.RedirectUri },
+                { "redirect_uri", stateInfo.RedirectUri },
                 { "grant_type", "authorization_code" },
                 { "scope", "openid profile email" }
             };

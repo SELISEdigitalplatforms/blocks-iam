@@ -25,7 +25,13 @@ namespace Authentication.DomainService.OAuth.Services
         {
             var user = await _oAuthRepository.GetUserByEmailAsync(externalUser.Email);
 
-            return user == null ? await CreateUser(stateInfo, externalUser) : (user, string.Empty);
+            if (user == null)
+            {
+                // return await CreateUser(stateInfo, externalUser); // for now, we will not auto create user, return error instead. Will add auto create user in the future if needed.   
+                return (null, string.Empty);
+            }
+
+            return (user, string.Empty);
         }
     }
 }

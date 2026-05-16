@@ -55,19 +55,9 @@ namespace Authentication.DomainService.OAuth
 
             if (user == null)
             {
-                var signUpSetting = await _repository.GetSignUpSettingAsync();
-
-                if (signUpSetting is not null && signUpSetting.IsSSoSignUpEnabled)
-                    return await CreateUser(stateInfo, externalUser);
-
+                // return await CreateUser(stateInfo, externalUser); // for now, we will not auto create user, return error instead. Will add auto create user in the future if needed.   
                 return (null, string.Empty);
             }
-
-            user.Department = externalUser.Department;
-            user.EmployeeId = externalUser.EmployeeId;
-            user.Roles["default"] = externalUser.Roles ?? [];
-            user.Permissions["default"] = externalUser.Permissions ?? [];
-            await _userRepository.UpdateUserAsync(user);
 
             return (user, string.Empty);
         }
