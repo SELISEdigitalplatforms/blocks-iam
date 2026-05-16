@@ -55,12 +55,15 @@ namespace Authentication.DomainService.OAuth.SocialServices
                 .Replace('+', '-')
                 .Replace('/', '_');
 
+            var providerRedirectUri = loginData.RedirectUri ?? identityProvider.RedirectUris.FirstOrDefault() ?? string.Empty;
+
             var stateInfo = new StateInfo
             {
                 Audience = loginData.Audience,
                 Provider = loginData.Provider,
                 NextUrl = loginData.NextUrl,
-                Extra = new Dictionary<string, string> { { "code_verifier", codeVerifier } }
+                Extra = new Dictionary<string, string> { { "code_verifier", codeVerifier } },
+                RedirectUri = providerRedirectUri
             };
 
             await _cacheClient.AddStringValueAsync(stateKey, JsonSerializer.Serialize(stateInfo), 300);
@@ -68,7 +71,7 @@ namespace Authentication.DomainService.OAuth.SocialServices
             var loginUri =
                 $"{identityProvider.AuthorizationUrl}?response_type=code" +
                 $"&client_id={identityProvider.ClientId}" +
-                $"&redirect_uri={WebUtility.UrlEncode(identityProvider.RedirectUri)}" +
+                $"&redirect_uri={WebUtility.UrlEncode(providerRedirectUri)}" +
                 $"&scope={WebUtility.UrlEncode(identityProvider.Scope).Replace("+", "%20")}" +
                 $"&state={stateKey}" +
                 $"&code_challenge={codeChallenge}" +
@@ -99,7 +102,7 @@ namespace Authentication.DomainService.OAuth.SocialServices
             {
                 { "grant_type", "authorization_code" },
                 { "code", stateInfo.Code },
-                { "redirect_uri", identityProvider.RedirectUri },
+                { "redirect_uri", stateInfo.RedirectUri },
                 { "code_verifier", codeVerifier }
             };
 

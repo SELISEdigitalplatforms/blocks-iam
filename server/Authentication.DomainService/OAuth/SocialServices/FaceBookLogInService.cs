@@ -46,10 +46,12 @@ namespace Authentication.DomainService.OAuth.SocialServices
 
             await _cacheClient.AddStringValueAsync(stateKey, System.Text.Json.JsonSerializer.Serialize(stateInfo), 300);
 
+            var providerRedirectUri = loginData.RedirectUri ?? identityProvider.RedirectUris.FirstOrDefault() ?? string.Empty;
+            var redirectUri = WebUtility.UrlEncode(providerRedirectUri);
             var loginUri = string.Format(
                 identityProvider.AuthorizationUrl,
                 identityProvider.ClientId,
-                WebUtility.UrlEncode(identityProvider.RedirectUri),
+                redirectUri,
                 WebUtility.UrlEncode(identityProvider.Scope),
                 stateKey
             );
@@ -67,7 +69,7 @@ namespace Authentication.DomainService.OAuth.SocialServices
                 return new FaceBookUserData();
             }
 
-            string faceBookGetAccessTokenUri = string.Format("{0}?client_id={1}&redirect_uri={2}&client_secret={3}&code={4}",identityProvider.TokenUrl, identityProvider.ClientId, identityProvider.RedirectUri, identityProvider.ClientSecret, stateInfo.Code);
+            string faceBookGetAccessTokenUri = string.Format("{0}?client_id={1}&redirect_uri={2}&client_secret={3}&code={4}",identityProvider.TokenUrl, identityProvider.ClientId, stateInfo.RedirectUri, identityProvider.ClientSecret, stateInfo.Code);
             _logger.LogInformation("faceBook Access Token Uri {AccessTokenUri}", faceBookGetAccessTokenUri);
             var (tokenResponse, error) = await _httpService.Get<SocialOauthAccessToken>(faceBookGetAccessTokenUri);
 

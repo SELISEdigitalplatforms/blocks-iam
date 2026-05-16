@@ -95,6 +95,13 @@ namespace Authentication.DomainService.Services
             return true;
         }
 
+        public async Task<bool> InsertUserAuthenticationTimelineAsync(UserAuthenticationTimeline userAuthenticationTimeline)
+        {
+            var collection = GetCollection<UserAuthenticationTimeline>();
+            await collection.InsertOneAsync(userAuthenticationTimeline);
+            return true;
+        }
+
         public async Task<bool> RevokeIdentitySessionAsync(string refreshToken, string userId)
         {
             var collection = GetCollection<IdentitySession>();
@@ -114,6 +121,16 @@ namespace Authentication.DomainService.Services
             var filter = Builders<IdentitySession>.Filter.In(x => x.RefreshToken, refreshTokens);
             var result = await collection.UpdateManyAsync(filter, update);
             return result.IsAcknowledged;
+        }
+
+        public async Task<bool> UpdateSessionStatusForAllRefreshTokenAsync(List<string> refreshTokens)
+        {
+            if (refreshTokens == null || refreshTokens.Count == 0)
+            {
+                return true;
+            }
+
+            return await RevokeIdentitySessionsByRefreshTokensAsync(refreshTokens);
         }
 
         public async Task<IEnumerable<IdentitySession>> GetActiveIdentitySessionByUserIdAsync(string userId)
