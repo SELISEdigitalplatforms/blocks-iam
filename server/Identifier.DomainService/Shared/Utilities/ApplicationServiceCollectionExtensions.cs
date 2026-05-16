@@ -15,15 +15,10 @@ namespace Identifier.DomainService.Shared
     {
         public static void AddApplicationServices(this IServiceCollection services)
         {
-            // Register validators
-            services.AddTransient<IValidator<CreateProjectRequest>, CreateProjectRequestValidator>();
-            services.AddTransient<IValidator<UpdateAuthConfigRequest>, UpdateAuthConfigRequestValidator>();
-            services.AddTransient<IValidator<UpdateProjectRequest>, UpdateProjectRequestValidator>();
 
             // Register services
             services.AddSingleton<IProjectManagementService, ProjectManagementService>();
             services.AddSingleton<IProjectRepository, ProjectRepository>();
-            services.AddSingleton<IEncodingService, EncodingService>();
 
             // Drivers
             services.AddSingleton<DmsArtifactBuilderFactory>();

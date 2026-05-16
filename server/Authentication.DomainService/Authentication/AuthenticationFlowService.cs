@@ -466,7 +466,7 @@ namespace Authentication.DomainService.Authentication
                 return new UnauthorizedObjectResult(new { error = "invalid_user" });
             }
 
-            var (rootDomain, rootCookieDomain, isRootDomainResolved) = DomainResolver.ResolveDomain(rootTenant, httpRequest, null);
+            var (rootDomain, rootCookieDomain, isRootDomainResolved) = DomainResolver.ResolveDomain(rootTenant, httpRequest, BlocksContext.GetContext()?.ApplicationDomain);
             if (!isRootDomainResolved || string.IsNullOrWhiteSpace(rootDomain))
             {
                 return new UnauthorizedObjectResult(new { error = "session_expired" });
@@ -645,7 +645,7 @@ namespace Authentication.DomainService.Authentication
             {
                 targetTenantId = state.TargetTenantId;
                 var targetTenant = _tenants.GetTenantByID(state.TargetTenantId);
-                var (targetDomain, _, isTargetDomainResolved) = DomainResolver.ResolveDomain(targetTenant, httpRequest, null);
+                var (targetDomain, _, isTargetDomainResolved) = DomainResolver.ResolveDomain(targetTenant, httpRequest, BlocksContext.GetContext()?.ApplicationDomain);
                 var impRefreshCookieName = isTargetDomainResolved && !string.IsNullOrWhiteSpace(targetDomain)
                     ? $"{IdpConstants.RefreshTokenCookieName}_{targetDomain}"
                     : null;
@@ -1116,7 +1116,7 @@ namespace Authentication.DomainService.Authentication
             }
 
             var accessExpiry = GetJwtExpiryUtc(rootAccessToken) ?? DateTime.UtcNow.AddMinutes(15);
-            var (rootDomain, rootCookieDomain, isRootDomainResolved) = DomainResolver.ResolveDomain(rootTenant, httpRequest, null);
+            var (rootDomain, rootCookieDomain, isRootDomainResolved) = DomainResolver.ResolveDomain(rootTenant, httpRequest, BlocksContext.GetContext()?.ApplicationDomain);
             if (!isRootDomainResolved || string.IsNullOrWhiteSpace(rootDomain))
             {
                 return false;
@@ -1425,7 +1425,7 @@ namespace Authentication.DomainService.Authentication
 
         private bool AppendCookies(HttpResponse httpResponse, TokenResponse response, Tenant? tenant, HttpRequest? httpRequest)
         {
-            var (tokenDomain, _, isResolved) = DomainResolver.ResolveDomain(tenant, httpRequest, null);
+            var (tokenDomain, _, isResolved) = DomainResolver.ResolveDomain(tenant, httpRequest, BlocksContext.GetContext()?.ApplicationDomain);
             if (!isResolved || string.IsNullOrWhiteSpace(tokenDomain))
             {
                 return false;

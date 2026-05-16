@@ -69,7 +69,6 @@ Project/
   ProjectManagementService.cs
   ProjectRepository.cs
 Shared/Dtos/
- GetAssetResponse.cs
  GetProjectResponse.cs
  GroupedProjectsDto.cs
  NotificationResponse.cs
@@ -79,7 +78,6 @@ Shared/Entities/
  Project.cs
  ProjectPeople.cs
  ProjectStatusTracer.cs
- TenantAsset.cs
  ThirdPartyJWTClaims.cs
 Shared/Services/
  EncodingService.cs

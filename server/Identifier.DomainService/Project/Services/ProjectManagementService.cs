@@ -43,7 +43,7 @@ namespace Identifier.DomainService.Projects
             var project = new GetProjectResponseData
             {
                 Name = repoProject.Name,
-                ApplicationDomain = repoProject.ApplicationDomain,
+                Applications = repoProject.Applications,
                 ItemId = repoProject.ItemId,
                 CreatedDate = repoProject.CreatedDate,
                 LastUpdatedDate = repoProject.LastUpdatedDate,
@@ -52,22 +52,13 @@ namespace Identifier.DomainService.Projects
                 CreatedBy = repoProject.CreatedBy,
                 Tags = repoProject.Tags,
                 TenantId = repoProject.TenantId,
-                IsDomainVerified = repoProject.IsDomainVerified,
-                CookieDomain = repoProject.CookieDomain,
                 IsDisabled = repoProject.IsDisabled,
                 Environment = repoProject.Environment,
                 TenantGroupId = repoProject.TenantGroupId,
-                CustomDomain = repoProject.CustomDomain,
                 TenantSlug = tenantSlug
             };
 
             return new GetProjectResponse { Data = project };
-        }
-
-        public async Task<GetAssetResponse> GetAssetAsync(GetAssetRequest request)
-        {
-            var (assets, totalCount) = await _projectRepository.GetTenantAssetAsync(request);
-            return new GetAssetResponse { Assets = assets, TotalCount = totalCount, IsSuccess = true };
         }
 
         public async Task<IActionResult> GetProjectTokenValidationParametersAsync(string projectId)

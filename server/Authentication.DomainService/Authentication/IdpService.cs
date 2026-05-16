@@ -202,7 +202,8 @@ namespace Authentication.DomainService.Authentication
                 }
 
                 // Resolve tenant_id: flowContext > BlocksContext > default
-                var resolvedTenantId = flowContext.TenantId ?? BlocksContext.GetContext()?.TenantId ?? string.Empty;
+                var blocksContext = BlocksContext.GetContext();
+                var resolvedTenantId = flowContext.TenantId ?? blocksContext?.TenantId ?? string.Empty;
                 var authConfiguration = await _authenticationRepository.GetAuthenticationConfigurationAsync();
                 var configuredAccessLifetimeSeconds = Math.Max((authConfiguration?.AccessTokenValidForNumberMinutes ?? AuthenticationConfiguration.DefaultAccessTokenValidForNumberMinutes) * 60, 60);
                 var configuredRefreshLifetimeMinutes = Math.Max(authConfiguration?.AbsoluteRefreshTokenValidForNumberMinutes ?? AuthenticationConfiguration.DefaultRememberMeRefreshTokenValidForNumberMinutes, 1);
@@ -211,7 +212,7 @@ namespace Authentication.DomainService.Authentication
                     : configuredAccessLifetimeSeconds;
 
                 var tenant = _tenants.GetTenantByID(resolvedTenantId);
-                var (domain, cookieDomain, isResolved) = DomainResolver.ResolveDomain(tenant, httpRequest, null);
+                var (domain, cookieDomain, isResolved) = DomainResolver.ResolveDomain(tenant, httpRequest, blocksContext?.ApplicationDomain);
                 var tokenResponseObj = new TokenResponse
                 {
                     AccessToken = tokenResponse.AccessToken,
@@ -224,13 +225,22 @@ namespace Authentication.DomainService.Authentication
                     CookieDomain = cookieDomain
                 };
 
+                await _cacheClient.RemoveKeyAsync(cacheKey);
+
                 if (isResolved && !string.IsNullOrWhiteSpace(domain))
                 {
                     AppendCookies(tokenResponseObj, httpResponse, httpRequest, domain);
+                    _logger.LogInformation($"Successfully completed authentication flow for state: {state}");
+
+                    return new OkObjectResult(new
+                    {
+                        id_token = tokenResponseObj.IdToken,
+                        token_type = tokenResponseObj.TokenType ?? "Bearer",
+                        expires_in = (tokenResponseObj.ExpiresUtc - DateTime.UtcNow).TotalSeconds,
+                        scope = tokenResponseObj.Scope
+                    });
                 }
 
-                // Clear cache entry
-                await _cacheClient.RemoveKeyAsync(cacheKey);
 
                 _logger.LogInformation($"Successfully completed authentication flow for state: {state}");
 
@@ -241,9 +251,7 @@ namespace Authentication.DomainService.Authentication
                     id_token = tokenResponseObj.IdToken,
                     token_type = tokenResponseObj.TokenType ?? "Bearer",
                     expires_in = (tokenResponseObj.ExpiresUtc - DateTime.UtcNow).TotalSeconds,
-                    scope = tokenResponseObj.Scope,
-                    tenant_id = resolvedTenantId,
-                    client_id = identityProvider.ClientId
+                    scope = tokenResponseObj.Scope
                 });
             }
             catch (Exception ex)
@@ -286,7 +294,6 @@ namespace Authentication.DomainService.Authentication
         {
             var normalizedDomain = domain ?? BlocksContext.GetContext()?.TenantId ?? "default";
             var accessCookieOptions = CreateCookieOptions(response.CookieDomain, response.ExpiresUtc, httpRequest);
-            var idCookieOptions = CreateCookieOptions(response.CookieDomain, response.ExpiresUtc, httpRequest);
             var refreshCookieOptions = CreateCookieOptions(response.CookieDomain, response.RefreshExpiresUtc, httpRequest);
 
             if (!string.IsNullOrWhiteSpace(response.AccessToken))
@@ -297,11 +304,6 @@ namespace Authentication.DomainService.Authentication
             if (!string.IsNullOrWhiteSpace(response.RefreshToken))
             {
                 httpResponse.Cookies.Append($"{IdpConstants.RefreshTokenCookieName}_{normalizedDomain}", response.RefreshToken, refreshCookieOptions);
-            }
-
-            if (!string.IsNullOrWhiteSpace(response.IdToken))
-            {
-                httpResponse.Cookies.Append($"{IdpConstants.IdTokenCookieName}_{normalizedDomain}", response.IdToken, idCookieOptions);
             }
         }
 

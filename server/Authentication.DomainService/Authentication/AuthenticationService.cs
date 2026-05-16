@@ -249,7 +249,7 @@ namespace Authentication.DomainService.Authentication
         {
             var bc = BlocksContext.GetContext();
             var tenant = _tenants.GetTenantByID(bc?.TenantId ?? "default");
-            var (domain, _, isResolved) = DomainResolver.ResolveDomain(tenant, request, null);
+            var (domain, _, isResolved) = DomainResolver.ResolveDomain(tenant, request, bc?.ApplicationDomain);
             if (!isResolved || string.IsNullOrWhiteSpace(domain))
             {
                 return string.Empty;
@@ -267,7 +267,7 @@ namespace Authentication.DomainService.Authentication
             var bc = BlocksContext.GetContext();
             var tenantId = bc?.TenantId ?? "default";
             var tenant = _tenants.GetTenantByID(tenantId);
-            var (domain, cookieDomain, isResolved) = DomainResolver.ResolveDomain(tenant, request, null);
+            var (domain, cookieDomain, isResolved) = DomainResolver.ResolveDomain(tenant, request, bc?.ApplicationDomain);
             var cookieOptions = CreateCookieOptions(cookieDomain, DateTime.UtcNow.AddDays(-1));
 
             if (isResolved && !string.IsNullOrWhiteSpace(domain))
@@ -288,7 +288,7 @@ namespace Authentication.DomainService.Authentication
             var bc = BlocksContext.GetContext();
             var tenantId = bc?.TenantId ?? "default";
             var tenant = _tenants.GetTenantByID(tenantId);
-            var (domain, cookieDomain, isResolved) = DomainResolver.ResolveDomain(tenant, httpContext.Request, null);
+            var (domain, cookieDomain, isResolved) = DomainResolver.ResolveDomain(tenant, httpContext.Request, bc?.ApplicationDomain);
             if (!isResolved || string.IsNullOrWhiteSpace(domain))
             {
                 return;
@@ -486,7 +486,7 @@ namespace Authentication.DomainService.Authentication
             catch
             {
                 // Fallback to simple construction
-                return $"{provider.AuthorizationUrl}?response_type=code&client_id={Uri.EscapeDataString(provider.ClientId ?? "")}&state={state}&redirect_uri={Uri.EscapeDataString(provider.RedirectUri ?? "")}&scope={Uri.EscapeDataString(scope)}";
+                return $"{provider.AuthorizationUrl}?response_type=code&client_id={Uri.EscapeDataString(provider.ClientId ?? "")}&state={state}&redirect_uri={Uri.EscapeDataString(redirectUri)}&scope={Uri.EscapeDataString(scope)}";
             }
         }
 
@@ -815,7 +815,7 @@ namespace Authentication.DomainService.Authentication
         {
             var bc = BlocksContext.GetContext();
             var tenant = _tenants.GetTenantByID(bc?.TenantId ?? "default");
-            var (domain, _, isResolved) = DomainResolver.ResolveDomain(tenant, httpContext.Request, null);
+            var (domain, _, isResolved) = DomainResolver.ResolveDomain(tenant, httpContext.Request, bc?.ApplicationDomain);
             if (!isResolved || string.IsNullOrWhiteSpace(domain))
             {
                 return false;

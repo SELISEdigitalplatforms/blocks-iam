@@ -1,5 +1,4 @@
 using Blocks.Genesis;
-using Identifier.DomainService.Shared.Entities;
 
 namespace Identifier.DomainService.Projects
 {
@@ -16,8 +15,8 @@ namespace Identifier.DomainService.Projects
 
     public class GetAssetResponse : BaseResponse
     {
-        public TenantAsset Assets { get; set; }
         public long TotalCount { get; set; }
+        public bool IsSuccess { get; set; }
     }
 }
 

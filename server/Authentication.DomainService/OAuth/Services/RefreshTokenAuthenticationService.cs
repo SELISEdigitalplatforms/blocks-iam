@@ -6,6 +6,7 @@ using Iam.DomainService.Entities;
 using Microsoft.Extensions.Logging;
 using System.IdentityModel.Tokens.Jwt;
 using Authentication.DomainService.Services;
+using Authentication.DomainService.Utilities;
 
 namespace Authentication.DomainService.OAuth
 {
@@ -83,7 +84,7 @@ namespace Authentication.DomainService.OAuth
                 };
             }
 
-            var (_, cookieDomain, _) = DomainResolver.ResolveDomain(tenant, request.Request, null);
+            var (_, cookieDomain, _) = DomainResolver.ResolveDomain(tenant, request.Request, bc?.ApplicationDomain);
 
             return new TokenResponse
             {

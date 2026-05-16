@@ -70,7 +70,7 @@ namespace Mfa.DomainService.TOTP
             var fileId = GenerateGuid();
             var twoFactorId = GenerateGuid();
             var preSignedUrl = await GetPreSignedUrlAsync(fileId);
-            var applicationDomain = _tenant.GetTenantByID(BlocksContext.GetContext()?.TenantId ?? "")?.ApplicationDomain?.Replace("https://", "") ?? "";
+            var applicationDomain = _tenant.GetTenantByID(BlocksContext.GetContext()?.TenantId ?? "")?.Applications[0].Domain?.Replace("https://", "") ?? "";
 
             if (string.IsNullOrWhiteSpace(preSignedUrl)) { return new SetUpUserTotpResponse { Errors = new Dictionary<string, string> { { "configuration_not_exit", "please_check_default_storage_configuration" } } }; }
 

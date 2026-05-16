@@ -1,3 +1,5 @@
+using Blocks.Genesis;
+
 namespace Identifier.DomainService.Dtos
 {
     public class GetProjectResponse
@@ -9,7 +11,7 @@ namespace Identifier.DomainService.Dtos
     public class GetProjectResponseData
     {
         public string? Name { get; set; }
-        public string? ApplicationDomain { get; set; }
+        public List<Applications> Applications { get; set; } = new List<Applications>();
         public string? ItemId { get; set; }
         public DateTime CreatedDate { get; set; }
         public DateTime LastUpdatedDate { get; set; }
@@ -18,12 +20,9 @@ namespace Identifier.DomainService.Dtos
         public string? CreatedBy { get; set; }
         public List<string>? Tags { get; set; }
         public string? TenantId { get; set; }
-        public bool IsDomainVerified { get; set; }
-        public string? CookieDomain { get; set; }
         public bool IsDisabled { get; set; }
         public string? Environment { get; set; }
         public string? TenantGroupId { get; set; }
-        public string? CustomDomain { get; set; }
         public string? TenantSlug { get; set; }
     }
 }
