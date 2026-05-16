@@ -37,8 +37,6 @@ const SAVE_SIGNUP_SETTING_PATTERN = new RegExp(ORGANIZATION_ENDPOINTS.SAVE_SIGNU
 const SAVE_ROLES_AND_PERMISSIONS_PATTERN = new RegExp(USER_ENDPOINTS.SAVE_ROLES_AND_PERMISSIONS);
 const GET_SESSIONS_PATTERN = new RegExp(`${USER_ENDPOINTS.GET_SESSIONS}\\?`);
 const GET_HISTORIES_PATTERN = new RegExp(`${USER_ENDPOINTS.GET_HISTORIES}\\?`);
-const GET_USER_CODES_PATTERN = new RegExp(USER_ENDPOINTS.GET_USER_CODES);
-const GENERATE_USER_CODE_PATTERN = new RegExp(USER_ENDPOINTS.GENERATE_USER_CODE);
 const GET_USER_ROLES_PATTERN = new RegExp(`${USER_ENDPOINTS.GET_USER_ROLES}\\?`);
 const GET_USER_PERMISSIONS_PATTERN = new RegExp(`${USER_ENDPOINTS.GET_USER_PERMISSIONS}\\?`);
 const DEACTIVATE_PATTERN = new RegExp(USER_ENDPOINTS.DEACTIVATE);
@@ -101,8 +99,6 @@ export const iamHandlers = [
   http.get(GET_HISTORIES_PATTERN, () =>
     HttpResponse.json({ data: [], totalCount: 0, errors: null }),
   ),
-  http.get(GET_USER_CODES_PATTERN, () => HttpResponse.json({ data: [], errors: null })),
-  http.post(GENERATE_USER_CODE_PATTERN, () => HttpResponse.json(mockSuccessResponse)),
   http.get(GET_USER_ROLES_PATTERN, () =>
     HttpResponse.json({ data: [], totalCount: 0, errors: null }),
   ),

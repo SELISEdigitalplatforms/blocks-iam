@@ -21,9 +21,7 @@ namespace Iam.DomainService.Services
         Task<bool> InsertUserTimelineAsync(UserTimeline userTimeline);
         Task<bool> UpdateUserAsync(User user);
         Task<string> GetUserIdFromKeyMapByKeyAsync(string key);
-        Task<SignUpSetting> GetSingUpSettingByIdAsync(string itemId);
-        Task SaveSingUpSettingAsync(SignUpSetting signUpSetting);
-        Task<SignUpSetting> GetSignUpSettingAsync(string? itemId = null);
-        Task<bool> SingnUpSettingAlreadyExist();
+        Task SaveSignUpSettingAsync(TenantConfiguration tenantConfiguration);
+        Task<TenantConfiguration> GetTenantConfigurationAsync();
     }
 }

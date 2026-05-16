@@ -1,9 +1,9 @@
 interface OIDCParams {
-  projectKey?: string;
   userName?: string;
   logoUrl?: string;
   themeColor: string;
   clientId?: string;
+  tenantId?: string;
   state?: string;
   nonce?: string;
   scope?: string;
@@ -67,11 +67,11 @@ export const extractOIDCParams = (debug = false): OIDCParams => {
   const hash = window.location.hash;
   const fullUrl = window.location.href;
 
-  let projectKey = searchParams.get("x-blocks-key") || undefined;
   let userName = searchParams.get("userName") || undefined;
-  let clientId = searchParams.get("clientId") || undefined;
+  let clientId = searchParams.get("client_id") || searchParams.get("clientId") || undefined;
   let logoUrl = searchParams.get("logoUrl") || undefined;
   let themeColor = searchParams.get("brandColor") || undefined;
+  let tenantId = searchParams.get("tenant_id") || undefined;
   let state = searchParams.get("state") || undefined;
   let nonce = searchParams.get("nonce") || undefined;
   let scope = searchParams.get("scope") || undefined;
@@ -102,14 +102,14 @@ export const extractOIDCParams = (debug = false): OIDCParams => {
         if (!logoUrl) {
           logoUrl = hashParams.get("logoUrl") || undefined;
         }
-        if (!projectKey) {
-          projectKey = hashParams.get("x-blocks-key") || undefined;
-        }
         if (!clientId) {
-          clientId = hashParams.get("clientId") || undefined;
+          clientId = hashParams.get("client_id") || hashParams.get("clientId") || undefined;
         }
         if (!userName) {
           userName = hashParams.get("userName") || undefined;
+        }
+        if (!tenantId) {
+          tenantId = hashParams.get("tenant_id") || undefined;
         }
         if (!state) {
           state = hashParams.get("state") || undefined;
@@ -133,14 +133,14 @@ export const extractOIDCParams = (debug = false): OIDCParams => {
           if (!logoUrl && hashParams.has("logoUrl")) {
             logoUrl = hashParams.get("logoUrl") || undefined;
           }
-          if (!projectKey && hashParams.has("x-blocks-key")) {
-            projectKey = hashParams.get("x-blocks-key") || undefined;
-          }
-          if (!clientId && hashParams.has("clientId")) {
-            clientId = hashParams.get("clientId") || undefined;
+          if (!clientId && (hashParams.has("client_id") || hashParams.has("clientId"))) {
+            clientId = hashParams.get("client_id") || hashParams.get("clientId") || undefined;
           }
           if (!userName && hashParams.has("userName")) {
             userName = hashParams.get("userName") || undefined;
+          }
+          if (!tenantId && hashParams.has("tenant_id")) {
+            tenantId = hashParams.get("tenant_id") || undefined;
           }
           if (!state && hashParams.has("state")) {
             state = hashParams.get("state") || undefined;
@@ -173,11 +173,11 @@ export const extractOIDCParams = (debug = false): OIDCParams => {
   const normalizedThemeColor = normalizeColorValue(themeColor);
 
   const result = {
-    projectKey,
     userName,
     logoUrl,
     themeColor: normalizedThemeColor,
     clientId,
+    tenantId,
     state,
     nonce,
     scope,
@@ -195,10 +195,10 @@ export const buildOIDCNavigationUrl = (path: string): string => {
   const params = extractOIDCParams(); 
   const searchParams = new URLSearchParams();
 
-  if (params.projectKey) searchParams.set("x-blocks-key", params.projectKey);
   if (params.userName) searchParams.set("userName", params.userName);
   if (params.clientId) searchParams.set("clientId", params.clientId);
   if (params.logoUrl) searchParams.set("logoUrl", params.logoUrl);
+  if (params.tenantId) searchParams.set("tenant_id", params.tenantId);
   
 
   if (params.themeColor) {
@@ -220,10 +220,10 @@ export const getCurrentOIDCParams = (): URLSearchParams => {
   const params = extractOIDCParams(); 
   const searchParams = new URLSearchParams();
 
-  if (params.projectKey) searchParams.set("x-blocks-key", params.projectKey);
   if (params.userName) searchParams.set("userName", params.userName);
   if (params.clientId) searchParams.set("clientId", params.clientId);
   if (params.logoUrl) searchParams.set("logoUrl", params.logoUrl);
+  if (params.tenantId) searchParams.set("tenant_id", params.tenantId);
   if(params.state) searchParams.set("state", params.state);
   if(params.nonce) searchParams.set("nonce", params.nonce);
   if(params.scope) searchParams.set("scope", params.scope);

@@ -1,5 +1,3 @@
-import { TEST_PROJECT_KEY } from "@/test-utils/__mocks__";
-
 // ─── OIDC Auth Flow Mocks ────────────────────────────────────────────────────
 // Mocks for the standalone OIDC auth-flow functions that use custom fetch()
 // rather than the shared http client.
@@ -9,7 +7,6 @@ export const MOCK_OIDC_STATE = "oidc-state-abc";
 export const MOCK_OIDC_NONCE = "oidc-nonce-def";
 
 export const mockOidcFlowCredentialPayload = {
-  projectKey: TEST_PROJECT_KEY,
   clientId: MOCK_OIDC_CLIENT_ID,
 };
 
@@ -26,24 +23,8 @@ export const mockOidcFlowCredentialResponse = {
   isSuccess: true,
 };
 
-export const mockUserAcknowledgementPayload = {
-  clientId: MOCK_OIDC_CLIENT_ID,
-  state: MOCK_OIDC_STATE,
-  nonce: MOCK_OIDC_NONCE,
-  scope: "openid profile email",
-  redirectUri: "https://app.blocks.com/callback",
-  isAcknowledged: true,
-  username: "testuser",
-  projectKey: TEST_PROJECT_KEY,
-};
-
-export const mockUserAcknowledgementResponse = {
-  redirectUrl: "https://app.blocks.com/callback?code=abc123&state=oidc-state-abc",
-};
-
 export const mockOidcFlowAccountRecoverPayload = {
   email: "test@blocks.com",
-  projectKey: TEST_PROJECT_KEY,
 };
 
 export const mockOidcFlowAccountRecoverResponse = {

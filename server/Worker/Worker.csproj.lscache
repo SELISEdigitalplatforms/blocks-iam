@@ -31,7 +31,7 @@ TemporaryDependencyNodeTargetIdentifier=net10.0
 /noconfig
 /unsafe-
 /checked-
-/nowarn:1701,1702,1701,1702,8002
+/nowarn:1701,1702,1701,1702
 /fullpaths
 /nostdlib+
 /errorreport:prompt
@@ -44,8 +44,8 @@ TemporaryDependencyNodeTargetIdentifier=net10.0
 /debug:portable
 /filealign:512
 /optimize-
-/out:obj/Debug/net10.0/Worker.dll
-/refout:obj/Debug/net10.0/refint/Worker.dll
+/out:obj\Debug\net10.0\Worker.dll
+/refout:obj\Debug\net10.0\refint\Worker.dll
 /target:exe
 /warnaserror-
 /utf8output
@@ -54,16 +54,6 @@ TemporaryDependencyNodeTargetIdentifier=net10.0
 /warnaserror+:NU1605,SYSLIB0011
 
 [sourceFiles]
-Consumers/Identifier/
- ConfigureProjectConsumer.cs
- CreateUserByEmailPostConsumer.cs
- DataCleanupConsumer.cs
- DisableDomainBindingConsumer.cs
- DomainConfigureConsumer.cs
- EnvironmentDataMigrationEventConsumer.cs
- MigrationCompletionConsumer.cs
- RestoreProjectConsumer.cs
- UpdateResourceUsageConsumer.cs
 Consumers/Resources/
  ResourceMutationConsumer.cs
  ResourceSetToPermissionMutationConsumer.cs
@@ -82,6 +72,9 @@ PeriodicPingBackgroundService.cs
 Program.cs
 
 [metadataReferences]
+../../../blocks-genesis-net/src/
+ Blocks.LMT.Client/obj/Debug/net10.0/ref/Blocks.LMT.Client.dll
+ Genesis/obj/Debug/net10.0/ref/Blocks.Genesis.dll
 ../
  Authentication.DomainService/obj/Debug/net10.0/ref/Authentication.DomainService.dll
  Captcha.DomainService/obj/Debug/net10.0/ref/Captcha.DomainService.dll
@@ -89,7 +82,7 @@ Program.cs
  Iam.DomainService/obj/Debug/net10.0/ref/Iam.DomainService.dll
  Identifier.DomainService/obj/Debug/net10.0/ref/Identifier.DomainService.dll
  Mfa.DomainService/obj/Debug/net10.0/ref/Mfa.DomainService.dll
-<DOTNET>/packs/Microsoft.AspNetCore.App.Ref/10.0.5/ref/net10.0/
+<DOTNET>/packs/Microsoft.AspNetCore.App.Ref/10.0.3/ref/net10.0/
  Microsoft.AspNetCore.Antiforgery.dll
  Microsoft.AspNetCore.Authentication.Abstractions.dll
  Microsoft.AspNetCore.Authentication.BearerToken.dll
@@ -202,7 +195,7 @@ Program.cs
  System.Formats.Cbor.dll
  System.Security.Cryptography.Xml.dll
  System.Threading.RateLimiting.dll
-<DOTNET>/packs/Microsoft.NETCore.App.Ref/10.0.5/ref/net10.0/
+<DOTNET>/packs/Microsoft.NETCore.App.Ref/10.0.3/ref/net10.0/
  Microsoft.CSharp.dll
  Microsoft.VisualBasic.Core.dll
  Microsoft.VisualBasic.dll
@@ -458,8 +451,6 @@ Program.cs
  polly/8.6.6/lib/net6.0/Polly.dll
  qrcoder/1.8.0/lib/net6.0/QRCoder.dll
  rabbitmq.client/7.2.1/lib/net8.0/RabbitMQ.Client.dll
- seliseblocks.genesis/10.0.1/lib/net10.0/Blocks.Genesis.dll
- seliseblocks.lmt.client/10.0.1/lib/net10.0/Blocks.LMT.Client.dll
  seliseblocks.maildriver/9.0.0-preview.15/lib/net9.0/
   Mail.DomainService.dll
   Mail.Driver.dll
@@ -505,20 +496,20 @@ Program.cs
  zstdsharp.port/0.7.3/lib/net7.0/ZstdSharp.dll
 
 [analyzerReferences]
-<DOTNET>/packs/Microsoft.AspNetCore.App.Ref/10.0.5/analyzers/dotnet/cs/
+<DOTNET>/packs/Microsoft.AspNetCore.App.Ref/10.0.3/analyzers/dotnet/cs/
  Microsoft.AspNetCore.App.Analyzers.dll
  Microsoft.AspNetCore.App.CodeFixes.dll
  Microsoft.AspNetCore.App.SourceGenerators.dll
  Microsoft.AspNetCore.Components.Analyzers.dll
  Microsoft.Extensions.Validation.ValidationsGenerator.dll
-<DOTNET>/packs/Microsoft.NETCore.App.Ref/10.0.5/analyzers/dotnet/cs/
+<DOTNET>/packs/Microsoft.NETCore.App.Ref/10.0.3/analyzers/dotnet/cs/
  Microsoft.Interop.ComInterfaceGenerator.dll
  Microsoft.Interop.JavaScript.JSImportGenerator.dll
  Microsoft.Interop.LibraryImportGenerator.dll
  Microsoft.Interop.SourceGeneration.dll
  System.Text.Json.SourceGeneration.dll
  System.Text.RegularExpressions.Generator.dll
-<DOTNET>/sdk/10.0.201/Sdks/Microsoft.NET.Sdk/analyzers/
+<DOTNET>/sdk/10.0.103/Sdks/Microsoft.NET.Sdk/analyzers/
  Microsoft.CodeAnalysis.CSharp.NetAnalyzers.dll
  Microsoft.CodeAnalysis.NetAnalyzers.dll
 <NUGET>/awssdk.s3/3.7.410.6/analyzers/dotnet/cs/
@@ -530,5 +521,5 @@ Program.cs
  system.clientmodel/1.10.0/analyzers/dotnet/cs/System.ClientModel.SourceGeneration.dll
 
 [analyzerConfigFiles]
-<DOTNET>/sdk/10.0.201/Sdks/Microsoft.NET.Sdk/analyzers/build/config/analysislevel_10_default.globalconfig
+<DOTNET>/sdk/10.0.103/Sdks/Microsoft.NET.Sdk/analyzers/build/config/analysislevel_10_default.globalconfig
 obj/Debug/net10.0/Worker.GeneratedMSBuildEditorConfig.editorconfig

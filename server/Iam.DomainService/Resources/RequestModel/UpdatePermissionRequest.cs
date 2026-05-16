@@ -1,12 +1,9 @@
-﻿using Blocks.Genesis;
-
-namespace Iam.DomainService.Resources
+﻿namespace Iam.DomainService.Resources
 {
-    public class UpdatePermissionRequest : PermissionRequestBase, IProjectKey
+    public class UpdatePermissionRequest : PermissionRequestBase
     {
-        public string ItemId { get; set; }
+        public string? ItemId { get; set; }
         public bool IsArchived { get; set; }
-        public string? ProjectKey { get; set; }
     }
 
 }

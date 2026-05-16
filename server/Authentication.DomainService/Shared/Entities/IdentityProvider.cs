@@ -6,22 +6,22 @@ namespace Authentication.DomainService.Entities
     [BsonIgnoreExtraElements]
     public class IdentityProvider : BaseEntity
     {
-        public required string Provider { get; set; }
-        public required string ProviderType { get; set; }
-        public required string Protocol { get; set; }
-        public required string DisplayName { get; set; }
+        public required string Provider { get; set; } // e.g., google, microsoft, apple, okta, auth0, blocks-idp
+        public required string ProviderType { get; set; } // social, enterprise, custom, internal
+        public string? Protocol { get; set; } = "oidc"; // e.g., oidc, oauth2, saml, ldap
+        public string? DisplayName { get; set; }
         public bool IsActive { get; set; }
-        public string? ClientId { get; set; }
-        public string? ClientSecret { get; set; }
+        public required string ClientId { get; set; }
+        public required string ClientSecret { get; set; }
         public string? Issuer { get; set; }
         public required string AuthorizationUrl { get; set; }
         public required string TokenUrl { get; set; }
         public string? UserInfoUrl { get; set; }
         public string? JwksUri { get; set; }
         public string? WellKnownUrl { get; set; }
-        public string? RedirectUri { get; set; }
-        public required string Scope { get; set; }
-        public required string ResponseType { get; set; }
+        public List<string> RedirectUris { get; set; } = [];
+        public string? Scope { get; set; }
+        public string? ResponseType { get; set; }
         public List<string> GrantTypes { get; set; } = [];
         public bool RequirePkce { get; set; }
         public required string TokenEndpointAuthMethod { get; set; }

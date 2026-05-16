@@ -11,7 +11,6 @@ import {
   mockDeleteSsoPayload,
   mockUpdateSsoStatusPayload,
 } from "../../test-utils/__mocks__";
-import { TEST_PROJECT_KEY } from "@/test-utils/__mocks__";
 import { ssoService } from "@blocks-idp/authentication/services/social.service";
 import {
   useGetSsoCredentials,
@@ -63,7 +62,6 @@ describe("use-sso hooks", () => {
         () =>
           useGetSsoCredentialById({
             itemId: "",
-            projectKey: TEST_PROJECT_KEY,
           }),
         { wrapper: createWrapper() },
       );
@@ -116,7 +114,7 @@ describe("use-sso hooks", () => {
 
   describe("useSaveOIDCCredential", () => {
     it("should save OIDC credential successfully", async () => {
-      const mockPayload = { projectKey: TEST_PROJECT_KEY, name: "test" };
+      const mockPayload = { name: "test" };
       vi.mocked(ssoService.saveBlocksSsoCredential).mockResolvedValue(undefined as never);
 
       const { result } = renderHook(() => useSaveOIDCCredential(), {
@@ -134,13 +132,13 @@ describe("use-sso hooks", () => {
       const mockResponse = { data: {} };
       vi.mocked(ssoService.getBlocksSsoCredential).mockResolvedValue(mockResponse as never);
 
-      const { result } = renderHook(() => useSaveGetOIDCCredential(TEST_PROJECT_KEY), {
+      const { result } = renderHook(() => useSaveGetOIDCCredential("test-key"), {
         wrapper: createWrapper(),
       });
 
       await waitFor(() => expect(result.current.isSuccess).toBe(true));
       expect(result.current.data).toEqual(mockResponse);
-      expect(ssoService.getBlocksSsoCredential).toHaveBeenCalledWith(TEST_PROJECT_KEY);
+      expect(ssoService.getBlocksSsoCredential).toHaveBeenCalledWith("test-key");
     });
 
     it("should not fetch when projectKey is empty", () => {

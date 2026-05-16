@@ -2,9 +2,9 @@
 
 namespace Iam.DomainService.Activities
 {
-    public class BaseActivityRequest : BaseGetsRequest<BaseActivityFilter>, IProjectKey
+    public class BaseActivityRequest : BaseGetsRequest<BaseActivityFilter>
     {
-        public string? ProjectKey { get; set; }
+
     }
 
     public class BaseActivityFilter

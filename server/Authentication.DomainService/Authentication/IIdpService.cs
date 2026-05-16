@@ -14,7 +14,7 @@ namespace Authentication.DomainService.Authentication
         /// Generates OIDC state, nonce, and PKCE parameters
         /// Returns redirect to provider authorize endpoint
         /// </summary>
-        Task<IActionResult> StartAuthenticationFlowAsync(string clientId);
+        Task<IActionResult> StartAuthenticationFlowAsync(string clientId, string redirectUri);
 
         /// <summary>
         /// Handle authorization code callback from identity provider

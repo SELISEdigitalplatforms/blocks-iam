@@ -151,7 +151,7 @@ namespace Authentication.DomainService.Services
                     { "revocation_reason", "logout_during_impersonation" }
                 };
 
-                await repository.UpdatePartialAsync<Session>(rootSessionId, rootSessionUpdates);
+                await repository.UpdatePartialAsync<IdentitySession>(rootSessionId, rootSessionUpdates);
 
                 // Delete backup from Redis (prevents accidental reuse)
                 var deleteSuccess = await backupService.DeleteBackupTokenAsync(impersonationSessionId);

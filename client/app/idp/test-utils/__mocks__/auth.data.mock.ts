@@ -1,4 +1,4 @@
-import { TEST_PROJECT_KEY, mockSuccessResponse, mockErrorResponse } from "@/test-utils/__mocks__";
+import { mockSuccessResponse, mockErrorResponse } from "@/test-utils/__mocks__";
 import type { ISigninByEmailPayload } from "../../authentication/models/auth.model";
 import type {
   ISignupByEmailPayload,
@@ -120,7 +120,6 @@ export const mockSigninBySSOResponse = {
 // ─── Client Credentials Mocks ────────────────────────────────────────────────
 
 export const mockGetClientsPayload: IGetClientsPayload = {
-  projectKey: TEST_PROJECT_KEY,
 };
 
 export const mockClientCredential: IClientConfigResponse = {
@@ -145,18 +144,15 @@ export const mockClientCredentialsResponse = [mockClientCredential];
 export const mockSaveClientPayload: ISaveClientCredentialPayload = {
   name: "New Client",
   roles: ["admin"],
-  projectKey: TEST_PROJECT_KEY,
 };
 
 export const mockDeleteClientPayload: IDeleteOidcClientPayload = {
   itemId: MOCK_CLIENT_ITEM_ID,
-  projectKey: TEST_PROJECT_KEY,
 };
 
 // ─── OIDC Mocks ──────────────────────────────────────────────────────────────
 
 export const mockGetOidcPayload: IGetOidcPayload = {
-  projectKey: TEST_PROJECT_KEY,
 };
 
 export const mockOidcCredential: IOidcConfigResponse = {
@@ -193,7 +189,6 @@ export const mockSaveOidcPayload: ISaveOidcCredentialPayload = {
   audience: "blocks-cloud",
   isAutoRedirect: false,
   itemId: MOCK_OIDC_ITEM_ID,
-  projectKey: TEST_PROJECT_KEY,
   redirectUri: "https://app.blocks.com/callback",
   scope: "openid profile email",
   clientDisplayName: "Test OIDC App",
@@ -202,7 +197,6 @@ export const mockSaveOidcPayload: ISaveOidcCredentialPayload = {
 // ─── Auth Config Mocks ───────────────────────────────────────────────────────
 
 export const mockGetAuthConfigPayload: IAuthConfigPayload = {
-  projectKey: TEST_PROJECT_KEY,
 };
 
 export const mockAuthConfiguration: IAuthConfiguration = {
@@ -231,14 +225,12 @@ export const mockSaveAuthConfigPayload: ISaveAuthConfigPayload = {
   accessTokenValidForNumberMinutes: 60,
   rememberMeRefreshTokenValidForNumberMinutes: 43200,
   allowedGrantTypes: ["password", "client_credentials"],
-  projectKey: TEST_PROJECT_KEY,
   isSelfSignUpAllowed: true,
 };
 
 // ─── SSO Provider Mocks ─────────────────────────────────────────────────────
 
 export const mockGetSsoCredentialsPayload: IGetSsoCredentialsPayload = {
-  projectKey: TEST_PROJECT_KEY,
 };
 
 export const mockSsoCredential: ISsoProviderConfiguration = {
@@ -270,7 +262,6 @@ export const mockSsoCredentialsResponse = [mockSsoCredential];
 
 export const mockGetSsoCredentialByIdPayload: IGetSsoCredentialByIdPayload = {
   itemId: MOCK_SSO_ITEM_ID,
-  projectKey: TEST_PROJECT_KEY,
 };
 
 export const mockSaveSsoPayload: ISaveSsoCredentialPayload = {
@@ -279,20 +270,17 @@ export const mockSaveSsoPayload: ISaveSsoCredentialPayload = {
   clientId: "sso-client-id",
   clientSecret: "sso-client-secret",
   redirectUrl: "https://app.blocks.com/sso/callback",
-  projectKey: TEST_PROJECT_KEY,
   initialRoles: ["user"],
   initialPermissions: [],
 };
 
 export const mockDeleteSsoPayload: IDeleteSsoCredentialPayload = {
   itemId: MOCK_SSO_ITEM_ID,
-  projectKey: TEST_PROJECT_KEY,
 };
 
 export const mockUpdateSsoStatusPayload: IUpdateSsoCredentialStatusPayload = {
   itemId: MOCK_SSO_ITEM_ID,
   isEnabled: true,
-  projectKey: TEST_PROJECT_KEY,
 };
 
 // ─── JWT Claim Mocks ─────────────────────────────────────────────────────────
@@ -303,5 +291,4 @@ export const mockJwtClaimPayload: JwtClaimPayload = {
   name: "Test User",
   userName: "testuser",
   roles: "admin",
-  projectKey: TEST_PROJECT_KEY,
 };

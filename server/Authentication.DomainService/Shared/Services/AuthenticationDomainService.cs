@@ -165,10 +165,6 @@ namespace Authentication.DomainService.Services
             }
 
             var redirectUris = request.RedirectUris.Where(x => !string.IsNullOrWhiteSpace(x)).Distinct(StringComparer.OrdinalIgnoreCase).ToList();
-            if (redirectUris.Count == 0 && !string.IsNullOrWhiteSpace(request.RedirectUri))
-            {
-                redirectUris = [request.RedirectUri];
-            }
 
             var allowedServiceAccessResources = request.AllowedServiceAccessResources.Where(x => !string.IsNullOrWhiteSpace(x)).Distinct(StringComparer.OrdinalIgnoreCase).ToList();
             if (allowedServiceAccessResources.Count == 0 && !string.IsNullOrWhiteSpace(request.ServiceAccessResource))
@@ -238,7 +234,7 @@ namespace Authentication.DomainService.Services
                     AuthorizationUrl = request.ExternalDiscoveryEndpoint ?? "",
                     TokenUrl = request.ExternalDiscoveryEndpoint ?? "",
                     UserInfoUrl = request.ExternalDiscoveryEndpoint ?? "",
-                    RedirectUri = credential.RedirectUri,
+                    RedirectUris = redirectUris,
                     Scope = credential.Scope,
                     ResponseType = "code",
                     GrantTypes = credential.AllowedGrantTypes ?? ["authorization_code", "refresh_token"],
@@ -264,7 +260,7 @@ namespace Authentication.DomainService.Services
                 existingProvider.AuthorizationUrl = request.ExternalDiscoveryEndpoint ?? "";
                 existingProvider.TokenUrl = request.ExternalDiscoveryEndpoint ?? "";
                 existingProvider.UserInfoUrl = request.ExternalDiscoveryEndpoint ?? "";
-                existingProvider.RedirectUri = credential.RedirectUri;
+                existingProvider.RedirectUris = redirectUris;
                 existingProvider.Scope = credential.Scope;
                 existingProvider.GrantTypes = credential.AllowedGrantTypes ?? ["authorization_code", "refresh_token"];
                 existingProvider.RequirePkce = credential.RequirePkce;
@@ -422,12 +418,18 @@ namespace Authentication.DomainService.Services
             if (string.IsNullOrWhiteSpace(provider.Provider))
                 return new BaseResponse { IsSuccess = false, Errors = new Dictionary<string, string> { { "provider_required", "Provider name is required." } } };
 
-            if (string.IsNullOrWhiteSpace(provider.DisplayName))
-                return new BaseResponse { IsSuccess = false, Errors = new Dictionary<string, string> { { "display_name_required", "Display name is required." } } };
+
+            if (string.IsNullOrWhiteSpace(provider.ClientId))
+                return new BaseResponse { IsSuccess = false, Errors = new Dictionary<string, string> { { "client_id_required", "ClientId is required." } } };
 
             var existingProvider = await _authenticationRepository.GetIdentityProviderAsync(provider.Provider);
             if (existingProvider != null)
                 return new BaseResponse { IsSuccess = false, Errors = new Dictionary<string, string> { { "duplicate_provider", $"Provider '{provider.Provider}' already exists." } } };
+
+            // One ClientId should map to one IdentityProvider entry.
+            var existingByClientId = await _authenticationRepository.GetIdentityProviderByClientIdAsync(provider.ClientId);
+            if (existingByClientId != null)
+                return new BaseResponse { IsSuccess = false, Errors = new Dictionary<string, string> { { "duplicate_client_id", $"An identity provider with ClientId '{provider.ClientId}' already exists." } } };
 
             await _authenticationRepository.CreateIdentityProviderAsync(provider);
             return new BaseResponse { IsSuccess = true };
@@ -453,9 +455,21 @@ namespace Authentication.DomainService.Services
             if (string.IsNullOrWhiteSpace(provider.ItemId))
                 return new BaseResponse { IsSuccess = false, Errors = new Dictionary<string, string> { { "id_required", "Provider ID is required." } } };
 
+            // Validate required fields
+            if (string.IsNullOrWhiteSpace(provider.ClientId))
+                return new BaseResponse { IsSuccess = false, Errors = new Dictionary<string, string> { { "client_id_required", "ClientId is required." } } };
+
             var existing = await _authenticationRepository.GetIdentityProviderByIdAsync(provider.ItemId);
             if (existing == null)
                 return new BaseResponse { IsSuccess = false, Errors = new Dictionary<string, string> { { "not_found", "Provider not found." } } };
+
+            // Ensure ClientId remains unique across providers.
+            if (existing.ClientId != provider.ClientId)
+            {
+                var existingByClientId = await _authenticationRepository.GetIdentityProviderByClientIdAsync(provider.ClientId);
+                if (existingByClientId != null && existingByClientId.ItemId != provider.ItemId)
+                    return new BaseResponse { IsSuccess = false, Errors = new Dictionary<string, string> { { "duplicate_client_id", $"An identity provider with ClientId '{provider.ClientId}' already exists." } } };
+            }
 
             await _authenticationRepository.UpdateIdentityProviderAsync(provider);
             return new BaseResponse { IsSuccess = true };

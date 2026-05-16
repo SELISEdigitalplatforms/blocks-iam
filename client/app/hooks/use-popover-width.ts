@@ -1,23 +1,14 @@
-import { useState, useEffect, useRef, RefObject } from "react";
+import { useLayoutEffect, useRef, useState } from "react";
 
-function usePopoverWidth(): [RefObject<HTMLButtonElement>, number | undefined] {
-  const [popoverWidth, setPopoverWidth] = useState<number | undefined>(undefined);
-  const buttonRef = useRef<HTMLButtonElement | null>(null);
+export default function usePopoverWidth(): [React.RefObject<HTMLButtonElement>, number | undefined] {
+  const ref = useRef<HTMLButtonElement>(null);
+  const [width, setWidth] = useState<number | undefined>(undefined);
 
-  useEffect(() => {
-    const updateWidth = () => {
-      if (buttonRef.current) {
-        setPopoverWidth(buttonRef.current.offsetWidth);
-      }
-    };
-
-    updateWidth();
-    window.addEventListener("resize", updateWidth);
-
-    return () => window.removeEventListener("resize", updateWidth);
+  useLayoutEffect(() => {
+    if (ref.current) {
+      setWidth(ref.current.offsetWidth);
+    }
   }, []);
 
-  return [buttonRef, popoverWidth];
+  return [ref, width];
 }
-
-export default usePopoverWidth;

@@ -50,7 +50,7 @@ namespace Iam.DomainService.Accounts
                 switch (context.Event)
                 {
                     case "Activate_Account":
-                        await HandlePostEventForActivation(user, context.MailPurpose, string.Empty);
+                        await HandlePostEventForActivation(user, context.MailPurpose);
                         break;
                     case "Reset_Password":
                         await HandlePostEventForResetPassword(context.UserId);
@@ -69,6 +69,8 @@ namespace Iam.DomainService.Accounts
             var timeline = new UserTimeline
             {
                 ItemId = Guid.NewGuid().ToString(),
+                UserId = user.ItemId,
+                OrganizationId = blocksContext.OrganizationId,
                 CreatedBy = string.IsNullOrWhiteSpace(blocksContext?.UserId) ? user.CreatedBy : blocksContext.UserId,
                 CreatedDate = DateTime.Now,
                 CurrentData = user,
@@ -79,9 +81,9 @@ namespace Iam.DomainService.Accounts
             return true;
         }
 
-        public async Task<bool> HandlePostEventForActivation(User user, string mailPurpose, string projectKey)
+        public async Task<bool> HandlePostEventForActivation(User user, string mailPurpose)
         {
-            return await _identityAccessManagementService.SendAccountActivationEmailAsync(user, mailPurpose, projectKey);
+            return await _identityAccessManagementService.SendAccountActivationEmailAsync(user, mailPurpose);
         }
 
         public async Task<bool> HandlePostEventForResetPassword(string userId)
