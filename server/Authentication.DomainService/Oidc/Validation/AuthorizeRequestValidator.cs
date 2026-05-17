@@ -28,25 +28,23 @@ namespace Authentication.DomainService.Oidc.Validation
             // scope required and must contain "openid"
             if (string.IsNullOrWhiteSpace(request.Scope))
                 errors.Add("scope is required");
-            else if (!request.Scope.Contains("openid"))
+            else if (!request.Scope
+                .Split(' ', StringSplitOptions.RemoveEmptyEntries)
+                .Contains("openid", StringComparer.Ordinal))
                 errors.Add("scope must include 'openid'");
 
-            // nonce required (OIDC Core 1.0)
-            if (string.IsNullOrWhiteSpace(request.Nonce))
-                errors.Add("nonce is required");
+            // nonce is recommended for authorization code flow and required for implicit/hybrid.
+            // This endpoint supports code flow only, so we do not reject missing nonce.
 
-            // state recommended (CSRF prevention)
-            if (string.IsNullOrWhiteSpace(request.State))
-                errors.Add("state is recommended");
+            // state is strongly recommended (CSRF prevention), but not mandatory.
 
-
-            else if (!string.IsNullOrWhiteSpace(request.CodeChallenge) && !ValidatePkceFormat(request.CodeChallenge))
+            // RFC 7636: if code_challenge is present, method must be present and supported.
+            if (!string.IsNullOrWhiteSpace(request.CodeChallenge) && !ValidatePkceFormat(request.CodeChallenge))
                 errors.Add("code_challenge has invalid format");
 
-            // code_challenge_method must be S256
-            if (string.IsNullOrWhiteSpace(request.CodeChallengeMethod))
-                errors.Add("code_challenge_method is required");
-            else if (request.CodeChallengeMethod != "S256")
+            if (!string.IsNullOrWhiteSpace(request.CodeChallenge) && string.IsNullOrWhiteSpace(request.CodeChallengeMethod))
+                errors.Add("code_challenge_method is required when code_challenge is provided");
+            else if (!string.IsNullOrWhiteSpace(request.CodeChallengeMethod) && request.CodeChallengeMethod != "S256")
                 errors.Add("code_challenge_method must be 'S256' (plain method not supported)");
 
             return new AuthorizeValidationResult
@@ -62,8 +60,8 @@ namespace Authentication.DomainService.Oidc.Validation
             if (string.IsNullOrEmpty(challenge) || challenge.Length < 43 || challenge.Length > 128)
                 return false;
 
-            // Check valid BASE64URL characters (A-Z, a-z, 0-9, -, ., _, ~)
-            var validChars = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-._~";
+            // BASE64URL characters for S256 challenge output.
+            var validChars = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_";
             return challenge.All(c => validChars.Contains(c));
         }
     }
