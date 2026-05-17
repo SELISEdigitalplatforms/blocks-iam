@@ -81,7 +81,7 @@ namespace Authentication.DomainService.Services
         /// Rotates the backup root refresh token using OAuth and updates the backup cache.
         /// Checks expiration with a grace period before attempting rotation.
         /// </summary>
-        public static async Task<(bool Success, string? NewRootRefreshToken, DateTime? NewExpiresUtc)> RotateBackupRootTokenAsync(
+        public static async Task<(bool Success, string? NewRootRefreshToken, DateTime? NewExpiresUtc, string? ErrorCode)> RotateBackupRootTokenAsync(
             string impersonationSessionId,
             IImpersonationBackupService backupService,
             Func<string, Task<(string AccessToken, string RefreshToken, DateTime ExpiresUtc)>> oAuthRotateFunc,
@@ -95,39 +95,81 @@ namespace Authentication.DomainService.Services
                 if (backup == null)
                 {
                     logger.LogWarning("Backup token not found for impersonation session {SessionId}", impersonationSessionId);
-                    return (false, null, null);
+                    return (false, null, null, "backup_not_found");
                 }
 
                 // Check if backup is about to expire
                 var gracePeriod = TimeSpan.FromMinutes(config.TokenRotationGracePeriodMinutes);
                 if (backup.ExpiresUtc <= DateTime.UtcNow.Add(gracePeriod))
                 {
-                    logger.LogWarning("Backup token expired or near expiry for impersonation session {SessionId}", impersonationSessionId);
-                    return (false, null, null);
+                    logger.LogWarning("Backup token expired or near expiry for impersonation session {SessionId}. ExpiresUtc: {ExpiresUtc}", impersonationSessionId, backup.ExpiresUtc);
+                    await backupService.DeleteBackupTokenAsync(impersonationSessionId);
+                    return (false, null, null, "backup_expired");
                 }
 
-                // Call OAuth endpoint to refresh root token
-                var (newAccessToken, newRefreshToken, newExpiresUtc) = await oAuthRotateFunc(backup.RefreshToken);
+                // Call OAuth endpoint to refresh root token (with explicit error handling)
+                string newAccessToken, newRefreshToken;
+                DateTime newExpiresUtc;
+                try
+                {
+                    (newAccessToken, newRefreshToken, newExpiresUtc) = await oAuthRotateFunc(backup.RefreshToken);
+                }
+                catch (HttpRequestException ex)
+                {
+                    logger.LogError(ex, "Network error during root token rotation for impersonation session {SessionId}. OAuth endpoint unreachable.", impersonationSessionId);
+                    return (false, null, null, "network_error");
+                }
+                catch (TaskCanceledException ex)
+                {
+                    logger.LogError(ex, "Timeout during root token rotation for impersonation session {SessionId}", impersonationSessionId);
+                    return (false, null, null, "timeout_error");
+                }
+                catch (Exception ex)
+                {
+                    logger.LogError(ex, "Unexpected error during root token rotation for impersonation session {SessionId}", impersonationSessionId);
+                    return (false, null, null, "internal_error");
+                }
+
+                // Validate OAuth response
+                if (string.IsNullOrWhiteSpace(newRefreshToken))
+                {
+                    logger.LogError("OAuth endpoint returned empty refresh token for impersonation session {SessionId}", impersonationSessionId);
+                    return (false, null, null, "invalid_token_response");
+                }
+
+                if (newExpiresUtc <= DateTime.UtcNow)
+                {
+                    logger.LogError("OAuth endpoint returned expired token for impersonation session {SessionId}. ExpiresUtc: {ExpiresUtc}", impersonationSessionId, newExpiresUtc);
+                    return (false, null, null, "token_already_expired");
+                }
 
                 // Update backup in Redis with new token
-                var updateSuccess = await backupService.UpdateBackupTokenAsync(
-                    impersonationSessionId,
-                    newRefreshToken,
-                    newExpiresUtc);
-
-                if (!updateSuccess)
+                try
                 {
-                    logger.LogError("Failed to update backup token for impersonation session {SessionId}", impersonationSessionId);
-                    return (false, null, null);
+                    var updateSuccess = await backupService.UpdateBackupTokenAsync(
+                        impersonationSessionId,
+                        newRefreshToken,
+                        newExpiresUtc);
+
+                    if (!updateSuccess)
+                    {
+                        logger.LogError("Failed to update backup token in Redis for impersonation session {SessionId}", impersonationSessionId);
+                        return (false, null, null, "cache_update_failed");
+                    }
+                }
+                catch (Exception ex)
+                {
+                    logger.LogError(ex, "Exception while updating backup token in Redis for impersonation session {SessionId}", impersonationSessionId);
+                    return (false, null, null, "cache_error");
                 }
 
-                logger.LogInformation("Successfully rotated root token for impersonation session {SessionId}", impersonationSessionId);
-                return (true, newRefreshToken, newExpiresUtc);
+                logger.LogInformation("Successfully rotated root token for impersonation session {SessionId}. New expiry: {ExpiresUtc}", impersonationSessionId, newExpiresUtc);
+                return (true, newRefreshToken, newExpiresUtc, null);
             }
             catch (Exception ex)
             {
-                logger.LogError(ex, "Error during root token rotation for impersonation session {SessionId}", impersonationSessionId);
-                return (false, null, null);
+                logger.LogError(ex, "Unexpected error during root token rotation for impersonation session {SessionId}", impersonationSessionId);
+                return (false, null, null, "unknown_error");
             }
         }
 
@@ -233,7 +275,7 @@ namespace Authentication.DomainService.Services
         /// <summary>
         /// Reads the impersonation session ID from cookies.
         /// </summary>
-        public static bool TryGetImpersonationSessionId(HttpRequest httpRequest, out string sessionId)
+        public static bool TryGetImpersonationSessionId(HttpRequest httpRequest, out string? sessionId)
         {
             sessionId = null;
             if (httpRequest.Cookies.TryGetValue("impersonation_session_id", out var value) && !string.IsNullOrWhiteSpace(value))
