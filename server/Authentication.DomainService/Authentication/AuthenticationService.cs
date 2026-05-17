@@ -979,6 +979,64 @@ namespace Authentication.DomainService.Authentication
             httpContext.Response.Cookies.Append(IdpSessionCookieName, sessionId, CreateCookieOptions(tokenResponse.CookieDomain, tokenResponse.RefreshExpiresUtc));
         }
 
+        public async Task<bool> EnsureIdpSessionForOidcCallbackAsync(HttpContext httpContext, string userId, string tenantId)
+        {
+            if (string.IsNullOrWhiteSpace(userId) || string.IsNullOrWhiteSpace(tenantId))
+            {
+                _logger.LogWarning("Cannot ensure IdP session: userId or tenantId is empty");
+                return false;
+            }
+
+            try
+            {
+                var sessionId = httpContext.Request.Cookies[IdpSessionCookieName];
+                if (string.IsNullOrWhiteSpace(sessionId))
+                {
+                    // Create new session for this OIDC callback
+                    sessionId = await _idpSessionService.CreateSessionAsync(userId, tenantId, httpContext.Connection.RemoteIpAddress?.ToString() ?? "unknown");
+                }
+                else
+                {
+                    // Validate and potentially update existing session
+                    var existingSession = await _idpSessionService.GetSessionAsync(sessionId);
+                    if (existingSession == null || existingSession.RevokedAt.HasValue || existingSession.IsExpired())
+                    {
+                        // Create new session if existing one is invalid
+                        sessionId = await _idpSessionService.CreateSessionAsync(userId, tenantId, httpContext.Connection.RemoteIpAddress?.ToString() ?? "unknown");
+                    }
+                    else
+                    {
+                        // Add account to existing session if not present
+                        var accountExists = existingSession.Accounts.Any(a =>
+                            string.Equals(a.UserId, userId, StringComparison.OrdinalIgnoreCase)
+                            && string.Equals(a.TenantId, tenantId, StringComparison.OrdinalIgnoreCase));
+
+                        if (!accountExists)
+                        {
+                            await _idpSessionService.AddAccountAsync(sessionId, userId, tenantId, userId);
+                        }
+                        else
+                        {
+                            await _idpSessionService.UpdateActivityAsync(sessionId);
+                        }
+
+                        // Rotate session on callback for security
+                        sessionId = await _idpSessionService.RotateSessionAsync(sessionId, "oidc_callback") ?? sessionId;
+                    }
+                }
+
+                // Set session cookie
+                var domain = DomainResolver.ResolveDomain(_tenants.GetTenantByID(tenantId), httpContext.Request).domain;
+                httpContext.Response.Cookies.Append(IdpSessionCookieName, sessionId, CreateCookieOptions(null, DateTime.UtcNow.AddDays(30)));
+                return true;
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error ensuring IdP session for OIDC callback: userId={UserId}, tenantId={TenantId}", userId, tenantId);
+                return false;
+            }
+        }
+
         public async Task<BaseResponse> CreateIdentityProviderAsync(IdentityProvider provider)
         {
             return await _authenticationDomainService.CreateIdentityProviderAsync(provider);

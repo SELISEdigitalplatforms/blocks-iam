@@ -30,6 +30,10 @@ namespace Authentication.DomainService.Oidc.Services
         public string? AuthorizationCode { get; set; }
         public string? RedirectUri { get; set; }
         public string? OriginalState { get; set; }
+        
+        // Session/User identification for post-callback setup
+        public string? BlocksUserId { get; set; }
+        public string? TenantId { get; set; }
     }
 
     public class OidcCallbackHandler : IOidcCallbackHandler
@@ -173,6 +177,8 @@ namespace Authentication.DomainService.Oidc.Services
                 tokenResult.RedirectUri = redirectUri;
                 tokenResult.OriginalState = originalState;
                 tokenResult.IsOidcFlow = true;
+                tokenResult.BlocksUserId = blocksUserId;
+                tokenResult.TenantId = context.GetProperty("tenantId").GetString() ?? "default";
 
                 return tokenResult;
             }

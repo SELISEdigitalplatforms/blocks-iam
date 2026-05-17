@@ -26,6 +26,7 @@ namespace Authentication.DomainService.Authentication
         Task<ClaimsPrincipal?> GetPrincipalFromTokenAsync(HttpRequest request, string tenantId, bool IsUserInfoGetRequest = false);
         (bool IsValid, Dictionary<string, object> UserInfo) BuildOidcUserInfo(ClaimsPrincipal principal);
         Task<bool> TriggerBackchannelLogoutAllAsync(HttpRequest httpRequest);
+        Task<bool> EnsureIdpSessionForOidcCallbackAsync(HttpContext httpContext, string userId, string tenantId);
         Task<BaseResponse> CreateIdentityProviderAsync(IdentityProvider provider);
         Task<IdentityProvider?> GetIdentityProviderAsync(string provider);
         Task<IdentityProvider?> GetIdentityProviderByIdAsync(string id);
