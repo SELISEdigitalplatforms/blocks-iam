@@ -1,12 +1,6 @@
 using Authentication.DomainService.Oidc.Services;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
-using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Threading.Tasks;
-using Microsoft.Extensions.Logging;
-using Idp.DomainService.Oidc.Contracts;
 
 namespace Blocks.Api.Controllers
 {

@@ -520,6 +520,12 @@ public class AuthenticationController : ControllerBase
         if (result.IsOidcFlow && !string.IsNullOrWhiteSpace(result.AuthorizationCode) && !string.IsNullOrWhiteSpace(result.RedirectUri))
         {
             // OIDC FLOW: Issue authorization code and redirect to original redirect_uri
+            // Ensure IdP session is established before redirect for SSO continuity
+            if (!string.IsNullOrWhiteSpace(result.BlocksUserId) && !string.IsNullOrWhiteSpace(result.TenantId))
+            {
+                await _authenticationService.EnsureIdpSessionForOidcCallbackAsync(HttpContext, result.BlocksUserId, result.TenantId);
+            }
+
             // Frontend will receive code and exchange for token
             var separator = result.RedirectUri.Contains('?') ? "&" : "?";
             var redirectUrl = $"{result.RedirectUri}{separator}code={Uri.EscapeDataString(result.AuthorizationCode)}&state={Uri.EscapeDataString(result.OriginalState ?? string.Empty)}";
