@@ -84,7 +84,7 @@ namespace Authentication.DomainService.OAuth
                 };
             }
 
-            var (_, cookieDomain, _) = DomainResolver.ResolveDomain(tenant, request.Request, bc?.ApplicationDomain);
+            var (_, cookieDomain, _) = DomainResolver.ResolveDomain(tenant, request.Request);
 
             return new TokenResponse
             {

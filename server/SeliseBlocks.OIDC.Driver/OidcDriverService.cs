@@ -278,6 +278,18 @@ namespace SeliseBlocks.OIDC.Driver
 
         private static void AppendCookies(TokenResponse response, HttpResponse httpResponse, HttpRequest httpRequest, string? tenantId = null)
         {
+            // Validate response has no error indicator
+            if (!string.IsNullOrWhiteSpace(response.Error))
+            {
+                return; // Cannot set cookies for error responses
+            }
+
+            // Validate access token is present
+            if (string.IsNullOrWhiteSpace(response.AccessToken))
+            {
+                return; // Cannot set cookies without valid access token
+            }
+
             var resolvedTenantId = string.IsNullOrWhiteSpace(tenantId)
                 ? BlocksContext.GetContext()?.TenantId ?? "default"
                 : tenantId;
@@ -285,10 +297,7 @@ namespace SeliseBlocks.OIDC.Driver
             var idCookieOptions = CreateCookieOptions(response.CookieDomain, response.ExpiresUtc, httpRequest);
             var refreshCookieOptions = CreateCookieOptions(response.CookieDomain, response.RefreshExpiresUtc, httpRequest);
 
-            if (!string.IsNullOrWhiteSpace(response.AccessToken))
-            {
-                httpResponse.Cookies.Append($"{IdpConstants.AccessTokenCookieName}_{resolvedTenantId}", response.AccessToken, accessCookieOptions);
-            }
+            httpResponse.Cookies.Append($"{IdpConstants.AccessTokenCookieName}_{resolvedTenantId}", response.AccessToken, accessCookieOptions);
 
             if (!string.IsNullOrWhiteSpace(response.RefreshToken))
             {

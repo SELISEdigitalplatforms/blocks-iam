@@ -643,11 +643,18 @@ namespace Authentication.DomainService.Authentication
             var clientRegistration = await _authenticationRepository.GetOidcClientRegistrationAsync(client_id);
             var useTokensCookie = clientRegistration?.UseTokensCookie ?? true;
 
+            // Validate tokens are present before proceeding
+            if (string.IsNullOrWhiteSpace(exchangeResult.AccessToken))
+            {
+                _logger.LogError($"Access token generation failed for client {client_id}");
+                return new BadRequestObjectResult(new { error = "server_error", error_description = "Failed to generate access token" });
+            }
+
             if (useTokensCookie && exchangeResult.CanSetCookies)
             {
                 var cookieDomain = exchangeResult.CookieDomain;
                 var tokenDomain = exchangeResult.Domain ?? exchangeResult.EffectiveTenantId;
-                AppendAccessAndRefreshTokenCookies(
+                var cookiesSet = AppendAccessAndRefreshTokenCookies(
                     response,
                     tokenDomain,
                     exchangeResult.AccessToken,
@@ -656,13 +663,36 @@ namespace Authentication.DomainService.Authentication
                     exchangeResult.AccessExpiry,
                     exchangeResult.RefreshExpiry);
                 
+                if (!cookiesSet)
+                {
+                    _logger.LogWarning($"Failed to set authentication cookies for client {client_id}, domain {tokenDomain}. Falling back to token response body.");
+                    // Fallback: return tokens in response body instead of cookies
+                    return new OkObjectResult(new
+                    {
+                        access_token = exchangeResult.AccessToken,
+                        id_token = exchangeResult.IdToken,
+                        refresh_token = exchangeResult.RefreshToken,
+                        token_type = "Bearer",
+                        expires_in = exchangeResult.ExpiresIn,
+                        scope = exchangeResult.Scope,
+                        cookie_delivery_failed = true
+                    });
+                }
+                
                 return new OkObjectResult(new
                 {
                     id_token = exchangeResult.IdToken,
                     token_type = "Bearer",
                     expires_in = exchangeResult.ExpiresIn,
-                    scope = exchangeResult.Scope
+                    scope = exchangeResult.Scope,
+                    cookie_set = true
                 });
+            }
+
+            // Fallback: client not configured for cookie-based token delivery or domain resolution failed
+            if (useTokensCookie && !exchangeResult.CanSetCookies)
+            {
+                _logger.LogWarning($"Cannot set cookies for client {client_id}: domain resolution failed. Returning tokens in response body.");
             }
 
             return new OkObjectResult(new
@@ -672,7 +702,8 @@ namespace Authentication.DomainService.Authentication
                 refresh_token = exchangeResult.RefreshToken,
                 token_type = "Bearer",
                 expires_in = exchangeResult.ExpiresIn,
-                scope = exchangeResult.Scope
+                scope = exchangeResult.Scope,
+                cookie_set = false
             });
             
         }
@@ -810,8 +841,7 @@ namespace Authentication.DomainService.Authentication
 
             _logger.LogInformation($"Tokens issued for user {authCode.UserId}, client {client_id}, family {refreshTokenModel.FamilyId}");
 
-            var bc = BlocksContext.GetContext();
-            var (domain, cookieDomain, isResolved) = DomainResolver.ResolveDomain(tenant, request, bc?.ApplicationDomain);
+            var (domain, cookieDomain, isResolved) = DomainResolver.ResolveDomain(tenant, request);
             var accessExpiry = DateTime.UtcNow.AddSeconds(accessTokenLifetimeSeconds);
             var refreshExpiry = refreshTokenModel.AbsoluteExpiry == default
                 ? DateTime.UtcNow.AddMinutes(absoluteRefreshTokenLifetimeMinutes)
@@ -830,22 +860,35 @@ namespace Authentication.DomainService.Authentication
                 refreshExpiry);
         }
 
-        private static void AppendAccessAndRefreshTokenCookies(
+        private static bool AppendAccessAndRefreshTokenCookies(
             HttpResponse response,
             string tokenDomain,
-            string accessToken,
-            string refreshToken,
+            string? accessToken,
+            string? refreshToken,
             string? cookieDomain,
             DateTime accessExpiry,
             DateTime refreshExpiry)
         {
+            // Validate tokens are not empty before attempting to set cookies
+            if (string.IsNullOrWhiteSpace(accessToken))
+            {
+                return false; // Cannot set cookies without valid access token
+            }
+
             var isSecure = !IsLocalhost();
             var sameSiteMode = isSecure ? SameSiteMode.None : SameSiteMode.Lax;
             var accessOptions = new CookieOptions { Domain = string.IsNullOrWhiteSpace(cookieDomain) ? null : cookieDomain, HttpOnly = true, Secure = isSecure, SameSite = sameSiteMode, Path = "/", Expires = accessExpiry };
             var refreshOptions = new CookieOptions { Domain = string.IsNullOrWhiteSpace(cookieDomain) ? null : cookieDomain, HttpOnly = true, Secure = isSecure, SameSite = sameSiteMode, Path = "/", Expires = refreshExpiry };
 
             response.Cookies.Append($"{tokenDomain}", accessToken, accessOptions);
-            response.Cookies.Append($"{IdpConstants.RefreshTokenCookieName}_{tokenDomain}", refreshToken, refreshOptions);
+            
+            // Only append refresh token if provided
+            if (!string.IsNullOrWhiteSpace(refreshToken))
+            {
+                response.Cookies.Append($"{IdpConstants.RefreshTokenCookieName}_{tokenDomain}", refreshToken, refreshOptions);
+            }
+
+            return true;
         }
 
         // Internal transport model for exchange outcome: either error result or issued token set.
@@ -920,7 +963,7 @@ namespace Authentication.DomainService.Authentication
 
             if (client.UseTokensCookie)
             {
-                var (domain, _, isResolved) = DomainResolver.ResolveDomain(tenant, request, bc?.ApplicationDomain);
+                var (domain, _, isResolved) = DomainResolver.ResolveDomain(tenant, request);
                 var cookieKey = isResolved && !string.IsNullOrWhiteSpace(domain)
                     ? $"{IdpConstants.RefreshTokenCookieName}_{domain}"
                     : string.Empty;
@@ -1039,7 +1082,7 @@ namespace Authentication.DomainService.Authentication
 
             if (client.UseTokensCookie)
             {
-                var (resolvedDomain, resolvedCookieDomain, resolvedByDomain) = DomainResolver.ResolveDomain(tenant, request, bc?.ApplicationDomain);
+                var (resolvedDomain, resolvedCookieDomain, resolvedByDomain) = DomainResolver.ResolveDomain(tenant, request);
                 var adjustedCookieDomain = IsLocalhost() ? null : resolvedCookieDomain;
                 var absoluteRefreshTokenLifetimeMinutes = Math.Max(authConfiguration?.AbsoluteRefreshTokenValidForNumberMinutes ?? AuthenticationConfiguration.DefaultRememberMeRefreshTokenValidForNumberMinutes, 1);
                 var accessExpiry = DateTime.UtcNow.AddSeconds(accessTokenLifetimeSeconds);
@@ -1390,7 +1433,7 @@ namespace Authentication.DomainService.Authentication
         private void SetIdpSessionCookie(HttpResponse response, string tenantId, string sessionId, DateTime absoluteExpiry)
         {
             var tenant = _tenants.GetTenantByID(tenantId);
-            var (_, cookieDomain, _) = DomainResolver.ResolveDomain(tenant, null, null);
+            var (_, cookieDomain, _) = DomainResolver.ResolveDomain(tenant, null);
             var adjustedCookieDomain = IsLocalhost() ? null : cookieDomain;
             var isSecure = !IsLocalhost();
             response.Cookies.Append(IdpSessionCookieName, sessionId, new CookieOptions
