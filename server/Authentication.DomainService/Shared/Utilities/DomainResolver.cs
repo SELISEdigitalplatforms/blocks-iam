@@ -2,6 +2,7 @@ using Blocks.Genesis;
 using Microsoft.AspNetCore.Http;
 using System.Collections;
 using System.Globalization;
+using System.Net;
 using System.Reflection;
 
 namespace Authentication.DomainService.Utilities
@@ -16,8 +17,7 @@ namespace Authentication.DomainService.Utilities
     {
         public static (string? domain, string? cookieDomain, bool isResolved) ResolveDomain(
             Tenant? tenant,
-            HttpRequest? request,
-            string? blockContextDomain = null)
+            HttpRequest? request)
         {
             var domains = GetTenantDomains(tenant);
             if (domains.Count == 0)
@@ -26,7 +26,7 @@ namespace Authentication.DomainService.Utilities
             }
 
             // 1) Prefer BlocksContext app domain.
-            var effectiveContextDomain = ResolveBlocksContextDomain(blockContextDomain);
+            var effectiveContextDomain = ResolveBlocksContextDomain();
             if (!string.IsNullOrWhiteSpace(effectiveContextDomain))
             {
                 var matched = FindDomainMatch(domains, effectiveContextDomain);
@@ -47,9 +47,7 @@ namespace Authentication.DomainService.Utilities
                 }
             }
 
-            // 3) Final fallback to first configured domain.
-            var first = domains[0];
-            return (first.domain, first.cookieDomain, true);
+            return (null, null, false);
         }
 
         public static string GetAudience(Tenant? tenant)
@@ -106,19 +104,6 @@ namespace Authentication.DomainService.Utilities
                 }
             }
 
-            if (result.Count > 0)
-            {
-                return result;
-            }
-
-            // Legacy model fallback: Tenant.ApplicationDomain
-            var legacyDomain = GetPropertyValue(tenant, "ApplicationDomain") as string;
-            if (!string.IsNullOrWhiteSpace(legacyDomain))
-            {
-                var legacyCookieDomain = GetPropertyValue(tenant, "CookieDomain") as string;
-                result.Add((legacyDomain, string.IsNullOrWhiteSpace(legacyCookieDomain) ? legacyDomain : legacyCookieDomain));
-            }
-
             return result;
         }
 
@@ -135,13 +120,8 @@ namespace Authentication.DomainService.Utilities
             }
         }
 
-        private static string? ResolveBlocksContextDomain(string? blockContextDomain)
+        private static string? ResolveBlocksContextDomain()
         {
-            if (!string.IsNullOrWhiteSpace(blockContextDomain))
-            {
-                return blockContextDomain;
-            }
-
             try
             {
                 var context = BlocksContext.GetContext();
@@ -184,7 +164,7 @@ namespace Authentication.DomainService.Utilities
                 if (string.Equals(normalizedDomain, normalizedMatch, StringComparison.OrdinalIgnoreCase)
                     || normalizedMatch.EndsWith($".{normalizedDomain}", StringComparison.OrdinalIgnoreCase))
                 {
-                    return item;
+                    return (normalizedMatch, item.cookieDomain);
                 }
             }
 
@@ -197,6 +177,13 @@ namespace Authentication.DomainService.Utilities
             if (Uri.TryCreate(origin, UriKind.Absolute, out var originUri) && !string.IsNullOrWhiteSpace(originUri.Host))
             {
                 var host = originUri.Host.ToLower(CultureInfo.InvariantCulture);
+                if (IsLocalhostHost(host))
+                {
+                    return originUri.Port != 80 && originUri.Port != 443
+                        ? $"localhost:{originUri.Port}"
+                        : "localhost";
+                }
+
                 if (originUri.Port != 80 && originUri.Port != 443)
                 {
                     return $"{host}:{originUri.Port}";
@@ -209,6 +196,13 @@ namespace Authentication.DomainService.Utilities
             if (Uri.TryCreate(referer, UriKind.Absolute, out var refererUri) && !string.IsNullOrWhiteSpace(refererUri.Host))
             {
                 var host = refererUri.Host.ToLower(CultureInfo.InvariantCulture);
+                if (IsLocalhostHost(host))
+                {
+                    return refererUri.Port != 80 && refererUri.Port != 443
+                        ? $"localhost:{refererUri.Port}"
+                        : "localhost";
+                }
+
                 if (refererUri.Port != 80 && refererUri.Port != 443)
                 {
                     return $"{host}:{refererUri.Port}";
@@ -220,25 +214,25 @@ namespace Authentication.DomainService.Utilities
             return null;
         }
 
+        public static bool IsLocalhostHost(string? host)
+        {
+            if (string.IsNullOrWhiteSpace(host))
+            {
+                return false;
+            }
+
+            if (host.Equals("localhost", StringComparison.OrdinalIgnoreCase))
+            {
+                return true;
+            }
+
+            return IPAddress.TryParse(host, out var ipAddress) && IPAddress.IsLoopback(ipAddress);
+        }
+
         private static string NormalizeHost(string? value)
         {
-            var domain = (value ?? string.Empty).Trim();
-            if (string.IsNullOrWhiteSpace(domain))
-            {
-                return string.Empty;
-            }
-
-            if (Uri.TryCreate(domain, UriKind.Absolute, out var absoluteUri) && !string.IsNullOrWhiteSpace(absoluteUri.Host))
-            {
-                return absoluteUri.Host.ToLower(CultureInfo.InvariantCulture);
-            }
-
-            if (Uri.TryCreate($"https://{domain}", UriKind.Absolute, out var normalizedUri) && !string.IsNullOrWhiteSpace(normalizedUri.Host))
-            {
-                return normalizedUri.Host.ToLower(CultureInfo.InvariantCulture);
-            }
-
-            return domain.TrimEnd('/').ToLower(CultureInfo.InvariantCulture);
+            // Directly use BlocksContext.NormalizeDomain
+            return BlocksContext.NormalizeDomain(value ?? string.Empty)?.ToLower(CultureInfo.InvariantCulture) ?? string.Empty;
         }
     }
 }

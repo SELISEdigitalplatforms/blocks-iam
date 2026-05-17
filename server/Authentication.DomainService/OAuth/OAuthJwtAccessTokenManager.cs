@@ -90,7 +90,7 @@ namespace Authentication.DomainService.OAuth
 
             var accessToken = CreateJwtAccessToken(jwtAccessToken);
             var (refreshToken, refreshValidity) = await ManageRefreshTokenAsync(tokenRequest, jwtAccessToken, authenticationConfiguration, tenant, user);
-            var (_, cookieDomain, _) = DomainResolver.ResolveDomain(tenant, tokenRequest.Request, bc?.ApplicationDomain);
+            var (_, cookieDomain, _) = DomainResolver.ResolveDomain(tenant, tokenRequest.Request);
 
             return new TokenResponse
             {

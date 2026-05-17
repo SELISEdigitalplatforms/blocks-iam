@@ -212,7 +212,7 @@ namespace Authentication.DomainService.Authentication
                     : configuredAccessLifetimeSeconds;
 
                 var tenant = _tenants.GetTenantByID(resolvedTenantId);
-                var (domain, cookieDomain, isResolved) = DomainResolver.ResolveDomain(tenant, httpRequest, blocksContext?.ApplicationDomain);
+                var (domain, cookieDomain, isResolved) = DomainResolver.ResolveDomain(tenant, httpRequest);
                 var tokenResponseObj = new TokenResponse
                 {
                     AccessToken = tokenResponse.AccessToken,
@@ -292,14 +292,23 @@ namespace Authentication.DomainService.Authentication
 
         private static void AppendCookies(TokenResponse response, HttpResponse httpResponse, HttpRequest httpRequest, string? domain = null)
         {
+            // Validate response has no error indicator
+            if (!string.IsNullOrWhiteSpace(response.Error))
+            {
+                return; // Cannot set cookies for error responses
+            }
+
+            // Validate access token is present
+            if (string.IsNullOrWhiteSpace(response.AccessToken))
+            {
+                return; // Cannot set cookies without valid access token
+            }
+
             var normalizedDomain = domain ?? BlocksContext.GetContext()?.TenantId ?? "default";
             var accessCookieOptions = CreateCookieOptions(response.CookieDomain, response.ExpiresUtc, httpRequest);
             var refreshCookieOptions = CreateCookieOptions(response.CookieDomain, response.RefreshExpiresUtc, httpRequest);
 
-            if (!string.IsNullOrWhiteSpace(response.AccessToken))
-            {
-                httpResponse.Cookies.Append($"{normalizedDomain}", response.AccessToken, accessCookieOptions);
-            }
+            httpResponse.Cookies.Append($"{normalizedDomain}", response.AccessToken, accessCookieOptions);
 
             if (!string.IsNullOrWhiteSpace(response.RefreshToken))
             {

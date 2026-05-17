@@ -249,7 +249,7 @@ namespace Authentication.DomainService.Authentication
         {
             var bc = BlocksContext.GetContext();
             var tenant = _tenants.GetTenantByID(bc?.TenantId ?? "default");
-            var (domain, _, isResolved) = DomainResolver.ResolveDomain(tenant, request, bc?.ApplicationDomain);
+            var (domain, _, isResolved) = DomainResolver.ResolveDomain(tenant, request);
             if (!isResolved || string.IsNullOrWhiteSpace(domain))
             {
                 return string.Empty;
@@ -267,7 +267,7 @@ namespace Authentication.DomainService.Authentication
             var bc = BlocksContext.GetContext();
             var tenantId = bc?.TenantId ?? "default";
             var tenant = _tenants.GetTenantByID(tenantId);
-            var (domain, cookieDomain, isResolved) = DomainResolver.ResolveDomain(tenant, request, bc?.ApplicationDomain);
+            var (domain, cookieDomain, isResolved) = DomainResolver.ResolveDomain(tenant, request);
             var cookieOptions = CreateCookieOptions(cookieDomain, DateTime.UtcNow.AddDays(-1));
 
             if (isResolved && !string.IsNullOrWhiteSpace(domain))
@@ -288,7 +288,7 @@ namespace Authentication.DomainService.Authentication
             var bc = BlocksContext.GetContext();
             var tenantId = bc?.TenantId ?? "default";
             var tenant = _tenants.GetTenantByID(tenantId);
-            var (domain, cookieDomain, isResolved) = DomainResolver.ResolveDomain(tenant, httpContext.Request, bc?.ApplicationDomain);
+            var (domain, cookieDomain, isResolved) = DomainResolver.ResolveDomain(tenant, httpContext.Request);
             if (!isResolved || string.IsNullOrWhiteSpace(domain))
             {
                 return;
@@ -813,9 +813,21 @@ namespace Authentication.DomainService.Authentication
 
         private bool AppendCookies(TokenResponse response, HttpContext httpContext)
         {
+            // Validate response has no error indicator
+            if (!string.IsNullOrWhiteSpace(response.Error))
+            {
+                return false; // Cannot set cookies for error responses
+            }
+
+            // Validate access token is present
+            if (string.IsNullOrWhiteSpace(response.AccessToken))
+            {
+                return false; // Cannot set cookies without valid access token
+            }
+
             var bc = BlocksContext.GetContext();
             var tenant = _tenants.GetTenantByID(bc?.TenantId ?? "default");
-            var (domain, _, isResolved) = DomainResolver.ResolveDomain(tenant, httpContext.Request, bc?.ApplicationDomain);
+            var (domain, _, isResolved) = DomainResolver.ResolveDomain(tenant, httpContext.Request);
             if (!isResolved || string.IsNullOrWhiteSpace(domain))
             {
                 return false;
@@ -824,10 +836,7 @@ namespace Authentication.DomainService.Authentication
             var accessCookieOptions = CreateCookieOptions(response.CookieDomain, response.ExpiresUtc);
             var refreshCookieOptions = CreateCookieOptions(response.CookieDomain, response.RefreshExpiresUtc);
 
-            if (!string.IsNullOrWhiteSpace(response.AccessToken))
-            {
-                httpContext.Response.Cookies.Append($"{domain}", response.AccessToken, accessCookieOptions);
-            }
+            httpContext.Response.Cookies.Append($"{domain}", response.AccessToken, accessCookieOptions);
 
             if (!string.IsNullOrWhiteSpace(response.RefreshToken))
             {
@@ -847,6 +856,19 @@ namespace Authentication.DomainService.Authentication
             bool useTokensCookie,
             string? clientId = null)
         {
+            // If response has an error, return error response immediately
+            if (!string.IsNullOrWhiteSpace(response.Error))
+            {
+                return Task.FromResult<object>(new
+                {
+                    error = response.Error,
+                    error_description = response.ErrorDescription,
+                    tenant_id = BlocksContext.GetContext()?.TenantId ?? "default",
+                    client_id = clientId,
+                    status_code = response.StatusCode
+                });
+            }
+
             var cookiesSet = false;
             if (useTokensCookie)
             {
@@ -866,6 +888,7 @@ namespace Authentication.DomainService.Authentication
                 });
             }
 
+            // Fallback: return tokens in response body if cookies couldn't be set
             return Task.FromResult<object>(new
             {
                 access_token = response.AccessToken,
