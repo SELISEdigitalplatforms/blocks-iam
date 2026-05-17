@@ -1,6 +1,7 @@
+﻿
 Microsoft Visual Studio Solution File, Format Version 12.00
 # Visual Studio Version 18
-VisualStudioVersion = 18.5.11723.231 stable
+VisualStudioVersion = 18.5.11723.231
 MinimumVisualStudioVersion = 10.0.40219.1
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Api", "Api\Api.csproj", "{A1B2C3D4-E5F6-47A8-B9C0-D1E2F3A4B5C6}"
 EndProject
@@ -19,8 +20,6 @@ EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Mfa.DomainService", "Mfa.DomainService\Mfa.DomainService.csproj", "{F6A7B8C9-DAEB-4CED-A4B5-C6D7E8F9A0B1}"
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Worker", "Worker\Worker.csproj", "{A7B8C9DA-EBFC-4DFE-B5C6-D7E8F9A0B1C2}"
-EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "SeliseBlocks.OIDC.Driver", "SeliseBlocks.OIDC.Driver\SeliseBlocks.OIDC.Driver.csproj", "{61EEE73A-85BC-4647-8195-3C6D0638D648}"
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
@@ -64,10 +63,6 @@ Global
 		{A7B8C9DA-EBFC-4DFE-B5C6-D7E8F9A0B1C2}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{A7B8C9DA-EBFC-4DFE-B5C6-D7E8F9A0B1C2}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{A7B8C9DA-EBFC-4DFE-B5C6-D7E8F9A0B1C2}.Release|Any CPU.Build.0 = Release|Any CPU
-		{61EEE73A-85BC-4647-8195-3C6D0638D648}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
-		{61EEE73A-85BC-4647-8195-3C6D0638D648}.Debug|Any CPU.Build.0 = Debug|Any CPU
-		{61EEE73A-85BC-4647-8195-3C6D0638D648}.Release|Any CPU.ActiveCfg = Release|Any CPU
-		{61EEE73A-85BC-4647-8195-3C6D0638D648}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
