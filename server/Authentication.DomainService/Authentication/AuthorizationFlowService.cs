@@ -212,7 +212,8 @@ namespace Authentication.DomainService.Authentication
                 resolvedTenantId,
                 principal,
                 httpRequest,
-                httpResponse);
+                httpResponse,
+                false);
         }
 
         public async Task<IActionResult> AuthorizeAsync(
@@ -228,8 +229,11 @@ namespace Authentication.DomainService.Authentication
             string? tenant_id,
             ClaimsPrincipal userPrincipal,
             HttpRequest request,
-            HttpResponse response)
+            HttpResponse response,
+            bool returnRedirectResponse = true)
         {
+            var canRedirectToClient = false;
+
             try
             {
                 var authorizeRequest = new AuthorizeRequest
@@ -256,7 +260,17 @@ namespace Authentication.DomainService.Authentication
                         { "error_description", string.Join("; ", validationResult.Errors) },
                         { "state", state }
                     };
-                    return new RedirectResult(BuildRedirectUri(redirect_uri, errorParams));
+
+                    if (returnRedirectResponse && !string.IsNullOrWhiteSpace(redirect_uri))
+                    {
+                        return new RedirectResult(BuildRedirectUri(redirect_uri, errorParams));
+                    }
+
+                    return new BadRequestObjectResult(new
+                    {
+                        error = "invalid_request",
+                        error_description = string.Join("; ", validationResult.Errors)
+                    });
                 }
 
                 var tenantHint = tenant_id;
@@ -293,6 +307,19 @@ namespace Authentication.DomainService.Authentication
                             if (selectedAccount == null)
                             {
                                 ClearPendingSelectedAccountCookies(response);
+
+                                if (returnRedirectResponse)
+                                {
+                                    var errorParams = new Dictionary<string, string>
+                                    {
+                                        { "error", "invalid_request" },
+                                        { "error_description", "Selected account is not available in this session" },
+                                        { "state", state }
+                                    };
+
+                                    return new RedirectResult(BuildRedirectUri(redirect_uri, errorParams));
+                                }
+
                                 return new BadRequestObjectResult(new { error = "invalid_request", error_description = "Selected account is not available in this session" });
                             }
 
@@ -344,12 +371,6 @@ namespace Authentication.DomainService.Authentication
                     return new RedirectResult(BuildLoginUrl(client_id, response_type, redirect_uri, scope, state, nonce, code_challenge, code_challenge_method, tenantHint));
                 }
 
-                if (!await HasOidcClientConfigurationAsync(client_id))
-                {
-                    _logger.LogWarning($"OIDC client config missing for client: {client_id}");
-                    return new BadRequestObjectResult(new { error = "invalid_client", error_description = "Client configuration not found" });
-                }
-
                 var client = await _authenticationRepository.GetOidcClientRegistrationAsync(client_id);
                 if (client == null)
                 {
@@ -363,10 +384,39 @@ namespace Authentication.DomainService.Authentication
                     return new BadRequestObjectResult(new { error = "invalid_request", error_description = "Invalid redirect_uri" });
                 }
 
+                canRedirectToClient = true;
+
+                IActionResult BuildAuthorizeError(string error, string errorDescription)
+                {
+                    if (returnRedirectResponse && canRedirectToClient)
+                    {
+                        var errorParams = new Dictionary<string, string>
+                        {
+                            { "error", error },
+                            { "error_description", errorDescription },
+                            { "state", state }
+                        };
+
+                        return new RedirectResult(BuildRedirectUri(redirect_uri, errorParams));
+                    }
+
+                    return new BadRequestObjectResult(new
+                    {
+                        error,
+                        error_description = errorDescription
+                    });
+                }
+
+                if (!await HasOidcClientConfigurationAsync(client_id))
+                {
+                    _logger.LogWarning($"OIDC client config missing for client: {client_id}");
+                    return BuildAuthorizeError("invalid_client", "Client configuration not found");
+                }
+
                 var user = await _userRepository.GetUserByIdAsync(resolvedUserId);
                 if (user == null)
                 {
-                    return new BadRequestObjectResult(new { error = "invalid_user", error_description = "User not found" });
+                    return BuildAuthorizeError("access_denied", "User not found");
                 }
 
                 var effectiveOrganizationId = ResolveEffectiveOrganizationId(user);
@@ -403,14 +453,34 @@ namespace Authentication.DomainService.Authentication
                     { "tenant_id", resolvedTenantId ?? tenant_id ?? string.Empty }
                 };
 
+                var callbackUri = BuildRedirectUri(redirect_uri, callbackParams);
+
+                if (returnRedirectResponse)
+                {
+                    return new RedirectResult(callbackUri);
+                }
+
                 return new OkObjectResult(new
                 {
-                    redirect_uri = BuildRedirectUri(redirect_uri, callbackParams)
+                    redirect_uri = callbackUri
                 });
             }
             catch (Exception ex)
             {
                 _logger.LogError(ex, "Error in authorization endpoint");
+
+                if (returnRedirectResponse && canRedirectToClient)
+                {
+                    var errorParams = new Dictionary<string, string>
+                    {
+                        { "error", "server_error" },
+                        { "error_description", "Internal server error" },
+                        { "state", state }
+                    };
+
+                    return new RedirectResult(BuildRedirectUri(redirect_uri, errorParams));
+                }
+
                 return new ObjectResult(new { error = "server_error", error_description = "Internal server error" })
                 {
                     StatusCode = 500
@@ -514,7 +584,8 @@ namespace Authentication.DomainService.Authentication
                 tenantId,
                 principal,
                 request,
-                response);
+                response,
+                false);
         }
 
         public async Task<IActionResult> TokenAsync(string grantType, HttpRequest request)

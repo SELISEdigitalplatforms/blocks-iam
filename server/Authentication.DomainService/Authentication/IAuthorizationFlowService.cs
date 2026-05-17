@@ -90,7 +90,8 @@ namespace Authentication.DomainService.Authentication
             string? tenant_id,
             ClaimsPrincipal userPrincipal,
             HttpRequest request,
-            HttpResponse response);
+            HttpResponse response,
+            bool returnRedirectResponse = true);
 
         Task<IActionResult> SelectAccountAsync(string userId, string? tenantId, HttpRequest request, HttpResponse response);
 
