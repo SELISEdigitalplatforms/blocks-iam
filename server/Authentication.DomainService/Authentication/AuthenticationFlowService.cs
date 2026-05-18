@@ -1145,6 +1145,7 @@ namespace Authentication.DomainService.Authentication
             }
 
             var (tokenDomain, _, isResolved) = DomainResolver.ResolveDomain(tenant, httpRequest);
+            ClearImpersonationCookies(httpResponse, tokenDomain, response.CookieDomain);
             if (!isResolved || string.IsNullOrWhiteSpace(tokenDomain))
             {
                 return false;
