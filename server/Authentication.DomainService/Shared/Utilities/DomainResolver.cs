@@ -15,6 +15,44 @@ namespace Authentication.DomainService.Utilities
     /// </summary>
     public static class DomainResolver
     {
+        /// <summary>
+        /// Determines if the current environment or request is localhost/development.
+        /// </summary>
+        public static bool IsLocalhost(HttpRequest? request = null)
+        {
+            // Check environment variable first
+            var hostEnv = Environment.GetEnvironmentVariable("ASPNETCORE_ENVIRONMENT") ?? string.Empty;
+            if (hostEnv.Equals("Development", StringComparison.OrdinalIgnoreCase))
+                return true;
+
+            // If HttpRequest is provided, check Origin and Referer headers
+            string? origin = request?.Headers["Origin"].ToString();
+            string? referer = request?.Headers["Referer"].ToString();
+
+            if (IsLocalUrl(origin) || IsLocalUrl(referer))
+                return true;
+
+            // Fallback: treat as production
+            return false;
+        }
+
+        private static bool IsLocalUrl(string? url)
+        {
+            if (string.IsNullOrWhiteSpace(url))
+                return false;
+            try
+            {
+                var uri = new Uri(url);
+                if (uri.Host.Equals("localhost", StringComparison.OrdinalIgnoreCase)
+                    || uri.Host.Equals("127.0.0.1")
+                    || uri.Host.Equals("::1"))
+                    return true;
+                if (!uri.IsDefaultPort)
+                    return true;
+            }
+            catch { /* ignore parse errors */ }
+            return false;
+        }
         public static (string? domain, string? cookieDomain, bool isResolved) ResolveDomain(
             Tenant? tenant,
             HttpRequest? request)

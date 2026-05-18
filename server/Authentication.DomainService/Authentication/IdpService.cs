@@ -342,15 +342,11 @@ namespace Authentication.DomainService.Authentication
                 || string.Equals(host, "::1", StringComparison.OrdinalIgnoreCase);
         }
 
-        private static bool IsLocalhost()
-        {
-            var hostEnv = Environment.GetEnvironmentVariable("ASPNETCORE_ENVIRONMENT") ?? "";
-            return hostEnv.Equals("Development", StringComparison.OrdinalIgnoreCase);
-        }
+
 
         private static TimeSpan GetOutboundRequestTimeout()
         {
-            return IsLocalhost() ? TimeSpan.FromMinutes(5) : TimeSpan.FromSeconds(100);
+            return DomainResolver.IsLocalhost() ? TimeSpan.FromMinutes(5) : TimeSpan.FromSeconds(100);
         }
 
         private async Task<(OidcTokenEndpointResponse? Response, string Error)> ExchangeCodeForTokenAsync(

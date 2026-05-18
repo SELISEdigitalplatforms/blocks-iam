@@ -910,27 +910,20 @@ namespace Authentication.DomainService.Authentication
 
         private static CookieOptions CreateCookieOptions(string? domain, DateTime expiresUtc)
         {
-            // In Development, don't set domain so cookies work with localhost
-            var cookieDomain = IsLocalhost() ? null : (string.IsNullOrWhiteSpace(domain) ? null : domain);
-            var isSecure = !IsLocalhost();
-            var sameSite = isSecure ? SameSiteMode.Strict : SameSiteMode.None;
-
+            var isLocal = DomainResolver.IsLocalhost();
+            var cookieDomain = isLocal ? null : (string.IsNullOrWhiteSpace(domain) ? null : domain);
             return new CookieOptions
             {
                 Domain = cookieDomain,
                 HttpOnly = true,
-                Secure = isSecure,
-                SameSite = sameSite,
+                Secure = !isLocal,
+                SameSite = isLocal ? SameSiteMode.None : SameSiteMode.Strict,
                 Path = "/",
                 Expires = expiresUtc == default ? DateTime.UtcNow : expiresUtc
             };
         }
 
-        private static bool IsLocalhost()
-        {
-            var hostEnv = Environment.GetEnvironmentVariable("ASPNETCORE_ENVIRONMENT") ?? "";
-            return hostEnv.Equals("Development", StringComparison.OrdinalIgnoreCase);
-        }
+
 
         private async Task EnsureIdpSessionForLoginAsync(TokenResponse tokenResponse, HttpContext httpContext)
         {
