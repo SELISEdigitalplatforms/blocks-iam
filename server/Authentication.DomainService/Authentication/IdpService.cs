@@ -327,7 +327,7 @@ namespace Authentication.DomainService.Authentication
                 Domain = cookieDomain,
                 HttpOnly = true,
                 Secure = !isLocalRequest,
-                SameSite = isLocalRequest ? SameSiteMode.None : SameSiteMode.Lax,
+                SameSite = isLocalRequest ? SameSiteMode.None : SameSiteMode.Strict,
                 Path = "/",
                 Expires = expiresUtc == default ? DateTime.UtcNow : expiresUtc
             };
