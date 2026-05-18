@@ -1144,20 +1144,20 @@ namespace Authentication.DomainService.Authentication
                 return false; // Cannot set cookies without valid access token
             }
 
-            var (tokenDomain, _, isResolved) = DomainResolver.ResolveDomain(tenant, httpRequest);
-            ClearImpersonationCookies(httpResponse, tokenDomain, response.CookieDomain);
-            if (!isResolved || string.IsNullOrWhiteSpace(tokenDomain))
-            {
-                return false;
-            }
+            //var (tokenDomain, _, isResolved) = DomainResolver.ResolveDomain(tenant, httpRequest);
+            //ClearImpersonationCookies(httpResponse, tokenDomain, response.CookieDomain);
+            //if (!isResolved || string.IsNullOrWhiteSpace(tokenDomain))
+            //{
+            //    return false;
+            //}
             var accessCookieOptions = CreateCookieOptions(response.CookieDomain, response.ExpiresUtc);
             var refreshCookieOptions = CreateCookieOptions(response.CookieDomain, response.RefreshExpiresUtc);
 
-            httpResponse.Cookies.Append($"{tokenDomain}", response.AccessToken, accessCookieOptions);
+            httpResponse.Cookies.Append(response.CookieDomain , response.AccessToken, accessCookieOptions);
 
             if (!string.IsNullOrWhiteSpace(response.RefreshToken))
             {
-                httpResponse.Cookies.Append($"{IdpConstants.RefreshTokenCookieName}_{tokenDomain}", response.RefreshToken, refreshCookieOptions);
+                httpResponse.Cookies.Append($"{IdpConstants.RefreshTokenCookieName}_{response.CookieDomain}", response.RefreshToken, refreshCookieOptions);
             }
 
             return true;
