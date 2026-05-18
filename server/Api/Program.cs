@@ -50,10 +50,6 @@ ApplicationConfigurations.ConfigureMiddleware(
     app,
     tenantValidationPrefixes: new[] { normalizedApiRoutePrefix });
 
-// Register controller routes with /idp/v1 prefix for attribute-based routing
-var apiGroup = app.MapGroup(normalizedApiRoutePrefix);
-apiGroup.MapControllers();
-
 // THEN serve static files
 app.UseDefaultFiles();
 app.UseStaticFiles();
