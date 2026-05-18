@@ -31,7 +31,6 @@ namespace Authentication.DomainService.Authentication
         private readonly IIdpSessionService _idpSessionService;
         private readonly ITokenRevocationService _tokenRevocationService;
         private readonly ITenants _tenants;
-        private readonly IImpersonationBackupService _impersonationBackupService;
         private readonly UnifiedTokenSessionService _unifiedTokenSessionService;
 
         private const string Public_Cert_Cache_Prefix = "tetocertpublic::";
@@ -45,7 +44,6 @@ namespace Authentication.DomainService.Authentication
             IIdpSessionService idpSessionService,
             ITokenRevocationService tokenRevocationService,
             ITenants tenants,
-            IImpersonationBackupService impersonationBackupService,
             UnifiedTokenSessionService unifiedTokenSessionService
         )
         {
@@ -57,7 +55,6 @@ namespace Authentication.DomainService.Authentication
             _idpSessionService = idpSessionService;
             _tokenRevocationService = tokenRevocationService;
             _tenants = tenants;
-            _impersonationBackupService = impersonationBackupService;
             _unifiedTokenSessionService = unifiedTokenSessionService;
         }
 
@@ -150,32 +147,6 @@ namespace Authentication.DomainService.Authentication
         {
             var bc = BlocksContext.GetContext();
 
-            // Phase 4: Handle logout during impersonation
-            if (httpRequest != null && httpRequest.Cookies.TryGetValue("impersonation_session_id", out var impersonationSessionId) && !string.IsNullOrWhiteSpace(impersonationSessionId))
-            {
-                try
-                {
-                    var impersonationSession = await _authenticationRepository.GetImpersonationSessionByIdAsync(impersonationSessionId);
-                    if (impersonationSession != null && impersonationSession.Status == "active")
-                    {
-                        // Invalidate root session and cleanup backup
-                        await ImpersonationFlowHelper.InvalidateRootSessionAndBackupAsync(
-                            impersonationSessionId,
-                            bc?.UserId ?? string.Empty,
-                            _authenticationRepository,
-                            _impersonationBackupService,
-                            _logger);
-
-                        _logger.LogInformation("Impersonation session {SessionId} invalidated due to logout during impersonation", impersonationSessionId);
-                    }
-                }
-                catch (Exception ex)
-                {
-                    _logger.LogWarning(ex, "Failed to invalidate impersonation session during logout, but continuing with session logout");
-                    // Don't fail logout - impersonation cleanup is not critical
-                }
-            }
-
             // Revoke refresh token family to align with rotation security and prevent sibling token reuse.
             await _tokenRevocationService.RevokeTokenAsync(refreshToken, "refresh_token", string.Empty);
             var revokeResult = await _tokenRevocationService.RevokeTokenAsync(refreshToken, "refresh_token", string.Empty);
@@ -194,32 +165,6 @@ namespace Authentication.DomainService.Authentication
         public async Task<bool> ProcessLogoutAll(HttpRequest httpRequest)
         {
             var bc = BlocksContext.GetContext();
-
-            // Phase 4: Handle logout all during impersonation
-            if (httpRequest != null && httpRequest.Cookies.TryGetValue("impersonation_session_id", out var impersonationSessionId) && !string.IsNullOrWhiteSpace(impersonationSessionId))
-            {
-                try
-                {
-                    var impersonationSession = await _authenticationRepository.GetImpersonationSessionByIdAsync(impersonationSessionId);
-                    if (impersonationSession != null && impersonationSession.Status == "active")
-                    {
-                        // Invalidate root session and cleanup backup
-                        await ImpersonationFlowHelper.InvalidateRootSessionAndBackupAsync(
-                            impersonationSessionId,
-                            bc?.UserId ?? string.Empty,
-                            _authenticationRepository,
-                            _impersonationBackupService,
-                            _logger);
-
-                        _logger.LogInformation("Impersonation session {SessionId} invalidated due to logout all", impersonationSessionId);
-                    }
-                }
-                catch (Exception ex)
-                {
-                    _logger.LogWarning(ex, "Failed to invalidate impersonation session during logout all, but continuing with session logout");
-                    // Don't fail logout all - impersonation cleanup is not critical
-                }
-            }
 
             var refreshTokens = (await _authenticationRepository.GetActiveIdentitySessionByUserIdAsync(bc?.UserId ?? string.Empty)).Select(x => x.RefreshToken).ToList();
             var revokeTasks = refreshTokens.Select(async x => await _unifiedTokenSessionService.RevokeRefreshToken(x));

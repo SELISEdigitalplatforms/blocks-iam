@@ -58,12 +58,5 @@ namespace Authentication.DomainService.Services
         Task DeleteClientCredentialAsync(DeleteClientCredentialRequest request);
         Task<List<ClientCredential>> GetClientCredentialsAsync();
         
-        // Impersonation session methods
-        Task<bool> InsertImpersonationSessionAsync(ImpersonationSession session);
-        Task<ImpersonationSession?> GetImpersonationSessionByIdAsync(string sessionId);
-        Task<List<ImpersonationSession>> GetActiveImpersonationSessionsByUserIdAsync(string userId);
-        Task<bool> UpdateImpersonationSessionAsync(string sessionId, Dictionary<string, object> updates);
-        Task<bool> RevokeIdentitySessionsByUserIdAsync(string userId);
-        Task<bool> RevokeIdentitySessionsBySessionIdsAsync(IEnumerable<string> sessionIds);
     }
 }
