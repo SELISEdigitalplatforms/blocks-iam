@@ -212,14 +212,16 @@ namespace Api.Controllers
         }
 
         [HttpGet("me")]
-        [ProtectedEndPoint("blocks-idp::get-my-account")]
+        //[ProtectedEndPoint("blocks-idp::get-my-account")]
+        [Authorize]
         public async Task<GetAccountResponse> GetMyAccount()
         {
             return await _userManagementQueryService.GetAccountAsync();
         }
 
         [HttpPatch("me")]
-        [ProtectedEndPoint("blocks-idp::update-my-account")]
+        //[ProtectedEndPoint("blocks-idp::update-my-account")]
+        [Authorize]
         public async Task<IActionResult> UpdateMyAccount([FromBody] UpdateUserRequest command)
         {
             var bc = BlocksContext.GetContext();
