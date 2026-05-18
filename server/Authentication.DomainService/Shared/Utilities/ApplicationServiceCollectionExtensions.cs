@@ -1,6 +1,5 @@
 using Authentication.DomainService.OAuth.SocialServices;
 using Blocks.Extension.DependencyInjection;
-using Blocks.Genesis;
 using Idp.DomainService.Oidc.Services;
 using Captcha.DomainService.Captcha;
 using Captcha.DomainService.Configuration;
@@ -46,7 +45,6 @@ namespace Authentication.DomainService.Utilities
             serviceCollection.AddSingleton<IAuthenticationFlowService, AuthenticationFlowService>();
             serviceCollection.AddSingleton<IAuthorizationFlowService, AuthorizationFlowService>();
             serviceCollection.AddSingleton<IIdpService, IdpService>();
-            serviceCollection.AddSingleton<IImpersonationBackupService, ImpersonationBackupService>();
             serviceCollection.AddSingleton<AuthorizeRequestValidator>();
 
             serviceCollection.AddSingleton<OidcSigningKeyMaterial>();

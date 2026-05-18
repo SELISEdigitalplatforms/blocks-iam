@@ -47,25 +47,6 @@ namespace Authentication.DomainService.OAuth.RequestModel
         public string OrganizationId { get; set; } = string.Empty;
     }
 
-    public class ImpersonationRequest
-    {
-        public string TargetTenantId { get; set; } = string.Empty;
-
-        [JsonPropertyName("orgId")]
-        public string? OrgId { get; set; }
-
-        [JsonPropertyName("organizationId")]
-        public string? OrganizationId { get; set; }
-    }
-
-    public class ImpersonationState
-    {
-        public string RootTenantId { get; set; } = string.Empty;
-        public string TargetTenantId { get; set; } = string.Empty;
-        public string OrgId { get; set; } = string.Empty;
-        public DateTime StartedAtUtc { get; set; }
-    }
-
     public class RefreshRequest
     {
         [JsonPropertyName("refresh_token")]
