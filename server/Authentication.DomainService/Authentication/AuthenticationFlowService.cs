@@ -458,20 +458,6 @@ namespace Authentication.DomainService.Authentication
                 return new UnauthorizedObjectResult(new { error = "session_expired" });
             }
 
-            var rootJwtValidation = ValidateRootImpersonationAuthorization(rootAccessToken, rootTenantId, userId);
-            if (!rootJwtValidation.IsAuthorized)
-            {
-                await WriteImpersonationAuditEventAsync(httpRequest, "impersonation_start_denied", userId, request.TargetTenantId, "WARN", rootJwtValidation.ErrorCode, rootTenantId);
-                return new ObjectResult(new
-                {
-                    error = "forbidden",
-                    error_description = rootJwtValidation.ErrorDescription
-                })
-                {
-                    StatusCode = StatusCodes.Status403Forbidden
-                };
-            }
-
             var cacheClient = httpRequest.HttpContext.RequestServices.GetRequiredService<ICacheClient>();
             var rootRefreshCacheRaw = await cacheClient.GetStringValueAsync(rootRefreshToken);
             var rootRefreshCache = string.IsNullOrWhiteSpace(rootRefreshCacheRaw)
@@ -1089,63 +1075,6 @@ namespace Authentication.DomainService.Authentication
                 _logger.LogError(ex, "Failed to validate ProjectPeople share for user {UserId} and tenant {TenantId}", userId, targetTenantId);
                 return false;
             }
-        }
-
-        private static (bool IsAuthorized, string ErrorCode, string ErrorDescription) ValidateRootImpersonationAuthorization(string rootAccessToken, string rootTenantId, string userId)
-        {
-            JwtSecurityToken jwt;
-            try
-            {
-                jwt = new JwtSecurityTokenHandler().ReadJwtToken(rootAccessToken);
-            }
-            catch
-            {
-                return (false, "invalid_root_jwt", "Original root tenant JWT is invalid");
-            }
-
-            var tokenTenantId = jwt.Claims.FirstOrDefault(c =>
-                string.Equals(c.Type, BlocksContext.TENANT_ID_CLAIM, StringComparison.OrdinalIgnoreCase)
-                || string.Equals(c.Type, "tenant_id", StringComparison.OrdinalIgnoreCase))?.Value;
-
-            if (string.IsNullOrWhiteSpace(tokenTenantId)
-                || !string.Equals(tokenTenantId, rootTenantId, StringComparison.OrdinalIgnoreCase))
-            {
-                return (false, "root_tenant_mismatch", "Original JWT tenant does not match root tenant context");
-            }
-
-            var tokenUserId = jwt.Claims.FirstOrDefault(c =>
-                string.Equals(c.Type, BlocksContext.USER_ID_CLAIM, StringComparison.OrdinalIgnoreCase)
-                || string.Equals(c.Type, ClaimTypes.NameIdentifier, StringComparison.OrdinalIgnoreCase)
-                || string.Equals(c.Type, "sub", StringComparison.OrdinalIgnoreCase))?.Value;
-
-            if (string.IsNullOrWhiteSpace(tokenUserId)
-                || !(string.Equals(tokenUserId, userId, StringComparison.OrdinalIgnoreCase)
-                    || string.Equals(tokenUserId, $"blocks|{userId}", StringComparison.OrdinalIgnoreCase)))
-            {
-                return (false, "root_user_mismatch", "Original JWT user does not match authenticated user");
-            }
-
-            var hasRoleClaim = jwt.Claims.Any(c =>
-                string.Equals(c.Type, BlocksContext.ROLES_CLAIM, StringComparison.OrdinalIgnoreCase)
-                || string.Equals(c.Type, ClaimTypes.Role, StringComparison.OrdinalIgnoreCase)
-                || string.Equals(c.Type, "roles", StringComparison.OrdinalIgnoreCase));
-
-            if (!hasRoleClaim)
-            {
-                return (false, "missing_role_claim", "Original root JWT must contain role claims for impersonation");
-            }
-
-            var hasPermissionClaim = jwt.Claims.Any(c =>
-                string.Equals(c.Type, BlocksContext.PERMISSION_CLAIM, StringComparison.OrdinalIgnoreCase)
-                || string.Equals(c.Type, "permission", StringComparison.OrdinalIgnoreCase)
-                || string.Equals(c.Type, "permissions", StringComparison.OrdinalIgnoreCase));
-
-            if (!hasPermissionClaim)
-            {
-                return (false, "missing_permission_claim", "Original root JWT must contain permission claims for impersonation");
-            }
-
-            return (true, string.Empty, string.Empty);
         }
 
         private async Task<bool> TryRestoreRootSessionAsync(HttpRequest httpRequest, HttpResponse httpResponse, string reason)
