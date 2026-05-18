@@ -54,6 +54,7 @@ namespace Authentication.DomainService.OAuth
                 authenticationConfiguration,
                 tenant,
                 user,
+                targetedTenantId: request.TargetTenantId,
                 organizationId: request.OrganizationId,
                 issuanceContext: issuanceContext,
                 clientAllowedScopes: clientAllowedScopes,
