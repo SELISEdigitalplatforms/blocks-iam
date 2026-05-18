@@ -326,21 +326,12 @@ namespace Authentication.DomainService.Authentication
             {
                 Domain = cookieDomain,
                 HttpOnly = true,
-                Secure = !isLocalRequest,
+                Secure = true,
                 SameSite = isLocalRequest ? SameSiteMode.None : SameSiteMode.Strict,
                 Path = "/",
                 Expires = expiresUtc == default ? DateTime.UtcNow : expiresUtc
             };
         }
-
-        private static bool IsLocalRequest(HttpRequest request)
-        {
-            var host = request.Host.Host ?? string.Empty;
-            return string.Equals(host, "localhost", StringComparison.OrdinalIgnoreCase)
-                || string.Equals(host, "127.0.0.1", StringComparison.OrdinalIgnoreCase)
-                || string.Equals(host, "::1", StringComparison.OrdinalIgnoreCase);
-        }
-
 
 
         private static TimeSpan GetOutboundRequestTimeout()
