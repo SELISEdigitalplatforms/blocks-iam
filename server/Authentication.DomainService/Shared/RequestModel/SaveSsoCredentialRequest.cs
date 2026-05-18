@@ -1,8 +1,6 @@
-using Blocks.Genesis;
-
 namespace Authentication.DomainService.Shared
 {
-    public class SaveSsoCredentialRequest : IProjectKey
+    public class SaveSsoCredentialRequest
     {
         public string? Provider { get; set; }
         public string? Audience { get; set; }
@@ -12,7 +10,6 @@ namespace Authentication.DomainService.Shared
         public string? WellKnownUrl { get; set; }
         public List<string> InitialRoles { get; set; } = [];
         public List<string> InitialPermissions { get; set; } = [];
-        public string? ProjectKey { get; set; }
         public bool IsDisabled { get; set; }
         public string? ItemId { get; set; }
         public SSOType SSOType { get; set; }

@@ -1,25 +1,18 @@
 using Blocks.Genesis;
 using Authentication.DomainService.Dtos;
-using Authentication.DomainService.Entities;
 using Authentication.DomainService.OAuth;
 using Authentication.DomainService.OAuth.RequestModel;
 using Authentication.DomainService.OAuth.ResponseModel;
-using Authentication.DomainService.Oidc.Repositories;
-using Authentication.DomainService.Oidc.Services;
 using Authentication.DomainService.Services;
-using Authentication.DomainService.Shared.ResponseModel;
 using Authentication.DomainService.Utilities;
-using Idp.DomainService.Oidc.Contracts;
 using Iam.DomainService.Entities;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
-using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using MongoDB.Bson;
 using MongoDB.Driver;
 using System.IdentityModel.Tokens.Jwt;
 using System.Security.Claims;
-using System.Text;
 using System.Text.Json;
 
 namespace Authentication.DomainService.Authentication
@@ -28,38 +21,33 @@ namespace Authentication.DomainService.Authentication
     {
         private readonly IAuthenticationRepository _authenticationRepository;
         private readonly ITenants _tenants;
-        private readonly IAuditLogRepository _auditLogRepo;
         private readonly PasswordAuthenticationService _passwordAuthenticationService;
         private readonly SocialAuthorizationService _socialAuthorizationService;
         private readonly RefreshTokenAuthenticationService _refreshTokenAuthenticationService;
         private readonly IOAuthJwtAccessTokenManager _oAuthJwtAccessTokenManager;
         private readonly IAuthenticationService _authenticationService;
-        private readonly IIdpSessionService _idpSessionService;
         private readonly ICacheClient _cacheClient;
         private readonly ILogger<AuthenticationFlowService> _logger;
 
         public AuthenticationFlowService(
             IAuthenticationRepository authenticationRepository,
             ITenants tenants,
-            IAuditLogRepository auditLogRepo,
             PasswordAuthenticationService passwordAuthenticationService,
             SocialAuthorizationService socialAuthorizationService,
             RefreshTokenAuthenticationService refreshTokenAuthenticationService,
             IOAuthJwtAccessTokenManager oAuthJwtAccessTokenManager,
             IAuthenticationService authenticationService,
-            IIdpSessionService idpSessionService,
             ICacheClient cacheClient,
             ILogger<AuthenticationFlowService> logger)
         {
             _authenticationRepository = authenticationRepository;
             _tenants = tenants;
-            _auditLogRepo = auditLogRepo;
             _passwordAuthenticationService = passwordAuthenticationService;
             _socialAuthorizationService = socialAuthorizationService;
             _refreshTokenAuthenticationService = refreshTokenAuthenticationService;
             _oAuthJwtAccessTokenManager = oAuthJwtAccessTokenManager;
             _authenticationService = authenticationService;
-            _idpSessionService = idpSessionService;
+            
             _cacheClient = cacheClient;
             _logger = logger;
         }
@@ -629,7 +617,7 @@ namespace Authentication.DomainService.Authentication
             }
 
             var contextId = Guid.NewGuid().ToString("n");
-            await _cacheClient.AddStringValueAsync(contextId, projectId, 500);
+            await _cacheClient.AddStringValueAsync(contextId, projectId, 300);
 
             return new GetContextForProjectResult
             {

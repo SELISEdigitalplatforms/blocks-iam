@@ -1,9 +1,7 @@
 
-using Blocks.Genesis;
-
 namespace Authentication.DomainService.RequestModel
 {
-    public class SaveOIDCClientRequest : IProjectKey
+    public class SaveOIDCClientRequest
     {
         public List<string> RedirectUris { get; set; } = new();
         public List<string> PostLogoutRedirectUris { get; set; } = new();
@@ -23,7 +21,6 @@ namespace Authentication.DomainService.RequestModel
         public string? LoginMode { get; set; }
         public string? ClientType { get; set; }
         public string? ItemId { get; set; }
-        public string? ProjectKey { get; set; }
         public string? ClientLogoUrl { get; set; }
         public string? ClientDisplayName { get; set; }
         public string? ClientBrandColor { get; set; }
