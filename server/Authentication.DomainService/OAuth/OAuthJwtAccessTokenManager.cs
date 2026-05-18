@@ -86,6 +86,7 @@ namespace Authentication.DomainService.OAuth
                 authenticationConfiguration,
                 tenant,
                 user,
+                tokenRequest.TargetTenantId,
                 stateInfo,
                 organizationId: tokenRequest.OrganizationId,
                 issuanceContext: issuanceContext,

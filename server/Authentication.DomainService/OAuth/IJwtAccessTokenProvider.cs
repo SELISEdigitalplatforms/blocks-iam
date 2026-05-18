@@ -10,6 +10,7 @@ namespace Authentication.DomainService.OAuth
             AuthenticationConfiguration authenticationConfiguration,
             Tenant tenant,
             User user,
+            string targetedTenantId,
             StateInfo? state = null,
             string? organizationId = null,
             TokenIssuanceContext? issuanceContext = null,
