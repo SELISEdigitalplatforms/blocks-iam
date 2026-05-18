@@ -1,4 +1,3 @@
-using Authentication.DomainService.Utilities;
 using Blocks.Genesis;
 using Authentication.DomainService.Dtos;
 using Authentication.DomainService.Entities;
@@ -8,7 +7,6 @@ using Authentication.DomainService.OAuth.ResponseModel;
 using Authentication.DomainService.Oidc.Repositories;
 using Authentication.DomainService.Oidc.Services;
 using Authentication.DomainService.Services;
-using Authentication.DomainService.Shared;
 using Authentication.DomainService.Shared.ResponseModel;
 using Authentication.DomainService.Utilities;
 using Idp.DomainService.Oidc.Contracts;

@@ -34,6 +34,7 @@ namespace Authentication.DomainService.Utilities
     {
         public static void RegisterAllServices(this IServiceCollection serviceCollection)
         {
+            
             #region Authentication
             serviceCollection.AddSingleton<IAuthenticationDomainService, AuthenticationDomainService>();
             serviceCollection.AddSingleton<IAuthenticationRepository, AuthenticationRepository>();
@@ -160,6 +161,8 @@ namespace Authentication.DomainService.Utilities
             serviceCollection.AddTransient<IValidator<SubmitCaptchaRequest>, SubmitCaptchaCommandValidator>();
 
             #endregion
+
+            serviceCollection.AddSingleton<UnifiedTokenSessionService, UnifiedTokenSessionService>();
         }
     }
 }
