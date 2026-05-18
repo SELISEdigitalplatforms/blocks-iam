@@ -38,7 +38,8 @@ namespace Authentication.DomainService.OAuth
             ICacheClient cacheClient,
             ITenants tenants,
             IOtpServiceFactory otpServiceFactory,
-            IConfiguration configuration
+            IConfiguration configuration,
+            UnifiedTokenSessionService unifiedTokenSessionService
         )
         {
             _jwtAccessTokenProvider = jwtAccessTokenProvider;
@@ -49,7 +50,7 @@ namespace Authentication.DomainService.OAuth
             _tenants = tenants;
             _otpServiceFactory = otpServiceFactory;
             _configuration = configuration;
-            _unifiedTokenSessionService = new UnifiedTokenSessionService(_cacheClient, _authenticationDomainService);
+            _unifiedTokenSessionService = unifiedTokenSessionService;
         }
 
         public async Task<TokenResponse> ManageTokenAsync(TokenRequest tokenRequest, AuthenticationConfiguration authenticationConfiguration, User user, StateInfo? stateInfo = null)

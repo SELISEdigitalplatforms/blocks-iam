@@ -1,3 +1,4 @@
+using Authentication.DomainService.Oidc.Repositories;
 using System.IdentityModel.Tokens.Jwt;
 using System.Security.Claims;
 using System.Security.Cryptography;
@@ -67,6 +68,7 @@ public class TokenGenerationService : ITokenGenerationService
     private readonly ICertificateProviderFactory _certificateProviderFactory;
     private readonly IHttpContextAccessor _httpContextAccessor;
     private readonly IAuthenticationRepository _authenticationRepository;
+    private readonly IRefreshTokenRepository _refreshTokenRepository;
 
     public TokenGenerationService(
         OidcSigningKeyMaterial keyMaterial,
@@ -76,7 +78,8 @@ public class TokenGenerationService : ITokenGenerationService
         ICertificateProviderFactory certificateProviderFactory,
         IHttpContextAccessor httpContextAccessor,
         IAuthenticationRepository authenticationRepository,
-        IAuthenticationDomainService authenticationDomainService)
+        IAuthenticationDomainService authenticationDomainService,
+        IRefreshTokenRepository refreshTokenRepository)
     {
         _keyMaterial = keyMaterial;
         _tenants = tenants;
@@ -85,7 +88,8 @@ public class TokenGenerationService : ITokenGenerationService
         _certificateProviderFactory = certificateProviderFactory;
         _httpContextAccessor = httpContextAccessor;
         _authenticationRepository = authenticationRepository;
-        _unifiedTokenSessionService = new UnifiedTokenSessionService(_cacheClient, authenticationDomainService);
+        _refreshTokenRepository = refreshTokenRepository;
+        _unifiedTokenSessionService = new UnifiedTokenSessionService(_cacheClient, authenticationDomainService, _refreshTokenRepository);
     }
 
     public Task<string> GenerateIdTokenAsync(Contracts.OidcClaims claims, string issuer, int expiresInSeconds)
