@@ -121,16 +121,16 @@ namespace Authentication.DomainService.OAuth
 
             if (issuanceContext?.IsImpersonation == true)
             {
-                claimsIdentity.AddClaim(new Claim("impersonated", "true", ClaimValueTypes.Boolean));
+                claimsIdentity.AddClaim(new Claim(BlocksContext.IMPERSONATED_CLAIM, "true", ClaimValueTypes.Boolean));
                 if (!string.IsNullOrWhiteSpace(issuanceContext.OriginalTenantId))
                 {
-                    claimsIdentity.AddClaim(new Claim("orig_tenant", issuanceContext.OriginalTenantId));
+                    claimsIdentity.AddClaim(new Claim(BlocksContext.ACTUAL_TENANT_ID_CLAIM, issuanceContext.OriginalTenantId));
                 }
 
                 if (!string.IsNullOrWhiteSpace(issuanceContext.ActorUserId))
                 {
                     var actPayload = System.Text.Json.JsonSerializer.Serialize(new { sub = issuanceContext.ActorUserId });
-                    claimsIdentity.AddClaim(new Claim("act", actPayload, "JSON"));
+                    claimsIdentity.AddClaim(new Claim(BlocksContext.ACTOR_USER_CLAIM, actPayload, "JSON"));
                 }
             }
         }
