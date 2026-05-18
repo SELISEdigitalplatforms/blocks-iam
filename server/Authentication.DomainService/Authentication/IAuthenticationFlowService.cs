@@ -11,9 +11,8 @@ namespace Authentication.DomainService.Authentication
         Task<AuthenticationFlowResult> ExecuteEmbeddedLoginAsync(EmbeddedLoginRequest request, HttpRequest httpRequest);
         Task<AuthenticationFlowResult> ExecuteSocialLoginAsync(SocialLoginRequest request, HttpRequest httpRequest);
         Task<AuthenticationFlowResult> ExecuteSwitchOrganizationAsync(SwitchOrganizationRequest request, ClaimsPrincipal principal, HttpRequest httpRequest);
-        Task<IActionResult> ExecuteImpersonateAsync(ImpersonationRequest request, ClaimsPrincipal principal, HttpRequest httpRequest, HttpResponse httpResponse);
-        Task<IActionResult> ExecuteStopImpersonationAsync(ClaimsPrincipal principal, HttpRequest httpRequest, HttpResponse httpResponse);
         Task<IActionResult> ExecuteRefreshAsync(RefreshRequest request, ClaimsPrincipal principal, HttpRequest httpRequest, HttpResponse httpResponse);
+        Task<GetContextForProjectResult> GetContextForProjectAsync(string projectId);
     }
 
     public class AuthenticationFlowResult
@@ -22,5 +21,12 @@ namespace Authentication.DomainService.Authentication
         public int StatusCode { get; set; } = StatusCodes.Status400BadRequest;
         public string? Error { get; set; }
         public string? ErrorDescription { get; set; }
+    }
+
+    public class GetContextForProjectResult
+    {
+        public bool IsSuccess { get; set; }
+        public string? ContextId { get; set; }
+        public string? Error { get; set; }
     }
 }

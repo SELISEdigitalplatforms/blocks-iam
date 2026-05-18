@@ -1,10 +1,7 @@
-﻿using Blocks.Genesis;
-
-namespace CloudConfiguration.DomainService.Storage.RequestModel
+﻿namespace CloudConfiguration.DomainService.Storage.RequestModel
 {
-    public class DeleteStorageConfigurationRequest : IProjectKey
+    public class DeleteStorageConfigurationRequest
     {
-        public string ProjectKey { get; set; } = string.Empty;
         public string ConfigurationName { get; set; }
     }
 }

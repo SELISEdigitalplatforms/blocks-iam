@@ -923,16 +923,6 @@ namespace Iam.DomainService.Resources
             };
         }
 
-        private static string ResolveTenantId(string requestProjectKey)
-        {
-            if (!string.IsNullOrWhiteSpace(requestProjectKey))
-            {
-                return requestProjectKey;
-            }
-
-            return BlocksContext.GetContext()?.TenantId;
-        }
-
         private static string ResolveOrganizationId(string organizationId)
         {
             if (!string.IsNullOrWhiteSpace(organizationId))
