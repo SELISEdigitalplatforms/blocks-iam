@@ -43,7 +43,7 @@ namespace Authentication.DomainService.Services
                 throw new InvalidOperationException("Failed to create impersonation session in database");
             }
 
-            // Backup root refresh token to Redis
+            // Backup root refresh token to Redis (for root session restore)
             var backupSuccess = await backupService.BackupRootTokenAsync(sessionId, rootRefreshToken, rootTokenExpiresUtc);
             if (!backupSuccess)
             {

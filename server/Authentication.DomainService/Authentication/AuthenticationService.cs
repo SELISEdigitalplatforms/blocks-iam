@@ -15,6 +15,7 @@ using System.IdentityModel.Tokens.Jwt;
 using System.Net.Http.Json;
 using System.Security.Claims;
 using System.Security.Cryptography.X509Certificates;
+using Authentication.DomainService.Shared;
 
 namespace Authentication.DomainService.Authentication
 {
@@ -31,6 +32,7 @@ namespace Authentication.DomainService.Authentication
         private readonly ITokenRevocationService _tokenRevocationService;
         private readonly ITenants _tenants;
         private readonly IImpersonationBackupService _impersonationBackupService;
+        private readonly UnifiedTokenSessionService _unifiedTokenSessionService;
 
         private const string Public_Cert_Cache_Prefix = "tetocertpublic::";
 
@@ -43,7 +45,8 @@ namespace Authentication.DomainService.Authentication
             IIdpSessionService idpSessionService,
             ITokenRevocationService tokenRevocationService,
             ITenants tenants,
-            IImpersonationBackupService impersonationBackupService
+            IImpersonationBackupService impersonationBackupService,
+            UnifiedTokenSessionService unifiedTokenSessionService
         )
         {
             _logger = logger;
@@ -55,6 +58,7 @@ namespace Authentication.DomainService.Authentication
             _tokenRevocationService = tokenRevocationService;
             _tenants = tenants;
             _impersonationBackupService = impersonationBackupService;
+            _unifiedTokenSessionService = unifiedTokenSessionService;
         }
 
         public async Task<IActionResult> BuildFlowResultAsync(AuthenticationFlowResult result, HttpContext httpContext)
@@ -173,6 +177,7 @@ namespace Authentication.DomainService.Authentication
             }
 
             // Revoke refresh token family to align with rotation security and prevent sibling token reuse.
+            await _tokenRevocationService.RevokeTokenAsync(refreshToken, "refresh_token", string.Empty);
             var revokeResult = await _tokenRevocationService.RevokeTokenAsync(refreshToken, "refresh_token", string.Empty);
             if (!revokeResult.Success)
             {
@@ -217,8 +222,8 @@ namespace Authentication.DomainService.Authentication
             }
 
             var refreshTokens = (await _authenticationRepository.GetActiveIdentitySessionByUserIdAsync(bc?.UserId ?? string.Empty)).Select(x => x.RefreshToken).ToList();
-            var cacheTask = refreshTokens.Select(async x => await _cacheClient.RemoveKeyAsync(x));
-            await Task.WhenAll(cacheTask);
+            var revokeTasks = refreshTokens.Select(async x => await _unifiedTokenSessionService.RevokeRefreshToken(x));
+            await Task.WhenAll(revokeTasks);
 
             var result = await _authenticationRepository.RevokeIdentitySessionsByRefreshTokensAsync(refreshTokens);
             return result;
