@@ -319,17 +319,15 @@ namespace Authentication.DomainService.Authentication
 
         private static CookieOptions CreateCookieOptions(string? domain, DateTime expiresUtc, HttpRequest httpRequest)
         {
-            var isLocalRequest = IsLocalRequest(httpRequest);
+            var isLocalRequest = DomainResolver.IsLocalhost();
             var cookieDomain = isLocalRequest ? null : (string.IsNullOrWhiteSpace(domain) ? null : domain);
-            var isSecure = !isLocalRequest && httpRequest.IsHttps;
-            var sameSite = isSecure ? SameSiteMode.None : SameSiteMode.Lax;
 
             return new CookieOptions
             {
                 Domain = cookieDomain,
                 HttpOnly = true,
-                Secure = isSecure,
-                SameSite = sameSite,
+                Secure = !isLocalRequest,
+                SameSite = isLocalRequest ? SameSiteMode.None : SameSiteMode.Lax,
                 Path = "/",
                 Expires = expiresUtc == default ? DateTime.UtcNow : expiresUtc
             };
