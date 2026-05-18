@@ -562,7 +562,7 @@ namespace Authentication.DomainService.Authentication
             {
                 Domain = cookieDomain,
                 HttpOnly = true,
-                Secure = !isLocal,
+                Secure = true,
                 SameSite = isLocal ? SameSiteMode.None : SameSiteMode.Strict,
                 Path = "/",
                 Expires = expiresUtc == default ? DateTime.UtcNow : expiresUtc

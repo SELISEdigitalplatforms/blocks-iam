@@ -369,7 +369,7 @@ namespace Blocks.Api.Controllers
             return new CookieOptions
             {
                 HttpOnly = true,
-                Secure = !isLocal,
+                Secure = true,
                 SameSite = isLocal ? SameSiteMode.None : SameSiteMode.Strict,
                 Path = "/",
                 Expires = DateTime.UtcNow.AddDays(30)
