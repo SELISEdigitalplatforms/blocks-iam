@@ -1,3 +1,4 @@
+using Authentication.DomainService.Utilities;
 using System.IdentityModel.Tokens.Jwt;
 using System.Text.Json.Serialization;
 using System.Text.Json;
@@ -409,15 +410,11 @@ namespace Authentication.DomainService.Oidc.Services
             }
         }
 
-        private static bool IsLocalhost()
-        {
-            var hostEnv = Environment.GetEnvironmentVariable("ASPNETCORE_ENVIRONMENT") ?? "";
-            return hostEnv.Equals("Development", StringComparison.OrdinalIgnoreCase);
-        }
+
 
         private static TimeSpan GetOutboundRequestTimeout()
         {
-            return IsLocalhost() ? TimeSpan.FromMinutes(5) : TimeSpan.FromSeconds(120);
+            return DomainResolver.IsLocalhost() ? TimeSpan.FromMinutes(5) : TimeSpan.FromSeconds(120);
         }
     }
 

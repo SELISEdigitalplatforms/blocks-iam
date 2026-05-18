@@ -924,7 +924,7 @@ namespace Authentication.DomainService.Authentication
                 refreshTokenModel.TokenId,
                 effectiveTenantId,
                 isResolved ? domain : null,
-                IsLocalhost() ? null : cookieDomain,
+                DomainResolver.IsLocalhost() ? null : cookieDomain,
                 authCode.Scope,
                 accessTokenLifetimeSeconds,
                 accessExpiry,
@@ -946,10 +946,23 @@ namespace Authentication.DomainService.Authentication
                 return false; // Cannot set cookies without valid access token
             }
 
-            var isSecure = !IsLocalhost();
-            var sameSiteMode = isSecure ? SameSiteMode.Strict : SameSiteMode.None;
-            var accessOptions = new CookieOptions { Domain = string.IsNullOrWhiteSpace(cookieDomain) ? null : cookieDomain, HttpOnly = true, Secure = isSecure, SameSite = sameSiteMode, Path = "/", Expires = accessExpiry };
-            var refreshOptions = new CookieOptions { Domain = string.IsNullOrWhiteSpace(cookieDomain) ? null : cookieDomain, HttpOnly = true, Secure = isSecure, SameSite = sameSiteMode, Path = "/", Expires = refreshExpiry };
+            var isLocal = DomainResolver.IsLocalhost();
+            var accessOptions = new CookieOptions {
+                Domain = string.IsNullOrWhiteSpace(cookieDomain) ? null : cookieDomain,
+                HttpOnly = true,
+                Secure = !isLocal,
+                SameSite = isLocal ? SameSiteMode.None : SameSiteMode.Strict,
+                Path = "/",
+                Expires = accessExpiry
+            };
+            var refreshOptions = new CookieOptions {
+                Domain = string.IsNullOrWhiteSpace(cookieDomain) ? null : cookieDomain,
+                HttpOnly = true,
+                Secure = !isLocal,
+                SameSite = isLocal ? SameSiteMode.None : SameSiteMode.Strict,
+                Path = "/",
+                Expires = refreshExpiry
+            };
 
             response.Cookies.Append($"{tokenDomain}", accessToken, accessOptions);
             
@@ -1154,7 +1167,7 @@ namespace Authentication.DomainService.Authentication
             if (client.UseTokensCookie)
             {
                 var (resolvedDomain, resolvedCookieDomain, resolvedByDomain) = DomainResolver.ResolveDomain(tenant, request);
-                var adjustedCookieDomain = IsLocalhost() ? null : resolvedCookieDomain;
+                var adjustedCookieDomain = DomainResolver.IsLocalhost() ? null : resolvedCookieDomain;
                 var absoluteRefreshTokenLifetimeMinutes = Math.Max(authConfiguration?.AbsoluteRefreshTokenValidForNumberMinutes ?? AuthenticationConfiguration.DefaultRememberMeRefreshTokenValidForNumberMinutes, 1);
                 var accessExpiry = DateTime.UtcNow.AddSeconds(accessTokenLifetimeSeconds);
                 var refreshExpiry = newRefreshTokenModel.AbsoluteExpiry == default
@@ -1505,14 +1518,14 @@ namespace Authentication.DomainService.Authentication
         {
             var tenant = _tenants.GetTenantByID(tenantId);
             var (_, cookieDomain, _) = DomainResolver.ResolveDomain(tenant, null);
-            var adjustedCookieDomain = IsLocalhost() ? null : cookieDomain;
-            var isSecure = !IsLocalhost();
+            var isLocal = DomainResolver.IsLocalhost();
+            var adjustedCookieDomain = isLocal ? null : cookieDomain;
             response.Cookies.Append(IdpSessionCookieName, sessionId, new CookieOptions
             {
                 Domain = string.IsNullOrWhiteSpace(adjustedCookieDomain) ? null : adjustedCookieDomain,
                 HttpOnly = true,
-                Secure = isSecure,
-                SameSite = isSecure ? SameSiteMode.None : SameSiteMode.Lax,
+                Secure = !isLocal,
+                SameSite = isLocal ? SameSiteMode.None : SameSiteMode.Strict,
                 Path = "/",
                 Expires = absoluteExpiry == default ? DateTime.UtcNow.Add(GetIdpSessionAbsoluteTimeout()) : absoluteExpiry
             });
@@ -1589,10 +1602,7 @@ namespace Authentication.DomainService.Authentication
             }
         }
 
-        private static bool IsLocalhost()
-        {
-            return string.Equals(Environment.GetEnvironmentVariable("ASPNETCORE_ENVIRONMENT"), "Development", StringComparison.OrdinalIgnoreCase);
-        }
+
 
         private static string GetClientIpAddress(HttpRequest request)
         {
