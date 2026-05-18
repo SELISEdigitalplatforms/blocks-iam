@@ -24,9 +24,5 @@ namespace Authentication.DomainService.OAuth.RequestModel
         public string? ClientSecret { get; set; }
         public string? UserCode { get; set; }
         public string? OrganizationId { get; set; }
-        public bool IsImpersonation { get; set; }
-        public string? OriginalTenantId { get; set; }
-        public string? TargetTenantId { get; set; }
-        public string? ImpersonatorUserId { get; set; }
     }
 }

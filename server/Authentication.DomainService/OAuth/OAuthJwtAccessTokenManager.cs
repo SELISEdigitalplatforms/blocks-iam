@@ -75,21 +75,13 @@ namespace Authentication.DomainService.OAuth
                 };
             }
 
-            var issuanceContext = new TokenIssuanceContext
-            {
-                IsImpersonation = tokenRequest.IsImpersonation,
-                OriginalTenantId = tokenRequest.OriginalTenantId,
-                ActorUserId = tokenRequest.ImpersonatorUserId
-            };
             var (clientAllowedScopes, allowedServiceAccessResources) = await ResolveClientAuthorizationConfigAsync(tokenRequest.ClientId);
             var jwtAccessToken = await _jwtAccessTokenProvider.GetJwtAccessToken(
                 authenticationConfiguration,
                 tenant,
                 user,
-                tokenRequest.TargetTenantId,
                 stateInfo,
                 organizationId: tokenRequest.OrganizationId,
-                issuanceContext: issuanceContext,
                 clientAllowedScopes: clientAllowedScopes,
                 clientAllowedServiceAccessResources: allowedServiceAccessResources);
 
@@ -393,10 +385,6 @@ namespace Authentication.DomainService.OAuth
                 AbsoluteExpiresUtc = absoluteExpiresUtc,
                 IpAddresses = string.Join(",", visitorsIpAddresses),
                 UserId = oldRefreshToken.UserId ?? string.Empty,
-                AuthMode = oldRefreshToken.AuthMode,
-                OriginalTenantId = oldRefreshToken.OriginalTenantId,
-                TargetTenantId = oldRefreshToken.TargetTenantId,
-                ImpersonatorUserId = oldRefreshToken.ImpersonatorUserId,
                 RememberMe = oldRefreshToken.RememberMe,
                 TokenVersion = oldRefreshToken.TokenVersion,
                 RememberMeIssuedUtc = oldRefreshToken.RememberMeIssuedUtc,
@@ -497,10 +485,6 @@ namespace Authentication.DomainService.OAuth
                 AbsoluteExpiresUtc = absoluteRefreshTokenExpireOn,
                 IpAddresses = string.Join(",", visitorsIpAddresses),
                 UserId = user.ItemId ?? string.Empty,
-                AuthMode = tokenRequest.IsImpersonation ? "impersonation" : "root",
-                OriginalTenantId = tokenRequest.OriginalTenantId,
-                TargetTenantId = tokenRequest.TargetTenantId,
-                ImpersonatorUserId = tokenRequest.ImpersonatorUserId,
                 RememberMe = tokenRequest.RememberMe,
                 TokenVersion = user.TokenVersion,
                 RememberMeIssuedUtc = tokenRequest.RememberMe ? now : null,
