@@ -947,7 +947,7 @@ namespace Authentication.DomainService.Authentication
             }
 
             var isSecure = !IsLocalhost();
-            var sameSiteMode = isSecure ? SameSiteMode.None : SameSiteMode.Lax;
+            var sameSiteMode = isSecure ? SameSiteMode.Strict : SameSiteMode.None;
             var accessOptions = new CookieOptions { Domain = string.IsNullOrWhiteSpace(cookieDomain) ? null : cookieDomain, HttpOnly = true, Secure = isSecure, SameSite = sameSiteMode, Path = "/", Expires = accessExpiry };
             var refreshOptions = new CookieOptions { Domain = string.IsNullOrWhiteSpace(cookieDomain) ? null : cookieDomain, HttpOnly = true, Secure = isSecure, SameSite = sameSiteMode, Path = "/", Expires = refreshExpiry };
 
