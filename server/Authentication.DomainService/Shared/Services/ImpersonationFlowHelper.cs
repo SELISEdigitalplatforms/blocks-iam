@@ -16,6 +16,7 @@ namespace Authentication.DomainService.Services
         /// </summary>
         public static async Task<string> CreateAndBackupImpersonationSessionAsync(
             string userId,
+            string rootTenantId,
             string targetTenantId,
             string? organizationId,
             string rootRefreshToken,
@@ -31,6 +32,7 @@ namespace Authentication.DomainService.Services
                 Id = sessionId,
                 UserId = userId,
                 TargetTenantId = targetTenantId,
+                RootTenantId = rootTenantId,
                 OrganizationId = organizationId ?? "default",
                 StartedAt = DateTime.UtcNow,
                 LastActivity = DateTime.UtcNow,
