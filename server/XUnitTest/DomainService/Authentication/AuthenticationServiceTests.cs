@@ -1,10 +1,10 @@
 using Blocks.Genesis;
-using DomainService.Authentication;
-using DomainService.Dtos;
-using DomainService.Entities;
-using DomainService.Services;
-using DomainService.Shared.RequestModel;
-using DomainService.Utilities;
+using Authentication.DomainService.Authentication;
+using Authentication.DomainService.Dtos;
+using Authentication.DomainService.Entities;
+using Authentication.DomainService.Services;
+using Authentication.DomainService.Shared.RequestModel;
+using Authentication.DomainService.Utilities;
 using FluentAssertions;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
@@ -48,13 +48,13 @@ namespace XUnitTest.DomainService.Authentication
         {
             var token = "test-refresh-token";
 
-            _mockAuthenticationRepository.Setup(x => x.UpdateSessionStatusAsync(token, It.IsAny<string>()))
+            _mockAuthenticationRepository.Setup(x => x.RevokeIdentitySessionAsync(token, It.IsAny<string>()))
                  .ReturnsAsync(true);
 
             var result = await _service.ProcessLogout(token);
 
             _mockCacheClient.Verify(x => x.RemoveKeyAsync(token), Times.Once);
-            _mockAuthenticationRepository.Verify(x => x.UpdateSessionStatusAsync(token, It.IsAny<string>()), Times.Once);
+            _mockAuthenticationRepository.Verify(x => x.RevokeIdentitySessionAsync(token, It.IsAny<string>()), Times.Once);
 
             Assert.True(result);
         }
@@ -83,16 +83,16 @@ namespace XUnitTest.DomainService.Authentication
 
             BlocksContext.SetContext(blocksContext, true);
 
-            var sessions = new List<Session>
+            var sessions = new List<IdentitySession>
             {
-                new Session { RefreshToken = "r1" },
-                new Session { RefreshToken = "r2" }
+                new IdentitySession { RefreshToken = "r1" },
+                new IdentitySession { RefreshToken = "r2" }
             };
 
-            _mockAuthenticationRepository.Setup(x => x.GetActiveSessionByUserIdAsync(It.IsAny<string>()))
+            _mockAuthenticationRepository.Setup(x => x.GetActiveIdentitySessionByUserIdAsync(It.IsAny<string>()))
                  .ReturnsAsync(sessions);
 
-            _mockAuthenticationRepository.Setup(x => x.UpdateSessionStatusForAllRefreshTokenAsync(
+            _mockAuthenticationRepository.Setup(x => x.RevokeIdentitySessionsByRefreshTokensAsync(
                 It.IsAny<List<string>>()))
                 .ReturnsAsync(true);
 
@@ -112,13 +112,13 @@ namespace XUnitTest.DomainService.Authentication
         [Fact]
         public async Task ConstructRedirectUriAsync_ReturnsCorrectUri_AndCachesState()
         {
-            var client = new OIDCClientCredential
+            var client = new OidcClientRegistration
             {
                 RedirectUri = "https://client.com/callback",
                 Audience = "aud"
             };
 
-            _mockAuthenticationRepository.Setup(x => x.GetOIDCClientCredentialAsync("client1"))
+            _mockAuthenticationRepository.Setup(x => x.GetOidcClientRegistrationAsync("client1"))
                  .ReturnsAsync(client);
 
             var request = new AcknowledgeRequest
@@ -301,7 +301,7 @@ namespace XUnitTest.DomainService.Authentication
 
             _mockCacheClient.Setup(x => x.RemoveKeyAsync(refreshToken))
                 .ReturnsAsync(true);
-            _mockAuthenticationRepository.Setup(x => x.UpdateSessionStatusAsync(refreshToken, It.IsAny<string>()))
+            _mockAuthenticationRepository.Setup(x => x.RevokeIdentitySessionAsync(refreshToken, It.IsAny<string>()))
                 .ReturnsAsync(true);
             _mockAuthenticationDomainService.Setup(x => x.GetVisitorsIpAddresses(It.IsAny<HttpContext>()))
                 .Returns(new List<string> { "127.0.0.1" });
@@ -313,7 +313,7 @@ namespace XUnitTest.DomainService.Authentication
             result.Should().NotBeNull();
             result.IsSuccess.Should().BeTrue();
             _mockCacheClient.Verify(x => x.RemoveKeyAsync(refreshToken), Times.Once);
-            _mockAuthenticationRepository.Verify(x => x.UpdateSessionStatusAsync(refreshToken, It.IsAny<string>()), Times.Once);
+            _mockAuthenticationRepository.Verify(x => x.RevokeIdentitySessionAsync(refreshToken, It.IsAny<string>()), Times.Once);
         }
 
         private HttpRequest CreateMockHttpRequestWithHeader(string tenantId, string tokenValue)
@@ -329,10 +329,10 @@ namespace XUnitTest.DomainService.Authentication
         {
             // Arrange
             var httpRequest = CreateMockHttpRequest();
-            var refreshTokens = new List<Session>
+            var refreshTokens = new List<IdentitySession>
             {
-                new Session { RefreshToken = "token1" },
-                new Session { RefreshToken = "token2" }
+                new IdentitySession { RefreshToken = "token1" },
+                new IdentitySession { RefreshToken = "token2" }
             };
 
             var blocksContext = BlocksContext.Create(
@@ -355,11 +355,11 @@ namespace XUnitTest.DomainService.Authentication
 
             BlocksContext.SetContext(blocksContext, true);
 
-            _mockAuthenticationRepository.Setup(x => x.GetActiveSessionByUserIdAsync(It.IsAny<string>()))
+            _mockAuthenticationRepository.Setup(x => x.GetActiveIdentitySessionByUserIdAsync(It.IsAny<string>()))
                 .ReturnsAsync(refreshTokens);
             _mockCacheClient.Setup(x => x.RemoveKeyAsync(It.IsAny<string>()))
                 .ReturnsAsync(true);
-            _mockAuthenticationRepository.Setup(x => x.UpdateSessionStatusForAllRefreshTokenAsync(It.IsAny<List<string>>()))
+            _mockAuthenticationRepository.Setup(x => x.RevokeIdentitySessionsByRefreshTokensAsync(It.IsAny<List<string>>()))
                 .ReturnsAsync(true);
             _mockAuthenticationDomainService.Setup(x => x.GetVisitorsIpAddresses(It.IsAny<HttpContext>()))
                 .Returns(new List<string> { "127.0.0.1" });
@@ -381,7 +381,7 @@ namespace XUnitTest.DomainService.Authentication
 
             _mockCacheClient.Setup(x => x.RemoveKeyAsync(refreshToken))
                 .ReturnsAsync(true);
-            _mockAuthenticationRepository.Setup(x => x.UpdateSessionStatusAsync(refreshToken, It.IsAny<string>()))
+            _mockAuthenticationRepository.Setup(x => x.RevokeIdentitySessionAsync(refreshToken, It.IsAny<string>()))
                 .ReturnsAsync(true);
 
             // Act
@@ -390,18 +390,18 @@ namespace XUnitTest.DomainService.Authentication
             // Assert
             result.Should().BeTrue();
             _mockCacheClient.Verify(x => x.RemoveKeyAsync(refreshToken), Times.Once);
-            _mockAuthenticationRepository.Verify(x => x.UpdateSessionStatusAsync(refreshToken, It.IsAny<string>()), Times.Once);
+            _mockAuthenticationRepository.Verify(x => x.RevokeIdentitySessionAsync(refreshToken, It.IsAny<string>()), Times.Once);
         }
 
         [Fact]
         public async Task ProcessLogoutAll_Should_RemoveAllUserSessions()
         {
             // Arrange
-            var refreshTokens = new List<Session>
+            var refreshTokens = new List<IdentitySession>
             {
-                new Session { RefreshToken = "token1" },
-                new Session { RefreshToken = "token2" },
-                new Session { RefreshToken = "token3" }
+                new IdentitySession { RefreshToken = "token1" },
+                new IdentitySession { RefreshToken = "token2" },
+                new IdentitySession { RefreshToken = "token3" }
             };
 
             var blocksContext = BlocksContext.Create(
@@ -424,11 +424,11 @@ namespace XUnitTest.DomainService.Authentication
 
             BlocksContext.SetContext(blocksContext, true);
 
-            _mockAuthenticationRepository.Setup(x => x.GetActiveSessionByUserIdAsync(It.IsAny<string>()))
+            _mockAuthenticationRepository.Setup(x => x.GetActiveIdentitySessionByUserIdAsync(It.IsAny<string>()))
                 .ReturnsAsync(refreshTokens);
             _mockCacheClient.Setup(x => x.RemoveKeyAsync(It.IsAny<string>()))
                 .ReturnsAsync(true);
-            _mockAuthenticationRepository.Setup(x => x.UpdateSessionStatusForAllRefreshTokenAsync(It.IsAny<List<string>>()))
+            _mockAuthenticationRepository.Setup(x => x.RevokeIdentitySessionsByRefreshTokensAsync(It.IsAny<List<string>>()))
                 .ReturnsAsync(true);
 
             // Act
@@ -437,7 +437,7 @@ namespace XUnitTest.DomainService.Authentication
             // Assert
             result.Should().BeTrue();
             _mockCacheClient.Verify(x => x.RemoveKeyAsync(It.IsAny<string>()), Times.Exactly(3));
-            _mockAuthenticationRepository.Verify(x => x.UpdateSessionStatusForAllRefreshTokenAsync(
+            _mockAuthenticationRepository.Verify(x => x.RevokeIdentitySessionsByRefreshTokensAsync(
                 It.Is<List<string>>(list => list.Count == 3)), Times.Once);
         }
 
@@ -491,14 +491,14 @@ namespace XUnitTest.DomainService.Authentication
         {
             // Arrange
             var clientId = "test-client-id";
-            var expectedCredential = new OIDCClientCredential
+            var expectedCredential = new OidcClientRegistration
             {
                 ClientSecret = "secret",
                 Audience = "test-audience",
                 RedirectUri = "https://example.com/callback"
             };
 
-            _mockAuthenticationRepository.Setup(x => x.GetOIDCClientCredentialAsync(clientId))
+            _mockAuthenticationRepository.Setup(x => x.GetOidcClientRegistrationAsync(clientId))
                 .ReturnsAsync(expectedCredential);
 
             // Act
@@ -522,14 +522,14 @@ namespace XUnitTest.DomainService.Authentication
                 Nonce = "test-nonce",
                 Username = "testuser"
             };
-            var client = new OIDCClientCredential
+            var client = new OidcClientRegistration
             {
                 ClientSecret = "secret",
                 RedirectUri = "https://example.com/callback",
                 Audience = "test-audience"
             };
 
-            _mockAuthenticationRepository.Setup(x => x.GetOIDCClientCredentialAsync(clientId))
+            _mockAuthenticationRepository.Setup(x => x.GetOidcClientRegistrationAsync(clientId))
                 .ReturnsAsync(client);
             _mockCacheClient.Setup(x => x.AddStringValueAsync(
                 It.IsAny<string>(),
@@ -561,14 +561,14 @@ namespace XUnitTest.DomainService.Authentication
                 State = null,
                 Username = "testuser"
             };
-            var client = new OIDCClientCredential
+            var client = new OidcClientRegistration
             {
                 ClientSecret = "secret",
                 RedirectUri = "https://example.com/callback",
                 Audience = "test-audience"
             };
 
-            _mockAuthenticationRepository.Setup(x => x.GetOIDCClientCredentialAsync(clientId))
+            _mockAuthenticationRepository.Setup(x => x.GetOidcClientRegistrationAsync(clientId))
                 .ReturnsAsync(client);
             _mockCacheClient.Setup(x => x.AddStringValueAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<int>()))
                 .ReturnsAsync(true);

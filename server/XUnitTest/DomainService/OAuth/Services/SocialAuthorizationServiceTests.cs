@@ -1,9 +1,9 @@
 using Blocks.Genesis;
-using DomainService.Entities;
-using DomainService.OAuth;
-using DomainService.OAuth.RequestModel;
-using DomainService.OAuth.ResponseModel;
-using DomainService.Services;
+using Authentication.DomainService.Entities;
+using Authentication.DomainService.OAuth;
+using Authentication.DomainService.OAuth.RequestModel;
+using Authentication.DomainService.OAuth.ResponseModel;
+using Authentication.DomainService.Services;
 using FluentAssertions;
 using Iam.DomainService.Entities;
 using Iam.DomainService.Services;
@@ -77,7 +77,7 @@ namespace XUnitTest.DomainService.OAuth.Services
                 ItemId = "user-789",
                 Email = "test@example.com",
                 Active = true,
-                IsVarified = true
+                IsVerified = true
             };
             var expectedTokenResponse = new TokenResponse
             {

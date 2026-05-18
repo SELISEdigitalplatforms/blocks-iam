@@ -1,7 +1,6 @@
-﻿using Blocks.Genesis;
-using Microsoft.Extensions.Configuration;
+using Blocks.Genesis;
 
-namespace DomainService.Utilities
+namespace Authentication.DomainService.Utilities
 {
     public static class IdpConstants
     {
@@ -11,8 +10,11 @@ namespace DomainService.Utilities
         public const string MailQueue = "blocks_idp_mail_listener";
         public const string MfaQueueName = "blocks_idp_mfa_listener";
 
-        public const string AccessTokenCookieName = "access_token";
-        public const string RefreshTokenCookieName = "refresh_token";
+        public const string RefreshTokenCookieName = "rt";
+
+        public const string BlocksProviderName = "blocks-idp";
+        public const string BlocksProviderType = "blocks";
+        public const string OidcProtocol = "oidc";
 
         private const string DefaultProvider = "azure";
         private const string RabbitMqProvider = "rabbitmq";

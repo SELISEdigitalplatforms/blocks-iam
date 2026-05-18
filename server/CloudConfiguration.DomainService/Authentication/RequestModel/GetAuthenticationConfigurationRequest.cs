@@ -1,9 +1,7 @@
-﻿using Blocks.Genesis;
-
-namespace CloudConfiguration.DomainService.Authentication.RequestModel
+﻿namespace CloudConfiguration.DomainService.Authentication.RequestModel
 {
-    public class GetAuthenticationConfigurationRequest : IProjectKey
+    public class GetAuthenticationConfigurationRequest
     {
-        public string ProjectKey { get; set; }
+
     }
 }

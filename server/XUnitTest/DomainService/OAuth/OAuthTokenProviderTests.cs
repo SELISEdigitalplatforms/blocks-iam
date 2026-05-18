@@ -1,9 +1,9 @@
-using DomainService.Dtos;
-using DomainService.Entities;
-using DomainService.OAuth;
-using DomainService.OAuth.RequestModel;
-using DomainService.OAuth.ResponseModel;
-using DomainService.Services;
+using Authentication.DomainService.Dtos;
+using Authentication.DomainService.Entities;
+using Authentication.DomainService.OAuth;
+using Authentication.DomainService.OAuth.RequestModel;
+using Authentication.DomainService.OAuth.ResponseModel;
+using Authentication.DomainService.Services;
 using Iam.DomainService.Entities;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
@@ -391,7 +391,7 @@ namespace XUnitTest.DomainService.OAuth
         {
             ItemId = "user-123",
             Active = active,
-            IsVarified = verified,
+            IsVerified = verified,
             Memberships = new List<OrganizationMembership>
             {
                 new() { OrganizationId = "org-123" }

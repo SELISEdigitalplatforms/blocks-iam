@@ -1,21 +1,21 @@
-using BlocksTemplate.Api;
 using Blocks.Genesis;
 using Cloud.DomainService.Utilities;
-using DomainService.Utilities;
-using DomainService.Shared;
-using FluentValidation.AspNetCore;
+using Authentication.DomainService.Utilities;
+using Identifier.DomainService.Shared;
 using Microsoft.AspNetCore.Http.Features;
-using Microsoft.AspNetCore.Mvc;
-using Cloud.LmtService.Utilities;
 using CloudConfiguration.DomainService.Shared.Utilities;
 
-var serviceName = "blocks-idp-api";
-var vaultType = ResolveVaultType();
+var builder = WebApplication.CreateBuilder(args);
+ApplicationConfigurations.ConfigureApiEnv(builder, args);
+
+var serviceName = ResolveRequiredServiceName(builder.Configuration);
+var vaultType = ApplicationConfigurations.ResolveVaultType();
 Console.WriteLine($"Using Genesis vault type: {vaultType}");
 var secret = await ApplicationConfigurations.ConfigureLogAndSecretsAsync(serviceName, vaultType);
-var builder = WebApplication.CreateBuilder(args);
 
-ApplicationConfigurations.ConfigureServices(builder.Services, IdpConstants.GetMessageConfiguration(secret.MessageConnectionString));
+var messageConfiguration = IdpConstants.GetMessageConfiguration(secret.MessageConnectionString);
+messageConfiguration.ServiceName = serviceName;
+ApplicationConfigurations.ConfigureServices(builder.Services, messageConfiguration);
 
 builder.Services.Configure<FormOptions>(options =>
 {
@@ -23,15 +23,14 @@ builder.Services.Configure<FormOptions>(options =>
 });
 
 var services = builder.Services;
+var apiRoutePrefix = builder.Configuration["ApiRouting:Prefix"];
 
 services.AddHealthChecks();
 
-ApplicationConfigurations.ConfigureApi(services);
-
-builder.Services.Configure<MvcOptions>(options =>
-{
-    options.Conventions.Insert(0, new GlobalApiRoutePrefixConvention("api"));
-});
+ApplicationConfigurations.ConfigureApi(
+    services,
+    serviceName: serviceName,
+    apiRoutePrefix: apiRoutePrefix);
 
 var wwwrootPath = Path.Combine(builder.Environment.ContentRootPath, "wwwroot");
 Directory.CreateDirectory(wwwrootPath);
@@ -41,60 +40,42 @@ ApplyFrontendRuntimeSettings(builder.Configuration, wwwrootPath);
 services.RegisterAllServices();
 services.AddApplicationServices();
 services.AddCloudDomainServices();
-services.AddCloudLmtServices();
 services.AddCloudConfigurationServices();
 
 var app = builder.Build();
 
+// Configure API routes FIRST (before static files) so JSON endpoints return JSON not HTML
+var normalizedApiRoutePrefix = ApplicationConfigurations.NormalizeApiRoutePrefixValue(apiRoutePrefix);
+ApplicationConfigurations.ConfigureMiddleware(
+    app,
+    tenantValidationPrefixes: new[] { normalizedApiRoutePrefix });
+
+// THEN serve static files
 app.UseDefaultFiles();
 app.UseStaticFiles();
 
+// Finally, fallback to index.html for React SPA routing (non-API routes)
 var indexHtml = Path.Combine(app.Environment.WebRootPath ?? "", "index.html");
 if (File.Exists(indexHtml))
 {
     app.MapFallbackToFile("/index.html");
 }
 
-ApplicationConfigurations.ConfigureMiddleware(app);
-
 await app.RunAsync();
-
-static VaultType ResolveVaultType()
-{
-    var configuredVaultType = Environment.GetEnvironmentVariable("BLOCKS_VAULT_TYPE");
-    if (!string.IsNullOrWhiteSpace(configuredVaultType) &&
-        Enum.TryParse<VaultType>(configuredVaultType, true, out var parsedVaultType))
-    {
-        return parsedVaultType;
-    }
-
-    var environment = Environment.GetEnvironmentVariable("ASPNETCORE_ENVIRONMENT") ??
-                      Environment.GetEnvironmentVariable("DOTNET_ENVIRONMENT");
-
-    return string.Equals(environment, "Development", StringComparison.OrdinalIgnoreCase)
-        ? VaultType.OnPrem
-        : VaultType.Azure;
-}
 
 static void ApplyFrontendRuntimeSettings(IConfiguration configuration, string webRootPath)
 {
-    //var section = configuration.GetSection("FrontendRuntime");
-    //var replacements = new Dictionary<string, string?>
-    //{
-    //    ["__BLOCKS_API_BASE_URL__"] = section["BLOCKS_API_BASE_URL"],
-    //    ["__BLOCKS_X_BLOCKS_KEY__"] = section["BLOCKS_X_BLOCKS_KEY"],
-    //    ["__BLOCKS_GOOGLE_SITE_KEY__"] = section["BLOCKS_GOOGLE_SITE_KEY"],
-    //    ["__BLOCKS_CONSTRUCT_URL__"] = section["BLOCKS_CONSTRUCT_URL"]
-    //};
 
-    DotNetEnv.Env.Load();
+    static string? ResolveEnvOrConfig(IConfiguration config, string envKey, string configKey) =>
+        Environment.GetEnvironmentVariable(envKey) ?? config[configKey];
 
     var replacements = new Dictionary<string, string?>
     {
-        ["__BLOCKS_API_BASE_URL__"] = Environment.GetEnvironmentVariable("BLOCKS_API_BASE_URL"),
-        ["__BLOCKS_X_BLOCKS_KEY__"] = Environment.GetEnvironmentVariable("BLOCKS_X_BLOCKS_KEY"),
-        ["__BLOCKS_GOOGLE_SITE_KEY__"] = Environment.GetEnvironmentVariable("BLOCKS_GOOGLE_SITE_KEY"),
-        ["__BLOCKS_CONSTRUCT_URL__"] = Environment.GetEnvironmentVariable("BLOCKS_CONSTRUCT_URL"),
+        ["__BLOCKS_API_BASE_URL__"] = ResolveEnvOrConfig(configuration, "BLOCKS_API_BASE_URL", "FrontendRuntime:BLOCKS_API_BASE_URL"),
+        ["__BLOCKS_X_BLOCKS_KEY__"] = ResolveEnvOrConfig(configuration, "BLOCKS_X_BLOCKS_KEY", "FrontendRuntime:BLOCKS_X_BLOCKS_KEY"),
+        ["__BLOCKS_GOOGLE_SITE_KEY__"] = ResolveEnvOrConfig(configuration, "BLOCKS_GOOGLE_SITE_KEY", "FrontendRuntime:BLOCKS_GOOGLE_SITE_KEY"),
+        ["__BLOCKS_CONSTRUCT_URL__"] = ResolveEnvOrConfig(configuration, "BLOCKS_CONSTRUCT_URL", "FrontendRuntime:BLOCKS_CONSTRUCT_URL"),
+        ["__BLOCKS_OIDC_CLIENT_ID__"] = ResolveEnvOrConfig(configuration, "BLOCKS_OIDC_CLIENT_ID", "FrontendRuntime:BLOCKS_OIDC_CLIENT_ID"),
     };
 
     var files = Directory.EnumerateFiles(webRootPath, "*", SearchOption.AllDirectories)
@@ -125,4 +106,15 @@ static void ApplyFrontendRuntimeSettings(IConfiguration configuration, string we
             File.WriteAllText(filePath, updated);
         }
     }
+}
+
+static string ResolveRequiredServiceName(IConfiguration configuration)
+{
+    var serviceName = Environment.GetEnvironmentVariable("ServiceName") ?? configuration["ServiceName"];
+    if (string.IsNullOrWhiteSpace(serviceName))
+    {
+        throw new InvalidOperationException("Missing required ServiceName configuration.");
+    }
+
+    return serviceName;
 }

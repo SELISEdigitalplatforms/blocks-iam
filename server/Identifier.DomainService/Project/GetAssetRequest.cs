@@ -1,7 +1,6 @@
-﻿using Blocks.Genesis;
-using DomainService.Shared.Entities;
+using Blocks.Genesis;
 
-namespace DomainService.Projects
+namespace Identifier.DomainService.Projects
 {
     public class GetAssetRequest : BaseGetsRequest<GetAssetFilter>
     {
@@ -16,8 +15,8 @@ namespace DomainService.Projects
 
     public class GetAssetResponse : BaseResponse
     {
-        public TenantAsset Assets { get; set; }
         public long TotalCount { get; set; }
+        public bool IsSuccess { get; set; }
     }
 }
 

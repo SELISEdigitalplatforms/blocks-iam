@@ -1,0 +1,420 @@
+<?xml version="1.0"?>
+<doc>
+    <assembly>
+        <name>Api</name>
+    </assembly>
+    <members>
+        <member name="T:Api.Controllers.AuthenticationController">
+            <summary>
+            Authentication and Authorization Controller
+            
+            Manages all authentication flows:
+            - Password-based authentication (embedded credentials)
+            - Social provider authentication (OAuth 2.0)
+            - OIDC federated identity (OpenID Connect 1.0)
+            
+            All endpoints follow RESTful conventions with professional naming and comprehensive documentation.
+            </summary>
+        </member>
+        <member name="M:Api.Controllers.AuthenticationController.ExecuteSignup(Iam.DomainService.Accounts.SignupUserRequest)">
+            <summary>
+            Execute user registration (Sign Up)
+            Creates new user account with provided credentials
+            Issues access and refresh tokens on success
+            </summary>
+        </member>
+        <member name="M:Api.Controllers.AuthenticationController.RetrieveLoginOptions">
+            <summary>
+            Retrieve available login options (identity providers and their metadata)
+            No authentication required - public discovery endpoint
+            </summary>
+        </member>
+        <member name="M:Api.Controllers.AuthenticationController.ExecutePasswordLogin(Authentication.DomainService.OAuth.RequestModel.EmbeddedLoginRequest)">
+            <summary>
+            Execute password-based authentication (Embedded Login)
+            Validates username and password against stored user account
+            Issues access and refresh tokens on success
+            </summary>
+        </member>
+        <member name="M:Api.Controllers.AuthenticationController.InitiateAccountRecovery(Iam.DomainService.Accounts.RecoveryUserRequest)">
+            <summary>
+            Initiate account recovery (password reset flow)
+            Sends recovery link to registered email address
+            </summary>
+        </member>
+        <member name="M:Api.Controllers.AuthenticationController.ExecutePasswordReset(Iam.DomainService.Accounts.ResetPasswordRequest)">
+            <summary>
+            Execute password reset with recovery token
+            Validates token before allowing password change
+            </summary>
+        </member>
+        <member name="M:Api.Controllers.AuthenticationController.UpdatePassword(Iam.DomainService.Accounts.ChangePasswordRequest)">
+            <summary>
+            Update password for authenticated user
+            Requires current password for security validation
+            </summary>
+        </member>
+        <member name="M:Api.Controllers.AuthenticationController.Activate(Iam.DomainService.Accounts.ActivateUserRequest)">
+            <summary>
+            Activate user account
+            Validates activation code and marks account as active
+            User can log in after successful activation
+            </summary>
+            <param name="command">Activation request with user email and verification code</param>
+            <returns>Activation result with user details</returns>
+            <response code="200">Account activated successfully</response>
+            <response code="400">Invalid or expired activation code</response>
+        </member>
+        <member name="M:Api.Controllers.AuthenticationController.ResendActivation(Iam.DomainService.Accounts.ResendActivationRequest)">
+            <summary>
+            Resend account activation email
+            Generates new activation code and sends to user's email
+            Use if user did not receive initial activation email
+            </summary>
+            <param name="command">Request with user email to resend activation</param>
+            <returns>Activation code send result</returns>
+            <response code="200">Activation email resent successfully</response>
+            <response code="400">User not found or already activated</response>
+        </member>
+        <member name="M:Api.Controllers.AuthenticationController.ValidateActivationCode(Iam.DomainService.Accounts.ValidateActivationCodeRequest)">
+            <summary>
+            Validate account activation code
+            Checks if activation code is valid without activating account
+            Use to verify code before user interaction
+            </summary>
+            <param name="command">Request with email and activation code</param>
+            <returns>Validation result indicating code validity</returns>
+            <response code="200">Activation code is valid</response>
+            <response code="400">Invalid or expired activation code</response>
+        </member>
+        <member name="M:Api.Controllers.AuthenticationController.InitiateSocialAuthentication(System.String,System.String)">
+            <summary>
+            Initiate social provider authentication (OAuth 2.0 Authorization Code Flow)
+            Generates PKCE code challenge and state parameter
+            Returns authorization URL to redirect user to social provider
+            RFC 6749: OAuth 2.0 Framework | RFC 7636: PKCE
+            </summary>
+        </member>
+        <!-- Badly formed XML comment ignored for member "M:Api.Controllers.AuthenticationController.HandleSocialCallback(System.String,System.String,System.String,Authentication.DomainService.OAuth.RequestModel.SocialLoginRequest)" -->
+        <member name="M:Api.Controllers.AuthenticationController.HandleOidcCallbackGet(System.String,System.String,System.String,Authentication.DomainService.OAuth.RequestModel.OidcCallbackRequest)">
+            <summary>
+            OIDC callback handler (Browser Redirect Pattern - GET)
+            Receives authorization code from provider via browser redirect
+            Exchanges code for tokens, validates JWT signature and claims
+            RFC 6749: OAuth 2.0 | RFC 3986: OpenID Connect | RFC 7519: JWT | RFC 5280: X.509
+            </summary>
+        </member>
+        <member name="M:Api.Controllers.AuthenticationController.RefreshAccessToken(Authentication.DomainService.OAuth.RequestModel.RefreshRequest)">
+            <summary>
+            Refresh access token using refresh token
+            Validates refresh token and issues new tokens
+            Maintains session continuity without re-authentication
+            RFC 6749: OAuth 2.0 Refresh Token Grant
+            </summary>
+        </member>
+        <member name="M:Api.Controllers.AuthenticationController.ExecuteLogout(Authentication.DomainService.Authentication.LogoutRequest)">
+            <summary>
+            Execute user logout
+            Revokes refresh token, invalidates session, clears cookies
+            </summary>
+        </member>
+        <member name="M:Api.Controllers.AuthenticationController.SwitchOrganizationContext(Authentication.DomainService.OAuth.RequestModel.SwitchOrganizationRequest)">
+            <summary>
+            Switch organization context (Multi-tenant Organization Switching)
+            Authenticated user switches to different organization
+            Reissues tokens with new organization context
+            </summary>
+        </member>
+        <member name="M:Api.Controllers.AuthenticationController.InitiateImpersonation(Authentication.DomainService.OAuth.RequestModel.ImpersonationRequest)">
+            <summary>
+            Initiate user impersonation (Administrator Feature)
+            Allows admins to impersonate users for support/debugging
+            All actions audited and linked back to admin
+            Requires admin role - cannot impersonate other admins
+            </summary>
+        </member>
+        <member name="M:Api.Controllers.AuthenticationController.StopImpersonation">
+            <summary>
+            Stop user impersonation (Revert to Original Admin)
+            Admin stops impersonating user and reverts to original context
+            </summary>
+        </member>
+        <member name="M:Api.Controllers.AuthenticationController.ExecuteGlobalLogout(Authentication.DomainService.Authentication.LogoutAllRequest)">
+            <summary>
+            Execute global logout across all sessions (Logout All Devices)
+            Revokes all refresh tokens for user across all devices
+            User must re-authenticate on all devices
+            Optionally triggers backchannel logout notifications
+            </summary>
+        </member>
+        <member name="M:Api.Controllers.AuthenticationController.RetrieveUserInformation">
+            <summary>
+            Retrieve authenticated user information (OIDC UserInfo Endpoint)
+            Returns user claims per OpenID Connect 1.0 specification
+            Includes standard OIDC claims (sub, email, name, picture) and custom Blocks claims
+            RFC 3986: OpenID Connect UserInfo Endpoint
+            </summary>
+        </member>
+        <member name="M:Api.Controllers.AuthenticationController.CreateIdentityProvider(Authentication.DomainService.Entities.IdentityProvider)">
+            <summary>
+            Create identity provider configuration
+            Registers new OAuth 2.0 / OIDC provider for tenant
+            Validates configuration and tests JWKS endpoint
+            Requires authorization (admin role)
+            </summary>
+        </member>
+        <member name="M:Api.Controllers.AuthenticationController.GetIdentityProviderById(System.String)">
+            <summary>
+            Get identity provider by ID
+            Retrieves specific provider configuration
+            Does NOT return sensitive credentials (client_secret)
+            </summary>
+        </member>
+        <member name="M:Api.Controllers.AuthenticationController.UpdateIdentityProvider(System.String,Authentication.DomainService.Entities.IdentityProvider)">
+            <summary>
+            Update identity provider configuration
+            Modifies existing provider settings
+            Validates configuration and tests endpoints if changed
+            </summary>
+        </member>
+        <member name="M:Api.Controllers.AuthenticationController.UpdateIdentityProviderStatus(System.String,Authentication.DomainService.Shared.RequestModel.UpdateStatusRequest)">
+            <summary>
+            Enable or disable identity provider
+            Toggles provider activation status without deleting configuration
+            Preferred over deletion for temporary disabling
+            </summary>
+        </member>
+        <member name="T:Api.Controllers.IdpController">
+            <summary>
+            IDP Controller
+            Handles identity provider authentication flow and token exchange operations
+            </summary>
+        </member>
+        <member name="M:Api.Controllers.IdpController.#ctor(Authentication.DomainService.Authentication.IIdpService)">
+            <summary>
+            Initialize IDP controller with IDP service
+            </summary>
+        </member>
+        <member name="M:Api.Controllers.IdpController.InitiateAuthenticationFlow(System.String,System.String)">
+            <summary>
+            Initiate identity provider authentication flow for a specific client
+            Delegates to IDP service for OIDC param generation and URL building
+            </summary>
+        </member>
+        <member name="M:Api.Controllers.IdpController.Callback(System.String,System.String,System.String,System.String)">
+            <summary>
+            Handle authorization code callback from IdP
+            Receives authorization code and state, exchanges for tokens, creates session
+            RFC 6749: OAuth 2.0 Authorization Code Flow | RFC 7636: PKCE
+            </summary>
+        </member>
+        <member name="T:Api.Controllers.OidcClientsController">
+            <summary>
+            OIDC Client Management Controller
+            Manages OIDC client registration, configuration, and lifecycle
+            Requires authentication and admin privileges
+            </summary>
+        </member>
+        <member name="M:Api.Controllers.OidcClientsController.GetAll">
+            <summary>
+            Retrieve all OIDC clients for the tenant
+            Returns list of registered OAuth 2.0 / OIDC client applications
+            Sensitive fields (client_secret) are excluded from response
+            </summary>
+            <returns>List of OIDC clients with configuration metadata</returns>
+            <response code="200">Successfully retrieved clients list</response>
+            <response code="400">Invalid request parameters</response>
+            <response code="401">Authentication required</response>
+        </member>
+        <member name="M:Api.Controllers.OidcClientsController.GetByClientId(System.String)">
+            <summary>
+            Retrieve specific OIDC client by client ID
+            Returns detailed configuration for single client application
+            Sensitive fields (client_secret) are excluded from response
+            </summary>
+            <param name="clientId">Unique identifier of OIDC client</param>
+            <returns>OIDC client configuration with metadata</returns>
+            <response code="200">Successfully retrieved client details</response>
+            <response code="400">client_id is required</response>
+            <response code="401">Authentication required</response>
+            <response code="404">Client not found</response>
+        </member>
+        <member name="M:Api.Controllers.OidcClientsController.Upsert(Authentication.DomainService.RequestModel.SaveOIDCClientRequest)">
+            <summary>
+            Create or update OIDC client configuration (Upsert)
+            Registers new OIDC client or updates existing configuration
+            Validates client metadata and OAuth/OIDC compliance
+            Returns generated or existing client_secret
+            </summary>
+            <param name="request">OIDC client configuration request</param>
+            <returns>Saved OIDC client with credentials</returns>
+            <response code="200">Successfully created/updated client</response>
+            <response code="400">Invalid request payload or validation failure</response>
+            <response code="401">Authentication required</response>
+        </member>
+        <member name="M:Api.Controllers.OidcClientsController.Delete(System.String)">
+            <summary>
+            Delete OIDC client configuration
+            Removes client application and revokes all issued tokens
+            Note: Deletion is irreversible
+            </summary>
+            <param name="clientId">Unique identifier of OIDC client to delete</param>
+            <returns>Deletion confirmation result</returns>
+            <response code="200">Successfully deleted client</response>
+            <response code="400">client_id is required or validation failure</response>
+            <response code="401">Authentication required</response>
+            <response code="404">Client not found</response>
+        </member>
+        <member name="T:Api.Controllers.ProjectController">
+            <summary>
+            Project Management Controller
+            Manages project creation, configuration, and discovery
+            Provides project metadata and organizational structure
+            </summary>
+        </member>
+        <member name="M:Api.Controllers.ProjectController.GetAll(Identifier.DomainService.Projects.GetProjectsRequest)">
+            <summary>
+            Retrieve all projects grouped by hierarchy
+            Returns projects with nested organization structure
+            User must have project access permissions
+            </summary>
+            <param name="request">Query filters and pagination options</param>
+            <returns>Grouped projects by organization</returns>
+            <response code="200">Successfully retrieved projects</response>
+            <response code="400">Invalid query parameters</response>
+            <response code="401">Authentication required</response>
+        </member>
+        <member name="M:Api.Controllers.ProjectController.Get(System.String)">
+            <summary>
+            Retrieve detailed project information
+            Returns complete project configuration and metadata
+            User must have project access permissions
+            </summary>
+            <param name="projectId">Unique identifier of project to retrieve</param>
+            <returns>Detailed project information with configuration</returns>
+            <response code="200">Successfully retrieved project details</response>
+            <response code="400">projectId parameter is required</response>
+            <response code="401">Authentication required</response>
+            <response code="404">Project not found</response>
+        </member>
+        <member name="M:Blocks.Api.Controllers.AuthorizationController.OidcLogin(Authentication.DomainService.Authentication.OidcLoginRequest)">
+            <summary>
+            OIDC Login Endpoint — authenticates credentials, sets IDP session, then issues authorization code.
+            Use this for headless / API-based OIDC flows where the browser UI is not available.
+            </summary>
+        </member>
+        <member name="M:Blocks.Api.Controllers.AuthorizationController.OidcLoginSelectAccount(Blocks.Api.Controllers.AuthorizationController.OidcLoginSelectAccountRequest)">
+            <summary>
+            OIDC Login Select Account — continues OIDC login after user selects account from multiple options
+            </summary>
+        </member>
+        <member name="M:Blocks.Api.Controllers.AuthorizationController.Authorize(System.String,System.String,System.String,System.String,System.String,System.String,System.String,System.String,System.String,System.String)">
+            <summary>
+            OAuth 2.0 Authorization Endpoint (RFC 6749 Section 3.1)
+            Initiates authorization code flow with PKCE
+            </summary>
+        </member>
+        <member name="M:Blocks.Api.Controllers.AuthorizationController.Token(System.String)">
+            <summary>
+            OAuth 2.0 Token Endpoint (RFC 6749 Section 3.2)
+            Supports both authorization_code and refresh_token grants
+            </summary>
+        </member>
+        <member name="T:Blocks.Api.Controllers.DiscoveryController">
+            <summary>
+            OpenID Connect Discovery Endpoints
+            RFC 8414: OAuth 2.0 Authorization Server Metadata
+            OIDC Core 1.0: OpenID Connect Discovery 1.0
+            
+            These endpoints provide machine-readable metadata for client discovery
+            and automatic configuration.
+            </summary>
+        </member>
+        <!-- Badly formed XML comment ignored for member "M:Blocks.Api.Controllers.DiscoveryController.OpenIdConfiguration" -->
+        <member name="M:Blocks.Api.Controllers.DiscoveryController.OAuthAuthorizationServer">
+            <summary>
+            OAuth Authorization Server Metadata Endpoint
+            RFC 8414 Section 3.2
+            
+            Provides metadata for OAuth Authorization Servers
+            Compatible with both OAuth and OIDC servers
+            
+            Standard response caching: 1 hour
+            </summary>
+        </member>
+        <!-- Badly formed XML comment ignored for member "M:Blocks.Api.Controllers.DiscoveryController.JwksJson" -->
+        <!-- Badly formed XML comment ignored for member "T:Blocks.Api.Controllers.IdpSessionController" -->
+        <member name="M:Blocks.Api.Controllers.IdpSessionController.GetSession">
+            <summary>
+            Get current session details
+            GET /oidc/session
+            </summary>
+        </member>
+        <member name="M:Blocks.Api.Controllers.IdpSessionController.GetAccounts">
+            <summary>
+            Get all accounts in current session
+            GET /oidc/session/accounts
+            Supports multi-account SSO - user can see all accounts logged in this session
+            </summary>
+        </member>
+        <member name="M:Blocks.Api.Controllers.IdpSessionController.AddAccount(Blocks.Api.Controllers.AddAccountRequest)">
+            <summary>
+            Add another account to current session
+            POST /api/oidc/session/add-account
+            Allows user to authenticate with another account and add to same session
+            OIDC multi-account SSO support
+            </summary>
+        </member>
+        <member name="M:Blocks.Api.Controllers.IdpSessionController.SelectAccount(Blocks.Api.Controllers.SelectAccountRequest)">
+            <summary>
+            Select which account to use in this session
+            POST /api/oidc/session/select-account
+            For multi-account SSO, switches context to different account
+            CSRF protection required
+            </summary>
+        </member>
+        <member name="M:Blocks.Api.Controllers.IdpSessionController.RemoveAccount(System.String)">
+            <summary>
+            Remove account from session
+            DELETE /api/oidc/session/accounts/{userId}
+            Removes account from multi-account session
+            </summary>
+        </member>
+        <member name="M:Blocks.Api.Controllers.IdpSessionController.RevokeSession(Blocks.Api.Controllers.RevokeSessionRequest)">
+            <summary>
+            Revoke current session (logout)
+            POST /api/oidc/session/revoke
+            Logs out all accounts in this session
+            CSRF protection required
+            </summary>
+        </member>
+        <member name="T:Blocks.Api.Controllers.TokenManagementController">
+            <summary>
+            Token Revocation and Introspection Controller
+            Implements RFC 7009 (Token Revocation) and RFC 7662 (Token Introspection)
+            </summary>
+        </member>
+        <member name="M:Blocks.Api.Controllers.TokenManagementController.RevokeToken(System.String,System.String,System.String,System.String)">
+            <summary>
+            RFC 7009: Token Revocation Endpoint
+            Allows clients and resource owners to revoke access and refresh tokens
+            </summary>
+        </member>
+        <member name="M:Blocks.Api.Controllers.TokenManagementController.IntrospectToken(System.String,System.String,System.String,System.String)">
+            <summary>
+            RFC 7662: Token Introspection Endpoint
+            Allows authorized clients to introspect tokens and get claims/metadata
+            </summary>
+        </member>
+        <member name="M:Blocks.Api.Controllers.TokenManagementController.GetRevocationHistory">
+            <summary>
+            Get revocation history for audit trail
+            </summary>
+        </member>
+        <member name="T:Program">
+            <summary>
+            Auto-generated public partial Program class for top-level statement apps.
+            </summary>
+        </member>
+    </members>
+</doc>

@@ -1,10 +1,10 @@
-﻿using Blocks.Genesis;
-using DomainService.Dtos;
-using DomainService.Services;
-using DomainService.Utilities;
+using Blocks.Genesis;
+using Authentication.DomainService.Dtos;
+using Authentication.DomainService.Services;
+using Authentication.DomainService.Utilities;
 using Iam.DomainService.Dtos;
 
-namespace DomainService.Worker
+namespace Authentication.DomainService.Worker
 {
     public class LogoutAllWorkerService : IConsumer<LogoutAllEvent>
     {
@@ -23,7 +23,7 @@ namespace DomainService.Worker
         }
         public async Task Consume(LogoutAllEvent context)
         {
-            var refreshTokens = (await _authenticationRepository.GetActiveSessionByUserIdAsync(context.UserId)).Select(x => x.RefreshToken).ToList();
+            var refreshTokens = (await _authenticationRepository.GetActiveIdentitySessionByUserIdAsync(context.UserId)).Select(x => x.RefreshToken).ToList();
             var cacheTask = refreshTokens.Select(async x => await _cacheClient.RemoveKeyAsync(x));
             await Task.WhenAll(cacheTask);
 

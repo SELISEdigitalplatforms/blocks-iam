@@ -16,6 +16,8 @@ import { StorageFile } from "./storage-file.service";
 import { TEST_PROJECT_KEY } from "@/test-utils/__mocks__/data.mock";
 import { STORAGE_FILE_ENDPOINTS } from "../constants/endpoint.constant";
 
+const LOGIC_BASE = "https://dev-logic.blocksdevelopers.com";
+
 vi.mock("@/lib/http-client", () => mockHttpClientFactory());
 
 describe("StorageFile", () => {
@@ -39,7 +41,9 @@ describe("StorageFile", () => {
       const result = await service.getFileByFileId(mockGetFilePayload);
 
       expect(http.get).toHaveBeenCalledWith(
-        `${STORAGE_FILE_ENDPOINTS.GET_FILE}?FileId=${mockGetFilePayload.itemId}&ProjectKey=${mockGetFilePayload.projectKey}&ConfigurationName=${mockGetFilePayload.configurationName}`,
+        `${LOGIC_BASE}${STORAGE_FILE_ENDPOINTS.GET_FILE}?FileId=${mockGetFilePayload.itemId}&ProjectKey=${mockGetFilePayload.projectKey}&ConfigurationName=${mockGetFilePayload.configurationName}`,
+        undefined,
+        { absoluteUrl: true },
       );
       expect(result).toEqual(mockGetFileByIdResponse);
     });
@@ -50,7 +54,9 @@ describe("StorageFile", () => {
       await service.getFileByFileId({ itemId: "file-1", projectKey: TEST_PROJECT_KEY });
 
       expect(http.get).toHaveBeenCalledWith(
-        `${STORAGE_FILE_ENDPOINTS.GET_FILE}?FileId=file-1&ProjectKey=${TEST_PROJECT_KEY}&ConfigurationName=`,
+        `${LOGIC_BASE}${STORAGE_FILE_ENDPOINTS.GET_FILE}?FileId=file-1&ProjectKey=${TEST_PROJECT_KEY}&ConfigurationName=`,
+        undefined,
+        { absoluteUrl: true },
       );
     });
 
@@ -70,8 +76,10 @@ describe("StorageFile", () => {
       const result = await service.deleteFileByFileId(mockDeleteFilePayload);
 
       expect(http.post).toHaveBeenCalledWith(
-        STORAGE_FILE_ENDPOINTS.DELETE_FILE,
+        `${LOGIC_BASE}${STORAGE_FILE_ENDPOINTS.DELETE_FILE}`,
         mockDeleteFilePayload,
+        undefined,
+        { absoluteUrl: true },
       );
       expect(result).toEqual(mockDeleteSuccessResponse);
     });
@@ -94,8 +102,10 @@ describe("StorageFile", () => {
       const result = await service.getPreSignedUrlForUpload(mockPreSignedUrlPayload);
 
       expect(http.post).toHaveBeenCalledWith(
-        STORAGE_FILE_ENDPOINTS.GET_PRESIGNED_URL,
+        `${LOGIC_BASE}${STORAGE_FILE_ENDPOINTS.GET_PRESIGNED_URL}`,
         mockPreSignedUrlPayload,
+        undefined,
+        { absoluteUrl: true },
       );
       expect(result).toEqual(mockPreSignedUrlResponse);
     });
@@ -127,8 +137,10 @@ describe("StorageFile", () => {
       const result = await service.getFilesInfoUrlForUpload(mockGetFilesInfoPayload);
 
       expect(http.post).toHaveBeenCalledWith(
-        STORAGE_FILE_ENDPOINTS.GET_FILES_INFO,
+        `${LOGIC_BASE}${STORAGE_FILE_ENDPOINTS.GET_FILES_INFO}`,
         mockGetFilesInfoPayload,
+        undefined,
+        { absoluteUrl: true },
       );
       expect(result).toEqual(mockGetFilesInfoResponse);
     });
@@ -156,8 +168,10 @@ describe("StorageFile", () => {
       const result = await service.updateFileAdditionalInfo(payload);
 
       expect(http.post).toHaveBeenCalledWith(
-        STORAGE_FILE_ENDPOINTS.UPDATE_FILE_ADDITIONAL_INFO,
+        `${LOGIC_BASE}${STORAGE_FILE_ENDPOINTS.UPDATE_FILE_ADDITIONAL_INFO}`,
         payload,
+        undefined,
+        { absoluteUrl: true },
       );
       expect(result).toEqual(mockSuccessResponse);
     });
@@ -185,7 +199,9 @@ describe("StorageFile", () => {
       const result = await service.getFilesDownloadUrl(meta);
 
       expect(http.get).toHaveBeenCalledWith(
-        `${STORAGE_FILE_ENDPOINTS.GET_FILE}?FileId=${meta.fileId}&ProjectKey=${meta.projectKey}`,
+        `${LOGIC_BASE}${STORAGE_FILE_ENDPOINTS.GET_FILE}?FileId=${meta.fileId}&ProjectKey=${meta.projectKey}`,
+        undefined,
+        { absoluteUrl: true },
       );
       expect(result).toEqual(mockGetFileByIdResponse);
     });

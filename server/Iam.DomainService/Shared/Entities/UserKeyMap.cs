@@ -1,7 +1,12 @@
-﻿namespace Iam.DomainService.Entities
+﻿using MongoDB.Bson.Serialization.Attributes;
+
+namespace Iam.DomainService.Entities
 {
+    [BsonIgnoreExtraElements]
     public class UserKeyMap
     {
+        [BsonId]
+        public string ItemId { get; set; }
         public string Key { get; set; }
         public DateTime IssueDate { get; set; }
         public DateTime ExpireDate { get; set; }

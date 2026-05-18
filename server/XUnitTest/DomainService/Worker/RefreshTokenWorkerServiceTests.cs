@@ -1,6 +1,6 @@
-using DomainService.Entities;
-using DomainService.Services;
-using DomainService.Worker;
+using Authentication.DomainService.Entities;
+using Authentication.DomainService.Services;
+using Authentication.DomainService.Worker;
 using FluentAssertions;
 using Iam.DomainService.Dtos;
 using Iam.DomainService.Entities;
@@ -39,8 +39,8 @@ namespace XUnitTest.DomainService.Worker
             await _service.Consume(refreshTokenEvent);
 
             // Assert
-            _authenticationRepository.Verify(x => x.InsertSessionAsync(It.IsAny<Session>()), Times.Once);
-            _authenticationRepository.Verify(x => x.InsertUserAuthenticationTimelineAsync(It.IsAny<UserAuthenticationTimeline>()), Times.Once);
+            _authenticationRepository.Verify(x => x.InsertIdentitySessionAsync(It.IsAny<IdentitySession>()), Times.Once);
+            _authenticationRepository.Verify(x => x.InsertIdentityEventAsync(It.IsAny<IdentityEvent>()), Times.Once);
             _userRepository.Verify(x => x.UpdateUserAsync(It.IsAny<User>()), Times.Once);
         }
         */
@@ -120,7 +120,7 @@ namespace XUnitTest.DomainService.Worker
             // Arrange
             var refreshTokenEvent = CreateRefreshTokenEvent();
 
-            _authenticationRepository.Setup(x => x.InsertSessionAsync(It.IsAny<Session>())).ReturnsAsync(true);
+            _authenticationRepository.Setup(x => x.InsertIdentitySessionAsync(It.IsAny<IdentitySession>())).ReturnsAsync(true);
 
             // Act
             var result = await _service.ProcessSession(refreshTokenEvent);
@@ -128,8 +128,8 @@ namespace XUnitTest.DomainService.Worker
             // Assert
             result.Should().BeTrue();
             _authenticationRepository.Verify(
-                x => x.InsertSessionAsync(
-                    It.Is<Session>(s =>
+                x => x.InsertIdentitySessionAsync(
+                    It.Is<IdentitySession>(s =>
                         s.RefreshToken == refreshTokenEvent.RefreshToken &&
                         s.TenantId == refreshTokenEvent.TenantId &&
                         s.UserId == refreshTokenEvent.UserId &&
@@ -145,7 +145,7 @@ namespace XUnitTest.DomainService.Worker
             // Arrange
             var refreshTokenEvent = CreateRefreshTokenEvent();
 
-            _authenticationRepository.Setup(x => x.InsertUserAuthenticationTimelineAsync(It.IsAny<UserAuthenticationTimeline>())).ReturnsAsync(true);
+            _authenticationRepository.Setup(x => x.InsertIdentityEventAsync(It.IsAny<IdentityEvent>())).ReturnsAsync(true);
 
             // Act
             var result = await _service.ProcessUserTimelineEvent(refreshTokenEvent);
@@ -153,14 +153,11 @@ namespace XUnitTest.DomainService.Worker
             // Assert
             result.Should().BeTrue();
             _authenticationRepository.Verify(
-                x => x.InsertUserAuthenticationTimelineAsync(
-                    It.Is<UserAuthenticationTimeline>(t =>
-                        !string.IsNullOrEmpty(t.ItemId) &&
-                        t.CreatedBy == refreshTokenEvent.UserId &&
-                        t.LastUpdatedBy == refreshTokenEvent.UserId &&
+                x => x.InsertIdentityEventAsync(
+                    It.Is<IdentityEvent>(t =>
+                        t.UserId == refreshTokenEvent.UserId &&
                         t.DeviceInformation == refreshTokenEvent.DeviceInformation &&
                         t.IpAddresses == refreshTokenEvent.IpAddresses &&
-                        t.Event == "issued_refresh_token" &&
                         t.ActionBy == "RefreshTokenWorkerService")),
                 Times.Once);
         }
@@ -172,7 +169,7 @@ namespace XUnitTest.DomainService.Worker
             var refreshTokenEvent = CreateRefreshTokenEvent();
             refreshTokenEvent.IpAddresses = null;
 
-            _authenticationRepository.Setup(x => x.InsertUserAuthenticationTimelineAsync(It.IsAny<UserAuthenticationTimeline>())).ReturnsAsync(true);
+            _authenticationRepository.Setup(x => x.InsertIdentityEventAsync(It.IsAny<IdentityEvent>())).ReturnsAsync(true);
 
             // Act
             var result = await _service.ProcessUserTimelineEvent(refreshTokenEvent);
@@ -180,8 +177,8 @@ namespace XUnitTest.DomainService.Worker
             // Assert
             result.Should().BeTrue();
             _authenticationRepository.Verify(
-                x => x.InsertUserAuthenticationTimelineAsync(
-                    It.Is<UserAuthenticationTimeline>(t => t.IpAddresses == string.Empty)),
+                x => x.InsertIdentityEventAsync(
+                    It.Is<IdentityEvent>(t => t.IpAddresses == string.Empty)),
                 Times.Once);
         }
 
@@ -216,8 +213,8 @@ namespace XUnitTest.DomainService.Worker
         {
             _userRepository.Setup(x => x.GetUserByIdAsync(It.IsAny<string>())).ReturnsAsync(user);
             _userRepository.Setup(x => x.UpdateUserAsync(It.IsAny<User>())).ReturnsAsync(true);
-            _authenticationRepository.Setup(x => x.InsertSessionAsync(It.IsAny<Session>())).ReturnsAsync(true);
-            _authenticationRepository.Setup(x => x.InsertUserAuthenticationTimelineAsync(It.IsAny<UserAuthenticationTimeline>())).ReturnsAsync(true);
+            _authenticationRepository.Setup(x => x.InsertIdentitySessionAsync(It.IsAny<IdentitySession>())).ReturnsAsync(true);
+            _authenticationRepository.Setup(x => x.InsertIdentityEventAsync(It.IsAny<IdentityEvent>())).ReturnsAsync(true);
         }
     }
 }

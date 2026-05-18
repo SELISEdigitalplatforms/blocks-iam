@@ -1,8 +1,6 @@
-﻿using Blocks.Genesis;
-
-namespace CloudConfiguration.DomainService.IAM.RequestModel
+﻿namespace CloudConfiguration.DomainService.IAM.RequestModel
 {
-    public class SaveIamConfigurationRequest : IProjectKey
+    public class SaveIamConfigurationRequest
     {
         public string AccountActivationUrl { get; set; }
         public string AccountVerificationUrl { get; set; }
@@ -11,6 +9,5 @@ namespace CloudConfiguration.DomainService.IAM.RequestModel
         public int RecoverAccountUrlLifetimeInMinutes { get; set; } = 10; // Default 10 mins
         public bool LogoutOnPasswordChange { get; set; } = true;
         public string PasswordStrengthCheckerRegex { get; set; } = "^(?=.*[a-z])(?=.*[A-Z])(?=.*\\d)(?=.*[\\W_])[A-Za-z\\d\\W_]{8,30}$";
-        public string? ProjectKey { get; set; }
     }
 }

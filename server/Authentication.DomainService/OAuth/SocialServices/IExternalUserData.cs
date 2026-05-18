@@ -1,8 +1,8 @@
-﻿using Newtonsoft.Json;
+using Newtonsoft.Json;
 using SixLabors.ImageSharp;
 using System.Text.Json.Serialization;
 
-namespace DomainService.OAuth
+namespace Authentication.DomainService.OAuth
 {
     public interface IExternalUserData
     {

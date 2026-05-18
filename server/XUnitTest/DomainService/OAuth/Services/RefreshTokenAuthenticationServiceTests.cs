@@ -1,7 +1,7 @@
 using Blocks.Genesis;
-using DomainService.Entities;
-using DomainService.OAuth;
-using DomainService.OAuth.RequestModel;
+using Authentication.DomainService.Entities;
+using Authentication.DomainService.OAuth;
+using Authentication.DomainService.OAuth.RequestModel;
 using FluentAssertions;
 using Iam.DomainService.Entities;
 using Microsoft.Extensions.Logging;
@@ -48,7 +48,7 @@ namespace XUnitTest.DomainService.OAuth.Services
                 ItemId = "user-789",
                 Email = "test@example.com",
                 Active = true,
-                IsVarified = true
+                IsVerified = true
             };
             var tenant = new Tenant
             {
@@ -140,7 +140,7 @@ namespace XUnitTest.DomainService.OAuth.Services
                 ItemId = "user-123",
                 Email = "admin@example.com",
                 Active = true,
-                IsVarified = true
+                IsVerified = true
             };
             var tenant = new Tenant
             {
