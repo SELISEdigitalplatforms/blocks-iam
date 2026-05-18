@@ -12,6 +12,7 @@ var serviceName = ResolveRequiredServiceName(builder.Configuration);
 var vaultType = ApplicationConfigurations.ResolveVaultType();
 Console.WriteLine($"Using Genesis vault type: {vaultType}");
 var secret = await ApplicationConfigurations.ConfigureLogAndSecretsAsync(serviceName, vaultType);
+Console.WriteLine(secret.AllowedCorsOrigins);
 
 var messageConfiguration = IdpConstants.GetMessageConfiguration(secret.MessageConnectionString);
 messageConfiguration.ServiceName = serviceName;
