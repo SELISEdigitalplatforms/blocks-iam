@@ -13,6 +13,7 @@ using Microsoft.Extensions.Configuration;
 using System.IdentityModel.Tokens.Jwt;
 using System.Text.Json;
 using Authentication.DomainService.Utilities;
+using Authentication.DomainService.Shared;
 
 namespace Authentication.DomainService.OAuth
 {
@@ -27,6 +28,7 @@ namespace Authentication.DomainService.OAuth
         private readonly IConfiguration _configuration;
         private readonly ICacheClient _cacheClient;
         private readonly ITenants _tenants;
+        private readonly UnifiedTokenSessionService _unifiedTokenSessionService;
 
         public OAuthJwtAccessTokenManager(
             IJwtAccessTokenProvider jwtAccessTokenProvider,
@@ -47,6 +49,7 @@ namespace Authentication.DomainService.OAuth
             _tenants = tenants;
             _otpServiceFactory = otpServiceFactory;
             _configuration = configuration;
+            _unifiedTokenSessionService = new UnifiedTokenSessionService(_cacheClient, _authenticationDomainService);
         }
 
         public async Task<TokenResponse> ManageTokenAsync(TokenRequest tokenRequest, AuthenticationConfiguration authenticationConfiguration, User user, StateInfo? stateInfo = null)
@@ -216,16 +219,38 @@ namespace Authentication.DomainService.OAuth
         public async Task<(string, DateTime)> ManageRefreshTokenAsync(TokenRequest tokenRequest, JwtAccessToken jwtAccessToken, AuthenticationConfiguration authenticationConfiguration, Tenant tenant, User user)
         {
             var visitorsIpAddresses = _authenticationDomainService.GetVisitorsIpAddresses(tokenRequest.Request.HttpContext) ?? new List<string>();
-
-            // Check if this is a refresh token grant type
+            // Unify both initial and rotation flows
             if (tokenRequest.GrantType == GrantTypes.RefreshToken || tokenRequest.GrantType == GrantTypes.SwitchOrganization)
             {
-                return await HandleRefreshTokenGrant(tokenRequest, tenant, user, visitorsIpAddresses, authenticationConfiguration);
+                // Rotation: fetch old token from cache
+                var oldRefreshTokenCacheStr = await _cacheClient.GetStringValueAsync(tokenRequest.RefreshToken);
+                RefreshTokenCache? oldRefreshTokenCache = null;
+                if (!string.IsNullOrWhiteSpace(oldRefreshTokenCacheStr))
+                {
+                    oldRefreshTokenCache = JsonSerializer.Deserialize<RefreshTokenCache>(oldRefreshTokenCacheStr);
+                }
+                return await _unifiedTokenSessionService.CreateOrRotateRefreshToken(
+                    tokenRequest.RefreshToken,
+                    oldRefreshTokenCache,
+                    tokenRequest,
+                    authenticationConfiguration,
+                    tenant,
+                    user,
+                    visitorsIpAddresses
+                );
             }
             else
             {
-                // Initial auth flow - create new refresh token with full configured lifetime
-                return await CreateNewRefreshToken(tokenRequest, tenant, user, authenticationConfiguration, visitorsIpAddresses);
+                // Initial auth flow: no old token
+                return await _unifiedTokenSessionService.CreateOrRotateRefreshToken(
+                    null,
+                    null,
+                    tokenRequest,
+                    authenticationConfiguration,
+                    tenant,
+                    user,
+                    visitorsIpAddresses
+                );
             }
         }
 
