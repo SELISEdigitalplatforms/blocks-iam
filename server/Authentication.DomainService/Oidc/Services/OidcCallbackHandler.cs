@@ -8,7 +8,6 @@ using Authentication.DomainService.Services;
 using Blocks.Genesis;
 using Iam.DomainService.Users;
 using Microsoft.Extensions.Logging;
-using Microsoft.IdentityModel.Tokens;
 
 namespace Authentication.DomainService.Oidc.Services
 {
@@ -93,7 +92,7 @@ namespace Authentication.DomainService.Oidc.Services
             try
             {
                 // Parse OIDC social state to get context
-                var oidcSocialState = System.Text.Json.JsonDocument.Parse(oidcSocialStateJson).RootElement;
+                var oidcSocialState = JsonDocument.Parse(oidcSocialStateJson).RootElement;
                 var oidcState = oidcSocialState.GetProperty("oidcState").GetString();
 
                 if (string.IsNullOrWhiteSpace(oidcState))
@@ -111,7 +110,7 @@ namespace Authentication.DomainService.Oidc.Services
                     return new OidcCallbackResult { IsSuccess = false, ErrorMessage = "OIDC flow expired" };
                 }
 
-                var context = System.Text.Json.JsonDocument.Parse(contextJson).RootElement;
+                var context = JsonDocument.Parse(contextJson).RootElement;
                 var clientId = context.GetProperty("clientId").GetString();
                 var originalState = context.GetProperty("state").GetString();
                 var redirectUri = context.GetProperty("redirectUri").GetString();

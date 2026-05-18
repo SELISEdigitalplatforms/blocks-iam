@@ -123,6 +123,27 @@ namespace Authentication.DomainService.Services
             return result.IsAcknowledged;
         }
 
+        public async Task<bool> RevokeIdentitySessionsByUserIdAsync(string userId)
+        {
+            var collection = GetCollection<IdentitySession>();
+            var update = Builders<IdentitySession>.Update.Set(x => x.IsActive, false)
+                .Set(x => x.ExpiresUtc, DateTime.UtcNow)
+                .Set(x => x.UpdatedAt, DateTime.UtcNow);
+            var filter = Builders<IdentitySession>.Filter.Eq(x => x.UserId, userId);
+            var result = await collection.UpdateManyAsync(filter, update);
+            return result.IsAcknowledged;
+        }
+        public async Task<bool> RevokeIdentitySessionsBySessionIdsAsync(IEnumerable<string> sessionIds)
+        {
+             var collection = GetCollection<IdentitySession>();
+            var update = Builders<IdentitySession>.Update.Set(x => x.IsActive, false)
+                .Set(x => x.ExpiresUtc, DateTime.UtcNow)
+                .Set(x => x.UpdatedAt, DateTime.UtcNow);
+            var filter = Builders<IdentitySession>.Filter.In(x => x.SessionId, sessionIds);
+            var result = await collection.UpdateManyAsync(filter, update);
+            return result.IsAcknowledged;
+        }
+
         public async Task<bool> UpdateSessionStatusForAllRefreshTokenAsync(List<string> refreshTokens)
         {
             if (refreshTokens == null || refreshTokens.Count == 0)

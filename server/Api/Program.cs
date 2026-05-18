@@ -5,8 +5,12 @@ using Identifier.DomainService.Shared;
 using Microsoft.AspNetCore.Http.Features;
 using CloudConfiguration.DomainService.Shared.Utilities;
 
+
 var builder = WebApplication.CreateBuilder(args);
 ApplicationConfigurations.ConfigureApiEnv(builder, args);
+
+// Register IHttpContextAccessor for static DomainResolver
+builder.Services.AddHttpContextAccessor();
 
 var serviceName = ResolveRequiredServiceName(builder.Configuration);
 var vaultType = ApplicationConfigurations.ResolveVaultType();
@@ -46,7 +50,11 @@ services.AddApplicationServices();
 services.AddCloudDomainServices();
 services.AddCloudConfigurationServices();
 
+
 var app = builder.Build();
+
+// Configure DomainResolver with IHttpContextAccessor instance
+DomainResolver.Configure(app.Services.GetRequiredService<IHttpContextAccessor>());
 
 // Configure API routes FIRST (before static files) so JSON endpoints return JSON not HTML
 var normalizedApiRoutePrefix = ApplicationConfigurations.NormalizeApiRoutePrefixValue(apiRoutePrefix);

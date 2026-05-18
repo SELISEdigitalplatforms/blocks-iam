@@ -18,14 +18,22 @@ namespace Authentication.DomainService.Utilities
         /// <summary>
         /// Determines if the current environment or request is localhost/development.
         /// </summary>
-        public static bool IsLocalhost(HttpRequest? request = null)
+        private static IHttpContextAccessor? _httpContextAccessor;
+
+        public static void Configure(IHttpContextAccessor accessor)
+        {
+            _httpContextAccessor = accessor;
+        }
+
+        public static bool IsLocalhost()
         {
             // Check environment variable first
             var hostEnv = Environment.GetEnvironmentVariable("ASPNETCORE_ENVIRONMENT") ?? string.Empty;
             if (hostEnv.Equals("Development", StringComparison.OrdinalIgnoreCase))
                 return true;
 
-            // If HttpRequest is provided, check Origin and Referer headers
+            var request = _httpContextAccessor?.HttpContext?.Request;
+
             string? origin = request?.Headers["Origin"].ToString();
             string? referer = request?.Headers["Referer"].ToString();
 

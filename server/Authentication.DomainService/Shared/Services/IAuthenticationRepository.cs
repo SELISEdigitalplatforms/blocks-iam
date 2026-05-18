@@ -63,5 +63,7 @@ namespace Authentication.DomainService.Services
         Task<ImpersonationSession?> GetImpersonationSessionByIdAsync(string sessionId);
         Task<List<ImpersonationSession>> GetActiveImpersonationSessionsByUserIdAsync(string userId);
         Task<bool> UpdateImpersonationSessionAsync(string sessionId, Dictionary<string, object> updates);
+        Task<bool> RevokeIdentitySessionsByUserIdAsync(string userId);
+        Task<bool> RevokeIdentitySessionsBySessionIdsAsync(IEnumerable<string> sessionIds);
     }
 }

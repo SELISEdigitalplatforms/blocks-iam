@@ -2,6 +2,7 @@ using Authentication.DomainService.Entities;
 using Authentication.DomainService.OAuth.ResponseModel;
 using Authentication.DomainService.Services;
 using Authentication.DomainService.Utilities;
+using Azure.Core;
 using Blocks.Genesis;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;

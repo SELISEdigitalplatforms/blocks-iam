@@ -15,6 +15,9 @@ namespace Authentication.DomainService.Entities
         [BsonElement("target_tenant_id")]
         public string TargetTenantId { get; set; }
         
+        [BsonElement("root_tenant_id")]
+        public string RootTenantId { get; set; }
+        
         [BsonElement("org_id")]
         public string? OrganizationId { get; set; } = "default";
         
