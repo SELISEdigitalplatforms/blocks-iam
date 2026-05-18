@@ -1,4 +1,5 @@
 using Authentication.DomainService.Oidc.Services;
+using Authentication.DomainService.Utilities;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 
@@ -363,7 +364,8 @@ namespace Blocks.Api.Controllers
 
         private CookieOptions CreateSessionCookieOptions()
         {
-            var isLocal = string.Equals(Environment.GetEnvironmentVariable("ASPNETCORE_ENVIRONMENT"), "Development", StringComparison.OrdinalIgnoreCase);
+            // need to fix cookie options to allow SameSite=None for local development, but use SameSite=Strict for production
+            var isLocal = DomainResolver.IsLocalhost();
             return new CookieOptions
             {
                 HttpOnly = true,

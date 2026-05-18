@@ -517,11 +517,12 @@ namespace Authentication.DomainService.Authentication
                 return new BadRequestObjectResult(new { error = "invalid_request", error_description = "Selected account is not available in this session" });
             }
 
+            var isLocal = DomainResolver.IsLocalhost();
             var cookieOptions = new CookieOptions
             {
                 HttpOnly = true,
-                Secure = request.IsHttps,
-                SameSite = SameSiteMode.Lax,
+                Secure = !isLocal,
+                SameSite = isLocal ? SameSiteMode.None : SameSiteMode.Lax,
                 Path = "/",
                 Expires = DateTimeOffset.UtcNow.AddMinutes(5)
             };
@@ -947,8 +948,9 @@ namespace Authentication.DomainService.Authentication
             }
 
             var isLocal = DomainResolver.IsLocalhost();
+            cookieDomain = isLocal ? null : (string.IsNullOrWhiteSpace(cookieDomain) ? null : cookieDomain);
             var accessOptions = new CookieOptions {
-                Domain = string.IsNullOrWhiteSpace(cookieDomain) ? null : cookieDomain,
+                Domain = cookieDomain,
                 HttpOnly = true,
                 Secure = !isLocal,
                 SameSite = isLocal ? SameSiteMode.None : SameSiteMode.Strict,
@@ -956,7 +958,7 @@ namespace Authentication.DomainService.Authentication
                 Expires = accessExpiry
             };
             var refreshOptions = new CookieOptions {
-                Domain = string.IsNullOrWhiteSpace(cookieDomain) ? null : cookieDomain,
+                Domain = cookieDomain,
                 HttpOnly = true,
                 Secure = !isLocal,
                 SameSite = isLocal ? SameSiteMode.None : SameSiteMode.Strict,
@@ -1522,7 +1524,7 @@ namespace Authentication.DomainService.Authentication
             var adjustedCookieDomain = isLocal ? null : cookieDomain;
             response.Cookies.Append(IdpSessionCookieName, sessionId, new CookieOptions
             {
-                Domain = string.IsNullOrWhiteSpace(adjustedCookieDomain) ? null : adjustedCookieDomain,
+                Domain = adjustedCookieDomain,
                 HttpOnly = true,
                 Secure = !isLocal,
                 SameSite = isLocal ? SameSiteMode.None : SameSiteMode.Strict,
