@@ -46,9 +46,6 @@ public class RefreshTokenModel
 {
     public string Id { get; set; } = Guid.NewGuid().ToString("n");
     public string TokenId { get; set; } = Guid.NewGuid().ToString("n");
-    public string FamilyId { get; set; } = Guid.NewGuid().ToString("n");
-    public string? ParentTokenId { get; set; }
-    public List<string> ChildTokenIds { get; set; } = [];
     public string UserId { get; set; } = string.Empty;
     public string? TenantId { get; set; }
     public string? OrgId { get; set; }

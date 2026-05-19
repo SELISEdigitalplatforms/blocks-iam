@@ -77,52 +77,6 @@ namespace Authentication.DomainService.Oidc.Repositories
         }
 
         /// <summary>
-        /// Revoke entire token family by FamilyId
-        /// Used when token reuse is detected
-        /// </summary>
-        public async Task<bool> RevokeTokenFamilyAsync(string familyId)
-        {
-            try
-            {
-                var collection = GetDatabase().GetCollection<TokenRevocationModel>("IdpRevokedTokens");
-                var filter = Builders<TokenRevocationModel>.Filter.Eq(t => t.FamilyId, familyId);
-                var update = Builders<TokenRevocationModel>.Update
-                    .Set(t => t.RevokeReason, "family_revoked_for_reuse_detection");
-                
-                var result = await collection.UpdateManyAsync(filter, update);
-                _logger.LogCritical($"Token family revoked: {familyId}, tokens affected: {result.ModifiedCount}");
-                return result.ModifiedCount > 0;
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, $"Error revoking token family: {familyId}");
-                throw;
-            }
-        }
-
-        /// <summary>
-        /// Check if token family is revoked
-        /// </summary>
-        public async Task<bool> IsTokenFamilyRevokedAsync(string familyId)
-        {
-            try
-            {
-                var collection = GetDatabase().GetCollection<TokenRevocationModel>("IdpRevokedTokens");
-                var filter = Builders<TokenRevocationModel>.Filter.And(
-                    Builders<TokenRevocationModel>.Filter.Eq(t => t.FamilyId, familyId),
-                    Builders<TokenRevocationModel>.Filter.Eq(t => t.RevokeReason, "family_revoked_for_reuse_detection")
-                );
-                var result = await collection.Find(filter).FirstOrDefaultAsync();
-                return result != null;
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, $"Error checking family revocation: {familyId}");
-                throw;
-            }
-        }
-
-        /// <summary>
         /// Delete revocation record
         /// </summary>
         public async Task<bool> DeleteAsync(string jti)
@@ -183,7 +137,6 @@ namespace Authentication.DomainService.Oidc.Repositories
         public string? Id { get; set; } // MongoDB ObjectId
         public string? Jti { get; set; } // JWT ID (unique token identifier)
         public string? UserId { get; set; }
-        public string? FamilyId { get; set; } // For family revocation
         public DateTime RevokedAt { get; set; }
         public string? RevokeReason { get; set; } // "user_revoked", "logout", "reuse_detected", "password_changed"
         public DateTime ExpiresAt { get; set; } // After this date, can be deleted from DB

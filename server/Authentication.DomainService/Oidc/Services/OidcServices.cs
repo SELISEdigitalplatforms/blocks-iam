@@ -128,7 +128,6 @@ public class TokenGenerationService : ITokenGenerationService
         return new Contracts.RefreshTokenModel
         {
             TokenId = refreshToken,
-            FamilyId = string.Empty, // No longer generated here
             UserId = claims.Sub,
             TenantId = claims.TenantId,
             OrgId = claims.OrgId,

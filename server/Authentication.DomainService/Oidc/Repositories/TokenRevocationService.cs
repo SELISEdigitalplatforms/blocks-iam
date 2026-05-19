@@ -1,11 +1,7 @@
-using Microsoft.Extensions.Logging;
-using System;
-using System.Collections.Generic;
-using System.IdentityModel.Tokens.Jwt;
-using System.Linq;
-using System.Threading.Tasks;
 using Authentication.DomainService.Services;
 using Idp.DomainService.Oidc.Contracts;
+using Microsoft.Extensions.Logging;
+using System.IdentityModel.Tokens.Jwt;
 
 namespace Authentication.DomainService.Oidc.Repositories
 {
@@ -70,9 +66,9 @@ namespace Authentication.DomainService.Oidc.Repositories
 
                         if (!refreshToken.IsRevoked)
                         {
-                            await _refreshTokenRepo.RevokeByFamilyIdAsync(refreshToken.FamilyId, "user_revoked");
-                            await SyncSessionStatusForRevokedFamilyAsync(refreshToken.FamilyId, refreshToken.UserId);
-                            _logger.LogInformation("Refresh token family revoked for token id: {TokenId}", token);
+                            await _refreshTokenRepo.RevokeByTokenIdAsync(refreshToken.TokenId, "user_revoked");
+                            await SyncSessionStatusForRefreshTokensAsync(new[] { refreshToken.TokenId });
+                            _logger.LogInformation("Refresh token revoked for token id: {TokenId}", token);
                         }
 
                         return new TokenRevocationResult { Success = true };
@@ -228,21 +224,11 @@ namespace Authentication.DomainService.Oidc.Repositories
             try
             {
                 var userTokens = await _refreshTokenRepo.GetByUserAsync(userId, tenantId);
-                var familyIds = new HashSet<string>();
+                var activeTokens = userTokens.Where(t => !t.IsRevoked).ToList();
 
-                // Collect all family IDs
-                foreach (var token in userTokens)
+                foreach (var token in activeTokens)
                 {
-                    if (!string.IsNullOrWhiteSpace(token.FamilyId))
-                    {
-                        familyIds.Add(token.FamilyId);
-                    }
-                }
-
-                // Revoke all families
-                foreach (var familyId in familyIds)
-                {
-                    await _refreshTokenRepo.RevokeByFamilyIdAsync(familyId, reason);
+                    await _refreshTokenRepo.RevokeByTokenIdAsync(token.TokenId, reason);
                 }
 
                 await SyncSessionStatusForRefreshTokensAsync(userTokens.Select(t => t.TokenId));
@@ -268,11 +254,9 @@ namespace Authentication.DomainService.Oidc.Repositories
                 var userTokens = await _refreshTokenRepo.GetByUserAsync(userId, ""); // TODO: Get tenantId from context
                 var clientTokens = userTokens.Where(t => t.ClientId == clientId && !t.IsRevoked).ToList();
 
-                // Revoke all families for this client
-                var familyIds = clientTokens.Select(t => t.FamilyId).Distinct();
-                foreach (var familyId in familyIds)
+                foreach (var token in clientTokens)
                 {
-                    await _refreshTokenRepo.RevokeByFamilyIdAsync(familyId, reason);
+                    await _refreshTokenRepo.RevokeByTokenIdAsync(token.TokenId, reason);
                 }
 
                 await SyncSessionStatusForRefreshTokensAsync(clientTokens.Select(t => t.TokenId));
@@ -377,17 +361,6 @@ namespace Authentication.DomainService.Oidc.Repositories
             {
                 return "";
             }
-        }
-
-        private async Task SyncSessionStatusForRevokedFamilyAsync(string familyId, string userId)
-        {
-            if (string.IsNullOrWhiteSpace(familyId) || string.IsNullOrWhiteSpace(userId))
-            {
-                return;
-            }
-
-            var familyTokens = await _refreshTokenRepo.GetByFamilyIdAsync(familyId);
-            await SyncSessionStatusForRefreshTokensAsync(familyTokens.Select(t => t.TokenId));
         }
 
         private async Task SyncSessionStatusForRefreshTokensAsync(IEnumerable<string> refreshTokenIds)

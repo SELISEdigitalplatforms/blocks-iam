@@ -357,9 +357,9 @@ namespace Authentication.DomainService.Oidc.Services
                     await _cacheClient.RemoveKeyAsync(refreshToken);
 
                     var tokenModel = await _refreshTokenRepo.GetByTokenIdAsync(refreshToken);
-                    if (tokenModel != null && !string.IsNullOrWhiteSpace(tokenModel.FamilyId))
+                    if (tokenModel != null && !tokenModel.IsRevoked)
                     {
-                        await _refreshTokenRepo.RevokeByFamilyIdAsync(tokenModel.FamilyId, $"session_revoked:{reason}");
+                        await _refreshTokenRepo.RevokeByTokenIdAsync(tokenModel.TokenId, $"session_revoked:{reason}");
                     }
                 }
 

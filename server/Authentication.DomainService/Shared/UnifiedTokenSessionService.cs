@@ -82,11 +82,6 @@ namespace Authentication.DomainService.Shared
                 AbsoluteExpiry = refreshTokenCache.AbsoluteExpiresUtc,
                 IpAddress = refreshTokenCache.IpAddresses ?? string.Empty,
                 IsRevoked = false,
-                // --- Future-proof/standards fields ---
-                FamilyId = string.Empty, // Set when available (e.g., for family tracking)
-                ParentTokenId = string.Empty, // Set when available (e.g., for rotation chains)
-                ChildTokenIds = new List<string>(), // Set when available
-                Audience = string.Empty, // Set when available (multi-audience)
                 UserAgent = tokenRequest.Request?.Headers != null && tokenRequest.Request.Headers.ContainsKey("User-Agent") ? tokenRequest.Request.Headers["User-Agent"].ToString() : string.Empty
             };
             await _refreshTokenRepository.CreateAsync(refreshTokenModel);
