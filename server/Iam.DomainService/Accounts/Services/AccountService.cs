@@ -4,12 +4,17 @@ using Iam.DomainService.Dtos;
 using Iam.DomainService.Entities;
 using Iam.DomainService.Services;
 using Iam.DomainService.Utilities;
+using Captcha.DomainService.Captcha;
+using Captcha.DomainService.Configuration;
 using FluentValidation;
 using Microsoft.Extensions.Logging;
 using Iam.DomainService.Users.RequestModel;
 using System.Security.Cryptography.Xml;
 using Iam.DomainService.Users.ResponseModel;
 using Iam.DomainService.Shared.Entities;
+using Iam.DomainService.Users;
+using MongoDB.Driver;
+using Iam.DomainService.Resources;
 
 namespace Iam.DomainService.Accounts
 {
@@ -23,6 +28,10 @@ namespace Iam.DomainService.Accounts
         private readonly IValidator<BaseAccountRequest> _accountValidator;
         private readonly IValidator<ChangePasswordRequest> _changePasswordValidator;
         private readonly IValidator<RecoveryUserRequest> _recoverUserValidator;
+        private readonly IUserManagementMutationService _userManagementMutationService;
+        private readonly IResourceMutationService _resourceMutationService;
+        private readonly ICaptchaService _captchaService;
+        private readonly IDbContextProvider _dbContextProvider;
 
         public AccountService(
             ILogger<AccountService> logger,
@@ -32,7 +41,11 @@ namespace Iam.DomainService.Accounts
             ITenants tenants,
             IValidator<BaseAccountRequest> accountValidator,
             IValidator<ChangePasswordRequest> changePasswordValidator,
-            IValidator<RecoveryUserRequest> recoverUserValidator
+            IValidator<RecoveryUserRequest> recoverUserValidator,
+            IUserManagementMutationService userManagementMutationService,
+            IResourceMutationService resourceMutationService,
+            ICaptchaService captchaService,
+            IDbContextProvider dbContextProvider
         )
         {
             _logger = logger;
@@ -43,7 +56,358 @@ namespace Iam.DomainService.Accounts
             _accountValidator = accountValidator;
             _changePasswordValidator = changePasswordValidator;
             _recoverUserValidator = recoverUserValidator;
+            _userManagementMutationService = userManagementMutationService;
+            _resourceMutationService = resourceMutationService;
+            _captchaService = captchaService;
+            _dbContextProvider = dbContextProvider;
         }
+
+        public async Task<BaseAccountResponse> SignupAccountAsync(SignupUserRequest signupUserRequest)
+        {
+            var basicValidationError = ValidateSignupRequest(signupUserRequest);
+            if (basicValidationError != null)
+            {
+                return basicValidationError;
+            }
+
+            var tenantConfiguration = await _repository.GetTenantConfigurationAsync();
+
+            if (tenantConfiguration == null)
+            {
+                _logger.LogError("Tenant configuration not found during signup.");
+                return new BaseAccountResponse
+                {
+                    IsSuccess = false,
+                    Errors = new Dictionary<string, string>
+                    {
+                        { "signup_configuration", "Signup configuration is not set up. Please contact support." }
+                    }
+                };
+            }
+
+            var policyValidation = await ValidateSignupPolicyAsync(signupUserRequest, tenantConfiguration);
+            if (policyValidation != null)
+            {
+                return policyValidation;
+            }
+
+            var captchaValidationError = await ValidateCaptchaAsync(signupUserRequest.CaptchaCode);
+            if (captchaValidationError != null)
+            {
+                return new BaseAccountResponse
+                {
+                    IsSuccess = false,
+                    Errors = captchaValidationError
+                };
+            }
+
+            var normalizedEmail = signupUserRequest.Email.Trim().ToLowerInvariant();
+            var existingHandlingResult = await HandleExistingSignupUserAsync(normalizedEmail);
+            if (existingHandlingResult != null)
+            {
+                return existingHandlingResult;
+            }
+
+            // Generate user id first so org creation can receive creator id in the same signup flow.
+            var signupUserId = Guid.NewGuid().ToString();
+
+            var organizationId = "default";
+            if (signupUserRequest.CreateOrganizationDuringSignup)
+            {
+                var orgResult = await CreateOrganizationForSignupAsync(signupUserRequest, signupUserId);
+                if (!orgResult.IsSuccess)
+                {
+                    return orgResult;
+                }
+
+                organizationId = orgResult.ItemId ?? "default";
+            }
+
+            return signupUserRequest.IsSsoSignup
+                ? await CreateSsoSignupUserAsync(signupUserRequest, tenantConfiguration, normalizedEmail, signupUserId, organizationId)
+                : await CreateEmailSignupUserAsync(signupUserRequest, tenantConfiguration, normalizedEmail, signupUserId, organizationId);
+        }
+
+        private static BaseAccountResponse? ValidateSignupRequest(SignupUserRequest signupUserRequest)
+        {
+            if (signupUserRequest == null || string.IsNullOrWhiteSpace(signupUserRequest.Email))
+            {
+                return new BaseAccountResponse
+                {
+                    IsSuccess = false,
+                    Errors = new Dictionary<string, string>
+                    {
+                        { "Email", "Email is required." }
+                    }
+                };
+            }
+
+            if (signupUserRequest.IsSsoSignup && string.IsNullOrWhiteSpace(signupUserRequest.Provider))
+            {
+                return new BaseAccountResponse
+                {
+                    IsSuccess = false,
+                    Errors = new Dictionary<string, string>
+                    {
+                        { "Provider", "Provider is required for SSO signup." }
+                    }
+                };
+            }
+
+            if (signupUserRequest.CreateOrganizationDuringSignup && string.IsNullOrWhiteSpace(signupUserRequest.OrganizationName))
+            {
+                return new BaseAccountResponse
+                {
+                    IsSuccess = false,
+                    Errors = new Dictionary<string, string>
+                    {
+                        { "OrganizationName", "Organization name is required when organization creation is enabled." }
+                    }
+                };
+            }
+
+            return null;
+        }
+
+        private async Task<BaseAccountResponse?> ValidateSignupPolicyAsync(SignupUserRequest signupUserRequest, TenantConfiguration tenantConfiguration)
+        {
+            if (signupUserRequest.IsSsoSignup && !tenantConfiguration.IsSSoSignUpEnabled)
+            {
+                return new BaseAccountResponse
+                {
+                    IsSuccess = false,
+                    Errors = new Dictionary<string, string>
+                    {
+                        { "signup_disabled", "sso sign-up is disabled." }
+                    }
+                };
+            }
+
+            if (!signupUserRequest.IsSsoSignup && !tenantConfiguration.IsEmailPasswordSignUpEnabled)
+            {
+                return new BaseAccountResponse
+                {
+                    IsSuccess = false,
+                    Errors = new Dictionary<string, string>
+                    {
+                        { "signup_disabled", "sign-up is disabled." }
+                    }
+                };
+            }
+
+            return null;
+        }
+
+        private async Task<BaseAccountResponse?> HandleExistingSignupUserAsync(string normalizedEmail)
+        {
+            var existingUser = await _repository.GetUserByEmailAsync(normalizedEmail);
+            if (existingUser == null)
+            {
+                return null;
+            }
+
+            if (existingUser.Active && existingUser.IsVerified)
+            {
+                _logger.LogWarning("User already exists with email: {Email}", normalizedEmail);
+                return new BaseAccountResponse
+                {
+                    IsSuccess = false,
+                    Errors = new Dictionary<string, string>
+                    {
+                        { "already_signed_up", $"{normalizedEmail} is already registered" }
+                    }
+                };
+            }
+
+            var reactivationSent = await SendReActivationAsync(existingUser);
+            return new BaseAccountResponse
+            {
+                IsSuccess = reactivationSent,
+                ItemId = existingUser.ItemId,
+                Errors = reactivationSent
+                    ? new Dictionary<string, string>()
+                    : new Dictionary<string, string>
+                    {
+                        { "reactivation_failed", "Failed to send activation email." }
+                    }
+            };
+        }
+
+        private async Task<BaseAccountResponse> CreateOrganizationForSignupAsync(SignupUserRequest signupUserRequest, string creatorUserId)
+        {
+            var orgRequest = new CreateOrganizationRequest
+            {
+                Name = signupUserRequest.OrganizationName!,
+                Description = signupUserRequest.OrganizationDescription,
+                CreatedFrom = CreatedFrom.ConstructSignup
+            };
+
+            var orgResponse = await _resourceMutationService.CreateOrganizationAsync(orgRequest, creatorUserId);
+            if (!orgResponse.IsSuccess)
+            {
+                return new BaseAccountResponse
+                {
+                    IsSuccess = false,
+                    Errors = (orgResponse.Errors as Dictionary<string, string>) ?? new Dictionary<string, string>
+                    {
+                        { "organization_creation_failed", "Organization creation failed during signup." }
+                    }
+                };
+            }
+
+            return new BaseAccountResponse
+            {
+                IsSuccess = true,
+                ItemId = orgResponse.ItemId
+            };
+        }
+
+        private async Task<BaseAccountResponse> CreateEmailSignupUserAsync(
+            SignupUserRequest signupUserRequest,
+            TenantConfiguration tenantConfiguration,
+            string normalizedEmail,
+            string signupUserId,
+            string organizationId)
+        {
+            var createUserRequest = new CreateUserRequest
+            {
+                UserId = signupUserId,
+                Email = normalizedEmail,
+                MailPurpose = string.IsNullOrWhiteSpace(signupUserRequest.MailPurpose) ? "AccountActivation" : signupUserRequest.MailPurpose,
+                UserCreationType = UserCreationType.Portal,
+                UserPassType = UserPassType.Password,
+                VerifiedType = UserVerifiedType.None,
+                OrganizationId = organizationId,
+                Roles = tenantConfiguration.DefaultRolesForNewUserOnSignUp ?? new List<string> { },
+                Permissions = tenantConfiguration.DefaultPermissionsForNewUserOnSignUp ?? new List<string> { },
+                FirstName = signupUserRequest.FirstName,
+                LastName = signupUserRequest.LastName,
+                PhoneNumber = signupUserRequest.PhoneNumber
+            };
+
+            var result = await _userManagementMutationService.CreateUserAsync(createUserRequest);
+            if (!result.IsSuccess || string.IsNullOrWhiteSpace(result.ItemId))
+            {
+                _logger.LogWarning("Signup user creation failed for email: {Email}", normalizedEmail);
+                return new BaseAccountResponse
+                {
+                    IsSuccess = false,
+                    Errors = result.Errors?.ToDictionary() ?? new Dictionary<string, string>
+                    {
+                        { "creation_failed", "User creation failed" }
+                    }
+                };
+            }
+
+            var createdUser = await _repository.GetUserByIdAsync(result.ItemId);
+            var activationSent = createdUser != null && await SendReActivationAsync(createdUser);
+
+            if (!activationSent)
+            {
+                return new BaseAccountResponse
+                {
+                    IsSuccess = false,
+                    ItemId = result.ItemId,
+                    Errors = new Dictionary<string, string>
+                    {
+                        { "activation_email_failed", "User created but activation email could not be sent." }
+                    }
+                };
+            }
+
+            return new BaseAccountResponse
+            {
+                IsSuccess = true,
+                ItemId = result.ItemId,
+                Errors = null
+            };
+        }
+
+        private async Task<BaseAccountResponse> CreateSsoSignupUserAsync(
+            SignupUserRequest signupUserRequest,
+            TenantConfiguration tenantConfiguration,
+            string normalizedEmail,
+            string signupUserId,
+            string organizationId)
+        {
+            var ssoRequest = new CreateUserViaSsoRequest
+            {
+                UserId = signupUserId,
+                Email = normalizedEmail,
+                Platform = signupUserRequest.Provider!,
+                MailPurpose = string.IsNullOrWhiteSpace(signupUserRequest.MailPurpose) ? "AccountActivation" : signupUserRequest.MailPurpose,
+                SendWelcomeMail = true,
+                UserCreationType = UserCreationType.Social,
+                Active = true,
+                IsVerified = true,
+                ExternalUserId = signupUserRequest.ExternalUserId,
+                FirstName = signupUserRequest.FirstName,
+                LastName = signupUserRequest.LastName,
+                PhoneNumber = signupUserRequest.PhoneNumber,
+                Roles = tenantConfiguration.DefaultRolesForNewUserOnSignUp ?? new List<string> { },
+                Permissions = tenantConfiguration.DefaultPermissionsForNewUserOnSignUp ?? new List<string> { },
+                OrganizationId = organizationId,
+                Attributes = signupUserRequest.Attributes
+            };
+
+            var result = await _userManagementMutationService.CreateUserFromSsoAsync(ssoRequest);
+            if (!result.IsSuccess || string.IsNullOrWhiteSpace(result.ItemId))
+            {
+                return new BaseAccountResponse
+                {
+                    IsSuccess = false,
+                    Errors = (Dictionary<string, string>?)result.Errors ?? new Dictionary<string, string>
+                    {
+                        { "sso_creation_failed", "SSO user creation failed." }
+                    }
+                };
+            }
+
+            return new BaseAccountResponse
+            {
+                IsSuccess = true,
+                ItemId = result.ItemId,
+                Errors = null
+            };
+        }
+
+        private async Task<Dictionary<string, string>?> ValidateCaptchaAsync(string? captchaCode)
+        {
+            var captchaConfigurationCollection = _dbContextProvider.GetCollection<CaptchaConfiguration>("CaptchaConfigurations");
+            var captchaConfiguration = await (await captchaConfigurationCollection
+                .FindAsync(Builders<CaptchaConfiguration>.Filter.Eq(mc => mc.IsEnable, true)))
+                .FirstOrDefaultAsync();
+
+            if (captchaConfiguration == null)
+            {
+                return null;
+            }
+
+            if (string.IsNullOrWhiteSpace(captchaCode))
+            {
+                return new Dictionary<string, string>
+                {
+                    { "CaptchaCode", "Captcha verification is required. Please complete the captcha and try again." }
+                };
+            }
+
+            var verifyCaptchaQueryResponse = await _captchaService.VerifyCaptchaAsync(new VerifyCaptchaRequest
+            {
+                VerificationCode = captchaCode,
+                ConfigurationName = captchaConfiguration.Provider
+            });
+
+            if (verifyCaptchaQueryResponse.Verified)
+            {
+                return null;
+            }
+
+            return new Dictionary<string, string>
+            {
+                { "CaptchaCode", "Captcha verification is required. Please complete the captcha and try again." }
+            };
+        }
+
         public async Task<BaseAccountResponse> ActivateAccountAsync(ActivateUserRequest activateUserRequest)
         {
             var validatorResult = await _accountValidator.ValidateAsync(activateUserRequest);
@@ -142,7 +506,7 @@ namespace Iam.DomainService.Accounts
                 };
             }
 
-            var result = await ProcessRecoverAccountAsync(user, recoveryRequest.MailPurpose, recoveryRequest.ProjectKey);
+            var result = await ProcessRecoverAccountAsync(user, recoveryRequest.MailPurpose);
 
             return new BaseAccountResponse
             {
@@ -150,7 +514,7 @@ namespace Iam.DomainService.Accounts
             };
         }
 
-        public async Task<bool> ProcessRecoverAccountAsync(User user, string emailPurpose, string projectKey)
+        public async Task<bool> ProcessRecoverAccountAsync(User user, string emailPurpose)
         {
             var config = await _repository.GetIamConfigurationAsync();
             var key = Guid.NewGuid().ToString("n");
@@ -159,7 +523,7 @@ namespace Iam.DomainService.Accounts
             await _cacheClient.AddStringValueAsync(key, user.ItemId, config.RecoverAccountUrlLifetimeInMinutes * 60);
 
             emailPurpose = string.IsNullOrWhiteSpace(emailPurpose) ? "RecoverAccount" : emailPurpose;
-            var result = await SendActivationToEmailAsync(user, recoverAccountUrl, emailPurpose, projectKey);
+            var result = await SendActivationToEmailAsync(user, recoverAccountUrl, emailPurpose);
 
             await _repository.InsertUserKeyMapAsync(new UserKeyMap
             {
@@ -175,7 +539,7 @@ namespace Iam.DomainService.Accounts
             return true;
         }
 
-        public async Task<bool> SendActivationToEmailAsync(User user, string recoverAccountUrl, string emailPurpose, string projectKey)
+        public async Task<bool> SendActivationToEmailAsync(User user, string recoverAccountUrl, string emailPurpose)
         {
             _logger.LogInformation("Sending recovery for {Aid} by email: {MPurpose}", user.ItemId, emailPurpose);
             var sendMailCommand = new SendMail
@@ -189,8 +553,7 @@ namespace Iam.DomainService.Accounts
                 },
                 Language = user.Language ?? "en-US",
                 Purpose = emailPurpose,
-                To = new string[] { user.Email.ToLower() },
-                ProjectKey = projectKey
+                To = new string[] { user.Email.ToLower() }
             };
 
             return await _identityAccessManagementService.SendEmailAsync(sendMailCommand);
@@ -341,7 +704,7 @@ namespace Iam.DomainService.Accounts
                 return new BaseAccountResponse();
             }
 
-            var result = await SendReActivationAsync(user, resendActivationRequest.ProjectKey);
+            var result = await SendReActivationAsync(user);
 
             return new BaseAccountResponse
             {
@@ -349,7 +712,7 @@ namespace Iam.DomainService.Accounts
             };
         }
 
-        public async Task<bool> SendReActivationAsync(User user, string projectKey)
+        public async Task<bool> SendReActivationAsync(User user)
         {
             var config = await _repository.GetIamConfigurationAsync();
             var key = Guid.NewGuid().ToString("n");
@@ -358,7 +721,7 @@ namespace Iam.DomainService.Accounts
             await _cacheClient.AddStringValueAsync(key, user.ItemId, config.ActivationUrlLifetimeInMinutes * 60);
 
             var emailPurpose = string.IsNullOrWhiteSpace(user.MailPurpose) ? "AccountActivation" : user.MailPurpose;
-            var result = await _identityAccessManagementService.SendActivationToEmailAsync(user, accountActivationUri, emailPurpose, projectKey);
+            var result = await _identityAccessManagementService.SendActivationToEmailAsync(user, accountActivationUri, emailPurpose);
 
             await _repository.InsertUserKeyMapAsync(new UserKeyMap
             {
@@ -405,34 +768,52 @@ namespace Iam.DomainService.Accounts
             };
         }
 
-        public async Task<SaveSignUpSettingResponse> SaveSingUpSettingAsync(SaveSignUpSettingRequest request)
+        public async Task<SaveSignUpSettingResponse> SaveSignUpSettingAsync(SaveSignUpSettingRequest request)
         {
-            if(string.IsNullOrWhiteSpace(request.ItemId) && await _repository.SingnUpSettingAlreadyExist())
+            var settings = await _repository.GetTenantConfigurationAsync();
+
+            if (settings == null)
             {
                 return new SaveSignUpSettingResponse
                 {
                     IsSuccess = false,
-                    Errors = new Dictionary<string, string>{ { "sing_up_setting_exist", "SignUpSetting already exist" }}
+                    Errors = new Dictionary<string, string> { { "sign_up_setting_exist", "SignUpSetting already exist" } }
                 };
             }
 
-            var settings = !string.IsNullOrWhiteSpace(request.ItemId) ?
-                          await _repository.GetSingUpSettingByIdAsync(request.ItemId) :
-                          new SignUpSetting { CreatedDate = DateTime.UtcNow, CreatedBy = BlocksContext.GetContext()?.UserId, ItemId = Guid.NewGuid().ToString() };
-
             settings.IsEmailPasswordSignUpEnabled = request.IsEmailPasswordSignUpEnabled;
             settings.IsSSoSignUpEnabled = request.IsSSoSignUpEnabled;
+            settings.DefaultPermissionsForNewUserOnSignUp = request.DefaultPermissionsForNewUserOnSignUp;
+            settings.DefaultRolesForNewUserOnSignUp = request.DefaultRolesForNewUserOnSignUp;
             settings.LastUpdatedBy = BlocksContext.GetContext()?.UserId;
             settings.LastUpdatedDate = DateTime.UtcNow;
 
-            await _repository.SaveSingUpSettingAsync(settings);
+            await _repository.SaveSignUpSettingAsync(settings);
 
             return new SaveSignUpSettingResponse { IsSuccess = true, ItemId = settings.ItemId };
         }
 
-        public async Task<SignUpSetting> GetSignUpSettingAsync(GetSignUpSettingRequest request)
+        public async Task<Dictionary<string, object>> GetSignUpSettingAsync()
         {
-            return  await _repository.GetSignUpSettingAsync(request.ItemId);
+            var tenantConfiguration = await _repository.GetTenantConfigurationAsync();
+            if (tenantConfiguration == null)
+            {
+                return new Dictionary<string, object>
+                {
+                    { "IsEmailPasswordSignUpEnabled", false },
+                    { "IsSSoSignUpEnabled", false },
+                    { "DefaultRolesForNewUser", new List<string>() },
+                    { "DefaultPermissionsForNewUser", new List<string>() }
+                };
+            }
+
+            return new Dictionary<string, object>
+            {
+                { "IsEmailPasswordSignUpEnabled", tenantConfiguration.IsEmailPasswordSignUpEnabled },
+                { "IsSSoSignUpEnabled", tenantConfiguration.IsSSoSignUpEnabled },
+                { "DefaultRolesForNewUser", tenantConfiguration.DefaultRolesForNewUserOnSignUp },
+                { "DefaultPermissionsForNewUser", tenantConfiguration.DefaultPermissionsForNewUserOnSignUp }
+            };
         }
 
         /// <summary>
@@ -472,7 +853,7 @@ namespace Iam.DomainService.Accounts
             if (result)
             {
                 _logger.LogInformation("Account unlocked by admin for user: {UserId}", userId);
-                
+
                 // Send notification email to user
                 try
                 {
@@ -507,8 +888,7 @@ namespace Iam.DomainService.Accounts
                     },
                     Language = user.Language ?? "en-US",
                     Purpose = "AccountLockedNotification",
-                    To = new[] { user.Email?.ToLower() ?? string.Empty },
-                    ProjectKey = "default"
+                    To = new[] { user.Email?.ToLower() ?? string.Empty }
                 };
 
                 var recipientEmail = sendMailCommand.To.FirstOrDefault();
@@ -542,8 +922,7 @@ namespace Iam.DomainService.Accounts
                     },
                     Language = user.Language ?? "en-US",
                     Purpose = "AccountUnlockedNotification",
-                    To = new[] { user.Email?.ToLower() ?? string.Empty },
-                    ProjectKey = "default"
+                    To = new[] { user.Email?.ToLower() ?? string.Empty }
                 };
 
                 var recipientEmail = sendMailCommand.To.FirstOrDefault();

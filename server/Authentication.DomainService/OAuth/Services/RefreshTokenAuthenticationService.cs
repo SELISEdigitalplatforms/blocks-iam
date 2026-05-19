@@ -6,6 +6,7 @@ using Iam.DomainService.Entities;
 using Microsoft.Extensions.Logging;
 using System.IdentityModel.Tokens.Jwt;
 using Authentication.DomainService.Services;
+using Authentication.DomainService.Utilities;
 
 namespace Authentication.DomainService.OAuth
 {
@@ -43,18 +44,11 @@ namespace Authentication.DomainService.OAuth
             var clientAllowedScopes = clientRegistration?.AllowedScopes;
             var clientAllowedServiceAccessResources = clientRegistration?.AllowedServiceAccessResources;
             
-            var issuanceContext = new TokenIssuanceContext
-            {
-                IsImpersonation = request.IsImpersonation,
-                OriginalTenantId = request.OriginalTenantId,
-                ActorUserId = request.ImpersonatorUserId
-            };
             var jwtAccessToken = await _jwtAccessTokenProvider.GetJwtAccessToken(
                 authenticationConfiguration,
                 tenant,
                 user,
                 organizationId: request.OrganizationId,
-                issuanceContext: issuanceContext,
                 clientAllowedScopes: clientAllowedScopes,
                 clientAllowedServiceAccessResources: clientAllowedServiceAccessResources);
             var jwtToken = new JwtSecurityToken(
@@ -83,6 +77,8 @@ namespace Authentication.DomainService.OAuth
                 };
             }
 
+            var (_, cookieDomain, _) = DomainResolver.ResolveDomain(tenant, request.Request);
+
             return new TokenResponse
             {
                 AccessToken = accessToken,
@@ -90,7 +86,7 @@ namespace Authentication.DomainService.OAuth
                 ExpiresUtc = jwtAccessToken.Expires,
                 RefreshToken = newRefreshToken,
                 RefreshExpiresUtc = refreshTokenExpiry,
-                CookieDomain = tenant.CookieDomain,
+                CookieDomain = cookieDomain,
             };
         }
     }

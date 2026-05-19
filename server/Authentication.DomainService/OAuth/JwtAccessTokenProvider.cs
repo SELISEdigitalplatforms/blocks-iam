@@ -4,7 +4,6 @@ using Iam.DomainService.Entities;
 using Microsoft.Extensions.Logging;
 using Microsoft.IdentityModel.Tokens;
 using StackExchange.Redis;
-using System.Data;
 using System.Security.Claims;
 using System.Security.Cryptography;
 using System.Security.Cryptography.X509Certificates;
@@ -45,7 +44,6 @@ namespace Authentication.DomainService.OAuth
             User user,
             StateInfo? state = null,
             string? organizationId = null,
-            TokenIssuanceContext? issuanceContext = null,
             IEnumerable<string>? clientAllowedScopes = null,
             IEnumerable<string>? clientAllowedServiceAccessResources = null)
         {
@@ -53,10 +51,10 @@ namespace Authentication.DomainService.OAuth
             var certificate = await GetOrRetrieveCertAsync(tenant);
             if (certificate == null) return new JwtAccessToken();
             var resolvedClaims = await _authorizationClaimsResolver.ResolveAsync(user, organizationId, state?.Scope, clientAllowedScopes, clientAllowedServiceAccessResources);
-            return MapJwtAccessToken(authenticationConfiguration, tenant, user, certificate, resolvedClaims, stateInfo: state, organizationId: organizationId, issuanceContext: issuanceContext);
+            return MapJwtAccessToken(authenticationConfiguration, tenant, user, certificate, resolvedClaims, stateInfo: state, organizationId: organizationId);
         }
 
-        public JwtAccessToken MapJwtAccessToken(AuthenticationConfiguration authenticationConfiguration, Tenant tenant, User user, byte[] certificate, ResolvedAuthorizationClaims resolvedClaims, StateInfo? stateInfo = null, string? organizationId = null, TokenIssuanceContext? issuanceContext = null)
+        public JwtAccessToken MapJwtAccessToken(AuthenticationConfiguration authenticationConfiguration, Tenant tenant, User user, byte[] certificate, ResolvedAuthorizationClaims resolvedClaims, StateInfo? stateInfo = null, string? organizationId = null)
         {
             var jwtAccessToken = new JwtAccessToken
             {
@@ -64,20 +62,20 @@ namespace Authentication.DomainService.OAuth
                 AccessTokenValidForNumberMinute = authenticationConfiguration.AccessTokenValidForNumberMinutes,
                 RememberMeRefreshTokenValidForNumberMinute = authenticationConfiguration.RememberMeRefreshTokenValidForNumberMinutes,
                 Issuer = tenant.JwtTokenParameters.Issuer,
-                Audience = TenantDomainPolicy.GetAudience(tenant),
+                Audience = DomainResolver.GetAudience(tenant),
                 NotBefore = DateTime.UtcNow,
                 Expires = DateTime.UtcNow.AddMinutes(authenticationConfiguration.AccessTokenValidForNumberMinutes),
                 SigningCredentials = MakeSigningCredentials(certificate, tenant.JwtTokenParameters.PrivateCertificatePassword)
             };
 
             var claimsIdentity = new ClaimsIdentity("seliseblocks-authentication");
-            AddClaims(claimsIdentity, tenant, user, resolvedClaims, stateInfo: stateInfo, organizationId: organizationId, issuanceContext: issuanceContext);
+            AddClaims(claimsIdentity, tenant, user, resolvedClaims, stateInfo: stateInfo, organizationId: organizationId);
             jwtAccessToken.Claims = claimsIdentity.Claims;
 
             return jwtAccessToken;
         }
 
-        public static void AddClaims(ClaimsIdentity claimsIdentity, Tenant tenant, User user, ResolvedAuthorizationClaims resolvedClaims, StateInfo? stateInfo = null, string? organizationId = null, TokenIssuanceContext? issuanceContext = null)
+        public static void AddClaims(ClaimsIdentity claimsIdentity, Tenant tenant, User user, ResolvedAuthorizationClaims resolvedClaims, StateInfo? stateInfo = null, string? organizationId = null)
         {
             claimsIdentity.AddClaim(new Claim(BlocksContext.TENANT_ID_CLAIM, tenant.TenantId));
             claimsIdentity.AddClaim(new Claim(BlocksContext.SUBJECT_CLAIM, $"blocks|{user.ItemId}"));
@@ -99,7 +97,7 @@ namespace Authentication.DomainService.OAuth
             claimsIdentity.AddClaim(new Claim("token_version", user.TokenVersion.ToString(), ClaimValueTypes.Integer32));
             claimsIdentity.AddClaim(new Claim("security_stamp", user.SecurityStamp ?? string.Empty));
 
-            if (!string.IsNullOrWhiteSpace(stateInfo?.Nonce)) 
+            if (!string.IsNullOrWhiteSpace(stateInfo?.Nonce))
             {
                 claimsIdentity.AddClaim(new Claim("nonce", stateInfo?.Nonce ?? ""));
             }
@@ -117,21 +115,6 @@ namespace Authentication.DomainService.OAuth
             foreach (var permission in resolvedClaims.Permissions)
             {
                 claimsIdentity.AddClaim(new Claim(BlocksContext.PERMISSION_CLAIM, permission));
-            }
-
-            if (issuanceContext?.IsImpersonation == true)
-            {
-                claimsIdentity.AddClaim(new Claim("impersonated", "true", ClaimValueTypes.Boolean));
-                if (!string.IsNullOrWhiteSpace(issuanceContext.OriginalTenantId))
-                {
-                    claimsIdentity.AddClaim(new Claim("orig_tenant", issuanceContext.OriginalTenantId));
-                }
-
-                if (!string.IsNullOrWhiteSpace(issuanceContext.ActorUserId))
-                {
-                    var actPayload = System.Text.Json.JsonSerializer.Serialize(new { sub = issuanceContext.ActorUserId });
-                    claimsIdentity.AddClaim(new Claim("act", actPayload, "JSON"));
-                }
             }
         }
         

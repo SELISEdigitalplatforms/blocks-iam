@@ -3,20 +3,18 @@ using Authentication.DomainService.Entities;
 
 namespace Authentication.DomainService.RequestModel
 {
-    public class GetOIDCClientRequest : IProjectKey
+    public class GetOIDCClientRequest
     {
-        public string? ProjectKey { get; set ; }
         public string? ClientId { get; set; }    
     }
 
-    public class GetOIDCClientsRequest : IProjectKey
+    public class GetOIDCClientsRequest
     {
-        public string? ProjectKey { get; set; }
+
     }
 
-    public class DeleteOIDCClientRequest : IProjectKey
+    public class DeleteOIDCClientRequest
     {
-        public string? ProjectKey { get; set; }
         public string? ItemId { get; set; }
     }
 

@@ -44,7 +44,7 @@ namespace Authentication.DomainService.OAuth.Services
 
              var ssoUser = JsonSerializer.Deserialize<CreateUserViaSsoRequest>(ssoUserData);
              if (ssoUser == null) return new TokenResponse { Error = "invalid_request", ErrorDescription = "Invalid SSO session", StatusCode = 400 };
-             var result = await _userManagementMutationService.CreateUserViaSsoAsync(ssoUser);
+             var result = await _userManagementMutationService.CreateUserFromSsoAsync(ssoUser);
              user = await _authenticationRepository.GetUserByIdAsync(result.ItemId ?? "");
 
             return await _oAuthJwtAccessTokenManager.ManageTokenAsync(request, authenticationConfiguration, user);

@@ -70,7 +70,7 @@ namespace Mfa.DomainService.TOTP
             var fileId = GenerateGuid();
             var twoFactorId = GenerateGuid();
             var preSignedUrl = await GetPreSignedUrlAsync(fileId);
-            var applicationDomain = _tenant.GetTenantByID(BlocksContext.GetContext()?.TenantId ?? "")?.ApplicationDomain?.Replace("https://", "") ?? "";
+            var applicationDomain = _tenant.GetTenantByID(BlocksContext.GetContext()?.TenantId ?? "")?.Applications[0].Domain?.Replace("https://", "") ?? "";
 
             if (string.IsNullOrWhiteSpace(preSignedUrl)) { return new SetUpUserTotpResponse { Errors = new Dictionary<string, string> { { "configuration_not_exit", "please_check_default_storage_configuration" } } }; }
 
@@ -113,8 +113,7 @@ namespace Mfa.DomainService.TOTP
                 Name = "QrImage.png",
                 Tags = "[\"File\"]",
                 ParentDirectoryId = string.Empty,
-                AccessModifier = "Public",
-                ProjectKey = BlocksContext.GetContext()?.TenantId
+                AccessModifier = "Public"
             };
 
             var response = await SendAuthorizedRequestAsync(HttpMethod.Post, url, requestBody);
@@ -123,9 +122,7 @@ namespace Mfa.DomainService.TOTP
 
         private async Task<string> GetFileUriAsync(string fileId)
         {
-            var projectKey = BlocksContext.GetContext()?.TenantId ?? "";
-            projectKey = !string.IsNullOrWhiteSpace(projectKey) ? $"&ProjectKey={projectKey}" : "";
-            var url = $"{_configuration["GetFileEnpPoint"]}{fileId}{projectKey}";
+            var url = $"{_configuration["GetFileEnpPoint"]}{fileId}";
             var response = await SendAuthorizedRequestAsync(HttpMethod.Get, url);
             return response.GetProperty("url").GetString() ?? string.Empty;
         }

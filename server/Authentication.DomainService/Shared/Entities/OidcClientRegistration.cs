@@ -8,12 +8,12 @@ namespace Authentication.DomainService.Entities
     {
         public string ClientId { get; set; } = string.Empty;
         public string? ClientSecret { get; set; }
-        public List<string> RedirectUris { get; set; } = [];
-        public List<string> PostLogoutRedirectUris { get; set; } = [];
-        public List<string> AllowedScopes { get; set; } = [];
-        public List<string> AllowedServiceAccessResources { get; set; } = [];
-        public List<string> AllowedGrantTypes { get; set; } = [];
-        public List<string> AllowedResponseTypes { get; set; } = ["code"];
+        public List<string> RedirectUris { get; set; } = new();
+        public List<string> PostLogoutRedirectUris { get; set; } = new();
+        public List<string> AllowedScopes { get; set; } = new();
+        public List<string> AllowedServiceAccessResources { get; set; } = new();
+        public List<string> AllowedGrantTypes { get; set; } = new();
+        public List<string> AllowedResponseTypes { get; set; } = new() { "code" };
         public string? ClientName { get; set; }
         public string? LogoUri { get; set; }
         public string? TokenEndpointAuthMethod { get; set; }
@@ -33,7 +33,7 @@ namespace Authentication.DomainService.Entities
         public string? RedirectUri
         {
             get => RedirectUris.FirstOrDefault();
-            set => RedirectUris = string.IsNullOrWhiteSpace(value) ? [] : [value];
+            set => RedirectUris = string.IsNullOrWhiteSpace(value) ? new() : new() { value };
         }
 
         [BsonIgnore]
@@ -41,7 +41,7 @@ namespace Authentication.DomainService.Entities
         {
             get => AllowedScopes.Count == 0 ? null : string.Join(' ', AllowedScopes);
             set => AllowedScopes = string.IsNullOrWhiteSpace(value)
-                ? []
+                ? new()
                 : value.Split([' ', ','], StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
                     .Distinct(StringComparer.OrdinalIgnoreCase)
                     .ToList();
@@ -51,7 +51,7 @@ namespace Authentication.DomainService.Entities
         public string? ServiceAccessResource
         {
             get => AllowedServiceAccessResources.FirstOrDefault();
-            set => AllowedServiceAccessResources = string.IsNullOrWhiteSpace(value) ? [] : [value];
+            set => AllowedServiceAccessResources = string.IsNullOrWhiteSpace(value) ? new() : new() { value };
         }
 
         [BsonIgnore]

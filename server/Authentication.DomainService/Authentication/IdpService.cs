@@ -2,6 +2,7 @@ using Authentication.DomainService.Entities;
 using Authentication.DomainService.OAuth.ResponseModel;
 using Authentication.DomainService.Services;
 using Authentication.DomainService.Utilities;
+using Azure.Core;
 using Blocks.Genesis;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
@@ -38,32 +39,28 @@ namespace Authentication.DomainService.Authentication
             _logger = logger;
         }
 
-        public async Task<IActionResult> StartAuthenticationFlowAsync(string clientId)
+        public async Task<IActionResult> StartAuthenticationFlowAsync(string clientId, string redirectUri)
         {
             try
             {
                 var effectiveTenantId = BlocksContext.GetContext()?.TenantId;
 
-                // Provider is always the IDP's own OIDC provider — not taken from FE
-                //var providerName = IdpConstants.BlocksProviderName;
-                //var providerType = IdpConstants.BlocksProviderType;
-
-                //// Get identity provider config by both provider name and type for exact match
-                //var identityProvider = await _authenticationRepository.GetIdentityProviderAsync(providerName, providerType);
-                //if (identityProvider == null)
-                //{
-                //    // Backward compatibility: support legacy records stored as (blocks, oidc).
-                //    providerName = IdpConstants.BlocksProviderType;
-                //    providerType = IdpConstants.OidcProtocol;
-                //    identityProvider = await _authenticationRepository.GetIdentityProviderAsync(providerName, providerType);
-                //}
-
-                var identityProvider = await _authenticationRepository.GetIdentityProviderByClientAsync(clientId);
-
+                // One ClientId maps to one provider entry.
+                var identityProvider = await _authenticationRepository.GetIdentityProviderByClientIdAsync(clientId);
                 if (identityProvider == null || !identityProvider.IsActive)
                 {
-                    _logger.LogWarning($"Identity provider not found or inactive for client: {clientId}");
-                    return new BadRequestObjectResult(new { error = "invalid_provider", error_description = "Provider not found or not active" });
+                    return new BadRequestObjectResult(new { error = "invalid_client", error_description = "ClientId not found or inactive" });
+                }
+
+                if (string.IsNullOrWhiteSpace(redirectUri))
+                {
+                    return new BadRequestObjectResult(new { error = "invalid_request", error_description = "redirectUri is required" });
+                }
+
+                var allowedRedirectUris = identityProvider.RedirectUris ?? [];
+                if (!allowedRedirectUris.Any(x => string.Equals(x, redirectUri, StringComparison.OrdinalIgnoreCase)))
+                {
+                    return new BadRequestObjectResult(new { error = "invalid_redirect_uri", error_description = "redirectUri is not registered for this client" });
                 }
 
                 // Generate OIDC flow parameters
@@ -81,14 +78,14 @@ namespace Authentication.DomainService.Authentication
                     provider = identityProvider.Provider,
                     tenantId = effectiveTenantId,
                     clientId = identityProvider.ClientId,
-                    redirectUri = identityProvider.RedirectUri,
+                    redirectUri,
                     createdAt = DateTime.UtcNow
                 };
                 var cacheKey = $"idp_flow:{state}";
                 await _cacheClient.AddStringValueAsync(cacheKey, System.Text.Json.JsonSerializer.Serialize(flowContext), 600);
 
                 // Build authorization URL
-                var authorizeUrl = BuildAuthorizeUrl(identityProvider, state, nonce, codeChallenge);
+                var authorizeUrl = BuildAuthorizeUrl(identityProvider, redirectUri, state, nonce, codeChallenge);
 
                 _logger.LogInformation($"Started authentication flow for provider {identityProvider.Provider} with state {state}");
 
@@ -173,7 +170,7 @@ namespace Authentication.DomainService.Authentication
                     { "code", code },
                     { "client_id", identityProvider.ClientId ?? string.Empty },
                     { "client_secret", identityProvider.ClientSecret ?? string.Empty },
-                    { "redirect_uri", identityProvider.RedirectUri ?? string.Empty }
+                    { "redirect_uri", flowContext.RedirectUri ?? string.Empty }
                 };
 
                 // Add PKCE code_verifier if present
@@ -206,7 +203,8 @@ namespace Authentication.DomainService.Authentication
                 }
 
                 // Resolve tenant_id: flowContext > BlocksContext > default
-                var resolvedTenantId = flowContext.TenantId ?? BlocksContext.GetContext()?.TenantId ?? string.Empty;
+                var blocksContext = BlocksContext.GetContext();
+                var resolvedTenantId = flowContext.TenantId ?? blocksContext?.TenantId ?? string.Empty;
                 var authConfiguration = await _authenticationRepository.GetAuthenticationConfigurationAsync();
                 var configuredAccessLifetimeSeconds = Math.Max((authConfiguration?.AccessTokenValidForNumberMinutes ?? AuthenticationConfiguration.DefaultAccessTokenValidForNumberMinutes) * 60, 60);
                 var configuredRefreshLifetimeMinutes = Math.Max(authConfiguration?.AbsoluteRefreshTokenValidForNumberMinutes ?? AuthenticationConfiguration.DefaultRememberMeRefreshTokenValidForNumberMinutes, 1);
@@ -214,7 +212,8 @@ namespace Authentication.DomainService.Authentication
                     ? Math.Max(tokenResponse.ExpiresIn.Value, 60)
                     : configuredAccessLifetimeSeconds;
 
-                var cookieDomain = _tenants.GetTenantByID(resolvedTenantId)?.CookieDomain;
+                var tenant = _tenants.GetTenantByID(resolvedTenantId);
+                var (domain, cookieDomain, isResolved) = DomainResolver.ResolveDomain(tenant, httpRequest);
                 var tokenResponseObj = new TokenResponse
                 {
                     AccessToken = tokenResponse.AccessToken,
@@ -227,22 +226,33 @@ namespace Authentication.DomainService.Authentication
                     CookieDomain = cookieDomain
                 };
 
-                // Always use secure cookies for token delivery in IdP callback flow.
-                AppendCookies(tokenResponseObj, httpResponse, httpRequest, resolvedTenantId);
-
-                // Clear cache entry
                 await _cacheClient.RemoveKeyAsync(cacheKey);
+
+                if (isResolved && !string.IsNullOrWhiteSpace(domain))
+                {
+                    AppendCookies(tokenResponseObj, httpResponse, httpRequest, domain);
+                    _logger.LogInformation($"Successfully completed authentication flow for state: {state}");
+
+                    return new OkObjectResult(new
+                    {
+                        id_token = tokenResponseObj.IdToken,
+                        token_type = tokenResponseObj.TokenType ?? "Bearer",
+                        expires_in = (tokenResponseObj.ExpiresUtc - DateTime.UtcNow).TotalSeconds,
+                        scope = tokenResponseObj.Scope
+                    });
+                }
+
 
                 _logger.LogInformation($"Successfully completed authentication flow for state: {state}");
 
                 return new OkObjectResult(new
                 {
+                    access_token = tokenResponseObj.AccessToken,
+                    refresh_token = tokenResponseObj.RefreshToken,
+                    id_token = tokenResponseObj.IdToken,
                     token_type = tokenResponseObj.TokenType ?? "Bearer",
                     expires_in = (tokenResponseObj.ExpiresUtc - DateTime.UtcNow).TotalSeconds,
-                    scope = tokenResponseObj.Scope,
-                    tenant_id = resolvedTenantId,
-                    client_id = identityProvider.ClientId,
-                    cookie_set = true
+                    scope = tokenResponseObj.Scope
                 });
             }
             catch (Exception ex)
@@ -281,66 +291,52 @@ namespace Authentication.DomainService.Authentication
             return base64.Replace("+", "-").Replace("/", "_").TrimEnd('=');
         }
 
-        private static void AppendCookies(TokenResponse response, HttpResponse httpResponse, HttpRequest httpRequest, string? tenantId = null)
+        private static void AppendCookies(TokenResponse response, HttpResponse httpResponse, HttpRequest httpRequest, string? domain = null)
         {
-            var resolvedTenantId = string.IsNullOrWhiteSpace(tenantId)
-                ? BlocksContext.GetContext()?.TenantId ?? "default"
-                : tenantId;
+            // Validate response has no error indicator
+            if (!string.IsNullOrWhiteSpace(response.Error))
+            {
+                return; // Cannot set cookies for error responses
+            }
+
+            // Validate access token is present
+            if (string.IsNullOrWhiteSpace(response.AccessToken))
+            {
+                return; // Cannot set cookies without valid access token
+            }
+
+            var normalizedDomain = domain ?? BlocksContext.GetContext()?.TenantId ?? "default";
             var accessCookieOptions = CreateCookieOptions(response.CookieDomain, response.ExpiresUtc, httpRequest);
-            var idCookieOptions = CreateCookieOptions(response.CookieDomain, response.ExpiresUtc, httpRequest);
             var refreshCookieOptions = CreateCookieOptions(response.CookieDomain, response.RefreshExpiresUtc, httpRequest);
 
-            if (!string.IsNullOrWhiteSpace(response.AccessToken))
-            {
-                httpResponse.Cookies.Append($"{IdpConstants.AccessTokenCookieName}_{resolvedTenantId}", response.AccessToken, accessCookieOptions);
-            }
+            httpResponse.Cookies.Append($"{normalizedDomain}", response.AccessToken, accessCookieOptions);
 
             if (!string.IsNullOrWhiteSpace(response.RefreshToken))
             {
-                httpResponse.Cookies.Append($"{IdpConstants.RefreshTokenCookieName}_{resolvedTenantId}", response.RefreshToken, refreshCookieOptions);
-            }
-
-            if (!string.IsNullOrWhiteSpace(response.IdToken))
-            {
-                httpResponse.Cookies.Append($"{IdpConstants.IdTokenCookieName}_{resolvedTenantId}", response.IdToken, idCookieOptions);
+                httpResponse.Cookies.Append($"{IdpConstants.RefreshTokenCookieName}_{normalizedDomain}", response.RefreshToken, refreshCookieOptions);
             }
         }
 
         private static CookieOptions CreateCookieOptions(string? domain, DateTime expiresUtc, HttpRequest httpRequest)
         {
-            var isLocalRequest = IsLocalRequest(httpRequest);
+            var isLocalRequest = DomainResolver.IsLocalhost();
             var cookieDomain = isLocalRequest ? null : (string.IsNullOrWhiteSpace(domain) ? null : domain);
-            var isSecure = !isLocalRequest && httpRequest.IsHttps;
-            var sameSite = isSecure ? SameSiteMode.None : SameSiteMode.Lax;
 
             return new CookieOptions
             {
                 Domain = cookieDomain,
                 HttpOnly = true,
-                Secure = isSecure,
-                SameSite = sameSite,
+                Secure = true,
+                SameSite = isLocalRequest ? SameSiteMode.None : SameSiteMode.Strict,
                 Path = "/",
                 Expires = expiresUtc == default ? DateTime.UtcNow : expiresUtc
             };
         }
 
-        private static bool IsLocalRequest(HttpRequest request)
-        {
-            var host = request.Host.Host ?? string.Empty;
-            return string.Equals(host, "localhost", StringComparison.OrdinalIgnoreCase)
-                || string.Equals(host, "127.0.0.1", StringComparison.OrdinalIgnoreCase)
-                || string.Equals(host, "::1", StringComparison.OrdinalIgnoreCase);
-        }
-
-        private static bool IsLocalhost()
-        {
-            var hostEnv = Environment.GetEnvironmentVariable("ASPNETCORE_ENVIRONMENT") ?? "";
-            return hostEnv.Equals("Development", StringComparison.OrdinalIgnoreCase);
-        }
 
         private static TimeSpan GetOutboundRequestTimeout()
         {
-            return IsLocalhost() ? TimeSpan.FromMinutes(5) : TimeSpan.FromSeconds(100);
+            return DomainResolver.IsLocalhost() ? TimeSpan.FromMinutes(5) : TimeSpan.FromSeconds(100);
         }
 
         private async Task<(OidcTokenEndpointResponse? Response, string Error)> ExchangeCodeForTokenAsync(
@@ -364,13 +360,13 @@ namespace Authentication.DomainService.Authentication
             return (response, error);
         }
 
-        private string BuildAuthorizeUrl(IdentityProvider provider, string state, string nonce, string? codeChallenge)
+        private string BuildAuthorizeUrl(IdentityProvider provider, string redirectUri, string state, string nonce, string? codeChallenge)
         {
             var queryParams = new Dictionary<string, string>
             {
                 { "client_id", provider.ClientId ?? string.Empty },
                 { "response_type", provider.ResponseType ?? "code" },
-                { "redirect_uri", provider.RedirectUri ?? string.Empty },
+                { "redirect_uri", redirectUri },
                 { "scope", provider.Scope ?? "openid profile email" },
                 { "state", state },
                 { "nonce", nonce }

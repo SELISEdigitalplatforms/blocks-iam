@@ -2,8 +2,6 @@ using Authentication.DomainService.Authentication;
 using Authentication.DomainService.Entities;
 using Authentication.DomainService.OAuth.RequestModel;
 using Authentication.DomainService.Oidc.Services;
-using Authentication.DomainService.Shared.RequestModel;
-using CloudConfiguration.DomainService.Authentication.RequestModel;
 using Iam.DomainService.Accounts;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
@@ -42,6 +40,19 @@ public class AuthenticationController : ControllerBase
         _authenticationFlowService = authenticationFlowService;
         _oidcCallbackHandler = oidcCallbackHandler;
         _authorizationFlowService = authorizationFlowService;
+    }
+
+    /// <summary>
+    /// Execute user registration (Sign Up)
+    /// Creates new user account with provided credentials
+    /// Issues access and refresh tokens on success
+    /// </summary>
+    [HttpPost("signup")]
+    [AllowAnonymous]
+    public async Task<IActionResult> ExecuteSignup([FromBody] SignupUserRequest request)
+    {
+        var result = await _accountService.SignupAccountAsync(request);
+        return result.IsSuccess ? Ok(result) : BadRequest(result);
     }
 
     #region Password Authentication
@@ -173,9 +184,9 @@ public class AuthenticationController : ControllerBase
     /// </summary>
     [HttpGet("social/authorize")]
     [AllowAnonymous]
-    public Task<IActionResult> InitiateSocialAuthentication([FromQuery] string provider)
+    public Task<IActionResult> InitiateSocialAuthentication([FromQuery] string provider, [FromQuery] string redirectUri)
     {
-        return _authenticationService.GetSocialAuthorizationUrlAsync(provider);
+        return _authenticationService.GetSocialAuthorizationUrlAsync(provider, redirectUri);
     }
 
     /// <summary>
@@ -224,40 +235,27 @@ public class AuthenticationController : ControllerBase
     #region OIDC Federated Authentication (OpenID Connect 1.0)
 
     /// <summary>
-    /// OIDC callback handler (API Pattern - POST)
-    /// Receives authorization code from provider via POST request
-    /// Exchanges code for tokens, validates JWT signature and claims
-    /// RFC 6749: OAuth 2.0 | RFC 3986: OpenID Connect | RFC 7519: JWT | RFC 5280: X.509
-    /// </summary>
-    [HttpPost("oidc/callback")]
-    [AllowAnonymous]
-    public async Task<IActionResult> HandleOidcCallbackPost([FromBody] OidcCallbackRequest request)
-    {
-        if (string.IsNullOrWhiteSpace(request?.Code))
-            return BadRequest(new { error = "authorization_code_missing", error_description = "Authorization code is required" });
-
-        if (string.IsNullOrWhiteSpace(request.State))
-            return BadRequest(new { error = "state_missing", error_description = "State parameter is required" });
-
-        if (string.IsNullOrWhiteSpace(request.Provider))
-            return BadRequest(new { error = "provider_missing", error_description = "Provider name is required" });
-
-        return await ProcessOidcCallback(request.Code, request.State, request.Provider);
-    }
-
-    /// <summary>
     /// OIDC callback handler (Browser Redirect Pattern - GET)
     /// Receives authorization code from provider via browser redirect
     /// Exchanges code for tokens, validates JWT signature and claims
     /// RFC 6749: OAuth 2.0 | RFC 3986: OpenID Connect | RFC 7519: JWT | RFC 5280: X.509
     /// </summary>
     [HttpGet("oidc/callback")]
+    [HttpPost("oidc/callback")]
     [AllowAnonymous]
     public async Task<IActionResult> HandleOidcCallbackGet(
         [FromQuery] string code,
         [FromQuery] string state,
-        [FromQuery] string provider)
+        [FromQuery] string provider,
+        [FromBody] OidcCallbackRequest? request = null)
     {
+        if (request != null)
+        {
+            code = request.Code;
+            state = request.State;
+            provider = request.Provider;
+        }
+
         if (string.IsNullOrWhiteSpace(code))
             return BadRequest(new { error = "authorization_code_missing", error_description = "Authorization code is required" });
 
@@ -341,29 +339,14 @@ public class AuthenticationController : ControllerBase
         return await _authenticationService.BuildFlowResultAsync(result, HttpContext);
     }
 
-    /// <summary>
-    /// Initiate user impersonation (Administrator Feature)
-    /// Allows admins to impersonate users for support/debugging
-    /// All actions audited and linked back to admin
-    /// Requires admin role - cannot impersonate other admins
-    /// </summary>
-    [HttpPost("impersonate")]
+    [HttpGet("context/{projectId}")]
     [Authorize]
-    public async Task<IActionResult> InitiateImpersonation([FromBody] ImpersonationRequest request)
+    public async Task<IActionResult> GetContextForProject([FromRoute] string projectId)
     {
-        return await _authenticationFlowService.ExecuteImpersonateAsync(request, User, Request, Response);
+        var result = await _authenticationFlowService.GetContextForProjectAsync(projectId);
+        return result.IsSuccess ? Ok(result) : BadRequest(result);
     }
 
-    /// <summary>
-    /// Stop user impersonation (Revert to Original Admin)
-    /// Admin stops impersonating user and reverts to original context
-    /// </summary>
-    [HttpPost("impersonation/stop")]
-    [Authorize]
-    public async Task<IActionResult> StopImpersonation()
-    {
-        return await _authenticationFlowService.ExecuteStopImpersonationAsync(User, Request, Response);
-    }
 
     /// <summary>
     /// Execute global logout across all sessions (Logout All Devices)
@@ -496,7 +479,7 @@ public class AuthenticationController : ControllerBase
     /// </summary>
     [HttpPatch("identity-providers/{id}/status")]
     [Authorize]
-    public async Task<IActionResult> UpdateIdentityProviderStatus([FromRoute] string id, [FromBody] UpdateStatusRequest request)
+    public async Task<IActionResult> UpdateIdentityProviderStatus([FromRoute] string id, [FromBody] Authentication.DomainService.Shared.RequestModel.UpdateStatusRequest request)
     {
         var result = await _authenticationService.UpdateIdentityProviderStatusAsync(id, request.IsActive);
         return result.IsSuccess ? Ok(result) : BadRequest(result);
@@ -522,6 +505,12 @@ public class AuthenticationController : ControllerBase
         if (result.IsOidcFlow && !string.IsNullOrWhiteSpace(result.AuthorizationCode) && !string.IsNullOrWhiteSpace(result.RedirectUri))
         {
             // OIDC FLOW: Issue authorization code and redirect to original redirect_uri
+            // Ensure IdP session is established before redirect for SSO continuity
+            if (!string.IsNullOrWhiteSpace(result.BlocksUserId) && !string.IsNullOrWhiteSpace(result.TenantId))
+            {
+                await _authenticationService.EnsureIdpSessionForOidcCallbackAsync(HttpContext, result.BlocksUserId, result.TenantId);
+            }
+
             // Frontend will receive code and exchange for token
             var separator = result.RedirectUri.Contains('?') ? "&" : "?";
             var redirectUrl = $"{result.RedirectUri}{separator}code={Uri.EscapeDataString(result.AuthorizationCode)}&state={Uri.EscapeDataString(result.OriginalState ?? string.Empty)}";
@@ -532,8 +521,8 @@ public class AuthenticationController : ControllerBase
             // EMBEDDED FLOW: Use the same tenant-scoped cookie naming and security policy as login/refresh/logout.
             await _authenticationService.AppendSessionCookies(HttpContext, result.AccessToken, result.RefreshToken);
 
-            // Redirect to dashboard
-            return Redirect("/dashboard");
+            // Redirect to home page or original URL if state contains it (optional enhancement)
+            return Redirect("/");
         }
     }
 }

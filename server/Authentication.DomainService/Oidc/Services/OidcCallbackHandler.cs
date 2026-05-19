@@ -1,3 +1,4 @@
+using Authentication.DomainService.Utilities;
 using System.IdentityModel.Tokens.Jwt;
 using System.Text.Json.Serialization;
 using System.Text.Json;
@@ -7,7 +8,6 @@ using Authentication.DomainService.Services;
 using Blocks.Genesis;
 using Iam.DomainService.Users;
 using Microsoft.Extensions.Logging;
-using Microsoft.IdentityModel.Tokens;
 
 namespace Authentication.DomainService.Oidc.Services
 {
@@ -30,6 +30,10 @@ namespace Authentication.DomainService.Oidc.Services
         public string? AuthorizationCode { get; set; }
         public string? RedirectUri { get; set; }
         public string? OriginalState { get; set; }
+        
+        // Session/User identification for post-callback setup
+        public string? BlocksUserId { get; set; }
+        public string? TenantId { get; set; }
     }
 
     public class OidcCallbackHandler : IOidcCallbackHandler
@@ -88,7 +92,7 @@ namespace Authentication.DomainService.Oidc.Services
             try
             {
                 // Parse OIDC social state to get context
-                var oidcSocialState = System.Text.Json.JsonDocument.Parse(oidcSocialStateJson).RootElement;
+                var oidcSocialState = JsonDocument.Parse(oidcSocialStateJson).RootElement;
                 var oidcState = oidcSocialState.GetProperty("oidcState").GetString();
 
                 if (string.IsNullOrWhiteSpace(oidcState))
@@ -106,7 +110,7 @@ namespace Authentication.DomainService.Oidc.Services
                     return new OidcCallbackResult { IsSuccess = false, ErrorMessage = "OIDC flow expired" };
                 }
 
-                var context = System.Text.Json.JsonDocument.Parse(contextJson).RootElement;
+                var context = JsonDocument.Parse(contextJson).RootElement;
                 var clientId = context.GetProperty("clientId").GetString();
                 var originalState = context.GetProperty("state").GetString();
                 var redirectUri = context.GetProperty("redirectUri").GetString();
@@ -150,7 +154,7 @@ namespace Authentication.DomainService.Oidc.Services
                 // 6. Issue OIDC authorization code for the original client
                 var authorizationCode = Guid.NewGuid().ToString("n");
                 var authCodeKey = $"oidc_auth_code:{authorizationCode}";
-                var authCodeValue = System.Text.Json.JsonSerializer.Serialize(new
+                var authCodeValue = JsonSerializer.Serialize(new
                 {
                     clientId,
                     userId = blocksUserId,  // Use Blocks user ID, not provider's user ID
@@ -173,6 +177,8 @@ namespace Authentication.DomainService.Oidc.Services
                 tokenResult.RedirectUri = redirectUri;
                 tokenResult.OriginalState = originalState;
                 tokenResult.IsOidcFlow = true;
+                tokenResult.BlocksUserId = blocksUserId;
+                tokenResult.TenantId = context.GetProperty("tenantId").GetString() ?? "default";
 
                 return tokenResult;
             }
@@ -300,7 +306,7 @@ namespace Authentication.DomainService.Oidc.Services
                     { "code", code },
                     { "client_id", provider.ClientId },
                     { "client_secret", provider.ClientSecret },
-                    { "redirect_uri", provider.RedirectUri ?? "" }
+                    { "redirect_uri", provider.RedirectUris?.FirstOrDefault() ?? "" }
                 };
 
                 var timeoutSeconds = (int)GetOutboundRequestTimeout().TotalSeconds;
@@ -403,15 +409,11 @@ namespace Authentication.DomainService.Oidc.Services
             }
         }
 
-        private static bool IsLocalhost()
-        {
-            var hostEnv = Environment.GetEnvironmentVariable("ASPNETCORE_ENVIRONMENT") ?? "";
-            return hostEnv.Equals("Development", StringComparison.OrdinalIgnoreCase);
-        }
+
 
         private static TimeSpan GetOutboundRequestTimeout()
         {
-            return IsLocalhost() ? TimeSpan.FromMinutes(5) : TimeSpan.FromSeconds(120);
+            return DomainResolver.IsLocalhost() ? TimeSpan.FromMinutes(5) : TimeSpan.FromSeconds(120);
         }
     }
 

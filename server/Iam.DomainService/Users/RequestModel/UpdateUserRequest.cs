@@ -1,9 +1,8 @@
-﻿using Blocks.Genesis;
-using Iam.DomainService.Entities;
+﻿using Iam.DomainService.Entities;
 
 namespace Iam.DomainService.Users
 {
-    public class UpdateUserRequest : IProjectKey
+    public class UpdateUserRequest
     {
         public string ItemId { get; set; }
         public string? Salutation { get; set; }
@@ -15,8 +14,7 @@ namespace Iam.DomainService.Users
         public string? ProfileImageId { get; set; }
         public UserMfaType UserMfaType { get; set; }
         public bool MfaEnabled { get; set; }
-        public Dictionary<string, List<string>> Roles { get; set; } = new();
-        public Dictionary<string, List<string>> Permissions { get; set; } = new();
-        public string? ProjectKey { get; set; }
+        public List<string> Roles { get; set; } = new();
+        public List<string> Permissions { get; set; } = new();
     }
 }

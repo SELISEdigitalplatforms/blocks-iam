@@ -1,4 +1,5 @@
-﻿using FluentValidation;
+﻿using Blocks.Genesis;
+using FluentValidation;
 
 namespace Iam.DomainService.Resources
 {
@@ -25,7 +26,9 @@ namespace Iam.DomainService.Resources
 
         public async Task<bool> NotAnExistingResourceRole(string slug, CancellationToken cancellationToken)
         {
-            var role = await _resourceRepository.GetRoleBySlugAsync(slug);
+            var contextOrgId = BlocksContext.GetContext()?.OrganizationId;
+            var orgId = string.IsNullOrWhiteSpace(contextOrgId) ? "default" : contextOrgId;
+            var role = await _resourceRepository.GetRoleBySlugAndOrgAsync(slug, orgId);
             return role == null;
         }
 

@@ -20,21 +20,25 @@ namespace Authentication.DomainService.Services
         Task<User> GetUserByUsernameAsync(string username, string? organizationId = null);
         Task<User> GetUserByIdAsync(string itemId);
         Task<T> GetUserByIdAsync<T>(string itemId);
-        Task<bool> InsertSessionAsync(Session session);
+        Task<bool> InsertIdentitySessionAsync(IdentitySession session);
+        Task<bool> InsertIdentityEventAsync(IdentityEvent identityEvent);
         Task<bool> InsertUserAuthenticationTimelineAsync(UserAuthenticationTimeline userAuthenticationTimeline);
         Task<User?> IncrementFailedLoginAndApplyLockoutAsync(string userId, int lockThreshold, int lockDurationInMinutes, DateTime nowUtc);
-        Task<IEnumerable<Session>> GetActiveSessionByUserIdAsync(string userId);
-        Task<Session?> GetSessionByRefreshTokenAsync(string refreshToken);
-        Task<IEnumerable<Session>> GetActiveSessionBySessionIdAsync(string sessionId);
-        Task<bool> UpdateSessionStatusForAllRefreshTokenAsync(IEnumerable<string> refreshTokens);
-        Task<bool> UpdateSessionStatusAsync(string refreshToken, string userId);
+        Task<IEnumerable<IdentitySession>> GetActiveIdentitySessionByUserIdAsync(string userId);
+        Task<IdentitySession?> GetIdentitySessionByRefreshTokenAsync(string refreshToken);
+        Task<IEnumerable<IdentitySession>> GetActiveIdentitySessionBySessionIdAsync(string sessionId);
+        Task<bool> RevokeIdentitySessionsByRefreshTokensAsync(IEnumerable<string> refreshTokens);
+        Task<bool> UpdateSessionStatusForAllRefreshTokenAsync(List<string> refreshTokens);
+        Task<bool> RevokeIdentitySessionAsync(string refreshToken, string userId);
         Task UpdatePartialAsync<T>(string id, Dictionary<string, object> updates, string collectionName = "");
         Task<List<IdentityProvider>> GetIdentityProvidersAsync();
         Task<IdentityProvider?> GetIdentityProviderAsync(string provider);
         Task<IdentityProvider?> GetIdentityProviderAsync(string provider, string providerType);
         Task<IdentityProvider?> GetIdentityProviderByIdAsync(string id);
+        Task<IdentityProvider?> GetIdentityProviderByClientIdAsync(string clientId);
+        Task<IdentityProvider?> GetIdentityProviderByClientIdAndRedirectUriAsync(string clientId, string redirectUri);
+        Task<List<IdentityProvider>> GetIdentityProvidersByClientIdAsync(string clientId);
         Task<IdentityProvider> CreateIdentityProviderAsync(IdentityProvider provider);
-        Task<IdentityProvider> GetIdentityProviderByClientAsync(string clientId);
         Task<IdentityProvider> UpdateIdentityProviderAsync(IdentityProvider provider);
         Task DeleteIdentityProviderAsync(string id);
         Task<AuthenticationConfiguration> GetAuthenticationConfigurationAsync();
@@ -54,10 +58,5 @@ namespace Authentication.DomainService.Services
         Task DeleteClientCredentialAsync(DeleteClientCredentialRequest request);
         Task<List<ClientCredential>> GetClientCredentialsAsync();
         
-        // Impersonation session methods
-        Task<bool> InsertImpersonationSessionAsync(ImpersonationSession session);
-        Task<ImpersonationSession?> GetImpersonationSessionByIdAsync(string sessionId);
-        Task<List<ImpersonationSession>> GetActiveImpersonationSessionsByUserIdAsync(string userId);
-        Task<bool> UpdateImpersonationSessionAsync(string sessionId, Dictionary<string, object> updates);
     }
 }

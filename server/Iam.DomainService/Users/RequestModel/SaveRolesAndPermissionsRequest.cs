@@ -1,13 +1,10 @@
-﻿using Blocks.Genesis;
-
-namespace Iam.DomainService.Users
+﻿namespace Iam.DomainService.Users
 {
-    public class SaveRolesAndPermissionsRequest : IProjectKey
+    public class SaveRolesAndPermissionsRequest
     {
         public required string UserId { get; set; }
-        public Dictionary<string, List<string>> Roles { get; set; } = new();
-        public Dictionary<string, List<string>> Permissions { get; set; } = new();
-        public string? ProjectKey { get; set; }
+        public List<string> Roles { get; set; } = new();
+        public List<string> Permissions { get; set; } = new();
 
     }
 

@@ -136,40 +136,10 @@ namespace Authentication.DomainService.OAuth.Services
 
         protected virtual TokenResponse CreateUserNotFoundError(string userName)
         {
-            return new TokenResponse { Error = "Failed to create user", ErrorDescription = "Failed to create user", StatusCode = 401 };
+            return new TokenResponse { Error = "user_not_found", ErrorDescription = $"{userName} is not exit", StatusCode = 401 };
         }
 
         public abstract Task<(User? user, string redirectUrl)> GetUser(StateInfo stateInfo, IExternalUserData externalUser);
-
-        public async Task<(User? user, string redirectUrl)> CreateUser(StateInfo stateInfo, IExternalUserData externalUser)
-        {
-            var blocksContext = BlocksContext.GetContext();
-
-            var userPayload = new CreateUserViaSsoRequest
-            {
-                Email = externalUser.Email,
-                ExternalUserId = externalUser.ExternalProviderUserId,
-                FirstName = externalUser.FirstName,
-                LastName = externalUser.LastName,
-                PhoneNumber = externalUser.PhoneNumber,
-                IsVerified = true,
-                Active = true,
-                MailPurpose = "AccountActivated",
-                SendWelcomeMail = true,
-                Platform = stateInfo.Provider,
-                ProfileImageUrl = externalUser.ProfileImageUrl,
-                Roles = new Dictionary<string, List<string>> { ["default"] = externalUser.Roles ?? [] },
-                Permissions = new Dictionary<string, List<string>> { ["default"] = externalUser.Permissions ?? [] },
-                ProjectKey = blocksContext?.TenantId,
-                DepartMent = externalUser.Department,
-                EmployeeId = externalUser.EmployeeId
-            };
-
-            var code = Guid.NewGuid().ToString("n");
-            await _cacheClient.AddStringValueAsync(code, JsonSerializer.Serialize(userPayload), 5000);
-            var redirectUrl = $"{_configuration["SsoSignUpUri"]}?code={code}&username={externalUser.Email}&firstname={externalUser.FirstName}&lastname={externalUser.LastName}";
-            return (null, redirectUrl);
-        }
 
         private static string ResolveSignInOrganizationId(User user, string? requestedOrganizationId)
         {

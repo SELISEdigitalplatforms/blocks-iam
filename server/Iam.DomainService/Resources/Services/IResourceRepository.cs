@@ -6,7 +6,8 @@ namespace Iam.DomainService.Resources
 {
     public interface IResourceRepository
     {
-        Task<Permission> GetPermissionByResourceAsync(string resource);
+        Task<Permission> GetPermissionByResourceAsync(string resource, string? organizationId = "default");
+        Task<List<Permission>> GetPermissionsByResourcesAsync(List<string> resources, string? organizationId = "default");
         Task<Permission> GetPermissionByIdAsync(string id);
         Task<(IQueryable<Permission>, long)> GetPermissionsAsync(GetPermissionsRequest query);
         Task<bool> InsertPermissionAsync(Permission permission);
@@ -34,11 +35,19 @@ namespace Iam.DomainService.Resources
         Task<bool> RemoveRolePermissionByIdsAsync(string slug, List<string> permissions);
         Task<bool> UpdateRolesCountAsync(string slug);
         Task<List<GetResourceGroupResponse>> GetResourceGroupsAsync();
-        Task<Organization> GetOrganizationById(string resourceId);
+        Task<Organization> GetOrganizationById(string id);
         Task SaveOrganizationAsync(Organization organization);
         Task<GetOrganizationsResponse> GetOrganizationsAsync(GetOrganizationsRequest request);
-        Task SaveOrganizationConfig(OrganizationConfig config);
-        Task<OrganizationConfig> GetOrganizationConfigAsync(string tenantId, string organizationId);
+        Task SaveOrganizationConfig(TenantConfiguration tenantConfiguration);
         Task<List<PermissionGroupBySeverityResponse>> GetPermissionsGroupBySeverityAsync();
+        Task<TenantConfiguration> GetTenantConfigurationAsync();
+        Task<List<Role>> GetRolesBySlugAndOrgAsync(List<string> slugs, string organizationId);
+        Task<bool> InsertRolesAsync(List<Role> roles);
+        Task<bool> UpdateAllSamePermissionAsync(Permission permission);
+        Task<List<Permission>> GetPermissionsByRoleAsync(string roleSlug, string organizationId);
+        Task<List<Permission>> GetPermissionsByRolesAsync(List<string> roleSlugs, string organizationId, int pageNumber = 1, int pageSize = 10);
+        Task<List<Permission>> GetPermissionsByGroupsAsync(List<string> groups, string organizationId, int pageNumber = 1, int pageSize = 10);
+        Task<List<Permission>> GetPermissionsByIdsAsync(List<string> ids);
+        Task<bool> InsertPermissionsAsync(List<Permission> permissions);
     }
 }

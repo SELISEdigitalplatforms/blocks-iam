@@ -55,205 +55,67 @@ public sealed class AuthorizationClaimsResolver : IAuthorizationClaimsResolver
             .Distinct(StringComparer.OrdinalIgnoreCase)
             .ToList();
 
-        var directPermissionKeys = ResolvePermissions(user, organizationId)
-            .Where(IsNamespacedPermission)
+        var permissions = ResolvePermissions(user, organizationId)
+            .Where(value => !string.IsNullOrWhiteSpace(value))
             .Distinct(StringComparer.OrdinalIgnoreCase)
             .ToList();
 
         var permissionCatalog = new List<GetUserPermission>();
-
-        if (directPermissionKeys.Count > 0)
-        {
-            permissionCatalog.AddRange(await _userRepository.GetPermissionsByResourcesAsync(directPermissionKeys));
-        }
-
-        var resolvedPermissions = permissionCatalog
-            .Where(permission => IsNamespacedPermission(permission.Resource))
-            .GroupBy(permission => permission.Resource, StringComparer.OrdinalIgnoreCase)
-            .Select(group => group.First())
-            .ToList();
-
-        var allowedClientScopes = clientAllowedScopes?
-            .Where(scope => !string.IsNullOrWhiteSpace(scope))
-            .Distinct(StringComparer.OrdinalIgnoreCase)
-            .ToList();
 
         var allowedServiceAccessResources = clientAllowedServiceAccessResources?
             .Where(resource => !string.IsNullOrWhiteSpace(resource))
             .Distinct(StringComparer.OrdinalIgnoreCase)
             .ToList();
 
-        var filteredPermissions = ApplyScopeFilter(
-            resolvedPermissions,
-            requestedScope,
-            allowedClientScopes,
-            requireExplicitScope);
-
-        var resources = ResolveServiceResources(requestedScope, allowedClientScopes, allowedServiceAccessResources, requireExplicitScope);
-        if (resources.Count == 0)
-        {
-            resources = filteredPermissions
-                .Select(permission => ExtractResourceNamespace(permission.Resource))
-                .Where(value => !string.IsNullOrWhiteSpace(value))
-                .Distinct(StringComparer.OrdinalIgnoreCase)
-                .ToList();
-        }
 
         return new ResolvedAuthorizationClaims
         {
             Roles = roles,
-            Permissions = filteredPermissions
-                .Select(permission => permission.Resource)
-                .Distinct(StringComparer.OrdinalIgnoreCase)
-                .ToList(),
-            Resources = resources
+            Permissions = permissions,
+            Resources = allowedServiceAccessResources ?? new List<string>()
         };
     }
 
     private static IEnumerable<string> ResolveRoles(User user, string? organizationId)
     {
+        List<string>? requestedRoles;
         if (!string.IsNullOrWhiteSpace(organizationId))
         {
-            if (user.Roles.TryGetValue(organizationId, out var requestedRoles) && requestedRoles is not null)
+            if (user.Roles.TryGetValue(organizationId, out requestedRoles) && requestedRoles is not null)
             {
                 return requestedRoles;
             }
 
-            return [];
+            return Enumerable.Empty<string>();
         }
 
-        if (user.Roles.TryGetValue("default", out var defaultRoles) && defaultRoles is not null)
+        if (user.Roles.TryGetValue("default", out requestedRoles) && requestedRoles is not null)
         {
-            return defaultRoles;
+            return requestedRoles;
         }
 
-        return user.Roles.Values.FirstOrDefault() ?? [];
+        return Enumerable.Empty<string>();
     }
 
     private static IEnumerable<string> ResolvePermissions(User user, string? organizationId)
     {
+        List<string>? requestedPermissions;
         if (!string.IsNullOrWhiteSpace(organizationId))
         {
-            if (user.Permissions.TryGetValue(organizationId, out var requestedPermissions) && requestedPermissions is not null)
+            if (user.Permissions.TryGetValue(organizationId, out requestedPermissions) && requestedPermissions is not null)
             {
                 return requestedPermissions;
             }
 
-            return [];
+            return Enumerable.Empty<string>();
         }
 
-        if (user.Permissions.TryGetValue("default", out var defaultPermissions) && defaultPermissions is not null)
+        if (user.Permissions.TryGetValue("default", out requestedPermissions) && requestedPermissions is not null)
         {
-            return defaultPermissions;
+            return requestedPermissions;
         }
 
-        return user.Permissions.Values.FirstOrDefault() ?? [];
+        return Enumerable.Empty<string>();
     }
 
-    private static List<GetUserPermission> ApplyScopeFilter(
-        IEnumerable<GetUserPermission> permissions,
-        string? requestedScope,
-        IReadOnlyCollection<string>? clientAllowedScopes,
-        bool requireExplicitScope)
-    {
-        var filtered = permissions.ToList();
-
-        if (clientAllowedScopes is { Count: > 0 })
-        {
-            filtered = filtered
-                .Where(permission => clientAllowedScopes.Any(scope => ScopeMatchesPermission(scope, permission.Resource)))
-                .ToList();
-        }
-
-        var requestedCustomScopes = ParseCustomScopes(requestedScope);
-        if (requestedCustomScopes.Count == 0)
-        {
-            return requireExplicitScope ? [] : filtered;
-        }
-
-        return filtered
-            .Where(permission => requestedCustomScopes.Any(scope => ScopeMatchesPermission(scope, permission.Resource)))
-            .ToList();
-    }
-
-    private static HashSet<string> ParseCustomScopes(string? scope)
-    {
-        return scope?
-            .Split(' ', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
-            .Where(value => !ReservedScopes.Contains(value))
-            .ToHashSet(StringComparer.OrdinalIgnoreCase)
-            ?? [];
-    }
-
-    private static List<string> ResolveServiceResources(
-        string? requestedScope,
-        IReadOnlyCollection<string>? clientAllowedScopes,
-        IReadOnlyCollection<string>? allowedServiceAccessResources,
-        bool requireExplicitScope)
-    {
-        if (allowedServiceAccessResources is { Count: > 0 })
-        {
-            return allowedServiceAccessResources
-                .Where(resource => !string.IsNullOrWhiteSpace(resource))
-                .Select(resource => resource.Trim())
-                .Distinct(StringComparer.OrdinalIgnoreCase)
-                .ToList();
-        }
-
-        var allowedCustomScopes = clientAllowedScopes?
-            .Where(scope => !string.IsNullOrWhiteSpace(scope))
-            .Where(scope => !ReservedScopes.Contains(scope))
-            .Distinct(StringComparer.OrdinalIgnoreCase)
-            .ToHashSet(StringComparer.OrdinalIgnoreCase)
-            ?? [];
-
-        var requestedCustomScopes = ParseCustomScopes(requestedScope);
-        IEnumerable<string> effectiveScopes;
-
-        if (requestedCustomScopes.Count > 0)
-        {
-            effectiveScopes = allowedCustomScopes.Count > 0
-                ? requestedCustomScopes.Where(scope => allowedCustomScopes.Contains(scope))
-                : requestedCustomScopes;
-        }
-        else
-        {
-            effectiveScopes = requireExplicitScope ? [] : allowedCustomScopes;
-        }
-
-        return effectiveScopes
-            .Select(ExtractResourceNamespace)
-            .Where(value => !string.IsNullOrWhiteSpace(value))
-            .Distinct(StringComparer.OrdinalIgnoreCase)
-            .ToList();
-    }
-
-    private static bool ScopeMatchesPermission(string scope, string permission)
-    {
-        if (string.Equals(scope, permission, StringComparison.OrdinalIgnoreCase))
-        {
-            return true;
-        }
-
-        var resourceNamespace = ExtractResourceNamespace(permission);
-        if (string.Equals(scope, resourceNamespace, StringComparison.OrdinalIgnoreCase))
-        {
-            return true;
-        }
-
-        return permission.StartsWith(scope + ".", StringComparison.OrdinalIgnoreCase)
-            || permission.StartsWith(scope + ":", StringComparison.OrdinalIgnoreCase);
-    }
-
-    private static bool IsNamespacedPermission(string? permission)
-    {
-        return !string.IsNullOrWhiteSpace(permission)
-            && (permission.Contains(':', StringComparison.Ordinal) || permission.Contains('.', StringComparison.Ordinal));
-    }
-
-    private static string ExtractResourceNamespace(string permission)
-    {
-        var separatorIndex = permission.IndexOfAny([':', '.']);
-        return separatorIndex > 0 ? permission[..separatorIndex] : permission;
-    }
 }
