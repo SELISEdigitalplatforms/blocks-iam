@@ -71,3 +71,15 @@ export const SSO_ENDPOINTS = {
   DELETE_SSO_CREDENTIAL: `/auth/sso/credential/delete`,
   UPDATE_STATUS: `/auth/sso/credential/status`,
 } as const;
+
+export const IMPERSONATE_ENDPOINTS = {
+  IMPERSONATE: `/api/auth/impersonate`,
+  STOP_IMPERSONATION: `/api/auth/impersonation/stop`,
+} as const;
+
+// ─── Identity Provider endpoints (identity-provider.service) ─────────────────
+
+
+export const EXECUTION_CONTEXT_ENDPOINTS = {
+  CONTEXT: `/api/auth/context`,
+};

@@ -46,6 +46,12 @@ export class UserService {
     });
   }
 
+  me(): Promise<{ data: User }> {
+    return http.get(`${USER_ENDPOINTS.ME}`, undefined, {
+      absoluteUrl: true,
+    });
+  }
+
   getUserInfo(): Promise<User> {
     return http.get(`${AUTH_ENDPOINTS.USER_INFO}`, undefined, {
       absoluteUrl: true,

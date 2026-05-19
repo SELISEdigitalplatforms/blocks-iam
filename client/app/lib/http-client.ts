@@ -5,7 +5,10 @@ import { useAuthStore } from "@/store/useAuthStore";
 import {
   AUTH_ENDPOINTS,
   AUTH_OIDC_ENDPOINTS,
+  EXECUTION_CONTEXT_ENDPOINTS,
+  IMPERSONATE_ENDPOINTS,
 } from "@/idp/authentication/constants/endpoint.constant";
+import { useExecutionContextStore } from "@/store/execution-context-store";
 
 class HttpError extends Error {
   status: number;
@@ -52,6 +55,8 @@ interface RequestQueue<T> {
 }
 let isRefreshing = false;
 let requestQueue: RequestQueue<unknown>[] = [];
+let isChangingImpersonation = false;
+let changeImpersonationRequestQueue: RequestQueue<unknown>[] = [];
 
 class HttpClient {
   constructor(
@@ -62,11 +67,13 @@ class HttpClient {
   private normalizeHeaders(
     headers?: HeadersInit,
     skipBlocksKey?: boolean,
+    executionContextId?: string,
   ): Headers {
     const normalizedHeaders = new Headers({
       Accept: "application/json",
       "Content-Type": "application/json",
       ...(!skipBlocksKey && { "X-Blocks-Key": this.BLOCKS_KEY }),
+      ...(executionContextId && { "x-context-id": executionContextId }),
     });
 
     if (headers) {
@@ -116,15 +123,7 @@ class HttpClient {
         this.request(url, requestOption).then(resolve).catch(reject);
       }
     } catch (_error) {
-      const queryClient = getQueryClient();
-      useAuthStore.getState().reset();
-      useProjectStore.getState().reset();
-      queryClient.cancelQueries();
-      queryClient.clear();
-      window.location.href = `/login`;
-    } finally {
-      isRefreshing = false;
-      requestQueue = [];
+      this.resetApp();
     }
   }
 
@@ -142,7 +141,27 @@ class HttpClient {
       skipTokenRotation = false,
     } = requestOption;
     const fullUrl = absoluteUrl ? url : `${this.baseURL}${url}`;
-    const normalizedHeaders = this.normalizeHeaders(headers, skipBlocksKey);
+    const needExecutionContext = this.isExecutionContextNeeded(fullUrl);
+
+    const executionContextId = this.resolveExecutionContext();
+
+    if (!executionContextId && needExecutionContext) {
+      return new Promise<T>((resolve, reject) => {
+        changeImpersonationRequestQueue.push({
+          url,
+          requestOption,
+          resolve: resolve as (value: unknown | PromiseLike<unknown>) => void,
+          reject,
+        });
+        if (!isChangingImpersonation) this.changeExecutionContext();
+      });
+    }
+
+    const normalizedHeaders = this.normalizeHeaders(
+      headers,
+      skipBlocksKey,
+      executionContextId || "",
+    );
     const config: RequestInit = {
       method,
       headers: normalizedHeaders,
@@ -166,6 +185,17 @@ class HttpClient {
     try {
       const response = await fetch(fullUrl, config);
 
+      if (response.status === 412 && needExecutionContext) {
+        return new Promise<T>((resolve, reject) => {
+          changeImpersonationRequestQueue.push({
+            url,
+            requestOption,
+            resolve: resolve as (value: unknown | PromiseLike<unknown>) => void,
+            reject,
+          });
+          if (!isChangingImpersonation) this.changeExecutionContext();
+        });
+      }
       if (response.status === 401 && !skipTokenRotation) {
         return new Promise<T>((resolve, reject) => {
           requestQueue.push({
@@ -214,6 +244,81 @@ class HttpClient {
         errors: { general: "Something went wrong" },
       });
     }
+  }
+
+  private isExecutionContextNeeded(url: string): boolean {
+    const { selectedProject } = useProjectStore.getState();
+    const restricedEndpoints = [
+      "https://dev-idp.blocksdevelopers.com/api/iam/me",
+    ];
+    if (restricedEndpoints.includes(url)) return false;
+    if (!selectedProject) return false;
+    return true;
+  }
+
+  private resolveExecutionContext(): string | null {
+    const { context } = useExecutionContextStore.getState();
+    const { selectedProject } = useProjectStore.getState();
+    const tenantId = selectedProject?.tenantId || this.BLOCKS_KEY;
+    if (!context || context.tenantId !== tenantId) return null;
+    return context.contextId;
+  }
+
+  private async getExecutionContext(tenant: string): Promise<string> {
+    try {
+      const response = await fetch(
+        `${EXECUTION_CONTEXT_ENDPOINTS.CONTEXT}/${tenant}`,
+        {
+          method: "GET",
+          headers: {
+            "X-Blocks-Key": this.BLOCKS_KEY,
+          },
+          credentials: "include",
+        },
+      );
+
+      if (!response.ok) throw new Error("Failed to fetch execution context");
+
+      const data: { isSuccess: boolean; contextId: string; error: null } =
+        await response.json();
+      if (!data.isSuccess) throw new Error("Failed to fetch execution context");
+      return data.contextId;
+    } catch (error) {
+      throw new Error("Failed to fetch execution context");
+    }
+  }
+
+  private async changeExecutionContext() {
+    if (isChangingImpersonation) return;
+    try {
+      isChangingImpersonation = true;
+      const tenantId =
+        useProjectStore.getState().selectedProject?.tenantId || this.BLOCKS_KEY;
+      const executionContextId = await this.getExecutionContext(tenantId);
+      useExecutionContextStore
+        .getState()
+        .setContext({ tenantId, contextId: executionContextId });
+
+      while (changeImpersonationRequestQueue.length > 0) {
+        const { url, requestOption, resolve, reject } =
+          changeImpersonationRequestQueue.shift()!;
+        this.request(url, requestOption).then(resolve).catch(reject);
+      }
+    } catch (error) {
+      this.resetApp();
+    }
+  }
+
+  private async resetApp() {
+    isRefreshing = false;
+    requestQueue = [];
+    const queryClient = getQueryClient();
+    useAuthStore.getState().reset();
+    useProjectStore.getState().reset();
+    useExecutionContextStore.getState().reset();
+    queryClient.cancelQueries();
+    queryClient.clear();
+    window.location.href = `/login`;
   }
 
   get<T = unknown>(
@@ -277,6 +382,7 @@ class HttpClient {
     } = options || {};
 
     const fullUrl = absoluteUrl ? url : `${this.baseURL}${url}`;
+    // add excution context if need
     const normalizedHeaders = this.normalizeHeaders(headers, skipBlocksKey);
 
     const response = await fetch(fullUrl, {
