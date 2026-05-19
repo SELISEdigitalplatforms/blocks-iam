@@ -71,10 +71,11 @@ export const useGetMe = (options?: { enabled?: boolean }) => {
   });
 };
 
-export const useGetUserById = (options: IGetUserByIdPayload) => {
+export const useGetUserById = (options: IGetUserByIdPayload, queryOptions?: { enabled?: boolean }) => {
   return useQuery({
     queryKey: ["user", options],
     queryFn: () => userService.getUserById(options),
+    ...queryOptions,
   });
 };
 

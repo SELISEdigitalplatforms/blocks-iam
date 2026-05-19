@@ -4,7 +4,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui-kits/c
 import { Skeleton } from "@/components/ui-kits/skeleton/skeleton";
 import { checkValidDate, cn, formatFullDate } from "@/lib/utils";
 import { UserCreationType } from "@blocks-idp/authentication/constants/authentication.constant";
-import { useGetUserById } from "@blocks-idp/iam/hooks/use-user";
+import { useGetMe } from "@blocks-idp/iam/hooks/use-user";
 
 interface ItemProps {
   label: string;
@@ -28,10 +28,10 @@ export const UserBasicInformation = ({
   projectKey: string;
   detailsGridClassName?: string;
 }) => {
-  const { isLoading, data } = useGetUserById({ id, projectKey });
+  const { isLoading, data } = useGetMe();
 
   if (!isLoading && !data) return null;
-  const { data: user } = data || { user: {} };
+  const user = data?.data;
 
   return (
     <Card>
