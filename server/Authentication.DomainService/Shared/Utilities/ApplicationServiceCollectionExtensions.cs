@@ -26,6 +26,7 @@ using Mfa.DomainService.Shared;
 using Mfa.DomainService.TOTP;
 using Mfa.DomainService.Validators;
 using Microsoft.Extensions.DependencyInjection;
+using Authentication.DomainService.Shared.Services;
 
 namespace Authentication.DomainService.Utilities
 {
@@ -161,6 +162,7 @@ namespace Authentication.DomainService.Utilities
             #endregion
 
             serviceCollection.AddSingleton<UnifiedTokenSessionService, UnifiedTokenSessionService>();
+            serviceCollection.AddSingleton<ImpersonationFlowHelper, ImpersonationFlowHelper>();
         }
     }
 }
