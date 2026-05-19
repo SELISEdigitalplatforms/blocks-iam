@@ -10,32 +10,30 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui-kits/dropdown-menu/dropdown-menu";
-import { useGetUser } from "@/idp/iam/hooks/use-user";
-import { useProfileImageSrc } from "@/hooks/use-profile-image-src";
-
+import { useGetMe } from "@/idp/iam/hooks/use-user";
 function UserDropdownMenuLogo() {
-  const { data } = useGetUser({ enabled: true });
-  const userData = data?.data || { firstName: "", lastName: "", profileImageUrl: "" };
-  const initials = `${userData.firstName?.[0] || ""}${userData.lastName?.[0] || ""}`.toUpperCase();
-  const imageSrc = useProfileImageSrc(userData.profileImageUrl);
-
-  if (imageSrc) {
+  const { data } = useGetMe();
+  const userData = data?.data || {
+    firstName: "",
+    lastName: "",
+    profileImageUrl: "",
+  };
+  const initials =
+    `${userData.firstName?.[0] || ""}${userData.lastName?.[0] || ""}`.toUpperCase();
+  if (userData.profileImageUrl) {
     return (
       <img
-        src={imageSrc}
+        src={userData.profileImageUrl}
         alt="Profile"
         className="h-full w-full object-cover"
       />
     );
   }
-
   if (initials) {
     return <span>{initials}</span>;
   }
-
   return <UserRound className="h-4 w-4" />;
 }
-
 export function UserDropdownMenu() {
   return (
     <DropdownMenu>
