@@ -3,7 +3,7 @@ import { Camera } from "lucide-react";
 import { Button } from "@/components/ui-kits/button/button";
 import { useGetPreSignedUrlForUpload, useUploadFile } from "@blocks-storage/hooks/use-storage-file";
 import { storageService } from "@blocks-storage/services/storage.service";
-import { useGetUserById, useUpdateUser } from "@blocks-idp/iam/hooks/use-user";
+import { useGetMe, useUpdateUser } from "@blocks-idp/iam/hooks/use-user";
 import { showErrorToast, showSuccessToast } from "@/hooks/use-toast";
 import { isErrorWithErrors } from "@/lib/error";
 import { useProfileImageSrc } from "@/hooks/use-profile-image-src";
@@ -13,12 +13,13 @@ type ProfileImageUploaderProps = { projectKey: string; id: string };
 export const ProfileImageUploader = ({ projectKey, id }: ProfileImageUploaderProps) => {
   const [localPreview, setLocalPreview] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
-  const { data } = useGetUserById({ id, projectKey });
+  const { data } = useGetMe();
   const { mutateAsync } = useGetPreSignedUrlForUpload();
   const { mutateAsync: uploadImageMutate } = useUploadFile();
   const { mutateAsync: updateUserMutate } = useUpdateUser({ projectKey, id, own: true });
   const [isProfileImageUploading, setIsProfileImageUploading] = useState<boolean>(false);
-  const storedImageSrc = useProfileImageSrc(data?.data?.profileImageUrl);
+  const currentUser = data?.data;
+  const storedImageSrc = useProfileImageSrc(currentUser?.profileImageUrl);
   const image = localPreview ?? storedImageSrc;
   const uploadImage = async (file: File) => {
     try {
