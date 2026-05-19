@@ -162,7 +162,7 @@ namespace Authentication.DomainService.Utilities
             #endregion
 
             serviceCollection.AddSingleton<UnifiedTokenSessionService, UnifiedTokenSessionService>();
-            serviceCollection.AddSingleton<ImpersonationFlowHelper, ImpersonationFlowHelper>();
+            serviceCollection.AddSingleton<IImpersonationFlowHelper, ImpersonationFlowHelper>();
         }
     }
 }

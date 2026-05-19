@@ -13,7 +13,23 @@ namespace Authentication.DomainService.Shared.Services
         public DateTime ExpiresUtc { get; set; }
         public DateTime CreatedAt { get; set; }
     }
-    public class ImpersonationFlowHelper
+
+    public interface IImpersonationFlowHelper
+    {
+        Task<string> CreateAndBackupImpersonationSessionAsync(
+            string userId,
+            string rootTenantId,
+            string targetTenantId,
+            string? organizationId,
+            string rootRefreshToken,
+            DateTime rootTokenExpiresUtc);
+        Task<bool> SwitchOrganizationContextAsync(string impersonationSessionId, string newOrganizationId);
+        Task<ImpersonationBackupToken?> GetBackupTokenAsync(string sessionId);
+        Task<bool> DeleteBackupTokenAsync(string sessionId);
+
+    }
+    
+    public class ImpersonationFlowHelper : IImpersonationFlowHelper
     {
         private readonly IAuthenticationRepository _repository;
         private readonly ICacheClient _cacheClient;
@@ -115,5 +131,45 @@ namespace Authentication.DomainService.Shared.Services
                 return false;
             }
         }
+
+        public async Task<ImpersonationBackupToken?> GetBackupTokenAsync(string sessionId)
+        {
+            try
+            {
+                var key = GetBackupCacheKey(sessionId);
+                var json = await _cacheClient.GetStringValueAsync(key);
+
+                if (string.IsNullOrWhiteSpace(json))
+                {
+                    return null;
+                }
+
+                return JsonSerializer.Deserialize<ImpersonationBackupToken>(json);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Failed to retrieve backup token for impersonation session {SessionId}", sessionId);
+                return null;
+            }
+        }
+
+        public async Task<bool> DeleteBackupTokenAsync(string sessionId)
+        {
+            try
+            {
+                var key = GetBackupCacheKey(sessionId);
+                await _cacheClient.RemoveKeyAsync(key);
+                _logger.LogInformation("Deleted backup root token for impersonation session {SessionId}", sessionId);
+                return true;
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Failed to delete backup token for impersonation session {SessionId}", sessionId);
+                return false;
+            }
+        }
+
+
+
     }
 }
