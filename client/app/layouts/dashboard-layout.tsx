@@ -6,7 +6,7 @@ import { DashboardHeader } from "@/layouts/dashboard-header/dashboard-header";
 export function DashboardLayout() {
   return (
     <ProtectedGuard>
-      <ImpersonateGuard>
+      {/* <ImpersonateGuard> */}
         <DashboardLayoutProvider isOpen={true} persist>
           <div className="relative flex h-screen overflow-hidden bg-[hsl(var(--surface-app))]">
             <SidebarMenuDesktop />
@@ -18,7 +18,7 @@ export function DashboardLayout() {
             </div>
           </div>
         </DashboardLayoutProvider>
-      </ImpersonateGuard>
+      {/* </ImpersonateGuard> */}
     </ProtectedGuard>
   );
 }
