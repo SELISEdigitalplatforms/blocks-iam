@@ -36,7 +36,7 @@ namespace Authentication.DomainService.Oidc.Repositories
             {
                 var collection = GetDatabase().GetCollection<RefreshTokenModel>("IdpRefreshTokens");
                 await collection.InsertOneAsync(token);
-                _logger.LogInformation($"Refresh token created for user {token.UserId}, client {token.ClientId}, family {token.FamilyId}");
+                _logger.LogInformation($"Refresh token created for user {token.UserId}, client {token.ClientId}");
                 return token.TokenId;
             }
             catch (Exception ex)
@@ -79,21 +79,6 @@ namespace Authentication.DomainService.Oidc.Repositories
             }
         }
 
-        public async Task<IEnumerable<RefreshTokenModel>> GetByFamilyIdAsync(string familyId)
-        {
-            try
-            {
-                var collection = GetDatabase().GetCollection<RefreshTokenModel>("IdpRefreshTokens");
-                var filter = Builders<RefreshTokenModel>.Filter.Eq(t => t.FamilyId, familyId);
-                return await collection.Find(filter).ToListAsync();
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, $"Error fetching token family: {familyId}");
-                throw;
-            }
-        }
-
         public async Task<bool> RevokeByTokenIdAsync(string tokenId, string reason)
         {
             try
@@ -111,28 +96,6 @@ namespace Authentication.DomainService.Oidc.Repositories
             catch (Exception ex)
             {
                 _logger.LogError(ex, $"Error revoking refresh token: {tokenId}");
-                throw;
-            }
-        }
-
-        public async Task<bool> RevokeByFamilyIdAsync(string familyId, string reason)
-        {
-            try
-            {
-                var collection = GetDatabase().GetCollection<RefreshTokenModel>("IdpRefreshTokens");
-                var filter = Builders<RefreshTokenModel>.Filter.Eq(t => t.FamilyId, familyId);
-                var update = Builders<RefreshTokenModel>.Update
-                    .Set(t => t.IsRevoked, true)
-                    .Set(t => t.RevokeReason, reason)
-                    .Set(t => t.RevokedAt, DateTime.UtcNow);
-
-                var result = await collection.UpdateManyAsync(filter, update);
-                _logger.LogCritical($"Token family revoked: {familyId}, reason: {reason}, tokens affected: {result.ModifiedCount}");
-                return result.ModifiedCount > 0;
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, $"Error revoking token family: {familyId}");
                 throw;
             }
         }

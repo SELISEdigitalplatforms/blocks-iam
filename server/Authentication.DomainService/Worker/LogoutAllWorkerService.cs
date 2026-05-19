@@ -3,7 +3,7 @@ using Authentication.DomainService.Dtos;
 using Authentication.DomainService.Services;
 using Authentication.DomainService.Utilities;
 using Iam.DomainService.Dtos;
-using Authentication.DomainService.Shared;
+using Microsoft.Extensions.Logging;
 
 namespace Authentication.DomainService.Worker
 {
@@ -12,23 +12,35 @@ namespace Authentication.DomainService.Worker
         private readonly ICacheClient _cacheClient;
         private readonly IAuthenticationRepository _authenticationRepository;
         private readonly IAuthenticationDomainService _authenticationDomainService;
-        private readonly UnifiedTokenSessionService _unifiedTokenSessionService;
+        private readonly ITokenRevocationService _tokenRevocationService;
+        private readonly ILogger<LogoutAllWorkerService> _logger;
 
         public LogoutAllWorkerService(
             ICacheClient cacheClient,
             IAuthenticationRepository authenticationRepository,
             IAuthenticationDomainService authenticationDomainService,
-            UnifiedTokenSessionService unifiedTokenSessionService)
+            ITokenRevocationService tokenRevocationService,
+            ILogger<LogoutAllWorkerService> logger)
         {
             _cacheClient = cacheClient;
             _authenticationRepository = authenticationRepository;
             _authenticationDomainService = authenticationDomainService;
-            _unifiedTokenSessionService = unifiedTokenSessionService;
+            _tokenRevocationService = tokenRevocationService;
+            _logger = logger;
         }
         public async Task Consume(LogoutAllEvent context)
         {
             var refreshTokens = (await _authenticationRepository.GetActiveIdentitySessionByUserIdAsync(context.UserId)).Select(x => x.RefreshToken).ToList();
-            var revokeTasks = refreshTokens.Select(async x => await _unifiedTokenSessionService.RevokeRefreshToken(x));
+
+            var revokeTasks = refreshTokens.Select(async token =>
+            {
+                var result = await _tokenRevocationService.RevokeTokenAsync(token, "refresh_token", string.Empty);
+                if (!result.Success)
+                {
+                    _logger.LogWarning("Refresh-token revocation failed during logout-all: {Error}", result.Error ?? "unknown_error");
+                }
+                await _cacheClient.RemoveKeyAsync(token);
+            });
             await Task.WhenAll(revokeTasks);
 
             await _authenticationRepository.UpdateSessionStatusForAllRefreshTokenAsync(refreshTokens);

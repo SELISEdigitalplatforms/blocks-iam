@@ -910,7 +910,7 @@ namespace Authentication.DomainService.Authentication
             refreshTokenModel.UserAgent = request.Headers["User-Agent"].ToString();
             await _refreshTokenRepo.CreateAsync(refreshTokenModel);
 
-            _logger.LogInformation($"Tokens issued for user {authCode.UserId}, client {client_id}, family {refreshTokenModel.FamilyId}");
+            _logger.LogInformation($"Tokens issued for user {authCode.UserId}, client {client_id}");
 
             var (domain, cookieDomain, isResolved) = DomainResolver.ResolveDomain(tenant, request);
             var accessExpiry = DateTime.UtcNow.AddSeconds(accessTokenLifetimeSeconds);
@@ -1082,8 +1082,8 @@ namespace Authentication.DomainService.Authentication
 
             if (storedToken.IsRevoked)
             {
-                _logger.LogCritical($"REUSE ATTACK DETECTED: Revoked token used again. Original revocation reason: {storedToken.RevokeReason}. Revoking family {storedToken.FamilyId}.");
-                await _refreshTokenRepo.RevokeByFamilyIdAsync(storedToken.FamilyId ?? string.Empty, "reuse_detected");
+                _logger.LogCritical($"REUSE ATTACK DETECTED: Revoked token used again. Original revocation reason: {storedToken.RevokeReason}. Revoking token {storedToken.TokenId}.");
+                await _refreshTokenRepo.RevokeByTokenIdAsync(storedToken.TokenId, "reuse_detected");
                 await LogAuditEvent("token_reuse_detected", storedToken.UserId, client_id, storedToken.TenantId ?? tenant?.ItemId ?? "default", "CRITICAL", request);
                 return new BadRequestObjectResult(new { error = "invalid_grant", error_description = "Refresh token has been revoked" });
             }
@@ -1143,8 +1143,6 @@ namespace Authentication.DomainService.Authentication
             var accessToken = await _tokenService.GenerateAccessTokenAsync(claims, issuer, accessTokenLifetimeSeconds);
             var newRefreshTokenModel = await _tokenService.GenerateRefreshTokenAsync(claims, issuer);
 
-            newRefreshTokenModel.FamilyId = storedToken.FamilyId;
-            newRefreshTokenModel.ParentTokenId = storedToken.TokenId;
             newRefreshTokenModel.UserId = storedToken.UserId;
             newRefreshTokenModel.ClientId = client_id;
             newRefreshTokenModel.TenantId = storedToken.TenantId ?? string.Empty;
@@ -1157,10 +1155,9 @@ namespace Authentication.DomainService.Authentication
 
             await _refreshTokenRepo.CreateAsync(newRefreshTokenModel);
 
-            storedToken.ChildTokenIds.Add(newRefreshTokenModel.TokenId);
             await _refreshTokenRepo.RevokeByTokenIdAsync(storedToken.TokenId, "rotated");
 
-            _logger.LogInformation($"Token rotated for user {storedToken.UserId}, client {client_id}, family {storedToken.FamilyId}");
+            _logger.LogInformation($"Token rotated for user {storedToken.UserId}, client {client_id}");
             await LogAuditEvent("token_refreshed", storedToken.UserId, client_id, storedToken.TenantId ?? string.Empty, "INFO", request);
             var effectiveTenantId = storedToken.TenantId ?? tenant?.ItemId ?? "default";
 
@@ -1631,10 +1628,9 @@ namespace Authentication.DomainService.Authentication
                 var userTokens = await _refreshTokenRepo.GetByUserAsync(userId, tenantId);
                 var clientTokens = userTokens.Where(t => t.ClientId == clientId && !t.IsRevoked).ToList();
 
-                var familyIds = clientTokens.Select(t => t.FamilyId).Distinct();
-                foreach (var familyId in familyIds)
+                foreach (var token in clientTokens)
                 {
-                    await _refreshTokenRepo.RevokeByFamilyIdAsync(familyId, "authorization_code_reuse_detected");
+                    await _refreshTokenRepo.RevokeByTokenIdAsync(token.TokenId, "authorization_code_reuse_detected");
                 }
 
                 var auditLog = new AuditLogModel

@@ -147,12 +147,11 @@ namespace Authentication.DomainService.Authentication
         {
             var bc = BlocksContext.GetContext();
 
-            // Revoke refresh token family to align with rotation security and prevent sibling token reuse.
-            await _tokenRevocationService.RevokeTokenAsync(refreshToken, "refresh_token", string.Empty);
+            // Revoke the refresh token (marks IsRevoked in IdpRefreshTokens and syncs identity session status).
             var revokeResult = await _tokenRevocationService.RevokeTokenAsync(refreshToken, "refresh_token", string.Empty);
             if (!revokeResult.Success)
             {
-                _logger.LogWarning("Refresh-token family revocation failed during logout: {Error}", revokeResult.Error ?? "unknown_error");
+                _logger.LogWarning("Refresh-token revocation failed during logout: {Error}", revokeResult.Error ?? "unknown_error");
             }
 
             await _cacheClient.RemoveKeyAsync(refreshToken);
@@ -167,7 +166,16 @@ namespace Authentication.DomainService.Authentication
             var bc = BlocksContext.GetContext();
 
             var refreshTokens = (await _authenticationRepository.GetActiveIdentitySessionByUserIdAsync(bc?.UserId ?? string.Empty)).Select(x => x.RefreshToken).ToList();
-            var revokeTasks = refreshTokens.Select(async x => await _unifiedTokenSessionService.RevokeRefreshToken(x));
+
+            var revokeTasks = refreshTokens.Select(async token =>
+            {
+                var result = await _tokenRevocationService.RevokeTokenAsync(token, "refresh_token", string.Empty);
+                if (!result.Success)
+                {
+                    _logger.LogWarning("Refresh-token revocation failed during logout-all: {Error}", result.Error ?? "unknown_error");
+                }
+                await _cacheClient.RemoveKeyAsync(token);
+            });
             await Task.WhenAll(revokeTasks);
 
             var result = await _authenticationRepository.RevokeIdentitySessionsByRefreshTokensAsync(refreshTokens);

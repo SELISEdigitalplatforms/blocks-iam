@@ -20,16 +20,14 @@ namespace Authentication.DomainService.Oidc.Repositories
 
     /// <summary>
     /// Refresh Token Repository
-    /// Manages refresh tokens with family tracking for reuse detection
+    /// Manages refresh tokens
     /// </summary>
     public interface IRefreshTokenRepository
     {
         Task<string> CreateAsync(RefreshTokenModel token);
         Task<RefreshTokenModel> GetByTokenIdAsync(string tokenId);
         Task<IEnumerable<RefreshTokenModel>> GetByUserAsync(string userId, string tenantId);
-        Task<IEnumerable<RefreshTokenModel>> GetByFamilyIdAsync(string familyId);
         Task<bool> RevokeByTokenIdAsync(string tokenId, string reason);
-        Task<bool> RevokeByFamilyIdAsync(string familyId, string reason);
         Task<bool> UpdateSlidingExpiryAsync(string tokenId);
         Task<bool> DeleteAsync(string tokenId);
         Task<IEnumerable<RefreshTokenModel>> GetExpiredAsync();
@@ -72,8 +70,6 @@ namespace Authentication.DomainService.Oidc.Repositories
     {
         Task<bool> RevokeTokenAsync(string jti, string userId, string reason, DateTime expiresAt);
         Task<bool> IsRevokedAsync(string jti);
-        Task<bool> RevokeTokenFamilyAsync(string familyId);
-        Task<bool> IsTokenFamilyRevokedAsync(string familyId);
         Task<TokenRevocationModel> GetRevocationDetailsAsync(string jti);
         Task<IEnumerable<TokenRevocationModel>> GetRevokedTokensByUserAsync(string userId);
         Task<bool> DeleteAsync(string jti);
