@@ -870,7 +870,6 @@ namespace Authentication.DomainService.Authentication
                 user,
                 authCode.OrganizationId,
                 authCode.Scope,
-                allowedScopes,
                 allowedServiceAccessResources,
                 requireExplicitScope: true);
 
@@ -1119,7 +1118,6 @@ namespace Authentication.DomainService.Authentication
                 user,
                 storedToken.OrgId,
                 storedToken.Scope,
-                allowedScopes,
                 allowedServiceAccessResources,
                 requireExplicitScope: true);
 

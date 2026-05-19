@@ -226,10 +226,6 @@ namespace Authentication.DomainService.Authentication
                 request.HttpContext.Response.Cookies.Delete($"{domain}", cookieOptions);
             }
 
-            // Backward compatibility cleanup for legacy callback cookie names.
-            request.HttpContext.Response.Cookies.Delete("oidc_token", cookieOptions);
-            request.HttpContext.Response.Cookies.Delete("oidc_refresh_token", cookieOptions);
-
             return true;
         }
 

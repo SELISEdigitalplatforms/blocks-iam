@@ -280,5 +280,21 @@ namespace Authentication.DomainService.Utilities
             // Directly use BlocksContext.NormalizeDomain
             return BlocksContext.NormalizeDomain(value ?? string.Empty)?.ToLower(CultureInfo.InvariantCulture) ?? string.Empty;
         }
+
+        public static CookieOptions CreateCookieOptions(string? cookieDomain, DateTime expiresUtc)
+        {
+            var isLocalRequest = IsLocalhost();
+            cookieDomain = isLocalRequest ? null : (string.IsNullOrWhiteSpace(cookieDomain) ? null : cookieDomain);
+
+            return new CookieOptions
+            {
+                Domain = cookieDomain,
+                HttpOnly = true,
+                Secure = true,
+                SameSite = isLocalRequest ? SameSiteMode.None : SameSiteMode.Strict,
+                Path = "/",
+                Expires = expiresUtc == default ? DateTime.UtcNow : expiresUtc
+            };
+        }
     }
 }

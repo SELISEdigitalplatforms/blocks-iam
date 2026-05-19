@@ -230,7 +230,7 @@ namespace Authentication.DomainService.Authentication
 
                 if (isResolved && !string.IsNullOrWhiteSpace(domain))
                 {
-                    AppendCookies(tokenResponseObj, httpResponse, httpRequest, domain);
+                    AppendCookies(tokenResponseObj, httpResponse, domain);
                     _logger.LogInformation($"Successfully completed authentication flow for state: {state}");
 
                     return new OkObjectResult(new
@@ -291,48 +291,43 @@ namespace Authentication.DomainService.Authentication
             return base64.Replace("+", "-").Replace("/", "_").TrimEnd('=');
         }
 
-        private static void AppendCookies(TokenResponse response, HttpResponse httpResponse, HttpRequest httpRequest, string? domain = null)
+        private static bool AppendCookies(TokenResponse response, HttpResponse httpResponse, string domain)
         {
             // Validate response has no error indicator
             if (!string.IsNullOrWhiteSpace(response.Error))
             {
-                return; // Cannot set cookies for error responses
+                return false;
             }
 
             // Validate access token is present
             if (string.IsNullOrWhiteSpace(response.AccessToken))
             {
-                return; // Cannot set cookies without valid access token
+                return false;
             }
 
-            var normalizedDomain = domain ?? BlocksContext.GetContext()?.TenantId ?? "default";
-            var accessCookieOptions = CreateCookieOptions(response.CookieDomain, response.ExpiresUtc, httpRequest);
-            var refreshCookieOptions = CreateCookieOptions(response.CookieDomain, response.RefreshExpiresUtc, httpRequest);
+            
+            var accessCookieOptions = DomainResolver.CreateCookieOptions(response.CookieDomain, response.ExpiresUtc);
+            var refreshCookieOptions = DomainResolver.CreateCookieOptions(response.CookieDomain, response.RefreshExpiresUtc);
 
-            httpResponse.Cookies.Append($"{normalizedDomain}", response.AccessToken, accessCookieOptions);
+            DeleteCookie(httpResponse, domain, accessCookieOptions, refreshCookieOptions);
+
+            httpResponse.Cookies.Append(domain, response.AccessToken, accessCookieOptions);
 
             if (!string.IsNullOrWhiteSpace(response.RefreshToken))
             {
-                httpResponse.Cookies.Append($"{IdpConstants.RefreshTokenCookieName}_{normalizedDomain}", response.RefreshToken, refreshCookieOptions);
+                httpResponse.Cookies.Append($"{IdpConstants.RefreshTokenCookieName}_{domain}", response.RefreshToken, refreshCookieOptions);
             }
+
+            return true;
         }
 
-        private static CookieOptions CreateCookieOptions(string? domain, DateTime expiresUtc, HttpRequest httpRequest)
+        private static void DeleteCookie(HttpResponse httpResponse, string domain, CookieOptions accessCookieOptions, CookieOptions refreshCookieOptions)
         {
-            var isLocalRequest = DomainResolver.IsLocalhost();
-            var cookieDomain = isLocalRequest ? null : (string.IsNullOrWhiteSpace(domain) ? null : domain);
 
-            return new CookieOptions
-            {
-                Domain = cookieDomain,
-                HttpOnly = true,
-                Secure = true,
-                SameSite = isLocalRequest ? SameSiteMode.None : SameSiteMode.Strict,
-                Path = "/",
-                Expires = expiresUtc == default ? DateTime.UtcNow : expiresUtc
-            };
+            httpResponse.Cookies.Delete(domain, accessCookieOptions);
+            httpResponse.Cookies.Delete($"{IdpConstants.RefreshTokenCookieName}_{domain}", refreshCookieOptions);
+
         }
-
 
         private static TimeSpan GetOutboundRequestTimeout()
         {

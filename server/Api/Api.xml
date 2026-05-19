@@ -125,6 +125,13 @@
             Reissues tokens with new organization context
             </summary>
         </member>
+        <!-- Badly formed XML comment ignored for member "M:Api.Controllers.AuthenticationController.InitiateImpersonation(Authentication.DomainService.Shared.RequestModel.ImpersonateRequest)" -->
+        <member name="M:Api.Controllers.AuthenticationController.StopImpersonation">
+            <summary>
+            Stop user impersonation (Revert to Original Admin)
+            Admin stops impersonating user and reverts to original context
+            </summary>
+        </member>
         <member name="M:Api.Controllers.AuthenticationController.ExecuteGlobalLogout(Authentication.DomainService.Authentication.LogoutAllRequest)">
             <summary>
             Execute global logout across all sessions (Logout All Devices)

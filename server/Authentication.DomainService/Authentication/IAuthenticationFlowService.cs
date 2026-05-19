@@ -1,5 +1,6 @@
 using Authentication.DomainService.OAuth.RequestModel;
 using Authentication.DomainService.OAuth.ResponseModel;
+using Authentication.DomainService.Shared.RequestModel;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using System.Security.Claims;
@@ -13,6 +14,8 @@ namespace Authentication.DomainService.Authentication
         Task<AuthenticationFlowResult> ExecuteSwitchOrganizationAsync(SwitchOrganizationRequest request, ClaimsPrincipal principal, HttpRequest httpRequest);
         Task<IActionResult> ExecuteRefreshAsync(RefreshRequest request, ClaimsPrincipal principal, HttpRequest httpRequest, HttpResponse httpResponse);
         Task<GetContextForProjectResult> GetContextForProjectAsync(string projectId);
+        Task<IActionResult> ExecuteImpersonateAsync(ImpersonateRequest request, HttpRequest httpRequest, HttpResponse httpResponse);
+        Task<IActionResult> ExecuteStopImpersonationAsync(HttpRequest httpRequest, HttpResponse httpResponse);
     }
 
     public class AuthenticationFlowResult

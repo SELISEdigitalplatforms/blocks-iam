@@ -1,13 +1,18 @@
-using Blocks.Genesis;
 using Authentication.DomainService.Dtos;
 using Authentication.DomainService.OAuth;
 using Authentication.DomainService.OAuth.RequestModel;
 using Authentication.DomainService.OAuth.ResponseModel;
+using Authentication.DomainService.Oidc.Repositories;
 using Authentication.DomainService.Services;
+using Authentication.DomainService.Shared.RequestModel;
+using Authentication.DomainService.Shared.Services;
 using Authentication.DomainService.Utilities;
+using Blocks.Genesis;
 using Iam.DomainService.Entities;
+using Idp.DomainService.Oidc.Contracts;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using MongoDB.Bson;
 using MongoDB.Driver;
@@ -19,35 +24,43 @@ namespace Authentication.DomainService.Authentication
 {
     public class AuthenticationFlowService : IAuthenticationFlowService
     {
+        private const string ImpersonationIdCookieName = "impersonation_session_id";
+
         private readonly IAuthenticationRepository _authenticationRepository;
         private readonly ITenants _tenants;
+        private readonly IAuditLogRepository _auditLogRepo;
         private readonly PasswordAuthenticationService _passwordAuthenticationService;
         private readonly SocialAuthorizationService _socialAuthorizationService;
         private readonly RefreshTokenAuthenticationService _refreshTokenAuthenticationService;
         private readonly IOAuthJwtAccessTokenManager _oAuthJwtAccessTokenManager;
         private readonly IAuthenticationService _authenticationService;
+        private readonly ImpersonationFlowHelper _impersonationFlowHelper;
         private readonly ICacheClient _cacheClient;
         private readonly ILogger<AuthenticationFlowService> _logger;
 
         public AuthenticationFlowService(
             IAuthenticationRepository authenticationRepository,
             ITenants tenants,
+            IAuditLogRepository auditLogRepo,
             PasswordAuthenticationService passwordAuthenticationService,
             SocialAuthorizationService socialAuthorizationService,
             RefreshTokenAuthenticationService refreshTokenAuthenticationService,
             IOAuthJwtAccessTokenManager oAuthJwtAccessTokenManager,
             IAuthenticationService authenticationService,
             ICacheClient cacheClient,
+            ImpersonationFlowHelper impersonationFlowHelper,
             ILogger<AuthenticationFlowService> logger)
         {
             _authenticationRepository = authenticationRepository;
             _tenants = tenants;
+            _auditLogRepo = auditLogRepo;
             _passwordAuthenticationService = passwordAuthenticationService;
             _socialAuthorizationService = socialAuthorizationService;
             _refreshTokenAuthenticationService = refreshTokenAuthenticationService;
             _oAuthJwtAccessTokenManager = oAuthJwtAccessTokenManager;
             _authenticationService = authenticationService;
-            
+            _impersonationFlowHelper = impersonationFlowHelper;
+
             _cacheClient = cacheClient;
             _logger = logger;
         }
@@ -371,9 +384,54 @@ namespace Authentication.DomainService.Authentication
                 Request = httpRequest
             };
 
-            var result = await _refreshTokenAuthenticationService.AuthenticateAsync(tokenRequest, configuration, user);
+            var response = await _refreshTokenAuthenticationService.AuthenticateAsync(tokenRequest, configuration, user);
 
-            return await BuildTokenResponseAsync(httpResponse, result);
+            if (!string.IsNullOrWhiteSpace(response.Error))
+            {
+                var statusCode = response.StatusCode > 0 ? response.StatusCode : StatusCodes.Status400BadRequest;
+                return new ObjectResult(new
+                {
+                    error = response.Error,
+                    error_description = response.ErrorDescription,
+                    redirect_url = response.SsoUserRedirectUrl
+                })
+                {
+                    StatusCode = statusCode
+                };
+            }
+
+            var useTokensCookie = await ResolveUseTokensCookieAsync(request.ClientId);
+
+            if (useTokensCookie)
+            {
+                var tenantId = BlocksContext.GetContext()?.TenantId ?? "default";
+                var tenant = _tenants.GetTenantByID(tenantId);
+                var (domain, cookieDomain, isResolved) = DomainResolver.ResolveDomain(tenant, httpRequest);
+                var cookiesSet = AppendCookies(response, httpResponse, domain);
+                if (cookiesSet)
+                {
+                    return new OkObjectResult(new
+                    {
+                        token_type = response.TokenType,
+                        expires_in = response.ExpiresIn,
+                        scope = response.Scope,
+                        client_id = request.ClientId,
+                        cookie_set = true
+                    });
+                }
+            }
+
+            return new OkObjectResult(new
+            {
+                access_token = response.AccessToken,
+                refresh_token = response.RefreshToken,
+                token_type = response.TokenType,
+                expires_in = response.ExpiresIn,
+                scope = response.Scope,
+                id_token = response.IdToken,
+                client_id = request.ClientId,
+                cookie_set = false
+            });
         }
 
         private async Task HandlePotentialRefreshTokenReuseAsync(string refreshToken)
@@ -442,56 +500,6 @@ namespace Authentication.DomainService.Authentication
             }
         }
 
-        private async Task<IActionResult> BuildTokenResponseAsync(HttpResponse httpResponse, TokenResponse response)
-        {
-            if (!string.IsNullOrWhiteSpace(response.Error))
-            {
-                var statusCode = response.StatusCode > 0 ? response.StatusCode : StatusCodes.Status400BadRequest;
-                return new ObjectResult(new
-                {
-                    error = response.Error,
-                    error_description = response.ErrorDescription,
-                    redirect_url = response.SsoUserRedirectUrl
-                })
-                {
-                    StatusCode = statusCode
-                };
-            }
-
-            var clientId = TryGetClientIdFromAccessToken(response.AccessToken);
-            var useTokensCookie = await ResolveUseTokensCookieAsync(clientId);
-
-            if (useTokensCookie)
-            {
-                var tenantId = BlocksContext.GetContext()?.TenantId ?? "default";
-                var tenant = _tenants.GetTenantByID(tenantId);
-                var cookiesSet = AppendCookies(httpResponse, response, tenant, httpResponse.HttpContext?.Request);
-                if (cookiesSet)
-                {
-                    return new OkObjectResult(new
-                    {
-                        token_type = response.TokenType,
-                        expires_in = response.ExpiresIn,
-                        scope = response.Scope,
-                        client_id = clientId,
-                        cookie_set = true
-                    });
-                }
-            }
-
-            return new OkObjectResult(new
-            {
-                access_token = response.AccessToken,
-                refresh_token = response.RefreshToken,
-                token_type = response.TokenType,
-                expires_in = response.ExpiresIn,
-                scope = response.Scope,
-                id_token = response.IdToken,
-                client_id = clientId,
-                cookie_set = false
-            });
-        }
-
         private async Task<bool> ResolveUseTokensCookieAsync(string? clientId)
         {
             if (string.IsNullOrWhiteSpace(clientId))
@@ -503,78 +511,12 @@ namespace Authentication.DomainService.Authentication
             return registration?.UseTokensCookie ?? true;
         }
 
-        private static string? TryGetClientIdFromAccessToken(string? accessToken)
-        {
-            if (string.IsNullOrWhiteSpace(accessToken))
-            {
-                return null;
-            }
-
-            try
-            {
-                var jwt = new JwtSecurityTokenHandler().ReadJwtToken(accessToken);
-                return jwt.Claims.FirstOrDefault(c => c.Type == "client_id")?.Value
-                    ?? jwt.Claims.FirstOrDefault(c => c.Type == "azp")?.Value;
-            }
-            catch
-            {
-                return null;
-            }
-        }
-
-        private bool AppendCookies(HttpResponse httpResponse, TokenResponse response, Tenant? tenant, HttpRequest? httpRequest)
-        {
-            // Validate response has no error indicator
-            if (!string.IsNullOrWhiteSpace(response.Error))
-            {
-                return false; // Cannot set cookies for error responses
-            }
-
-            // Validate access token is present
-            if (string.IsNullOrWhiteSpace(response.AccessToken))
-            {
-                return false; // Cannot set cookies without valid access token
-            }
-
-            var (tokenDomain, _, isResolved) = DomainResolver.ResolveDomain(tenant, httpRequest);
-            if (!isResolved || string.IsNullOrWhiteSpace(tokenDomain))
-            {
-                return false;
-            }
-            var accessCookieOptions = CreateCookieOptions(response.CookieDomain, response.ExpiresUtc);
-            var refreshCookieOptions = CreateCookieOptions(response.CookieDomain, response.RefreshExpiresUtc);
-
-            httpResponse.Cookies.Append(response.CookieDomain , response.AccessToken, accessCookieOptions);
-
-            if (!string.IsNullOrWhiteSpace(response.RefreshToken))
-            {
-                httpResponse.Cookies.Append($"{IdpConstants.RefreshTokenCookieName}_{response.CookieDomain}", response.RefreshToken, refreshCookieOptions);
-            }
-
-            return true;
-        }
-
-        private static CookieOptions CreateCookieOptions(string? domain, DateTime expiresUtc)
-        {
-            var isLocal = DomainResolver.IsLocalhost();
-            var cookieDomain = isLocal ? null : (string.IsNullOrWhiteSpace(domain) ? null : domain);
-            return new CookieOptions
-            {
-                Domain = cookieDomain,
-                HttpOnly = true,
-                Secure = true,
-                SameSite = isLocal ? SameSiteMode.None : SameSiteMode.Strict,
-                Path = "/",
-                Expires = expiresUtc == default ? DateTime.UtcNow : expiresUtc
-            };
-        }
-
         public async Task<GetContextForProjectResult> GetContextForProjectAsync(string projectId)
         {
             var bc = BlocksContext.GetContext();
             var isRootTenant = _tenants.GetTenantByID(bc.TenantId)?.IsRootTenant ?? false;
 
-            if (!isRootTenant)
+            if (!isRootTenant) 
             {
                 return new GetContextForProjectResult
                 {
@@ -627,5 +569,436 @@ namespace Authentication.DomainService.Authentication
             };
 
         }
+
+        private async Task WriteImpersonationAuditEventAsync(HttpRequest httpRequest, string eventType, string? userId, string? targetTenantId, string severity, string status, string? rootTenantId = null)
+        {
+            try
+            {
+                var entry = new AuditLogModel
+                {
+                    EventType = eventType,
+                    UserId = userId,
+                    TenantId = rootTenantId ?? BlocksContext.GetContext()?.TenantId,
+                    Severity = severity,
+                    Status = status,
+                    Timestamp = DateTime.UtcNow,
+                    IpAddress = httpRequest.HttpContext.Connection.RemoteIpAddress?.ToString(),
+                    UserAgent = httpRequest.Headers.UserAgent.ToString(),
+                    Details = string.IsNullOrWhiteSpace(targetTenantId) ? null : $"target_tenant={targetTenantId}"
+                };
+
+                await _auditLogRepo.CreateAsync(entry);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Failed to persist impersonation audit event {EventType}", eventType);
+            }
+        }
+
+        private static bool AppendCookies(TokenResponse response, HttpResponse httpResponse, string domain)
+        {
+            // Validate response has no error indicator
+            if (!string.IsNullOrWhiteSpace(response.Error))
+            {
+                return false;
+            }
+
+            // Validate access token is present
+            if (string.IsNullOrWhiteSpace(response.AccessToken))
+            {
+                return false;
+            }
+
+
+            var accessCookieOptions = DomainResolver.CreateCookieOptions(response.CookieDomain, response.ExpiresUtc);
+            var refreshCookieOptions = DomainResolver.CreateCookieOptions(response.CookieDomain, response.RefreshExpiresUtc);
+
+            DeleteCookie(httpResponse, domain, accessCookieOptions, refreshCookieOptions);
+
+            httpResponse.Cookies.Append(domain, response.AccessToken, accessCookieOptions);
+
+            if (!string.IsNullOrWhiteSpace(response.RefreshToken))
+            {
+                httpResponse.Cookies.Append($"{IdpConstants.RefreshTokenCookieName}_{domain}", response.RefreshToken, refreshCookieOptions);
+            }
+
+            return true;
+        }
+
+        private static void DeleteCookie(HttpResponse httpResponse, string domain, CookieOptions accessCookieOptions, CookieOptions refreshCookieOptions)
+        {
+
+            httpResponse.Cookies.Delete(domain, accessCookieOptions);
+            httpResponse.Cookies.Delete($"{IdpConstants.RefreshTokenCookieName}_{domain}", refreshCookieOptions);
+
+        }
+
+
+        public async Task<IActionResult> ExecuteImpersonateAsync(ImpersonateRequest request, HttpRequest httpRequest, HttpResponse httpResponse)
+        {
+            var bc = BlocksContext.GetContext();
+            var rootTenant = _tenants.GetTenantByID(bc.TenantId);
+
+            if (rootTenant == null || !rootTenant.IsRootTenant)
+            {
+                return new ObjectResult(new
+                {
+                    error = "forbidden",
+                    error_description = "Only root-tenant users are allowed to start impersonation"
+                })
+                {
+                    StatusCode = StatusCodes.Status403Forbidden
+                };
+            }
+
+            if (string.IsNullOrWhiteSpace(request.TargetTenantId))
+            {
+                return new BadRequestObjectResult(new { error = "invalid_request", error_description = "target_tenant_id is required" });
+            }
+
+            var targetTenant = _tenants.GetTenantByID(request.TargetTenantId);
+            if (targetTenant == null)
+            {
+                return new BadRequestObjectResult(new { error = "invalid_target_tenant", error_description = "Target tenant does not exist" });
+            }
+
+            if (string.IsNullOrWhiteSpace(bc.UserId))
+            {
+                return new UnauthorizedObjectResult(new { error = "invalid_user" });
+            }
+
+            var user = await _authenticationRepository.GetUserByIdAsync(bc.UserId);
+            if (user == null)
+            {
+                return new UnauthorizedObjectResult(new { error = "invalid_user" });
+            }
+
+            var isSharedWithUser = await IsTenantSharedWithUserAsync(bc.UserId, request.TargetTenantId);
+            if (!isSharedWithUser)
+            {
+                await WriteImpersonationAuditEventAsync(httpRequest, "impersonation_start_denied", bc.UserId, request.TargetTenantId, "WARN", "not_shared_with_user");
+                return new ObjectResult(new
+                {
+                    error = "forbidden",
+                    error_description = "Target tenant is not shared with the requesting user"
+                })
+                {
+                    StatusCode = StatusCodes.Status403Forbidden
+                };
+            }
+
+            var (rootDomain, rootCookieDomain, isRootDomainResolved) = DomainResolver.ResolveDomain(rootTenant, httpRequest);
+
+            if (!httpRequest.Cookies.TryGetValue($"{IdpConstants.RefreshTokenCookieName}_{rootDomain}", out var rootRefreshToken)
+                || string.IsNullOrWhiteSpace(rootRefreshToken))
+            {
+                return new UnauthorizedObjectResult(new { error = "session_expired" });
+            }
+
+            var rootRefreshCacheRaw = await _cacheClient.GetStringValueAsync(rootRefreshToken);
+            var rootRefreshCache = string.IsNullOrWhiteSpace(rootRefreshCacheRaw)
+                ? null
+                : JsonSerializer.Deserialize<RefreshTokenCache>(rootRefreshCacheRaw);
+
+            if (rootRefreshCache == null || rootRefreshCache.ExpiresUtc <= DateTime.UtcNow)
+            {
+                return new UnauthorizedObjectResult(new { error = "session_expired" });
+            }
+
+            var authConfiguration = await _authenticationRepository.GetAuthenticationConfigurationAsync();
+            // Check for organization switch within existing impersonation
+
+            if (httpRequest.Cookies.TryGetValue(ImpersonationIdCookieName, out var existingSessionId) && !string.IsNullOrWhiteSpace(existingSessionId))
+            {
+                var existingSession = await _authenticationRepository.GetImpersonationSessionByIdAsync(existingSessionId);
+                if (existingSession != null && existingSession.Status == "active" &&
+                    string.Equals(existingSession.TargetTenantId, request.TargetTenantId, StringComparison.OrdinalIgnoreCase))
+                {
+                    // This is an organization switch within the same impersonation
+                    // STANDARD: Issue new tokens with updated org_id claim
+                    var switchOrgSuccess = await _impersonationFlowHelper.SwitchOrganizationContextAsync(
+                        existingSessionId,
+                        request.OrganizationId ?? "default");
+
+                    if (switchOrgSuccess)
+                    {
+                        // Tenant impersonation: same user, different tenant context + new org
+                        // Must set tenant context before token issuance (same as normal impersonation start)
+                        try
+                        {
+
+                            var newTokenRequest = new TokenRequest
+                            {
+                                GrantType = GrantTypes.Password,
+                                ClientId = rootRefreshCache.ClientId,
+                                OrganizationId = request.OrganizationId ?? "default",
+                                IsImpersonation = true,
+                                OriginalTenantId = rootTenant.TenantId,
+                                TargetTenantId = request.TargetTenantId,
+                                ImpersonatorUserId = bc.UserId,
+                                Request = httpRequest
+                            };
+
+                            var newTokenResponse = await _oAuthJwtAccessTokenManager.ManageTokenAsync(newTokenRequest, authConfiguration, user);
+
+                            if (!string.IsNullOrWhiteSpace(newTokenResponse.Error))
+                            {
+                                _logger.LogError("Token issuance failed during org switch for session {SessionId}. Error: {Error}", existingSessionId, newTokenResponse.Error);
+                                return new ObjectResult(new { error = newTokenResponse.Error, error_description = "Failed to issue new tokens after organization switch" })
+                                {
+                                    StatusCode = StatusCodes.Status500InternalServerError
+                                };
+                            }
+
+                            await WriteImpersonationAuditEventAsync(httpRequest, "org_switched", bc.UserId, request.TargetTenantId, "INFO", "success", rootTenant.TenantId);
+
+                            var cookiesSet = AppendCookies(newTokenResponse, httpResponse, rootDomain);
+                            if (cookiesSet)
+                            {
+                                _logger.LogInformation("Organization switched by user {UserId} in impersonation session {SessionId} to org {OrgId} with new tokens", bc.UserId, existingSessionId, request.OrganizationId);
+                                return new OkObjectResult(new ImpersonateResponse { impersonation_mode = true, org_switched = true });
+                            }
+
+                            return new OkObjectResult(new
+                            {
+                                impersonation_mode = true,
+                                org_switched = true,
+                                access_token = newTokenResponse.AccessToken,
+                                refresh_token = newTokenResponse.RefreshToken,
+                                token_type = newTokenResponse.TokenType,
+                                cookie_set = false
+                            });
+                        }
+                        catch (Exception ex)
+                        {
+                            _logger.LogError(ex, "Unexpected error during organization switch for session {SessionId}", existingSessionId);
+                            return new ObjectResult(new { error = "org_switch_failed", error_description = "An unexpected error occurred during organization switch" })
+                            {
+                                StatusCode = StatusCodes.Status500InternalServerError
+                            };
+                        }
+                    }
+                }
+            }
+
+            try
+            {
+
+                var clientId = rootRefreshCache.ClientId;
+                if (string.IsNullOrWhiteSpace(clientId) || !await HasOidcClientConfigurationAsync(clientId))
+                {
+                    return new ObjectResult(new
+                    {
+                        error = "invalid_client",
+                        error_description = "Client configuration not found"
+                    })
+                    {
+                        StatusCode = StatusCodes.Status401Unauthorized
+                    };
+                }
+
+                string sessionId;
+                try
+                {
+                    sessionId = await _impersonationFlowHelper.CreateAndBackupImpersonationSessionAsync(
+                        bc.UserId,
+                        rootTenant.TenantId,
+                        request.TargetTenantId,
+                        request.OrganizationId ?? "default",
+                        rootRefreshToken,
+                        rootRefreshCache.ExpiresUtc);
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogError(ex, "Failed to create impersonation session record for user {UserId}", bc.UserId);
+                    return new ObjectResult(new { error = "session_creation_failed", error_description = "Failed to create impersonation session" })
+                    {
+                        StatusCode = StatusCodes.Status500InternalServerError
+                    };
+                }
+
+                _logger.LogInformation("Impersonation started by user {UserId} from root tenant {RootTenantId} to target tenant {TargetTenantId}", bc.UserId, rootTenant.TenantId, request.TargetTenantId);
+                await WriteImpersonationAuditEventAsync(httpRequest, "impersonation_started", bc.UserId, request.TargetTenantId, "INFO", "success", rootTenant.TenantId);
+
+                var tokenRequest = new TokenRequest
+                {
+                    GrantType = GrantTypes.Password,
+                    ClientId = clientId,
+                    OrganizationId = !string.IsNullOrWhiteSpace(request.OrganizationId)
+                        ? request.OrganizationId
+                        : (string.IsNullOrWhiteSpace(request.OrganizationId) ? "default" : request.OrganizationId),
+                    IsImpersonation = true,
+                    OriginalTenantId = rootTenant.TenantId,
+                    TargetTenantId = request.TargetTenantId,
+                    ImpersonatorUserId = bc.UserId,
+                    Request = httpRequest
+                };
+
+                var tokenResponse = await _oAuthJwtAccessTokenManager.ManageTokenAsync(tokenRequest, authConfiguration, user);
+
+                var cookiesSet = AppendCookies(tokenResponse, httpResponse, rootDomain);
+                if (!cookiesSet)
+                {
+                    return new OkObjectResult(new
+                    {
+                        impersonation_mode = true,
+                        access_token = tokenResponse.AccessToken,
+                        refresh_token = tokenResponse.RefreshToken,
+                        token_type = tokenResponse.TokenType,
+                        expires_in = tokenResponse.ExpiresIn,
+                        scope = tokenResponse.Scope,
+                        id_token = tokenResponse.IdToken,
+                        cookie_set = false,
+                        impersonation_session_id = sessionId
+                    });
+                }
+
+                var sessionCookieOptions = DomainResolver.CreateCookieOptions(rootCookieDomain, rootRefreshCache.ExpiresUtc);
+
+                httpResponse.Cookies.Delete(ImpersonationIdCookieName, sessionCookieOptions);
+                httpResponse.Cookies.Append(ImpersonationIdCookieName, sessionId, sessionCookieOptions);
+
+                return new OkObjectResult(new ImpersonateResponse { impersonation_mode = true });
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Unexpected error during impersonation for user {UserId} to tenant {TargetTenantId}", bc.UserId, request.TargetTenantId);
+                return new ObjectResult(new { error = "impersonation_failed", error_description = "An unexpected error occurred during impersonation" })
+                {
+                    StatusCode = StatusCodes.Status500InternalServerError
+                };
+            }
+
+        }
+
+        public async Task<IActionResult> ExecuteStopImpersonationAsync(HttpRequest httpRequest, HttpResponse httpResponse)
+        {
+            //string? targetTenantId = null;
+            //string? impersonationSessionId = null;
+            //string? rootRefreshToken = null;
+            //string? rootUserId = null;
+            //string? rootTenantId = null;
+            //var userId = BlocksContext.GetContext()?.UserId;
+
+            //// Try to get impersonation session id from cookie
+            //if (httpRequest.Cookies.TryGetValue(ImpersonationIdCookieName, out var sessionId) && !string.IsNullOrWhiteSpace(sessionId))
+            //{
+            //    impersonationSessionId = sessionId;
+            //    var session = await _authenticationRepository.GetImpersonationSessionByIdAsync(sessionId);
+            //    if (session != null)
+            //    {
+            //        targetTenantId = session.TargetTenantId;
+            //        // Try to get backup root refresh token from cache
+            //        var backup = await _impersonationBackupService.GetBackupTokenAsync(sessionId);
+            //        if (backup != null && !string.IsNullOrWhiteSpace(backup.RefreshToken))
+            //        {
+            //            rootRefreshToken = backup.RefreshToken;
+            //            rootUserId = BlocksContext.GetContext()?.UserId;
+            //            rootTenantId = session.RootTenantId;
+            //        }
+            //    }
+            //}
+
+            //// If not found in cache, delete cookie and trigger logout
+            //if (string.IsNullOrWhiteSpace(rootRefreshToken))
+            //{
+            //    // Remove impersonation cookie
+            //    if (!string.IsNullOrWhiteSpace(impersonationSessionId))
+            //    {
+            //        httpResponse.Cookies.Delete(ImpersonationIdCookieName);
+            //    }
+            //    await WriteImpersonationAuditEventAsync(httpRequest, "impersonation_stop_failed", userId, targetTenantId, "WARN", "session_expired");
+            //    var (domain, rootCookieDomain) = ResolveDomainForClearImpersonation(httpRequest, rootTenantId);
+            //    ClearImpersonationCookies(httpResponse, domain, rootCookieDomain);
+            //    return new UnauthorizedObjectResult(new { error = "session_expired" });
+            //}
+
+            //// Restore root session: issue new token for root user (no impersonation)
+            //var configuration = await _authenticationRepository.GetAuthenticationConfigurationAsync();
+
+            //// Compose new token request for root user
+            //var cacheClient = httpRequest.HttpContext.RequestServices.GetRequiredService<ICacheClient>();
+            //var rootRefreshCacheRaw = await cacheClient.GetStringValueAsync(rootRefreshToken);
+            //var rootRefreshCache = string.IsNullOrWhiteSpace(rootRefreshCacheRaw)
+            //    ? null
+            //    : JsonSerializer.Deserialize<RefreshTokenCache>(rootRefreshCacheRaw);
+
+            //if (rootRefreshCache == null || rootRefreshCache.ExpiresUtc <= DateTime.UtcNow)
+            //{
+            //    var (domain, rootCookieDomain) = ResolveDomainForClearImpersonation(httpRequest, rootTenantId);
+            //    ClearImpersonationCookies(httpResponse, domain, rootCookieDomain);
+            //    return new UnauthorizedObjectResult(new { error = "session_expired" });
+            //}
+
+            //var tokenRequest = new TokenRequest
+            //{
+            //    GrantType = GrantTypes.RefreshToken,
+            //    ClientId = rootRefreshCache.ClientId,
+            //    RefreshToken = rootRefreshToken,
+            //    Request = httpRequest
+            //};
+
+            //// Get root user
+            //var rootUser = !string.IsNullOrWhiteSpace(rootUserId) ? await _authenticationRepository.GetUserByIdAsync(rootUserId) : null;
+            //if (rootUser == null)
+            //{
+            //    await WriteImpersonationAuditEventAsync(httpRequest, "impersonation_stop_failed", userId, targetTenantId, "WARN", "root_user_not_found");
+            //    var (domain, rootCookieDomain) = ResolveDomainForClearImpersonation(httpRequest, rootTenantId);
+            //    ClearImpersonationCookies(httpResponse, domain, rootCookieDomain);
+            //    return new UnauthorizedObjectResult(new { error = "session_expired" });
+            //}
+
+            //var tokenResponse = await _oAuthJwtAccessTokenManager.ManageTokenAsync(tokenRequest, configuration, rootUser);
+            //if (!string.IsNullOrWhiteSpace(tokenResponse.Error))
+            //{
+            //    await WriteImpersonationAuditEventAsync(httpRequest, "impersonation_stop_failed", userId, targetTenantId, "WARN", tokenResponse.Error);
+            //    var (domain, rootCookieDomain) = ResolveDomainForClearImpersonation(httpRequest, rootTenantId);
+            //    ClearImpersonationCookies(httpResponse, domain, rootCookieDomain);
+            //    return new UnauthorizedObjectResult(new { error = tokenResponse.Error });
+            //}
+
+            //// Set new cookies for root user (no impersonation)
+            //var rootTenant = !string.IsNullOrWhiteSpace(rootTenantId) ? _tenants.GetTenantByID(rootTenantId) : null;
+            //var cookiesSet = AppendCookies(httpResponse, tokenResponse, rootTenant, httpRequest);
+
+            //// Clean up impersonation session and backup
+            //if (!string.IsNullOrWhiteSpace(impersonationSessionId))
+            //{
+            //    try
+            //    {
+            //        var updates = new Dictionary<string, object>
+            //        {
+            //            { "status", "ended_by_admin_stop" },
+            //            { "ended_at", DateTime.UtcNow }
+            //        };
+            //        await _authenticationRepository.UpdateImpersonationSessionAsync(impersonationSessionId, updates);
+            //        await _impersonationBackupService.DeleteBackupTokenAsync(impersonationSessionId);
+            //        httpResponse.Cookies.Delete(ImpersonationIdCookieName);
+            //    }
+            //    catch (Exception ex)
+            //    {
+            //        _logger.LogWarning(ex, "Failed to cleanup impersonation session {SessionId}", impersonationSessionId);
+            //    }
+            //}
+
+            //_logger.LogInformation("Impersonation stopped manually and root session restored");
+            //await WriteImpersonationAuditEventAsync(httpRequest, "impersonation_stopped", userId, targetTenantId, "INFO", "success");
+            return new OkObjectResult(new StopImpersonationResponse { impersonation_mode = false });
+        }
+
+        private (string? domain, string? rootCookieDomain) ResolveDomainForClearImpersonation(HttpRequest httpRequest, string? tenantId)
+        {
+            Tenant? tenant = null;
+            if (!string.IsNullOrWhiteSpace(tenantId))
+            {
+                tenant = _tenants.GetTenantByID(tenantId);
+            }
+            var (domain, rootCookieDomain, isResolved) = DomainResolver.ResolveDomain(tenant, httpRequest);
+            return (domain, rootCookieDomain);
+        }
+
+
+
+
     }
 }
