@@ -2,7 +2,6 @@ using Blocks.Genesis;
 using Microsoft.AspNetCore.Http;
 using System.Collections;
 using System.Globalization;
-using System.Net;
 using System.Reflection;
 
 namespace Authentication.DomainService.Utilities
@@ -71,22 +70,10 @@ namespace Authentication.DomainService.Utilities
                 return (null, null, false);
             }
 
-            // 1) Prefer BlocksContext app domain.
-            var effectiveContextDomain = ResolveBlocksContextDomain();
+            var effectiveContextDomain = BlocksContext.GetContext().ApplicationDomain ?? BlocksContext.ResolveApplicationDomain(request);
             if (!string.IsNullOrWhiteSpace(effectiveContextDomain))
             {
                 var matched = FindDomainMatch(domains, effectiveContextDomain);
-                if (matched != null)
-                {
-                    return (matched.Value.domain, matched.Value.cookieDomain, true);
-                }
-            }
-
-            // 2) Try request Origin/Referer host.
-            var requestOriginHost = request?.HttpContext != null ? GetRequestOriginHost(request) : null;
-            if (!string.IsNullOrWhiteSpace(requestOriginHost))
-            {
-                var matched = FindDomainMatch(domains, requestOriginHost);
                 if (matched != null)
                 {
                     return (matched.Value.domain, matched.Value.cookieDomain, true);
@@ -119,7 +106,7 @@ namespace Authentication.DomainService.Utilities
 
             return "selise-blocks";
         }
-        
+
         private static List<(string domain, string? cookieDomain)> GetTenantDomains(Tenant? tenant)
         {
             var result = new List<(string domain, string? cookieDomain)>();
@@ -166,26 +153,6 @@ namespace Authentication.DomainService.Utilities
             }
         }
 
-        private static string? ResolveBlocksContextDomain()
-        {
-            try
-            {
-                var context = BlocksContext.GetContext();
-                if (context == null)
-                {
-                    return null;
-                }
-
-                var property = context.GetType().GetProperty("ApplicationDomain");
-                var value = property?.GetValue(context) as string;
-                return string.IsNullOrWhiteSpace(value) ? null : value;
-            }
-            catch
-            {
-                return null;
-            }
-        }
-
         private static (string domain, string? cookieDomain)? FindDomainMatch(List<(string domain, string? cookieDomain)> domains, string? hostToMatch)
         {
             if (string.IsNullOrWhiteSpace(hostToMatch))
@@ -215,64 +182,6 @@ namespace Authentication.DomainService.Utilities
             }
 
             return null;
-        }
-
-        private static string? GetRequestOriginHost(HttpRequest request)
-        {
-            var origin = request.Headers.Origin.ToString();
-            if (Uri.TryCreate(origin, UriKind.Absolute, out var originUri) && !string.IsNullOrWhiteSpace(originUri.Host))
-            {
-                var host = originUri.Host.ToLower(CultureInfo.InvariantCulture);
-                if (IsLocalhostHost(host))
-                {
-                    return originUri.Port != 80 && originUri.Port != 443
-                        ? $"localhost:{originUri.Port}"
-                        : "localhost";
-                }
-
-                if (originUri.Port != 80 && originUri.Port != 443)
-                {
-                    return $"{host}:{originUri.Port}";
-                }
-
-                return host;
-            }
-
-            var referer = request.Headers.Referer.ToString();
-            if (Uri.TryCreate(referer, UriKind.Absolute, out var refererUri) && !string.IsNullOrWhiteSpace(refererUri.Host))
-            {
-                var host = refererUri.Host.ToLower(CultureInfo.InvariantCulture);
-                if (IsLocalhostHost(host))
-                {
-                    return refererUri.Port != 80 && refererUri.Port != 443
-                        ? $"localhost:{refererUri.Port}"
-                        : "localhost";
-                }
-
-                if (refererUri.Port != 80 && refererUri.Port != 443)
-                {
-                    return $"{host}:{refererUri.Port}";
-                }
-
-                return host;
-            }
-
-            return null;
-        }
-
-        public static bool IsLocalhostHost(string? host)
-        {
-            if (string.IsNullOrWhiteSpace(host))
-            {
-                return false;
-            }
-
-            if (host.Equals("localhost", StringComparison.OrdinalIgnoreCase))
-            {
-                return true;
-            }
-
-            return IPAddress.TryParse(host, out var ipAddress) && IPAddress.IsLoopback(ipAddress);
         }
 
         private static string NormalizeHost(string? value)
