@@ -4,10 +4,9 @@ using Iam.DomainService.Entities;
 
 namespace Iam.DomainService.Resources
 {
-    public class GetPermissionsRequest : BaseGetsRequest<GetPermissionFilter>, IProjectKey
+    public class GetPermissionsRequest : BaseGetsRequest<GetPermissionFilter>
     {
-        public List<string> Roles { get; set; } = [];
-        public string? ProjectKey { get; set; }
+        public List<string> Roles { get; set; } = new List<string>();
     }
 
     public class GetPermissionsResponse : BaseQueryListResponse<IQueryable<Permission>>

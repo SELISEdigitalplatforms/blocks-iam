@@ -23,14 +23,14 @@ public class IdpController : ControllerBase
     }
 
     /// <summary>
-    /// Initiate identity provider authentication flow
+    /// Initiate identity provider authentication flow for a specific client
     /// Delegates to IDP service for OIDC param generation and URL building
     /// </summary>
     [HttpGet("initiate")]
     [AllowAnonymous]
-    public async Task<IActionResult> InitiateAuthenticationFlow([FromQuery] string clientId)
+    public async Task<IActionResult> InitiateAuthenticationFlow([FromQuery] string clientId, [FromQuery] string redirectUri)
     {
-        return await _idpService.StartAuthenticationFlowAsync(clientId);
+        return await _idpService.StartAuthenticationFlowAsync(clientId, redirectUri);
     }
 
     /// <summary>

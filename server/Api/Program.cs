@@ -2,19 +2,23 @@ using Blocks.Genesis;
 using Cloud.DomainService.Utilities;
 using Authentication.DomainService.Utilities;
 using Identifier.DomainService.Shared;
-using FluentValidation.AspNetCore;
 using Microsoft.AspNetCore.Http.Features;
-using Microsoft.Extensions.Configuration;
 using CloudConfiguration.DomainService.Shared.Utilities;
+
 
 var builder = WebApplication.CreateBuilder(args);
 ApplicationConfigurations.ConfigureApiEnv(builder, args);
+
+// Register IHttpContextAccessor for static DomainResolver
+builder.Services.AddHttpContextAccessor();
 
 var serviceName = ResolveRequiredServiceName(builder.Configuration);
 var vaultType = ApplicationConfigurations.ResolveVaultType();
 Console.WriteLine($"Using Genesis vault type: {vaultType}");
 var secret = await ApplicationConfigurations.ConfigureLogAndSecretsAsync(serviceName, vaultType);
+
 Console.WriteLine(secret.AllowedCorsOrigins);
+
 var messageConfiguration = IdpConstants.GetMessageConfiguration(secret.MessageConnectionString);
 messageConfiguration.ServiceName = serviceName;
 ApplicationConfigurations.ConfigureServices(builder.Services, messageConfiguration);
@@ -44,17 +48,17 @@ services.AddApplicationServices();
 services.AddCloudDomainServices();
 services.AddCloudConfigurationServices();
 
+
 var app = builder.Build();
+
+// Configure DomainResolver with IHttpContextAccessor instance
+DomainResolver.Configure(app.Services.GetRequiredService<IHttpContextAccessor>());
 
 // Configure API routes FIRST (before static files) so JSON endpoints return JSON not HTML
 var normalizedApiRoutePrefix = ApplicationConfigurations.NormalizeApiRoutePrefixValue(apiRoutePrefix);
 ApplicationConfigurations.ConfigureMiddleware(
     app,
     tenantValidationPrefixes: new[] { normalizedApiRoutePrefix });
-
-// Register controller routes with /idp/v1 prefix for attribute-based routing
-var apiGroup = app.MapGroup(normalizedApiRoutePrefix);
-apiGroup.MapControllers();
 
 // THEN serve static files
 app.UseDefaultFiles();

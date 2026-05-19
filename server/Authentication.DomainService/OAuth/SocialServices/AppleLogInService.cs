@@ -43,24 +43,25 @@ namespace Authentication.DomainService.OAuth.SocialServices
             }
 
             var stateKey = Guid.NewGuid().ToString("n");
+            var providerRedirectUri = loginData.RedirectUri ?? identityProvider.RedirectUris.FirstOrDefault() ?? string.Empty;
 
             var stateInfo = new StateInfo
             {
                 Audience = loginData.Audience,
                 Provider = loginData.Provider,
-                NextUrl = loginData.NextUrl ?? string.Empty
+                NextUrl = loginData.NextUrl ?? string.Empty,
+                RedirectUri = providerRedirectUri
             };
             await _cacheClient.AddStringValueAsync(
                 stateKey,
                 System.Text.Json.JsonSerializer.Serialize(stateInfo),
                 300
             );
-
             var authorizationUrl = string.Format(
                 identityProvider.AuthorizationUrl,
                 identityProvider.ClientId,                              
                 WebUtility.UrlEncode(identityProvider.Scope),           
-                WebUtility.UrlEncode(identityProvider.RedirectUri),     
+                WebUtility.UrlEncode(providerRedirectUri),     
                 stateKey                                          
             );
 
@@ -82,7 +83,7 @@ namespace Authentication.DomainService.OAuth.SocialServices
                     { "code", stateInfo.Code },
                     { "client_id", identityProvider.ClientId },
                     { "client_secret",  GenerateClientSecret(identityProvider)},
-                    { "redirect_uri", identityProvider.RedirectUri },
+                    { "redirect_uri", stateInfo.RedirectUri },
                     { "grant_type", "authorization_code" }
                 };
 

@@ -15,6 +15,7 @@ using System.IdentityModel.Tokens.Jwt;
 using System.Net.Http.Json;
 using System.Security.Claims;
 using System.Security.Cryptography.X509Certificates;
+using Authentication.DomainService.Shared;
 
 namespace Authentication.DomainService.Authentication
 {
@@ -30,7 +31,7 @@ namespace Authentication.DomainService.Authentication
         private readonly IIdpSessionService _idpSessionService;
         private readonly ITokenRevocationService _tokenRevocationService;
         private readonly ITenants _tenants;
-        private readonly IImpersonationBackupService _impersonationBackupService;
+        private readonly UnifiedTokenSessionService _unifiedTokenSessionService;
 
         private const string Public_Cert_Cache_Prefix = "tetocertpublic::";
 
@@ -43,7 +44,7 @@ namespace Authentication.DomainService.Authentication
             IIdpSessionService idpSessionService,
             ITokenRevocationService tokenRevocationService,
             ITenants tenants,
-            IImpersonationBackupService impersonationBackupService
+            UnifiedTokenSessionService unifiedTokenSessionService
         )
         {
             _logger = logger;
@@ -54,7 +55,7 @@ namespace Authentication.DomainService.Authentication
             _idpSessionService = idpSessionService;
             _tokenRevocationService = tokenRevocationService;
             _tenants = tenants;
-            _impersonationBackupService = impersonationBackupService;
+            _unifiedTokenSessionService = unifiedTokenSessionService;
         }
 
         public async Task<IActionResult> BuildFlowResultAsync(AuthenticationFlowResult result, HttpContext httpContext)
@@ -146,33 +147,8 @@ namespace Authentication.DomainService.Authentication
         {
             var bc = BlocksContext.GetContext();
 
-            // Phase 4: Handle logout during impersonation
-            if (httpRequest != null && httpRequest.Cookies.TryGetValue("impersonation_session_id", out var impersonationSessionId) && !string.IsNullOrWhiteSpace(impersonationSessionId))
-            {
-                try
-                {
-                    var impersonationSession = await _authenticationRepository.GetImpersonationSessionByIdAsync(impersonationSessionId);
-                    if (impersonationSession != null && impersonationSession.Status == "active")
-                    {
-                        // Invalidate root session and cleanup backup
-                        await ImpersonationFlowHelper.InvalidateRootSessionAndBackupAsync(
-                            impersonationSessionId,
-                            bc?.UserId ?? string.Empty,
-                            _authenticationRepository,
-                            _impersonationBackupService,
-                            _logger);
-
-                        _logger.LogInformation("Impersonation session {SessionId} invalidated due to logout during impersonation", impersonationSessionId);
-                    }
-                }
-                catch (Exception ex)
-                {
-                    _logger.LogWarning(ex, "Failed to invalidate impersonation session during logout, but continuing with session logout");
-                    // Don't fail logout - impersonation cleanup is not critical
-                }
-            }
-
             // Revoke refresh token family to align with rotation security and prevent sibling token reuse.
+            await _tokenRevocationService.RevokeTokenAsync(refreshToken, "refresh_token", string.Empty);
             var revokeResult = await _tokenRevocationService.RevokeTokenAsync(refreshToken, "refresh_token", string.Empty);
             if (!revokeResult.Success)
             {
@@ -181,7 +157,7 @@ namespace Authentication.DomainService.Authentication
 
             await _cacheClient.RemoveKeyAsync(refreshToken);
 
-            var result = await _authenticationRepository.UpdateSessionStatusAsync(refreshToken, bc?.UserId ?? "");
+            var result = await _authenticationRepository.RevokeIdentitySessionAsync(refreshToken, bc?.UserId ?? "");
 
             return result;
         }
@@ -190,37 +166,11 @@ namespace Authentication.DomainService.Authentication
         {
             var bc = BlocksContext.GetContext();
 
-            // Phase 4: Handle logout all during impersonation
-            if (httpRequest != null && httpRequest.Cookies.TryGetValue("impersonation_session_id", out var impersonationSessionId) && !string.IsNullOrWhiteSpace(impersonationSessionId))
-            {
-                try
-                {
-                    var impersonationSession = await _authenticationRepository.GetImpersonationSessionByIdAsync(impersonationSessionId);
-                    if (impersonationSession != null && impersonationSession.Status == "active")
-                    {
-                        // Invalidate root session and cleanup backup
-                        await ImpersonationFlowHelper.InvalidateRootSessionAndBackupAsync(
-                            impersonationSessionId,
-                            bc?.UserId ?? string.Empty,
-                            _authenticationRepository,
-                            _impersonationBackupService,
-                            _logger);
+            var refreshTokens = (await _authenticationRepository.GetActiveIdentitySessionByUserIdAsync(bc?.UserId ?? string.Empty)).Select(x => x.RefreshToken).ToList();
+            var revokeTasks = refreshTokens.Select(async x => await _unifiedTokenSessionService.RevokeRefreshToken(x));
+            await Task.WhenAll(revokeTasks);
 
-                        _logger.LogInformation("Impersonation session {SessionId} invalidated due to logout all", impersonationSessionId);
-                    }
-                }
-                catch (Exception ex)
-                {
-                    _logger.LogWarning(ex, "Failed to invalidate impersonation session during logout all, but continuing with session logout");
-                    // Don't fail logout all - impersonation cleanup is not critical
-                }
-            }
-
-            var refreshTokens = (await _authenticationRepository.GetActiveSessionByUserIdAsync(bc.UserId)).Select(x => x.RefreshToken).ToList();
-            var cacheTask = refreshTokens.Select(async x => await _cacheClient.RemoveKeyAsync(x));
-            await Task.WhenAll(cacheTask);
-
-            var result = await _authenticationRepository.UpdateSessionStatusForAllRefreshTokenAsync(refreshTokens);
+            var result = await _authenticationRepository.RevokeIdentitySessionsByRefreshTokensAsync(refreshTokens);
             return result;
         }
 
@@ -248,8 +198,16 @@ namespace Authentication.DomainService.Authentication
         public string CookieToken(HttpRequest request)
         {
             var bc = BlocksContext.GetContext();
-            var refreshToken = request.HttpContext.Request.Cookies[$"{IdpConstants.RefreshTokenCookieName}_{bc.TenantId}"];
-            refreshToken = string.IsNullOrEmpty(refreshToken) ? request.HttpContext.Request.Headers[$"{IdpConstants.RefreshTokenCookieName}_{bc.TenantId}"] : refreshToken;
+            var tenant = _tenants.GetTenantByID(bc?.TenantId ?? "default");
+            var (domain, _, isResolved) = DomainResolver.ResolveDomain(tenant, request);
+            if (!isResolved || string.IsNullOrWhiteSpace(domain))
+            {
+                return string.Empty;
+            }
+
+            var cookieKey = $"{IdpConstants.RefreshTokenCookieName}_{domain}";
+            var refreshToken = request.HttpContext.Request.Cookies[cookieKey];
+            refreshToken = string.IsNullOrEmpty(refreshToken) ? request.HttpContext.Request.Headers[cookieKey] : refreshToken;
 
             return refreshToken;
         }
@@ -258,11 +216,15 @@ namespace Authentication.DomainService.Authentication
         {
             var bc = BlocksContext.GetContext();
             var tenantId = bc?.TenantId ?? "default";
-            var cookieDomain = _tenants.GetTenantByID(tenantId)?.CookieDomain;
+            var tenant = _tenants.GetTenantByID(tenantId);
+            var (domain, cookieDomain, isResolved) = DomainResolver.ResolveDomain(tenant, request);
             var cookieOptions = CreateCookieOptions(cookieDomain, DateTime.UtcNow.AddDays(-1));
 
-            request.HttpContext.Response.Cookies.Delete($"{IdpConstants.RefreshTokenCookieName}_{tenantId}", cookieOptions);
-            request.HttpContext.Response.Cookies.Delete($"{IdpConstants.AccessTokenCookieName}_{tenantId}", cookieOptions);
+            if (isResolved && !string.IsNullOrWhiteSpace(domain))
+            {
+                request.HttpContext.Response.Cookies.Delete($"{IdpConstants.RefreshTokenCookieName}_{domain}", cookieOptions);
+                request.HttpContext.Response.Cookies.Delete($"{domain}", cookieOptions);
+            }
 
             // Backward compatibility cleanup for legacy callback cookie names.
             request.HttpContext.Response.Cookies.Delete("oidc_token", cookieOptions);
@@ -273,8 +235,14 @@ namespace Authentication.DomainService.Authentication
 
         public async Task AppendSessionCookies(HttpContext httpContext, string? accessToken, string? refreshToken, DateTime? accessExpiresUtc = null, DateTime? refreshExpiresUtc = null)
         {
-            var tenantId = BlocksContext.GetContext()?.TenantId ?? "default";
-            var cookieDomain = _tenants.GetTenantByID(tenantId)?.CookieDomain;
+            var bc = BlocksContext.GetContext();
+            var tenantId = bc?.TenantId ?? "default";
+            var tenant = _tenants.GetTenantByID(tenantId);
+            var (domain, cookieDomain, isResolved) = DomainResolver.ResolveDomain(tenant, httpContext.Request);
+            if (!isResolved || string.IsNullOrWhiteSpace(domain))
+            {
+                return;
+            }
             var authConfiguration = await _authenticationRepository.GetAuthenticationConfigurationAsync();
             var accessLifetimeMinutes = Math.Max(authConfiguration?.AccessTokenValidForNumberMinutes ?? AuthenticationConfiguration.DefaultAccessTokenValidForNumberMinutes, 1);
             var refreshLifetimeMinutes = Math.Max(authConfiguration?.AbsoluteRefreshTokenValidForNumberMinutes ?? AuthenticationConfiguration.DefaultRememberMeRefreshTokenValidForNumberMinutes, 1);
@@ -284,12 +252,12 @@ namespace Authentication.DomainService.Authentication
 
             if (!string.IsNullOrWhiteSpace(accessToken))
             {
-                httpContext.Response.Cookies.Append($"{IdpConstants.AccessTokenCookieName}_{tenantId}", accessToken, accessCookieOptions);
+                httpContext.Response.Cookies.Append($"{domain}", accessToken, accessCookieOptions);
             }
 
             if (!string.IsNullOrWhiteSpace(refreshToken))
             {
-                httpContext.Response.Cookies.Append($"{IdpConstants.RefreshTokenCookieName}_{tenantId}", refreshToken, refreshCookieOptions);
+                httpContext.Response.Cookies.Append($"{IdpConstants.RefreshTokenCookieName}_{domain}", refreshToken, refreshCookieOptions);
             }
         }
 
@@ -324,7 +292,7 @@ namespace Authentication.DomainService.Authentication
         /// Initialize social provider authorization - generates state, stores in cache, returns authorization URL
         /// Standard OAuth 2.0 Authorization Code flow initialization
         /// </summary>
-        public async Task<IActionResult> GetSocialAuthorizationUrlAsync(string provider)
+        public async Task<IActionResult> GetSocialAuthorizationUrlAsync(string provider, string redirectUri)
         {
             if (string.IsNullOrWhiteSpace(provider))
                 return new BadRequestObjectResult(new { error = "provider_required", error_description = "Provider name is required" });
@@ -351,7 +319,8 @@ namespace Authentication.DomainService.Authentication
 
                 // Build authorization URL
                 var scope = identityProvider.Scope ?? "openid profile email";
-                var authorizationUrl = BuildAuthorizationUrl(identityProvider, state, scope);
+                redirectUri = string.IsNullOrWhiteSpace(redirectUri) ? identityProvider.RedirectUris.FirstOrDefault() : redirectUri;
+                var authorizationUrl = BuildAuthorizationUrl(identityProvider, state, redirectUri, scope);
 
                 return new OkObjectResult(new
                 {
@@ -378,7 +347,7 @@ namespace Authentication.DomainService.Authentication
         /// Called when user selects a provider from OIDC login page
         /// Generates state for social provider and redirects to social provider
         /// </summary>
-        public async Task<IActionResult> GetOidcSocialAuthorizationUrlAsync(string provider, string oidcState)
+        public async Task<IActionResult> GetOidcSocialAuthorizationUrlAsync(string provider, string oidcState, string redirectUri)
         {
             if (string.IsNullOrWhiteSpace(provider))
                 return new BadRequestObjectResult(new { error = "provider_required", error_description = "Provider name is required" });
@@ -419,7 +388,8 @@ namespace Authentication.DomainService.Authentication
                 // Build authorization URL for social provider
                 // Callback should redirect to /auth/oidc/callback with provider and state
                 var scope = identityProvider.Scope ?? "openid profile email";
-                var authorizationUrl = BuildAuthorizationUrl(identityProvider, socialState, scope);
+                redirectUri = string.IsNullOrWhiteSpace(redirectUri) ? identityProvider.RedirectUris.FirstOrDefault() : redirectUri;
+                var authorizationUrl = BuildAuthorizationUrl(identityProvider, socialState, redirectUri, scope);
 
                 return new OkObjectResult(new
                 {
@@ -440,7 +410,7 @@ namespace Authentication.DomainService.Authentication
         /// <summary>
         /// Build authorization URL with proper OAuth 2.0 parameters
         /// </summary>
-        private string BuildAuthorizationUrl(IdentityProvider provider, string state, string scope, string? codeChallenge = null)
+        private string BuildAuthorizationUrl(IdentityProvider provider, string state, string redirectUri, string scope, string? codeChallenge = null)
         {
             try
             {
@@ -451,7 +421,7 @@ namespace Authentication.DomainService.Authentication
                 var authorizationUrl = $"{authUrl}{separator}" +
                     $"response_type=code&" +
                     $"client_id={Uri.EscapeDataString(provider.ClientId ?? "")}&" +
-                    $"redirect_uri={Uri.EscapeDataString(provider.RedirectUri ?? "")}&" +
+                    $"redirect_uri={Uri.EscapeDataString(redirectUri ?? "")}&" +
                     $"scope={Uri.EscapeDataString(scope)}&" +
                     $"state={Uri.EscapeDataString(state)}";
 
@@ -466,7 +436,7 @@ namespace Authentication.DomainService.Authentication
             catch
             {
                 // Fallback to simple construction
-                return $"{provider.AuthorizationUrl}?response_type=code&client_id={Uri.EscapeDataString(provider.ClientId ?? "")}&state={state}&redirect_uri={Uri.EscapeDataString(provider.RedirectUri ?? "")}&scope={Uri.EscapeDataString(scope)}";
+                return $"{provider.AuthorizationUrl}?response_type=code&client_id={Uri.EscapeDataString(provider.ClientId ?? "")}&state={state}&redirect_uri={Uri.EscapeDataString(redirectUri)}&scope={Uri.EscapeDataString(scope)}";
             }
         }
 
@@ -618,7 +588,7 @@ namespace Authentication.DomainService.Authentication
                 var certificateData = await _cacheClient.CacheDatabase().StringGetAsync(cacheKey);
                 var validationParams = tenant.JwtTokenParameters;
                 var publicCert = X509CertificateLoader.LoadPkcs12(certificateData, validationParams.PublicCertificatePassword);
-                var tokenValidationParameters = !IsUserInfoGetRequest ? new TokenValidationParameters { ValidateLifetime = true, ClockSkew = TimeSpan.Zero, IssuerSigningKey = new X509SecurityKey(publicCert), ValidateIssuerSigningKey = true, ValidateIssuer = true, ValidIssuer = validationParams?.Issuer, ValidAudience = TenantDomainPolicy.GetAudience(tenant), ValidateAudience = true, SaveSigninToken = true } :
+                var tokenValidationParameters = !IsUserInfoGetRequest ? new TokenValidationParameters { ValidateLifetime = true, ClockSkew = TimeSpan.Zero, IssuerSigningKey = new X509SecurityKey(publicCert), ValidateIssuerSigningKey = true, ValidateIssuer = true, ValidIssuer = validationParams?.Issuer, ValidAudience = DomainResolver.GetAudience(tenant), ValidateAudience = true, SaveSigninToken = true } :
                                                                       new TokenValidationParameters { ValidateLifetime = true, ClockSkew = TimeSpan.Zero, IssuerSigningKey = new X509SecurityKey(publicCert), ValidateIssuerSigningKey = true, ValidateIssuer = false, ValidateAudience = false, SaveSigninToken = true };
                 return tokenHandler.ValidateToken(token, tokenValidationParameters, out _);
             }
@@ -729,22 +699,22 @@ namespace Authentication.DomainService.Authentication
             var clientId = TryGetClientIdFromAccessToken(response.AccessToken);
             var useTokensCookie = await ResolveUseTokensCookieAsync(clientId);
 
+            var cookiesSet = false;
             if (useTokensCookie)
             {
-                AppendCookies(response, httpContext.Response);
+                cookiesSet = AppendCookies(response, httpContext);
             }
 
             await EnsureIdpSessionForLoginAsync(response, httpContext);
 
-            if (useTokensCookie)
+            if (cookiesSet)
             {
                 return new OkObjectResult(new
                 {
                     token_type = response.TokenType,
                     expires_in = response.ExpiresIn,
                     scope = response.Scope,
-                    cookie_set = true,
-                    client_id = clientId
+                    id_token = response.IdToken
                 });
             }
 
@@ -757,9 +727,7 @@ namespace Authentication.DomainService.Authentication
                 expires_utc = response.ExpiresUtc,
                 refresh_expires_utc = response.RefreshExpiresUtc,
                 scope = response.Scope,
-                id_token = response.IdToken,
-                cookie_set = false,
-                client_id = clientId
+                id_token = response.IdToken
             });
         }
 
@@ -793,21 +761,39 @@ namespace Authentication.DomainService.Authentication
             }
         }
 
-        private static void AppendCookies(TokenResponse response, HttpResponse httpResponse)
+        private bool AppendCookies(TokenResponse response, HttpContext httpContext)
         {
-            var tenantId = BlocksContext.GetContext()?.TenantId ?? "default";
+            // Validate response has no error indicator
+            if (!string.IsNullOrWhiteSpace(response.Error))
+            {
+                return false; // Cannot set cookies for error responses
+            }
+
+            // Validate access token is present
+            if (string.IsNullOrWhiteSpace(response.AccessToken))
+            {
+                return false; // Cannot set cookies without valid access token
+            }
+
+            var bc = BlocksContext.GetContext();
+            var tenant = _tenants.GetTenantByID(bc?.TenantId ?? "default");
+            var (domain, _, isResolved) = DomainResolver.ResolveDomain(tenant, httpContext.Request);
+            if (!isResolved || string.IsNullOrWhiteSpace(domain))
+            {
+                return false;
+            }
+
             var accessCookieOptions = CreateCookieOptions(response.CookieDomain, response.ExpiresUtc);
             var refreshCookieOptions = CreateCookieOptions(response.CookieDomain, response.RefreshExpiresUtc);
 
-            if (!string.IsNullOrWhiteSpace(response.AccessToken))
-            {
-                httpResponse.Cookies.Append($"{IdpConstants.AccessTokenCookieName}_{tenantId}", response.AccessToken, accessCookieOptions);
-            }
+            httpContext.Response.Cookies.Append($"{domain}", response.AccessToken, accessCookieOptions);
 
             if (!string.IsNullOrWhiteSpace(response.RefreshToken))
             {
-                httpResponse.Cookies.Append($"{IdpConstants.RefreshTokenCookieName}_{tenantId}", response.RefreshToken, refreshCookieOptions);
+                httpContext.Response.Cookies.Append($"{IdpConstants.RefreshTokenCookieName}_{domain}", response.RefreshToken, refreshCookieOptions);
             }
+
+            return true;
         }
 
         /// <summary>
@@ -820,12 +806,27 @@ namespace Authentication.DomainService.Authentication
             bool useTokensCookie,
             string? clientId = null)
         {
+            // If response has an error, return error response immediately
+            if (!string.IsNullOrWhiteSpace(response.Error))
+            {
+                return Task.FromResult<object>(new
+                {
+                    error = response.Error,
+                    error_description = response.ErrorDescription,
+                    tenant_id = BlocksContext.GetContext()?.TenantId ?? "default",
+                    client_id = clientId,
+                    status_code = response.StatusCode
+                });
+            }
+
+            var cookiesSet = false;
             if (useTokensCookie)
             {
-                // Set tokens in secure HttpOnly cookies
-                AppendCookies(response, httpResponse);
+                cookiesSet = AppendCookies(response, httpResponse.HttpContext);
+            }
 
-                // Return metadata only (no token values in response body)
+            if (cookiesSet)
+            {
                 return Task.FromResult<object>(new
                 {
                     token_type = response.TokenType ?? "Bearer",
@@ -837,8 +838,7 @@ namespace Authentication.DomainService.Authentication
                 });
             }
 
-            // Return tokens in response body (standard OAuth response)
-            // No cookies set
+            // Fallback: return tokens in response body if cookies couldn't be set
             return Task.FromResult<object>(new
             {
                 access_token = response.AccessToken,
@@ -855,27 +855,20 @@ namespace Authentication.DomainService.Authentication
 
         private static CookieOptions CreateCookieOptions(string? domain, DateTime expiresUtc)
         {
-            // In Development, don't set domain so cookies work with localhost
-            var cookieDomain = IsLocalhost() ? null : (string.IsNullOrWhiteSpace(domain) ? null : domain);
-            var isSecure = !IsLocalhost();
-            var sameSite = isSecure ? SameSiteMode.Strict : SameSiteMode.None;
-
+            var isLocal = DomainResolver.IsLocalhost();
+            var cookieDomain = isLocal ? null : (string.IsNullOrWhiteSpace(domain) ? null : domain);
             return new CookieOptions
             {
                 Domain = cookieDomain,
                 HttpOnly = true,
-                Secure = isSecure,
-                SameSite = sameSite,
+                Secure = true,
+                SameSite = isLocal ? SameSiteMode.None : SameSiteMode.Strict,
                 Path = "/",
                 Expires = expiresUtc == default ? DateTime.UtcNow : expiresUtc
             };
         }
 
-        private static bool IsLocalhost()
-        {
-            var hostEnv = Environment.GetEnvironmentVariable("ASPNETCORE_ENVIRONMENT") ?? "";
-            return hostEnv.Equals("Development", StringComparison.OrdinalIgnoreCase);
-        }
+
 
         private async Task EnsureIdpSessionForLoginAsync(TokenResponse tokenResponse, HttpContext httpContext)
         {
@@ -927,6 +920,64 @@ namespace Authentication.DomainService.Authentication
             }
 
             httpContext.Response.Cookies.Append(IdpSessionCookieName, sessionId, CreateCookieOptions(tokenResponse.CookieDomain, tokenResponse.RefreshExpiresUtc));
+        }
+
+        public async Task<bool> EnsureIdpSessionForOidcCallbackAsync(HttpContext httpContext, string userId, string tenantId)
+        {
+            if (string.IsNullOrWhiteSpace(userId) || string.IsNullOrWhiteSpace(tenantId))
+            {
+                _logger.LogWarning("Cannot ensure IdP session: userId or tenantId is empty");
+                return false;
+            }
+
+            try
+            {
+                var sessionId = httpContext.Request.Cookies[IdpSessionCookieName];
+                if (string.IsNullOrWhiteSpace(sessionId))
+                {
+                    // Create new session for this OIDC callback
+                    sessionId = await _idpSessionService.CreateSessionAsync(userId, tenantId, httpContext.Connection.RemoteIpAddress?.ToString() ?? "unknown");
+                }
+                else
+                {
+                    // Validate and potentially update existing session
+                    var existingSession = await _idpSessionService.GetSessionAsync(sessionId);
+                    if (existingSession == null || existingSession.RevokedAt.HasValue || existingSession.IsExpired())
+                    {
+                        // Create new session if existing one is invalid
+                        sessionId = await _idpSessionService.CreateSessionAsync(userId, tenantId, httpContext.Connection.RemoteIpAddress?.ToString() ?? "unknown");
+                    }
+                    else
+                    {
+                        // Add account to existing session if not present
+                        var accountExists = existingSession.Accounts.Any(a =>
+                            string.Equals(a.UserId, userId, StringComparison.OrdinalIgnoreCase)
+                            && string.Equals(a.TenantId, tenantId, StringComparison.OrdinalIgnoreCase));
+
+                        if (!accountExists)
+                        {
+                            await _idpSessionService.AddAccountAsync(sessionId, userId, tenantId, userId);
+                        }
+                        else
+                        {
+                            await _idpSessionService.UpdateActivityAsync(sessionId);
+                        }
+
+                        // Rotate session on callback for security
+                        sessionId = await _idpSessionService.RotateSessionAsync(sessionId, "oidc_callback") ?? sessionId;
+                    }
+                }
+
+                // Set session cookie
+                var domain = DomainResolver.ResolveDomain(_tenants.GetTenantByID(tenantId), httpContext.Request).domain;
+                httpContext.Response.Cookies.Append(IdpSessionCookieName, sessionId, CreateCookieOptions(null, DateTime.UtcNow.AddDays(30)));
+                return true;
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error ensuring IdP session for OIDC callback: userId={UserId}, tenantId={TenantId}", userId, tenantId);
+                return false;
+            }
         }
 
         public async Task<BaseResponse> CreateIdentityProviderAsync(IdentityProvider provider)

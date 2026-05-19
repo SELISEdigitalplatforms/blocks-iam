@@ -6,8 +6,7 @@ namespace Iam.DomainService.Entities
     [BsonIgnoreExtraElements]
     public class Role : BaseEntity
     {
-        public string TenantId { get; set; }
-        public string OrganizationId { get; set; }  // Role is org-scoped
+        public string OrganizationId { get; set; } = "default";  // Role is org-scoped
         public string Name { get; set; }
         public string Slug { get; set; }
         public string Description { get; set; }

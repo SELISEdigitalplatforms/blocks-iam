@@ -11,8 +11,8 @@ namespace Iam.DomainService.Services
         Task SendToQueueAsync<T>(string queue, T payload) where T : class;
         Task SendToTopicAsync<T>(string queue, T payload) where T : class;
         Task<bool> SendEmailAsync(SendMail sendMailCommand);
-        Task<bool> SendActivationToEmailAsync(User user, string accountActivationUri, string emailPurpose, string projectKey);
-        Task<bool> SendAccountActivationEmailAsync(User user, string mailPurpose, string projectKey);
+        Task<bool> SendActivationToEmailAsync(User user, string accountActivationUri, string emailPurpose);
+        Task<bool> SendAccountActivationEmailAsync(User user, string mailPurpose);
         bool IsRoot();
     }
 }

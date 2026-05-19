@@ -38,21 +38,22 @@ namespace Authentication.DomainService.OAuth.SocialServices
             }
 
             var stateKey = Guid.NewGuid().ToString("n");
+            var providerRedirectUri = loginData.RedirectUri ?? identityProvider.RedirectUris.FirstOrDefault() ?? string.Empty;
             var stateInfo = new StateInfo
             {
                 Audience = loginData.Audience,
                 Provider = loginData.Provider,
                 NextUrl = loginData.NextUrl,
+                RedirectUri = providerRedirectUri
             };
 
             await _cacheClient.AddStringValueAsync(stateKey, JsonSerializer.Serialize(stateInfo), 300);
-
             // Build LinkedIn login URL safely (scope must be URL encoded)
             var loginUri =
                 $"{identityProvider.AuthorizationUrl.Split('?')[0]}" +
                 $"?response_type=code" +
                 $"&client_id={identityProvider.ClientId}" +
-                $"&redirect_uri={WebUtility.UrlEncode(identityProvider.RedirectUri)}" +
+                $"&redirect_uri={WebUtility.UrlEncode(providerRedirectUri)}" +
                 $"&scope={WebUtility.UrlEncode(identityProvider.Scope).Replace("+", "%20").Replace(" ", "%20")}" +
                 $"&state={stateKey}";
             _logger.LogError("loginUri for provider {Provider} and loginUri {LoginUri}", loginData.Provider, loginUri);
@@ -76,7 +77,7 @@ namespace Authentication.DomainService.OAuth.SocialServices
                 { "code", stateInfo.Code },
                 { "client_id", identityProvider.ClientId },
                 { "client_secret", identityProvider.ClientSecret },
-                { "redirect_uri", identityProvider.RedirectUri },
+                { "redirect_uri", stateInfo.RedirectUri },
                 { "grant_type", "authorization_code" }
             };
 

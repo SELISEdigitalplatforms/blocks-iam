@@ -19,13 +19,14 @@ namespace Authentication.DomainService.Authentication
         bool DeleteCookie(HttpRequest request);
         Task AppendSessionCookies(HttpContext httpContext, string? accessToken, string? refreshToken, DateTime? accessExpiresUtc = null, DateTime? refreshExpiresUtc = null);
         Task<IActionResult> GetLoginOptionsAsync();
-        Task<IActionResult> GetSocialAuthorizationUrlAsync(string provider);
-        Task<IActionResult> GetOidcSocialAuthorizationUrlAsync(string provider, string oidcState);
+        Task<IActionResult> GetSocialAuthorizationUrlAsync(string provider, string redirectUri);
+        Task<IActionResult> GetOidcSocialAuthorizationUrlAsync(string provider, string oidcState, string redirectUri);
         Task<OidcClientRegistration> GetClientCredentialAsync(string clientId);
         Task<object> HandleTokenResponseConditionallyAsync(TokenResponse response, HttpResponse httpResponse, bool useTokensCookie, string? clientId = null);
         Task<ClaimsPrincipal?> GetPrincipalFromTokenAsync(HttpRequest request, string tenantId, bool IsUserInfoGetRequest = false);
         (bool IsValid, Dictionary<string, object> UserInfo) BuildOidcUserInfo(ClaimsPrincipal principal);
         Task<bool> TriggerBackchannelLogoutAllAsync(HttpRequest httpRequest);
+        Task<bool> EnsureIdpSessionForOidcCallbackAsync(HttpContext httpContext, string userId, string tenantId);
         Task<BaseResponse> CreateIdentityProviderAsync(IdentityProvider provider);
         Task<IdentityProvider?> GetIdentityProviderAsync(string provider);
         Task<IdentityProvider?> GetIdentityProviderByIdAsync(string id);

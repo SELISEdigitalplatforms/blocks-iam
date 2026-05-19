@@ -31,7 +31,7 @@ TemporaryDependencyNodeTargetIdentifier=net10.0
 /noconfig
 /unsafe-
 /checked-
-/nowarn:1701,1702,1701,1702,8002
+/nowarn:1701,1702,1701,1702
 /fullpaths
 /nostdlib+
 /errorreport:prompt
@@ -44,8 +44,8 @@ TemporaryDependencyNodeTargetIdentifier=net10.0
 /debug:portable
 /filealign:512
 /optimize-
-/out:obj/Debug/net10.0/Iam.DomainService.dll
-/refout:obj/Debug/net10.0/refint/Iam.DomainService.dll
+/out:obj\Debug\net10.0\Iam.DomainService.dll
+/refout:obj\Debug\net10.0\refint\Iam.DomainService.dll
 /target:library
 /warnaserror-
 /utf8output
@@ -66,6 +66,7 @@ Accounts/
  Services/
   AccountService.cs
   IAccountService.cs
+ SignupUserRequest.cs
  ValidateActivationCodeRequest.cs
  Validators/
   BaseAccountValidator.cs
@@ -93,10 +94,11 @@ obj/Debug/net10.0/
   Users.cs
   UsersGrpc.cs
 Resources/RequestModel/
+ AssignPermissionsToOrganizationRequest.cs
+ AssignRolesToOrganizationRequest.cs
  CreateOrganizationRequest.cs
  CreatePermissionRequest.cs
  CreateRoleRequest.cs
- GetOrganizationRequest.cs
  GetOrganizationsRequest.cs
  GetPermissionGroupBySeverityRequest.cs
  GetPermissionsRequest.cs
@@ -156,15 +158,13 @@ Shared/Entities/
  BuiltInPermission.cs
  IamConfiguration.cs
  Organization.cs
- OrganizationConfig.cs
  Permission.cs
  ProjectPeople.cs
  ResourceTimeline.cs
  Role.cs
- SignUpSetting.cs
+ TenantConfiguration.cs
  User.cs
  UserKeyMap.cs
- UserOrganizationMembership.cs
  UserTimeline.cs
 Shared/Enums/
  MutationEventType.cs
@@ -193,9 +193,10 @@ Users/
   GetUserRolesRequest.cs
   GetUsersRequest.cs
   GetUserTimeLineRequest.cs
-  IsEmailAvaiableRequest.cs
+  IsEmailAvailableRequest.cs
   SaveRolesAndPermissionsRequest.cs
   SaveSignUpSettingRequest.cs
+  UpdateOrganizationUserRequest.cs
   UpdateUserRequest.cs
  ResponseModel/
   GetAccountPermissionsResponse.cs
@@ -214,8 +215,11 @@ Users/
   UpdateUserValidator.cs
 
 [metadataReferences]
+../../../blocks-genesis-net/src/
+ Blocks.LMT.Client/obj/Debug/net10.0/ref/Blocks.LMT.Client.dll
+ Genesis/obj/Debug/net10.0/ref/Blocks.Genesis.dll
 ../Captcha.DomainService/obj/Debug/net10.0/ref/Captcha.DomainService.dll
-<DOTNET>/packs/Microsoft.AspNetCore.App.Ref/10.0.5/ref/net10.0/
+<DOTNET>/packs/Microsoft.AspNetCore.App.Ref/10.0.3/ref/net10.0/
  Microsoft.AspNetCore.Antiforgery.dll
  Microsoft.AspNetCore.Authentication.Abstractions.dll
  Microsoft.AspNetCore.Authentication.BearerToken.dll
@@ -352,7 +356,7 @@ Users/
  System.Formats.Cbor.dll
  System.Security.Cryptography.Xml.dll
  System.Threading.RateLimiting.dll
-<DOTNET>/packs/Microsoft.NETCore.App.Ref/10.0.5/ref/net10.0/
+<DOTNET>/packs/Microsoft.NETCore.App.Ref/10.0.3/ref/net10.0/
  Microsoft.CSharp.dll
  Microsoft.VisualBasic.Core.dll
  Microsoft.VisualBasic.dll
@@ -573,8 +577,6 @@ Users/
  polly.core/8.6.6/lib/net8.0/Polly.Core.dll
  polly/8.6.6/lib/net6.0/Polly.dll
  rabbitmq.client/7.2.1/lib/net8.0/RabbitMQ.Client.dll
- seliseblocks.genesis/10.0.1/lib/net10.0/Blocks.Genesis.dll
- seliseblocks.lmt.client/10.0.1/lib/net10.0/Blocks.LMT.Client.dll
  serilog.aspnetcore/10.0.0/lib/net10.0/Serilog.AspNetCore.dll
  serilog.enrichers.environment/3.0.1/lib/net8.0/Serilog.Enrichers.Environment.dll
  serilog.enrichers.httpcontext/8.3.0/lib/net10.0/Serilog.Enrichers.HttpContext.dll
@@ -611,21 +613,21 @@ Users/
  zstdsharp.port/0.7.3/lib/net7.0/ZstdSharp.dll
 
 [analyzerReferences]
-<DOTNET>/packs/Microsoft.AspNetCore.App.Ref/10.0.5/analyzers/dotnet/cs/
+<DOTNET>/packs/Microsoft.AspNetCore.App.Ref/10.0.3/analyzers/dotnet/cs/
  Microsoft.AspNetCore.App.Analyzers.dll
  Microsoft.AspNetCore.App.CodeFixes.dll
  Microsoft.AspNetCore.App.SourceGenerators.dll
  Microsoft.AspNetCore.Components.Analyzers.dll
  Microsoft.Extensions.Options.SourceGeneration.dll
  Microsoft.Extensions.Validation.ValidationsGenerator.dll
-<DOTNET>/packs/Microsoft.NETCore.App.Ref/10.0.5/analyzers/dotnet/cs/
+<DOTNET>/packs/Microsoft.NETCore.App.Ref/10.0.3/analyzers/dotnet/cs/
  Microsoft.Interop.ComInterfaceGenerator.dll
  Microsoft.Interop.JavaScript.JSImportGenerator.dll
  Microsoft.Interop.LibraryImportGenerator.dll
  Microsoft.Interop.SourceGeneration.dll
  System.Text.Json.SourceGeneration.dll
  System.Text.RegularExpressions.Generator.dll
-<DOTNET>/sdk/10.0.201/Sdks/Microsoft.NET.Sdk/analyzers/
+<DOTNET>/sdk/10.0.103/Sdks/Microsoft.NET.Sdk/analyzers/
  Microsoft.CodeAnalysis.CSharp.NetAnalyzers.dll
  Microsoft.CodeAnalysis.NetAnalyzers.dll
 <NUGET>/
@@ -633,5 +635,5 @@ Users/
  system.clientmodel/1.10.0/analyzers/dotnet/cs/System.ClientModel.SourceGeneration.dll
 
 [analyzerConfigFiles]
-<DOTNET>/sdk/10.0.201/Sdks/Microsoft.NET.Sdk/analyzers/build/config/analysislevel_10_default.globalconfig
+<DOTNET>/sdk/10.0.103/Sdks/Microsoft.NET.Sdk/analyzers/build/config/analysislevel_10_default.globalconfig
 obj/Debug/net10.0/Iam.DomainService.GeneratedMSBuildEditorConfig.editorconfig

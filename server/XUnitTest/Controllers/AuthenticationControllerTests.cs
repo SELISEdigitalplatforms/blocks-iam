@@ -663,7 +663,7 @@ namespace XUnitTest.Controllers
             var tenants = new Mock<ITenants>();
             var logger = new Mock<ILogger<AuthenticationService>>();
 
-            repo.Setup(x => x.UpdateSessionStatusAsync(It.IsAny<string>(), It.IsAny<string>()))
+            repo.Setup(x => x.RevokeIdentitySessionAsync(It.IsAny<string>(), It.IsAny<string>()))
                 .ReturnsAsync(true);
 
             var service = new AuthenticationService(

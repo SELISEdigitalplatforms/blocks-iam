@@ -8,6 +8,5 @@ namespace Iam.DomainService.Dtos
         public required MutationEventType Action { get; set; }
         public string? MailPurpose { get; set; }
         public bool SendWelcomeMail { get; set; } = true;
-        public required string ProjectKey { get; set; }
     }
 }

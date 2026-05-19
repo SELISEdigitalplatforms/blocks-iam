@@ -36,7 +36,6 @@ namespace Blocks.Api.Controllers
         /// 
         /// Standard response caching: 1 hour
         /// </summary>
-        [HttpGet("/.well-known/openid-configuration")]
         [HttpGet("/{tenant_id}/.well-known/openid-configuration")]
         [AllowAnonymous]
         [Produces("application/json")]
@@ -68,7 +67,6 @@ namespace Blocks.Api.Controllers
         /// 
         /// Standard response caching: 1 hour
         /// </summary>
-        [HttpGet("/.well-known/oauth-authorization-server")]
         [HttpGet("/{tenant_id}/.well-known/oauth-authorization-server")]
         [AllowAnonymous]
         [Produces("application/json")]
@@ -102,7 +100,6 @@ namespace Blocks.Api.Controllers
         /// 
         /// Standard response caching: 24 hours (keys don't change frequently)
         /// </summary>
-        [HttpGet("/.well-known/jwks.json")]
         [HttpGet("/{tenant_id}/.well-known/jwks.json")]
         [Produces("application/json")]
         [ProducesResponseType(typeof(JwksResponse), 200)]

@@ -76,7 +76,7 @@ namespace Blocks.Api.Controllers
                 scope,
                 state,
                 nonce,
-                code_challenge,
+                code_challenge ?? string.Empty,
                 code_challenge_method,
                 prompt,
                 tenant_id,

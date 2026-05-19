@@ -1,9 +1,7 @@
-using Blocks.Genesis;
 
 namespace Authentication.DomainService.RequestModel
 {
-    public class GetSsoCredentialsRequest : IProjectKey
+    public class GetSsoCredentialsRequest
     {
-        public string? ProjectKey { get; set; }
     }
 }

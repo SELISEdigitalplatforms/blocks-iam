@@ -7,9 +7,8 @@ namespace Iam.DomainService.Resources
     {
     }
 
-    public class GetPermissionRequest : IProjectKey
+    public class GetPermissionRequest
     {
         public string Id { get; set; }
-        public string? ProjectKey { get; set; }
     }
 }

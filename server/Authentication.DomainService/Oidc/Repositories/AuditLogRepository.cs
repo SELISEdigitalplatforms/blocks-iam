@@ -29,7 +29,7 @@ namespace Authentication.DomainService.Oidc.Repositories
         {
             try
             {
-                var collection = GetDatabase().GetCollection<AuditLogModel>("audit_logs");
+                var collection = GetDatabase().GetCollection<AuditLogModel>("IdpAuditLogs");
                 await collection.InsertOneAsync(log);
                 return log.Id;
             }
@@ -44,7 +44,7 @@ namespace Authentication.DomainService.Oidc.Repositories
         {
             try
             {
-                var collection = GetDatabase().GetCollection<AuditLogModel>("audit_logs");
+                var collection = GetDatabase().GetCollection<AuditLogModel>("IdpAuditLogs");
                 var filter = Builders<AuditLogModel>.Filter.And(
                     Builders<AuditLogModel>.Filter.Eq(l => l.UserId, userId),
                     Builders<AuditLogModel>.Filter.Eq(l => l.TenantId, tenantId),
@@ -64,7 +64,7 @@ namespace Authentication.DomainService.Oidc.Repositories
         {
             try
             {
-                var collection = GetDatabase().GetCollection<AuditLogModel>("audit_logs");
+                var collection = GetDatabase().GetCollection<AuditLogModel>("IdpAuditLogs");
                 var filter = Builders<AuditLogModel>.Filter.And(
                     Builders<AuditLogModel>.Filter.Eq(l => l.EventType, eventType),
                     Builders<AuditLogModel>.Filter.Gte(l => l.Timestamp, from),
@@ -83,7 +83,7 @@ namespace Authentication.DomainService.Oidc.Repositories
         {
             try
             {
-                var collection = GetDatabase().GetCollection<AuditLogModel>("audit_logs");
+                var collection = GetDatabase().GetCollection<AuditLogModel>("IdpAuditLogs");
                 var filter = Builders<AuditLogModel>.Filter.And(
                     Builders<AuditLogModel>.Filter.Eq(l => l.Severity, severity),
                     Builders<AuditLogModel>.Filter.Gte(l => l.Timestamp, from),
@@ -102,7 +102,7 @@ namespace Authentication.DomainService.Oidc.Repositories
         {
             try
             {
-                var collection = GetDatabase().GetCollection<AuditLogModel>("audit_logs");
+                var collection = GetDatabase().GetCollection<AuditLogModel>("IdpAuditLogs");
                 var filterBuilder = Builders<AuditLogModel>.Filter;
                 var filters = new List<FilterDefinition<AuditLogModel>>();
 

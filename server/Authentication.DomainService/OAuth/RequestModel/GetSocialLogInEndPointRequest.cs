@@ -5,6 +5,7 @@ namespace Authentication.DomainService.OAuth.RequestModel
         public required string Provider { get; set; }
         public required string Audience { get; set; }
         public string? NextUrl { get; set; }
+        public string? RedirectUri { get; set; }
         public bool SendAsResponse { get; set; } = true;
     }
 

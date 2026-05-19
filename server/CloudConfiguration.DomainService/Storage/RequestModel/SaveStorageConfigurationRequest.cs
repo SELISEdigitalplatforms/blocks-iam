@@ -3,7 +3,7 @@ using Blocks.Genesis;
 
 namespace CloudConfiguration.DomainService.Storage.RequestModel
 {
-    public class SaveStorageConfigurationRequest : IProjectKey
+    public class SaveStorageConfigurationRequest
     {
         public string Name { get; set; }
         public string? ConnectionString { get; set; }
@@ -11,7 +11,6 @@ namespace CloudConfiguration.DomainService.Storage.RequestModel
         public string? AccessKey { get; set; }
         public string StorageStrategy { get; set; }
         public string? CloudStorageRegionEndPoint { get; set; }
-        public string ProjectKey { get; set; }
         public bool UpdateRequest { get; set; }
         public string? ItemId { get; set; }
 
