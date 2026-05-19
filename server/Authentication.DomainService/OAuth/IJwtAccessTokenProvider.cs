@@ -12,7 +12,6 @@ namespace Authentication.DomainService.OAuth
             User user,
             StateInfo? state = null,
             string? organizationId = null,
-            TokenIssuanceContext? issuanceContext = null,
             IEnumerable<string>? clientAllowedScopes = null,
             IEnumerable<string>? clientAllowedServiceAccessResources = null);
     }

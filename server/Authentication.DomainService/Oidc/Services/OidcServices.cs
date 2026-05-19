@@ -1,28 +1,27 @@
+using Authentication.DomainService.Oidc.Repositories;
 using System.IdentityModel.Tokens.Jwt;
-using System.IO;
-using System.Net.Http;
 using System.Security.Claims;
 using System.Security.Cryptography;
 using System.Security.Cryptography.X509Certificates;
 using System.Text;
 using System.Text.Json;
 using Blocks.Genesis;
-using Authentication.DomainService.Entities;
 using Authentication.DomainService.OAuth;
 using Authentication.DomainService.Services;
 using Authentication.DomainService.Utilities;
 using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.Configuration;
-using Microsoft.Extensions.DependencyInjection;
 using Microsoft.IdentityModel.Tokens;
+using Iam.DomainService.Entities;
+using Authentication.DomainService.Shared;
 
 namespace Idp.DomainService.Oidc.Services;
 
 public interface ITokenGenerationService
 {
-    Task<string> GenerateIdTokenAsync(Idp.DomainService.Oidc.Contracts.OidcClaims claims, string issuer, int expiresInSeconds);
-    Task<string> GenerateAccessTokenAsync(Idp.DomainService.Oidc.Contracts.OidcClaims claims, string issuer, int expiresInSeconds);
-    Task<Idp.DomainService.Oidc.Contracts.RefreshTokenModel> GenerateRefreshTokenAsync(Idp.DomainService.Oidc.Contracts.OidcClaims claims, string issuer);
+    Task<string> GenerateIdTokenAsync(Contracts.OidcClaims claims, string issuer, int expiresInSeconds);
+    Task<string> GenerateAccessTokenAsync(Contracts.OidcClaims claims, string issuer, int expiresInSeconds);
+    Task<Contracts.RefreshTokenModel> GenerateRefreshTokenAsync(Contracts.OidcClaims claims, string issuer);
 }
 
 public interface IPkceService
@@ -32,13 +31,13 @@ public interface IPkceService
 
 public interface IDiscoveryService
 {
-    Task<Idp.DomainService.Oidc.Contracts.DiscoveryMetadata> GetMetadataAsync();
-    Task<Idp.DomainService.Oidc.Contracts.OAuthAuthorizationServerMetadata> GetAuthorizationServerMetadataAsync();
+    Task<Contracts.DiscoveryMetadata> GetMetadataAsync();
+    Task<Contracts.OAuthAuthorizationServerMetadata> GetAuthorizationServerMetadataAsync();
 }
 
 public interface IJwksService
 {
-    Task<Idp.DomainService.Oidc.Contracts.JwksResponse> GetKeysAsync();
+    Task<Contracts.JwksResponse> GetKeysAsync();
 }
 
 public sealed class OidcSigningKeyMaterial
@@ -64,10 +63,12 @@ public class TokenGenerationService : ITokenGenerationService
     private readonly OidcSigningKeyMaterial _keyMaterial;
     private readonly ITenants _tenants;
     private readonly ICacheClient _cacheClient;
+    private readonly UnifiedTokenSessionService _unifiedTokenSessionService;
     private readonly ICryptoService _cryptoService;
     private readonly ICertificateProviderFactory _certificateProviderFactory;
     private readonly IHttpContextAccessor _httpContextAccessor;
     private readonly IAuthenticationRepository _authenticationRepository;
+    private readonly IRefreshTokenRepository _refreshTokenRepository;
 
     public TokenGenerationService(
         OidcSigningKeyMaterial keyMaterial,
@@ -76,7 +77,9 @@ public class TokenGenerationService : ITokenGenerationService
         ICryptoService cryptoService,
         ICertificateProviderFactory certificateProviderFactory,
         IHttpContextAccessor httpContextAccessor,
-        IAuthenticationRepository authenticationRepository)
+        IAuthenticationRepository authenticationRepository,
+        IAuthenticationDomainService authenticationDomainService,
+        IRefreshTokenRepository refreshTokenRepository)
     {
         _keyMaterial = keyMaterial;
         _tenants = tenants;
@@ -85,40 +88,58 @@ public class TokenGenerationService : ITokenGenerationService
         _certificateProviderFactory = certificateProviderFactory;
         _httpContextAccessor = httpContextAccessor;
         _authenticationRepository = authenticationRepository;
+        _refreshTokenRepository = refreshTokenRepository;
+        _unifiedTokenSessionService = new UnifiedTokenSessionService(_cacheClient, authenticationDomainService, _refreshTokenRepository);
     }
 
-    public Task<string> GenerateIdTokenAsync(Idp.DomainService.Oidc.Contracts.OidcClaims claims, string issuer, int expiresInSeconds)
+    public Task<string> GenerateIdTokenAsync(Contracts.OidcClaims claims, string issuer, int expiresInSeconds)
     {
         return GenerateTokenAsync(claims, issuer, expiresInSeconds, includeNonce: true);
     }
 
-    public Task<string> GenerateAccessTokenAsync(Idp.DomainService.Oidc.Contracts.OidcClaims claims, string issuer, int expiresInSeconds)
+    public Task<string> GenerateAccessTokenAsync(Contracts.OidcClaims claims, string issuer, int expiresInSeconds)
     {
         return GenerateTokenAsync(claims, issuer, expiresInSeconds, includeNonce: false);
     }
 
-    public async Task<Idp.DomainService.Oidc.Contracts.RefreshTokenModel> GenerateRefreshTokenAsync(Idp.DomainService.Oidc.Contracts.OidcClaims claims, string issuer)
+    public async Task<Contracts.RefreshTokenModel> GenerateRefreshTokenAsync(Contracts.OidcClaims claims, string issuer)
     {
-        var now = DateTime.UtcNow;
+        // UnifiedTokenSessionService handles all logic. This method is now a thin adapter only.
         var authConfiguration = await _authenticationRepository.GetAuthenticationConfigurationAsync();
-        var slidingMinutes = Math.Max(authConfiguration?.RefreshTokenValidForNumberMinutes ?? AuthenticationConfiguration.DefaultRefreshTokenValidForNumberMinutes, 1);
-        var absoluteMinutes = Math.Max(authConfiguration?.AbsoluteRefreshTokenValidForNumberMinutes ?? AuthenticationConfiguration.DefaultRememberMeRefreshTokenValidForNumberMinutes, slidingMinutes);
-
-        return new Idp.DomainService.Oidc.Contracts.RefreshTokenModel
+        var tenant = _tenants.GetTenantByID(claims.TenantId);
+        var user = new User { ItemId = claims.Sub, OrganizationIds = claims.OrgId != null ? new List<string> { claims.OrgId } : new List<string>(), TokenVersion = 1 };
+        var tokenRequest = new Authentication.DomainService.OAuth.RequestModel.TokenRequest
         {
-            TokenId = Guid.NewGuid().ToString("n"),
-            FamilyId = Guid.NewGuid().ToString("n"),
+            ClientId = claims.ClientId,
+            OrganizationId = claims.OrgId,
+            Scope = claims.Scope,
+            Request = _httpContextAccessor.HttpContext?.Request
+        };
+        var visitorsIpAddresses = new List<string> { _httpContextAccessor.HttpContext?.Connection?.RemoteIpAddress?.ToString() ?? string.Empty };
+        var (refreshToken, expiresUtc) = await _unifiedTokenSessionService.CreateOrRotateRefreshToken(
+            null,
+            null,
+            tokenRequest,
+            authConfiguration,
+            tenant,
+            user,
+            visitorsIpAddresses
+        );
+        return new Contracts.RefreshTokenModel
+        {
+            TokenId = refreshToken,
+            FamilyId = string.Empty, // No longer generated here
             UserId = claims.Sub,
             TenantId = claims.TenantId,
             OrgId = claims.OrgId,
             Audience = claims.Audience,
             Scope = claims.Scope,
-            SlidingExpiry = now.AddMinutes(slidingMinutes),
-            AbsoluteExpiry = now.AddMinutes(absoluteMinutes)
+            SlidingExpiry = expiresUtc,
+            AbsoluteExpiry = expiresUtc
         };
     }
 
-    private async Task<string> GenerateTokenAsync(Idp.DomainService.Oidc.Contracts.OidcClaims claims, string issuer, int expiresInSeconds, bool includeNonce)
+    private async Task<string> GenerateTokenAsync(Contracts.OidcClaims claims, string issuer, int expiresInSeconds, bool includeNonce)
     {
         var now = DateTime.UtcNow;
         var tenant = ResolveTenant(claims.TenantId);
@@ -335,7 +356,7 @@ public class DiscoveryService : IDiscoveryService
         _cacheClient = cacheClient;
     }
 
-    public async Task<Idp.DomainService.Oidc.Contracts.DiscoveryMetadata> GetMetadataAsync()
+    public async Task<Contracts.DiscoveryMetadata> GetMetadataAsync()
     {
         var tenantId = ResolveTenantId();
         var cacheKey = $"{DiscoveryCachePrefix}{tenantId ?? "_default"}";
@@ -343,11 +364,11 @@ public class DiscoveryService : IDiscoveryService
         var cached = await _cacheClient.CacheDatabase().StringGetAsync(cacheKey);
         if (cached.HasValue)
         {
-            return JsonSerializer.Deserialize<Idp.DomainService.Oidc.Contracts.DiscoveryMetadata>((string)cached!)!;
+            return JsonSerializer.Deserialize<Contracts.DiscoveryMetadata>((string)cached!)!;
         }
 
         var endpoints = ResolveEndpoints(tenantId);
-        var metadata = new Idp.DomainService.Oidc.Contracts.DiscoveryMetadata
+        var metadata = new Contracts.DiscoveryMetadata
         {
             Issuer = endpoints.Issuer,
             AuthorizationEndpoint = endpoints.AuthorizationEndpoint,
@@ -362,7 +383,7 @@ public class DiscoveryService : IDiscoveryService
         return metadata;
     }
 
-    public async Task<Idp.DomainService.Oidc.Contracts.OAuthAuthorizationServerMetadata> GetAuthorizationServerMetadataAsync()
+    public async Task<Contracts.OAuthAuthorizationServerMetadata> GetAuthorizationServerMetadataAsync()
     {
         var tenantId = ResolveTenantId();
         var cacheKey = $"{OAuthCachePrefix}{tenantId ?? "_default"}";
@@ -370,11 +391,11 @@ public class DiscoveryService : IDiscoveryService
         var cached = await _cacheClient.CacheDatabase().StringGetAsync(cacheKey);
         if (cached.HasValue)
         {
-            return JsonSerializer.Deserialize<Idp.DomainService.Oidc.Contracts.OAuthAuthorizationServerMetadata>((string)cached!)!;
+            return JsonSerializer.Deserialize<Contracts.OAuthAuthorizationServerMetadata>((string)cached!)!;
         }
 
         var endpoints = ResolveEndpoints(tenantId);
-        var metadata = new Idp.DomainService.Oidc.Contracts.OAuthAuthorizationServerMetadata
+        var metadata = new Contracts.OAuthAuthorizationServerMetadata
         {
             Issuer = endpoints.Issuer,
             AuthorizationEndpoint = endpoints.AuthorizationEndpoint,
@@ -525,18 +546,18 @@ public class JwksService : IJwksService
         _certificateProviderFactory = certificateProviderFactory;
     }
 
-    public async Task<Idp.DomainService.Oidc.Contracts.JwksResponse> GetKeysAsync()
+    public async Task<Contracts.JwksResponse> GetKeysAsync()
     {
         var tenant = ResolveTenant();
         var certificate = tenant == null ? null : await GetPreferredCertificateAsync(tenant);
         if (certificate == null)
         {
             var fallbackParameters = _keyMaterial.Rsa.ExportParameters(false);
-            return new Idp.DomainService.Oidc.Contracts.JwksResponse
+            return new Contracts.JwksResponse
             {
                 Keys =
                 [
-                    new Idp.DomainService.Oidc.Contracts.JwkKey
+                    new Contracts.JwkKey
                     {
                         Kid = _keyMaterial.SecurityKey.KeyId ?? string.Empty,
                         N = Base64UrlEncoder.Encode(fallbackParameters.Modulus),
@@ -553,11 +574,11 @@ public class JwksService : IJwksService
         }
 
         var parameters = rsa.ExportParameters(false);
-        return new Idp.DomainService.Oidc.Contracts.JwksResponse
+        return new Contracts.JwksResponse
         {
             Keys =
             [
-                new Idp.DomainService.Oidc.Contracts.JwkKey
+                new Contracts.JwkKey
                 {
                     Kid = ResolveKeyId(certificate),
                     N = Base64UrlEncoder.Encode(parameters.Modulus),

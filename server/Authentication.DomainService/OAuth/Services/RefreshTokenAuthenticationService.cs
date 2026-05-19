@@ -44,18 +44,11 @@ namespace Authentication.DomainService.OAuth
             var clientAllowedScopes = clientRegistration?.AllowedScopes;
             var clientAllowedServiceAccessResources = clientRegistration?.AllowedServiceAccessResources;
             
-            var issuanceContext = new TokenIssuanceContext
-            {
-                IsImpersonation = request.IsImpersonation,
-                OriginalTenantId = request.OriginalTenantId,
-                ActorUserId = request.ImpersonatorUserId
-            };
             var jwtAccessToken = await _jwtAccessTokenProvider.GetJwtAccessToken(
                 authenticationConfiguration,
                 tenant,
                 user,
                 organizationId: request.OrganizationId,
-                issuanceContext: issuanceContext,
                 clientAllowedScopes: clientAllowedScopes,
                 clientAllowedServiceAccessResources: clientAllowedServiceAccessResources);
             var jwtToken = new JwtSecurityToken(

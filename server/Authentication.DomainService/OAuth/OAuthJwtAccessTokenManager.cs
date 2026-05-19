@@ -13,6 +13,7 @@ using Microsoft.Extensions.Configuration;
 using System.IdentityModel.Tokens.Jwt;
 using System.Text.Json;
 using Authentication.DomainService.Utilities;
+using Authentication.DomainService.Shared;
 
 namespace Authentication.DomainService.OAuth
 {
@@ -27,6 +28,7 @@ namespace Authentication.DomainService.OAuth
         private readonly IConfiguration _configuration;
         private readonly ICacheClient _cacheClient;
         private readonly ITenants _tenants;
+        private readonly UnifiedTokenSessionService _unifiedTokenSessionService;
 
         public OAuthJwtAccessTokenManager(
             IJwtAccessTokenProvider jwtAccessTokenProvider,
@@ -36,7 +38,8 @@ namespace Authentication.DomainService.OAuth
             ICacheClient cacheClient,
             ITenants tenants,
             IOtpServiceFactory otpServiceFactory,
-            IConfiguration configuration
+            IConfiguration configuration,
+            UnifiedTokenSessionService unifiedTokenSessionService
         )
         {
             _jwtAccessTokenProvider = jwtAccessTokenProvider;
@@ -47,6 +50,7 @@ namespace Authentication.DomainService.OAuth
             _tenants = tenants;
             _otpServiceFactory = otpServiceFactory;
             _configuration = configuration;
+            _unifiedTokenSessionService = unifiedTokenSessionService;
         }
 
         public async Task<TokenResponse> ManageTokenAsync(TokenRequest tokenRequest, AuthenticationConfiguration authenticationConfiguration, User user, StateInfo? stateInfo = null)
@@ -71,12 +75,6 @@ namespace Authentication.DomainService.OAuth
                 };
             }
 
-            var issuanceContext = new TokenIssuanceContext
-            {
-                IsImpersonation = tokenRequest.IsImpersonation,
-                OriginalTenantId = tokenRequest.OriginalTenantId,
-                ActorUserId = tokenRequest.ImpersonatorUserId
-            };
             var (clientAllowedScopes, allowedServiceAccessResources) = await ResolveClientAuthorizationConfigAsync(tokenRequest.ClientId);
             var jwtAccessToken = await _jwtAccessTokenProvider.GetJwtAccessToken(
                 authenticationConfiguration,
@@ -84,7 +82,6 @@ namespace Authentication.DomainService.OAuth
                 user,
                 stateInfo,
                 organizationId: tokenRequest.OrganizationId,
-                issuanceContext: issuanceContext,
                 clientAllowedScopes: clientAllowedScopes,
                 clientAllowedServiceAccessResources: allowedServiceAccessResources);
 
@@ -216,16 +213,38 @@ namespace Authentication.DomainService.OAuth
         public async Task<(string, DateTime)> ManageRefreshTokenAsync(TokenRequest tokenRequest, JwtAccessToken jwtAccessToken, AuthenticationConfiguration authenticationConfiguration, Tenant tenant, User user)
         {
             var visitorsIpAddresses = _authenticationDomainService.GetVisitorsIpAddresses(tokenRequest.Request.HttpContext) ?? new List<string>();
-
-            // Check if this is a refresh token grant type
+            // Unify both initial and rotation flows
             if (tokenRequest.GrantType == GrantTypes.RefreshToken || tokenRequest.GrantType == GrantTypes.SwitchOrganization)
             {
-                return await HandleRefreshTokenGrant(tokenRequest, tenant, user, visitorsIpAddresses, authenticationConfiguration);
+                // Rotation: fetch old token from cache
+                var oldRefreshTokenCacheStr = await _cacheClient.GetStringValueAsync(tokenRequest.RefreshToken);
+                RefreshTokenCache? oldRefreshTokenCache = null;
+                if (!string.IsNullOrWhiteSpace(oldRefreshTokenCacheStr))
+                {
+                    oldRefreshTokenCache = JsonSerializer.Deserialize<RefreshTokenCache>(oldRefreshTokenCacheStr);
+                }
+                return await _unifiedTokenSessionService.CreateOrRotateRefreshToken(
+                    tokenRequest.RefreshToken,
+                    oldRefreshTokenCache,
+                    tokenRequest,
+                    authenticationConfiguration,
+                    tenant,
+                    user,
+                    visitorsIpAddresses
+                );
             }
             else
             {
-                // Initial auth flow - create new refresh token with full configured lifetime
-                return await CreateNewRefreshToken(tokenRequest, tenant, user, authenticationConfiguration, visitorsIpAddresses);
+                // Initial auth flow: no old token
+                return await _unifiedTokenSessionService.CreateOrRotateRefreshToken(
+                    null,
+                    null,
+                    tokenRequest,
+                    authenticationConfiguration,
+                    tenant,
+                    user,
+                    visitorsIpAddresses
+                );
             }
         }
 
@@ -366,10 +385,6 @@ namespace Authentication.DomainService.OAuth
                 AbsoluteExpiresUtc = absoluteExpiresUtc,
                 IpAddresses = string.Join(",", visitorsIpAddresses),
                 UserId = oldRefreshToken.UserId ?? string.Empty,
-                AuthMode = oldRefreshToken.AuthMode,
-                OriginalTenantId = oldRefreshToken.OriginalTenantId,
-                TargetTenantId = oldRefreshToken.TargetTenantId,
-                ImpersonatorUserId = oldRefreshToken.ImpersonatorUserId,
                 RememberMe = oldRefreshToken.RememberMe,
                 TokenVersion = oldRefreshToken.TokenVersion,
                 RememberMeIssuedUtc = oldRefreshToken.RememberMeIssuedUtc,
@@ -470,10 +485,6 @@ namespace Authentication.DomainService.OAuth
                 AbsoluteExpiresUtc = absoluteRefreshTokenExpireOn,
                 IpAddresses = string.Join(",", visitorsIpAddresses),
                 UserId = user.ItemId ?? string.Empty,
-                AuthMode = tokenRequest.IsImpersonation ? "impersonation" : "root",
-                OriginalTenantId = tokenRequest.OriginalTenantId,
-                TargetTenantId = tokenRequest.TargetTenantId,
-                ImpersonatorUserId = tokenRequest.ImpersonatorUserId,
                 RememberMe = tokenRequest.RememberMe,
                 TokenVersion = user.TokenVersion,
                 RememberMeIssuedUtc = tokenRequest.RememberMe ? now : null,

@@ -339,29 +339,14 @@ public class AuthenticationController : ControllerBase
         return await _authenticationService.BuildFlowResultAsync(result, HttpContext);
     }
 
-    /// <summary>
-    /// Initiate user impersonation (Administrator Feature)
-    /// Allows admins to impersonate users for support/debugging
-    /// All actions audited and linked back to admin
-    /// Requires admin role - cannot impersonate other admins
-    /// </summary>
-    [HttpPost("impersonate")]
+    [HttpGet("context/{projectId}")]
     [Authorize]
-    public async Task<IActionResult> InitiateImpersonation([FromBody] ImpersonationRequest request)
+    public async Task<IActionResult> GetContextForProject([FromRoute] string projectId)
     {
-        return await _authenticationFlowService.ExecuteImpersonateAsync(request, User, Request, Response);
+        var result = await _authenticationFlowService.GetContextForProjectAsync(projectId);
+        return result.IsSuccess ? Ok(result) : BadRequest(result);
     }
 
-    /// <summary>
-    /// Stop user impersonation (Revert to Original Admin)
-    /// Admin stops impersonating user and reverts to original context
-    /// </summary>
-    [HttpPost("impersonation/stop")]
-    [Authorize]
-    public async Task<IActionResult> StopImpersonation()
-    {
-        return await _authenticationFlowService.ExecuteStopImpersonationAsync(User, Request, Response);
-    }
 
     /// <summary>
     /// Execute global logout across all sessions (Logout All Devices)

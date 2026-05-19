@@ -1,6 +1,5 @@
 using Authentication.DomainService.OAuth.SocialServices;
 using Blocks.Extension.DependencyInjection;
-using Blocks.Genesis;
 using Idp.DomainService.Oidc.Services;
 using Captcha.DomainService.Captcha;
 using Captcha.DomainService.Configuration;
@@ -11,7 +10,6 @@ using Authentication.DomainService.Oidc.Services;
 using Authentication.DomainService.Oidc.Validation;
 using Authentication.DomainService.OAuth;
 using Authentication.DomainService.OAuth.Services;
-using Authentication.DomainService.OAuth.SocialServices;
 using Authentication.DomainService.Services;
 using Authentication.DomainService.Shared;
 using FluentValidation;
@@ -35,6 +33,7 @@ namespace Authentication.DomainService.Utilities
     {
         public static void RegisterAllServices(this IServiceCollection serviceCollection)
         {
+            
             #region Authentication
             serviceCollection.AddSingleton<IAuthenticationDomainService, AuthenticationDomainService>();
             serviceCollection.AddSingleton<IAuthenticationRepository, AuthenticationRepository>();
@@ -46,7 +45,6 @@ namespace Authentication.DomainService.Utilities
             serviceCollection.AddSingleton<IAuthenticationFlowService, AuthenticationFlowService>();
             serviceCollection.AddSingleton<IAuthorizationFlowService, AuthorizationFlowService>();
             serviceCollection.AddSingleton<IIdpService, IdpService>();
-            serviceCollection.AddSingleton<IImpersonationBackupService, ImpersonationBackupService>();
             serviceCollection.AddSingleton<AuthorizeRequestValidator>();
 
             serviceCollection.AddSingleton<OidcSigningKeyMaterial>();
@@ -161,6 +159,8 @@ namespace Authentication.DomainService.Utilities
             serviceCollection.AddTransient<IValidator<SubmitCaptchaRequest>, SubmitCaptchaCommandValidator>();
 
             #endregion
+
+            serviceCollection.AddSingleton<UnifiedTokenSessionService, UnifiedTokenSessionService>();
         }
     }
 }

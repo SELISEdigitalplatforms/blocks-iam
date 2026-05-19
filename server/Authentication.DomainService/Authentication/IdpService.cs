@@ -2,6 +2,7 @@ using Authentication.DomainService.Entities;
 using Authentication.DomainService.OAuth.ResponseModel;
 using Authentication.DomainService.Services;
 using Authentication.DomainService.Utilities;
+using Azure.Core;
 using Blocks.Genesis;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
@@ -318,39 +319,24 @@ namespace Authentication.DomainService.Authentication
 
         private static CookieOptions CreateCookieOptions(string? domain, DateTime expiresUtc, HttpRequest httpRequest)
         {
-            var isLocalRequest = IsLocalRequest(httpRequest);
+            var isLocalRequest = DomainResolver.IsLocalhost();
             var cookieDomain = isLocalRequest ? null : (string.IsNullOrWhiteSpace(domain) ? null : domain);
-            var isSecure = !isLocalRequest && httpRequest.IsHttps;
-            var sameSite = isSecure ? SameSiteMode.None : SameSiteMode.Lax;
 
             return new CookieOptions
             {
                 Domain = cookieDomain,
                 HttpOnly = true,
-                Secure = isSecure,
-                SameSite = sameSite,
+                Secure = true,
+                SameSite = isLocalRequest ? SameSiteMode.None : SameSiteMode.Strict,
                 Path = "/",
                 Expires = expiresUtc == default ? DateTime.UtcNow : expiresUtc
             };
         }
 
-        private static bool IsLocalRequest(HttpRequest request)
-        {
-            var host = request.Host.Host ?? string.Empty;
-            return string.Equals(host, "localhost", StringComparison.OrdinalIgnoreCase)
-                || string.Equals(host, "127.0.0.1", StringComparison.OrdinalIgnoreCase)
-                || string.Equals(host, "::1", StringComparison.OrdinalIgnoreCase);
-        }
-
-        private static bool IsLocalhost()
-        {
-            var hostEnv = Environment.GetEnvironmentVariable("ASPNETCORE_ENVIRONMENT") ?? "";
-            return hostEnv.Equals("Development", StringComparison.OrdinalIgnoreCase);
-        }
 
         private static TimeSpan GetOutboundRequestTimeout()
         {
-            return IsLocalhost() ? TimeSpan.FromMinutes(5) : TimeSpan.FromSeconds(100);
+            return DomainResolver.IsLocalhost() ? TimeSpan.FromMinutes(5) : TimeSpan.FromSeconds(100);
         }
 
         private async Task<(OidcTokenEndpointResponse? Response, string Error)> ExchangeCodeForTokenAsync(

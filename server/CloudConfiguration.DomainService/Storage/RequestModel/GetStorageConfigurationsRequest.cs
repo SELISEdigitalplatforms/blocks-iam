@@ -1,9 +1,7 @@
-﻿using Blocks.Genesis;
-
-namespace CloudConfiguration.DomainService.Storage.RequestModel
+﻿namespace CloudConfiguration.DomainService.Storage.RequestModel
 {
-    public class GetStorageConfigurationsRequest : IProjectKey
+    public class GetStorageConfigurationsRequest
     {
-        public string ProjectKey { get; set; } = string.Empty;
+
     }
 }
