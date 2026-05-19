@@ -1,3 +1,4 @@
+using Authentication.DomainService.OAuth.RequestModel;
 using Iam.DomainService.Dtos;
 using Iam.DomainService.Entities;
 using Iam.DomainService.Users;
@@ -15,9 +16,8 @@ public interface IAuthorizationClaimsResolver
 {
     Task<ResolvedAuthorizationClaims> ResolveAsync(
         User user,
-        string? organizationId = null,
+        string? organizationId,
         string? requestedScope = null,
-        IEnumerable<string>? clientAllowedScopes = null,
         IEnumerable<string>? clientAllowedServiceAccessResources = null,
         bool requireExplicitScope = false);
 }
@@ -44,9 +44,8 @@ public sealed class AuthorizationClaimsResolver : IAuthorizationClaimsResolver
 
     public async Task<ResolvedAuthorizationClaims> ResolveAsync(
         User user,
-        string? organizationId = null,
+        string? organizationId,
         string? requestedScope = null,
-        IEnumerable<string>? clientAllowedScopes = null,
         IEnumerable<string>? clientAllowedServiceAccessResources = null,
         bool requireExplicitScope = false)
     {

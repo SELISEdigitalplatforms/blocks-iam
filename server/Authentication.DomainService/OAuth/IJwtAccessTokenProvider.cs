@@ -1,6 +1,7 @@
 using Blocks.Genesis;
 using Authentication.DomainService.Entities;
 using Iam.DomainService.Entities;
+using Authentication.DomainService.OAuth.RequestModel;
 
 namespace Authentication.DomainService.OAuth
 {
@@ -10,9 +11,8 @@ namespace Authentication.DomainService.OAuth
             AuthenticationConfiguration authenticationConfiguration,
             Tenant tenant,
             User user,
+            TokenRequest tokenRequest,
             StateInfo? state = null,
-            string? organizationId = null,
-            IEnumerable<string>? clientAllowedScopes = null,
             IEnumerable<string>? clientAllowedServiceAccessResources = null);
     }
 }

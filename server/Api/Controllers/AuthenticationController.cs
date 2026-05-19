@@ -2,6 +2,7 @@ using Authentication.DomainService.Authentication;
 using Authentication.DomainService.Entities;
 using Authentication.DomainService.OAuth.RequestModel;
 using Authentication.DomainService.Oidc.Services;
+using Authentication.DomainService.Shared.RequestModel;
 using Iam.DomainService.Accounts;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
@@ -26,7 +27,6 @@ public class AuthenticationController : ControllerBase
     private readonly IAccountService _accountService;
     private readonly IAuthenticationFlowService _authenticationFlowService;
     private readonly IOidcCallbackHandler _oidcCallbackHandler;
-    private readonly IAuthorizationFlowService _authorizationFlowService;
 
     public AuthenticationController(
         IAuthenticationService authenticationService,
@@ -39,7 +39,6 @@ public class AuthenticationController : ControllerBase
         _accountService = accountService;
         _authenticationFlowService = authenticationFlowService;
         _oidcCallbackHandler = oidcCallbackHandler;
-        _authorizationFlowService = authorizationFlowService;
     }
 
     /// <summary>
@@ -345,6 +344,30 @@ public class AuthenticationController : ControllerBase
     {
         var result = await _authenticationFlowService.GetContextForProjectAsync(projectId);
         return result.IsSuccess ? Ok(result) : BadRequest(result);
+    }
+
+    // <summary>
+    /// Initiate user impersonation (Administrator Feature)
+    /// Allows admins to impersonate users for support/debugging
+    /// All actions audited and linked back to admin
+    /// Requires admin role - cannot impersonate other admins
+    /// </summary>
+    [HttpPost("impersonate")]
+    [Authorize]
+    public async Task<IActionResult> InitiateImpersonation([FromBody] ImpersonateRequest request)
+    {
+        return await _authenticationFlowService.ExecuteImpersonateAsync(request, Request, Response);
+    }
+
+    /// <summary>
+    /// Stop user impersonation (Revert to Original Admin)
+    /// Admin stops impersonating user and reverts to original context
+    /// </summary>
+    [HttpPost("impersonation/stop")]
+    [Authorize]
+    public async Task<IActionResult> StopImpersonation()
+    {
+        return await _authenticationFlowService.ExecuteStopImpersonationAsync(Request, Response);
     }
 
 

@@ -48,8 +48,8 @@ namespace Authentication.DomainService.OAuth
                 authenticationConfiguration,
                 tenant,
                 user,
-                organizationId: request.OrganizationId,
-                clientAllowedScopes: clientAllowedScopes,
+                request,
+                null, // state is not applicable for refresh token flow
                 clientAllowedServiceAccessResources: clientAllowedServiceAccessResources);
             var jwtToken = new JwtSecurityToken(
                 jwtAccessToken.Issuer,
