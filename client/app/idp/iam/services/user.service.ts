@@ -36,7 +36,7 @@ import { AUTH_ENDPOINTS } from "@/idp/authentication/constants/endpoint.constant
 export class UserService {
   constructor(public account: UserAccountService) {}
 
-  getUsers(payload: IGetUsersPayload): Promise<IGetUsersResponse> {
+  getUsers(payload: Omit<IGetUsersPayload, "projectKey">): Promise<IGetUsersResponse> {
     return http.post(USER_ENDPOINTS.GET_USERS, payload);
   }
 
