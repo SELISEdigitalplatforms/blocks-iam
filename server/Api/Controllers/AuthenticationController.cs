@@ -3,6 +3,7 @@ using Authentication.DomainService.Entities;
 using Authentication.DomainService.OAuth.RequestModel;
 using Authentication.DomainService.Oidc.Services;
 using Authentication.DomainService.Shared.RequestModel;
+using Blocks.Genesis;
 using Iam.DomainService.Accounts;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
@@ -368,6 +369,20 @@ public class AuthenticationController : ControllerBase
     public async Task<IActionResult> StopImpersonation()
     {
         return await _authenticationFlowService.ExecuteStopImpersonationAsync(Request, Response);
+    }
+
+    [HttpPost("impersonation/status")]
+    [Authorize]
+    public async Task<IActionResult> GetImpersonationStatus()
+    {
+        var blocksContext = BlocksContext.GetContext();
+
+        return Ok(new
+        {
+            Impersonated = blocksContext.Impersonated,
+            OriginalTenantId = blocksContext.OriginalTenantId,
+            ImpersonatedTenantId = blocksContext.TenantId
+        });
     }
 
 
