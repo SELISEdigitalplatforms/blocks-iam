@@ -71,11 +71,7 @@ export class UserService {
   }
 
   getUserById(payload: IGetUserByIdPayload): Promise<IGetUserByIdResponse> {
-    return http.get(
-      `${USER_ENDPOINTS.GET_USER}?id=${payload.id}&ProjectKey=${payload.projectKey}`,
-      undefined,
-      { absoluteUrl: true },
-    );
+    return http.get(`${USER_ENDPOINTS.GET_USER}/${payload.id}`);
   }
 
   addUser(createPayload: ICreateUserPayload): Promise<ICreateUserResponse> {

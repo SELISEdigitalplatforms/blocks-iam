@@ -7,7 +7,7 @@ const AUTH_SUBPATH = "/auth";
 
 export const USER_ENDPOINTS = {
   GET_USERS: `/api${IAM_SUBPATH}/users`,
-  GET_USER: `/api${IAM_SUBPATH}/user`,
+  GET_USER: `/api${IAM_SUBPATH}/users`,
   ME: `/api${IAM_SUBPATH}/me`,
 
   CREATE: `/api${IAM_SUBPATH}/users/create`,
@@ -26,7 +26,7 @@ export const USER_ENDPOINTS = {
   GET_USER_ROLES: `/api${IAM_SUBPATH}/user/roles`,
   GET_USER_PERMISSIONS: `/api${IAM_SUBPATH}/user/permissions`,
   IS_EMAIL_AVAILABLE: `/api${IAM_SUBPATH}/email/available`,
-  GET_USER_TIMELINES: `/api${IAM_SUBPATH}/user/timelines`,
+  GET_USER_TIMELINES: `/api${IAM_SUBPATH}/users/timeline`,
 } as const;
 
 // ─── Account endpoints (account.service) ────────────────────────────────────
