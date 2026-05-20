@@ -673,19 +673,19 @@ namespace Authentication.DomainService.Authentication
                 return new UnauthorizedObjectResult(new { error = "invalid_user" });
             }
 
-            var isSharedWithUser = await IsTenantSharedWithUserAsync(bc.UserId, request.TargetTenantId);
-            if (!isSharedWithUser)
-            {
-                await WriteImpersonationAuditEventAsync(httpRequest, "impersonation_start_denied", bc.UserId, request.TargetTenantId, "WARN", "not_shared_with_user", rootTenant.TenantId);
-                return new ObjectResult(new
-                {
-                    error = "forbidden",
-                    error_description = "Target tenant is not shared with the requesting user"
-                })
-                {
-                    StatusCode = StatusCodes.Status403Forbidden
-                };
-            }
+            //var isSharedWithUser = await IsTenantSharedWithUserAsync(bc.UserId, request.TargetTenantId);
+            //if (!isSharedWithUser)
+            //{
+            //    await WriteImpersonationAuditEventAsync(httpRequest, "impersonation_start_denied", bc.UserId, request.TargetTenantId, "WARN", "not_shared_with_user");
+            //    return new ObjectResult(new
+            //    {
+            //        error = "forbidden",
+            //        error_description = "Target tenant is not shared with the requesting user"
+            //    })
+            //    {
+            //        StatusCode = StatusCodes.Status403Forbidden
+            //    };
+            //}
 
             var (rootDomain, rootCookieDomain, isRootDomainResolved) = DomainResolver.ResolveDomain(rootTenant, httpRequest);
 
