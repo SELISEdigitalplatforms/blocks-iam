@@ -1,4 +1,5 @@
 import { Button } from "@/components/ui-kits/button/button";
+import { getRuntimeEnv } from "@/lib/runtime-env";
 import { Input } from "@/components/ui-kits/input/input";
 import { Link } from "react-router-dom";
 import { useForm } from "react-hook-form";
@@ -22,7 +23,7 @@ import { isErrorWithErrors } from "@/lib/error";
 import { useCaptcha } from "@blocks-idp/captcha/hooks/use-captcha";
 
 export const ForgotPasswordForm = () => {
-  const x_blocks_key = import.meta.env.BLOCKS_X_BLOCKS_KEY;
+  const x_blocks_key = getRuntimeEnv("BLOCKS_X_BLOCKS_KEY");
 
   const navigate = useNavigate();
   const form = useForm({
@@ -30,7 +31,7 @@ export const ForgotPasswordForm = () => {
     resolver: zodResolver(forgotPasswordFormSchema),
   });
   const { isPending, mutateAsync } = useAccountRecover();
-  const googleSiteKey = import.meta.env.BLOCKS_GOOGLE_SITE_KEY || "";
+  const googleSiteKey = getRuntimeEnv("BLOCKS_GOOGLE_SITE_KEY") || "";
   const {
     captcha,
     code: captchaCode,

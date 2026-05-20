@@ -1,12 +1,12 @@
-﻿using Blocks.Genesis;
-using DomainService.Entities;
-using DomainService.Services;
+using Blocks.Genesis;
+using Authentication.DomainService.Entities;
+using Authentication.DomainService.Services;
 using Iam.DomainService.Dtos;
 using Iam.DomainService.Users;
 using Microsoft.Extensions.Logging;
 using System.Text.Json;
 
-namespace DomainService.Worker
+namespace Authentication.DomainService.Worker
 {
     public class RefreshTokenWorkerService : IConsumer<RefreshTokenEvent>
     {
@@ -53,7 +53,7 @@ namespace DomainService.Worker
 
         public async Task<bool> RevokeSessionAsync(RefreshTokenEvent context)
         {
-            return await _oAuthRepository.UpdateSessionStatusAsync(context.RefreshToken, context.UserId);
+            return await _oAuthRepository.RevokeIdentitySessionAsync(context.RefreshToken, context.UserId);
         }
 
         public async Task UpdateUserByLoginInfoAsync(RefreshTokenEvent refreshTokenEvent)
@@ -84,23 +84,26 @@ namespace DomainService.Worker
 
         public async Task<bool> ProcessSession(RefreshTokenEvent context)
         {
-            var session = new Session
+            var session = new IdentitySession
             {
                 RefreshToken = context.RefreshToken,
                 TenantId = context.TenantId,
+                UserId = context.UserId,
+                OrganizationId = context.OrganizationId,
+                ClientId = context.ClientId,
+                SessionId = context.SessionId,
                 IssuedUtc = context.IssuedUtc,
                 ExpiresUtc = context.ExpiresUtc,
                 IpAddresses = context.IpAddresses,
-                UserId = context.UserId,
                 DeviceInformation = context.DeviceInformation,
                 GrantType = context.GrantType,
                 IsLogin = context.IsLogin,
-                CreateDate = DateTime.Now,
-                UpdateDate = DateTime.Now,
+                CreatedAt = DateTime.UtcNow,
+                UpdatedAt = DateTime.UtcNow,
                 IsActive = true
             };
 
-            return await _oAuthRepository.InsertSessionAsync(session);
+            return await _oAuthRepository.InsertIdentitySessionAsync(session);
         }
 
         public async Task<bool> ProcessUserTimelineEvent(RefreshTokenEvent context)
@@ -111,20 +114,19 @@ namespace DomainService.Worker
                     ? $"login_via_{context.GrantType ?? "unknown"}"
                     : "renew_refresh_token";
 
-            var userAuthenticationTimeline = new UserAuthenticationTimeline
+            var identityEvent = new IdentityEvent
             {
-                ItemId = Guid.NewGuid().ToString(),
-                CreatedDate = DateTime.Now,
-                CreatedBy = context?.UserId,
-                LastUpdatedDate = DateTime.Now,
-                LastUpdatedBy = context?.UserId,
+                TenantId = context?.TenantId ?? string.Empty,
+                UserId = context?.UserId ?? string.Empty,
+                OrganizationId = context?.OrganizationId,
                 DeviceInformation = context?.DeviceInformation,
                 IpAddresses = context?.IpAddresses ?? string.Empty,
                 Event = eventName,
-                ActionBy = "RefreshTokenWorkerService"
+                ActionBy = "RefreshTokenWorkerService",
+                CreatedAt = DateTime.UtcNow
             };
 
-            return await _oAuthRepository.InsertUserAuthenticationTimelineAsync(userAuthenticationTimeline);
+            return await _oAuthRepository.InsertIdentityEventAsync(identityEvent);
         }
     }
 }

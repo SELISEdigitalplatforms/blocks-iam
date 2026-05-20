@@ -1,4 +1,4 @@
-﻿namespace DomainService.Shared.Services
+namespace Identifier.DomainService.Shared.Services
 {
     public interface IEncodingService
     {

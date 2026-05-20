@@ -6,7 +6,6 @@ import {
   IGetPermissionByIdPayload,
   IGetPermissionByIdResponse,
   IGetPermissionsPayload,
-  IGetPermissionsSeverityRequestPayload,
   IGetPermissionsSeverityResponse,
   IGetResourceGroupPayload,
   IGetResourceGroupResponse,
@@ -23,11 +22,8 @@ export class PermissionService {
     return http.post(PERMISSION_ENDPOINTS.GET_PERMISSIONS, payload);
   }
 
-  getPermissionsSeverity(
-    payload: IGetPermissionsSeverityRequestPayload,
-  ): Promise<IGetPermissionsSeverityResponse> {
-    const url = `${PERMISSION_ENDPOINTS.GET_PERMISSIONS_GROUP_BY_SEVERITY}?ProjectKey=${payload.projectKey}`;
-    return http.get(url);
+  getPermissionsSeverity(): Promise<IGetPermissionsSeverityResponse> {
+    return http.get(PERMISSION_ENDPOINTS.GET_PERMISSIONS_GROUP_BY_SEVERITY);
   }
 
   getPermissionById(payload: IGetPermissionByIdPayload): Promise<IGetPermissionByIdResponse> {

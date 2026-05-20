@@ -4,9 +4,9 @@ using Iam.DomainService.Entities;
 
 namespace Iam.DomainService.Resources
 {
-    public class GetRolesRequest : BaseGetsRequest<GetRolesFilter>, IProjectKey
+    public class GetRolesRequest : BaseGetsRequest<GetRolesFilter>
     {
-        public string ProjectKey { get; set; }
+
     }
     public class GetRolesResponse : BaseQueryListResponse<IQueryable<Role>>
     {

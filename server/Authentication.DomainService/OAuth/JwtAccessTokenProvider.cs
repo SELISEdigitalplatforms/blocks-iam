@@ -1,16 +1,17 @@
-﻿using Blocks.Genesis;
-using DomainService.Entities;
+using Blocks.Genesis;
+using Authentication.DomainService.Entities;
 using Iam.DomainService.Entities;
 using Microsoft.Extensions.Logging;
 using Microsoft.IdentityModel.Tokens;
 using StackExchange.Redis;
-using System.Data;
 using System.Security.Claims;
 using System.Security.Cryptography;
 using System.Security.Cryptography.X509Certificates;
 using System.Text;
+using Authentication.DomainService.Utilities;
+using Authentication.DomainService.OAuth.RequestModel;
 
-namespace DomainService.OAuth
+namespace Authentication.DomainService.OAuth
 {
     public class JwtAccessTokenProvider : IJwtAccessTokenProvider
     {
@@ -18,32 +19,42 @@ namespace DomainService.OAuth
         private readonly IDatabase _cacheDb;
         private readonly ICryptoService _cryptoService;
         private readonly ICertificateProviderFactory _certificateProviderFactory;
-        private string _key;
+        private readonly IAuthorizationClaimsResolver _authorizationClaimsResolver;
+        private string? _key;
 
 
         public JwtAccessTokenProvider(
             ILogger<JwtAccessTokenProvider> logger,
             ICacheClient cacheClient,
             ICryptoService cryptoService,
-            ICertificateProviderFactory certificateProviderFactory
+            ICertificateProviderFactory certificateProviderFactory,
+            IAuthorizationClaimsResolver authorizationClaimsResolver
         )
         {
             _logger = logger;
             _cacheDb = cacheClient.CacheDatabase();
             _cryptoService = cryptoService;
             _certificateProviderFactory = certificateProviderFactory;
+            _authorizationClaimsResolver = authorizationClaimsResolver;
 
         }
 
-        public async Task<JwtAccessToken> GetJwtAccessToken(AuthenticationConfiguration authenticationConfiguration, Tenant tenant, User user, StateInfo? state = null, string? organizationId = null)
+        public async Task<JwtAccessToken> GetJwtAccessToken(
+            AuthenticationConfiguration authenticationConfiguration,
+            Tenant tenant,
+            User user,
+            TokenRequest tokenRequest,
+            StateInfo? state = null,
+            IEnumerable<string>? clientAllowedServiceAccessResources = null)
         {
             _key = _cryptoService.Hash(Encoding.UTF8.GetBytes($"{tenant.TenantId}::{tenant.ItemId}"));
             var certificate = await GetOrRetrieveCertAsync(tenant);
             if (certificate == null) return new JwtAccessToken();
-            return MapJwtAccessToken(authenticationConfiguration, tenant, user, certificate, stateInfo: state, organizationId: organizationId);
+            var resolvedClaims = await _authorizationClaimsResolver.ResolveAsync(user, tokenRequest.OrganizationId, state?.Scope, clientAllowedServiceAccessResources);
+            return MapJwtAccessToken(authenticationConfiguration, tenant, user, certificate, resolvedClaims, tokenRequest, stateInfo: state);
         }
 
-        public JwtAccessToken MapJwtAccessToken(AuthenticationConfiguration authenticationConfiguration, Tenant tenant, User user, byte[] certificate, StateInfo? stateInfo = null, string? organizationId = null)
+        public JwtAccessToken MapJwtAccessToken(AuthenticationConfiguration authenticationConfiguration, Tenant tenant, User user, byte[] certificate, ResolvedAuthorizationClaims resolvedClaims, TokenRequest tokenRequest, StateInfo? stateInfo = null)
         {
             var jwtAccessToken = new JwtAccessToken
             {
@@ -51,44 +62,68 @@ namespace DomainService.OAuth
                 AccessTokenValidForNumberMinute = authenticationConfiguration.AccessTokenValidForNumberMinutes,
                 RememberMeRefreshTokenValidForNumberMinute = authenticationConfiguration.RememberMeRefreshTokenValidForNumberMinutes,
                 Issuer = tenant.JwtTokenParameters.Issuer,
-                Audience = string.Join(",", tenant.JwtTokenParameters.Audiences),
+                Audience = DomainResolver.GetAudience(tenant),
                 NotBefore = DateTime.UtcNow,
                 Expires = DateTime.UtcNow.AddMinutes(authenticationConfiguration.AccessTokenValidForNumberMinutes),
                 SigningCredentials = MakeSigningCredentials(certificate, tenant.JwtTokenParameters.PrivateCertificatePassword)
             };
 
             var claimsIdentity = new ClaimsIdentity("seliseblocks-authentication");
-            AddClaims(claimsIdentity, tenant, user, stateInfo: stateInfo, organizationId: organizationId);
+            AddClaims(claimsIdentity, tenant, user, resolvedClaims, tokenRequest, stateInfo: stateInfo);
             jwtAccessToken.Claims = claimsIdentity.Claims;
 
             return jwtAccessToken;
         }
 
-        public static void AddClaims(ClaimsIdentity claimsIdentity, Tenant tenant, User user, StateInfo? stateInfo = null, string? organizationId = null)
+        public static void AddClaims(ClaimsIdentity claimsIdentity, Tenant tenant, User user, ResolvedAuthorizationClaims resolvedClaims, TokenRequest tokenRequest, StateInfo? stateInfo = null)
         {
-            claimsIdentity.AddClaim(new Claim(BlocksContext.TENANT_ID_CLAIM, tenant.TenantId));
+            
             claimsIdentity.AddClaim(new Claim(BlocksContext.SUBJECT_CLAIM, $"blocks|{user.ItemId}"));
             claimsIdentity.AddClaim(new Claim(BlocksContext.USER_ID_CLAIM, user.ItemId));
             claimsIdentity.AddClaim(new Claim(BlocksContext.ISSUED_AT_TIME_CLAIM, EpochTime.GetIntDate(DateTime.UtcNow).ToString(), ClaimValueTypes.Integer64));
-            claimsIdentity.AddClaim(new Claim(BlocksContext.ORGANIZATION_ID_CLAIM, user.Memberships.Any(org => org.OrganizationId == organizationId) ? organizationId : "default"));
-            claimsIdentity.AddClaim(new Claim(BlocksContext.EMAIL_CLAIM, user.Email));
-            claimsIdentity.AddClaim(new Claim(BlocksContext.USER_NAME_CLAIM, user.UserName));
+            var resolvedOrgId = "default";
+            if (!string.IsNullOrWhiteSpace(tokenRequest.OrganizationId)
+                && user.OrganizationIds.Contains(tokenRequest.OrganizationId))
+            {
+                resolvedOrgId = tokenRequest.OrganizationId;
+            }
+            claimsIdentity.AddClaim(new Claim(BlocksContext.ORGANIZATION_ID_CLAIM, resolvedOrgId));
+            claimsIdentity.AddClaim(new Claim(BlocksContext.EMAIL_CLAIM, user.Email ?? string.Empty));
+            claimsIdentity.AddClaim(new Claim(BlocksContext.USER_NAME_CLAIM, user.UserName ?? string.Empty));
             claimsIdentity.AddClaim(new Claim(BlocksContext.DISPLAY_NAME_CLAIM, $"{user.FirstName ?? string.Empty} {user.LastName ?? string.Empty}".Trim()));
             claimsIdentity.AddClaim(new Claim(BlocksContext.PHONE_NUMBER_CLAIM, user.PhoneNumber ?? string.Empty));
+            claimsIdentity.AddClaim(new Claim("token_version", user.TokenVersion.ToString(), ClaimValueTypes.Integer32));
+            claimsIdentity.AddClaim(new Claim("security_stamp", user.SecurityStamp ?? string.Empty));
 
-            if (!string.IsNullOrWhiteSpace(stateInfo?.Nonce)) 
+            if (!string.IsNullOrWhiteSpace(stateInfo?.Nonce))
             {
                 claimsIdentity.AddClaim(new Claim("nonce", stateInfo?.Nonce ?? ""));
             }
 
-            foreach (var role in user.Memberships.Where(m => m.OrganizationId == (!string.IsNullOrWhiteSpace(organizationId)? organizationId: "default")).FirstOrDefault()?.Roles ?? [])
+            foreach (var role in resolvedClaims.Roles)
             {
                 claimsIdentity.AddClaim(new Claim(BlocksContext.ROLES_CLAIM, role));
             }
 
-            foreach (var permission in user.Memberships.Where(m => m.OrganizationId == (!string.IsNullOrWhiteSpace(organizationId) ? organizationId : "default")).FirstOrDefault()?.Permissions ?? [])
+            foreach (var resource in resolvedClaims.Resources)
+            {
+                claimsIdentity.AddClaim(new Claim(BlocksContext.SERVICE_ACCESS_CLAIM, resource));
+            }
+
+            foreach (var permission in resolvedClaims.Permissions)
             {
                 claimsIdentity.AddClaim(new Claim(BlocksContext.PERMISSION_CLAIM, permission));
+            }
+
+            if (tokenRequest.IsImpersonation)
+            {
+                claimsIdentity.AddClaim(new Claim(BlocksContext.IMPERSONATED_CLAIM, "true", ClaimValueTypes.Boolean));
+                claimsIdentity.AddClaim(new Claim(BlocksContext.ORIGINAL_TENANT_ID_CLAIM, tokenRequest.OriginalTenantId));
+                claimsIdentity.AddClaim(new Claim(BlocksContext.TENANT_ID_CLAIM, tokenRequest.TargetTenantId));
+            }
+            else
+            {
+                claimsIdentity.AddClaim(new Claim(BlocksContext.TENANT_ID_CLAIM, tenant.TenantId));
             }
         }
         
@@ -148,5 +183,6 @@ namespace DomainService.OAuth
                     };
             return new SigningCredentials(new RsaSecurityKey(rsa), SecurityAlgorithms.RsaSha256, SecurityAlgorithms.Sha256Digest);
         }
+
     }
 }

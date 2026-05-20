@@ -1,12 +1,12 @@
-﻿using Blocks.Genesis;
-using DomainService.OAuth.RequestModel;
-using DomainService.Services;
+using Blocks.Genesis;
+using Authentication.DomainService.OAuth.RequestModel;
+using Authentication.DomainService.Services;
 using Microsoft.Extensions.Logging;
 using System.Net;
 using System.Security.Claims;
 using System.Text.Json;
 
-namespace DomainService.OAuth
+namespace Authentication.DomainService.OAuth
 {
     public class BYOSsoLogInService : SocialLogInServiceBase
     {
@@ -21,42 +21,50 @@ namespace DomainService.OAuth
 
         public override async Task<(string, bool)> GetProviderLogInUriAsync(GetSocialLogInEndPointRequest loginData)
         {
-            var credential = await _authenticationRepository.GetSocialLoginCredentialByProvideAndAudienceAsync(loginData.Provider, loginData.Audience);
+            var identityProvider = await _authenticationRepository.GetIdentityProviderAsync(loginData.Provider);
 
-            if (credential == null)
+            if (identityProvider == null)
             {
-                _logger.LogError("Credential not found for provider {Provider} and audience {Audience}", loginData.Provider, loginData.Audience);
+                _logger.LogError("Identity provider not found for provider {Provider}", loginData.Provider);
                 return (string.Empty, true);
             }
 
             var socialLogInStateKey = Guid.NewGuid().ToString("n");
+            var providerRedirectUri = loginData.RedirectUri ?? identityProvider.RedirectUris.FirstOrDefault() ?? string.Empty;
             var socialLogInStateInfo = new StateInfo
             {
                 Audience = loginData.Audience,
                 Provider = loginData.Provider,
                 NextUrl = loginData.NextUrl,
+                RedirectUri = providerRedirectUri
             };
 
             await _cacheClient.AddStringValueAsync(socialLogInStateKey, JsonSerializer.Serialize(socialLogInStateInfo), 3000);
+            var redirectUri = $"{identityProvider.AuthorizationUrl}&response_type=code&client_id={identityProvider.ClientId}&state={socialLogInStateKey}&redirect_uri={WebUtility.UrlEncode(providerRedirectUri)}&scope=openid";
 
-            var redirectUri = $"{credential.AuthorizationUrl}&response_type=code&client_id={credential.ClientId}&state={socialLogInStateKey}&redirect_uri={credential.RedirectUrl}&scope=openid";
-
-            return (redirectUri, credential.SendAsResponse);
+            return (redirectUri, loginData.SendAsResponse);
         }
 
         public override async Task<IExternalUserData> HandleSocialLogin(StateInfo stateInfo)
         {
-            var credential = await _authenticationRepository.GetSocialLoginCredentialByProvideAndAudienceAsync(stateInfo.Provider, stateInfo.Audience);
+            var identityProvider = await _authenticationRepository.GetIdentityProviderAsync(stateInfo.Provider);
+
+            if (identityProvider == null)
+            {
+                _logger.LogError("Identity provider not found for provider {Provider}", stateInfo.Provider);
+                return new BYOSsoUserData();
+            }
+
             var postData = new Dictionary<string, string>
                 {
                     { "code", stateInfo.Code },
-                    { "client_id", credential.ClientId },
-                    { "client_secret", credential.ClientSecret },
-                    { "redirect_uri", credential.RedirectUrl },
+                    { "client_id", identityProvider.ClientId },
+                    { "client_secret", identityProvider.ClientSecret },
+                    { "redirect_uri", stateInfo.RedirectUri },
                     { "grant_type", "authorization_code" }
                 };
 
-            var (response, error) = await _httpService.SendFormUrlEncoded<SocialOauthAccessToken>(HttpMethod.Post, postData, credential.TokenUrl);
+            var (response, error) = await _httpService.SendFormUrlEncoded<SocialOauthAccessToken>(HttpMethod.Post, postData, identityProvider.TokenUrl);
             _logger.LogInformation("access token: {Response}", response);
             if (!string.IsNullOrWhiteSpace(error))
             {
@@ -64,7 +72,7 @@ namespace DomainService.OAuth
                 return new BYOSsoUserData();
             }
 
-            var result = await _httpService.Get<dynamic>(credential.GetProfileUrl, new Dictionary<string, string> {
+            var result = await _httpService.Get<dynamic>(identityProvider.UserInfoUrl, new Dictionary<string, string> {
                 { "Authorization", $"bearer {response.AccessToken}"  } });
 
             if (!string.IsNullOrWhiteSpace(result.Item2))
@@ -74,8 +82,8 @@ namespace DomainService.OAuth
             }
 
             var externalUser = MapExternalUser(stateInfo.Provider, result.Item1);
-            externalUser.Permissions = credential?.InitialPermissions ?? [];
-            externalUser.Roles = credential?.InitialRoles ?? [];
+            externalUser.Permissions = identityProvider?.InitialPermissions ?? [];
+            externalUser.Roles = identityProvider?.InitialRoles ?? [];
             externalUser.Platform = stateInfo.Provider;
 
             return externalUser;

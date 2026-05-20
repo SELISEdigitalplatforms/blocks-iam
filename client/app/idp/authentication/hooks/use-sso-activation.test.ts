@@ -76,7 +76,7 @@ describe("useSsoActivation", () => {
       }),
     );
     await waitFor(() => expect(mockSetAuthenticated).toHaveBeenCalled());
-    expect(mockPush).toHaveBeenCalledWith("/console");
+    expect(mockPush).toHaveBeenCalledWith("/services/authentication/users");
   });
 
   it("should redirect to MFA check when MFA is enabled", async () => {

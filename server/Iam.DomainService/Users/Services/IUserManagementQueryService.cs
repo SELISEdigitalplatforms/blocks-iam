@@ -4,7 +4,7 @@ namespace Iam.DomainService.Users
 {
     public interface IUserManagementQueryService
     {
-        Task<bool> IsUserAvailableAsync(IsEmailAvaiableRequest query);
+        Task<bool> IsUserAvailableAsync(IsEmailAvailableRequest query);
         Task<GetAccountsResponse> GetAccountsAsync(GetAccountsRequest query);
         Task<GetAccountResponse> GetAccountAsync();
         Task<GetUsersResponse> GetUsersAsync(GetUsersRequest query);

@@ -1,14 +1,15 @@
-﻿using Blocks.Genesis;
-using DomainService.Entities;
-using DomainService.OAuth.RequestModel;
-using DomainService.OAuth.ResponseModel;
-using DomainService.Services;
+using Blocks.Genesis;
+using Authentication.DomainService.Entities;
+using Authentication.DomainService.OAuth.RequestModel;
+using Authentication.DomainService.OAuth.ResponseModel;
+using Authentication.DomainService.Services;
 using Iam.DomainService.Entities;
 using Microsoft.IdentityModel.Tokens;
 using System.Security.Claims;
 using System.Text;
+using Authentication.DomainService.Utilities;
 
-namespace DomainService.OAuth.Services
+namespace Authentication.DomainService.OAuth.Services
 {
     public class ClientCredentialAuthorizationService : ITokenService
     {
@@ -39,18 +40,59 @@ namespace DomainService.OAuth.Services
             if (validationResult != null)
                 return validationResult;
 
-            var jwtToken = await GetJwtAccessToken(authenticationConfiguration, client);
+            var requestedOrgId = request.OrganizationId?.Trim();
+            if (string.IsNullOrWhiteSpace(requestedOrgId))
+            {
+                return new TokenResponse
+                {
+                    Error = "invalid_request",
+                    ErrorDescription = "organization_id (or org_id) is required for client_credentials"
+                };
+            }
+
+            var orgPermissions = ResolveOrgPermissions(client!, requestedOrgId);
+            if (orgPermissions.Count == 0)
+            {
+                return new TokenResponse
+                {
+                    Error = "invalid_scope",
+                    ErrorDescription = "No permissions configured for the requested organization"
+                };
+            }
+
+            if (orgPermissions.Count > 10)
+            {
+                return new TokenResponse
+                {
+                    Error = "invalid_scope",
+                    ErrorDescription = "A maximum of 10 permissions is allowed per organization"
+                };
+            }
+
+            var jwtToken = await GetJwtAccessToken(authenticationConfiguration, client!, requestedOrgId, orgPermissions);
             var accessToken =  OAuthJwtAccessTokenManager.CreateJwtAccessToken(jwtToken);
 
-            return new TokenResponse { AccessToken = accessToken, ExpiresIn = authenticationConfiguration.AccessTokenValidForNumberMinutes, ExpiresUtc = jwtToken.Expires, StatusCode = 200 };
+            return new TokenResponse
+            {
+                AccessToken = accessToken,
+                ExpiresIn = authenticationConfiguration.AccessTokenValidForNumberMinutes,
+                ExpiresUtc = jwtToken.Expires,
+                TokenType = "Bearer",
+                StatusCode = 200
+            };
         }
 
-        private async Task<JwtAccessToken> GetJwtAccessToken(AuthenticationConfiguration authenticationConfiguration, ClientCredential client)
+        private async Task<JwtAccessToken> GetJwtAccessToken(
+            AuthenticationConfiguration authenticationConfiguration,
+            ClientCredential client,
+            string organizationId,
+            List<string> orgPermissions)
         {
             var tenant = _tenants.GetTenantByID(BlocksContext.GetContext()?.TenantId ?? "");
+            if (tenant == null) return new JwtAccessToken();
             var certificate = await RetrievePrivateCertAsync(tenant);
             if (certificate == null) return new JwtAccessToken();
-            return MapJwtAccessToken(authenticationConfiguration, tenant, client, certificate);
+            return MapJwtAccessToken(authenticationConfiguration, tenant, client, organizationId, orgPermissions, certificate);
         }
 
         public async Task<byte[]?> RetrievePrivateCertAsync(Tenant tenant)
@@ -75,36 +117,87 @@ namespace DomainService.OAuth.Services
             return cachedCert;
         }
 
-        private static JwtAccessToken MapJwtAccessToken(AuthenticationConfiguration authenticationConfiguration, Tenant tenant, ClientCredential client, byte[] certificate)
+        private static JwtAccessToken MapJwtAccessToken(
+            AuthenticationConfiguration authenticationConfiguration,
+            Tenant tenant,
+            ClientCredential client,
+            string organizationId,
+            List<string> orgPermissions,
+            byte[] certificate)
         {
             var jwtAccessToken = new JwtAccessToken
             {
                 AccessTokenValidForNumberMinute = authenticationConfiguration.AccessTokenValidForNumberMinutes,
                 Issuer = tenant.JwtTokenParameters.Issuer,
-                Audience = string.Join(",", tenant.JwtTokenParameters.Audiences),
+                Audience = DomainResolver.GetAudience(tenant),
                 NotBefore = DateTime.UtcNow,
                 Expires = DateTime.UtcNow.AddMinutes(authenticationConfiguration.AccessTokenValidForNumberMinutes),
                 SigningCredentials = JwtAccessTokenProvider.MakeSigningCredentials(certificate, tenant.JwtTokenParameters.PrivateCertificatePassword)
             };
 
             var claimsIdentity = new ClaimsIdentity("seliseblocks-authentication");
-            AddClaims(claimsIdentity, tenant, client);
+            AddClaims(claimsIdentity, tenant, client, organizationId, orgPermissions);
             jwtAccessToken.Claims = claimsIdentity.Claims;
 
             return jwtAccessToken;
         }
 
-        public static void AddClaims(ClaimsIdentity claimsIdentity, Tenant tenant, ClientCredential client)
+        public static void AddClaims(
+            ClaimsIdentity claimsIdentity,
+            Tenant tenant,
+            ClientCredential client,
+            string organizationId,
+            List<string> orgPermissions)
         {
             claimsIdentity.AddClaim(new Claim(BlocksContext.TENANT_ID_CLAIM, tenant.TenantId));
             claimsIdentity.AddClaim(new Claim(BlocksContext.SUBJECT_CLAIM, $"blocks|{client.ItemId}"));
             claimsIdentity.AddClaim(new Claim("client_id", client.ItemId));
+            claimsIdentity.AddClaim(new Claim("org_id", organizationId));
             claimsIdentity.AddClaim(new Claim(BlocksContext.ISSUED_AT_TIME_CLAIM, EpochTime.GetIntDate(DateTime.UtcNow).ToString(), ClaimValueTypes.Integer64));
 
             foreach (var role in client.Roles)
             {
                 claimsIdentity.AddClaim(new Claim(BlocksContext.ROLES_CLAIM, role));
             }
+
+            foreach (var permission in orgPermissions)
+            {
+                claimsIdentity.AddClaim(new Claim(BlocksContext.PERMISSION_CLAIM, permission));
+                claimsIdentity.AddClaim(new Claim("permissions", permission));
+            }
+        }
+
+        public static void AddClaims(ClaimsIdentity claimsIdentity, Tenant tenant, ClientCredential client)
+        {
+            AddClaims(claimsIdentity, tenant, client, "default", []);
+        }
+
+        private static List<string> ResolveOrgPermissions(ClientCredential client, string organizationId)
+        {
+            if (client.PermissionsByOrg == null || client.PermissionsByOrg.Count == 0)
+            {
+                return [];
+            }
+
+            if (client.PermissionsByOrg.TryGetValue(organizationId, out var selectedOrgPermissions) && selectedOrgPermissions is not null)
+            {
+                return selectedOrgPermissions
+                    .Where(permission => !string.IsNullOrWhiteSpace(permission))
+                    .Select(permission => permission.Trim())
+                    .Distinct(StringComparer.OrdinalIgnoreCase)
+                    .ToList();
+            }
+
+            if (client.PermissionsByOrg.TryGetValue("default", out var defaultPermissions) && defaultPermissions is not null)
+            {
+                return defaultPermissions
+                    .Where(permission => !string.IsNullOrWhiteSpace(permission))
+                    .Select(permission => permission.Trim())
+                    .Distinct(StringComparer.OrdinalIgnoreCase)
+                    .ToList();
+            }
+
+            return [];
         }
 
         private static TokenResponse? ValidateClient(ClientCredential? client, TokenRequest request)
@@ -132,5 +225,6 @@ namespace DomainService.OAuth.Services
                 _ => null 
             };
         }
+
     }
 }

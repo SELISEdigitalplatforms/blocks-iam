@@ -2,6 +2,7 @@
 
 import { Logo } from "@/components/logo";
 import { Button } from "@/components/ui-kits/button/button";
+import { getRuntimeEnv } from "@/lib/runtime-env";
 import { Link } from "react-router-dom";
 import {
   Card,
@@ -23,7 +24,7 @@ type ActivationProps = {
   lang?: string;
 };
 
-const x_blocks_key = import.meta.env.BLOCKS_X_BLOCKS_KEY;
+const x_blocks_key = getRuntimeEnv("BLOCKS_X_BLOCKS_KEY");
 
 export const Activation = ({ code }: ActivationProps) => {
   const { isPending: isActivationPending, mutateAsync: activationCodeValidation } =

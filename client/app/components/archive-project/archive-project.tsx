@@ -18,7 +18,7 @@ export const ArchivedProject = () => {
       const res = await mutateAsync({ projectKey });
       if (res.isSuccess) {
         showSuccessToast({ description: "Project deleted successfully" });
-        navigate("/console");
+        navigate("/services/authentication/users");
       } else {
         showErrorToast({ errors: res.errors });
       }

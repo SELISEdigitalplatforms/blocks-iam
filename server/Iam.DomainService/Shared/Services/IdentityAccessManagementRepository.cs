@@ -117,31 +117,26 @@ namespace Iam.DomainService.Services
             return !isActive ? user.ItemId : "";
         }
 
-        public async Task<SignUpSetting> GetSingUpSettingByIdAsync(string itemId)
+        public async Task SaveSignUpSettingAsync(TenantConfiguration tenantConfiguration)
         {
-            var collection = GetCollection<SignUpSetting>();
-            return await collection.Find(x => x.ItemId == itemId).FirstOrDefaultAsync();
+            var collection = GetCollection<TenantConfiguration>();
+
+            var result = await collection.UpdateOneAsync(
+                Builders<TenantConfiguration>.Filter.Empty,
+                Builders<TenantConfiguration>.Update
+                    .Set(t => t.IsEmailPasswordSignUpEnabled, tenantConfiguration.IsEmailPasswordSignUpEnabled)
+                    .Set(t => t.IsSSoSignUpEnabled, tenantConfiguration.IsSSoSignUpEnabled)
+                    .Set(t => t.DefaultRolesForNewUserOnSignUp, tenantConfiguration.DefaultRolesForNewUserOnSignUp)
+                    .Set(t => t.DefaultPermissionsForNewUserOnSignUp, tenantConfiguration.DefaultPermissionsForNewUserOnSignUp)
+                    .Set(t => t.LastUpdatedBy, tenantConfiguration.LastUpdatedBy)
+                    .Set(t => t.LastUpdatedDate, tenantConfiguration.LastUpdatedDate));
         }
 
-        public async Task SaveSingUpSettingAsync(SignUpSetting signUpSetting)
+        public async Task<TenantConfiguration> GetTenantConfigurationAsync()
         {
-            var collection = GetCollection<SignUpSetting>();
-            await collection.ReplaceOneAsync( x => x.ItemId == signUpSetting.ItemId, signUpSetting, new ReplaceOptions { IsUpsert = true });
-        }
-
-        public async Task<SignUpSetting> GetSignUpSettingAsync(string? itemId = null)
-        {
-            var collection = GetCollection<SignUpSetting>();
-            return !string.IsNullOrWhiteSpace(itemId) 
-                ? await GetSingUpSettingByIdAsync(itemId)
-                : await collection.Find(_ => true).FirstOrDefaultAsync();
-        }
-
-        public async Task<bool> SingnUpSettingAlreadyExist()
-        {
-            var collection = GetCollection<SignUpSetting>();
-            var count = await collection.CountDocumentsAsync(_ => true);
-            return count > 0;
+            var collection = GetCollection<TenantConfiguration>();
+            var tenantConfiguration = await collection.Find(_ => true).FirstOrDefaultAsync();
+            return tenantConfiguration;
         }
     }
 }
