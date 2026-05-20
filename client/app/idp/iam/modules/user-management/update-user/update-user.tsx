@@ -20,7 +20,7 @@ import {
 import { Input } from "@/components/ui-kits/input/input";
 import { showErrorToast, showSuccessToast } from "@/hooks/use-toast";
 import { isErrorWithErrors } from "@/lib/error";
-import { useGetUserById, useUpdateUser } from "@blocks-idp/iam/hooks/use-user";
+import { useGetMe, useGetUserById, useUpdateUser } from "@blocks-idp/iam/hooks/use-user";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { Pen } from "lucide-react";
 import { useState } from "react";
@@ -36,13 +36,19 @@ type UpdateUserProps = {
 
 export const UpdateUser = ({ id, projectKey, own = false }: UpdateUserProps) => {
   const [open, setOpen] = useState<boolean>(false);
-  const { data, isLoading, isFetching } = useGetUserById({ id, projectKey });
+  const { data: userByIdData, isLoading, isFetching } = useGetUserById(
+    { id, projectKey },
+    { enabled: !own },
+  );
+  const { data: meData } = useGetMe();
   const { isPending, mutateAsync } = useUpdateUser({ id, projectKey, own });
+
+  const userData = own ? meData : userByIdData;
 
   const form = useForm({
     defaultValues: inviteUserFormDefaultValue,
     resolver: zodResolver(inviteUserFormSchema),
-    values: data?.data,
+    values: userData?.data,
   });
 
   const {
@@ -51,7 +57,7 @@ export const UpdateUser = ({ id, projectKey, own = false }: UpdateUserProps) => 
   const onSubmitHandler = async (values: z.infer<typeof inviteUserFormSchema>) => {
     try {
       const res = await mutateAsync({
-        ...data?.data,
+        ...userData?.data,
         ...values,
         itemId: id,
         projectKey,
@@ -70,7 +76,7 @@ export const UpdateUser = ({ id, projectKey, own = false }: UpdateUserProps) => 
     <Dialog
       open={open}
       onOpenChange={(value) => {
-        form.reset(data?.data || inviteUserFormDefaultValue);
+        form.reset(userData?.data || inviteUserFormDefaultValue);
         setOpen(value);
       }}
     >
