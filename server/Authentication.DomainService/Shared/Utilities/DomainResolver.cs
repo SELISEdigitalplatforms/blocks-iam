@@ -73,7 +73,7 @@ namespace Authentication.DomainService.Utilities
                 return (null, null, false);
             }
 
-            var effectiveContextDomain = BlocksContext.GetContext().ApplicationDomain ?? BlocksContext.ResolveApplicationDomain(request);
+            var effectiveContextDomain = BlocksContext.ResolveApplicationDomain(request);
             if (!string.IsNullOrWhiteSpace(effectiveContextDomain))
             {
                 var matched = FindDomainMatch(domains, effectiveContextDomain);
