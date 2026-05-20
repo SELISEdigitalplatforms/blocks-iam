@@ -61,8 +61,8 @@ const x_blocks_key = getRuntimeEnv("BLOCKS_X_BLOCKS_KEY") || "";
 
 export const Profile = () => {
   const { isPending, isLoading, data } = useGetMe();
-  if (isPending || isLoading) return null;
-  return <UserProfile id={data?.data.itemId || ""} />;
+  if (isPending || isLoading || !data?.data) return null;
+  return <UserProfile id={data.data.itemId} />;
 };
 
 export const UserProfile = ({ id }: { id: string }) => {
@@ -74,7 +74,7 @@ export const UserProfile = ({ id }: { id: string }) => {
       <div className="flex w-full flex-col px-5 pt-16 md:p-16">
         <div className="flex items-center justify-between text-base text-high-emphasis md:mt-[20px]">
           <h3 className="text-2xl font-semibold">
-            {data?.data.firstName} {data?.data.lastName}
+            {data?.data?.firstName} {data?.data?.lastName}
           </h3>
         </div>
         <Tabs value={tabId}>

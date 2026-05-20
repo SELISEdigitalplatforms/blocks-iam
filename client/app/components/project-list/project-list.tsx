@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef } from "react";
-import { ChevronDown, Loader } from "lucide-react";
+import { ChevronsUpDown, FolderOpen, Loader } from "lucide-react";
 import { useLocation, useNavigate } from "react-router-dom";
 import {
   DropdownMenu,
@@ -12,28 +12,24 @@ import {
 import { useGetProject, useGetProjects } from "@/hooks/use-project";
 import { IProject } from "@/models/project.model";
 import { useProjectStore } from "@/store/useProjectStore";
-
 const redirectPaths: Record<string, string> = {
-  "/services/iam/user-detail/*": "/services/authentication?tab=users",
+  "/services/iam/user-detail/*": "/services/iam",
   "/services/iam/role-detail/*": "/services/iam?tab=roles",
-  "/services/iam/organization-detail/*": "/services/authentication?tab=organizations",
+  "/services/iam/organization-detail/*": "/services/iam",
   "/services/iam/permission-detail/*": "/services/iam",
   "/services/authentication/sso-configuration": "/services/authentication?tab=social",
 };
-
 const wildcardToRegex = (pattern: string) => {
   const escaped = pattern.replace(/[-/\\^$+?.()|[\]{}]/g, "\\$&");
   return `^${escaped.replace(/\*/g, "[^/]+")}$`;
 };
-
-export function ProjectList() {
+export function ProjectList({ collapsed = false }: { collapsed?: boolean }) {
   const navigate = useNavigate();
   const { pathname } = useLocation();
   const { data: projectGroups = [], isLoading } = useGetProjects();
   const { selectedProject, setSelectedProject } = useProjectStore();
   const { data: projectData } = useGetProject({ projectId: selectedProject?.itemId || "" });
   const pendingProjectRef = useRef<IProject | null>(null);
-
   const redirectRegexMap = useMemo(
     () =>
       Object.entries(redirectPaths).reduce<Record<string, string>>((acc, [pattern, target]) => {
@@ -42,40 +38,52 @@ export function ProjectList() {
       }, {}),
     [],
   );
-
   useEffect(() => {
     if (pendingProjectRef.current) {
       setSelectedProject(pendingProjectRef.current);
       pendingProjectRef.current = null;
     }
   }, [pathname, setSelectedProject]);
-
   const handleProjectSelect = (project: IProject) => {
     const redirectEntry = Object.entries(redirectRegexMap).find(([regex]) =>
       new RegExp(regex).test(pathname),
     );
-
     if (redirectEntry) {
       pendingProjectRef.current = project;
       navigate(redirectEntry[1], { replace: true });
       return;
     }
-
     setSelectedProject(project);
   };
-
   const name = projectData?.data.name || selectedProject?.name;
   const projects = projectGroups.map((group) => group.projects[0]).filter(Boolean);
-
   return (
     <DropdownMenu>
-      <DropdownMenuTrigger className="w-full rounded-sm p-1 text-left hover:bg-accent hover:text-accent-foreground md:p-2">
-        <div className="flex items-center justify-between gap-2">
-          <div className="truncate text-sm font-medium">{name || "Select a Project"}</div>
-          <ChevronDown className="h-4 w-4 shrink-0" />
-        </div>
-      </DropdownMenuTrigger>
-      <DropdownMenuContent align="end" className="w-[--radix-dropdown-menu-trigger-width]">
+      {collapsed ? (
+        <DropdownMenuTrigger className="group relative flex h-10 w-full items-center justify-center rounded-lg transition-colors hover:bg-accent hover:text-accent-foreground">
+          <FolderOpen className="h-5 w-5 text-muted-foreground" />
+          <div className="pointer-events-none absolute left-full top-0 z-20 ml-2 min-w-max whitespace-nowrap rounded bg-gray-300 px-2 py-1 text-xs text-primary opacity-0 transition-opacity group-hover:opacity-100">
+            {name || "Select a Project"}
+          </div>
+        </DropdownMenuTrigger>
+      ) : (
+        <DropdownMenuTrigger className="w-full rounded-lg px-2 py-2 text-left transition-colors hover:bg-accent hover:text-accent-foreground">
+          <div className="flex items-center gap-2.5">
+            <FolderOpen className="h-4 w-4 shrink-0 text-muted-foreground" />
+            <div className="min-w-0 flex-1">
+              <div className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">Project</div>
+              <div className="break-all text-sm font-medium leading-tight">{name || "Select a Project"}</div>
+            </div>
+            <ChevronsUpDown className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
+          </div>
+        </DropdownMenuTrigger>
+      )}
+      <DropdownMenuContent
+        align={collapsed ? "center" : "start"}
+        side={collapsed ? "right" : "bottom"}
+        sideOffset={collapsed ? 8 : 4}
+        className={collapsed ? "min-w-48" : "w-[--radix-dropdown-menu-trigger-width]"}
+      >
         <DropdownMenuLabel>Your Projects</DropdownMenuLabel>
         {projects
           .filter((project) => project.itemId !== selectedProject?.itemId)
