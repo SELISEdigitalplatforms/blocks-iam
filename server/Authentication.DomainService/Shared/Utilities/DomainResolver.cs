@@ -50,11 +50,14 @@ namespace Authentication.DomainService.Utilities
             try
             {
                 var uri = new Uri(url);
+                // Only genuine loopback hosts count as "local". A non-default port
+                // (e.g. a real domain served on :5000) must NOT be treated as
+                // localhost - doing so previously forced the auth cookies to be
+                // host-only on the IDP host instead of scoped to the shared parent
+                // domain, so they never reached the app host.
                 if (uri.Host.Equals("localhost", StringComparison.OrdinalIgnoreCase)
                     || uri.Host.Equals("127.0.0.1")
                     || uri.Host.Equals("::1"))
-                    return true;
-                if (!uri.IsDefaultPort)
                     return true;
             }
             catch { /* ignore parse errors */ }
@@ -193,6 +196,10 @@ namespace Authentication.DomainService.Utilities
         public static CookieOptions CreateCookieOptions(string? cookieDomain, DateTime expiresUtc)
         {
             var isLocalRequest = IsLocalhost();
+            // True localhost dev -> host-only cookie (a Domain attribute is invalid
+            // for "localhost"). Otherwise scope the cookie to the configured shared
+            // parent domain (e.g. ".blocksdevelopers.com") so a cookie set by the
+            // IDP host is also sent to the app host on the same site.
             cookieDomain = isLocalRequest ? null : (string.IsNullOrWhiteSpace(cookieDomain) ? null : cookieDomain);
 
             return new CookieOptions
@@ -200,7 +207,12 @@ namespace Authentication.DomainService.Utilities
                 Domain = cookieDomain,
                 HttpOnly = true,
                 Secure = true,
-                SameSite = isLocalRequest ? SameSiteMode.None : SameSiteMode.Strict,
+                // This is a cross-origin SSO flow: the SPA fetches the IDP callback
+                // from a different origin than the IDP itself, so the auth/refresh
+                // cookies must be SameSite=None (which mandates Secure, set above).
+                // SameSite=Strict would stop the browser from accepting/sending them
+                // on the cross-site flow.
+                SameSite = SameSiteMode.None,
                 Path = "/",
                 Expires = expiresUtc == default ? DateTime.UtcNow : expiresUtc
             };

@@ -36,12 +36,32 @@ import { AUTH_ENDPOINTS } from "@/idp/authentication/constants/endpoint.constant
 export class UserService {
   constructor(public account: UserAccountService) {}
 
-  getUsers(payload: IGetUsersPayload): Promise<IGetUsersResponse> {
-    return http.post(USER_ENDPOINTS.GET_USERS, payload);
+  getUsers(payload: Omit<IGetUsersPayload, "projectKey">): Promise<IGetUsersResponse> {
+    const params = new URLSearchParams();
+    params.set("page", String(payload.page));
+    params.set("pageSize", String(payload.pageSize));
+    if (payload.sort) {
+      params.set("sort.property", payload.sort.property);
+      params.set("sort.isDescending", String(payload.sort.isDescending));
+    }
+    if (payload.filter) {
+      params.set("filter.email", payload.filter.email ?? "");
+      params.set("filter.name", payload.filter.name ?? "");
+      if (payload.filter.organizationId) {
+        params.set("filter.organizationId", payload.filter.organizationId);
+      }
+    }
+    return http.get(`${USER_ENDPOINTS.GET_USERS}?${params.toString()}`);
   }
 
   getUser(): Promise<{ data: User }> {
     return http.get(`${USER_ENDPOINTS.GET_USER}`, undefined, {
+      absoluteUrl: true,
+    });
+  }
+
+  me(): Promise<{ data: User }> {
+    return http.get(`${USER_ENDPOINTS.ME}`, undefined, {
       absoluteUrl: true,
     });
   }

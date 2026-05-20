@@ -1,11 +1,10 @@
-import { useProjectStore } from "@/store/useProjectStore";
+import {
+  AUTH_OIDC_ENDPOINTS
+} from "@/idp/authentication/constants/endpoint.constant";
 import { getRuntimeEnv } from "@/lib/runtime-env";
 import { getQueryClient } from "@/providers/query-provider";
 import { useAuthStore } from "@/store/useAuthStore";
-import {
-  AUTH_ENDPOINTS,
-  AUTH_OIDC_ENDPOINTS,
-} from "@/idp/authentication/constants/endpoint.constant";
+import { useProjectStore } from "@/store/useProjectStore";
 
 class HttpError extends Error {
   status: number;

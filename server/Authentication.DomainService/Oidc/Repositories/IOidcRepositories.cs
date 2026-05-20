@@ -55,7 +55,7 @@ namespace Authentication.DomainService.Oidc.Repositories
     /// </summary>
     public interface IAuditLogRepository
     {
-        Task<string> CreateAsync(AuditLogModel log);
+        Task<string> CreateAsync(AuditLogModel log, string? tenant = null);
         Task<IEnumerable<AuditLogModel>> GetByUserAsync(string userId, string tenantId, DateTime from, DateTime to);
         Task<IEnumerable<AuditLogModel>> GetByEventTypeAsync(string eventType, DateTime from, DateTime to);
         Task<IEnumerable<AuditLogModel>> GetBySeverityAsync(string severity, DateTime from, DateTime to);
