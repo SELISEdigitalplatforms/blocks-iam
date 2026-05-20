@@ -82,10 +82,6 @@ export class UserService {
     return http.post(`/api/iam/users/${payload.itemId}`, payload);
   }
 
-  updateMyAccount(payload: IUpdateUserPayload): Promise<IUpdateUserResponse> {
-    return http.patch(USER_ENDPOINTS.ME, payload);
-  }
-
   getSignUpSetting(
     payload: IGetSignUpSettingPayload,
   ): Promise<IGetSignUpSettingResponse> {

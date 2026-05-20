@@ -102,7 +102,7 @@ export const useUpdateUser = (options: { id: string; projectKey: string; own?: b
   const { own = false, ...rest } = options;
   return useMutation({
     mutationKey: ["users", "update"],
-    mutationFn: own ? userService.updateMyAccount : userService.updateUser,
+    mutationFn: userService.updateUser,
     onSuccess: () => {
       if (own) return queryClient.invalidateQueries({ queryKey: ["user"] });
       queryClient.invalidateQueries({ queryKey: ["user", rest] });
