@@ -476,7 +476,9 @@ namespace Authentication.DomainService.Authentication
                 return false;
             }
 
-            var oidcClient = await _authenticationRepository.GetOidcClientRegistrationAsync(clientId);
+            var blocksContext = BlocksContext.GetContext();
+            var tenantId = blocksContext.Impersonated ? blocksContext.OriginalTenantId : blocksContext.TenantId;
+            var oidcClient = await _authenticationRepository.GetOidcClientRegistrationAsync(clientId, tenantId);
             return oidcClient != null;
         }
 
@@ -876,8 +878,6 @@ namespace Authentication.DomainService.Authentication
             var options = DomainResolver.CreateCookieOptions(cookieDomain, DateTime.UtcNow.AddDays(-1));
             httpResponse.Cookies.Delete(ImpersonationIdCookieName, options);
             httpResponse.Cookies.Delete($"{IdpConstants.RefreshTokenCookieName}_{domain}", options);
-
-            if(!string.IsNullOrWhiteSpace(domain))
             httpResponse.Cookies.Delete(domain, options);
         }
 
