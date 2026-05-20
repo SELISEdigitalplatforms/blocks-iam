@@ -2,8 +2,9 @@ import { useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useAuthStore } from "@/store/useAuthStore";
 import {
+  useImpersonationStatusChecker,
   useStartImpersonation,
-  useStopImpersonation,
+  // useStopImpersonation,
 } from "@/hooks/use-impersonation";
 import { useAppState } from "./public-guard";
 import { useGetMe } from "@/idp/iam/hooks/use-user";
@@ -11,6 +12,8 @@ import { useImpersonateStore } from "@/store/impersonate-store";
 import { useProjectStore } from "@/store/useProjectStore";
 import { ImpersonationRequest } from "@/services/impersonation.service";
 import { getRuntimeEnv } from "@/lib/runtime-env";
+import { useGetProjects } from "@/hooks/use-project";
+import LogoLoadingSpinner from "@/components/loader-spinner/loader-spinner";
 
 export function ProtectedGuard({ children }: { children: React.ReactNode }) {
   const { isMounted } = useAppState();
@@ -28,10 +31,11 @@ export function ProtectedGuard({ children }: { children: React.ReactNode }) {
 }
 
 export function ImpersonateGuard({ children }: { children: React.ReactNode }) {
-  const { startImpersonation, stopImpersonation } = useImpersonateStore();
+  const { isImpersonated, startImpersonation, stopImpersonation } = useImpersonateStore();
   const { mutate: startImpersonationMutate } = useStartImpersonation();
-  const { mutate: stopImpersonationMutate } = useStopImpersonation();
+  // const { mutate: stopImpersonationMutate } = useStopImpersonation();
 
+  const { isLoading: isProjectsLoading } = useGetProjects();
   const { selectedProject } = useProjectStore();
 
   const [ready, setReady] = useState(false);
@@ -41,8 +45,16 @@ export function ImpersonateGuard({ children }: { children: React.ReactNode }) {
   });
 
   useEffect(() => {
+    if (isProjectsLoading) return;
     if (!selectedProject?.tenantId) return;
     if (impersonateRef.current.hasStarted) return;
+
+    if (isImpersonated) {
+      impersonateRef.current.hasStarted = true;
+      impersonateRef.current.isCompleted = true;
+      setReady(true);
+      return;
+    }
 
     impersonateRef.current.hasStarted = true;
 
@@ -65,27 +77,50 @@ export function ImpersonateGuard({ children }: { children: React.ReactNode }) {
       },
     });
 
-    return () => {
-      if (!impersonateRef.current.isCompleted) return;
+    // return () => {
+    //   if (!impersonateRef.current.isCompleted) return;
 
-      stopImpersonationMutate(undefined, {
-        onSuccess: () => {
-          stopImpersonation();
-          impersonateRef.current.hasStarted = false;
-          impersonateRef.current.isCompleted = false;
-          setReady(false);
-        },
-      });
-    };
+    //   stopImpersonationMutate(undefined, {
+    //     onSuccess: () => {
+    //       stopImpersonation();
+    //       impersonateRef.current.hasStarted = false;
+    //       impersonateRef.current.isCompleted = false;
+    //       setReady(false);
+    //     },
+    //   });
+    // };
   }, [
+    isImpersonated,
+    isProjectsLoading,
     selectedProject?.tenantId,
     startImpersonationMutate,
-    stopImpersonationMutate,
+    // stopImpersonationMutate,
     startImpersonation,
     stopImpersonation,
   ]);
 
-  if (!ready) return null;
+  if (!ready) return <LogoLoadingSpinner />;
 
   return <>{children}</>;
 }
+
+export const ImpersonationChecker = ({
+  children,
+}: {
+  children: React.ReactNode;
+}) => {
+  const { data, isLoading, isSuccess } = useImpersonationStatusChecker();
+  const { setImpersonation } = useImpersonateStore();
+ 
+  useEffect(() => {
+    if (!data) return;
+    setImpersonation(
+      data.impersonated,
+      data.originalTenantId,
+      data.impersonated ? data.impersonatedTenantId : null,
+    );
+  }, [data, setImpersonation]);
+  if (isLoading || !isSuccess) return null;
+  return <>{children}</>;
+};
+ 

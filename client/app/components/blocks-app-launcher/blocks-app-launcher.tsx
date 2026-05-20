@@ -14,6 +14,7 @@ import {
 import { cn } from "@/lib/utils";
 import { getRuntimeEnv } from "@/lib/runtime-env";
 import { showErrorToast } from "@/hooks/use-toast";
+import { useImpersonateStore } from "@/store/impersonate-store";
 interface BlocksApp {
   key: string;
   label: string;
@@ -320,6 +321,7 @@ export function BlocksAppLauncher() {
   const [isHydrated, setIsHydrated] = useState(false);
   const [loadingKey, setLoadingKey] = useState<string | null>(null);
   const location = useLocation();
+  const { isImpersonated, impersonatedTenantId } = useImpersonateStore();
   // const isAllowedRoute = !location.pathname.includes("/console") && !location.pathname.includes("/project-overview") && !location.pathname.includes("/services/lmt/logs");
   useEffect(() => {
     const stored = localStorage.getItem("blocks-app-favourites");
@@ -346,7 +348,9 @@ export function BlocksAppLauncher() {
     if (loadingKey) return;
     try {
       setLoadingKey(app.key);
-      const blocksKey = getRuntimeEnv("BLOCKS_X_BLOCKS_KEY");
+      const blocksKey = isImpersonated && impersonatedTenantId
+        ? impersonatedTenantId
+        : getRuntimeEnv("BLOCKS_X_BLOCKS_KEY");
       const idpBaseUrl = getRuntimeEnv("BLOCKS_IDP_BASE_URL");
       const initiateUrl = `${idpBaseUrl}/api/idp/initiate?x-blocks-key=${blocksKey}&clientId=${app.clientId}&redirectUri=${app.redirectUri}`;
       const headers: Record<string, string> = {};
