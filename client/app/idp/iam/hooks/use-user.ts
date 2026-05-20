@@ -64,7 +64,13 @@ export const useGetMe = (options?: { enabled?: boolean }) => {
     queryKey: ["user"],
     queryFn: async () => {
       const user = await userService.me();
-      if (user.data) authStore.setUser(user.data);
+      if (user.data) {
+        authStore.setUser(user.data);
+        return user;
+      }
+      // When impersonated the server looks up the admin user in the impersonated
+      // tenant where they don't exist — preserve the last valid user instead.
+      if (authStore.user) return { data: authStore.user };
       return user;
     },
     ...options,
