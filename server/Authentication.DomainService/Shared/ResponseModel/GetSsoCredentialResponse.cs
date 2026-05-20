@@ -1,8 +1,8 @@
-﻿using Blocks.Genesis;
+using Blocks.Genesis;
 using Iam.DomainService.Dtos;
 using MongoDB.Bson.Serialization.Attributes;
 
-namespace DomainService.ResponseModel
+namespace Authentication.DomainService.ResponseModel
 {
     [BsonIgnoreExtraElements]
     public class GetSsoCredentialResponse : BaseEntity
@@ -17,8 +17,8 @@ namespace DomainService.ResponseModel
         public required string RedirectUrl { get; set; }
         public string? WellKnownUrl { get; set; }
         public required string Scope { get; set; }
-        public List<GetUserRole> UserRoles { get; set; }
-        public List<GetUserPermission> UserPermissions { get; set; }
+        public List<GetUserRole> UserRoles { get; set; } = [];
+        public List<GetUserPermission> UserPermissions { get; set; } = [];
         public bool IsDisabled { get; set; }
         public bool SendAsResponse { get; set; } = true;
     }

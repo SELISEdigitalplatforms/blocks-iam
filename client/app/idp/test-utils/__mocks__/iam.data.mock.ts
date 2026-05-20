@@ -391,7 +391,6 @@ export const mockOrganizationsResponse = {
 };
 
 export const mockGetOrganizationsPayload: IGetOrganizationsParams = {
-  projectKey: TEST_PROJECT_KEY,
   page: 1,
   pageSize: 20,
 };

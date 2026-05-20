@@ -3,8 +3,11 @@ using Iam.DomainService.Shared.Entities;
 
 namespace Iam.DomainService.Resources
 {
-    public class GetOrganizationsRequest : BaseGetsRequest<Organization>, IProjectKey
+    public class GetOrganizationsRequest : BaseGetsRequest<Organization>
     {
-        public string ProjectKey { get ; set ; }
+        /// <summary>
+        /// Optional filter by organization name (partial match).
+        /// </summary>
+        public string? Name { get; set; }
     }
 }

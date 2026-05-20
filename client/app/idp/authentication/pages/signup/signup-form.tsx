@@ -20,6 +20,7 @@ import {
 import { Input } from "@/components/ui-kits/input/input";
 import { showErrorToast } from "@/hooks/use-toast";
 import { isErrorWithErrors } from "@/lib/error";
+import { getRuntimeEnv } from "@/lib/runtime-env";
 import { GRANT_TYPES } from "@blocks-idp/authentication/constants/authentication.constant";
 import { useSignupByEmail } from "@blocks-idp/authentication/hooks/use-auth";
 import { LoginOption } from "@blocks-idp/authentication/models/auth-configuration.model";
@@ -50,7 +51,7 @@ export const SignupForm = ({
   });
   const { isPending, mutateAsync } = useSignupByEmail();
 
-  const googleSiteKey = import.meta.env.BLOCKS_GOOGLE_SITE_KEY || "";
+  const googleSiteKey = getRuntimeEnv("BLOCKS_GOOGLE_SITE_KEY") || "";
   const {
     code: captchaCode,
     captcha,

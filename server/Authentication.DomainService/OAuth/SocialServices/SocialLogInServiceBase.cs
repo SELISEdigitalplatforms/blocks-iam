@@ -1,7 +1,8 @@
 using Azure;
 using Blocks.Genesis;
-using DomainService.OAuth.RequestModel;
-using DomainService.Services;
+using Authentication.DomainService.OAuth.RequestModel;
+using Authentication.DomainService.Services;
+using Authentication.DomainService.Entities;
 using Microsoft.Azure.Amqp.Framing;
 using Microsoft.Extensions.Logging;
 using Microsoft.Identity.Client.Platforms.Features.DesktopOs.Kerberos;
@@ -11,7 +12,7 @@ using System.Text.Json;
 using static QRCoder.PayloadGenerator;
 using static System.Runtime.InteropServices.JavaScript.JSType;
 
-namespace DomainService.OAuth
+namespace Authentication.DomainService.OAuth
 {
     public abstract class SocialLogInServiceBase : ISocialLogInService
     {
@@ -37,42 +38,60 @@ namespace DomainService.OAuth
 
         public virtual async Task<(string, bool)> GetProviderLogInUriAsync(GetSocialLogInEndPointRequest loginData)
         {
-            var credential = await _authenticationRepository.GetSocialLoginCredentialByProvideAndAudienceAsync(loginData.Provider, loginData.Audience);
+            var identityProvider = await _authenticationRepository.GetIdentityProviderAsync(loginData.Provider);
 
-            if (credential == null)
+            if (identityProvider == null)
             {
-                _logger.LogError("Credential not found for provider {Provider} and audience {Audience}", loginData.Provider, loginData.Audience);
+                _logger.LogError("Identity provider not found for provider {Provider}", loginData.Provider);
                 return (string.Empty, true);
             }
 
             var socialLogInStateKey = Guid.NewGuid().ToString("n");
+            var providerRedirectUri = loginData.RedirectUri ?? identityProvider.RedirectUris?.FirstOrDefault() ?? string.Empty;
             var socialLogInStateInfo = new StateInfo
             {
                 Audience = loginData.Audience,
                 Provider = loginData.Provider,
                 NextUrl = loginData.NextUrl,
+                RedirectUri = providerRedirectUri
             };
 
             await _cacheClient.AddStringValueAsync(socialLogInStateKey, JsonSerializer.Serialize(socialLogInStateInfo), 300);
 
-            return (string.Format(credential.AuthorizationUrl, credential.Scope, socialLogInStateKey, WebUtility.UrlEncode(credential.RedirectUrl), credential.ClientId), loginData.SendAsResponse || credential.SendAsResponse);
+            // Build authorization URL with parameters
+            var authUrl = BuildAuthorizationUrl(identityProvider, socialLogInStateKey, providerRedirectUri);
+            return (authUrl, loginData.SendAsResponse);
+        }
+
+        private string BuildAuthorizationUrl(IdentityProvider provider, string state, string redirectUri)
+        {
+            var encodedRedirectUri = WebUtility.UrlEncode(redirectUri);
+            var scope = WebUtility.UrlEncode(provider.Scope);
+            
+            return $"{provider.AuthorizationUrl}?client_id={provider.ClientId}&scope={scope}&state={state}&redirect_uri={encodedRedirectUri}&response_type={provider.ResponseType}";
         }
 
         public virtual async Task<IExternalUserData> HandleSocialLogin(StateInfo stateInfo)
         {
-            var credential = await _authenticationRepository.GetSocialLoginCredentialByProvideAndAudienceAsync(stateInfo.Provider, stateInfo.Audience);
+            var identityProvider = await _authenticationRepository.GetIdentityProviderAsync(stateInfo.Provider);
+
+            if (identityProvider == null)
+            {
+                _logger.LogError("Identity provider not found for provider {Provider}", stateInfo.Provider);
+                return CreateEmptyUserData();
+            }
 
             var postData = new Dictionary<string, string>
             {
                 { "code", stateInfo.Code },
-                { "client_id", credential.ClientId },
-                { "client_secret", credential.ClientSecret },
-                { "redirect_uri", credential.RedirectUrl },
+                { "client_id", identityProvider.ClientId },
+                { "client_secret", identityProvider.ClientSecret },
+                { "redirect_uri", stateInfo.RedirectUri },
                 { "grant_type", "authorization_code" },
                 { "scope", "openid profile email" }
             };
 
-            var (response, error) = await _httpService.SendFormUrlEncoded<SocialOauthAccessToken>(HttpMethod.Post, postData, credential.TokenUrl);
+            var (response, error) = await _httpService.SendFormUrlEncoded<SocialOauthAccessToken>(HttpMethod.Post, postData, identityProvider.TokenUrl);
 
             if (!string.IsNullOrWhiteSpace(error))
             {
@@ -81,19 +100,19 @@ namespace DomainService.OAuth
             }
             var externalUser = stateInfo.Provider switch
             {
-                googleProvider => await GetGoogleProfileVerification(credential.GetProfileUrl, response.AccessToken),
-                microsoftProvider => await GetMicrosoftProfileVerification(credential.GetProfileUrl, response.AccessToken, response.IdToken),
+                googleProvider => await GetGoogleProfileVerification(identityProvider.UserInfoUrl, response.AccessToken),
+                microsoftProvider => await GetMicrosoftProfileVerification(identityProvider.UserInfoUrl, response.AccessToken, response.IdToken),
                 _ => CreateEmptyUserData()
             };
 
-            externalUser.Permissions = credential.InitialPermissions;
+            externalUser.Permissions = identityProvider.InitialPermissions;
 
             Console.WriteLine($"IntraId Roles: {string.Join(", ", externalUser.Roles)}");
 
             if (externalUser.Roles.Count > 0)
-                externalUser.Roles.AddRange(credential.InitialRoles);
+                externalUser.Roles.AddRange(identityProvider.InitialRoles);
             else
-                externalUser.Roles = credential.InitialRoles;
+                externalUser.Roles = identityProvider.InitialRoles;
 
             externalUser.Platform = stateInfo.Provider;
 

@@ -103,45 +103,49 @@ export function EmailConfiguration({ addConfigOpen, onAddConfigOpenChange }: Ema
               value={config.itemId}
               className={`rounded-sm border bg-background px-4 ${index > 0 ? "mt-6" : ""}`}
             >
-              <AccordionTrigger className="text-xl font-semibold">{config.name}</AccordionTrigger>
-              <AccordionContent>
-                <div className="flex gap-1">
-
-                  {!config.isDefault && (<Dialog open={isEditOpen} onOpenChange={setIsEditOpen}>
-                    <DialogTrigger asChild>
-                      <Button size="sm" variant="outline" className="h-9 gap-2 px-4 py-1">
-                        <Pencil className="h-3.5 w-3.5" />
-                        <span className="sr-only sm:not-sr-only sm:whitespace-nowrap">Edit</span>
-                      </Button>
-                    </DialogTrigger>
-                    <NewConfiguration
-                      dialogTitle="Edit Configuration"
-                      previousData={config}
-                      isEdit={true}
-                      onClose={() => setIsEditOpen(false)}
-                    />
-                  </Dialog>)}
-                  {!config.isDefault && (
-                    <Dialog open={deleteModalOpen} onOpenChange={setDeleteModalOpen}>
+              <AccordionTrigger className="text-xl font-semibold hover:no-underline">
+                <div className="flex items-center justify-between w-full pr-8">
+                  <span>{config.name}</span>
+                  <div className="flex gap-1">
+                    {!config.isDefault && (<Dialog open={isEditOpen} onOpenChange={setIsEditOpen}>
                       <DialogTrigger asChild>
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          className="h-9 gap-2 px-4 py-1 text-red-500 hover:bg-red-400 hover:text-white"
-                        >
-                          <Trash className="h-3.5 w-3.5" />
-                          <span className="sr-only sm:not-sr-only sm:whitespace-nowrap">
-                            Delete
-                          </span>
+                        <Button size="sm" variant="outline" className="h-9 gap-2 px-4 py-1" onClick={(e) => e.stopPropagation()}>
+                          <Pencil className="h-3.5 w-3.5" />
+                          <span className="sr-only sm:not-sr-only sm:whitespace-nowrap">Edit</span>
                         </Button>
                       </DialogTrigger>
-                      <DeleteEmailConfig
-                        configId={config.itemId}
-                        onClose={() => setDeleteModalOpen(false)}
+                      <NewConfiguration
+                        dialogTitle="Edit Configuration"
+                        previousData={config}
+                        isEdit={true}
+                        onClose={() => setIsEditOpen(false)}
                       />
-                    </Dialog>
-                  )}
+                    </Dialog>)}
+                    {!config.isDefault && (
+                      <Dialog open={deleteModalOpen} onOpenChange={setDeleteModalOpen}>
+                        <DialogTrigger asChild>
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            className="h-9 gap-2 px-4 py-1 text-red-500 hover:bg-red-400 hover:text-white"
+                            onClick={(e) => e.stopPropagation()}
+                          >
+                            <Trash className="h-3.5 w-3.5" />
+                            <span className="sr-only sm:not-sr-only sm:whitespace-nowrap">
+                              Delete
+                            </span>
+                          </Button>
+                        </DialogTrigger>
+                        <DeleteEmailConfig
+                          configId={config.itemId}
+                          onClose={() => setDeleteModalOpen(false)}
+                        />
+                      </Dialog>
+                    )}
+                  </div>
                 </div>
+              </AccordionTrigger>
+              <AccordionContent>
                 <div
                   className={cn(
                     "mt-5 grid grid-cols-3 space-y-2",

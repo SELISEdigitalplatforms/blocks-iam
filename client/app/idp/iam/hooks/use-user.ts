@@ -6,13 +6,42 @@ import {
   IGetSignUpSettingPayload,
 } from "@blocks-idp/iam/models/user";
 import { userService } from "@blocks-idp/iam/services/user.service";
+import { normalizeSearchQueryText } from "@/lib/utils";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useCallback, useMemo } from "react";
 
 export const useGetUsers = (option: IGetUsersPayload) => {
+  const { page, pageSize, projectKey, filter, sort } = option;
+
+  const payload = useMemo(() => {
+    if (!filter) {
+      return { page, pageSize, sort };
+    }
+    return {
+      page,
+      pageSize,
+      sort,
+      filter: {
+        ...filter,
+        email: normalizeSearchQueryText(filter.email ?? ""),
+        name: normalizeSearchQueryText(filter.name ?? ""),
+      },
+    };
+  }, [
+    page,
+    pageSize,
+    projectKey,
+    filter?.email,
+    filter?.name,
+    filter?.organizationId,
+    sort?.property,
+    sort?.isDescending,
+  ]);
+
   return useQuery({
-    queryKey: ["users", option],
-    queryFn: () => userService.getUsers(option),
+    queryKey: ["users", projectKey, payload],
+    queryFn: () => userService.getUsers(payload),
+    enabled: !!projectKey,
   });
 };
 
@@ -29,10 +58,30 @@ export const useGetUser = (options?: { enabled?: boolean }) => {
   });
 };
 
-export const useGetUserById = (options: IGetUserByIdPayload) => {
+export const useGetMe = (options?: { enabled?: boolean }) => {
+  const authStore = useAuthStore();
+  return useQuery({
+    queryKey: ["user"],
+    queryFn: async () => {
+      const user = await userService.me();
+      if (user.data) {
+        authStore.setUser(user.data);
+        return user;
+      }
+      // When impersonated the server looks up the admin user in the impersonated
+      // tenant where they don't exist — preserve the last valid user instead.
+      if (authStore.user) return { data: authStore.user };
+      return user;
+    },
+    ...options,
+  });
+};
+
+export const useGetUserById = (options: IGetUserByIdPayload, queryOptions?: { enabled?: boolean }) => {
   return useQuery({
     queryKey: ["user", options],
     queryFn: () => userService.getUserById(options),
+    ...queryOptions,
   });
 };
 

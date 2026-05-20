@@ -802,7 +802,7 @@ namespace XUnitTest.Users
                 Platform = "Web",
                 Memberships = new List<OrganizationMembership>(),
                 Active = true,
-                IsVarified = true,
+                IsVerified = true,
                 ExternalUserId = "ext-123"
             };
             SetupBlocksContext();
@@ -823,7 +823,7 @@ namespace XUnitTest.Users
             _userRepositoryMock.Verify(x => x.CreateUserAsync(It.Is<User>(u => 
                 u.Email == request.Email.ToLower() &&
                 u.Active == request.Active &&
-                u.IsVarified == request.IsVarified &&
+                u.IsVerified == request.IsVerified &&
                 u.ExternalUserId == request.ExternalUserId)), Times.Once);
             _messageClientMock.Verify(x => x.SendToConsumerAsync(
                 It.Is<ConsumerMessage<CreateUserViaSsoEvent>>(m => 

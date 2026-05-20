@@ -1,7 +1,7 @@
-﻿using System.Security.Cryptography;
+using System.Security.Cryptography;
 using System.Text;
 
-namespace DomainService.Shared
+namespace Identifier.DomainService.Shared
 {
     public static class EncryptionHelper
     {

@@ -1,4 +1,3 @@
-/* eslint-disable @typescript-eslint/no-unsafe-function-type */
 import { type ClassValue, clsx } from "clsx";
 import { twMerge } from "tailwind-merge";
 import { isValid as isValidDate, isBefore } from "date-fns";
@@ -43,22 +42,74 @@ export function clearBreadCrumbTitleEntry(pathName: string) {
   BREADCRUMB_CUSTOM_TITLES[pathName] = null;
 }
 
-export const debounce = (fn: Function, ms = 300) => {
-  let timeoutId: ReturnType<typeof setTimeout> | null;
-  const debounced = function (this: unknown, ...args: unknown[]) {
-    if (timeoutId) clearTimeout(timeoutId);
-    timeoutId = setTimeout(() => fn.apply(this, args), ms);
+// -----------------------------------------------------------------------------
+// Debounce & search-query helpers (generic debounce; optional min-length for API)
+// -----------------------------------------------------------------------------
+
+export type DebouncedFunction<T extends (...args: never[]) => void> = T & {
+  cancel: () => void;
+  /** If a call is scheduled, invoke the callback now with the latest arguments and clear the timer. */
+  flush: () => void;
+};
+
+export function debounce<T extends (...args: never[]) => void>(fn: T, ms = 300): DebouncedFunction<T> {
+  let timeoutId: ReturnType<typeof setTimeout> | null = null;
+  let lastThis: unknown;
+  let lastArgs: Parameters<T> | null = null;
+
+  const flushPending = () => {
+    if (lastArgs === null) return;
+    const args = lastArgs;
+    lastArgs = null;
+    fn.apply(lastThis, args);
   };
+
+  const debounced = function (this: unknown, ...args: Parameters<T>) {
+    lastThis = this;
+    lastArgs = args;
+    if (timeoutId) clearTimeout(timeoutId);
+    timeoutId = setTimeout(() => {
+      timeoutId = null;
+      flushPending();
+    }, ms);
+  } as DebouncedFunction<T>;
 
   debounced.cancel = () => {
     if (timeoutId) {
       clearTimeout(timeoutId);
       timeoutId = null;
     }
+    lastArgs = null;
+  };
+
+  debounced.flush = () => {
+    if (timeoutId === null || lastArgs === null) return;
+    clearTimeout(timeoutId);
+    timeoutId = null;
+    flushPending();
   };
 
   return debounced;
-};
+}
+
+/** Trims; returns `""` unless length is at least `minLength` (default 3). */
+export function normalizeSearchQueryText(raw: string, minLength = 3): string {
+  const t = raw.trim();
+  return t.length >= minLength ? t : "";
+}
+
+export type DebouncedSearchQuery = DebouncedFunction<(rawSearch: string) => void>;
+
+/** Debounces raw input, then passes the result of {@link normalizeSearchQueryText} to `onChange`. */
+export function debounceSearchQuery(
+  onChange: (effective: string) => void,
+  ms = 300,
+  minLength = 3,
+): DebouncedSearchQuery {
+  return debounce((rawSearch: string) => {
+    onChange(normalizeSearchQueryText(rawSearch, minLength));
+  }, ms);
+}
 
 export const parseMongoDBString = (text: string) => {
   return text
