@@ -1,11 +1,12 @@
 import { Outlet } from "react-router-dom";
 import { DashboardLayoutProvider } from "@/contexts/dashboard-layout-provider";
-import { ImpersonateGuard, ProtectedGuard } from "@/guards/protected-guard";
+import { ImpersonateGuard, ImpersonationChecker, ProtectedGuard } from "@/guards/protected-guard";
 import { SidebarMenuDesktop } from "@/layouts/sidebar-menu-desktop/sidebar-menu-desktop";
 import { DashboardHeader } from "@/layouts/dashboard-header/dashboard-header";
 export function DashboardLayout() {
   return (
     <ProtectedGuard>
+      <ImpersonationChecker>
       <ImpersonateGuard>
         <DashboardLayoutProvider isOpen={true} persist>
           <div className="relative flex h-screen overflow-hidden bg-[hsl(var(--surface-app))]">
@@ -19,6 +20,7 @@ export function DashboardLayout() {
           </div>
         </DashboardLayoutProvider>
       </ImpersonateGuard>
+      </ImpersonationChecker>
     </ProtectedGuard>
   );
 }
