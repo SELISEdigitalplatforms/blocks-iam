@@ -1,5 +1,5 @@
-import { CaptchaLog } from "@blocks-idp/captcha/pages/logs";
+import { Navigate } from "react-router-dom";
 
 export default function CaptchaLogsPage() {
-	return <CaptchaLog />;
+  return <Navigate to="/services/secret-management?tab=captcha" replace />;
 }

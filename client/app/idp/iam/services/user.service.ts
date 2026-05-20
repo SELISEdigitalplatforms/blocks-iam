@@ -30,21 +30,48 @@ import {
   User,
 } from "@blocks-idp/iam/models/user";
 import { UserAccountService } from "./account.service";
-import { USER_ENDPOINTS } from "../constants/endpoint.constant";
+import { USER_ENDPOINTS, ORGANIZATION_ENDPOINTS } from "../constants/endpoint.constant";
+import { AUTH_ENDPOINTS } from "@/idp/authentication/constants/endpoint.constant";
 
 export class UserService {
   constructor(public account: UserAccountService) {}
 
-  getUsers(payload: IGetUsersPayload): Promise<IGetUsersResponse> {
-    return http.post(USER_ENDPOINTS.GET_USERS, payload);
+  getUsers(payload: Omit<IGetUsersPayload, "projectKey">): Promise<IGetUsersResponse> {
+    const params = new URLSearchParams();
+    params.set("page", String(payload.page));
+    params.set("pageSize", String(payload.pageSize));
+    if (payload.sort) {
+      params.set("sort.property", payload.sort.property);
+      params.set("sort.isDescending", String(payload.sort.isDescending));
+    }
+    if (payload.filter) {
+      if (payload.filter.email) params.set("filter.email", payload.filter.email);
+      if (payload.filter.name) params.set("filter.name", payload.filter.name);
+      if (payload.filter.organizationId) params.set("filter.organizationId", payload.filter.organizationId);
+    }
+    return http.get(`${USER_ENDPOINTS.GET_USERS}?${params.toString()}`);
   }
 
   getUser(): Promise<{ data: User }> {
-    return http.get(USER_ENDPOINTS.GET_USER);
+    return http.get(`${USER_ENDPOINTS.GET_USER}`, undefined, {
+      absoluteUrl: true,
+    });
+  }
+
+  me(): Promise<{ data: User }> {
+    return http.get(`${USER_ENDPOINTS.ME}`, undefined, {
+      absoluteUrl: true,
+    });
+  }
+
+  getUserInfo(): Promise<User> {
+    return http.get(`${AUTH_ENDPOINTS.USER_INFO}`, undefined, {
+      absoluteUrl: true,
+    });
   }
 
   getUserById(payload: IGetUserByIdPayload): Promise<IGetUserByIdResponse> {
-    return http.get(`${USER_ENDPOINTS.GET_USER}?id=${payload.id}&ProjectKey=${payload.projectKey}`);
+    return http.get(`${USER_ENDPOINTS.GET_USER}/${payload.id}`);
   }
 
   addUser(createPayload: ICreateUserPayload): Promise<ICreateUserResponse> {
@@ -52,15 +79,21 @@ export class UserService {
   }
 
   updateUser(payload: IUpdateUserPayload): Promise<IUpdateUserResponse> {
-    return http.post(USER_ENDPOINTS.UPDATE, payload);
+    return http.post(`/api/iam/users/${payload.itemId}`, payload);
   }
 
-  getSignUpSetting(payload: IGetSignUpSettingPayload): Promise<IGetSignUpSettingResponse> {
-    return http.get(`${USER_ENDPOINTS.GET_SIGNUP_SETTING}?ProjectKey=${payload.projectKey}`);
+  getSignUpSetting(
+    payload: IGetSignUpSettingPayload,
+  ): Promise<IGetSignUpSettingResponse> {
+    return http.get(
+      `${ORGANIZATION_ENDPOINTS.GET_SIGNUP_SETTING}?ProjectKey=${payload.projectKey}`,
+    );
   }
 
-  saveSignUpSetting(payload: ISaveSignUpSettingPayload): Promise<ISaveSignUpSettingResponse> {
-    return http.post(USER_ENDPOINTS.SAVE_SIGNUP_SETTING, payload);
+  saveSignUpSetting(
+    payload: ISaveSignUpSettingPayload,
+  ): Promise<ISaveSignUpSettingResponse> {
+    return http.post(ORGANIZATION_ENDPOINTS.SAVE_SIGNUP_SETTING, payload);
   }
 
   saveRolesAndPermissions(
@@ -69,8 +102,14 @@ export class UserService {
     return http.post(USER_ENDPOINTS.SAVE_ROLES_AND_PERMISSIONS, payload);
   }
 
-  async getSessions(payload: IGetSessionPayload): Promise<IDeviceSessionResponse> {
-    const res = await http.get<{ data: string[]; errors: unknown; totalCount: number }>(
+  async getSessions(
+    payload: IGetSessionPayload,
+  ): Promise<IDeviceSessionResponse> {
+    const res = await http.get<{
+      data: string[];
+      errors: unknown;
+      totalCount: number;
+    }>(
       `${USER_ENDPOINTS.GET_SESSIONS}?page=${payload.page}&pageSize=${payload.pageSize}&projectkey=${payload.projectKey}&filter.userId=${payload.filter.UserId}`,
     );
     return {
@@ -80,8 +119,14 @@ export class UserService {
     };
   }
 
-  async getHistories(payload: IGetHistoriesPayload): Promise<IHistoriesResponse> {
-    const res = await http.get<{ data: string[]; errors: unknown; totalCount: number }>(
+  async getHistories(
+    payload: IGetHistoriesPayload,
+  ): Promise<IHistoriesResponse> {
+    const res = await http.get<{
+      data: string[];
+      errors: unknown;
+      totalCount: number;
+    }>(
       `${USER_ENDPOINTS.GET_HISTORIES}?page=${payload.page}&pageSize=${payload.pageSize}&projectkey=${payload.projectKey}&filter.userId=${payload.filter.UserId}`,
     );
     return {
@@ -105,7 +150,9 @@ export class UserService {
     );
   }
 
-  getUserPermissions(payload: IGetUserPermissionsPayload): Promise<IGetUserPermissionsResponse> {
+  getUserPermissions(
+    payload: IGetUserPermissionsPayload,
+  ): Promise<IGetUserPermissionsResponse> {
     return http.get(
       `${USER_ENDPOINTS.GET_USER_PERMISSIONS}?Id=${payload.userId}&ProjectKey=${payload.projectKey}`,
     );

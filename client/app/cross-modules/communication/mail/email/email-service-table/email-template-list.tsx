@@ -200,14 +200,14 @@ export const EmailTemplateList = ({
               </DropdownMenuTrigger>
               <DropdownMenuContent align="end">
                 <DropdownMenuItem
-                  className="cursor-pointer"
+                  className="cursor-pointer hover:no-underline"
                   onClick={() => onRowClick(row.original.itemId)}
                 >
                   <AlignLeft className="mr-2 h-4 w-4" />
                   <span>View details</span>
                 </DropdownMenuItem>
                 <DropdownMenuItem
-                  className="cursor-pointer"
+                  className="cursor-pointer hover:no-underline"
                   onClick={(e) => {
                     e.stopPropagation();
                     cloneEmailTemplate(row.original);
@@ -218,7 +218,7 @@ export const EmailTemplateList = ({
                 </DropdownMenuItem>
                 {row.original.generatedBy !== "Tenant" && (
                   <DropdownMenuItem
-                    className="cursor-pointer text-error"
+                    className="cursor-pointer text-error hover:no-underline"
                     onClick={(e) => {
                       e.stopPropagation();
                       DeleteEmailTemplate(row.original);
@@ -272,7 +272,7 @@ export const EmailTemplateList = ({
           table.getRowModel().rows.map((row) => (
             <TableRow
               key={row.id}
-              className="cursor-pointer"
+              className="cursor-pointer hover:no-underline"
               onClick={() => onRowClick(row.original.itemId)}
               isHoverable
             >

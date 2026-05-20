@@ -1,31 +1,35 @@
-﻿using Blocks.Genesis;
-using DomainService.Dtos;
-using DomainService.Services;
-using DomainService.Utilities;
+using Blocks.Genesis;
+using Authentication.DomainService.Dtos;
+using Authentication.DomainService.Services;
+using Authentication.DomainService.Utilities;
 using Iam.DomainService.Dtos;
+using Authentication.DomainService.Shared;
 
-namespace DomainService.Worker
+namespace Authentication.DomainService.Worker
 {
     public class LogoutAllWorkerService : IConsumer<LogoutAllEvent>
     {
         private readonly ICacheClient _cacheClient;
         private readonly IAuthenticationRepository _authenticationRepository;
         private readonly IAuthenticationDomainService _authenticationDomainService;
+        private readonly UnifiedTokenSessionService _unifiedTokenSessionService;
 
         public LogoutAllWorkerService(
             ICacheClient cacheClient,
             IAuthenticationRepository authenticationRepository,
-            IAuthenticationDomainService authenticationDomainService)
+            IAuthenticationDomainService authenticationDomainService,
+            UnifiedTokenSessionService unifiedTokenSessionService)
         {
             _cacheClient = cacheClient;
             _authenticationRepository = authenticationRepository;
             _authenticationDomainService = authenticationDomainService;
+            _unifiedTokenSessionService = unifiedTokenSessionService;
         }
         public async Task Consume(LogoutAllEvent context)
         {
-            var refreshTokens = (await _authenticationRepository.GetActiveSessionByUserIdAsync(context.UserId)).Select(x => x.RefreshToken).ToList();
-            var cacheTask = refreshTokens.Select(async x => await _cacheClient.RemoveKeyAsync(x));
-            await Task.WhenAll(cacheTask);
+            var refreshTokens = (await _authenticationRepository.GetActiveIdentitySessionByUserIdAsync(context.UserId)).Select(x => x.RefreshToken).ToList();
+            var revokeTasks = refreshTokens.Select(async x => await _unifiedTokenSessionService.RevokeRefreshToken(x));
+            await Task.WhenAll(revokeTasks);
 
             await _authenticationRepository.UpdateSessionStatusForAllRefreshTokenAsync(refreshTokens);
 

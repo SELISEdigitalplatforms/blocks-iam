@@ -7,7 +7,7 @@ class JwtClaimServices {
     errors: unknown | null;
     isSuccess: boolean;
   }> {
-    return http.post(PROJECT_ENDPOINTS.ADD_JWT_CLAIM, payload);
+    return http.post(PROJECT_ENDPOINTS.ADD_JWT_CLAIM, payload, undefined, { absoluteUrl: true });
   }
 }
 

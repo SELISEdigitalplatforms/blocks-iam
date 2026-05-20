@@ -1,7 +1,7 @@
-﻿using Blocks.Genesis;
+using Blocks.Genesis;
 using MongoDB.Bson.Serialization.Attributes;
 
-namespace DomainService.Entities
+namespace Identifier.DomainService.Entities
 {
     [BsonIgnoreExtraElements]
     public class Project : BaseEntity

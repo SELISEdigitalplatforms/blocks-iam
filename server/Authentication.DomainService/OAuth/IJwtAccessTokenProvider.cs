@@ -1,11 +1,18 @@
-﻿using Blocks.Genesis;
-using DomainService.Entities;
+using Blocks.Genesis;
+using Authentication.DomainService.Entities;
 using Iam.DomainService.Entities;
+using Authentication.DomainService.OAuth.RequestModel;
 
-namespace DomainService.OAuth
+namespace Authentication.DomainService.OAuth
 {
     public interface IJwtAccessTokenProvider
     {
-        Task<JwtAccessToken> GetJwtAccessToken(AuthenticationConfiguration authenticationConfiguration, Tenant tenant, User user, StateInfo? state = null, string? organizationId = null);
+        Task<JwtAccessToken> GetJwtAccessToken(
+            AuthenticationConfiguration authenticationConfiguration,
+            Tenant tenant,
+            User user,
+            TokenRequest tokenRequest,
+            StateInfo? state = null,
+            IEnumerable<string>? clientAllowedServiceAccessResources = null);
     }
 }

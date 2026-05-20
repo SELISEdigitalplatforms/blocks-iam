@@ -1,6 +1,6 @@
-﻿using Blocks.Genesis;
+using Blocks.Genesis;
 
-namespace DomainService.OAuth
+namespace Authentication.DomainService.OAuth
 {
     public interface ICertificateProviderFactory
     {

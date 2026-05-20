@@ -1,9 +1,9 @@
-﻿using Blocks.Genesis;
+using Blocks.Genesis;
 
-namespace DomainService.ResponseModel
+namespace Authentication.DomainService.ResponseModel
 {
     public class SaveSsoCredentialResponse : BaseResponse
     {
-        public string ItemId { get; set; }
+        public string? ItemId { get; set; }
     }
 }

@@ -1,5 +1,5 @@
-using DomainService.OAuth;
-using DomainService.Shared;
+using Authentication.DomainService.OAuth;
+using Authentication.DomainService.Shared;
 using FluentValidation.TestHelper;
 
 namespace XUnitTest.DomainService.OAuth.Validators

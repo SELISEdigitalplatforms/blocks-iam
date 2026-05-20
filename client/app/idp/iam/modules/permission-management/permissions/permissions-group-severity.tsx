@@ -6,6 +6,6 @@ import { PermissionSeverity } from "@blocks-idp/iam/components/permission-severi
 
 export const PermissionsGroupBySeverity = () => {
   const { tenantId } = useProjectStore().selectedProject || { tenantId: "" };
-  const { data, isLoading } = useGetPermissionsGroupBySeverity({ projectKey: tenantId });
+  const { data, isLoading } = useGetPermissionsGroupBySeverity();
   return <PermissionSeverity data={data || []} isLoading={isLoading} />;
 };

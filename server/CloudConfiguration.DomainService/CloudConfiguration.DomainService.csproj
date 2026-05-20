@@ -1,0 +1,11 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+  </PropertyGroup>
+	<ItemGroup>
+		<PackageReference Include="MongoDB.Driver" />
+		 <PackageReference Include="SeliseBlocks.Genesis" /> 
+		<!--<ProjectReference Include="K:\BLOCKS REPO\blocks-genesis-net\src\Genesis\Blocks.Genesis.csproj" />-->
+		<PackageReference Include="FluentValidation" />
+	</ItemGroup>
+</Project>

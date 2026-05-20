@@ -1,9 +1,9 @@
-﻿using Blocks.Genesis;
+using Blocks.Genesis;
 
-namespace DomainService.Shared.ResponseModel
+namespace Authentication.DomainService.Shared.ResponseModel
 {
     public class SaveOIDCClientResponse : BaseResponse
     {
-        public string ItemId { get; set; }
+        public string? ItemId { get; set; }
     }
 }
