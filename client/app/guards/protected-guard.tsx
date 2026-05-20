@@ -31,7 +31,7 @@ export function ProtectedGuard({ children }: { children: React.ReactNode }) {
 }
 
 export function ImpersonateGuard({ children }: { children: React.ReactNode }) {
-  const { startImpersonation, stopImpersonation } = useImpersonateStore();
+  const { isImpersonated, startImpersonation, stopImpersonation } = useImpersonateStore();
   const { mutate: startImpersonationMutate } = useStartImpersonation();
   // const { mutate: stopImpersonationMutate } = useStopImpersonation();
 
@@ -48,6 +48,13 @@ export function ImpersonateGuard({ children }: { children: React.ReactNode }) {
     if (isProjectsLoading) return;
     if (!selectedProject?.tenantId) return;
     if (impersonateRef.current.hasStarted) return;
+
+    if (isImpersonated) {
+      impersonateRef.current.hasStarted = true;
+      impersonateRef.current.isCompleted = true;
+      setReady(true);
+      return;
+    }
 
     impersonateRef.current.hasStarted = true;
 
@@ -83,6 +90,7 @@ export function ImpersonateGuard({ children }: { children: React.ReactNode }) {
     //   });
     // };
   }, [
+    isImpersonated,
     isProjectsLoading,
     selectedProject?.tenantId,
     startImpersonationMutate,
