@@ -289,9 +289,10 @@ namespace Authentication.DomainService.Oidc.Repositories
 
         private static bool IsClientAuthorizedForRefreshToken(RefreshTokenModel refreshToken, string clientId)
         {
+            // clientId is required for authorization
             if (string.IsNullOrWhiteSpace(clientId))
             {
-                return true;
+                return false;
             }
 
             return string.Equals(refreshToken.ClientId, clientId, StringComparison.OrdinalIgnoreCase);
@@ -299,9 +300,10 @@ namespace Authentication.DomainService.Oidc.Repositories
 
         private static bool IsClientAuthorizedForAccessToken(JwtSecurityToken token, string clientId)
         {
+            // clientId is required for authorization
             if (string.IsNullOrWhiteSpace(clientId))
             {
-                return true;
+                return false;
             }
 
             return token.Audiences.Any(aud => string.Equals(aud, clientId, StringComparison.OrdinalIgnoreCase));
@@ -319,34 +321,6 @@ namespace Authentication.DomainService.Oidc.Repositories
             catch
             {
                 return null;
-            }
-        }
-
-        private string? ExtractUserIdFromToken(string token)
-        {
-            try
-            {
-                var handler = new JwtSecurityTokenHandler();
-                var jwtToken = handler.ReadJwtToken(token);
-                return jwtToken.Subject;
-            }
-            catch
-            {
-                return null;
-            }
-        }
-
-        private DateTime ExtractExpiryFromToken(string token)
-        {
-            try
-            {
-                var handler = new JwtSecurityTokenHandler();
-                var jwtToken = handler.ReadJwtToken(token);
-                return jwtToken.ValidTo;
-            }
-            catch
-            {
-                return DateTime.UtcNow.AddDays(30); // Default 30 days
             }
         }
 

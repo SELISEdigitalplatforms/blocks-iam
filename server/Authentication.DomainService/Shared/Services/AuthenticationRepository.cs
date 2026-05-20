@@ -86,21 +86,21 @@ namespace Authentication.DomainService.Services
             return await cursor.FirstOrDefaultAsync();
         }
 
-        public async Task<bool> InsertIdentitySessionAsync(IdentitySession session, string? tenant = null)
+        public async Task<bool> InsertIdentitySessionAsync(IdentitySession session)
         {
             var collection = GetCollection<IdentitySession>();
             await collection.InsertOneAsync(session);
             return true;
         }
 
-        public async Task<bool> InsertIdentityEventAsync(IdentityEvent identityEvent, string? tenant = null)
+        public async Task<bool> InsertIdentityEventAsync(IdentityEvent identityEvent)
         {
             var collection = GetCollection<IdentityEvent>();
             await collection.InsertOneAsync(identityEvent);
             return true;
         }
 
-        public async Task<bool> InsertUserAuthenticationTimelineAsync(UserAuthenticationTimeline userAuthenticationTimeline, string? tenant = null)
+        public async Task<bool> InsertUserAuthenticationTimelineAsync(UserAuthenticationTimeline userAuthenticationTimeline)
         {
             var collection = GetCollection<UserAuthenticationTimeline>();
             await collection.InsertOneAsync(userAuthenticationTimeline);

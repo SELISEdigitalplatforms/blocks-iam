@@ -3,6 +3,7 @@ using Authentication.DomainService.Entities;
 using Authentication.DomainService.OAuth.RequestModel;
 using Authentication.DomainService.Oidc.Services;
 using Authentication.DomainService.Shared.RequestModel;
+using Authentication.DomainService.Utilities;
 using Blocks.Genesis;
 using Iam.DomainService.Accounts;
 using Microsoft.AspNetCore.Authorization;
@@ -293,6 +294,7 @@ public class AuthenticationController : ControllerBase
     [Authorize]
     public async Task<IActionResult> ExecuteLogout([FromBody] LogoutRequest request)
     {
+        DomainResolver.ResetToOriginalBlocksContextForImpersonation();
         var refreshToken = string.IsNullOrWhiteSpace(request.RefreshToken)
             ? _authenticationService.CookieToken(Request)
             : request.RefreshToken;
@@ -357,6 +359,8 @@ public class AuthenticationController : ControllerBase
     [Authorize]
     public async Task<IActionResult> InitiateImpersonation([FromBody] ImpersonateRequest request)
     {
+        // Reset BlocksContext to original tenant context in case this impersonation request is coming from an existing impersonation session (organization switch or tenant switch within impersonation), we want to validate permissions and issue tokens based on the original/root tenant context and not the current impersonated context
+        DomainResolver.ResetToOriginalBlocksContextForImpersonation();
         return await _authenticationFlowService.ExecuteImpersonateAsync(request, Request, Response);
     }
 
@@ -368,6 +372,8 @@ public class AuthenticationController : ControllerBase
     [Authorize]
     public async Task<IActionResult> StopImpersonation()
     {
+        // Reset BlocksContext to original tenant context in case this impersonation request is coming from an existing impersonation session (organization switch or tenant switch within impersonation), we want to validate permissions and issue tokens based on the original/root tenant context and not the current impersonated context
+        DomainResolver.ResetToOriginalBlocksContextForImpersonation();
         return await _authenticationFlowService.ExecuteStopImpersonationAsync(Request, Response);
     }
 
