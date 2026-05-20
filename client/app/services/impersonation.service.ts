@@ -1,6 +1,6 @@
 import { http } from "@/lib/http-client";
 
-const IMPERSONATION_BASE = "/api/Authentication";
+const IMPERSONATION_BASE = "/api/auth";
 
 export interface ImpersonationRequest {
   targetTenantId: string;
@@ -15,6 +15,12 @@ export interface ImpersonationState {
   startedAtUtc: string;
 }
 
+export interface ImpersonationStatusResponse {
+  impersonated: boolean;
+  originalTenantId: string;
+  impersonatedTenantId: string | null;
+}
+
 class ImpersonationService {
   startImpersonation(request: ImpersonationRequest): Promise<ImpersonationState> {
     return http.post(`${IMPERSONATION_BASE}/impersonate`, request);
@@ -22,6 +28,13 @@ class ImpersonationService {
 
   stopImpersonation(): Promise<void> {
     return http.post(`${IMPERSONATION_BASE}/impersonation/stop`, null);
+  }
+
+  impersonationStatus(): Promise<ImpersonationStatusResponse> {
+    return http.post(
+      `${IMPERSONATION_BASE}/impersonation/status`,
+      null
+    );
   }
 }
 

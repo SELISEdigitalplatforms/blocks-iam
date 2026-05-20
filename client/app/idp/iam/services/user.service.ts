@@ -45,11 +45,9 @@ export class UserService {
       params.set("sort.isDescending", String(payload.sort.isDescending));
     }
     if (payload.filter) {
-      params.set("filter.email", payload.filter.email ?? "");
-      params.set("filter.name", payload.filter.name ?? "");
-      if (payload.filter.organizationId) {
-        params.set("filter.organizationId", payload.filter.organizationId);
-      }
+      if (payload.filter.email) params.set("filter.email", payload.filter.email);
+      if (payload.filter.name) params.set("filter.name", payload.filter.name);
+      if (payload.filter.organizationId) params.set("filter.organizationId", payload.filter.organizationId);
     }
     return http.get(`${USER_ENDPOINTS.GET_USERS}?${params.toString()}`);
   }
@@ -73,11 +71,7 @@ export class UserService {
   }
 
   getUserById(payload: IGetUserByIdPayload): Promise<IGetUserByIdResponse> {
-    return http.get(
-      `${USER_ENDPOINTS.GET_USER}?id=${payload.id}&ProjectKey=${payload.projectKey}`,
-      undefined,
-      { absoluteUrl: true },
-    );
+    return http.get(`${USER_ENDPOINTS.GET_USER}/${payload.id}`);
   }
 
   addUser(createPayload: ICreateUserPayload): Promise<ICreateUserResponse> {
