@@ -27,7 +27,7 @@ export function ProjectList({ collapsed = false }: { collapsed?: boolean }) {
   const navigate = useNavigate();
   const { pathname } = useLocation();
   const { data: projectGroups = [], isLoading } = useGetProjects();
-  const { selectedProject, setSelectedProject } = useProjectStore();
+  const { selectedProject, setSelectedProject, projects: storedProjects } = useProjectStore();
   const { data: projectData } = useGetProject({ projectId: selectedProject?.itemId || "" });
   const pendingProjectRef = useRef<IProject | null>(null);
   const redirectRegexMap = useMemo(
@@ -56,7 +56,8 @@ export function ProjectList({ collapsed = false }: { collapsed?: boolean }) {
     setSelectedProject(project);
   };
   const name = projectData?.data?.name || selectedProject?.name;
-  const projects = projectGroups.flatMap((group) => group.projects).filter(Boolean);
+  const queryProjects = projectGroups.flatMap((group) => group.projects).filter(Boolean);
+  const projects = queryProjects.length > 0 ? queryProjects : storedProjects.filter(Boolean);
   return (
     <DropdownMenu>
       {collapsed ? (

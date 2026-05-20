@@ -145,7 +145,7 @@ class HttpClient {
     const config: RequestInit = {
       method,
       headers: normalizedHeaders,
-      credentials: "include",
+      credentials: withCredentials ? "include" : "omit",
     };
 
     if (body) {
