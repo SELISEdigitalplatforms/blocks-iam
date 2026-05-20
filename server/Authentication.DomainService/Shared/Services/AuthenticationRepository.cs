@@ -39,9 +39,9 @@ namespace Authentication.DomainService.Services
             return _dbContextProvider.GetCollection<T>(collectionName);
         }
 
-        public async Task<User> GetUserByEmailAsync(string email, string? tenantId = null)
+        public async Task<User> GetUserByEmailAsync(string email)
         {
-            var collection = tenantId == null ? GetCollection<User>() : GetCollection<User>(tenantId);
+            var collection = GetCollection<User>();
             var options = new FindOptions<User>
             {
                 Collation = new Collation("en", strength: CollationStrength.Secondary)
@@ -50,9 +50,9 @@ namespace Authentication.DomainService.Services
             return await (await collection.FindAsync(filter, options)).FirstOrDefaultAsync();
         }
 
-        public async Task<User> GetUserByUsernameAsync(string username, string? organizationId = null, string? tenantId = null)
+        public async Task<User> GetUserByUsernameAsync(string username, string? organizationId = null)
         {
-            var collection = tenantId == null ? GetCollection<User>() : GetCollection<User>(tenantId);
+            var collection = GetCollection<User>();
 
             if (!string.IsNullOrWhiteSpace(organizationId))
             {
@@ -66,16 +66,16 @@ namespace Authentication.DomainService.Services
             return await collection.Find(x => x.UserName == username).FirstOrDefaultAsync();
         }
 
-        public async Task<User> GetUserByIdAsync(string itemId, string? tenantId = null)
+        public async Task<User> GetUserByIdAsync(string itemId)
         {
-            var collection = tenantId == null ? GetCollection<User>() : GetCollection<User>(tenantId);
+            var collection = GetCollection<User>();
 
             return await collection.Find(x => x.ItemId == itemId).FirstOrDefaultAsync();
         }
 
-        public async Task<T> GetUserByIdAsync<T>(string itemId, string? tenantId = null)
+        public async Task<T> GetUserByIdAsync<T>(string itemId)
         {
-            var collection = tenantId == null ? GetCollection<User>() : GetCollection<User>(tenantId);
+            var collection = GetCollection<User>();
             var filter = Builders<User>.Filter.Eq(x => x.ItemId, itemId);
             var project = Builders<User>.Projection.As<T>();
 
@@ -88,28 +88,28 @@ namespace Authentication.DomainService.Services
 
         public async Task<bool> InsertIdentitySessionAsync(IdentitySession session, string? tenant = null)
         {
-            var collection = tenant == null ? GetCollection<IdentitySession>() : GetCollection<IdentitySession>(tenant);
+            var collection = GetCollection<IdentitySession>();
             await collection.InsertOneAsync(session);
             return true;
         }
 
         public async Task<bool> InsertIdentityEventAsync(IdentityEvent identityEvent, string? tenant = null)
         {
-            var collection = tenant == null ? GetCollection<IdentityEvent>() : GetCollection<IdentityEvent>(tenant);
+            var collection = GetCollection<IdentityEvent>();
             await collection.InsertOneAsync(identityEvent);
             return true;
         }
 
         public async Task<bool> InsertUserAuthenticationTimelineAsync(UserAuthenticationTimeline userAuthenticationTimeline, string? tenant = null)
         {
-            var collection = tenant == null ? GetCollection<UserAuthenticationTimeline>() : GetCollection<UserAuthenticationTimeline>(tenant);
+            var collection = GetCollection<UserAuthenticationTimeline>();
             await collection.InsertOneAsync(userAuthenticationTimeline);
             return true;
         }
 
-        public async Task<bool> RevokeIdentitySessionAsync(string refreshToken, string userId, string? tenantId = null)
+        public async Task<bool> RevokeIdentitySessionAsync(string refreshToken, string userId)
         {
-            var collection = tenantId == null ? GetCollection<IdentitySession>() : GetCollection<IdentitySession>(tenantId);
+            var collection = GetCollection<IdentitySession>();
             var update = Builders<IdentitySession>.Update.Set(x => x.IsActive, false)
                 .Set(x => x.ExpiresUtc, DateTime.UtcNow)
                 .Set(x => x.UpdatedAt, DateTime.UtcNow);
@@ -117,9 +117,9 @@ namespace Authentication.DomainService.Services
             return result.IsAcknowledged;
         }
 
-        public async Task<bool> RevokeIdentitySessionsByRefreshTokensAsync(IEnumerable<string> refreshTokens, string? tenantId = null)
+        public async Task<bool> RevokeIdentitySessionsByRefreshTokensAsync(IEnumerable<string> refreshTokens)
         {
-            var collection = tenantId == null ? GetCollection<IdentitySession>() : GetCollection<IdentitySession>(tenantId);
+            var collection = GetCollection<IdentitySession>();
             var update = Builders<IdentitySession>.Update.Set(x => x.IsActive, false)
                 .Set(x => x.ExpiresUtc, DateTime.UtcNow)
                 .Set(x => x.UpdatedAt, DateTime.UtcNow);
@@ -128,9 +128,9 @@ namespace Authentication.DomainService.Services
             return result.IsAcknowledged;
         }
 
-        public async Task<bool> RevokeIdentitySessionsByUserIdAsync(string userId, string? tenantId = null)
+        public async Task<bool> RevokeIdentitySessionsByUserIdAsync(string userId)
         {
-            var collection = tenantId == null ? GetCollection<IdentitySession>() : GetCollection<IdentitySession>(tenantId);
+            var collection = GetCollection<IdentitySession>();
             var update = Builders<IdentitySession>.Update.Set(x => x.IsActive, false)
                 .Set(x => x.ExpiresUtc, DateTime.UtcNow)
                 .Set(x => x.UpdatedAt, DateTime.UtcNow);
@@ -138,9 +138,9 @@ namespace Authentication.DomainService.Services
             var result = await collection.UpdateManyAsync(filter, update);
             return result.IsAcknowledged;
         }
-        public async Task<bool> RevokeIdentitySessionsBySessionIdsAsync(IEnumerable<string> sessionIds, string? tenantId = null)
+        public async Task<bool> RevokeIdentitySessionsBySessionIdsAsync(IEnumerable<string> sessionIds)
         {
-             var collection = tenantId == null ? GetCollection<IdentitySession>() : GetCollection<IdentitySession>(tenantId);
+             var collection = GetCollection<IdentitySession>();
             var update = Builders<IdentitySession>.Update.Set(x => x.IsActive, false)
                 .Set(x => x.ExpiresUtc, DateTime.UtcNow)
                 .Set(x => x.UpdatedAt, DateTime.UtcNow);
@@ -149,26 +149,26 @@ namespace Authentication.DomainService.Services
             return result.IsAcknowledged;
         }
 
-        public async Task<bool> UpdateSessionStatusForAllRefreshTokenAsync(List<string> refreshTokens, string? tenantId = null)
+        public async Task<bool> UpdateSessionStatusForAllRefreshTokenAsync(List<string> refreshTokens)
         {
             if (refreshTokens == null || refreshTokens.Count == 0)
             {
                 return true;
             }
 
-            return await RevokeIdentitySessionsByRefreshTokensAsync(refreshTokens, tenantId);
+            return await RevokeIdentitySessionsByRefreshTokensAsync(refreshTokens);
         }
 
-        public async Task<IEnumerable<IdentitySession>> GetActiveIdentitySessionByUserIdAsync(string userId, string? tenantId = null)
+        public async Task<IEnumerable<IdentitySession>> GetActiveIdentitySessionByUserIdAsync(string userId)
         {
-            var collection = tenantId == null ? GetCollection<IdentitySession>() : GetCollection<IdentitySession>(tenantId);
+            var collection = GetCollection<IdentitySession>();
             var filter = Builders<IdentitySession>.Filter.Eq(x => x.UserId, userId) & Builders<IdentitySession>.Filter.Eq(x => x.IsActive, true);
             return await collection.Find(filter).ToListAsync();
         }
 
-        public async Task<User?> IncrementFailedLoginAndApplyLockoutAsync(string userId, int lockThreshold, int lockDurationInMinutes, DateTime nowUtc, string? tenantId = null)
+        public async Task<User?> IncrementFailedLoginAndApplyLockoutAsync(string userId, int lockThreshold, int lockDurationInMinutes, DateTime nowUtc)
         {
-            var collection = tenantId == null ? GetCollection<User>() : GetCollection<User>(tenantId);
+            var collection = GetCollection<User>();
 
             var incrementFilter = Builders<User>.Filter.Eq(x => x.ItemId, userId);
             var incrementUpdate = Builders<User>.Update
@@ -263,108 +263,108 @@ namespace Authentication.DomainService.Services
             };
         }
 
-        public async Task<IdentitySession?> GetIdentitySessionByRefreshTokenAsync(string refreshToken, string? tenantId = null)
+        public async Task<IdentitySession?> GetIdentitySessionByRefreshTokenAsync(string refreshToken)
         {
-            var collection = tenantId == null ? GetCollection<IdentitySession>() : GetCollection<IdentitySession>(tenantId);
+            var collection = GetCollection<IdentitySession>();
             var filter = Builders<IdentitySession>.Filter.Eq(x => x.RefreshToken, refreshToken);
             return await collection.Find(filter).SortByDescending(x => x.UpdatedAt).FirstOrDefaultAsync();
         }
 
-        public async Task<IEnumerable<IdentitySession>> GetActiveIdentitySessionBySessionIdAsync(string sessionId, string? tenantId = null)
+        public async Task<IEnumerable<IdentitySession>> GetActiveIdentitySessionBySessionIdAsync(string sessionId)
         {
-            var collection = tenantId == null ? GetCollection<IdentitySession>() : GetCollection<IdentitySession>(tenantId);
+            var collection = GetCollection<IdentitySession>();
             var filter = Builders<IdentitySession>.Filter.Eq(x => x.SessionId, sessionId) & Builders<IdentitySession>.Filter.Eq(x => x.IsActive, true);
             return await collection.Find(filter).ToListAsync();
         }
 
-        public async Task<List<IdentityProvider>> GetIdentityProvidersAsync(string? tenantId = null)
+        public async Task<List<IdentityProvider>> GetIdentityProvidersAsync()
         {
-            var collection = tenantId == null ? GetCollection<IdentityProvider>() : GetCollection<IdentityProvider>(tenantId);
+            var collection = GetCollection<IdentityProvider>();
             var filter = Builders<IdentityProvider>.Filter.Where(_ => true);
             var cursor = await collection.FindAsync(filter);
             return await cursor.ToListAsync();
         }
 
-        public async Task<IdentityProvider?> GetIdentityProviderAsync(string provider, string? tenantId = null)
+        public async Task<IdentityProvider?> GetIdentityProviderAsync(string provider)
         {
-            var collection = tenantId == null ? GetCollection<IdentityProvider>() : GetCollection<IdentityProvider>(tenantId);
+            var collection = GetCollection<IdentityProvider>();
             var filter = Builders<IdentityProvider>.Filter.Eq(x => x.Provider, provider);
             return await collection.Find(filter).FirstOrDefaultAsync();
         }
 
-        public async Task<IdentityProvider?> GetIdentityProviderByClientIdAsync(string clientId, string? tenantId = null)
+        public async Task<IdentityProvider?> GetIdentityProviderByClientIdAsync(string clientId)
         {
-            var collection = tenantId == null ? GetCollection<IdentityProvider>() : GetCollection<IdentityProvider>(tenantId);
+            var collection = GetCollection<IdentityProvider>();
             var filter = Builders<IdentityProvider>.Filter.Eq(x => x.ClientId, clientId);
             return await collection.Find(filter).FirstOrDefaultAsync();
         }
 
-        public async Task<IdentityProvider?> GetIdentityProviderByClientIdAndRedirectUriAsync(string clientId, string redirectUri, string? tenantId = null)
+        public async Task<IdentityProvider?> GetIdentityProviderByClientIdAndRedirectUriAsync(string clientId, string redirectUri)
         {
-            var collection = tenantId == null ? GetCollection<IdentityProvider>() : GetCollection<IdentityProvider>(tenantId);
+            var collection = GetCollection<IdentityProvider>();
             var filter = Builders<IdentityProvider>.Filter.And(
                 Builders<IdentityProvider>.Filter.Eq(x => x.ClientId, clientId),
                 Builders<IdentityProvider>.Filter.AnyEq(x => x.RedirectUris, redirectUri));
             return await collection.Find(filter).FirstOrDefaultAsync();
         }
 
-        public async Task<List<IdentityProvider>> GetIdentityProvidersByClientIdAsync(string clientId, string? tenantId = null)
+        public async Task<List<IdentityProvider>> GetIdentityProvidersByClientIdAsync(string clientId)
         {
-            var collection = tenantId == null ? GetCollection<IdentityProvider>() : GetCollection<IdentityProvider>(tenantId);
+            var collection = GetCollection<IdentityProvider>();
             var filter = Builders<IdentityProvider>.Filter.Eq(x => x.ClientId, clientId);
             var cursor = await collection.FindAsync(filter);
             return await cursor.ToListAsync();
         }
 
-        public async Task<IdentityProvider?> GetIdentityProviderAsync(string provider, string providerType, string? tenantId = null)
+        public async Task<IdentityProvider?> GetIdentityProviderAsync(string provider, string providerType)
         {
-            var collection = tenantId == null ? GetCollection<IdentityProvider>() : GetCollection<IdentityProvider>(tenantId);
+            var collection = GetCollection<IdentityProvider>();
             var filter = Builders<IdentityProvider>.Filter.And(
                 Builders<IdentityProvider>.Filter.Eq(x => x.Provider, provider),
                 Builders<IdentityProvider>.Filter.Eq(x => x.ProviderType, providerType));
             return await collection.Find(filter).FirstOrDefaultAsync();
         }
 
-        public async Task<IdentityProvider?> GetIdentityProviderByIdAsync(string id, string? tenantId = null)
+        public async Task<IdentityProvider?> GetIdentityProviderByIdAsync(string id)
         {
-            var collection = tenantId == null ? GetCollection<IdentityProvider>() : GetCollection<IdentityProvider>(tenantId);
+            var collection = GetCollection<IdentityProvider>();
             var filter = Builders<IdentityProvider>.Filter.Eq(x => x.ItemId, id);
             return await collection.Find(filter).FirstOrDefaultAsync();
         }
 
-        public async Task<IdentityProvider> CreateIdentityProviderAsync(IdentityProvider provider, string? tenantId = null)
+        public async Task<IdentityProvider> CreateIdentityProviderAsync(IdentityProvider provider)
         {
             provider.ItemId = Guid.NewGuid().ToString();
             provider.CreatedDate = DateTime.UtcNow;
             provider.CreatedBy = BlocksContext.GetContext()?.UserId ?? "system";
             
-            var collection = tenantId == null ? GetCollection<IdentityProvider>() : GetCollection<IdentityProvider>(tenantId);
+            var collection = GetCollection<IdentityProvider>();
             await collection.InsertOneAsync(provider);
             return provider;
         }
 
-        public async Task<IdentityProvider> UpdateIdentityProviderAsync(IdentityProvider provider, string? tenantId = null)
+        public async Task<IdentityProvider> UpdateIdentityProviderAsync(IdentityProvider provider)
         {
             provider.LastUpdatedDate = DateTime.UtcNow;
             provider.LastUpdatedBy = BlocksContext.GetContext()?.UserId ?? "system";
             
-            var collection = tenantId == null ? GetCollection<IdentityProvider>() : GetCollection<IdentityProvider>(tenantId);
+            var collection = GetCollection<IdentityProvider>();
             var filter = Builders<IdentityProvider>.Filter.Eq(x => x.ItemId, provider.ItemId);
             var options = new ReplaceOptions { IsUpsert = false };
             await collection.ReplaceOneAsync(filter, provider, options);
             return provider;
         }
 
-        public async Task DeleteIdentityProviderAsync(string id, string? tenantId = null)
+        public async Task DeleteIdentityProviderAsync(string id)
         {
-            var collection = tenantId == null ? GetCollection<IdentityProvider>() : GetCollection<IdentityProvider>(tenantId);
+            var collection = GetCollection<IdentityProvider>();
             var filter = Builders<IdentityProvider>.Filter.Eq(x => x.ItemId, id);
             await collection.DeleteOneAsync(filter);
         }
 
-        public async Task UpdatePartialAsync<T>(string id, Dictionary<string, object> updates, string collectionName = "", string? tenantId = null)
+        public async Task UpdatePartialAsync<T>(string id, Dictionary<string, object> updates, string collectionName = "")
         {
-            IMongoCollection<T> collection = tenantId == null ? _dbContextProvider.GetCollection<T>(string.IsNullOrWhiteSpace(collectionName) ? (typeof(T).Name + "s") : collectionName) : _dbContextProvider.GetCollection<T>(string.IsNullOrWhiteSpace(collectionName) ? (typeof(T).Name + "s") : collectionName, tenantId);
+            IMongoCollection<T> collection = string.IsNullOrWhiteSpace(collectionName) ? GetCollection<T>() : GetCollection<T>(collectionName);
 
             var filter = Builders<T>.Filter.Eq("_id", id);
             var updateDefinition = new List<UpdateDefinition<T>>();
@@ -378,97 +378,97 @@ namespace Authentication.DomainService.Services
             await collection.UpdateOneAsync(filter, combinedUpdate);
         }
 
-        public async Task<AuthenticationConfiguration> GetAuthenticationConfigurationAsync(string? tenantId = null)
+        public async Task<AuthenticationConfiguration> GetAuthenticationConfigurationAsync()
         {
-            var collection = tenantId == null ? GetCollection<AuthenticationConfiguration>() : GetCollection<AuthenticationConfiguration>(tenantId);
+            var collection = GetCollection<AuthenticationConfiguration>();
             var filter = Builders<AuthenticationConfiguration>.Filter.Where(_ => true);
             return await (await collection.FindAsync(filter)).FirstOrDefaultAsync();
         }
 
-        public async Task UpdateAuthenticationConfigurationAsync(AuthenticationConfiguration authenticationConfiguration, string? tenantId = null)
+        public async Task UpdateAuthenticationConfigurationAsync(AuthenticationConfiguration authenticationConfiguration)
         {
-            var collection = tenantId == null ? GetCollection<AuthenticationConfiguration>() : GetCollection<AuthenticationConfiguration>(tenantId);
+            var collection = GetCollection<AuthenticationConfiguration>();
             var filter = Builders<AuthenticationConfiguration>.Filter.Eq("_id", authenticationConfiguration.ItemId);
             await collection.ReplaceOneAsync(filter, authenticationConfiguration);
         }
 
-        public async Task<OidcClientRegistration> GetOidcClientRegistrationAsync(string clientId, string? tenantId = null)
+        public async Task<OidcClientRegistration> GetOidcClientRegistrationAsync(string clientId)
         {
-            var collection = tenantId == null ? GetCollectionByName<OidcClientRegistration>(OidcClientRegistrationsCollectionName) : GetCollectionByName<OidcClientRegistration>(OidcClientRegistrationsCollectionName, tenantId);
+            var collection = GetCollectionByName<OidcClientRegistration>(OidcClientRegistrationsCollectionName);
             var filter = Builders<OidcClientRegistration>.Filter.Eq(x => x.ItemId, clientId);
             return await collection.Find(filter).FirstOrDefaultAsync();
         }
 
-        public async Task SaveOidcClientRegistrationAsync(OidcClientRegistration credential, string? tenantId = null)
+        public async Task SaveOidcClientRegistrationAsync(OidcClientRegistration credential)
         {
-            var collection = tenantId == null ? GetCollectionByName<OidcClientRegistration>(OidcClientRegistrationsCollectionName) : GetCollectionByName<OidcClientRegistration>(OidcClientRegistrationsCollectionName, tenantId);
+            var collection = GetCollectionByName<OidcClientRegistration>(OidcClientRegistrationsCollectionName);
             var result = await collection.ReplaceOneAsync(x => x.ItemId == credential.ItemId, credential, new ReplaceOptions { IsUpsert = true });
         }
 
-        public async Task<OidcClientRegistration> GetOIDCCredentialByIdAsync(string itemId, string? tenantId = null)
+        public async Task<OidcClientRegistration> GetOIDCCredentialByIdAsync(string itemId)
         {
-            var collection = tenantId == null ? GetCollectionByName<OidcClientRegistration>(OidcClientRegistrationsCollectionName) : GetCollectionByName<OidcClientRegistration>(OidcClientRegistrationsCollectionName, tenantId);
+            var collection = GetCollectionByName<OidcClientRegistration>(OidcClientRegistrationsCollectionName);
             var filter = Builders<OidcClientRegistration>.Filter.Eq(it => it.ItemId, itemId);
             return await (await collection.FindAsync(filter)).FirstOrDefaultAsync();
         }
 
-        public async Task<List<OidcClientRegistration>> GetOIDCCredentialsByTenantAsync(string? tenantId = null)
+        public async Task<List<OidcClientRegistration>> GetOIDCCredentialsByTenantAsync()
         {
-            var collection = tenantId == null ? GetCollectionByName<OidcClientRegistration>(OidcClientRegistrationsCollectionName) : GetCollectionByName<OidcClientRegistration>(OidcClientRegistrationsCollectionName, tenantId);
+            var collection = GetCollectionByName<OidcClientRegistration>(OidcClientRegistrationsCollectionName);
             var filter = Builders<OidcClientRegistration>.Filter.Empty;
             return await (await collection.FindAsync(filter)).ToListAsync();
         }
 
-        public async Task DeleteOidcCliantAsync(DeleteOIDCClientRequest request, string? tenantId = null)
+        public async Task DeleteOidcClientAsync(DeleteOIDCClientRequest request)
         {
-            var collection = tenantId == null ? GetCollectionByName<OidcClientRegistration>(OidcClientRegistrationsCollectionName) : GetCollectionByName<OidcClientRegistration>(OidcClientRegistrationsCollectionName, tenantId);
+            var collection = GetCollectionByName<OidcClientRegistration>(OidcClientRegistrationsCollectionName);
             var filter = Builders<OidcClientRegistration>.Filter.Eq(it => it.ItemId, request.ItemId);
             await collection.DeleteOneAsync(filter);
         }
 
-        public async Task<ClientCredential> GetClientCredentialByIdAsync(string clientId, string? tenantId = null)
+        public async Task<ClientCredential> GetClientCredentialByIdAsync(string clientId)
         {
-            var collection = tenantId == null ? GetCollection<ClientCredential>() : GetCollection<ClientCredential>(tenantId);
+            var collection = GetCollection<ClientCredential>();
             var filter = Builders<ClientCredential>.Filter.Eq(it => it.ItemId, clientId);
             return await (await collection.FindAsync(filter)).FirstOrDefaultAsync();
         }
 
-        public async Task<BiometricCredential> AuthenticateBiometricCredentialAsync(string biometricId, string biometricKey, string? tenantId = null)
+        public async Task<BiometricCredential> AuthenticateBiometricCredentialAsync(string biometricId, string biometricKey)
         {
-            var collection = tenantId == null ? GetCollection<BiometricCredential>() : GetCollection<BiometricCredential>(tenantId);
+            var collection = GetCollection<BiometricCredential>();
             var filter = Builders<BiometricCredential>.Filter.Where(it => it.BiometricId == biometricId && it.BiometriKey == biometricId);
             return await (await collection.FindAsync(filter)).FirstOrDefaultAsync();
         }
 
-        public async Task<UserCode> GetUserCodeAsync(string code, string? tenantId = null)
+        public async Task<UserCode> GetUserCodeAsync(string code)
         {
-            var collection = tenantId == null ? GetCollection<UserCode>() : GetCollection<UserCode>(tenantId);
+            var collection = GetCollection<UserCode>();
             var filter = Builders<UserCode>.Filter.Eq(it => it.Code, code);
             return await (await collection.FindAsync(filter)).FirstOrDefaultAsync();
         }
 
-        public async Task<BlocksClientConfig> GetBlocksClientAsync(string clientId, string? tenantId = null)
+        public async Task<BlocksClientConfig> GetBlocksClientAsync(string clientId)
         {
-            var collection = tenantId == null ? GetCollection<BlocksClientConfig>() : GetCollection<BlocksClientConfig>(tenantId);
+            var collection = GetCollection<BlocksClientConfig>();
             var filter = Builders<BlocksClientConfig>.Filter.Eq(it => it.ItemId, clientId);
             return await (await collection.FindAsync(filter)).FirstOrDefaultAsync();
         }
 
-        public async Task SaveUserCodeByClientAsync(UserCode userCode, string? tenantId = null)
+        public async Task SaveUserCodeByClientAsync(UserCode userCode)
         {
-            var collection = tenantId == null ? GetCollection<UserCode>() : GetCollection<UserCode>(tenantId);
+            var collection = GetCollection<UserCode>();
             var result = await collection.ReplaceOneAsync(x => x.ItemId == userCode.ItemId, userCode, new ReplaceOptions { IsUpsert = true });
         }
 
-        public async Task<List<GetUserCodesByUserIdResponse>> GetUserCodesByUserIdAsync(string userId, string? tenantId = null)
+        public async Task<List<GetUserCodesByUserIdResponse>> GetUserCodesByUserIdAsync(string userId)
         {
-            var collection = tenantId == null ? GetCollection<UserCode>() : GetCollection<UserCode>(tenantId);
+            var collection = GetCollection<UserCode>();
             var filter = Builders<UserCode>.Filter.Eq(it => it.UserId, userId);
             var userCodes = await (await collection.FindAsync(filter)).ToListAsync();
             return GetUserCodesByUserIdResponse(userCodes);
         }
 
-        private List<GetUserCodesByUserIdResponse> GetUserCodesByUserIdResponse(List<UserCode> userCodes, string? tenantId = null)
+        private List<GetUserCodesByUserIdResponse> GetUserCodesByUserIdResponse(List<UserCode> userCodes)
         {
             return userCodes.Select(x => new GetUserCodesByUserIdResponse
             {
@@ -483,34 +483,34 @@ namespace Authentication.DomainService.Services
             }).ToList();
         }
 
-        public async Task<BaseResponse> SaveClientCredentialAsync(ClientCredential clientCredential, string? tenantId = null)
+        public async Task<BaseResponse> SaveClientCredentialAsync(ClientCredential clientCredential)
         {
-            var collection = tenantId == null ? GetCollection<ClientCredential>() : GetCollection<ClientCredential>(tenantId);
+            var collection = GetCollection<ClientCredential>();
             var result = await collection.ReplaceOneAsync(x => x.ItemId == clientCredential.ItemId, clientCredential, new ReplaceOptions { IsUpsert = true });
             return new BaseResponse { IsSuccess = result.IsAcknowledged };
         }
 
-        public async Task DeleteClientCredentialAsync(DeleteClientCredentialRequest request, string? tenantId = null)
+        public async Task DeleteClientCredentialAsync(DeleteClientCredentialRequest request)
         {
-            var collection = tenantId == null ? GetCollection<ClientCredential>() : GetCollection<ClientCredential>(tenantId);
+            var collection = GetCollection<ClientCredential>();
             var filter = Builders<ClientCredential>.Filter.Eq(it => it.ItemId, request.ItemId);
             await collection.DeleteOneAsync(filter);
         }
 
-        public async Task<List<ClientCredential>> GetClientCredentialsAsync(string? tenantId = null)
+        public async Task<List<ClientCredential>> GetClientCredentialsAsync()
         {
-            var collection = tenantId == null ? GetCollection<ClientCredential>() : GetCollection<ClientCredential>(tenantId);
+            var collection = GetCollection<ClientCredential>();
             var filter = Builders<ClientCredential>.Filter.Where(_ => true);
             var cursor = await collection.FindAsync(filter);
             return await cursor.ToListAsync();
         }
 
         // Impersonation session methods
-        public async Task<bool> InsertImpersonationSessionAsync(ImpersonationSession session, string? tenantId = null)
+        public async Task<bool> InsertImpersonationSessionAsync(ImpersonationSession session)
         {
             try
             {
-                var collection = tenantId == null ? GetCollection<ImpersonationSession>() : GetCollection<ImpersonationSession>(tenantId);
+                var collection = GetCollection<ImpersonationSession>();
                 await collection.InsertOneAsync(session);
                 return true;
             }
@@ -521,16 +521,16 @@ namespace Authentication.DomainService.Services
             }
         }
 
-        public async Task<ImpersonationSession?> GetImpersonationSessionByIdAsync(string sessionId, string? tenantId = null)
+        public async Task<ImpersonationSession?> GetImpersonationSessionByIdAsync(string sessionId)
         {
-            var collection = tenantId == null ? GetCollection<ImpersonationSession>() : GetCollection<ImpersonationSession>(tenantId);
+            var collection = GetCollection<ImpersonationSession>();
             var filter = Builders<ImpersonationSession>.Filter.Eq(x => x.Id, sessionId);
             return await collection.Find(filter).FirstOrDefaultAsync();
         }
 
-        public async Task<List<ImpersonationSession>> GetActiveImpersonationSessionsByUserIdAsync(string userId, string? tenantId = null)
+        public async Task<List<ImpersonationSession>> GetActiveImpersonationSessionsByUserIdAsync(string userId)
         {
-            var collection = tenantId == null ? GetCollection<ImpersonationSession>() : GetCollection<ImpersonationSession>(tenantId);
+            var collection = GetCollection<ImpersonationSession>();
             var filter = Builders<ImpersonationSession>.Filter.And(
                 Builders<ImpersonationSession>.Filter.Eq(x => x.UserId, userId),
                 Builders<ImpersonationSession>.Filter.Eq(x => x.Status, "active")
@@ -539,11 +539,11 @@ namespace Authentication.DomainService.Services
             return await cursor.ToListAsync();
         }
 
-        public async Task<bool> UpdateImpersonationSessionAsync(string sessionId, Dictionary<string, object> updates, string? tenantId = null)
+        public async Task<bool> UpdateImpersonationSessionAsync(string sessionId, Dictionary<string, object> updates)
         {
             try
             {
-                var collection = tenantId == null ? GetCollection<ImpersonationSession>() : GetCollection<ImpersonationSession>(tenantId);
+                var collection = GetCollection<ImpersonationSession>();
                 var filter = Builders<ImpersonationSession>.Filter.Eq(x => x.Id, sessionId);
 
                 var updateDefinition = Builders<ImpersonationSession>.Update;
