@@ -51,14 +51,14 @@ namespace Api.Controllers
         #region Activity
 
         [HttpGet("sessions")]
-        [ProtectedEndPoint("blocks-idp::get-sessions")]
+        //[ProtectedEndPoint("blocks-idp::get-sessions")]
         public async Task<GetSessionsResponse> GetSessions([FromQuery] BaseActivityRequest query)
         {
             return await _userActivityService.GetSessionsAsync(query);
         }
 
         [HttpGet("history")]
-        [ProtectedEndPoint("blocks-idp::get-histories")]
+        //[ProtectedEndPoint("blocks-idp::get-histories")]
         public async Task<GetHistorysResponse> GetHistories([FromQuery] BaseActivityRequest query)
         {
             return await _userActivityService.GetHistoriesAsync(query);
@@ -69,7 +69,7 @@ namespace Api.Controllers
         #region Resource
 
         [HttpPost("permissions/create")]
-        [ProtectedEndPoint("blocks-idp::create-permission")]
+        //[ProtectedEndPoint("blocks-idp::create-permission")]
         public async Task<IActionResult> CreatePermission([FromBody] CreatePermissionRequest command)
         {
             var result = await _resourceMutationService.CreatePermissionAsync(command);
@@ -77,7 +77,7 @@ namespace Api.Controllers
         }
 
         [HttpPost("permissions/{id}")]
-        [ProtectedEndPoint("blocks-idp::update-permission")]
+        //[ProtectedEndPoint("blocks-idp::update-permission")]
         public async Task<IActionResult> UpdatePermission([FromRoute] string id, [FromBody] UpdatePermissionRequest command)
         {
             command.ItemId = id;
@@ -86,7 +86,7 @@ namespace Api.Controllers
         }
 
         [HttpPost("roles/create")]
-        [ProtectedEndPoint("blocks-idp::create-role")]
+        //[ProtectedEndPoint("blocks-idp::create-role")]
         public async Task<IActionResult> CreateRole([FromBody] CreateRoleRequest command)
         {
             var result = await _resourceMutationService.CreateRoleAsync(command);
@@ -94,7 +94,7 @@ namespace Api.Controllers
         }
 
         [HttpPost("roles/{id}")]
-        [ProtectedEndPoint("blocks-idp::update-role")]
+        //[ProtectedEndPoint("blocks-idp::update-role")]
         public async Task<IActionResult> UpdateRole([FromRoute] string id, [FromBody] UpdateRoleRequest command)
         {
             command.ItemId = id;
@@ -103,7 +103,7 @@ namespace Api.Controllers
         }
 
         [HttpPost("permissions")]
-        [ProtectedEndPoint("blocks-idp::get-permissions")]
+        //[ProtectedEndPoint("blocks-idp::get-permissions")]
         public async Task<GetPermissionsResponse> GetPermissions([FromBody] GetPermissionsRequest query)
         {
             return await _resourceQueryService.GetPermissionsAsync(query);
@@ -117,28 +117,28 @@ namespace Api.Controllers
         }
 
         [HttpGet("permissions/{id}")]
-        [ProtectedEndPoint("blocks-idp::get-permission")]
+        //[ProtectedEndPoint("blocks-idp::get-permission")]
         public async Task<GetPermissionResponse> GetPermission([FromRoute] string id)
         {
             return await _resourceQueryService.GetPermissionAsync(id);
         }
 
         [HttpPost("roles")]
-        [ProtectedEndPoint("blocks-idp::get-roles")]
+        //[ProtectedEndPoint("blocks-idp::get-roles")]
         public async Task<GetRolesResponse> GetRoles([FromBody] GetRolesRequest query)
         {
             return await _resourceQueryService.GetRolesAsync(query);
         }
 
         [HttpGet("roles/{id}")]
-        [ProtectedEndPoint("blocks-idp::get-role")]
+        //[ProtectedEndPoint("blocks-idp::get-role")]
         public async Task<GetRoleResponse> GetRole([FromRoute] string id)
         {
             return await _resourceQueryService.GetRoleAsync(id);
         }
 
         [HttpPost("roles/assign-permissions")]
-        [ProtectedEndPoint("blocks-idp::assign-roles-to-permission")]
+        //[ProtectedEndPoint("blocks-idp::assign-roles-to-permission")]
         public async Task<IActionResult> SetRoles([FromBody] SetRolesRequest command)
         {
             var result = await _resourceMutationService.SetRolesAsync(command);
@@ -146,7 +146,7 @@ namespace Api.Controllers
         }
 
         [HttpPost("permissions/assign-org")]
-        [ProtectedEndPoint("blocks-idp::assign-permissions-to-organization")]
+        //[ProtectedEndPoint("blocks-idp::assign-permissions-to-organization")]
         public async Task<IActionResult> AssignPermissionsToOrganization([FromBody] AssignPermissionsToOrganizationRequest command)
         {
             var result = await _resourceMutationService.AssignPermissionsToOrganizationAsync(command);
@@ -154,7 +154,7 @@ namespace Api.Controllers
         }
 
         [HttpPost("roles/assign-org")]
-        [ProtectedEndPoint("blocks-idp::assign-roles-to-organization")]
+        //[ProtectedEndPoint("blocks-idp::assign-roles-to-organization")]
         public async Task<IActionResult> AssignRolesToOrganization([FromBody] AssignRolesToOrganizationRequest command)
         {
             var result = await _resourceMutationService.AssignRolesToOrganizationAsync(command);
@@ -162,7 +162,7 @@ namespace Api.Controllers
         }
 
         [HttpGet("resource-groups")]
-        [ProtectedEndPoint("blocks-idp::get-resource-groups")]
+        //[ProtectedEndPoint("blocks-idp::get-resource-groups")]
         public async Task<List<GetResourceGroupResponse>> GetResourceGroups([FromQuery] GetResourceGroupRequest request)
         {
             return await _resourceQueryService.GetResourceGroupsAsync();
@@ -173,7 +173,7 @@ namespace Api.Controllers
         #region User
 
         [HttpPost("users/create")]
-        [ProtectedEndPoint("blocks-idp::create-user")]
+        //[ProtectedEndPoint("blocks-idp::create-user")]
         public async Task<IActionResult> Create([FromBody] CreateUserRequest command)
         {
             var result = await _userManagementMutationService.CreateUserAsync(command);
@@ -181,7 +181,7 @@ namespace Api.Controllers
         }
 
         [HttpPost("users/{id}")]
-        [ProtectedEndPoint("blocks-idp::update-user")]
+        //[ProtectedEndPoint("blocks-idp::update-user")]
         public async Task<IActionResult> Update([FromRoute] string id, [FromBody] UpdateUserRequest command)
         {
             command.ItemId = id;
@@ -198,14 +198,14 @@ namespace Api.Controllers
         }
 
         [HttpGet("users")]
-        [ProtectedEndPoint("blocks-idp::get-users")]
+        //[ProtectedEndPoint("blocks-idp::get-users")]
         public async Task<GetUsersResponse> GetUsers([FromQuery] GetUsersRequest query)
         {
             return await _userManagementQueryService.GetUsersAsync(query);
         }
 
         [HttpGet("users/{id}")]
-        [ProtectedEndPoint("blocks-idp::get-user")]
+        //[ProtectedEndPoint("blocks-idp::get-user")]
         public async Task<GetUserResponse> GetUser([FromRoute] string id)
         {
             return await _userManagementQueryService.GetUserAsync(id);
@@ -231,7 +231,7 @@ namespace Api.Controllers
         }
 
         [HttpPost("users/roles-and-permissions")]
-        [ProtectedEndPoint("blocks-idp::role-and-permission-management")]
+        //[ProtectedEndPoint("blocks-idp::role-and-permission-management")]
         public async Task<IActionResult> SaveRolesAndPermissions(SaveRolesAndPermissionsRequest command)
         {
             var result = await _userManagementMutationService.SaveRolesAndPermissionsAsync(command);
@@ -239,7 +239,7 @@ namespace Api.Controllers
         }
 
         [HttpPost("users/org-update")]
-        [ProtectedEndPoint("blocks-idp::update-organization-user")]
+        //[ProtectedEndPoint("blocks-idp::update-organization-user")]
         public async Task<IActionResult> UpdateOrganizationUser(UpdateOrganizationUserRequest command)
         {
             var result = await _userManagementMutationService.UpdateOrganizationUserAsync(command);
@@ -257,7 +257,7 @@ namespace Api.Controllers
         }
 
         [HttpGet("users/timeline")]
-        [ProtectedEndPoint("blocks-idp::users-timeline")]
+        //[ProtectedEndPoint("blocks-idp::users-timeline")]
         public async Task<List<UserTimeline>> GetUserTimelines(GetUserTimeLineRequest request)
         {
             return await _userManagementQueryService.GetUserTimelinesAsync(request);
@@ -310,7 +310,7 @@ namespace Api.Controllers
         }
 
         [HttpPost("signup-settings")]
-        [ProtectedEndPoint("blocks-idp::save-signup-setting")]
+        //[ProtectedEndPoint("blocks-idp::save-signup-setting")]
         public async Task<SaveSignUpSettingResponse> SaveSignUpSetting([FromBody] SaveSignUpSettingRequest request)
         {
             return await _accountService.SaveSignUpSettingAsync(request);
@@ -325,7 +325,7 @@ namespace Api.Controllers
         #endregion
         #region Cloud configuration
         [HttpPost("config")]
-        [ProtectedEndPoint("blocks-idp::save-iam-configuration")]
+        //[ProtectedEndPoint("blocks-idp::save-iam-configuration")]
         public async Task<IActionResult> Save([FromBody] SaveIamConfigurationRequest request)
         {
             var result = await _configurationService.SaveIamConfigurationAsync(request);
@@ -333,7 +333,7 @@ namespace Api.Controllers
         }
 
         [HttpGet("config")]
-        [ProtectedEndPoint("blocks-idp::get-iam-configuration")]
+        //[ProtectedEndPoint("blocks-idp::get-iam-configuration")]
         public async Task<GetConfigurationResponse> Get([FromQuery] GetAuthenticationConfigurationRequest request)
         {
             return await _configurationService.GetIamConfigurationAsync();
