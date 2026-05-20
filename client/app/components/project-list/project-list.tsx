@@ -27,7 +27,7 @@ export function ProjectList({ collapsed = false }: { collapsed?: boolean }) {
   const navigate = useNavigate();
   const { pathname } = useLocation();
   const { data: projectGroups = [], isLoading } = useGetProjects();
-  const { selectedProject, setSelectedProject } = useProjectStore();
+  const { selectedProject, setSelectedProject, projects: storedProjects } = useProjectStore();
   const { data: projectData } = useGetProject({ projectId: selectedProject?.itemId || "" });
   const pendingProjectRef = useRef<IProject | null>(null);
   const redirectRegexMap = useMemo(
@@ -55,8 +55,9 @@ export function ProjectList({ collapsed = false }: { collapsed?: boolean }) {
     }
     setSelectedProject(project);
   };
-  const name = projectData?.data.name || selectedProject?.name;
-  const projects = projectGroups.map((group) => group.projects[0]).filter(Boolean);
+  const name = projectData?.data?.name || selectedProject?.name;
+  const queryProjects = projectGroups.flatMap((group) => group.projects).filter(Boolean);
+  const projects = queryProjects.length > 0 ? queryProjects : storedProjects.filter(Boolean);
   return (
     <DropdownMenu>
       {collapsed ? (
@@ -85,20 +86,22 @@ export function ProjectList({ collapsed = false }: { collapsed?: boolean }) {
         className={collapsed ? "min-w-48" : "w-[--radix-dropdown-menu-trigger-width]"}
       >
         <DropdownMenuLabel>Your Projects</DropdownMenuLabel>
-        {projects
-          .filter((project) => project.itemId !== selectedProject?.itemId)
-          .slice(0, 5)
-          .map((project) => (
-            <DropdownMenuItem key={project.itemId} onSelect={() => handleProjectSelect(project)}>
-              {isLoading ? (
-                <div className="flex w-full items-center justify-center py-2">
-                  <Loader size={16} className="animate-spin text-gray-400" />
-                </div>
-              ) : (
+        {isLoading ? (
+          <DropdownMenuItem disabled>
+            <div className="flex w-full items-center justify-center py-1">
+              <Loader size={16} className="animate-spin text-gray-400" />
+            </div>
+          </DropdownMenuItem>
+        ) : (
+          projects
+            .filter((project) => project.itemId !== selectedProject?.itemId)
+            .slice(0, 5)
+            .map((project) => (
+              <DropdownMenuItem key={project.itemId} onSelect={() => handleProjectSelect(project)}>
                 <span>{project.name}</span>
-              )}
-            </DropdownMenuItem>
-          ))}
+              </DropdownMenuItem>
+            ))
+        )}
         <DropdownMenuSeparator />
         <DropdownMenuItem disabled>Project overview is not part of this client</DropdownMenuItem>
       </DropdownMenuContent>
