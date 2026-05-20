@@ -11,6 +11,7 @@ import { useImpersonateStore } from "@/store/impersonate-store";
 import { useProjectStore } from "@/store/useProjectStore";
 import { ImpersonationRequest } from "@/services/impersonation.service";
 import { getRuntimeEnv } from "@/lib/runtime-env";
+import { useGetProjects } from "@/hooks/use-project";
 
 export function ProtectedGuard({ children }: { children: React.ReactNode }) {
   const { isMounted } = useAppState();
@@ -32,6 +33,7 @@ export function ImpersonateGuard({ children }: { children: React.ReactNode }) {
   const { mutate: startImpersonationMutate } = useStartImpersonation();
   const { mutate: stopImpersonationMutate } = useStopImpersonation();
 
+  const { isLoading: isProjectsLoading } = useGetProjects();
   const { selectedProject } = useProjectStore();
 
   const [ready, setReady] = useState(false);
@@ -41,6 +43,7 @@ export function ImpersonateGuard({ children }: { children: React.ReactNode }) {
   });
 
   useEffect(() => {
+    if (isProjectsLoading) return;
     if (!selectedProject?.tenantId) return;
     if (impersonateRef.current.hasStarted) return;
 
@@ -78,6 +81,7 @@ export function ImpersonateGuard({ children }: { children: React.ReactNode }) {
       });
     };
   }, [
+    isProjectsLoading,
     selectedProject?.tenantId,
     startImpersonationMutate,
     stopImpersonationMutate,
