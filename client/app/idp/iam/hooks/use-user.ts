@@ -64,7 +64,7 @@ export const useGetMe = (options?: { enabled?: boolean }) => {
     queryKey: ["user"],
     queryFn: async () => {
       const user = await userService.me();
-      authStore.setUser(user.data);
+      if (user.data) authStore.setUser(user.data);
       return user;
     },
     ...options,
