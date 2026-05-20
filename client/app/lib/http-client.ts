@@ -153,7 +153,7 @@ class HttpClient {
           resolve: resolve as (value: unknown | PromiseLike<unknown>) => void,
           reject,
         });
-        // if (!isChangingImpersonation) this.changeExecutionContext();
+        if (!isChangingImpersonation) this.changeExecutionContext();
       });
     }
 
@@ -193,7 +193,7 @@ class HttpClient {
             resolve: resolve as (value: unknown | PromiseLike<unknown>) => void,
             reject,
           });
-          // if (!isChangingImpersonation) this.changeExecutionContext();
+          if (!isChangingImpersonation) this.changeExecutionContext();
         });
       }
       if (response.status === 401 && !skipTokenRotation) {
@@ -288,26 +288,29 @@ class HttpClient {
     }
   }
 
-  // private async changeExecutionContext() {
-  //   if (isChangingImpersonation) return;
-  //   try {
-  //     isChangingImpersonation = true;
-  //     const tenantId =
-  //       useProjectStore.getState().selectedProject?.tenantId || this.BLOCKS_KEY;
-  //     const executionContextId = await this.getExecutionContext(tenantId);
-  //     useExecutionContextStore
-  //       .getState()
-  //       .setContext({ tenantId, contextId: executionContextId });
+  private async changeExecutionContext() {
+    if (isChangingImpersonation) return;
+    try {
+      isChangingImpersonation = true;
+      const tenantId =
+        useProjectStore.getState().selectedProject?.tenantId || this.BLOCKS_KEY;
+      const executionContextId = await this.getExecutionContext(tenantId);
+      useExecutionContextStore
+        .getState()
+        .setContext({ tenantId, contextId: executionContextId });
 
-  //     while (changeImpersonationRequestQueue.length > 0) {
-  //       const { url, requestOption, resolve, reject } =
-  //         changeImpersonationRequestQueue.shift()!;
-  //       this.request(url, requestOption).then(resolve).catch(reject);
-  //     }
-  //   } catch (error) {
-  //     this.resetApp();
-  //   }
-  // }
+      isChangingImpersonation = false;
+
+      while (changeImpersonationRequestQueue.length > 0) {
+        const { url, requestOption, resolve, reject } =
+          changeImpersonationRequestQueue.shift()!;
+        this.request(url, requestOption).then(resolve).catch(reject);
+      }
+    } catch (error) {
+      isChangingImpersonation = false;
+      this.resetApp();
+    }
+  }
 
   private async resetApp() {
     isRefreshing = false;
