@@ -667,7 +667,7 @@ namespace Authentication.DomainService.Authentication
                 return new UnauthorizedObjectResult(new { error = "invalid_user" });
             }
 
-            var user = await _authenticationRepository.GetUserByIdAsync(bc.UserId, bc.OriginalTenantId ?? bc.TenantId);
+            var user = await _authenticationRepository.GetUserByIdAsync(bc.UserId);
             if (user == null)
             {
                 return new UnauthorizedObjectResult(new { error = "invalid_user" });
@@ -705,12 +705,12 @@ namespace Authentication.DomainService.Authentication
                 return new UnauthorizedObjectResult(new { error = "session_expired" });
             }
 
-            var authConfiguration = await _authenticationRepository.GetAuthenticationConfigurationAsync(bc.OriginalTenantId ?? bc.TenantId);
+            var authConfiguration = await _authenticationRepository.GetAuthenticationConfigurationAsync();
             // Check for organization switch within existing impersonation
 
             if (httpRequest.Cookies.TryGetValue(ImpersonationIdCookieName, out var existingSessionId) && !string.IsNullOrWhiteSpace(existingSessionId))
             {
-                var existingSession = await _authenticationRepository.GetImpersonationSessionByIdAsync(existingSessionId, bc.OriginalTenantId ?? bc.TenantId);
+                var existingSession = await _authenticationRepository.GetImpersonationSessionByIdAsync(existingSessionId);
                 if (existingSession != null && existingSession.Status == "active" &&
                     string.Equals(existingSession.TargetTenantId, request.TargetTenantId, StringComparison.OrdinalIgnoreCase))
                 {

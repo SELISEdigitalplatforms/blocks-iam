@@ -51,7 +51,7 @@ namespace Authentication.DomainService.Shared.Services
             string newOrganizationId)
         {
             var bc = BlocksContext.GetContext();
-            var session = await _repository.GetImpersonationSessionByIdAsync(impersonationSessionId, bc.OriginalTenantId ?? bc.TenantId);
+            var session = await _repository.GetImpersonationSessionByIdAsync(impersonationSessionId);
             if (session == null || session.Status != "active")
             {
                 return false;
@@ -59,8 +59,8 @@ namespace Authentication.DomainService.Shared.Services
 
             var updates = new Dictionary<string, object>
             {
-                { "organizationId", newOrganizationId ?? "default" },
-                { "lastActivity", DateTime.UtcNow }
+                { "OrganizationId", newOrganizationId ?? "default" },
+                { "LastActivity", DateTime.UtcNow }
             };
 
             return await _repository.UpdateImpersonationSessionAsync(impersonationSessionId, updates);
@@ -90,7 +90,7 @@ namespace Authentication.DomainService.Shared.Services
             };
             var bc = BlocksContext.GetContext();
 
-            var dbInsertSuccess = await _repository.InsertImpersonationSessionAsync(impersonationSession, bc.OriginalTenantId ?? bc.TenantId);
+            var dbInsertSuccess = await _repository.InsertImpersonationSessionAsync(impersonationSession);
             if (!dbInsertSuccess)
             {
                 throw new InvalidOperationException("Failed to create impersonation session in database");
