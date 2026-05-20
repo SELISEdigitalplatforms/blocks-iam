@@ -10,12 +10,12 @@ import {
   Users,
   Lock,
   Fingerprint,
-  ScrollText,
   type LucideIcon,
 } from "lucide-react";
-import { Link } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 import { ModeToggle } from "@/components/mode-toggle/mode-toggle";
 import { ServiceCarousel } from "@/components/service-carousel";
+import { useAuthStore } from "@/store/useAuthStore";
 const pillars = [
   { icon: ShieldCheck, label: "Single Sign-On" },
   { icon: Fingerprint, label: "Multi-Factor Auth" },
@@ -26,6 +26,12 @@ const pillars = [
 export default function LoginSimplePage() {
   const [isStarting, setIsStarting] = useState(false);
   const [titleNumber, setTitleNumber] = useState(0);
+  const { isAuthenticated } = useAuthStore();
+  const navigate = useNavigate();
+
+  useEffect(() => {
+    if (isAuthenticated) navigate("/services/authentication/users", { replace: true });
+  }, [isAuthenticated, navigate]);
   const titles = useMemo(
     () => ["observable", "intelligent", "scalable", "resilient", "secure"],
     [],
@@ -58,6 +64,12 @@ export default function LoginSimplePage() {
       if (blocksKey) headers["X-Blocks-Key"] = blocksKey;
 
       const response = await fetch(initiateUrl.toString(), { headers });
+
+      if (response.status === 400) {
+        window.location.href = "/services/authentication/users";
+        return;
+      }
+
       const data = await response.json();
 
       if (data.redirect_uri) {
