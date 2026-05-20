@@ -1,4 +1,4 @@
-import LoadingSpinner from "@/components/loader-spinner/loader-spinner";
+import LogoLoadingSpinner from "@/components/loader-spinner/loader-spinner";
 import { cn } from "@/lib/utils";
 import { LoginOption } from "@blocks-idp/authentication/models/auth.model";
 import { SSOSigninCard } from "@blocks-idp/authentication/components/sso-signin-card";
@@ -65,11 +65,7 @@ export const SsoSignin = ({ loginOption, mode = "default", oidcContext }: SsoSig
         ))}
       </div>
 
-      {isPending && (
-        <div className="fixed bottom-0 left-0 right-0 top-0 flex items-center justify-center bg-muted opacity-70">
-          <LoadingSpinner size={48} color="text-primary" />
-        </div>
-      )}
+      {isPending && <LogoLoadingSpinner size={48} />}
     </>
   );
 };
@@ -81,7 +77,7 @@ export const SsoSignin = ({ loginOption, mode = "default", oidcContext }: SsoSig
 
 
 
-// import LoadingSpinner from "@/components/loader-spinner/loader-spinner";
+// import LogoLoadingSpinner from "@/components/loader-spinner/loader-spinner";
 // import { cn } from "@/lib/utils";
 // import { LoginOption } from "@blocks-identifier/models/project.model";
 // import { SSOSigninCard } from "@blocks-idp/authentication/components/sso-signin-card";
