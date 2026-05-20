@@ -48,21 +48,11 @@ export default function LoginSimplePage() {
       if (isStarting) return;
       setIsStarting(true);
 
-      // const blocksKey = getRuntimeEnv("BLOCKS_X_BLOCKS_KEY");
-      // const clientId = getRuntimeEnv("BLOCKS_OIDC_CLIENT_ID");
+      const blocksKey = getRuntimeEnv("BLOCKS_X_BLOCKS_KEY");
+      const clientId = getRuntimeEnv("BLOCKS_OIDC_CLIENT_ID");
 
-       const blocksKey ="***REMOVED***";
-      const clientId = "a5831e15-e193-4a4f-8e10-d04a4ad1705b";
-
-      const meResponse = await fetch("/api/iam/me", {
-        headers: { "X-Blocks-Key": blocksKey },
-        credentials: "include",
-      });
-      if (meResponse.ok) {
-        window.location.href = "/services/authentication/users";
-        return;
-      }
-
+      //  const blocksKey ="***REMOVED***";
+      // const clientId = "a5831e15-e193-4a4f-8e10-d04a4ad1705b";
       // const initiateUrl = `/api/idp/initiate?x-blocks-key=${blocksKey}&clientId=${clientId}`;
 
 

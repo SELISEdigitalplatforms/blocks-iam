@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useAuthStore } from "@/store/useAuthStore";
 import {
+  useImpersonationStatusChecker,
   useStartImpersonation,
   useStopImpersonation,
 } from "@/hooks/use-impersonation";
@@ -94,3 +95,24 @@ export function ImpersonateGuard({ children }: { children: React.ReactNode }) {
 
   return <>{children}</>;
 }
+
+export const ImpersonationChecker = ({
+  children,
+}: {
+  children: React.ReactNode;
+}) => {
+  const { data, isLoading, isSuccess } = useImpersonationStatusChecker();
+  const { setImpersonation } = useImpersonateStore();
+ 
+  useEffect(() => {
+    if (!data) return;
+    setImpersonation(
+      data.impersonated,
+      data.originalTenantId,
+      data.impersonated ? data.impersonatedTenantId : null,
+    );
+  }, [data, setImpersonation]);
+  if (isLoading || !isSuccess) return null;
+  return <>{children}</>;
+};
+ 
