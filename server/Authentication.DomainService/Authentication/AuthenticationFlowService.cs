@@ -484,7 +484,8 @@ namespace Authentication.DomainService.Authentication
         {
             try
             {
-                var collection = _authenticationRepository.GetCollectionByName<BsonDocument>("ProjectPeoples");
+                var bc = BlocksContext.GetContext();
+                var collection = _authenticationRepository.GetCollectionByName<BsonDocument>("ProjectPeoples", bc.OrganizationId ?? bc.TenantId);
                 var filter = Builders<BsonDocument>.Filter.And(
                     Builders<BsonDocument>.Filter.Eq("UserId", userId),
                     Builders<BsonDocument>.Filter.Eq("TenantId", targetTenantId)
@@ -569,7 +570,7 @@ namespace Authentication.DomainService.Authentication
 
         }
 
-        private async Task WriteImpersonationAuditEventAsync(HttpRequest httpRequest, string eventType, string? userId, string? targetTenantId, string severity, string status, string? rootTenantId = null)
+        private async Task WriteImpersonationAuditEventAsync(HttpRequest httpRequest, string eventType, string userId, string targetTenantId, string severity, string status, string rootTenantId)
         {
             try
             {
@@ -577,7 +578,7 @@ namespace Authentication.DomainService.Authentication
                 {
                     EventType = eventType,
                     UserId = userId,
-                    TenantId = rootTenantId ?? BlocksContext.GetContext()?.TenantId,
+                    TenantId = rootTenantId,
                     Severity = severity,
                     Status = status,
                     Timestamp = DateTime.UtcNow,
@@ -586,7 +587,7 @@ namespace Authentication.DomainService.Authentication
                     Details = string.IsNullOrWhiteSpace(targetTenantId) ? null : $"target_tenant={targetTenantId}"
                 };
 
-                await _auditLogRepo.CreateAsync(entry);
+                await _auditLogRepo.CreateAsync(entry, rootTenantId);
             }
             catch (Exception ex)
             {
@@ -666,7 +667,7 @@ namespace Authentication.DomainService.Authentication
                 return new UnauthorizedObjectResult(new { error = "invalid_user" });
             }
 
-            var user = await _authenticationRepository.GetUserByIdAsync(bc.UserId);
+            var user = await _authenticationRepository.GetUserByIdAsync(bc.UserId, bc.OriginalTenantId ?? bc.TenantId);
             if (user == null)
             {
                 return new UnauthorizedObjectResult(new { error = "invalid_user" });
@@ -704,12 +705,12 @@ namespace Authentication.DomainService.Authentication
                 return new UnauthorizedObjectResult(new { error = "session_expired" });
             }
 
-            var authConfiguration = await _authenticationRepository.GetAuthenticationConfigurationAsync();
+            var authConfiguration = await _authenticationRepository.GetAuthenticationConfigurationAsync(bc.OriginalTenantId ?? bc.TenantId);
             // Check for organization switch within existing impersonation
 
             if (httpRequest.Cookies.TryGetValue(ImpersonationIdCookieName, out var existingSessionId) && !string.IsNullOrWhiteSpace(existingSessionId))
             {
-                var existingSession = await _authenticationRepository.GetImpersonationSessionByIdAsync(existingSessionId);
+                var existingSession = await _authenticationRepository.GetImpersonationSessionByIdAsync(existingSessionId, bc.OriginalTenantId ?? bc.TenantId);
                 if (existingSession != null && existingSession.Status == "active" &&
                     string.Equals(existingSession.TargetTenantId, request.TargetTenantId, StringComparison.OrdinalIgnoreCase))
                 {
@@ -902,7 +903,7 @@ namespace Authentication.DomainService.Authentication
 
             if (session == null || string.IsNullOrWhiteSpace(rootRefreshToken))
             {
-                await WriteImpersonationAuditEventAsync(httpRequest, "impersonation_stop_failed", bc.UserId, null, "WARN", "session_not_found");
+                await WriteImpersonationAuditEventAsync(httpRequest, "impersonation_stop_failed", bc.UserId, null, "WARN", "session_not_found", rootTenant.TenantId);
                 ClearImpersonationCookies(httpResponse, rootDomain, rootCookieDomain);
                 return new UnauthorizedObjectResult(new { error = "session_expired" });
             }
@@ -933,7 +934,7 @@ namespace Authentication.DomainService.Authentication
             var rootUser = !string.IsNullOrWhiteSpace(bc.UserId) ? await _authenticationRepository.GetUserByIdAsync(bc.UserId) : null;
             if (rootUser == null)
             {
-                await WriteImpersonationAuditEventAsync(httpRequest, "impersonation_stop_failed", bc.UserId, session.TargetTenantId, "WARN", "root_user_not_found");
+                await WriteImpersonationAuditEventAsync(httpRequest, "impersonation_stop_failed", bc.UserId, session.TargetTenantId, "WARN", "root_user_not_found", rootTenant.TenantId);
                 ClearImpersonationCookies(httpResponse, rootDomain, rootCookieDomain);
                 return new BadRequestObjectResult(new { error = "session_expired" });
             }
@@ -941,7 +942,7 @@ namespace Authentication.DomainService.Authentication
             var tokenResponse = await _oAuthJwtAccessTokenManager.ManageTokenAsync(tokenRequest, configuration, rootUser);
             if (!string.IsNullOrWhiteSpace(tokenResponse.Error))
             {
-                await WriteImpersonationAuditEventAsync(httpRequest, "impersonation_stop_failed", bc.UserId, session.TargetTenantId, "WARN", tokenResponse.Error);
+                await WriteImpersonationAuditEventAsync(httpRequest, "impersonation_stop_failed", bc.UserId, session.TargetTenantId, "WARN", tokenResponse.Error, rootTenant.TenantId);
                 ClearImpersonationCookies(httpResponse, rootDomain, rootCookieDomain);
                 return new BadRequestObjectResult(new { error = tokenResponse.Error });
             }
@@ -962,7 +963,7 @@ namespace Authentication.DomainService.Authentication
                 _logger.LogWarning(ex, "Failed to cleanup impersonation session {SessionId}", impersonationSessionId);
             }
 
-            await WriteImpersonationAuditEventAsync(httpRequest, "impersonation_stopped", bc.UserId, session.TargetTenantId, "INFO", "success");
+            await WriteImpersonationAuditEventAsync(httpRequest, "impersonation_stopped", bc.UserId, session.TargetTenantId, "INFO", "success", rootTenant.TenantId);
 
             var cookiesSet = AppendCookies(tokenResponse, httpResponse, rootDomain);
             if (!cookiesSet)
