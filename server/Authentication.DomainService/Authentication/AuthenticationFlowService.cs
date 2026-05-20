@@ -474,9 +474,7 @@ namespace Authentication.DomainService.Authentication
                 return false;
             }
 
-            var blocksContext = BlocksContext.GetContext();
-            var tenantId = blocksContext.Impersonated ? blocksContext.OriginalTenantId : blocksContext.TenantId;
-            var oidcClient = await _authenticationRepository.GetOidcClientRegistrationAsync(clientId, tenantId);
+            var oidcClient = await _authenticationRepository.GetOidcClientRegistrationAsync(clientId);
             return oidcClient != null;
         }
 
@@ -484,8 +482,7 @@ namespace Authentication.DomainService.Authentication
         {
             try
             {
-                var bc = BlocksContext.GetContext();
-                var collection = _authenticationRepository.GetCollectionByName<BsonDocument>("ProjectPeoples", bc.OrganizationId ?? bc.TenantId);
+                var collection = _authenticationRepository.GetCollectionByName<BsonDocument>("ProjectPeoples");
                 var filter = Builders<BsonDocument>.Filter.And(
                     Builders<BsonDocument>.Filter.Eq("UserId", userId),
                     Builders<BsonDocument>.Filter.Eq("TenantId", targetTenantId)
