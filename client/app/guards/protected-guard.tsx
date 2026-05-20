@@ -1,10 +1,138 @@
-import { useEffect, useRef, useState } from "react";
+// import { useEffect, useRef, useState } from "react";
+// import { useNavigate } from "react-router-dom";
+// import { useAuthStore } from "@/store/useAuthStore";
+// import {
+//   useImpersonationStatusChecker,
+//   useStartImpersonation,
+//   // useStopImpersonation,
+// } from "@/hooks/use-impersonation";
+// import { useAppState } from "./public-guard";
+// import { useGetMe } from "@/idp/iam/hooks/use-user";
+// import { useImpersonateStore } from "@/store/impersonate-store";
+// import { useProjectStore } from "@/store/useProjectStore";
+// import { ImpersonationRequest } from "@/services/impersonation.service";
+// import { getRuntimeEnv } from "@/lib/runtime-env";
+// import { useGetProjects } from "@/hooks/use-project";
+// import LogoLoadingSpinner from "@/components/loader-spinner/loader-spinner";
+
+// export function ProtectedGuard({ children }: { children: React.ReactNode }) {
+//   const { isMounted } = useAppState();
+//   const { data } = useGetMe();
+//   const { setUser } = useAuthStore();
+//   const navigate = useNavigate();
+
+//   useEffect(() => {
+//     if (!isMounted) return;
+//     if (!data) return navigate(`/login`, { replace: true });
+//     if (data.data) setUser(data.data);
+//   }, [data, navigate, setUser]);
+//   if (!isMounted || !data) return null;
+//   return <>{children}</>;
+// }
+
+// export function ImpersonateGuard({ children }: { children: React.ReactNode }) {
+//   const { isImpersonated, startImpersonation, stopImpersonation } = useImpersonateStore();
+//   const { mutate: startImpersonationMutate } = useStartImpersonation();
+//   // const { mutate: stopImpersonationMutate } = useStopImpersonation();
+
+//   const { isLoading: isProjectsLoading } = useGetProjects();
+//   const { selectedProject } = useProjectStore();
+
+//   const [ready, setReady] = useState(false);
+//   const impersonateRef = useRef({
+//     hasStarted: false,
+//     isCompleted: false,
+//   });
+
+//   useEffect(() => {
+//     if (isProjectsLoading) return;
+//     if (!selectedProject?.tenantId) return;
+//     if (impersonateRef.current.hasStarted) return;
+
+//     if (isImpersonated) {
+//       impersonateRef.current.hasStarted = true;
+//       impersonateRef.current.isCompleted = true;
+//       setReady(true);
+//       return;
+//     }
+
+//     impersonateRef.current.hasStarted = true;
+
+//     const payload: ImpersonationRequest = {
+//       targetTenantId: selectedProject.tenantId,
+//     };
+
+//     startImpersonationMutate(payload, {
+//       onSuccess: () => {
+//         startImpersonation(
+//           payload.targetTenantId,
+//           getRuntimeEnv("BLOCKS_X_BLOCKS_KEY"),
+//         );
+
+//         impersonateRef.current.isCompleted = true;
+//         setReady(true);
+//       },
+//       onError: () => {
+//         impersonateRef.current.hasStarted = false;
+//       },
+//     });
+
+//     // return () => {
+//     //   if (!impersonateRef.current.isCompleted) return;
+
+//     //   stopImpersonationMutate(undefined, {
+//     //     onSuccess: () => {
+//     //       stopImpersonation();
+//     //       impersonateRef.current.hasStarted = false;
+//     //       impersonateRef.current.isCompleted = false;
+//     //       setReady(false);
+//     //     },
+//     //   });
+//     // };
+//   }, [
+//     isImpersonated,
+//     isProjectsLoading,
+//     selectedProject?.tenantId,
+//     startImpersonationMutate,
+//     // stopImpersonationMutate,
+//     startImpersonation,
+//     stopImpersonation,
+//   ]);
+
+//   if (!ready) return <LogoLoadingSpinner />;
+
+//   return <>{children}</>;
+// }
+
+// export const ImpersonationChecker = ({
+//   children,
+// }: {
+//   children: React.ReactNode;
+// }) => {
+//   const { data, isLoading, isSuccess } = useImpersonationStatusChecker();
+//   const { setImpersonation } = useImpersonateStore();
+ 
+//   useEffect(() => {
+//     if (!data) return;
+//     setImpersonation(
+//       data.impersonated,
+//       data.originalTenantId,
+//       data.impersonated ? data.impersonatedTenantId : null,
+//     );
+//   }, [data, setImpersonation]);
+//   if (isLoading || !isSuccess) return null;
+//   return <>{children}</>;
+// };
+ 
+
+
+import { useEffect, useRef } from "react";
 import { useNavigate } from "react-router-dom";
 import { useAuthStore } from "@/store/useAuthStore";
 import {
   useImpersonationStatusChecker,
   useStartImpersonation,
-  // useStopImpersonation,
+  useStopImpersonation,
 } from "@/hooks/use-impersonation";
 import { useAppState } from "./public-guard";
 import { useGetMe } from "@/idp/iam/hooks/use-user";
@@ -24,83 +152,9 @@ export function ProtectedGuard({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     if (!isMounted) return;
     if (!data) return navigate(`/login`, { replace: true });
-    if (data.data) setUser(data.data);
+    setUser(data.data);
   }, [data, navigate, setUser]);
   if (!isMounted || !data) return null;
-  return <>{children}</>;
-}
-
-export function ImpersonateGuard({ children }: { children: React.ReactNode }) {
-  const { isImpersonated, startImpersonation, stopImpersonation } = useImpersonateStore();
-  const { mutate: startImpersonationMutate } = useStartImpersonation();
-  // const { mutate: stopImpersonationMutate } = useStopImpersonation();
-
-  const { isLoading: isProjectsLoading } = useGetProjects();
-  const { selectedProject } = useProjectStore();
-
-  const [ready, setReady] = useState(false);
-  const impersonateRef = useRef({
-    hasStarted: false,
-    isCompleted: false,
-  });
-
-  useEffect(() => {
-    if (isProjectsLoading) return;
-    if (!selectedProject?.tenantId) return;
-    if (impersonateRef.current.hasStarted) return;
-
-    if (isImpersonated) {
-      impersonateRef.current.hasStarted = true;
-      impersonateRef.current.isCompleted = true;
-      setReady(true);
-      return;
-    }
-
-    impersonateRef.current.hasStarted = true;
-
-    const payload: ImpersonationRequest = {
-      targetTenantId: selectedProject.tenantId,
-    };
-
-    startImpersonationMutate(payload, {
-      onSuccess: () => {
-        startImpersonation(
-          payload.targetTenantId,
-          getRuntimeEnv("BLOCKS_X_BLOCKS_KEY"),
-        );
-
-        impersonateRef.current.isCompleted = true;
-        setReady(true);
-      },
-      onError: () => {
-        impersonateRef.current.hasStarted = false;
-      },
-    });
-
-    // return () => {
-    //   if (!impersonateRef.current.isCompleted) return;
-
-    //   stopImpersonationMutate(undefined, {
-    //     onSuccess: () => {
-    //       stopImpersonation();
-    //       impersonateRef.current.hasStarted = false;
-    //       impersonateRef.current.isCompleted = false;
-    //       setReady(false);
-    //     },
-    //   });
-    // };
-  }, [
-    isImpersonated,
-    isProjectsLoading,
-    selectedProject?.tenantId,
-    startImpersonationMutate,
-    // stopImpersonationMutate,
-    startImpersonation,
-    stopImpersonation,
-  ]);
-
-  if (!ready) return <LogoLoadingSpinner />;
-
   return <>{children}</>;
 }
 
@@ -110,8 +164,9 @@ export const ImpersonationChecker = ({
   children: React.ReactNode;
 }) => {
   const { data, isLoading, isSuccess } = useImpersonationStatusChecker();
-  const { setImpersonation } = useImpersonateStore();
- 
+  const { setImpersonation, isInitialized, setInitialized } =
+    useImpersonateStore();
+
   useEffect(() => {
     if (!data) return;
     setImpersonation(
@@ -119,8 +174,80 @@ export const ImpersonationChecker = ({
       data.originalTenantId,
       data.impersonated ? data.impersonatedTenantId : null,
     );
-  }, [data, setImpersonation]);
-  if (isLoading || !isSuccess) return null;
+    setInitialized(true);
+  }, [data, setImpersonation, setInitialized]);
+  if (isLoading || !isSuccess || !isInitialized) return null;
   return <>{children}</>;
 };
+
+export function ImpersonationTerminator({
+  children,
+}: {
+  children: React.ReactNode;
+}) {
+  const { terminate, isImpersonated } = useImpersonateStore();
+  const { mutateAsync } = useStopImpersonation();
+  const isTriggering = useRef(false);
+
+  useEffect(() => {
+    if (isTriggering.current || !isImpersonated) return;
+    isTriggering.current = true;
+    mutateAsync(undefined)
+      .then(() => {
+        terminate(getRuntimeEnv("BLOCKS_X_BLOCKS_KEY"));
+        isTriggering.current = false;
+      })
+      .catch(() => {
+        isTriggering.current = false;
+      });
+  }, [mutateAsync, terminate, isImpersonated, isTriggering]);
+
+  if (isImpersonated || isTriggering.current) return null;
+  return <>{children}</>;
+}
+
+export function ImpersonationSynchronizer({
+  children,
+}: {
+  children: React.ReactNode;
+}) {
+  const { impersonate, isImpersonated, impersonatedTenantId } =
+    useImpersonateStore();
+  const { mutateAsync } = useStartImpersonation();
+
+  const { selectedProject } = useProjectStore();
+  const { isLoading: isProjectsLoading } = useGetProjects();
+  const isTriggering = useRef(false);
+
+  useEffect(() => {
+    if (isProjectsLoading) return;
+    if (!selectedProject?.tenantId) return;
+    if (selectedProject.tenantId === impersonatedTenantId) return;
+    if (isTriggering.current) return;
+
+    isTriggering.current = true;
+    const payload: ImpersonationRequest = {
+      targetTenantId: selectedProject.tenantId,
+    };
+    mutateAsync(payload)
+      .then(() => {
+        impersonate(
+          selectedProject.tenantId,
+          getRuntimeEnv("BLOCKS_X_BLOCKS_KEY"),
+        );
+        isTriggering.current = false;
+      })
+      .catch(() => {});
+  }, [
+    isProjectsLoading,
+    selectedProject?.tenantId,
+    mutateAsync,
+    impersonate,
+    impersonatedTenantId,
+    isTriggering,
+  ]);
+  if (isProjectsLoading) return <LogoLoadingSpinner />;
+  if (!isImpersonated || isTriggering.current) return null;
+  return <>{children}</>;
+}
  
