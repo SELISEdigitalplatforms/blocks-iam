@@ -1,12 +1,14 @@
-﻿using Blocks.Genesis;
-using DomainService.Entities;
-using DomainService.OAuth.RequestModel;
-using DomainService.OAuth.ResponseModel;
+using Blocks.Genesis;
+using Authentication.DomainService.Entities;
+using Authentication.DomainService.OAuth.RequestModel;
+using Authentication.DomainService.OAuth.ResponseModel;
 using Iam.DomainService.Entities;
 using Microsoft.Extensions.Logging;
 using System.IdentityModel.Tokens.Jwt;
+using Authentication.DomainService.Services;
+using Authentication.DomainService.Utilities;
 
-namespace DomainService.OAuth
+namespace Authentication.DomainService.OAuth
 {
     public class RefreshTokenAuthenticationService : ITokenService
     {
@@ -14,25 +16,41 @@ namespace DomainService.OAuth
         private readonly IJwtAccessTokenProvider _jwtAccessTokenProvider;
         private readonly ITenants _tenants;
         private readonly IOAuthJwtAccessTokenManager _oAuthJwtAccessTokenManager;
+        private readonly IAuthenticationRepository _authenticationRepository;
         
         public RefreshTokenAuthenticationService(
             ILogger<RefreshTokenAuthenticationService> logger,
             IJwtAccessTokenProvider jwtAccessTokenProvider,
             ITenants tenants,
-            IOAuthJwtAccessTokenManager oAuthJwtAccessTokenManager
+            IOAuthJwtAccessTokenManager oAuthJwtAccessTokenManager,
+            IAuthenticationRepository authenticationRepository
         )
         {
             _logger = logger;
             _jwtAccessTokenProvider = jwtAccessTokenProvider;
             _tenants = tenants;
             _oAuthJwtAccessTokenManager = oAuthJwtAccessTokenManager;
+            _authenticationRepository = authenticationRepository;
         }
         public async Task<TokenResponse> AuthenticateAsync(TokenRequest request, AuthenticationConfiguration authenticationConfiguration, User user)
         {
             _logger.LogInformation("Authenticate start for RefreshToken");
             var bc = BlocksContext.GetContext();
-            var tenant = _tenants.GetTenantByID(bc?.TenantId);
-            var jwtAccessToken = await _jwtAccessTokenProvider.GetJwtAccessToken(authenticationConfiguration, tenant, user, organizationId: request.OrganizationId);
+            var tenant = _tenants.GetTenantByID(bc?.TenantId ?? string.Empty);
+            if (tenant == null) return new TokenResponse { Error = "server_error", ErrorDescription = "Tenant not found", StatusCode = 500 };
+            
+            // Get client registration to extract AllowedScopes and AllowedServiceAccessResources
+            var clientRegistration = await _authenticationRepository.GetOidcClientRegistrationAsync(request.ClientId);
+            var clientAllowedScopes = clientRegistration?.AllowedScopes;
+            var clientAllowedServiceAccessResources = clientRegistration?.AllowedServiceAccessResources;
+            
+            var jwtAccessToken = await _jwtAccessTokenProvider.GetJwtAccessToken(
+                authenticationConfiguration,
+                tenant,
+                user,
+                request,
+                null, // state is not applicable for refresh token flow
+                clientAllowedServiceAccessResources: clientAllowedServiceAccessResources);
             var jwtToken = new JwtSecurityToken(
                 jwtAccessToken.Issuer,
                 jwtAccessToken.Audience,
@@ -59,6 +77,8 @@ namespace DomainService.OAuth
                 };
             }
 
+            var (_, cookieDomain, _) = DomainResolver.ResolveDomain(tenant, request.Request);
+
             return new TokenResponse
             {
                 AccessToken = accessToken,
@@ -66,7 +86,7 @@ namespace DomainService.OAuth
                 ExpiresUtc = jwtAccessToken.Expires,
                 RefreshToken = newRefreshToken,
                 RefreshExpiresUtc = refreshTokenExpiry,
-                CookieDomain = tenant.CookieDomain,
+                CookieDomain = cookieDomain,
             };
         }
     }

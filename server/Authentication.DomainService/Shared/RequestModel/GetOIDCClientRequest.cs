@@ -1,32 +1,30 @@
-﻿using Blocks.Genesis;
-using DomainService.Entities;
+using Blocks.Genesis;
+using Authentication.DomainService.Entities;
 
-namespace DomainService.RequestModel
+namespace Authentication.DomainService.RequestModel
 {
-    public class GetOIDCClientRequest : IProjectKey
+    public class GetOIDCClientRequest
     {
-        public string ProjectKey { get; set ; }
-        public string ClientId { get; set; }    
+        public string? ClientId { get; set; }    
     }
 
-    public class GetOIDCClientsRequest : IProjectKey
+    public class GetOIDCClientsRequest
     {
-        public string ProjectKey { get; set; }
+
     }
 
-    public class DeleteOIDCClientRequest : IProjectKey
+    public class DeleteOIDCClientRequest
     {
-        public string ProjectKey { get; set; }
-        public string ItemId { get; set; }
+        public string? ItemId { get; set; }
     }
 
     public class GetOIDCClientsResponse : BaseResponse
     {
-        public List<OIDCClientCredential> oIDCClientCredentials { get; set; }
+        public List<OidcClientRegistration> oIDCClientCredentials { get; set; } = [];
     }
 
     public class GetOIDCClientResponse : BaseResponse
     {
-        public OIDCClientCredential oIDCClientCredential { get; set; }
+        public OidcClientRegistration? oIDCClientCredential { get; set; }
     }
 }

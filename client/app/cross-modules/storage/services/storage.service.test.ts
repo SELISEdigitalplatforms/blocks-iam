@@ -14,6 +14,8 @@ import { StorageConfiguration } from "./storage-configuration.service";
 import { StorageFile } from "./storage-file.service";
 import { STORAGE_FILE_ENDPOINTS } from "../constants/endpoint.constant";
 
+const LOGIC_BASE = "https://dev-logic.blocksdevelopers.com";
+
 vi.mock("@/lib/http-client", () => mockHttpClientFactory());
 
 describe("StorageService", () => {
@@ -99,8 +101,10 @@ describe("StorageService", () => {
       await service.uploadFileToLocalStorage(payload);
 
       expect(http.post).toHaveBeenCalledWith(
-        STORAGE_FILE_ENDPOINTS.UPLOAD_TO_LOCAL_STORAGE,
+        `${LOGIC_BASE}${STORAGE_FILE_ENDPOINTS.UPLOAD_TO_LOCAL_STORAGE}`,
         expect.any(FormData),
+        undefined,
+        { absoluteUrl: true },
       );
     });
 
@@ -136,9 +140,10 @@ describe("StorageService", () => {
       const result = await service.uploadPublicCertificateFile(payload);
 
       expect(http.post).toHaveBeenCalledWith(
-        `${STORAGE_FILE_ENDPOINTS.UPLOAD_PUBLIC_CERTIFICATE}?TenantId=tenant-1&IsThirdParty=true`,
+        `${LOGIC_BASE}${STORAGE_FILE_ENDPOINTS.UPLOAD_PUBLIC_CERTIFICATE}?TenantId=tenant-1&IsThirdParty=true`,
         expect.any(FormData),
         { Accept: "*/*" },
+        { absoluteUrl: true },
       );
       expect(result).toEqual({ downloadUrl: "https://cert.example.com/cert.pfx" });
     });
@@ -162,8 +167,10 @@ describe("StorageService", () => {
       const result = await service.getFilesAndFolders(mockGetDmsPayload);
 
       expect(http.post).toHaveBeenCalledWith(
-        STORAGE_FILE_ENDPOINTS.GET_DMS_FILE_AND_FOLDER,
+        `${LOGIC_BASE}${STORAGE_FILE_ENDPOINTS.GET_DMS_FILE_AND_FOLDER}`,
         mockGetDmsPayload,
+        undefined,
+        { absoluteUrl: true },
       );
       expect(result).toEqual(mockGetDmsFileAndFolderResponse);
     });
@@ -186,8 +193,10 @@ describe("StorageService", () => {
       const result = await service.uploadDmsFile(mockUploadDmsFilePayload);
 
       expect(http.post).toHaveBeenCalledWith(
-        STORAGE_FILE_ENDPOINTS.UPLOAD_DMS_FILE,
+        `${LOGIC_BASE}${STORAGE_FILE_ENDPOINTS.UPLOAD_DMS_FILE}`,
         mockUploadDmsFilePayload,
+        undefined,
+        { absoluteUrl: true },
       );
       expect(result).toEqual(mockUploadDmsFileResponse);
     });
@@ -210,8 +219,10 @@ describe("StorageService", () => {
       const result = await service.createDmsFolder(mockCreateDmsFolderPayload);
 
       expect(http.post).toHaveBeenCalledWith(
-        STORAGE_FILE_ENDPOINTS.CREATE_FOLDER,
+        `${LOGIC_BASE}${STORAGE_FILE_ENDPOINTS.CREATE_FOLDER}`,
         mockCreateDmsFolderPayload,
+        undefined,
+        { absoluteUrl: true },
       );
       expect(result).toEqual(mockUploadDmsFileResponse);
     });

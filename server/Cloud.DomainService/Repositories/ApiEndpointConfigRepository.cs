@@ -21,7 +21,7 @@ namespace Cloud.DomainService.Repositories
 
         public async Task<(List<ApiEndpointConfig>, long)> GetListAsync(GetApiEndpointConfigsRequest request)
         {
-            var db = _dbContextProvider.GetDatabase(_blocksSecret.DatabaseConnectionString, request.ProjectKey);
+            var db = _dbContextProvider.GetDatabase(_blocksSecret.DatabaseConnectionString);
             var collection = db.GetCollection<ApiEndpointConfig>(CollectionName);
 
             var filter = Builders<ApiEndpointConfig>.Filter.Empty;
@@ -45,9 +45,9 @@ namespace Cloud.DomainService.Repositories
             return (data, count);
         }
 
-        public async Task<bool> UpdateAsync(string projectKey, string itemId, bool isCaptchaRequired, bool isMfaRequired, string updatedBy)
+        public async Task<bool> UpdateAsync(string itemId, bool isCaptchaRequired, bool isMfaRequired, string updatedBy)
         {
-            var db = _dbContextProvider.GetDatabase(_blocksSecret.DatabaseConnectionString, projectKey);
+            var db = _dbContextProvider.GetDatabase(_blocksSecret.DatabaseConnectionString);
             var collection = db.GetCollection<ApiEndpointConfig>(CollectionName);
 
             var filter = Builders<ApiEndpointConfig>.Filter.Eq(x => x.ItemId, itemId);
@@ -61,9 +61,9 @@ namespace Cloud.DomainService.Repositories
             return result.ModifiedCount > 0;
         }
 
-        public async Task<long> BulkUpdateAsync(string projectKey, List<string> itemIds, bool isCaptchaRequired, bool isMfaRequired, string updatedBy)
+        public async Task<long> BulkUpdateAsync(List<string> itemIds, bool isCaptchaRequired, bool isMfaRequired, string updatedBy)
         {
-            var db = _dbContextProvider.GetDatabase(_blocksSecret.DatabaseConnectionString, projectKey);
+            var db = _dbContextProvider.GetDatabase(_blocksSecret.DatabaseConnectionString);
             var collection = db.GetCollection<ApiEndpointConfig>(CollectionName);
 
             var filter = Builders<ApiEndpointConfig>.Filter.In(x => x.ItemId, itemIds);

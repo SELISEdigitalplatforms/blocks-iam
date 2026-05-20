@@ -1,13 +1,14 @@
 using Api.Controllers;
 using Blocks.Genesis;
-using DomainService.Authentication;
-using DomainService.Entities;
-using DomainService.OAuth;
-using DomainService.OAuth.RequestModel;
-using DomainService.RequestModel;
-using DomainService.Services;
-using DomainService.Shared.RequestModel;
-using DomainService.Shared.ResponseModel;
+using CloudConfiguration.DomainService.Shared.Services;
+using Authentication.DomainService.Authentication;
+using Authentication.DomainService.Entities;
+using Authentication.DomainService.OAuth;
+using Authentication.DomainService.OAuth.RequestModel;
+using Authentication.DomainService.RequestModel;
+using Authentication.DomainService.Services;
+using Authentication.DomainService.Shared.RequestModel;
+using Authentication.DomainService.Shared.ResponseModel;
 using FluentAssertions;
 using Iam.DomainService.Entities;
 using Microsoft.AspNetCore.Http;
@@ -26,13 +27,14 @@ namespace XUnitTest.Controllers
         private readonly Mock<IAuthenticationDomainService> _domainService = new();
         private readonly Mock<IAuthenticationRepository> _repo = new();
         private readonly Mock<IConfiguration> _config = new();
+        private readonly Mock<IConfigurationService> _cloudConfig = new();
         private readonly Mock<ChangeControllerContext> _context = new(new Mock<ITenants>().Object, new Mock<IDbContextProvider>().Object, new Mock<IHttpContextAccessor>().Object);
         private readonly AuthenticationController _controller;
         private readonly DefaultHttpContext _httpContext;
 
         public AuthenticationControllerTests()  
         {
-            _controller = new AuthenticationController(_tokenProvider.Object, _authService.Object, _config.Object, _domainService.Object, _repo.Object, _context.Object);
+            _controller = new AuthenticationController(_tokenProvider.Object, _authService.Object, _config.Object, _domainService.Object, _repo.Object, _context.Object, _cloudConfig.Object);
             _httpContext = new DefaultHttpContext();
             _controller.ControllerContext = new ControllerContext
             {
@@ -526,7 +528,7 @@ namespace XUnitTest.Controllers
             };
 
             _domainService
-                .Setup(x => x.GetOIDCClientAsyncAsync(request.ClientId))
+                .Setup(x => x.GetOidcClientAsync(request.ClientId))
                 .ReturnsAsync(expectedResponse);
 
             // Act
@@ -538,7 +540,7 @@ namespace XUnitTest.Controllers
         }
 
         [Fact]
-        public async Task GetOIDCClient_PassesCorrectRequestToGetOIDCClientAsyncAsync()
+        public async Task GetOidcClient_PassesCorrectRequestToGetOidcClientAsync()
         {
             // Arrange
             var request = new GetOIDCClientRequest
@@ -552,7 +554,7 @@ namespace XUnitTest.Controllers
             };
 
             _domainService
-                .Setup(x => x.GetOIDCClientAsyncAsync(It.IsAny<string>()))
+                .Setup(x => x.GetOidcClientAsync(It.IsAny<string>()))
                 .ReturnsAsync(expectedResponse);
 
             // Act
@@ -560,9 +562,9 @@ namespace XUnitTest.Controllers
 
             // Assert
             _domainService.Verify(
-                x => x.GetOIDCClientAsyncAsync(request.ClientId),
+                x => x.GetOidcClientAsync(request.ClientId),
                 Times.Once,
-                "GetOIDCClientAsyncAsync should be called once with the correct ClientId from the request");
+                "GetOidcClientAsync should be called once with the correct ClientId from the request");
 
             Assert.True(result.IsSuccess);
         }
@@ -573,7 +575,7 @@ namespace XUnitTest.Controllers
 
             _authService
                 .Setup(x => x.GetClientCredentialAsync(It.IsAny<string>()))
-                .ReturnsAsync((OIDCClientCredential)null);
+                .ReturnsAsync((OidcClientRegistration)null);
 
             var result = await _controller.Login(new LoginRequest
             {
@@ -593,7 +595,7 @@ namespace XUnitTest.Controllers
 
             _authService
                 .Setup(x => x.GetClientCredentialAsync(It.IsAny<string>()))
-                .ReturnsAsync(new OIDCClientCredential
+                .ReturnsAsync(new OidcClientRegistration
                 {
                     ItemId = "client",
                     RedirectUri = "uri",
@@ -661,7 +663,7 @@ namespace XUnitTest.Controllers
             var tenants = new Mock<ITenants>();
             var logger = new Mock<ILogger<AuthenticationService>>();
 
-            repo.Setup(x => x.UpdateSessionStatusAsync(It.IsAny<string>(), It.IsAny<string>()))
+            repo.Setup(x => x.RevokeIdentitySessionAsync(It.IsAny<string>(), It.IsAny<string>()))
                 .ReturnsAsync(true);
 
             var service = new AuthenticationService(
@@ -685,16 +687,16 @@ namespace XUnitTest.Controllers
 
             var expectedResponse = new GetOIDCClientsResponse
             {
-                oIDCClientCredentials = new List<OIDCClientCredential>
+                oIDCClientCredentials = new List<OidcClientRegistration>
                 {
-                    new OIDCClientCredential
+                    new OidcClientRegistration
                     {
                         ItemId = "client-1",
                         ClientDisplayName = "Test Client 1",
                         ClientLogoUrl = "https://example.com/logo1.png",
                         ClientBrandColor = "#FF5733"
                     },
-                    new OIDCClientCredential
+                    new OidcClientRegistration
                     {
                         ItemId = "client-2",
                         ClientDisplayName = "Test Client 2",
@@ -706,7 +708,7 @@ namespace XUnitTest.Controllers
             };
 
             _domainService
-                .Setup(x => x.GetOIDCClientsAsyncAsync())
+                .Setup(x => x.GetOidcClientsAsync())
                 .ReturnsAsync(expectedResponse);
 
             // Act
@@ -720,19 +722,19 @@ namespace XUnitTest.Controllers
         }
 
         [Fact]
-        public async Task GetOIDCClients_CallsGetOIDCClientsAsyncAsync()
+        public async Task GetOidcClients_CallsGetOidcClientsAsync()
         {
             // Arrange
             var request = new GetOIDCClientsRequest();
 
             var expectedResponse = new GetOIDCClientsResponse
             {
-                oIDCClientCredentials = new List<OIDCClientCredential>(),
+                oIDCClientCredentials = new List<OidcClientRegistration>(),
                 IsSuccess = true
             };
 
             _domainService
-                .Setup(x => x.GetOIDCClientsAsyncAsync())
+                .Setup(x => x.GetOidcClientsAsync())
                 .ReturnsAsync(expectedResponse);
 
             // Act
@@ -740,9 +742,9 @@ namespace XUnitTest.Controllers
 
             // Assert
             _domainService.Verify(
-                x => x.GetOIDCClientsAsyncAsync(),
+                x => x.GetOidcClientsAsync(),
                 Times.Once,
-                "GetOIDCClientsAsyncAsync should be called once");
+                "GetOidcClientsAsync should be called once");
         }
 
         [Fact]
@@ -753,12 +755,12 @@ namespace XUnitTest.Controllers
 
             var expectedResponse = new GetOIDCClientsResponse
             {
-                oIDCClientCredentials = new List<OIDCClientCredential>(),
+                oIDCClientCredentials = new List<OidcClientRegistration>(),
                 IsSuccess = true
             };
 
             _domainService
-                .Setup(x => x.GetOIDCClientsAsyncAsync())
+                .Setup(x => x.GetOidcClientsAsync())
                 .ReturnsAsync(expectedResponse);
 
             // Act
@@ -779,9 +781,9 @@ namespace XUnitTest.Controllers
 
             var domainServiceResponse = new GetOIDCClientsResponse
             {
-                oIDCClientCredentials = new List<OIDCClientCredential>
+                oIDCClientCredentials = new List<OidcClientRegistration>
                 {
-                    new OIDCClientCredential
+                    new OidcClientRegistration
                     {
                         ItemId = "client-123",
                         ClientDisplayName = "Domain Client",
@@ -793,7 +795,7 @@ namespace XUnitTest.Controllers
             };
 
             _domainService
-                .Setup(x => x.GetOIDCClientsAsyncAsync())
+                .Setup(x => x.GetOidcClientsAsync())
                 .ReturnsAsync(domainServiceResponse);
 
             // Act
@@ -818,19 +820,8 @@ namespace XUnitTest.Controllers
             };
 
             _domainService
-                .Setup(x => x.DeleteOIDCClientAsyncAsync(request))
+                .Setup(x => x.DeleteOidcClientAsync(request))
                 .ReturnsAsync(expectedResponse);
-
-            // Act
-            var result = await _controller.DeleteOIDCClient(request);
-
-            // Assert
-            Assert.NotNull(result);
-            Assert.True(result.IsSuccess);
-        }
-
-        [Fact]
-        public async Task DeleteOIDCClient_CallsDeleteOIDCClientAsyncAsyncWithCorrectRequest()
         {
             // Arrange
             var request = new DeleteOIDCClientRequest
@@ -845,7 +836,7 @@ namespace XUnitTest.Controllers
 
             DeleteOIDCClientRequest? capturedRequest = null;
             _domainService
-                .Setup(x => x.DeleteOIDCClientAsyncAsync(It.IsAny<DeleteOIDCClientRequest>()))
+                .Setup(x => x.DeleteOidcClientAsync(It.IsAny<DeleteOIDCClientRequest>()))
                 .ReturnsAsync(expectedResponse)
                 .Callback<DeleteOIDCClientRequest>(r => capturedRequest = r);
 
@@ -854,9 +845,9 @@ namespace XUnitTest.Controllers
 
             // Assert
             _domainService.Verify(
-                x => x.DeleteOIDCClientAsyncAsync(It.IsAny<DeleteOIDCClientRequest>()),
+                x => x.DeleteOidcClientAsync(It.IsAny<DeleteOIDCClientRequest>()),
                 Times.Once,
-                "DeleteOIDCClientAsyncAsync should be called once with the correct request");
+                "DeleteOidcClientAsync should be called once with the correct request");
             Assert.NotNull(capturedRequest);
             Assert.Same(request, capturedRequest);
             Assert.Equal("client-to-delete", capturedRequest.ItemId);
@@ -881,7 +872,7 @@ namespace XUnitTest.Controllers
             };
 
             _domainService
-                .Setup(x => x.DeleteOIDCClientAsyncAsync(request))
+                .Setup(x => x.DeleteOidcClientAsync(request))
                 .ReturnsAsync(expectedResponse);
 
             // Act
@@ -909,7 +900,7 @@ namespace XUnitTest.Controllers
             };
 
             _domainService
-                .Setup(x => x.DeleteOIDCClientAsyncAsync(request))
+                .Setup(x => x.DeleteOidcClientAsync(request))
                 .ReturnsAsync(domainServiceResponse);
 
             // Act
@@ -1282,7 +1273,7 @@ namespace XUnitTest.Controllers
                 Nonce = "test-nonce"
             };
 
-            var clientCredential = new OIDCClientCredential
+            var clientCredential = new OidcClientRegistration
             {
                 ItemId = "test-client-id",
                 RedirectUri = "https://example.com/callback",
@@ -1353,7 +1344,7 @@ namespace XUnitTest.Controllers
 
             _authService
                 .Setup(x => x.GetClientCredentialAsync(request.ClientId))
-                .ReturnsAsync((OIDCClientCredential)null);
+                .ReturnsAsync((OidcClientRegistration)null);
 
             _config
                 .Setup(x => x["OpenIdConnect:ErrorPageRedirectonUri"])

@@ -1,9 +1,9 @@
-using DomainService.Entities;
-using DomainService.OAuth;
-using DomainService.OAuth.RequestModel;
-using DomainService.OAuth.ResponseModel;
-using DomainService.OAuth.Services;
-using DomainService.Services;
+using Authentication.DomainService.Entities;
+using Authentication.DomainService.OAuth;
+using Authentication.DomainService.OAuth.RequestModel;
+using Authentication.DomainService.OAuth.ResponseModel;
+using Authentication.DomainService.OAuth.Services;
+using Authentication.DomainService.Services;
 using FluentAssertions;
 using Iam.DomainService.Entities;
 using Moq;
@@ -99,7 +99,7 @@ namespace XUnitTest.DomainService.OAuth.Services
                 ItemId = "user-123",
                 Email = "test@example.com",
                 Active = false,
-                IsVarified = true
+                IsVerified = true
             };
 
             _authenticationRepository
@@ -148,7 +148,7 @@ namespace XUnitTest.DomainService.OAuth.Services
                 ItemId = "user-123",
                 Email = "test@example.com",
                 Active = true,
-                IsVarified = true
+                IsVerified = true
             };
             var expectedTokenResponse = new TokenResponse
             {

@@ -1,5 +1,5 @@
-using DomainService.OAuth;
-using DomainService.OAuth.RequestModel;
+using Authentication.DomainService.OAuth;
+using Authentication.DomainService.OAuth.RequestModel;
 using Microsoft.AspNetCore.Mvc;
 
 namespace XUnitTest.DomainService.OAuth

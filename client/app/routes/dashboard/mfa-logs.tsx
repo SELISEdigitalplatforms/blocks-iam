@@ -1,5 +1,5 @@
-import { MfaLogs } from "@blocks-idp/mfa/pages/logs";
+import { Navigate } from "react-router-dom";
 
 export default function MfaLogsPage() {
-	return <MfaLogs />;
+  return <Navigate to="/services/secret-management?tab=mfa" replace />;
 }

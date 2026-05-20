@@ -1,6 +1,6 @@
-﻿using DomainService.Entities;
+using Identifier.DomainService.Entities;
 
-namespace DomainService.Dtos
+namespace Identifier.DomainService.Dtos
 {
     public class GroupedProjectsDto
     {

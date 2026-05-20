@@ -27,7 +27,7 @@ import OidcIndexPage from "./routes/oidc/index";
 import OidcLoginPage from "./routes/oidc/login";
 import OidcPermissionPage from "./routes/oidc/permission";
 import OidcErrorPage from "./routes/oidc/error";
-import OidcForgotPasswordPage from "./routes/oidc/forgot-password";
+// import OidcForgotPasswordPage from "./routes/oidc/forgot-password";
 import OidcEmailSentConfirmationPage from "./routes/oidc/email-sent-confirmation";
 
 // Dashboard routes (protected)
@@ -44,16 +44,11 @@ import SsoConfigurationPage from "./routes/dashboard/sso-configuration";
 import AuthLogsPage from "./routes/dashboard/auth-logs";
 import MfaLogsPage from "./routes/dashboard/mfa-logs";
 import CaptchaLogsPage from "./routes/dashboard/captcha-logs";
-import ApiSettingsPage from "./routes/dashboard/api-settings";
 import RateLimiterPage from "./routes/dashboard/rate-limiter";
-import LmtPage from "./routes/dashboard/lmt";
-import LmtServiceLogsPage from "./routes/dashboard/lmt-service-logs";
-import SecretManagementPage from "./routes/dashboard/secret-management";
 import ManagedServicesPage from "./routes/dashboard/managed-services";
 import ProfilePage from "./routes/dashboard/profile";
 
 // Console pages
-import { Console } from "./pages/console/console";
 import { DashboardOverview } from "./pages/dashboard/dashboard-overview";
 import { EnvironmentsPage } from "./pages/environments/environments";
 import { PeopleManagement } from "./pages/people/people-management";
@@ -61,17 +56,32 @@ import { RepositoriesPage } from "./pages/repositories/repositories";
 import { SettingsPage } from "./pages/settings/settings";
 import { CreateProjectWrapper } from "./pages/create-project/create-project";
 import CallbackPage from "./routes/callback/callback";
+import OidcLogin from "./routes/auth/oidc-login";
+import LoginSimplePage from "./routes/auth/login-simple";
+import LoginCallbackPage from "./routes/auth/callback";
 
 export const router = createBrowserRouter([
   // ── Auth layout (login, signup, sso-activate) ──
   {
     element: <AuthLayout />,
     children: [
-      { path: "/login", element: <LoginPage /> },
+      // { path: "/login", element: <LoginPage /> },
       { path: "/signup", element: <SignupPage /> },
       { path: "/sso-activate", element: <SsoActivatePage /> },
     ],
   },
+  // ── Simple login (no guards, no API calls) ──
+  // { path: "/login", element: <OidcLogin /> },
+
+  
+  {
+    path: "/login",
+    children: [
+      { index: true, element: <LoginSimplePage /> },
+      { path: "callback", element: <LoginCallbackPage /> },
+    ],
+  },
+
 
   // ── Public layout (other public pages with PublicGuard) ──
   {
@@ -97,7 +107,7 @@ export const router = createBrowserRouter([
       { path: "login", element: <OidcLoginPage /> },
       { path: "permission", element: <OidcPermissionPage /> },
       { path: "error", element: <OidcErrorPage /> },
-      { path: "forgot-password", element: <OidcForgotPasswordPage /> },
+      // { path: "forgot-password", element: <OidcForgotPasswordPage /> },
       { path: "email-sent-confirmation", element: <OidcEmailSentConfirmationPage /> },
     ],
   },
@@ -114,37 +124,15 @@ export const router = createBrowserRouter([
       { path: "/services/iam/organization-detail/:itemId", element: <IamOrgDetailPage /> },
       { path: "/services/iam/logs", element: <IamLogsPage /> },
       { path: "/services/iam/configure", element: <IamConfigurePage /> },
-      { path: "/services/authentication", element: <AuthenticationConfigPage /> },
+      { path: "/services/authentication/users", element: <AuthenticationConfigPage section="users" /> },
+      { path: "/services/authentication/organizations", element: <AuthenticationConfigPage section="organizations" /> },
+      { path: "/services/authentication/client-credential", element: <AuthenticationConfigPage section="client-credential" /> },
       { path: "/services/authentication/sso-configuration", element: <SsoConfigurationPage /> },
       { path: "/services/authentication/logs", element: <AuthLogsPage /> },
-      { path: "/services/mfa", element: <Navigate to="/services/secret-management?tab=mfa" replace /> },
       { path: "/services/mfa/logs", element: <MfaLogsPage /> },
-      { path: "/services/api-settings", element: <ApiSettingsPage /> },
       { path: "/services/rate-limiter", element: <RateLimiterPage /> },
-      { path: "/services/lmt", element: <LmtPage /> },
-      { path: "/services/lmt/logs/:serviceName", element: <LmtServiceLogsPage /> },
-      { path: "/services/secret-management", element: <SecretManagementPage /> },
       { path: "/managed-services", element: <ManagedServicesPage /> },
-      { path: "/services/captcha", element: <Navigate to="/services/secret-management?tab=captcha" replace /> },
       { path: "/services/captcha/logs", element: <CaptchaLogsPage /> },
-    ],
-  },
-
-  // ── Console layout (profile, console pages without sidebar) ──
-  {
-    element: <ConsoleLayout />,
-    children: [
-      { path: "/profile", element: <ProfilePage /> },
-      { path: "/console", element: <Console /> },
-      { path: "/create-project", element: <CreateProjectWrapper /> },
-      { path: "/callback", element: <CallbackPage /> },
-    ],
-  },
-
-  // ── Dashboard and project overview in dashboard layout (consolidated sidebar) ──
-  {
-    element: <DashboardLayout />,
-    children: [
       { path: "/dashboard", element: <DashboardOverview /> },
       { path: "/project-overview", element: <Navigate to="/project-overview/environments" replace /> },
       { path: "/project-overview/environments", element: <EnvironmentsPage /> },
@@ -154,8 +142,18 @@ export const router = createBrowserRouter([
     ],
   },
 
-  // ── Root redirect: authenticated users go to console ──
-  { path: "/", element: <Navigate to="/console" replace /> },
+  // ── Console layout (profile, create-project, callback without sidebar) ──
+  {
+    element: <ConsoleLayout />,
+    children: [
+      { path: "/profile", element: <ProfilePage /> },
+      { path: "/create-project", element: <CreateProjectWrapper /> },
+      { path: "/callback", element: <CallbackPage /> },
+    ],
+  },
+
+  // ── Root redirect: authenticated users go to authentication/users ──
+  { path: "/", element: <Navigate to="/services/authentication/users" replace /> },
 
   // ── Catch-all: redirect to login ──
   { path: "*", element: <Navigate to="/login" replace /> },

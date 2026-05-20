@@ -1,4 +1,5 @@
 import { http } from "@/lib/http-client";
+import { getRuntimeEnv } from "@/lib/runtime-env";
 import { StorageConfiguration } from "./storage-configuration.service";
 import { StorageFile } from "./storage-file.service";
 import { STORAGE_FILE_ENDPOINTS } from "../constants/endpoint.constant";
@@ -12,6 +13,9 @@ import {
   IUploadFileToLocalStorage,
   IUploadImagePayload,
 } from "../models/storage.model";
+
+const toLogicUrl = (path: string) =>
+  `${getRuntimeEnv("BLOCKS_LOGIC_BASE_URL") || "https://dev-logic.blocksdevelopers.com"}${path}`;
 
 export class StorageService {
   constructor(
@@ -40,7 +44,7 @@ export class StorageService {
       },
       new FormData(),
     );
-    return http.post(STORAGE_FILE_ENDPOINTS.UPLOAD_TO_LOCAL_STORAGE, formData);
+    return http.post(toLogicUrl(STORAGE_FILE_ENDPOINTS.UPLOAD_TO_LOCAL_STORAGE), formData, undefined, { absoluteUrl: true });
   }
 
   uploadPublicCertificateFile(
@@ -54,22 +58,23 @@ export class StorageService {
       (payload.file as File)?.name ?? "public-certificate.pfx",
     );
     return http.post(
-      `${STORAGE_FILE_ENDPOINTS.UPLOAD_PUBLIC_CERTIFICATE}?TenantId=${payload.TenantId}&IsThirdParty=true`,
+      toLogicUrl(`${STORAGE_FILE_ENDPOINTS.UPLOAD_PUBLIC_CERTIFICATE}?TenantId=${payload.TenantId}&IsThirdParty=true`),
       formData,
       { Accept: "*/*" },
+      { absoluteUrl: true },
     );
   }
 
   getFilesAndFolders(payload: IGetDmsFileAndFolderPayload): Promise<IGetDmsFileAndFolderResponse> {
-    return http.post(STORAGE_FILE_ENDPOINTS.GET_DMS_FILE_AND_FOLDER, payload);
+    return http.post(toLogicUrl(STORAGE_FILE_ENDPOINTS.GET_DMS_FILE_AND_FOLDER), payload, undefined, { absoluteUrl: true });
   }
 
   uploadDmsFile(payload: IUploadDmsFilePayload): Promise<IUploadDmsFileResponse> {
-    return http.post(STORAGE_FILE_ENDPOINTS.UPLOAD_DMS_FILE, payload);
+    return http.post(toLogicUrl(STORAGE_FILE_ENDPOINTS.UPLOAD_DMS_FILE), payload, undefined, { absoluteUrl: true });
   }
 
   createDmsFolder(payload: ICreateDmsFolderPayload): Promise<IUploadDmsFileResponse> {
-    return http.post(STORAGE_FILE_ENDPOINTS.CREATE_FOLDER, payload);
+    return http.post(toLogicUrl(STORAGE_FILE_ENDPOINTS.CREATE_FOLDER), payload, undefined, { absoluteUrl: true });
   }
 }
 

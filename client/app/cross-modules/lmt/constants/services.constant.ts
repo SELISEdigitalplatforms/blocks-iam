@@ -1,15 +1,15 @@
 export const SERVICES = [
   {
     label: "Identity",
-    name: "idp",
+    name: "identity",
     serviceName: "idp",
     showInUsage: true,
     showInTraces: true,
     showInLogs: true,
   },
   {
-    label: "Authentication",
-    name: "authentication",
+    label: "IDP",
+    name: "idp",
     serviceName: "authentication",
     showInUsage: true,
     showInTraces: true,

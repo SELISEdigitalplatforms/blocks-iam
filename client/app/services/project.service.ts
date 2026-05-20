@@ -5,12 +5,12 @@ import { IGetProjectPayload, IGetProjectResponse, IProjectGroup } from "@/models
 export class ProjectService {
   getProjects(page = 0, pageSize = 100, tenantGroupId = ""): Promise<IProjectGroup[]> {
     const url = `${PROJECT_ENDPOINTS.GETS}?page=${page}&pageSize=${pageSize}&tenantGroupId=${tenantGroupId}`;
-    return http.get(url);
+    return http.get(url, undefined, { absoluteUrl: true });
   }
 
   getProject(payload: IGetProjectPayload): Promise<IGetProjectResponse> {
     const url = `${PROJECT_ENDPOINTS.GET}?projectId=${payload.projectId}`;
-    return http.get(url);
+    return http.get(url, undefined, { absoluteUrl: true });
   }
 }
 

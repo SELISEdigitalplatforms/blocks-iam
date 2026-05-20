@@ -2,9 +2,9 @@ using Blocks.Genesis;
 
 namespace Cloud.DomainService.Requests
 {
-    public class GetApiEndpointConfigsRequest : BaseGetsRequest<ApiEndpointConfigFilter>, IProjectKey
+    public class GetApiEndpointConfigsRequest : BaseGetsRequest<ApiEndpointConfigFilter>
     {
-        public string ProjectKey { get; set; } = string.Empty;
+
     }
 
     public class ApiEndpointConfigFilter

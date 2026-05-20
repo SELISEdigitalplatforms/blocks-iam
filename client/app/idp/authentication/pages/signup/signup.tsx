@@ -3,10 +3,11 @@ import { SignupForm } from "./signup-form";
 import { useGetLoginOptions } from "@blocks-idp/authentication/hooks/use-auth";
 import { useGetSignUpSetting } from "@blocks-idp/iam/hooks/use-user";
 import { Card, CardContent } from "@/components/ui-kits/card/card";
+import { getRuntimeEnv } from "@/lib/runtime-env";
 import { Loader } from "lucide-react";
 
 export const Signup = () => {
-  const projectKey = import.meta.env.BLOCKS_X_BLOCKS_KEY || "";
+  const projectKey = getRuntimeEnv("BLOCKS_X_BLOCKS_KEY") || "";
   
   const { data: loginOption, isLoading: isLoginOptionLoading } = useGetLoginOptions();
   const { data: signUpSetting, isLoading: isSignUpSettingLoading } = useGetSignUpSetting({ projectKey });

@@ -1,8 +1,9 @@
 import { SHORT_URL_BASES } from "@blocks-utilities/constants/endpoint.constant";
+import { getRuntimeEnv } from "@/lib/runtime-env";
 import { z } from "zod";
 
 export const getDefaultShortUrlBase = (): string => {
-  const apiBase = import.meta.env.BLOCKS_API_BASE_URL || "";
+  const apiBase = getRuntimeEnv("BLOCKS_API_BASE_URL") || "";
 
   const match = Object.entries(SHORT_URL_BASES).find(
     ([env]) => env !== "prod" && apiBase.includes(env),

@@ -1,8 +1,8 @@
-﻿using DomainService.OAuth.RequestModel;
-using DomainService.OAuth.ResponseModel;
+using Authentication.DomainService.OAuth.RequestModel;
+using Authentication.DomainService.OAuth.ResponseModel;
 using Microsoft.AspNetCore.Mvc;
 
-namespace DomainService.OAuth
+namespace Authentication.DomainService.OAuth
 {
     public static class OAuthError
     {
@@ -81,7 +81,7 @@ namespace DomainService.OAuth
                 GrantTypes.AuthCode => new TokenResponse
                 {
                     Error = "invalid_request_body",
-                    ErrorDescription = "Code, auth code required",
+                    ErrorDescription = "code and secret is required",
                     StatusCode = 400
                 },
 
