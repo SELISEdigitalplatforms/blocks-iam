@@ -107,7 +107,8 @@ export const Signin = ({ ssoError, mode = "default", oidcContext }: SigninProps)
           {loginOption?.allowedGrantTypes.includes(GRANT_TYPES.password) && (
             <SigninForm mode={mode} oidcContext={oidcContext} />
           )}
-          {loginOption?.allowedGrantTypes.includes(GRANT_TYPES.password) && (
+          {loginOption?.allowedGrantTypes.includes(GRANT_TYPES.password) &&
+            loginOption?.allowedGrantTypes.includes(GRANT_TYPES.social) && (
             <div className="my-2 mt-4 flex items-center">
               <hr className="flex-grow border" />
               <span className="mx-2 text-xs text-low-emphasis">OR</span>

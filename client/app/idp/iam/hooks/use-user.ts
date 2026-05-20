@@ -13,14 +13,13 @@ import { useCallback, useMemo } from "react";
 export const useGetUsers = (option: IGetUsersPayload) => {
   const { page, pageSize, projectKey, filter, sort } = option;
 
-  const payload = useMemo((): IGetUsersPayload => {
+  const payload = useMemo(() => {
     if (!filter) {
-      return { page, pageSize, projectKey, sort };
+      return { page, pageSize, sort };
     }
     return {
       page,
       pageSize,
-      projectKey,
       sort,
       filter: {
         ...filter,
@@ -40,8 +39,9 @@ export const useGetUsers = (option: IGetUsersPayload) => {
   ]);
 
   return useQuery({
-    queryKey: ["users", payload],
+    queryKey: ["users", projectKey, payload],
     queryFn: () => userService.getUsers(payload),
+    enabled: !!projectKey,
   });
 };
 
@@ -58,10 +58,24 @@ export const useGetUser = (options?: { enabled?: boolean }) => {
   });
 };
 
-export const useGetUserById = (options: IGetUserByIdPayload) => {
+export const useGetMe = (options?: { enabled?: boolean }) => {
+  const authStore = useAuthStore();
+  return useQuery({
+    queryKey: ["user"],
+    queryFn: async () => {
+      const user = await userService.me();
+      authStore.setUser(user.data);
+      return user;
+    },
+    ...options,
+  });
+};
+
+export const useGetUserById = (options: IGetUserByIdPayload, queryOptions?: { enabled?: boolean }) => {
   return useQuery({
     queryKey: ["user", options],
     queryFn: () => userService.getUserById(options),
+    ...queryOptions,
   });
 };
 

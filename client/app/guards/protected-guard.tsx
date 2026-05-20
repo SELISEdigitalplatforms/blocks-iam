@@ -1,18 +1,20 @@
 import { useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useAuthStore } from "@/store/useAuthStore";
-
+import {
+  useStartImpersonation,
+  useStopImpersonation,
+} from "@/hooks/use-impersonation";
 import { useAppState } from "./public-guard";
-import { useGetUser } from "@/idp/iam/hooks/use-user";
-import { useProjectStore } from "@/store/useProjectStore";
-import { getRuntimeEnv } from "@/lib/runtime-env";
+import { useGetMe } from "@/idp/iam/hooks/use-user";
 import { useImpersonateStore } from "@/store/impersonate-store";
-import { useStartImpersonation, useStopImpersonation } from "@/hooks/use-impersonation";
+import { useProjectStore } from "@/store/useProjectStore";
 import { ImpersonationRequest } from "@/services/impersonation.service";
+import { getRuntimeEnv } from "@/lib/runtime-env";
 
 export function ProtectedGuard({ children }: { children: React.ReactNode }) {
   const { isMounted } = useAppState();
-  const { data } = useGetUser();
+  const { data } = useGetMe();
   const { setUser } = useAuthStore();
   const navigate = useNavigate();
 
@@ -83,7 +85,7 @@ export function ImpersonateGuard({ children }: { children: React.ReactNode }) {
     stopImpersonation,
   ]);
 
-  if (selectedProject?.tenantId && !ready) return null;
+  if (!ready) return null;
 
   return <>{children}</>;
 }

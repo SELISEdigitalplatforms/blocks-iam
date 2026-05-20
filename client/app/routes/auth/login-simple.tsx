@@ -48,7 +48,12 @@ export default function LoginSimplePage() {
        const blocksKey ="***REMOVED***";
       const clientId = "a5831e15-e193-4a4f-8e10-d04a4ad1705b";
 
-      const initiateUrl = `/api/idp/initiate?x-blocks-key=${blocksKey}&clientId=${clientId}`;
+      // const initiateUrl = `/api/idp/initiate?x-blocks-key=${blocksKey}&clientId=${clientId}`;
+
+
+      const redirectUri = `${window.location.origin}/login/callback`;
+      const initiateUrl = `/api/idp/initiate?x-blocks-key=${blocksKey}&clientId=${clientId}&redirectUri=${redirectUri}`;
+
       const headers: Record<string, string> = {};
       if (blocksKey) headers["X-Blocks-Key"] = blocksKey;
 

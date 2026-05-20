@@ -1,10 +1,7 @@
-using System;
-using System.Collections.Generic;
-using System.Threading.Tasks;
-using MongoDB.Driver;
 using Blocks.Genesis;
 using Idp.DomainService.Oidc.Contracts;
 using Microsoft.Extensions.Logging;
+using MongoDB.Driver;
 
 namespace Authentication.DomainService.Oidc.Repositories
 {
@@ -21,15 +18,31 @@ namespace Authentication.DomainService.Oidc.Repositories
             _logger = logger;
         }
 
-        private IMongoDatabase GetDatabase() =>
-            _dbContextProvider.GetDatabase()
-            ?? throw new InvalidOperationException("No active MongoDB database is available in current Genesis context.");
+        public IMongoCollection<T> GetCollection<T>()
+        {
+            return _dbContextProvider.GetCollection<T>($"{typeof(T).Name}s");
+        }
 
-        public async Task<string> CreateAsync(AuditLogModel log)
+        public IMongoCollection<T> GetCollection<T>(string tenantId)
+        {
+            return _dbContextProvider.GetCollection<T>(tenantId, $"{typeof(T).Name}s");
+        }
+
+        public IMongoCollection<T> GetCollectionByName<T>(string collectionName, string tenantId)
+        {
+            return _dbContextProvider.GetCollection<T>(tenantId, collectionName);
+        }
+
+        public IMongoCollection<T> GetCollectionByName<T>(string collectionName)
+        {
+            return _dbContextProvider.GetCollection<T>(collectionName);
+        }
+
+        public async Task<string> CreateAsync(AuditLogModel log, string? tenant = null)
         {
             try
             {
-                var collection = GetDatabase().GetCollection<AuditLogModel>("IdpAuditLogs");
+                var collection = tenant == null ? GetCollectionByName<AuditLogModel>("IdpAuditLogs") : GetCollectionByName<AuditLogModel>("IdpAuditLogs", tenant);
                 await collection.InsertOneAsync(log);
                 return log.Id;
             }
@@ -44,7 +57,7 @@ namespace Authentication.DomainService.Oidc.Repositories
         {
             try
             {
-                var collection = GetDatabase().GetCollection<AuditLogModel>("IdpAuditLogs");
+                var collection = GetCollection<AuditLogModel>("IdpAuditLogs");
                 var filter = Builders<AuditLogModel>.Filter.And(
                     Builders<AuditLogModel>.Filter.Eq(l => l.UserId, userId),
                     Builders<AuditLogModel>.Filter.Eq(l => l.TenantId, tenantId),
@@ -64,7 +77,7 @@ namespace Authentication.DomainService.Oidc.Repositories
         {
             try
             {
-                var collection = GetDatabase().GetCollection<AuditLogModel>("IdpAuditLogs");
+                var collection = GetCollection<AuditLogModel>("IdpAuditLogs");
                 var filter = Builders<AuditLogModel>.Filter.And(
                     Builders<AuditLogModel>.Filter.Eq(l => l.EventType, eventType),
                     Builders<AuditLogModel>.Filter.Gte(l => l.Timestamp, from),
@@ -83,7 +96,7 @@ namespace Authentication.DomainService.Oidc.Repositories
         {
             try
             {
-                var collection = GetDatabase().GetCollection<AuditLogModel>("IdpAuditLogs");
+                var collection = GetCollection<AuditLogModel>("IdpAuditLogs");
                 var filter = Builders<AuditLogModel>.Filter.And(
                     Builders<AuditLogModel>.Filter.Eq(l => l.Severity, severity),
                     Builders<AuditLogModel>.Filter.Gte(l => l.Timestamp, from),
@@ -102,7 +115,7 @@ namespace Authentication.DomainService.Oidc.Repositories
         {
             try
             {
-                var collection = GetDatabase().GetCollection<AuditLogModel>("IdpAuditLogs");
+                var collection = GetCollection<AuditLogModel>("IdpAuditLogs");
                 var filterBuilder = Builders<AuditLogModel>.Filter;
                 var filters = new List<FilterDefinition<AuditLogModel>>();
 

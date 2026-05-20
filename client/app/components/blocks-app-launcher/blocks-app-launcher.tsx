@@ -12,12 +12,16 @@ import {
   DialogTitle,
 } from "@/components/ui-kits/dialog/dialog";
 import { cn } from "@/lib/utils";
+import { getRuntimeEnv } from "@/lib/runtime-env";
+import { showErrorToast } from "@/hooks/use-toast";
 interface BlocksApp {
   key: string;
   label: string;
   description: string;
   url: string;
   icon: React.ReactNode;
+  clientId: string;
+  redirectUri: string;
 }
 function IdpIcon() {
   return (
@@ -166,6 +170,8 @@ const SELISE_APPS: BlocksApp[] = [
     description: "Identity & Access",
     url: "https://dev-idp.blocksdevelopers.com",
     icon: <IdpIcon />,
+    clientId: "a5831e15-e193-4a4f-8e10-d04a4ad1705b",
+    redirectUri: "https://dev-idp.blocksdevelopers.com/login/callback",
   },
   {
     key: "uilm",
@@ -173,6 +179,8 @@ const SELISE_APPS: BlocksApp[] = [
     description: "Localization",
     url: "https://dev-eurolm.blocksdevelopers.com",
     icon: <UilmIcon />,
+    clientId: "57214b67-aa9c-4307-92ab-a25e35180fac",
+    redirectUri: "https://dev-eurolm.blocksdevelopers.com/login/callback",
   },
   {
     key: "ai",
@@ -180,6 +188,8 @@ const SELISE_APPS: BlocksApp[] = [
     description: "AI Platform",
     url: "https://dev-agent.blocksdevelopers.com",
     icon: <AiIcon />,
+    clientId: "c1565dbc-de65-4966-a427-0ed9e542c678",
+    redirectUri: "https://dev-agent.blocksdevelopers.com/login/callback",
   },
   {
     key: "data-gateway",
@@ -187,6 +197,8 @@ const SELISE_APPS: BlocksApp[] = [
     description: "Data Integration",
     url: "https://dev-uds.blocksdevelopers.com",
     icon: <DataGatewayIcon />,
+    clientId: "e76867a8-37a1-483e-a15e-875c3884b8e8",
+    redirectUri: "https://dev-uds.blocksdevelopers.com/login/callback",
   },
   {
     key: "blocks-os",
@@ -194,6 +206,8 @@ const SELISE_APPS: BlocksApp[] = [
     description: "Operating System",
     url: "https://dev-os.blocksdevelopers.com",
     icon: <BlocksOsIcon />,
+    clientId: "5225b9c1-15bc-41b0-bdc6-d3ceb180ccc5",
+    redirectUri: "https://dev-os.blocksdevelopers.com/login/callback",
   },
   {
     key: "utility",
@@ -201,6 +215,8 @@ const SELISE_APPS: BlocksApp[] = [
     description: "Utility Tools",
     url: "https://dev-utility.blocksdevelopers.com",
     icon: <UtilityIcon />,
+    clientId: "4f7ae2b9-4b42-4770-9138-63db08538629",
+    redirectUri: "https://dev-utility.blocksdevelopers.com/login/callback",
   },
   {
     key: "logic",
@@ -208,6 +224,8 @@ const SELISE_APPS: BlocksApp[] = [
     description: "Business Logic",
     url: "https://dev-logic.blocksdevelopers.com",
     icon: <LogicIcon />,
+    clientId: "a25aee32-73ae-484b-b813-522a8d091f89",
+    redirectUri: "https://dev-logic.blocksdevelopers.com/login/callback",
   },
   {
     key: "observability",
@@ -215,6 +233,8 @@ const SELISE_APPS: BlocksApp[] = [
     description: "Monitoring & Logs",
     url: "https://dev-observability.blocksdevelopers.com",
     icon: <ObservabilityIcon />,
+    clientId: "1bd234da-1fa1-4264-982e-3debb1078be5",
+    redirectUri: "https://dev-observability.blocksdevelopers.com/login/callback",
   },
   {
     key: "deployments",
@@ -222,26 +242,29 @@ const SELISE_APPS: BlocksApp[] = [
     description: "CI/CD & Releases",
     url: "https://dev-deployment.blocksdevelopers.com",
     icon: <DeploymentsIcon />,
+    clientId: "6523b311-256f-4b9a-a88a-2ac4e02bad25",
+    redirectUri: "https://dev-deployment.blocksdevelopers.com/login/callback",
   },
 ];
 interface AppTileProps {
   app: BlocksApp;
+  onClick: () => void;
+  isLoading: boolean;
 }
-function AppTile({ app }: AppTileProps) {
+function AppTile({ app, onClick, isLoading }: AppTileProps) {
   return (
-    <a
-      href={app.url}
-      target="_blank"
-      rel="noopener noreferrer"
-      className="group flex flex-col items-center gap-2 rounded-xl p-3 text-center transition-colors hover:bg-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+    <button
+      onClick={onClick}
+      disabled={isLoading}
+      className="group flex flex-col items-center gap-2 rounded-xl p-3 text-center transition-colors hover:bg-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-50"
     >
       <div className="flex h-12 w-12 items-center justify-center overflow-hidden">
         {app.icon}
       </div>
       <span className="line-clamp-1 max-w-[90px] text-[12px] font-medium leading-tight text-foreground">
-        {app.label}
+        {isLoading ? "Opening…" : app.label}
       </span>
-    </a>
+    </button>
   );
 }
 function LauncherTriggerIcon() {
@@ -295,6 +318,7 @@ export function BlocksAppLauncher() {
   const [editDialogOpen, setEditDialogOpen] = useState(false);
   const [favouriteKeys, setFavouriteKeys] = useState<Set<string>>(new Set());
   const [isHydrated, setIsHydrated] = useState(false);
+  const [loadingKey, setLoadingKey] = useState<string | null>(null);
   const location = useLocation();
   // const isAllowedRoute = !location.pathname.includes("/console") && !location.pathname.includes("/project-overview") && !location.pathname.includes("/services/lmt/logs");
   useEffect(() => {
@@ -317,6 +341,31 @@ export function BlocksAppLauncher() {
       newFavourites.add(key);
     }
     saveFavourites(newFavourites);
+  };
+  const initiateLogin = async (app: BlocksApp) => {
+    if (loadingKey) return;
+    try {
+      setLoadingKey(app.key);
+      const blocksKey = getRuntimeEnv("BLOCKS_X_BLOCKS_KEY");
+      const idpBaseUrl = getRuntimeEnv("BLOCKS_IDP_BASE_URL");
+      const initiateUrl = `${idpBaseUrl}/api/idp/initiate?x-blocks-key=${blocksKey}&clientId=${app.clientId}&redirectUri=${app.redirectUri}`;
+      const headers: Record<string, string> = {};
+      if (blocksKey) headers["X-Blocks-Key"] = blocksKey;
+
+      const response = await fetch(initiateUrl, { headers });
+      const data = await response.json();
+
+      if (data.redirect_uri) {
+        window.location.href = data.redirect_uri as string;
+      } else {
+        showErrorToast({ errors: "Failed to get authorization URL" });
+        setLoadingKey(null);
+      }
+    } catch (error) {
+      console.error("App login initiation error:", error);
+      showErrorToast({ errors: "Unable to open app. Please try again." });
+      setLoadingKey(null);
+    }
   };
   // if (!isHydrated || !isAllowedRoute) return null;
     if (!isHydrated) return null;
@@ -355,7 +404,12 @@ export function BlocksAppLauncher() {
           <div className="px-3 pb-2 pt-3">
             <div className="grid grid-cols-3">
               {favourites.map((app) => (
-                <AppTile key={app.key} app={app} />
+                <AppTile
+                  key={app.key}
+                  app={app}
+                  onClick={() => initiateLogin(app)}
+                  isLoading={loadingKey === app.key}
+                />
               ))}
             </div>
           </div>
@@ -366,7 +420,12 @@ export function BlocksAppLauncher() {
               </p>
               <div className="grid grid-cols-3">
                 {moreApps.map((app) => (
-                  <AppTile key={app.key} app={app} />
+                  <AppTile
+                    key={app.key}
+                    app={app}
+                    onClick={() => initiateLogin(app)}
+                    isLoading={loadingKey === app.key}
+                  />
                 ))}
               </div>
             </div>
