@@ -12,6 +12,7 @@ import { useProjectStore } from "@/store/useProjectStore";
 import { ImpersonationRequest } from "@/services/impersonation.service";
 import { getRuntimeEnv } from "@/lib/runtime-env";
 import { useGetProjects } from "@/hooks/use-project";
+import LogoLoadingSpinner from "@/components/loader-spinner/loader-spinner";
 
 export function ProtectedGuard({ children }: { children: React.ReactNode }) {
   const { isMounted } = useAppState();
@@ -89,7 +90,7 @@ export function ImpersonateGuard({ children }: { children: React.ReactNode }) {
     stopImpersonation,
   ]);
 
-  if (!ready) return null;
+  if (!ready) return <LogoLoadingSpinner />;
 
   return <>{children}</>;
 }

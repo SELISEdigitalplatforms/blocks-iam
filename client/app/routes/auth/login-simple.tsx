@@ -54,6 +54,15 @@ export default function LoginSimplePage() {
        const blocksKey ="f080a1bea04280a72149fd689d50a48c";
       const clientId = "a5831e15-e193-4a4f-8e10-d04a4ad1705b";
 
+      const meResponse = await fetch("/api/iam/me", {
+        headers: { "X-Blocks-Key": blocksKey },
+        credentials: "include",
+      });
+      if (meResponse.ok) {
+        window.location.href = "/services/authentication/users";
+        return;
+      }
+
       // const initiateUrl = `/api/idp/initiate?x-blocks-key=${blocksKey}&clientId=${clientId}`;
 
 
