@@ -38,11 +38,11 @@ namespace Authentication.DomainService.Oidc.Repositories
             return _dbContextProvider.GetCollection<T>(collectionName);
         }
 
-        public async Task<string> CreateAsync(AuditLogModel log, string? tenant = null)
+        public async Task<string> CreateAsync(AuditLogModel log)
         {
             try
             {
-                var collection = tenant == null ? GetCollectionByName<AuditLogModel>("IdpAuditLogs") : GetCollectionByName<AuditLogModel>("IdpAuditLogs", tenant);
+                var collection = GetCollectionByName<AuditLogModel>("IdpAuditLogs");
                 await collection.InsertOneAsync(log);
                 return log.Id;
             }

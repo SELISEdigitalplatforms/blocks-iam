@@ -18,9 +18,9 @@ namespace Authentication.DomainService.Services
         Task<User> GetUserByUsernameAsync(string username, string? organizationId = null);
         Task<User> GetUserByIdAsync(string itemId);
         Task<T> GetUserByIdAsync<T>(string itemId);
-        Task<bool> InsertIdentitySessionAsync(IdentitySession session, string? tenant = null);
-        Task<bool> InsertIdentityEventAsync(IdentityEvent identityEvent, string? tenant = null);
-        Task<bool> InsertUserAuthenticationTimelineAsync(UserAuthenticationTimeline userAuthenticationTimeline, string? tenant = null);
+        Task<bool> InsertIdentitySessionAsync(IdentitySession session);
+        Task<bool> InsertIdentityEventAsync(IdentityEvent identityEvent);
+        Task<bool> InsertUserAuthenticationTimelineAsync(UserAuthenticationTimeline userAuthenticationTimeline);
         Task<User?> IncrementFailedLoginAndApplyLockoutAsync(string userId, int lockThreshold, int lockDurationInMinutes, DateTime nowUtc);
         Task<IEnumerable<IdentitySession>> GetActiveIdentitySessionByUserIdAsync(string userId);
         Task<IdentitySession?> GetIdentitySessionByRefreshTokenAsync(string refreshToken);
