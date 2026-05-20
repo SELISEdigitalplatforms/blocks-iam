@@ -55,7 +55,7 @@ export function ProjectList({ collapsed = false }: { collapsed?: boolean }) {
     }
     setSelectedProject(project);
   };
-  const name = projectData?.data.name || selectedProject?.name;
+  const name = projectData?.data?.name || selectedProject?.name;
   const projects = projectGroups.flatMap((group) => group.projects).filter(Boolean);
   return (
     <DropdownMenu>
