@@ -876,12 +876,32 @@ namespace Authentication.DomainService.Authentication
             var options = DomainResolver.CreateCookieOptions(cookieDomain, DateTime.UtcNow.AddDays(-1));
             httpResponse.Cookies.Delete(ImpersonationIdCookieName, options);
             httpResponse.Cookies.Delete($"{IdpConstants.RefreshTokenCookieName}_{domain}", options);
+
+            if(!string.IsNullOrWhiteSpace(domain))
             httpResponse.Cookies.Delete(domain, options);
         }
 
         public async Task<IActionResult> ExecuteStopImpersonationAsync(HttpRequest httpRequest, HttpResponse httpResponse)
         {
             var bc = BlocksContext.GetContext();
+
+            BlocksContext.SetContext(BlocksContext.Create(
+                tenantId: bc.OriginalTenantId,
+                userId: bc.UserId,
+                impersonated: bc.Impersonated,
+                isAuthenticated: bc.IsAuthenticated,
+                requestUri: bc.RequestUri,
+                roles: bc.Roles,
+                permissions: bc.Permissions,
+                organizationId: bc.OrganizationId,
+                email: bc.Email,
+                userName: bc.UserId,
+                phoneNumber: bc.PhoneNumber,
+                expireOn: bc.ExpireOn,
+                displayName: bc.DisplayName,
+                oauthToken: bc.OAuthToken,
+                originalTenantId: bc.OriginalTenantId));
+
             string? impersonationSessionId = null;
             string? rootRefreshToken = null;
             ImpersonationSession? session = null;
