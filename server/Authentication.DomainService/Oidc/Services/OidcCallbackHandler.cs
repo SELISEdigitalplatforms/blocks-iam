@@ -26,8 +26,13 @@ namespace Authentication.DomainService.Oidc.Services
         // OIDC flow specific fields
         public bool IsOidcFlow { get; set; } = false;
         public string? AuthorizationCode { get; set; }
+        public string? ClientId { get; set; }
         public string? RedirectUri { get; set; }
         public string? OriginalState { get; set; }
+        public string? Scope { get; set; }
+        public string? Nonce { get; set; }
+        public string? CodeChallenge { get; set; }
+        public string? CodeChallengeMethod { get; set; }
         
         // Session/User identification for post-callback setup
         public string? BlocksUserId { get; set; }
@@ -150,36 +155,26 @@ namespace Authentication.DomainService.Oidc.Services
                     return new OidcCallbackResult { IsSuccess = false, ErrorMessage = "Failed to create user account" };
                 }
 
-                // 6. Issue OIDC authorization code for the original client
-                var authorizationCode = Guid.NewGuid().ToString("n");
-                var authCodeKey = $"oidc_auth_code:{authorizationCode}";
-                var authCodeValue = JsonSerializer.Serialize(new
-                {
-                    clientId,
-                    userId = blocksUserId,  // Use Blocks user ID, not provider's user ID
-                    provider = provider,
-                    accessToken = socialCallbackResult.AccessToken ?? string.Empty,
-                    idToken = socialCallbackResult.IdToken ?? string.Empty,
-                    refreshToken = socialCallbackResult.RefreshToken ?? string.Empty,
-                    expiresAt = DateTime.UtcNow.AddHours(1),
-                    createdAt = DateTime.UtcNow
-                });
-                await _cacheClient.AddStringValueAsync(authCodeKey, authCodeValue, 300); // 5 minute TTL
-
-                // 7. Clean up temporary states
+                // 6. Clean up temporary states. The actual authorization code must be created
+                // through AuthorizationFlowService.AuthorizeAsync so it persists as AuthorizationCodeModel.
                 await _cacheClient.RemoveKeyAsync($"oidc_social_state:{state}");
                 await _cacheClient.RemoveKeyAsync(contextKey);
 
-                // 8. Return result with authorization code and redirect info
+                // 7. Return the recovered OIDC request context so the controller can continue
+                // through the same AuthorizeAsync path used by password-based OIDC login.
                 return new OidcCallbackResult
                 {
                     IsSuccess = true,
-                    AuthorizationCode = authorizationCode,
+                    ClientId = clientId,
                     RedirectUri = redirectUri,
                     OriginalState = originalState,
                     IsOidcFlow = true,
                     BlocksUserId = blocksUserId,
-                    TenantId = context.GetProperty("tenantId").GetString() ?? "default"
+                    TenantId = context.GetProperty("tenantId").GetString() ?? "default",
+                    Scope = context.GetProperty("scope").GetString(),
+                    Nonce = context.GetProperty("nonce").GetString(),
+                    CodeChallenge = context.GetProperty("codeChallenge").GetString(),
+                    CodeChallengeMethod = context.GetProperty("codeChallengeMethod").GetString()
                 };
             }
             catch (Exception ex)

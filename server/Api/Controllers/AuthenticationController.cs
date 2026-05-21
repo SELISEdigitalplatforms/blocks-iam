@@ -8,6 +8,7 @@ using Blocks.Genesis;
 using Iam.DomainService.Accounts;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using System.Security.Claims;
 
 namespace Api.Controllers;
 
@@ -29,6 +30,7 @@ public class AuthenticationController : ControllerBase
     private readonly IAccountService _accountService;
     private readonly IAuthenticationFlowService _authenticationFlowService;
     private readonly IOidcCallbackHandler _oidcCallbackHandler;
+    private readonly IAuthorizationFlowService _authorizationFlowService;
 
     public AuthenticationController(
         IAuthenticationService authenticationService,
@@ -41,6 +43,7 @@ public class AuthenticationController : ControllerBase
         _accountService = accountService;
         _authenticationFlowService = authenticationFlowService;
         _oidcCallbackHandler = oidcCallbackHandler;
+        _authorizationFlowService = authorizationFlowService;
     }
 
     /// <summary>
@@ -529,7 +532,7 @@ public class AuthenticationController : ControllerBase
 
     private async Task<IActionResult> ProcessOidcCallback(string code, string state)
     {
-        // Exchange code for token
+        // Resolve the provider callback back into the original OIDC request context.
         var result = await _oidcCallbackHandler.HandleCallbackAsync(code, state);
 
         if (!result.IsSuccess)
@@ -541,20 +544,35 @@ public class AuthenticationController : ControllerBase
             });
         }
 
-        // Check if this is OIDC flow (issuing authorization code) or embedded flow (setting cookie)
-        if (result.IsOidcFlow && !string.IsNullOrWhiteSpace(result.AuthorizationCode) && !string.IsNullOrWhiteSpace(result.RedirectUri))
+        // OIDC social flow must use the same AuthorizeAsync path as password OIDC login so
+        // AuthorizationCodeModel is persisted in the standard repository.
+        if (result.IsOidcFlow
+            && !string.IsNullOrWhiteSpace(result.ClientId)
+            && !string.IsNullOrWhiteSpace(result.RedirectUri)
+            && !string.IsNullOrWhiteSpace(result.BlocksUserId))
         {
-            // OIDC FLOW: Issue authorization code and redirect to original redirect_uri
-            // Ensure IdP session is established before redirect for SSO continuity
-            if (!string.IsNullOrWhiteSpace(result.BlocksUserId) && !string.IsNullOrWhiteSpace(result.TenantId))
+            var claims = new[]
             {
-                await _authenticationService.EnsureIdpSessionForOidcCallbackAsync(HttpContext, result.BlocksUserId, result.TenantId);
-            }
+                new Claim("sub", result.BlocksUserId),
+                new Claim("tenant_id", result.TenantId ?? string.Empty)
+            };
+            var principal = new ClaimsPrincipal(new ClaimsIdentity(claims, "Bearer"));
 
-            // Frontend will receive code and exchange for token
-            var separator = result.RedirectUri.Contains('?') ? "&" : "?";
-            var redirectUrl = $"{result.RedirectUri}{separator}code={Uri.EscapeDataString(result.AuthorizationCode)}&state={Uri.EscapeDataString(result.OriginalState ?? string.Empty)}";
-            return Redirect(redirectUrl);
+            return await _authorizationFlowService.AuthorizeAsync(
+                result.ClientId,
+                "code",
+                result.RedirectUri,
+                result.Scope ?? "openid profile email offline_access",
+                result.OriginalState ?? string.Empty,
+                result.Nonce ?? string.Empty,
+                result.CodeChallenge ?? string.Empty,
+                result.CodeChallengeMethod ?? "S256",
+                null,
+                result.TenantId ?? string.Empty,
+                principal,
+                Request,
+                Response,
+                true);
         }
         else
         {
