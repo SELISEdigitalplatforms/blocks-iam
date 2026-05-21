@@ -1,8 +1,6 @@
-using Authentication.DomainService.OAuth.RequestModel;
 using Authentication.DomainService.Services;
 using Blocks.Genesis;
 using Microsoft.Extensions.Logging;
-using System.Net;
 using System.Text.Json;
 
 namespace Authentication.DomainService.OAuth
@@ -12,37 +10,9 @@ namespace Authentication.DomainService.OAuth
         public BYOSsoLogInService(
             ILogger<BYOSsoLogInService> logger,
             IAuthenticationRepository authenticationRepository,
-            ICacheClient cacheClient,
             IHttpService httpService
-        ) : base(logger, authenticationRepository, cacheClient, httpService)
+        ) : base(logger, authenticationRepository, httpService)
         {
-        }
-
-        public override async Task<(string, bool)> GetProviderLogInUriAsync(GetSocialLogInEndPointRequest loginData)
-        {
-            var identityProvider = await _authenticationRepository.GetIdentityProviderByClientIdAsync(loginData.ClientId);
-
-            if (identityProvider == null)
-            {
-                _logger.LogError("Identity provider not found for provider {Provider}", loginData.Provider);
-                return (string.Empty, true);
-            }
-
-            var socialLogInStateKey = Guid.NewGuid().ToString("n");
-            var providerRedirectUri = loginData.RedirectUri ?? identityProvider.RedirectUris.FirstOrDefault() ?? string.Empty;
-            var socialLogInStateInfo = new StateInfo
-            {
-                ClientId = loginData.ClientId,
-                Provider = loginData.Provider,
-                Audience = loginData.Audience,
-                NextUrl = loginData.NextUrl,
-                RedirectUri = providerRedirectUri
-            };
-
-            await _cacheClient.AddStringValueAsync(socialLogInStateKey, JsonSerializer.Serialize(socialLogInStateInfo), 3000);
-            var redirectUri = $"{identityProvider.AuthorizationUrl}&response_type=code&client_id={identityProvider.ClientId}&state={socialLogInStateKey}&redirect_uri={WebUtility.UrlEncode(providerRedirectUri)}&scope=openid";
-
-            return (redirectUri, loginData.SendAsResponse);
         }
 
         public override async Task<SocialCallbackResult> HandleSocialLoginCallback(StateInfo stateInfo)

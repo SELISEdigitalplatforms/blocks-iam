@@ -1,4 +1,3 @@
-using Authentication.DomainService.OAuth.RequestModel;
 using Authentication.DomainService.OAuth.SocialServices;
 using Microsoft.Extensions.DependencyInjection;
 
@@ -21,17 +20,6 @@ namespace Authentication.DomainService.OAuth
                 { SocialLogInTypes.Twitter, serviceProvider.GetService<TwitterLogInService>() },
                 { SocialLogInTypes.Apple, serviceProvider.GetService<AppleLogInService>() },
                 { SocialLogInTypes.FaceBook, serviceProvider.GetService<FaceBookLogInService>() }
-            };
-        }
-        public async Task<GetSocialLogInEndPointResponse> GetSocialLogInEndPointAsync(GetSocialLogInEndPointRequest request)
-        {
-            var service = _socialLogIns.ContainsKey(request.ClientId) ? _socialLogIns[request.Provider.ToLower()] : _defaultService;
-            var (link, response) = await service.GetProviderLogInUriAsync(request);
-            return new GetSocialLogInEndPointResponse
-            {
-                ProviderUrl = link,
-                IsAResponse = response,
-                Error = string.IsNullOrWhiteSpace(link) ? $"Credential not found for provider {request.Provider} and audience {request.Audience}" : string.Empty
             };
         }
 

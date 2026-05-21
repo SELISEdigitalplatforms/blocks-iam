@@ -185,9 +185,9 @@ public class AuthenticationController : ControllerBase
     /// </summary>
     [HttpGet("social/initiate")]
     [AllowAnonymous]
-    public Task<IActionResult> InitiateSocialAuthentication([FromQuery] string provider, [FromQuery] string redirectUri)
+    public Task<IActionResult> InitiateSocialAuthentication([FromQuery] string clientId, [FromQuery] string redirectUri)
     {
-        return _authenticationService.GetSocialAuthorizationUrlAsync(provider, redirectUri);
+        return _authenticationService.GetSocialAuthorizationUrlAsync(clientId, redirectUri);
     }
 
     /// <summary>
@@ -228,6 +228,7 @@ public class AuthenticationController : ControllerBase
 
         var loginRequest = new SocialLoginRequest { Code = code, State = state };
         var result = await _authenticationFlowService.ExecuteSocialLoginAsync(loginRequest, Request);
+
         return await _authenticationService.BuildFlowResultAsync(result, HttpContext);
     }
 

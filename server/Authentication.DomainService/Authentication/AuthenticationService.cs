@@ -1,9 +1,11 @@
 using Authentication.DomainService.Dtos;
 using Authentication.DomainService.Entities;
+using Authentication.DomainService.OAuth;
 using Authentication.DomainService.OAuth.ResponseModel;
 using Authentication.DomainService.Oidc.Repositories;
 using Authentication.DomainService.Oidc.Services;
 using Authentication.DomainService.Services;
+using Authentication.DomainService.Shared;
 using Authentication.DomainService.Utilities;
 using Blocks.Genesis;
 using Idp.DomainService.Oidc.Contracts;
@@ -15,7 +17,6 @@ using System.IdentityModel.Tokens.Jwt;
 using System.Net.Http.Json;
 using System.Security.Claims;
 using System.Security.Cryptography.X509Certificates;
-using Authentication.DomainService.Shared;
 using System.Text.Json;
 
 namespace Authentication.DomainService.Authentication
@@ -399,30 +400,35 @@ namespace Authentication.DomainService.Authentication
         /// Initialize social provider authorization - generates state, stores in cache, returns authorization URL
         /// Standard OAuth 2.0 Authorization Code flow initialization
         /// </summary>
-        public async Task<IActionResult> GetSocialAuthorizationUrlAsync(string provider, string redirectUri)
+        public async Task<IActionResult> GetSocialAuthorizationUrlAsync(string clientId, string redirectUri)
         {
-            if (string.IsNullOrWhiteSpace(provider))
-                return new BadRequestObjectResult(new { error = "provider_required", error_description = "Provider name is required" });
+            if (string.IsNullOrWhiteSpace(clientId))
+                return new BadRequestObjectResult(new { error = "client_id_required", error_description = "Client ID is required" });
 
             try
             {
                 // Get provider configuration
-                var identityProvider = await _authenticationRepository.GetIdentityProviderAsync(provider);
+                var identityProvider = await _authenticationRepository.GetIdentityProviderByClientIdAsync(clientId);
                 if (identityProvider == null)
-                    return new NotFoundObjectResult(new { error = "provider_not_found", error_description = $"Provider '{provider}' not configured" });
+                    return new NotFoundObjectResult(new { error = "provider_not_found", error_description = $"Provider '{clientId}' not configured" });
 
                 if (!identityProvider.IsActive)
-                    return new BadRequestObjectResult(new { error = "provider_inactive", error_description = $"Provider '{provider}' is not active" });
+                    return new BadRequestObjectResult(new { error = "provider_inactive", error_description = $"Provider '{clientId}' is not active" });
 
                 if (identityProvider.ProviderType != "social")
-                    return new BadRequestObjectResult(new { error = "invalid_provider_type", error_description = $"Provider '{provider}' is not a social provider" });
+                    return new BadRequestObjectResult(new { error = "invalid_provider_type", error_description = $"Provider '{clientId}' is not a social provider" });
 
                 // Generate state for CSRF protection
                 var state = Guid.NewGuid().ToString("n");
-
-                // Store state in cache (5 minute TTL for authorization flow)
-                var cacheKey = $"oidc_state:{state}";
-                await _cacheClient.AddStringValueAsync(cacheKey, state, 300); // 5 minutes in seconds
+                var stateValue = JsonSerializer.Serialize(new StateInfo
+                {
+                    ClientId = clientId,
+                    Provider = identityProvider.Provider,
+                    State = state,
+                    RedirectUri = redirectUri,
+                    Audience = clientId,
+                });
+                await _cacheClient.AddStringValueAsync(state, stateValue, 300); // 5 minutes in seconds
 
                 // Build authorization URL
                 var scope = identityProvider.Scope ?? "openid profile email";
@@ -437,7 +443,7 @@ namespace Authentication.DomainService.Authentication
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Error getting social authorization URL for provider: {Provider}", provider);
+                _logger.LogError(ex, "Error getting social authorization URL for provider: {Provider}", clientId);
                 return new BadRequestObjectResult(new { error = "authorization_url_generation_failed", error_description = ex.Message });
             }
         }

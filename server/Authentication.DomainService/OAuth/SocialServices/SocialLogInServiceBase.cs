@@ -1,10 +1,7 @@
-using Authentication.DomainService.Entities;
-using Authentication.DomainService.OAuth.RequestModel;
 using Authentication.DomainService.Services;
 using Blocks.Genesis;
 using Microsoft.Extensions.Logging;
 using System.IdentityModel.Tokens.Jwt;
-using System.Net;
 using System.Text.Json;
 
 namespace Authentication.DomainService.OAuth
@@ -21,50 +18,12 @@ namespace Authentication.DomainService.OAuth
         protected SocialLogInServiceBase(
             ILogger logger,
             IAuthenticationRepository authenticationRepository,
-            ICacheClient cacheClient,
             IHttpService httpService
         )
         {
             _logger = logger;
             _authenticationRepository = authenticationRepository;
-            _cacheClient = cacheClient;
             _httpService = httpService;
-        }
-
-        public virtual async Task<(string, bool)> GetProviderLogInUriAsync(GetSocialLogInEndPointRequest loginData)
-        {
-            var identityProvider = await _authenticationRepository.GetIdentityProviderByClientIdAsync(loginData.ClientId);
-
-            if (identityProvider == null)
-            {
-                _logger.LogError("Identity provider not found for provider {Provider}", loginData.Provider);
-                return (string.Empty, true);
-            }
-
-            var socialLogInStateKey = Guid.NewGuid().ToString("n");
-            var providerRedirectUri = loginData.RedirectUri ?? identityProvider.RedirectUris?.FirstOrDefault() ?? string.Empty;
-            var socialLogInStateInfo = new StateInfo
-            {
-                ClientId = loginData.ClientId,
-                Audience = loginData.Audience,
-                Provider = loginData.Provider,
-                NextUrl = loginData.NextUrl,
-                RedirectUri = providerRedirectUri
-            };
-
-            await _cacheClient.AddStringValueAsync(socialLogInStateKey, JsonSerializer.Serialize(socialLogInStateInfo), 300);
-
-            // Build authorization URL with parameters
-            var authUrl = BuildAuthorizationUrl(identityProvider, socialLogInStateKey, providerRedirectUri);
-            return (authUrl, loginData.SendAsResponse);
-        }
-
-        private string BuildAuthorizationUrl(IdentityProvider provider, string state, string redirectUri)
-        {
-            var encodedRedirectUri = WebUtility.UrlEncode(redirectUri);
-            var scope = WebUtility.UrlEncode(provider.Scope);
-
-            return $"{provider.AuthorizationUrl}?client_id={provider.ClientId}&scope={scope}&state={state}&redirect_uri={encodedRedirectUri}&response_type={provider.ResponseType}";
         }
 
         public virtual async Task<SocialCallbackResult> HandleSocialLoginCallback(StateInfo stateInfo)
