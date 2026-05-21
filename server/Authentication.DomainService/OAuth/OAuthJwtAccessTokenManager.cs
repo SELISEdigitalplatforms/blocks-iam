@@ -227,7 +227,8 @@ namespace Authentication.DomainService.OAuth
                     authenticationConfiguration,
                     tenant,
                     user,
-                    visitorsIpAddresses
+                    visitorsIpAddresses,
+                    tokenRequest.IsImpersonation
                 );
             }
             else
@@ -240,7 +241,8 @@ namespace Authentication.DomainService.OAuth
                     authenticationConfiguration,
                     tenant,
                     user,
-                    visitorsIpAddresses
+                    visitorsIpAddresses,
+                    tokenRequest.IsImpersonation
                 );
             }
         }

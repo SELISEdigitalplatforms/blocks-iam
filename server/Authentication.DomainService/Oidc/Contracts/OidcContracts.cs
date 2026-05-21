@@ -1,4 +1,3 @@
-using System.IdentityModel.Tokens.Jwt;
 using System.Text.Json.Serialization;
 using Microsoft.IdentityModel.Tokens;
 
@@ -40,6 +39,8 @@ public class AuthorizationCodeModel
     public bool IsUsed { get; set; }
     public DateTime? UsedAt { get; set; }
     public string? UsedByIpAddress { get; set; }
+    public bool IsRevoked { get; set; }
+    public DateTime? RevokedAt { get; set; }
 }
 
 public class RefreshTokenModel

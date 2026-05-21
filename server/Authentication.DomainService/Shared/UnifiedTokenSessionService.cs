@@ -35,7 +35,8 @@ namespace Authentication.DomainService.Shared
             AuthenticationConfiguration authenticationConfiguration,
             Tenant tenant,
             User user,
-            IEnumerable<string> visitorsIpAddresses)
+            IEnumerable<string> visitorsIpAddresses,
+            bool impersoanted)
         {
             var now = DateTime.UtcNow;
             string refreshTokenId = Guid.NewGuid().ToString("N");

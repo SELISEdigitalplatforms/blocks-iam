@@ -1,10 +1,6 @@
-using Idp.DomainService.Oidc.Contracts;
 using Blocks.Genesis;
 using Microsoft.Extensions.Logging;
 using MongoDB.Driver;
-using System;
-using System.Collections.Generic;
-using System.Threading.Tasks;
 
 namespace Authentication.DomainService.Oidc.Repositories
 {
@@ -85,12 +81,16 @@ namespace Authentication.DomainService.Oidc.Repositories
             {
                 var collection = GetDatabase().GetCollection<TokenRevocationModel>("IdpRevokedTokens");
                 var filter = Builders<TokenRevocationModel>.Filter.Eq(t => t.Jti, jti);
-                var result = await collection.DeleteOneAsync(filter);
-                return result.DeletedCount > 0;
+                var update = Builders<TokenRevocationModel>.Update
+                    .Set(t => t.IsDeleted, true)
+                    .Set(t => t.DeletedAt, DateTime.UtcNow);
+
+                var result = await collection.UpdateOneAsync(filter, update);
+                return result.ModifiedCount > 0;
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, $"Error deleting revocation record: {jti}");
+                _logger.LogError(ex, $"Error soft deleting revocation record: {jti}");
                 throw;
             }
         }
@@ -140,6 +140,8 @@ namespace Authentication.DomainService.Oidc.Repositories
         public DateTime RevokedAt { get; set; }
         public string? RevokeReason { get; set; } // "user_revoked", "logout", "reuse_detected", "password_changed"
         public DateTime ExpiresAt { get; set; } // After this date, can be deleted from DB
+        public bool IsDeleted { get; set; } // Soft delete flag
+        public DateTime DeletedAt { get; set; } // Soft delete timestamp
     }
 }
 

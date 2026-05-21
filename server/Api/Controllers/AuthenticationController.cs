@@ -365,6 +365,14 @@ public class AuthenticationController : ControllerBase
     public async Task<IActionResult> StopImpersonation([FromBody] StopImpersonationRequest request)
     {
         // Reset BlocksContext to original tenant context in case this impersonation request is coming from an existing impersonation session (organization switch or tenant switch within impersonation), we want to validate permissions and issue tokens based on the original/root tenant context and not the current impersonated context
+        if(!BlocksContext.GetContext().Impersonated)
+        {
+            return BadRequest(new StopImpersonationResponse
+            {
+                error = "Not_allowed"
+            });
+        }
+        
         DomainResolver.ResetToOriginalBlocksContextForImpersonation();
         return await _authenticationFlowService.ExecuteStopImpersonationAsync(request, Request, Response);
     }

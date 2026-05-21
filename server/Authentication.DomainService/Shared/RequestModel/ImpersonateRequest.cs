@@ -36,5 +36,6 @@ namespace Authentication.DomainService.Shared.RequestModel
     public class StopImpersonationResponse
     {
         public bool impersonation_mode { get; set; } = false;
+        public string? error { get; set; }
     }
 }
