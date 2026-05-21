@@ -62,7 +62,8 @@ namespace Authentication.DomainService.Shared
                 TokenVersion = user.TokenVersion,
                 RememberMeIssuedUtc = tokenRequest.RememberMe ? now : null,
                 RememberMeExpiresUtc = tokenRequest.RememberMe ? absoluteRefreshTokenExpireOn : null,
-                Scope = tokenRequest.Scope
+                Scope = tokenRequest.Scope,
+                Impersonated = impersoanted
             };
 
 
@@ -83,6 +84,7 @@ namespace Authentication.DomainService.Shared
                 AbsoluteExpiry = refreshTokenCache.AbsoluteExpiresUtc,
                 IpAddress = refreshTokenCache.IpAddresses ?? string.Empty,
                 IsRevoked = false,
+                Impersonated = impersoanted,
                 UserAgent = tokenRequest.Request?.Headers != null && tokenRequest.Request.Headers.ContainsKey("User-Agent") ? tokenRequest.Request.Headers["User-Agent"].ToString() : string.Empty
             };
             await _refreshTokenRepository.CreateAsync(refreshTokenModel);
@@ -101,7 +103,8 @@ namespace Authentication.DomainService.Shared
                 DeviceInformation = _authenticationDomainService.GetDeviceInfo(tokenRequest.Request?.Headers != null && tokenRequest.Request.Headers.ContainsKey("User-Agent") ? tokenRequest.Request.Headers["User-Agent"].ToString() : string.Empty),
                 IsRevoke = false,
                 IsLogin = true,
-                GrantType = tokenRequest.GrantType ?? string.Empty
+                GrantType = tokenRequest.GrantType ?? string.Empty,
+                Impersonated = impersoanted
             };
             await _authenticationDomainService.SendToQueueAsync(IdpConstants.AuthenticationQueue, addRefreshTokenEvent);
 
@@ -126,7 +129,8 @@ namespace Authentication.DomainService.Shared
                         DeviceInformation = _authenticationDomainService.GetDeviceInfo(tokenRequest.Request?.Headers != null && tokenRequest.Request.Headers.ContainsKey("User-Agent") ? tokenRequest.Request.Headers["User-Agent"].ToString() : string.Empty),
                         IsRevoke = true,
                         IsLogin = false,
-                        GrantType = tokenRequest.GrantType ?? string.Empty
+                        GrantType = tokenRequest.GrantType ?? string.Empty,
+                        Impersonated = impersoanted,
                     };
                     await _authenticationDomainService.SendToQueueAsync(IdpConstants.AuthenticationQueue, revokeOldTokenEvent);
                 }
