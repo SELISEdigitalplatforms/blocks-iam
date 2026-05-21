@@ -13,7 +13,7 @@ namespace Authentication.DomainService.Oidc.Services
 {
     public interface IOidcCallbackHandler
     {
-        Task<OidcCallbackResult> HandleCallbackAsync(string code, string state, string provider);
+        Task<OidcCallbackResult> HandleCallbackAsync(string code, string state);
     }
 
     public class OidcCallbackResult
@@ -58,7 +58,7 @@ namespace Authentication.DomainService.Oidc.Services
             _userRepository = userRepository;
         }
 
-        public async Task<OidcCallbackResult> HandleCallbackAsync(string code, string state, string provider)
+        public async Task<OidcCallbackResult> HandleCallbackAsync(string code, string state)
         {
             try
             {
@@ -73,11 +73,11 @@ namespace Authentication.DomainService.Oidc.Services
 
                 // OIDC SOCIAL FLOW - User authenticated via social provider within OIDC
                 // Process and return authorization code for original OIDC client
-                return await HandleOidcSocialCallbackAsync(code, state, provider, oidcSocialStateJson);
+                return await HandleOidcSocialCallbackAsync(code, state, oidcSocialStateJson);
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Error handling OIDC callback for provider {Provider}", provider);
+                _logger.LogError(ex, "Error handling OIDC callback");
                 return new OidcCallbackResult { IsSuccess = false, ErrorMessage = "An error occurred during token exchange" };
             }
         }
@@ -87,7 +87,7 @@ namespace Authentication.DomainService.Oidc.Services
         /// Handle OIDC social login - issues authorization code for original OIDC client
         /// Flow: Frontend → OIDC Server → Social Provider → Backend → Issue Auth Code → Frontend
         /// </summary>
-        private async Task<OidcCallbackResult> HandleOidcSocialCallbackAsync(string code, string state, string provider, string oidcSocialStateJson)
+        private async Task<OidcCallbackResult> HandleOidcSocialCallbackAsync(string code, string state, string oidcSocialStateJson)
         {
             try
             {
@@ -116,10 +116,10 @@ namespace Authentication.DomainService.Oidc.Services
                 var redirectUri = context.GetProperty("redirectUri").GetString();
 
                 // 2. Get IdentityProvider config
-                var identityProvider = await _authenticationRepository.GetIdentityProviderAsync(provider);
+                var identityProvider = await _authenticationRepository.GetIdentityProviderByClientIdAsync(clientId);
                 if (identityProvider == null)
                 {
-                    _logger.LogError("Identity provider {Provider} not found", provider);
+                    _logger.LogError("Identity provider {Provider} not found", clientId);
                     return new OidcCallbackResult { IsSuccess = false, ErrorMessage = "Provider not configured" };
                 }
 
@@ -127,7 +127,7 @@ namespace Authentication.DomainService.Oidc.Services
                 var tokenResult = await ExchangeCodeForTokenAsync(code, identityProvider);
                 if (!tokenResult.IsSuccess)
                 {
-                    _logger.LogError("Token exchange failed for provider {Provider}: {Error}", provider, tokenResult.ErrorMessage);
+                    _logger.LogError("Token exchange failed for provider {Provider}: {Error}", clientId, tokenResult.ErrorMessage);
                     return tokenResult;
                 }
 
@@ -144,10 +144,10 @@ namespace Authentication.DomainService.Oidc.Services
                 }
 
                 // 5. Create or update Blocks user based on provider's user info
-                var blocksUserId = await CreateOrUpdateUserFromTokenAsync(tokenResult.TokenPayload, provider, identityProvider);
+                var blocksUserId = await CreateOrUpdateUserFromTokenAsync(tokenResult.TokenPayload, identityProvider);
                 if (string.IsNullOrWhiteSpace(blocksUserId))
                 {
-                    _logger.LogError("Failed to create/update user for provider {Provider}", provider);
+                    _logger.LogError("Failed to create/update user for provider {Provider}", identityProvider.Provider);
                     return new OidcCallbackResult { IsSuccess = false, ErrorMessage = "Failed to create user account" };
                 }
 
@@ -158,7 +158,7 @@ namespace Authentication.DomainService.Oidc.Services
                 {
                     clientId,
                     userId = blocksUserId,  // Use Blocks user ID, not provider's user ID
-                    provider,
+                    provider = identityProvider.Provider,
                     accessToken = tokenResult.AccessToken,
                     idToken = tokenResult.IdToken,
                     refreshToken = tokenResult.RefreshToken,
@@ -184,7 +184,7 @@ namespace Authentication.DomainService.Oidc.Services
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Error handling OIDC social callback for provider {Provider}", provider);
+                _logger.LogError(ex, "Error handling OIDC social callback for provider");
                 return new OidcCallbackResult { IsSuccess = false, ErrorMessage = "An error occurred during OIDC processing" };
             }
         }
@@ -194,7 +194,7 @@ namespace Authentication.DomainService.Oidc.Services
         /// Deserializes token payload using provider-specific IExternalUserData classes
         /// Returns Blocks user ID
         /// </summary>
-        private async Task<string?> CreateOrUpdateUserFromTokenAsync(Dictionary<string, object>? tokenPayload, string provider, IdentityProvider identityProvider)
+        private async Task<string?> CreateOrUpdateUserFromTokenAsync(Dictionary<string, object>? tokenPayload, IdentityProvider identityProvider)
         {
             if (tokenPayload == null || tokenPayload.Count == 0)
                 return null;
@@ -202,12 +202,12 @@ namespace Authentication.DomainService.Oidc.Services
             try
             {
                 // Convert token payload to JSON and deserialize into provider-specific IExternalUserData
-                var externalUserData = DeserializeExternalUserData(tokenPayload, provider);
+                var externalUserData = DeserializeExternalUserData(tokenPayload, identityProvider.Provider);
                 if (externalUserData == null || string.IsNullOrWhiteSpace(externalUserData.Email))
                     return null; // Cannot create user without email
 
                 // Set platform and roles/permissions from IdentityProvider config
-                externalUserData.Platform = provider;
+                externalUserData.Platform = identityProvider.Provider;
                 externalUserData.Roles = identityProvider.InitialRoles ?? [];
                 externalUserData.Permissions = identityProvider.InitialPermissions ?? [];
 
@@ -217,20 +217,22 @@ namespace Authentication.DomainService.Oidc.Services
                 if (existingUser != null)
                 {
                     // Update existing user with new info from provider
-                    existingUser.FirstName = externalUserData.FirstName ?? existingUser.FirstName;
-                    existingUser.LastName = externalUserData.LastName ?? existingUser.LastName;
-                    existingUser.ProfileImageUrl = externalUserData.ProfileImageUrl ?? existingUser.ProfileImageUrl;
-                    existingUser.Platform = provider;
-                    existingUser.IsVerified = true;  // Trust social provider's email
+                    //existingUser.FirstName = externalUserData.FirstName ?? existingUser.FirstName;
+                    //existingUser.LastName = externalUserData.LastName ?? existingUser.LastName;
+                    //existingUser.ProfileImageUrl = externalUserData.ProfileImageUrl ?? existingUser.ProfileImageUrl;
+                    //existingUser.Platform = identityProvider.Provider;
+                    //existingUser.IsVerified = true;  // Trust social provider's email
                     
-                    // Update roles and permissions
-                    if (existingUser.Roles == null) existingUser.Roles = new Dictionary<string, List<string>>();
-                    if (existingUser.Permissions == null) existingUser.Permissions = new Dictionary<string, List<string>>();
+                    //// Update roles and permissions
+                    //if (existingUser.Roles == null) existingUser.Roles = new Dictionary<string, List<string>>();
+                    //if (existingUser.Permissions == null) existingUser.Permissions = new Dictionary<string, List<string>>();
                     
-                    existingUser.Roles["default"] = externalUserData.Roles ?? [];
-                    existingUser.Permissions["default"] = externalUserData.Permissions ?? [];
+                    //existingUser.Roles["default"] = externalUserData.Roles ?? [];
+                    //existingUser.Permissions["default"] = externalUserData.Permissions ?? [];
                     
-                    await _userRepository.UpdateUserAsync(existingUser);
+                    //await _userRepository.UpdateUserAsync(existingUser);
+
+                    //intentionally do not update existing user to avoid overwriting any customizations - just return existing user ID
                     return existingUser.ItemId;
                 }
 
@@ -242,7 +244,7 @@ namespace Authentication.DomainService.Oidc.Services
                     LastName = externalUserData.LastName,
                     ProfileImageUrl = externalUserData.ProfileImageUrl,
                     PhoneNumber = externalUserData.PhoneNumber,
-                    Platform = provider,
+                    Platform = identityProvider.Provider,
                     IsVerified = true,  // Trust social provider's email
                     Roles = new Dictionary<string, List<string>>
                     {
@@ -251,7 +253,13 @@ namespace Authentication.DomainService.Oidc.Services
                     Permissions = new Dictionary<string, List<string>>
                     {
                         { "default", externalUserData.Permissions ?? [] }
-                    }
+                    },
+                    Attributes = identityProvider.Provider == "microsoft" ? new Dictionary<string, object>
+                    {
+                        { "Department", externalUserData.Department },
+                        { "EmployeeId", externalUserData.EmployeeId },
+                        { "ExternalProviderUserId", externalUserData.ExternalProviderUserId }
+                    } : new Dictionary<string, object>(),
                 };
 
                 // Save new user
@@ -260,7 +268,7 @@ namespace Authentication.DomainService.Oidc.Services
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Error creating/updating user from token for provider {Provider}", provider);
+                _logger.LogError(ex, "Error creating/updating user from token for provider {Provider}", identityProvider.Provider);
                 return null;
             }
         }

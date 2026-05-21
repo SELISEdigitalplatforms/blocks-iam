@@ -183,7 +183,7 @@ public class AuthenticationController : ControllerBase
     /// Returns authorization URL to redirect user to social provider
     /// RFC 6749: OAuth 2.0 Framework | RFC 7636: PKCE
     /// </summary>
-    [HttpGet("social/authorize")]
+    [HttpGet("social/initiate")]
     [AllowAnonymous]
     public Task<IActionResult> InitiateSocialAuthentication([FromQuery] string provider, [FromQuery] string redirectUri)
     {
@@ -247,14 +247,12 @@ public class AuthenticationController : ControllerBase
     public async Task<IActionResult> HandleOidcCallbackGet(
         [FromQuery] string code,
         [FromQuery] string state,
-        [FromQuery] string provider,
         [FromBody] OidcCallbackRequest? request = null)
     {
         if (request != null)
         {
             code = request.Code;
             state = request.State;
-            provider = request.Provider;
         }
 
         if (string.IsNullOrWhiteSpace(code))
@@ -263,10 +261,7 @@ public class AuthenticationController : ControllerBase
         if (string.IsNullOrWhiteSpace(state))
             return BadRequest(new { error = "state_missing", error_description = "State parameter is required" });
 
-        if (string.IsNullOrWhiteSpace(provider))
-            return BadRequest(new { error = "provider_missing", error_description = "Provider name is required" });
-
-        return await ProcessOidcCallback(code, state, provider);
+        return await ProcessOidcCallback(code, state);
     }
 
     #endregion
@@ -531,10 +526,10 @@ public class AuthenticationController : ControllerBase
 
     #endregion
 
-    private async Task<IActionResult> ProcessOidcCallback(string code, string state, string provider)
+    private async Task<IActionResult> ProcessOidcCallback(string code, string state)
     {
         // Exchange code for token
-        var result = await _oidcCallbackHandler.HandleCallbackAsync(code, state, provider);
+        var result = await _oidcCallbackHandler.HandleCallbackAsync(code, state);
 
         if (!result.IsSuccess)
         {
