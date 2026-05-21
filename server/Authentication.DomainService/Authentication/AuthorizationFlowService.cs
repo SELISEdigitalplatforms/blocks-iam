@@ -1,25 +1,26 @@
-using Microsoft.AspNetCore.Mvc;
-using Blocks.Genesis;
-using Authentication.DomainService.Oidc.Repositories;
-using Authentication.DomainService.Oidc.Validation;
-using Idp.DomainService.Oidc.Contracts;
-using Idp.DomainService.Oidc.Services;
+using Authentication.DomainService.Dtos;
+using Authentication.DomainService.Entities;
+using Authentication.DomainService.OAuth;
 using Authentication.DomainService.OAuth.RequestModel;
 using Authentication.DomainService.OAuth.ResponseModel;
-using Authentication.DomainService.OAuth;
 using Authentication.DomainService.OAuth.Services;
+using Authentication.DomainService.Oidc.Repositories;
+using Authentication.DomainService.Oidc.Validation;
+using Authentication.DomainService.Services;
 using Authentication.DomainService.Utilities;
-using Iam.DomainService.Users;
+using Blocks.Genesis;
 using Iam.DomainService.Entities;
-using Authentication.DomainService.Entities;
+using Iam.DomainService.Users;
+using Idp.DomainService.Oidc.Contracts;
+using Idp.DomainService.Oidc.Services;
+using Microsoft.AspNetCore.Http;
+using Microsoft.AspNetCore.Mvc;
+using Microsoft.Extensions.Logging;
+using System.Net.Http.Headers;
 using System.Security.Claims;
 using System.Security.Cryptography;
 using System.Text;
-using System.Net.Http.Headers;
-using System.Collections.Generic;
-using Microsoft.AspNetCore.Http;
-using Microsoft.Extensions.Logging;
-using Authentication.DomainService.Services;
+using System.Text.Json;
 using BCryptNet = BCrypt.Net.BCrypt;
 
 namespace Authentication.DomainService.Authentication
@@ -41,6 +42,7 @@ namespace Authentication.DomainService.Authentication
         private readonly IAuthorizationClaimsResolver _authorizationClaimsResolver;
         private readonly IAuthenticationRepository _authenticationRepository;
         private readonly ClientCredentialAuthorizationService _clientCredentialAuthorizationService;
+        private readonly RefreshTokenAuthenticationService _refreshTokenAuthenticationService;
         private readonly ITenants _tenants;
         private readonly ILogger<AuthorizationFlowService> _logger;
         private readonly IAuthenticationService _authenticationService;
@@ -58,6 +60,7 @@ namespace Authentication.DomainService.Authentication
             IAuthorizationClaimsResolver authorizationClaimsResolver,
             IAuthenticationRepository authenticationRepository,
             ClientCredentialAuthorizationService clientCredentialAuthorizationService,
+            RefreshTokenAuthenticationService refreshTokenAuthenticationService,
             ITenants tenants,
             IAuthenticationService authenticationService,
             ICacheClient cacheClient,
@@ -74,6 +77,7 @@ namespace Authentication.DomainService.Authentication
             _authorizationClaimsResolver = authorizationClaimsResolver;
             _authenticationRepository = authenticationRepository;
             _clientCredentialAuthorizationService = clientCredentialAuthorizationService;
+            _refreshTokenAuthenticationService = refreshTokenAuthenticationService;
             _tenants = tenants;
             _authenticationService = authenticationService;
             _cacheClient = cacheClient;
@@ -734,7 +738,7 @@ namespace Authentication.DomainService.Authentication
                     cookieDomain,
                     exchangeResult.AccessExpiry,
                     exchangeResult.RefreshExpiry);
-                
+
                 if (!cookiesSet)
                 {
                     _logger.LogWarning($"Failed to set authentication cookies for client {client_id}, domain {tokenDomain}. Falling back to token response body.");
@@ -750,7 +754,7 @@ namespace Authentication.DomainService.Authentication
                         cookie_delivery_failed = true
                     });
                 }
-                
+
                 return new OkObjectResult(new
                 {
                     id_token = exchangeResult.IdToken,
@@ -777,7 +781,7 @@ namespace Authentication.DomainService.Authentication
                 scope = exchangeResult.Scope,
                 cookie_set = false
             });
-            
+
         }
 
         // Grouped issuance block: validate code + PKCE + client, then build access/id/refresh token set.
@@ -948,7 +952,8 @@ namespace Authentication.DomainService.Authentication
 
             var isLocal = DomainResolver.IsLocalhost();
             cookieDomain = isLocal ? null : (string.IsNullOrWhiteSpace(cookieDomain) ? null : cookieDomain);
-            var accessOptions = new CookieOptions {
+            var accessOptions = new CookieOptions
+            {
                 Domain = cookieDomain,
                 HttpOnly = true,
                 Secure = true,
@@ -956,7 +961,8 @@ namespace Authentication.DomainService.Authentication
                 Path = "/",
                 Expires = accessExpiry
             };
-            var refreshOptions = new CookieOptions {
+            var refreshOptions = new CookieOptions
+            {
                 Domain = cookieDomain,
                 HttpOnly = true,
                 Secure = true,
@@ -966,7 +972,7 @@ namespace Authentication.DomainService.Authentication
             };
 
             response.Cookies.Append($"{tokenDomain}", accessToken, accessOptions);
-            
+
             // Only append refresh token if provided
             if (!string.IsNullOrWhiteSpace(refreshToken))
             {
@@ -1030,21 +1036,20 @@ namespace Authentication.DomainService.Authentication
         private async Task<IActionResult> RotateRefreshToken(HttpRequest request)
         {
             var client_id = request.Form["client_id"].ToString();
-            string refresh_token = "";
-
             if (string.IsNullOrEmpty(client_id))
             {
                 return new BadRequestObjectResult(new { error = "invalid_request", error_description = "Missing client_id" });
             }
 
             var client = await _authenticationRepository.GetOidcClientRegistrationAsync(client_id);
-
             if (client is null)
             {
                 return new BadRequestObjectResult(new { error = "invalid_client", error_description = "client not found" });
             }
+
             var bc = BlocksContext.GetContext();
             var tenant = _tenants.GetTenantByID(bc?.TenantId ?? "default");
+            string refresh_token = "";
 
             if (client.UseTokensCookie)
             {
@@ -1073,156 +1078,108 @@ namespace Authentication.DomainService.Authentication
                 return new BadRequestObjectResult(new { error = "invalid_request", error_description = "refresh token not found" });
             }
 
-            var storedToken = await _refreshTokenRepo.GetByTokenIdAsync(refresh_token);
-            if (storedToken == null)
+            // Delegate to unified refresh token authentication service (same as ExecuteRefreshAsync)
+            var refreshRequest = new RefreshRequest
             {
-                _logger.LogWarning($"Refresh token not found: {refresh_token}");
-                return new BadRequestObjectResult(new { error = "invalid_grant", error_description = "Invalid refresh token" });
-            }
-
-            if (storedToken.IsRevoked)
-            {
-                _logger.LogCritical($"REUSE ATTACK DETECTED: Revoked token used again. Original revocation reason: {storedToken.RevokeReason}. Revoking token {storedToken.TokenId}.");
-                await _refreshTokenRepo.RevokeByTokenIdAsync(storedToken.TokenId, "reuse_detected");
-                await LogAuditEvent("token_reuse_detected", storedToken.UserId, client_id, storedToken.TenantId ?? tenant?.ItemId ?? "default", "CRITICAL", request);
-                return new BadRequestObjectResult(new { error = "invalid_grant", error_description = "Refresh token has been revoked" });
-            }
-
-            if (storedToken.IsExpired())
-            {
-                _logger.LogWarning($"Refresh token expired: {refresh_token}");
-                return new BadRequestObjectResult(new { error = "invalid_grant", error_description = "Refresh token has expired" });
-            }
-
-            if (!await HasOidcClientConfigurationAsync(client_id))
-            {
-                _logger.LogWarning($"OIDC client config missing for token rotation: {client_id}");
-                return new BadRequestObjectResult(new { error = "invalid_client", error_description = "Client configuration not found" });
-            }
-
-            if (!string.IsNullOrWhiteSpace(storedToken.ClientId) && !string.Equals(storedToken.ClientId, client_id, StringComparison.Ordinal))
-            {
-                _logger.LogWarning($"Refresh token client mismatch. Presented client: {client_id}, token client: {storedToken.ClientId}");
-                return new BadRequestObjectResult(new { error = "invalid_grant", error_description = "Refresh token does not belong to this client" });
-            }
-
-            var user = await _userRepository.GetUserByIdAsync(storedToken.UserId);
-            if (user == null)
-            {
-                return new BadRequestObjectResult(new { error = "invalid_grant", error_description = "User not found" });
-            }
-
-            var allowedScopes = await ResolveAllowedScopesAsync(client);
-            var allowedServiceAccessResources = await ResolveAllowedServiceAccessResourcesAsync(client.ClientId);
-            var resolvedClaims = await _authorizationClaimsResolver.ResolveAsync(
-                user,
-                storedToken.OrgId,
-                storedToken.Scope,
-                allowedServiceAccessResources,
-                requireExplicitScope: true);
-
-            var tenantAudience = DomainResolver.GetAudience(tenant);
-
-            var claims = new OidcClaims
-            {
-                Sub = storedToken.UserId,
-                TenantId = storedToken.TenantId,
-                OrgId = storedToken.OrgId,
-                Iat = DateTimeOffset.UtcNow.ToUnixTimeSeconds(),
-                ClientId = client_id,
-                Audience = tenantAudience,
-                Scope = storedToken.Scope,
-                Roles = resolvedClaims.Roles,
-                Resources = resolvedClaims.Resources,
-                Permissions = resolvedClaims.Permissions
+                RefreshToken = refresh_token,
+                ClientId = client_id
             };
 
-            var authConfiguration = await _authenticationRepository.GetAuthenticationConfigurationAsync();
-            var accessTokenLifetimeSeconds = Math.Max((authConfiguration?.AccessTokenValidForNumberMinutes ?? AuthenticationConfiguration.DefaultAccessTokenValidForNumberMinutes) * 60, 60);
-            var issuer = DomainResolver.GetIssuer(tenant);
-            var accessToken = await _tokenService.GenerateAccessTokenAsync(claims, issuer, accessTokenLifetimeSeconds);
-            var newRefreshTokenModel = await _tokenService.GenerateRefreshTokenAsync(claims, issuer);
-
-            newRefreshTokenModel.UserId = storedToken.UserId;
-            newRefreshTokenModel.ClientId = client_id;
-            newRefreshTokenModel.TenantId = storedToken.TenantId ?? string.Empty;
-            newRefreshTokenModel.OrgId = storedToken.OrgId;
-            newRefreshTokenModel.Audience = tenantAudience;
-            newRefreshTokenModel.Scope = storedToken.Scope;
-            newRefreshTokenModel.SessionId = storedToken.SessionId;
-            newRefreshTokenModel.IpAddress = GetClientIpAddress(request);
-            newRefreshTokenModel.UserAgent = request.Headers["User-Agent"].ToString();
-
-            await _refreshTokenRepo.CreateAsync(newRefreshTokenModel);
-
-            await _refreshTokenRepo.RevokeByTokenIdAsync(storedToken.TokenId, "rotated");
-
-            _logger.LogInformation($"Token rotated for user {storedToken.UserId}, client {client_id}");
-            await LogAuditEvent("token_refreshed", storedToken.UserId, client_id, storedToken.TenantId ?? string.Empty, "INFO", request);
-            var effectiveTenantId = storedToken.TenantId ?? tenant?.ItemId ?? "default";
-
-            if (client.UseTokensCookie)
+            var configuration = await _authenticationRepository.GetAuthenticationConfigurationAsync();
+            if (configuration == null)
             {
-                var (resolvedDomain, resolvedCookieDomain, resolvedByDomain) = DomainResolver.ResolveDomain(tenant, request);
-                var adjustedCookieDomain = DomainResolver.IsLocalhost() ? null : resolvedCookieDomain;
-                var absoluteRefreshTokenLifetimeMinutes = Math.Max(authConfiguration?.AbsoluteRefreshTokenValidForNumberMinutes ?? AuthenticationConfiguration.DefaultRememberMeRefreshTokenValidForNumberMinutes, 1);
-                var accessExpiry = DateTime.UtcNow.AddSeconds(accessTokenLifetimeSeconds);
-                var refreshExpiry = newRefreshTokenModel.AbsoluteExpiry == default
-                    ? DateTime.UtcNow.AddMinutes(absoluteRefreshTokenLifetimeMinutes)
-                    : newRefreshTokenModel.AbsoluteExpiry;
+                return new BadRequestObjectResult(new { error = "auth_config_missing" });
+            }
 
-                if (resolvedByDomain && !string.IsNullOrWhiteSpace(resolvedDomain))
+            var cachedRefreshToken = await _cacheClient.GetStringValueAsync(refresh_token);
+            if (string.IsNullOrWhiteSpace(cachedRefreshToken))
+            {
+                return new BadRequestObjectResult(new { error = "invalid_grant", error_description = "Refresh token is invalid or expired" });
+            }
+
+            var tokenCache = JsonSerializer.Deserialize<RefreshTokenCache>(cachedRefreshToken);
+            if (tokenCache == null || string.IsNullOrWhiteSpace(tokenCache.UserId))
+            {
+                return new BadRequestObjectResult(new { error = "invalid_grant", error_description = "Refresh token is invalid or expired" });
+            }
+
+            if (string.IsNullOrWhiteSpace(tokenCache.ClientId) || !await HasOidcClientConfigurationAsync(tokenCache.ClientId))
+            {
+                return new UnauthorizedObjectResult(new { error = "invalid_client", error_description = "Client configuration not found" });
+            }
+
+            // Defense-in-depth: Validate sent client_id matches the cached/bound client_id
+            if (!string.IsNullOrWhiteSpace(refreshRequest.ClientId) &&
+                !string.Equals(refreshRequest.ClientId, tokenCache.ClientId, StringComparison.OrdinalIgnoreCase))
+            {
+                return new UnauthorizedObjectResult(new { error = "invalid_client", error_description = "Client mismatch: sent client_id does not match token binding" });
+            }
+
+            var currentTenantId = BlocksContext.GetContext()?.TenantId;
+            if (!string.Equals(tokenCache.TenantId, currentTenantId, StringComparison.OrdinalIgnoreCase))
+            {
+                return new BadRequestObjectResult(new { error = "invalid_grant", error_description = "Refresh token tenant mismatch" });
+            }
+
+            var user = await _authenticationRepository.GetUserByIdAsync(tokenCache.UserId);
+            if (user == null)
+            {
+                return new UnauthorizedObjectResult(new { error = "invalid_user" });
+            }
+
+            var tokenRequest = new TokenRequest
+            {
+                GrantType = GrantTypes.RefreshToken,
+                OrganizationId = string.IsNullOrWhiteSpace(tokenCache.OrganizationId) ? "default" : tokenCache.OrganizationId,
+                ClientId = tokenCache.ClientId,
+                RefreshToken = refresh_token,
+                Request = request
+            };
+
+            var response = await _refreshTokenAuthenticationService.AuthenticateAsync(tokenRequest, configuration, user);
+
+            if (!string.IsNullOrWhiteSpace(response.Error))
+            {
+                var statusCode = response.StatusCode > 0 ? response.StatusCode : StatusCodes.Status400BadRequest;
+                return new ObjectResult(new
                 {
-                    AppendAccessAndRefreshTokenCookies(
-                        request.HttpContext.Response,
-                        resolvedDomain,
-                        accessToken,
-                        newRefreshTokenModel.TokenId,
-                        adjustedCookieDomain,
-                        accessExpiry,
-                        refreshExpiry);
+                    error = response.Error,
+                    error_description = response.ErrorDescription
+                })
+                {
+                    StatusCode = statusCode
+                };
+            }
 
+            var useTokensCookie = client.UseTokensCookie;
+            if (useTokensCookie)
+            {
+                var tenantId = BlocksContext.GetContext()?.TenantId ?? "default";
+                var resolvedTenant = _tenants.GetTenantByID(tenantId);
+                var (domain, _, _) = DomainResolver.ResolveDomain(resolvedTenant, request);
+                var cookiesSet = AppendCookies(response, request.HttpContext.Response, domain);
+                if (cookiesSet)
+                {
                     return new OkObjectResult(new
                     {
-                        token_type = "Bearer",
-                        expires_in = accessTokenLifetimeSeconds,
-                        scope = "openid profile email",
+                        token_type = response.TokenType,
+                        expires_in = response.ExpiresIn,
+                        scope = response.Scope,
+                        cookie_set = true
                     });
                 }
             }
 
             return new OkObjectResult(new
             {
-                access_token = accessToken,
-                refresh_token = newRefreshTokenModel.TokenId,
-                token_type = "Bearer",
-                expires_in = accessTokenLifetimeSeconds,
-                scope = "openid profile email",
+                access_token = response.AccessToken,
+                refresh_token = response.RefreshToken,
+                token_type = response.TokenType,
+                expires_in = response.ExpiresIn,
+                scope = response.Scope,
+                id_token = response.IdToken,
+                cookie_set = false
             });
-        }
-
-        private async Task LogAuditEvent(string eventType, string userId, string clientId, string tenantId, string severity, HttpRequest request)
-        {
-            try
-            {
-                var auditLog = new AuditLogModel
-                {
-                    EventType = eventType,
-                    UserId = userId,
-                    ClientId = clientId,
-                    TenantId = tenantId,
-                    IpAddress = GetClientIpAddress(request),
-                    UserAgent = request.Headers["User-Agent"].ToString(),
-                    Severity = severity,
-                    Status = "success",
-                    Timestamp = DateTime.UtcNow
-                };
-                await _auditLogRepo.CreateAsync(auditLog);
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, $"Error logging audit event: {eventType}");
-            }
         }
 
         private static string GenerateRandomCode(int length)
@@ -1651,6 +1608,29 @@ namespace Authentication.DomainService.Authentication
             {
                 _logger.LogError(ex, $"Error revoking user tokens for {userId}");
             }
+        }
+
+        private static bool AppendCookies(TokenResponse response, HttpResponse httpResponse, string domain)
+        {
+            if (!string.IsNullOrWhiteSpace(response.Error))
+                return false;
+            if (string.IsNullOrWhiteSpace(response.AccessToken))
+                return false;
+            if (string.IsNullOrWhiteSpace(domain))
+                return false;
+            var accessCookieOptions = DomainResolver.CreateCookieOptions(response.CookieDomain, response.ExpiresUtc);
+            var refreshCookieOptions = DomainResolver.CreateCookieOptions(response.CookieDomain, response.RefreshExpiresUtc);
+            DeleteCookie(httpResponse, domain, accessCookieOptions, refreshCookieOptions);
+            httpResponse.Cookies.Append(domain, response.AccessToken, accessCookieOptions);
+            if (!string.IsNullOrWhiteSpace(response.RefreshToken))
+                httpResponse.Cookies.Append($"{IdpConstants.RefreshTokenCookieName}_{domain}", response.RefreshToken, refreshCookieOptions);
+            return true;
+        }
+
+        private static void DeleteCookie(HttpResponse httpResponse, string domain, CookieOptions accessCookieOptions, CookieOptions refreshCookieOptions)
+        {
+            httpResponse.Cookies.Delete(domain, accessCookieOptions);
+            httpResponse.Cookies.Delete($"{IdpConstants.RefreshTokenCookieName}_{domain}", refreshCookieOptions);
         }
     }
 }

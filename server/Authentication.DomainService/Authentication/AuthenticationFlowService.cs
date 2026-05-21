@@ -407,7 +407,7 @@ namespace Authentication.DomainService.Authentication
             {
                 var tenantId = BlocksContext.GetContext()?.TenantId ?? "default";
                 var tenant = _tenants.GetTenantByID(tenantId);
-                var (domain, cookieDomain, isResolved) = DomainResolver.ResolveDomain(tenant, httpRequest);
+                var (domain, _, _) = DomainResolver.ResolveDomain(tenant, httpRequest);
                 var cookiesSet = AppendCookies(response, httpResponse, domain);
                 if (cookiesSet)
                 {
@@ -866,9 +866,12 @@ namespace Authentication.DomainService.Authentication
                 return new UnauthorizedObjectResult(new { error = "invalid_refresh_token" });
             }
 
-            var refreshTokenExist = _cacheClient.KeyExists(refreshToken);
+            var rootRefreshCacheRaw = await _cacheClient.GetStringValueAsync(refreshToken);
+            var rootRefreshCache = string.IsNullOrWhiteSpace(rootRefreshCacheRaw)
+                ? null
+                : JsonSerializer.Deserialize<RefreshTokenCache>(rootRefreshCacheRaw);
 
-            if (!refreshTokenExist)
+            if (rootRefreshCache == null || !rootRefreshCache.Impersonated)
             {
                 return new UnauthorizedObjectResult(new { error = "invalid_refresh_token" });
             }

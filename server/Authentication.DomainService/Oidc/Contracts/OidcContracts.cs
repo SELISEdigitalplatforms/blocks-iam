@@ -61,6 +61,7 @@ public class RefreshTokenModel
     public DateTime? RevokedAt { get; set; }
     public string? IpAddress { get; set; }
     public string? UserAgent { get; set; }
+    public bool Impersonated { get; set; }
 
     public bool IsExpired()
     {
