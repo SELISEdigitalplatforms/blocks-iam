@@ -70,8 +70,10 @@ namespace Authentication.DomainService.OAuth.Services
             }
 
             stateInfo.Code = request.Code;
+            stateInfo.FlowType = SocialFlowType.Normal;
 
-            var externalUser = await _socialLogInServiceProvider.HandleSocialLogin(stateInfo);
+            var socialCallbackResult = await _socialLogInServiceProvider.HandleSocialLoginCallback(stateInfo);
+            var externalUser = socialCallbackResult.ExternalUserData;
             await _cacheClient.RemoveKeyAsync(request.State);
 
             NormalizeExternalUserEmail(externalUser);

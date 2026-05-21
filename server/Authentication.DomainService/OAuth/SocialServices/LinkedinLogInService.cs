@@ -29,7 +29,7 @@ namespace Authentication.DomainService.OAuth.SocialServices
         public async Task<(string, bool)> GetProviderLogInUriAsync(GetSocialLogInEndPointRequest loginData)
         {
             var identityProvider = await _authenticationRepository
-                .GetIdentityProviderAsync(loginData.Provider);
+                .GetIdentityProviderByClientIdAsync(loginData.ClientId);
 
             if (identityProvider == null)
             {
@@ -41,6 +41,7 @@ namespace Authentication.DomainService.OAuth.SocialServices
             var providerRedirectUri = loginData.RedirectUri ?? identityProvider.RedirectUris.FirstOrDefault() ?? string.Empty;
             var stateInfo = new StateInfo
             {
+                ClientId = loginData.ClientId,
                 Audience = loginData.Audience,
                 Provider = loginData.Provider,
                 NextUrl = loginData.NextUrl,
@@ -61,15 +62,15 @@ namespace Authentication.DomainService.OAuth.SocialServices
             return (loginUri, loginData.SendAsResponse);
         }
 
-        public async Task<IExternalUserData> HandleSocialLogin(StateInfo stateInfo)
+        public async Task<SocialCallbackResult> HandleSocialLoginCallback(StateInfo stateInfo)
         {
             var identityProvider = await _authenticationRepository
-                .GetIdentityProviderAsync(stateInfo.Provider);
+                .GetIdentityProviderByClientIdAsync(stateInfo.ClientId);
 
             if (identityProvider == null)
             {
                 _logger.LogError("Identity provider not found for provider {Provider}", stateInfo.Provider);
-                return new LinkedinUserData();
+                return new SocialCallbackResult { ExternalUserData = new LinkedinUserData() };
             }
 
             var postData = new Dictionary<string, string>
@@ -86,10 +87,10 @@ namespace Authentication.DomainService.OAuth.SocialServices
                 postData,
                 identityProvider.TokenUrl);
 
-            if (!string.IsNullOrWhiteSpace(error))
+            if (!string.IsNullOrWhiteSpace(error) || tokenResponse == null)
             {
                 _logger.LogError("Error while getting LinkedIn access token: {Error}", error);
-                return new LinkedinUserData();
+                return new SocialCallbackResult { ExternalUserData = new LinkedinUserData() };
             }
 
             var profileUrl = identityProvider.UserInfoUrl + $"oauth2_access_token={tokenResponse.AccessToken}";
@@ -110,14 +111,26 @@ namespace Authentication.DomainService.OAuth.SocialServices
             if (!string.IsNullOrWhiteSpace(profileError))
             {
                 _logger.LogError("Error while getting LinkedIn user profile: {ProfileError}", profileError);
-                return new LinkedinUserData();
+                return new SocialCallbackResult { ExternalUserData = new LinkedinUserData() };
             }
 
             profile.Permissions = identityProvider?.InitialPermissions ?? [];
             profile.Roles = identityProvider?.InitialRoles ?? [];
             profile.Platform = stateInfo.Provider;
 
-            return profile;
+            return new SocialCallbackResult
+            {
+                ExternalUserData = profile,
+                AccessToken = tokenResponse.AccessToken,
+                IdToken = tokenResponse.IdToken,
+                RefreshToken = tokenResponse.RefreshToken
+            };
+        }
+
+        public async Task<IExternalUserData> HandleSocialLogin(StateInfo stateInfo)
+        {
+            var callbackResult = await HandleSocialLoginCallback(stateInfo);
+            return callbackResult.ExternalUserData;
         }
     }
 }

@@ -28,7 +28,7 @@ namespace Authentication.DomainService.OAuth.SocialServices
         }
         public async Task<(string, bool)> GetProviderLogInUriAsync(GetSocialLogInEndPointRequest loginData)
         {
-            var identityProvider = await _authenticationRepository.GetIdentityProviderAsync(loginData.Provider);
+            var identityProvider = await _authenticationRepository.GetIdentityProviderByClientIdAsync(loginData.ClientId);
 
             if (identityProvider == null)
             {
@@ -39,6 +39,7 @@ namespace Authentication.DomainService.OAuth.SocialServices
             var stateKey = Guid.NewGuid().ToString("n");
             var stateInfo = new StateInfo
             {
+                ClientId = loginData.ClientId,
                 Audience = loginData.Audience,
                 Provider = loginData.Provider,
                 NextUrl = loginData.NextUrl ?? string.Empty
@@ -59,24 +60,24 @@ namespace Authentication.DomainService.OAuth.SocialServices
             return (loginUri, loginData.SendAsResponse);
         }
 
-        public async Task<IExternalUserData> HandleSocialLogin(StateInfo stateInfo)
+        public async Task<SocialCallbackResult> HandleSocialLoginCallback(StateInfo stateInfo)
         {
-            var identityProvider = await _authenticationRepository.GetIdentityProviderAsync(stateInfo.Provider);
+            var identityProvider = await _authenticationRepository.GetIdentityProviderAsync(stateInfo.ClientId);
 
             if (identityProvider == null)
             {
                 _logger.LogError("Identity provider not found for provider {Provider}", stateInfo.Provider);
-                return new FaceBookUserData();
+                return new SocialCallbackResult { ExternalUserData = new FaceBookUserData() };
             }
 
             string faceBookGetAccessTokenUri = string.Format("{0}?client_id={1}&redirect_uri={2}&client_secret={3}&code={4}",identityProvider.TokenUrl, identityProvider.ClientId, stateInfo.RedirectUri, identityProvider.ClientSecret, stateInfo.Code);
             _logger.LogInformation("faceBook Access Token Uri {AccessTokenUri}", faceBookGetAccessTokenUri);
             var (tokenResponse, error) = await _httpService.Get<SocialOauthAccessToken>(faceBookGetAccessTokenUri);
 
-            if (!string.IsNullOrWhiteSpace(error))
+            if (!string.IsNullOrWhiteSpace(error) || tokenResponse == null)
             {
                 _logger.LogError("Error getting facebook access token: {Error}", error);
-                return new FaceBookUserData();
+                return new SocialCallbackResult { ExternalUserData = new FaceBookUserData() };
             }
             var profileHeaders = new Dictionary<string, string>
             {
@@ -90,10 +91,23 @@ namespace Authentication.DomainService.OAuth.SocialServices
             if (!string.IsNullOrWhiteSpace(profileError))
             {
                 _logger.LogError("Error fetching Facebook user profile: {ProfileError}", profileError);
-                return new FaceBookUserData();
+                return new SocialCallbackResult { ExternalUserData = new FaceBookUserData() };
             }
-            return faceBookUserData;
 
+            return new SocialCallbackResult
+            {
+                ExternalUserData = faceBookUserData,
+                AccessToken = tokenResponse.AccessToken,
+                IdToken = tokenResponse.IdToken,
+                RefreshToken = tokenResponse.RefreshToken
+            };
+
+        }
+
+        public async Task<IExternalUserData> HandleSocialLogin(StateInfo stateInfo)
+        {
+            var callbackResult = await HandleSocialLoginCallback(stateInfo);
+            return callbackResult.ExternalUserData;
         }
     }
 }

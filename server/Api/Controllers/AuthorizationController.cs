@@ -28,30 +28,6 @@ namespace Blocks.Api.Controllers
         }
 
         /// <summary>
-        /// OIDC Login Select Account — continues OIDC login after user selects account from multiple options
-        /// </summary>
-        [HttpPost("login/select-account")]
-        [AllowAnonymous]
-        public async Task<IActionResult> OidcLoginSelectAccount([FromBody] OidcLoginSelectAccountRequest? request)
-        {
-            if (request == null || string.IsNullOrWhiteSpace(request.TenantId))
-                return BadRequest(new { error = "invalid_request", error_description = "tenant_id is required" });
-
-            return await _authorizationFlowService.ContinueOidcLoginAfterAccountSelectionAsync(
-                request.UserId ?? string.Empty,
-                request.TenantId,
-                request.ClientId ?? string.Empty,
-                request.RedirectUri ?? string.Empty,
-                request.Scope,
-                request.State,
-                request.Nonce,
-                request.CodeChallenge,
-                request.CodeChallengeMethod,
-                Request,
-                Response);
-        }
-
-        /// <summary>
         /// OAuth 2.0 Authorization Endpoint (RFC 6749 Section 3.1)
         /// Initiates authorization code flow with PKCE
         /// </summary>
@@ -83,13 +59,6 @@ namespace Blocks.Api.Controllers
                 User,
                 Request,
                 Response);
-        }
-
-        [HttpPost("account/select")]
-        [Authorize]
-        public async Task<IActionResult> SelectAccount([FromBody] SelectAccountSelectionRequest? request)
-        {
-            return await _authorizationFlowService.SelectAccountAsync(request?.UserId ?? string.Empty, request?.TenantId, Request, Response);
         }
 
         /// <summary>
