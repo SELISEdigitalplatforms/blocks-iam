@@ -1,6 +1,3 @@
-using System;
-using System.Collections.Generic;
-using System.Threading.Tasks;
 using MongoDB.Driver;
 using Blocks.Genesis;
 using Authentication.DomainService.Entities;
@@ -127,12 +124,16 @@ namespace Authentication.DomainService.Oidc.Repositories
             {
                 var collection = GetDatabase().GetCollection<RefreshTokenModel>("IdpRefreshTokens");
                 var filter = Builders<RefreshTokenModel>.Filter.Eq(t => t.TokenId, tokenId);
-                var result = await collection.DeleteOneAsync(filter);
-                return result.DeletedCount > 0;
+                var update = Builders<RefreshTokenModel>.Update
+                    .Set(t => t.IsRevoked, true)
+                    .Set(t => t.RevokedAt, DateTime.UtcNow);
+
+                var result = await collection.UpdateOneAsync(filter, update);
+                return result.ModifiedCount > 0;
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, $"Error deleting refresh token: {tokenId}");
+                _logger.LogError(ex, $"Error soft deleting refresh token: {tokenId}");
                 throw;
             }
         }

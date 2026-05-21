@@ -5,10 +5,10 @@ using Authentication.DomainService.OAuth.RequestModel;
 using Authentication.DomainService.OAuth.ResponseModel;
 using Authentication.DomainService.Oidc.Repositories;
 using Authentication.DomainService.Services;
+using Authentication.DomainService.Shared;
 using Authentication.DomainService.Shared.RequestModel;
 using Authentication.DomainService.Shared.Services;
 using Authentication.DomainService.Utilities;
-using Azure.Core;
 using Blocks.Genesis;
 using Iam.DomainService.Entities;
 using Idp.DomainService.Oidc.Contracts;
@@ -33,6 +33,7 @@ namespace Authentication.DomainService.Authentication
         private readonly IOAuthJwtAccessTokenManager _oAuthJwtAccessTokenManager;
         private readonly IAuthenticationService _authenticationService;
         private readonly IImpersonationFlowHelper _impersonationFlowHelper;
+        private readonly UnifiedTokenSessionService _unifiedTokenSessionService;
         private readonly ICacheClient _cacheClient;
         private readonly ILogger<AuthenticationFlowService> _logger;
 
@@ -47,6 +48,7 @@ namespace Authentication.DomainService.Authentication
             IAuthenticationService authenticationService,
             ICacheClient cacheClient,
             IImpersonationFlowHelper impersonationFlowHelper,
+            UnifiedTokenSessionService unifiedTokenSessionService,
             ILogger<AuthenticationFlowService> logger)
         {
             _authenticationRepository = authenticationRepository;
@@ -58,6 +60,7 @@ namespace Authentication.DomainService.Authentication
             _oAuthJwtAccessTokenManager = oAuthJwtAccessTokenManager;
             _authenticationService = authenticationService;
             _impersonationFlowHelper = impersonationFlowHelper;
+            _unifiedTokenSessionService = unifiedTokenSessionService;
 
             _cacheClient = cacheClient;
             _logger = logger;
@@ -621,15 +624,15 @@ namespace Authentication.DomainService.Authentication
             var isSharedWithUser = await IsTenantSharedWithUserAsync(bc.UserId, request.TargetTenantId);
             if (!isSharedWithUser)
             {
-               await WriteImpersonationAuditEventAsync(httpRequest, "impersonation_start_denied", bc.UserId, request.TargetTenantId, "WARN", "not_shared_with_user", rootTenant.TenantId);
-               return new ObjectResult(new
-               {
-                   error = "forbidden",
-                   error_description = "Target tenant is not shared with the requesting user"
-               })
-               {
-                   StatusCode = StatusCodes.Status403Forbidden
-               };
+                await WriteImpersonationAuditEventAsync(httpRequest, "impersonation_start_denied", bc.UserId, request.TargetTenantId, "WARN", "not_shared_with_user", rootTenant.TenantId);
+                return new ObjectResult(new
+                {
+                    error = "forbidden",
+                    error_description = "Target tenant is not shared with the requesting user"
+                })
+                {
+                    StatusCode = StatusCodes.Status403Forbidden
+                };
             }
 
             var (rootDomain, rootCookieDomain, _) = DomainResolver.ResolveDomain(rootTenant, httpRequest);
@@ -656,8 +659,8 @@ namespace Authentication.DomainService.Authentication
             // Check for organization switch within existing impersonation
 
             var existingSessionId = string.IsNullOrWhiteSpace(request.ImpersonationId)
-                ? httpRequest.Cookies[IdpConstants.ImpersonationIdCookieName]   
-                : request.ImpersonationId; 
+                ? httpRequest.Cookies[IdpConstants.ImpersonationIdCookieName]
+                : request.ImpersonationId;
 
             if (!string.IsNullOrWhiteSpace(existingSessionId))
             {
@@ -782,6 +785,8 @@ namespace Authentication.DomainService.Authentication
 
                 var tokenResponse = await _oAuthJwtAccessTokenManager.ManageTokenAsync(tokenRequest, authConfiguration, user);
 
+                await _unifiedTokenSessionService.RevokeRefreshToken(rootRefreshToken);
+
                 var cookiesSet = AppendCookies(tokenResponse, httpResponse, rootDomain);
                 if (!cookiesSet)
                 {
@@ -819,7 +824,7 @@ namespace Authentication.DomainService.Authentication
 
         private static void ClearImpersonationCookies(HttpResponse httpResponse, string domain, string cookieDomain)
         {
-            if(string.IsNullOrWhiteSpace(domain) || string.IsNullOrWhiteSpace(cookieDomain))
+            if (string.IsNullOrWhiteSpace(domain) || string.IsNullOrWhiteSpace(cookieDomain))
             {
                 return;
             }
@@ -850,6 +855,22 @@ namespace Authentication.DomainService.Authentication
                 await WriteImpersonationAuditEventAsync(httpRequest, "impersonation_stop_failed", bc.UserId, null, "WARN", "session_not_found", rootTenant.TenantId);
                 ClearImpersonationCookies(httpResponse, rootDomain, rootCookieDomain);
                 return new UnauthorizedObjectResult(new { error = "session_expired" });
+            }
+
+            var refreshToken = string.IsNullOrWhiteSpace(request.RefreshToken)
+                ? _authenticationService.CookieToken(httpRequest)
+                : request.RefreshToken;
+
+            if(string.IsNullOrWhiteSpace(refreshToken))
+            {
+                return new UnauthorizedObjectResult(new { error = "invalid_refresh_token" });
+            }
+
+            var refreshTokenExist = _cacheClient.KeyExists(refreshToken);
+
+            if (!refreshTokenExist)
+            {
+                return new UnauthorizedObjectResult(new { error = "invalid_refresh_token" });
             }
 
             var configuration = await _authenticationRepository.GetAuthenticationConfigurationAsync();
@@ -899,6 +920,8 @@ namespace Authentication.DomainService.Authentication
             }
 
             await WriteImpersonationAuditEventAsync(httpRequest, "impersonation_stopped", bc.UserId, session.TargetTenantId, "INFO", "success", rootTenant.TenantId);
+
+            await _unifiedTokenSessionService.RevokeRefreshToken(refreshToken);
 
             var cookiesSet = AppendCookies(tokenResponse, httpResponse, rootDomain);
             if (!cookiesSet)

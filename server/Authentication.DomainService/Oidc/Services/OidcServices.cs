@@ -21,7 +21,7 @@ public interface ITokenGenerationService
 {
     Task<string> GenerateIdTokenAsync(Contracts.OidcClaims claims, string issuer, int expiresInSeconds);
     Task<string> GenerateAccessTokenAsync(Contracts.OidcClaims claims, string issuer, int expiresInSeconds);
-    Task<Contracts.RefreshTokenModel> GenerateRefreshTokenAsync(Contracts.OidcClaims claims, string issuer);
+    Task<Contracts.RefreshTokenModel> GenerateRefreshTokenAsync(Contracts.OidcClaims claims, string issuer, bool isImpersonation);
 }
 
 public interface IPkceService
@@ -102,7 +102,7 @@ public class TokenGenerationService : ITokenGenerationService
         return GenerateTokenAsync(claims, issuer, expiresInSeconds, includeNonce: false);
     }
 
-    public async Task<Contracts.RefreshTokenModel> GenerateRefreshTokenAsync(Contracts.OidcClaims claims, string issuer)
+    public async Task<Contracts.RefreshTokenModel> GenerateRefreshTokenAsync(Contracts.OidcClaims claims, string issuer, bool isImpersonation)
     {
         // UnifiedTokenSessionService handles all logic. This method is now a thin adapter only.
         var authConfiguration = await _authenticationRepository.GetAuthenticationConfigurationAsync();
@@ -123,7 +123,8 @@ public class TokenGenerationService : ITokenGenerationService
             authConfiguration,
             tenant,
             user,
-            visitorsIpAddresses
+            visitorsIpAddresses,
+            isImpersonation
         );
         return new Contracts.RefreshTokenModel
         {

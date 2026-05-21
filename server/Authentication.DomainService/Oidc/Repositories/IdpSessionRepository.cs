@@ -1,6 +1,3 @@
-using System;
-using System.Collections.Generic;
-using System.Threading.Tasks;
 using MongoDB.Driver;
 using Blocks.Genesis;
 using Idp.DomainService.Oidc.Contracts;
@@ -141,12 +138,13 @@ namespace Authentication.DomainService.Oidc.Repositories
             {
                 var collection = GetDatabase().GetCollection<IdpSessionModel>("IdpSessions");
                 var filter = Builders<IdpSessionModel>.Filter.Eq(s => s.SessionId, sessionId);
-                var result = await collection.DeleteOneAsync(filter);
-                return result.DeletedCount > 0;
+                var update = Builders<IdpSessionModel>.Update.Set(s => s.RevokedAt, DateTime.UtcNow);
+                var result = await collection.UpdateOneAsync(filter, update);
+                return result.ModifiedCount > 0;
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, $"Error deleting IdP session: {sessionId}");
+                _logger.LogError(ex, $"Error soft deleting IdP session: {sessionId}");
                 throw;
             }
         }

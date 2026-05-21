@@ -898,7 +898,7 @@ namespace Authentication.DomainService.Authentication
             var issuer = DomainResolver.GetIssuer(tenant);
             var idToken = await _tokenService.GenerateIdTokenAsync(claims, issuer, accessTokenLifetimeSeconds);
             var accessToken = await _tokenService.GenerateAccessTokenAsync(claims, issuer, accessTokenLifetimeSeconds);
-            var refreshTokenModel = await _tokenService.GenerateRefreshTokenAsync(claims, issuer);
+            var refreshTokenModel = await _tokenService.GenerateRefreshTokenAsync(claims, issuer, false);
 
             refreshTokenModel.UserId = authCode.UserId;
             refreshTokenModel.ClientId = client_id;
