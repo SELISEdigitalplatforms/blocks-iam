@@ -283,7 +283,6 @@ namespace Authentication.DomainService.Authentication
         {
             var config = await _authenticationRepository.GetAuthenticationConfigurationAsync();
             var identityProviders = await _authenticationRepository.GetIdentityProvidersAsync();
-            var callerDomain = ResolveCallerDomain();
 
             // Filter to only social providers that are active
             var socialProviders = identityProviders
@@ -297,7 +296,7 @@ namespace Authentication.DomainService.Authentication
                               provider = provider.Provider,
                               displayName = provider.DisplayName,
                               icon = provider.Provider, // Can be URL or icon name
-                              redirectUri = ResolveProviderRedirectUri(provider.RedirectUris, callerDomain),
+                              redirectUris = provider.RedirectUris,
                               clientId = provider.ClientId,
                           }).ToList()
                           : null;
@@ -314,86 +313,6 @@ namespace Authentication.DomainService.Authentication
                 AllowedGrantTypes =  gts,
                 SsoInfo = ssoInfo
             });
-        }
-
-        private static string? ResolveProviderRedirectUri(IEnumerable<string>? redirectUris, string? callerDomain)
-        {
-            var redirects = redirectUris?
-                .Where(uri => !string.IsNullOrWhiteSpace(uri))
-                .ToList() ?? new List<string>();
-
-            if (redirects.Count == 0)
-            {
-                return BuildCallerDomainFallbackUri(callerDomain);
-            }
-
-            var normalizedCallerDomain = NormalizeHost(callerDomain);
-            if (!string.IsNullOrWhiteSpace(normalizedCallerDomain))
-            {
-                var matchedRedirect = redirects.FirstOrDefault(uri => IsHostMatch(uri, normalizedCallerDomain));
-                if (!string.IsNullOrWhiteSpace(matchedRedirect))
-                {
-                    return matchedRedirect;
-                }
-
-                var fallbackUri = BuildCallerDomainFallbackUri(normalizedCallerDomain);
-                if (!string.IsNullOrWhiteSpace(fallbackUri))
-                {
-                    return fallbackUri;
-                }
-            }
-
-            return redirects.FirstOrDefault();
-        }
-
-        private static bool IsHostMatch(string redirectUri, string normalizedCallerDomain)
-        {
-            if (!Uri.TryCreate(redirectUri, UriKind.Absolute, out var redirectUriValue))
-            {
-                return false;
-            }
-
-            var redirectHost = NormalizeHost(redirectUriValue.Host);
-            if (string.IsNullOrWhiteSpace(redirectHost))
-            {
-                return false;
-            }
-
-            return string.Equals(redirectHost, normalizedCallerDomain, StringComparison.OrdinalIgnoreCase)
-                || redirectHost.EndsWith($".{normalizedCallerDomain}", StringComparison.OrdinalIgnoreCase)
-                || normalizedCallerDomain.EndsWith($".{redirectHost}", StringComparison.OrdinalIgnoreCase);
-        }
-
-        private static string? BuildCallerDomainFallbackUri(string? callerDomain)
-        {
-            if (string.IsNullOrWhiteSpace(callerDomain))
-            {
-                return null;
-            }
-
-            if (Uri.TryCreate(callerDomain, UriKind.Absolute, out var absoluteUri))
-            {
-                return absoluteUri.GetLeftPart(UriPartial.Authority);
-            }
-
-            var normalizedHost = NormalizeHost(callerDomain);
-            return string.IsNullOrWhiteSpace(normalizedHost) ? null : $"https://{normalizedHost}";
-        }
-
-        private static string? NormalizeHost(string? value)
-        {
-            return BlocksContext.NormalizeDomain(value ?? string.Empty)?.ToLowerInvariant();
-        }
-
-        private static string? ResolveCallerDomain()
-        {
-            var domainFromContext = BlocksContext.ResolveApplicationDomain(null);
-            if (!string.IsNullOrWhiteSpace(domainFromContext))
-            {
-                return domainFromContext;
-            }
-
-            return BlocksContext.GetContext()?.ApplicationDomain;
         }
 
         /// <summary>
