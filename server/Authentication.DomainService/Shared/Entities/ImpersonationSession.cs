@@ -10,6 +10,7 @@ namespace Authentication.DomainService.Entities
         public string UserId { get; set; }
         public string TargetTenantId { get; set; }
         public string RootTenantId { get; set; }
+        public string ClientId { get; set; }
         public string? OrganizationId { get; set; } = "default";
         public DateTime StartedAt { get; set; } = DateTime.UtcNow;
         public DateTime LastActivity { get; set; } = DateTime.UtcNow;

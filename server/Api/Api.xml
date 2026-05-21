@@ -126,7 +126,7 @@
             </summary>
         </member>
         <!-- Badly formed XML comment ignored for member "M:Api.Controllers.AuthenticationController.InitiateImpersonation(Authentication.DomainService.Shared.RequestModel.ImpersonateRequest)" -->
-        <member name="M:Api.Controllers.AuthenticationController.StopImpersonation">
+        <member name="M:Api.Controllers.AuthenticationController.StopImpersonation(Authentication.DomainService.Shared.RequestModel.StopImpersonationRequest)">
             <summary>
             Stop user impersonation (Revert to Original Admin)
             Admin stops impersonating user and reverts to original context

@@ -341,14 +341,6 @@ public class AuthenticationController : ControllerBase
         return await _authenticationService.BuildFlowResultAsync(result, HttpContext);
     }
 
-    [HttpGet("context/{projectId}")]
-    [Authorize]
-    public async Task<IActionResult> GetContextForProject([FromRoute] string projectId)
-    {
-        var result = await _authenticationFlowService.GetContextForProjectAsync(projectId);
-        return result.IsSuccess ? Ok(result) : BadRequest(result);
-    }
-
     // <summary>
     /// Initiate user impersonation (Administrator Feature)
     /// Allows admins to impersonate users for support/debugging
@@ -370,11 +362,11 @@ public class AuthenticationController : ControllerBase
     /// </summary>
     [HttpPost("impersonation/stop")]
     [Authorize]
-    public async Task<IActionResult> StopImpersonation()
+    public async Task<IActionResult> StopImpersonation([FromBody] StopImpersonationRequest request)
     {
         // Reset BlocksContext to original tenant context in case this impersonation request is coming from an existing impersonation session (organization switch or tenant switch within impersonation), we want to validate permissions and issue tokens based on the original/root tenant context and not the current impersonated context
         DomainResolver.ResetToOriginalBlocksContextForImpersonation();
-        return await _authenticationFlowService.ExecuteStopImpersonationAsync(Request, Response);
+        return await _authenticationFlowService.ExecuteStopImpersonationAsync(request, Request, Response);
     }
 
     [HttpPost("impersonation/status")]
