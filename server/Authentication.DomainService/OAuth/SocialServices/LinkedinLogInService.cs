@@ -1,9 +1,6 @@
-using Blocks.Genesis;
-using Authentication.DomainService.OAuth.RequestModel;
 using Authentication.DomainService.Services;
+using Blocks.Genesis;
 using Microsoft.Extensions.Logging;
-using System.Net;
-using System.Text.Json;
 
 namespace Authentication.DomainService.OAuth.SocialServices
 {
@@ -17,49 +14,11 @@ namespace Authentication.DomainService.OAuth.SocialServices
         public LinkedinLogInService(
             ILogger<LinkedinLogInService> logger,
             IAuthenticationRepository authenticationRepository,
-            ICacheClient cacheClient,
             IHttpService httpService)
         {
             _logger = logger;
             _authenticationRepository = authenticationRepository;
-            _cacheClient = cacheClient;
             _httpService = httpService;
-        }
-
-        public async Task<(string, bool)> GetProviderLogInUriAsync(GetSocialLogInEndPointRequest loginData)
-        {
-            var identityProvider = await _authenticationRepository
-                .GetIdentityProviderByClientIdAsync(loginData.ClientId);
-
-            if (identityProvider == null)
-            {
-                _logger.LogError("Identity provider not found for provider {Provider}", loginData.Provider);
-                return (string.Empty, true);
-            }
-
-            var stateKey = Guid.NewGuid().ToString("n");
-            var providerRedirectUri = loginData.RedirectUri ?? identityProvider.RedirectUris.FirstOrDefault() ?? string.Empty;
-            var stateInfo = new StateInfo
-            {
-                ClientId = loginData.ClientId,
-                Audience = loginData.Audience,
-                Provider = loginData.Provider,
-                NextUrl = loginData.NextUrl,
-                RedirectUri = providerRedirectUri
-            };
-
-            await _cacheClient.AddStringValueAsync(stateKey, JsonSerializer.Serialize(stateInfo), 300);
-            // Build LinkedIn login URL safely (scope must be URL encoded)
-            var loginUri =
-                $"{identityProvider.AuthorizationUrl.Split('?')[0]}" +
-                $"?response_type=code" +
-                $"&client_id={identityProvider.ClientId}" +
-                $"&redirect_uri={WebUtility.UrlEncode(providerRedirectUri)}" +
-                $"&scope={WebUtility.UrlEncode(identityProvider.Scope).Replace("+", "%20").Replace(" ", "%20")}" +
-                $"&state={stateKey}";
-            _logger.LogError("loginUri for provider {Provider} and loginUri {LoginUri}", loginData.Provider, loginUri);
-
-            return (loginUri, loginData.SendAsResponse);
         }
 
         public async Task<SocialCallbackResult> HandleSocialLoginCallback(StateInfo stateInfo)

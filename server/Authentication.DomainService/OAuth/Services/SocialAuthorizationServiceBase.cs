@@ -1,11 +1,10 @@
-using Blocks.Genesis;
 using Authentication.DomainService.Entities;
 using Authentication.DomainService.OAuth.RequestModel;
 using Authentication.DomainService.OAuth.ResponseModel;
 using Authentication.DomainService.Services;
+using Blocks.Genesis;
 using Iam.DomainService.Entities;
 using Iam.DomainService.Users;
-using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
 using System.Text.Json;
 
@@ -19,7 +18,6 @@ namespace Authentication.DomainService.OAuth.Services
         protected readonly ICacheClient _cacheClient;
         protected readonly ISocialLogInServiceProvider _socialLogInServiceProvider;
         protected readonly IUserManagementMutationService _userManagementMutationService;
-        private readonly IConfiguration _configuration;
 
         protected SocialAuthorizationServiceBase(
             ILogger logger,
@@ -27,8 +25,7 @@ namespace Authentication.DomainService.OAuth.Services
             IAuthenticationRepository oAuthRepository,
             ICacheClient cacheClient,
             ISocialLogInServiceProvider socialLogInServiceProvider,
-            IUserManagementMutationService userManagementMutationService,
-            IConfiguration configuration)
+            IUserManagementMutationService userManagementMutationService)
         {
             _logger = logger;
             _oAuthJwtAccessTokenManager = oAuthJwtAccessTokenManager;
@@ -36,7 +33,6 @@ namespace Authentication.DomainService.OAuth.Services
             _cacheClient = cacheClient;
             _socialLogInServiceProvider = socialLogInServiceProvider;
             _userManagementMutationService = userManagementMutationService;
-            _configuration = configuration;
         }
 
         public async Task<TokenResponse> AuthenticateAsync(TokenRequest request, AuthenticationConfiguration authenticationConfiguration, User? user = null)
@@ -92,12 +88,12 @@ namespace Authentication.DomainService.OAuth.Services
 
             if (user == null)
             {
-                if(!string.IsNullOrWhiteSpace(redirectUri))
+                if (!string.IsNullOrWhiteSpace(redirectUri))
                 {
                     return new TokenResponse { SsoUserRedirectUrl = redirectUri };
                 }
-               
-                return CreateUserNotFoundError(externalUser.Email?? "");
+
+                return CreateUserNotFoundError(externalUser.Email ?? "");
             }
 
             if (!user.Active || !user.IsVerified)
