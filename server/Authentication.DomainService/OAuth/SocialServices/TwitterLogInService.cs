@@ -31,7 +31,7 @@ namespace Authentication.DomainService.OAuth.SocialServices
         public async Task<(string, bool)> GetProviderLogInUriAsync(GetSocialLogInEndPointRequest loginData)
         {
             var identityProvider = await _authenticationRepository
-                .GetIdentityProviderAsync(loginData.Provider);
+                .GetIdentityProviderByClientIdAsync(loginData.ClientId);
 
             if (identityProvider == null)
             {
@@ -59,6 +59,7 @@ namespace Authentication.DomainService.OAuth.SocialServices
 
             var stateInfo = new StateInfo
             {
+                ClientId = loginData.ClientId,
                 Audience = loginData.Audience,
                 Provider = loginData.Provider,
                 NextUrl = loginData.NextUrl,
@@ -80,21 +81,21 @@ namespace Authentication.DomainService.OAuth.SocialServices
             return (loginUri, loginData.SendAsResponse);
         }
 
-        public async Task<IExternalUserData> HandleSocialLogin(StateInfo stateInfo)
+        public async Task<SocialCallbackResult> HandleSocialLoginCallback(StateInfo stateInfo)
         {
             var identityProvider = await _authenticationRepository
-                .GetIdentityProviderAsync(stateInfo.Provider);
+                .GetIdentityProviderByClientIdAsync(stateInfo.ClientId);
 
             if (identityProvider == null)
             {
                 _logger.LogError("Identity provider not found for provider {Provider}", stateInfo.Provider);
-                return new TwitterUserData();
+                return new SocialCallbackResult { ExternalUserData = new TwitterUserData() };
             }
 
-            if (!stateInfo.Extra.TryGetValue("code_verifier", out var codeVerifier))
+            if (stateInfo.Extra == null || !stateInfo.Extra.TryGetValue("code_verifier", out var codeVerifier))
             {
                 _logger.LogError("PKCE code verifier missing in stateInfo");
-                return new TwitterUserData();
+                return new SocialCallbackResult { ExternalUserData = new TwitterUserData() };
             }
 
             // Base post data (PKCE flow)
@@ -134,10 +135,10 @@ namespace Authentication.DomainService.OAuth.SocialServices
                 headers
             );
 
-            if (!string.IsNullOrWhiteSpace(error))
+            if (!string.IsNullOrWhiteSpace(error) || tokenResponse == null)
             {
                 _logger.LogError("Error getting Twitter access token: {Error}", error);
-                return new TwitterUserData();
+                return new SocialCallbackResult { ExternalUserData = new TwitterUserData() };
             }
 
             // Fetch user profile
@@ -153,7 +154,7 @@ namespace Authentication.DomainService.OAuth.SocialServices
             if (!string.IsNullOrWhiteSpace(profileError))
             {
                 _logger.LogError("Error fetching Twitter user profile: {ProfileError}", profileError);
-                return new TwitterUserData();
+                return new SocialCallbackResult { ExternalUserData = new TwitterUserData() };
             }
 
             if (userProfile != null)
@@ -174,10 +175,21 @@ namespace Authentication.DomainService.OAuth.SocialServices
                     Permissions = identityProvider?.InitialPermissions ?? []
                 };
 
-                return twitterUser;
+                return new SocialCallbackResult
+                {
+                    ExternalUserData = twitterUser,
+                    AccessToken = tokenResponse.AccessToken,
+                    RefreshToken = tokenResponse.RefreshToken
+                };
             }
 
-            return new TwitterUserData();
+            return new SocialCallbackResult { ExternalUserData = new TwitterUserData() };
+        }
+
+        public async Task<IExternalUserData> HandleSocialLogin(StateInfo stateInfo)
+        {
+            var callbackResult = await HandleSocialLoginCallback(stateInfo);
+            return callbackResult.ExternalUserData;
         }
     }
 }

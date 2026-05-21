@@ -1,5 +1,3 @@
-using Authentication.DomainService.OAuth.SocialServices;
-using Azure.Core;
 using Authentication.DomainService.OAuth.RequestModel;
 using Authentication.DomainService.OAuth.SocialServices;
 using Microsoft.Extensions.DependencyInjection;
@@ -27,7 +25,7 @@ namespace Authentication.DomainService.OAuth
         }
         public async Task<GetSocialLogInEndPointResponse> GetSocialLogInEndPointAsync(GetSocialLogInEndPointRequest request)
         {
-            var service = _socialLogIns.ContainsKey(request.Provider) ? _socialLogIns[request.Provider.ToLower()] : _defaultService;
+            var service = _socialLogIns.ContainsKey(request.ClientId) ? _socialLogIns[request.Provider.ToLower()] : _defaultService;
             var (link, response) = await service.GetProviderLogInUriAsync(request);
             return new GetSocialLogInEndPointResponse
             {
@@ -37,10 +35,16 @@ namespace Authentication.DomainService.OAuth
             };
         }
 
+        public async Task<SocialCallbackResult> HandleSocialLoginCallback(StateInfo stateInfo)
+        {
+            var service = _socialLogIns.ContainsKey(stateInfo.ClientId) ? _socialLogIns[stateInfo.Provider.ToLower()] : _defaultService;
+            return await service.HandleSocialLoginCallback(stateInfo);
+        }
+
         public async Task<IExternalUserData> HandleSocialLogin(StateInfo stateInfo)
         {
-            var service = _socialLogIns.ContainsKey(stateInfo.Provider) ? _socialLogIns[stateInfo.Provider.ToLower()] : _defaultService;
-            return await service.HandleSocialLogin(stateInfo);
+            var callbackResult = await HandleSocialLoginCallback(stateInfo);
+            return callbackResult.ExternalUserData;
         }
     }
 

@@ -28,8 +28,6 @@ namespace Authentication.DomainService.Authentication
     public class AuthorizationFlowService : IAuthorizationFlowService
     {
         private const string IdpSessionCookieName = "idp_session_id";
-        private const string PendingSelectedUserCookieName = "idp_selected_user_id";
-        private const string PendingSelectedTenantCookieName = "idp_selected_tenant_id";
 
         private readonly IAuthorizationCodeRepository _authCodeRepo;
         private readonly IRefreshTokenRepository _refreshTokenRepo;
@@ -87,7 +85,7 @@ namespace Authentication.DomainService.Authentication
         public async Task<IActionResult> ExecuteOidcLoginAsync(OidcLoginRequest request, HttpRequest httpRequest, HttpResponse httpResponse)
         {
             // If provider is specified, initiate social authentication flow
-            if (!string.IsNullOrWhiteSpace(request.Provider))
+            if (!string.IsNullOrWhiteSpace(request.ProviderClientId))
             {
                 // Generate OIDC state to track this authentication flow through social provider
                 var oidcState = Guid.NewGuid().ToString("n");
@@ -96,11 +94,13 @@ namespace Authentication.DomainService.Authentication
                 // Key: oidc_context:{oidcState}
                 // Value: { clientId, state, redirectUri, ... } - the original OIDC request parameters
                 var contextKey = $"oidc_context:{oidcState}";
-                var contextValue = System.Text.Json.JsonSerializer.Serialize(new
+                var contextValue = JsonSerializer.Serialize(new
                 {
                     clientId = request.ClientId,
+                    providerClientId = request.ProviderClientId,
                     state = request.State,
                     redirectUri = request.RedirectUri,
+                    providerRedirectUri = request.ProviderRedirectUri,
                     scope = request.Scope,
                     nonce = request.Nonce,
                     codeChallenge = request.CodeChallenge,
@@ -111,7 +111,7 @@ namespace Authentication.DomainService.Authentication
                 await _cacheClient.AddStringValueAsync(contextKey, contextValue, 600); // 10 minute TTL
 
                 // Get social authorization URL
-                return await _authenticationService.GetOidcSocialAuthorizationUrlAsync(request.Provider, oidcState, request.RedirectUri ?? string.Empty);
+                return await _authenticationService.GetOidcSocialAuthorizationUrlAsync(request.ProviderClientId, oidcState, request.ProviderRedirectUri ?? string.Empty);
             }
 
             // Standard password-based OIDC login flow
@@ -132,6 +132,7 @@ namespace Authentication.DomainService.Authentication
 
             // Look up user and verify credentials (no tenant scoping on initial lookup, like embedded login)
             var user = await _authenticationRepository.GetUserByUsernameAsync(request.Username);
+            var tenant = _tenants.GetTenantByID(requestedTenantId);
             if (user == null || !user.Active || !user.IsVerified)
                 return new UnauthorizedObjectResult(new { error = "invalid_credentials" });
 
@@ -141,7 +142,7 @@ namespace Authentication.DomainService.Authentication
             bool passwordValid;
             try
             {
-                passwordValid = BCryptNet.Verify(request.Password, user.Password ?? string.Empty);
+                passwordValid = VerifyPassword(request.Password, user.Password ?? string.Empty, tenant?.TenantSalt);
             }
             catch
             {
@@ -151,53 +152,16 @@ namespace Authentication.DomainService.Authentication
             if (!passwordValid)
                 return new UnauthorizedObjectResult(new { error = "invalid_credentials" });
 
-            // Check if user has multiple tenant access - if so, return account selector
-            var userTenants = user.OrganizationIds ?? new List<string>();
-            if (!string.IsNullOrWhiteSpace(requestedTenantId))
-            {
-                // Tenant was specified in request, use it directly
-                userTenants = new List<string> { requestedTenantId };
-            }
-            else if (userTenants.Count > 1)
-            {
-                // Multiple tenants available - need account selection
-                // Create IDP session with all tenant accounts
-                var currentSessionId = httpRequest.Cookies[IdpSessionCookieName];
-                await EnsureIdpSessionAsync(httpRequest, httpResponse, currentSessionId, user.ItemId, userTenants);
-
-                // Return account selection response
-                var accounts = new List<OidcAccountInfo>();
-                foreach (var tenantId in userTenants)
-                {
-                    accounts.Add(new OidcAccountInfo
-                    {
-                        UserId = user.ItemId,
-                        TenantId = tenantId,
-                        Email = user.Email ?? request.Username,
-                        DisplayName = user.FirstName,
-                        TenantName = tenantId // Could lookup tenant name if needed
-                    });
-                }
-
-                return new OkObjectResult(new OidcLoginResponse
-                {
-                    Status = "account_selection_required",
-                    Accounts = accounts
-                });
-            }
-
-            var resolvedTenantId = userTenants.FirstOrDefault() ?? string.Empty;
-
             // Single tenant - proceed with auth code flow
             // Establish IDP session (sets idp_session_id cookie)
-            var currentSessionId2 = httpRequest.Cookies[IdpSessionCookieName];
-            await EnsureIdpSessionAsync(httpRequest, httpResponse, currentSessionId2, user.ItemId, resolvedTenantId);
+            var currentSessionId = httpRequest.Cookies[IdpSessionCookieName];
+            await EnsureIdpSessionAsync(httpRequest, httpResponse, currentSessionId, user.ItemId, requestedTenantId);
 
             // Create claims principal with authenticated user (don't rely on cookie in same request)
             var claims = new[]
             {
                 new Claim("sub", user.ItemId),
-                new Claim("tenant_id", resolvedTenantId)
+                new Claim("tenant_id", requestedTenantId ?? string.Empty)
             };
             var identity = new ClaimsIdentity(claims, "Bearer");
             var principal = new ClaimsPrincipal(identity);
@@ -213,11 +177,41 @@ namespace Authentication.DomainService.Authentication
                 request.CodeChallenge ?? string.Empty,
                 request.CodeChallengeMethod ?? "S256",
                 null,
-                resolvedTenantId,
+                requestedTenantId ?? string.Empty,
                 principal,
                 httpRequest,
                 httpResponse,
                 false);
+        }
+
+        public bool VerifyPassword(string? password, string? passwordHash, string? optionalSalt = null)
+        {
+            if (string.IsNullOrWhiteSpace(password))
+            {
+                return false;
+            }
+
+            if (string.IsNullOrWhiteSpace(passwordHash))
+            {
+                return false;
+            }
+
+            try
+            {
+                return BCryptNet.Verify(BuildPasswordMaterial(password, optionalSalt), passwordHash);
+            }
+            catch (BCrypt.Net.SaltParseException ex)
+            {
+                _logger.LogWarning(ex, "Password hash is not a valid BCrypt hash format.");
+                return false;
+            }
+        }
+
+        private static string BuildPasswordMaterial(string password, string? optionalSalt)
+        {
+            return string.IsNullOrWhiteSpace(optionalSalt)
+                ? password
+                : $"{password}::{optionalSalt}";
         }
 
         public async Task<IActionResult> AuthorizeAsync(
@@ -298,58 +292,8 @@ namespace Authentication.DomainService.Authentication
                         }
 
                         var filteredAccounts = sessionAccounts.ToList();
-                        var pendingSelectedUserId = request.Cookies[PendingSelectedUserCookieName];
-                        var pendingSelectedTenantId = request.Cookies[PendingSelectedTenantCookieName];
 
-                        if (!string.IsNullOrWhiteSpace(pendingSelectedUserId))
-                        {
-                            var selectedAccount = filteredAccounts.FirstOrDefault(a =>
-                                string.Equals(a.UserId, pendingSelectedUserId, StringComparison.OrdinalIgnoreCase)
-                                && (string.IsNullOrWhiteSpace(pendingSelectedTenantId)
-                                    || string.Equals(a.TenantId, pendingSelectedTenantId, StringComparison.OrdinalIgnoreCase)));
-
-                            if (selectedAccount == null)
-                            {
-                                ClearPendingSelectedAccountCookies(response);
-
-                                if (returnRedirectResponse)
-                                {
-                                    var errorParams = new Dictionary<string, string>
-                                    {
-                                        { "error", "invalid_request" },
-                                        { "error_description", "Selected account is not available in this session" },
-                                        { "state", state }
-                                    };
-
-                                    return new RedirectResult(BuildRedirectUri(redirect_uri, errorParams));
-                                }
-
-                                return new BadRequestObjectResult(new { error = "invalid_request", error_description = "Selected account is not available in this session" });
-                            }
-
-                            resolvedUserId = selectedAccount.UserId;
-                            resolvedTenantId = selectedAccount.TenantId;
-                            ClearPendingSelectedAccountCookies(response);
-                        }
-                        else if (filteredAccounts.Count > 1 || string.Equals(prompt, "select_account", StringComparison.OrdinalIgnoreCase))
-                        {
-                            await _sessionRepo.UpdateActivityAsync(effectiveSessionId);
-                            var chooserUrl = BuildSelectAccountUrl(
-                                client_id,
-                                response_type,
-                                redirect_uri,
-                                scope,
-                                state,
-                                nonce,
-                                code_challenge,
-                                code_challenge_method,
-                                prompt,
-                                tenantHint,
-                                filteredAccounts);
-
-                            return new RedirectResult(chooserUrl);
-                        }
-                        else if (filteredAccounts.Count == 1)
+                        if (filteredAccounts.Count == 1)
                         {
                             resolvedUserId = filteredAccounts[0].UserId;
                             resolvedTenantId = filteredAccounts[0].TenantId;
@@ -492,106 +436,6 @@ namespace Authentication.DomainService.Authentication
             }
         }
 
-        public async Task<IActionResult> SelectAccountAsync(string userId, string? tenantId, HttpRequest request, HttpResponse response)
-        {
-            if (string.IsNullOrWhiteSpace(userId))
-            {
-                return new BadRequestObjectResult(new { error = "invalid_request", error_description = "user_id is required" });
-            }
-
-            var effectiveSessionId = request.Cookies[IdpSessionCookieName];
-            if (string.IsNullOrWhiteSpace(effectiveSessionId))
-            {
-                return new ObjectResult(new { error = "session_not_found" }) { StatusCode = 401 };
-            }
-
-            var session = await _sessionRepo.GetBySessionIdAsync(effectiveSessionId);
-            if (session == null || session.RevokedAt.HasValue || session.IsExpired())
-            {
-                return new ObjectResult(new { error = "session_not_found" }) { StatusCode = 401 };
-            }
-
-            var selectedAccount = session.Accounts.FirstOrDefault(a =>
-                string.Equals(a.UserId, userId, StringComparison.OrdinalIgnoreCase)
-                && (string.IsNullOrWhiteSpace(tenantId)
-                    || string.Equals(a.TenantId, tenantId, StringComparison.OrdinalIgnoreCase)));
-
-            if (selectedAccount == null)
-            {
-                return new BadRequestObjectResult(new { error = "invalid_request", error_description = "Selected account is not available in this session" });
-            }
-
-            var isLocal = DomainResolver.IsLocalhost();
-            var cookieOptions = new CookieOptions
-            {
-                HttpOnly = true,
-                Secure = true,
-                SameSite = isLocal ? SameSiteMode.None : SameSiteMode.Strict,
-                Path = "/",
-                Expires = DateTimeOffset.UtcNow.AddMinutes(5)
-            };
-
-            response.Cookies.Append(PendingSelectedUserCookieName, selectedAccount.UserId, cookieOptions);
-            response.Cookies.Append(PendingSelectedTenantCookieName, selectedAccount.TenantId, cookieOptions);
-
-            return new OkObjectResult(new { success = true });
-        }
-
-        public async Task<IActionResult> ContinueOidcLoginAfterAccountSelectionAsync(string userId, string tenantId, string clientId, string redirectUri, string? scope, string? state, string? nonce, string? codeChallenge, string? codeChallengeMethod, HttpRequest request, HttpResponse response)
-        {
-            if (string.IsNullOrWhiteSpace(userId) || string.IsNullOrWhiteSpace(tenantId) || string.IsNullOrWhiteSpace(clientId))
-            {
-                return new BadRequestObjectResult(new { error = "invalid_request", error_description = "user_id, tenant_id, and client_id are required" });
-            }
-
-            var effectiveSessionId = request.Cookies[IdpSessionCookieName];
-            if (string.IsNullOrWhiteSpace(effectiveSessionId))
-            {
-                return new ObjectResult(new { error = "session_not_found" }) { StatusCode = 401 };
-            }
-
-            var session = await _sessionRepo.GetBySessionIdAsync(effectiveSessionId);
-            if (session == null || session.RevokedAt.HasValue || session.IsExpired())
-            {
-                return new ObjectResult(new { error = "session_not_found" }) { StatusCode = 401 };
-            }
-
-            // Verify account exists in session
-            var selectedAccount = session.Accounts.FirstOrDefault(a =>
-                string.Equals(a.UserId, userId, StringComparison.OrdinalIgnoreCase)
-                && string.Equals(a.TenantId, tenantId, StringComparison.OrdinalIgnoreCase));
-
-            if (selectedAccount == null)
-            {
-                return new BadRequestObjectResult(new { error = "invalid_request", error_description = "Selected account is not available in this session" });
-            }
-
-            // Create claims principal from selected account
-            var claims = new[]
-            {
-                new Claim("sub", userId),
-                new Claim("tenant_id", tenantId)
-            };
-            var identity = new ClaimsIdentity(claims, "Bearer");
-            var principal = new ClaimsPrincipal(identity);
-
-            // Issue authorization code
-            return await AuthorizeAsync(
-                clientId,
-                "code",
-                redirectUri,
-                scope ?? "openid profile email offline_access",
-                state ?? string.Empty,
-                nonce ?? string.Empty,
-                codeChallenge ?? string.Empty,
-                codeChallengeMethod ?? "S256",
-                null,
-                tenantId,
-                principal,
-                request,
-                response,
-                false);
-        }
 
         public async Task<IActionResult> TokenAsync(string grantType, HttpRequest request)
         {
@@ -1297,57 +1141,6 @@ namespace Authentication.DomainService.Authentication
             }
         }
 
-        private static string BuildSelectAccountUrl(
-            string clientId,
-            string responseType,
-            string redirectUri,
-            string scope,
-            string state,
-            string nonce,
-            string codeChallenge,
-            string codeChallengeMethod,
-            string? prompt,
-            string? tenantId,
-            List<IdpSessionAccount> accounts)
-        {
-            var chooserUrl = new StringBuilder("/oidc/select-account?");
-            chooserUrl.Append($"client_id={Uri.EscapeDataString(clientId ?? string.Empty)}");
-            chooserUrl.Append($"&response_type={Uri.EscapeDataString(responseType ?? string.Empty)}");
-            chooserUrl.Append($"&redirect_uri={Uri.EscapeDataString(redirectUri ?? string.Empty)}");
-            chooserUrl.Append($"&scope={Uri.EscapeDataString(scope ?? string.Empty)}");
-            chooserUrl.Append($"&state={Uri.EscapeDataString(state ?? string.Empty)}");
-            chooserUrl.Append($"&nonce={Uri.EscapeDataString(nonce ?? string.Empty)}");
-            chooserUrl.Append($"&code_challenge={Uri.EscapeDataString(codeChallenge ?? string.Empty)}");
-            chooserUrl.Append($"&code_challenge_method={Uri.EscapeDataString(codeChallengeMethod ?? string.Empty)}");
-
-            if (!string.IsNullOrWhiteSpace(prompt))
-            {
-                chooserUrl.Append($"&prompt={Uri.EscapeDataString(prompt)}");
-            }
-
-            if (!string.IsNullOrWhiteSpace(tenantId))
-            {
-                chooserUrl.Append($"&tenant_id={Uri.EscapeDataString(tenantId)}");
-            }
-
-            foreach (var account in accounts)
-            {
-                var payload = $"{account.UserId}|{account.TenantId}|{account.DisplayName ?? string.Empty}";
-                var encoded = Convert.ToBase64String(Encoding.UTF8.GetBytes(payload))
-                    .TrimEnd('=')
-                    .Replace('+', '-')
-                    .Replace('/', '_');
-                chooserUrl.Append($"&acct={Uri.EscapeDataString(encoded)}");
-            }
-
-            return chooserUrl.ToString();
-        }
-
-        private static void ClearPendingSelectedAccountCookies(HttpResponse response)
-        {
-            response.Cookies.Delete(PendingSelectedUserCookieName);
-            response.Cookies.Delete(PendingSelectedTenantCookieName);
-        }
 
         private async Task EnsureIdpSessionAsync(HttpRequest request, HttpResponse response, string? currentSessionId, string userId, string tenantId)
         {
@@ -1405,69 +1198,6 @@ namespace Authentication.DomainService.Authentication
             SetIdpSessionCookie(response, tenantId, session.SessionId, session.AbsoluteExpiry);
         }
 
-        private async Task EnsureIdpSessionAsync(HttpRequest request, HttpResponse response, string? currentSessionId, string userId, List<string> tenantIds)
-        {
-            // Overload for multiple tenants (account selection case)
-            var session = string.IsNullOrWhiteSpace(currentSessionId)
-                ? null
-                : await _sessionRepo.GetBySessionIdAsync(currentSessionId);
-
-            var primaryTenantId = tenantIds.FirstOrDefault() ?? string.Empty;
-
-            if (session == null || session.RevokedAt.HasValue || session.IsExpired())
-            {
-                var accounts = new List<IdpSessionAccount>();
-                foreach (var tenantId in tenantIds)
-                {
-                    accounts.Add(new IdpSessionAccount
-                    {
-                        UserId = userId,
-                        TenantId = tenantId,
-                        DisplayName = userId,
-                        LoginAt = DateTime.UtcNow
-                    });
-                }
-
-                var newSession = new IdpSessionModel
-                {
-                    SessionId = Guid.NewGuid().ToString("n"),
-                    TenantId = primaryTenantId,
-                    Accounts = accounts,
-                    IpAddress = GetClientIpAddress(request),
-                    CreatedAt = DateTime.UtcNow,
-                    LastActivityAt = DateTime.UtcNow,
-                    IdleExpiry = DateTime.UtcNow.Add(GetIdpSessionIdleTimeout()),
-                    AbsoluteExpiry = DateTime.UtcNow.Add(GetIdpSessionAbsoluteTimeout())
-                };
-
-                await _sessionRepo.CreateAsync(newSession);
-                SetIdpSessionCookie(response, primaryTenantId, newSession.SessionId, newSession.AbsoluteExpiry);
-                return;
-            }
-
-            // Add missing tenant accounts to existing session
-            foreach (var tenantId in tenantIds)
-            {
-                var accountExists = session.Accounts.Any(a =>
-                    string.Equals(a.UserId, userId, StringComparison.OrdinalIgnoreCase)
-                    && string.Equals(a.TenantId, tenantId, StringComparison.OrdinalIgnoreCase));
-
-                if (!accountExists)
-                {
-                    await _sessionRepo.AddAccountAsync(session.SessionId, new IdpSessionAccount
-                    {
-                        UserId = userId,
-                        TenantId = tenantId,
-                        DisplayName = userId,
-                        LoginAt = DateTime.UtcNow
-                    });
-                }
-            }
-
-            await _sessionRepo.UpdateActivityAsync(session.SessionId);
-            SetIdpSessionCookie(response, primaryTenantId, session.SessionId, session.AbsoluteExpiry);
-        }
-
         private void SetIdpSessionCookie(HttpResponse response, string tenantId, string sessionId, DateTime absoluteExpiry)
         {
             var tenant = _tenants.GetTenantByID(tenantId);
@@ -1510,12 +1240,12 @@ namespace Authentication.DomainService.Authentication
         private static string? ResolveEffectiveOrganizationId(User user)
         {
             if (!string.IsNullOrWhiteSpace(user.LastUsedOrganizationId)
-                && HasOrganizationAccess(user, user.LastUsedOrganizationId))
+                && user.OrganizationIds.Contains(user.LastUsedOrganizationId))
             {
                 return user.LastUsedOrganizationId;
             }
 
-            if (HasOrganizationAccess(user, "default"))
+            if (user.OrganizationIds.Contains("default"))
             {
                 return "default";
             }
@@ -1523,18 +1253,6 @@ namespace Authentication.DomainService.Authentication
             return user.OrganizationIds.FirstOrDefault()
                 ?? user.Roles.Keys.FirstOrDefault()
                 ?? user.Permissions.Keys.FirstOrDefault();
-        }
-
-        private static bool HasOrganizationAccess(User user, string organizationId)
-        {
-            if (string.IsNullOrWhiteSpace(organizationId))
-            {
-                return false;
-            }
-
-            return user.OrganizationIds.Contains(organizationId)
-                || user.Roles.ContainsKey(organizationId)
-                || user.Permissions.ContainsKey(organizationId);
         }
 
         private async Task PersistLastUsedOrganizationAsync(User user, string? organizationId)
@@ -1555,8 +1273,6 @@ namespace Authentication.DomainService.Authentication
                 _logger.LogWarning(ex, "Failed to persist last used organization for user {UserId}", user.ItemId);
             }
         }
-
-
 
         private static string GetClientIpAddress(HttpRequest request)
         {

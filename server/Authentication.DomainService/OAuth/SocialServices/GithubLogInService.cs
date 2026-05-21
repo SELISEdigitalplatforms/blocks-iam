@@ -29,7 +29,7 @@ namespace Authentication.DomainService.OAuth
         public async Task<(string, bool)> GetProviderLogInUriAsync(GetSocialLogInEndPointRequest loginData)
         {
             var identityProvider = await _authenticationRepository
-                .GetIdentityProviderAsync(loginData.Provider);
+                .GetIdentityProviderByClientIdAsync(loginData.ClientId);
 
             if (identityProvider == null)
             {
@@ -41,6 +41,7 @@ namespace Authentication.DomainService.OAuth
             var providerRedirectUri = loginData.RedirectUri ?? identityProvider.RedirectUris.FirstOrDefault() ?? string.Empty;
             var stateInfo = new StateInfo
             {
+                ClientId = loginData.ClientId,
                 Audience = loginData.Audience,
                 Provider = loginData.Provider,
                 NextUrl = loginData.NextUrl,
@@ -54,15 +55,15 @@ namespace Authentication.DomainService.OAuth
             return (loginUri, loginData.SendAsResponse);
         }
 
-        public async Task<IExternalUserData> HandleSocialLogin(StateInfo stateInfo)
+        public async Task<SocialCallbackResult> HandleSocialLoginCallback(StateInfo stateInfo)
         {
             var identityProvider = await _authenticationRepository
-                .GetIdentityProviderAsync(stateInfo.Provider);
+                .GetIdentityProviderByClientIdAsync(stateInfo.ClientId);
 
             if (identityProvider == null)
             {
                 _logger.LogError("Identity provider not found for provider {Provider}", stateInfo.Provider);
-                return new GithubUserData();
+                return new SocialCallbackResult { ExternalUserData = new GithubUserData() };
             }
 
             var postData = new Dictionary<string, string>
@@ -83,7 +84,7 @@ namespace Authentication.DomainService.OAuth
             if (!string.IsNullOrWhiteSpace(error) || tokenResponse?.AccessToken == null)
             {
                 _logger.LogError("Error while getting GitHub access token: {Error}", error);
-                return new GithubUserData();
+                return new SocialCallbackResult { ExternalUserData = new GithubUserData() };
             }
 
             // Fetch GitHub user profile
@@ -94,7 +95,7 @@ namespace Authentication.DomainService.OAuth
             if (!string.IsNullOrWhiteSpace(userError))
             {
                 _logger.LogError("Error while getting GitHub user data: {UserError}", userError);
-                return new GithubUserData();
+                return new SocialCallbackResult { ExternalUserData = new GithubUserData() };
             }
 
             if (string.IsNullOrEmpty(userResponse.Email))
@@ -109,7 +110,13 @@ namespace Authentication.DomainService.OAuth
                 if (!string.IsNullOrWhiteSpace(emailError) || emailResponse == null)
                 {
                     _logger.LogError("Error while getting GitHub user email: {EmailError}", emailError);
-                    return userResponse;
+                    return new SocialCallbackResult
+                    {
+                        ExternalUserData = userResponse,
+                        AccessToken = tokenResponse.AccessToken,
+                        IdToken = tokenResponse.IdToken,
+                        RefreshToken = tokenResponse.RefreshToken
+                    };
                 }
                 userResponse.Email = emailResponse.FirstOrDefault(e => e.Primary && e.Verified)?.Email
                        ?? emailResponse.FirstOrDefault(e => e.Verified)?.Email
@@ -121,7 +128,19 @@ namespace Authentication.DomainService.OAuth
             userResponse.Roles = identityProvider?.InitialRoles ?? [];
             userResponse.Platform = stateInfo.Provider;
 
-            return userResponse;
+            return new SocialCallbackResult
+            {
+                ExternalUserData = userResponse,
+                AccessToken = tokenResponse.AccessToken,
+                IdToken = tokenResponse.IdToken,
+                RefreshToken = tokenResponse.RefreshToken
+            };
+        }
+
+        public async Task<IExternalUserData> HandleSocialLogin(StateInfo stateInfo)
+        {
+            var callbackResult = await HandleSocialLoginCallback(stateInfo);
+            return callbackResult.ExternalUserData;
         }
     }
 }

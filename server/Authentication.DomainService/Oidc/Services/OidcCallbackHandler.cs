@@ -1,6 +1,4 @@
 using Authentication.DomainService.Utilities;
-using System.IdentityModel.Tokens.Jwt;
-using System.Text.Json.Serialization;
 using System.Text.Json;
 using Authentication.DomainService.Entities;
 using Authentication.DomainService.OAuth;
@@ -41,21 +39,21 @@ namespace Authentication.DomainService.Oidc.Services
         private readonly ILogger<OidcCallbackHandler> _logger;
         private readonly IAuthenticationRepository _authenticationRepository;
         private readonly ICacheClient _cacheClient;
-        private readonly IHttpService _httpService;
         private readonly IUserRepository _userRepository;
+        private readonly ISocialLogInServiceProvider _socialLogInServiceProvider;
 
         public OidcCallbackHandler(
             ILogger<OidcCallbackHandler> logger,
             IAuthenticationRepository authenticationRepository,
             ICacheClient cacheClient,
-            IHttpService httpService,
-            IUserRepository userRepository)
+            IUserRepository userRepository,
+            ISocialLogInServiceProvider socialLogInServiceProvider)
         {
             _logger = logger;
             _authenticationRepository = authenticationRepository;
             _cacheClient = cacheClient;
-            _httpService = httpService;
             _userRepository = userRepository;
+            _socialLogInServiceProvider = socialLogInServiceProvider;
         }
 
         public async Task<OidcCallbackResult> HandleCallbackAsync(string code, string state)
@@ -94,11 +92,18 @@ namespace Authentication.DomainService.Oidc.Services
                 // Parse OIDC social state to get context
                 var oidcSocialState = JsonDocument.Parse(oidcSocialStateJson).RootElement;
                 var oidcState = oidcSocialState.GetProperty("oidcState").GetString();
+                var provider = oidcSocialState.GetProperty("provider").GetString();
 
                 if (string.IsNullOrWhiteSpace(oidcState))
                 {
                     _logger.LogWarning("Invalid OIDC state in social callback");
                     return new OidcCallbackResult { IsSuccess = false, ErrorMessage = "Invalid OIDC context" };
+                }
+
+                if (string.IsNullOrWhiteSpace(provider))
+                {
+                    _logger.LogWarning("Provider not found in OIDC social state");
+                    return new OidcCallbackResult { IsSuccess = false, ErrorMessage = "Provider not found in OIDC state" };
                 }
 
                 // 1. Get OIDC context (original client request)
@@ -114,40 +119,34 @@ namespace Authentication.DomainService.Oidc.Services
                 var clientId = context.GetProperty("clientId").GetString();
                 var originalState = context.GetProperty("state").GetString();
                 var redirectUri = context.GetProperty("redirectUri").GetString();
+                var providerClientId = context.GetProperty("providerClientId").GetString();
+                var providerRedirectUri = context.GetProperty("providerRedirectUri").GetString();
 
-                // 2. Get IdentityProvider config
-                var identityProvider = await _authenticationRepository.GetIdentityProviderByClientIdAsync(clientId);
-                if (identityProvider == null)
+                // 3. Reuse social folder callback handling for provider token exchange + user extraction
+                var stateInfo = new StateInfo
                 {
-                    _logger.LogError("Identity provider {Provider} not found", clientId);
-                    return new OidcCallbackResult { IsSuccess = false, ErrorMessage = "Provider not configured" };
-                }
+                    ClientId = providerClientId,
+                    Provider = provider,
+                    Code = code,
+                    Audience = providerClientId,
+                    RedirectUri = providerRedirectUri,
+                    FlowType = SocialFlowType.Oidc
+                };
 
-                // 3. Exchange code for token from social provider
-                var tokenResult = await ExchangeCodeForTokenAsync(code, identityProvider);
-                if (!tokenResult.IsSuccess)
-                {
-                    _logger.LogError("Token exchange failed for provider {Provider}: {Error}", clientId, tokenResult.ErrorMessage);
-                    return tokenResult;
-                }
+                var socialCallbackResult = await _socialLogInServiceProvider.HandleSocialLoginCallback(stateInfo);
+                var externalUserData = socialCallbackResult.ExternalUserData;
 
-                // 4. Validate and parse ID token
-                if (!string.IsNullOrWhiteSpace(tokenResult.IdToken))
+                if (externalUserData == null || string.IsNullOrWhiteSpace(externalUserData.Email))
                 {
-                    var validationResult = ValidateAndParseIdToken(tokenResult.IdToken, identityProvider);
-                    if (!validationResult.IsValid)
-                    {
-                        _logger.LogError("ID token validation failed: {Error}", validationResult.ErrorMessage);
-                        return new OidcCallbackResult { IsSuccess = false, ErrorMessage = validationResult.ErrorMessage };
-                    }
-                    tokenResult.TokenPayload = validationResult.Payload;
+                    _logger.LogError("Social provider callback did not return user email for provider {Provider}", provider);
+                    return new OidcCallbackResult { IsSuccess = false, ErrorMessage = "Provider did not return a valid user email" };
                 }
 
                 // 5. Create or update Blocks user based on provider's user info
-                var blocksUserId = await CreateOrUpdateUserFromTokenAsync(tokenResult.TokenPayload, identityProvider);
+                var blocksUserId = await CreateOrUpdateUserFromExternalUserAsync(externalUserData, new List<string> { "user"}, new List<string>(), provider);
                 if (string.IsNullOrWhiteSpace(blocksUserId))
                 {
-                    _logger.LogError("Failed to create/update user for provider {Provider}", identityProvider.Provider);
+                    _logger.LogError("Failed to create/update user for provider {Provider}", provider);
                     return new OidcCallbackResult { IsSuccess = false, ErrorMessage = "Failed to create user account" };
                 }
 
@@ -158,10 +157,10 @@ namespace Authentication.DomainService.Oidc.Services
                 {
                     clientId,
                     userId = blocksUserId,  // Use Blocks user ID, not provider's user ID
-                    provider = identityProvider.Provider,
-                    accessToken = tokenResult.AccessToken,
-                    idToken = tokenResult.IdToken,
-                    refreshToken = tokenResult.RefreshToken,
+                    provider = provider,
+                    accessToken = socialCallbackResult.AccessToken ?? string.Empty,
+                    idToken = socialCallbackResult.IdToken ?? string.Empty,
+                    refreshToken = socialCallbackResult.RefreshToken ?? string.Empty,
                     expiresAt = DateTime.UtcNow.AddHours(1),
                     createdAt = DateTime.UtcNow
                 });
@@ -172,15 +171,16 @@ namespace Authentication.DomainService.Oidc.Services
                 await _cacheClient.RemoveKeyAsync(contextKey);
 
                 // 8. Return result with authorization code and redirect info
-                tokenResult.IsSuccess = true;
-                tokenResult.AuthorizationCode = authorizationCode;
-                tokenResult.RedirectUri = redirectUri;
-                tokenResult.OriginalState = originalState;
-                tokenResult.IsOidcFlow = true;
-                tokenResult.BlocksUserId = blocksUserId;
-                tokenResult.TenantId = context.GetProperty("tenantId").GetString() ?? "default";
-
-                return tokenResult;
+                return new OidcCallbackResult
+                {
+                    IsSuccess = true,
+                    AuthorizationCode = authorizationCode,
+                    RedirectUri = redirectUri,
+                    OriginalState = originalState,
+                    IsOidcFlow = true,
+                    BlocksUserId = blocksUserId,
+                    TenantId = context.GetProperty("tenantId").GetString() ?? "default"
+                };
             }
             catch (Exception ex)
             {
@@ -190,49 +190,21 @@ namespace Authentication.DomainService.Oidc.Services
         }
 
         /// <summary>
-        /// Create or update Blocks user from social provider's user info
-        /// Deserializes token payload using provider-specific IExternalUserData classes
+        /// Create or update Blocks user from social provider's normalized user info
         /// Returns Blocks user ID
         /// </summary>
-        private async Task<string?> CreateOrUpdateUserFromTokenAsync(Dictionary<string, object>? tokenPayload, IdentityProvider identityProvider)
+        private async Task<string?> CreateOrUpdateUserFromExternalUserAsync(IExternalUserData externalUserData, List<string> roles, List<string> permissions, string provider, string orgId = "default")
         {
-            if (tokenPayload == null || tokenPayload.Count == 0)
-                return null;
-
             try
             {
-                // Convert token payload to JSON and deserialize into provider-specific IExternalUserData
-                var externalUserData = DeserializeExternalUserData(tokenPayload, identityProvider.Provider);
-                if (externalUserData == null || string.IsNullOrWhiteSpace(externalUserData.Email))
+                if (string.IsNullOrWhiteSpace(externalUserData.Email))
                     return null; // Cannot create user without email
-
-                // Set platform and roles/permissions from IdentityProvider config
-                externalUserData.Platform = identityProvider.Provider;
-                externalUserData.Roles = identityProvider.InitialRoles ?? [];
-                externalUserData.Permissions = identityProvider.InitialPermissions ?? [];
 
                 // Try to get existing user by email
                 var existingUser = await _userRepository.GetUserByEmailAsync(externalUserData.Email);
 
                 if (existingUser != null)
                 {
-                    // Update existing user with new info from provider
-                    //existingUser.FirstName = externalUserData.FirstName ?? existingUser.FirstName;
-                    //existingUser.LastName = externalUserData.LastName ?? existingUser.LastName;
-                    //existingUser.ProfileImageUrl = externalUserData.ProfileImageUrl ?? existingUser.ProfileImageUrl;
-                    //existingUser.Platform = identityProvider.Provider;
-                    //existingUser.IsVerified = true;  // Trust social provider's email
-                    
-                    //// Update roles and permissions
-                    //if (existingUser.Roles == null) existingUser.Roles = new Dictionary<string, List<string>>();
-                    //if (existingUser.Permissions == null) existingUser.Permissions = new Dictionary<string, List<string>>();
-                    
-                    //existingUser.Roles["default"] = externalUserData.Roles ?? [];
-                    //existingUser.Permissions["default"] = externalUserData.Permissions ?? [];
-                    
-                    //await _userRepository.UpdateUserAsync(existingUser);
-
-                    //intentionally do not update existing user to avoid overwriting any customizations - just return existing user ID
                     return existingUser.ItemId;
                 }
 
@@ -244,17 +216,18 @@ namespace Authentication.DomainService.Oidc.Services
                     LastName = externalUserData.LastName,
                     ProfileImageUrl = externalUserData.ProfileImageUrl,
                     PhoneNumber = externalUserData.PhoneNumber,
-                    Platform = identityProvider.Provider,
+                    Platform = provider,
                     IsVerified = true,  // Trust social provider's email
                     Roles = new Dictionary<string, List<string>>
                     {
-                        { "default", externalUserData.Roles ?? [] }
+                        { orgId, roles }
                     },
                     Permissions = new Dictionary<string, List<string>>
                     {
-                        { "default", externalUserData.Permissions ?? [] }
+                        { orgId, permissions }
                     },
-                    Attributes = identityProvider.Provider == "microsoft" ? new Dictionary<string, object>
+                    OrganizationIds = new List<string> { orgId },
+                    Attributes = provider == "microsoft" ? new Dictionary<string, object>
                     {
                         { "Department", externalUserData.Department },
                         { "EmployeeId", externalUserData.EmployeeId },
@@ -268,178 +241,9 @@ namespace Authentication.DomainService.Oidc.Services
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Error creating/updating user from token for provider {Provider}", identityProvider.Provider);
+                _logger.LogError(ex, "Error creating/updating user from token for provider {Provider}", provider);
                 return null;
             }
         }
-
-        /// <summary>
-        /// Deserialize token payload into provider-specific IExternalUserData
-        /// Uses JsonPropertyName attributes to map claims correctly per provider
-        /// </summary>
-        private IExternalUserData? DeserializeExternalUserData(Dictionary<string, object> tokenPayload, string provider)
-        {
-            try
-            {
-                // Convert Dictionary to JSON string, then deserialize into appropriate provider class
-                var jsonString = JsonSerializer.Serialize(tokenPayload);
-                var options = new JsonSerializerOptions { PropertyNameCaseInsensitive = true };
-
-                return provider.ToLower() switch
-                {
-                    "google" => JsonSerializer.Deserialize<GoogleUserData>(jsonString, options),
-                    "microsoft" => JsonSerializer.Deserialize<MicrosoftUserData>(jsonString, options),
-                    "github" => JsonSerializer.Deserialize<GithubUserData>(jsonString, options),
-                    "linkedin" => JsonSerializer.Deserialize<LinkedinUserData>(jsonString, options),
-                    "x" => JsonSerializer.Deserialize<TwitterUserData>(jsonString, options),
-                    "twitter" => JsonSerializer.Deserialize<TwitterUserData>(jsonString, options),
-                    "apple" => JsonSerializer.Deserialize<AppleUserData>(jsonString, options),
-                    _ => JsonSerializer.Deserialize<StandardSocialUserDataBase>(jsonString, options)
-                };
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, "Error deserializing external user data for provider {Provider}", provider);
-                return null;
-            }
-        }
-
-        private async Task<OidcCallbackResult> ExchangeCodeForTokenAsync(string code, IdentityProvider provider)
-        {
-            try
-            {
-                var tokenRequest = new Dictionary<string, string>
-                {
-                    { "grant_type", "authorization_code" },
-                    { "code", code },
-                    { "client_id", provider.ClientId },
-                    { "client_secret", provider.ClientSecret },
-                    { "redirect_uri", provider.RedirectUris?.FirstOrDefault() ?? "" }
-                };
-
-                var timeoutSeconds = (int)GetOutboundRequestTimeout().TotalSeconds;
-                var (response, error) = await _httpService.SendFormUrlEncoded<OidcTokenResponse>(
-                    HttpMethod.Post,
-                    tokenRequest,
-                    provider.TokenUrl,
-                    timeoutSeconds: timeoutSeconds
-                );
-
-                if (!string.IsNullOrWhiteSpace(error))
-                {
-                    return new OidcCallbackResult { IsSuccess = false, ErrorMessage = $"Token endpoint error: {error}" };
-                }
-
-                if (response == null)
-                {
-                    return new OidcCallbackResult { IsSuccess = false, ErrorMessage = "Empty token response" };
-                }
-
-                return new OidcCallbackResult
-                {
-                    IsSuccess = true,
-                    AccessToken = response.AccessToken,
-                    IdToken = response.IdToken,
-                    RefreshToken = response.RefreshToken
-                };
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, "Error exchanging code for token");
-                return new OidcCallbackResult { IsSuccess = false, ErrorMessage = ex.Message };
-            }
-        }
-
-        private (bool IsValid, Dictionary<string, object>? Payload, string? ErrorMessage) ValidateAndParseIdToken(
-            string idToken,
-            IdentityProvider provider)
-        {
-            try
-            {
-                var handler = new JwtSecurityTokenHandler();
-                
-                // Parse token first to check basic structure
-                var token = handler.ReadToken(idToken) as JwtSecurityToken;
-                if (token == null)
-                {
-                    return (false, null, "Invalid JWT token format");
-                }
-
-                // 1. Validate token expiration
-                if (token.ValidTo < DateTime.UtcNow)
-                {
-                    return (false, null, "ID token has expired");
-                }
-
-                // 2. Validate issuer (if configured)
-                if (!string.IsNullOrWhiteSpace(provider.Issuer))
-                {
-                    var expectedIssuer = provider.Issuer;
-                    if (!string.Equals(token.Issuer, expectedIssuer, StringComparison.Ordinal))
-                    {
-                        _logger.LogWarning("ID token issuer mismatch. Expected: {Expected}, Got: {Got}", expectedIssuer, token.Issuer);
-                        return (false, null, "ID token issuer validation failed");
-                    }
-                }
-
-                // 3. Validate audience (if configured)
-                if (!string.IsNullOrWhiteSpace(provider.ClientId) && token.Audiences != null && token.Audiences.Any())
-                {
-                    if (!token.Audiences.Contains(provider.ClientId))
-                    {
-                        _logger.LogWarning("ID token audience validation failed. Expected: {Expected}, Got: {Audiences}", 
-                            provider.ClientId, string.Join(", ", token.Audiences));
-                        return (false, null, "ID token audience validation failed");
-                    }
-                }
-
-                // 4. JWKS Signature Validation (if JWKS URI is configured)
-                // Note: Signature validation requires fetching JWKS from provider
-                // This is optional for now - basic validation is in place
-                // Full signature validation would require: ValidateTokenSignatureAsync(idToken, provider)
-
-                // Extract payload claims
-                var payload = token.Claims
-                    .GroupBy(c => c.Type)
-                    .ToDictionary(
-                        g => g.Key,
-                        g => g.Count() == 1 
-                            ? (object)g.First().Value 
-                            : (object)g.Select(c => c.Value).ToList()
-                    );
-
-                return (true, payload, null);
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, "Error validating ID token");
-                return (false, null, ex.Message);
-            }
-        }
-
-
-
-        private static TimeSpan GetOutboundRequestTimeout()
-        {
-            return DomainResolver.IsLocalhost() ? TimeSpan.FromMinutes(5) : TimeSpan.FromSeconds(120);
-        }
-    }
-
-    public class OidcTokenResponse
-    {
-        [JsonPropertyName("access_token")]
-        public string? AccessToken { get; set; }
-
-        [JsonPropertyName("id_token")]
-        public string? IdToken { get; set; }
-
-        [JsonPropertyName("refresh_token")]
-        public string? RefreshToken { get; set; }
-
-        [JsonPropertyName("token_type")]
-        public string? TokenType { get; set; }
-
-        [JsonPropertyName("expires_in")]
-        public int ExpiresIn { get; set; }
     }
 }

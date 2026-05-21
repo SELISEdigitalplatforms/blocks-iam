@@ -431,10 +431,7 @@ namespace Authentication.DomainService.Authentication
 
                 return new OkObjectResult(new
                 {
-                    state,
                     authorizationUrl,
-                    displayName = identityProvider.DisplayName,
-                    provider,
                     requirePkce = identityProvider.RequirePkce == true
                 });
             }
@@ -454,10 +451,10 @@ namespace Authentication.DomainService.Authentication
         /// Called when user selects a provider from OIDC login page
         /// Generates state for social provider and redirects to social provider
         /// </summary>
-        public async Task<IActionResult> GetOidcSocialAuthorizationUrlAsync(string provider, string oidcState, string redirectUri)
+        public async Task<IActionResult> GetOidcSocialAuthorizationUrlAsync(string providerClientId, string oidcState, string providerRedirectUri)
         {
-            if (string.IsNullOrWhiteSpace(provider))
-                return new BadRequestObjectResult(new { error = "provider_required", error_description = "Provider name is required" });
+            if (string.IsNullOrWhiteSpace(providerClientId))
+                return new BadRequestObjectResult(new { error = "client_id_required", error_description = "Client ID is required" });
 
             if (string.IsNullOrWhiteSpace(oidcState))
                 return new BadRequestObjectResult(new { error = "oidc_state_required", error_description = "OIDC state is required" });
@@ -471,12 +468,12 @@ namespace Authentication.DomainService.Authentication
                     return new BadRequestObjectResult(new { error = "invalid_oidc_state", error_description = "OIDC flow expired or invalid" });
 
                 // Get provider configuration
-                var identityProvider = await _authenticationRepository.GetIdentityProviderAsync(provider);
+                var identityProvider = await _authenticationRepository.GetIdentityProviderByClientIdAsync(providerClientId);
                 if (identityProvider == null)
-                    return new NotFoundObjectResult(new { error = "provider_not_found", error_description = $"Provider '{provider}' not configured" });
+                    return new NotFoundObjectResult(new { error = "provider_not_found", error_description = $"Provider with client ID '{providerClientId}' not configured" });
 
                 if (!identityProvider.IsActive)
-                    return new BadRequestObjectResult(new { error = "provider_inactive", error_description = $"Provider '{provider}' is not active" });
+                    return new BadRequestObjectResult(new { error = "provider_inactive", error_description = $"Provider with client ID '{providerClientId}' is not active" });
 
                 // Generate state for social provider (separate from OIDC state)
                 var socialState = Guid.NewGuid().ToString("n");
@@ -484,10 +481,10 @@ namespace Authentication.DomainService.Authentication
                 // Store state with reference to OIDC context
                 // This links the social provider callback back to the OIDC flow
                 var stateKey = $"oidc_social_state:{socialState}";
-                var stateValue = System.Text.Json.JsonSerializer.Serialize(new
+                var stateValue = JsonSerializer.Serialize(new
                 {
                     oidcState,
-                    provider,
+                    provider = identityProvider.Provider,
                     createdAt = DateTime.UtcNow
                 });
                 await _cacheClient.AddStringValueAsync(stateKey, stateValue, 300); // 5 minute TTL
@@ -495,21 +492,18 @@ namespace Authentication.DomainService.Authentication
                 // Build authorization URL for social provider
                 // Callback should redirect to /auth/oidc/callback with provider and state
                 var scope = identityProvider.Scope ?? "openid profile email";
-                redirectUri = string.IsNullOrWhiteSpace(redirectUri) ? identityProvider.RedirectUris.FirstOrDefault() : redirectUri;
-                var authorizationUrl = BuildAuthorizationUrl(identityProvider, socialState, redirectUri, scope);
+                providerRedirectUri = string.IsNullOrWhiteSpace(providerRedirectUri) ? identityProvider.RedirectUris.FirstOrDefault() : providerRedirectUri;
+                var authorizationUrl = BuildAuthorizationUrl(identityProvider, socialState, providerRedirectUri, scope);
 
                 return new OkObjectResult(new
                 {
-                    socialState,
                     authorizationUrl,
-                    provider,
-                    oidcState,
                     requirePkce = identityProvider.RequirePkce == true
                 });
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Error getting OIDC social authorization URL for provider: {Provider}", provider);
+                _logger.LogError(ex, "Error getting OIDC social authorization URL for provider: {ClientId}", providerClientId);
                 return new BadRequestObjectResult(new { error = "authorization_url_generation_failed", error_description = ex.Message });
             }
         }
