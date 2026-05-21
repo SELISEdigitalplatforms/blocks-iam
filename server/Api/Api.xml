@@ -96,14 +96,6 @@
             </summary>
         </member>
         <!-- Badly formed XML comment ignored for member "M:Api.Controllers.AuthenticationController.HandleSocialCallback(System.String,System.String,System.String,Authentication.DomainService.OAuth.RequestModel.SocialLoginRequest)" -->
-        <member name="M:Api.Controllers.AuthenticationController.HandleOidcCallbackGet(System.String,System.String,Authentication.DomainService.OAuth.RequestModel.OidcCallbackRequest)">
-            <summary>
-            OIDC callback handler (Browser Redirect Pattern - GET)
-            Receives authorization code from provider via browser redirect
-            Exchanges code for tokens, validates JWT signature and claims
-            RFC 6749: OAuth 2.0 | RFC 3986: OpenID Connect | RFC 7519: JWT | RFC 5280: X.509
-            </summary>
-        </member>
         <member name="M:Api.Controllers.AuthenticationController.RefreshAccessToken(Authentication.DomainService.OAuth.RequestModel.RefreshRequest)">
             <summary>
             Refresh access token using refresh token
@@ -306,6 +298,14 @@
             <summary>
             OAuth 2.0 Token Endpoint (RFC 6749 Section 3.2)
             Supports both authorization_code and refresh_token grants
+            </summary>
+        </member>
+        <member name="M:Blocks.Api.Controllers.AuthorizationController.HandleOidcCallbackGet(System.String,System.String,Authentication.DomainService.OAuth.RequestModel.OidcCallbackRequest)">
+            <summary>
+            OIDC callback handler (Browser Redirect Pattern - GET)
+            Receives authorization code from provider via browser redirect
+            Exchanges code for tokens, validates JWT signature and claims
+            RFC 6749: OAuth 2.0 | RFC 3986: OpenID Connect | RFC 7519: JWT | RFC 5280: X.509
             </summary>
         </member>
         <member name="T:Blocks.Api.Controllers.DiscoveryController">

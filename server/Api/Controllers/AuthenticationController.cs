@@ -1,14 +1,12 @@
 using Authentication.DomainService.Authentication;
 using Authentication.DomainService.Entities;
 using Authentication.DomainService.OAuth.RequestModel;
-using Authentication.DomainService.Oidc.Services;
 using Authentication.DomainService.Shared.RequestModel;
 using Authentication.DomainService.Utilities;
 using Blocks.Genesis;
 using Iam.DomainService.Accounts;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
-using System.Security.Claims;
 
 namespace Api.Controllers;
 
@@ -29,21 +27,16 @@ public class AuthenticationController : ControllerBase
     private readonly IAuthenticationService _authenticationService;
     private readonly IAccountService _accountService;
     private readonly IAuthenticationFlowService _authenticationFlowService;
-    private readonly IOidcCallbackHandler _oidcCallbackHandler;
-    private readonly IAuthorizationFlowService _authorizationFlowService;
 
     public AuthenticationController(
         IAuthenticationService authenticationService,
         IAccountService accountService,
-        IAuthenticationFlowService authenticationFlowService,
-        IOidcCallbackHandler oidcCallbackHandler,
-        IAuthorizationFlowService authorizationFlowService)
+        IAuthenticationFlowService authenticationFlowService
+    )
     {
         _authenticationService = authenticationService;
         _accountService = accountService;
         _authenticationFlowService = authenticationFlowService;
-        _oidcCallbackHandler = oidcCallbackHandler;
-        _authorizationFlowService = authorizationFlowService;
     }
 
     /// <summary>
@@ -237,38 +230,6 @@ public class AuthenticationController : ControllerBase
 
     #endregion
 
-    #region OIDC Federated Authentication (OpenID Connect 1.0)
-
-    /// <summary>
-    /// OIDC callback handler (Browser Redirect Pattern - GET)
-    /// Receives authorization code from provider via browser redirect
-    /// Exchanges code for tokens, validates JWT signature and claims
-    /// RFC 6749: OAuth 2.0 | RFC 3986: OpenID Connect | RFC 7519: JWT | RFC 5280: X.509
-    /// </summary>
-    [HttpGet("oidc/callback")]
-    [HttpPost("oidc/callback")]
-    [AllowAnonymous]
-    public async Task<IActionResult> HandleOidcCallbackGet(
-        [FromQuery] string code,
-        [FromQuery] string state,
-        [FromBody] OidcCallbackRequest? request = null)
-    {
-        if (request != null)
-        {
-            code = request.Code;
-            state = request.State;
-        }
-
-        if (string.IsNullOrWhiteSpace(code))
-            return BadRequest(new { error = "authorization_code_missing", error_description = "Authorization code is required" });
-
-        if (string.IsNullOrWhiteSpace(state))
-            return BadRequest(new { error = "state_missing", error_description = "State parameter is required" });
-
-        return await ProcessOidcCallback(code, state);
-    }
-
-    #endregion
 
     #region Token & Session Management
 
@@ -364,14 +325,14 @@ public class AuthenticationController : ControllerBase
     public async Task<IActionResult> StopImpersonation([FromBody] StopImpersonationRequest request)
     {
         // Reset BlocksContext to original tenant context in case this impersonation request is coming from an existing impersonation session (organization switch or tenant switch within impersonation), we want to validate permissions and issue tokens based on the original/root tenant context and not the current impersonated context
-        if(!BlocksContext.GetContext().Impersonated)
+        if (!BlocksContext.GetContext().Impersonated)
         {
             return BadRequest(new StopImpersonationResponse
             {
                 error = "Not_allowed"
             });
         }
-        
+
         DomainResolver.ResetToOriginalBlocksContextForImpersonation();
         return await _authenticationFlowService.ExecuteStopImpersonationAsync(request, Request, Response);
     }
@@ -530,57 +491,5 @@ public class AuthenticationController : ControllerBase
 
     #endregion
 
-    private async Task<IActionResult> ProcessOidcCallback(string code, string state)
-    {
-        // Resolve the provider callback back into the original OIDC request context.
-        var result = await _oidcCallbackHandler.HandleCallbackAsync(code, state);
 
-        if (!result.IsSuccess)
-        {
-            return BadRequest(new
-            {
-                error = "token_exchange_failed",
-                error_description = result.ErrorMessage
-            });
-        }
-
-        // OIDC social flow must use the same AuthorizeAsync path as password OIDC login so
-        // AuthorizationCodeModel is persisted in the standard repository.
-        if (result.IsOidcFlow
-            && !string.IsNullOrWhiteSpace(result.ClientId)
-            && !string.IsNullOrWhiteSpace(result.RedirectUri)
-            && !string.IsNullOrWhiteSpace(result.BlocksUserId))
-        {
-            var claims = new[]
-            {
-                new Claim("sub", result.BlocksUserId),
-                new Claim("tenant_id", result.TenantId ?? string.Empty)
-            };
-            var principal = new ClaimsPrincipal(new ClaimsIdentity(claims, "Bearer"));
-
-            return await _authorizationFlowService.AuthorizeAsync(
-                result.ClientId,
-                "code",
-                result.RedirectUri,
-                result.Scope ?? "openid profile email offline_access",
-                result.OriginalState ?? string.Empty,
-                result.Nonce ?? string.Empty,
-                result.CodeChallenge ?? string.Empty,
-                result.CodeChallengeMethod ?? "S256",
-                null,
-                result.TenantId ?? string.Empty,
-                principal,
-                Request,
-                Response,
-                true);
-        }
-        else
-        {
-            // EMBEDDED FLOW: Use the same tenant-scoped cookie naming and security policy as login/refresh/logout.
-            await _authenticationService.AppendSessionCookies(HttpContext, result.AccessToken, result.RefreshToken);
-
-            // Redirect to home page or original URL if state contains it (optional enhancement)
-            return Redirect("/");
-        }
-    }
 }

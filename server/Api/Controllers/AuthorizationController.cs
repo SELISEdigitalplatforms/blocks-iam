@@ -1,6 +1,9 @@
 using Authentication.DomainService.Authentication;
+using Authentication.DomainService.OAuth.RequestModel;
+using Authentication.DomainService.Oidc.Services;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using System.Security.Claims;
 using System.Text.Json.Serialization;
 
 namespace Blocks.Api.Controllers
@@ -10,10 +13,13 @@ namespace Blocks.Api.Controllers
     public class AuthorizationController : ControllerBase
     {
         private readonly IAuthorizationFlowService _authorizationFlowService;
+        private readonly IOidcCallbackHandler _oidcCallbackHandler;
 
-        public AuthorizationController(IAuthorizationFlowService authorizationFlowService)
+
+        public AuthorizationController(IAuthorizationFlowService authorizationFlowService, IOidcCallbackHandler oidcCallbackHandler)
         {
             _authorizationFlowService = authorizationFlowService;
+            _oidcCallbackHandler = oidcCallbackHandler;
         }
 
         /// <summary>
@@ -71,6 +77,77 @@ namespace Blocks.Api.Controllers
         {
             return await _authorizationFlowService.TokenAsync(grant_type, Request);
         }
+
+        #region OIDC Federated Authentication (OpenID Connect 1.0)
+
+        /// <summary>
+        /// OIDC callback handler (Browser Redirect Pattern - GET)
+        /// Receives authorization code from provider via browser redirect
+        /// Exchanges code for tokens, validates JWT signature and claims
+        /// RFC 6749: OAuth 2.0 | RFC 3986: OpenID Connect | RFC 7519: JWT | RFC 5280: X.509
+        /// </summary>
+        [HttpGet("oidc/callback")]
+        [HttpPost("oidc/callback")]
+        [AllowAnonymous]
+        public async Task<IActionResult> HandleOidcCallbackGet(
+            [FromQuery] string code,
+            [FromQuery] string state,
+            [FromBody] OidcCallbackRequest? request = null)
+        {
+            if (request != null)
+            {
+                code = request.Code;
+                state = request.State;
+            }
+
+            if (string.IsNullOrWhiteSpace(code))
+                return BadRequest(new { error = "authorization_code_missing", error_description = "Authorization code is required" });
+
+            if (string.IsNullOrWhiteSpace(state))
+                return BadRequest(new { error = "state_missing", error_description = "State parameter is required" });
+
+            return await ProcessOidcCallback(code, state);
+        }
+
+        private async Task<IActionResult> ProcessOidcCallback(string code, string state)
+        {
+            // Resolve the provider callback back into the original OIDC request context.
+            var result = await _oidcCallbackHandler.HandleCallbackAsync(code, state);
+
+            if (!result.IsSuccess)
+            {
+                return BadRequest(new
+                {
+                    error = "token_exchange_failed",
+                    error_description = result.ErrorMessage
+                });
+            }
+
+            var claims = new[]
+            {
+                new Claim("sub", result.BlocksUserId),
+                new Claim("tenant_id", result.TenantId ?? string.Empty)
+            };
+            var principal = new ClaimsPrincipal(new ClaimsIdentity(claims, "Bearer"));
+
+            return await _authorizationFlowService.AuthorizeAsync(
+                result.ClientId,
+                "code",
+                result.RedirectUri,
+                result.Scope ?? "openid profile email offline_access",
+                result.OriginalState ?? string.Empty,
+                result.Nonce ?? string.Empty,
+                result.CodeChallenge ?? string.Empty,
+                result.CodeChallengeMethod ?? "S256",
+                null,
+                result.TenantId ?? string.Empty,
+                principal,
+                Request,
+                Response,
+                true);
+        }
+
+        #endregion
 
         public class SelectAccountSelectionRequest
         {
