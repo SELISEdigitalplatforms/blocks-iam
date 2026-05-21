@@ -96,7 +96,7 @@
             </summary>
         </member>
         <!-- Badly formed XML comment ignored for member "M:Api.Controllers.AuthenticationController.HandleSocialCallback(System.String,System.String,System.String,Authentication.DomainService.OAuth.RequestModel.SocialLoginRequest)" -->
-        <member name="M:Api.Controllers.AuthenticationController.HandleOidcCallbackGet(System.String,System.String,System.String,Authentication.DomainService.OAuth.RequestModel.OidcCallbackRequest)">
+        <member name="M:Api.Controllers.AuthenticationController.HandleOidcCallbackGet(System.String,System.String,Authentication.DomainService.OAuth.RequestModel.OidcCallbackRequest)">
             <summary>
             OIDC callback handler (Browser Redirect Pattern - GET)
             Receives authorization code from provider via browser redirect
