@@ -142,12 +142,7 @@ export const OIDCSignin = () => {
                   scope={oidcContext.scope || searchParams.get("scope") || undefined}
                   state={oidcContext.state || searchParams.get("state") || undefined}
                   nonce={oidcContext.nonce || searchParams.get("nonce") || undefined}
-                  tenantId={
-                    searchParams.get("x-blocks-key") ||
-                    oidcContext.tenantId ||
-                    searchParams.get("tenant_id") ||
-                    undefined
-                  }
+                  tenantId={oidcContext.tenantId || searchParams.get("tenant_id") || undefined}
                   codeChallenge={searchParams.get("code_challenge") || undefined}
                   codeChallengeMethod={searchParams.get("code_challenge_method") || "S256"}
                 />
