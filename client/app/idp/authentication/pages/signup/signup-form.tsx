@@ -23,7 +23,7 @@ import { isErrorWithErrors } from "@/lib/error";
 import { getRuntimeEnv } from "@/lib/runtime-env";
 import { GRANT_TYPES } from "@blocks-idp/authentication/constants/authentication.constant";
 import { useSignupByEmail } from "@blocks-idp/authentication/hooks/use-auth";
-import { LoginOption } from "@blocks-idp/authentication/models/auth-configuration.model";
+import { LoginOption } from "@blocks-idp/authentication/models/auth.model";
 import { useCaptcha } from "@blocks-idp/captcha/hooks/use-captcha";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { Link } from "react-router-dom";

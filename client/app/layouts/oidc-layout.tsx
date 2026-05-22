@@ -63,7 +63,7 @@ function OIDCProvider({ children }: { children: ReactNode }) {
     }
 
     const mergedParams: OIDCContextType = {
-      tenantId: urlParams.tenantId || stored.tenantId,
+      tenantId: urlParams.projectKey || stored.tenantId,
       userName: urlParams.userName || stored.userName,
       logoUrl: urlParams.logoUrl || stored.logoUrl,
       themeColor: urlParams.themeColor || stored.themeColor || "#124091",

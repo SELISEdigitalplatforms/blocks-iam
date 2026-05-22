@@ -9,7 +9,7 @@ import { Loader } from "lucide-react";
 export const Signup = () => {
   const projectKey = getRuntimeEnv("BLOCKS_X_BLOCKS_KEY") || "";
   
-  const { data: loginOption, isLoading: isLoginOptionLoading } = useGetLoginOptions();
+  const { data: loginOption, isLoading: isLoginOptionLoading } = useGetLoginOptions(projectKey || undefined);
   const { data: signUpSetting, isLoading: isSignUpSettingLoading } = useGetSignUpSetting({ projectKey });
 
   if (isLoginOptionLoading || isSignUpSettingLoading) {

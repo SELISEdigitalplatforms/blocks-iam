@@ -44,10 +44,10 @@ export const useSignupByEmail = () => {
 //   });
 // };
 
-export const useGetLoginOptions = (tenantId?: string, enabled = true) => {
+export const useGetLoginOptions = (xBlocksKey?: string, enabled = true) => {
   return useQuery({
-    queryKey: ["login-options", tenantId],
-    queryFn: () => authService.getLoginOptions(tenantId),
-    enabled,
+    queryKey: ["login-options", xBlocksKey],
+    queryFn: () => authService.getLoginOptions(xBlocksKey),
+    enabled: enabled && !!xBlocksKey,
   });
 };
