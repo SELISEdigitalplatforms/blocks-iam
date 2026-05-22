@@ -68,9 +68,7 @@ export const OidcLoginForm = ({
 }: OidcLoginFormProps) => {
   const navigate = useNavigate();
   const { theme } = useTheme();
-  const xBlocksKey =
-    tenantId || getRuntimeEnv("BLOCKS_X_BLOCKS_KEY") || undefined;
-  const { data: loginOption } = useGetLoginOptions(xBlocksKey);
+  const { data: loginOption } = useGetLoginOptions(tenantId, true);
   const [token, setToken] = useState("");
   const [accounts, setAccounts] = useState<OidcAccountInfo[]>([]);
   const [isSelectingAccount, setIsSelectingAccount] = useState(false);
@@ -376,7 +374,7 @@ export const OidcLoginForm = ({
         </div>
       )} */}
 
-      {showSocialLogin && loginOption && (
+      {showSocialLogin && (
         <SsoSignin
           loginOption={loginOption}
           mode="oidc"
