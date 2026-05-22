@@ -49,6 +49,7 @@ export const SsoSignin = ({
         ...config,
         provider: sso.provider as typeof config.provider,
         clientId: sso.clientId as string,
+        redirectUrl: (sso.redirectUris as string[])[0] as string,
       };
     })
     .filter((item) => !!item);
