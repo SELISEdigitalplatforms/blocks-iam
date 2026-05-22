@@ -25,7 +25,7 @@ namespace Authentication.DomainService.OAuth
 
         public async Task<SocialCallbackResult> HandleSocialLoginCallback(StateInfo stateInfo)
         {
-            var service = _socialLogIns.ContainsKey(stateInfo.ClientId) ? _socialLogIns[stateInfo.Provider.ToLower()] : _defaultService;
+            var service = _socialLogIns.ContainsKey(stateInfo.Provider) ? _socialLogIns[stateInfo.Provider.ToLower()] : _defaultService;
             return await service.HandleSocialLoginCallback(stateInfo);
         }
 
