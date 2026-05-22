@@ -1,4 +1,3 @@
-using System.IdentityModel.Tokens.Jwt;
 using System.Text.Json.Serialization;
 using Microsoft.IdentityModel.Tokens;
 
@@ -40,15 +39,14 @@ public class AuthorizationCodeModel
     public bool IsUsed { get; set; }
     public DateTime? UsedAt { get; set; }
     public string? UsedByIpAddress { get; set; }
+    public bool IsRevoked { get; set; }
+    public DateTime? RevokedAt { get; set; }
 }
 
 public class RefreshTokenModel
 {
     public string Id { get; set; } = Guid.NewGuid().ToString("n");
     public string TokenId { get; set; } = Guid.NewGuid().ToString("n");
-    public string FamilyId { get; set; } = Guid.NewGuid().ToString("n");
-    public string? ParentTokenId { get; set; }
-    public List<string> ChildTokenIds { get; set; } = [];
     public string UserId { get; set; } = string.Empty;
     public string? TenantId { get; set; }
     public string? OrgId { get; set; }
@@ -63,6 +61,7 @@ public class RefreshTokenModel
     public DateTime? RevokedAt { get; set; }
     public string? IpAddress { get; set; }
     public string? UserAgent { get; set; }
+    public bool Impersonated { get; set; }
 
     public bool IsExpired()
     {

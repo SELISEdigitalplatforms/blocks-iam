@@ -1,3 +1,4 @@
+using Authentication.DomainService.Utilities;
 using Blocks.Genesis;
 using CloudConfiguration.DomainService.Authentication.RequestModel;
 using CloudConfiguration.DomainService.IAM.RequestModel;
@@ -216,6 +217,7 @@ namespace Api.Controllers
         [Authorize]
         public async Task<GetAccountResponse> GetMyAccount()
         {
+            DomainResolver.ResetToOriginalBlocksContextForImpersonation();
             return await _userManagementQueryService.GetAccountAsync();
         }
 
@@ -224,6 +226,7 @@ namespace Api.Controllers
         [Authorize]
         public async Task<IActionResult> UpdateMyAccount([FromBody] UpdateUserRequest command)
         {
+            DomainResolver.ResetToOriginalBlocksContextForImpersonation();
             var bc = BlocksContext.GetContext();
             command.ItemId = bc?.UserId;
             var result = await _userManagementMutationService.UpdateUserAsync(command);

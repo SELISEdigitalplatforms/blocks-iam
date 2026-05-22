@@ -23,9 +23,8 @@ namespace Authentication.DomainService.OAuth
             ISocialLogInServiceProvider socialLogInServiceProvider,
             IUserManagementMutationService userManagementMutationService,
             IIdentityAccessManagementRepository repository,
-            IConfiguration configuration,
             IUserRepository userRepository)
-            : base(logger, oAuthJwtAccessTokenManager, oAuthRepository, cacheClient, socialLogInServiceProvider, userManagementMutationService, configuration)
+            : base(logger, oAuthJwtAccessTokenManager, oAuthRepository, cacheClient, socialLogInServiceProvider, userManagementMutationService)
         {
             _repository = repository;
             _userRepository = userRepository;
