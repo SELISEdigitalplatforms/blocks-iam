@@ -12,6 +12,7 @@ import { GRANT_TYPES } from "@blocks-idp/authentication/constants/authentication
 import { useGetLoginOptions } from "@blocks-idp/authentication/hooks/use-auth";
 import { Link } from "react-router-dom";
 import { useEffect } from "react";
+import { getRuntimeEnv } from "@/lib/runtime-env";
 import { SigninForm } from "./signin-form";
 import { SsoSignin } from "./sso-signin";
 import { buildOIDCNavigationUrl } from "@blocks-idp/authentication/utils/oidc-utils";
@@ -75,7 +76,8 @@ const SigninSkeleton = () => (
 );
 
 export const Signin = ({ ssoError, mode = "default", oidcContext }: SigninProps) => {
-  const { data: loginOption, isLoading: isLoginOptionLoading } = useGetLoginOptions();
+  const xBlocksKey = getRuntimeEnv("BLOCKS_X_BLOCKS_KEY") || undefined;
+  const { data: loginOption, isLoading: isLoginOptionLoading } = useGetLoginOptions(xBlocksKey);
 
   useEffect(() => {
     if (ssoError) {

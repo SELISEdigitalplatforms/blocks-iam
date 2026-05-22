@@ -10,6 +10,7 @@ import {
   IActivateAccountResponse,
   IRecoverAccountPayload,
   IRecoverAccountResponse,
+  LoginOption,
 } from "@blocks-idp/authentication/models/auth.model";
 import { AUTH_ENDPOINTS } from "../constants/endpoint.constant";
 
@@ -94,9 +95,9 @@ export class AuthService {
     return http.post(AUTH_ENDPOINTS.RECOVER, payload);
   }
 
-  getLoginOptions(tenantId?: string): Promise<any> {
-    const url = tenantId 
-      ? `${AUTH_ENDPOINTS.GET_LOGIN_OPTIONS}?tenantId=${encodeURIComponent(tenantId)}`
+  getLoginOptions(xBlocksKey?: string): Promise<LoginOption> {
+    const url = xBlocksKey
+      ? `${AUTH_ENDPOINTS.GET_LOGIN_OPTIONS}?x-blocks-key=${encodeURIComponent(xBlocksKey)}`
       : AUTH_ENDPOINTS.GET_LOGIN_OPTIONS;
     return http.get(url);
   }
