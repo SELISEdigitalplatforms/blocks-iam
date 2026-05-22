@@ -15,9 +15,8 @@ namespace Authentication.DomainService.OAuth.Services
             IAuthenticationRepository oAuthRepository,
             ICacheClient cacheClient,
             ISocialLogInServiceProvider socialLogInServiceProvider,
-            IUserManagementMutationService userManagementMutationService,
-            IConfiguration configuration)
-            : base(logger, oAuthJwtAccessTokenManager, oAuthRepository, cacheClient, socialLogInServiceProvider, userManagementMutationService, configuration)
+            IUserManagementMutationService userManagementMutationService)
+            : base(logger, oAuthJwtAccessTokenManager, oAuthRepository, cacheClient, socialLogInServiceProvider, userManagementMutationService)
         {
         }
 

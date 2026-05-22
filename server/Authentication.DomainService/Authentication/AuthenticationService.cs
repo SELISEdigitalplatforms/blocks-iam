@@ -1,9 +1,11 @@
 using Authentication.DomainService.Dtos;
 using Authentication.DomainService.Entities;
+using Authentication.DomainService.OAuth;
 using Authentication.DomainService.OAuth.ResponseModel;
 using Authentication.DomainService.Oidc.Repositories;
 using Authentication.DomainService.Oidc.Services;
 using Authentication.DomainService.Services;
+using Authentication.DomainService.Shared;
 using Authentication.DomainService.Utilities;
 using Blocks.Genesis;
 using Idp.DomainService.Oidc.Contracts;
@@ -15,14 +17,13 @@ using System.IdentityModel.Tokens.Jwt;
 using System.Net.Http.Json;
 using System.Security.Claims;
 using System.Security.Cryptography.X509Certificates;
-using Authentication.DomainService.Shared;
+using System.Text.Json;
 
 namespace Authentication.DomainService.Authentication
 {
     public class AuthenticationService : IAuthenticationService
     {
         private static readonly HttpClient BackchannelHttpClient = new();
-        private const string IdpSessionCookieName = "idp_session_id";
         private readonly ILogger<AuthenticationService> _logger;
         private readonly ICacheClient _cacheClient;
         private readonly IAuthenticationRepository _authenticationRepository;
@@ -31,7 +32,6 @@ namespace Authentication.DomainService.Authentication
         private readonly IIdpSessionService _idpSessionService;
         private readonly ITokenRevocationService _tokenRevocationService;
         private readonly ITenants _tenants;
-        private readonly UnifiedTokenSessionService _unifiedTokenSessionService;
 
         private const string Public_Cert_Cache_Prefix = "tetocertpublic::";
 
@@ -43,8 +43,7 @@ namespace Authentication.DomainService.Authentication
             IAuthenticationDomainService authenticationDomainService,
             IIdpSessionService idpSessionService,
             ITokenRevocationService tokenRevocationService,
-            ITenants tenants,
-            UnifiedTokenSessionService unifiedTokenSessionService
+            ITenants tenants
         )
         {
             _logger = logger;
@@ -55,7 +54,6 @@ namespace Authentication.DomainService.Authentication
             _idpSessionService = idpSessionService;
             _tokenRevocationService = tokenRevocationService;
             _tenants = tenants;
-            _unifiedTokenSessionService = unifiedTokenSessionService;
         }
 
         public async Task<IActionResult> BuildFlowResultAsync(AuthenticationFlowResult result, HttpContext httpContext)
@@ -89,7 +87,7 @@ namespace Authentication.DomainService.Authentication
 
         public async Task<bool> UpdateIdpSessionForLogoutAsync(HttpContext httpContext, ClaimsPrincipal user, bool isGlobalLogout)
         {
-            var sessionId = httpContext.Request.Cookies[IdpSessionCookieName];
+            var sessionId = httpContext.Request.Cookies[IdpConstants.IdpSessionCookieName];
             if (string.IsNullOrWhiteSpace(sessionId))
             {
                 return true;
@@ -100,16 +98,16 @@ namespace Authentication.DomainService.Authentication
                 await _idpSessionService.RevokeSessionAsync(sessionId, "logout_all");
                 return true;
             }
-
-            var userId = user.FindFirst(BlocksContext.USER_ID_CLAIM)?.Value ?? user.FindFirst("sub")?.Value;
+            var bc = BlocksContext.GetContext();
+            var userId = user.FindFirst(bc?.UserId)?.Value ?? user.FindFirst("sub")?.Value;
             if (string.IsNullOrWhiteSpace(userId))
             {
                 return false;
             }
 
-            var tenantId = user.FindFirst(BlocksContext.TENANT_ID_CLAIM)?.Value
+            var tenantId = user.FindFirst(bc?.TenantId)?.Value
                 ?? user.FindFirst("tenant_id")?.Value
-                ?? BlocksContext.GetContext()?.TenantId;
+                ?? bc?.TenantId;
 
             await _idpSessionService.RemoveAccountAsync(sessionId, userId, tenantId);
 
@@ -124,7 +122,7 @@ namespace Authentication.DomainService.Authentication
 
         public void ClearIdpSessionCookie(HttpResponse response)
         {
-            response.Cookies.Delete(IdpSessionCookieName);
+            response.Cookies.Delete(IdpConstants.IdpSessionCookieName);
         }
 
         public async Task<LogoutResponse> LogoutUser(string refreshToken, HttpRequest httpRequest)
@@ -147,12 +145,30 @@ namespace Authentication.DomainService.Authentication
         {
             var bc = BlocksContext.GetContext();
 
-            // Revoke refresh token family to align with rotation security and prevent sibling token reuse.
-            await _tokenRevocationService.RevokeTokenAsync(refreshToken, "refresh_token", string.Empty);
-            var revokeResult = await _tokenRevocationService.RevokeTokenAsync(refreshToken, "refresh_token", string.Empty);
+            var refreshTokenCache = await _cacheClient.GetStringValueAsync(refreshToken);
+            if (string.IsNullOrWhiteSpace(refreshTokenCache))
+            {
+                _logger.LogWarning("No active session found for refresh token during logout");
+                return false;
+            }
+
+            var refreshTokenSession = new RefreshTokenCache();
+
+            try
+            {
+                refreshTokenSession = JsonSerializer.Deserialize<RefreshTokenCache>(refreshTokenCache);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Exception during refresh-token revocation in logout");
+                return false;
+            }
+
+            // Revoke the refresh token (marks IsRevoked in IdpRefreshTokens and syncs identity session status).
+            var revokeResult = await _tokenRevocationService.RevokeTokenAsync(refreshToken, "refresh_token", refreshTokenSession?.ClientId);
             if (!revokeResult.Success)
             {
-                _logger.LogWarning("Refresh-token family revocation failed during logout: {Error}", revokeResult.Error ?? "unknown_error");
+                _logger.LogWarning("Refresh-token revocation failed during logout: {Error}", revokeResult.Error ?? "unknown_error");
             }
 
             await _cacheClient.RemoveKeyAsync(refreshToken);
@@ -167,7 +183,16 @@ namespace Authentication.DomainService.Authentication
             var bc = BlocksContext.GetContext();
 
             var refreshTokens = (await _authenticationRepository.GetActiveIdentitySessionByUserIdAsync(bc?.UserId ?? string.Empty)).Select(x => x.RefreshToken).ToList();
-            var revokeTasks = refreshTokens.Select(async x => await _unifiedTokenSessionService.RevokeRefreshToken(x));
+
+            var revokeTasks = refreshTokens.Select(async token =>
+            {
+                var result = await _tokenRevocationService.RevokeTokenAsync(token, "refresh_token", string.Empty);
+                if (!result.Success)
+                {
+                    _logger.LogWarning("Refresh-token revocation failed during logout-all: {Error}", result.Error ?? "unknown_error");
+                }
+                await _cacheClient.RemoveKeyAsync(token);
+            });
             await Task.WhenAll(revokeTasks);
 
             var result = await _authenticationRepository.RevokeIdentitySessionsByRefreshTokensAsync(refreshTokens);
@@ -217,15 +242,12 @@ namespace Authentication.DomainService.Authentication
             var bc = BlocksContext.GetContext();
             var tenantId = bc?.TenantId ?? "default";
             var tenant = _tenants.GetTenantByID(tenantId);
-            var (domain, cookieDomain, isResolved) = DomainResolver.ResolveDomain(tenant, request);
+            var (domain, cookieDomain, _) = DomainResolver.ResolveDomain(tenant, request);
             var cookieOptions = CreateCookieOptions(cookieDomain, DateTime.UtcNow.AddDays(-1));
 
-            if (isResolved && !string.IsNullOrWhiteSpace(domain))
-            {
-                request.HttpContext.Response.Cookies.Delete($"{IdpConstants.RefreshTokenCookieName}_{domain}", cookieOptions);
-                request.HttpContext.Response.Cookies.Delete($"{domain}", cookieOptions);
-            }
-
+            request.HttpContext.Response.Cookies.Delete($"{IdpConstants.RefreshTokenCookieName}_{domain}", cookieOptions);
+            request.HttpContext.Response.Cookies.Delete($"{domain}", cookieOptions);
+            request.HttpContext.Response.Cookies.Delete(IdpConstants.ImpersonationIdCookieName, cookieOptions);
             return true;
         }
 
@@ -273,13 +295,22 @@ namespace Authentication.DomainService.Authentication
                           {
                               provider = provider.Provider,
                               displayName = provider.DisplayName,
-                              icon = provider.Provider // Can be URL or icon name
+                              icon = provider.Provider, // Can be URL or icon name
+                              redirectUris = provider.RedirectUris,
+                              clientId = provider.ClientId,
                           }).ToList()
                           : null;
 
+            
+            var gts = new List<string> {
+                "authorization_code",
+                "client_credentials",
+                "refresh_token"
+            };
+
             return new OkObjectResult(new
             {
-                AllowedGrantTypes = config.AllowedGrantTypes.Except(["mfa_code", "refresh_token"]),
+                AllowedGrantTypes =  gts,
                 SsoInfo = ssoInfo
             });
         }
@@ -288,30 +319,35 @@ namespace Authentication.DomainService.Authentication
         /// Initialize social provider authorization - generates state, stores in cache, returns authorization URL
         /// Standard OAuth 2.0 Authorization Code flow initialization
         /// </summary>
-        public async Task<IActionResult> GetSocialAuthorizationUrlAsync(string provider, string redirectUri)
+        public async Task<IActionResult> GetSocialAuthorizationUrlAsync(string clientId, string redirectUri)
         {
-            if (string.IsNullOrWhiteSpace(provider))
-                return new BadRequestObjectResult(new { error = "provider_required", error_description = "Provider name is required" });
+            if (string.IsNullOrWhiteSpace(clientId))
+                return new BadRequestObjectResult(new { error = "client_id_required", error_description = "Client ID is required" });
 
             try
             {
                 // Get provider configuration
-                var identityProvider = await _authenticationRepository.GetIdentityProviderAsync(provider);
+                var identityProvider = await _authenticationRepository.GetIdentityProviderByClientIdAsync(clientId);
                 if (identityProvider == null)
-                    return new NotFoundObjectResult(new { error = "provider_not_found", error_description = $"Provider '{provider}' not configured" });
+                    return new NotFoundObjectResult(new { error = "provider_not_found", error_description = $"Provider '{clientId}' not configured" });
 
                 if (!identityProvider.IsActive)
-                    return new BadRequestObjectResult(new { error = "provider_inactive", error_description = $"Provider '{provider}' is not active" });
+                    return new BadRequestObjectResult(new { error = "provider_inactive", error_description = $"Provider '{clientId}' is not active" });
 
                 if (identityProvider.ProviderType != "social")
-                    return new BadRequestObjectResult(new { error = "invalid_provider_type", error_description = $"Provider '{provider}' is not a social provider" });
+                    return new BadRequestObjectResult(new { error = "invalid_provider_type", error_description = $"Provider '{clientId}' is not a social provider" });
 
                 // Generate state for CSRF protection
                 var state = Guid.NewGuid().ToString("n");
-
-                // Store state in cache (5 minute TTL for authorization flow)
-                var cacheKey = $"oidc_state:{state}";
-                await _cacheClient.AddStringValueAsync(cacheKey, state, 300); // 5 minutes in seconds
+                var stateValue = JsonSerializer.Serialize(new StateInfo
+                {
+                    ClientId = clientId,
+                    Provider = identityProvider.Provider,
+                    State = state,
+                    RedirectUri = redirectUri,
+                    Audience = clientId,
+                });
+                await _cacheClient.AddStringValueAsync(state, stateValue, 300); // 5 minutes in seconds
 
                 // Build authorization URL
                 var scope = identityProvider.Scope ?? "openid profile email";
@@ -320,16 +356,13 @@ namespace Authentication.DomainService.Authentication
 
                 return new OkObjectResult(new
                 {
-                    state,
                     authorizationUrl,
-                    displayName = identityProvider.DisplayName,
-                    provider,
                     requirePkce = identityProvider.RequirePkce == true
                 });
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Error getting social authorization URL for provider: {Provider}", provider);
+                _logger.LogError(ex, "Error getting social authorization URL for provider: {Provider}", clientId);
                 return new BadRequestObjectResult(new { error = "authorization_url_generation_failed", error_description = ex.Message });
             }
         }
@@ -343,10 +376,10 @@ namespace Authentication.DomainService.Authentication
         /// Called when user selects a provider from OIDC login page
         /// Generates state for social provider and redirects to social provider
         /// </summary>
-        public async Task<IActionResult> GetOidcSocialAuthorizationUrlAsync(string provider, string oidcState, string redirectUri)
+        public async Task<IActionResult> GetOidcSocialAuthorizationUrlAsync(string providerClientId, string oidcState, string providerRedirectUri)
         {
-            if (string.IsNullOrWhiteSpace(provider))
-                return new BadRequestObjectResult(new { error = "provider_required", error_description = "Provider name is required" });
+            if (string.IsNullOrWhiteSpace(providerClientId))
+                return new BadRequestObjectResult(new { error = "client_id_required", error_description = "Client ID is required" });
 
             if (string.IsNullOrWhiteSpace(oidcState))
                 return new BadRequestObjectResult(new { error = "oidc_state_required", error_description = "OIDC state is required" });
@@ -360,12 +393,12 @@ namespace Authentication.DomainService.Authentication
                     return new BadRequestObjectResult(new { error = "invalid_oidc_state", error_description = "OIDC flow expired or invalid" });
 
                 // Get provider configuration
-                var identityProvider = await _authenticationRepository.GetIdentityProviderAsync(provider);
+                var identityProvider = await _authenticationRepository.GetIdentityProviderByClientIdAsync(providerClientId);
                 if (identityProvider == null)
-                    return new NotFoundObjectResult(new { error = "provider_not_found", error_description = $"Provider '{provider}' not configured" });
+                    return new NotFoundObjectResult(new { error = "provider_not_found", error_description = $"Provider with client ID '{providerClientId}' not configured" });
 
                 if (!identityProvider.IsActive)
-                    return new BadRequestObjectResult(new { error = "provider_inactive", error_description = $"Provider '{provider}' is not active" });
+                    return new BadRequestObjectResult(new { error = "provider_inactive", error_description = $"Provider with client ID '{providerClientId}' is not active" });
 
                 // Generate state for social provider (separate from OIDC state)
                 var socialState = Guid.NewGuid().ToString("n");
@@ -373,10 +406,10 @@ namespace Authentication.DomainService.Authentication
                 // Store state with reference to OIDC context
                 // This links the social provider callback back to the OIDC flow
                 var stateKey = $"oidc_social_state:{socialState}";
-                var stateValue = System.Text.Json.JsonSerializer.Serialize(new
+                var stateValue = JsonSerializer.Serialize(new
                 {
                     oidcState,
-                    provider,
+                    provider = identityProvider.Provider,
                     createdAt = DateTime.UtcNow
                 });
                 await _cacheClient.AddStringValueAsync(stateKey, stateValue, 300); // 5 minute TTL
@@ -384,21 +417,18 @@ namespace Authentication.DomainService.Authentication
                 // Build authorization URL for social provider
                 // Callback should redirect to /auth/oidc/callback with provider and state
                 var scope = identityProvider.Scope ?? "openid profile email";
-                redirectUri = string.IsNullOrWhiteSpace(redirectUri) ? identityProvider.RedirectUris.FirstOrDefault() : redirectUri;
-                var authorizationUrl = BuildAuthorizationUrl(identityProvider, socialState, redirectUri, scope);
+                providerRedirectUri = string.IsNullOrWhiteSpace(providerRedirectUri) ? identityProvider.RedirectUris.FirstOrDefault() : providerRedirectUri;
+                var authorizationUrl = BuildAuthorizationUrl(identityProvider, socialState, providerRedirectUri, scope);
 
                 return new OkObjectResult(new
                 {
-                    socialState,
                     authorizationUrl,
-                    provider,
-                    oidcState,
                     requirePkce = identityProvider.RequirePkce == true
                 });
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Error getting OIDC social authorization URL for provider: {Provider}", provider);
+                _logger.LogError(ex, "Error getting OIDC social authorization URL for provider: {ClientId}", providerClientId);
                 return new BadRequestObjectResult(new { error = "authorization_url_generation_failed", error_description = ex.Message });
             }
         }
@@ -557,7 +587,7 @@ namespace Authentication.DomainService.Authentication
                 ActionBy = actionBy,
                 UserId = bc?.UserId,
                 TenantId = bc?.TenantId,
-                SessionId = request?.Cookies[IdpSessionCookieName],
+                SessionId = request?.Cookies[IdpConstants.IdpSessionCookieName],
                 CorrelationId = correlationId,
                 Outcome = outcome,
                 ReasonCode = reasonCode,
@@ -883,7 +913,7 @@ namespace Authentication.DomainService.Authentication
                 return;
             }
 
-            var sessionId = httpContext.Request.Cookies[IdpSessionCookieName];
+            var sessionId = httpContext.Request.Cookies[IdpConstants.IdpSessionCookieName];
             if (string.IsNullOrWhiteSpace(sessionId))
             {
                 sessionId = await _idpSessionService.CreateSessionAsync(userId, tenantId, httpContext.Connection.RemoteIpAddress?.ToString() ?? "unknown");
@@ -915,7 +945,7 @@ namespace Authentication.DomainService.Authentication
                 }
             }
 
-            httpContext.Response.Cookies.Append(IdpSessionCookieName, sessionId, CreateCookieOptions(tokenResponse.CookieDomain, tokenResponse.RefreshExpiresUtc));
+            httpContext.Response.Cookies.Append(IdpConstants.IdpSessionCookieName, sessionId, CreateCookieOptions(tokenResponse.CookieDomain, tokenResponse.RefreshExpiresUtc));
         }
 
         public async Task<bool> EnsureIdpSessionForOidcCallbackAsync(HttpContext httpContext, string userId, string tenantId)
@@ -928,7 +958,7 @@ namespace Authentication.DomainService.Authentication
 
             try
             {
-                var sessionId = httpContext.Request.Cookies[IdpSessionCookieName];
+                var sessionId = httpContext.Request.Cookies[IdpConstants.IdpSessionCookieName];
                 if (string.IsNullOrWhiteSpace(sessionId))
                 {
                     // Create new session for this OIDC callback
@@ -966,7 +996,7 @@ namespace Authentication.DomainService.Authentication
 
                 // Set session cookie
                 var domain = DomainResolver.ResolveDomain(_tenants.GetTenantByID(tenantId), httpContext.Request).domain;
-                httpContext.Response.Cookies.Append(IdpSessionCookieName, sessionId, CreateCookieOptions(null, DateTime.UtcNow.AddDays(30)));
+                httpContext.Response.Cookies.Append(IdpConstants.IdpSessionCookieName, sessionId, CreateCookieOptions(null, DateTime.UtcNow.AddDays(30)));
                 return true;
             }
             catch (Exception ex)
