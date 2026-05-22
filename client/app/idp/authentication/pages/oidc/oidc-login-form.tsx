@@ -274,9 +274,7 @@ export const OidcLoginForm = ({
     return <OidcAccountSelector accounts={accounts} onAccountSelect={handleAccountSelect} isLoading={isLoading} />;
   }
 
-  // Default to showing password login if loginOption is not available or fails to load
-  // Don't wait for login options - show form immediately with sensible defaults
-  const showPasswordLogin = loginOption?.allowedGrantTypes?.includes(GRANT_TYPES.password) ?? true;
+  const showPasswordLogin = true;
   // Show social login by default - if loginOption is available, check the config; otherwise default to true
   const showSocialLogin = loginOption?.allowedGrantTypes?.includes(GRANT_TYPES.social) ?? true;
 
