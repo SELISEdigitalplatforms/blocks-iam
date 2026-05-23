@@ -125,7 +125,7 @@ export class AuthService {
   }
 
   startImpersonation(payload: {
-    targetTenantId: string;
+    targeted_tenant_id: string;
     orgId?: string;
     clientId?: string;
   }): Promise<any> {
