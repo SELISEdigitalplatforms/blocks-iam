@@ -3,21 +3,20 @@ import { Camera } from "lucide-react";
 import { Button } from "@/components/ui-kits/button/button";
 import { useGetPreSignedUrlForUpload, useUploadFile } from "@blocks-storage/hooks/use-storage-file";
 import { storageService } from "@blocks-storage/services/storage.service";
-import { useGetUserById, useUpdateUser } from "@blocks-idp/iam/hooks/use-user";
+import { useGetMe, useUpdateUser } from "@blocks-idp/iam/hooks/use-user";
 import { showErrorToast, showSuccessToast } from "@/hooks/use-toast";
 import { isErrorWithErrors } from "@/lib/error";
 import { useProfileImageSrc } from "@/hooks/use-profile-image-src";
-import { getRuntimeEnv } from "@/lib/runtime-env";
 const emptyProfilePhoto = "/assets/images/empty-profile-photo.png";
 import { ModuleName } from "@/constants/modules.constants";
 type ProfileImageUploaderProps = { projectKey: string; id: string };
 export const ProfileImageUploader = ({ projectKey, id }: ProfileImageUploaderProps) => {
   const [localPreview, setLocalPreview] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
-  const { data } = useGetUserById({ id, projectKey });
+  const { data } = useGetMe();
   const { mutateAsync } = useGetPreSignedUrlForUpload();
   const { mutateAsync: uploadImageMutate } = useUploadFile();
-  const { mutateAsync: updateUserMutate } = useUpdateUser({ projectKey, id });
+  const { mutateAsync: updateUserMutate } = useUpdateUser({ projectKey, id, own: true });
   const [isProfileImageUploading, setIsProfileImageUploading] = useState<boolean>(false);
   const currentUser = data?.data;
   const storedImageSrc = useProfileImageSrc(currentUser?.profileImageUrl);
@@ -44,13 +43,11 @@ export const ProfileImageUploader = ({ projectKey, id }: ProfileImageUploaderPro
         itemId: profileImageId,
         projectKey,
       });
-      const logicBase = getRuntimeEnv("BLOCKS_LOGIC_BASE_URL") || "https://dev-logic.blocksdevelopers.com";
-      const profileImageUrl = `${logicBase}/api/Storage/GetFile?FileId=${userProfileFile.itemId}&ProjectKey=${projectKey}&ConfigurationName=`;
       const updatedUser = await updateUserMutate({
         ...data?.data,
         itemId: id,
         profileImageId: userProfileFile.itemId,
-        profileImageUrl,
+        profileImageUrl: userProfileFile.url,
       });
       if (!updatedUser.isSuccess) return showErrorToast({ errors: updatedUser.errors });
       showSuccessToast({ description: "Profile pic updated successfully" });
