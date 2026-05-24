@@ -1,4 +1,4 @@
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useAuthStore } from "@/store/useAuthStore";
 import {
@@ -35,7 +35,7 @@ export const ImpersonationChecker = ({
 }: {
   children: React.ReactNode;
 }) => {
-  const { data, isLoading, isSuccess, isError } = useImpersonationStatusChecker();
+  const { data, isLoading, isSuccess } = useImpersonationStatusChecker();
   const { setImpersonation, isInitialized, setInitialized } =
     useImpersonateStore();
 
@@ -48,9 +48,7 @@ export const ImpersonationChecker = ({
     );
     setInitialized(true);
   }, [data, setImpersonation, setInitialized]);
-
-  // Still loading, or first-time check hasn't succeeded yet — wait
-  if (isLoading || (!isInitialized && !isSuccess && !isError)) return <LogoLoadingSpinner />;
+  if (isLoading || !isSuccess || !isInitialized) return <LogoLoadingSpinner />;
   return <>{children}</>;
 };
 
@@ -87,11 +85,12 @@ export function ImpersonationSynchronizer({
 }) {
   const { impersonate, isImpersonated, impersonatedTenantId } =
     useImpersonateStore();
-  const { mutateAsync, isPending: isImpersonating } = useStartImpersonation();
+  const { mutateAsync } = useStartImpersonation();
 
   const { selectedProject } = useProjectStore();
   const { isLoading: isProjectsLoading } = useGetProjects();
   const isTriggering = useRef(false);
+  const [isImpersonating, setIsImpersonating] = useState(false);
 
   useEffect(() => {
     if (isProjectsLoading) return;
@@ -100,6 +99,7 @@ export function ImpersonationSynchronizer({
     if (isTriggering.current) return;
 
     isTriggering.current = true;
+    setIsImpersonating(true);
     const payload: ImpersonationRequest = {
       targeted_tenant_id: selectedProject.tenantId,
     };
@@ -110,8 +110,12 @@ export function ImpersonationSynchronizer({
           getRuntimeEnv("BLOCKS_X_BLOCKS_KEY"),
         );
         isTriggering.current = false;
+        setIsImpersonating(false);
       })
-      .catch(() => {});
+      .catch(() => {
+        isTriggering.current = false;
+        setIsImpersonating(false);
+      });
   }, [
     isProjectsLoading,
     selectedProject?.tenantId,
@@ -121,7 +125,6 @@ export function ImpersonationSynchronizer({
     isTriggering,
   ]);
   if (isProjectsLoading || isImpersonating) return <LogoLoadingSpinner />;
-  if (!isImpersonated) return null;
+  if (!isImpersonated || isTriggering.current) return null;
   return <>{children}</>;
 }
- 
