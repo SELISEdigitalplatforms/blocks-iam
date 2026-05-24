@@ -1,4 +1,3 @@
-
 import { Captcha } from "@/components/captcha";
 import { Button } from "@/components/ui-kits/button/button";
 import {
@@ -92,7 +91,9 @@ export const SignupForm = ({
     <Card className="w-full rounded border-solid border-background shadow-none md:border-[#95ADC4] lg:max-w-md">
       <CardHeader className="text-center">
         <CardTitle className="text-3xl leading-9">Blocks Cloud</CardTitle>
-        <CardDescription className="text-xl text-foreground">Sign Up</CardDescription>
+        <CardDescription className="text-xl text-foreground">
+          Sign Up
+        </CardDescription>
       </CardHeader>
       <CardContent>
         <Form {...form}>
@@ -106,7 +107,11 @@ export const SignupForm = ({
                     <FormItem>
                       <FormLabel>Email</FormLabel>
                       <FormControl>
-                        <Input type="email" placeholder="Enter your email" {...field} />
+                        <Input
+                          type="email"
+                          placeholder="Enter your email"
+                          {...field}
+                        />
                       </FormControl>
                       <FormMessage />
                     </FormItem>
@@ -162,9 +167,10 @@ export const SignupForm = ({
           </div>
         )}
 
-        {ssoSignUpEnabled && loginOption?.allowedGrantTypes.includes(GRANT_TYPES.social) && (
-          <SsoSignin loginOption={loginOption} />
-        )}
+        {ssoSignUpEnabled &&
+          loginOption?.allowedGrantTypes.includes(GRANT_TYPES.social) && (
+            <SsoSignin loginOption={loginOption} />
+          )}
 
         <div className="mt-4 text-center text-base text-foreground">
           Already a member?{" "}
