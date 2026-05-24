@@ -396,7 +396,7 @@ export const OidcLoginForm = ({
             />
 
             <Link
-              to={forgotPasswordUrl}
+              to="/forgot-password"
               className="ml-auto inline-block text-sm text-primary pointer-events-none opacity-50 cursor-not-allowed"
               aria-disabled="true"
               tabIndex={-1}

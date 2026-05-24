@@ -29,17 +29,18 @@ export const UserResetPassword = ({
         throw Error("Email is not provided yet");
       }
       const res = await mutateAsync({
-        projectKey,
         email: data?.data.email,
         captchaCode: "",
       });
       if (!res.isSuccess) return showErrorToast({ errors: res.errors });
       showSuccessToast({
-        description: "Password reset email has been sent. Please check your email",
+        description:
+          "Password reset email has been sent. Please check your email",
       });
       setOpen(false);
     } catch (error) {
-      if (isErrorWithErrors(error)) return showErrorToast({ errors: error.errors });
+      if (isErrorWithErrors(error))
+        return showErrorToast({ errors: error.errors });
       showErrorToast({ errors: "Something went wrong" });
     }
   };
@@ -51,7 +52,8 @@ export const UserResetPassword = ({
         onConfirm={onClickHandler}
         data={{
           dialogTitle: "Reset password",
-          dialogSubtitle: "Are you sure you want to reset the password for this user?",
+          dialogSubtitle:
+            "Are you sure you want to reset the password for this user?",
           confirmButton: "Reset",
         }}
         buttonState={{
