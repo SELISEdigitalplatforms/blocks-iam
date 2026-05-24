@@ -149,7 +149,7 @@ export class UserService {
 
   getUserRoles(payload: IGetUserRolesPayload): Promise<IGetUserRolesResponse> {
     return http.get(
-      `${USER_ENDPOINTS.GET_USER_ROLES}?Id=${payload.userId}&ProjectKey=${payload.projectKey}`,
+      `${USER_ENDPOINTS.GET_USER_ROLES}?Id=${payload.userId}`,
     );
   }
 
@@ -157,7 +157,7 @@ export class UserService {
     payload: IGetUserPermissionsPayload,
   ): Promise<IGetUserPermissionsResponse> {
     return http.get(
-      `${USER_ENDPOINTS.GET_USER_PERMISSIONS}?Id=${payload.userId}&ProjectKey=${payload.projectKey}`,
+      `${USER_ENDPOINTS.GET_USER_PERMISSIONS}?Id=${payload.userId}`,
     );
   }
 
