@@ -48,7 +48,7 @@ export const ImpersonationChecker = ({
     );
     setInitialized(true);
   }, [data, setImpersonation, setInitialized]);
-  if (isLoading || !isSuccess || !isInitialized) return null;
+  if (isLoading || !isSuccess || !isInitialized) return <LogoLoadingSpinner />;
   return <>{children}</>;
 };
 
