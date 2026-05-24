@@ -63,16 +63,23 @@ export const useGetMe = (options?: { enabled?: boolean }) => {
   return useQuery({
     queryKey: ["user"],
     queryFn: async () => {
-      const user = await userService.me();
-      if (user.data) {
-        authStore.setUser(user.data);
+      try {
+        const user = await userService.me();
+        if (user.data) {
+          authStore.setUser(user.data);
+          return user;
+        }
+        // When impersonated the server looks up the admin user in the impersonated
+        // tenant where they don't exist — preserve the last valid user instead.
+        if (authStore.user) return { data: authStore.user };
         return user;
+      } catch (_error) {
+        // When impersonated, /me may return 401 — preserve the last valid user.
+        if (authStore.user) return { data: authStore.user };
+        throw _error;
       }
-      // When impersonated the server looks up the admin user in the impersonated
-      // tenant where they don't exist — preserve the last valid user instead.
-      if (authStore.user) return { data: authStore.user };
-      return user;
     },
+    initialData: authStore.user ? { data: authStore.user } : undefined,
     ...options,
   });
 };
