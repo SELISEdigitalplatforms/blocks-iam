@@ -527,6 +527,7 @@ namespace Iam.DomainService.Accounts
 
             await _repository.InsertUserKeyMapAsync(new UserKeyMap
             {
+                ItemId = Guid.NewGuid().ToString(),
                 Key = key,
                 UserId = user.ItemId,
                 IssueDate = DateTime.Now,
@@ -725,6 +726,7 @@ namespace Iam.DomainService.Accounts
 
             await _repository.InsertUserKeyMapAsync(new UserKeyMap
             {
+                ItemId = Guid.NewGuid().ToString(),
                 Key = key,
                 UserId = user.ItemId,
                 IssueDate = DateTime.Now,
