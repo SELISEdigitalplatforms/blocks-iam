@@ -33,8 +33,8 @@ export class OrganizationService {
     return http.post(ORGANIZATION_ENDPOINTS.SAVE_ORGANIZATION, payload);
   };
 
-  getOrganizationConfig(projectKey: string): Promise<IOrganizationConfigResponse | null> {
-    return http.get(`${ORGANIZATION_ENDPOINTS.GET_ORGANIZATION_CONFIG}?projectKey=${projectKey}`);
+  getOrganizationConfig(): Promise<IOrganizationConfigResponse | null> {
+    return http.get(`${ORGANIZATION_ENDPOINTS.GET_ORGANIZATION_CONFIG}`);
   }
 
   saveOrganizationConfig = (
