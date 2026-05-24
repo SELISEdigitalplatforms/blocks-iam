@@ -61,7 +61,6 @@ export class UserService {
   me(): Promise<{ data: User }> {
     return http.get(`${USER_ENDPOINTS.ME}`, undefined, {
       absoluteUrl: true,
-      skipTokenRotation: true,
     });
   }
 
