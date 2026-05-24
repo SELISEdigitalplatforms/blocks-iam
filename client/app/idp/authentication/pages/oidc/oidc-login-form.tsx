@@ -109,8 +109,6 @@ export const OidcLoginForm = ({
   const googleSiteKey = getRuntimeEnv("BLOCKS_GOOGLE_SITE_KEY") || "";
   const isTokenNeed = submitCount >= 3;
 
-  const forgotPasswordUrl = buildOIDCNavigationUrl("/oidc/forgot-password");
-  const signUpUrl = buildOIDCNavigationUrl("/oidc/signup");
   const activationUrl = buildOIDCNavigationUrl("/oidc/activation");
 
   const ensurePkceState = async () => {
@@ -397,9 +395,7 @@ export const OidcLoginForm = ({
 
             <Link
               to="/forgot-password"
-              className="ml-auto inline-block text-sm text-primary pointer-events-none opacity-50 cursor-not-allowed"
-              aria-disabled="true"
-              tabIndex={-1}
+              className="ml-auto inline-block text-sm text-primary"
             >
               Forgot password?
             </Link>
@@ -453,11 +449,7 @@ export const OidcLoginForm = ({
       <div className="mt-3 flex items-center justify-center">
         <div className="flex items-center text-medium-emphasis">
           <p>Not a member?</p>
-          <Link
-            to={signUpUrl}
-            className="ml-2 inline-block text-sm text-primary pointers-event-none opacity-50 cursor-not-allowed"
-            aria-disabled="true"
-          >
+          <Link to="/signup" className="ml-2 inline-block text-sm text-primary">
             Sign up
           </Link>
         </div>
