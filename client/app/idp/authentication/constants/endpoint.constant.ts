@@ -22,7 +22,7 @@ export const AUTH_ENDPOINTS = {
   OIDC_LOGIN_SELECT_ACCOUNT: `/api/oidc/login/select-account`,
   TOKEN_EXCHANGE: `/api/token/exchange`,
   GET_LOGIN_OPTIONS: `/api/auth/login-options`,
-  SIGNUP: `/api/iam/users/signup`,
+  SIGNUP: `/api/auth/signup`,
   ACTIVATE_ACCOUNT: `/api/iam/users/activate`,
 } as const;
 
@@ -30,7 +30,7 @@ export const AUTH_ENDPOINTS = {
 
 export const AUTH_OIDC_ENDPOINTS = {
   GET_OIDC_CLIENTS: `/api/oidc-clients`,
-  GET_OIDC_CLIENT: `/api/oidc-clients`,   // append /{clientId} at call site
+  GET_OIDC_CLIENT: `/api/oidc-clients`, // append /{clientId} at call site
   SAVE_OIDC_CLIENT: `/api/oidc-clients`,
   DELETE_OIDC_CLIENT: `/api/oidc-clients`, // append /{clientId} at call site
   OIDC_TOKEN: `/api${AUTH_OIDC_SUBPATH}/token`,
@@ -78,7 +78,6 @@ export const IMPERSONATE_ENDPOINTS = {
 } as const;
 
 // ─── Identity Provider endpoints (identity-provider.service) ─────────────────
-
 
 export const EXECUTION_CONTEXT_ENDPOINTS = {
   CONTEXT: `/api/auth/context`,

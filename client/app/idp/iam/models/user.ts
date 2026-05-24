@@ -341,6 +341,6 @@ export interface IGetSignUpSettingResponse {
   lastUpdatedBy: string;
   organizationIds: string[];
   tags: string[];
-  isEmailPasswordSignUpEnabled: boolean;
-  isSSoSignUpEnabled: boolean;
+  IsEmailPasswordSignUpEnabled: boolean;
+  IsSSoSignUpEnabled: boolean;
 }
