@@ -1,8 +1,8 @@
 import { http } from "@/lib/http-client";
+import { getRuntimeEnv } from "@/lib/runtime-env";
 import {
   IGenerateUserMFA_OtpPayload,
   IGenerateUserMFA_OtpResponse,
-  IGetConfigurationPayload,
   IGetConfigurationResponse,
   IConfigureUserMFAPayload,
   IConfigureUserMFAResponse,
@@ -19,8 +19,9 @@ import {
 import { MFA_CONFIG_ENDPOINTS, MFA_ENDPOINTS } from "../constants/endpoint.constant";
 
 export class MFAService {
-  getConfigurations(payload: IGetConfigurationPayload): Promise<IGetConfigurationResponse> {
-    return http.get(`${MFA_CONFIG_ENDPOINTS.GET}?ProjectKey=${payload.projectKey}`);
+  getConfigurations(): Promise<IGetConfigurationResponse> {
+    const logicBase = getRuntimeEnv("BLOCKS_LOGIC_BASE_URL") || "https://dev-logic.blocksdevelopers.com";
+    return http.get(`${logicBase}${MFA_CONFIG_ENDPOINTS.GET}`, undefined, { absoluteUrl: true });
   }
 
   saveMFAConfiguration(

@@ -47,7 +47,7 @@ const LoadingSkelton = () => {
 
 export const ConfigureMFA = () => {
   const tenantId = useProjectStore().selectedProject?.tenantId || "";
-  const { isLoading, isFetching, data } = useGetMFAConfig({ projectKey: tenantId });
+  const { isLoading, isFetching, data } = useGetMFAConfig();
   const [openEnableDisableModal, setOpenEnableDisableModal] = useState<boolean>(false);
 
   const [methodInfo, setMethodInfo] = useState<MethodInfo>({
