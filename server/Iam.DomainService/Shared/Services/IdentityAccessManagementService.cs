@@ -1,4 +1,5 @@
-﻿using Blocks.Genesis;
+﻿using Authentication.DomainService.Utilities;
+using Blocks.Genesis;
 using Iam.DomainService.Dtos;
 using Iam.DomainService.Entities;
 using Iam.DomainService.Users;
@@ -81,7 +82,7 @@ namespace Iam.DomainService.Services
 
         public async Task<bool> SendEmailAsync(SendMail sendMailCommand)
         {
-            await SendToQueueAsync(Constants.MailQueue, sendMailCommand);
+            await SendToQueueAsync(IdpConstants.MailQueue, sendMailCommand);
 
             return true;
         }
@@ -102,7 +103,7 @@ namespace Iam.DomainService.Services
                 To = new string[] { user.Email.ToLower() }
             };
 
-            await SendToQueueAsync(Constants.MailQueue, sendMailCommand);
+            await SendToQueueAsync(IdpConstants.MailQueue, sendMailCommand);
 
             return true;
         }
