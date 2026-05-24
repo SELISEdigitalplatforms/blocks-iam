@@ -15,7 +15,7 @@ type UserMFAMethodListProps = {
 
 export const ProfileMFAMethodList = ({ selected, setSelected }: UserMFAMethodListProps) => {
   const { userId, projectKey } = useContext(profileMfaContext);
-  const { isLoading, isFetching, data } = useGetMFAConfig({ projectKey });
+  const { isLoading, isFetching, data } = useGetMFAConfig();
   const { data: userData } = useGetUserById({ id: userId, projectKey });
   const availableMFaMethod = useMemo(() => {
     if (!data?.userMfaType.length) return [];
