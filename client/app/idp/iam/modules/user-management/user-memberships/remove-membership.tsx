@@ -47,6 +47,7 @@ export const RemoveMembership = ({
                 ...userData?.data,
                 memberships: updatedMemberships,
                 itemId: userId,
+                projectKey,
             });
 
             if (!res.isSuccess) {
