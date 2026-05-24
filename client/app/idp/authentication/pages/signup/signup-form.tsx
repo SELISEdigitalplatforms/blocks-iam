@@ -1,12 +1,5 @@
 import { Captcha } from "@/components/captcha";
 import { Button } from "@/components/ui-kits/button/button";
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui-kits/card/card";
 import { Checkbox } from "@/components/ui-kits/checkbox/checkbox";
 import {
   Form,
@@ -88,97 +81,92 @@ export const SignupForm = ({
   }, [captchaCode, isValid, resetCaptcha]);
 
   return (
-    <Card className="w-full rounded border-solid border-background shadow-none md:border-[#95ADC4] lg:max-w-md">
-      <CardHeader className="text-center">
-        <CardTitle className="text-3xl leading-9">Blocks Cloud</CardTitle>
-        <CardDescription className="text-xl text-foreground">
-          Sign Up
-        </CardDescription>
-      </CardHeader>
-      <CardContent>
-        <Form {...form}>
-          <form onSubmit={form.handleSubmit(onSubmitHandler)}>
-            {emailSignUpEnabled && (
-              <div className="grid gap-4">
-                <FormField
-                  control={form.control}
-                  name="email"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>Email</FormLabel>
-                      <FormControl>
-                        <Input
-                          type="email"
-                          placeholder="Enter your email"
-                          {...field}
-                        />
-                      </FormControl>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
-                {isValid && <Captcha {...captcha} />}
+    <div className="flex flex-col gap-4">
+      <Form {...form}>
+        <form onSubmit={form.handleSubmit(onSubmitHandler)}>
+          {emailSignUpEnabled && (
+            <div className="grid gap-4">
+              <FormField
+                control={form.control}
+                name="email"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Email</FormLabel>
+                    <FormControl>
+                      <Input
+                        type="email"
+                        placeholder="Enter your email"
+                        {...field}
+                      />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+              {isValid && <Captcha {...captcha} />}
 
-                <div className="mt-2 flex justify-start gap-2 text-sm text-foreground">
-                  <Checkbox
-                    id="terms"
-                    checked={isChecked}
-                    onCheckedChange={(checked) => setIsChecked(!!checked)}
-                    className="mt-1 shrink-0"
-                  />
-                  <label
-                    htmlFor="terms"
-                    className="cursor-pointer text-sm font-medium peer-disabled:cursor-not-allowed peer-disabled:opacity-70"
-                  >
-                    I agree to the{" "}
-                    <Link
-                      to="https://selisegroup.com/software-development-terms/"
-                      className="text-primary underline"
-                      target="_blank"
-                    >
-                      Terms of Services{" "}
-                    </Link>
-                    and acknowledge that I have read the{" "}
-                    <Link
-                      to="https://selisegroup.com/privacy-policy/"
-                      className="text-primary underline"
-                      target="_blank"
-                    >
-                      Privacy policy.
-                    </Link>
-                  </label>
-                </div>
-                <Button
-                  type="submit"
-                  className="w-full rounded"
-                  disabled={isPending || !isValid || !captchaCode || !isChecked}
+              <div className="mt-2 flex justify-start gap-2 text-sm text-foreground">
+                <Checkbox
+                  id="terms"
+                  checked={isChecked}
+                  onCheckedChange={(checked) => setIsChecked(!!checked)}
+                  className="mt-1 shrink-0"
+                />
+                <label
+                  htmlFor="terms"
+                  className="cursor-pointer text-sm font-medium peer-disabled:cursor-not-allowed peer-disabled:opacity-70"
                 >
-                  Continue
-                </Button>
+                  I agree to the{" "}
+                  <Link
+                    to="https://selisegroup.com/software-development-terms/"
+                    className="text-primary underline"
+                    target="_blank"
+                  >
+                    Terms of Services{" "}
+                  </Link>
+                  and acknowledge that I have read the{" "}
+                  <Link
+                    to="https://selisegroup.com/privacy-policy/"
+                    className="text-primary underline"
+                    target="_blank"
+                  >
+                    Privacy policy.
+                  </Link>
+                </label>
               </div>
-            )}
-          </form>
-        </Form>
-        {ssoSignUpEnabled && emailSignUpEnabled && (
-          <div className="my-2 flex items-center">
-            <hr className="flex-grow border-gray-300" />
-            <span className="mx-2 text-xs text-gray-500">OR</span>
-            <hr className="flex-grow border-gray-300" />
-          </div>
+              <Button
+                type="submit"
+                className="w-full rounded"
+                disabled={isPending || !isValid || !captchaCode || !isChecked}
+              >
+                Continue
+              </Button>
+            </div>
+          )}
+        </form>
+      </Form>
+
+      {ssoSignUpEnabled && emailSignUpEnabled && (
+        <div className="my-2 flex items-center">
+          <hr className="flex-grow border" />
+          <span className="mx-2 text-xs text-low-emphasis">OR</span>
+          <hr className="flex-grow border" />
+        </div>
+      )}
+
+      {ssoSignUpEnabled &&
+        loginOption?.allowedGrantTypes.includes(GRANT_TYPES.social) && (
+          <SsoSignin loginOption={loginOption} />
         )}
 
-        {ssoSignUpEnabled &&
-          loginOption?.allowedGrantTypes.includes(GRANT_TYPES.social) && (
-            <SsoSignin loginOption={loginOption} />
-          )}
-
-        <div className="mt-4 text-center text-base text-foreground">
-          Already a member?{" "}
-          <Link to={"/login"} className="text-primary hover:underline">
+      <div className="mt-3 flex items-center justify-center">
+        <div className="flex items-center text-medium-emphasis">
+          <p>Already a member?</p>
+          <Link to="/login" className="ml-2 inline-block text-sm text-primary">
             Log in
           </Link>
         </div>
-      </CardContent>
-    </Card>
+      </div>
+    </div>
   );
 };
