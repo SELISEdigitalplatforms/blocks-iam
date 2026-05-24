@@ -35,7 +35,7 @@ export const ImpersonationChecker = ({
 }: {
   children: React.ReactNode;
 }) => {
-  const { data, isLoading, isSuccess } = useImpersonationStatusChecker();
+  const { data, isLoading, isSuccess, isError } = useImpersonationStatusChecker();
   const { setImpersonation, isInitialized, setInitialized } =
     useImpersonateStore();
 
@@ -48,7 +48,9 @@ export const ImpersonationChecker = ({
     );
     setInitialized(true);
   }, [data, setImpersonation, setInitialized]);
-  if (isLoading || !isSuccess || !isInitialized) return <LogoLoadingSpinner />;
+
+  // Still loading, or first-time check hasn't succeeded yet — wait
+  if (isLoading || (!isInitialized && !isSuccess && !isError)) return <LogoLoadingSpinner />;
   return <>{children}</>;
 };
 
