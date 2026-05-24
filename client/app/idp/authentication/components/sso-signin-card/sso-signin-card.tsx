@@ -13,6 +13,7 @@ import { useSearchParams } from "react-router-dom";
 type SSOSigninCardProps = {
   providerConfig: ISsoProviderConfigurationWithMeta;
   withLabel?: boolean;
+  labelMode?: "full" | "short" | "icon";
   mode?: "default" | "oidc";
   oidcContext?: {
     clientId?: string;
@@ -29,6 +30,7 @@ type SSOSigninCardProps = {
 export const SSOSigninCard = ({
   providerConfig,
   withLabel = false,
+  labelMode,
   mode = "default",
   oidcContext,
 }: SSOSigninCardProps) => {
@@ -99,7 +101,10 @@ export const SSOSigninCard = ({
         className="size-5 object-contain"
         alt={providerConfig.provider}
       />
-      {withLabel && <>Sign in with {providerConfig.label}</>}
+      {(labelMode === "full" || (labelMode === undefined && withLabel)) && (
+        <>Sign in with {providerConfig.label}</>
+      )}
+      {labelMode === "short" && <>{providerConfig.label}</>}
     </Button>
   );
 };
