@@ -58,12 +58,12 @@ export const SsoSignin = ({
 
   return (
     <>
-      <div className={cn("grid gap-2", providers.length > 2 && gridColsClass)}>
+      <div className={cn("grid gap-2", gridColsClass)}>
         {providers.map((item) => (
           <SSOSigninCard
             providerConfig={item}
             key={item.provider}
-            withLabel={providers.length < 3}
+            withLabel={providers.length <= 2}
             mode={mode}
             oidcContext={oidcContext}
           />

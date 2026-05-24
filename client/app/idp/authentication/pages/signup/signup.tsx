@@ -32,7 +32,8 @@ export const Signup = () => {
       </header>
 
       {/* Main */}
-      <main className="relative z-10 flex flex-1 flex-col items-center justify-center overflow-auto px-6 py-12">
+      <main className="relative z-10 min-h-0 flex-1 overflow-y-auto">
+        <div className="flex min-h-full items-center justify-center px-6 py-8">
         <div className="w-full max-w-[420px]">
           {/* Card */}
           <div className="overflow-hidden rounded-2xl border border-[hsl(var(--border-default))] bg-[hsl(var(--card))] shadow-md">
@@ -91,6 +92,7 @@ export const Signup = () => {
           <p className="mt-4 text-center text-[11px] text-[hsl(var(--low-emphasis))]">
             © {new Date().getFullYear()} SELISE Digital Platforms. All rights reserved.
           </p>
+        </div>
         </div>
       </main>
     </div>
