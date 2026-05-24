@@ -18,23 +18,69 @@
     <div id="root"></div>
     <div id="portal-root"></div>
     <script>
+      /* =========================================================
+         DEV environment — comment out this block when using STG
+         ========================================================= */
       window.__BLOCKS_ENV__ = {
-        //  BLOCKS_API_BASE_URL: "__BLOCKS_API_BASE_URL__",
-        // BLOCKS_IDP_BASE_URL: "__BLOCKS_IDP_BASE_URL__",
-        // BLOCKS_X_BLOCKS_KEY: "__BLOCKS_X_BLOCKS_KEY__",
-        // BLOCKS_GOOGLE_SITE_KEY: "__BLOCKS_GOOGLE_SITE_KEY__",
-        // BLOCKS_CONSTRUCT_URL: "__BLOCKS_CONSTRUCT_URL__",
-        // BLOCKS_GITHUB_SSO_CLIENT_ID: "__BLOCKS_GITHUB_SSO_CLIENT_ID__",
-        // BLOCKS_OIDC_CLIENT_ID: "__BLOCKS_OIDC_CLIENT_ID__"
-
         BLOCKS_API_BASE_URL: "https://dev-idp.blocksdevelopers.com",
-        BLOCKS_IDP_BASE_URL: "https://dev-idp.blocksdevelopers.com",
         BLOCKS_X_BLOCKS_KEY: "***REMOVED***",
         BLOCKS_GOOGLE_SITE_KEY: "***REMOVED***",
-        BLOCKS_CONSTRUCT_URL: "__BLOCKS_CONSTRUCT_URL__",
-        BLOCKS_GITHUB_SSO_CLIENT_ID: "__BLOCKS_GITHUB_SSO_CLIENT_ID__",
+        BLOCKS_CONSTRUCT_URL: "https://dev-construct.blocksdevelopers.com",
+        BLOCKS_GITHUB_SSO_CLIENT_ID: "Ov23likdyGSUHGkewKf0",
         BLOCKS_OIDC_CLIENT_ID: "a5831e15-e193-4a4f-8e10-d04a4ad1705b",
+        BLOCKS_BASE_DOMAIN: "blocksdevelopers.com",
+        BLOCKS_IDP_BASE_URL: "https://dev-idp.blocksdevelopers.com",
+        BLOCKS_IDP_CALLBACK_URL: "https://dev-idp.blocksdevelopers.com/login/callback",
+        BLOCKS_EUROLM_BASE_URL: "https://dev-eurolm.blocksdevelopers.com",
+        BLOCKS_EUROLM_CALLBACK_URL: "https://dev-eurolm.blocksdevelopers.com/login/callback",
+        BLOCKS_AGENT_BASE_URL: "https://dev-agent.blocksdevelopers.com",
+        BLOCKS_AGENT_CALLBACK_URL: "https://dev-agent.blocksdevelopers.com/login/callback",
+        BLOCKS_DATA_GATEWAY_BASE_URL: "https://dev-uds.blocksdevelopers.com",
+        BLOCKS_DATA_GATEWAY_CALLBACK_URL: "https://dev-uds.blocksdevelopers.com/login/callback",
+        BLOCKS_OS_BASE_URL: "https://dev-os.blocksdevelopers.com",
+        BLOCKS_OS_CALLBACK_URL: "https://dev-os.blocksdevelopers.com/login/callback",
+        BLOCKS_UTILITY_BASE_URL: "https://dev-utility.blocksdevelopers.com",
+        BLOCKS_UTILITY_CALLBACK_URL: "https://dev-utility.blocksdevelopers.com/login/callback",
+        BLOCKS_LOGIC_BASE_URL: "https://dev-logic.blocksdevelopers.com",
+        BLOCKS_LOGIC_CALLBACK_URL: "https://dev-logic.blocksdevelopers.com/login/callback",
+        BLOCKS_OBSERVABILITY_BASE_URL: "https://dev-observability.blocksdevelopers.com",
+        BLOCKS_OBSERVABILITY_CALLBACK_URL: "https://dev-observability.blocksdevelopers.com/login/callback",
+        BLOCKS_DEPLOYMENTS_BASE_URL: "https://dev-deployment.blocksdevelopers.com",
+        BLOCKS_DEPLOYMENTS_CALLBACK_URL: "https://dev-deployment.blocksdevelopers.com/login/callback"
       };
+
+      /* =========================================================
+         STG environment — comment out this block when using DEV
+         ========================================================= */
+      /*
+      window.__BLOCKS_ENV__ = {
+        BLOCKS_API_BASE_URL: "https://stg-idp.blocksdevelopers.com",
+        BLOCKS_X_BLOCKS_KEY: "acf19d8d8841400a8999f0a5337fadf5",
+        BLOCKS_GOOGLE_SITE_KEY: "your-google-site-key",
+        BLOCKS_CONSTRUCT_URL: "https://stg-construct.blocksdevelopers.com",
+        BLOCKS_GITHUB_SSO_CLIENT_ID: "Ov23likdyGSUHGkewKf0",
+        BLOCKS_OIDC_CLIENT_ID: "a5831e15-e193-4a4f-8e10-d04a4ad1705b",
+        BLOCKS_BASE_DOMAIN: "blocksdevelopers.com",
+        BLOCKS_IDP_BASE_URL: "https://stg-idp.blocksdevelopers.com",
+        BLOCKS_IDP_CALLBACK_URL: "https://stg-idp.blocksdevelopers.com/login/callback",
+        BLOCKS_EUROLM_BASE_URL: "https://stg-eurolm.blocksdevelopers.com",
+        BLOCKS_EUROLM_CALLBACK_URL: "https://stg-eurolm.blocksdevelopers.com/login/callback",
+        BLOCKS_AGENT_BASE_URL: "https://stg-agent.blocksdevelopers.com",
+        BLOCKS_AGENT_CALLBACK_URL: "https://stg-agent.blocksdevelopers.com/login/callback",
+        BLOCKS_DATA_GATEWAY_BASE_URL: "https://stg-uds.blocksdevelopers.com",
+        BLOCKS_DATA_GATEWAY_CALLBACK_URL: "https://stg-uds.blocksdevelopers.com/login/callback",
+        BLOCKS_OS_BASE_URL: "https://stg-os.blocksdevelopers.com",
+        BLOCKS_OS_CALLBACK_URL: "https://stg-os.blocksdevelopers.com/login/callback",
+        BLOCKS_UTILITY_BASE_URL: "https://stg-utility.blocksdevelopers.com",
+        BLOCKS_UTILITY_CALLBACK_URL: "https://stg-utility.blocksdevelopers.com/login/callback",
+        BLOCKS_LOGIC_BASE_URL: "https://stg-logic.blocksdevelopers.com",
+        BLOCKS_LOGIC_CALLBACK_URL: "https://stg-logic.blocksdevelopers.com/login/callback",
+        BLOCKS_OBSERVABILITY_BASE_URL: "https://stg-observability.blocksdevelopers.com",
+        BLOCKS_OBSERVABILITY_CALLBACK_URL: "https://stg-observability.blocksdevelopers.com/login/callback",
+        BLOCKS_DEPLOYMENTS_BASE_URL: "https://stg-deployment.blocksdevelopers.com",
+        BLOCKS_DEPLOYMENTS_CALLBACK_URL: "https://stg-deployment.blocksdevelopers.com/login/callback"
+      };
+      */
     </script>
     <script type="module" src="/app/main.tsx"></script>
   </body>
