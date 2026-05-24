@@ -56,6 +56,7 @@ import { RepositoriesPage } from "./pages/repositories/repositories";
 import { SettingsPage } from "./pages/settings/settings";
 import { CreateProjectWrapper } from "./pages/create-project/create-project";
 import CallbackPage from "./routes/callback/callback";
+import { Console } from "./pages/console/console";
 import OidcLogin from "./routes/auth/oidc-login";
 import LoginSimplePage from "./routes/auth/login-simple";
 import LoginCallbackPage from "./routes/auth/callback";
@@ -181,6 +182,7 @@ export const router = createBrowserRouter([
     element: <ConsoleLayout />,
     children: [
       { path: "/profile", element: <ProfilePage /> },
+      { path: "/console", element: <Console /> },
       { path: "/create-project", element: <CreateProjectWrapper /> },
       { path: "/callback", element: <CallbackPage /> },
     ],

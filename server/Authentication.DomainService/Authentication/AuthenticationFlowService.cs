@@ -881,7 +881,7 @@ namespace Authentication.DomainService.Authentication
             var tokenRequest = new TokenRequest
             {
                 GrantType = GrantTypes.Password,
-                ClientId = session.ClientId,
+                ClientId = !string.IsNullOrWhiteSpace(session.ClientId) ? session.ClientId : rootRefreshCache.ClientId,
                 OrganizationId = session.OrganizationId,
                 IsImpersonation = false,
                 OriginalTenantId = session.RootTenantId,

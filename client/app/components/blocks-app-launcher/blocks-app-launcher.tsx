@@ -352,7 +352,7 @@ export function BlocksAppLauncher() {
       const headers: Record<string, string> = {};
       if (blocksKey) headers["X-Blocks-Key"] = blocksKey;
 
-      const response = await fetch(initiateUrl, { headers, credentials: "include" });
+      const response = await fetch(initiateUrl, { headers });
       const data = await response.json();
 
       if (data.redirect_uri) {

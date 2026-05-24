@@ -64,6 +64,7 @@ namespace Authentication.DomainService.Shared.Services
                 UserId = userId,
                 TargetTenantId = targetTenantId,
                 RootTenantId = rootTenantId,
+                ClientId = clientId,
                 OrganizationId = organizationId ?? "default",
                 StartedAt = DateTime.UtcNow,
                 LastActivity = DateTime.UtcNow,
