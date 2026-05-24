@@ -12,7 +12,6 @@ import { useImpersonateStore } from "@/store/impersonate-store";
 import { useProjectStore } from "@/store/useProjectStore";
 import { ImpersonationRequest } from "@/services/impersonation.service";
 import { getRuntimeEnv } from "@/lib/runtime-env";
-import { useGetProjects } from "@/hooks/use-project";
 import LogoLoadingSpinner from "@/components/loader-spinner/loader-spinner";
 
 export function ProtectedGuard({ children }: { children: React.ReactNode }) {
@@ -88,12 +87,10 @@ export function ImpersonationSynchronizer({
   const { mutateAsync } = useStartImpersonation();
 
   const { selectedProject } = useProjectStore();
-  const { isLoading: isProjectsLoading } = useGetProjects();
   const isTriggering = useRef(false);
   const [isImpersonating, setIsImpersonating] = useState(false);
 
   useEffect(() => {
-    if (isProjectsLoading) return;
     if (!selectedProject?.tenantId) return;
     if (selectedProject.tenantId === impersonatedTenantId) return;
     if (isTriggering.current) return;
@@ -117,14 +114,13 @@ export function ImpersonationSynchronizer({
         setIsImpersonating(false);
       });
   }, [
-    isProjectsLoading,
     selectedProject?.tenantId,
     mutateAsync,
     impersonate,
     impersonatedTenantId,
     isTriggering,
   ]);
-  if (isProjectsLoading || isImpersonating) return <LogoLoadingSpinner />;
+  if (isImpersonating) return <LogoLoadingSpinner />;
   if (!isImpersonated || isTriggering.current) return null;
   return <>{children}</>;
 }

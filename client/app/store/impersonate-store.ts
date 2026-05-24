@@ -1,4 +1,3 @@
-
 import { create } from "zustand";
 
 interface ImpersonateState {
@@ -56,5 +55,3 @@ export const useImpersonateStore = create<ImpersonateState>()((set) => ({
     });
   },
 }));
- 
-
