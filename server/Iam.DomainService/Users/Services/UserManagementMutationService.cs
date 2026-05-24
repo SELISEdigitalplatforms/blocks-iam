@@ -381,6 +381,7 @@ namespace Iam.DomainService.Users
 
             await _userRepository.InsertUserKeyMapAsync(new UserKeyMap
             {
+                ItemId = Guid.NewGuid().ToString(),
                 Key = key,
                 UserId = user.ItemId,
                 IssueDate = DateTime.Now,
@@ -634,6 +635,7 @@ namespace Iam.DomainService.Users
 
             await _userRepository.InsertUserKeyMapAsync(new UserKeyMap
             {
+                ItemId = Guid.NewGuid().ToString(),
                 Key = key,
                 UserId = user.ItemId,
                 IssueDate = DateTime.Now,
