@@ -1,16 +1,17 @@
-﻿using Blocks.Genesis;
+﻿using Authentication.DomainService.Utilities;
+using Blocks.Genesis;
+using FluentValidation;
+using FluentValidation.Results;
 using Iam.DomainService.Dtos;
 using Iam.DomainService.Entities;
 using Iam.DomainService.Enums;
 using Iam.DomainService.Resources;
 using Iam.DomainService.Services;
 using Iam.DomainService.Shared.Dtos;
+using Iam.DomainService.Shared.Entities;
 using Iam.DomainService.Utilities;
-using FluentValidation;
-using FluentValidation.Results;
 using Microsoft.Extensions.Logging;
 using System.Text.Json;
-using Iam.DomainService.Shared.Entities;
 
 namespace Iam.DomainService.Users
 {
@@ -82,16 +83,16 @@ namespace Iam.DomainService.Users
 
             await SendEvent(itemId, MutationEventType.Create);
             var bc = BlocksContext.GetContext();
-            await _messageClient.SendToConsumerAsync(new ConsumerMessage<UpdateResourceUsageCommand>
-            {
-                ConsumerName = Constants.IdentifierQueue,
-                Payload = new UpdateResourceUsageCommand
-                {
-                    Resource = "blocks-idp::createuser",
-                    TenantId = bc.TenantId,
-                    Amount = 1
-                }
-            });
+            //await _messageClient.SendToConsumerAsync(new ConsumerMessage<UpdateResourceUsageCommand>
+            //{
+            //    ConsumerName = Constants.IdentifierQueue,
+            //    Payload = new UpdateResourceUsageCommand
+            //    {
+            //        Resource = "blocks-idp::createuser",
+            //        TenantId = bc.TenantId,
+            //        Amount = 1
+            //    }
+            //});
 
             _logger.LogInformation("User creation end -- Success");
             return new BaseMutationResponse
@@ -107,7 +108,7 @@ namespace Iam.DomainService.Users
             await _messageClient.SendToConsumerAsync(
                 new ConsumerMessage<UserMutationEvent>
                 {
-                    ConsumerName = Constants.IamQueue,
+                    ConsumerName = IdpConstants.IamQueue,
                     Payload = new UserMutationEvent
                     {
                         ItemId = itemId,
@@ -315,7 +316,7 @@ namespace Iam.DomainService.Users
             _userRepository.UpdateUserAsync(user),
             _messageClient.SendToConsumerAsync(new ConsumerMessage<UserStatusChangedEvent>
             {
-                ConsumerName = Constants.IamQueue,
+                ConsumerName = IdpConstants.IamQueue,
                 Payload = new UserStatusChangedEvent
                 {
                     UserId = request.UserId,
@@ -686,7 +687,7 @@ namespace Iam.DomainService.Users
             await _messageClient.SendToConsumerAsync(
                 new ConsumerMessage<CreateUserViaSsoEvent>
                 {
-                    ConsumerName = Constants.IamQueue,
+                    ConsumerName = IdpConstants.IamQueue,
                     Payload = new CreateUserViaSsoEvent
                     {
                         ItemId = itemId,
