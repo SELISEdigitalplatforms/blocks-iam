@@ -33,7 +33,9 @@ class ImpersonationService {
   impersonationStatus(): Promise<ImpersonationStatusResponse> {
     return http.post(
       `${IMPERSONATION_BASE}/impersonation/status`,
-      null
+      null,
+      undefined,
+      { skipTokenRotation: true },
     );
   }
 }

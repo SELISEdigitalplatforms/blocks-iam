@@ -1,7 +1,7 @@
 import { Outlet } from "react-router-dom";
 import {
-  ProtectedGuard,
   ImpersonationChecker,
+  ProtectedGuard,
   ImpersonationTerminator,
 } from "@/guards/protected-guard";
 import { ConsoleHeader } from "@/layouts/console-header/console-header";
