@@ -91,10 +91,44 @@ export class UserService {
       if (Array.isArray(value)) return value as string[];
       return Object.values(value as Record<string, string[]>).flat();
     };
-    const normalized: IUpdateUserPayload = {
-      ...payload,
+    const normalized = {
+      lastLoggedInTime: payload.lastLoggedInTime,
+      lastLoggedInDeviceInfo: payload.lastLoggedInDeviceInfo,
+      logInCount: payload.logInCount,
+      itemId: payload.itemId,
+      createdDate: payload.createdDate,
+      lastUpdatedDate: payload.lastUpdatedDate,
+      language: payload.language,
+      salutation: payload.salutation,
+      firstName: payload.firstName,
+      lastName: payload.lastName,
+      email: payload.email,
+      userName: payload.userName,
+      phoneNumber: payload.phoneNumber,
+      organizationIds: payload.organizationIds,
+      lastUsedOrganizationId: payload.lastUsedOrganizationId,
       roles: flattenRecord(payload.roles),
       permissions: flattenRecord(payload.permissions),
+      active: payload.active,
+      status: payload.status,
+      statusReason: payload.statusReason,
+      deactivatedAtUtc: payload.deactivatedAtUtc,
+      isVerified: payload.isVerified,
+      emailVerifiedAtUtc: payload.emailVerifiedAtUtc,
+      phoneVerifiedAtUtc: payload.phoneVerifiedAtUtc,
+      profileImageUrl: payload.profileImageUrl,
+      mfaEnabled: payload.mfaEnabled,
+      isMfaVerified: payload.isMfaVerified,
+      userMfaType: payload.userMfaType,
+      provisioningSource: payload.provisioningSource,
+      externalIdentities: payload.externalIdentities,
+      userCreationType: payload.userCreationType,
+      department: payload.department,
+      employeeId: payload.employeeId,
+      isMultiOrgEnabled: payload.isMultiOrgEnabled,
+      organizations: payload.organizations,
+      projectKey: payload.projectKey,
+      profileImageId: payload.profileImageId,
     };
     return http.post(`/api/iam/users/${payload.itemId}`, normalized);
   }
