@@ -1,4 +1,3 @@
-
 import { Logo } from "@/components/logo";
 import {
   Card,
@@ -23,9 +22,12 @@ export const ResetPassword = ({ code }: ResetPasswordProps) => {
         </div>
         <Card className="mx-auto w-full rounded border-solid border-background shadow-none sm:max-w-md sm:border-[#95ADC4]">
           <CardHeader className="text-center">
-            <CardTitle className="text-3xl leading-9">Invalid reset link</CardTitle>
+            <CardTitle className="text-3xl leading-9">
+              Invalid reset link
+            </CardTitle>
             <CardDescription className="text-xl text-foreground">
-              The reset code is missing or invalid. Please request a new reset link.
+              The reset code is missing or invalid. Please request a new reset
+              link.
             </CardDescription>
           </CardHeader>
           <CardContent>
@@ -45,7 +47,9 @@ export const ResetPassword = ({ code }: ResetPasswordProps) => {
       </div>
       <Card className="mx-auto w-full rounded border-solid border-background shadow-none sm:max-w-md sm:border-[#95ADC4]">
         <CardHeader className="text-center">
-          <CardTitle className="text-3xl leading-9">Set a new password</CardTitle>
+          <CardTitle className="text-3xl leading-9">
+            Set a new password
+          </CardTitle>
           <CardDescription className="text-xl text-foreground">
             Choose password to secure account
           </CardDescription>

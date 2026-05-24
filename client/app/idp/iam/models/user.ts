@@ -24,13 +24,13 @@ export interface User {
   userMfaType: number;
   isMfaVerified: boolean;
   userCreationType: number;
-  memberships: IMembership[]
+  memberships: IMembership[];
 }
 
 export interface IMembership {
-  organizationId: string,
-  roles: string[],
-  permissions: string[]
+  organizationId: string;
+  roles: string[];
+  permissions: string[];
 }
 export interface IGetUsersPayload {
   page: number;
@@ -288,7 +288,6 @@ export interface IAccountRecoverPayload {
   email: string;
   captchaCode?: string;
   mailPurpose?: string;
-  projectKey: string;
 }
 export interface IAccountRecoverResponse {
   errors: unknown | null;
@@ -298,8 +297,7 @@ export interface IAccountResetPasswordPayload {
   code: string;
   password: string;
   captchaCode?: string;
-  logoutFromAllDevices: boolean;
-  projectKey: string;
+  logoutFromAllDevices?: boolean;
 }
 export interface IAccountResetPasswordResponse {
   errors: unknown | null;
