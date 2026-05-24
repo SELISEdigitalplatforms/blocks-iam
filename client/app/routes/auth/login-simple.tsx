@@ -31,7 +31,7 @@ export default function LoginSimplePage() {
 
   useEffect(() => {
     if (isAuthenticated)
-      navigate("/services/authentication/users", { replace: true });
+      navigate("/console", { replace: true });
   }, [isAuthenticated, navigate]);
   const titles = useMemo(
     () => ["observable", "intelligent", "scalable", "resilient", "secure"],
@@ -65,7 +65,7 @@ export default function LoginSimplePage() {
       const response = await fetch(initiateUrl.toString(), { headers });
 
       if (response.status === 400) {
-        window.location.href = "/services/authentication/users";
+        window.location.href = "/console";
         return;
       }
 

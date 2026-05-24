@@ -30,7 +30,7 @@ export default function OidcIndexPage() {
         }
         setAuthenticated();
 
-        window.location.href = `${window.location.origin}/services/authentication/users`;
+        window.location.href = `${window.location.origin}/console`;
       })
       .catch(() => {
         navigate("/oidc/error");

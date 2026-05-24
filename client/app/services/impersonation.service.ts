@@ -3,7 +3,7 @@ import { http } from "@/lib/http-client";
 const IMPERSONATION_BASE = "/api/auth";
 
 export interface ImpersonationRequest {
-  targetTenantId: string;
+  targeted_tenant_id: string;
   orgId?: string;
   organizationId?: string;
 }
