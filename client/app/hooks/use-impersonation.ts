@@ -20,6 +20,5 @@ export const useImpersonationStatusChecker = () => {
     queryKey: ["impersonation", "status"],
     queryFn: () => impersonationService.impersonationStatus(),
     staleTime: 0,
-    retry: false,
   });
 };
