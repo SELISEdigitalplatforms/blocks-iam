@@ -22,7 +22,7 @@ export const UserMFAVerify = () => {
 
   const generateOtp = useCallback(async () => {
     try {
-      const res = await mutateAsync({ projectKey, userId, mfaType: mfaMethodType });
+      const res = await mutateAsync({ userId, mfaType: mfaMethodType });
       if (!res.isSuccess) return setIsTotpModalOpen(false);
       setMfaId(res.mfaId);
     } catch (_error) {
