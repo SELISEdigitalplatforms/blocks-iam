@@ -7,12 +7,14 @@ import { useGetUserById, useUpdateUser } from "@blocks-idp/iam/hooks/use-user";
 import { showErrorToast, showSuccessToast } from "@/hooks/use-toast";
 import { isErrorWithErrors } from "@/lib/error";
 import { useProfileImageSrc } from "@/hooks/use-profile-image-src";
+import { useQueryClient } from "@tanstack/react-query";
 const emptyProfilePhoto = "/assets/images/empty-profile-photo.png";
 import { ModuleName } from "@/constants/modules.constants";
 type ProfileImageUploaderProps = { projectKey: string; id: string };
 export const ProfileImageUploader = ({ projectKey, id }: ProfileImageUploaderProps) => {
   const [localPreview, setLocalPreview] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const queryClient = useQueryClient();
   const { data } = useGetUserById({ id, projectKey });
   const { mutateAsync } = useGetPreSignedUrlForUpload();
   const { mutateAsync: uploadImageMutate } = useUploadFile();
@@ -50,6 +52,7 @@ export const ProfileImageUploader = ({ projectKey, id }: ProfileImageUploaderPro
         profileImageUrl: userProfileFile.url,
       });
       if (!updatedUser.isSuccess) return showErrorToast({ errors: updatedUser.errors });
+      queryClient.invalidateQueries({ queryKey: ["user"] });
       showSuccessToast({ description: "Profile pic updated successfully" });
     } catch (error) {
       if (isErrorWithErrors(error)) {
