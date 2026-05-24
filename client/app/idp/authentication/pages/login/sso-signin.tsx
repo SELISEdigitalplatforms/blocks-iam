@@ -63,7 +63,7 @@ export const SsoSignin = ({
           <SSOSigninCard
             providerConfig={item}
             key={item.provider}
-            withLabel={providers.length <= 2}
+            labelMode={providers.length === 1 ? "full" : "short"}
             mode={mode}
             oidcContext={oidcContext}
           />
