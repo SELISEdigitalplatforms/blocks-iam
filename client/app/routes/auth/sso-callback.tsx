@@ -47,7 +47,7 @@ export default function SSOCallbackPage() {
       .then((res) => {
         if (res.ok) {
           setAuthenticated();
-          window.location.href = "/services/authentication/users";
+          window.location.href = "/console";
         } else {
           window.location.href = "/login?error=callback_failed";
         }
