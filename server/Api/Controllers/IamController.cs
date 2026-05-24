@@ -284,9 +284,9 @@ namespace Api.Controllers
             return await _resourceMutationService.UpdateOrganizationAsync(id, request);
         }
 
-        [HttpPost("organizations")]
+        [HttpGet("organizations")]
         [Authorize]
-        public async Task<GetOrganizationsResponse> GetOrganizations([FromBody] GetOrganizationsRequest request)
+        public async Task<GetOrganizationsResponse> GetOrganizations([FromQuery] GetOrganizationsRequest request)
         {
             return await _resourceMutationService.GetOrganizationsAsync(request);
         }
