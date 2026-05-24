@@ -79,7 +79,7 @@ export const useGetUserById = (
   queryOptions?: { enabled?: boolean },
 ) => {
   return useQuery({
-    queryKey: ["user", options],
+    queryKey: ["user-by-id", options],
     queryFn: () => userService.getUserById(options),
     ...queryOptions,
   });
@@ -109,7 +109,7 @@ export const useUpdateUser = (options: {
     mutationFn: userService.updateUser,
     onSuccess: () => {
       if (own) return queryClient.invalidateQueries({ queryKey: ["user"] });
-      queryClient.invalidateQueries({ queryKey: ["user", rest] });
+      queryClient.invalidateQueries({ queryKey: ["user-by-id", rest] });
     },
   });
 };
