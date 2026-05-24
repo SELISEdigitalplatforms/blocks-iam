@@ -1,7 +1,9 @@
 using Authentication.DomainService.Authentication;
 using Authentication.DomainService.Entities;
 using Authentication.DomainService.OAuth.RequestModel;
+using Authentication.DomainService.Services;
 using Authentication.DomainService.Shared.RequestModel;
+using Authentication.DomainService.Shared.ResponseModel;
 using Authentication.DomainService.Utilities;
 using Blocks.Genesis;
 using CloudConfiguration.DomainService.Authentication;
@@ -24,25 +26,30 @@ namespace Api.Controllers;
 /// All endpoints follow RESTful conventions with professional naming and comprehensive documentation.
 /// </summary>
 [ApiController]
-[Route("auth")]
+[Route("auth")]   
 public class AuthenticationController : ControllerBase
 {
     private readonly IAuthenticationService _authenticationService;
     private readonly IAccountService _accountService;
     private readonly IAuthenticationFlowService _authenticationFlowService;
     private readonly IConfigurationService _configurationService;
+    private readonly IAuthenticationRepository _authenticationRepository;
+    private readonly IAuthenticationDomainService _authenticationDomainService;
 
     public AuthenticationController(
         IAuthenticationService authenticationService,
         IAccountService accountService,
         IAuthenticationFlowService authenticationFlowService,
-        IConfigurationService configurationService
+        IConfigurationService configurationService, IAuthenticationRepository authenticationRepository,
+        IAuthenticationDomainService authenticationDomainService
     )
     {
         _authenticationService = authenticationService;
         _accountService = accountService;
         _authenticationFlowService = authenticationFlowService;
         _configurationService= configurationService;
+        _authenticationRepository = authenticationRepository;
+        _authenticationDomainService = authenticationDomainService;
     }
 
     /// <summary>
@@ -496,17 +503,31 @@ public class AuthenticationController : ControllerBase
     }
 
     #endregion
-
+    [Authorize]
     [HttpGet("Config")]
     public async Task<IActionResult> Get([FromQuery] GetAuthenticationConfigurationRequest request)
     {
         
         return await _configurationService.GetAuthenticationConfigAsync();
     }
-
+    [Authorize]
     [HttpPost("Config_Update")]
     public async Task<BaseResponse> Update([FromBody] UpdateAuthenticationConfigurationRequest configuration)
     {
         return await _configurationService.UpdateAuthenticationConfigAsync(configuration);
     }
+    [Authorize]
+    [HttpPost("GenerateUserCode")]
+    public async Task<BaseResponse> GenerateUserCode([FromBody] GenerateUserCodeRequest request)
+    {
+        return await _authenticationDomainService.GenerateUserCodeByClientAsync(request);
+    }
+
+    [Authorize]
+    [HttpGet("GetUserCodes")]
+    public async Task<List<GetUserCodesByUserIdResponse>> GetUserCodes()
+    {
+        return await _authenticationRepository.GetUserCodesByUserIdAsync(BlocksContext.GetContext()?.UserId);
+    }
+
 }
