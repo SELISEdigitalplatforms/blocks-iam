@@ -1,9 +1,6 @@
-using Blocks.Genesis;
-using Authentication.DomainService.OAuth.RequestModel;
 using Authentication.DomainService.Services;
+using Blocks.Genesis;
 using Microsoft.Extensions.Logging;
-using System.Net;
-using System.Text.Json;
 
 namespace Authentication.DomainService.OAuth
 {
@@ -11,58 +8,27 @@ namespace Authentication.DomainService.OAuth
     {
         private readonly ILogger<GithubLogInService> _logger;
         private readonly IAuthenticationRepository _authenticationRepository;
-        private readonly ICacheClient _cacheClient;
         private readonly IHttpService _httpService;
 
         public GithubLogInService(
             ILogger<GithubLogInService> logger,
             IAuthenticationRepository authenticationRepository,
-            ICacheClient cacheClient,
             IHttpService httpService)
         {
             _logger = logger;
             _authenticationRepository = authenticationRepository;
-            _cacheClient = cacheClient;
             _httpService = httpService;
         }
 
-        public async Task<(string, bool)> GetProviderLogInUriAsync(GetSocialLogInEndPointRequest loginData)
+        public async Task<SocialCallbackResult> HandleSocialLoginCallback(StateInfo stateInfo)
         {
             var identityProvider = await _authenticationRepository
-                .GetIdentityProviderAsync(loginData.Provider);
-
-            if (identityProvider == null)
-            {
-                _logger.LogError("Identity provider not found for provider {Provider}", loginData.Provider);
-                return (string.Empty, true);
-            }
-
-            var stateKey = Guid.NewGuid().ToString("n");
-            var providerRedirectUri = loginData.RedirectUri ?? identityProvider.RedirectUris.FirstOrDefault() ?? string.Empty;
-            var stateInfo = new StateInfo
-            {
-                Audience = loginData.Audience,
-                Provider = loginData.Provider,
-                NextUrl = loginData.NextUrl,
-                RedirectUri = providerRedirectUri
-            };
-
-            await _cacheClient.AddStringValueAsync(stateKey, JsonSerializer.Serialize(stateInfo), 300);
-            // GitHub auth URL 
-            var loginUri = $"{identityProvider.AuthorizationUrl.Split("?")[0]}?scope={identityProvider.Scope}&state={stateKey}&redirect_uri={WebUtility.UrlEncode(providerRedirectUri)}&client_id={identityProvider.ClientId}&response_type=code";
-
-            return (loginUri, loginData.SendAsResponse);
-        }
-
-        public async Task<IExternalUserData> HandleSocialLogin(StateInfo stateInfo)
-        {
-            var identityProvider = await _authenticationRepository
-                .GetIdentityProviderAsync(stateInfo.Provider);
+                .GetIdentityProviderByClientIdAsync(stateInfo.ClientId);
 
             if (identityProvider == null)
             {
                 _logger.LogError("Identity provider not found for provider {Provider}", stateInfo.Provider);
-                return new GithubUserData();
+                return new SocialCallbackResult { ExternalUserData = new GithubUserData() };
             }
 
             var postData = new Dictionary<string, string>
@@ -83,7 +49,7 @@ namespace Authentication.DomainService.OAuth
             if (!string.IsNullOrWhiteSpace(error) || tokenResponse?.AccessToken == null)
             {
                 _logger.LogError("Error while getting GitHub access token: {Error}", error);
-                return new GithubUserData();
+                return new SocialCallbackResult { ExternalUserData = new GithubUserData() };
             }
 
             // Fetch GitHub user profile
@@ -94,7 +60,7 @@ namespace Authentication.DomainService.OAuth
             if (!string.IsNullOrWhiteSpace(userError))
             {
                 _logger.LogError("Error while getting GitHub user data: {UserError}", userError);
-                return new GithubUserData();
+                return new SocialCallbackResult { ExternalUserData = new GithubUserData() };
             }
 
             if (string.IsNullOrEmpty(userResponse.Email))
@@ -109,7 +75,13 @@ namespace Authentication.DomainService.OAuth
                 if (!string.IsNullOrWhiteSpace(emailError) || emailResponse == null)
                 {
                     _logger.LogError("Error while getting GitHub user email: {EmailError}", emailError);
-                    return userResponse;
+                    return new SocialCallbackResult
+                    {
+                        ExternalUserData = userResponse,
+                        AccessToken = tokenResponse.AccessToken,
+                        IdToken = tokenResponse.IdToken,
+                        RefreshToken = tokenResponse.RefreshToken
+                    };
                 }
                 userResponse.Email = emailResponse.FirstOrDefault(e => e.Primary && e.Verified)?.Email
                        ?? emailResponse.FirstOrDefault(e => e.Verified)?.Email
@@ -121,7 +93,19 @@ namespace Authentication.DomainService.OAuth
             userResponse.Roles = identityProvider?.InitialRoles ?? [];
             userResponse.Platform = stateInfo.Provider;
 
-            return userResponse;
+            return new SocialCallbackResult
+            {
+                ExternalUserData = userResponse,
+                AccessToken = tokenResponse.AccessToken,
+                IdToken = tokenResponse.IdToken,
+                RefreshToken = tokenResponse.RefreshToken
+            };
+        }
+
+        public async Task<IExternalUserData> HandleSocialLogin(StateInfo stateInfo)
+        {
+            var callbackResult = await HandleSocialLoginCallback(stateInfo);
+            return callbackResult.ExternalUserData;
         }
     }
 }

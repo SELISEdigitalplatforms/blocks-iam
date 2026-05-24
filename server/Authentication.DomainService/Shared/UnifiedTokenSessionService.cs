@@ -35,7 +35,8 @@ namespace Authentication.DomainService.Shared
             AuthenticationConfiguration authenticationConfiguration,
             Tenant tenant,
             User user,
-            IEnumerable<string> visitorsIpAddresses)
+            IEnumerable<string> visitorsIpAddresses,
+            bool impersoanted)
         {
             var now = DateTime.UtcNow;
             string refreshTokenId = Guid.NewGuid().ToString("N");
@@ -61,7 +62,8 @@ namespace Authentication.DomainService.Shared
                 TokenVersion = user.TokenVersion,
                 RememberMeIssuedUtc = tokenRequest.RememberMe ? now : null,
                 RememberMeExpiresUtc = tokenRequest.RememberMe ? absoluteRefreshTokenExpireOn : null,
-                Scope = tokenRequest.Scope
+                Scope = tokenRequest.Scope,
+                Impersonated = impersoanted
             };
 
 
@@ -82,11 +84,7 @@ namespace Authentication.DomainService.Shared
                 AbsoluteExpiry = refreshTokenCache.AbsoluteExpiresUtc,
                 IpAddress = refreshTokenCache.IpAddresses ?? string.Empty,
                 IsRevoked = false,
-                // --- Future-proof/standards fields ---
-                FamilyId = string.Empty, // Set when available (e.g., for family tracking)
-                ParentTokenId = string.Empty, // Set when available (e.g., for rotation chains)
-                ChildTokenIds = new List<string>(), // Set when available
-                Audience = string.Empty, // Set when available (multi-audience)
+                Impersonated = impersoanted,
                 UserAgent = tokenRequest.Request?.Headers != null && tokenRequest.Request.Headers.ContainsKey("User-Agent") ? tokenRequest.Request.Headers["User-Agent"].ToString() : string.Empty
             };
             await _refreshTokenRepository.CreateAsync(refreshTokenModel);
@@ -105,7 +103,8 @@ namespace Authentication.DomainService.Shared
                 DeviceInformation = _authenticationDomainService.GetDeviceInfo(tokenRequest.Request?.Headers != null && tokenRequest.Request.Headers.ContainsKey("User-Agent") ? tokenRequest.Request.Headers["User-Agent"].ToString() : string.Empty),
                 IsRevoke = false,
                 IsLogin = true,
-                GrantType = tokenRequest.GrantType ?? string.Empty
+                GrantType = tokenRequest.GrantType ?? string.Empty,
+                Impersonated = impersoanted
             };
             await _authenticationDomainService.SendToQueueAsync(IdpConstants.AuthenticationQueue, addRefreshTokenEvent);
 
@@ -130,7 +129,8 @@ namespace Authentication.DomainService.Shared
                         DeviceInformation = _authenticationDomainService.GetDeviceInfo(tokenRequest.Request?.Headers != null && tokenRequest.Request.Headers.ContainsKey("User-Agent") ? tokenRequest.Request.Headers["User-Agent"].ToString() : string.Empty),
                         IsRevoke = true,
                         IsLogin = false,
-                        GrantType = tokenRequest.GrantType ?? string.Empty
+                        GrantType = tokenRequest.GrantType ?? string.Empty,
+                        Impersonated = impersoanted,
                     };
                     await _authenticationDomainService.SendToQueueAsync(IdpConstants.AuthenticationQueue, revokeOldTokenEvent);
                 }

@@ -1,16 +1,8 @@
-using Azure;
-using Blocks.Genesis;
-using Authentication.DomainService.OAuth.RequestModel;
 using Authentication.DomainService.Services;
-using Authentication.DomainService.Entities;
-using Microsoft.Azure.Amqp.Framing;
+using Blocks.Genesis;
 using Microsoft.Extensions.Logging;
-using Microsoft.Identity.Client.Platforms.Features.DesktopOs.Kerberos;
 using System.IdentityModel.Tokens.Jwt;
-using System.Net;
 using System.Text.Json;
-using static QRCoder.PayloadGenerator;
-using static System.Runtime.InteropServices.JavaScript.JSType;
 
 namespace Authentication.DomainService.OAuth
 {
@@ -26,78 +18,42 @@ namespace Authentication.DomainService.OAuth
         protected SocialLogInServiceBase(
             ILogger logger,
             IAuthenticationRepository authenticationRepository,
-            ICacheClient cacheClient,
             IHttpService httpService
         )
         {
             _logger = logger;
             _authenticationRepository = authenticationRepository;
-            _cacheClient = cacheClient;
             _httpService = httpService;
         }
 
-        public virtual async Task<(string, bool)> GetProviderLogInUriAsync(GetSocialLogInEndPointRequest loginData)
+        public virtual async Task<SocialCallbackResult> HandleSocialLoginCallback(StateInfo stateInfo)
         {
-            var identityProvider = await _authenticationRepository.GetIdentityProviderAsync(loginData.Provider);
-
-            if (identityProvider == null)
-            {
-                _logger.LogError("Identity provider not found for provider {Provider}", loginData.Provider);
-                return (string.Empty, true);
-            }
-
-            var socialLogInStateKey = Guid.NewGuid().ToString("n");
-            var providerRedirectUri = loginData.RedirectUri ?? identityProvider.RedirectUris?.FirstOrDefault() ?? string.Empty;
-            var socialLogInStateInfo = new StateInfo
-            {
-                Audience = loginData.Audience,
-                Provider = loginData.Provider,
-                NextUrl = loginData.NextUrl,
-                RedirectUri = providerRedirectUri
-            };
-
-            await _cacheClient.AddStringValueAsync(socialLogInStateKey, JsonSerializer.Serialize(socialLogInStateInfo), 300);
-
-            // Build authorization URL with parameters
-            var authUrl = BuildAuthorizationUrl(identityProvider, socialLogInStateKey, providerRedirectUri);
-            return (authUrl, loginData.SendAsResponse);
-        }
-
-        private string BuildAuthorizationUrl(IdentityProvider provider, string state, string redirectUri)
-        {
-            var encodedRedirectUri = WebUtility.UrlEncode(redirectUri);
-            var scope = WebUtility.UrlEncode(provider.Scope);
-            
-            return $"{provider.AuthorizationUrl}?client_id={provider.ClientId}&scope={scope}&state={state}&redirect_uri={encodedRedirectUri}&response_type={provider.ResponseType}";
-        }
-
-        public virtual async Task<IExternalUserData> HandleSocialLogin(StateInfo stateInfo)
-        {
-            var identityProvider = await _authenticationRepository.GetIdentityProviderAsync(stateInfo.Provider);
+            var identityProvider = await _authenticationRepository.GetIdentityProviderByClientIdAsync(stateInfo.ClientId);
 
             if (identityProvider == null)
             {
                 _logger.LogError("Identity provider not found for provider {Provider}", stateInfo.Provider);
-                return CreateEmptyUserData();
+                return new SocialCallbackResult { ExternalUserData = CreateEmptyUserData() };
             }
 
             var postData = new Dictionary<string, string>
             {
-                { "code", stateInfo.Code },
-                { "client_id", identityProvider.ClientId },
-                { "client_secret", identityProvider.ClientSecret },
-                { "redirect_uri", stateInfo.RedirectUri },
+                { "code", stateInfo.Code ?? string.Empty },
+                { "client_id", identityProvider.ClientId ?? string.Empty },
+                { "client_secret", identityProvider.ClientSecret ?? string.Empty },
+                { "redirect_uri", stateInfo.RedirectUri ?? string.Empty },
                 { "grant_type", "authorization_code" },
                 { "scope", "openid profile email" }
             };
 
             var (response, error) = await _httpService.SendFormUrlEncoded<SocialOauthAccessToken>(HttpMethod.Post, postData, identityProvider.TokenUrl);
 
-            if (!string.IsNullOrWhiteSpace(error))
+            if (!string.IsNullOrWhiteSpace(error) || response == null)
             {
                 _logger.LogError("Error while getting access token: {Error}", error);
-                return CreateEmptyUserData();
+                return new SocialCallbackResult { ExternalUserData = CreateEmptyUserData() };
             }
+
             var externalUser = stateInfo.Provider switch
             {
                 googleProvider => await GetGoogleProfileVerification(identityProvider.UserInfoUrl, response.AccessToken),
@@ -116,7 +72,19 @@ namespace Authentication.DomainService.OAuth
 
             externalUser.Platform = stateInfo.Provider;
 
-            return externalUser;
+            return new SocialCallbackResult
+            {
+                ExternalUserData = externalUser,
+                AccessToken = response.AccessToken,
+                IdToken = response.IdToken,
+                RefreshToken = response.RefreshToken
+            };
+        }
+
+        public virtual async Task<IExternalUserData> HandleSocialLogin(StateInfo stateInfo)
+        {
+            var callbackResult = await HandleSocialLoginCallback(stateInfo);
+            return callbackResult.ExternalUserData;
         }
 
         protected abstract IExternalUserData CreateEmptyUserData();
@@ -124,7 +92,7 @@ namespace Authentication.DomainService.OAuth
         {
             var userAccessEndPoint = string.Format(profileURL, accessToken);
 
-            var( externalUser, error) = await _httpService.Get<GoogleUserData>(userAccessEndPoint);
+            var (externalUser, error) = await _httpService.Get<GoogleUserData>(userAccessEndPoint);
 
             if (!string.IsNullOrWhiteSpace(error))
             {
@@ -144,7 +112,7 @@ namespace Authentication.DomainService.OAuth
             var queryPram = "$select=displayName,mail,department,employeeId,givenName,userPrincipalName,surname,officeLocation,preferredLanguage,mobilePhone,id";
             profileURL = $"{profileURL}?{queryPram}";
 
-            var (externalUser, error) = await _httpService.Get<MicrosoftUserData>(profileURL , new Dictionary<string, string> {
+            var (externalUser, error) = await _httpService.Get<MicrosoftUserData>(profileURL, new Dictionary<string, string> {
                 { "Authorization", $"bearer {accessToken}"  }
             });
 

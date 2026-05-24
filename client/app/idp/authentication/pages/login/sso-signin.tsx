@@ -31,7 +31,11 @@ const GRID_COLS_MAP: Record<number, string> = {
   6: "grid-cols-3",
 };
 
-export const SsoSignin = ({ loginOption, mode = "default", oidcContext }: SsoSigninProps) => {
+export const SsoSignin = ({
+  loginOption,
+  mode = "default",
+  oidcContext,
+}: SsoSigninProps) => {
   const { isPending } = useSsoActivation();
 
   const providers = Object.values(SOCIAL_AUTH_PROVIDERS_CONFIG)
@@ -43,8 +47,9 @@ export const SsoSignin = ({ loginOption, mode = "default", oidcContext }: SsoSig
 
       return {
         ...config,
-        audience: sso.audience,
         provider: sso.provider as typeof config.provider,
+        clientId: sso.clientId as string,
+        redirectUrl: (sso.redirectUris as string[])[0] as string,
       };
     })
     .filter((item) => !!item);
@@ -69,13 +74,6 @@ export const SsoSignin = ({ loginOption, mode = "default", oidcContext }: SsoSig
     </>
   );
 };
-
-
-
-
-
-
-
 
 // import LogoLoadingSpinner from "@/components/loader-spinner/loader-spinner";
 // import { cn } from "@/lib/utils";

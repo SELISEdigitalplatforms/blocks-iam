@@ -21,7 +21,6 @@ namespace Authentication.DomainService.OAuth.RequestModel
     {
         public string Code { get; set; } = string.Empty;
         public string State { get; set; } = string.Empty;
-        public string Provider { get; set; } = string.Empty;
     }
 
     public class OidcCodeExchangeRequest
