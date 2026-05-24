@@ -48,12 +48,13 @@ export const useGetUsers = (option: IGetUsersPayload) => {
 export const useGetUser = (options?: { enabled?: boolean }) => {
   const authStore = useAuthStore();
   return useQuery({
-    queryKey: ["user"],
+    queryKey: ["userAPiNotinuse"],
     queryFn: async () => {
       const user = await userService.getUser();
       authStore.setUser(user.data);
       return user;
     },
+    staleTime: Infinity,
     ...options,
   });
 };
