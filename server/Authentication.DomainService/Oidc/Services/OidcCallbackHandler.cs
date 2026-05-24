@@ -206,6 +206,7 @@ namespace Authentication.DomainService.Oidc.Services
                 // Create new user from social provider info
                 var newUser = new Iam.DomainService.Entities.User
                 {
+                    ItemId = Guid.NewGuid().ToString(),
                     Email = externalUserData.Email,
                     FirstName = externalUserData.FirstName ?? externalUserData.DisplayName,
                     LastName = externalUserData.LastName,
