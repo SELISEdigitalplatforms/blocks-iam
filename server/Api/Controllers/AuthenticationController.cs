@@ -4,6 +4,9 @@ using Authentication.DomainService.OAuth.RequestModel;
 using Authentication.DomainService.Shared.RequestModel;
 using Authentication.DomainService.Utilities;
 using Blocks.Genesis;
+using CloudConfiguration.DomainService.Authentication;
+using CloudConfiguration.DomainService.Authentication.RequestModel;
+using CloudConfiguration.DomainService.Shared.Services;
 using Iam.DomainService.Accounts;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
@@ -27,16 +30,19 @@ public class AuthenticationController : ControllerBase
     private readonly IAuthenticationService _authenticationService;
     private readonly IAccountService _accountService;
     private readonly IAuthenticationFlowService _authenticationFlowService;
+    private readonly IConfigurationService _configurationService;
 
     public AuthenticationController(
         IAuthenticationService authenticationService,
         IAccountService accountService,
-        IAuthenticationFlowService authenticationFlowService
+        IAuthenticationFlowService authenticationFlowService,
+        IConfigurationService configurationService
     )
     {
         _authenticationService = authenticationService;
         _accountService = accountService;
         _authenticationFlowService = authenticationFlowService;
+        _configurationService= configurationService;
     }
 
     /// <summary>
@@ -491,5 +497,16 @@ public class AuthenticationController : ControllerBase
 
     #endregion
 
+    [HttpGet("Config")]
+    public async Task<IActionResult> Get([FromQuery] GetAuthenticationConfigurationRequest request)
+    {
+        
+        return await _configurationService.GetAuthenticationConfigAsync();
+    }
 
+    [HttpPost("Config_Update")]
+    public async Task<BaseResponse> Update([FromBody] UpdateAuthenticationConfigurationRequest configuration)
+    {
+        return await _configurationService.UpdateAuthenticationConfigAsync(configuration);
+    }
 }
