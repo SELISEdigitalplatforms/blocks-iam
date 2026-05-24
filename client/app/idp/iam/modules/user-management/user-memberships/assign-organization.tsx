@@ -94,7 +94,6 @@ export const AssignOrganization = ({ userId, projectKey }: AssignOrganizationPro
 
       const res = await mutateAsync({
         ...userData?.data,
-        memberships: updatedMemberships,
         itemId: userId,
       });
 

@@ -95,43 +95,27 @@ export interface ICreateUserResponse {
 
 export interface IUpdateUserPayload {
   itemId: string;
-  projectKey?: string;
-  lastLoggedInTime?: string;
-  lastLoggedInDeviceInfo?: string;
-  logInCount?: number;
-  createdDate?: string;
-  lastUpdatedDate?: string;
-  language?: string;
-  salutation?: string;
   firstName?: string;
   lastName?: string;
   email?: string;
   userName?: string;
-  phoneNumber?: string;
+  language?: string;
   organizationIds?: string[];
-  lastUsedOrganizationId?: string | null;
   roles?: string[];
   permissions?: string[];
   active?: boolean;
   status?: number;
-  statusReason?: string | null;
-  deactivatedAtUtc?: string | null;
   isVerified?: boolean;
-  emailVerifiedAtUtc?: string | null;
-  phoneVerifiedAtUtc?: string | null;
-  profileImageUrl?: string;
   mfaEnabled?: boolean;
   isMfaVerified?: boolean;
   userMfaType?: number;
   provisioningSource?: number;
   externalIdentities?: unknown[];
   userCreationType?: number;
-  department?: string | null;
-  employeeId?: string | null;
   isMultiOrgEnabled?: boolean;
   organizations?: unknown[];
-  profileImageId?: string;
-  memberships?: IMembership[];
+  profileImageId?: string | null;
+  profileImageUrl?: string | null;
 }
 
 export interface IUpdateUserResponse {
