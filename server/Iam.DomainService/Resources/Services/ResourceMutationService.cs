@@ -1,4 +1,5 @@
-﻿using Blocks.Genesis;
+﻿using Authentication.DomainService.Utilities;
+using Blocks.Genesis;
 using FluentValidation;
 using Iam.DomainService.Dtos;
 using Iam.DomainService.Entities;
@@ -306,7 +307,7 @@ namespace Iam.DomainService.Resources
         {
             _logger.LogInformation("Permission event -- initiate");
             await _identityAccessManagementService.SendToQueueAsync(
-                Constants.IamQueue,
+                IdpConstants.IamQueue,
                 resourceMutation
             );
             _logger.LogInformation("Permission event -- sent");
@@ -361,7 +362,7 @@ namespace Iam.DomainService.Resources
         {
             _logger.LogInformation("Permission event -- initiate");
             await _identityAccessManagementService.SendToQueueAsync(
-                Constants.IamQueue,
+                IdpConstants.IamQueue,
                 resourceMutation
             );
             _logger.LogInformation("Permission event -- sent");
