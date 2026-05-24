@@ -95,7 +95,7 @@ export interface ICreateUserResponse {
 
 export interface IUpdateUserPayload {
   itemId: string;
-  projectKey: string;
+  projectKey?: string;
   lastLoggedInTime?: string;
   lastLoggedInDeviceInfo?: string;
   logInCount?: number;
