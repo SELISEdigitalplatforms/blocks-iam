@@ -96,7 +96,6 @@ export const AssignOrganization = ({ userId, projectKey }: AssignOrganizationPro
         ...userData?.data,
         memberships: updatedMemberships,
         itemId: userId,
-        projectKey,
       });
 
       if (!res.isSuccess) {

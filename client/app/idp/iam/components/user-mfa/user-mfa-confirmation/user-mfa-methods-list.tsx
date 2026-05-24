@@ -16,7 +16,7 @@ export const UserMFAMethodList = ({
   setSelected,
   projectKey,
 }: UserMFAMethodListProps) => {
-  const { isLoading, isFetching, data } = useGetMFAConfig({ projectKey });
+  const { isLoading, isFetching, data } = useGetMFAConfig();
   const availableMFaMethod = useMemo(() => {
     if (!data?.userMfaType.length) return [];
     return MFA_Provider_Data.filter((item) => data?.userMfaType.includes(item.type));

@@ -4,9 +4,7 @@ export interface IMFAConfiguration {
   projectKey: string | null;
   userMfaType: number[];
 }
-export interface IGetConfigurationPayload {
-  projectKey: string;
-}
+export interface IGetConfigurationPayload {}
 
 export interface IMFAConfigurationSavePayload {
   enableMfa: boolean;
