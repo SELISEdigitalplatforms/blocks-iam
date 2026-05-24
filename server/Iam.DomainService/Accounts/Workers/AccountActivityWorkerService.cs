@@ -1,4 +1,5 @@
-﻿using Blocks.Genesis;
+﻿using Authentication.DomainService.Utilities;
+using Blocks.Genesis;
 using Iam.DomainService.Dtos;
 using Iam.DomainService.Entities;
 using Iam.DomainService.Services;
@@ -88,7 +89,7 @@ namespace Iam.DomainService.Accounts
 
         public async Task<bool> HandlePostEventForResetPassword(string userId)
         {
-            await _identityAccessManagementService.SendToQueueAsync(Constants.AuthenticationQueue, new LogoutAllEvent
+            await _identityAccessManagementService.SendToQueueAsync(IdpConstants.AuthenticationQueue, new LogoutAllEvent
             {
                 UserId = userId
             });
