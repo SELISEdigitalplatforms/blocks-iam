@@ -1,5 +1,3 @@
-
-
 import { Logo } from "@/components/logo";
 import { Button } from "@/components/ui-kits/button/button";
 import { getRuntimeEnv } from "@/lib/runtime-env";
@@ -24,16 +22,18 @@ type ActivationProps = {
   lang?: string;
 };
 
-const x_blocks_key = getRuntimeEnv("BLOCKS_X_BLOCKS_KEY");
-
 export const Activation = ({ code }: ActivationProps) => {
-  const { isPending: isActivationPending, mutateAsync: activationCodeValidation } =
-    useAccountActivationCodeExpiration();
+  const {
+    isPending: isActivationPending,
+    mutateAsync: activationCodeValidation,
+  } = useAccountActivationCodeExpiration();
   const { mutateAsync: resendActivationLink, isPending: isResendPending } =
     useAccountResendActivation();
 
   const [isValidCode, setIsValidCode] = useState<boolean | null>(null);
-  const [activationError, setActivationError] = useState<"invalid" | "expired" | null>(null);
+  const [activationError, setActivationError] = useState<
+    "invalid" | "expired" | null
+  >(null);
   const [activationUserId, setActivationUserId] = useState<string | null>(null);
   const [resendMessage, setResendMessage] = useState<string | null>(null);
   const [resendSuccess, setResendSuccess] = useState(false);
@@ -51,7 +51,6 @@ export const Activation = ({ code }: ActivationProps) => {
     const validateCode = async () => {
       try {
         const res = await activationCodeValidation({
-          projectKey: x_blocks_key as string,
           activationCode: code,
         });
 
@@ -97,7 +96,6 @@ export const Activation = ({ code }: ActivationProps) => {
 
       const response = await resendActivationLink({
         userId: activationUserId,
-        projectKey: x_blocks_key as string,
       });
 
       if (response?.isSuccess) {
@@ -105,12 +103,16 @@ export const Activation = ({ code }: ActivationProps) => {
         setResendMessage("A new activation link has been sent to your email.");
       } else {
         setResendSuccess(false);
-        setResendMessage("Failed to resend activation link. Please try again later.");
+        setResendMessage(
+          "Failed to resend activation link. Please try again later.",
+        );
       }
     } catch (error) {
       setResendSuccess(false);
       setResendMessage(
-        error instanceof Error ? error.message : "Failed to resend activation link.",
+        error instanceof Error
+          ? error.message
+          : "Failed to resend activation link.",
       );
     }
   };
@@ -125,14 +127,19 @@ export const Activation = ({ code }: ActivationProps) => {
 
   return (
     <div className="flex min-h-screen flex-col items-center bg-background">
-      <Link to="/login" className="mb-4 mt-[30px] cursor-pointer p-4 hover:opacity-80 transition-opacity">
+      <Link
+        to="/login"
+        className="mb-4 mt-[30px] cursor-pointer p-4 hover:opacity-80 transition-opacity"
+      >
         <Logo src={"/Logo.svg"} width={128} height={54.931} />
       </Link>
       {activationError === null ? (
         <>
           <Card className="mx-auto w-full rounded border-solid border-background shadow-none sm:max-w-md sm:border-[#95ADC4]">
             <CardHeader className="text-center">
-              <CardTitle className="text-3xl leading-9">Activate account</CardTitle>
+              <CardTitle className="text-3xl leading-9">
+                Activate account
+              </CardTitle>
               <CardDescription className="mt-2 text-xl text-foreground">
                 Complete your account setup
               </CardDescription>
@@ -150,8 +157,8 @@ export const Activation = ({ code }: ActivationProps) => {
             <h1 className="text-xl font-semibold">Invalid Activation Link</h1>
 
             <p className="mt-2 text-sm">
-              The activation code is invalid. Please check the link or request a new activation
-              email from your administrator.
+              The activation code is invalid. Please check the link or request a
+              new activation email from your administrator.
             </p>
           </CardContent>
         </Card>
@@ -165,8 +172,8 @@ export const Activation = ({ code }: ActivationProps) => {
             <h1 className="text-xl font-semibold">Activation Link Expired</h1>
 
             <p className="mt-2 text-sm">
-              This activation link has expired and can&apos;t be used anymore. Please request a new
-              link to complete your account activation.
+              This activation link has expired and can&apos;t be used anymore.
+              Please request a new link to complete your account activation.
             </p>
 
             <div className="mt-4 flex flex-col items-center gap-2">
@@ -183,7 +190,11 @@ export const Activation = ({ code }: ActivationProps) => {
                   ) : (
                     <AlertTriangle className="h-4 w-4 text-destructive" />
                   )}
-                  <span className={resendSuccess ? "text-success" : "text-destructive"}>
+                  <span
+                    className={
+                      resendSuccess ? "text-success" : "text-destructive"
+                    }
+                  >
                     {resendMessage}
                   </span>
                 </div>
