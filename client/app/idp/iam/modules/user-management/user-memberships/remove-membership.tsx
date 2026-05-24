@@ -45,9 +45,7 @@ export const RemoveMembership = ({
 
             const res = await mutateAsync({
                 ...userData?.data,
-                memberships: updatedMemberships,
                 itemId: userId,
-                projectKey,
             });
 
             if (!res.isSuccess) {

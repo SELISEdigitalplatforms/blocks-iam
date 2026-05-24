@@ -184,7 +184,6 @@ export const useUserRoles = (option: { id: string; projectKey: string }) => {
       return mutateAsync({
         ...userData?.data,
         itemId: option.id,
-        projectKey: option.projectKey,
         roles: Array.from(rolesSlug),
       });
     },
@@ -198,7 +197,6 @@ export const useUserRoles = (option: { id: string; projectKey: string }) => {
         ...userData?.data,
         roles: restSlug,
         itemId: option.id,
-        projectKey: option.projectKey,
       });
     },
     [slugs, userData?.data, mutateAsync, option.projectKey, option.id],
@@ -241,7 +239,6 @@ export const useUserPermissions = (option: {
       return mutateAsync({
         ...userData?.data,
         itemId: option.userId,
-        projectKey: option.projectKey,
         permissions: Array.from(totalResources),
       });
     },
@@ -256,7 +253,6 @@ export const useUserPermissions = (option: {
       return mutateAsync({
         ...userData?.data,
         itemId: option.userId,
-        projectKey: option.projectKey,
         permissions: restResources,
       });
     },

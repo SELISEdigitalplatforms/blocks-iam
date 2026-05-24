@@ -7,6 +7,7 @@ import { useGetUserById, useUpdateUser } from "@blocks-idp/iam/hooks/use-user";
 import { showErrorToast, showSuccessToast } from "@/hooks/use-toast";
 import { isErrorWithErrors } from "@/lib/error";
 import { useProfileImageSrc } from "@/hooks/use-profile-image-src";
+import { getRuntimeEnv } from "@/lib/runtime-env";
 const emptyProfilePhoto = "/assets/images/empty-profile-photo.png";
 import { ModuleName } from "@/constants/modules.constants";
 type ProfileImageUploaderProps = { projectKey: string; id: string };
@@ -43,12 +44,13 @@ export const ProfileImageUploader = ({ projectKey, id }: ProfileImageUploaderPro
         itemId: profileImageId,
         projectKey,
       });
+      const logicBase = getRuntimeEnv("BLOCKS_LOGIC_BASE_URL") || "https://dev-logic.blocksdevelopers.com";
+      const profileImageUrl = `${logicBase}/api/Storage/GetFile?FileId=${userProfileFile.itemId}&ProjectKey=${projectKey}&ConfigurationName=`;
       const updatedUser = await updateUserMutate({
         ...data?.data,
         itemId: id,
-        projectKey,
         profileImageId: userProfileFile.itemId,
-        profileImageUrl: userProfileFile.url,
+        profileImageUrl,
       });
       if (!updatedUser.isSuccess) return showErrorToast({ errors: updatedUser.errors });
       showSuccessToast({ description: "Profile pic updated successfully" });
