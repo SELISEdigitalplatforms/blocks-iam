@@ -59,8 +59,6 @@ export interface IGetUserByIdPayload {
 export interface IGetUserByIdResponse {
   data: User;
   errors: unknown;
-  roles: IRole[];
-  permissions: IPermission[];
 }
 
 export interface ICreateUserPayload {
@@ -134,7 +132,6 @@ export interface IGeneratePATPayload {
 
 export interface IGetUserRolesPayload {
   userId: string;
-  projectKey: string;
 }
 export interface IGetUserRolesResponse {
   totalCount: number;
@@ -144,7 +141,6 @@ export interface IGetUserRolesResponse {
 
 export interface IGetUserPermissionsPayload {
   userId: string;
-  projectKey: string;
 }
 export interface IGetUserPermissionsResponse {
   errors: unknown | null;
