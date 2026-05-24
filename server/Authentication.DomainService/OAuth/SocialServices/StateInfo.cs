@@ -1,7 +1,14 @@
 namespace Authentication.DomainService.OAuth
 {
+    public enum SocialFlowType
+    {
+        Normal = 0,
+        Oidc = 1
+    }
+
     public record StateInfo
     {
+        public required string ClientId { get; set; }
         public required string Provider { get; set; }
         public string? Code { get; set; }
         public string? NextUrl { get; set; }
@@ -13,5 +20,6 @@ namespace Authentication.DomainService.OAuth
         public string? Secret { get; set; }
         public string? RedirectUri { get; set; }
         public Dictionary<string, string>? Extra { get; set; }
+        public SocialFlowType FlowType { get; set; } = SocialFlowType.Normal;
     }
 }

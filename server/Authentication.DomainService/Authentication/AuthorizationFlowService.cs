@@ -1,25 +1,26 @@
-using Microsoft.AspNetCore.Mvc;
-using Blocks.Genesis;
-using Authentication.DomainService.Oidc.Repositories;
-using Authentication.DomainService.Oidc.Validation;
-using Idp.DomainService.Oidc.Contracts;
-using Idp.DomainService.Oidc.Services;
+using Authentication.DomainService.Dtos;
+using Authentication.DomainService.Entities;
+using Authentication.DomainService.OAuth;
 using Authentication.DomainService.OAuth.RequestModel;
 using Authentication.DomainService.OAuth.ResponseModel;
-using Authentication.DomainService.OAuth;
 using Authentication.DomainService.OAuth.Services;
+using Authentication.DomainService.Oidc.Repositories;
+using Authentication.DomainService.Oidc.Validation;
+using Authentication.DomainService.Services;
 using Authentication.DomainService.Utilities;
-using Iam.DomainService.Users;
+using Blocks.Genesis;
 using Iam.DomainService.Entities;
-using Authentication.DomainService.Entities;
+using Iam.DomainService.Users;
+using Idp.DomainService.Oidc.Contracts;
+using Idp.DomainService.Oidc.Services;
+using Microsoft.AspNetCore.Http;
+using Microsoft.AspNetCore.Mvc;
+using Microsoft.Extensions.Logging;
+using System.Net.Http.Headers;
 using System.Security.Claims;
 using System.Security.Cryptography;
 using System.Text;
-using System.Net.Http.Headers;
-using System.Collections.Generic;
-using Microsoft.AspNetCore.Http;
-using Microsoft.Extensions.Logging;
-using Authentication.DomainService.Services;
+using System.Text.Json;
 using BCryptNet = BCrypt.Net.BCrypt;
 
 namespace Authentication.DomainService.Authentication
@@ -27,8 +28,6 @@ namespace Authentication.DomainService.Authentication
     public class AuthorizationFlowService : IAuthorizationFlowService
     {
         private const string IdpSessionCookieName = "idp_session_id";
-        private const string PendingSelectedUserCookieName = "idp_selected_user_id";
-        private const string PendingSelectedTenantCookieName = "idp_selected_tenant_id";
 
         private readonly IAuthorizationCodeRepository _authCodeRepo;
         private readonly IRefreshTokenRepository _refreshTokenRepo;
@@ -41,6 +40,7 @@ namespace Authentication.DomainService.Authentication
         private readonly IAuthorizationClaimsResolver _authorizationClaimsResolver;
         private readonly IAuthenticationRepository _authenticationRepository;
         private readonly ClientCredentialAuthorizationService _clientCredentialAuthorizationService;
+        private readonly RefreshTokenAuthenticationService _refreshTokenAuthenticationService;
         private readonly ITenants _tenants;
         private readonly ILogger<AuthorizationFlowService> _logger;
         private readonly IAuthenticationService _authenticationService;
@@ -58,6 +58,7 @@ namespace Authentication.DomainService.Authentication
             IAuthorizationClaimsResolver authorizationClaimsResolver,
             IAuthenticationRepository authenticationRepository,
             ClientCredentialAuthorizationService clientCredentialAuthorizationService,
+            RefreshTokenAuthenticationService refreshTokenAuthenticationService,
             ITenants tenants,
             IAuthenticationService authenticationService,
             ICacheClient cacheClient,
@@ -74,6 +75,7 @@ namespace Authentication.DomainService.Authentication
             _authorizationClaimsResolver = authorizationClaimsResolver;
             _authenticationRepository = authenticationRepository;
             _clientCredentialAuthorizationService = clientCredentialAuthorizationService;
+            _refreshTokenAuthenticationService = refreshTokenAuthenticationService;
             _tenants = tenants;
             _authenticationService = authenticationService;
             _cacheClient = cacheClient;
@@ -83,7 +85,7 @@ namespace Authentication.DomainService.Authentication
         public async Task<IActionResult> ExecuteOidcLoginAsync(OidcLoginRequest request, HttpRequest httpRequest, HttpResponse httpResponse)
         {
             // If provider is specified, initiate social authentication flow
-            if (!string.IsNullOrWhiteSpace(request.Provider))
+            if (!string.IsNullOrWhiteSpace(request.ProviderClientId))
             {
                 // Generate OIDC state to track this authentication flow through social provider
                 var oidcState = Guid.NewGuid().ToString("n");
@@ -92,11 +94,13 @@ namespace Authentication.DomainService.Authentication
                 // Key: oidc_context:{oidcState}
                 // Value: { clientId, state, redirectUri, ... } - the original OIDC request parameters
                 var contextKey = $"oidc_context:{oidcState}";
-                var contextValue = System.Text.Json.JsonSerializer.Serialize(new
+                var contextValue = JsonSerializer.Serialize(new
                 {
                     clientId = request.ClientId,
+                    providerClientId = request.ProviderClientId,
                     state = request.State,
                     redirectUri = request.RedirectUri,
+                    providerRedirectUri = request.ProviderRedirectUri,
                     scope = request.Scope,
                     nonce = request.Nonce,
                     codeChallenge = request.CodeChallenge,
@@ -107,7 +111,7 @@ namespace Authentication.DomainService.Authentication
                 await _cacheClient.AddStringValueAsync(contextKey, contextValue, 600); // 10 minute TTL
 
                 // Get social authorization URL
-                return await _authenticationService.GetOidcSocialAuthorizationUrlAsync(request.Provider, oidcState, request.RedirectUri ?? string.Empty);
+                return await _authenticationService.GetOidcSocialAuthorizationUrlAsync(request.ProviderClientId, oidcState, request.ProviderRedirectUri ?? string.Empty);
             }
 
             // Standard password-based OIDC login flow
@@ -128,6 +132,7 @@ namespace Authentication.DomainService.Authentication
 
             // Look up user and verify credentials (no tenant scoping on initial lookup, like embedded login)
             var user = await _authenticationRepository.GetUserByUsernameAsync(request.Username);
+            var tenant = _tenants.GetTenantByID(requestedTenantId);
             if (user == null || !user.Active || !user.IsVerified)
                 return new UnauthorizedObjectResult(new { error = "invalid_credentials" });
 
@@ -137,7 +142,7 @@ namespace Authentication.DomainService.Authentication
             bool passwordValid;
             try
             {
-                passwordValid = BCryptNet.Verify(request.Password, user.Password ?? string.Empty);
+                passwordValid = VerifyPassword(request.Password, user.Password ?? string.Empty, tenant?.TenantSalt);
             }
             catch
             {
@@ -147,53 +152,16 @@ namespace Authentication.DomainService.Authentication
             if (!passwordValid)
                 return new UnauthorizedObjectResult(new { error = "invalid_credentials" });
 
-            // Check if user has multiple tenant access - if so, return account selector
-            var userTenants = user.OrganizationIds ?? new List<string>();
-            if (!string.IsNullOrWhiteSpace(requestedTenantId))
-            {
-                // Tenant was specified in request, use it directly
-                userTenants = new List<string> { requestedTenantId };
-            }
-            else if (userTenants.Count > 1)
-            {
-                // Multiple tenants available - need account selection
-                // Create IDP session with all tenant accounts
-                var currentSessionId = httpRequest.Cookies[IdpSessionCookieName];
-                await EnsureIdpSessionAsync(httpRequest, httpResponse, currentSessionId, user.ItemId, userTenants);
-
-                // Return account selection response
-                var accounts = new List<OidcAccountInfo>();
-                foreach (var tenantId in userTenants)
-                {
-                    accounts.Add(new OidcAccountInfo
-                    {
-                        UserId = user.ItemId,
-                        TenantId = tenantId,
-                        Email = user.Email ?? request.Username,
-                        DisplayName = user.FirstName,
-                        TenantName = tenantId // Could lookup tenant name if needed
-                    });
-                }
-
-                return new OkObjectResult(new OidcLoginResponse
-                {
-                    Status = "account_selection_required",
-                    Accounts = accounts
-                });
-            }
-
-            var resolvedTenantId = userTenants.FirstOrDefault() ?? string.Empty;
-
             // Single tenant - proceed with auth code flow
             // Establish IDP session (sets idp_session_id cookie)
-            var currentSessionId2 = httpRequest.Cookies[IdpSessionCookieName];
-            await EnsureIdpSessionAsync(httpRequest, httpResponse, currentSessionId2, user.ItemId, resolvedTenantId);
+            var currentSessionId = httpRequest.Cookies[IdpSessionCookieName];
+            await EnsureIdpSessionAsync(httpRequest, httpResponse, currentSessionId, user.ItemId, requestedTenantId);
 
             // Create claims principal with authenticated user (don't rely on cookie in same request)
             var claims = new[]
             {
                 new Claim("sub", user.ItemId),
-                new Claim("tenant_id", resolvedTenantId)
+                new Claim("tenant_id", requestedTenantId ?? string.Empty)
             };
             var identity = new ClaimsIdentity(claims, "Bearer");
             var principal = new ClaimsPrincipal(identity);
@@ -209,11 +177,41 @@ namespace Authentication.DomainService.Authentication
                 request.CodeChallenge ?? string.Empty,
                 request.CodeChallengeMethod ?? "S256",
                 null,
-                resolvedTenantId,
+                requestedTenantId ?? string.Empty,
                 principal,
                 httpRequest,
                 httpResponse,
                 false);
+        }
+
+        public bool VerifyPassword(string? password, string? passwordHash, string? optionalSalt = null)
+        {
+            if (string.IsNullOrWhiteSpace(password))
+            {
+                return false;
+            }
+
+            if (string.IsNullOrWhiteSpace(passwordHash))
+            {
+                return false;
+            }
+
+            try
+            {
+                return BCryptNet.Verify(BuildPasswordMaterial(password, optionalSalt), passwordHash);
+            }
+            catch (BCrypt.Net.SaltParseException ex)
+            {
+                _logger.LogWarning(ex, "Password hash is not a valid BCrypt hash format.");
+                return false;
+            }
+        }
+
+        private static string BuildPasswordMaterial(string password, string? optionalSalt)
+        {
+            return string.IsNullOrWhiteSpace(optionalSalt)
+                ? password
+                : $"{password}::{optionalSalt}";
         }
 
         public async Task<IActionResult> AuthorizeAsync(
@@ -294,58 +292,8 @@ namespace Authentication.DomainService.Authentication
                         }
 
                         var filteredAccounts = sessionAccounts.ToList();
-                        var pendingSelectedUserId = request.Cookies[PendingSelectedUserCookieName];
-                        var pendingSelectedTenantId = request.Cookies[PendingSelectedTenantCookieName];
 
-                        if (!string.IsNullOrWhiteSpace(pendingSelectedUserId))
-                        {
-                            var selectedAccount = filteredAccounts.FirstOrDefault(a =>
-                                string.Equals(a.UserId, pendingSelectedUserId, StringComparison.OrdinalIgnoreCase)
-                                && (string.IsNullOrWhiteSpace(pendingSelectedTenantId)
-                                    || string.Equals(a.TenantId, pendingSelectedTenantId, StringComparison.OrdinalIgnoreCase)));
-
-                            if (selectedAccount == null)
-                            {
-                                ClearPendingSelectedAccountCookies(response);
-
-                                if (returnRedirectResponse)
-                                {
-                                    var errorParams = new Dictionary<string, string>
-                                    {
-                                        { "error", "invalid_request" },
-                                        { "error_description", "Selected account is not available in this session" },
-                                        { "state", state }
-                                    };
-
-                                    return new RedirectResult(BuildRedirectUri(redirect_uri, errorParams));
-                                }
-
-                                return new BadRequestObjectResult(new { error = "invalid_request", error_description = "Selected account is not available in this session" });
-                            }
-
-                            resolvedUserId = selectedAccount.UserId;
-                            resolvedTenantId = selectedAccount.TenantId;
-                            ClearPendingSelectedAccountCookies(response);
-                        }
-                        else if (filteredAccounts.Count > 1 || string.Equals(prompt, "select_account", StringComparison.OrdinalIgnoreCase))
-                        {
-                            await _sessionRepo.UpdateActivityAsync(effectiveSessionId);
-                            var chooserUrl = BuildSelectAccountUrl(
-                                client_id,
-                                response_type,
-                                redirect_uri,
-                                scope,
-                                state,
-                                nonce,
-                                code_challenge,
-                                code_challenge_method,
-                                prompt,
-                                tenantHint,
-                                filteredAccounts);
-
-                            return new RedirectResult(chooserUrl);
-                        }
-                        else if (filteredAccounts.Count == 1)
+                        if (filteredAccounts.Count == 1)
                         {
                             resolvedUserId = filteredAccounts[0].UserId;
                             resolvedTenantId = filteredAccounts[0].TenantId;
@@ -488,106 +436,6 @@ namespace Authentication.DomainService.Authentication
             }
         }
 
-        public async Task<IActionResult> SelectAccountAsync(string userId, string? tenantId, HttpRequest request, HttpResponse response)
-        {
-            if (string.IsNullOrWhiteSpace(userId))
-            {
-                return new BadRequestObjectResult(new { error = "invalid_request", error_description = "user_id is required" });
-            }
-
-            var effectiveSessionId = request.Cookies[IdpSessionCookieName];
-            if (string.IsNullOrWhiteSpace(effectiveSessionId))
-            {
-                return new ObjectResult(new { error = "session_not_found" }) { StatusCode = 401 };
-            }
-
-            var session = await _sessionRepo.GetBySessionIdAsync(effectiveSessionId);
-            if (session == null || session.RevokedAt.HasValue || session.IsExpired())
-            {
-                return new ObjectResult(new { error = "session_not_found" }) { StatusCode = 401 };
-            }
-
-            var selectedAccount = session.Accounts.FirstOrDefault(a =>
-                string.Equals(a.UserId, userId, StringComparison.OrdinalIgnoreCase)
-                && (string.IsNullOrWhiteSpace(tenantId)
-                    || string.Equals(a.TenantId, tenantId, StringComparison.OrdinalIgnoreCase)));
-
-            if (selectedAccount == null)
-            {
-                return new BadRequestObjectResult(new { error = "invalid_request", error_description = "Selected account is not available in this session" });
-            }
-
-            var isLocal = DomainResolver.IsLocalhost();
-            var cookieOptions = new CookieOptions
-            {
-                HttpOnly = true,
-                Secure = true,
-                SameSite = isLocal ? SameSiteMode.None : SameSiteMode.Strict,
-                Path = "/",
-                Expires = DateTimeOffset.UtcNow.AddMinutes(5)
-            };
-
-            response.Cookies.Append(PendingSelectedUserCookieName, selectedAccount.UserId, cookieOptions);
-            response.Cookies.Append(PendingSelectedTenantCookieName, selectedAccount.TenantId, cookieOptions);
-
-            return new OkObjectResult(new { success = true });
-        }
-
-        public async Task<IActionResult> ContinueOidcLoginAfterAccountSelectionAsync(string userId, string tenantId, string clientId, string redirectUri, string? scope, string? state, string? nonce, string? codeChallenge, string? codeChallengeMethod, HttpRequest request, HttpResponse response)
-        {
-            if (string.IsNullOrWhiteSpace(userId) || string.IsNullOrWhiteSpace(tenantId) || string.IsNullOrWhiteSpace(clientId))
-            {
-                return new BadRequestObjectResult(new { error = "invalid_request", error_description = "user_id, tenant_id, and client_id are required" });
-            }
-
-            var effectiveSessionId = request.Cookies[IdpSessionCookieName];
-            if (string.IsNullOrWhiteSpace(effectiveSessionId))
-            {
-                return new ObjectResult(new { error = "session_not_found" }) { StatusCode = 401 };
-            }
-
-            var session = await _sessionRepo.GetBySessionIdAsync(effectiveSessionId);
-            if (session == null || session.RevokedAt.HasValue || session.IsExpired())
-            {
-                return new ObjectResult(new { error = "session_not_found" }) { StatusCode = 401 };
-            }
-
-            // Verify account exists in session
-            var selectedAccount = session.Accounts.FirstOrDefault(a =>
-                string.Equals(a.UserId, userId, StringComparison.OrdinalIgnoreCase)
-                && string.Equals(a.TenantId, tenantId, StringComparison.OrdinalIgnoreCase));
-
-            if (selectedAccount == null)
-            {
-                return new BadRequestObjectResult(new { error = "invalid_request", error_description = "Selected account is not available in this session" });
-            }
-
-            // Create claims principal from selected account
-            var claims = new[]
-            {
-                new Claim("sub", userId),
-                new Claim("tenant_id", tenantId)
-            };
-            var identity = new ClaimsIdentity(claims, "Bearer");
-            var principal = new ClaimsPrincipal(identity);
-
-            // Issue authorization code
-            return await AuthorizeAsync(
-                clientId,
-                "code",
-                redirectUri,
-                scope ?? "openid profile email offline_access",
-                state ?? string.Empty,
-                nonce ?? string.Empty,
-                codeChallenge ?? string.Empty,
-                codeChallengeMethod ?? "S256",
-                null,
-                tenantId,
-                principal,
-                request,
-                response,
-                false);
-        }
 
         public async Task<IActionResult> TokenAsync(string grantType, HttpRequest request)
         {
@@ -734,7 +582,7 @@ namespace Authentication.DomainService.Authentication
                     cookieDomain,
                     exchangeResult.AccessExpiry,
                     exchangeResult.RefreshExpiry);
-                
+
                 if (!cookiesSet)
                 {
                     _logger.LogWarning($"Failed to set authentication cookies for client {client_id}, domain {tokenDomain}. Falling back to token response body.");
@@ -750,7 +598,7 @@ namespace Authentication.DomainService.Authentication
                         cookie_delivery_failed = true
                     });
                 }
-                
+
                 return new OkObjectResult(new
                 {
                     id_token = exchangeResult.IdToken,
@@ -777,7 +625,7 @@ namespace Authentication.DomainService.Authentication
                 scope = exchangeResult.Scope,
                 cookie_set = false
             });
-            
+
         }
 
         // Grouped issuance block: validate code + PKCE + client, then build access/id/refresh token set.
@@ -898,7 +746,7 @@ namespace Authentication.DomainService.Authentication
             var issuer = DomainResolver.GetIssuer(tenant);
             var idToken = await _tokenService.GenerateIdTokenAsync(claims, issuer, accessTokenLifetimeSeconds);
             var accessToken = await _tokenService.GenerateAccessTokenAsync(claims, issuer, accessTokenLifetimeSeconds);
-            var refreshTokenModel = await _tokenService.GenerateRefreshTokenAsync(claims, issuer);
+            var refreshTokenModel = await _tokenService.GenerateRefreshTokenAsync(claims, issuer, false);
 
             refreshTokenModel.UserId = authCode.UserId;
             refreshTokenModel.ClientId = client_id;
@@ -910,7 +758,7 @@ namespace Authentication.DomainService.Authentication
             refreshTokenModel.UserAgent = request.Headers["User-Agent"].ToString();
             await _refreshTokenRepo.CreateAsync(refreshTokenModel);
 
-            _logger.LogInformation($"Tokens issued for user {authCode.UserId}, client {client_id}, family {refreshTokenModel.FamilyId}");
+            _logger.LogInformation($"Tokens issued for user {authCode.UserId}, client {client_id}");
 
             var (domain, cookieDomain, isResolved) = DomainResolver.ResolveDomain(tenant, request);
             var accessExpiry = DateTime.UtcNow.AddSeconds(accessTokenLifetimeSeconds);
@@ -948,7 +796,8 @@ namespace Authentication.DomainService.Authentication
 
             var isLocal = DomainResolver.IsLocalhost();
             cookieDomain = isLocal ? null : (string.IsNullOrWhiteSpace(cookieDomain) ? null : cookieDomain);
-            var accessOptions = new CookieOptions {
+            var accessOptions = new CookieOptions
+            {
                 Domain = cookieDomain,
                 HttpOnly = true,
                 Secure = true,
@@ -956,7 +805,8 @@ namespace Authentication.DomainService.Authentication
                 Path = "/",
                 Expires = accessExpiry
             };
-            var refreshOptions = new CookieOptions {
+            var refreshOptions = new CookieOptions
+            {
                 Domain = cookieDomain,
                 HttpOnly = true,
                 Secure = true,
@@ -966,7 +816,7 @@ namespace Authentication.DomainService.Authentication
             };
 
             response.Cookies.Append($"{tokenDomain}", accessToken, accessOptions);
-            
+
             // Only append refresh token if provided
             if (!string.IsNullOrWhiteSpace(refreshToken))
             {
@@ -1030,21 +880,20 @@ namespace Authentication.DomainService.Authentication
         private async Task<IActionResult> RotateRefreshToken(HttpRequest request)
         {
             var client_id = request.Form["client_id"].ToString();
-            string refresh_token = "";
-
             if (string.IsNullOrEmpty(client_id))
             {
                 return new BadRequestObjectResult(new { error = "invalid_request", error_description = "Missing client_id" });
             }
 
             var client = await _authenticationRepository.GetOidcClientRegistrationAsync(client_id);
-
             if (client is null)
             {
                 return new BadRequestObjectResult(new { error = "invalid_client", error_description = "client not found" });
             }
+
             var bc = BlocksContext.GetContext();
             var tenant = _tenants.GetTenantByID(bc?.TenantId ?? "default");
+            string refresh_token = "";
 
             if (client.UseTokensCookie)
             {
@@ -1073,159 +922,108 @@ namespace Authentication.DomainService.Authentication
                 return new BadRequestObjectResult(new { error = "invalid_request", error_description = "refresh token not found" });
             }
 
-            var storedToken = await _refreshTokenRepo.GetByTokenIdAsync(refresh_token);
-            if (storedToken == null)
+            // Delegate to unified refresh token authentication service (same as ExecuteRefreshAsync)
+            var refreshRequest = new RefreshRequest
             {
-                _logger.LogWarning($"Refresh token not found: {refresh_token}");
-                return new BadRequestObjectResult(new { error = "invalid_grant", error_description = "Invalid refresh token" });
-            }
-
-            if (storedToken.IsRevoked)
-            {
-                _logger.LogCritical($"REUSE ATTACK DETECTED: Revoked token used again. Original revocation reason: {storedToken.RevokeReason}. Revoking family {storedToken.FamilyId}.");
-                await _refreshTokenRepo.RevokeByFamilyIdAsync(storedToken.FamilyId ?? string.Empty, "reuse_detected");
-                await LogAuditEvent("token_reuse_detected", storedToken.UserId, client_id, storedToken.TenantId ?? tenant?.ItemId ?? "default", "CRITICAL", request);
-                return new BadRequestObjectResult(new { error = "invalid_grant", error_description = "Refresh token has been revoked" });
-            }
-
-            if (storedToken.IsExpired())
-            {
-                _logger.LogWarning($"Refresh token expired: {refresh_token}");
-                return new BadRequestObjectResult(new { error = "invalid_grant", error_description = "Refresh token has expired" });
-            }
-
-            if (!await HasOidcClientConfigurationAsync(client_id))
-            {
-                _logger.LogWarning($"OIDC client config missing for token rotation: {client_id}");
-                return new BadRequestObjectResult(new { error = "invalid_client", error_description = "Client configuration not found" });
-            }
-
-            if (!string.IsNullOrWhiteSpace(storedToken.ClientId) && !string.Equals(storedToken.ClientId, client_id, StringComparison.Ordinal))
-            {
-                _logger.LogWarning($"Refresh token client mismatch. Presented client: {client_id}, token client: {storedToken.ClientId}");
-                return new BadRequestObjectResult(new { error = "invalid_grant", error_description = "Refresh token does not belong to this client" });
-            }
-
-            var user = await _userRepository.GetUserByIdAsync(storedToken.UserId);
-            if (user == null)
-            {
-                return new BadRequestObjectResult(new { error = "invalid_grant", error_description = "User not found" });
-            }
-
-            var allowedScopes = await ResolveAllowedScopesAsync(client);
-            var allowedServiceAccessResources = await ResolveAllowedServiceAccessResourcesAsync(client.ClientId);
-            var resolvedClaims = await _authorizationClaimsResolver.ResolveAsync(
-                user,
-                storedToken.OrgId,
-                storedToken.Scope,
-                allowedServiceAccessResources,
-                requireExplicitScope: true);
-
-            var tenantAudience = DomainResolver.GetAudience(tenant);
-
-            var claims = new OidcClaims
-            {
-                Sub = storedToken.UserId,
-                TenantId = storedToken.TenantId,
-                OrgId = storedToken.OrgId,
-                Iat = DateTimeOffset.UtcNow.ToUnixTimeSeconds(),
-                ClientId = client_id,
-                Audience = tenantAudience,
-                Scope = storedToken.Scope,
-                Roles = resolvedClaims.Roles,
-                Resources = resolvedClaims.Resources,
-                Permissions = resolvedClaims.Permissions
+                RefreshToken = refresh_token,
+                ClientId = client_id
             };
 
-            var authConfiguration = await _authenticationRepository.GetAuthenticationConfigurationAsync();
-            var accessTokenLifetimeSeconds = Math.Max((authConfiguration?.AccessTokenValidForNumberMinutes ?? AuthenticationConfiguration.DefaultAccessTokenValidForNumberMinutes) * 60, 60);
-            var issuer = DomainResolver.GetIssuer(tenant);
-            var accessToken = await _tokenService.GenerateAccessTokenAsync(claims, issuer, accessTokenLifetimeSeconds);
-            var newRefreshTokenModel = await _tokenService.GenerateRefreshTokenAsync(claims, issuer);
-
-            newRefreshTokenModel.FamilyId = storedToken.FamilyId;
-            newRefreshTokenModel.ParentTokenId = storedToken.TokenId;
-            newRefreshTokenModel.UserId = storedToken.UserId;
-            newRefreshTokenModel.ClientId = client_id;
-            newRefreshTokenModel.TenantId = storedToken.TenantId ?? string.Empty;
-            newRefreshTokenModel.OrgId = storedToken.OrgId;
-            newRefreshTokenModel.Audience = tenantAudience;
-            newRefreshTokenModel.Scope = storedToken.Scope;
-            newRefreshTokenModel.SessionId = storedToken.SessionId;
-            newRefreshTokenModel.IpAddress = GetClientIpAddress(request);
-            newRefreshTokenModel.UserAgent = request.Headers["User-Agent"].ToString();
-
-            await _refreshTokenRepo.CreateAsync(newRefreshTokenModel);
-
-            storedToken.ChildTokenIds.Add(newRefreshTokenModel.TokenId);
-            await _refreshTokenRepo.RevokeByTokenIdAsync(storedToken.TokenId, "rotated");
-
-            _logger.LogInformation($"Token rotated for user {storedToken.UserId}, client {client_id}, family {storedToken.FamilyId}");
-            await LogAuditEvent("token_refreshed", storedToken.UserId, client_id, storedToken.TenantId ?? string.Empty, "INFO", request);
-            var effectiveTenantId = storedToken.TenantId ?? tenant?.ItemId ?? "default";
-
-            if (client.UseTokensCookie)
+            var configuration = await _authenticationRepository.GetAuthenticationConfigurationAsync();
+            if (configuration == null)
             {
-                var (resolvedDomain, resolvedCookieDomain, resolvedByDomain) = DomainResolver.ResolveDomain(tenant, request);
-                var adjustedCookieDomain = DomainResolver.IsLocalhost() ? null : resolvedCookieDomain;
-                var absoluteRefreshTokenLifetimeMinutes = Math.Max(authConfiguration?.AbsoluteRefreshTokenValidForNumberMinutes ?? AuthenticationConfiguration.DefaultRememberMeRefreshTokenValidForNumberMinutes, 1);
-                var accessExpiry = DateTime.UtcNow.AddSeconds(accessTokenLifetimeSeconds);
-                var refreshExpiry = newRefreshTokenModel.AbsoluteExpiry == default
-                    ? DateTime.UtcNow.AddMinutes(absoluteRefreshTokenLifetimeMinutes)
-                    : newRefreshTokenModel.AbsoluteExpiry;
+                return new BadRequestObjectResult(new { error = "auth_config_missing" });
+            }
 
-                if (resolvedByDomain && !string.IsNullOrWhiteSpace(resolvedDomain))
+            var cachedRefreshToken = await _cacheClient.GetStringValueAsync(refresh_token);
+            if (string.IsNullOrWhiteSpace(cachedRefreshToken))
+            {
+                return new BadRequestObjectResult(new { error = "invalid_grant", error_description = "Refresh token is invalid or expired" });
+            }
+
+            var tokenCache = JsonSerializer.Deserialize<RefreshTokenCache>(cachedRefreshToken);
+            if (tokenCache == null || string.IsNullOrWhiteSpace(tokenCache.UserId))
+            {
+                return new BadRequestObjectResult(new { error = "invalid_grant", error_description = "Refresh token is invalid or expired" });
+            }
+
+            if (string.IsNullOrWhiteSpace(tokenCache.ClientId) || !await HasOidcClientConfigurationAsync(tokenCache.ClientId))
+            {
+                return new UnauthorizedObjectResult(new { error = "invalid_client", error_description = "Client configuration not found" });
+            }
+
+            // Defense-in-depth: Validate sent client_id matches the cached/bound client_id
+            if (!string.IsNullOrWhiteSpace(refreshRequest.ClientId) &&
+                !string.Equals(refreshRequest.ClientId, tokenCache.ClientId, StringComparison.OrdinalIgnoreCase))
+            {
+                return new UnauthorizedObjectResult(new { error = "invalid_client", error_description = "Client mismatch: sent client_id does not match token binding" });
+            }
+
+            var currentTenantId = BlocksContext.GetContext()?.TenantId;
+            if (!string.Equals(tokenCache.TenantId, currentTenantId, StringComparison.OrdinalIgnoreCase))
+            {
+                return new BadRequestObjectResult(new { error = "invalid_grant", error_description = "Refresh token tenant mismatch" });
+            }
+
+            var user = await _authenticationRepository.GetUserByIdAsync(tokenCache.UserId);
+            if (user == null)
+            {
+                return new UnauthorizedObjectResult(new { error = "invalid_user" });
+            }
+
+            var tokenRequest = new TokenRequest
+            {
+                GrantType = GrantTypes.RefreshToken,
+                OrganizationId = string.IsNullOrWhiteSpace(tokenCache.OrganizationId) ? "default" : tokenCache.OrganizationId,
+                ClientId = tokenCache.ClientId,
+                RefreshToken = refresh_token,
+                Request = request
+            };
+
+            var response = await _refreshTokenAuthenticationService.AuthenticateAsync(tokenRequest, configuration, user);
+
+            if (!string.IsNullOrWhiteSpace(response.Error))
+            {
+                var statusCode = response.StatusCode > 0 ? response.StatusCode : StatusCodes.Status400BadRequest;
+                return new ObjectResult(new
                 {
-                    AppendAccessAndRefreshTokenCookies(
-                        request.HttpContext.Response,
-                        resolvedDomain,
-                        accessToken,
-                        newRefreshTokenModel.TokenId,
-                        adjustedCookieDomain,
-                        accessExpiry,
-                        refreshExpiry);
+                    error = response.Error,
+                    error_description = response.ErrorDescription
+                })
+                {
+                    StatusCode = statusCode
+                };
+            }
 
+            var useTokensCookie = client.UseTokensCookie;
+            if (useTokensCookie)
+            {
+                var tenantId = BlocksContext.GetContext()?.TenantId ?? "default";
+                var resolvedTenant = _tenants.GetTenantByID(tenantId);
+                var (domain, _, _) = DomainResolver.ResolveDomain(resolvedTenant, request);
+                var cookiesSet = AppendCookies(response, request.HttpContext.Response, domain);
+                if (cookiesSet)
+                {
                     return new OkObjectResult(new
                     {
-                        token_type = "Bearer",
-                        expires_in = accessTokenLifetimeSeconds,
-                        scope = "openid profile email",
+                        token_type = response.TokenType,
+                        expires_in = response.ExpiresIn,
+                        scope = response.Scope,
+                        cookie_set = true
                     });
                 }
             }
 
             return new OkObjectResult(new
             {
-                access_token = accessToken,
-                refresh_token = newRefreshTokenModel.TokenId,
-                token_type = "Bearer",
-                expires_in = accessTokenLifetimeSeconds,
-                scope = "openid profile email",
+                access_token = response.AccessToken,
+                refresh_token = response.RefreshToken,
+                token_type = response.TokenType,
+                expires_in = response.ExpiresIn,
+                scope = response.Scope,
+                id_token = response.IdToken,
+                cookie_set = false
             });
-        }
-
-        private async Task LogAuditEvent(string eventType, string userId, string clientId, string tenantId, string severity, HttpRequest request)
-        {
-            try
-            {
-                var auditLog = new AuditLogModel
-                {
-                    EventType = eventType,
-                    UserId = userId,
-                    ClientId = clientId,
-                    TenantId = tenantId,
-                    IpAddress = GetClientIpAddress(request),
-                    UserAgent = request.Headers["User-Agent"].ToString(),
-                    Severity = severity,
-                    Status = "success",
-                    Timestamp = DateTime.UtcNow
-                };
-                await _auditLogRepo.CreateAsync(auditLog);
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, $"Error logging audit event: {eventType}");
-            }
         }
 
         private static string GenerateRandomCode(int length)
@@ -1343,57 +1141,6 @@ namespace Authentication.DomainService.Authentication
             }
         }
 
-        private static string BuildSelectAccountUrl(
-            string clientId,
-            string responseType,
-            string redirectUri,
-            string scope,
-            string state,
-            string nonce,
-            string codeChallenge,
-            string codeChallengeMethod,
-            string? prompt,
-            string? tenantId,
-            List<IdpSessionAccount> accounts)
-        {
-            var chooserUrl = new StringBuilder("/oidc/select-account?");
-            chooserUrl.Append($"client_id={Uri.EscapeDataString(clientId ?? string.Empty)}");
-            chooserUrl.Append($"&response_type={Uri.EscapeDataString(responseType ?? string.Empty)}");
-            chooserUrl.Append($"&redirect_uri={Uri.EscapeDataString(redirectUri ?? string.Empty)}");
-            chooserUrl.Append($"&scope={Uri.EscapeDataString(scope ?? string.Empty)}");
-            chooserUrl.Append($"&state={Uri.EscapeDataString(state ?? string.Empty)}");
-            chooserUrl.Append($"&nonce={Uri.EscapeDataString(nonce ?? string.Empty)}");
-            chooserUrl.Append($"&code_challenge={Uri.EscapeDataString(codeChallenge ?? string.Empty)}");
-            chooserUrl.Append($"&code_challenge_method={Uri.EscapeDataString(codeChallengeMethod ?? string.Empty)}");
-
-            if (!string.IsNullOrWhiteSpace(prompt))
-            {
-                chooserUrl.Append($"&prompt={Uri.EscapeDataString(prompt)}");
-            }
-
-            if (!string.IsNullOrWhiteSpace(tenantId))
-            {
-                chooserUrl.Append($"&tenant_id={Uri.EscapeDataString(tenantId)}");
-            }
-
-            foreach (var account in accounts)
-            {
-                var payload = $"{account.UserId}|{account.TenantId}|{account.DisplayName ?? string.Empty}";
-                var encoded = Convert.ToBase64String(Encoding.UTF8.GetBytes(payload))
-                    .TrimEnd('=')
-                    .Replace('+', '-')
-                    .Replace('/', '_');
-                chooserUrl.Append($"&acct={Uri.EscapeDataString(encoded)}");
-            }
-
-            return chooserUrl.ToString();
-        }
-
-        private static void ClearPendingSelectedAccountCookies(HttpResponse response)
-        {
-            response.Cookies.Delete(PendingSelectedUserCookieName);
-            response.Cookies.Delete(PendingSelectedTenantCookieName);
-        }
 
         private async Task EnsureIdpSessionAsync(HttpRequest request, HttpResponse response, string? currentSessionId, string userId, string tenantId)
         {
@@ -1451,69 +1198,6 @@ namespace Authentication.DomainService.Authentication
             SetIdpSessionCookie(response, tenantId, session.SessionId, session.AbsoluteExpiry);
         }
 
-        private async Task EnsureIdpSessionAsync(HttpRequest request, HttpResponse response, string? currentSessionId, string userId, List<string> tenantIds)
-        {
-            // Overload for multiple tenants (account selection case)
-            var session = string.IsNullOrWhiteSpace(currentSessionId)
-                ? null
-                : await _sessionRepo.GetBySessionIdAsync(currentSessionId);
-
-            var primaryTenantId = tenantIds.FirstOrDefault() ?? string.Empty;
-
-            if (session == null || session.RevokedAt.HasValue || session.IsExpired())
-            {
-                var accounts = new List<IdpSessionAccount>();
-                foreach (var tenantId in tenantIds)
-                {
-                    accounts.Add(new IdpSessionAccount
-                    {
-                        UserId = userId,
-                        TenantId = tenantId,
-                        DisplayName = userId,
-                        LoginAt = DateTime.UtcNow
-                    });
-                }
-
-                var newSession = new IdpSessionModel
-                {
-                    SessionId = Guid.NewGuid().ToString("n"),
-                    TenantId = primaryTenantId,
-                    Accounts = accounts,
-                    IpAddress = GetClientIpAddress(request),
-                    CreatedAt = DateTime.UtcNow,
-                    LastActivityAt = DateTime.UtcNow,
-                    IdleExpiry = DateTime.UtcNow.Add(GetIdpSessionIdleTimeout()),
-                    AbsoluteExpiry = DateTime.UtcNow.Add(GetIdpSessionAbsoluteTimeout())
-                };
-
-                await _sessionRepo.CreateAsync(newSession);
-                SetIdpSessionCookie(response, primaryTenantId, newSession.SessionId, newSession.AbsoluteExpiry);
-                return;
-            }
-
-            // Add missing tenant accounts to existing session
-            foreach (var tenantId in tenantIds)
-            {
-                var accountExists = session.Accounts.Any(a =>
-                    string.Equals(a.UserId, userId, StringComparison.OrdinalIgnoreCase)
-                    && string.Equals(a.TenantId, tenantId, StringComparison.OrdinalIgnoreCase));
-
-                if (!accountExists)
-                {
-                    await _sessionRepo.AddAccountAsync(session.SessionId, new IdpSessionAccount
-                    {
-                        UserId = userId,
-                        TenantId = tenantId,
-                        DisplayName = userId,
-                        LoginAt = DateTime.UtcNow
-                    });
-                }
-            }
-
-            await _sessionRepo.UpdateActivityAsync(session.SessionId);
-            SetIdpSessionCookie(response, primaryTenantId, session.SessionId, session.AbsoluteExpiry);
-        }
-
         private void SetIdpSessionCookie(HttpResponse response, string tenantId, string sessionId, DateTime absoluteExpiry)
         {
             var tenant = _tenants.GetTenantByID(tenantId);
@@ -1556,12 +1240,12 @@ namespace Authentication.DomainService.Authentication
         private static string? ResolveEffectiveOrganizationId(User user)
         {
             if (!string.IsNullOrWhiteSpace(user.LastUsedOrganizationId)
-                && HasOrganizationAccess(user, user.LastUsedOrganizationId))
+                && user.OrganizationIds.Contains(user.LastUsedOrganizationId))
             {
                 return user.LastUsedOrganizationId;
             }
 
-            if (HasOrganizationAccess(user, "default"))
+            if (user.OrganizationIds.Contains("default"))
             {
                 return "default";
             }
@@ -1569,18 +1253,6 @@ namespace Authentication.DomainService.Authentication
             return user.OrganizationIds.FirstOrDefault()
                 ?? user.Roles.Keys.FirstOrDefault()
                 ?? user.Permissions.Keys.FirstOrDefault();
-        }
-
-        private static bool HasOrganizationAccess(User user, string organizationId)
-        {
-            if (string.IsNullOrWhiteSpace(organizationId))
-            {
-                return false;
-            }
-
-            return user.OrganizationIds.Contains(organizationId)
-                || user.Roles.ContainsKey(organizationId)
-                || user.Permissions.ContainsKey(organizationId);
         }
 
         private async Task PersistLastUsedOrganizationAsync(User user, string? organizationId)
@@ -1601,8 +1273,6 @@ namespace Authentication.DomainService.Authentication
                 _logger.LogWarning(ex, "Failed to persist last used organization for user {UserId}", user.ItemId);
             }
         }
-
-
 
         private static string GetClientIpAddress(HttpRequest request)
         {
@@ -1631,10 +1301,9 @@ namespace Authentication.DomainService.Authentication
                 var userTokens = await _refreshTokenRepo.GetByUserAsync(userId, tenantId);
                 var clientTokens = userTokens.Where(t => t.ClientId == clientId && !t.IsRevoked).ToList();
 
-                var familyIds = clientTokens.Select(t => t.FamilyId).Distinct();
-                foreach (var familyId in familyIds)
+                foreach (var token in clientTokens)
                 {
-                    await _refreshTokenRepo.RevokeByFamilyIdAsync(familyId, "authorization_code_reuse_detected");
+                    await _refreshTokenRepo.RevokeByTokenIdAsync(token.TokenId, "authorization_code_reuse_detected");
                 }
 
                 var auditLog = new AuditLogModel
@@ -1655,6 +1324,29 @@ namespace Authentication.DomainService.Authentication
             {
                 _logger.LogError(ex, $"Error revoking user tokens for {userId}");
             }
+        }
+
+        private static bool AppendCookies(TokenResponse response, HttpResponse httpResponse, string domain)
+        {
+            if (!string.IsNullOrWhiteSpace(response.Error))
+                return false;
+            if (string.IsNullOrWhiteSpace(response.AccessToken))
+                return false;
+            if (string.IsNullOrWhiteSpace(domain))
+                return false;
+            var accessCookieOptions = DomainResolver.CreateCookieOptions(response.CookieDomain, response.ExpiresUtc);
+            var refreshCookieOptions = DomainResolver.CreateCookieOptions(response.CookieDomain, response.RefreshExpiresUtc);
+            DeleteCookie(httpResponse, domain, accessCookieOptions, refreshCookieOptions);
+            httpResponse.Cookies.Append(domain, response.AccessToken, accessCookieOptions);
+            if (!string.IsNullOrWhiteSpace(response.RefreshToken))
+                httpResponse.Cookies.Append($"{IdpConstants.RefreshTokenCookieName}_{domain}", response.RefreshToken, refreshCookieOptions);
+            return true;
+        }
+
+        private static void DeleteCookie(HttpResponse httpResponse, string domain, CookieOptions accessCookieOptions, CookieOptions refreshCookieOptions)
+        {
+            httpResponse.Cookies.Delete(domain, accessCookieOptions);
+            httpResponse.Cookies.Delete($"{IdpConstants.RefreshTokenCookieName}_{domain}", refreshCookieOptions);
         }
     }
 }

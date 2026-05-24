@@ -14,7 +14,9 @@ import {
 import { AUTH_ENDPOINTS } from "../constants/endpoint.constant";
 
 export class AuthService {
-  signinByEmail(payload: ISigninByEmailPayload): Promise<ISigninByEmailResponse> {
+  signinByEmail(
+    payload: ISigninByEmailPayload,
+  ): Promise<ISigninByEmailResponse> {
     if (payload.clientId) {
       sessionStorage.setItem("blocks-auth-client-id", payload.clientId);
     } else {
@@ -46,7 +48,14 @@ export class AuthService {
     });
   }
 
-  verifyOidc(payload: { code: string; clientId?: string; redirectUri?: string; codeVerifier?: string; tenantId?: string; state?: string }): Promise<any> {
+  verifyOidc(payload: {
+    code: string;
+    clientId?: string;
+    redirectUri?: string;
+    codeVerifier?: string;
+    tenantId?: string;
+    state?: string;
+  }): Promise<any> {
     const body: any = {
       code: payload.code,
     };
@@ -73,29 +82,31 @@ export class AuthService {
     body.append("grant_type", "sso_consent");
     body.append("code", code);
 
-    return http.post(
-      AUTH_ENDPOINTS.OIDC_TOKEN,
-      body,
-      {
-        "Content-Type": "application/x-www-form-urlencoded",
-      },
-    );
+    return http.post(AUTH_ENDPOINTS.OIDC_TOKEN, body, {
+      "Content-Type": "application/x-www-form-urlencoded",
+    });
   }
 
-  signupByEmail(payload: ISignupByEmailPayload): Promise<ISignupByEmailResponse> {
+  signupByEmail(
+    payload: ISignupByEmailPayload,
+  ): Promise<ISignupByEmailResponse> {
     return http.post(AUTH_ENDPOINTS.SIGNUP, payload);
   }
 
-  activateAccount(payload: IActivateAccountPayload): Promise<IActivateAccountResponse> {
+  activateAccount(
+    payload: IActivateAccountPayload,
+  ): Promise<IActivateAccountResponse> {
     return http.post(AUTH_ENDPOINTS.ACTIVATE_ACCOUNT, payload);
   }
 
-  recoverAccount(payload: IRecoverAccountPayload): Promise<IRecoverAccountResponse> {
+  recoverAccount(
+    payload: IRecoverAccountPayload,
+  ): Promise<IRecoverAccountResponse> {
     return http.post(AUTH_ENDPOINTS.RECOVER, payload);
   }
 
   getLoginOptions(tenantId?: string): Promise<any> {
-    const url = tenantId 
+    const url = tenantId
       ? `${AUTH_ENDPOINTS.GET_LOGIN_OPTIONS}?tenantId=${encodeURIComponent(tenantId)}`
       : AUTH_ENDPOINTS.GET_LOGIN_OPTIONS;
     return http.get(url);
@@ -105,17 +116,23 @@ export class AuthService {
     return http.post(AUTH_ENDPOINTS.LOGOUT, {});
   }
 
-  stopImpersonation(): Promise<{ mode: "root" | "impersonation"; status: string; reason?: string }> {
+  stopImpersonation(): Promise<{
+    mode: "root" | "impersonation";
+    status: string;
+    reason?: string;
+  }> {
     return http.post(AUTH_ENDPOINTS.STOP_IMPERSONATION, {});
   }
 
-  startImpersonation(payload: { targetTenantId: string; orgId?: string; clientId?: string }): Promise<any> {
+  startImpersonation(payload: {
+    targeted_tenant_id: string;
+    orgId?: string;
+    clientId?: string;
+  }): Promise<any> {
     return http.post(AUTH_ENDPOINTS.IMPERSONATE, payload);
   }
 
   signinByOidcEmail(payload: {
-    username?: string;
-    password?: string;
     provider?: string;
     clientId: string;
     redirectUri: string;
@@ -125,13 +142,13 @@ export class AuthService {
     code_challenge?: string;
     code_challenge_method?: string;
     tenantId?: string;
+    provider_client_id: string;
+    provider_redirect_uri: string;
   }): Promise<any> {
     return http.post(
       AUTH_ENDPOINTS.OIDC_LOGIN,
       {
         ...(payload.provider && { provider: payload.provider }),
-        ...(payload.username && { username: payload.username }),
-        ...(payload.password && { password: payload.password }),
         client_id: payload.clientId,
         redirect_uri: payload.redirectUri,
         scope: payload.scope,
@@ -140,9 +157,12 @@ export class AuthService {
         code_challenge: payload.code_challenge,
         code_challenge_method: payload.code_challenge_method,
         tenant_id: payload.tenantId,
+        provider_client_id: payload.provider_client_id,
+        provider_redirect_uri: payload.provider_redirect_uri,
       },
       undefined,
       {
+        absoluteUrl: true,
         skipTokenRotation: true,
       },
     );
@@ -181,12 +201,6 @@ export class AuthService {
 }
 
 export const authService = new AuthService();
-
-
-
-
-
-
 
 // import { http } from "@/lib/http-client";
 // import { getRuntimeEnv } from "@/lib/runtime-env";
