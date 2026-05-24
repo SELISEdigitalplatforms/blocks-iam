@@ -94,12 +94,11 @@ namespace Api.Controllers
             return result.IsSuccess ? Ok(result) : BadRequest(result);
         }
 
-        [HttpPost("roles/{id}")]
+        [HttpPost("roles/update")]
         //[ProtectedEndPoint("blocks-idp::update-role")]
-        public async Task<IActionResult> UpdateRole([FromRoute] string id, [FromBody] UpdateRoleRequest command)
+        public async Task<IActionResult> UpdateRole( [FromBody] UpdateRoleRequest command)
         {
-            command.ItemId = id;
-            var result = await _resourceMutationService.UpdateRoleAsync(id, command);
+            var result = await _resourceMutationService.UpdateRoleAsync(command);
             return result.IsSuccess ? Ok(result) : BadRequest(result);
         }
 
