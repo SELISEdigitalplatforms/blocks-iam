@@ -46,7 +46,6 @@ export const ProfileMfaVerifyForm = ({ mfaId }: { mfaId: string }) => {
         mfaId,
         verificationCode: code,
         authType: mfaMethodType,
-        projectKey,
       });
       if (!verifyOtpResponse.isSuccess) return showErrorToast({ errors: verifyOtpResponse.errors });
       if (!verifyOtpResponse.isValid)

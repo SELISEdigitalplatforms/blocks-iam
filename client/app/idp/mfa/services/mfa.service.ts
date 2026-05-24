@@ -31,20 +31,25 @@ export class MFAService {
   }
 
   generateUserMfaOTP(payload: IGenerateUserMFA_OtpPayload): Promise<IGenerateUserMFA_OtpResponse> {
-    return http.post(MFA_ENDPOINTS.GENERATE_OTP, payload);
+    const logicBase = getRuntimeEnv("BLOCKS_LOGIC_BASE_URL") || "https://dev-logic.blocksdevelopers.com";
+    return http.post(`${logicBase}${MFA_ENDPOINTS.GENERATE_OTP}`, payload, undefined, { absoluteUrl: true });
   }
 
   configureUserMFA(payload: IConfigureUserMFAPayload): Promise<IConfigureUserMFAResponse> {
     return http.post(MFA_ENDPOINTS.CONFIGURE_USER_MFA, payload);
   }
   setupUserTotp(payload: ISetupUserTotpPayload): Promise<ISetupUserTotpResponse> {
+    const logicBase = getRuntimeEnv("BLOCKS_LOGIC_BASE_URL") || "https://dev-logic.blocksdevelopers.com";
     return http.get(
-      `${MFA_ENDPOINTS.SETUP_TOTP}?UserId=${payload.id}&ProjectKey=${payload.projectKey}`,
+      `${logicBase}${MFA_ENDPOINTS.SETUP_TOTP}?UserId=${payload.id}`,
+      undefined,
+      { absoluteUrl: true },
     );
   }
 
   verifyOtp(payload: IVerifyMfaOtpPayload): Promise<IVerifyMfaOtpResponse> {
-    return http.post(MFA_ENDPOINTS.VERIFY_OTP, payload);
+    const logicBase = getRuntimeEnv("BLOCKS_LOGIC_BASE_URL") || "https://dev-logic.blocksdevelopers.com";
+    return http.post(`${logicBase}${MFA_ENDPOINTS.VERIFY_OTP}`, payload, undefined, { absoluteUrl: true });
   }
 
   resendOtp(payload: IResendMfaOtpPayload): Promise<IVerifyMfaOtpResponse> {
