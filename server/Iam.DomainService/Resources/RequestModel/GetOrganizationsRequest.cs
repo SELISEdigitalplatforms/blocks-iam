@@ -8,6 +8,6 @@ namespace Iam.DomainService.Resources
         /// <summary>
         /// Optional filter by organization name (partial match).
         /// </summary>
-        public string? Name { get; set; }
+        
     }
 }
