@@ -46,7 +46,6 @@ export const ProfileImageUploader = ({ projectKey, id }: ProfileImageUploaderPro
       const updatedUser = await updateUserMutate({
         ...data?.data,
         itemId: id,
-        projectKey,
         profileImageId: userProfileFile.itemId,
         profileImageUrl: userProfileFile.url,
       });

@@ -86,7 +86,17 @@ export class UserService {
   }
 
   updateUser(payload: IUpdateUserPayload): Promise<IUpdateUserResponse> {
-    return http.post(`/api/iam/users/${payload.itemId}`, payload);
+    const flattenRecord = (value: unknown): string[] => {
+      if (!value) return [];
+      if (Array.isArray(value)) return value as string[];
+      return Object.values(value as Record<string, string[]>).flat();
+    };
+    const normalized: IUpdateUserPayload = {
+      ...payload,
+      roles: flattenRecord(payload.roles),
+      permissions: flattenRecord(payload.permissions),
+    };
+    return http.post(`/api/iam/users/${payload.itemId}`, normalized);
   }
 
   getSignUpSetting(): Promise<IGetSignUpSettingResponse> {

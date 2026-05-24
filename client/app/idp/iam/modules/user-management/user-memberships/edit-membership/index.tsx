@@ -143,7 +143,6 @@ export const EditMembership = ({
         ...userData?.data,
         memberships: updatedMemberships,
         itemId: userId,
-        projectKey,
       });
 
       if (!res.isSuccess) {
