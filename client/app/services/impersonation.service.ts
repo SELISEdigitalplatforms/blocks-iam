@@ -26,8 +26,13 @@ class ImpersonationService {
     return http.post(`${IMPERSONATION_BASE}/impersonate`, request);
   }
 
-  stopImpersonation(): Promise<void> {
-    return http.post(`${IMPERSONATION_BASE}/impersonation/stop`, null);
+   stopImpersonation(): Promise<void> {
+    return http.post(
+      `${IMPERSONATION_BASE}/impersonation/stop`,
+      {},
+      undefined,
+      { absoluteUrl: true },
+    );
   }
 
   impersonationStatus(): Promise<ImpersonationStatusResponse> {
