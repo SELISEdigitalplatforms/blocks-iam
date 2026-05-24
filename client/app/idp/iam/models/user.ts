@@ -12,18 +12,34 @@ export interface User {
   email: string;
   userName: string;
   phoneNumber: string;
+  organizationIds: string[];
+  lastUsedOrganizationId: string | null;
   roles: string[];
   permissions: string[];
   active: boolean;
+  status: number;
+  statusReason: string | null;
+  deactivatedAtUtc: string | null;
   isVarified: boolean;
+  isVerified: boolean;
+  emailVerifiedAtUtc: string | null;
+  phoneVerifiedAtUtc: string | null;
   profileImageUrl: string;
+  profileImageId: string;
   mfaEnabled: boolean;
+  isMfaVerified: boolean;
+  userMfaType: number;
   lastLoggedInTime: string;
+  lastLoggedInDeviceInfo: string;
   logInCount: number;
   firstLoggedInTime: string;
-  userMfaType: number;
-  isMfaVerified: boolean;
+  provisioningSource: number;
+  externalIdentities: unknown[];
   userCreationType: number;
+  department: string | null;
+  employeeId: string | null;
+  isMultiOrgEnabled: boolean;
+  organizations: unknown[];
   memberships: IMembership[];
 }
 
@@ -79,6 +95,7 @@ export interface ICreateUserResponse {
 
 export interface IUpdateUserPayload {
   itemId: string;
+  projectKey: string;
   lastLoggedInTime?: string;
   lastLoggedInDeviceInfo?: string;
   logInCount?: number;
