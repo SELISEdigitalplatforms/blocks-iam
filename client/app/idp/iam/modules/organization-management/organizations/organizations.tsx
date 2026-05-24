@@ -22,7 +22,7 @@ export function Organizations() {
     sort: sortQueryParams,
     projectKey: tenantId,
   });
-  const { data: orgConfigData } = useGetOrganizationConfig(tenantId);
+  const { data: orgConfigData } = useGetOrganizationConfig();
   const isAddDisabled = !orgConfigData || !orgConfigData.isMultiOrgEnabled || !orgConfigData.allowCreationFromCloud;
   const onPageChangeHandler = (page: number) => {
     setQueryParams((prev) => ({
