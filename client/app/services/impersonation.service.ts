@@ -31,7 +31,7 @@ class ImpersonationService {
       `${IMPERSONATION_BASE}/impersonation/stop`,
       {},
       undefined,
-      { absoluteUrl: true },
+      // { absoluteUrl: true },
     );
   }
 
