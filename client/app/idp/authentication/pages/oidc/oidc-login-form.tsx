@@ -206,7 +206,7 @@ export const OidcLoginForm = ({
         }
       } catch (parseError) {
         console.error("Error parsing response:", parseError);
-        showErrorToast({ errors: `Server error: Unable to process response` });
+        // showErrorToast({ errors: `Server error: Unable to process response` });
         setIsLoading(false);
         return;
       }
