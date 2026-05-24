@@ -30,13 +30,18 @@ import {
   User,
 } from "@blocks-idp/iam/models/user";
 import { UserAccountService } from "./account.service";
-import { USER_ENDPOINTS, ORGANIZATION_ENDPOINTS } from "../constants/endpoint.constant";
+import {
+  USER_ENDPOINTS,
+  ORGANIZATION_ENDPOINTS,
+} from "../constants/endpoint.constant";
 import { AUTH_ENDPOINTS } from "@/idp/authentication/constants/endpoint.constant";
 
 export class UserService {
   constructor(public account: UserAccountService) {}
 
-  getUsers(payload: Omit<IGetUsersPayload, "projectKey">): Promise<IGetUsersResponse> {
+  getUsers(
+    payload: Omit<IGetUsersPayload, "projectKey">,
+  ): Promise<IGetUsersResponse> {
     const params = new URLSearchParams();
     params.set("page", String(payload.page));
     params.set("pageSize", String(payload.pageSize));
@@ -45,9 +50,11 @@ export class UserService {
       params.set("sort.isDescending", String(payload.sort.isDescending));
     }
     if (payload.filter) {
-      if (payload.filter.email) params.set("filter.email", payload.filter.email);
+      if (payload.filter.email)
+        params.set("filter.email", payload.filter.email);
       if (payload.filter.name) params.set("filter.name", payload.filter.name);
-      if (payload.filter.organizationId) params.set("filter.organizationId", payload.filter.organizationId);
+      if (payload.filter.organizationId)
+        params.set("filter.organizationId", payload.filter.organizationId);
     }
     return http.get(`${USER_ENDPOINTS.GET_USERS}?${params.toString()}`);
   }
@@ -82,12 +89,8 @@ export class UserService {
     return http.post(`/api/iam/users/${payload.itemId}`, payload);
   }
 
-  getSignUpSetting(
-    payload: IGetSignUpSettingPayload,
-  ): Promise<IGetSignUpSettingResponse> {
-    return http.get(
-      `${ORGANIZATION_ENDPOINTS.GET_SIGNUP_SETTING}?ProjectKey=${payload.projectKey}`,
-    );
+  getSignUpSetting(): Promise<IGetSignUpSettingResponse> {
+    return http.get(`${ORGANIZATION_ENDPOINTS.GET_SIGNUP_SETTING}`);
   }
 
   saveSignUpSetting(

@@ -1,4 +1,3 @@
-
 import { SignupForm } from "./signup-form";
 import { useGetLoginOptions } from "@blocks-idp/authentication/hooks/use-auth";
 import { useGetSignUpSetting } from "@blocks-idp/iam/hooks/use-user";
@@ -8,9 +7,11 @@ import { Loader } from "lucide-react";
 
 export const Signup = () => {
   const projectKey = getRuntimeEnv("BLOCKS_X_BLOCKS_KEY") || "";
-  
-  const { data: loginOption, isLoading: isLoginOptionLoading } = useGetLoginOptions();
-  const { data: signUpSetting, isLoading: isSignUpSettingLoading } = useGetSignUpSetting({ projectKey });
+
+  const { data: loginOption, isLoading: isLoginOptionLoading } =
+    useGetLoginOptions();
+  const { data: signUpSetting, isLoading: isSignUpSettingLoading } =
+    useGetSignUpSetting({ projectKey });
 
   if (isLoginOptionLoading || isSignUpSettingLoading) {
     return (
@@ -23,12 +24,13 @@ export const Signup = () => {
   }
 
   if (!loginOption || loginOption.allowedGrantTypes?.length < 1) return null;
+  if (!signUpSetting || isSignUpSettingLoading) return null;
 
   return (
     <SignupForm
       loginOption={loginOption}
-      emailSignUpEnabled={signUpSetting?.isEmailPasswordSignUpEnabled || false}
-      ssoSignUpEnabled={signUpSetting?.isSSoSignUpEnabled || false}
+      emailSignUpEnabled={signUpSetting?.IsEmailPasswordSignUpEnabled || false}
+      ssoSignUpEnabled={signUpSetting?.IsSSoSignUpEnabled || false}
     />
   );
 };

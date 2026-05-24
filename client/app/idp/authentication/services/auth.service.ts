@@ -90,7 +90,10 @@ export class AuthService {
   signupByEmail(
     payload: ISignupByEmailPayload,
   ): Promise<ISignupByEmailResponse> {
-    return http.post(AUTH_ENDPOINTS.SIGNUP, payload);
+    return http.post(AUTH_ENDPOINTS.SIGNUP, {
+      ...payload,
+      isSsoSignup: false,
+    });
   }
 
   activateAccount(

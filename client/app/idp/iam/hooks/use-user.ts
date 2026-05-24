@@ -74,7 +74,10 @@ export const useGetMe = (options?: { enabled?: boolean }) => {
   });
 };
 
-export const useGetUserById = (options: IGetUserByIdPayload, queryOptions?: { enabled?: boolean }) => {
+export const useGetUserById = (
+  options: IGetUserByIdPayload,
+  queryOptions?: { enabled?: boolean },
+) => {
   return useQuery({
     queryKey: ["user", options],
     queryFn: () => userService.getUserById(options),
@@ -94,7 +97,11 @@ export const useAddUser = () => {
   });
 };
 
-export const useUpdateUser = (options: { id: string; projectKey: string; own?: boolean }) => {
+export const useUpdateUser = (options: {
+  id: string;
+  projectKey: string;
+  own?: boolean;
+}) => {
   const queryClient = useQueryClient();
   const { own = false, ...rest } = options;
   return useMutation({
@@ -113,7 +120,7 @@ export const useGetSignUpSetting = (
 ) => {
   return useQuery({
     queryKey: ["sign-up-setting", option],
-    queryFn: () => userService.getSignUpSetting(option),
+    queryFn: () => userService.getSignUpSetting(),
     ...options,
   });
 };
@@ -129,7 +136,9 @@ export const useSaveSignUpSetting = () => {
   });
 };
 
-export const useAddRolesAndPermissionToUser = (type?: "role" | "permission") => {
+export const useAddRolesAndPermissionToUser = (
+  type?: "role" | "permission",
+) => {
   const queryClient = useQueryClient();
   return useMutation({
     mutationKey: ["users", "add roles and permissions"],
@@ -204,7 +213,10 @@ export const useUserRoles = (option: { id: string; projectKey: string }) => {
   };
 };
 
-export const useUserPermissions = (option: { userId: string; projectKey: string }) => {
+export const useUserPermissions = (option: {
+  userId: string;
+  projectKey: string;
+}) => {
   const { isLoading, isFetching, data } = useGetUserById({
     id: option.userId,
     projectKey: option.projectKey,
@@ -234,7 +246,9 @@ export const useUserPermissions = (option: { userId: string; projectKey: string 
 
   const deletePermissions = useCallback(
     (deletedResources: string[]) => {
-      const restResources = resources.filter((item) => !deletedResources.includes(item));
+      const restResources = resources.filter(
+        (item) => !deletedResources.includes(item),
+      );
       return mutateAsync({
         ...data?.data,
         itemId: option.userId,
