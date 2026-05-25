@@ -1,17 +1,14 @@
-﻿using Blocks.Genesis;
-using DomainService.Entities;
-using DomainService.OAuth.RequestModel;
-using DomainService.OAuth.ResponseModel;
-using DomainService.OAuth.Services;
-using DomainService.Services;
+using Blocks.Genesis;
+using Authentication.DomainService.OAuth.ResponseModel;
+using Authentication.DomainService.OAuth.Services;
+using Authentication.DomainService.Services;
 using Iam.DomainService.Entities;
 using Iam.DomainService.Services;
-using Iam.DomainService.Shared.Entities;
 using Iam.DomainService.Users;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
 
-namespace DomainService.OAuth
+namespace Authentication.DomainService.OAuth
 {
     public class SocialAuthorizationService : SocialAuthorizationServiceBase
     {
@@ -26,9 +23,8 @@ namespace DomainService.OAuth
             ISocialLogInServiceProvider socialLogInServiceProvider,
             IUserManagementMutationService userManagementMutationService,
             IIdentityAccessManagementRepository repository,
-            IConfiguration configuration,
             IUserRepository userRepository)
-            : base(logger, oAuthJwtAccessTokenManager, oAuthRepository, cacheClient, socialLogInServiceProvider, userManagementMutationService, configuration)
+            : base(logger, oAuthJwtAccessTokenManager, oAuthRepository, cacheClient, socialLogInServiceProvider, userManagementMutationService)
         {
             _repository = repository;
             _userRepository = userRepository;
@@ -58,16 +54,9 @@ namespace DomainService.OAuth
 
             if (user == null)
             {
-                var signUpSetting = await _repository.GetSignUpSettingAsync();
-
-                if (signUpSetting is not null && signUpSetting.IsSSoSignUpEnabled)
-                    return await CreateUser(stateInfo, externalUser);
+                // return await CreateUser(stateInfo, externalUser); // for now, we will not auto create user, return error instead. Will add auto create user in the future if needed.   
+                return (null, string.Empty);
             }
-
-            user.Department = externalUser.Department;
-            user.EmployeeId = externalUser.EmployeeId;
-            user.Memberships = [new OrganizationMembership { Roles = externalUser.Roles, OrganizationId = "default" }];
-            await _userRepository.UpdateUserAsync(user);
 
             return (user, string.Empty);
         }

@@ -1,7 +1,6 @@
-
-
 import { Card, CardContent, CardHeader } from "@/components/ui-kits/card/card";
 import { Pagination } from "@/components/ui-kits/pagination/pagination";
+import { normalizeSearchQueryText } from "@/lib/utils";
 import { useGetOrganizations, useGetOrganizationConfig } from "@blocks-idp/iam/hooks/use-organization";
 import { useProjectStore } from "@/store/useProjectStore";
 import { OrganizationsList } from "./organizations-list";
@@ -16,12 +15,14 @@ export function Organizations() {
   const { tenantId } = useProjectStore().selectedProject || { tenantId: "" };
   const { queryParams, setQueryParams } = useOrganizationsFilterQueryParams();
   const { sortQueryParams } = useOrganizationsSortQueryParams();
+  const effectiveSearch = normalizeSearchQueryText(queryParams.search);
   const { isLoading, isFetching, data } = useGetOrganizations({
     ...queryParams,
+    search: effectiveSearch,
     sort: sortQueryParams,
     projectKey: tenantId,
   });
-  const { data: orgConfigData } = useGetOrganizationConfig(tenantId);
+  const { data: orgConfigData } = useGetOrganizationConfig();
   const isAddDisabled = !orgConfigData || !orgConfigData.isMultiOrgEnabled || !orgConfigData.allowCreationFromCloud;
   const onPageChangeHandler = (page: number) => {
     setQueryParams((prev) => ({

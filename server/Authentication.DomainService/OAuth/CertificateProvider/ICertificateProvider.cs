@@ -1,5 +1,5 @@
 
-namespace DomainService.OAuth
+namespace Authentication.DomainService.OAuth
 {
     public interface ICertificateProvider
     {

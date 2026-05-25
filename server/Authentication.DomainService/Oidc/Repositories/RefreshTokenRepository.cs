@@ -1,0 +1,157 @@
+using MongoDB.Driver;
+using Blocks.Genesis;
+using Authentication.DomainService.Entities;
+using Authentication.DomainService.Services;
+using Idp.DomainService.Oidc.Contracts;
+using Microsoft.Extensions.Logging;
+
+namespace Authentication.DomainService.Oidc.Repositories
+{
+    public class RefreshTokenRepository : IRefreshTokenRepository
+    {
+        private readonly IDbContextProvider _dbContextProvider;
+        private readonly IAuthenticationRepository _authenticationRepository;
+        private readonly ILogger<RefreshTokenRepository> _logger;
+
+        public RefreshTokenRepository(
+            IDbContextProvider dbContextProvider,
+            IAuthenticationRepository authenticationRepository,
+            ILogger<RefreshTokenRepository> logger)
+        {
+            _dbContextProvider = dbContextProvider;
+            _authenticationRepository = authenticationRepository;
+            _logger = logger;
+        }
+
+        private IMongoDatabase GetDatabase() =>
+            _dbContextProvider.GetDatabase()
+            ?? throw new InvalidOperationException("No active MongoDB database is available in current Genesis context.");
+
+        public async Task<string> CreateAsync(RefreshTokenModel token)
+        {
+            try
+            {
+                var collection = GetDatabase().GetCollection<RefreshTokenModel>("IdpRefreshTokens");
+                await collection.InsertOneAsync(token);
+                _logger.LogInformation($"Refresh token created for user {token.UserId}, client {token.ClientId}");
+                return token.TokenId;
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error creating refresh token");
+                throw;
+            }
+        }
+
+        public async Task<RefreshTokenModel> GetByTokenIdAsync(string tokenId)
+        {
+            try
+            {
+                var collection = GetDatabase().GetCollection<RefreshTokenModel>("IdpRefreshTokens");
+                var filter = Builders<RefreshTokenModel>.Filter.Eq(t => t.TokenId, tokenId);
+                return await collection.Find(filter).FirstOrDefaultAsync();
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, $"Error fetching refresh token: {tokenId}");
+                throw;
+            }
+        }
+
+        public async Task<IEnumerable<RefreshTokenModel>> GetByUserAsync(string userId, string tenantId)
+        {
+            try
+            {
+                var collection = GetDatabase().GetCollection<RefreshTokenModel>("IdpRefreshTokens");
+                var filter = Builders<RefreshTokenModel>.Filter.And(
+                    Builders<RefreshTokenModel>.Filter.Eq(t => t.UserId, userId),
+                    Builders<RefreshTokenModel>.Filter.Eq(t => t.TenantId, tenantId)
+                );
+                return await collection.Find(filter).ToListAsync();
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, $"Error fetching refresh tokens for user: {userId}");
+                throw;
+            }
+        }
+
+        public async Task<bool> RevokeByTokenIdAsync(string tokenId, string reason)
+        {
+            try
+            {
+                var collection = GetDatabase().GetCollection<RefreshTokenModel>("IdpRefreshTokens");
+                var filter = Builders<RefreshTokenModel>.Filter.Eq(t => t.TokenId, tokenId);
+                var update = Builders<RefreshTokenModel>.Update
+                    .Set(t => t.IsRevoked, true)
+                    .Set(t => t.RevokeReason, reason)
+                    .Set(t => t.RevokedAt, DateTime.UtcNow);
+
+                var result = await collection.UpdateOneAsync(filter, update);
+                return result.ModifiedCount > 0;
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, $"Error revoking refresh token: {tokenId}");
+                throw;
+            }
+        }
+
+        public async Task<bool> UpdateSlidingExpiryAsync(string tokenId)
+        {
+            try
+            {
+                var authConfiguration = await _authenticationRepository.GetAuthenticationConfigurationAsync();
+                var slidingMinutes = Math.Max(authConfiguration?.RefreshTokenValidForNumberMinutes ?? AuthenticationConfiguration.DefaultRefreshTokenValidForNumberMinutes, 1);
+                var collection = GetDatabase().GetCollection<RefreshTokenModel>("IdpRefreshTokens");
+                var filter = Builders<RefreshTokenModel>.Filter.Eq(t => t.TokenId, tokenId);
+                var update = Builders<RefreshTokenModel>.Update
+                    .Set(t => t.SlidingExpiry, DateTime.UtcNow.AddMinutes(slidingMinutes));
+
+                var result = await collection.UpdateOneAsync(filter, update);
+                return result.ModifiedCount > 0;
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, $"Error updating sliding expiry: {tokenId}");
+                throw;
+            }
+        }
+
+        public async Task<bool> DeleteAsync(string tokenId)
+        {
+            try
+            {
+                var collection = GetDatabase().GetCollection<RefreshTokenModel>("IdpRefreshTokens");
+                var filter = Builders<RefreshTokenModel>.Filter.Eq(t => t.TokenId, tokenId);
+                var update = Builders<RefreshTokenModel>.Update
+                    .Set(t => t.IsRevoked, true)
+                    .Set(t => t.RevokedAt, DateTime.UtcNow);
+
+                var result = await collection.UpdateOneAsync(filter, update);
+                return result.ModifiedCount > 0;
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, $"Error soft deleting refresh token: {tokenId}");
+                throw;
+            }
+        }
+
+        public async Task<IEnumerable<RefreshTokenModel>> GetExpiredAsync()
+        {
+            try
+            {
+                var collection = GetDatabase().GetCollection<RefreshTokenModel>("IdpRefreshTokens");
+                var filter = Builders<RefreshTokenModel>.Filter.Lt(t => t.AbsoluteExpiry, DateTime.UtcNow);
+                return await collection.Find(filter).ToListAsync();
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error fetching expired refresh tokens");
+                throw;
+            }
+        }
+    }
+}
+

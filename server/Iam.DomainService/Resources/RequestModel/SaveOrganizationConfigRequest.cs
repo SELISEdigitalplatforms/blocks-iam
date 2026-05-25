@@ -1,20 +1,14 @@
-﻿
-using Blocks.Genesis;
-
-namespace Iam.DomainService.Resources
+﻿namespace Iam.DomainService.Resources
 {
-    public class SaveOrganizationConfigRequest : IProjectKey
+    public class SaveOrganizationConfigRequest
     {
-        public string? ItemId { get; set; }
-        public bool AllowCreationFromCloud { get; set; }
-        public bool AllowCreationFromConstruct { get; set; }
-        public List<string> Roles { get; set; } = [];
+        public bool AllowOrgCreationFromCloud { get; set; }
+        public bool AllowOrgCreationFromConstruct { get; set; }
+        public bool AllowOrgCreationFromSignup { get; set; }
+        public bool AllowOrgCreationFromPortal { get; set; }
         public bool IsMultiOrgEnabled { get; set; }
-        public string ProjectKey { get ; set ; }
+        public List<string> DefaultRoleOnOrgCreation { get; set; } = new List<string>();
+        public List<string> DefaultPermissionOnOrgCreation { get; set; } = new List<string>();
     }
 
-    public class GetOrganizationConfigRequest : IProjectKey
-    {
-        public string ProjectKey { get ; set ; }
-    }
 }

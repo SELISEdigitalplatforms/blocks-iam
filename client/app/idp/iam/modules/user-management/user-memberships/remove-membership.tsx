@@ -35,7 +35,7 @@ export const RemoveMembership = ({
     const { data: userData } = useGetUserById({ id: userId, projectKey });
     const { mutateAsync, isPending } = useUpdateUser({ id: userId, projectKey });
 
-    const existingMemberships = userData?.data?.memberships || [];
+    const existingMemberships = userData?.data?.organizations || [];
 
     const onConfirm = async () => {
         try {
@@ -45,9 +45,7 @@ export const RemoveMembership = ({
 
             const res = await mutateAsync({
                 ...userData?.data,
-                memberships: updatedMemberships,
                 itemId: userId,
-                projectKey,
             });
 
             if (!res.isSuccess) {

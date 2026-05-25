@@ -1,4 +1,5 @@
 import { useForm } from "react-hook-form";
+import { getRuntimeEnv } from "@/lib/runtime-env";
 import { activationFormDefaultValue, activationFormSchema } from "./utils";
 import {
   Form,
@@ -27,8 +28,6 @@ type ActivationFormProps = {
   code: string;
 };
 
-const x_blocks_key = import.meta.env.BLOCKS_X_BLOCKS_KEY;
-
 export const ActivationForm = ({ code }: ActivationFormProps) => {
   const navigate = useNavigate();
   const form = useForm({
@@ -39,7 +38,7 @@ export const ActivationForm = ({ code }: ActivationFormProps) => {
   });
   const [requirementsMet, setRequirementsMet] = useState(false);
 
-  const googleSiteKey = import.meta.env.BLOCKS_GOOGLE_SITE_KEY || "";
+  const googleSiteKey = getRuntimeEnv("BLOCKS_GOOGLE_SITE_KEY") || "";
   const {
     captcha,
     code: captchaCode,
@@ -58,19 +57,17 @@ export const ActivationForm = ({ code }: ActivationFormProps) => {
     if (!code) return navigate("/login");
   }, [code, navigate]);
 
-  const onSubmitHandler = async (values: z.infer<typeof activationFormSchema>) => {
+  const onSubmitHandler = async (
+    values: z.infer<typeof activationFormSchema>,
+  ) => {
     try {
-      // console.log("captchaCode", captchaCode);
-      // return;
       const res = await mutateAsync({
         code: code,
         preventPostEvent: true,
-        projectKey: x_blocks_key || "",
         password: values.password,
         firstname: values.firstname,
         lastname: values.lastname,
         captchaCode,
-
       });
       if (!res.isSuccess) {
         resetCaptcha();
@@ -94,7 +91,10 @@ export const ActivationForm = ({ code }: ActivationFormProps) => {
 
   return (
     <Form {...form}>
-      <form onSubmit={form.handleSubmit(onSubmitHandler)} className="flex flex-col gap-4">
+      <form
+        onSubmit={form.handleSubmit(onSubmitHandler)}
+        className="flex flex-col gap-4"
+      >
         <FormField
           control={form.control}
           name="firstname"
@@ -124,7 +124,6 @@ export const ActivationForm = ({ code }: ActivationFormProps) => {
         />
 
         <FormField
-
           control={form.control}
           name="password"
           render={({ field }) => (
@@ -164,7 +163,7 @@ export const ActivationForm = ({ code }: ActivationFormProps) => {
           className="w-full"
           disabled={isPending || !captchaCode || !requirementsMet || !isValid}
         >
-          Activate BTN
+          Activate
         </Button>
       </form>
     </Form>

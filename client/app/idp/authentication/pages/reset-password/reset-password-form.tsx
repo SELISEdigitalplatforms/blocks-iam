@@ -1,4 +1,5 @@
 import { useForm } from "react-hook-form";
+import { getRuntimeEnv } from "@/lib/runtime-env";
 import {
   Form,
   FormControl,
@@ -9,7 +10,7 @@ import {
 } from "@/components/ui-kits/form/form";
 import { Button } from "@/components/ui-kits/button/button";
 import { PasswordInput } from "@/components/password-input";
-import { z } from "zod";
+import { Switch } from "@/components/ui-kits/switch/switch";
 import { useNavigate } from "react-router-dom";
 import { showErrorToast } from "@/hooks/use-toast";
 import { useAccountResetPassword } from "@blocks-idp/iam/hooks/use-account";
@@ -19,25 +20,27 @@ import { isErrorWithErrors } from "@/lib/error";
 import { useCaptcha } from "@blocks-idp/captcha/hooks/use-captcha";
 import { PasswordStrengthChecker } from "@blocks-idp/authentication/components/password-strength-checker/password-strength-checker";
 import { zodResolver } from "@hookform/resolvers/zod";
-import { activationFormDefaultValue, activationFormSchema } from "../activation/utils";
+import {
+  resetPasswordFormSchema,
+  ResetPasswordFormValuesType,
+  resetPasswordFormDefaultValue,
+} from "./utils";
 
 type ResetPasswordFormProps = {
   code: string;
 };
 
-const x_blocks_key = import.meta.env.BLOCKS_X_BLOCKS_KEY;
-
 export const ResetPasswordForm = ({ code }: ResetPasswordFormProps) => {
   const navigate = useNavigate();
-  const form = useForm({
-    defaultValues: activationFormDefaultValue,
+  const form = useForm<ResetPasswordFormValuesType>({
+    defaultValues: resetPasswordFormDefaultValue,
     mode: "all",
     reValidateMode: "onChange",
-    resolver: zodResolver(activationFormSchema),
+    resolver: zodResolver(resetPasswordFormSchema),
   });
   const [requirementsMet, setRequirementsMet] = useState(false);
 
-  const googleSiteKey = import.meta.env.BLOCKS_GOOGLE_SITE_KEY || "";
+  const googleSiteKey = getRuntimeEnv("BLOCKS_GOOGLE_SITE_KEY") || "";
   const {
     captcha,
     code: captchaCode,
@@ -52,13 +55,12 @@ export const ResetPasswordForm = ({ code }: ResetPasswordFormProps) => {
     if (!isValid && !requirementsMet && captchaCode) resetCaptcha();
   }, [captchaCode, isValid, requirementsMet, resetCaptcha]);
 
-  const onSubmitHandler = async (values: z.infer<typeof activationFormSchema>) => {
+  const onSubmitHandler = async (values: ResetPasswordFormValuesType) => {
     try {
       const res = await mutateAsync({
         code: code,
         captchaCode,
-        logoutFromAllDevices: true,
-        projectKey: x_blocks_key || "",
+        logoutFromAllDevices: values.logoutFromAllDevices,
         password: values.password,
       });
 
@@ -69,7 +71,8 @@ export const ResetPasswordForm = ({ code }: ResetPasswordFormProps) => {
       navigate("/reset-password-success");
     } catch (error: unknown) {
       resetCaptcha();
-      if (isErrorWithErrors(error)) return showErrorToast({ errors: error.errors });
+      if (isErrorWithErrors(error))
+        return showErrorToast({ errors: error.errors });
       showErrorToast({ errors: "Something went wrong" });
     }
   };
@@ -79,7 +82,10 @@ export const ResetPasswordForm = ({ code }: ResetPasswordFormProps) => {
 
   return (
     <Form {...form}>
-      <form onSubmit={form.handleSubmit(onSubmitHandler)} className="flex flex-col gap-4">
+      <form
+        onSubmit={form.handleSubmit(onSubmitHandler)}
+        className="flex flex-col gap-4"
+      >
         <FormField
           control={form.control}
           name="password"
@@ -111,6 +117,36 @@ export const ResetPasswordForm = ({ code }: ResetPasswordFormProps) => {
           password={password}
           confirmPassword={confirmPassword}
           onRequirementsMet={setRequirementsMet}
+        />
+
+        <FormField
+          control={form.control}
+          name="logoutFromAllDevices"
+          render={({ field }) => (
+            <FormItem>
+              <FormControl>
+                <div className="border rounded-lg p-4 space-y-2">
+                  <div className="flex items-center justify-between">
+                    <label
+                      htmlFor="logout-all-devices"
+                      className="text-sm font-medium text-high-emphasis"
+                    >
+                      Logout from all devices
+                    </label>
+                    <Switch
+                      checked={field.value}
+                      onCheckedChange={field.onChange}
+                    />
+                  </div>
+                  <p className="text-xs text-muted-foreground">
+                    Recommended for account safety after resetting your
+                    password.
+                  </p>
+                </div>
+              </FormControl>
+              <FormMessage />
+            </FormItem>
+          )}
         />
 
         {isValid && requirementsMet && <Captcha {...captcha} />}

@@ -29,16 +29,14 @@ export const GRANT_TYPES_OPTIONS: { id: GRANT_TYPES; label: string; value: strin
 ];
 
 export const AuthenticationTabs: { id: string; label: string; value: string }[] = [
-  { id: "general", label: "General", value: "general" },
-  { id: "signin-flow", label: "Signin flow", value: "signin-flow" },
-  { id: "signup-flow", label: "Signup flow", value: "signup-flow" },
-  { id: "roles", label: "Roles", value: "roles" },
-  { id: "permissions", label: "Permissions", value: "permissions" },
-  // {
-  //   id: GRANT_TYPES.clientCredential,
-  //   label: "Client Credential",
-  //   value: GRANT_TYPES.clientCredential,
-  // },
+  // { id: "general", label: "General", value: "general" },
+  { id: "users", label: "Users", value: "users" },
+  { id: "organizations", label: "Organizations", value: "organizations" },
+  {
+    id: GRANT_TYPES.clientCredential,
+    label: "Client Credential",
+    value: GRANT_TYPES.clientCredential,
+  },
 ];
 
 export const SecretManagementTabs: { id: string; label: string; value: string }[] = [
@@ -101,6 +99,11 @@ export const SecretManagementTabs: { id: string; label: string; value: string }[
     id: "notification",
     label: "Notification",
     value: "notification",
+  },
+  {
+    id: "ai-models",
+    label: "AI Models",
+    value: "ai-models",
   },
 ];
 

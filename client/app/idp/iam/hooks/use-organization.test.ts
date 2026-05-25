@@ -34,7 +34,8 @@ describe("use-organization hooks", () => {
         mockOrganizationsResponse,
       );
 
-      const { result } = renderHook(() => useGetOrganizations(mockGetOrganizationsPayload), {
+      const options = { ...mockGetOrganizationsPayload, projectKey: TEST_PROJECT_KEY };
+      const { result } = renderHook(() => useGetOrganizations(options), {
         wrapper: createWrapper(),
       });
 
@@ -43,8 +44,16 @@ describe("use-organization hooks", () => {
       expect(iamService.organization.getOrganizations).toHaveBeenCalledWith({
         page: mockGetOrganizationsPayload.page,
         pageSize: mockGetOrganizationsPayload.pageSize,
-        projectKey: mockGetOrganizationsPayload.projectKey,
       });
+    });
+
+    it("should not fetch when projectKey is empty", () => {
+      const options = { ...mockGetOrganizationsPayload, projectKey: "" };
+      const { result } = renderHook(() => useGetOrganizations(options), {
+        wrapper: createWrapper(),
+      });
+
+      expect(result.current.fetchStatus).toBe("idle");
     });
   });
 

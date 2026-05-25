@@ -1,18 +1,18 @@
 import { Menu } from "@/models/menu-models";
-import { Home, Package, Users, BookMinus, Settings, Shield, Key, ShieldCheck, ScanFace, Lock, LayoutDashboard, Zap, Gauge } from "lucide-react";
+import { BookMinus, Building2, KeyRound, Package, Settings, Users } from "lucide-react";
 
 export const navigationMenus: Menu[] = [
-  {
-    id: "overview-project",
-    type: "menu",
-    name: "Overview",
-    path: "/dashboard",
-    icon: Home,
-  },
-  {
-    type: "separator",
-    id: "separator-overview",
-  },
+  // {
+  //   id: "overview-project",
+  //   type: "menu",
+  //   name: "Overview",
+  //   path: "/dashboard",
+  //   icon: Home,
+  // },
+  // {
+  //   type: "separator",
+  //   id: "separator-overview",
+  // },
   {
     id: "environments",
     type: "menu",
@@ -46,59 +46,31 @@ export const navigationMenus: Menu[] = [
     id: "separator-identity",
   },
   {
-    id: "service-identity__authentication",
     type: "menu",
-    name: "IDP",
-    path: "/services/authentication",
-    icon: Key,
+    id: "service-identity__authentication-users",
+    name: "Users",
+    path: "/services/authentication/users",
+    icon: Users,
+  },
+  {
+    type: "menu",
+    id: "service-identity__authentication-organizations",
+    name: "Organizations",
+    path: "/services/authentication/organizations",
+    icon: Building2,
   },
   // {
-  //   id: "service-identity__authorization",
   //   type: "menu",
+  //   id: "service-identity__authentication-client-credential",
+  //   name: "Client Credential",
+  //   path: "/services/authentication/client-credential",
+  //   icon: KeyRound,
+  // },
+  // {
+  //   type: "menu",
+  //   id: "service-identity__authorization",
   //   name: "Access Manager",
   //   path: "/services/iam",
   //   icon: Shield,
   // },
-  // {
-  //   id: "service-identity__mfa",
-  //   type: "menu",
-  //   name: "MFA",
-  //   path: "/services/mfa",
-  //   icon: ShieldCheck,
-  // },
-  // {
-  //   id: "service-identity__captcha",
-  //   type: "menu",
-  //   name: "Captcha",
-  //   path: "/services/captcha",
-  //   icon: ScanFace,
-  // },
-  {
-    id: "service-identity__api-settings",
-    type: "menu",
-    name: "API Settings",
-    path: "/services/api-settings",
-    icon: Settings,
-  },
-  {
-    id: "service-identity__secret-management",
-    type: "menu",
-    name: "Secrets & Configs",
-    path: "/services/secret-management",
-    icon: Lock,
-  },
-  {
-    id: "service-identity__lmt",
-    type: "menu",
-    name: "LMT",
-    path: "/services/lmt",
-    icon: Zap,
-  },
-  {
-    id: "service-identity__apps",
-    type: "menu",
-    name: "Apps",
-    path: "/services/apps",
-    icon: LayoutDashboard,
-  },
 ];

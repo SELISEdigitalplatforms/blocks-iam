@@ -4,12 +4,14 @@
   "version": "0.0.1",
   "type": "module",
   "scripts": {
-    "dev": "vite --port 4000 --host 0.0.0.0",
+    "dev": "vite --port 4000 --host dev-idp.blocksdevelopers.com",
     "build": "tsc -b && vite build",
     "preview": "vite preview",
     "type-check": "tsc --noEmit"
   },
   "dependencies": {
+        "@microsoft/signalr": "^10.0.0",
+
     "@beefree.io/sdk": "^11.4.0",
     "@hcaptcha/react-hcaptcha": "^1.12.0",
     "@hookform/resolvers": "^3.9.0",
@@ -45,6 +47,7 @@
     "date-fns": "^3.0.0",
     "framer-motion": "^12.38.0",
     "input-otp": "^1.4.2",
+    "js-sha256": "^0.11.1",
     "jwt-decode": "^4.0.0",
     "lucide-react": "^0.445.0",
     "nuqs": "^2.8.9",

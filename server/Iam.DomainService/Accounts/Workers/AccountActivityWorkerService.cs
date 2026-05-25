@@ -1,4 +1,5 @@
-﻿using Blocks.Genesis;
+﻿using Authentication.DomainService.Utilities;
+using Blocks.Genesis;
 using Iam.DomainService.Dtos;
 using Iam.DomainService.Entities;
 using Iam.DomainService.Services;
@@ -50,7 +51,7 @@ namespace Iam.DomainService.Accounts
                 switch (context.Event)
                 {
                     case "Activate_Account":
-                        await HandlePostEventForActivation(user, context.MailPurpose, string.Empty);
+                        await HandlePostEventForActivation(user, context.MailPurpose);
                         break;
                     case "Reset_Password":
                         await HandlePostEventForResetPassword(context.UserId);
@@ -69,6 +70,8 @@ namespace Iam.DomainService.Accounts
             var timeline = new UserTimeline
             {
                 ItemId = Guid.NewGuid().ToString(),
+                UserId = user.ItemId,
+                OrganizationId = blocksContext.OrganizationId,
                 CreatedBy = string.IsNullOrWhiteSpace(blocksContext?.UserId) ? user.CreatedBy : blocksContext.UserId,
                 CreatedDate = DateTime.Now,
                 CurrentData = user,
@@ -79,14 +82,14 @@ namespace Iam.DomainService.Accounts
             return true;
         }
 
-        public async Task<bool> HandlePostEventForActivation(User user, string mailPurpose, string projectKey)
+        public async Task<bool> HandlePostEventForActivation(User user, string mailPurpose)
         {
-            return await _identityAccessManagementService.SendAccountActivationEmailAsync(user, mailPurpose, projectKey);
+            return await _identityAccessManagementService.SendAccountActivationEmailAsync(user, mailPurpose);
         }
 
         public async Task<bool> HandlePostEventForResetPassword(string userId)
         {
-            await _identityAccessManagementService.SendToQueueAsync(Constants.AuthenticationQueue, new LogoutAllEvent
+            await _identityAccessManagementService.SendToQueueAsync(IdpConstants.AuthenticationQueue, new LogoutAllEvent
             {
                 UserId = userId
             });

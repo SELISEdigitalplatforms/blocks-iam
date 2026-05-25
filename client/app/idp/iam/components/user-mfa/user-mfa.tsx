@@ -4,9 +4,9 @@ import { UserMFAConfirmationDisable } from "./user-mfa-confirmation/user-mfa-con
 import { UserMFADetails } from "./user-mfa-detail";
 import { Skeleton } from "@/components/ui-kits/skeleton/skeleton";
 import { useGetMFAConfig } from "@blocks-idp/mfa/hooks/use-mfa-config";
-import { Link } from "react-router-dom";
 import { Button } from "@/components/ui-kits/button/button";
 import { createContext, useContext, useState } from "react";
+import { BLOCKS_OS_BASE_URL } from "@/constants/endpoint.constant";
 
 type UserMFAProps = {
   userId: string;
@@ -48,7 +48,7 @@ export const ProjectMFA = () => {
         <div className="flex items-center justify-between">
           <CardTitle>Multi-factor Authentication</CardTitle>
           <Button asChild variant="outline" size="sm">
-            <Link to="/services/secret-management?tab=mfa">Go to MFA Settings</Link>
+            <a href={`${BLOCKS_OS_BASE_URL}/services/secret-management?tab=mfa`}>Go to MFA Settings</a>
           </Button>
         </div>
       </CardHeader>
@@ -104,7 +104,7 @@ export const UserMFA = (props: UserMFAProps) => {
   const { projectKey } = props;
   const [isTotpModalOpen, setIsTotpModalOpen] = useState<boolean>(false);
   const [mfaMethodType, setMfaMethodType] = useState<number>(0);
-  const { isLoading, data } = useGetMFAConfig({ projectKey });
+  const { isLoading, data } = useGetMFAConfig();
   if (isLoading) return <LoadingSkelton />;
   if (!data?.enableMfa) return <ProjectMFA />;
 
