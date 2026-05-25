@@ -39,11 +39,11 @@ export default function ConsoleCreateProject() {
     <div className="flex h-full w-full flex-col">
       <div className="relative w-full overflow-hidden rounded-2xl blocks-gradient px-8 py-10 shadow-md">
         <div className="absolute -right-8 -top-8 h-40 w-40 rounded-full bg-white/5" />
-        <div className="absolute -bottom-6 right-4 h-24 w-24 rounded-full bg-white/5" />
-        <div className="relative">
+        <div className="absolute -bottom-6 right-4 h-30 w-24 rounded-full bg-white/5" />
+        <div className="relative text-center">
           <h3 className="text-xl font-bold leading-tight text-white">Welcome to SELISE Blocks</h3>
           <p className="mt-1 text-sm text-white/70">Manage all your projects in one place</p>
-          <p className="mt-4 text-left text-sm font-normal leading-7 text-white/80">
+          <p className="mt-4 text-sm font-normal leading-7 text-white/80">
             Explore and manage all your projects in one place. With SELISE Blocks, building and
             scaling applications has never been easier. Start by creating a project.
           </p>
