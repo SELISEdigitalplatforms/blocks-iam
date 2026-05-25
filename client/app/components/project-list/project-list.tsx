@@ -42,6 +42,7 @@ export function ProjectList({ collapsed = false }: { collapsed?: boolean }) {
     if (pendingProjectRef.current) {
       setSelectedProject(pendingProjectRef.current);
       pendingProjectRef.current = null;
+      window.location.reload();
     }
   }, [pathname, setSelectedProject]);
   const handleProjectSelect = (project: IProject) => {
@@ -54,6 +55,7 @@ export function ProjectList({ collapsed = false }: { collapsed?: boolean }) {
       return;
     }
     setSelectedProject(project);
+    window.location.reload();
   };
   const name = projectData?.data?.name || selectedProject?.name;
   const queryProjects = projectGroups.flatMap((group) => group.projects).filter(Boolean);
