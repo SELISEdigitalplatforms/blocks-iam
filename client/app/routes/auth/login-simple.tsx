@@ -1,48 +1,194 @@
-import { useEffect, useMemo, useState } from "react";
-import { motion } from "framer-motion";
-import { Button } from "@/components/ui-kits/button/button";
-import { Logo } from "@/components/logo";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { Link, useNavigate } from "react-router-dom";
 import { getRuntimeEnv } from "@/lib/runtime-env";
 import { showErrorToast } from "@/hooks/use-toast";
-import {
-  ShieldCheck,
-  KeyRound,
-  Users,
-  Lock,
-  Fingerprint,
-  type LucideIcon,
-} from "lucide-react";
-import { Link, useNavigate } from "react-router-dom";
 import { ModeToggle } from "@/components/mode-toggle/mode-toggle";
-import { ServiceCarousel } from "@/components/service-carousel";
 import { useAuthStore } from "@/store/useAuthStore";
-const pillars = [
-  { icon: ShieldCheck, label: "Single Sign-On" },
-  { icon: Fingerprint, label: "Multi-Factor Auth" },
-  { icon: KeyRound, label: "OAuth 2.0 / OIDC" },
-  { icon: Users, label: "User Management" },
-  { icon: Lock, label: "Access Control" },
+
+interface StackLink {
+  label: string;
+  to: string;
+}
+interface Stack {
+  name: string;
+  available: boolean;
+  links: StackLink[];
+}
+interface Service {
+  badge: string;
+  title: string;
+  description: string;
+  features: string[];
+  url: string;
+  cta: string;
+  stacks?: Stack[];
+}
+
+const services: Service[] = [
+  {
+    badge: "AI & Knowledge",
+    title: "Blocks Agent Platform",
+    description:
+      "Integrate intelligent agents into any frontend with a single script. Advanced use cases with RAG pipelines, MCP, and custom LLM integrations.",
+    features: ["RAG Pipelines", "MCP Support", "Custom LLM", "Knowledge Bases"],
+    url: getRuntimeEnv("BLOCKS_AGENTS_BASE_URL"),
+    cta: "Visit Agent Platform",
+  },
+  {
+    badge: "Deployments",
+    title: "Blocks Cloud Build",
+    description:
+      "Build, deploy, and scale your applications with automated CI/CD pipelines. Connect GitHub repositories and go live in minutes.",
+    features: ["Auto CI/CD", "GitHub Integration", "Multi-env", "Build Logs"],
+    url: getRuntimeEnv("BLOCKS_RELEASE_BASE_URL"),
+    cta: "Visit Cloud Build",
+  },
+  {
+    badge: "Databases",
+    title: "Blocks Data Service",
+    description:
+      "Provision and manage databases with automatic scaling, backups, and real-time monitoring. Full control without the operational overhead.",
+    features: ["Auto Backups", "Auto Scaling", "Query Console", "Monitoring"],
+    url: getRuntimeEnv("BLOCKS_DATA_BASE_URL"),
+    cta: "Visit Data Service",
+  },
+  {
+    badge: "SDK & CLI",
+    title: "Blocks Construct",
+    description:
+      "Open-source SDKs and CLI tools for React, .NET and more. Scaffold and integrate Blocks services into your projects in minutes.",
+    features: ["React SDK", ".NET SDK", "CLI Tooling", "Starter Templates"],
+    url: "https://construct.seliseblocks.com",
+    cta: "Visit Construct",
+    stacks: [
+      {
+        name: "React",
+        available: true,
+        links: [
+          { label: "npm", to: "https://www.npmjs.com/package/@seliseblocks/cli" },
+          { label: "GitHub", to: "https://github.com/SELISEdigitalplatforms/l3-react-blocks-construct" },
+        ],
+      },
+      {
+        name: ".NET",
+        available: true,
+        links: [
+          { label: "NuGet", to: "https://www.nuget.org/profiles/SELISE" },
+          { label: "GitHub", to: "https://github.com/SELISEdigitalplatforms/l0-net-blocks-construct" },
+        ],
+      },
+      { name: "Angular", available: false, links: [] },
+      { name: "Ruby", available: false, links: [] },
+    ],
+  },
 ];
+
 export default function LoginSimplePage() {
   const [isStarting, setIsStarting] = useState(false);
-  const [titleNumber, setTitleNumber] = useState(0);
+  const [keywordIdx, setKeywordIdx] = useState(0);
+  const [keywordVisible, setKeywordVisible] = useState(true);
   const { isAuthenticated } = useAuthStore();
   const navigate = useNavigate();
+  const canvasRef = useRef<HTMLCanvasElement | null>(null);
 
-  useEffect(() => {
-    if (isAuthenticated)
-      navigate("/console", { replace: true });
-  }, [isAuthenticated, navigate]);
-  const titles = useMemo(
+  const keywords = useMemo(
     () => ["observable", "intelligent", "scalable", "resilient", "secure"],
     [],
   );
+
   useEffect(() => {
-    const timeoutId = setTimeout(() => {
-      setTitleNumber((prev) => (prev === titles.length - 1 ? 0 : prev + 1));
-    }, 2400);
-    return () => clearTimeout(timeoutId);
-  }, [titleNumber, titles]);
+    if (isAuthenticated) navigate("/console", { replace: true });
+  }, [isAuthenticated, navigate]);
+
+  useEffect(() => {
+    const id = setInterval(() => {
+      setKeywordVisible(false);
+      setTimeout(() => {
+        setKeywordIdx((p) => (p + 1) % keywords.length);
+        setKeywordVisible(true);
+      }, 280);
+    }, 2800);
+    return () => clearInterval(id);
+  }, [keywords.length]);
+
+  // Atmospheric canvas — animated HSL color blobs
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return;
+    let raf = 0;
+    let t = 0;
+    let dpr = window.devicePixelRatio || 1;
+    let w = 0;
+    let h = 0;
+
+    const resize = () => {
+      dpr = window.devicePixelRatio || 1;
+      w = canvas.width = Math.floor(window.innerWidth * dpr);
+      h = canvas.height = Math.floor(window.innerHeight * dpr);
+      canvas.style.width = window.innerWidth + "px";
+      canvas.style.height = window.innerHeight + "px";
+      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    };
+
+    const hslToRgb = (hue: number, s: number, l: number) => {
+      s /= 100;
+      l /= 100;
+      const k = (n: number) => (n + hue / 30) % 12;
+      const a = s * Math.min(l, 1 - l);
+      const f = (n: number) =>
+        l - a * Math.max(-1, Math.min(k(n) - 3, Math.min(9 - k(n), 1)));
+      return [
+        Math.round(f(0) * 255),
+        Math.round(f(8) * 255),
+        Math.round(f(4) * 255),
+      ];
+    };
+
+    const draw = () => {
+      const time = t * 0.008;
+      const baseHue = 185 + 15 * Math.sin(time);
+      const c1 = hslToRgb(baseHue, 100, 50);
+      const c2 = hslToRgb(baseHue + 15, 100, 50);
+      const c3 = hslToRgb(baseHue - 15, 100, 50);
+      const cx = (w / dpr) * 0.5;
+      const cy = (h / dpr) * 0.5;
+      ctx.clearRect(0, 0, w / dpr, h / dpr);
+
+      const r1 = (Math.max(w, h) / dpr) * 0.6;
+      const g1 = ctx.createRadialGradient(cx * 0.6, cy * 0.7, 0, cx * 0.6, cy * 0.7, r1);
+      g1.addColorStop(0, `rgba(${c1[0]}, ${c1[1]}, ${c1[2]}, 0.18)`);
+      g1.addColorStop(1, `rgba(${c1[0]}, ${c1[1]}, ${c1[2]}, 0)`);
+      ctx.fillStyle = g1;
+      ctx.fillRect(0, 0, w / dpr, h / dpr);
+
+      const r2 = (Math.max(w, h) / dpr) * 0.5;
+      const g2 = ctx.createRadialGradient(cx * 1.3, cy * 0.4, 0, cx * 1.3, cy * 0.4, r2);
+      g2.addColorStop(0, `rgba(${c2[0]}, ${c2[1]}, ${c2[2]}, 0.12)`);
+      g2.addColorStop(1, `rgba(${c2[0]}, ${c2[1]}, ${c2[2]}, 0)`);
+      ctx.fillStyle = g2;
+      ctx.fillRect(0, 0, w / dpr, h / dpr);
+
+      const r3 = (Math.max(w, h) / dpr) * 0.45;
+      const g3 = ctx.createRadialGradient(cx * 0.3, cy * 1.2, 0, cx * 0.3, cy * 1.2, r3);
+      g3.addColorStop(0, `rgba(${c3[0]}, ${c3[1]}, ${c3[2]}, 0.10)`);
+      g3.addColorStop(1, `rgba(${c3[0]}, ${c3[1]}, ${c3[2]}, 0)`);
+      ctx.fillStyle = g3;
+      ctx.fillRect(0, 0, w / dpr, h / dpr);
+
+      t++;
+      raf = requestAnimationFrame(draw);
+    };
+
+    resize();
+    window.addEventListener("resize", resize);
+    raf = requestAnimationFrame(draw);
+    return () => {
+      cancelAnimationFrame(raf);
+      window.removeEventListener("resize", resize);
+    };
+  }, []);
 
   const startLogin = async () => {
     try {
@@ -51,11 +197,6 @@ export default function LoginSimplePage() {
 
       const blocksKey = getRuntimeEnv("BLOCKS_X_BLOCKS_KEY");
       const clientId = getRuntimeEnv("BLOCKS_OIDC_CLIENT_ID");
-
-      //  const blocksKey ="***REMOVED***";
-      // const clientId = "a5831e15-e193-4a4f-8e10-d04a4ad1705b";
-      // const initiateUrl = `/api/idp/initiate?x-blocks-key=${blocksKey}&clientId=${clientId}`;
-
       const redirectUri = `${window.location.origin}/login/callback`;
       const initiateUrl = `/api/idp/initiate?x-blocks-key=${blocksKey}&clientId=${clientId}&redirectUri=${redirectUri}`;
 
@@ -63,14 +204,11 @@ export default function LoginSimplePage() {
       if (blocksKey) headers["X-Blocks-Key"] = blocksKey;
 
       const response = await fetch(initiateUrl.toString(), { headers });
-
       if (response.status === 400) {
         window.location.href = "/console";
         return;
       }
-
       const data = await response.json();
-
       if (data.redirect_uri) {
         window.location.href = data.redirect_uri;
       } else {
@@ -84,84 +222,923 @@ export default function LoginSimplePage() {
     }
   };
 
+  // Duplicated for seamless loop
+  const carouselCards = [...services, ...services];
+
   return (
-    <div className="relative flex min-h-screen flex-col bg-[hsl(var(--surface-app))]">
-      <header className="relative z-10 flex items-center px-6 py-5 xl:px-[154px]">
-        <Logo width={120} height={52} />
-        <div className="absolute right-6 top-5 xl:right-[154px]">
+    <div className="eurolm-page">
+      <style>{eurolmStyles}</style>
+
+      <div className="grid-bg" />
+      <div className="scan-line" />
+      <div className="radial-glow" />
+      <div className="secondary-glow" />
+      <div className="vignette" />
+      <div className="noise-overlay" />
+      <canvas className="atmospheric-canvas" ref={canvasRef} />
+
+      <div className="corner corner-tl" />
+      <div className="corner corner-tr" />
+      <div className="corner corner-bl" />
+      <div className="corner corner-br" />
+      <div className="corner-dot corner-dot-tl" />
+      <div className="corner-dot corner-dot-tr" />
+      <div className="corner-dot corner-dot-bl" />
+      <div className="corner-dot corner-dot-br" />
+
+      <div className="particle" style={{ left: "6%", animationDuration: "16s", animationDelay: "0s", width: 2, height: 2 }} />
+      <div className="particle" style={{ left: "18%", animationDuration: "20s", animationDelay: "3s", width: 1.5, height: 1.5 }} />
+      <div className="particle large" style={{ left: "35%", animationDuration: "14s", animationDelay: "1.5s", width: 3, height: 3 }} />
+      <div className="particle" style={{ left: "52%", animationDuration: "18s", animationDelay: "5s", width: 2, height: 2 }} />
+      <div className="particle" style={{ left: "68%", animationDuration: "22s", animationDelay: "2s", width: 1, height: 1 }} />
+      <div className="particle large" style={{ left: "82%", animationDuration: "15s", animationDelay: "4s", width: 2.5, height: 2.5 }} />
+      <div className="particle" style={{ left: "92%", animationDuration: "19s", animationDelay: "6s", width: 1.5, height: 1.5 }} />
+
+      <nav className="site-nav">
+        <div className="nav-left">
+          <svg className="nav-logo-mark" viewBox="0 0 246 360" xmlns="http://www.w3.org/2000/svg">
+            <path d="M245.455 68.162V129.87L168.982 156.65V93.9637L245.455 68.162Z" />
+            <path d="M240.389 62.3805L165.49 87.6573L5.30945 24.2563L85.3315 0L240.389 62.3805Z" />
+            <path d="M161.797 93.8295V156.43L81.1141 122.607V188.07L0 152.738V29.6846L161.797 93.8295Z" />
+            <path d="M76.4728 266.036L0 291.837V230.123L76.4728 203.329V266.036Z" />
+            <path d="M160.122 360L5.07166 297.619L79.9639 272.343L240.144 335.743L160.122 360Z" />
+            <path d="M245.454 330.315L83.6569 266.175V203.57L164.34 237.395V171.93L245.454 207.262V330.315Z" />
+          </svg>
+          <div className="nav-divider" />
+          <span className="nav-product">Identity Provider</span>
+        </div>
+        <div className="nav-right">
+          <nav className="nav-links">
+            <a href="https://docs.seliseblocks.com/" target="_blank" rel="noreferrer" className="nav-link">Docs</a>
+            <a href="https://seliseblocks.com" target="_blank" rel="noreferrer" className="nav-link">Blocks</a>
+            <a href="https://github.com/SELISEdigitalplatforms" target="_blank" rel="noreferrer" className="nav-link">GitHub</a>
+          </nav>
           <ModeToggle />
         </div>
-      </header>
-      <main className="relative z-10 flex flex-1 flex-col items-start justify-center gap-16 px-6 py-12 lg:flex-row lg:items-center lg:gap-16 lg:py-0 xl:px-[154px]">
-        <div className="flex flex-1 flex-col items-start gap-6">
-          <div className="flex flex-col gap-2">
-            <p className="text-sm font-semibold uppercase tracking-[0.1em] text-primary">
-              Blocks Identity Provider
-            </p>
-            <h1 className="max-w-xl text-5xl font-semibold tracking-tight text-[hsl(var(--high-emphasis))] lg:text-6xl">
-              Backends that are
-            </h1>
-            <div className="relative flex h-[80px] overflow-visible lg:h-[88px]">
-              {titles.map((title, index) => (
-                <motion.span
-                  key={index}
-                  className="absolute text-5xl font-semibold tracking-tight text-primary lg:text-6xl"
-                  initial={{ opacity: 0, y: 28, filter: "blur(6px)" }}
-                  transition={{ duration: 0.75, ease: [0.22, 1, 0.36, 1] }}
-                  animate={
-                    titleNumber === index
-                      ? { y: 0, opacity: 1, filter: "blur(0px)" }
-                      : {
-                          y: titleNumber > index ? -28 : 28,
-                          opacity: 0,
-                          filter: "blur(6px)",
-                        }
-                  }
-                >
-                  {title}.
-                </motion.span>
-              ))}
-            </div>
-          </div>
-          <p className="max-w-lg text-lg leading-relaxed tracking-tight text-muted-foreground">
+      </nav>
+
+      <main className="main">
+        <div className="col-left">
+          <p className="eyebrow">Blocks · Core Services</p>
+          <h1 className="title-main">
+            blocks<br />Identity Provider
+          </h1>
+          <p className="title-sub">Authentication &amp; access management for modern teams</p>
+          <p className="keywords">
+            Backends that are{" "}
+            <span
+              className="keyword-anim"
+              style={{ opacity: keywordVisible ? 1 : 0 }}
+            >
+              {keywords[keywordIdx]}
+            </span>
+            .
+          </p>
+          <p className="desc">
             Blocks Identity Provider is a modern identity and access management
             platform for secure authentication, authorization, and user
-            management. Easily integrate single sign-on (SSO), multi-factor
-            authentication (MFA), social logins, and role-based access control
-            into your applications while Blocks Identity Provider handles
-            security, scalability, and compliance.
+            management. Integrate <span className="highlight">SSO, MFA, social logins</span>, and
+            role-based access control while Blocks handles security, scalability,
+            and compliance.
           </p>
-          <div className="flex flex-wrap gap-2">
-            {pillars.map(({ icon: Icon, label }) => (
-              <div
-                key={label}
-                className="inline-flex items-center gap-1.5 rounded-full border border-[hsl(var(--border-default))] bg-[hsl(var(--card))] px-3 py-1.5 text-xs font-medium text-[hsl(var(--high-emphasis))]"
-              >
-                <Icon className="h-3.5 w-3.5 text-primary" />
-                {label}
-              </div>
-            ))}
+
+          <div className="features">
+            <span className="feature-pill">Single Sign-On</span>
+            <span className="feature-pill">Multi-Factor Auth</span>
+            <span className="feature-pill">OAuth 2.0 / OIDC</span>
+            <span className="feature-pill">User Management</span>
+            <span className="feature-pill">Access Control</span>
           </div>
-          <div className="flex flex-col gap-3 pt-2">
-            <div className="flex flex-row gap-3">
-              <Button
-                size="lg"
-                className="group gap-2"
+
+          <div className="cta-row">
+            <div className="button-container">
+              <div className="button-ring" />
+              <div className="button-ring" />
+              <button
+                className="launch-btn"
                 disabled={isStarting}
                 onClick={startLogin}
               >
                 {isStarting ? "Redirecting…" : "Log in to your account"}
-              </Button>
-              <Button size="lg" variant="outline" asChild>
-                <Link to="https://docs.seliseblocks.com/" target="_blank">
-                  Read the Docs
-                </Link>
-              </Button>
+              </button>
             </div>
+            <Link
+              to="https://docs.seliseblocks.com/"
+              target="_blank"
+              className="cta-docs"
+            >
+              View documentation
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+                <path d="M5 12h14M12 5l7 7-7 7" />
+              </svg>
+            </Link>
           </div>
         </div>
-        <ServiceCarousel />
+
+        <div className="col-right">
+          <div className="sdk-header-row">
+            <p className="sdk-header-label">Core Services — Blocks Platform</p>
+            <span className="sdk-count-badge">{services.length} services</span>
+          </div>
+
+          <div className="carousel-track">
+            <div className="carousel-inner">
+              {carouselCards.map((s, i) => (
+                <div className="sdk-card" key={`${s.title}-${i}`}>
+                  <div className="sdk-card-top">
+                    <span className="sdk-name">{s.title.replace(/^Blocks\s+/, "")}</span>
+                    <span className={`sdk-badge${s.stacks ? "" : " soon"}`}>
+                      {s.badge}
+                    </span>
+                  </div>
+                  <p className="sdk-desc">{s.description}</p>
+
+                  {s.stacks ? (
+                    <div className="sdk-links">
+                      {s.stacks
+                        .filter((st) => st.available)
+                        .map((st) => (
+                          <a
+                            key={st.name}
+                            href={st.links[0]?.to ?? "#"}
+                            target="_blank"
+                            rel="noreferrer"
+                            className="sdk-link"
+                          >
+                            {st.name}
+                          </a>
+                        ))}
+                      {s.stacks
+                        .filter((st) => !st.available)
+                        .map((st) => (
+                          <span key={st.name} className="sdk-link dim">
+                            {st.name}
+                          </span>
+                        ))}
+                    </div>
+                  ) : (
+                    <div className="sdk-links">
+                      {s.features.map((f) => (
+                        <span key={f} className="sdk-link dim">
+                          {f}
+                        </span>
+                      ))}
+                    </div>
+                  )}
+
+                  <div className="sdk-card-footer">
+                    <a
+                      href={s.url || "#"}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="sdk-cta"
+                    >
+                      {s.cta}
+                      <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+                        <path d="M5 12h14M12 5l7 7-7 7" />
+                      </svg>
+                    </a>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          <div className="sdk-footer">
+            <a href="https://seliseblocks.com" target="_blank" rel="noreferrer" className="visit-construct">
+              Visit Blocks
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+                <path d="M5 12h14M12 5l7 7-7 7" />
+              </svg>
+            </a>
+            <span className="sdk-open-source">Open source</span>
+          </div>
+        </div>
       </main>
+
+      <div className="status">
+        <span className="status-dot" />
+        <span>All systems operational</span>
+      </div>
     </div>
   );
 }
+
+const eurolmStyles = `
+.eurolm-page {
+  --bg:      #050510;
+  --surface: #0a0a1a;
+  --surface-elevated: #0f0f22;
+  --fg:      #e8e8f0;
+  --muted:   #5e5e7a;
+  --border:  #16162a;
+  --border-hover: rgba(0,102,178,0.18);
+  --accent:  #0066b2;
+  --accent-glow: rgba(0,102,178,0.35);
+  --accent2: #00B2FF;
+  --accent2-glow: rgba(0,178,255,0.30);
+  --nav-h:   56px;
+  --ease-out-expo: cubic-bezier(0.16, 1, 0.3, 1);
+  --ease-in-out-sine: cubic-bezier(0.37, 0, 0.63, 1);
+
+  position: fixed;
+  inset: 0;
+  overflow: hidden;
+  background: var(--bg);
+  font-family: 'Rajdhani', -apple-system, system-ui, sans-serif;
+  color: var(--fg);
+  display: flex;
+  flex-direction: column;
+  transition: background 0.4s var(--ease-out-expo), color 0.4s var(--ease-out-expo);
+}
+:root:not(.dark) .eurolm-page {
+  --bg:      #f4f4f8;
+  --surface: #ffffff;
+  --surface-elevated: #f8f8fc;
+  --fg:      #111120;
+  --muted:   #6b6b80;
+  --border:  #e0e0ec;
+  --border-hover: rgba(0,102,178,0.22);
+  --accent:  #0066b2;
+  --accent-glow: rgba(0,102,178,0.25);
+  --accent2: #0099dd;
+  --accent2-glow: rgba(0,153,221,0.20);
+}
+
+.eurolm-page *, .eurolm-page *::before, .eurolm-page *::after { box-sizing: border-box; }
+
+.eurolm-page .grid-bg {
+  position: absolute;
+  inset: 0;
+  background:
+    linear-gradient(90deg, transparent 49.8%, rgba(0,102,178,0.035) 50%, transparent 50.2%),
+    linear-gradient(0deg,  transparent 49.8%, rgba(0,102,178,0.035) 50%, transparent 50.2%);
+  background-size: 80px 80px;
+  animation: eurolm-gridPulse 8s var(--ease-in-out-sine) infinite;
+  pointer-events: none;
+  z-index: 0;
+}
+:root:not(.dark) .eurolm-page .grid-bg { opacity: 0.18; background-size: 100px 100px; }
+@keyframes eurolm-gridPulse { 0%,100%{opacity:0.25} 50%{opacity:0.55} }
+
+.eurolm-page .scan-line {
+  position: absolute;
+  top: -2px; left: 0; right: 0;
+  height: 1.5px;
+  background: linear-gradient(90deg, transparent 5%, var(--accent) 50%, transparent 95%);
+  animation: eurolm-scanMove 7s linear infinite;
+  opacity: 0.25;
+  z-index: 50;
+  pointer-events: none;
+  filter: blur(0.3px);
+}
+@keyframes eurolm-scanMove { 0%{top:-2px} 100%{top:100vh} }
+
+.eurolm-page .radial-glow {
+  position: absolute;
+  top: 55%; left: 25%;
+  transform: translate(-50%, -50%);
+  width: 700px; height: 700px;
+  background: radial-gradient(ellipse, var(--accent2-glow) 0%, transparent 60%);
+  animation: eurolm-glowPulse 10s var(--ease-in-out-sine) infinite;
+  pointer-events: none;
+  z-index: 0;
+}
+:root:not(.dark) .eurolm-page .radial-glow { opacity: 0.12; }
+@keyframes eurolm-glowPulse {
+  0%,100%{opacity:0.3;transform:translate(-50%,-50%) scale(1)}
+  50%{opacity:0.6;transform:translate(-50%,-50%) scale(1.08)}
+}
+
+.eurolm-page .secondary-glow {
+  position: absolute;
+  top: 20%; right: 10%;
+  width: 400px; height: 400px;
+  background: radial-gradient(circle, var(--accent-glow) 0%, transparent 55%);
+  opacity: 0.15;
+  animation: eurolm-secondaryGlow 12s var(--ease-in-out-sine) infinite;
+  pointer-events: none;
+  z-index: 0;
+}
+@keyframes eurolm-secondaryGlow {
+  0%,100%{opacity:0.1;transform:scale(1)}
+  50%{opacity:0.25;transform:scale(1.15)}
+}
+
+.eurolm-page .vignette {
+  position: absolute;
+  inset: 0;
+  background: radial-gradient(ellipse at center, transparent 40%, rgba(0,0,0,0.4) 100%);
+  pointer-events: none;
+  z-index: 1;
+}
+:root:not(.dark) .eurolm-page .vignette { background: radial-gradient(ellipse at center, transparent 50%, rgba(0,0,0,0.06) 100%); }
+
+.eurolm-page .noise-overlay {
+  position: absolute;
+  inset: 0;
+  opacity: 0.025;
+  pointer-events: none;
+  z-index: 2;
+  background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noise)'/%3E%3C/svg%3E");
+  background-repeat: repeat;
+  background-size: 256px 256px;
+}
+:root:not(.dark) .eurolm-page .noise-overlay { opacity: 0.015; }
+
+.eurolm-page .atmospheric-canvas {
+  position: absolute;
+  inset: 0;
+  width: 100%; height: 100%;
+  pointer-events: none;
+  z-index: 0;
+  opacity: 0.55;
+  mix-blend-mode: screen;
+}
+:root:not(.dark) .eurolm-page .atmospheric-canvas { opacity: 0.22; mix-blend-mode: multiply; }
+
+.eurolm-page .corner {
+  position: absolute;
+  width: 48px; height: 48px;
+  border: 1.5px solid var(--accent);
+  opacity: 0.18;
+  z-index: 100;
+  pointer-events: none;
+  transition: opacity 0.4s var(--ease-out-expo);
+}
+:root:not(.dark) .eurolm-page .corner { opacity: 0.12; }
+.eurolm-page .corner-tl { top: 20px; left: 20px; border-right: none; border-bottom: none; }
+.eurolm-page .corner-tr { top: 20px; right: 20px; border-left: none; border-bottom: none; }
+.eurolm-page .corner-bl { bottom: 20px; left: 20px; border-right: none; border-top: none; }
+.eurolm-page .corner-br { bottom: 20px; right: 20px; border-left: none; border-top: none; }
+
+.eurolm-page .corner-dot {
+  position: absolute;
+  width: 3px; height: 3px;
+  background: var(--accent);
+  border-radius: 50%;
+  opacity: 0.35;
+  z-index: 100;
+  pointer-events: none;
+  animation: eurolm-dotPulse 4s ease-in-out infinite;
+}
+.eurolm-page .corner-dot-tl { top: 18px; left: 18px; }
+.eurolm-page .corner-dot-tr { top: 18px; right: 18px; }
+.eurolm-page .corner-dot-bl { bottom: 18px; left: 18px; }
+.eurolm-page .corner-dot-br { bottom: 18px; right: 18px; }
+@keyframes eurolm-dotPulse {
+  0%,100% { opacity: 0.2; box-shadow: 0 0 4px var(--accent); }
+  50%     { opacity: 0.5; box-shadow: 0 0 10px var(--accent); }
+}
+
+.eurolm-page .particle {
+  position: absolute;
+  background: var(--accent);
+  border-radius: 50%;
+  opacity: 0;
+  animation: eurolm-particleFloat linear infinite;
+  pointer-events: none;
+  z-index: 0;
+  filter: blur(0.5px);
+}
+.eurolm-page .particle.large { filter: blur(1px); }
+@keyframes eurolm-particleFloat {
+  0% { opacity: 0; transform: translateY(100vh) scale(0.5); }
+  5% { opacity: 0.4; }
+  95% { opacity: 0.4; }
+  100% { opacity: 0; transform: translateY(-20px) scale(1); }
+}
+
+.eurolm-page .site-nav {
+  position: absolute;
+  top: 0; left: 0; right: 0;
+  height: var(--nav-h);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 44px;
+  z-index: 200;
+  background: rgba(5,5,16,0.65);
+  backdrop-filter: blur(20px) saturate(1.2);
+  -webkit-backdrop-filter: blur(20px) saturate(1.2);
+  border-bottom: 1px solid var(--border);
+  transition: background 0.4s var(--ease-out-expo), border-color 0.4s var(--ease-out-expo);
+  opacity: 0;
+  transform: translateY(-10px);
+  animation: eurolm-navEnter 0.8s var(--ease-out-expo) 0.2s forwards;
+}
+@keyframes eurolm-navEnter { to { opacity: 1; transform: translateY(0); } }
+:root:not(.dark) .eurolm-page .site-nav { background: rgba(244,244,248,0.72); }
+
+.eurolm-page .nav-left { display: flex; align-items: center; gap: 14px; }
+.eurolm-page .nav-logo-mark {
+  height: 26px; width: auto;
+  fill: var(--accent);
+  filter: drop-shadow(0 0 8px var(--accent-glow));
+  transition: fill 0.3s, filter 0.3s;
+  flex-shrink: 0;
+}
+.eurolm-page .nav-divider { width: 1px; height: 16px; background: var(--border); }
+.eurolm-page .nav-product {
+  font-family: 'Orbitron', sans-serif;
+  font-size: 0.7rem;
+  font-weight: 600;
+  letter-spacing: 0.22em;
+  text-transform: uppercase;
+  color: var(--fg);
+}
+.eurolm-page .nav-right { display: flex; align-items: center; gap: 28px; }
+.eurolm-page .nav-links { display: flex; align-items: center; gap: 26px; }
+.eurolm-page .nav-link {
+  font-size: 0.68rem;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--muted);
+  text-decoration: none;
+  font-weight: 500;
+  transition: color 0.25s ease, text-shadow 0.25s ease;
+  position: relative;
+}
+.eurolm-page .nav-link::after {
+  content: ''; position: absolute; bottom: -4px; left: 0;
+  width: 0; height: 1px; background: var(--accent);
+  transition: width 0.3s var(--ease-out-expo);
+}
+.eurolm-page .nav-link:hover { color: var(--fg); text-shadow: 0 0 12px var(--accent-glow); }
+.eurolm-page .nav-link:hover::after { width: 100%; }
+
+.eurolm-page .main {
+  flex: 1;
+  min-height: 0;
+  display: grid;
+  grid-template-columns: 1fr 400px;
+  gap: 56px;
+  padding: calc(var(--nav-h) + 48px) 52px 48px;
+  max-width: 1420px;
+  margin: 0 auto;
+  width: 100%;
+  position: relative;
+  z-index: 10;
+  overflow: hidden;
+}
+
+.eurolm-page .col-left { display: flex; flex-direction: column; justify-content: center; min-height: 0; }
+
+.eurolm-page .eyebrow {
+  font-size: 0.6rem;
+  letter-spacing: 0.35em;
+  text-transform: uppercase;
+  color: var(--accent);
+  margin-bottom: 20px;
+  font-weight: 600;
+  display: flex; align-items: center; gap: 12px;
+  opacity: 0; transform: translateY(12px);
+  animation: eurolm-fadeUp 0.7s var(--ease-out-expo) 0.4s forwards;
+}
+.eurolm-page .eyebrow::before {
+  content: ''; display: block; width: 28px; height: 1px;
+  background: var(--accent); opacity: 0.6; flex-shrink: 0;
+}
+
+.eurolm-page .title-main {
+  font-family: 'Orbitron', sans-serif;
+  font-size: clamp(2rem, 3.8vw, 3.1rem);
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  line-height: 1.08;
+  background: linear-gradient(135deg, var(--fg) 30%, var(--accent) 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+  margin-bottom: 12px;
+  opacity: 0; transform: translateY(16px);
+  animation: eurolm-fadeUp 0.8s var(--ease-out-expo) 0.55s forwards;
+  filter: drop-shadow(0 0 30px rgba(0,102,178,0.08));
+}
+
+.eurolm-page .title-sub {
+  font-family: 'Orbitron', sans-serif;
+  font-size: clamp(0.68rem, 1vw, 0.82rem);
+  font-weight: 400;
+  letter-spacing: 0.28em;
+  text-transform: uppercase;
+  color: var(--muted);
+  margin-bottom: 32px;
+  opacity: 0; transform: translateY(12px);
+  animation: eurolm-fadeUp 0.7s var(--ease-out-expo) 0.7s forwards;
+}
+
+.eurolm-page .keywords {
+  font-size: 0.9rem;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--fg);
+  margin-bottom: 24px;
+  font-weight: 500;
+  opacity: 0; transform: translateY(12px);
+  animation: eurolm-fadeUp 0.7s var(--ease-out-expo) 0.85s forwards;
+}
+.eurolm-page .keyword-anim {
+  color: var(--accent);
+  font-weight: 700;
+  display: inline-block;
+  min-width: 8ch;
+  transition: opacity 0.3s ease;
+  text-shadow: 0 0 16px var(--accent-glow);
+  position: relative;
+}
+.eurolm-page .keyword-anim::after {
+  content: ''; position: absolute; right: -3px; top: 0; bottom: 0;
+  width: 2px; background: var(--accent);
+  animation: eurolm-cursorBlink 1s step-end infinite;
+}
+@keyframes eurolm-cursorBlink { 0%,100%{opacity:1} 50%{opacity:0} }
+
+.eurolm-page .desc {
+  font-size: 1rem;
+  line-height: 1.75;
+  color: var(--fg);
+  max-width: 520px;
+  margin-bottom: 32px;
+  opacity: 0; font-weight: 400; transform: translateY(12px);
+  animation: eurolm-fadeUp 0.7s var(--ease-out-expo) 1s forwards;
+}
+.eurolm-page .desc .highlight { color: var(--accent); font-weight: 600; }
+@keyframes eurolm-fadeUp { to { opacity: 0.85; transform: translateY(0); } }
+
+.eurolm-page .features {
+  display: flex; gap: 10px; flex-wrap: wrap;
+  margin-bottom: 44px;
+  opacity: 0; transform: translateY(12px);
+  animation: eurolm-fadeUp 0.7s var(--ease-out-expo) 1.15s forwards;
+}
+.eurolm-page .feature-pill {
+  font-size: 0.62rem;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--muted);
+  padding: 6px 14px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  font-weight: 500;
+  background: rgba(255,255,255,0.02);
+  transition: border-color 0.25s ease, color 0.25s ease, background 0.25s ease, box-shadow 0.25s ease;
+  cursor: default;
+}
+:root:not(.dark) .eurolm-page .feature-pill { background: rgba(0,0,0,0.015); }
+.eurolm-page .feature-pill:hover {
+  border-color: var(--border-hover);
+  color: var(--fg);
+  box-shadow: 0 0 12px rgba(0,102,178,0.06);
+}
+
+.eurolm-page .cta-row {
+  display: flex; align-items: center; gap: 28px; flex-wrap: wrap;
+  opacity: 0; transform: translateY(12px);
+  animation: eurolm-fadeUp 0.7s var(--ease-out-expo) 1.3s forwards;
+}
+.eurolm-page .button-container { position: relative; display: inline-block; }
+.eurolm-page .button-ring {
+  position: absolute;
+  inset: -14px;
+  border: 1px solid rgba(0,102,178,0.15);
+  border-radius: 100px;
+  animation: eurolm-ringPulse 3s var(--ease-in-out-sine) infinite;
+  pointer-events: none;
+}
+.eurolm-page .button-ring:nth-child(2) {
+  inset: -26px;
+  border-color: rgba(0,178,255,0.1);
+  animation-delay: 1.2s;
+}
+@keyframes eurolm-ringPulse {
+  0%,100% { opacity: 0.15; transform: scale(1); }
+  50%      { opacity: 0.4; transform: scale(1.03); }
+}
+.eurolm-page .launch-btn {
+  position: relative;
+  padding: 16px 44px;
+  font-family: 'Orbitron', sans-serif;
+  font-size: 0.78rem;
+  font-weight: 700;
+  letter-spacing: 0.22em;
+  text-transform: uppercase;
+  color: #fff;
+  background: linear-gradient(135deg, var(--accent), var(--accent2));
+  border: none;
+  border-radius: 6px;
+  cursor: pointer;
+  overflow: hidden;
+  transition: transform 0.25s var(--ease-out-expo), box-shadow 0.25s ease;
+  box-shadow: 0 4px 24px rgba(0,102,178,0.15), 0 0 0 1px rgba(0,102,178,0.1) inset;
+}
+.eurolm-page .launch-btn::before {
+  content: ''; position: absolute;
+  top: 0; left: -100%; width: 100%; height: 100%;
+  background: linear-gradient(90deg, transparent, rgba(255,255,255,0.25), transparent);
+  transition: left 0.6s var(--ease-out-expo);
+}
+.eurolm-page .launch-btn:hover:not(:disabled) {
+  transform: scale(1.04) translateY(-1px);
+  box-shadow: 0 8px 32px rgba(0,102,178,0.25), 0 0 0 1px rgba(0,102,178,0.15) inset, 0 0 60px rgba(0,178,255,0.1);
+}
+.eurolm-page .launch-btn:hover:not(:disabled)::before { left: 100%; }
+.eurolm-page .launch-btn:active:not(:disabled) { transform: scale(0.98); }
+.eurolm-page .launch-btn:disabled { opacity: 0.7; cursor: not-allowed; }
+
+.eurolm-page .cta-docs {
+  font-size: 0.7rem;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--muted);
+  text-decoration: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-weight: 500;
+  transition: color 0.25s ease, gap 0.25s var(--ease-out-expo);
+  position: relative;
+}
+.eurolm-page .cta-docs::after {
+  content: ''; position: absolute; bottom: -2px; left: 0;
+  width: 0; height: 1px; background: var(--accent);
+  transition: width 0.3s var(--ease-out-expo);
+}
+.eurolm-page .cta-docs:hover { color: var(--fg); gap: 12px; }
+.eurolm-page .cta-docs:hover::after { width: 100%; }
+.eurolm-page .cta-docs svg { transition: transform 0.25s var(--ease-out-expo); }
+.eurolm-page .cta-docs:hover svg { transform: translateX(4px); }
+
+.eurolm-page .col-right {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  overflow: hidden;
+  opacity: 0;
+  transform: translateX(20px);
+  animation: eurolm-fadeRight 0.9s var(--ease-out-expo) 0.9s forwards;
+}
+@keyframes eurolm-fadeRight { to { opacity: 1; transform: translateX(0); } }
+
+.eurolm-page .sdk-header-row {
+  display: flex; align-items: center; justify-content: space-between;
+  margin-bottom: 16px; flex-shrink: 0;
+}
+.eurolm-page .sdk-header-label {
+  font-family: 'Orbitron', sans-serif;
+  font-size: 0.58rem;
+  letter-spacing: 0.32em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+.eurolm-page .sdk-count-badge {
+  font-size: 0.55rem;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--muted);
+  border: 1px solid var(--border);
+  padding: 3px 10px;
+  border-radius: 4px;
+  font-weight: 500;
+}
+
+.eurolm-page .carousel-track {
+  position: relative;
+  flex: 1;
+  min-height: 0;
+  max-height: 430px;
+  overflow: hidden;
+  mask-image: linear-gradient(to bottom, transparent, black 8%, black 92%, transparent);
+  -webkit-mask-image: linear-gradient(to bottom, transparent, black 8%, black 92%, transparent);
+}
+.eurolm-page .carousel-inner {
+  display: flex; flex-direction: column; gap: 12px;
+  animation: eurolm-scrollV 40s linear infinite;
+  will-change: transform;
+}
+@keyframes eurolm-scrollV { 0%{transform:translateY(0)} 100%{transform:translateY(-50%)} }
+.eurolm-page .carousel-inner:hover { animation-play-state: paused; }
+
+.eurolm-page .sdk-card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 16px 18px;
+  flex-shrink: 0;
+  transition: border-color 0.3s ease, box-shadow 0.3s ease, transform 0.3s var(--ease-out-expo), background 0.3s;
+  position: relative;
+  overflow: hidden;
+}
+.eurolm-page .sdk-card::before {
+  content: ''; position: absolute; top: 0; left: 0; right: 0;
+  height: 1px;
+  background: linear-gradient(90deg, transparent, var(--accent), transparent);
+  opacity: 0; transition: opacity 0.3s ease;
+}
+.eurolm-page .sdk-card:hover {
+  border-color: var(--border-hover);
+  box-shadow: 0 0 20px rgba(0,102,178,0.06), 0 4px 16px rgba(0,0,0,0.15);
+  transform: translateX(-4px);
+  background: var(--surface-elevated);
+}
+.eurolm-page .sdk-card:hover::before { opacity: 0.4; }
+
+.eurolm-page .sdk-card-top {
+  display: flex; align-items: center; justify-content: space-between;
+  margin-bottom: 10px;
+}
+.eurolm-page .sdk-name {
+  font-family: 'Orbitron', sans-serif;
+  font-size: 0.78rem;
+  font-weight: 600;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--fg);
+  transition: text-shadow 0.25s;
+}
+.eurolm-page .sdk-card:hover .sdk-name { text-shadow: 0 0 12px var(--accent-glow); }
+.eurolm-page .sdk-badge {
+  font-size: 0.5rem;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  padding: 3px 9px;
+  border-radius: 4px;
+  background: rgba(0,102,178,0.06);
+  color: var(--accent);
+  border: 1px solid rgba(0,102,178,0.15);
+  font-weight: 700;
+  white-space: nowrap;
+}
+.eurolm-page .sdk-badge.soon {
+  background: rgba(0,178,255,0.06);
+  color: var(--accent2);
+  border-color: rgba(0,178,255,0.15);
+}
+
+.eurolm-page .sdk-desc {
+  font-size: 0.78rem;
+  color: var(--muted);
+  line-height: 1.6;
+  margin-bottom: 12px;
+  min-height: 52px;
+  font-weight: 400;
+  transition: color 0.25s;
+}
+.eurolm-page .sdk-card:hover .sdk-desc { color: var(--fg); }
+
+.eurolm-page .sdk-links { display: flex; gap: 8px; flex-wrap: wrap; }
+.eurolm-page .sdk-link {
+  font-size: 0.56rem;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--accent);
+  text-decoration: none;
+  padding: 4px 10px;
+  border: 1px solid rgba(0,102,178,0.18);
+  border-radius: 4px;
+  font-weight: 600;
+  transition: background 0.2s, border-color 0.2s, box-shadow 0.2s;
+}
+.eurolm-page .sdk-link:hover {
+  background: rgba(0,102,178,0.08);
+  border-color: var(--accent);
+  box-shadow: 0 0 8px rgba(0,102,178,0.08);
+}
+.eurolm-page .sdk-link.dim {
+  color: var(--muted);
+  border-color: var(--border);
+}
+
+.eurolm-page .sdk-card-footer {
+  margin-top: 12px;
+  padding-top: 10px;
+  border-top: 1px dashed var(--border);
+}
+.eurolm-page .sdk-cta {
+  display: inline-flex; align-items: center; gap: 6px;
+  font-size: 0.58rem;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--accent2);
+  text-decoration: none;
+  font-weight: 700;
+  transition: gap 0.25s var(--ease-out-expo), text-shadow 0.25s;
+}
+.eurolm-page .sdk-cta:hover {
+  gap: 10px;
+  text-shadow: 0 0 10px var(--accent2-glow);
+}
+
+.eurolm-page .sdk-footer {
+  display: flex; align-items: center; justify-content: space-between;
+  margin-top: 16px; padding-top: 14px;
+  border-top: 1px solid var(--border);
+  flex-shrink: 0;
+  opacity: 0; transform: translateY(8px);
+  animation: eurolm-fadeUp 0.7s var(--ease-out-expo) 1.5s forwards;
+}
+.eurolm-page .visit-construct {
+  display: inline-flex; align-items: center; gap: 8px;
+  font-size: 0.65rem;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--accent2);
+  text-decoration: none;
+  font-weight: 600;
+  transition: gap 0.25s var(--ease-out-expo), opacity 0.25s, text-shadow 0.25s;
+  position: relative;
+}
+.eurolm-page .visit-construct::after {
+  content: ''; position: absolute; bottom: -2px; left: 0;
+  width: 0; height: 1px; background: var(--accent2);
+  transition: width 0.3s var(--ease-out-expo);
+}
+.eurolm-page .visit-construct:hover {
+  gap: 12px; opacity: 0.8;
+  text-shadow: 0 0 12px var(--accent2-glow);
+}
+.eurolm-page .visit-construct:hover::after { width: 100%; }
+.eurolm-page .sdk-open-source {
+  font-size: 0.58rem;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--muted);
+  opacity: 0.45;
+  font-weight: 500;
+}
+
+.eurolm-page .status {
+  position: absolute;
+  bottom: 22px; left: 52px;
+  display: flex; align-items: center; gap: 10px;
+  font-size: 0.55rem;
+  letter-spacing: 0.28em;
+  text-transform: uppercase;
+  color: var(--muted);
+  z-index: 100;
+  pointer-events: none;
+  opacity: 0;
+  animation: eurolm-fadeIn 1s ease 2s forwards;
+}
+@keyframes eurolm-fadeIn { to { opacity: 1; } }
+.eurolm-page .status-dot {
+  width: 5px; height: 5px;
+  background: #17a34a;
+  border-radius: 50%;
+  animation: eurolm-statusPulse 2.5s ease-in-out infinite;
+  flex-shrink: 0;
+}
+@keyframes eurolm-statusPulse {
+  0%,100% { opacity: 0.35; box-shadow: none; }
+  50%     { opacity: 1; box-shadow: 0 0 8px #17a34a; }
+}
+
+@media (max-width: 960px) {
+  .eurolm-page { position: relative; overflow: auto; min-height: 100vh; }
+  .eurolm-page .main {
+    grid-template-columns: 1fr;
+    padding: calc(var(--nav-h) + 36px) 28px 80px;
+    gap: 48px;
+    overflow: visible;
+  }
+  .eurolm-page .col-left { justify-content: flex-start; }
+  .eurolm-page .carousel-track {
+    max-height: 280px;
+    mask-image: linear-gradient(to right, transparent, black 5%, black 95%, transparent);
+    -webkit-mask-image: linear-gradient(to right, transparent, black 5%, black 95%, transparent);
+  }
+  .eurolm-page .carousel-inner {
+    flex-direction: row;
+    animation: eurolm-scrollH 32s linear infinite;
+    gap: 14px;
+  }
+  @keyframes eurolm-scrollH { 0%{transform:translateX(0)} 100%{transform:translateX(-50%)} }
+  .eurolm-page .sdk-card { min-width: 280px; max-width: 280px; }
+  .eurolm-page .sdk-desc { min-height: auto; }
+  .eurolm-page .col-right {
+    opacity: 1; transform: none;
+    animation: eurolm-fadeUp 0.7s var(--ease-out-expo) 1.1s forwards;
+  }
+}
+
+@media (max-width: 600px) {
+  .eurolm-page .site-nav { padding: 0 22px; }
+  .eurolm-page .nav-links { display: none; }
+  .eurolm-page .main { padding: calc(var(--nav-h) + 28px) 22px 80px; }
+  .eurolm-page .title-main { font-size: 1.8rem; }
+  .eurolm-page .corner { width: 36px; height: 36px; }
+  .eurolm-page .status { left: 22px; }
+  .eurolm-page .features { gap: 8px; }
+  .eurolm-page .feature-pill { padding: 5px 10px; font-size: 0.58rem; }
+  .eurolm-page .cta-row { gap: 18px; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .eurolm-page *, .eurolm-page *::before, .eurolm-page *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}
+`;
