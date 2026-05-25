@@ -39,19 +39,20 @@ export default function ConsoleCreateProject() {
     <div className="flex h-full w-full flex-col">
       <div className="relative w-full overflow-hidden rounded-2xl blocks-gradient px-8 py-10 shadow-md">
         <div className="absolute -right-8 -top-8 h-40 w-40 rounded-full bg-white/5" />
-        <div className="absolute -bottom-6 right-4 h-30 w-24 rounded-full bg-white/5" />
+        <div className="absolute -bottom-6 right-4 h-50 w-24 rounded-full bg-white/5" />
         <div className="relative text-center">
           <h3 className="text-xl font-bold leading-tight text-white">Welcome to SELISE Blocks</h3>
           <p className="mt-1 text-sm text-white/70">Manage all your projects in one place</p>
           <p className="mt-4 text-sm font-normal leading-7 text-white/80">
             Explore and manage all your projects in one place. With SELISE Blocks, building and
-            scaling applications has never been easier. Start by creating a project.
+            scaling applications has never been easier. 
+            <br />Start by creating a project.
           </p>
-          <div className="mt-6 grid grid-cols-2 gap-4">
-            <Button className="text-sm border-white/40 text-white hover:bg-white/10 hover:text-white" disabled={isLoading} onClick={openBlocksOS}>
+          <div className="mt-6 flex justify-center gap-4">
+            <Button className="w-40 text-sm border-white/40 text-white hover:bg-white/10 hover:text-white" disabled={isLoading} onClick={openBlocksOS}>
               {isLoading ? "Redirecting…" : "Create a project"}
             </Button>
-            <Button variant="ghost" className="text-sm text-white/70 hover:bg-white/10 hover:text-white" disabled>
+            <Button variant="ghost" className="w-40 text-sm text-white/70 hover:bg-white/10 hover:text-white" disabled>
               View documentation
             </Button>
           </div>
