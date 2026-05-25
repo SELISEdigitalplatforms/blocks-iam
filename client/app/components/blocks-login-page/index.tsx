@@ -1,7 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Button } from "@/components/ui-kits/button/button";
 import { Badge } from "@/components/ui-kits/badge/badge";
-import { Card, CardContent, CardFooter, CardHeader } from "@/components/ui-kits/card/card";
 import { Separator } from "@/components/ui-kits/separator/separator";
 import { ModeToggle } from "@/components/mode-toggle/mode-toggle";
 import { BLOCKS_PRODUCTS } from "@/constants/blocks-products";
@@ -240,7 +239,7 @@ export function BlocksLoginPage({
             <div className="button-container">
               <div className="button-ring" />
               <div className="button-ring" />
-              <Button variant="primary" className="launch-btn" disabled={isLoading} onClick={onLogin}>
+              <Button variant="primary" className="launch-btn blocks-gradient" disabled={isLoading} onClick={onLogin}>
                 {isLoading ? "Redirecting…" : loginLabel}
               </Button>
             </div>
@@ -263,21 +262,21 @@ export function BlocksLoginPage({
           <div className="carousel-track">
             <div className="carousel-inner">
               {carouselCards.map((p, i) => (
-                <Card className="sdk-card" key={`${p.name}-${i}`}>
-                  <CardHeader className="sdk-card-top">
+                <div className="sdk-card" key={`${p.name}-${i}`}>
+                  <div className="sdk-card-top">
                     <span className="sdk-name">{p.appName}</span>
                     <Badge variant="outline" className="sdk-badge">{p.badge}</Badge>
-                  </CardHeader>
-                  <CardContent className="sdk-card-body">
+                  </div>
+                  <div className="sdk-card-body">
                     <p className="sdk-desc">{p.shortDescription}</p>
                     <div className="sdk-links">
                       {p.featureChips.slice(0, 4).map((chip) => (
                         <Badge key={chip} variant="outline" className="sdk-link dim">{chip}</Badge>
                       ))}
                     </div>
-                  </CardContent>
+                  </div>
                   {p.url && (
-                    <CardFooter className="sdk-card-footer">
+                    <div className="sdk-card-footer">
                       <a
                         href={p.url}
                         target="_blank"
@@ -289,9 +288,9 @@ export function BlocksLoginPage({
                           <path d="M5 12h14M12 5l7 7-7 7" />
                         </svg>
                       </a>
-                    </CardFooter>
+                    </div>
                   )}
-                </Card>
+                </div>
               ))}
             </div>
           </div>
