@@ -99,6 +99,7 @@ export const ForgotPasswordForm = () => {
 
           <Button
             type="submit"
+            variant="primary"
             className="w-full rounded"
             disabled={isPending || !isValid || !captchaCode}
           >
