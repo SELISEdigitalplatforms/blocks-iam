@@ -1,5 +1,7 @@
 import { http } from "@/lib/http-client";
 import { getRuntimeEnv } from "@/lib/runtime-env";
+
+const toLogicUrl = (path: string) => `${getRuntimeEnv("BLOCKS_LOGIC_BASE_URL")}${path}`;
 import {
   IGenerateUserMFA_OtpPayload,
   IGenerateUserMFA_OtpResponse,
@@ -20,8 +22,7 @@ import { MFA_CONFIG_ENDPOINTS, MFA_ENDPOINTS } from "../constants/endpoint.const
 
 export class MFAService {
   getConfigurations(): Promise<IGetConfigurationResponse> {
-    const logicBase = getRuntimeEnv("BLOCKS_LOGIC_BASE_URL") || "https://dev-logic.blocksdevelopers.com";
-    return http.get(`${logicBase}${MFA_CONFIG_ENDPOINTS.GET}`, undefined, { absoluteUrl: true });
+    return http.get(toLogicUrl(MFA_CONFIG_ENDPOINTS.GET), undefined, { absoluteUrl: true });
   }
 
   saveMFAConfiguration(
@@ -31,25 +32,22 @@ export class MFAService {
   }
 
   generateUserMfaOTP(payload: IGenerateUserMFA_OtpPayload): Promise<IGenerateUserMFA_OtpResponse> {
-    const logicBase = getRuntimeEnv("BLOCKS_LOGIC_BASE_URL") || "https://dev-logic.blocksdevelopers.com";
-    return http.post(`${logicBase}${MFA_ENDPOINTS.GENERATE_OTP}`, payload, undefined, { absoluteUrl: true });
+    return http.post(toLogicUrl(MFA_ENDPOINTS.GENERATE_OTP), payload, undefined, { absoluteUrl: true });
   }
 
   configureUserMFA(payload: IConfigureUserMFAPayload): Promise<IConfigureUserMFAResponse> {
     return http.post(MFA_ENDPOINTS.CONFIGURE_USER_MFA, payload);
   }
   setupUserTotp(payload: ISetupUserTotpPayload): Promise<ISetupUserTotpResponse> {
-    const logicBase = getRuntimeEnv("BLOCKS_LOGIC_BASE_URL") || "https://dev-logic.blocksdevelopers.com";
     return http.get(
-      `${logicBase}${MFA_ENDPOINTS.SETUP_TOTP}?UserId=${payload.id}`,
+      toLogicUrl(`${MFA_ENDPOINTS.SETUP_TOTP}?UserId=${payload.id}`),
       undefined,
       { absoluteUrl: true },
     );
   }
 
   verifyOtp(payload: IVerifyMfaOtpPayload): Promise<IVerifyMfaOtpResponse> {
-    const logicBase = getRuntimeEnv("BLOCKS_LOGIC_BASE_URL") || "https://dev-logic.blocksdevelopers.com";
-    return http.post(`${logicBase}${MFA_ENDPOINTS.VERIFY_OTP}`, payload, undefined, { absoluteUrl: true });
+    return http.post(toLogicUrl(MFA_ENDPOINTS.VERIFY_OTP), payload, undefined, { absoluteUrl: true });
   }
 
   resendOtp(payload: IResendMfaOtpPayload): Promise<IVerifyMfaOtpResponse> {
