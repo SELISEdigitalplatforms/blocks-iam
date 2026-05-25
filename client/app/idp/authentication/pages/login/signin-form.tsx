@@ -177,7 +177,7 @@ export const SigninForm = ({ mode = "default", oidcContext }: SigninFormProps) =
 //       if (res.enable_mfa) return navigate(`/mfa-check?mfa_id=${res.mfaId}&mfa_type=${res.mfaType}`);
 
 //       // For localhost, save tokens in store for Authorization Bearer
-//       const isLocalhost = getRuntimeEnv("BLOCKS_API_BASE_URL")?.includes("localhost");
+//       const isLocalhost = getRuntimeEnv("BLOCKS_IAM_BASE_URL")?.includes("localhost");
 //       if (isLocalhost && res.access_token && res.refresh_token) {
 //         setTokens(res.access_token, res.refresh_token);
 //       }

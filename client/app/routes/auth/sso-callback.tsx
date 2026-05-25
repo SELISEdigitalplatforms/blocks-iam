@@ -20,7 +20,7 @@ export default function SSOCallbackPage() {
 
     const callbackUrl = new URL(
       "/api/oidc/oidc/callback",
-      getRuntimeEnv("BLOCKS_API_BASE_URL"),
+      getRuntimeEnv("BLOCKS_IAM_BASE_URL"),
     );
     if (code) callbackUrl.searchParams.set("code", code);
     if (state) callbackUrl.searchParams.set("state", state);

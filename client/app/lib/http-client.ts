@@ -299,7 +299,7 @@ class HttpClient {
 }
 
 export const http = new HttpClient(
-  getRuntimeEnv("BLOCKS_API_BASE_URL") || "",
+  getRuntimeEnv("BLOCKS_IAM_BASE_URL") || "",
   getRuntimeEnv("BLOCKS_X_BLOCKS_KEY") || "",
 );
 

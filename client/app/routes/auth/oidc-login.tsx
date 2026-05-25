@@ -157,13 +157,13 @@ export default function OidcLogin() {
      const params = new URLSearchParams({
       response_type: "code",
       client_id: "94201649-8f4d-4818-be0e-2024e3f9fee2",
-      redirect_uri: getRuntimeEnv("BLOCKS_IDP_BASE_URL"),
+      redirect_uri: getRuntimeEnv("BLOCKS_IAM_BASE_URL"),
       scope: "openId",
       state: "039849038",
       ...(blocksKey ? { "x-blocks-key": blocksKey } : {}),
     });
 
-    window.location.href = `${getRuntimeEnv("BLOCKS_IDP_BASE_URL")}/api/Authentication/Authorize?${params.toString()}`;
+    window.location.href = `${getRuntimeEnv("BLOCKS_IAM_BASE_URL")}/api/Authentication/Authorize?${params.toString()}`;
   };
 
   return (
