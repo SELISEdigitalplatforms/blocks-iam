@@ -42,6 +42,7 @@ export function EnvironmentList({ collapsed = false }: { collapsed?: boolean }) 
     if (pendingProjectRef.current) {
       setSelectedProject(pendingProjectRef.current);
       pendingProjectRef.current = null;
+      window.location.reload();
     }
   }, [pathname, setSelectedProject]);
   useEffect(() => {
@@ -59,6 +60,7 @@ export function EnvironmentList({ collapsed = false }: { collapsed?: boolean }) 
       return;
     }
     setSelectedProject(project);
+    window.location.reload();
   };
   const environment = projectData?.data?.environment || selectedProject?.environment;
   const applicationDomain =
