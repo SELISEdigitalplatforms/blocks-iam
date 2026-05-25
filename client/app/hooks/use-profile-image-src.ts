@@ -4,11 +4,11 @@ import { getRuntimeEnv } from "@/lib/runtime-env";
 
 const getLogicHostname = () => {
   const base =
-    getRuntimeEnv("BLOCKS_LOGIC_BASE_URL") || "https://dev-logic.blocksdevelopers.com";
+    getRuntimeEnv("BLOCKS_LOGIC_BASE_URL");
   try {
     return new URL(base).hostname;
   } catch {
-    return "dev-logic.blocksdevelopers.com";
+    return "";
   }
 };
 

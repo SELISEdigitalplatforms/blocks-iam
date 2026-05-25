@@ -30,7 +30,8 @@ export default function LoginSimplePage() {
   const navigate = useNavigate();
 
   useEffect(() => {
-    if (isAuthenticated) navigate("/services/authentication/users", { replace: true });
+    if (isAuthenticated)
+      navigate("/console", { replace: true });
   }, [isAuthenticated, navigate]);
   const titles = useMemo(
     () => ["observable", "intelligent", "scalable", "resilient", "secure"],
@@ -43,7 +44,7 @@ export default function LoginSimplePage() {
     return () => clearTimeout(timeoutId);
   }, [titleNumber, titles]);
 
- const startLogin = async () => {
+  const startLogin = async () => {
     try {
       if (isStarting) return;
       setIsStarting(true);
@@ -55,7 +56,6 @@ export default function LoginSimplePage() {
       // const clientId = "a5831e15-e193-4a4f-8e10-d04a4ad1705b";
       // const initiateUrl = `/api/idp/initiate?x-blocks-key=${blocksKey}&clientId=${clientId}`;
 
-
       const redirectUri = `${window.location.origin}/login/callback`;
       const initiateUrl = `/api/idp/initiate?x-blocks-key=${blocksKey}&clientId=${clientId}&redirectUri=${redirectUri}`;
 
@@ -65,7 +65,7 @@ export default function LoginSimplePage() {
       const response = await fetch(initiateUrl.toString(), { headers });
 
       if (response.status === 400) {
-        window.location.href = "/services/authentication/users";
+        window.location.href = "/console";
         return;
       }
 
@@ -83,8 +83,6 @@ export default function LoginSimplePage() {
       setIsStarting(false);
     }
   };
-  
-  console.log(getRuntimeEnv("BLOCKS_X_BLOCKS_KEY"))
 
   return (
     <div className="relative flex min-h-screen flex-col bg-[hsl(var(--surface-app))]">
@@ -97,7 +95,9 @@ export default function LoginSimplePage() {
       <main className="relative z-10 flex flex-1 flex-col items-start justify-center gap-16 px-6 py-12 lg:flex-row lg:items-center lg:gap-16 lg:py-0 xl:px-[154px]">
         <div className="flex flex-1 flex-col items-start gap-6">
           <div className="flex flex-col gap-2">
-            <p className="text-sm font-semibold uppercase tracking-[0.1em] text-primary">Blocks Identity Provider</p>
+            <p className="text-sm font-semibold uppercase tracking-[0.1em] text-primary">
+              Blocks Identity Provider
+            </p>
             <h1 className="max-w-xl text-5xl font-semibold tracking-tight text-[hsl(var(--high-emphasis))] lg:text-6xl">
               Backends that are
             </h1>
@@ -111,7 +111,11 @@ export default function LoginSimplePage() {
                   animate={
                     titleNumber === index
                       ? { y: 0, opacity: 1, filter: "blur(0px)" }
-                      : { y: titleNumber > index ? -28 : 28, opacity: 0, filter: "blur(6px)" }
+                      : {
+                          y: titleNumber > index ? -28 : 28,
+                          opacity: 0,
+                          filter: "blur(6px)",
+                        }
                   }
                 >
                   {title}.
@@ -120,7 +124,12 @@ export default function LoginSimplePage() {
             </div>
           </div>
           <p className="max-w-lg text-lg leading-relaxed tracking-tight text-muted-foreground">
-            Blocks Identity Provider is a modern identity and access management platform for secure authentication, authorization, and user management. Easily integrate single sign-on (SSO), multi-factor authentication (MFA), social logins, and role-based access control into your applications while Blocks Identity Provider handles security, scalability, and compliance.
+            Blocks Identity Provider is a modern identity and access management
+            platform for secure authentication, authorization, and user
+            management. Easily integrate single sign-on (SSO), multi-factor
+            authentication (MFA), social logins, and role-based access control
+            into your applications while Blocks Identity Provider handles
+            security, scalability, and compliance.
           </p>
           <div className="flex flex-wrap gap-2">
             {pillars.map(({ icon: Icon, label }) => (
@@ -143,11 +152,7 @@ export default function LoginSimplePage() {
               >
                 {isStarting ? "Redirecting…" : "Log in to your account"}
               </Button>
-              <Button
-                size="lg"
-                variant="outline"
-                asChild
-              >
+              <Button size="lg" variant="outline" asChild>
                 <Link to="https://docs.seliseblocks.com/" target="_blank">
                   Read the Docs
                 </Link>

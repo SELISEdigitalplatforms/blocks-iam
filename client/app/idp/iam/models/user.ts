@@ -12,25 +12,40 @@ export interface User {
   email: string;
   userName: string;
   phoneNumber: string;
+  organizationIds: string[];
+  lastUsedOrganizationId: string | null;
   roles: string[];
   permissions: string[];
   active: boolean;
+  status: number;
+  statusReason: string | null;
+  deactivatedAtUtc: string | null;
   isVarified: boolean;
+  isVerified: boolean;
+  emailVerifiedAtUtc: string | null;
+  phoneVerifiedAtUtc: string | null;
   profileImageUrl: string;
+  profileImageId: string;
   mfaEnabled: boolean;
+  isMfaVerified: boolean;
+  userMfaType: number;
   lastLoggedInTime: string;
+  lastLoggedInDeviceInfo: string;
   logInCount: number;
   firstLoggedInTime: string;
-  userMfaType: number;
-  isMfaVerified: boolean;
+  provisioningSource: number;
+  externalIdentities: unknown[];
   userCreationType: number;
-  memberships: IMembership[]
+  department: string | null;
+  employeeId: string | null;
+  isMultiOrgEnabled: boolean;
+  organizations: IMembership[];
 }
 
 export interface IMembership {
-  organizationId: string,
-  roles: string[],
-  permissions: string[]
+  organizationId: string;
+  roles: string[];
+  permissions: string[];
 }
 export interface IGetUsersPayload {
   page: number;
@@ -59,8 +74,6 @@ export interface IGetUserByIdPayload {
 export interface IGetUserByIdResponse {
   data: User;
   errors: unknown;
-  roles: IRole[];
-  permissions: IPermission[];
 }
 
 export interface ICreateUserPayload {
@@ -81,19 +94,27 @@ export interface ICreateUserResponse {
 
 export interface IUpdateUserPayload {
   itemId: string;
-  projectKey: string;
-  salutation?: string;
   firstName?: string;
   lastName?: string;
-  phoneNumber?: string;
-  tags?: string[];
-  profileImageUrl?: string;
-  profileImageId?: string;
-  userMfaType?: number;
-  mfaEnabled?: boolean;
+  email?: string;
+  userName?: string;
+  language?: string;
+  organizationIds?: string[];
   roles?: string[];
   permissions?: string[];
-  memberships?: IMembership[];
+  active?: boolean;
+  status?: number;
+  isVerified?: boolean;
+  mfaEnabled?: boolean;
+  isMfaVerified?: boolean;
+  userMfaType?: number;
+  provisioningSource?: number;
+  externalIdentities?: unknown[];
+  userCreationType?: number;
+  isMultiOrgEnabled?: boolean;
+  organizations?: IMembership[];
+  profileImageId?: string | null;
+  profileImageUrl?: string | null;
 }
 
 export interface IUpdateUserResponse {
@@ -134,7 +155,6 @@ export interface IGeneratePATPayload {
 
 export interface IGetUserRolesPayload {
   userId: string;
-  projectKey: string;
 }
 export interface IGetUserRolesResponse {
   totalCount: number;
@@ -144,7 +164,6 @@ export interface IGetUserRolesResponse {
 
 export interface IGetUserPermissionsPayload {
   userId: string;
-  projectKey: string;
 }
 export interface IGetUserPermissionsResponse {
   errors: unknown | null;
@@ -267,7 +286,6 @@ export interface IAccountActivationPayload {
   captchaCode?: string;
   mailPurpose?: string;
   preventPostEvent: boolean;
-  projectKey: string;
 }
 
 export interface IAccountActivationResponse {
@@ -277,8 +295,6 @@ export interface IAccountActivationResponse {
 
 export interface IAccountResendActivationPayload {
   userId: string;
-  // mailPurpose: string;
-  projectKey: string;
 }
 export interface IAccountResendActivationResponse {
   errors: unknown | null;
@@ -288,7 +304,6 @@ export interface IAccountRecoverPayload {
   email: string;
   captchaCode?: string;
   mailPurpose?: string;
-  projectKey: string;
 }
 export interface IAccountRecoverResponse {
   errors: unknown | null;
@@ -298,8 +313,7 @@ export interface IAccountResetPasswordPayload {
   code: string;
   password: string;
   captchaCode?: string;
-  logoutFromAllDevices: boolean;
-  projectKey: string;
+  logoutFromAllDevices?: boolean;
 }
 export interface IAccountResetPasswordResponse {
   errors: unknown | null;
@@ -307,7 +321,6 @@ export interface IAccountResetPasswordResponse {
 }
 export interface IActivationCodeValidationPayload {
   activationCode: string;
-  projectKey: string;
 }
 
 export interface IActivationCodeExpirationResponse {
@@ -343,6 +356,6 @@ export interface IGetSignUpSettingResponse {
   lastUpdatedBy: string;
   organizationIds: string[];
   tags: string[];
-  isEmailPasswordSignUpEnabled: boolean;
-  isSSoSignUpEnabled: boolean;
+  IsEmailPasswordSignUpEnabled: boolean;
+  IsSSoSignUpEnabled: boolean;
 }

@@ -1,3 +1,4 @@
+using Authentication.DomainService.Utilities;
 using Blocks.Genesis;
 using CloudConfiguration.DomainService.Authentication.RequestModel;
 using CloudConfiguration.DomainService.IAM.RequestModel;
@@ -93,12 +94,11 @@ namespace Api.Controllers
             return result.IsSuccess ? Ok(result) : BadRequest(result);
         }
 
-        [HttpPost("roles/{id}")]
+        [HttpPost("roles/update")]
         //[ProtectedEndPoint("blocks-idp::update-role")]
-        public async Task<IActionResult> UpdateRole([FromRoute] string id, [FromBody] UpdateRoleRequest command)
+        public async Task<IActionResult> UpdateRole( [FromBody] UpdateRoleRequest command)
         {
-            command.ItemId = id;
-            var result = await _resourceMutationService.UpdateRoleAsync(id, command);
+            var result = await _resourceMutationService.UpdateRoleAsync(command);
             return result.IsSuccess ? Ok(result) : BadRequest(result);
         }
 
@@ -216,6 +216,7 @@ namespace Api.Controllers
         [Authorize]
         public async Task<GetAccountResponse> GetMyAccount()
         {
+            DomainResolver.ResetToOriginalBlocksContextForImpersonation();
             return await _userManagementQueryService.GetAccountAsync();
         }
 
@@ -224,6 +225,7 @@ namespace Api.Controllers
         [Authorize]
         public async Task<IActionResult> UpdateMyAccount([FromBody] UpdateUserRequest command)
         {
+            DomainResolver.ResetToOriginalBlocksContextForImpersonation();
             var bc = BlocksContext.GetContext();
             command.ItemId = bc?.UserId;
             var result = await _userManagementMutationService.UpdateUserAsync(command);
@@ -281,9 +283,9 @@ namespace Api.Controllers
             return await _resourceMutationService.UpdateOrganizationAsync(id, request);
         }
 
-        [HttpPost("organizations")]
+        [HttpGet("organizations")]
         [Authorize]
-        public async Task<GetOrganizationsResponse> GetOrganizations([FromBody] GetOrganizationsRequest request)
+        public async Task<GetOrganizationsResponse> GetOrganizations([FromQuery] GetOrganizationsRequest request)
         {
             return await _resourceMutationService.GetOrganizationsAsync(request);
         }

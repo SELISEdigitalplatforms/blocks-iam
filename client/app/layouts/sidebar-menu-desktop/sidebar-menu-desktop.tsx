@@ -1,7 +1,7 @@
 
 import { Fragment, useContext } from "react";
 import { PanelLeft } from "lucide-react";
-import { useLocation } from "react-router-dom";
+import { Link, useLocation } from "react-router-dom";
 import { DesktopMenuItem } from "@/components/menus/desktop-menu-item";
 import { EnvironmentList } from "@/components/environment-list/environment-list";
 import { Button } from "@/components/ui-kits/button/button";
@@ -29,15 +29,15 @@ export function SidebarMenuDesktop() {
       className={`hidden h-[calc(100vh)] flex-col border-r bg-background transition-all md:flex ${isSidebarOpen ? "w-60 overflow-hidden" : "w-14"}`}
     >
       <div className="flex h-[60px] shrink-0 items-center justify-between border-b bg-background px-3">
-        <a
-          href="https://dev-os.blocksdevelopers.com"
+        <Link
+          to="/console"
           className={cn(
             "relative inline-block cursor-pointer overflow-hidden transition-all",
             isSidebarOpen ? "h-[36px] w-[72px]" : "h-8 w-8"
           )}
         >
           <img src={getLogoSrc()} alt="Logo" className="h-full w-full object-contain" />
-        </a>
+        </Link>
         {isSidebarOpen && (
           <Button variant="ghost" size="icon" className="shrink-0 p-0" onClick={toggleSidebar}>
             <PanelLeft className="h-6 w-6" />

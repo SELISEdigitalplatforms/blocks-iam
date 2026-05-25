@@ -60,7 +60,6 @@ export const UpdateUser = ({ id, projectKey, own = false }: UpdateUserProps) => 
         ...userData?.data,
         ...values,
         itemId: id,
-        projectKey,
       });
       if (!res.isSuccess) return showErrorToast({ errors: res.errors });
       showSuccessToast({ description: "User updated successfully" });

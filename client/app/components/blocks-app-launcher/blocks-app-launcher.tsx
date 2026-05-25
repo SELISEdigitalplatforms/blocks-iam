@@ -165,85 +165,85 @@ function DeploymentsIcon() {
 }
 const SELISE_APPS: BlocksApp[] = [
   {
-    key: "idp",
-    label: "IDP",
+    key: "iam",
+    label: "IAM",
     description: "Identity & Access",
-    url: "https://dev-idp.blocksdevelopers.com",
+    url: getRuntimeEnv("BLOCKS_IAM_BASE_URL"),
     icon: <IdpIcon />,
     clientId: "a5831e15-e193-4a4f-8e10-d04a4ad1705b",
-    redirectUri: "https://dev-idp.blocksdevelopers.com/login/callback",
+    redirectUri: getRuntimeEnv("BLOCKS_IAM_CALLBACK_URL"),
   },
   {
-    key: "uilm",
-    label: "EUROLM",
+    key: "localization",
+    label: "Localization",
     description: "Localization",
-    url: "https://dev-eurolm.blocksdevelopers.com",
+    url: getRuntimeEnv("BLOCKS_LOCALIZATION_BASE_URL"),
     icon: <UilmIcon />,
     clientId: "57214b67-aa9c-4307-92ab-a25e35180fac",
-    redirectUri: "https://dev-eurolm.blocksdevelopers.com/login/callback",
+    redirectUri: getRuntimeEnv("BLOCKS_LOCALIZATION_CALLBACK_URL"),
   },
   {
-    key: "ai",
-    label: "Blocks Agents",
+    key: "agents",
+    label: "Agents",
     description: "AI Platform",
-    url: "https://dev-agent.blocksdevelopers.com",
+    url: getRuntimeEnv("BLOCKS_AGENTS_BASE_URL"),
     icon: <AiIcon />,
     clientId: "c1565dbc-de65-4966-a427-0ed9e542c678",
-    redirectUri: "https://dev-agent.blocksdevelopers.com/login/callback",
+    redirectUri: getRuntimeEnv("BLOCKS_AGENTS_CALLBACK_URL"),
   },
   {
-    key: "data-gateway",
-    label: "Data Gateway",
+    key: "data",
+    label: "Data",
     description: "Data Integration",
-    url: "https://dev-uds.blocksdevelopers.com",
+    url: getRuntimeEnv("BLOCKS_DATA_BASE_URL"),
     icon: <DataGatewayIcon />,
     clientId: "e76867a8-37a1-483e-a15e-875c3884b8e8",
-    redirectUri: "https://dev-uds.blocksdevelopers.com/login/callback",
+    redirectUri: getRuntimeEnv("BLOCKS_DATA_CALLBACK_URL"),
   },
   {
-    key: "blocks-os",
-    label: "Blocks OS",
+    key: "os",
+    label: "OS",
     description: "Operating System",
-    url: "https://dev-os.blocksdevelopers.com",
+    url: getRuntimeEnv("BLOCKS_OS_BASE_URL"),
     icon: <BlocksOsIcon />,
     clientId: "5225b9c1-15bc-41b0-bdc6-d3ceb180ccc5",
-    redirectUri: "https://dev-os.blocksdevelopers.com/login/callback",
+    redirectUri: getRuntimeEnv("BLOCKS_OS_CALLBACK_URL"),
   },
   {
-    key: "utility",
-    label: "Utility",
+    key: "utilities",
+    label: "Utilities",
     description: "Utility Tools",
-    url: "https://dev-utility.blocksdevelopers.com",
+    url: getRuntimeEnv("BLOCKS_UTILITIES_BASE_URL"),
     icon: <UtilityIcon />,
     clientId: "4f7ae2b9-4b42-4770-9138-63db08538629",
-    redirectUri: "https://dev-utility.blocksdevelopers.com/login/callback",
+    redirectUri: getRuntimeEnv("BLOCKS_UTILITIES_CALLBACK_URL"),
   },
   {
     key: "logic",
     label: "Logic",
     description: "Business Logic",
-    url: "https://dev-logic.blocksdevelopers.com",
+    url: getRuntimeEnv("BLOCKS_LOGIC_BASE_URL"),
     icon: <LogicIcon />,
     clientId: "a25aee32-73ae-484b-b813-522a8d091f89",
-    redirectUri: "https://dev-logic.blocksdevelopers.com/login/callback",
+    redirectUri: getRuntimeEnv("BLOCKS_LOGIC_CALLBACK_URL"),
   },
   {
-    key: "observability",
-    label: "Observability",
+    key: "monitor",
+    label: "Monitor",
     description: "Monitoring & Logs",
-    url: "https://dev-observability.blocksdevelopers.com",
+    url: getRuntimeEnv("BLOCKS_MONITOR_BASE_URL"),
     icon: <ObservabilityIcon />,
     clientId: "1bd234da-1fa1-4264-982e-3debb1078be5",
-    redirectUri: "https://dev-observability.blocksdevelopers.com/login/callback",
+    redirectUri: getRuntimeEnv("BLOCKS_MONITOR_CALLBACK_URL"),
   },
   {
-    key: "deployments",
-    label: "Deployments",
+    key: "release",
+    label: "Release",
     description: "CI/CD & Releases",
-    url: "https://dev-deployment.blocksdevelopers.com",
+    url: getRuntimeEnv("BLOCKS_RELEASE_BASE_URL"),
     icon: <DeploymentsIcon />,
     clientId: "6523b311-256f-4b9a-a88a-2ac4e02bad25",
-    redirectUri: "https://dev-deployment.blocksdevelopers.com/login/callback",
+    redirectUri: getRuntimeEnv("BLOCKS_RELEASE_CALLBACK_URL"),
   },
 ];
 interface AppTileProps {
@@ -325,7 +325,7 @@ export function BlocksAppLauncher() {
     const stored = localStorage.getItem("blocks-app-favourites");
     const keys = stored
       ? new Set<string>(JSON.parse(stored) as string[])
-      : new Set<string>(["idp", "uilm"]);
+      : new Set<string>(["iam", "localization"]);
     setFavouriteKeys(keys);
     setIsHydrated(true);
   }, []);
@@ -347,12 +347,12 @@ export function BlocksAppLauncher() {
     try {
       setLoadingKey(app.key);
       const blocksKey = getRuntimeEnv("BLOCKS_X_BLOCKS_KEY");
-      const idpBaseUrl = getRuntimeEnv("BLOCKS_IDP_BASE_URL");
+      const idpBaseUrl = getRuntimeEnv("BLOCKS_IAM_BASE_URL");
       const initiateUrl = `${idpBaseUrl}/api/idp/initiate?x-blocks-key=${blocksKey}&clientId=${app.clientId}&redirectUri=${app.redirectUri}`;
       const headers: Record<string, string> = {};
       if (blocksKey) headers["X-Blocks-Key"] = blocksKey;
 
-      const response = await fetch(initiateUrl, { headers, credentials: "include" });
+      const response = await fetch(initiateUrl, { headers });
       const data = await response.json();
 
       if (data.redirect_uri) {

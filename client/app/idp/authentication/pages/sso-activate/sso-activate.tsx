@@ -71,7 +71,7 @@ export const SsoActivate = ({ oauthParams }: SsoActivateProps) => {
     try {
       const key = getRuntimeEnv("BLOCKS_X_BLOCKS_KEY");
       const appUrl = import.meta.env.BLOCKS_APP_URL;
-      const isLocalhost = getRuntimeEnv("BLOCKS_API_BASE_URL")?.includes("localhost");
+      const isLocalhost = getRuntimeEnv("BLOCKS_IAM_BASE_URL")?.includes("localhost");
 
       const body = new URLSearchParams();
       body.append("code", oauthParams.code);

@@ -21,7 +21,6 @@ export interface IOrganizationConfigPayload {
   allowCreationFromConstruct: boolean;
   isMultiOrgEnabled: boolean;
   roles?: string[];
-  projectKey: string;
 }
 
 export interface IOrganizationConfigSaveResponse {
