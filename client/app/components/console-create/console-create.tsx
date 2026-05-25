@@ -37,29 +37,21 @@ export default function ConsoleCreateProject() {
 
   return (
     <div className="mx-auto flex max-w-lg flex-col items-center gap-1 text-center">
-      {/* Card with gradient header */}
-      <div className="mt-24 w-full overflow-hidden rounded-2xl border border-[hsl(var(--border-default))] bg-[hsl(var(--card))] shadow-md">
-        <div className="relative overflow-hidden rounded-t-2xl blocks-gradient px-6 py-7">
-          <div className="absolute -right-8 -top-8 h-32 w-32 rounded-full bg-white/5" />
-          <div className="absolute -bottom-6 right-4 h-20 w-20 rounded-full bg-white/5" />
-          <span className="relative inline-flex items-center rounded-full bg-white/15 px-2.5 py-0.5 text-[10px] font-semibold uppercase tracking-widest text-white/80">
-            Enterprise Application OS
-          </span>
-          <div className="relative mt-3">
-            <h3 className="text-lg font-bold leading-tight text-white">Welcome to SELISE Blocks</h3>
-            <p className="mt-0.5 text-xs text-white/70">Manage all your projects in one place</p>
-          </div>
-        </div>
-        <div className="p-6">
-          <p className="text-left text-base font-normal leading-7 text-high-emphasis">
+      <div className="relative mt-24 w-full overflow-hidden rounded-2xl blocks-gradient px-8 py-10 shadow-md">
+        <div className="absolute -right-8 -top-8 h-40 w-40 rounded-full bg-white/5" />
+        <div className="absolute -bottom-6 right-4 h-24 w-24 rounded-full bg-white/5" />
+        <div className="relative">
+          <h3 className="text-xl font-bold leading-tight text-white">Welcome to SELISE Blocks</h3>
+          <p className="mt-1 text-sm text-white/70">Manage all your projects in one place</p>
+          <p className="mt-4 text-left text-sm font-normal leading-7 text-white/80">
             Explore and manage all your projects in one place. With SELISE Blocks, building and
             scaling applications has never been easier. Start by creating a project.
           </p>
           <div className="mt-6 grid grid-cols-2 gap-4">
-            <Button variant="primary" className="text-sm" disabled={isLoading} onClick={openBlocksOS}>
+            <Button className="text-sm border-white/40 text-white hover:bg-white/10 hover:text-white" disabled={isLoading} onClick={openBlocksOS}>
               {isLoading ? "Redirecting…" : "Create a project"}
             </Button>
-            <Button variant="ghost" disabled>
+            <Button variant="ghost" className="text-sm text-white/70 hover:bg-white/10 hover:text-white" disabled>
               View documentation
             </Button>
           </div>
