@@ -1,4 +1,4 @@
-const NOTIFIER_BASE = "/Notifier";
+const NOTIFIER_BASE = "/api/Notifier";
 
 export const NOTIFICATION_ENDPOINTS = {
   GET_NOTIFICATIONS: `${NOTIFIER_BASE}/GetNotifications`,
