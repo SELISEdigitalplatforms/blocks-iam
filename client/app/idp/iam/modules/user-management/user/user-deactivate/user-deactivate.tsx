@@ -1,7 +1,6 @@
 import ConfirmationModal from "@/components/confirmation-modal/confirmation-modal";
 import { Dialog } from "@/components/ui-kits/dialog/dialog";
 import { showErrorToast, showSuccessToast } from "@/hooks/use-toast";
-import { useProjectStore } from "@/store/useProjectStore";
 import { useAccountDeactivate } from "@blocks-idp/iam/hooks/use-account";
 import { isErrorWithErrors } from "@/lib/error";
 
@@ -16,22 +15,21 @@ export const UserDeactivate = ({
   open,
   setOpen,
 }: UserDeactivateProps) => {
-  const tenantId = useProjectStore().selectedProject?.tenantId || "";
   const { mutateAsync, isPending } = useAccountDeactivate();
   const onClickHandler = async () => {
     try {
-      const res = await mutateAsync({ projectKey: tenantId, userId });
+      const res = await mutateAsync({ userId });
       if (res.isSuccess) {
-        showSuccessToast(
-          { description: "User has been deactivated successfully." }
-        );
+        showSuccessToast({
+          description: "User has been deactivated successfully.",
+        });
+      } else {
+        showErrorToast({ errors: res.errors });
       }
-      else { showErrorToast({ errors: res.errors }); }
     } catch (error) {
       if (isErrorWithErrors(error)) {
         showErrorToast({ errors: error.errors });
-      }
-      else {
+      } else {
         showErrorToast({ errors: "Something went wrong" });
       }
     } finally {

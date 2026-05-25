@@ -1,4 +1,11 @@
-import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui-kits/form/form";
+import {
+  Form,
+  FormControl,
+  FormField,
+  FormItem,
+  FormLabel,
+  FormMessage,
+} from "@/components/ui-kits/form/form";
 import { getRuntimeEnv } from "@/lib/runtime-env";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -14,25 +21,33 @@ import React, { useState } from "react";
 import { Captcha } from "@/components/captcha";
 import { useTheme } from "@/hooks/use-theme";
 import { isErrorWithErrors } from "@/lib/error";
-import { getCurrentOIDCParams, buildOIDCNavigationUrl } from "@blocks-idp/authentication/utils/oidc-utils";
+import {
+  getCurrentOIDCParams,
+  buildOIDCNavigationUrl,
+} from "@blocks-idp/authentication/utils/oidc-utils";
 import { useGetLoginOptions } from "@blocks-idp/authentication/hooks/use-auth";
 import { SsoSignin } from "@blocks-idp/authentication/pages/login/sso-signin";
 import { Skeleton } from "@/components/ui-kits/skeleton/skeleton";
 import { GRANT_TYPES } from "@blocks-idp/authentication/constants/authentication.constant";
 import { useAuthStore } from "@/store/useAuthStore";
-import { sha256 } from 'js-sha256';
+import { sha256 } from "js-sha256";
 import { OidcAccountInfo, OidcAccountSelector } from "./oidc-account-selector";
 
 const base64UrlEncode = (bytes: Uint8Array) => {
   const binary = String.fromCharCode(...bytes);
-  return btoa(binary).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/g, "");
+  return btoa(binary)
+    .replace(/\+/g, "-")
+    .replace(/\//g, "_")
+    .replace(/=+$/g, "");
 };
 
 const generatePkcePair = async () => {
   const verifierBytes = crypto.getRandomValues(new Uint8Array(32));
   const verifier = base64UrlEncode(verifierBytes);
   const digestHex = sha256(verifier);
-  const digestBytes = new Uint8Array(digestHex.match(/.{1,2}/g)!.map((byte: string) => parseInt(byte, 16)));
+  const digestBytes = new Uint8Array(
+    digestHex.match(/.{1,2}/g)!.map((byte: string) => parseInt(byte, 16)),
+  );
   const challenge = base64UrlEncode(digestBytes);
 
   return { verifier, challenge };
@@ -76,7 +91,9 @@ export const OidcLoginForm = ({
   const [lastAttemptedEmail, setLastAttemptedEmail] = useState("");
   const [showActivationError, setShowActivationError] = useState(false);
   const [activeCodeChallenge, setActiveCodeChallenge] = useState(codeChallenge);
-  const [activeCodeChallengeMethod, setActiveCodeChallengeMethod] = useState(codeChallengeMethod || "S256");
+  const [activeCodeChallengeMethod, setActiveCodeChallengeMethod] = useState(
+    codeChallengeMethod || "S256",
+  );
 
   const form = useForm<OidcLoginFormValues>({
     defaultValues: {
@@ -86,12 +103,12 @@ export const OidcLoginForm = ({
     resolver: zodResolver(oidcLoginFormSchema),
   });
 
-  const { formState: { submitCount } } = form;
+  const {
+    formState: { submitCount },
+  } = form;
   const googleSiteKey = getRuntimeEnv("BLOCKS_GOOGLE_SITE_KEY") || "";
   const isTokenNeed = submitCount >= 3;
 
-  const forgotPasswordUrl = buildOIDCNavigationUrl("/oidc/forgot-password");
-  const signUpUrl = buildOIDCNavigationUrl("/oidc/signup");
   const activationUrl = buildOIDCNavigationUrl("/oidc/activation");
 
   const ensurePkceState = async () => {
@@ -127,39 +144,38 @@ export const OidcLoginForm = ({
       } = await ensurePkceState();
 
       // Use provided tenantId; if absent, fallback to configured tenant key when available.
-      const finalTenantId = tenantId || getRuntimeEnv("BLOCKS_X_BLOCKS_KEY") || undefined;
+      const finalTenantId =
+        tenantId || getRuntimeEnv("BLOCKS_X_BLOCKS_KEY") || undefined;
       const codeVerifier = sessionStorage.getItem("oidc-code-verifier");
-      
+
       const payload = {
         username: values.username,
         password: values.password,
         client_id: clientId,
         redirect_uri: redirectUri,
-        scope: scope || '',
-        state: state || '',
-        nonce: nonce || '',
+        scope: scope || "",
+        state: state || "",
+        nonce: nonce || "",
         code_challenge: effectiveCodeChallenge,
         code_challenge_method: effectiveCodeChallengeMethod,
-        tenant_id: finalTenantId || '',
+        tenant_id: finalTenantId || "",
       };
 
       // Use fetch with redirect: 'manual' to handle redirects explicitly
       // The backend will redirect to the redirect_uri with the authorization code
       const response = await fetch(AUTH_ENDPOINTS.OIDC_LOGIN, {
-        method: 'POST',
+        method: "POST",
         headers: {
-          'Content-Type': 'application/json',
+          "Content-Type": "application/json",
           // Include tenant_id as X-Blocks-Key header for tenant validation middleware
-          'X-Blocks-Key': finalTenantId || '',
+          "X-Blocks-Key": finalTenantId || "",
         },
         body: JSON.stringify(payload),
       });
 
-      console.log('Login response status:', response);
-
-      if(response.ok){
-        const data = await response.json()
-         window.location.href=data.redirect_uri
+      if (response.ok) {
+        const data = await response.json();
+        window.location.href = data.redirect_uri;
       }
 
       // Handle 3xx redirects (302, 303, etc.)
@@ -175,8 +191,8 @@ export const OidcLoginForm = ({
       // Parse response as JSON
       let data;
       try {
-        const contentType = response.headers.get('content-type');
-        if (contentType && contentType.includes('application/json')) {
+        const contentType = response.headers.get("content-type");
+        if (contentType && contentType.includes("application/json")) {
           data = await response.json();
         } else if (!response.ok) {
           showErrorToast({ errors: `Server error (HTTP ${response.status})` });
@@ -187,8 +203,8 @@ export const OidcLoginForm = ({
           return;
         }
       } catch (parseError) {
-        console.error('Error parsing response:', parseError);
-        showErrorToast({ errors: `Server error: Unable to process response` });
+        console.error("Error parsing response:", parseError);
+        // showErrorToast({ errors: `Server error: Unable to process response` });
         setIsLoading(false);
         return;
       }
@@ -196,34 +212,45 @@ export const OidcLoginForm = ({
       // If response is OK, check for account selection required
       if (response.ok || response.status === 200) {
         // Check if backend requires account selection
-        if (data?.status === "account_selection_required" && data?.accounts?.length > 0) {
+        if (
+          data?.status === "account_selection_required" &&
+          data?.accounts?.length > 0
+        ) {
           setAccounts(data.accounts);
           setIsSelectingAccount(true);
           setIsLoading(false);
           return;
         }
-        
+
         // Otherwise code is already in URL, let the SPA handle it
         return;
       }
 
       // Handle error responses
-      const errorMsg = data?.error_description || data?.message || "Login failed";
+      const errorMsg =
+        data?.error_description || data?.message || "Login failed";
       const errorCode = data?.error;
 
       if (errorCode === "account_locked") {
-        showErrorToast({ errors: "Your account is locked. Please contact support or reset your password." });
+        showErrorToast({
+          errors:
+            "Your account is locked. Please contact support or reset your password.",
+        });
       } else if (errorCode === "account_not_verified") {
         setLastAttemptedEmail(values.username);
         setShowActivationError(true);
       } else if (errorCode === "invalid_credentials") {
-        showErrorToast({ errors: "Invalid email or password. Please try again." });
+        showErrorToast({
+          errors: "Invalid email or password. Please try again.",
+        });
       } else {
         showErrorToast({ errors: errorMsg });
       }
     } catch (error) {
-      console.error('Login error:', error);
-      showErrorToast({ errors: "An unexpected error occurred during login. Please try again." });
+      console.error("Login error:", error);
+      showErrorToast({
+        errors: "An unexpected error occurred during login. Please try again.",
+      });
     } finally {
       setIsLoading(false);
     }
@@ -235,7 +262,11 @@ export const OidcLoginForm = ({
         codeChallenge: effectiveCodeChallenge,
         codeChallengeMethod: effectiveCodeChallengeMethod,
       } = await ensurePkceState();
-      const effectiveTenantId = account.tenant_id || tenantId || getRuntimeEnv("BLOCKS_X_BLOCKS_KEY") || "";
+      const effectiveTenantId =
+        account.tenant_id ||
+        tenantId ||
+        getRuntimeEnv("BLOCKS_X_BLOCKS_KEY") ||
+        "";
 
       // Continue account selection with the same PKCE challenge to keep flow consistent.
       const response = await authService.selectOidcAccount({
@@ -271,33 +302,40 @@ export const OidcLoginForm = ({
   };
 
   if (isSelectingAccount && accounts.length > 0) {
-    return <OidcAccountSelector accounts={accounts} onAccountSelect={handleAccountSelect} isLoading={isLoading} />;
+    return (
+      <OidcAccountSelector
+        accounts={accounts}
+        onAccountSelect={handleAccountSelect}
+        isLoading={isLoading}
+      />
+    );
   }
 
-  // Default to showing password login if loginOption is not available or fails to load
-  // Don't wait for login options - show form immediately with sensible defaults
-  const showPasswordLogin = loginOption?.allowedGrantTypes?.includes(GRANT_TYPES.password) ?? true;
+  const showPasswordLogin = true;
   // Show social login by default - if loginOption is available, check the config; otherwise default to true
-  const showSocialLogin = loginOption?.allowedGrantTypes?.includes(GRANT_TYPES.social) ?? true;
+  const showSocialLogin = !!loginOption?.ssoInfo?.length;
 
   if (showActivationError) {
     return (
       <div className="flex flex-col gap-4 text-center">
         <div className="rounded-lg bg-destructive/10 p-4">
-          <p className="mb-2 text-sm font-medium text-destructive">Account Not Verified</p>
+          <p className="mb-2 text-sm font-medium text-destructive">
+            Account Not Verified
+          </p>
           <p className="text-sm text-destructive/80">
-            Your account needs to be activated. Check your email for the activation link.
+            Your account needs to be activated. Check your email for the
+            activation link.
           </p>
         </div>
         <div className="flex flex-col gap-2">
-          <Button 
-            onClick={() => window.location.href = activationUrl}
+          <Button
+            onClick={() => (window.location.href = activationUrl)}
             className="w-full rounded"
             variant="outline"
           >
             Activate Account
           </Button>
-          <Button 
+          <Button
             onClick={() => {
               setShowActivationError(false);
               form.reset();
@@ -316,7 +354,10 @@ export const OidcLoginForm = ({
     <>
       {showPasswordLogin && (
         <Form {...form}>
-          <form onSubmit={form.handleSubmit(onSubmitHandler)} className="flex flex-col gap-4">
+          <form
+            onSubmit={form.handleSubmit(onSubmitHandler)}
+            className="flex flex-col gap-4"
+          >
             <FormField
               control={form.control}
               name="username"
@@ -324,7 +365,11 @@ export const OidcLoginForm = ({
                 <FormItem>
                   <FormLabel>Email</FormLabel>
                   <FormControl>
-                    <Input placeholder="Enter your email" {...field} disabled={isLoading} />
+                    <Input
+                      placeholder="Enter your email"
+                      {...field}
+                      disabled={isLoading}
+                    />
                   </FormControl>
                   <FormMessage />
                 </FormItem>
@@ -337,14 +382,21 @@ export const OidcLoginForm = ({
                 <FormItem>
                   <FormLabel>Password</FormLabel>
                   <FormControl>
-                    <PasswordInput placeholder="Enter your password" {...field} disabled={isLoading} />
+                    <PasswordInput
+                      placeholder="Enter your password"
+                      {...field}
+                      disabled={isLoading}
+                    />
                   </FormControl>
                   <FormMessage />
                 </FormItem>
               )}
             />
 
-            <Link to={forgotPasswordUrl} className="ml-auto inline-block text-sm text-primary pointer-events-none opacity-50 cursor-not-allowed" aria-disabled="true" tabIndex={-1}>
+            <Link
+              to="/forgot-password"
+              className="ml-auto inline-block text-sm text-primary"
+            >
               Forgot password?
             </Link>
 
@@ -356,23 +408,26 @@ export const OidcLoginForm = ({
                 onVerify: (token: string) => setToken(token),
                 onExpired: () => setToken(""),
                 onError: () => setToken(""),
-              } as any)
-            }
+              } as any)}
 
-            <Button type="submit" className="w-full rounded" disabled={isLoading || (isTokenNeed && !token)}>
+            <Button
+              type="submit"
+              className="w-full rounded"
+              disabled={isLoading || (isTokenNeed && !token)}
+            >
               {isLoading ? "Signing in..." : "Log in"}
             </Button>
           </form>
         </Form>
       )}
 
-      {/* {showPasswordLogin && showSocialLogin && (
+      {showPasswordLogin && showSocialLogin && (
         <div className="my-2 mt-4 flex items-center">
           <hr className="flex-grow border" />
           <span className="mx-2 text-xs text-low-emphasis">OR</span>
           <hr className="flex-grow border" />
         </div>
-      )} */}
+      )}
 
       {showSocialLogin && (
         <SsoSignin
@@ -394,7 +449,7 @@ export const OidcLoginForm = ({
       <div className="mt-3 flex items-center justify-center">
         <div className="flex items-center text-medium-emphasis">
           <p>Not a member?</p>
-          <Link to={signUpUrl} className="ml-2 inline-block text-sm text-primary pointers-event-none opacity-50 cursor-not-allowed" aria-disabled="true">
+          <Link to="/signup" className="ml-2 inline-block text-sm text-primary">
             Sign up
           </Link>
         </div>

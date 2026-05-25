@@ -1,6 +1,4 @@
-import {
-  AUTH_OIDC_ENDPOINTS
-} from "@/idp/authentication/constants/endpoint.constant";
+import { AUTH_OIDC_ENDPOINTS } from "@/idp/authentication/constants/endpoint.constant";
 import { getRuntimeEnv } from "@/lib/runtime-env";
 import { getQueryClient } from "@/providers/query-provider";
 import { useAuthStore } from "@/store/useAuthStore";
@@ -145,7 +143,7 @@ class HttpClient {
     const config: RequestInit = {
       method,
       headers: normalizedHeaders,
-      credentials: withCredentials ? "include" : "omit",
+      credentials: withCredentials ? "include" : "omit",    
     };
 
     if (body) {
@@ -301,7 +299,7 @@ class HttpClient {
 }
 
 export const http = new HttpClient(
-  getRuntimeEnv("BLOCKS_API_BASE_URL") || "",
+  getRuntimeEnv("BLOCKS_IAM_BASE_URL") || "",
   getRuntimeEnv("BLOCKS_X_BLOCKS_KEY") || "",
 );
 

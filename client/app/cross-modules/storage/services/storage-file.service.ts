@@ -16,7 +16,7 @@ import {
 import { STORAGE_FILE_ENDPOINTS } from "../constants/endpoint.constant";
 
 const toLogicUrl = (path: string) =>
-  `${getRuntimeEnv("BLOCKS_LOGIC_BASE_URL") || "https://dev-logic.blocksdevelopers.com"}${path}`;
+  `${getRuntimeEnv("BLOCKS_LOGIC_BASE_URL")}${path}`;
 
 export class StorageFile {
   getFileByFileId(payload: IGetFileByFileIDPayload): Promise<IGetFileByFileIDResponse> {

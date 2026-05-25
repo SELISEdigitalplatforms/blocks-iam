@@ -43,7 +43,7 @@ public class TokenRevocationServiceTests
 
         result.Success.Should().BeTrue();
         result.Error.Should().BeNull();
-        _refreshTokenRepoMock.Verify(x => x.RevokeByFamilyIdAsync(It.IsAny<string>(), It.IsAny<string>()), Times.Never);
+        _refreshTokenRepoMock.Verify(x => x.RevokeByTokenIdAsync(It.IsAny<string>(), It.IsAny<string>()), Times.Never);
     }
 
     [Fact]
@@ -54,7 +54,6 @@ public class TokenRevocationServiceTests
             .ReturnsAsync(new RefreshTokenModel
             {
                 TokenId = "refresh-token-1",
-                FamilyId = "family-1",
                 UserId = "user-1",
                 ClientId = "client-a",
                 IsRevoked = false
@@ -64,7 +63,7 @@ public class TokenRevocationServiceTests
 
         result.Success.Should().BeFalse();
         result.Error.Should().Be("invalid_client");
-        _refreshTokenRepoMock.Verify(x => x.RevokeByFamilyIdAsync(It.IsAny<string>(), It.IsAny<string>()), Times.Never);
+        _refreshTokenRepoMock.Verify(x => x.RevokeByTokenIdAsync(It.IsAny<string>(), It.IsAny<string>()), Times.Never);
     }
 
     [Fact]

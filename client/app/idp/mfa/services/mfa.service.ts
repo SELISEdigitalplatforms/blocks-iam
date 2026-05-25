@@ -1,8 +1,10 @@
 import { http } from "@/lib/http-client";
+import { getRuntimeEnv } from "@/lib/runtime-env";
+
+const toLogicUrl = (path: string) => `${getRuntimeEnv("BLOCKS_LOGIC_BASE_URL")}${path}`;
 import {
   IGenerateUserMFA_OtpPayload,
   IGenerateUserMFA_OtpResponse,
-  IGetConfigurationPayload,
   IGetConfigurationResponse,
   IConfigureUserMFAPayload,
   IConfigureUserMFAResponse,
@@ -19,8 +21,8 @@ import {
 import { MFA_CONFIG_ENDPOINTS, MFA_ENDPOINTS } from "../constants/endpoint.constant";
 
 export class MFAService {
-  getConfigurations(payload: IGetConfigurationPayload): Promise<IGetConfigurationResponse> {
-    return http.get(`${MFA_CONFIG_ENDPOINTS.GET}?ProjectKey=${payload.projectKey}`);
+  getConfigurations(): Promise<IGetConfigurationResponse> {
+    return http.get(toLogicUrl(MFA_CONFIG_ENDPOINTS.GET), undefined, { absoluteUrl: true });
   }
 
   saveMFAConfiguration(
@@ -30,7 +32,7 @@ export class MFAService {
   }
 
   generateUserMfaOTP(payload: IGenerateUserMFA_OtpPayload): Promise<IGenerateUserMFA_OtpResponse> {
-    return http.post(MFA_ENDPOINTS.GENERATE_OTP, payload);
+    return http.post(toLogicUrl(MFA_ENDPOINTS.GENERATE_OTP), payload, undefined, { absoluteUrl: true });
   }
 
   configureUserMFA(payload: IConfigureUserMFAPayload): Promise<IConfigureUserMFAResponse> {
@@ -38,12 +40,14 @@ export class MFAService {
   }
   setupUserTotp(payload: ISetupUserTotpPayload): Promise<ISetupUserTotpResponse> {
     return http.get(
-      `${MFA_ENDPOINTS.SETUP_TOTP}?UserId=${payload.id}&ProjectKey=${payload.projectKey}`,
+      toLogicUrl(`${MFA_ENDPOINTS.SETUP_TOTP}?UserId=${payload.id}`),
+      undefined,
+      { absoluteUrl: true },
     );
   }
 
   verifyOtp(payload: IVerifyMfaOtpPayload): Promise<IVerifyMfaOtpResponse> {
-    return http.post(MFA_ENDPOINTS.VERIFY_OTP, payload);
+    return http.post(toLogicUrl(MFA_ENDPOINTS.VERIFY_OTP), payload, undefined, { absoluteUrl: true });
   }
 
   resendOtp(payload: IResendMfaOtpPayload): Promise<IVerifyMfaOtpResponse> {

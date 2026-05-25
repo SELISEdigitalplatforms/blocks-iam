@@ -56,7 +56,7 @@ const MethodsOption = ({ method, onSaveClick, activeType, isVerified }: MethodsO
 export const ProfileMfaMethodSelectList = () => {
   const { userId, projectKey, showVerifyModal, setIsDisableModalOpen } =
     useContext(profileMfaContext);
-  const { data } = useGetMFAConfig({ projectKey });
+  const { data } = useGetMFAConfig();
   const { data: userData } = useGetUserById({ id: userId, projectKey });
 
   const [type, setType] = useState<string>("");

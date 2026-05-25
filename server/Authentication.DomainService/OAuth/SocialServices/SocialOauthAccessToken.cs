@@ -16,6 +16,9 @@ namespace Authentication.DomainService.OAuth
         [JsonPropertyName("id_token")]
         public string IdToken { get; set; }
 
+        [JsonPropertyName("refresh_token")]
+        public string RefreshToken { get; set; }
+
         [JsonPropertyName("email")]
         public string Email { get; set; }
 

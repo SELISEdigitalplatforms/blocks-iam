@@ -36,11 +36,10 @@ export const useSaveOrganization = () => {
   });
 };
 
-export const useGetOrganizationConfig = (projectKey: string) => {
+export const useGetOrganizationConfig = () => {
   return useQuery({
-    queryKey: ["organization", "config", projectKey],
-    queryFn: () => iamService.organization.getOrganizationConfig(projectKey),
-    enabled: !!projectKey,
+    queryKey: ["organization", "config"],
+    queryFn: () => iamService.organization.getOrganizationConfig(),
   });
 };
 
