@@ -3,7 +3,7 @@ import { getRuntimeEnv } from "@/lib/runtime-env";
 import { z } from "zod";
 
 export const getDefaultShortUrlBase = (): string => {
-  const apiBase = getRuntimeEnv("BLOCKS_API_BASE_URL") || "";
+  const apiBase = getRuntimeEnv("BLOCKS_IAM_BASE_URL") || "";
 
   const match = Object.entries(SHORT_URL_BASES).find(
     ([env]) => env !== "prod" && apiBase.includes(env),

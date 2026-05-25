@@ -30,13 +30,18 @@ import {
   User,
 } from "@blocks-idp/iam/models/user";
 import { UserAccountService } from "./account.service";
-import { USER_ENDPOINTS, ORGANIZATION_ENDPOINTS } from "../constants/endpoint.constant";
+import {
+  USER_ENDPOINTS,
+  ORGANIZATION_ENDPOINTS,
+} from "../constants/endpoint.constant";
 import { AUTH_ENDPOINTS } from "@/idp/authentication/constants/endpoint.constant";
 
 export class UserService {
   constructor(public account: UserAccountService) {}
 
-  getUsers(payload: Omit<IGetUsersPayload, "projectKey">): Promise<IGetUsersResponse> {
+  getUsers(
+    payload: Omit<IGetUsersPayload, "projectKey">,
+  ): Promise<IGetUsersResponse> {
     const params = new URLSearchParams();
     params.set("page", String(payload.page));
     params.set("pageSize", String(payload.pageSize));
@@ -45,9 +50,11 @@ export class UserService {
       params.set("sort.isDescending", String(payload.sort.isDescending));
     }
     if (payload.filter) {
-      if (payload.filter.email) params.set("filter.email", payload.filter.email);
+      if (payload.filter.email)
+        params.set("filter.email", payload.filter.email);
       if (payload.filter.name) params.set("filter.name", payload.filter.name);
-      if (payload.filter.organizationId) params.set("filter.organizationId", payload.filter.organizationId);
+      if (payload.filter.organizationId)
+        params.set("filter.organizationId", payload.filter.organizationId);
     }
     return http.get(`${USER_ENDPOINTS.GET_USERS}?${params.toString()}`);
   }
@@ -79,15 +86,40 @@ export class UserService {
   }
 
   updateUser(payload: IUpdateUserPayload): Promise<IUpdateUserResponse> {
-    return http.post(`/api/iam/users/${payload.itemId}`, payload);
+    const flattenRecord = (value: unknown): string[] => {
+      if (!value) return [];
+      if (Array.isArray(value)) return value as string[];
+      return Object.values(value as Record<string, string[]>).flat();
+    };
+    const normalized = {
+      itemId: payload.itemId,
+      firstName: payload.firstName,
+      lastName: payload.lastName,
+      email: payload.email,
+      userName: payload.userName,
+      language: payload.language,
+      organizationIds: payload.organizationIds,
+      roles: flattenRecord(payload.roles),
+      permissions: flattenRecord(payload.permissions),
+      active: payload.active,
+      status: payload.status,
+      isVerified: payload.isVerified,
+      mfaEnabled: payload.mfaEnabled,
+      isMfaVerified: payload.isMfaVerified,
+      userMfaType: payload.userMfaType,
+      provisioningSource: payload.provisioningSource,
+      externalIdentities: payload.externalIdentities,
+      userCreationType: payload.userCreationType,
+      isMultiOrgEnabled: payload.isMultiOrgEnabled,
+      organizations: payload.organizations,
+      profileImageId: payload.profileImageId,
+      profileImageUrl: payload.profileImageUrl,
+    };
+    return http.post(`/api/iam/users/${payload.itemId}`, normalized);
   }
 
-  getSignUpSetting(
-    payload: IGetSignUpSettingPayload,
-  ): Promise<IGetSignUpSettingResponse> {
-    return http.get(
-      `${ORGANIZATION_ENDPOINTS.GET_SIGNUP_SETTING}?ProjectKey=${payload.projectKey}`,
-    );
+  getSignUpSetting(): Promise<IGetSignUpSettingResponse> {
+    return http.get(`${ORGANIZATION_ENDPOINTS.GET_SIGNUP_SETTING}`);
   }
 
   saveSignUpSetting(
@@ -146,7 +178,7 @@ export class UserService {
 
   getUserRoles(payload: IGetUserRolesPayload): Promise<IGetUserRolesResponse> {
     return http.get(
-      `${USER_ENDPOINTS.GET_USER_ROLES}?Id=${payload.userId}&ProjectKey=${payload.projectKey}`,
+      `${USER_ENDPOINTS.GET_USER_ROLES}?Id=${payload.userId}`,
     );
   }
 
@@ -154,7 +186,7 @@ export class UserService {
     payload: IGetUserPermissionsPayload,
   ): Promise<IGetUserPermissionsResponse> {
     return http.get(
-      `${USER_ENDPOINTS.GET_USER_PERMISSIONS}?Id=${payload.userId}&ProjectKey=${payload.projectKey}`,
+      `${USER_ENDPOINTS.GET_USER_PERMISSIONS}?Id=${payload.userId}`,
     );
   }
 

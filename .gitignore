@@ -170,3 +170,10 @@ client/.cursor/context/
 
 #moat
 client/.moat/
+
+
+#graphify 
+graphify-out/
+server/graphify-out/
+client/graphify-out/
+docs/

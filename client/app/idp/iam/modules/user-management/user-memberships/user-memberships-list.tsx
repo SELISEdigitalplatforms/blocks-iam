@@ -195,7 +195,7 @@ export const UserMembershipsList = ({
   if (memberships.length === 0) {
     return (
       <div className="flex h-[100px] items-center justify-center text-medium-emphasis">
-        No organization memberships found
+        No organizations found
       </div>
     );
   }

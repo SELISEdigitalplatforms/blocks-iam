@@ -19,7 +19,7 @@ export const UserResendActivationMail = ({
   const { mutateAsync, isPending } = useAccountResendActivation();
   const onClickHandler = async () => {
     try {
-      const res = await mutateAsync({ projectKey: tenantId, userId });
+      const res = await mutateAsync({ userId });
       if (res.isSuccess) {
         toast({
           variant: "success",
@@ -45,7 +45,8 @@ export const UserResendActivationMail = ({
         onConfirm={onClickHandler}
         data={{
           dialogTitle: "Confirmation",
-          dialogSubtitle: "Do you want to resend the activation email to this user? ",
+          dialogSubtitle:
+            "Do you want to resend the activation email to this user? ",
           confirmButton: "Resend",
         }}
         buttonState={{

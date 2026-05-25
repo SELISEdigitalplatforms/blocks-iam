@@ -56,9 +56,11 @@ import { RepositoriesPage } from "./pages/repositories/repositories";
 import { SettingsPage } from "./pages/settings/settings";
 import { CreateProjectWrapper } from "./pages/create-project/create-project";
 import CallbackPage from "./routes/callback/callback";
+import { Console } from "./pages/console/console";
 import OidcLogin from "./routes/auth/oidc-login";
 import LoginSimplePage from "./routes/auth/login-simple";
 import LoginCallbackPage from "./routes/auth/callback";
+import SSOCallbackPage from "./routes/auth/sso-callback";
 
 export const router = createBrowserRouter([
   // ── Auth layout (login, signup, sso-activate) ──
@@ -73,7 +75,6 @@ export const router = createBrowserRouter([
   // ── Simple login (no guards, no API calls) ──
   // { path: "/login", element: <OidcLogin /> },
 
-  
   {
     path: "/login",
     children: [
@@ -82,6 +83,10 @@ export const router = createBrowserRouter([
     ],
   },
 
+  {
+    path: "/sso",
+    children: [{ path: ":provider/callback", element: <SSOCallbackPage /> }],
+  },
 
   // ── Public layout (other public pages with PublicGuard) ──
   {
@@ -94,7 +99,10 @@ export const router = createBrowserRouter([
       { path: "/forgot-email-sent", element: <ForgotEmailSentPage /> },
       { path: "/signup-email-sent", element: <SignupEmailSentPage /> },
       { path: "/mfa-check", element: <MfaCheckPage /> },
-      { path: "/reset-password-success", element: <ResetPasswordSuccessPage /> },
+      {
+        path: "/reset-password-success",
+        element: <ResetPasswordSuccessPage />,
+      },
     ],
   },
 
@@ -108,7 +116,10 @@ export const router = createBrowserRouter([
       { path: "permission", element: <OidcPermissionPage /> },
       { path: "error", element: <OidcErrorPage /> },
       // { path: "forgot-password", element: <OidcForgotPasswordPage /> },
-      { path: "email-sent-confirmation", element: <OidcEmailSentConfirmationPage /> },
+      {
+        path: "email-sent-confirmation",
+        element: <OidcEmailSentConfirmationPage />,
+      },
     ],
   },
 
@@ -119,22 +130,46 @@ export const router = createBrowserRouter([
       { path: "/services/iam", element: <IamPage /> },
       { path: "/services/iam/user-detail/:id", element: <IamUserDetailPage /> },
       { path: "/services/iam/role-detail/:id", element: <IamRoleDetailPage /> },
-      { path: "/services/iam/permission-detail/new", element: <IamAddPermissionPage /> },
-      { path: "/services/iam/permission-detail/:id", element: <IamPermissionDetailPage /> },
-      { path: "/services/iam/organization-detail/:itemId", element: <IamOrgDetailPage /> },
+      {
+        path: "/services/iam/permission-detail/new",
+        element: <IamAddPermissionPage />,
+      },
+      {
+        path: "/services/iam/permission-detail/:id",
+        element: <IamPermissionDetailPage />,
+      },
+      {
+        path: "/services/iam/organization-detail/:itemId",
+        element: <IamOrgDetailPage />,
+      },
       { path: "/services/iam/logs", element: <IamLogsPage /> },
       { path: "/services/iam/configure", element: <IamConfigurePage /> },
-      { path: "/services/authentication/users", element: <AuthenticationConfigPage section="users" /> },
-      { path: "/services/authentication/organizations", element: <AuthenticationConfigPage section="organizations" /> },
-      { path: "/services/authentication/client-credential", element: <AuthenticationConfigPage section="client-credential" /> },
-      { path: "/services/authentication/sso-configuration", element: <SsoConfigurationPage /> },
+      {
+        path: "/services/authentication/users",
+        element: <AuthenticationConfigPage section="users" />,
+      },
+      {
+        path: "/services/authentication/organizations",
+        element: <AuthenticationConfigPage section="organizations" />,
+      },
+      {
+        path: "/services/authentication/client-credential",
+        element: <AuthenticationConfigPage section="client-credential" />,
+      },
+      {
+        path: "/services/authentication/sso-configuration",
+        element: <SsoConfigurationPage />,
+      },
       { path: "/services/authentication/logs", element: <AuthLogsPage /> },
       { path: "/services/mfa/logs", element: <MfaLogsPage /> },
       { path: "/services/rate-limiter", element: <RateLimiterPage /> },
       { path: "/managed-services", element: <ManagedServicesPage /> },
       { path: "/services/captcha/logs", element: <CaptchaLogsPage /> },
       { path: "/dashboard", element: <DashboardOverview /> },
-      { path: "/project-overview", element: <Navigate to="/project-overview/environments" replace /> },
+      {
+        path: "/project-overview",
+        element: <Navigate to="/project-overview/environments" replace />,
+      },
       { path: "/project-overview/environments", element: <EnvironmentsPage /> },
       { path: "/project-overview/people", element: <PeopleManagement /> },
       { path: "/project-overview/repositories", element: <RepositoriesPage /> },
@@ -147,13 +182,17 @@ export const router = createBrowserRouter([
     element: <ConsoleLayout />,
     children: [
       { path: "/profile", element: <ProfilePage /> },
+      { path: "/console", element: <Console /> },
       { path: "/create-project", element: <CreateProjectWrapper /> },
       { path: "/callback", element: <CallbackPage /> },
     ],
   },
 
   // ── Root redirect: authenticated users go to authentication/users ──
-  { path: "/", element: <Navigate to="/services/authentication/users" replace /> },
+  {
+    path: "/",
+    element: <Navigate to="/services/authentication/users" replace />,
+  },
 
   // ── Catch-all: redirect to login ──
   { path: "*", element: <Navigate to="/login" replace /> },

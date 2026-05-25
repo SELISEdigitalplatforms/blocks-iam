@@ -36,8 +36,10 @@ namespace Authentication.DomainService.Authentication
         [System.Text.Json.Serialization.JsonPropertyName("tenant_id")]
         public string? TenantId { get; set; }
 
-        [System.Text.Json.Serialization.JsonPropertyName("provider")]
-        public string? Provider { get; set; }
+        [System.Text.Json.Serialization.JsonPropertyName("provider_client_id")]
+        public string? ProviderClientId { get; set; }
+        [System.Text.Json.Serialization.JsonPropertyName("provider_redirect_uri")]
+        public string? ProviderRedirectUri { get; set; }
     }
 
     public class OidcLoginResponse
@@ -93,9 +95,6 @@ namespace Authentication.DomainService.Authentication
             HttpResponse response,
             bool returnRedirectResponse = true);
 
-        Task<IActionResult> SelectAccountAsync(string userId, string? tenantId, HttpRequest request, HttpResponse response);
-
-        Task<IActionResult> ContinueOidcLoginAfterAccountSelectionAsync(string userId, string tenantId, string clientId, string redirectUri, string? scope, string? state, string? nonce, string? codeChallenge, string? codeChallengeMethod, HttpRequest request, HttpResponse response);
 
         Task<IActionResult> TokenAsync(string grantType, HttpRequest request);
     }

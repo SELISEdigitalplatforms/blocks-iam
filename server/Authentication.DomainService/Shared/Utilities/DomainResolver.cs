@@ -193,6 +193,34 @@ namespace Authentication.DomainService.Utilities
             return BlocksContext.NormalizeDomain(value ?? string.Empty)?.ToLower(CultureInfo.InvariantCulture) ?? string.Empty;
         }
 
+        public static void ResetToOriginalBlocksContextForImpersonation()
+        {
+            var bc = BlocksContext.GetContext();
+
+            if (bc == null || string.IsNullOrWhiteSpace(bc.OriginalTenantId) || !bc.Impersonated)
+            {
+                return;
+            }
+            BlocksContext.SetContext(BlocksContext.Create(
+                tenantId: bc.OriginalTenantId, 
+                userId: bc.UserId,
+                impersonated: false,
+                isAuthenticated: bc.IsAuthenticated,
+                requestUri: bc.RequestUri,
+                roles: bc.Roles,
+                permissions: bc.Permissions,
+                organizationId: bc.OrganizationId,
+                email: bc.Email,
+                userName: bc.UserId,
+                phoneNumber: bc.PhoneNumber,
+                expireOn: bc.ExpireOn,
+                displayName: bc.DisplayName,
+                oauthToken: bc.OAuthToken,
+                originalTenantId: bc.OriginalTenantId,
+                applicationDomain: bc.ApplicationDomain)
+            );
+        }
+
         public static CookieOptions CreateCookieOptions(string? cookieDomain, DateTime expiresUtc)
         {
             var isLocalRequest = IsLocalhost();

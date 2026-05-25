@@ -2,10 +2,6 @@ using Idp.DomainService.Oidc.Contracts;
 using Authentication.DomainService.Oidc.Repositories;
 using Authentication.DomainService.Services;
 using Blocks.Genesis;
-using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Threading.Tasks;
 using Microsoft.Extensions.Logging;
 
 namespace Authentication.DomainService.Oidc.Services
@@ -357,9 +353,9 @@ namespace Authentication.DomainService.Oidc.Services
                     await _cacheClient.RemoveKeyAsync(refreshToken);
 
                     var tokenModel = await _refreshTokenRepo.GetByTokenIdAsync(refreshToken);
-                    if (tokenModel != null && !string.IsNullOrWhiteSpace(tokenModel.FamilyId))
+                    if (tokenModel != null && !tokenModel.IsRevoked)
                     {
-                        await _refreshTokenRepo.RevokeByFamilyIdAsync(tokenModel.FamilyId, $"session_revoked:{reason}");
+                        await _refreshTokenRepo.RevokeByTokenIdAsync(tokenModel.TokenId, $"session_revoked:{reason}");
                     }
                 }
 

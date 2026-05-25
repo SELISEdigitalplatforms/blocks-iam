@@ -1,9 +1,14 @@
 using Authentication.DomainService.Authentication;
 using Authentication.DomainService.Entities;
 using Authentication.DomainService.OAuth.RequestModel;
-using Authentication.DomainService.Oidc.Services;
+using Authentication.DomainService.Services;
 using Authentication.DomainService.Shared.RequestModel;
+using Authentication.DomainService.Shared.ResponseModel;
+using Authentication.DomainService.Utilities;
 using Blocks.Genesis;
+using CloudConfiguration.DomainService.Authentication;
+using CloudConfiguration.DomainService.Authentication.RequestModel;
+using CloudConfiguration.DomainService.Shared.Services;
 using Iam.DomainService.Accounts;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
@@ -21,25 +26,30 @@ namespace Api.Controllers;
 /// All endpoints follow RESTful conventions with professional naming and comprehensive documentation.
 /// </summary>
 [ApiController]
-[Route("auth")]
+[Route("auth")]   
 public class AuthenticationController : ControllerBase
 {
     private readonly IAuthenticationService _authenticationService;
     private readonly IAccountService _accountService;
     private readonly IAuthenticationFlowService _authenticationFlowService;
-    private readonly IOidcCallbackHandler _oidcCallbackHandler;
+    private readonly IConfigurationService _configurationService;
+    private readonly IAuthenticationRepository _authenticationRepository;
+    private readonly IAuthenticationDomainService _authenticationDomainService;
 
     public AuthenticationController(
         IAuthenticationService authenticationService,
         IAccountService accountService,
         IAuthenticationFlowService authenticationFlowService,
-        IOidcCallbackHandler oidcCallbackHandler,
-        IAuthorizationFlowService authorizationFlowService)
+        IConfigurationService configurationService, IAuthenticationRepository authenticationRepository,
+        IAuthenticationDomainService authenticationDomainService
+    )
     {
         _authenticationService = authenticationService;
         _accountService = accountService;
         _authenticationFlowService = authenticationFlowService;
-        _oidcCallbackHandler = oidcCallbackHandler;
+        _configurationService= configurationService;
+        _authenticationRepository = authenticationRepository;
+        _authenticationDomainService = authenticationDomainService;
     }
 
     /// <summary>
@@ -182,11 +192,11 @@ public class AuthenticationController : ControllerBase
     /// Returns authorization URL to redirect user to social provider
     /// RFC 6749: OAuth 2.0 Framework | RFC 7636: PKCE
     /// </summary>
-    [HttpGet("social/authorize")]
+    [HttpGet("social/initiate")]
     [AllowAnonymous]
-    public Task<IActionResult> InitiateSocialAuthentication([FromQuery] string provider, [FromQuery] string redirectUri)
+    public Task<IActionResult> InitiateSocialAuthentication([FromQuery] string clientId, [FromQuery] string redirectUri)
     {
-        return _authenticationService.GetSocialAuthorizationUrlAsync(provider, redirectUri);
+        return _authenticationService.GetSocialAuthorizationUrlAsync(clientId, redirectUri);
     }
 
     /// <summary>
@@ -227,48 +237,12 @@ public class AuthenticationController : ControllerBase
 
         var loginRequest = new SocialLoginRequest { Code = code, State = state };
         var result = await _authenticationFlowService.ExecuteSocialLoginAsync(loginRequest, Request);
+
         return await _authenticationService.BuildFlowResultAsync(result, HttpContext);
     }
 
     #endregion
 
-    #region OIDC Federated Authentication (OpenID Connect 1.0)
-
-    /// <summary>
-    /// OIDC callback handler (Browser Redirect Pattern - GET)
-    /// Receives authorization code from provider via browser redirect
-    /// Exchanges code for tokens, validates JWT signature and claims
-    /// RFC 6749: OAuth 2.0 | RFC 3986: OpenID Connect | RFC 7519: JWT | RFC 5280: X.509
-    /// </summary>
-    [HttpGet("oidc/callback")]
-    [HttpPost("oidc/callback")]
-    [AllowAnonymous]
-    public async Task<IActionResult> HandleOidcCallbackGet(
-        [FromQuery] string code,
-        [FromQuery] string state,
-        [FromQuery] string provider,
-        [FromBody] OidcCallbackRequest? request = null)
-    {
-        if (request != null)
-        {
-            code = request.Code;
-            state = request.State;
-            provider = request.Provider;
-        }
-
-        if (string.IsNullOrWhiteSpace(code))
-            return BadRequest(new { error = "authorization_code_missing", error_description = "Authorization code is required" });
-
-        if (string.IsNullOrWhiteSpace(state))
-            return BadRequest(new { error = "state_missing", error_description = "State parameter is required" });
-
-        if (string.IsNullOrWhiteSpace(provider))
-            return BadRequest(new { error = "provider_missing", error_description = "Provider name is required" });
-
-        return await ProcessOidcCallback(code, state, provider);
-    }
-
-    #endregion
 
     #region Token & Session Management
 
@@ -293,6 +267,7 @@ public class AuthenticationController : ControllerBase
     [Authorize]
     public async Task<IActionResult> ExecuteLogout([FromBody] LogoutRequest request)
     {
+        DomainResolver.ResetToOriginalBlocksContextForImpersonation();
         var refreshToken = string.IsNullOrWhiteSpace(request.RefreshToken)
             ? _authenticationService.CookieToken(Request)
             : request.RefreshToken;
@@ -339,14 +314,6 @@ public class AuthenticationController : ControllerBase
         return await _authenticationService.BuildFlowResultAsync(result, HttpContext);
     }
 
-    [HttpGet("context/{projectId}")]
-    [Authorize]
-    public async Task<IActionResult> GetContextForProject([FromRoute] string projectId)
-    {
-        var result = await _authenticationFlowService.GetContextForProjectAsync(projectId);
-        return result.IsSuccess ? Ok(result) : BadRequest(result);
-    }
-
     // <summary>
     /// Initiate user impersonation (Administrator Feature)
     /// Allows admins to impersonate users for support/debugging
@@ -357,6 +324,8 @@ public class AuthenticationController : ControllerBase
     [Authorize]
     public async Task<IActionResult> InitiateImpersonation([FromBody] ImpersonateRequest request)
     {
+        // Reset BlocksContext to original tenant context in case this impersonation request is coming from an existing impersonation session (organization switch or tenant switch within impersonation), we want to validate permissions and issue tokens based on the original/root tenant context and not the current impersonated context
+        DomainResolver.ResetToOriginalBlocksContextForImpersonation();
         return await _authenticationFlowService.ExecuteImpersonateAsync(request, Request, Response);
     }
 
@@ -366,9 +335,19 @@ public class AuthenticationController : ControllerBase
     /// </summary>
     [HttpPost("impersonation/stop")]
     [Authorize]
-    public async Task<IActionResult> StopImpersonation()
+    public async Task<IActionResult> StopImpersonation([FromBody] StopImpersonationRequest request)
     {
-        return await _authenticationFlowService.ExecuteStopImpersonationAsync(Request, Response);
+        // Reset BlocksContext to original tenant context in case this impersonation request is coming from an existing impersonation session (organization switch or tenant switch within impersonation), we want to validate permissions and issue tokens based on the original/root tenant context and not the current impersonated context
+        if (!BlocksContext.GetContext().Impersonated)
+        {
+            return BadRequest(new StopImpersonationResponse
+            {
+                error = "Not_allowed"
+            });
+        }
+
+        DomainResolver.ResetToOriginalBlocksContextForImpersonation();
+        return await _authenticationFlowService.ExecuteStopImpersonationAsync(request, Request, Response);
     }
 
     [HttpPost("impersonation/status")]
@@ -524,43 +503,31 @@ public class AuthenticationController : ControllerBase
     }
 
     #endregion
-
-    private async Task<IActionResult> ProcessOidcCallback(string code, string state, string provider)
+    [Authorize]
+    [HttpGet("Config")]
+    public async Task<IActionResult> Get([FromQuery] GetAuthenticationConfigurationRequest request)
     {
-        // Exchange code for token
-        var result = await _oidcCallbackHandler.HandleCallbackAsync(code, state, provider);
-
-        if (!result.IsSuccess)
-        {
-            return BadRequest(new
-            {
-                error = "token_exchange_failed",
-                error_description = result.ErrorMessage
-            });
-        }
-
-        // Check if this is OIDC flow (issuing authorization code) or embedded flow (setting cookie)
-        if (result.IsOidcFlow && !string.IsNullOrWhiteSpace(result.AuthorizationCode) && !string.IsNullOrWhiteSpace(result.RedirectUri))
-        {
-            // OIDC FLOW: Issue authorization code and redirect to original redirect_uri
-            // Ensure IdP session is established before redirect for SSO continuity
-            if (!string.IsNullOrWhiteSpace(result.BlocksUserId) && !string.IsNullOrWhiteSpace(result.TenantId))
-            {
-                await _authenticationService.EnsureIdpSessionForOidcCallbackAsync(HttpContext, result.BlocksUserId, result.TenantId);
-            }
-
-            // Frontend will receive code and exchange for token
-            var separator = result.RedirectUri.Contains('?') ? "&" : "?";
-            var redirectUrl = $"{result.RedirectUri}{separator}code={Uri.EscapeDataString(result.AuthorizationCode)}&state={Uri.EscapeDataString(result.OriginalState ?? string.Empty)}";
-            return Redirect(redirectUrl);
-        }
-        else
-        {
-            // EMBEDDED FLOW: Use the same tenant-scoped cookie naming and security policy as login/refresh/logout.
-            await _authenticationService.AppendSessionCookies(HttpContext, result.AccessToken, result.RefreshToken);
-
-            // Redirect to home page or original URL if state contains it (optional enhancement)
-            return Redirect("/");
-        }
+        
+        return await _configurationService.GetAuthenticationConfigAsync();
     }
+    [Authorize]
+    [HttpPost("Config_Update")]
+    public async Task<BaseResponse> Update([FromBody] UpdateAuthenticationConfigurationRequest configuration)
+    {
+        return await _configurationService.UpdateAuthenticationConfigAsync(configuration);
+    }
+    [Authorize]
+    [HttpPost("GenerateUserCode")]
+    public async Task<BaseResponse> GenerateUserCode([FromBody] GenerateUserCodeRequest request)
+    {
+        return await _authenticationDomainService.GenerateUserCodeByClientAsync(request);
+    }
+
+    [Authorize]
+    [HttpGet("GetUserCodes")]
+    public async Task<List<GetUserCodesByUserIdResponse>> GetUserCodes()
+    {
+        return await _authenticationRepository.GetUserCodesByUserIdAsync(BlocksContext.GetContext()?.UserId);
+    }
+
 }

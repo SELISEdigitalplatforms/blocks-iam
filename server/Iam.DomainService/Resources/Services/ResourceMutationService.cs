@@ -1,4 +1,5 @@
-﻿using Blocks.Genesis;
+﻿using Authentication.DomainService.Utilities;
+using Blocks.Genesis;
 using FluentValidation;
 using Iam.DomainService.Dtos;
 using Iam.DomainService.Entities;
@@ -231,10 +232,10 @@ namespace Iam.DomainService.Resources
             };
         }
 
-        public async Task<BaseMutationResponse> UpdateRoleAsync(string id, UpdateRoleRequest command)
+        public async Task<BaseMutationResponse> UpdateRoleAsync(UpdateRoleRequest command)
         {
             _logger.LogInformation("Role update start");
-            var role = await _resourceRepository.GetRoleByIdAsync(id);
+            var role = await _resourceRepository.GetRoleByIdAsync(command.ItemId);
             if (role == null)
             {
                 _logger.LogInformation("Role update end -- Validation Error");
@@ -306,7 +307,7 @@ namespace Iam.DomainService.Resources
         {
             _logger.LogInformation("Permission event -- initiate");
             await _identityAccessManagementService.SendToQueueAsync(
-                Constants.IamQueue,
+                IdpConstants.IamQueue,
                 resourceMutation
             );
             _logger.LogInformation("Permission event -- sent");
@@ -361,7 +362,7 @@ namespace Iam.DomainService.Resources
         {
             _logger.LogInformation("Permission event -- initiate");
             await _identityAccessManagementService.SendToQueueAsync(
-                Constants.IamQueue,
+                IdpConstants.IamQueue,
                 resourceMutation
             );
             _logger.LogInformation("Permission event -- sent");

@@ -4,7 +4,6 @@ using Authentication.DomainService.Entities;
 using Authentication.DomainService.OAuth.RequestModel;
 using Authentication.DomainService.OAuth.ResponseModel;
 using Authentication.DomainService.Services;
-using Iam.DomainService.Dtos;
 using Iam.DomainService.Entities;
 using Mfa.DomainService.Configuration;
 using Mfa.DomainService.Entities;
@@ -19,7 +18,6 @@ namespace Authentication.DomainService.OAuth
 {
     public class OAuthJwtAccessTokenManager : IOAuthJwtAccessTokenManager
     {
-        private const string IdpSessionCookieName = "idp_session_id";
         private readonly IJwtAccessTokenProvider _jwtAccessTokenProvider;
         private readonly IAuthenticationDomainService _authenticationDomainService;
         private readonly IAuthenticationRepository _authenticationRepository;
@@ -229,7 +227,8 @@ namespace Authentication.DomainService.OAuth
                     authenticationConfiguration,
                     tenant,
                     user,
-                    visitorsIpAddresses
+                    visitorsIpAddresses,
+                    tokenRequest.IsImpersonation
                 );
             }
             else
@@ -242,7 +241,8 @@ namespace Authentication.DomainService.OAuth
                     authenticationConfiguration,
                     tenant,
                     user,
-                    visitorsIpAddresses
+                    visitorsIpAddresses,
+                    tokenRequest.IsImpersonation
                 );
             }
         }

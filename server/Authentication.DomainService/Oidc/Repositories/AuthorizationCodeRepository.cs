@@ -1,6 +1,3 @@
-using System;
-using System.Collections.Generic;
-using System.Threading.Tasks;
 using MongoDB.Driver;
 using Blocks.Genesis;
 using Idp.DomainService.Oidc.Contracts;
@@ -83,12 +80,16 @@ namespace Authentication.DomainService.Oidc.Repositories
             {
                 var collection = GetDatabase().GetCollection<AuthorizationCodeModel>("IdpAuthorizationCodes");
                 var filter = Builders<AuthorizationCodeModel>.Filter.Eq(c => c.Code, code);
-                var result = await collection.DeleteOneAsync(filter);
-                return result.DeletedCount > 0;
+                var update = Builders<AuthorizationCodeModel>.Update
+                    .Set(c => c.IsRevoked, true)
+                    .Set(c => c.RevokedAt, DateTime.UtcNow);
+
+                var result = await collection.UpdateOneAsync(filter, update);
+                return result.ModifiedCount > 0;
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, $"Error deleting authorization code: {code}");
+                _logger.LogError(ex, $"Error soft deleting authorization code: {code}");
                 throw;
             }
         }
