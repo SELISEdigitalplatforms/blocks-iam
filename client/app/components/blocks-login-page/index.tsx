@@ -223,7 +223,7 @@ export function BlocksLoginPage({
             <div className="button-container">
               <div className="button-ring" />
               <div className="button-ring" />
-              <Button variant="primary" className="launch-btn blocks-gradient" disabled={isLoading} onClick={onLogin}>
+              <Button className="launch-btn blocks-gradient" disabled={isLoading} onClick={onLogin}>
                 {isLoading ? "Redirecting…" : loginLabel}
               </Button>
             </div>
