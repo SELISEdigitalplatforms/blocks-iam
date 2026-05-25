@@ -1,4 +1,5 @@
-﻿using Blocks.Genesis;
+﻿using Authentication.DomainService.Utilities;
+using Blocks.Genesis;
 using FluentValidation;
 using Iam.DomainService.Dtos;
 using Iam.DomainService.Entities;
@@ -8,12 +9,12 @@ using Iam.DomainService.Services;
 using Iam.DomainService.Shared.Entities;
 using Iam.DomainService.Utilities;
 using Microsoft.Extensions.Logging;
-using System.Security.AccessControl;
 
 namespace Iam.DomainService.Resources
 {
     public class ResourceMutationService : IResourceMutationService
     {
+        private const string DefaultOrganizationId = "default";
         private readonly ILogger<ResourceMutationService> _logger;
         private readonly IResourceRepository _resourceRepository;
         private readonly IIdentityAccessManagementService _identityAccessManagementService;
@@ -90,7 +91,8 @@ namespace Iam.DomainService.Resources
                 IsBuiltIn = command.IsBuiltIn,
                 ResourceGroup = command.ResourceGroup,
                 PermissionSeverity = command.PermissionSeverity,
-                DependentPermissions = command.DependentPermissions
+                DependentPermissions = command.DependentPermissions,
+                OrganizationId = "default" // Permission is global by default, can be updated later if needed
                 
             };
             await _resourceRepository.InsertPermissionAsync(permission);
@@ -134,6 +136,14 @@ namespace Iam.DomainService.Resources
         public async Task<string> ProcessRoleAsync(CreateRoleRequest command)
         {
             var blocksContext = BlocksContext.GetContext();
+            var tenantId = blocksContext?.TenantId;
+            var organizationId = ResolveOrganizationId(blocksContext?.OrganizationId);
+
+            if (string.IsNullOrWhiteSpace(tenantId))
+            {
+                throw new InvalidOperationException("TenantId is required to create a role");
+            }
+
             var role = new Role
             {
                 ItemId = Guid.NewGuid().ToString(),
@@ -141,6 +151,7 @@ namespace Iam.DomainService.Resources
                 CreatedBy = blocksContext?.UserId,
                 LastUpdatedDate = DateTime.Now,
                 LastUpdatedBy = blocksContext?.UserId,
+                OrganizationId = organizationId,  // Role is org-scoped
                 Name = command.Name,
                 Description = command.Description,
                 Slug = command.Slug.ToLower(),
@@ -152,11 +163,11 @@ namespace Iam.DomainService.Resources
 
         }
 
-        public async Task<BaseMutationResponse> UpdatePermissionAsync(UpdatePermissionRequest command)
+        public async Task<BaseMutationResponse> UpdatePermissionAsync(string id, UpdatePermissionRequest command)
         {
             _logger.LogInformation("Permission update start");
 
-            var permission = await _resourceRepository.GetPermissionByIdAsync(command.ItemId);
+            var permission = await _resourceRepository.GetPermissionByIdAsync(id);
             if (permission == null)
             {
                 _logger.LogInformation("Permission update end -- Validation Error");
@@ -164,7 +175,7 @@ namespace Iam.DomainService.Resources
                 {
                     Errors = new Dictionary<string, string>
                     {
-                        { "ItemId", "Item_Not_Found" }
+                        { "ItemId", "Permission_Not_Found" }
                     }
                 };
             }
@@ -201,6 +212,8 @@ namespace Iam.DomainService.Resources
                 _logger.LogInformation("Permission update end -- Error");
                 return new BaseMutationResponse();
             }
+
+            await _resourceRepository.UpdateAllSamePermissionAsync(permission);
 
             await SendResourceMutationEventAsync(
                 new ResourceMutationEvent
@@ -294,7 +307,7 @@ namespace Iam.DomainService.Resources
         {
             _logger.LogInformation("Permission event -- initiate");
             await _identityAccessManagementService.SendToQueueAsync(
-                Constants.IamQueue,
+                IdpConstants.IamQueue,
                 resourceMutation
             );
             _logger.LogInformation("Permission event -- sent");
@@ -349,7 +362,7 @@ namespace Iam.DomainService.Resources
         {
             _logger.LogInformation("Permission event -- initiate");
             await _identityAccessManagementService.SendToQueueAsync(
-                Constants.IamQueue,
+                IdpConstants.IamQueue,
                 resourceMutation
             );
             _logger.LogInformation("Permission event -- sent");
@@ -465,64 +478,461 @@ namespace Iam.DomainService.Resources
             };
         }
 
-        public async Task<BaseResponse> SaveOrganizationAsync(SaveOrganizationRequest request)
+        public async Task<BaseResponse> AssignPermissionsToOrganizationAsync(AssignPermissionsToOrganizationRequest request)
         {
-            var organization = await MapOrganizationAsync(request);
+            if(string.IsNullOrWhiteSpace(request.OrganizationId))
+            {
+                return new BaseResponse
+                {
+                    IsSuccess = false,
+                    Errors = new Dictionary<string, string>
+                    {
+                        { "invalid_request", "Organization ID is required" }
+                    }
+                };
+            }
+
+            var blocksContext = BlocksContext.GetContext();
+            var is_allow = string.IsNullOrWhiteSpace(blocksContext?.OrganizationId) || blocksContext?.OrganizationId == DefaultOrganizationId;
+            if (!is_allow)
+            {
+                return new BaseResponse
+                {
+                    IsSuccess = false,
+                    Errors = new Dictionary<string, string>
+                    {
+                        { "forbidden", "Not allowed to assign permissions to organization" }
+                    }
+                };
+            }
+
+            var organization = await _resourceRepository.GetOrganizationById(request.OrganizationId);
+            if (organization == null)
+            {
+                return new BaseResponse
+                {
+                    IsSuccess = false,
+                    Errors = new Dictionary<string, string>
+                    {
+                        { "not_found", "Organization not found" }
+                    }
+                };
+            }
+
+            if(request.Groups != null && request.Groups.Any())
+            {
+                const int pageSize = 50;
+                int pageNumber = 0;
+                
+                while (true)
+                {
+                    var rolePermissions = await _resourceRepository.GetPermissionsByGroupsAsync(request.Groups, DefaultOrganizationId, pageNumber, pageSize);
+                    
+                    if (rolePermissions == null || rolePermissions.Count == 0)
+                    {
+                        break;
+                    }
+                    
+                    foreach (var rp in rolePermissions) 
+                    {
+                        rp.ItemId = Guid.NewGuid().ToString();
+                        rp.LastUpdatedBy = organization.CreatedBy;
+                        rp.LastUpdatedDate = DateTime.UtcNow;
+                        rp.OrganizationId = organization.ItemId; // Assign to new org
+                        rp.Roles = new List<string>();
+                    }
+
+                    await _resourceRepository.InsertPermissionsAsync(rolePermissions);
+                    
+                    if (rolePermissions.Count < pageSize)
+                    {
+                        break;
+                    }
+                    
+                    pageNumber++;
+                }
+            }
+
+            if(request.Permissions != null && request.Permissions.Any())
+            {
+                var permissions = await _resourceRepository.GetPermissionsByIdsAsync(request.Permissions);
+                foreach (var permission in permissions)
+                {
+                    permission.ItemId = Guid.NewGuid().ToString();
+                    permission.LastUpdatedBy = organization.CreatedBy;
+                    permission.LastUpdatedDate = DateTime.UtcNow;
+                    permission.OrganizationId = organization.ItemId; // Assign to new org
+                    permission.Roles = new List<string>();
+                }
+
+                await _resourceRepository.InsertPermissionsAsync(permissions);
+            }
+
+            return new BaseResponse
+            {
+                IsSuccess = true
+            };
+        }
+
+        public async Task<BaseResponse> AssignRolesToOrganizationAsync(AssignRolesToOrganizationRequest request)
+        {
+            if(string.IsNullOrWhiteSpace(request.OrganizationId))
+            {
+                return new BaseResponse
+                {
+                    IsSuccess = false,
+                    Errors = new Dictionary<string, string>
+                    {
+                        { "invalid_request", "Organization ID is required" }
+                    }
+                };
+            }
+
+            var blocksContext = BlocksContext.GetContext();
+            var is_allow = string.IsNullOrWhiteSpace(blocksContext?.OrganizationId) || blocksContext?.OrganizationId == DefaultOrganizationId;
+            if (!is_allow)
+            {
+                return new BaseResponse
+                {
+                    IsSuccess = false,
+                    Errors = new Dictionary<string, string>
+                    {
+                        { "forbidden", "Not allowed to assign permissions to organization" }
+                    }
+                };
+            }
+
+            var organization = await _resourceRepository.GetOrganizationById(request.OrganizationId);
+            if (organization == null)
+            {
+                return new BaseResponse
+                {
+                    IsSuccess = false,
+                    Errors = new Dictionary<string, string>
+                    {
+                        { "not_found", "Organization not found" }
+                    }
+                };
+            }
+
+            var defaultRoles = await _resourceRepository.GetRolesBySlugAndOrgAsync(request.Roles, DefaultOrganizationId);
+            foreach (var role in defaultRoles)
+            {
+                role.ItemId = Guid.NewGuid().ToString();
+                role.OrganizationId = organization.ItemId; // Assign to new org
+                role.CreatedBy = organization.CreatedBy;
+                role.CreatedDate = DateTime.UtcNow;
+                role.LastUpdatedBy = organization.CreatedBy;
+                role.LastUpdatedDate = DateTime.UtcNow;
+            }
+
+            await _resourceRepository.InsertRolesAsync(defaultRoles);
+
+            const int pageSize = 50;
+            int pageNumber = 0;
+            
+            while (true)
+            {
+                var rolePermissions = await _resourceRepository.GetPermissionsByRolesAsync(request.Roles, DefaultOrganizationId, pageNumber, pageSize);
+                
+                if (rolePermissions == null || rolePermissions.Count == 0)
+                {
+                    break;
+                }
+                
+                foreach (var rp in rolePermissions) 
+                {
+                    rp.ItemId = Guid.NewGuid().ToString();
+                    rp.LastUpdatedBy = organization.CreatedBy;
+                    rp.LastUpdatedDate = DateTime.UtcNow;
+                    rp.OrganizationId = organization.ItemId; // Assign to new org
+                    rp.Roles = (rp?.Roles?.Where(r => request.Roles.Contains(r)).ToList()) ?? new List<string>();
+                }
+
+                await _resourceRepository.InsertPermissionsAsync(rolePermissions);
+                
+                if (rolePermissions.Count < pageSize)
+                {
+                    break;
+                }
+                
+                pageNumber++;
+            }
+            
+
+            return new BaseResponse
+            {
+                IsSuccess = true
+            };
+        }
+
+        public async Task<BaseMutationResponse> CreateOrganizationAsync(CreateOrganizationRequest request, string? creatorId = null)
+        {
+            var tenantConfig = await _resourceRepository.GetTenantConfigurationAsync();
+
+            if (!tenantConfig.IsMultiOrgEnabled)
+            {
+                return new BaseMutationResponse
+                {
+                    IsSuccess = false,
+                    Errors = new Dictionary<string, string>
+                    {
+                        { "multi_org_disabled", "Organization creation is disabled because multi-organization mode is off." }
+                    }
+                };
+            }
+
+            if (request.CreatedFrom == CreatedFrom.Cloud && !tenantConfig.AllowOrgCreationFromCloud)
+            {
+                return new BaseMutationResponse
+                {
+                    IsSuccess = false,
+                    Errors = new Dictionary<string, string>
+                    {
+                        { "org_creation_disabled", "Organization creation is disabled from cloud." }
+                    }
+                };
+            }
+
+            if (request.CreatedFrom == CreatedFrom.ConstructSignup && !tenantConfig.AllowOrgCreationFromSignup)
+            {
+                return new BaseMutationResponse
+                {
+                    IsSuccess = false,
+                    Errors = new Dictionary<string, string>
+                    {
+                        { "org_creation_disabled", "Organization creation is disabled from Construct Signup." }
+                    }
+                };
+            }
+
+            if (request.CreatedFrom == CreatedFrom.ConstructPortal && !tenantConfig.AllowOrgCreationFromPortal)
+            {
+                return new BaseMutationResponse
+                {
+                    IsSuccess = false,
+                    Errors = new Dictionary<string, string>
+                    {
+                        { "org_creation_disabled", "Organization creation is disabled from Construct Portal." }
+                    }
+                };
+            }
+
+            // Create organization
+            var contextUserId = BlocksContext.GetContext()?.UserId;
+            var createdByUserId = creatorId ?? contextUserId;
+            var organization = new Organization
+            {
+                ItemId = Guid.NewGuid().ToString(),
+                CreatedBy = createdByUserId,
+                CreatedDate = DateTime.UtcNow,
+                Name = request.Name,
+                IsEnable = true,
+                DefaultRoleForMembers = request.DefaultRoleForMembers,
+                DefaultPermissionsForMembers = request.DefaultPermissionsForMembers,
+                LastUpdatedDate = DateTime.UtcNow,
+                LastUpdatedBy = createdByUserId
+            };
+
+            if (tenantConfig.DefaultRoleOnOrgCreation != null && tenantConfig.DefaultRoleOnOrgCreation.Any())
+            {
+                var defaultRoles = await _resourceRepository.GetRolesBySlugAndOrgAsync(tenantConfig.DefaultRoleOnOrgCreation, DefaultOrganizationId);
+                foreach (var role in defaultRoles)
+                {
+                    role.ItemId = Guid.NewGuid().ToString();
+                    role.OrganizationId = organization.ItemId; // Assign to new org
+                    role.CreatedBy = createdByUserId;
+                    role.CreatedDate = DateTime.UtcNow;
+                    role.LastUpdatedBy = createdByUserId;
+                    role.LastUpdatedDate = DateTime.UtcNow;
+                }
+
+                await _resourceRepository.InsertRolesAsync(defaultRoles);
+
+                const int pageSize = 50;
+                int pageNumber = 0;
+                
+                while (true)
+                {
+                    var rolePermissions = await _resourceRepository.GetPermissionsByRolesAsync(tenantConfig.DefaultRoleOnOrgCreation, DefaultOrganizationId, pageNumber, pageSize);
+                    
+                    if (rolePermissions == null || rolePermissions.Count == 0)
+                    {
+                        break;
+                    }
+                    
+                    foreach (var rp in rolePermissions) 
+                    {
+                        rp.ItemId = Guid.NewGuid().ToString();
+                        rp.LastUpdatedBy = createdByUserId;
+                        rp.LastUpdatedDate = DateTime.UtcNow;
+                        rp.OrganizationId = organization.ItemId; // Assign to new org
+                        rp.Roles = (rp?.Roles?.Where(r => tenantConfig.DefaultRoleOnOrgCreation.Contains(r)).ToList()) ?? new List<string>();
+                    }
+
+                    await _resourceRepository.InsertPermissionsAsync(rolePermissions);
+                    
+                    if (rolePermissions.Count < pageSize)
+                    {
+                        break;
+                    }
+                    
+                    pageNumber++;
+                }
+            }
+
+            if(tenantConfig.DefaultPermissionOnOrgCreation != null && tenantConfig.DefaultPermissionOnOrgCreation.Any())
+            {
+                var permissions = await _resourceRepository.GetPermissionsByResourcesAsync(tenantConfig.DefaultPermissionOnOrgCreation, DefaultOrganizationId);
+                foreach (var permission in permissions)
+                {
+                    permission.ItemId = Guid.NewGuid().ToString();
+                    permission.LastUpdatedBy = createdByUserId;
+                    permission.LastUpdatedDate = DateTime.UtcNow;
+                    permission.OrganizationId = organization.ItemId; // Assign to new org
+                    permission.Roles = (permission?.Roles?.Where(r => tenantConfig.DefaultRoleOnOrgCreation.Contains(r)).ToList()) ?? new List<string>();
+                }
+
+                await _resourceRepository.InsertPermissionsAsync(permissions);
+            }
+
+            await _resourceRepository.SaveOrganizationAsync(organization);
+
+            if(request.CreatedFrom == CreatedFrom.ConstructSignup && tenantConfig.AllowOrgCreationFromSignup)
+            {
+                return new BaseMutationResponse { IsSuccess = true, ItemId = organization.ItemId };
+            }
+            
+            if (request.CreatedFrom == CreatedFrom.ConstructPortal && tenantConfig.AllowOrgCreationFromPortal)
+            {
+                // NOTE: We have to update the user by following code but _userManagementMutationService is in AccountService which will cause circular reference if we inject it here. We can consider to move the user management related code to a separate service to avoid circular reference in the future.
+                // await _userManagementMutationService.UpdateOrganizationUserAsync(new UpdateOrganizationUserRequest
+                // {
+                //     OrganizationId = organization.ItemId,
+                //     UserId = creatorId ?? contextUserId,
+                //     Roles = tenantConfig.DefaultRoleOnOrgCreation,
+                //     Permissions = new List<string>()
+                // });
+            }
+
+            return new BaseMutationResponse { IsSuccess = true, ItemId = organization.ItemId };
+        }
+
+        public async Task<BaseResponse> UpdateOrganizationAsync(string id, SaveOrganizationRequest request)
+        {
+            if (string.IsNullOrWhiteSpace(id))
+            {
+                return new BaseResponse
+                {
+                    IsSuccess = false,
+                    Errors = new Dictionary<string, string>
+                    {
+                        { "invalid_request", "Organization ID is required" }
+                    }
+                };
+            }
+
+            var organization = await _resourceRepository.GetOrganizationById(id);
+            if (organization == null)
+            {
+                return new BaseResponse
+                {
+                    IsSuccess = false,
+                    Errors = new Dictionary<string, string>
+                    {
+                        { "not_found", "Organization not found" }
+                    }
+                };
+            }
+
+            organization.LastUpdatedDate = DateTime.UtcNow;
+            organization.Name = request.Name;
+            organization.LastUpdatedBy = BlocksContext.GetContext()?.UserId;
+            organization.IsEnable = request.IsEnable;
+            organization.DefaultRoleForMembers = request.DefaultRoleForMembers;
             await _resourceRepository.SaveOrganizationAsync(organization);
             return new BaseResponse { IsSuccess = true };
         }
 
-        private async Task<Organization> MapOrganizationAsync(SaveOrganizationRequest request)
-        {
-            var userId = BlocksContext.GetContext()?.UserId;
-            var organization = await _resourceRepository.GetOrganizationById(request.ItemId) ?? 
-                           new Organization { ItemId = Guid.NewGuid().ToString(), CreatedBy = userId, CreatedDate = DateTime.UtcNow };
-
-            organization.LastUpdatedDate = DateTime.UtcNow;
-            organization.Name = request.Name;
-            organization.LastUpdatedBy = userId;
-            organization.IsEnable = request.IsEnable;
-
-            return organization;
-        }
 
         public async Task<GetOrganizationsResponse> GetOrganizationsAsync(GetOrganizationsRequest request)
         {
-            return await _resourceRepository.GetOrganizationsAsync(request); 
+            var response = await _resourceRepository.GetOrganizationsAsync(request);
+            return response;
         }
 
-        public async Task<GetOrganizationResponse> GetOrganizationAsync(GetOrganizationRequest request)
+        public async Task<GetOrganizationResponse> GetOrganizationAsync(string id)
         {
-            var organization = await _resourceRepository.GetOrganizationById(request.ItemId);
+            if (string.IsNullOrWhiteSpace(id))
+            {
+                return new GetOrganizationResponse
+                {
+                    IsSuccess = false,
+                    Organization = null,
+                    Errors = new Dictionary<string, string>                    {
+                        { "invalid_request", "Organization ID is required" }
+                    }
+                };
+            }
+
+            var organization = await _resourceRepository.GetOrganizationById(id);
             return new GetOrganizationResponse { IsSuccess = true, Organization = organization };
         }
 
-        public async Task<BaseResponse> SaveganizationConfigAsync(SaveOrganizationConfigRequest request)
+        public async Task<BaseResponse> SaveOrganizationConfigAsync(SaveOrganizationConfigRequest request)
         {
-            var organizationConfig = await MapOrganizationConfigAsync(request);
-            await _resourceRepository.SaveOrganizationConfig(organizationConfig);
+            var tenantConfig = await _resourceRepository.GetTenantConfigurationAsync();
+            if (tenantConfig == null)
+            {
+                return new BaseResponse
+                {
+                    IsSuccess = false,
+                    Errors = new Dictionary<string, string>
+                    {
+                        { "invalid_request", "Organization configuration not found" }
+                    }
+                };
+            }
+            tenantConfig.AllowOrgCreationFromCloud = request.AllowOrgCreationFromCloud;
+            tenantConfig.AllowOrgCreationFromConstruct = request.AllowOrgCreationFromConstruct;
+            tenantConfig.AllowOrgCreationFromSignup = request.AllowOrgCreationFromSignup;
+            tenantConfig.AllowOrgCreationFromPortal = request.AllowOrgCreationFromPortal;
+            tenantConfig.IsMultiOrgEnabled = request.IsMultiOrgEnabled;
+            tenantConfig.DefaultRoleOnOrgCreation = request.DefaultRoleOnOrgCreation;
+            tenantConfig.DefaultPermissionOnOrgCreation = request.DefaultPermissionOnOrgCreation;
+            tenantConfig.LastUpdatedBy = BlocksContext.GetContext()?.UserId;
+            tenantConfig.LastUpdatedDate = DateTime.UtcNow;
+            
+            await _resourceRepository.SaveOrganizationConfig(tenantConfig);
 
             return new BaseResponse { IsSuccess = true };
         }
 
-        public async Task<OrganizationConfig> GetOrganizationConfigAsync(GetOrganizationConfigRequest request)
+        public async Task<Dictionary<string, object>> GetOrganizationConfigAsync()
         {
-            return await _resourceRepository.GetOrganizationConfigAsync();
+            var tenantConfig = await _resourceRepository.GetTenantConfigurationAsync();
+
+            return new Dictionary<string, object>
+            {
+                { "AllowOrgCreationFromCloud", tenantConfig?.AllowOrgCreationFromCloud ?? false },
+                { "AllowOrgCreationFromConstruct", tenantConfig?.AllowOrgCreationFromConstruct ?? false },
+                { "AllowOrgCreationFromSignup", tenantConfig?.AllowOrgCreationFromSignup ?? false },
+                { "AllowOrgCreationFromPortal", tenantConfig?.AllowOrgCreationFromPortal ?? false },
+                { "IsMultiOrgEnabled", tenantConfig?.IsMultiOrgEnabled ?? false },
+                { "DefaultRoleOnOrgCreation", tenantConfig?.DefaultRoleOnOrgCreation ?? new List<string>() },
+                { "DefaultPermissionOnOrgCreation", tenantConfig?.DefaultPermissionOnOrgCreation ?? new List<string>() }
+            };
         }
 
-        private async Task<OrganizationConfig> MapOrganizationConfigAsync(SaveOrganizationConfigRequest request)
+        private static string ResolveOrganizationId(string organizationId)
         {
-            var userId = BlocksContext.GetContext()?.UserId;
-            var organizationConfig = await _resourceRepository.GetOrgConfigByIdAsync(request.ItemId) ?? new OrganizationConfig { ItemId = Guid.NewGuid().ToString(), CreatedDate = DateTime.UtcNow, CreatedBy = userId };
-            
-            organizationConfig.AllowCreationFromCloud = request.AllowCreationFromCloud;
-            organizationConfig.AllowCreationFromConstruct = request.AllowCreationFromConstruct;
-            organizationConfig.IsMultiOrgEnabled = request.IsMultiOrgEnabled;
-            organizationConfig.LastUpdatedBy = userId;
-            organizationConfig.LastUpdatedDate = DateTime.UtcNow;
-            organizationConfig.Roles = request.Roles;
+            if (!string.IsNullOrWhiteSpace(organizationId))
+            {
+                return organizationId;
+            }
 
-            return organizationConfig;
+            var contextOrgId = BlocksContext.GetContext()?.OrganizationId;
+            return string.IsNullOrWhiteSpace(contextOrgId) ? DefaultOrganizationId : contextOrgId;
         }
     }
 }

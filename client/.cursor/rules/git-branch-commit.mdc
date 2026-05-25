@@ -1,0 +1,40 @@
+---
+description: Branch and commit workflow for client work—branch from dev, Conventional Commits, scoped messages.
+alwaysApply: true
+---
+
+# Git: branch and commits (client SPA)
+
+When you start a **focused change** (feature, fix, or chore) that the user wants on a **dedicated branch with a commit**:
+
+## Branching
+
+1. **Base:** create the branch from **`dev`** (prefer `git fetch origin dev` first if collaborating on remotes).
+2. **Naming:** use **kebab-case**, short and **scope-prefixed**:
+   - `feat/<topic>` — behavior users see (e.g. `feat/idp-search-debounce-min-length`)
+   - `fix/<topic>` — bugs or regressions (e.g. `fix/users-filter-query-key`)
+   - `chore/<topic>` — tooling, deps, formatting (e.g. `chore/client-vite-config`)
+3. **One concern per branch** when possible; split unrelated work into separate branches/PRs.
+
+## Commits
+
+4. **Subject line:** imperative mood, **~72 characters**, no trailing period unless part of an identifier.
+   - Prefer [**Conventional Commits**](https://www.conventionalcommits.org/): `type(scope): summary`
+   - Common **types:** `feat`, `fix`, `docs`, `style`, `refactor`, `perf`, `test`, `chore`, `ci`.
+   - **Optional scope:** client area, e.g. `feat(iam-users): …`, `fix(filter-toolbar): …`.
+5. **Body (optional):** wrap at ~72 chars; explain **why** if the diff is not obvious; reference issues/tickets if used by the team.
+6. **Do not** lump unrelated file groups into one commit unless the user explicitly asks for a single squash; prefer **logical commits** (e.g. lib util + hook + UI) that still tell one story.
+
+## Flow (typical)
+
+```bash
+git checkout dev && git pull origin dev   # if using shared remote
+git checkout -b feat/your-topic-name
+# … changes …
+git add -p   # or paths
+git commit -m "feat(iam): add search min-length normalization in useGetUsers"
+```
+
+## With Cursor rules
+
+7. If the user says **“branch and commit”** (or equivalent), follow this rule **after** implementing: create branch from `dev`, stage only relevant paths, write message per above, and **do not** push unless they ask (push may need network and review).

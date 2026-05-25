@@ -1,9 +1,7 @@
-﻿using Blocks.Genesis;
-
-namespace Iam.DomainService.Resources
+﻿namespace Iam.DomainService.Resources
 {
-    public class CreatePermissionRequest : PermissionRequestBase, IProjectKey
+    public class CreatePermissionRequest : PermissionRequestBase
     {
-        public string? ProjectKey { get; set; }
+
     }
 }

@@ -1,13 +1,10 @@
-﻿using Blocks.Genesis;
-using DomainService.Entities;
-using DomainService.OAuth;
-using DomainService.OAuth.RequestModel;
-using DomainService.Services;
+using Authentication.DomainService.Entities;
+using Authentication.DomainService.Services;
+using Blocks.Genesis;
 using Microsoft.Extensions.Logging;
 using Microsoft.IdentityModel.Tokens;
 using Newtonsoft.Json;
 using System.IdentityModel.Tokens.Jwt;
-using System.Net;
 using System.Security.Cryptography;
 
 
@@ -17,7 +14,6 @@ namespace Authentication.DomainService.OAuth.SocialServices
     {
         private readonly ILogger<AppleLogInService> _logger;
         private readonly IAuthenticationRepository _authenticationRepository;
-        private readonly ICacheClient _cacheClient;
         private readonly IHttpService _httpService;
 
         public AppleLogInService(
@@ -29,62 +25,34 @@ namespace Authentication.DomainService.OAuth.SocialServices
         {
             _logger = logger;
             _authenticationRepository = authenticationRepository;
-            _cacheClient = cacheClient;
             _httpService = httpService;
         }
-        public async Task<(string, bool)> GetProviderLogInUriAsync(GetSocialLogInEndPointRequest loginData)
-        {
-            var credential = await _authenticationRepository.GetSocialLoginCredentialByProvideAndAudienceAsync(loginData.Provider, loginData.Audience);
 
-            if (credential == null)
+        public async Task<SocialCallbackResult> HandleSocialLoginCallback(StateInfo stateInfo)
+        {
+            var identityProvider = await _authenticationRepository.GetIdentityProviderByClientIdAsync(stateInfo.ClientId);
+
+            if (identityProvider == null)
             {
-                _logger.LogError("Credential not found for provider {Provider} and audience {Audience}", loginData.Provider, loginData.Audience);
-                return (string.Empty, true);
+                _logger.LogError("Identity provider not found for provider {Provider}", stateInfo.Provider);
+                return new SocialCallbackResult { ExternalUserData = new AppleUserData() };
             }
 
-            var stateKey = Guid.NewGuid().ToString("n");
-
-            var stateInfo = new StateInfo
-            {
-                Audience = loginData.Audience,
-                Provider = loginData.Provider,
-                NextUrl = loginData.NextUrl ?? string.Empty
-            };
-            await _cacheClient.AddStringValueAsync(
-                stateKey,
-                System.Text.Json.JsonSerializer.Serialize(stateInfo),
-                300
-            );
-
-            var authorizationUrl = string.Format(
-                credential.AuthorizationUrl,
-                credential.ClientId,                              
-                WebUtility.UrlEncode(credential.Scope),           
-                WebUtility.UrlEncode(credential.RedirectUrl),     
-                stateKey                                          
-            );
-
-            return (authorizationUrl, loginData.SendAsResponse || credential.SendAsResponse);
-        }
-
-        public async Task<IExternalUserData> HandleSocialLogin(StateInfo stateInfo)
-        {
-            var credential = await _authenticationRepository.GetSocialLoginCredentialByProvideAndAudienceAsync(stateInfo.Provider, stateInfo.Audience);
             var postData = new Dictionary<string, string>
                 {
                     { "code", stateInfo.Code },
-                    { "client_id", credential.ClientId },
-                    { "client_secret",  GenerateClientSecret(credential)},
-                    { "redirect_uri", credential.RedirectUrl },
+                    { "client_id", identityProvider.ClientId },
+                    { "client_secret",  GenerateClientSecret(identityProvider)},
+                    { "redirect_uri", stateInfo.RedirectUri },
                     { "grant_type", "authorization_code" }
                 };
 
-            var (response, error) = await _httpService.SendFormUrlEncoded<SocialOauthAccessToken>(HttpMethod.Post, postData, credential.TokenUrl);
+            var (response, error) = await _httpService.SendFormUrlEncoded<SocialOauthAccessToken>(HttpMethod.Post, postData, identityProvider.TokenUrl);
 
-            if (!string.IsNullOrWhiteSpace(error))
+            if (!string.IsNullOrWhiteSpace(error) || response == null)
             {
                 _logger.LogError("Error while getting access token: {Error}", error);
-                return new AppleUserData();
+                return new SocialCallbackResult { ExternalUserData = new AppleUserData() };
             }
 
             var handler = new JwtSecurityTokenHandler();
@@ -94,16 +62,28 @@ namespace Authentication.DomainService.OAuth.SocialServices
             var appleUserData = new AppleUserData();
             appleUserData.Email = deserializeAppleIdToken.Email;
             appleUserData.ExternalProviderUserId = deserializeAppleIdToken.ExternalProviderUserId;
-            appleUserData.Roles = credential?.InitialRoles ?? [];
+            appleUserData.Roles = identityProvider?.InitialRoles ?? [];
             appleUserData.Platform = stateInfo.Provider;
-            return appleUserData;
+            return new SocialCallbackResult
+            {
+                ExternalUserData = appleUserData,
+                AccessToken = response.AccessToken,
+                IdToken = response.IdToken,
+                RefreshToken = response.RefreshToken
+            };
         }
-        public string GenerateClientSecret(SocialLoginCredential socialLoginCredential)
+
+        public async Task<IExternalUserData> HandleSocialLogin(StateInfo stateInfo)
         {
-            string teamId = socialLoginCredential.TeamId;
-            string clientId = socialLoginCredential.ClientId;
-            string keyId = socialLoginCredential.KeyId;
-            var privateKey = socialLoginCredential.PrivateKey;
+            var callbackResult = await HandleSocialLoginCallback(stateInfo);
+            return callbackResult.ExternalUserData;
+        }
+        public string GenerateClientSecret(IdentityProvider identityProvider)
+        {
+            string teamId = identityProvider.TeamId ?? "";
+            string clientId = identityProvider.ClientId;
+            string keyId = identityProvider.KeyId ?? "";
+            var privateKey = identityProvider.PrivateKey ?? "";
             var ecdsa = ECDsa.Create();
             ecdsa.ImportFromPem(privateKey);
             var securityKey = new ECDsaSecurityKey(ecdsa)
@@ -117,7 +97,7 @@ namespace Authentication.DomainService.OAuth.SocialServices
                 { "iss", teamId },
                 { "iat", now },
                 { "exp", now + 300 },
-                { "aud", socialLoginCredential.AppleAudience },
+                { "aud", identityProvider.AppleAudience ?? "https://appleid.apple.com" },
                 { "sub", clientId }
             };
             var header = new JwtHeader(signingCredentials);

@@ -1,20 +1,27 @@
+using Authentication.DomainService.Dtos;
+using Authentication.DomainService.Utilities;
+using Authentication.DomainService.Worker;
 using Blocks.Genesis;
-using DomainService.Dtos;
-using DomainService.Utilities;
-using DomainService.Worker;
 using Iam.DomainService.Accounts;
 using Iam.DomainService.Dtos;
-using Iam.DomainService.Shared.Dtos;
 using Iam.DomainService.Users;
+using Identifier.DomainService.Shared;
 using Mfa.DomainService.Configuration;
 using Worker;
-using Worker.Configuration;
 using Worker.Consumers;
-using Worker.Consumers.Users;
 
-const string _serviceName = "blocks-idp-worker";
+var configuration = new ConfigurationBuilder()
+    .SetBasePath(Directory.GetCurrentDirectory())
+    .AddJsonFile("appsettings.json", optional: true, reloadOnChange: false)
+    .AddJsonFile(GetEnvironmentAppSettingsFileName(), optional: true, reloadOnChange: false)
+    .AddEnvironmentVariables()
+    .Build();
 
-var secret = await ApplicationConfigurations.ConfigureLogAndSecretsAsync(_serviceName, VaultType.Azure);
+var serviceName = ResolveRequiredServiceName(configuration);
+
+var vaultType = ApplicationConfigurations.ResolveVaultType();
+Console.WriteLine($"Using Genesis vault type: {vaultType}");
+var secret = await ApplicationConfigurations.ConfigureLogAndSecretsAsync(serviceName, vaultType);
 
 await CreateHostBuilder(args).Build().RunAsync();
 
@@ -22,13 +29,11 @@ IHostBuilder CreateHostBuilder(string[] args) =>
         Host.CreateDefaultBuilder(args)
         .ConfigureAppConfiguration((context, builder) =>
         {
-            ApplicationConfigurations.ConfigureWorkerEnv(builder, args);
+            // ApplicationConfigurations.ConfigureWorkerEnv(builder, args);
         })
         .ConfigureServices((services) =>
         {
             services.AddHttpClient();
-
-            services.Configure<VerioSystemSettings>(services.BuildServiceProvider().GetRequiredService<IConfiguration>().GetSection("VerioSystemSettings"));
 
             services.AddSingleton<IConsumer<RefreshTokenEvent>, RefreshTokenWorkerService>();
             services.AddSingleton<IConsumer<UserAuthenticationTimelineEvent>, UserAuthenticationTimelineWorkerService>();
@@ -41,11 +46,37 @@ IHostBuilder CreateHostBuilder(string[] args) =>
             services.AddSingleton<IConsumer<CreateUserByEmailEvent>, CreateUserByEmailConsumer>();
             services.AddSingleton<IConsumer<CreateUserRequest>, CreateUserConsumer>();
             services.AddSingleton<IConsumer<CreateUserViaSsoEvent>, CreateUserViaSsoConsumer>();
-            services.AddSingleton<IConsumer<UserStatusChangedEvent>, UserStatusChangedConsumer>();
 
             services.AddHostedService<PeriodicPingBackgroundService>();
 
             services.RegisterAllServices();
 
-            ApplicationConfigurations.ConfigureWorker(services, IdpConstants.GetMessageConfiguration(secret.MessageConnectionString));
+
+
+            #region Identifier Service Consumers
+            services.AddApplicationServices();
+
+            var workerMessageConfiguration = IdpConstants.GetMessageConfiguration(secret.MessageConnectionString);
+            workerMessageConfiguration.ServiceName = serviceName;
+            ApplicationConfigurations.ConfigureWorker(services, workerMessageConfiguration);
+            //ApplicationConfigurations.ConfigureWorker(services, IdentifierConstants.GetMessageConfiguration(secret.MessageConnectionString));
+            #endregion
         });
+
+static string ResolveRequiredServiceName(IConfiguration configuration)
+{
+    var serviceName = Environment.GetEnvironmentVariable("ServiceName") ?? configuration["ServiceName"];
+    if (string.IsNullOrWhiteSpace(serviceName))
+    {
+        throw new InvalidOperationException("Missing required ServiceName configuration.");
+    }
+
+    return serviceName;
+}
+
+static string GetEnvironmentAppSettingsFileName()
+{
+    var currentEnvironment = Environment.GetEnvironmentVariable("ASPNETCORE_ENVIRONMENT")
+        ?? Environment.GetEnvironmentVariable("DOTNET_ENVIRONMENT");
+    return string.IsNullOrWhiteSpace(currentEnvironment) ? "appsettings.json" : $"appsettings.{currentEnvironment}.json";
+}

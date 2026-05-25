@@ -1,6 +1,7 @@
 ﻿<Project Sdk="Microsoft.NET.Sdk">
 
   <ItemGroup>
+    <PackageReference Include="BCrypt.Net-Next" />
     <PackageReference Include="DeviceDetector.NET" />
     <PackageReference Include="Handlebars.Net" />
     <PackageReference Include="System.IdentityModel.Tokens.Jwt" />

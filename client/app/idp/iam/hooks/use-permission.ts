@@ -1,7 +1,6 @@
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   IGetPermissionByIdPayload,
-  IGetPermissionsSeverityRequestPayload,
   IGetResourceGroupPayload,
   IPermissionFilter,
 } from "@blocks-idp/iam/models/permission";
@@ -25,6 +24,9 @@ export const useGetPermissions = (options: IPermissionFilter) => {
           resourceGroup: options.resourceGroup || "",
           ...(options.type && { type: options.type }),
           ...(options.permissionSeverity && { permissionSeverity: Number(options.permissionSeverity) }),
+          ...(options.tags && { tags: options.tags }),
+          ...(options.resources && { resources: options.resources }),
+          ...(options.isArchived !== undefined && { isArchived: options.isArchived }),
         },
       }),
     placeholderData: keepPreviousData,
@@ -68,9 +70,9 @@ export const useGetResourceGroup = (options: IGetResourceGroupPayload) => {
   });
 };
 
-export const useGetPermissionsGroupBySeverity = (options: IGetPermissionsSeverityRequestPayload) => {
+export const useGetPermissionsGroupBySeverity = () => {
   return useQuery({
-    queryKey: ["permissions-group-by-severity", options],
-    queryFn: () => iamService.permission.getPermissionsSeverity(options),
+    queryKey: ["permissions-group-by-severity"],
+    queryFn: () => iamService.permission.getPermissionsSeverity(),
   });
 };

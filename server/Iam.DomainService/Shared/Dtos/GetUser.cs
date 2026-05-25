@@ -1,5 +1,4 @@
-﻿using Iam.DomainService.Entities;
-using MongoDB.Bson.Serialization.Attributes;
+﻿using MongoDB.Bson.Serialization.Attributes;
 
 namespace Iam.DomainService.Dtos
 {

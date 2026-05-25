@@ -1,9 +1,9 @@
 using Blocks.Genesis;
-using DomainService.Entities;
-using DomainService.OAuth;
-using DomainService.OAuth.RequestModel;
-using DomainService.OAuth.ResponseModel;
-using DomainService.Services;
+using Authentication.DomainService.Entities;
+using Authentication.DomainService.OAuth;
+using Authentication.DomainService.OAuth.RequestModel;
+using Authentication.DomainService.OAuth.ResponseModel;
+using Authentication.DomainService.Services;
 using FluentAssertions;
 using Iam.DomainService.Entities;
 using Iam.DomainService.Services;
@@ -77,7 +77,7 @@ namespace XUnitTest.DomainService.OAuth.Services
                 ItemId = "user-789",
                 Email = "test@example.com",
                 Active = true,
-                IsVarified = true
+                IsVerified = true
             };
             var expectedTokenResponse = new TokenResponse
             {
@@ -90,8 +90,8 @@ namespace XUnitTest.DomainService.OAuth.Services
                 .ReturnsAsync(stateCacheData);
             _cacheClient.Setup(x => x.RemoveKeyAsync(request.State))
                 .ReturnsAsync(true);
-            _socialLogInServiceProvider.Setup(x => x.HandleSocialLogin(It.IsAny<StateInfo>()))
-                .ReturnsAsync(externalUser.Object);
+            _socialLogInServiceProvider.Setup(x => x.HandleSocialLoginCallback(It.IsAny<StateInfo>()))
+                .ReturnsAsync(new SocialCallbackResult { ExternalUserData = externalUser.Object });
             _oAuthRepository.Setup(x => x.GetUserByEmailAsync(externalUser.Object.Email))
                 .ReturnsAsync(activeUser);
             _oAuthJwtAccessTokenManager.Setup(x => x.ManageTokenAsync(request, authConfig, activeUser, null))
@@ -103,7 +103,7 @@ namespace XUnitTest.DomainService.OAuth.Services
             // Assert
             result.Should().NotBeNull();
             _cacheClient.Verify(x => x.RemoveKeyAsync(request.State), Times.Once);
-            _socialLogInServiceProvider.Verify(x => x.HandleSocialLogin(It.IsAny<StateInfo>()), Times.Once);
+            _socialLogInServiceProvider.Verify(x => x.HandleSocialLoginCallback(It.IsAny<StateInfo>()), Times.Once);
             _oAuthRepository.Verify(x => x.GetUserByEmailAsync(externalUser.Object.Email), Times.Once);
         }
     }

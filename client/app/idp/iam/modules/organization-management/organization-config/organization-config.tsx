@@ -117,7 +117,6 @@ export const OrganizationConfig = ({ configData, isLoading }: OrganizationConfig
           : false,
         isMultiOrgEnabled: data.isMultiOrgEnabled,
         roles: data.isMultiOrgEnabled && data.allowCreationFromConstruct ? selectedRoles : [],
-        projectKey: tenantId,
       });
       if (!res.isSuccess) {
         showErrorToast({ errors: res.errors });

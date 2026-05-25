@@ -1,12 +1,11 @@
-﻿using Blocks.Genesis;
-using DomainService.Entities;
-using DomainService.Services;
+using Blocks.Genesis;
+using Authentication.DomainService.Services;
 using Iam.DomainService.Entities;
 using Iam.DomainService.Users;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
 
-namespace DomainService.OAuth.Services
+namespace Authentication.DomainService.OAuth.Services
 {
     public class BYOSsoAuthorizationService : SocialAuthorizationServiceBase
     {
@@ -16,9 +15,8 @@ namespace DomainService.OAuth.Services
             IAuthenticationRepository oAuthRepository,
             ICacheClient cacheClient,
             ISocialLogInServiceProvider socialLogInServiceProvider,
-            IUserManagementMutationService userManagementMutationService,
-            IConfiguration configuration)
-            : base(logger, oAuthJwtAccessTokenManager, oAuthRepository, cacheClient, socialLogInServiceProvider, userManagementMutationService, configuration)
+            IUserManagementMutationService userManagementMutationService)
+            : base(logger, oAuthJwtAccessTokenManager, oAuthRepository, cacheClient, socialLogInServiceProvider, userManagementMutationService)
         {
         }
 
@@ -26,7 +24,13 @@ namespace DomainService.OAuth.Services
         {
             var user = await _oAuthRepository.GetUserByEmailAsync(externalUser.Email);
 
-            return user == null ? await CreateUser(stateInfo, externalUser) : (user, string.Empty);
+            if (user == null)
+            {
+                // return await CreateUser(stateInfo, externalUser); // for now, we will not auto create user, return error instead. Will add auto create user in the future if needed.   
+                return (null, string.Empty);
+            }
+
+            return (user, string.Empty);
         }
     }
 }

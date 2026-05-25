@@ -18,7 +18,10 @@ export const Users = () => {
     page: queryParams.page,
     pageSize: queryParams.pageSize,
     projectKey: tenantId,
-    filter: { email: queryParams.email, name: queryParams.name },
+    filter: {
+      email: queryParams.email,
+      name: queryParams.name,
+    },
     sort: sortQueryParams,
   });
 

@@ -1,17 +1,10 @@
-using Azure;
+using Authentication.DomainService.Services;
 using Blocks.Genesis;
-using DomainService.OAuth.RequestModel;
-using DomainService.Services;
-using Microsoft.Azure.Amqp.Framing;
 using Microsoft.Extensions.Logging;
-using Microsoft.Identity.Client.Platforms.Features.DesktopOs.Kerberos;
 using System.IdentityModel.Tokens.Jwt;
-using System.Net;
 using System.Text.Json;
-using static QRCoder.PayloadGenerator;
-using static System.Runtime.InteropServices.JavaScript.JSType;
 
-namespace DomainService.OAuth
+namespace Authentication.DomainService.OAuth
 {
     public abstract class SocialLogInServiceBase : ISocialLogInService
     {
@@ -25,79 +18,73 @@ namespace DomainService.OAuth
         protected SocialLogInServiceBase(
             ILogger logger,
             IAuthenticationRepository authenticationRepository,
-            ICacheClient cacheClient,
             IHttpService httpService
         )
         {
             _logger = logger;
             _authenticationRepository = authenticationRepository;
-            _cacheClient = cacheClient;
             _httpService = httpService;
         }
 
-        public virtual async Task<(string, bool)> GetProviderLogInUriAsync(GetSocialLogInEndPointRequest loginData)
+        public virtual async Task<SocialCallbackResult> HandleSocialLoginCallback(StateInfo stateInfo)
         {
-            var credential = await _authenticationRepository.GetSocialLoginCredentialByProvideAndAudienceAsync(loginData.Provider, loginData.Audience);
+            var identityProvider = await _authenticationRepository.GetIdentityProviderByClientIdAsync(stateInfo.ClientId);
 
-            if (credential == null)
+            if (identityProvider == null)
             {
-                _logger.LogError("Credential not found for provider {Provider} and audience {Audience}", loginData.Provider, loginData.Audience);
-                return (string.Empty, true);
+                _logger.LogError("Identity provider not found for provider {Provider}", stateInfo.Provider);
+                return new SocialCallbackResult { ExternalUserData = CreateEmptyUserData() };
             }
-
-            var socialLogInStateKey = Guid.NewGuid().ToString("n");
-            var socialLogInStateInfo = new StateInfo
-            {
-                Audience = loginData.Audience,
-                Provider = loginData.Provider,
-                NextUrl = loginData.NextUrl,
-            };
-
-            await _cacheClient.AddStringValueAsync(socialLogInStateKey, JsonSerializer.Serialize(socialLogInStateInfo), 300);
-
-            return (string.Format(credential.AuthorizationUrl, credential.Scope, socialLogInStateKey, WebUtility.UrlEncode(credential.RedirectUrl), credential.ClientId), loginData.SendAsResponse || credential.SendAsResponse);
-        }
-
-        public virtual async Task<IExternalUserData> HandleSocialLogin(StateInfo stateInfo)
-        {
-            var credential = await _authenticationRepository.GetSocialLoginCredentialByProvideAndAudienceAsync(stateInfo.Provider, stateInfo.Audience);
 
             var postData = new Dictionary<string, string>
             {
-                { "code", stateInfo.Code },
-                { "client_id", credential.ClientId },
-                { "client_secret", credential.ClientSecret },
-                { "redirect_uri", credential.RedirectUrl },
+                { "code", stateInfo.Code ?? string.Empty },
+                { "client_id", identityProvider.ClientId ?? string.Empty },
+                { "client_secret", identityProvider.ClientSecret ?? string.Empty },
+                { "redirect_uri", stateInfo.RedirectUri ?? string.Empty },
                 { "grant_type", "authorization_code" },
                 { "scope", "openid profile email" }
             };
 
-            var (response, error) = await _httpService.SendFormUrlEncoded<SocialOauthAccessToken>(HttpMethod.Post, postData, credential.TokenUrl);
+            var (response, error) = await _httpService.SendFormUrlEncoded<SocialOauthAccessToken>(HttpMethod.Post, postData, identityProvider.TokenUrl);
 
-            if (!string.IsNullOrWhiteSpace(error))
+            if (!string.IsNullOrWhiteSpace(error) || response == null)
             {
                 _logger.LogError("Error while getting access token: {Error}", error);
-                return CreateEmptyUserData();
+                return new SocialCallbackResult { ExternalUserData = CreateEmptyUserData() };
             }
+
             var externalUser = stateInfo.Provider switch
             {
-                googleProvider => await GetGoogleProfileVerification(credential.GetProfileUrl, response.AccessToken),
-                microsoftProvider => await GetMicrosoftProfileVerification(credential.GetProfileUrl, response.AccessToken, response.IdToken),
+                googleProvider => await GetGoogleProfileVerification(identityProvider.UserInfoUrl, response.AccessToken),
+                microsoftProvider => await GetMicrosoftProfileVerification(identityProvider.UserInfoUrl, response.AccessToken, response.IdToken),
                 _ => CreateEmptyUserData()
             };
 
-            externalUser.Permissions = credential.InitialPermissions;
+            externalUser.Permissions = identityProvider.InitialPermissions;
 
             Console.WriteLine($"IntraId Roles: {string.Join(", ", externalUser.Roles)}");
 
             if (externalUser.Roles.Count > 0)
-                externalUser.Roles.AddRange(credential.InitialRoles);
+                externalUser.Roles.AddRange(identityProvider.InitialRoles);
             else
-                externalUser.Roles = credential.InitialRoles;
+                externalUser.Roles = identityProvider.InitialRoles;
 
             externalUser.Platform = stateInfo.Provider;
 
-            return externalUser;
+            return new SocialCallbackResult
+            {
+                ExternalUserData = externalUser,
+                AccessToken = response.AccessToken,
+                IdToken = response.IdToken,
+                RefreshToken = response.RefreshToken
+            };
+        }
+
+        public virtual async Task<IExternalUserData> HandleSocialLogin(StateInfo stateInfo)
+        {
+            var callbackResult = await HandleSocialLoginCallback(stateInfo);
+            return callbackResult.ExternalUserData;
         }
 
         protected abstract IExternalUserData CreateEmptyUserData();
@@ -105,7 +92,7 @@ namespace DomainService.OAuth
         {
             var userAccessEndPoint = string.Format(profileURL, accessToken);
 
-            var( externalUser, error) = await _httpService.Get<GoogleUserData>(userAccessEndPoint);
+            var (externalUser, error) = await _httpService.Get<GoogleUserData>(userAccessEndPoint);
 
             if (!string.IsNullOrWhiteSpace(error))
             {
@@ -125,7 +112,7 @@ namespace DomainService.OAuth
             var queryPram = "$select=displayName,mail,department,employeeId,givenName,userPrincipalName,surname,officeLocation,preferredLanguage,mobilePhone,id";
             profileURL = $"{profileURL}?{queryPram}";
 
-            var (externalUser, error) = await _httpService.Get<MicrosoftUserData>(profileURL , new Dictionary<string, string> {
+            var (externalUser, error) = await _httpService.Get<MicrosoftUserData>(profileURL, new Dictionary<string, string> {
                 { "Authorization", $"bearer {accessToken}"  }
             });
 

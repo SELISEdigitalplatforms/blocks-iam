@@ -22,9 +22,11 @@ export const useGetProjects = (tenantGroupId = "") => {
   useEffect(() => {
     if (!query.data) return;
     const flattenedProjects = query.data.flatMap((group) => group.projects);
-    setProjects(flattenedProjects);
-    if (!selectedProject && flattenedProjects.length > 0) {
-      setSelectedProject(flattenedProjects[0]);
+    if (flattenedProjects.length > 0) {
+      setProjects(flattenedProjects);
+      if (!selectedProject) {
+        setSelectedProject(flattenedProjects[0]);
+      }
     }
   }, [query.data, selectedProject, setProjects, setSelectedProject]);
 

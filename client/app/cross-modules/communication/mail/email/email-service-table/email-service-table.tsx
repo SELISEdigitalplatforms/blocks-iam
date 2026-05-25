@@ -91,20 +91,8 @@ export function EmailServiceTable() {
             <h3 className="text-2xl font-bold tracking-tight">Email</h3>
           </div>
           <div className="flex items-center gap-4">
-            <Button
-              size="sm"
-              variant="outline"
-              onClick={() =>
-                window.open(
-                  getApiUrl("communication/v1", "swagger/index.html"),
-                  "_blank",
-                )
-              }
-            >
-              API Docs
-            </Button>
-            <LogMenu link="/utilities/email/logs" />
-            <Link to="/utilities/email/configure">
+         
+            <Link to="/utilities/email/configure" className="no-underline">
               <Button variant="outline" size="sm" className="gap-1 text-sm font-medium">
                 <Settings className="h-5 w-5" />
                 <span className="sr-only sm:not-sr-only">Configure</span>

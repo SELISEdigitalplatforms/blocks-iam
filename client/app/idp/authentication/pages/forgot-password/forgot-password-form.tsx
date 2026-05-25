@@ -1,8 +1,12 @@
 import { Button } from "@/components/ui-kits/button/button";
+import { getRuntimeEnv } from "@/lib/runtime-env";
 import { Input } from "@/components/ui-kits/input/input";
 import { Link } from "react-router-dom";
 import { useForm } from "react-hook-form";
-import { forgotPasswordFormSchema, forgotPasswordFormDefaultValue } from "./utils";
+import {
+  forgotPasswordFormSchema,
+  forgotPasswordFormDefaultValue,
+} from "./utils";
 import { zodResolver } from "@hookform/resolvers/zod";
 import {
   Form,
@@ -22,15 +26,13 @@ import { isErrorWithErrors } from "@/lib/error";
 import { useCaptcha } from "@blocks-idp/captcha/hooks/use-captcha";
 
 export const ForgotPasswordForm = () => {
-  const x_blocks_key = import.meta.env.BLOCKS_X_BLOCKS_KEY;
-
   const navigate = useNavigate();
   const form = useForm({
     defaultValues: forgotPasswordFormDefaultValue,
     resolver: zodResolver(forgotPasswordFormSchema),
   });
   const { isPending, mutateAsync } = useAccountRecover();
-  const googleSiteKey = import.meta.env.BLOCKS_GOOGLE_SITE_KEY || "";
+  const googleSiteKey = getRuntimeEnv("BLOCKS_GOOGLE_SITE_KEY") || "";
   const {
     captcha,
     code: captchaCode,
@@ -41,13 +43,13 @@ export const ForgotPasswordForm = () => {
   });
   const { isValid } = form.formState;
 
-  const onSubmitHandler = async (values: z.infer<typeof forgotPasswordFormSchema>) => {
+  const onSubmitHandler = async (
+    values: z.infer<typeof forgotPasswordFormSchema>,
+  ) => {
     try {
-      if (!x_blocks_key) return;
       const res = await mutateAsync({
         ...values,
         captchaCode,
-        projectKey: x_blocks_key,
       });
       if (!res.isSuccess) {
         resetCaptcha();
@@ -56,7 +58,8 @@ export const ForgotPasswordForm = () => {
       navigate(`/forgot-email-sent?email=${values.email}`);
     } catch (error) {
       resetCaptcha();
-      if (isErrorWithErrors(error)) return showErrorToast({ errors: error.errors });
+      if (isErrorWithErrors(error))
+        return showErrorToast({ errors: error.errors });
       showErrorToast({ errors: "Something went wrong" });
     }
   };
@@ -76,7 +79,11 @@ export const ForgotPasswordForm = () => {
               <FormItem>
                 <FormLabel>Email</FormLabel>
                 <FormControl>
-                  <Input type="email" placeholder="Enter your email" {...field} />
+                  <Input
+                    type="email"
+                    placeholder="Enter your email"
+                    {...field}
+                  />
                 </FormControl>
                 <FormMessage />
               </FormItem>

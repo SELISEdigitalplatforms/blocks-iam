@@ -31,7 +31,7 @@ export const UserBasicInformation = ({
   const { isLoading, data } = useGetUserById({ id, projectKey });
 
   if (!isLoading && !data) return null;
-  const { data: user } = data || { user: {} };
+  const user = data?.data;
 
   return (
     <Card>

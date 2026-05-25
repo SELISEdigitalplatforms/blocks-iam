@@ -1,90 +1,80 @@
-﻿using Blocks.Genesis;
-using DomainService.OAuth.RequestModel;
-using DomainService.Services;
+using Authentication.DomainService.Services;
+using Blocks.Genesis;
 using Microsoft.Extensions.Logging;
-using System.Net;
-using System.Security.Claims;
 using System.Text.Json;
 
-namespace DomainService.OAuth
+namespace Authentication.DomainService.OAuth
 {
     public class BYOSsoLogInService : SocialLogInServiceBase
     {
         public BYOSsoLogInService(
             ILogger<BYOSsoLogInService> logger,
             IAuthenticationRepository authenticationRepository,
-            ICacheClient cacheClient,
             IHttpService httpService
-        ) : base(logger, authenticationRepository, cacheClient, httpService)
+        ) : base(logger, authenticationRepository, httpService)
         {
         }
 
-        public override async Task<(string, bool)> GetProviderLogInUriAsync(GetSocialLogInEndPointRequest loginData)
+        public override async Task<SocialCallbackResult> HandleSocialLoginCallback(StateInfo stateInfo)
         {
-            var credential = await _authenticationRepository.GetSocialLoginCredentialByProvideAndAudienceAsync(loginData.Provider, loginData.Audience);
+            var identityProvider = await _authenticationRepository.GetIdentityProviderByClientIdAsync(stateInfo.ClientId);
 
-            if (credential == null)
+            if (identityProvider == null)
             {
-                _logger.LogError("Credential not found for provider {Provider} and audience {Audience}", loginData.Provider, loginData.Audience);
-                return (string.Empty, true);
+                _logger.LogError("Identity provider not found for provider {Provider}", stateInfo.ClientId);
+                return new SocialCallbackResult { ExternalUserData = new BYOSsoUserData() };
             }
 
-            var socialLogInStateKey = Guid.NewGuid().ToString("n");
-            var socialLogInStateInfo = new StateInfo
-            {
-                Audience = loginData.Audience,
-                Provider = loginData.Provider,
-                NextUrl = loginData.NextUrl,
-            };
-
-            await _cacheClient.AddStringValueAsync(socialLogInStateKey, JsonSerializer.Serialize(socialLogInStateInfo), 3000);
-
-            var redirectUri = $"{credential.AuthorizationUrl}&response_type=code&client_id={credential.ClientId}&state={socialLogInStateKey}&redirect_uri={credential.RedirectUrl}&scope=openid";
-
-            return (redirectUri, credential.SendAsResponse);
-        }
-
-        public override async Task<IExternalUserData> HandleSocialLogin(StateInfo stateInfo)
-        {
-            var credential = await _authenticationRepository.GetSocialLoginCredentialByProvideAndAudienceAsync(stateInfo.Provider, stateInfo.Audience);
             var postData = new Dictionary<string, string>
                 {
                     { "code", stateInfo.Code },
-                    { "client_id", credential.ClientId },
-                    { "client_secret", credential.ClientSecret },
-                    { "redirect_uri", credential.RedirectUrl },
+                    { "client_id", identityProvider.ClientId },
+                    { "client_secret", identityProvider.ClientSecret },
+                    { "redirect_uri", stateInfo.RedirectUri },
                     { "grant_type", "authorization_code" }
                 };
 
-            var (response, error) = await _httpService.SendFormUrlEncoded<SocialOauthAccessToken>(HttpMethod.Post, postData, credential.TokenUrl);
+            var (response, error) = await _httpService.SendFormUrlEncoded<SocialOauthAccessToken>(HttpMethod.Post, postData, identityProvider.TokenUrl);
             _logger.LogInformation("access token: {Response}", response);
-            if (!string.IsNullOrWhiteSpace(error))
+            if (!string.IsNullOrWhiteSpace(error) || response == null)
             {
                 _logger.LogError("Error while getting access token: {Error}", error);
-                return new BYOSsoUserData();
+                return new SocialCallbackResult { ExternalUserData = new BYOSsoUserData() };
             }
 
-            var result = await _httpService.Get<dynamic>(credential.GetProfileUrl, new Dictionary<string, string> {
+            var result = await _httpService.Get<dynamic>(identityProvider.UserInfoUrl, new Dictionary<string, string> {
                 { "Authorization", $"bearer {response.AccessToken}"  } });
 
             if (!string.IsNullOrWhiteSpace(result.Item2))
             {
                 _logger.LogError("Error while getting user data: {Error}", result.Item2);
-                return new BYOSsoUserData();
+                return new SocialCallbackResult { ExternalUserData = new BYOSsoUserData() };
             }
 
             var externalUser = MapExternalUser(stateInfo.Provider, result.Item1);
-            externalUser.Permissions = credential?.InitialPermissions ?? [];
-            externalUser.Roles = credential?.InitialRoles ?? [];
+            externalUser.Permissions = identityProvider?.InitialPermissions ?? [];
+            externalUser.Roles = identityProvider?.InitialRoles ?? [];
             externalUser.Platform = stateInfo.Provider;
 
-            return externalUser;
+            return new SocialCallbackResult
+            {
+                ExternalUserData = externalUser,
+                AccessToken = response.AccessToken,
+                IdToken = response.IdToken,
+                RefreshToken = response.RefreshToken
+            };
+        }
+
+        public override async Task<IExternalUserData> HandleSocialLogin(StateInfo stateInfo)
+        {
+            var callbackResult = await HandleSocialLoginCallback(stateInfo);
+            return callbackResult.ExternalUserData;
         }
 
         private static BYOSsoUserData MapExternalUser(string provider, dynamic result)
         {
             var user = new BYOSsoUserData { };
-            
+
             switch (provider.ToLower())
             {
                 case SocialLogInTypes.AzureAd:

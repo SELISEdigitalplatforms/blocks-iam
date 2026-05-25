@@ -1,12 +1,9 @@
-﻿using Blocks.Genesis;
-
-namespace Iam.DomainService.Resources
+﻿namespace Iam.DomainService.Resources
 {
-    public class SaveOrganizationRequest : IProjectKey
+    public class SaveOrganizationRequest
     {
-        public string ProjectKey { get ; set ; }
-        public string Name { get ; set ; }
-        public string? ItemId { get ; set ; }
-        public bool IsEnable { get ; set ; }
+        public string Name { get; set; }
+        public bool IsEnable { get; set; }
+        public List<string> DefaultRoleForMembers { get; set; } = new List<string>();
     }
 }

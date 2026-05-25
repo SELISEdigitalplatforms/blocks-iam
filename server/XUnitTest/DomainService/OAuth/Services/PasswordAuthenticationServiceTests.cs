@@ -1,13 +1,17 @@
 using Blocks.Genesis;
-using DomainService.Entities;
-using DomainService.OAuth;
-using DomainService.OAuth.RequestModel;
-using DomainService.OAuth.ResponseModel;
-using DomainService.Services;
+using Authentication.DomainService.Entities;
+using Authentication.DomainService.OAuth;
+using Authentication.DomainService.OAuth.RequestModel;
+using Authentication.DomainService.OAuth.ResponseModel;
+using Authentication.DomainService.Services;
 using FluentAssertions;
+using Iam.DomainService.Accounts;
 using Iam.DomainService.Entities;
+using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.Logging;
 using Moq;
+using System.Net;
+using BCryptNet = BCrypt.Net.BCrypt;
 
 namespace XUnitTest.DomainService.OAuth.Services
 {
@@ -18,6 +22,9 @@ namespace XUnitTest.DomainService.OAuth.Services
         private readonly Mock<ITenants> _tenants = new();
         private readonly Mock<ICryptoService> _cryptoService = new();
         private readonly Mock<IAuthenticationRepository> _oAuthRepository = new();
+        private readonly Mock<IAuthenticationDomainService> _authenticationDomainService = new();
+        private readonly Mock<ICacheClient> _cacheClient = new();
+        private readonly Mock<IAccountService> _accountService = new();
         private readonly PasswordAuthenticationService _service;
 
         public PasswordAuthenticationServiceTests()
@@ -27,20 +34,51 @@ namespace XUnitTest.DomainService.OAuth.Services
                 _oAuthJwtAccessTokenManager.Object,
                 _tenants.Object,
                 _cryptoService.Object,
-                _oAuthRepository.Object);
+                _oAuthRepository.Object,
+                _authenticationDomainService.Object,
+                _cacheClient.Object,
+                _accountService.Object);
+
+            _authenticationDomainService
+                .Setup(x => x.GetVisitorsIpAddresses(It.IsAny<HttpContext>()))
+                .Returns(new[] { "127.0.0.1" });
+            _authenticationDomainService
+                .Setup(x => x.GetDeviceInfo(It.IsAny<string>()))
+                .Returns((DeviceInformation?)null);
+            _authenticationDomainService
+                .Setup(x => x.SendToQueueAsync(It.IsAny<string>(), It.IsAny<UserAuthenticationTimelineEvent>()))
+                .Returns(Task.CompletedTask);
+        }
+
+        private static TokenRequest BuildTokenRequest(string username, string password, string organizationId = "org-1")
+        {
+            var context = new DefaultHttpContext();
+            context.Connection.RemoteIpAddress = IPAddress.Parse("127.0.0.1");
+            context.Request.Headers.UserAgent = "xunit-agent";
+
+            return new TokenRequest
+            {
+                Username = username,
+                Password = password,
+                OrganizationId = organizationId,
+                GrantType = "password",
+                Request = context.Request
+            };
+        }
+
+        [Fact]
+        public void AuthenticationConfiguration_DefaultDailyLimit_Is500()
+        {
+            var config = new AuthenticationConfiguration();
+
+            config.MaxLoginAttemptsPerIpPerDay.Should().Be(500);
         }
 
         [Fact]
         public async Task AuthenticateAsync_WithInvalidUser_ReturnsInvalidResponse()
         {
             // Arrange
-            var request = new TokenRequest
-            {
-                Username = "nonexistent@example.com",
-                Password = "password123",
-                OrganizationId = "org-123",
-                GrantType = "password"
-            };
+            var request = BuildTokenRequest("nonexistent@example.com", "password123", "org-123");
             var authConfig = new AuthenticationConfiguration();
 
             _oAuthRepository
@@ -54,135 +92,144 @@ namespace XUnitTest.DomainService.OAuth.Services
             result.Should().NotBeNull();
             result.Error.Should().NotBeNullOrEmpty();
             _oAuthRepository.Verify(x => x.GetUserByUsernameAsync(request.Username, request.OrganizationId), Times.Once);
-            _cryptoService.Verify(x => x.Hash(It.IsAny<string>(), It.IsAny<string>()), Times.Never);
             _oAuthJwtAccessTokenManager.Verify(
                 x => x.ManageTokenAsync(It.IsAny<TokenRequest>(), It.IsAny<AuthenticationConfiguration>(), It.IsAny<User>(), It.IsAny<StateInfo>()),
                 Times.Never);
         }
 
         [Fact]
-        public async Task AuthenticateAsync_WithValidUserAndCorrectPassword_ReturnsSuccessfulTokenResponse()
+        public async Task AuthenticateAsync_WhenDailyLimitExceeded_ReturnsIpRateLimited()
         {
             // Arrange
-            var request = new TokenRequest
+            var request = BuildTokenRequest("test@example.com", "password123", "org-123");
+            var authConfig = new AuthenticationConfiguration
             {
-                Username = "test@example.com",
-                Password = "password123",
-                OrganizationId = "org-123",
-                GrantType = "password"
-            };
-            var authConfig = new AuthenticationConfiguration();
-            var hashedPassword = "hashed-password-xyz";
-            var tenant = new Tenant
-            {
-                TenantId = "tenant-123",
-                TenantSalt = "salt-abc",
-                ApplicationDomain = "example.com",
-                DbConnectionString = "Server=test;Database=test;",
-                JwtTokenParameters = new JwtTokenParameters()
-                {
-                    PrivateCertificatePassword = "test-private-cert-password",
-                    IssueDate = DateTime.UtcNow
-                }
+                MaxLoginAttemptsPerIpPerHour = 100,
+                MaxLoginAttemptsPerIpPerDay = 500
             };
             var user = new User
             {
                 ItemId = "user-789",
                 Email = "test@example.com",
                 UserName = "test@example.com",
-                Password = hashedPassword,
+                Password = BCryptNet.HashPassword("password123"),
                 Active = true,
-                IsVarified = true
-            };
-            var expectedTokenResponse = new TokenResponse
-            {
-                AccessToken = "access-token-123",
-                ExpiresIn = 3600,
-                RefreshToken = "refresh-token-456"
+                IsVerified = true
             };
 
             _oAuthRepository
                 .Setup(x => x.GetUserByUsernameAsync(request.Username, request.OrganizationId))
                 .ReturnsAsync(user);
-            _tenants
-                .Setup(x => x.GetTenantByID(It.IsAny<string>()))
-                .Returns(tenant);
-            _cryptoService
-                .Setup(x => x.Hash(request.Password, tenant.TenantSalt))
-                .Returns(hashedPassword);
-            _oAuthJwtAccessTokenManager
-                .Setup(x => x.ManageTokenAsync(request, authConfig, user, null))
-                .ReturnsAsync(expectedTokenResponse);
+            _cacheClient
+                .Setup(x => x.GetStringValueAsync(It.Is<string>(k => k.StartsWith("login_ip_hourly:127.0.0.1:"))))
+                .ReturnsAsync("8");
+            _cacheClient
+                .Setup(x => x.GetStringValueAsync(It.Is<string>(k => k.StartsWith("login_ip_daily:127.0.0.1:"))))
+                .ReturnsAsync("500");
 
             // Act
             var result = await _service.AuthenticateAsync(request, authConfig);
 
             // Assert
             result.Should().NotBeNull();
-            result.AccessToken.Should().Be("access-token-123");
-            result.ExpiresIn.Should().Be(3600);
-            result.RefreshToken.Should().Be("refresh-token-456");
-            result.Error.Should().BeNullOrEmpty();
-            _oAuthRepository.Verify(x => x.GetUserByUsernameAsync(request.Username, request.OrganizationId), Times.Once);
-            _cryptoService.Verify(x => x.Hash(request.Password, tenant.TenantSalt), Times.Once);
-            _oAuthJwtAccessTokenManager.Verify(x => x.ManageTokenAsync(request, authConfig, user, null), Times.Once);
+            result.StatusCode.Should().Be(429);
+            result.Error.Should().Be("ip_rate_limited");
+            _cacheClient.Verify(x => x.AddStringValueAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<int>()), Times.Never);
         }
 
         [Fact]
-        public void HashPassword_WithValidTenant_ReturnsHashedPassword()
+        public async Task AuthenticateAsync_WhenAccountGetsLocked_SendsAccountLockedNotification()
         {
             // Arrange
-            var password = "mySecurePassword123";
-            var tenant = new Tenant
+            var request = BuildTokenRequest("lockme@example.com", "wrong-password", "org-123");
+            var authConfig = new AuthenticationConfiguration
             {
-                TenantId = "tenant-456",
-                TenantSalt = "salt-xyz",
-                ApplicationDomain = "example.com",
-                DbConnectionString = "Server=test;Database=test;",
-                JwtTokenParameters = new JwtTokenParameters()
-                {
-                    PrivateCertificatePassword = "test-private-cert-password",
-                    IssueDate = DateTime.UtcNow
-                }
+                MaxLoginAttemptsPerIpPerHour = 100,
+                MaxLoginAttemptsPerIpPerDay = 500,
+                GetNumberOfWrongAttemptsToLockTheAccount = 5,
+                AccountLockDurationInMinutes = 5
             };
-            var expectedHash = "hashed-password-result";
 
-            _tenants
-                .Setup(x => x.GetTenantByID(It.IsAny<string>()))
-                .Returns(tenant);
-            _cryptoService
-                .Setup(x => x.Hash(password, tenant.TenantSalt))
-                .Returns(expectedHash);
+            var user = new User
+            {
+                ItemId = "user-locked",
+                Email = "lockme@example.com",
+                UserName = "lockme@example.com",
+                Password = BCryptNet.HashPassword("correct-password"),
+                Active = true,
+                IsVerified = true
+            };
+
+            var lockoutUntil = DateTime.UtcNow.AddMinutes(5);
+            var updatedUser = new User
+            {
+                ItemId = user.ItemId,
+                Email = user.Email,
+                FirstName = "Lock",
+                LastName = "User",
+                LockoutUntilUtc = lockoutUntil,
+                Active = true,
+                IsVerified = true
+            };
+
+            _oAuthRepository
+                .Setup(x => x.GetUserByUsernameAsync(request.Username, request.OrganizationId))
+                .ReturnsAsync(user);
+            _oAuthRepository
+                .Setup(x => x.IncrementFailedLoginAndApplyLockoutAsync(user.ItemId, authConfig.GetNumberOfWrongAttemptsToLockTheAccount, authConfig.AccountLockDurationInMinutes, It.IsAny<DateTime>()))
+                .ReturnsAsync(updatedUser);
+
+            _cacheClient
+                .Setup(x => x.GetStringValueAsync(It.Is<string>(k => k.StartsWith("login_ip_hourly:127.0.0.1:"))))
+                .ReturnsAsync("1");
+            _cacheClient
+                .Setup(x => x.GetStringValueAsync(It.Is<string>(k => k.StartsWith("login_ip_daily:127.0.0.1:"))))
+                .ReturnsAsync("1");
+            _cacheClient
+                .Setup(x => x.AddStringValueAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<int>()))
+                .ReturnsAsync(true);
+
+            _accountService
+                .Setup(x => x.SendAccountLockedNotificationAsync(It.IsAny<User>(), It.IsAny<DateTime>()))
+                .Returns(Task.CompletedTask);
 
             // Act
-            var result = _service.HashPassword(password);
+            var result = await _service.AuthenticateAsync(request, authConfig);
 
             // Assert
-            result.Should().Be(expectedHash);
-            _tenants.Verify(x => x.GetTenantByID(It.IsAny<string>()), Times.Once);
-            _cryptoService.Verify(x => x.Hash(password, tenant.TenantSalt), Times.Once);
+            result.StatusCode.Should().Be(401);
+            result.Error.Should().Be(OAuthError.InValidUseNamePassword);
+            _accountService.Verify(x => x.SendAccountLockedNotificationAsync(
+                It.Is<User>(u => u.ItemId == user.ItemId),
+                It.Is<DateTime>(d => d == lockoutUntil)), Times.Once);
         }
 
         [Fact]
-        public void HashPassword_WithNullTenant_CallsHashWithNullSalt()
+        public void HashPassword_ReturnsBcryptHash()
         {
             // Arrange
             var password = "mySecurePassword123";
-            var expectedHash = "hashed-password-without-salt";
-
-            _tenants
-                .Setup(x => x.GetTenantByID(It.IsAny<string>()))
-                .Returns((Tenant)null);
-            _cryptoService
-                .Setup(x => x.Hash(password, null))
-                .Returns(expectedHash);
 
             // Act
             var result = _service.HashPassword(password);
 
             // Assert
-            result.Should().Be(expectedHash);
-            _cryptoService.Verify(x => x.Hash(password, null), Times.Once);
+            result.Should().NotBeNullOrWhiteSpace();
+            BCryptNet.Verify(password, result).Should().BeTrue();
+        }
+
+        [Fact]
+        public void VerifyPassword_WithMatchingHash_ReturnsTrue()
+        {
+            // Arrange
+            var password = "mySecurePassword123";
+            var hash = _service.HashPassword(password);
+
+            // Act
+            var result = _service.VerifyPassword(password, hash);
+
+            // Assert
+            result.Should().BeTrue();
         }
     }
 }

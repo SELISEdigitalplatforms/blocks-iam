@@ -1,18 +1,16 @@
-﻿using Blocks.Genesis;
-using DomainService.OAuth.RequestModel;
-using DomainService.Services;
+using Authentication.DomainService.Services;
+using Blocks.Genesis;
 using Microsoft.Extensions.Logging;
 
-namespace DomainService.OAuth
+namespace Authentication.DomainService.OAuth
 {
     public class GoogleLogInService : SocialLogInServiceBase
     {
         public GoogleLogInService(
             ILogger<GoogleLogInService> logger,
             IAuthenticationRepository authenticationRepository,
-            ICacheClient cacheClient,
             IHttpService httpService
-        ) : base(logger, authenticationRepository, cacheClient, httpService)
+        ) : base(logger, authenticationRepository, httpService)
         {
         }
 
