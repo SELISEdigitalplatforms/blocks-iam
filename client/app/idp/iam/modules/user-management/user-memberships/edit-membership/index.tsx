@@ -132,7 +132,7 @@ export const EditMembership = ({
 
   const handleSave = async () => {
     try {
-      const existingMemberships = userData?.data?.memberships || [];
+      const existingMemberships = userData?.data?.organizations || [];
       const updatedMemberships = existingMemberships.map((m) =>
         m.organizationId === membership.organizationId
           ? { ...m, roles: selectedRoles, permissions: selectedPermissions }

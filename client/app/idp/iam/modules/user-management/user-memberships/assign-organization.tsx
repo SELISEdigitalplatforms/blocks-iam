@@ -62,7 +62,7 @@ export const AssignOrganization = ({ userId, projectKey }: AssignOrganizationPro
 
   const { mutateAsync, isPending } = useUpdateUser({ id: userId, projectKey });
 
-  const existingMemberships = userData?.data?.memberships || [];
+  const existingMemberships = userData?.data?.organizations || [];
   const organizations = orgsData?.organizations || [];
   const roles = rolesData?.data || [];
 

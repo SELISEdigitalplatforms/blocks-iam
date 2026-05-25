@@ -39,8 +39,7 @@ export interface User {
   department: string | null;
   employeeId: string | null;
   isMultiOrgEnabled: boolean;
-  organizations: unknown[];
-  memberships: IMembership[];
+  organizations: IMembership[];
 }
 
 export interface IMembership {
@@ -113,7 +112,7 @@ export interface IUpdateUserPayload {
   externalIdentities?: unknown[];
   userCreationType?: number;
   isMultiOrgEnabled?: boolean;
-  organizations?: unknown[];
+  organizations?: IMembership[];
   profileImageId?: string | null;
   profileImageUrl?: string | null;
 }
