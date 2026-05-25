@@ -15,11 +15,12 @@ export class NotificationClientService {
       )
       .withAutomaticReconnect()
       .build();
-    this.connect();
   }
 
   async connect() {
-    this.connection.start();
+    if (this.connection.state === "Disconnected") {
+      await this.connection.start();
+    }
   }
 
   async disconnect() {

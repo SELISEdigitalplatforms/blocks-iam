@@ -20,6 +20,13 @@ export function Notification() {
   const queryClient = useQueryClient();
 
   useEffect(() => {
+    notificationClientService.connect();
+    return () => {
+      notificationClientService.disconnect();
+    };
+  }, []);
+
+  useEffect(() => {
     configData?.configurations.forEach((config) => {
       notificationClientService.connection.on(`${config.notifyMethod}`, (message: string) => {
         notificationService.getNotificationConfig(config, message);
