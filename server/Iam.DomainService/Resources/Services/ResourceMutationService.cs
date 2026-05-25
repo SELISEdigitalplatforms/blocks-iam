@@ -232,10 +232,10 @@ namespace Iam.DomainService.Resources
             };
         }
 
-        public async Task<BaseMutationResponse> UpdateRoleAsync(string id, UpdateRoleRequest command)
+        public async Task<BaseMutationResponse> UpdateRoleAsync(UpdateRoleRequest command)
         {
             _logger.LogInformation("Role update start");
-            var role = await _resourceRepository.GetRoleByIdAsync(id);
+            var role = await _resourceRepository.GetRoleByIdAsync(command.ItemId);
             if (role == null)
             {
                 _logger.LogInformation("Role update end -- Validation Error");
