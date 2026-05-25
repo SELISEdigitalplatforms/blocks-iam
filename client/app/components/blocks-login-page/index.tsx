@@ -1,5 +1,8 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Button } from "@/components/ui-kits/button/button";
+import { Badge } from "@/components/ui-kits/badge/badge";
+import { Card, CardContent, CardFooter, CardHeader } from "@/components/ui-kits/card/card";
+import { Separator } from "@/components/ui-kits/separator/separator";
 import { ModeToggle } from "@/components/mode-toggle/mode-toggle";
 import { BLOCKS_PRODUCTS } from "@/constants/blocks-products";
 
@@ -189,7 +192,7 @@ export function BlocksLoginPage({
         <div className="nav-left">
           <img src="/blocks-logos/iam_light_mode.svg" className="nav-logo-mark dark:hidden" />
           <img src="/blocks-logos/iam_dark_mode.svg" className="nav-logo-mark hidden dark:block" />
-          <div className="nav-divider" />
+          <Separator orientation="vertical" className="nav-divider" />
           <span className="nav-product">{navLabel}</span>
         </div>
         <div className="nav-right">
@@ -228,7 +231,7 @@ export function BlocksLoginPage({
           {features.length > 0 && (
             <div className="features">
               {features.map((f) => (
-                <span key={f} className="feature-pill">{f}</span>
+                <Badge key={f} variant="outline" className="feature-pill">{f}</Badge>
               ))}
             </div>
           )}
@@ -254,25 +257,27 @@ export function BlocksLoginPage({
         <div className="col-right">
           <div className="sdk-header-row">
             <p className="sdk-header-label">Core Services — Blocks Platform</p>
-            <span className="sdk-count-badge">{otherProducts.length} services</span>
+            <Badge variant="outline" className="sdk-count-badge">{otherProducts.length} services</Badge>
           </div>
 
           <div className="carousel-track">
             <div className="carousel-inner">
               {carouselCards.map((p, i) => (
-                <div className="sdk-card" key={`${p.name}-${i}`}>
-                  <div className="sdk-card-top">
+                <Card className="sdk-card" key={`${p.name}-${i}`}>
+                  <CardHeader className="sdk-card-top">
                     <span className="sdk-name">{p.appName}</span>
-                    <span className="sdk-badge">{p.badge}</span>
-                  </div>
-                  <p className="sdk-desc">{p.shortDescription}</p>
-                  <div className="sdk-links">
-                    {p.featureChips.slice(0, 4).map((chip) => (
-                      <span key={chip} className="sdk-link dim">{chip}</span>
-                    ))}
-                  </div>
+                    <Badge variant="outline" className="sdk-badge">{p.badge}</Badge>
+                  </CardHeader>
+                  <CardContent className="sdk-card-body">
+                    <p className="sdk-desc">{p.shortDescription}</p>
+                    <div className="sdk-links">
+                      {p.featureChips.slice(0, 4).map((chip) => (
+                        <Badge key={chip} variant="outline" className="sdk-link dim">{chip}</Badge>
+                      ))}
+                    </div>
+                  </CardContent>
                   {p.url && (
-                    <div className="sdk-card-footer">
+                    <CardFooter className="sdk-card-footer">
                       <a
                         href={p.url}
                         target="_blank"
@@ -284,9 +289,9 @@ export function BlocksLoginPage({
                           <path d="M5 12h14M12 5l7 7-7 7" />
                         </svg>
                       </a>
-                    </div>
+                    </CardFooter>
                   )}
-                </div>
+                </Card>
               ))}
             </div>
           </div>
