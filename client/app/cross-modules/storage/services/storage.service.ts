@@ -15,7 +15,7 @@ import {
 } from "../models/storage.model";
 
 const toLogicUrl = (path: string) =>
-  `${getRuntimeEnv("BLOCKS_LOGIC_BASE_URL") || "https://dev-logic.blocksdevelopers.com"}${path}`;
+  `${getRuntimeEnv("BLOCKS_LOGIC_BASE_URL")}${path}`;
 
 export class StorageService {
   constructor(

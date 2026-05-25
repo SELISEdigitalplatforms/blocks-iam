@@ -330,11 +330,7 @@ namespace Iam.DomainService.Resources
         {
             var collection = _identityAccessManagementRepository.GetCollection<Organization>();
             var filter = Builders<Organization>.Filter.Empty;
-            if (!string.IsNullOrWhiteSpace(request.Name))
-            {
-                var regex = new BsonRegularExpression(request.Name, "i");
-                filter &= Builders<Organization>.Filter.Regex(x => x.Name, regex);
-             }
+            
 
             var totalCount = await collection.CountDocumentsAsync(filter);
 

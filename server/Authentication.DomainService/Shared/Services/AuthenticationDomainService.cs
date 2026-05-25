@@ -300,7 +300,7 @@ namespace Authentication.DomainService.Services
             var credential = await _authenticationRepository.GetOidcClientRegistrationAsync(request.ItemId ?? "");
             
             // Delete the OIDC client registration
-            await _authenticationRepository.DeleteOidcCliantAsync(request);
+            await _authenticationRepository.DeleteOidcClientAsync(request);
 
             // Delete the related IdentityProvider by ClientId
             if (credential != null && !string.IsNullOrWhiteSpace(credential.ClientId))
@@ -495,7 +495,7 @@ namespace Authentication.DomainService.Services
                 {
                     var deleteRequest = new DeleteOIDCClientRequest { ItemId = existing.ClientId };
                     // Call repository directly to avoid recursive sync logic
-                    await _authenticationRepository.DeleteOidcCliantAsync(deleteRequest);
+                    await _authenticationRepository.DeleteOidcClientAsync(deleteRequest);
                 }
             }
 

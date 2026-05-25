@@ -15,5 +15,6 @@
         public bool IsLogin { get; set; }
         public bool IsRevoke { get; set; }
         public string? GrantType { get; set; }
+        public bool Impersonated { get; set; }
     }
 }

@@ -3,7 +3,7 @@ import { http } from "@/lib/http-client";
 const IMPERSONATION_BASE = "/api/auth";
 
 export interface ImpersonationRequest {
-  targetTenantId: string;
+  targeted_tenant_id: string;
   orgId?: string;
   organizationId?: string;
 }
@@ -26,14 +26,21 @@ class ImpersonationService {
     return http.post(`${IMPERSONATION_BASE}/impersonate`, request);
   }
 
-  stopImpersonation(): Promise<void> {
-    return http.post(`${IMPERSONATION_BASE}/impersonation/stop`, null);
+   stopImpersonation(): Promise<void> {
+    return http.post(
+      `${IMPERSONATION_BASE}/impersonation/stop`,
+      {},
+      undefined,
+      // { absoluteUrl: true },
+    );
   }
 
   impersonationStatus(): Promise<ImpersonationStatusResponse> {
     return http.post(
       `${IMPERSONATION_BASE}/impersonation/status`,
-      null
+      null,
+      undefined,
+      { skipTokenRotation: true },
     );
   }
 }

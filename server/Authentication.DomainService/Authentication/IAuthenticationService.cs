@@ -1,11 +1,9 @@
 using Blocks.Genesis;
 using Authentication.DomainService.Entities;
 using Authentication.DomainService.OAuth.ResponseModel;
-using Authentication.DomainService.Shared.RequestModel;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using System.Security.Claims;
-using System.Threading.Tasks;
 
 namespace Authentication.DomainService.Authentication
 {
@@ -19,8 +17,8 @@ namespace Authentication.DomainService.Authentication
         bool DeleteCookie(HttpRequest request);
         Task AppendSessionCookies(HttpContext httpContext, string? accessToken, string? refreshToken, DateTime? accessExpiresUtc = null, DateTime? refreshExpiresUtc = null);
         Task<IActionResult> GetLoginOptionsAsync();
-        Task<IActionResult> GetSocialAuthorizationUrlAsync(string provider, string redirectUri);
-        Task<IActionResult> GetOidcSocialAuthorizationUrlAsync(string provider, string oidcState, string redirectUri);
+        Task<IActionResult> GetSocialAuthorizationUrlAsync(string clientId, string redirectUri);
+        Task<IActionResult> GetOidcSocialAuthorizationUrlAsync(string providerClientId, string oidcState, string providerRedirectUri);
         Task<OidcClientRegistration> GetClientCredentialAsync(string clientId);
         Task<object> HandleTokenResponseConditionallyAsync(TokenResponse response, HttpResponse httpResponse, bool useTokensCookie, string? clientId = null);
         Task<ClaimsPrincipal?> GetPrincipalFromTokenAsync(HttpRequest request, string tenantId, bool IsUserInfoGetRequest = false);

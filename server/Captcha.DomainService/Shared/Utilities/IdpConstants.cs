@@ -7,10 +7,12 @@ namespace Authentication.DomainService.Utilities
         public const string TenantTokenPublicCertificateCachePrefix = "tetocertpublic::";
         public const string AuthenticationQueue = "blocks_idp_authentication_listener";
         public const string IamQueue = "blocks_idp_iam_listener";
-        public const string MailQueue = "blocks_idp_mail_listener";
+        public const string MailQueue = "blocks_email_listener";
         public const string MfaQueueName = "blocks_idp_mfa_listener";
 
         public const string RefreshTokenCookieName = "rt";
+        public const string ImpersonationIdCookieName = "impersonation_session_id";
+        public const string IdpSessionCookieName = "idp_session_id";
 
         public const string BlocksProviderName = "blocks-idp";
         public const string BlocksProviderType = "blocks";

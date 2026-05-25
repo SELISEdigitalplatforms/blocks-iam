@@ -17,5 +17,6 @@ namespace Authentication.DomainService.Dtos
         public DateTime? RememberMeIssuedUtc { get; set; }
         public DateTime? RememberMeExpiresUtc { get; set; }
         public string? Scope { get; set; }
+        public bool Impersonated { get; set; }
     }
 }

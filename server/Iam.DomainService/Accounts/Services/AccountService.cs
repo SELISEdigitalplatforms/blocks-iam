@@ -1,20 +1,21 @@
 ﻿
+using Authentication.DomainService.Utilities;
 using Blocks.Genesis;
-using Iam.DomainService.Dtos;
-using Iam.DomainService.Entities;
-using Iam.DomainService.Services;
-using Iam.DomainService.Utilities;
 using Captcha.DomainService.Captcha;
 using Captcha.DomainService.Configuration;
 using FluentValidation;
-using Microsoft.Extensions.Logging;
-using Iam.DomainService.Users.RequestModel;
-using System.Security.Cryptography.Xml;
-using Iam.DomainService.Users.ResponseModel;
+using Iam.DomainService.Dtos;
+using Iam.DomainService.Entities;
+using Iam.DomainService.Resources;
+using Iam.DomainService.Services;
 using Iam.DomainService.Shared.Entities;
 using Iam.DomainService.Users;
+using Iam.DomainService.Users.RequestModel;
+using Iam.DomainService.Users.ResponseModel;
+using Iam.DomainService.Utilities;
+using Microsoft.Extensions.Logging;
 using MongoDB.Driver;
-using Iam.DomainService.Resources;
+using System.Security.Cryptography.Xml;
 
 namespace Iam.DomainService.Accounts
 {
@@ -466,7 +467,7 @@ namespace Iam.DomainService.Accounts
             if (result)
             {
                 await _cacheClient.RemoveKeyAsync(activateUserRequest.Code);
-                await _identityAccessManagementService.SendToQueueAsync(Constants.IamQueue, new AccountActivityEvent
+                await _identityAccessManagementService.SendToQueueAsync(IdpConstants.IamQueue, new AccountActivityEvent
                 {
                     Code = activateUserRequest.Code,
                     UserId = userId,
@@ -527,6 +528,7 @@ namespace Iam.DomainService.Accounts
 
             await _repository.InsertUserKeyMapAsync(new UserKeyMap
             {
+                ItemId = Guid.NewGuid().ToString(),
                 Key = key,
                 UserId = user.ItemId,
                 IssueDate = DateTime.Now,
@@ -607,7 +609,7 @@ namespace Iam.DomainService.Accounts
             if (result)
             {
                 await _cacheClient.RemoveKeyAsync(resetPasswordRequest.Code);
-                await _identityAccessManagementService.SendToQueueAsync(Constants.IamQueue, new AccountActivityEvent
+                await _identityAccessManagementService.SendToQueueAsync(IdpConstants.IamQueue, new AccountActivityEvent
                 {
                     Code = resetPasswordRequest.Code,
                     UserId = userId,
@@ -674,7 +676,7 @@ namespace Iam.DomainService.Accounts
             if (result)
             {
                 var config = await _repository.GetIamConfigurationAsync();
-                await _identityAccessManagementService.SendToQueueAsync(Constants.IamQueue, new AccountActivityEvent
+                await _identityAccessManagementService.SendToQueueAsync(IdpConstants.IamQueue, new AccountActivityEvent
                 {
                     UserId = bc?.UserId,
                     Event = "Change_Password",
@@ -725,6 +727,7 @@ namespace Iam.DomainService.Accounts
 
             await _repository.InsertUserKeyMapAsync(new UserKeyMap
             {
+                ItemId = Guid.NewGuid().ToString(),
                 Key = key,
                 UserId = user.ItemId,
                 IssueDate = DateTime.Now,
