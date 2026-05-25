@@ -19,7 +19,7 @@ export const UserMemberships = ({ id, projectKey }: UserMembershipsProps) => {
         pageSize: 1000,
     });
 
-    const memberships = userData?.data?.memberships || [];
+    const memberships = userData?.data?.organizations || [];
 
     // Create a map of organizationId to organizationName
     const orgNameMap = useMemo(() => {

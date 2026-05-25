@@ -1,4 +1,5 @@
 import { useState, useCallback, useEffect } from "react";
+import { getRuntimeEnv } from "@/lib/runtime-env";
 import { AnimatePresence, motion } from "framer-motion";
 import { Button } from "@/components/ui-kits/button/button";
 import { Link } from "react-router-dom";
@@ -43,7 +44,7 @@ const services: Service[] = [
     description:
       "Integrate intelligent agents into any frontend with a single script. Enable advanced use cases with support for RAG pipelines, MCP, and custom LLM integrations.",
     features: ["RAG Pipelines", "MCP Support", "Custom LLM", "Knowledge Bases"],
-    url: "https://dev-agent.blocksdevelopers.com",
+    url: getRuntimeEnv("BLOCKS_AGENT_BASE_URL"),
     cta: "Visit Agent Platform",
     gradient: "from-violet-600 to-indigo-600",
   },
@@ -54,7 +55,7 @@ const services: Service[] = [
     description:
       "Build, deploy, and scale your applications with automated CI/CD pipelines. Connect your GitHub repositories and go live in minutes.",
     features: ["Auto CI/CD", "GitHub Integration", "Multi-env", "Build Logs"],
-    url: "https://dev-deployment.blocksdevelopers.com",
+    url: getRuntimeEnv("BLOCKS_DEPLOYMENTS_BASE_URL"),
     cta: "Visit Cloud Build",
     gradient: "from-sky-500 to-cyan-500",
   },
@@ -65,7 +66,7 @@ const services: Service[] = [
     description:
       "Provision and manage databases with automatic scaling, backups, and real-time monitoring. Full control without the operational overhead.",
     features: ["Auto Backups", "Auto Scaling", "Query Console", "Monitoring"],
-    url: "https://dev-uds.blocksdevelopers.com",
+    url: getRuntimeEnv("BLOCKS_DATA_GATEWAY_BASE_URL"),
     cta: "Visit Data Service",
     gradient: "from-emerald-600 to-teal-500",
   },

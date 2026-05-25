@@ -22,7 +22,7 @@ export function ConsoleHeader() {
   const isMobile = useIsMobile();
   const [isScrolled, setIsScrolled] = useState(false);
 
-  const isConsoleButtonVisible = pathname === "/profile" || pathname.startsWith("/project-overview");
+  const isConsoleButtonVisible = pathname.startsWith("/project-overview");
 
   useEffect(() => {
     const handleScroll = () => {
