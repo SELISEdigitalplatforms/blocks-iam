@@ -1,7 +1,6 @@
 import { useEffect, useMemo, useRef } from "react";
 import { ChevronsUpDown, FolderOpen, Loader } from "lucide-react";
 import { useLocation, useNavigate } from "react-router-dom";
-import { useQueryClient } from "@tanstack/react-query";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -27,7 +26,6 @@ const wildcardToRegex = (pattern: string) => {
 export function ProjectList({ collapsed = false }: { collapsed?: boolean }) {
   const navigate = useNavigate();
   const { pathname } = useLocation();
-  const queryClient = useQueryClient();
   const { data: projectGroups = [], isLoading } = useGetProjects();
   const { selectedProject, setSelectedProject, projects: storedProjects } = useProjectStore();
   const { data: projectData } = useGetProject({ projectId: selectedProject?.itemId || "" });
@@ -44,9 +42,9 @@ export function ProjectList({ collapsed = false }: { collapsed?: boolean }) {
     if (pendingProjectRef.current) {
       setSelectedProject(pendingProjectRef.current);
       pendingProjectRef.current = null;
-      queryClient.invalidateQueries();
+      window.location.reload();
     }
-  }, [pathname, setSelectedProject, queryClient]);
+  }, [pathname, setSelectedProject]);
   const handleProjectSelect = (project: IProject) => {
     const redirectEntry = Object.entries(redirectRegexMap).find(([regex]) =>
       new RegExp(regex).test(pathname),
@@ -57,7 +55,7 @@ export function ProjectList({ collapsed = false }: { collapsed?: boolean }) {
       return;
     }
     setSelectedProject(project);
-    queryClient.invalidateQueries();
+    window.location.reload();
   };
   const name = projectData?.data?.name || selectedProject?.name;
   const queryProjects = projectGroups.flatMap((group) => group.projects).filter(Boolean);

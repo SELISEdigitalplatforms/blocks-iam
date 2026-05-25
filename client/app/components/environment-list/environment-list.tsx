@@ -1,7 +1,6 @@
 import { useEffect, useMemo, useRef } from "react";
 import { ChevronsUpDown, Globe, Loader } from "lucide-react";
 import { useLocation, useNavigate } from "react-router-dom";
-import { useQueryClient } from "@tanstack/react-query";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -27,7 +26,6 @@ const wildcardToRegex = (pattern: string) => {
 export function EnvironmentList({ collapsed = false }: { collapsed?: boolean }) {
   const navigate = useNavigate();
   const { pathname } = useLocation();
-  const queryClient = useQueryClient();
   const { data: projectGroups = [], isLoading } = useGetProjects();
   const { selectedProject, setSelectedProject } = useProjectStore();
   const { data: projectData } = useGetProject({ projectId: selectedProject?.itemId || "" });
@@ -44,9 +42,9 @@ export function EnvironmentList({ collapsed = false }: { collapsed?: boolean }) 
     if (pendingProjectRef.current) {
       setSelectedProject(pendingProjectRef.current);
       pendingProjectRef.current = null;
-      queryClient.invalidateQueries();
+      window.location.reload();
     }
-  }, [pathname, setSelectedProject, queryClient]);
+  }, [pathname, setSelectedProject]);
   useEffect(() => {
     if (projectData?.data && selectedProject?.itemId === projectData.data?.itemId) {
       setSelectedProject(projectData.data);
@@ -62,7 +60,7 @@ export function EnvironmentList({ collapsed = false }: { collapsed?: boolean }) 
       return;
     }
     setSelectedProject(project);
-    queryClient.invalidateQueries();
+    window.location.reload();
   };
   const environment = projectData?.data?.environment || selectedProject?.environment;
   const applicationDomain =
