@@ -187,6 +187,12 @@
   }
 }
 
+@layer utilities {
+  .blocks-gradient {
+    background: linear-gradient(135deg, #0066b2 0%, #00B2FF 100%);
+  }
+}
+
 @layer base {
   * {
     @apply border-border;

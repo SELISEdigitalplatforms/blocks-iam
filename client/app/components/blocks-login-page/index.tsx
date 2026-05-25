@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
+import { Button } from "@/components/ui-kits/button/button";
 import { ModeToggle } from "@/components/mode-toggle/mode-toggle";
 import { BLOCKS_PRODUCTS } from "@/constants/blocks-products";
 
@@ -21,8 +22,6 @@ export interface BlocksLoginPageProps {
   docsUrl?: string;
   /** Footer link label + URL */
   footerLink?: { label: string; url: string };
-  /** Bottom-left status text */
-  statusText?: string;
 }
 
 const DEFAULT_KEYWORDS = ["observable", "intelligent", "scalable", "resilient", "secure"];
@@ -38,13 +37,12 @@ export function BlocksLoginPage({
   name,
   onLogin,
   isLoading = false,
-  eyebrow = "Blocks · Core Services",
+  eyebrow = "Enterprise Application OS",
   keywords = DEFAULT_KEYWORDS,
   keywordPrefix = "Backends that are",
   loginLabel = "Log in to your account",
   docsUrl = "https://docs.seliseblocks.com/",
   footerLink = { label: "Visit Blocks", url: "https://seliseblocks.com" },
-  statusText = "All systems operational",
 }: BlocksLoginPageProps) {
   const active = useMemo(
     () => BLOCKS_PRODUCTS.find((p) => p.name === name) ?? BLOCKS_PRODUCTS[0],
@@ -189,14 +187,8 @@ export function BlocksLoginPage({
       {/* Navigation */}
       <nav className="site-nav">
         <div className="nav-left">
-          <svg className="nav-logo-mark" viewBox="0 0 246 360" xmlns="http://www.w3.org/2000/svg">
-            <path d="M245.455 68.162V129.87L168.982 156.65V93.9637L245.455 68.162Z" />
-            <path d="M240.389 62.3805L165.49 87.6573L5.30945 24.2563L85.3315 0L240.389 62.3805Z" />
-            <path d="M161.797 93.8295V156.43L81.1141 122.607V188.07L0 152.738V29.6846L161.797 93.8295Z" />
-            <path d="M76.4728 266.036L0 291.837V230.123L76.4728 203.329V266.036Z" />
-            <path d="M160.122 360L5.07166 297.619L79.9639 272.343L240.144 335.743L160.122 360Z" />
-            <path d="M245.454 330.315L83.6569 266.175V203.57L164.34 237.395V171.93L245.454 207.262V330.315Z" />
-          </svg>
+          <img src="/blocks-logos/iam_light_mode.svg" className="nav-logo-mark dark:hidden" />
+          <img src="/blocks-logos/iam_dark_mode.svg" className="nav-logo-mark hidden dark:block" />
           <div className="nav-divider" />
           <span className="nav-product">{navLabel}</span>
         </div>
@@ -230,7 +222,6 @@ export function BlocksLoginPage({
             <span className="keyword-anim" style={{ opacity: keywordVisible ? 1 : 0 }}>
               {resolvedKeywords[keywordIdx]}
             </span>
-            .
           </p>
           <p className="desc">{active.description}</p>
 
@@ -246,9 +237,9 @@ export function BlocksLoginPage({
             <div className="button-container">
               <div className="button-ring" />
               <div className="button-ring" />
-              <button className="launch-btn" disabled={isLoading} onClick={onLogin}>
+              <Button variant="primary" className="launch-btn" disabled={isLoading} onClick={onLogin}>
                 {isLoading ? "Redirecting…" : loginLabel}
-              </button>
+              </Button>
             </div>
             <a href={docsUrl} target="_blank" rel="noreferrer" className="cta-docs">
               View documentation
@@ -312,10 +303,7 @@ export function BlocksLoginPage({
         </div>
       </main>
 
-      <div className="status">
-        <span className="status-dot" />
-        <span>{statusText}</span>
-      </div>
+
     </div>
   );
 }
@@ -483,9 +471,8 @@ const eurolmStyles = `
 
 .eurolm-page .nav-left { display: flex; align-items: center; gap: 14px; }
 .eurolm-page .nav-logo-mark {
-  height: 26px; width: auto; fill: var(--accent);
-  filter: drop-shadow(0 0 8px var(--accent-glow));
-  transition: fill 0.3s, filter 0.3s; flex-shrink: 0;
+  height: 26px; width: auto;
+  transition: opacity 0.3s; flex-shrink: 0;
 }
 .eurolm-page .nav-divider { width: 1px; height: 16px; background: var(--border); }
 .eurolm-page .nav-product {
@@ -531,6 +518,7 @@ const eurolmStyles = `
 
 .eurolm-page .title-main {
   font-size: clamp(2rem, 3.8vw, 3.1rem); font-weight: 700;
+  font-family: ui-monospace, "SF Mono", SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
   letter-spacing: 0.06em; text-transform: uppercase; line-height: 1.08;
   background: linear-gradient(135deg, var(--fg) 30%, var(--accent) 100%);
   -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text;
@@ -611,7 +599,7 @@ const eurolmStyles = `
 .eurolm-page .launch-btn {
   position: relative; padding: 16px 44px;
   font-size: 0.78rem; font-weight: 700; letter-spacing: 0.22em; text-transform: uppercase;
-  color: #fff; background: linear-gradient(135deg, var(--accent), var(--accent2));
+  color: #fff;
   border: none; border-radius: 6px; cursor: pointer; overflow: hidden;
   transition: transform 0.25s var(--ease-out-expo), box-shadow 0.25s ease;
   box-shadow: 0 4px 24px rgba(0,102,178,0.15), 0 0 0 1px rgba(0,102,178,0.1) inset;
@@ -766,21 +754,7 @@ const eurolmStyles = `
   color: var(--muted); opacity: 0.45; font-weight: 500;
 }
 
-.eurolm-page .status {
-  position: absolute; bottom: 22px; left: 52px;
-  display: flex; align-items: center; gap: 10px;
-  font-size: 0.55rem; letter-spacing: 0.28em; text-transform: uppercase;
-  color: var(--muted); z-index: 100; pointer-events: none; opacity: 0;
-  animation: eurolm-fadeIn 1s ease 2s forwards;
-}
-@keyframes eurolm-fadeIn { to { opacity: 1; } }
-.eurolm-page .status-dot {
-  width: 5px; height: 5px; background: #17a34a; border-radius: 50%;
-  animation: eurolm-statusPulse 2.5s ease-in-out infinite; flex-shrink: 0;
-}
-@keyframes eurolm-statusPulse {
-  0%,100% { opacity: 0.35; box-shadow: none; } 50% { opacity: 1; box-shadow: 0 0 8px #17a34a; }
-}
+
 
 @media (max-width: 960px) {
   .eurolm-page { position: relative; overflow: auto; min-height: 100vh; }
@@ -813,7 +787,7 @@ const eurolmStyles = `
   .eurolm-page .main { padding: calc(var(--nav-h) + 28px) 22px 80px; }
   .eurolm-page .title-main { font-size: 1.8rem; }
   .eurolm-page .corner { width: 36px; height: 36px; }
-  .eurolm-page .status { left: 22px; }
+
   .eurolm-page .features { gap: 8px; }
   .eurolm-page .feature-pill { padding: 5px 10px; font-size: 0.58rem; }
   .eurolm-page .cta-row { gap: 18px; }

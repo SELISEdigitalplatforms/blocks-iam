@@ -37,7 +37,7 @@ export default function ConsoleCreateProject() {
 
   return (
     <div className="mx-auto flex max-w-2xl flex-col items-center gap-1 text-center">
-      <h3 className="mt-32 text-3xl font-bold tracking-tight">Welcome to SELISE Blocks</h3>
+      <h3 className="mt-32 bg-[linear-gradient(135deg,#0066b2,#00B2FF)] bg-clip-text text-3xl font-bold tracking-tight text-transparent">Welcome to SELISE Blocks</h3>
       <div className="mt-3 max-w-lg sm:mt-5 lg:max-w-2xl">
         <p className="text-left text-base font-normal leading-7 text-high-emphasis">
           Explore and manage all your projects in one place. With SELISE Blocks, building and
@@ -45,7 +45,7 @@ export default function ConsoleCreateProject() {
         </p>
       </div>
       <div className="mt-6 grid grid-cols-2 gap-4">
-        <Button className="text-sm" disabled={isLoading} onClick={openBlocksOS}>
+        <Button variant="primary" className="text-sm" disabled={isLoading} onClick={openBlocksOS}>
           {isLoading ? "Redirecting…" : "Create a project"}
         </Button>
         <Button variant="ghost" disabled>
