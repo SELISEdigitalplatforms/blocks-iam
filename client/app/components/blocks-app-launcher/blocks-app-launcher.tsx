@@ -170,7 +170,7 @@ const SELISE_APPS: BlocksApp[] = [
     description: "Identity & Access",
     url: getRuntimeEnv("BLOCKS_IAM_BASE_URL"),
     icon: <IdpIcon />,
-    clientId: "a5831e15-e193-4a4f-8e10-d04a4ad1705b",
+    clientId: getRuntimeEnv("BLOCKS_IAM_CLIENT_ID"),
     redirectUri: getRuntimeEnv("BLOCKS_IAM_CALLBACK_URL"),
   },
   {
@@ -179,7 +179,7 @@ const SELISE_APPS: BlocksApp[] = [
     description: "Localization",
     url: getRuntimeEnv("BLOCKS_LOCALIZATION_BASE_URL"),
     icon: <UilmIcon />,
-    clientId: "57214b67-aa9c-4307-92ab-a25e35180fac",
+    clientId: getRuntimeEnv("BLOCKS_LOCALIZATION_CLIENT_ID"),
     redirectUri: getRuntimeEnv("BLOCKS_LOCALIZATION_CALLBACK_URL"),
   },
   {
@@ -188,7 +188,7 @@ const SELISE_APPS: BlocksApp[] = [
     description: "AI Platform",
     url: getRuntimeEnv("BLOCKS_AGENTS_BASE_URL"),
     icon: <AiIcon />,
-    clientId: "c1565dbc-de65-4966-a427-0ed9e542c678",
+    clientId: getRuntimeEnv("BLOCKS_AGENTS_CLIENT_ID"),
     redirectUri: getRuntimeEnv("BLOCKS_AGENTS_CALLBACK_URL"),
   },
   {
@@ -197,7 +197,7 @@ const SELISE_APPS: BlocksApp[] = [
     description: "Data Integration",
     url: getRuntimeEnv("BLOCKS_DATA_BASE_URL"),
     icon: <DataGatewayIcon />,
-    clientId: "e76867a8-37a1-483e-a15e-875c3884b8e8",
+    clientId: getRuntimeEnv("BLOCKS_DATA_CLIENT_ID"),
     redirectUri: getRuntimeEnv("BLOCKS_DATA_CALLBACK_URL"),
   },
   {
@@ -206,7 +206,7 @@ const SELISE_APPS: BlocksApp[] = [
     description: "Operating System",
     url: getRuntimeEnv("BLOCKS_OS_BASE_URL"),
     icon: <BlocksOsIcon />,
-    clientId: "5225b9c1-15bc-41b0-bdc6-d3ceb180ccc5",
+    clientId: getRuntimeEnv("BLOCKS_OS_CLIENT_ID"),
     redirectUri: getRuntimeEnv("BLOCKS_OS_CALLBACK_URL"),
   },
   {
@@ -215,7 +215,7 @@ const SELISE_APPS: BlocksApp[] = [
     description: "Utility Tools",
     url: getRuntimeEnv("BLOCKS_UTILITIES_BASE_URL"),
     icon: <UtilityIcon />,
-    clientId: "4f7ae2b9-4b42-4770-9138-63db08538629",
+    clientId: getRuntimeEnv("BLOCKS_UTILITIES_CLIENT_ID"),
     redirectUri: getRuntimeEnv("BLOCKS_UTILITIES_CALLBACK_URL"),
   },
   {
@@ -224,7 +224,7 @@ const SELISE_APPS: BlocksApp[] = [
     description: "Business Logic",
     url: getRuntimeEnv("BLOCKS_LOGIC_BASE_URL"),
     icon: <LogicIcon />,
-    clientId: "a25aee32-73ae-484b-b813-522a8d091f89",
+    clientId: getRuntimeEnv("BLOCKS_LOGIC_CLIENT_ID"),
     redirectUri: getRuntimeEnv("BLOCKS_LOGIC_CALLBACK_URL"),
   },
   {
@@ -233,7 +233,7 @@ const SELISE_APPS: BlocksApp[] = [
     description: "Monitoring & Logs",
     url: getRuntimeEnv("BLOCKS_MONITOR_BASE_URL"),
     icon: <ObservabilityIcon />,
-    clientId: "1bd234da-1fa1-4264-982e-3debb1078be5",
+    clientId: getRuntimeEnv("BLOCKS_MONITOR_CLIENT_ID"),
     redirectUri: getRuntimeEnv("BLOCKS_MONITOR_CALLBACK_URL"),
   },
   {
@@ -242,7 +242,7 @@ const SELISE_APPS: BlocksApp[] = [
     description: "CI/CD & Releases",
     url: getRuntimeEnv("BLOCKS_RELEASE_BASE_URL"),
     icon: <DeploymentsIcon />,
-    clientId: "6523b311-256f-4b9a-a88a-2ac4e02bad25",
+    clientId: getRuntimeEnv("BLOCKS_RELEASE_CLIENT_ID"),
     redirectUri: getRuntimeEnv("BLOCKS_RELEASE_CALLBACK_URL"),
   },
 ];

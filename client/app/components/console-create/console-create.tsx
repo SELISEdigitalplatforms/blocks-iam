@@ -12,7 +12,7 @@ export default function ConsoleCreateProject() {
       setIsLoading(true);
       const blocksKey = getRuntimeEnv("BLOCKS_X_BLOCKS_KEY");
       const iamBaseUrl = getRuntimeEnv("BLOCKS_IAM_BASE_URL");
-      const clientId = "5225b9c1-15bc-41b0-bdc6-d3ceb180ccc5";
+      const clientId = getRuntimeEnv("BLOCKS_OS_CLIENT_ID");
       const redirectUri = getRuntimeEnv("BLOCKS_OS_CALLBACK_URL");
       const initiateUrl = `${iamBaseUrl}/api/idp/initiate?x-blocks-key=${blocksKey}&clientId=${clientId}&redirectUri=${redirectUri}`;
 
