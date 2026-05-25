@@ -280,7 +280,7 @@ export const authService = new AuthService();
 
 //   logout() {
 //     // For localhost, send actual refresh token; for remote, send empty (uses cookie)
-//     const isLocalhost = getRuntimeEnv("BLOCKS_API_BASE_URL")?.includes("localhost");
+//     const isLocalhost = getRuntimeEnv("BLOCKS_IAM_BASE_URL")?.includes("localhost");
 //     const refreshToken = isLocalhost ? (useAuthStore.getState().refreshToken || "") : "";
 //     return http.post(AUTH_ENDPOINTS.LOGOUT, { refreshToken });
 //   }

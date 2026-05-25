@@ -22,8 +22,8 @@ export default function LoginCallbackPage() {
     const apiBaseUrl = API_BASES.IDP.startsWith("http") ? API_BASES.IDP : window.location.origin;
     const callbackUrl = new URL("/api/idp/callback", apiBaseUrl);
 
-    // const apiBaseUrl = import.meta.env.BLOCKS_API_BASE_URL?.startsWith("http")
-    //   ? import.meta.env.BLOCKS_API_BASE_URL
+    // const apiBaseUrl = import.meta.env.BLOCKS_IAM_BASE_URL?.startsWith("http")
+    //   ? import.meta.env.BLOCKS_IAM_BASE_URL
     //   : window.location.origin;
     // const callbackUrl = new URL("/api/idp/callback", apiBaseUrl);
 
