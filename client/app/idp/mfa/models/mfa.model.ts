@@ -32,7 +32,6 @@ export interface IConfigureUserMFAResponse {
   isSuccess: boolean;
 }
 export interface ISetupUserTotpPayload {
-  projectKey: string;
   id: string;
 }
 export interface ISetupUserTotpResponse {
@@ -43,7 +42,6 @@ export interface ISetupUserTotpResponse {
 }
 export interface IGenerateUserMFA_OtpPayload {
   userId: string;
-  projectKey: string;
   mfaType: number;
   sendPhoneNumberAsEmailDomain?: string;
 }
@@ -56,7 +54,6 @@ export interface IVerifyMfaOtpPayload {
   mfaId: string;
   verificationCode: string;
   authType: number;
-  projectKey: string;
   isFromTokenCall?: boolean;
 }
 export interface IVerifyMfaOtpResponse {

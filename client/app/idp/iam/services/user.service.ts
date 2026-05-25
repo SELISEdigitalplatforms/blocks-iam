@@ -91,10 +91,29 @@ export class UserService {
       if (Array.isArray(value)) return value as string[];
       return Object.values(value as Record<string, string[]>).flat();
     };
-    const normalized: IUpdateUserPayload = {
-      ...payload,
+    const normalized = {
+      itemId: payload.itemId,
+      firstName: payload.firstName,
+      lastName: payload.lastName,
+      email: payload.email,
+      userName: payload.userName,
+      language: payload.language,
+      organizationIds: payload.organizationIds,
       roles: flattenRecord(payload.roles),
       permissions: flattenRecord(payload.permissions),
+      active: payload.active,
+      status: payload.status,
+      isVerified: payload.isVerified,
+      mfaEnabled: payload.mfaEnabled,
+      isMfaVerified: payload.isMfaVerified,
+      userMfaType: payload.userMfaType,
+      provisioningSource: payload.provisioningSource,
+      externalIdentities: payload.externalIdentities,
+      userCreationType: payload.userCreationType,
+      isMultiOrgEnabled: payload.isMultiOrgEnabled,
+      organizations: payload.organizations,
+      profileImageId: payload.profileImageId,
+      profileImageUrl: payload.profileImageUrl,
     };
     return http.post(`/api/iam/users/${payload.itemId}`, normalized);
   }

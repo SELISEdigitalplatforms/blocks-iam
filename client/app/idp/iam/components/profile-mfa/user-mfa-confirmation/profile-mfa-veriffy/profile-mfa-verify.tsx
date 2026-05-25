@@ -22,7 +22,7 @@ export const ProfileMFAVerify = () => {
 
   const generateOtp = useCallback(async () => {
     try {
-      const res = await mutateAsync({ projectKey, userId, mfaType: mfaMethodType });
+      const res = await mutateAsync({ userId, mfaType: mfaMethodType });
       if (!res.isSuccess) {
         isFirstMount.current = true;
         setIsVerifyModalOpen(false);
