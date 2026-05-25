@@ -9,7 +9,7 @@ namespace Iam.DomainService.Resources
         Task<BaseMutationResponse> CreatePermissionAsync(CreatePermissionRequest command);
         Task<BaseMutationResponse> UpdatePermissionAsync(string id, UpdatePermissionRequest command);
         Task<BaseMutationResponse> CreateRoleAsync(CreateRoleRequest command);
-        Task<BaseMutationResponse> UpdateRoleAsync(string id, UpdateRoleRequest command);
+        Task<BaseMutationResponse> UpdateRoleAsync(UpdateRoleRequest command);
         Task<SetRolesResponse> SetRolesAsync(SetRolesRequest command);
         Task ExecuteResourceMutationCommandAsync(ResourceMutationEvent command);
         Task<bool> ProcessPermissionAsync(ResourceSetToPermissionMutationEvent command);
