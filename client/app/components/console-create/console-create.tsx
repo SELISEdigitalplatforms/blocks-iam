@@ -36,8 +36,8 @@ export default function ConsoleCreateProject() {
   };
 
   return (
-    <div className="mx-auto flex max-w-lg flex-col items-center gap-1 text-center">
-      <div className="relative mt-24 w-full overflow-hidden rounded-2xl blocks-gradient px-8 py-10 shadow-md">
+    <div className="flex h-full w-full flex-col">
+      <div className="relative w-full overflow-hidden rounded-2xl blocks-gradient px-8 py-10 shadow-md">
         <div className="absolute -right-8 -top-8 h-40 w-40 rounded-full bg-white/5" />
         <div className="absolute -bottom-6 right-4 h-24 w-24 rounded-full bg-white/5" />
         <div className="relative">
