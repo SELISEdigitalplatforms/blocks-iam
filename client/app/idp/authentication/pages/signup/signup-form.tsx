@@ -136,6 +136,7 @@ export const SignupForm = ({
               </div>
               <Button
                 type="submit"
+                variant="primary"
                 className="w-full rounded"
                 disabled={isPending || !isValid || !captchaCode || !isChecked}
               >

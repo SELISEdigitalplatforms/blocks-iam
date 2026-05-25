@@ -153,6 +153,7 @@ export const ResetPasswordForm = ({ code }: ResetPasswordFormProps) => {
 
         <Button
           type="submit"
+          variant="primary"
           className="w-full"
           disabled={isPending || !captchaCode || !isValid || !requirementsMet}
         >
