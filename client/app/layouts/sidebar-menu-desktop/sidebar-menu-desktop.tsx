@@ -20,7 +20,9 @@ export function SidebarMenuDesktop() {
   const isProjectOverviewRoute = pathname.startsWith("/project-overview");
   const getLogoSrc = () => {
     if (isSidebarOpen) {
-      return resolvedTheme === "dark" ? "/Logo_White.svg" : "/Logo.svg";
+      return resolvedTheme === "dark"
+        ? "/blocks-logos/iam_dark_mode.svg"
+        : "/blocks-logos/iam_light_mode.svg";
     }
     return resolvedTheme === "dark" ? "/Icon_White.svg" : "/Icon.svg";
   };

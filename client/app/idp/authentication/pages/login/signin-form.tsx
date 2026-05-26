@@ -132,7 +132,7 @@ export const SigninForm = ({ mode = "default", oidcContext }: SigninFormProps) =
           } as any)
         }
 
-        <Button type="submit" className="w-full rounded" disabled={isPending || (isTokenNeed && !token)}>
+        <Button type="submit" variant="primary" className="w-full rounded" disabled={isPending || (isTokenNeed && !token)}>
           Log in
         </Button>
       </form>
