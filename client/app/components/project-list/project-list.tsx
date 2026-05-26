@@ -63,14 +63,14 @@ export function ProjectList({ collapsed = false }: { collapsed?: boolean }) {
   return (
     <DropdownMenu>
       {collapsed ? (
-        <DropdownMenuTrigger className="group relative flex h-10 w-full items-center justify-center rounded-lg transition-colors hover:bg-accent hover:text-accent-foreground">
+        <DropdownMenuTrigger disabled className="group relative flex h-10 w-full items-center justify-center rounded-lg transition-colors hover:bg-accent hover:text-accent-foreground">
           <FolderOpen className="h-5 w-5 text-muted-foreground" />
           <div className="pointer-events-none absolute left-full top-0 z-20 ml-2 min-w-max whitespace-nowrap rounded bg-gray-300 px-2 py-1 text-xs text-primary opacity-0 transition-opacity group-hover:opacity-100">
             {name || "Select a Project"}
           </div>
         </DropdownMenuTrigger>
       ) : (
-        <DropdownMenuTrigger className="w-full rounded-lg px-2 py-2 text-left transition-colors hover:bg-accent hover:text-accent-foreground">
+        <DropdownMenuTrigger disabled className="w-full rounded-lg px-2 py-2 text-left transition-colors hover:bg-accent hover:text-accent-foreground">
           <div className="flex items-center gap-2.5">
             <FolderOpen className="h-4 w-4 shrink-0 text-muted-foreground" />
             <div className="min-w-0 flex-1">
