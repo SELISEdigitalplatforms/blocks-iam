@@ -48,12 +48,14 @@ export function BlocksLoginPage({
   const navLabel = active.badge;
   const heroSubtitle = active.tagline;
   const features = active.featureChips;
+  const derivedKeywordPrefix = active.descriptionTitle;
+  const derivedKeywords = active.keywords;
 
   const [keywordIdx, setKeywordIdx] = useState(0);
   const [keywordVisible, setKeywordVisible] = useState(true);
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
 
-  const resolvedKeywords = useMemo(() => keywords, [keywords]);
+  const resolvedKeywords = useMemo(() => derivedKeywords, [derivedKeywords]);
 
   useEffect(() => {
     const id = setInterval(() => {
@@ -201,7 +203,7 @@ export function BlocksLoginPage({
           </h1>
           <p className="title-sub">{heroSubtitle}</p>
           <p className="keywords">
-            {keywordPrefix}{" "}
+            {derivedKeywordPrefix}{" "}
             <span className="keyword-anim" style={{ opacity: keywordVisible ? 1 : 0 }}>
               {resolvedKeywords[keywordIdx]}
             </span>
