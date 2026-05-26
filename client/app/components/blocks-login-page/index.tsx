@@ -1,7 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Button } from "@/components/ui-kits/button/button";
 import { Badge } from "@/components/ui-kits/badge/badge";
-import { Separator } from "@/components/ui-kits/separator/separator";
 import { ModeToggle } from "@/components/mode-toggle/mode-toggle";
 import { BLOCKS_PRODUCTS } from "@/constants/blocks-products";
 
@@ -177,8 +176,6 @@ export function BlocksLoginPage({
         <div className="nav-left">
           <img src="/blocks-logos/iam_light_mode.svg" className="nav-logo-mark dark:hidden" />
           <img src="/blocks-logos/iam_dark_mode.svg" className="nav-logo-mark hidden dark:block" />
-          <Separator orientation="vertical" className="nav-divider" />
-          <span className="nav-product">{navLabel}</span>
         </div>
         <div className="nav-right">
           <nav className="nav-links">
