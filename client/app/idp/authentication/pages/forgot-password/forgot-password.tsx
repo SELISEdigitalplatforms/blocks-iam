@@ -31,7 +31,7 @@ export const ForgotPassword = () => {
           {/* Card */}
           <div className="overflow-hidden rounded-2xl border border-[hsl(var(--border-default))] bg-[hsl(var(--card))] shadow-md">
             {/* Card header */}
-            <div className="relative overflow-hidden rounded-t-2xl bg-primary px-6 py-7">
+            <div className="relative overflow-hidden rounded-t-2xl blocks-gradient px-6 py-7">
               <div className="absolute -right-8 -top-8 h-32 w-32 rounded-full bg-white/5" />
               <div className="absolute -bottom-6 right-4 h-20 w-20 rounded-full bg-white/5" />
               <span className="relative inline-flex items-center rounded-full bg-white/15 px-2.5 py-0.5 text-[10px] font-semibold uppercase tracking-widest text-primary-foreground/80">
