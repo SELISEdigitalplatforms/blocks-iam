@@ -91,14 +91,15 @@ export const ForgotPasswordForm = () => {
           />
           {isValid && <Captcha {...captcha} />}
 
-          <div className="my-2 flex items-center">
+          {/* <div className="my-2 flex items-center">
             <hr className="flex-grow border-gray-300" />
             <span className="mx-2 text-xs text-gray-500">OR</span>
             <hr className="flex-grow border-gray-300" />
-          </div>
+          </div> */}
 
           <Button
             type="submit"
+            variant="primary"
             className="w-full rounded"
             disabled={isPending || !isValid || !captchaCode}
           >
