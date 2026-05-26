@@ -75,7 +75,7 @@ export function EnvironmentList({ collapsed = false }: { collapsed?: boolean }) 
   return (
     <DropdownMenu>
       {collapsed ? (
-        <DropdownMenuTrigger className="group relative flex h-10 w-full items-center justify-center rounded-lg transition-colors hover:bg-accent hover:text-accent-foreground">
+        <DropdownMenuTrigger disabled className="group relative flex h-10 w-full items-center justify-center rounded-lg transition-colors hover:bg-accent hover:text-accent-foreground">
           <Globe className="h-5 w-5 text-muted-foreground" />
           {environment && (
             <span className="absolute right-2 top-2 h-2 w-2 rounded-full bg-[hsl(var(--blocks-primary-50))] ring-1 ring-background" />
@@ -85,7 +85,7 @@ export function EnvironmentList({ collapsed = false }: { collapsed?: boolean }) 
           </div>
         </DropdownMenuTrigger>
       ) : (
-        <DropdownMenuTrigger className="w-full rounded-lg px-2 py-2 text-left transition-colors hover:bg-accent hover:text-accent-foreground">
+        <DropdownMenuTrigger disabled className="w-full rounded-lg px-2 py-2 text-left transition-colors hover:bg-accent hover:text-accent-foreground">
           <div className="flex items-center gap-2.5">
             <Globe className="h-4 w-4 shrink-0 text-muted-foreground" />
             <div className="flex min-w-0 flex-1 flex-col items-start">
