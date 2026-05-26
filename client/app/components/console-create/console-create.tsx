@@ -36,21 +36,26 @@ export default function ConsoleCreateProject() {
   };
 
   return (
-    <div className="mx-auto flex max-w-2xl flex-col items-center gap-1 text-center">
-      <h3 className="mt-32 text-3xl font-bold tracking-tight">Welcome to SELISE Blocks</h3>
-      <div className="mt-3 max-w-lg sm:mt-5 lg:max-w-2xl">
-        <p className="text-left text-base font-normal leading-7 text-high-emphasis">
-          Explore and manage all your projects in one place. With SELISE Blocks, building and
-          scaling applications has never been easier. Start by creating a project.
-        </p>
-      </div>
-      <div className="mt-6 grid grid-cols-2 gap-4">
-        <Button className="text-sm" disabled={isLoading} onClick={openBlocksOS}>
-          {isLoading ? "Redirecting…" : "Create a project"}
-        </Button>
-        <Button variant="ghost" disabled>
-          View documentation
-        </Button>
+    <div className="flex h-full w-full flex-col">
+      <div className="relative w-full overflow-hidden rounded-2xl blocks-gradient px-8 py-10 shadow-md">
+        <div className="absolute -right-8 -top-8 h-40 w-40 rounded-full bg-white/5" />
+        <div className="absolute -bottom-6 right-4 h-50 w-24 rounded-full bg-white/5" />
+        <div className="relative flex flex-col items-center text-center">
+          <h3 className="text-2xl font-semibold tracking-tight text-white">Welcome to SELISE Blocks</h3>
+          <p className="mt-2 text-sm font-medium text-white/60 tracking-wide">Manage all your projects in one place</p>
+          <p className="mt-4 max-w-md text-sm leading-relaxed text-white/75">
+            Explore and manage all your projects in one place. With SELISE Blocks, building and
+            scaling applications has never been easier. Start by creating a project.
+          </p>
+          <div className="mt-6 flex justify-center gap-4">
+            <Button className="w-40 text-sm border-white/40 text-white hover:bg-white/10 hover:text-white" disabled={isLoading} onClick={openBlocksOS}>
+              {isLoading ? "Redirecting…" : "Create a project"}
+            </Button>
+            <Button variant="ghost" className="w-40 text-sm text-white/70 hover:bg-white/10 hover:text-white" disabled>
+              View documentation
+            </Button>
+          </div>
+        </div>
       </div>
     </div>
   );

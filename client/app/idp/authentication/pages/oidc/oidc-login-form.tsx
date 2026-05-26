@@ -412,6 +412,7 @@ export const OidcLoginForm = ({
 
             <Button
               type="submit"
+              variant="primary"
               className="w-full rounded"
               disabled={isLoading || (isTokenNeed && !token)}
             >
