@@ -8,6 +8,7 @@ import { UserDropdownMenu } from "@/components/user-dropdown-menu/user-dropdown-
 import { SidebarMobileView } from "@/layouts/sidebar-mobile-view/sidebar-mobile-view";
 import { SidebarContext } from "@/contexts/dashboard-layout-provider";
 import { BlocksAppLauncher } from "@/components/blocks-app-launcher/blocks-app-launcher";
+import { BackToConsoleNavigator } from "@/components/back-to-console-navigator/back-to-console-navigator";
 import { useProjectStore } from "@/store/useProjectStore";
 import { cn } from "@/lib/utils";
 
@@ -51,9 +52,7 @@ export function DashboardHeader() {
           )}
         </div>
         <div className="flex items-center gap-4">
-          <Button variant="outline" size="sm" className="hidden text-xs sm:inline-flex" asChild>
-            <Link to="/console">Back to Console</Link>
-          </Button>
+          <BackToConsoleNavigator />
           <ModeToggle />
           <Notification />
           <BlocksAppLauncher />
