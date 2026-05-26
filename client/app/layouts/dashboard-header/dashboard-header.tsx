@@ -1,5 +1,5 @@
 import { useContext } from "react";
-import { useLocation } from "react-router-dom";
+import { Link, useLocation } from "react-router-dom";
 import { ChevronRight, FolderOpen, PanelLeft } from "lucide-react";
 import { Button } from "@/components/ui-kits/button/button";
 import { ModeToggle } from "@/components/mode-toggle/mode-toggle";
@@ -51,6 +51,9 @@ export function DashboardHeader() {
           )}
         </div>
         <div className="flex items-center gap-4">
+          <Button variant="outline" size="sm" className="hidden text-xs sm:inline-flex" asChild>
+            <Link to="/console">Back to Console</Link>
+          </Button>
           <ModeToggle />
           <Notification />
           <BlocksAppLauncher />
