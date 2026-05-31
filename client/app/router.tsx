@@ -171,9 +171,9 @@ export const router = createBrowserRouter([
         element: <Navigate to="/project-overview/environments" replace />,
       },
       { path: "/project-overview/environments", element: <EnvironmentsPage /> },
-      { path: "/project-overview/people", element: <PeopleManagement /> },
-      { path: "/project-overview/repositories", element: <RepositoriesPage /> },
-      { path: "/project-overview/settings", element: <SettingsPage /> },
+      // { path: "/project-overview/people", element: <PeopleManagement /> },
+      // { path: "/project-overview/repositories", element: <RepositoriesPage /> },
+      // { path: "/project-overview/settings", element: <SettingsPage /> },
     ],
   },
 

@@ -51,7 +51,7 @@ export const ProjectCard = ({ project, projects }: ProjectCardProps) => {
           {project.name}
         </CardTitle>
         <div className="absolute right-0 top-0">
-          {/* <TooltipProvider>
+          <TooltipProvider>
             <Tooltip>
               <TooltipTrigger asChild>
                 <Button
@@ -65,7 +65,7 @@ export const ProjectCard = ({ project, projects }: ProjectCardProps) => {
               </TooltipTrigger>
               <TooltipContent>Configure Project</TooltipContent>
             </Tooltip>
-          </TooltipProvider> */}
+          </TooltipProvider>
         </div>
       </div>
       <div className="mt-auto">
