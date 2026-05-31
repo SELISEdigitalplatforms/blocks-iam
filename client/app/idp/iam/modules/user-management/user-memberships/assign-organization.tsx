@@ -153,7 +153,9 @@ export const AssignOrganization = ({ userId, projectKey }: AssignOrganizationPro
                   </SelectItem>
                 ) : availableOrgs.length === 0 ? (
                   <SelectItem value="none" disabled>
-                    No organizations available
+                    {organizations.length === 0
+                      ? "No organizations found"
+                      : "All organizations already assigned"}
                   </SelectItem>
                 ) : (
                   availableOrgs.map((org) => (
