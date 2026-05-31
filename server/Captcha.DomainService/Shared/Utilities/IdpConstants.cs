@@ -22,7 +22,7 @@ namespace Authentication.DomainService.Utilities
         private const string RabbitMqProvider = "rabbitmq";
 
         #region Identifier Service Constants
-        public const string IdentifierQueueName = "blocks_idp_identifier_listener";
+        //public const string IdentifierQueueName = "blocks_idp_identifier_listener";
         public const string DataCleanupQueue = "blocks_idp_data_cleanup_listener";
         public const string LanguageDataMigrationQueue = "blocks_idp_uilm_environment_data_migration_listener";
         public const string GenericMigrationQueue = "blocks_idp_generic_migration_listener";
@@ -62,7 +62,6 @@ namespace Authentication.DomainService.Utilities
                     ConsumerSubscriptions = [ConsumerSubscription.BindToQueue(AuthenticationQueue),
                                              ConsumerSubscription.BindToQueue(IamQueue),
                                              ConsumerSubscription.BindToQueue(MfaQueueName),
-                                             ConsumerSubscription.BindToQueue(IdentifierQueueName),
                                              ConsumerSubscription.BindToQueue(DataCleanupQueue),
                                              ConsumerSubscription.BindToQueue(LanguageDataMigrationQueue),
                                              ConsumerSubscription.BindToQueue(GenericMigrationQueue)],
@@ -76,7 +75,7 @@ namespace Authentication.DomainService.Utilities
             {
                 AzureServiceBusConfiguration = new AzureServiceBusConfiguration
                 {
-                    Queues = [AuthenticationQueue, IamQueue, MfaQueueName, IdentifierQueueName, DataCleanupQueue, LanguageDataMigrationQueue, GenericMigrationQueue],
+                    Queues = [AuthenticationQueue, IamQueue, MfaQueueName, DataCleanupQueue, LanguageDataMigrationQueue, GenericMigrationQueue],
                     Topics = [MigrationCompletionTopic]
                 }
             };
