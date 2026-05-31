@@ -1,6 +1,6 @@
 import { Input } from "@/components/ui-kits/input/input";
 import { Skeleton } from "@/components/ui-kits/skeleton/skeleton";
-import { Checkbox } from "@radix-ui/react-checkbox";
+import { Checkbox } from "@/components/ui-kits/checkbox/checkbox";
 import { TabsContent } from "@radix-ui/react-tabs";
 
 type MembershipRolesTabProps = {
@@ -51,11 +51,13 @@ export const MembershipRolesTab = ({
               {filteredRoles.map((role) => (
                 <div
                   key={role.slug}
-                  className="flex items-center gap-3 border-b p-3 last:border-b-0 hover:bg-muted/30"
+                  className="flex cursor-pointer items-center gap-3 border-b p-3 last:border-b-0 hover:bg-muted/30"
+                  onClick={() => onRoleToggle(role.slug)}
                 >
                   <Checkbox
                     checked={selectedRoles.includes(role.slug)}
                     onCheckedChange={() => onRoleToggle(role.slug)}
+                    onClick={(e) => e.stopPropagation()}
                   />
                   <span>{role.name}</span>
                 </div>

@@ -9,7 +9,6 @@ import {
     DialogTitle,
 } from "@/components/ui-kits/dialog/dialog";
 import { showErrorToast, showSuccessToast } from "@/hooks/use-toast";
-import { isErrorWithErrors } from "@/lib/error";
 import { useUpdateUser, useGetUserById } from "@blocks-idp/iam/hooks/use-user";
 import { IMembership } from "@blocks-idp/iam/models/user";
 
@@ -35,17 +34,35 @@ export const RemoveMembership = ({
     const { data: userData } = useGetUserById({ id: userId, projectKey });
     const { mutateAsync, isPending } = useUpdateUser({ id: userId, projectKey });
 
-    const existingMemberships = userData?.data?.organizations || [];
-
     const onConfirm = async () => {
         try {
-            const updatedMemberships = existingMemberships.filter(
-                (m) => m.organizationId !== membership.organizationId
+
+            const updatedOrganizationIds = (userData?.data?.organizationIds || []).filter(
+                (id) => id !== membership.organizationId,
             );
+            // Remove the unassigned org's entries from roles/permissions Records
+            const updatedRoles = Object.values(
+                Object.fromEntries(
+                    Object.entries(userData?.data?.roles || {}).filter(
+                        ([orgId]) => orgId !== membership.organizationId,
+                    ),
+                ),
+            ).flat();
+            const updatedPermissions = Object.values(
+                Object.fromEntries(
+                    Object.entries(userData?.data?.permissions || {}).filter(
+                        ([orgId]) => orgId !== membership.organizationId,
+                    ),
+                ),
+            ).flat();
 
             const res = await mutateAsync({
                 ...userData?.data,
                 itemId: userId,
+                organizationIds: updatedOrganizationIds,
+                organizations: updatedOrganizationIds,
+                roles: updatedRoles,
+                permissions: updatedPermissions,
             });
 
             if (!res.isSuccess) {
@@ -57,11 +74,12 @@ export const RemoveMembership = ({
             onOpenChange(false);
             onSuccess?.();
         } catch (error) {
-            if (isErrorWithErrors(error)) {
-                showErrorToast({ errors: error.errors });
-            } else {
-                showErrorToast({ errors: "Something went wrong" });
-            }
+            showErrorToast({
+                errors:
+                    typeof error === "object" && error !== null && "errors" in error
+                        ? (error as { errors: unknown }).errors
+                        : "Something went wrong",
+            });
         }
     };
 
