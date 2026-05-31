@@ -77,7 +77,7 @@ namespace Authentication.DomainService.OAuth
 
         public static void AddClaims(ClaimsIdentity claimsIdentity, Tenant tenant, User user, ResolvedAuthorizationClaims resolvedClaims, TokenRequest tokenRequest, StateInfo? stateInfo = null)
         {
-            
+
             claimsIdentity.AddClaim(new Claim(BlocksContext.SUBJECT_CLAIM, $"blocks|{user.ItemId}"));
             claimsIdentity.AddClaim(new Claim(BlocksContext.USER_ID_CLAIM, user.ItemId));
             claimsIdentity.AddClaim(new Claim(BlocksContext.ISSUED_AT_TIME_CLAIM, EpochTime.GetIntDate(DateTime.UtcNow).ToString(), ClaimValueTypes.Integer64));
@@ -88,10 +88,10 @@ namespace Authentication.DomainService.OAuth
                 resolvedOrgId = tokenRequest.OrganizationId;
             }
             claimsIdentity.AddClaim(new Claim(BlocksContext.ORGANIZATION_ID_CLAIM, resolvedOrgId));
-            claimsIdentity.AddClaim(new Claim(BlocksContext.EMAIL_CLAIM, user.Email ?? string.Empty));
-            claimsIdentity.AddClaim(new Claim(BlocksContext.USER_NAME_CLAIM, user.UserName ?? string.Empty));
-            claimsIdentity.AddClaim(new Claim(BlocksContext.DISPLAY_NAME_CLAIM, $"{user.FirstName ?? string.Empty} {user.LastName ?? string.Empty}".Trim()));
-            claimsIdentity.AddClaim(new Claim(BlocksContext.PHONE_NUMBER_CLAIM, user.PhoneNumber ?? string.Empty));
+            // claimsIdentity.AddClaim(new Claim(BlocksContext.EMAIL_CLAIM, user.Email ?? string.Empty));
+            // claimsIdentity.AddClaim(new Claim(BlocksContext.USER_NAME_CLAIM, user.UserName ?? string.Empty));
+            // claimsIdentity.AddClaim(new Claim(BlocksContext.DISPLAY_NAME_CLAIM, $"{user.FirstName ?? string.Empty} {user.LastName ?? string.Empty}".Trim()));
+            // claimsIdentity.AddClaim(new Claim(BlocksContext.PHONE_NUMBER_CLAIM, user.PhoneNumber ?? string.Empty));
             claimsIdentity.AddClaim(new Claim("token_version", user.TokenVersion.ToString(), ClaimValueTypes.Integer32));
             claimsIdentity.AddClaim(new Claim("security_stamp", user.SecurityStamp ?? string.Empty));
 
@@ -126,7 +126,7 @@ namespace Authentication.DomainService.OAuth
                 claimsIdentity.AddClaim(new Claim(BlocksContext.TENANT_ID_CLAIM, tenant.TenantId));
             }
         }
-        
+
         public async Task<byte[]?> GetOrRetrieveCertAsync(Tenant tenant)
         {
             _logger.LogInformation("Getting Certificate");
@@ -149,7 +149,7 @@ namespace Authentication.DomainService.OAuth
 
             return cachedCert;
         }
-        
+
         public static SigningCredentials MakeSigningCredentials(byte[] certificateData, string password)
         {
             X509Certificate2 certificate;
@@ -176,11 +176,11 @@ namespace Authentication.DomainService.OAuth
             var rsa = certificate.GetRSAPrivateKey() ?? throw new CryptographicException("Invalid private key");
             // Create the security key from the full RSA key parameters
             _ = new RsaSecurityKey(rsa)
-                    {
-                        // *** THIS IS THE CRITICAL STEP ***
-                        // Set the KeyId on the key object using the same logic as the JWKS endpoint.
-                        KeyId = Base64UrlEncoder.Encode(certificate.Thumbprint)
-                    };
+            {
+                // *** THIS IS THE CRITICAL STEP ***
+                // Set the KeyId on the key object using the same logic as the JWKS endpoint.
+                KeyId = Base64UrlEncoder.Encode(certificate.Thumbprint)
+            };
             return new SigningCredentials(new RsaSecurityKey(rsa), SecurityAlgorithms.RsaSha256, SecurityAlgorithms.Sha256Digest);
         }
 
