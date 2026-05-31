@@ -22,14 +22,14 @@ export class PeopleService {
     return http.post(PEOPLE_ENDPOINTS.CONFIRM_INVITATION, payload);
   }
 
-  getPeople(payload: {
-    page: number;
-    pageSize: number;
-    filter: string;
-    projectGroupId: string;
-  }): Promise<GetPeopleResponse> {
-    return http.post<GetPeopleResponse>(PEOPLE_ENDPOINTS.GETS, payload);
-  }
+  // getPeople(payload: {
+  //   page: number;
+  //   pageSize: number;
+  //   filter: string;
+  //   projectGroupId: string;
+  // }): Promise<GetPeopleResponse> {
+  //   return http.post<GetPeopleResponse>(PEOPLE_ENDPOINTS.GETS, payload);
+  // }
 
   invitePeople(invitePeoplePayload: IInvitePeoplePayload): Promise<IInvitePeopleResponse> {
     return http.post(PEOPLE_ENDPOINTS.INVITE, invitePeoplePayload);
