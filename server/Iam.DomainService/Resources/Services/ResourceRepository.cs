@@ -198,8 +198,19 @@ namespace Iam.DomainService.Resources
             var collection = _identityAccessManagementRepository.GetCollection<Role>();
             var organizationId = ResolveOrganizationId();
 
-            var filter = Builders<Role>.Filter.Eq(x => x.OrganizationId, organizationId);
-
+            //var filter = Builders<Role>.Filter.Eq(x => x.OrganizationId, organizationId);
+            var filter = Builders<Role>.Filter.Empty;
+            if (organizationId == "default")  
+            {
+                filter =
+                    Builders<Role>.Filter.AnyEq(x => x.OrganizationIds, organizationId) |
+                    Builders<Role>.Filter.Size(x => x.OrganizationIds, 0);
+            }
+            else
+            {
+                filter =
+                    Builders<Role>.Filter.AnyEq(x => x.OrganizationIds, organizationId);
+            }
             SortDefinition<Role>? sort = null;
 
             if (query.Filter is not null)
