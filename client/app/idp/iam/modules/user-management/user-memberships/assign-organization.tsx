@@ -60,13 +60,13 @@ export const AssignOrganization = ({ userId, projectKey }: AssignOrganizationPro
 
   const { mutateAsync, isPending } = useUpdateUser({ id: userId, projectKey });
 
-  const existingMemberships = userData?.data?.organizations || [];
+  const existingOrgIds = userData?.data?.organizationIds || [];
   const organizations = orgsData?.organizations || [];
   const roles = rolesData?.data || [];
 
   // Filter out organizations that are already assigned or disabled
   const availableOrgs = organizations.filter(
-    (org) => org.isEnable && !existingMemberships.some((m) => m.organizationId === org.itemId),
+    (org) => org.isEnable && !existingOrgIds.includes(org.itemId),
   );
 
   // Convert roles to options format for MultiSelect
@@ -82,7 +82,6 @@ export const AssignOrganization = ({ userId, projectKey }: AssignOrganizationPro
     }
 
     try {
-      const existingOrgIds = userData?.data?.organizationIds || [];
       const existingRoles = userData?.data?.roles || [];
 
       const updatedOrganizationIds = [...existingOrgIds, selectedOrgId];
