@@ -112,7 +112,7 @@ export interface IUpdateUserPayload {
   externalIdentities?: unknown[];
   userCreationType?: number;
   isMultiOrgEnabled?: boolean;
-  organizations?: IMembership[];
+  organizations?: string[];
   profileImageId?: string | null;
   profileImageUrl?: string | null;
 }

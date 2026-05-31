@@ -35,13 +35,9 @@ export const RemoveMembership = ({
     const { data: userData } = useGetUserById({ id: userId, projectKey });
     const { mutateAsync, isPending } = useUpdateUser({ id: userId, projectKey });
 
-    const existingMemberships = userData?.data?.organizations || [];
-
     const onConfirm = async () => {
         try {
-            const updatedMemberships = existingMemberships.filter(
-                (m) => m.organizationId !== membership.organizationId
-            );
+
             const updatedOrganizationIds = (userData?.data?.organizationIds || []).filter(
                 (id) => id !== membership.organizationId,
             );
@@ -50,7 +46,7 @@ export const RemoveMembership = ({
                 ...userData?.data,
                 itemId: userId,
                 organizationIds: updatedOrganizationIds,
-                organizations: updatedMemberships,
+                organizations: updatedOrganizationIds,
             });
 
             if (!res.isSuccess) {
