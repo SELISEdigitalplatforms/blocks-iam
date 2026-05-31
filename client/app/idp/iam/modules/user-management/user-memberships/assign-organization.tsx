@@ -82,7 +82,7 @@ export const AssignOrganization = ({ userId, projectKey }: AssignOrganizationPro
     }
 
     try {
-      const existingRoles = userData?.data?.roles || [];
+      const existingRoles = Object.values(userData?.data?.roles || {}).flat();
 
       const updatedOrganizationIds = [...existingOrgIds, selectedOrgId];
       const updatedRoles = [...new Set([...existingRoles, ...selectedRoles])];
@@ -93,6 +93,7 @@ export const AssignOrganization = ({ userId, projectKey }: AssignOrganizationPro
         organizationIds: updatedOrganizationIds,
         organizations: updatedOrganizationIds,
         roles: updatedRoles,
+        permissions: Object.values(userData?.data?.permissions || {}).flat(),
       });
 
       if (!res.isSuccess) {

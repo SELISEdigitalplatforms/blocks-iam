@@ -14,8 +14,8 @@ export interface User {
   phoneNumber: string;
   organizationIds: string[];
   lastUsedOrganizationId: string | null;
-  roles: string[];
-  permissions: string[];
+  roles: Record<string, string[]>;
+  permissions: Record<string, string[]>;
   active: boolean;
   status: number;
   statusReason: string | null;
