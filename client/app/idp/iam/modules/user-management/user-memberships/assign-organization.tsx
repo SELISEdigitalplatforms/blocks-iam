@@ -41,6 +41,7 @@ type AssignOrganizationProps = {
 
 export const AssignOrganization = ({ userId, projectKey }: AssignOrganizationProps) => {
   const [open, setOpen] = useState(false);
+  const [rolesPopoverOpen, setRolesPopoverOpen] = useState(false);
   const [selectedOrgId, setSelectedOrgId] = useState<string>("");
   const [selectedRoles, setSelectedRoles] = useState<string[]>([]);
 
@@ -144,6 +145,7 @@ export const AssignOrganization = ({ userId, projectKey }: AssignOrganizationPro
   const reset = () => {
     setSelectedOrgId("");
     setSelectedRoles([]);
+    setRolesPopoverOpen(false);
   };
 
   return (
@@ -200,7 +202,7 @@ export const AssignOrganization = ({ userId, projectKey }: AssignOrganizationPro
             ) : roles.length === 0 ? (
               <div className="p-2 text-sm text-muted-foreground">No roles available</div>
             ) : (
-              <Popover>
+              <Popover open={rolesPopoverOpen} onOpenChange={setRolesPopoverOpen}>
                 <PopoverTrigger asChild>
                   <Button variant="outline" role="combobox" className="w-full justify-between">
                     {selectedRoles.length > 0 ? (
@@ -235,6 +237,7 @@ export const AssignOrganization = ({ userId, projectKey }: AssignOrganizationPro
                           return (
                             <CommandItem
                               key={option.value}
+                              value={option.value}
                               onSelect={() => {
                                 const newSelected = isSelected
                                   ? selectedRoles.filter((v) => v !== option.value)
