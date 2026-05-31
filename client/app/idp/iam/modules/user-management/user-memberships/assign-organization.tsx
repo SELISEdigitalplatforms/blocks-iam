@@ -23,7 +23,6 @@ import { useGetOrganizations } from "@blocks-idp/iam/hooks/use-organization";
 import { useGetRoles } from "@blocks-idp/iam/hooks/use-roles";
 import { useUpdateUser, useGetUserById } from "@blocks-idp/iam/hooks/use-user";
 import { ChevronsUpDown, Check, Plus } from "lucide-react";
-import { IMembership } from "@blocks-idp/iam/models/user";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui-kits/popover/popover";
 import {
   Command,
@@ -84,20 +83,18 @@ export const AssignOrganization = ({ userId, projectKey }: AssignOrganizationPro
     }
 
     try {
-      const newMembership: IMembership = {
-        organizationId: selectedOrgId,
-        roles: selectedRoles,
-        permissions: [],
-      };
+      const existingOrgIds = userData?.data?.organizationIds || [];
+      const existingRoles = userData?.data?.roles || [];
 
-      const updatedMemberships = [...existingMemberships, newMembership];
-      const updatedOrganizationIds = [...(userData?.data?.organizationIds || []), selectedOrgId];
+      const updatedOrganizationIds = [...existingOrgIds, selectedOrgId];
+      const updatedRoles = [...new Set([...existingRoles, ...selectedRoles])];
 
       const res = await mutateAsync({
         ...userData?.data,
         itemId: userId,
         organizationIds: updatedOrganizationIds,
-        organizations: updatedMemberships,
+        organizations: updatedOrganizationIds,
+        roles: updatedRoles,
       });
 
       if (!res.isSuccess) {
