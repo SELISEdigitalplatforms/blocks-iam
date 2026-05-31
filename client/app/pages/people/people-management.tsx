@@ -1,8 +1,9 @@
-import { useGetPeople } from "@/hooks/use-people";
+// import { useGetPeople } from "@/hooks/use-people";
 import { Skeleton } from "@/components/ui-kits/skeleton/skeleton";
 import { Card, CardContent, CardHeader } from "@/components/ui-kits/card/card";
 import { Button } from "@/components/ui-kits/button/button";
 import { Badge } from "@/components/ui-kits/badge/badge";
+import { PeopleGroupedByEnvironments, SharedEnvironment } from "@/models/people";
 
 const PeopleManagementLoading = () => (
   <main className="flex flex-col p-6">
@@ -28,16 +29,16 @@ const PeopleManagementLoading = () => (
 );
 
 export const PeopleManagement = () => {
-  const { isLoading, data } = useGetPeople({
-    page: 0,
-    pageSize: 100,
-    filter: "",
-  });
+  // const { isLoading, data } = useGetPeople({
+  //   page: 0,
+  //   pageSize: 100,
+  //   filter: "",
+  // });
 
-  if (isLoading) return <PeopleManagementLoading />;
+  // if (isLoading) return <PeopleManagementLoading />;
 
-  const peoples = data?.peoples || [];
-  const isViewerOwner = data?.isOwner ?? false;
+  const peoples: PeopleGroupedByEnvironments[] = []; // data?.peoples || [];
+  const isViewerOwner = false; // data?.isOwner ?? false;
 
   return (
     <main className="flex flex-col p-6">
@@ -56,7 +57,7 @@ export const PeopleManagement = () => {
               </div>
             ) : (
               <div className="space-y-3">
-                {peoples.map((person, index) => (
+                {peoples.map((person: PeopleGroupedByEnvironments, index: number) => (
                   <div
                     key={index}
                     className="flex items-center justify-between rounded-md border p-3"
@@ -77,7 +78,7 @@ export const PeopleManagement = () => {
                       </div>
                     </div>
                     <div className="flex items-center gap-2">
-                      {person.sharedEnviroments?.map((env) => (
+                      {person.sharedEnviroments?.map((env: SharedEnvironment) => (
                         <Badge key={env.tenantId} variant="secondary" className="text-xs">
                           {env.enviroment}
                         </Badge>
