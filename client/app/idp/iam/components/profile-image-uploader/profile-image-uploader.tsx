@@ -49,6 +49,8 @@ export const ProfileImageUploader = ({ projectKey, id }: ProfileImageUploaderPro
         ...data?.data,
         itemId: id,
         organizations: data?.data?.organizationIds || [],
+        roles: Object.values(data?.data?.roles || {}).flat(),
+        permissions: Object.values(data?.data?.permissions || {}).flat(),
         profileImageId: userProfileFile.itemId,
         profileImageUrl: userProfileFile.url,
       });
