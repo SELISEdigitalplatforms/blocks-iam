@@ -18,7 +18,6 @@ import {
   SelectValue,
 } from "@/components/ui-kits/select/select";
 import { showErrorToast, showSuccessToast } from "@/hooks/use-toast";
-import { isErrorWithErrors } from "@/lib/error";
 import { useGetOrganizations } from "@blocks-idp/iam/hooks/use-organization";
 import { useGetRoles } from "@blocks-idp/iam/hooks/use-roles";
 import { useUpdateUser, useGetUserById } from "@blocks-idp/iam/hooks/use-user";
@@ -106,11 +105,12 @@ export const AssignOrganization = ({ userId, projectKey }: AssignOrganizationPro
       reset();
       setOpen(false);
     } catch (error) {
-      if (isErrorWithErrors(error)) {
-        showErrorToast({ errors: error.errors });
-      } else {
-        showErrorToast({ errors: "Something went wrong" });
-      }
+      showErrorToast({
+        errors:
+          typeof error === "object" && error !== null && "errors" in error
+            ? (error as { errors: unknown }).errors
+            : "Something went wrong",
+      });
     }
   };
 

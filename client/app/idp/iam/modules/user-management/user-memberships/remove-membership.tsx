@@ -9,7 +9,6 @@ import {
     DialogTitle,
 } from "@/components/ui-kits/dialog/dialog";
 import { showErrorToast, showSuccessToast } from "@/hooks/use-toast";
-import { isErrorWithErrors } from "@/lib/error";
 import { useUpdateUser, useGetUserById } from "@blocks-idp/iam/hooks/use-user";
 import { IMembership } from "@blocks-idp/iam/models/user";
 
@@ -58,11 +57,12 @@ export const RemoveMembership = ({
             onOpenChange(false);
             onSuccess?.();
         } catch (error) {
-            if (isErrorWithErrors(error)) {
-                showErrorToast({ errors: error.errors });
-            } else {
-                showErrorToast({ errors: "Something went wrong" });
-            }
+            showErrorToast({
+                errors:
+                    typeof error === "object" && error !== null && "errors" in error
+                        ? (error as { errors: unknown }).errors
+                        : "Something went wrong",
+            });
         }
     };
 

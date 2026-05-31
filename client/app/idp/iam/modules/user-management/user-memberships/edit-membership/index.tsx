@@ -2,7 +2,6 @@
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui-kits/sheet/sheet";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui-kits/tabs/tabs";
 import { showErrorToast, showSuccessToast } from "@/hooks/use-toast";
-import { isErrorWithErrors } from "@/lib/error";
 import { useGetPermissions } from "@blocks-idp/iam/hooks/use-permission";
 import { useGetRoles } from "@blocks-idp/iam/hooks/use-roles";
 import { useGetUserById, useUpdateUser } from "@blocks-idp/iam/hooks/use-user";
@@ -151,11 +150,12 @@ export const EditMembership = ({
       showSuccessToast({ description: "Membership updated successfully" });
       setIsEditing(false);
     } catch (error) {
-      if (isErrorWithErrors(error)) {
-        showErrorToast({ errors: error.errors });
-      } else {
-        showErrorToast({ errors: "Something went wrong" });
-      }
+      showErrorToast({
+        errors:
+          typeof error === "object" && error !== null && "errors" in error
+            ? (error as { errors: unknown }).errors
+            : "Something went wrong",
+      });
     }
   };
 
