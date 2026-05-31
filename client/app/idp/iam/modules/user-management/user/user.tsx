@@ -46,7 +46,7 @@ export const User = ({ id }: { id: string }) => {
 
   BREADCRUMB_CUSTOM_TITLES["/services/iam/user-detail"] = "Users";
   BREADCRUMB_CUSTOM_TITLES[`/services/iam/user-detail/${data?.data?.itemId}`] =
-    data?.data.lastName ?? null;
+    data?.data?.lastName ?? null;
   return (
     <div className="px-4 pt-4 md:px-6 md:pt-6">
       <div>
@@ -56,7 +56,7 @@ export const User = ({ id }: { id: string }) => {
         <div className="flex w-full flex-col">
           <div className="flex items-center justify-between text-base text-high-emphasis md:mt-5">
             <h3 className="text-2xl font-bold tracking-tight">
-              {data?.data.firstName} {data?.data.lastName}
+              {data?.data?.firstName} {data?.data?.lastName}
             </h3>
           </div>
 

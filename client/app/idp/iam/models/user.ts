@@ -14,8 +14,8 @@ export interface User {
   phoneNumber: string;
   organizationIds: string[];
   lastUsedOrganizationId: string | null;
-  roles: string[];
-  permissions: string[];
+  roles: Record<string, string[]>;
+  permissions: Record<string, string[]>;
   active: boolean;
   status: number;
   statusReason: string | null;
@@ -112,7 +112,7 @@ export interface IUpdateUserPayload {
   externalIdentities?: unknown[];
   userCreationType?: number;
   isMultiOrgEnabled?: boolean;
-  organizations?: IMembership[];
+  organizations?: string[];
   profileImageId?: string | null;
   profileImageUrl?: string | null;
 }
