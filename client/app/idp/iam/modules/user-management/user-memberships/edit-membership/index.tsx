@@ -142,6 +142,7 @@ export const EditMembership = ({
       const res = await mutateAsync({
         ...userData?.data,
         itemId: userId,
+        organizations: updatedMemberships,
       });
 
       if (!res.isSuccess) {

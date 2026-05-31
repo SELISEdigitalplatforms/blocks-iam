@@ -91,10 +91,13 @@ export const AssignOrganization = ({ userId, projectKey }: AssignOrganizationPro
       };
 
       const updatedMemberships = [...existingMemberships, newMembership];
+      const updatedOrganizationIds = [...(userData?.data?.organizationIds || []), selectedOrgId];
 
       const res = await mutateAsync({
         ...userData?.data,
         itemId: userId,
+        organizationIds: updatedOrganizationIds,
+        organizations: updatedMemberships,
       });
 
       if (!res.isSuccess) {
