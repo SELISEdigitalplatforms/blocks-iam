@@ -132,9 +132,10 @@ export class ProjectService {
     return http.post(MIGRATION_ENDPOINTS.VERIFY, payload);
   }
 
-  getMigrationStatus(tenantGroupId: string): Promise<IMigrationStatusResponse> {
-    const url = `${MIGRATION_ENDPOINTS.GET_STATUS}?tenantGroupId=${tenantGroupId}`;
-    return http.get(url);
+  getMigrationStatus(_tenantGroupId: string): Promise<IMigrationStatusResponse> {
+    // const url = `${MIGRATION_ENDPOINTS.GET_STATUS}?tenantGroupId=${_tenantGroupId}`;
+    // return http.get(url);
+    return Promise.resolve([]);
   }
 
   savePublicCertificate(payload: ISavePublicCertificatePayload): Promise<IUpdateProjectResponse> {
