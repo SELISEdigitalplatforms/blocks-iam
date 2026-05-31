@@ -31,6 +31,7 @@ import { EditMembership } from "./edit-membership";
 
 type UserMembershipsListProps = {
   memberships: IMembership[];
+  organizationIds: string[];
   orgNameMap: Map<string, string>;
   isLoading: boolean;
   userId: string;
@@ -83,6 +84,7 @@ const PermissionsBadges = ({ permissions }: { permissions: string[] }) => {
 
 export const UserMembershipsList = ({
   memberships,
+  organizationIds,
   orgNameMap,
   isLoading,
   userId,
@@ -120,17 +122,20 @@ export const UserMembershipsList = ({
       },
       {
         id: "roles",
-        accessorFn: (row) => row.roles.join(", "),
+        accessorFn: (row) => (Array.isArray(row.roles) ? row.roles : []).join(", "),
         header: () => (
           <div className="flex items-center">
             <span className="font-bold text-medium-emphasis">Roles</span>
           </div>
         ),
-        cell: ({ row }) => (
-          <div className="w-[150px]">
-            {row.original.roles.length > 0 ? row.original.roles.join(", ") : "-"}
-          </div>
-        ),
+        cell: ({ row }) => {
+          const roles = Array.isArray(row.original.roles) ? row.original.roles : [];
+          return (
+            <div className="w-[150px]">
+              {roles.length > 0 ? roles.join(", ") : "-"}
+            </div>
+          );
+        },
       },
       {
         id: "permissions",
@@ -143,7 +148,7 @@ export const UserMembershipsList = ({
           <div className="min-w-[300px]">
             <PermissionsBadges
               permissions={
-                (row.original as IMembership & { permissions?: string[] }).permissions || []
+                Array.isArray(row.original.permissions) ? row.original.permissions : []
               }
             />
           </div>
@@ -193,6 +198,17 @@ export const UserMembershipsList = ({
   }
 
   if (memberships.length === 0) {
+    if (organizationIds.length > 0) {
+      return (
+        <div className="flex flex-wrap gap-2 py-2">
+          {organizationIds.map((orgId) => (
+            <Badge key={orgId} variant="secondary">
+              {orgNameMap.get(orgId) || orgId}
+            </Badge>
+          ))}
+        </div>
+      );
+    }
     return (
       <div className="flex h-[100px] items-center justify-center text-medium-emphasis">
         No organizations found
