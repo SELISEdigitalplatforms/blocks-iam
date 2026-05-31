@@ -19,7 +19,16 @@ export const UserMemberships = ({ id, projectKey }: UserMembershipsProps) => {
         pageSize: 1000,
     });
 
-    const memberships = userData?.data?.organizations || [];
+    const memberships = useMemo(() => {
+        const orgs = userData?.data?.organizations;
+        if (orgs && orgs.length > 0) return orgs;
+        // Fall back to deriving from organizationIds when organizations array is empty
+        return (userData?.data?.organizationIds || []).map((orgId) => ({
+            organizationId: orgId,
+            roles: userData?.data?.roles || [],
+            permissions: userData?.data?.permissions || [],
+        }));
+    }, [userData?.data?.organizations, userData?.data?.organizationIds, userData?.data?.roles, userData?.data?.permissions]);
 
     // Create a map of organizationId to organizationName
     const orgNameMap = useMemo(() => {
