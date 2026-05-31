@@ -42,10 +42,15 @@ export const RemoveMembership = ({
             const updatedMemberships = existingMemberships.filter(
                 (m) => m.organizationId !== membership.organizationId
             );
+            const updatedOrganizationIds = (userData?.data?.organizationIds || []).filter(
+                (id) => id !== membership.organizationId,
+            );
 
             const res = await mutateAsync({
                 ...userData?.data,
                 itemId: userId,
+                organizationIds: updatedOrganizationIds,
+                organizations: updatedMemberships,
             });
 
             if (!res.isSuccess) {
