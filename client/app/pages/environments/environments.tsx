@@ -1,6 +1,6 @@
 import { useProjectStore } from "@/store/useProjectStore";
 import { useGetProjects, useGetMigrationStatus } from "@/hooks/use-project";
-import { useGetPeople } from "@/hooks/use-people";
+// import { useGetPeople } from "@/hooks/use-people";
 import { EnvironmentCard } from "@/components/environment-card/environment-card";
 import { AddEnvironmentModal } from "@/components/environment-card/add-environment-modal";
 import { Plus, ArrowRightLeft, CircleHelp } from "lucide-react";
@@ -43,8 +43,8 @@ const ProjectGroupLoading = () => (
 export const EnvironmentsPage = () => {
   const groupId = useProjectStore().selectedTenantGroup;
   const { data: environmentList, isLoading, isFetching } = useGetProjects(groupId ?? "");
-  const { data: peopleData } = useGetPeople({ page: 0, pageSize: 1, filter: "" });
-  const isViewerOwner = peopleData?.isOwner ?? false;
+  // const { data: peopleData } = useGetPeople({ page: 0, pageSize: 1, filter: "" });
+  const isViewerOwner = false; // peopleData?.isOwner ?? false;
   const [addEnvModalOpen, setAddEnvModalOpen] = useState(false);
   const navigate = useNavigate();
 
