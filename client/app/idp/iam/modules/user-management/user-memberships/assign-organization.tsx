@@ -1,5 +1,5 @@
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Button } from "@/components/ui-kits/button/button";
 import {
   Dialog,
@@ -64,16 +64,31 @@ export const AssignOrganization = ({ userId, projectKey }: AssignOrganizationPro
   const organizations = orgsData?.organizations || [];
   const roles = rolesData?.data || [];
 
-  // Filter out organizations that are already assigned or disabled
-  const availableOrgs = organizations.filter(
-    (org) => org.isEnable && !existingOrgIds.includes(org.itemId),
-  );
+  // Show all enabled organizations (including already-assigned ones)
+  const orgOptions = organizations.filter((org) => org.isEnable);
 
   // Convert roles to options format for MultiSelect
   const roleOptions = roles.map((role) => ({
     label: role.name,
     value: role.slug,
   }));
+
+  // When dialog opens, pre-select the org and its existing roles if there is exactly one assigned org
+  useEffect(() => {
+    if (!open) return;
+    if (existingOrgIds.length === 1) {
+      const orgId = existingOrgIds[0];
+      setSelectedOrgId(orgId);
+      setSelectedRoles(userData?.data?.roles?.[orgId] || []);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open]);
+
+  const handleOrgChange = (orgId: string) => {
+    setSelectedOrgId(orgId);
+    // Pre-populate existing roles when switching to an already-assigned org
+    setSelectedRoles(existingOrgIds.includes(orgId) ? userData?.data?.roles?.[orgId] || [] : []);
+  };
 
   const onConfirm = async () => {
     if (!selectedOrgId || selectedRoles.length === 0) {
@@ -82,10 +97,18 @@ export const AssignOrganization = ({ userId, projectKey }: AssignOrganizationPro
     }
 
     try {
-      const existingRoles = Object.values(userData?.data?.roles || {}).flat();
+      const isExistingOrg = existingOrgIds.includes(selectedOrgId);
+      const updatedOrganizationIds = isExistingOrg
+        ? existingOrgIds
+        : [...existingOrgIds, selectedOrgId];
 
-      const updatedOrganizationIds = [...existingOrgIds, selectedOrgId];
-      const updatedRoles = [...new Set([...existingRoles, ...selectedRoles])];
+      // Keep other orgs' roles intact; replace roles for the selected org
+      const otherOrgRoles = Object.values(
+        Object.fromEntries(
+          Object.entries(userData?.data?.roles || {}).filter(([orgId]) => orgId !== selectedOrgId),
+        ),
+      ).flat();
+      const updatedRoles = [...new Set([...otherOrgRoles, ...selectedRoles])];
 
       const res = await mutateAsync({
         ...userData?.data,
@@ -101,7 +124,11 @@ export const AssignOrganization = ({ userId, projectKey }: AssignOrganizationPro
         return;
       }
 
-      showSuccessToast({ description: "Organization assigned successfully" });
+      showSuccessToast({
+        description: isExistingOrg
+          ? "Organization roles updated successfully"
+          : "Organization assigned successfully",
+      });
       reset();
       setOpen(false);
     } catch (error) {
@@ -142,7 +169,7 @@ export const AssignOrganization = ({ userId, projectKey }: AssignOrganizationPro
         <div className="space-y-4 py-4">
           <div className="space-y-2">
             <label className="text-sm font-medium">Organization name</label>
-            <Select value={selectedOrgId} onValueChange={setSelectedOrgId}>
+            <Select value={selectedOrgId} onValueChange={handleOrgChange}>
               <SelectTrigger>
                 <SelectValue placeholder="Organization name" />
               </SelectTrigger>
@@ -151,14 +178,12 @@ export const AssignOrganization = ({ userId, projectKey }: AssignOrganizationPro
                   <SelectItem value="loading" disabled>
                     Loading...
                   </SelectItem>
-                ) : availableOrgs.length === 0 ? (
+                ) : orgOptions.length === 0 ? (
                   <SelectItem value="none" disabled>
-                    {organizations.length === 0
-                      ? "No organizations found"
-                      : "All organizations already assigned"}
+                    No organizations found
                   </SelectItem>
                 ) : (
-                  availableOrgs.map((org) => (
+                  orgOptions.map((org) => (
                     <SelectItem key={org.itemId} value={org.itemId}>
                       {org.name}
                     </SelectItem>
