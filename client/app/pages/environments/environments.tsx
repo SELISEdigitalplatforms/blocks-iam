@@ -1,5 +1,6 @@
 import { useProjectStore } from "@/store/useProjectStore";
-import { useGetProjects, useGetMigrationStatus } from "@/hooks/use-project";
+import { useGetProjects } from "@/hooks/use-project";
+// import { useGetMigrationStatus } from "@/hooks/use-project";
 // import { useGetPeople } from "@/hooks/use-people";
 import { EnvironmentCard } from "@/components/environment-card/environment-card";
 import { AddEnvironmentModal } from "@/components/environment-card/add-environment-modal";
@@ -12,11 +13,12 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui-kits/dialog/dialog";
-import { useState, useCallback } from "react";
+import { useState } from "react";
+// import { useCallback } from "react";
 import { Skeleton } from "@/components/ui-kits/skeleton/skeleton";
 import { ProjectCardLoading } from "@/components/project-card/loading";
 import { useNavigate } from "react-router-dom";
-import { useNotificationListener } from "@/cross-modules/communication/hooks/use-notification-listener";
+// import { useNotificationListener } from "@/cross-modules/communication/hooks/use-notification-listener";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui-kits/tooltip/tooltip";
 
 const ProjectGroupLoading = () => (
@@ -48,18 +50,19 @@ export const EnvironmentsPage = () => {
   const [addEnvModalOpen, setAddEnvModalOpen] = useState(false);
   const navigate = useNavigate();
 
-  const { data: migrationStatus, refetch: refetchMigrationStatus } = useGetMigrationStatus(
-    groupId as string,
-  );
+  // const { data: migrationStatus, refetch: refetchMigrationStatus } = useGetMigrationStatus(
+  //   groupId as string,
+  // );
+  const migrationStatus: { targetedProjectKey: string }[] = [];
 
-  const handleMigrationNotification = useCallback(
-    (_: unknown) => {
-      void refetchMigrationStatus();
-    },
-    [refetchMigrationStatus],
-  );
+  // const handleMigrationNotification = useCallback(
+  //   (_: unknown) => {
+  //     void refetchMigrationStatus();
+  //   },
+  //   [refetchMigrationStatus],
+  // );
 
-  useNotificationListener("EnvironmentDataMigration", handleMigrationNotification);
+  // useNotificationListener("EnvironmentDataMigration", handleMigrationNotification);
 
   const handleAddEnvModalClose = () => {
     setAddEnvModalOpen(false);
