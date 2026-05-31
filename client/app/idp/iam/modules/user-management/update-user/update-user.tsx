@@ -61,6 +61,8 @@ export const UpdateUser = ({ id, projectKey, own = false }: UpdateUserProps) => 
         ...values,
         itemId: id,
         organizations: userData?.data?.organizationIds || [],
+        roles: Object.values(userData?.data?.roles || {}).flat(),
+        permissions: Object.values(userData?.data?.permissions || {}).flat(),
       });
       if (!res.isSuccess) return showErrorToast({ errors: res.errors });
       showSuccessToast({ description: "User updated successfully" });

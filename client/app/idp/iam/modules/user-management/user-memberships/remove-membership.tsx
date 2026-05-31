@@ -40,12 +40,29 @@ export const RemoveMembership = ({
             const updatedOrganizationIds = (userData?.data?.organizationIds || []).filter(
                 (id) => id !== membership.organizationId,
             );
+            // Remove the unassigned org's entries from roles/permissions Records
+            const updatedRoles = Object.values(
+                Object.fromEntries(
+                    Object.entries(userData?.data?.roles || {}).filter(
+                        ([orgId]) => orgId !== membership.organizationId,
+                    ),
+                ),
+            ).flat();
+            const updatedPermissions = Object.values(
+                Object.fromEntries(
+                    Object.entries(userData?.data?.permissions || {}).filter(
+                        ([orgId]) => orgId !== membership.organizationId,
+                    ),
+                ),
+            ).flat();
 
             const res = await mutateAsync({
                 ...userData?.data,
                 itemId: userId,
                 organizationIds: updatedOrganizationIds,
                 organizations: updatedOrganizationIds,
+                roles: updatedRoles,
+                permissions: updatedPermissions,
             });
 
             if (!res.isSuccess) {
