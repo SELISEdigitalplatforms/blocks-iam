@@ -197,7 +197,7 @@ public class TokenGenerationService : ITokenGenerationService
 
         var token = new JwtSecurityToken(
             issuer: resolvedIssuer,
-            audience: claims.Audience ?? claims.ClientId,
+            audience: includeNonce ? (claims.ClientId ?? claims.Audience) : (claims.Audience ?? claims.ClientId),
             claims: jwtClaims,
             notBefore: now,
             expires: now.AddSeconds(expiresInSeconds),
