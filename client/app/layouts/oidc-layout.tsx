@@ -101,15 +101,10 @@ function OidcLayoutContent({ children }: { children: ReactNode }) {
 
   return (
     <div
-      className="flex min-h-screen flex-col items-center py-[24px] lg:py-[64px] xl:px-[154px]"
+      className="h-screen overflow-hidden"
       style={{ "--theme-color": themeColor } as React.CSSProperties}
     >
-     
-      <div className="flex w-full flex-col justify-center gap-0 md:px-[24px] lg:mt-[70px] lg:flex-row lg:gap-20 lg:px-0 2xl:mt-[80px]">
-        <div>
-          <Outlet />
-        </div>
-      </div>
+      <Outlet />
     </div>
   );
 }
