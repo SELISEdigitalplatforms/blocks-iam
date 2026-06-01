@@ -1,4 +1,5 @@
 import { createContext, useContext, useEffect, useRef, useState } from "react";
+import { SciFiBackgroundOidc } from "./sci-fi-background-oidc";
 import {
   NodesPanelOidc,
   successDurationMs,
@@ -159,18 +160,7 @@ export function OidcAuthShell({
         data-theme={theme}
         data-anim-phase={phase}
       >
-        {/* Subtle grid-only background — no blurry canvas layers */}
-        <div
-          aria-hidden
-          className="fixed inset-0 pointer-events-none z-0"
-          style={{
-            background:
-              "linear-gradient(90deg,transparent 49.8%,var(--grid-line) 50%,transparent 50.2%)," +
-              "linear-gradient(0deg,transparent 49.8%,var(--grid-line) 50%,transparent 50.2%)",
-            backgroundSize: "80px 80px",
-            animation: "oidc-gridPulse 8s ease-in-out infinite",
-          }}
-        />
+        <SciFiBackgroundOidc />
 
         <main className="relative z-10 flex-1 min-h-0 w-full max-w-6xl mx-auto px-3 py-3 sm:px-4 sm:py-4 md:px-8 md:py-6 flex items-center">
           {/* Outer framed wrapper */}
@@ -184,15 +174,18 @@ export function OidcAuthShell({
           >
             <div
               className="rounded-[calc(1.5rem-1px)] overflow-hidden flex flex-col md:flex-row h-full"
-              style={{
-                background:
-                  "radial-gradient(circle at 10% 110%,var(--accent-softer) 0%,transparent 60%),var(--surface)",
-              }}
+              style={{ background: "var(--surface)" }}
             >
               {/* Left — form / success */}
               <div className="w-full md:w-1/2 px-6 pt-5 pb-4 sm:px-8 md:px-10 flex flex-col min-h-0 overflow-y-auto">
-                {/* Topbar: theme toggle only */}
-                <div className="flex justify-end mb-4">
+                {/* Topbar: brand label + theme toggle */}
+                <div className="flex items-center justify-between mb-4">
+                  <span
+                    className="text-xs font-semibold tracking-[.18em] uppercase"
+                    style={{ color: "var(--accent)", fontFamily: "system-ui, -apple-system, sans-serif" }}
+                  >
+                    Blocks IDP
+                  </span>
                   <ModeToggle />
                 </div>
 
