@@ -45,7 +45,7 @@ namespace Blocks.Api.Controllers
             [FromQuery] string redirect_uri,
             [FromQuery] string scope,
             [FromQuery] string state,
-            [FromQuery] string nonce,
+            [FromQuery] string? nonce,
             [FromQuery] string? code_challenge,
             [FromQuery] string code_challenge_method = "S256",
             [FromQuery] string? prompt = null,
