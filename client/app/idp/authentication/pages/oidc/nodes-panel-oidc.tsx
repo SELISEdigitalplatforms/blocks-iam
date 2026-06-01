@@ -8,6 +8,7 @@ import {
   ExternalLink,
   ShieldCheck,
   Code2,
+  type LucideIcon,
 } from "lucide-react";
 
 export type OidcAnimPhase = "idle" | "submitting" | "succeeded" | "failed";
@@ -29,7 +30,7 @@ export function failureDurationMs(prefixLines: number) {
 }
 
 /* ── Icon map ────────────────────────────────────────────────── */
-const ICON_MAP: Record<string, React.ComponentType<{ size?: number; className?: string; style?: React.CSSProperties }>> = {
+const ICON_MAP: Record<string, LucideIcon> = {
   "cursor":       MousePointer2,
   "key":          KeyRound,
   "ticket":       Ticket,
