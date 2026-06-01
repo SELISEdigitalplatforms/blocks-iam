@@ -8,12 +8,10 @@ import {
 import { getRuntimeEnv } from "@/lib/runtime-env";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
-import { Button } from "@/components/ui-kits/button/button";
 import { Link, useNavigate } from "react-router-dom";
 import { z } from "zod";
 import { authService } from "@blocks-idp/authentication/services/auth.service";
 import { AUTH_ENDPOINTS } from "@blocks-idp/authentication/constants/endpoint.constant";
-import { showErrorToast } from "@/hooks/use-toast";
 import React, { useRef, useState } from "react";
 import { Captcha } from "@/components/captcha";
 import { useTheme } from "@/hooks/use-theme";
@@ -24,8 +22,6 @@ import {
 } from "@blocks-idp/authentication/utils/oidc-utils";
 import { useGetLoginOptions } from "@blocks-idp/authentication/hooks/use-auth";
 import { SsoSignin } from "@blocks-idp/authentication/pages/login/sso-signin";
-import { Skeleton } from "@/components/ui-kits/skeleton/skeleton";
-import { GRANT_TYPES } from "@blocks-idp/authentication/constants/authentication.constant";
 import { useAuthStore } from "@/store/useAuthStore";
 import { sha256 } from "js-sha256";
 import { OidcAccountInfo, OidcAccountSelector } from "./oidc-account-selector";
@@ -89,6 +85,7 @@ export const OidcLoginForm = ({
   const [isSelectingAccount, setIsSelectingAccount] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
+  const [serverError, setServerError] = useState<string | null>(null);
   const [lastAttemptedEmail, setLastAttemptedEmail] = useState("");
   const [showActivationError, setShowActivationError] = useState(false);
   const [activeCodeChallenge, setActiveCodeChallenge] = useState(codeChallenge);
@@ -149,6 +146,7 @@ export const OidcLoginForm = ({
   const onSubmitHandler = async (values: OidcLoginFormValues) => {
     setIsLoading(true);
     setShowActivationError(false);
+    setServerError(null);
     animCtx?.startAnimation();
 
     try {
@@ -213,8 +211,8 @@ export const OidcLoginForm = ({
         } else if (!response.ok) {
           const errMsg = `Server error (HTTP ${response.status})`;
           shake();
+          setServerError(errMsg);
           await animCtx?.failAnimation(errMsg);
-          showErrorToast({ errors: errMsg });
           setIsLoading(false);
           return;
         } else {
@@ -256,26 +254,26 @@ export const OidcLoginForm = ({
       shake();
       if (errorCode === "account_locked") {
         const msg = "Your account is locked. Please contact support or reset your password.";
+        setServerError(msg);
         await animCtx?.failAnimation(msg);
-        showErrorToast({ errors: msg });
       } else if (errorCode === "account_not_verified") {
         animCtx?.resetAnimation();
         setLastAttemptedEmail(values.username);
         setShowActivationError(true);
       } else if (errorCode === "invalid_credentials") {
         const msg = "Invalid email or password. Please try again.";
+        setServerError(msg);
         await animCtx?.failAnimation(msg);
-        showErrorToast({ errors: msg });
       } else {
+        setServerError(errorMsg);
         await animCtx?.failAnimation(errorMsg);
-        showErrorToast({ errors: errorMsg });
       }
     } catch (error) {
       console.error("Login error:", error);
       const msg = "An unexpected error occurred during login. Please try again.";
       shake();
+      setServerError(msg);
       await animCtx?.failAnimation(msg);
-      showErrorToast({ errors: msg });
     } finally {
       setIsLoading(false);
     }
@@ -310,7 +308,7 @@ export const OidcLoginForm = ({
       if (response.redirect_url) {
         window.location.href = response.redirect_url;
       } else {
-        showErrorToast({ errors: "Failed to select account" });
+        setServerError("Failed to select account");
       }
     } catch (error: unknown) {
       if (isErrorWithErrors(error)) {
@@ -318,10 +316,10 @@ export const OidcLoginForm = ({
         const errorDesc = error.errors?.error_description;
         const message = Array.isArray(errorDesc)
           ? errorDesc[0]
-          : errorDesc || errorCode || "Failed to select account";
-        showErrorToast({ errors: message });
+          : (errorDesc || errorCode || "Failed to select account") as string;
+        setServerError(message);
       } else {
-        showErrorToast({ errors: "Failed to select account" });
+        setServerError("Failed to select account");
       }
     }
   };
@@ -474,6 +472,13 @@ export const OidcLoginForm = ({
                 onError: () => setToken(""),
               } as any)}
 
+            {/* Inline server error */}
+            {serverError && (
+              <p className="text-sm" style={{ color: "var(--danger)", fontFamily: "system-ui, sans-serif" }}>
+                {serverError}
+              </p>
+            )}
+
             {/* Submit */}
             <button
               type="submit"
@@ -487,7 +492,7 @@ export const OidcLoginForm = ({
                 </>
               ) : (
                 <>
-                  <span>Access Console</span>
+                  <span>Login</span>
                   <ArrowRight size={16} />
                 </>
               )}

@@ -1,5 +1,4 @@
 import { createContext, useContext, useEffect, useRef, useState } from "react";
-import { SciFiBackgroundOidc } from "./sci-fi-background-oidc";
 import {
   NodesPanelOidc,
   successDurationMs,
@@ -26,50 +25,18 @@ export function useOidcAuthAnimation() {
   return useContext(OidcAuthAnimContext);
 }
 
-/* ── Blocks logo (SVG, matches geo-assessment) ─────────────── */
-function BlocksLogo() {
-  return (
-    <svg
-      className="h-7 w-auto"
-      viewBox="0 0 246 360"
-      xmlns="http://www.w3.org/2000/svg"
-      fill="var(--accent)"
-      aria-hidden
-    >
-      <path d="M245.455 68.162V129.87L168.982 156.65V93.9637L245.455 68.162Z" />
-      <path d="M240.389 62.3805L165.49 87.6573L5.30945 24.2563L85.3315 0L240.389 62.3805Z" />
-      <path d="M161.797 93.8295V156.43L81.1141 122.607V188.07L0 152.738V29.6846L161.797 93.8295Z" />
-      <path d="M76.4728 266.036L0 291.837V230.123L76.4728 203.329V266.036Z" />
-      <path d="M160.122 360L5.07166 297.619L79.9639 272.343L240.144 335.743L160.122 360Z" />
-      <path d="M245.454 330.315L83.6569 266.175V203.57L164.34 237.395V171.93L245.454 207.262V330.315Z" />
-    </svg>
-  );
-}
-
-/* ── Heading word-reveal animation ─────────────────────────── */
-function RevealHeading({ text, dimFirst = 3 }: { text: string; dimFirst?: number }) {
-  const [revealed, setRevealed] = useState(false);
-  useEffect(() => {
-    const id = setTimeout(() => setRevealed(true), 150);
-    return () => clearTimeout(id);
-  }, []);
+/* ── Heading ────────────────────────────────────────────────── */
+function SectionHeading({ text, dimFirst = 3 }: { text: string; dimFirst?: number }) {
   const words = text.split(" ");
-
   return (
-    <h1 className="text-2xl sm:text-3xl lg:text-4xl font-medium tracking-tight leading-snug oidc-font-orbitron max-w-sm mb-6">
+    <h1 className="text-xl sm:text-2xl font-semibold tracking-tight leading-snug max-w-sm mb-5"
+        style={{ fontFamily: "system-ui, -apple-system, sans-serif" }}>
       {words.map((word, i) => (
-        <span key={i} className="inline-block overflow-hidden align-top mr-2 pb-1">
-          <span
-            className="inline-block oidc-font-orbitron"
-            style={{
-              color: i < dimFirst ? "var(--muted)" : "var(--fg)",
-              transform: revealed ? "translateY(0)" : "translateY(100%)",
-              opacity: revealed ? 1 : 0,
-              transition: `transform 1.2s cubic-bezier(.16,1,.3,1) ${i * 50}ms, opacity 0.8s ease ${i * 50}ms`,
-            }}
-          >
-            {word}
-          </span>
+        <span key={i}
+          className="inline-block mr-1.5"
+          style={{ color: i < dimFirst ? "var(--muted)" : "var(--fg)" }}
+        >
+          {word}
         </span>
       ))}
     </h1>
@@ -92,10 +59,10 @@ function SuccessState({ title, subtitle }: { title: string; subtitle: string }) 
           <path className="oidc-checkmark-path animate" d="M20 6L9 17l-5-5" />
         </svg>
       </div>
-      <h2 className="text-2xl oidc-font-orbitron font-medium mb-2" style={{ color: "var(--fg)" }}>
+      <h2 className="text-xl font-semibold mb-2" style={{ color: "var(--fg)" }}>
         {title}
       </h2>
-      <p className="text-sm oidc-font-rajdhani" style={{ color: "var(--muted)" }}>
+      <p className="text-sm" style={{ color: "var(--muted)" }}>
         {subtitle}
       </p>
     </div>
@@ -187,17 +154,28 @@ export function OidcAuthShell({
   return (
     <OidcAuthAnimContext.Provider value={ctx}>
       <div
-        className="oidc-scifi-root relative min-h-screen overflow-x-clip"
+        className="oidc-scifi-root h-screen overflow-hidden flex flex-col"
         style={{ background: "var(--bg)" }}
         data-theme={theme}
         data-anim-phase={phase}
       >
-        <SciFiBackgroundOidc />
+        {/* Subtle grid-only background — no blurry canvas layers */}
+        <div
+          aria-hidden
+          className="fixed inset-0 pointer-events-none z-0"
+          style={{
+            background:
+              "linear-gradient(90deg,transparent 49.8%,var(--grid-line) 50%,transparent 50.2%)," +
+              "linear-gradient(0deg,transparent 49.8%,var(--grid-line) 50%,transparent 50.2%)",
+            backgroundSize: "80px 80px",
+            animation: "oidc-gridPulse 8s ease-in-out infinite",
+          }}
+        />
 
-        <main className="relative z-10 w-full max-w-6xl mx-auto p-3 sm:p-4 md:p-8 min-h-[100dvh] flex items-center">
+        <main className="relative z-10 flex-1 min-h-0 w-full max-w-6xl mx-auto px-3 py-3 sm:px-4 sm:py-4 md:px-8 md:py-6 flex items-center">
           {/* Outer framed wrapper */}
           <div
-            className="w-full shadow-2xl"
+            className="w-full h-full shadow-2xl"
             style={{
               background: "linear-gradient(145deg,rgba(0,102,178,.12) 0%,rgba(0,102,178,.03) 100%)",
               padding: 1,
@@ -205,27 +183,16 @@ export function OidcAuthShell({
             }}
           >
             <div
-              className="rounded-[calc(1.5rem-1px)] overflow-hidden flex flex-col md:flex-row"
+              className="rounded-[calc(1.5rem-1px)] overflow-hidden flex flex-col md:flex-row h-full"
               style={{
                 background:
                   "radial-gradient(circle at 10% 110%,var(--accent-softer) 0%,transparent 60%),var(--surface)",
-                minHeight: "min(44rem, calc(100dvh - 4rem - 2px))",
               }}
             >
               {/* Left — form / success */}
-              <div className="w-full md:w-1/2 p-6 sm:p-8 md:p-10 flex flex-col justify-between min-h-0">
-                {/* Logo row */}
-                <div className="flex items-center justify-between mb-6">
-                  <div className="flex items-center gap-3">
-                    <BlocksLogo />
-                    <div className="w-px h-4" style={{ background: "var(--border)" }} />
-                    <span
-                      className="oidc-font-orbitron text-xs font-semibold tracking-[.22em] uppercase"
-                      style={{ color: "var(--fg)" }}
-                    >
-                      Blocks IDP
-                    </span>
-                  </div>
+              <div className="w-full md:w-1/2 px-6 pt-5 pb-4 sm:px-8 md:px-10 flex flex-col min-h-0 overflow-y-auto">
+                {/* Topbar: theme toggle only */}
+                <div className="flex justify-end mb-4">
                   <ModeToggle />
                 </div>
 
@@ -238,16 +205,16 @@ export function OidcAuthShell({
                       className="flex flex-col"
                       style={{ ...formContainerStyle, transition: "opacity 0.6s ease, transform 0.6s ease" }}
                     >
-                      <RevealHeading text={heading} dimFirst={headingDimFirst} />
+                      <SectionHeading text={heading} dimFirst={headingDimFirst} />
                       {children}
                     </div>
                   )}
                 </div>
 
                 {/* Footer */}
-                <div className="mt-6">
+                <div className="mt-4">
                   {footerNote ?? (
-                    <p className="text-xs oidc-font-rajdhani" style={{ color: "var(--muted)" }}>
+                    <p className="text-xs" style={{ color: "var(--muted)", fontFamily: "system-ui, sans-serif" }}>
                       © {new Date().getFullYear()} SELISE Digital Platforms. Secure OIDC flow.
                     </p>
                   )}
