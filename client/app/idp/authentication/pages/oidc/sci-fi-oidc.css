@@ -1,0 +1,444 @@
+/* ─────────────────────────────────────────────────────────────
+   Sci-Fi OIDC Shell — Design tokens, utility classes & keyframes
+   Scoped to .oidc-scifi-root so they don't bleed into the rest
+   of the blocks-idp design system.
+   ───────────────────────────────────────────────────────────── */
+
+@import url('https://fonts.googleapis.com/css2?family=Orbitron:wght@400;500;600;700&family=Rajdhani:wght@400;500;600;700&display=swap');
+
+/* ─── Keyframes (must live at global scope) ─── */
+@keyframes oidc-gridPulse {
+  0%, 100% { opacity: 0.035; }
+  50%       { opacity: 0.08;  }
+}
+@keyframes oidc-scanMove {
+  0%   { top: -2px;    }
+  100% { top: 100vh;   }
+}
+@keyframes oidc-secondaryGlow {
+  0%, 100% { opacity: 0.1;  transform: scale(1);    }
+  50%       { opacity: 0.25; transform: scale(1.15); }
+}
+@keyframes oidc-dotPulse {
+  0%, 100% { box-shadow: 0 0 4px #0066b2;  }
+  50%       { box-shadow: 0 0 10px #0066b2; }
+}
+@keyframes oidc-shimmer {
+  0%   { background-position: -200% 0; }
+  100% { background-position:  200% 0; }
+}
+@keyframes oidc-spin {
+  from { transform: rotate(0deg);   }
+  to   { transform: rotate(360deg); }
+}
+@keyframes oidc-blink {
+  0%, 100% { opacity: 1; }
+  50%       { opacity: 0; }
+}
+@keyframes oidc-nodeFloat {
+  0%, 100% { transform: translateY(0);    }
+  50%       { transform: translateY(-6px); }
+}
+@keyframes oidc-fadeSlideUp {
+  from { opacity: 0; transform: translateY(16px); }
+  to   { opacity: 1; transform: translateY(0);    }
+}
+@keyframes oidc-drawCheck {
+  to { stroke-dashoffset: 0; }
+}
+@keyframes oidc-shake {
+  0%, 100% { transform: translateX(0);  }
+  20%       { transform: translateX(-8px); }
+  40%       { transform: translateX(8px);  }
+  60%       { transform: translateX(-4px); }
+  80%       { transform: translateX(4px);  }
+}
+@keyframes oidc-glowPulse {
+  0%, 100% { opacity: 0.3; transform: translate(-50%, -50%) scale(1);    }
+  50%       { opacity: 0.6; transform: translate(-50%, -50%) scale(1.08); }
+}
+
+/* ─── Token scope — dark (default) ─── */
+.oidc-scifi-root {
+  /* Surfaces */
+  --bg:               #050510;
+  --surface:          #0a0a1a;
+  --surface-elevated: #0f0f22;
+
+  /* Text */
+  --fg:    #e8e8f0;
+  --muted: #5e5e7a;
+
+  /* Borders */
+  --border:       #16162a;
+  --border-hover: rgba(0, 102, 178, 0.18);
+  --border-strong: rgba(0, 102, 178, 0.35);
+
+  /* Brand */
+  --accent:       #0066b2;
+  --accent-glow:  rgba(0, 102, 178, 0.35);
+  --accent2:      #00b2ff;
+  --accent2-glow: rgba(0, 178, 255, 0.3);
+  --accent-soft:  rgba(0, 102, 178, 0.10);
+  --accent-softer: rgba(0, 102, 178, 0.06);
+
+  /* Semantic */
+  --success:        #17a34a;
+  --success-soft:   rgba(23, 163, 74, 0.15);
+  --success-border: rgba(23, 163, 74, 0.30);
+  --warn:           #eab308;
+  --warn-soft:      rgba(234, 179, 8, 0.10);
+  --warn-border:    rgba(234, 179, 8, 0.20);
+  --danger:         #f87171;
+  --danger-soft:    rgba(248, 113, 113, 0.10);
+  --danger-border:  rgba(248, 113, 113, 0.30);
+
+  /* Component-specific */
+  --input-bg:          rgba(0, 0, 0, 0.25);
+  --node-bg:           rgba(10, 10, 26, 0.70);
+  --node-tint:         rgba(255, 255, 255, 0.03);
+  --node-divider:      rgba(255, 255, 255, 0.06);
+  --terminal-bg:       rgba(0, 0, 0, 0.30);
+  --terminal-fg:       #e8e8f0;
+  --terminal-muted:    #8a8aaa;
+  --terminal-border:   #1a1a3a;
+  --grid-line:         rgba(0, 102, 178, 0.035);
+  --button-text:       #ffffff;
+  --button-shimmer:    rgba(255, 255, 255, 0.25);
+
+  /* Atmosphere intensities */
+  --atm-grid-opacity:      1;
+  --atm-scan-opacity:      0.25;
+  --atm-canvas-opacity:    0.55;
+  --atm-webgl-opacity:     0.5;
+  --atm-corner-opacity:    0.18;
+  --atm-corner-dot-opacity: 0.35;
+  --atm-canvas-blend:      screen;
+
+  /* Motion easing */
+  --ease-out-expo:    cubic-bezier(0.16, 1, 0.3, 1);
+  --dur-base:         250ms;
+  --dur-slow:         400ms;
+
+  /* Radii */
+  --radius-sm:  4px;
+  --radius-md:  6px;
+  --radius-lg:  8px;
+  --radius-xl:  10px;
+  --radius-2xl: 16px;
+  --radius-frame: 24px;
+}
+
+/* ─── Light-mode override ─── */
+.oidc-scifi-root[data-theme="light"] {
+  --bg:      #f5f7fb;
+  --surface: #ffffff;
+
+  --fg:    #0c1024;
+  --muted: #5b6378;
+
+  --border:       #dde2ec;
+  --border-hover: rgba(0, 102, 178, 0.28);
+  --border-strong: rgba(0, 102, 178, 0.45);
+
+  --accent:       #0066b2;
+  --accent2:      #0084d4;
+  --accent2-glow: rgba(0, 132, 212, 0.18);
+  --accent-soft:  rgba(0, 102, 178, 0.08);
+  --accent-softer: rgba(0, 102, 178, 0.04);
+
+  --success:        #16a34a;
+  --success-soft:   rgba(22, 163, 74, 0.12);
+  --success-border: rgba(22, 163, 74, 0.30);
+  --danger:         #dc2626;
+  --danger-soft:    rgba(220, 38, 38, 0.08);
+  --danger-border:  rgba(220, 38, 38, 0.30);
+
+  --input-bg:       rgba(255, 255, 255, 0.70);
+  --node-bg:        rgba(255, 255, 255, 0.85);
+  --node-tint:      rgba(12, 16, 36, 0.03);
+  --node-divider:   rgba(12, 16, 36, 0.08);
+  --terminal-bg:    rgba(12, 16, 36, 0.92);
+  --grid-line:      rgba(0, 102, 178, 0.06);
+  --button-shimmer: rgba(255, 255, 255, 0.45);
+
+  --atm-grid-opacity:       0.5;
+  --atm-scan-opacity:       0;
+  --atm-canvas-opacity:     0.35;
+  --atm-webgl-opacity:      0;
+  --atm-corner-opacity:     0.28;
+  --atm-corner-dot-opacity: 0.45;
+  --atm-canvas-blend:       multiply;
+}
+
+/* ─────────────────────────────────────────────────────────────
+   Utility classes (scoped to .oidc-scifi-root children)
+   ───────────────────────────────────────────────────────────── */
+
+/* Fonts */
+.oidc-scifi-root .oidc-font-orbitron  { font-family: 'Orbitron', sans-serif; }
+.oidc-scifi-root .oidc-font-rajdhani  { font-family: 'Rajdhani', sans-serif; }
+
+/* Inputs */
+.oidc-scifi-root .oidc-sci-fi-input {
+  background: var(--input-bg);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  padding: 12px 16px;
+  color: var(--fg);
+  font-family: 'Rajdhani', sans-serif;
+  font-size: 0.95rem;
+  font-weight: 500;
+  letter-spacing: 0.02em;
+  transition: border-color var(--dur-base) ease,
+              box-shadow var(--dur-base) ease,
+              background-color var(--dur-base) ease;
+  outline: none;
+  width: 100%;
+}
+.oidc-scifi-root .oidc-sci-fi-input::placeholder { color: var(--muted); font-weight: 400; }
+.oidc-scifi-root .oidc-sci-fi-input:focus {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 1px rgba(0, 102, 178, 0.15),
+              0 0 16px rgba(0, 102, 178, 0.08);
+}
+.oidc-scifi-root .oidc-sci-fi-input[aria-invalid="true"] { border-color: var(--danger); }
+
+/* Primary button */
+.oidc-scifi-root .oidc-sci-fi-btn {
+  position: relative;
+  padding: 14px 32px;
+  font-family: 'Orbitron', sans-serif;
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.22em;
+  text-transform: uppercase;
+  color: var(--button-text);
+  background: linear-gradient(135deg, var(--accent), var(--accent2));
+  border: none;
+  border-radius: var(--radius-md);
+  cursor: pointer;
+  overflow: hidden;
+  transition: transform var(--dur-base) var(--ease-out-expo),
+              box-shadow var(--dur-base) ease;
+  box-shadow: 0 4px 24px rgba(0, 102, 178, 0.15),
+              0 0 0 1px rgba(0, 102, 178, 0.1) inset;
+}
+.oidc-scifi-root .oidc-sci-fi-btn::before {
+  content: "";
+  position: absolute;
+  top: 0; left: -100%;
+  width: 100%; height: 100%;
+  background: linear-gradient(90deg, transparent, var(--button-shimmer), transparent);
+  transition: left 0.6s var(--ease-out-expo);
+}
+.oidc-scifi-root .oidc-sci-fi-btn:hover {
+  transform: scale(1.03) translateY(-1px);
+  box-shadow: 0 8px 32px rgba(0, 102, 178, 0.25),
+              0 0 0 1px rgba(0, 102, 178, 0.15) inset,
+              0 0 60px rgba(0, 178, 255, 0.1);
+}
+.oidc-scifi-root .oidc-sci-fi-btn:hover::before { left: 100%; }
+.oidc-scifi-root .oidc-sci-fi-btn:active  { transform: scale(0.98); }
+.oidc-scifi-root .oidc-sci-fi-btn:disabled { opacity: 0.7; cursor: not-allowed; transform: none; }
+
+/* Outline button */
+.oidc-scifi-root .oidc-sci-fi-btn-outline {
+  position: relative;
+  padding: 12px 24px;
+  font-family: 'Rajdhani', sans-serif;
+  font-size: 0.9rem;
+  font-weight: 600;
+  letter-spacing: 0.05em;
+  color: var(--fg);
+  background: var(--accent-softer);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  cursor: pointer;
+  transition: border-color var(--dur-base) ease,
+              background-color var(--dur-base) ease,
+              box-shadow var(--dur-base) ease;
+  overflow: hidden;
+}
+.oidc-scifi-root .oidc-sci-fi-btn-outline:hover {
+  border-color: var(--border-strong);
+  background: var(--accent-soft);
+  box-shadow: 0 0 16px var(--accent-glow);
+}
+.oidc-scifi-root .oidc-sci-fi-btn-outline:disabled { opacity: 0.6; cursor: not-allowed; }
+
+/* Labels */
+.oidc-scifi-root .oidc-sci-fi-label {
+  font-family: 'Orbitron', sans-serif;
+  font-size: 0.6rem;
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+  color: var(--muted);
+  font-weight: 600;
+}
+
+/* Links */
+.oidc-scifi-root .oidc-sci-fi-link {
+  color: var(--muted);
+  text-decoration: none;
+  font-size: 0.85rem;
+  font-weight: 500;
+  transition: color var(--dur-base) ease;
+  position: relative;
+}
+.oidc-scifi-root .oidc-sci-fi-link:hover { color: var(--accent2); }
+.oidc-scifi-root .oidc-sci-fi-link::after {
+  content: "";
+  position: absolute;
+  bottom: -2px; left: 0;
+  width: 0; height: 1px;
+  background: var(--accent2);
+  transition: width 0.3s var(--ease-out-expo);
+}
+.oidc-scifi-root .oidc-sci-fi-link:hover::after { width: 100%; }
+
+/* Node cards */
+.oidc-scifi-root .oidc-sci-fi-node {
+  background: var(--node-bg);
+  backdrop-filter: blur(16px);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-xl);
+  padding: 16px;
+  transition: border-color 0.3s ease,
+              box-shadow 0.3s ease,
+              transform 0.3s var(--ease-out-expo),
+              background-color var(--dur-base) ease;
+  position: relative;
+  overflow: hidden;
+}
+.oidc-scifi-root .oidc-sci-fi-node::before {
+  content: "";
+  position: absolute;
+  top: 0; left: 0; right: 0;
+  height: 1px;
+  background: linear-gradient(90deg, transparent, var(--accent), transparent);
+  opacity: 0;
+  transition: opacity 0.3s ease;
+}
+.oidc-scifi-root .oidc-sci-fi-node:hover { border-color: var(--border-hover); }
+.oidc-scifi-root .oidc-sci-fi-node:hover::before { opacity: 0.4; }
+.oidc-scifi-root .oidc-sci-fi-node.oidc-node-active {
+  border-color: rgba(0, 178, 255, 0.3);
+  box-shadow: 0 0 20px rgba(0, 102, 178, 0.5),
+              0 0 40px rgba(0, 102, 178, 0.2);
+}
+.oidc-scifi-root .oidc-sci-fi-node.oidc-node-active::before { opacity: 1; }
+
+/* Badge */
+.oidc-scifi-root .oidc-sci-fi-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  background: var(--accent-soft);
+  border: 1px solid var(--border-hover);
+  color: var(--accent2);
+  font-family: 'Orbitron', sans-serif;
+  font-size: 0.55rem;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  padding: 5px 12px;
+  border-radius: var(--radius-sm);
+  font-weight: 600;
+  transition: background-color 0.4s ease,
+              border-color 0.4s ease,
+              color 0.4s ease;
+}
+
+/* Panel border wrapper */
+.oidc-scifi-root .oidc-sci-fi-panel-border {
+  background: linear-gradient(
+    145deg,
+    rgba(0, 102, 178, 0.25) 0%,
+    rgba(0, 178, 255, 0.05) 100%
+  );
+  padding: 1px;
+  border-radius: 1.25rem;
+}
+.oidc-scifi-root .oidc-sci-fi-panel-inner {
+  background: linear-gradient(
+    160deg,
+    rgba(0, 102, 178, 0.35) 0%,
+    rgba(0, 60, 120, 0.15) 60%,
+    transparent 100%
+  );
+  border-radius: calc(1.25rem - 1px);
+  position: relative;
+  overflow: hidden;
+}
+.oidc-scifi-root[data-theme="light"] .oidc-sci-fi-panel-inner {
+  background: linear-gradient(
+    160deg,
+    rgba(0, 102, 178, 0.18) 0%,
+    rgba(0, 178, 255, 0.08) 60%,
+    rgba(255, 255, 255, 0.40) 100%
+  );
+}
+
+/* Shimmer */
+.oidc-scifi-root .oidc-shimmer {
+  background: linear-gradient(
+    90deg,
+    rgba(255,255,255,0) 0%,
+    rgba(0,178,255,0.3) 50%,
+    rgba(255,255,255,0) 100%
+  );
+  background-size: 200% 100%;
+  animation: oidc-shimmer 1.5s infinite;
+}
+
+/* Frame accent line */
+.oidc-scifi-root .oidc-frame-top-line {
+  position: absolute;
+  top: 0; left: 0; right: 0;
+  height: 1px;
+  background: linear-gradient(90deg, transparent, rgba(0,178,255,0.3), transparent);
+}
+
+/* Checkmark draw */
+.oidc-scifi-root .oidc-checkmark-path {
+  stroke-dasharray: 24;
+  stroke-dashoffset: 24;
+}
+.oidc-scifi-root .oidc-checkmark-path.animate {
+  animation: oidc-drawCheck 0.5s 0.1s var(--ease-out-expo) forwards;
+}
+
+/* Animation helpers */
+.oidc-scifi-root .oidc-spin-slow           { animation: oidc-spin 2s linear infinite; }
+.oidc-scifi-root .oidc-cursor-blink        { animation: oidc-blink 1s step-end infinite; }
+.oidc-scifi-root .oidc-animate-fade-up     { animation: oidc-fadeSlideUp 0.7s var(--ease-out-expo) forwards; }
+.oidc-scifi-root .oidc-node-cascade-enter  { animation: oidc-fadeSlideUp 0.45s var(--ease-out-expo) both; }
+.oidc-scifi-root .oidc-animate-shake       { animation: oidc-shake 0.5s ease-out; }
+
+.oidc-scifi-root .oidc-node-float-1 { animation: oidc-nodeFloat 4s ease-in-out infinite; }
+.oidc-scifi-root .oidc-node-float-2 { animation: oidc-nodeFloat 4s ease-in-out 1s infinite; }
+.oidc-scifi-root .oidc-node-float-3 { animation: oidc-nodeFloat 4s ease-in-out 2s infinite; }
+
+/* Pause floats during active phases */
+.oidc-scifi-root[data-anim-phase="submitting"] .oidc-node-float-1,
+.oidc-scifi-root[data-anim-phase="submitting"] .oidc-node-float-2,
+.oidc-scifi-root[data-anim-phase="submitting"] .oidc-node-float-3,
+.oidc-scifi-root[data-anim-phase="succeeded"] .oidc-node-float-1,
+.oidc-scifi-root[data-anim-phase="succeeded"] .oidc-node-float-2,
+.oidc-scifi-root[data-anim-phase="succeeded"] .oidc-node-float-3,
+.oidc-scifi-root[data-anim-phase="failed"] .oidc-node-float-1,
+.oidc-scifi-root[data-anim-phase="failed"] .oidc-node-float-2,
+.oidc-scifi-root[data-anim-phase="failed"] .oidc-node-float-3 {
+  animation-play-state: paused;
+}
+
+/* Reduced motion */
+@media (prefers-reduced-motion: reduce) {
+  .oidc-scifi-root *,
+  .oidc-scifi-root *::before,
+  .oidc-scifi-root *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}
