@@ -334,27 +334,27 @@ export function NodesPanelOidc({ config, phase, errorMessage }: NodesPanelOidcPr
   const showTerminal = (phase === "succeeded" || phase === "failed") && terminalLines.length > 0;
 
   return (
-    <div className="w-full md:w-1/2 p-2 md:p-3 hidden md:block">
+    <div className="w-full md:w-1/2 p-2 md:p-3 hidden md:block min-h-0 overflow-hidden">
       <div className="oidc-sci-fi-panel-border h-full">
-        <div className="oidc-sci-fi-panel-inner h-full p-8 lg:p-12 flex flex-col">
+        <div className="oidc-sci-fi-panel-inner h-full p-5 lg:p-7 flex flex-col overflow-hidden">
           <div className="oidc-frame-top-line" />
 
-          <div className="relative z-10 max-w-xs">
-            <div className="oidc-sci-fi-badge mb-6" style={badgeStyle}>
+          <div className="relative z-10 max-w-xs flex-shrink-0">
+            <div className="oidc-sci-fi-badge mb-3" style={badgeStyle}>
               <div className="w-1.5 h-1.5 rounded-full animate-pulse" style={dotStyle} />
               <span>{badgeText}</span>
             </div>
-            <h2 className="text-2xl oidc-font-orbitron font-medium mb-3 tracking-tight" style={{ color: "var(--fg)" }}>
+            <h2 className="text-xl oidc-font-orbitron font-medium mb-1 tracking-tight" style={{ color: "var(--fg)" }}>
               {config.heading}
             </h2>
-            <p className="text-sm oidc-font-rajdhani leading-relaxed" style={{ color: "var(--muted)" }}>
+            <p className="text-xs oidc-font-rajdhani leading-relaxed" style={{ color: "var(--muted)" }}>
               {config.subtext}
             </p>
           </div>
 
           {/* Body */}
           <div
-            className={`mt-10 flex-1 min-h-0 relative max-w-sm ${
+            className={`mt-4 flex-1 min-h-0 relative max-w-sm overflow-hidden ${
               phase === "idle" ? "flex flex-col justify-end" : "flex flex-col justify-start"
             }`}
           >
