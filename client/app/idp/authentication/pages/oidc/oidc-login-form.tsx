@@ -380,7 +380,7 @@ export const OidcLoginForm = ({
           <form
             ref={formRef}
             onSubmit={form.handleSubmit(onSubmitHandler, shake)}
-            className="flex flex-col gap-5 w-full max-w-sm"
+            className="flex flex-col gap-5 w-full"
             noValidate
           >
             {/* Email */}
@@ -503,7 +503,7 @@ export const OidcLoginForm = ({
 
       {showPasswordLogin && showSocialLogin && (
         <div
-          className="my-2 mt-4 flex items-center gap-3 max-w-sm"
+          className="my-2 mt-4 flex items-center gap-3"
         >
           <div className="flex-1 border-t" style={{ borderColor: "var(--border)" }} />
           <span className="text-xs oidc-font-rajdhani" style={{ color: "var(--muted)" }}>or</span>
@@ -528,7 +528,7 @@ export const OidcLoginForm = ({
         />
       )}
 
-      <div className="mt-4 max-w-sm">
+      <div className="mt-4">
         <p className="text-xs oidc-font-rajdhani" style={{ color: "var(--muted)" }}>
           Not a member?{" "}
           <Link to="/signup" className="oidc-sci-fi-link" style={{ fontSize: "0.75rem" }}>
