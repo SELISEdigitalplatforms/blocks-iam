@@ -196,7 +196,10 @@ export function OidcAuthShell({
         <main className="relative z-10 flex-1 min-h-0 w-full max-w-7xl mx-auto px-3 py-3 sm:px-6 sm:py-4 md:px-10 md:py-5 flex items-center justify-center">
           <div
             className="w-full rounded-[1.5rem] overflow-hidden flex flex-col md:flex-row shadow-2xl"
-        
+            style={{
+              background: "var(--surface)",
+              maxHeight: "min(640px, calc(100dvh - 2.5rem))",
+            }}
           >
               {/* Left — form / success */}
               <div className="w-full md:w-1/2 px-6 pt-5 pb-4 sm:px-8 md:px-10 flex flex-col min-h-0 overflow-y-auto">
