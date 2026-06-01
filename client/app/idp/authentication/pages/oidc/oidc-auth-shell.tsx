@@ -193,7 +193,7 @@ export function OidcAuthShell({
       >
         <SciFiBackgroundOidc />
 
-        <main className="relative z-10 flex-1 min-h-0 w-full max-w-7xl mx-auto px-3 py-3 sm:px-6 sm:py-4 md:px-10 md:py-5 flex items-center justify-center">
+        <main className="relative z-10 flex-1 min-h-0 w-full max-w-5xl mx-auto px-3 py-3 sm:px-4 sm:py-4 md:px-6 md:py-5 flex items-center justify-center">
           <div
             className="w-full rounded-[1.5rem] overflow-hidden flex flex-col md:flex-row shadow-2xl"
             style={{
@@ -202,7 +202,7 @@ export function OidcAuthShell({
             }}
           >
               {/* Left — form / success */}
-              <div className="w-full md:w-1/2 px-6 pt-5 pb-4 sm:px-8 md:px-10 flex flex-col min-h-0 overflow-y-auto">
+              <div className="w-full md:w-1/2 px-6 pt-5 pb-4 sm:px-7 md:px-8 flex flex-col min-h-0 overflow-y-auto">
                 {/* Topbar: logo + brand label + theme toggle */}
                 <div className="flex items-center justify-between mb-4">
                   <div className="flex items-center gap-3">
