@@ -622,7 +622,7 @@ namespace Authentication.DomainService.Authentication
             return null;
         }
 
-        public (bool IsValid, Dictionary<string, object> UserInfo) BuildOidcUserInfo(ClaimsPrincipal principal)
+        public async Task<(bool IsValid, Dictionary<string, object> UserInfo)> BuildOidcUserInfoAsync(ClaimsPrincipal principal)
         {
             var sub = principal.FindFirst(JwtRegisteredClaimNames.Sub)?.Value
                 ?? principal.FindFirst(BlocksContext.USER_ID_CLAIM)?.Value;
@@ -638,16 +638,25 @@ namespace Authentication.DomainService.Authentication
             };
 
             var grantedScopes = GetGrantedScopes(principal);
+            var user = await _authenticationRepository.GetUserByIdAsync(sub);
 
             if (HasScope(grantedScopes, "profile"))
             {
-                AddSingleClaimIfPresent(principal, userInfo, "name", BlocksContext.DISPLAY_NAME_CLAIM);
-                AddSingleClaimIfPresent(principal, userInfo, "preferred_username", BlocksContext.USER_NAME_CLAIM);
+                var fullName = string.Join(' ', new[] { user?.FirstName, user?.LastName }
+                    .Where(s => !string.IsNullOrWhiteSpace(s)));
+                if (!string.IsNullOrWhiteSpace(fullName))
+                {
+                    userInfo["name"] = fullName;
+                }
+                if (!string.IsNullOrWhiteSpace(user?.UserName))
+                {
+                    userInfo["preferred_username"] = user.UserName;
+                }
             }
 
-            if (HasScope(grantedScopes, "email"))
+            if (HasScope(grantedScopes, "email") && !string.IsNullOrWhiteSpace(user?.Email))
             {
-                AddSingleClaimIfPresent(principal, userInfo, "email", BlocksContext.EMAIL_CLAIM);
+                userInfo["email"] = user.Email;
             }
 
             if (HasScope(grantedScopes, "phone"))
