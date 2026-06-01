@@ -7,7 +7,6 @@ import {
   type OidcAnimPhase,
   type OidcPanelConfig,
 } from "./nodes-panel-oidc";
-import { useTheme } from "@/hooks/use-theme";
 import { ModeToggle } from "@/components/mode-toggle/mode-toggle";
 import "./sci-fi-oidc.css";
 
@@ -24,6 +23,26 @@ const OidcAuthAnimContext = createContext<OidcAuthAnimContextValue | null>(null)
 
 export function useOidcAuthAnimation() {
   return useContext(OidcAuthAnimContext);
+}
+
+/* ── Blocks logo ────────────────────────────────────────────── */
+function BlocksLogo() {
+  return (
+    <svg
+      className="h-7 w-auto"
+      viewBox="0 0 246 360"
+      xmlns="http://www.w3.org/2000/svg"
+      fill="var(--accent)"
+      aria-hidden
+    >
+      <path d="M245.455 68.162V129.87L168.982 156.65V93.9637L245.455 68.162Z" />
+      <path d="M240.389 62.3805L165.49 87.6573L5.30945 24.2563L85.3315 0L240.389 62.3805Z" />
+      <path d="M161.797 93.8295V156.43L81.1141 122.607V188.07L0 152.738V29.6846L161.797 93.8295Z" />
+      <path d="M76.4728 266.036L0 291.837V230.123L76.4728 203.329V266.036Z" />
+      <path d="M160.122 360L5.07166 297.619L79.9639 272.343L240.144 335.743L160.122 360Z" />
+      <path d="M245.454 330.315L83.6569 266.175V203.57L164.34 237.395V171.93L245.454 207.262V330.315Z" />
+    </svg>
+  );
 }
 
 /* ── Heading ────────────────────────────────────────────────── */
@@ -91,8 +110,20 @@ export function OidcAuthShell({
   successTitle    = "Access Granted",
   successSubtitle = "Redirecting to your application…",
 }: OidcAuthShellProps) {
-  const { resolvedTheme } = useTheme();
-  const theme = resolvedTheme === "dark" ? "dark" : "light";
+  /* Track html.dark class reactively via MutationObserver */
+  const [htmlTheme, setHtmlTheme] = useState<"dark" | "light">(() =>
+    typeof document !== "undefined" && document.documentElement.classList.contains("dark")
+      ? "dark" : "light"
+  );
+  useEffect(() => {
+    const observer = new MutationObserver(() => {
+      setHtmlTheme(
+        document.documentElement.classList.contains("dark") ? "dark" : "light"
+      );
+    });
+    observer.observe(document.documentElement, { attributes: true, attributeFilter: ["class"] });
+    return () => observer.disconnect();
+  }, []);
 
   const [phase, setPhase] = useState<OidcAnimPhase>("idle");
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
@@ -157,7 +188,7 @@ export function OidcAuthShell({
       <div
         className="oidc-scifi-root h-screen overflow-hidden flex flex-col"
         style={{ background: "var(--bg)" }}
-        data-theme={theme}
+        data-theme={htmlTheme}
         data-anim-phase={phase}
       >
         <SciFiBackgroundOidc />
@@ -178,14 +209,18 @@ export function OidcAuthShell({
             >
               {/* Left — form / success */}
               <div className="w-full md:w-1/2 px-6 pt-5 pb-4 sm:px-8 md:px-10 flex flex-col min-h-0 overflow-y-auto">
-                {/* Topbar: brand label + theme toggle */}
+                {/* Topbar: logo + brand label + theme toggle */}
                 <div className="flex items-center justify-between mb-4">
-                  <span
-                    className="text-xs font-semibold tracking-[.18em] uppercase"
-                    style={{ color: "var(--accent)", fontFamily: "system-ui, -apple-system, sans-serif" }}
-                  >
-                    Blocks IDP
-                  </span>
+                  <div className="flex items-center gap-3">
+                    <BlocksLogo />
+                    <div className="w-px h-4" style={{ background: "var(--border)" }} />
+                    <span
+                      className="text-xs font-semibold tracking-[.18em] uppercase"
+                      style={{ color: "var(--fg)", fontFamily: "system-ui, -apple-system, sans-serif" }}
+                    >
+                      Blocks IDP
+                    </span>
+                  </div>
                   <ModeToggle />
                 </div>
 
