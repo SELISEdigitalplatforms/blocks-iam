@@ -538,6 +538,11 @@ namespace Authentication.DomainService.Authentication
             var client_id = request.Form["client_id"].ToString();
             var redirect_uri = request.Form["redirect_uri"].ToString();
 
+            if (string.IsNullOrWhiteSpace(client_id))
+            {
+                TryReadBasicClientAuthentication(request, out client_id, out _);
+            }
+
             // Tenant ID resolution: form > query > header (X-Blocks-Key)
             var tenant_id = !string.IsNullOrWhiteSpace(request.Form["tenant_id"].ToString())
                 ? request.Form["tenant_id"].ToString()
