@@ -530,4 +530,29 @@ public class AuthenticationController : ControllerBase
         return await _authenticationRepository.GetUserCodesByUserIdAsync(BlocksContext.GetContext()?.UserId);
     }
 
+    #region Client Credential Management
+
+   
+    [HttpPost("SaveClientCredential")]
+    public async Task<BaseResponse> SaveClientCredential([FromBody] SaveClientCredentialRequest request)
+    {
+        return await _authenticationDomainService.SaveClientCredentialAsync(request);
+    }
+
+
+    [HttpPost("DeleteClientCredential")]
+    public async Task<BaseResponse> DeleteClientCredential([FromBody] DeleteClientCredentialRequest request)
+    {
+        return await _authenticationDomainService.DeleteClientCredentialAsync(request);
+    }
+
+    
+    [HttpGet("GetClientCredentials")]
+    public async Task<List<ClientCredential>> GetClientCredentials([FromQuery] GetAllClientCredentialsRequest request)
+    {
+        return await _authenticationRepository.GetClientCredentialsAsync();
+    }
+
+    #endregion
+
 }
