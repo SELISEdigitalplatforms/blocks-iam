@@ -173,6 +173,22 @@ public class TokenGenerationService : ITokenGenerationService
             jwtClaims.Add(new Claim(JwtRegisteredClaimNames.Nonce, claims.Nonce));
         }
 
+        if (includeNonce)
+        {
+            if (!string.IsNullOrWhiteSpace(claims.Email))
+            {
+                jwtClaims.Add(new Claim(BlocksContext.EMAIL_CLAIM, claims.Email));
+            }
+            if (!string.IsNullOrWhiteSpace(claims.Name))
+            {
+                jwtClaims.Add(new Claim(BlocksContext.DISPLAY_NAME_CLAIM, claims.Name));
+            }
+            if (!string.IsNullOrWhiteSpace(claims.UserName))
+            {
+                jwtClaims.Add(new Claim(BlocksContext.USER_NAME_CLAIM, claims.UserName));
+            }
+        }
+
         // Add token_use claim to distinguish id_token from access_token
         jwtClaims.Add(new Claim("token_use", includeNonce ? "id_token" : "access_token"));
 

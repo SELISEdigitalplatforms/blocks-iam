@@ -14,6 +14,9 @@ public class OidcClaims
     public string? ClientId { get; set; }
     public string? Audience { get; set; }
     public string? Scope { get; set; }
+    public string? Email { get; set; }
+    public string? Name { get; set; }
+    public string? UserName { get; set; }
     public List<string> Roles { get; set; } = [];
     public List<string> Resources { get; set; } = [];
     public List<string> Permissions { get; set; } = [];
