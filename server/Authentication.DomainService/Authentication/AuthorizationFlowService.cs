@@ -728,6 +728,9 @@ namespace Authentication.DomainService.Authentication
 
             var tenantAudience = DomainResolver.GetAudience(tenant);
 
+            var fullName = string.Join(' ', new[] { user.FirstName, user.LastName }
+                .Where(s => !string.IsNullOrWhiteSpace(s)));
+
             var claims = new OidcClaims
             {
                 Sub = authCode.UserId,
@@ -739,6 +742,9 @@ namespace Authentication.DomainService.Authentication
                 ClientId = client_id,
                 Audience = tenantAudience,
                 Scope = authCode.Scope,
+                Email = user.Email,
+                Name = string.IsNullOrWhiteSpace(fullName) ? null : fullName,
+                UserName = user.UserName,
                 Roles = resolvedClaims.Roles,
                 Resources = resolvedClaims.Resources,
                 Permissions = resolvedClaims.Permissions
