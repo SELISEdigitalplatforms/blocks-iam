@@ -98,8 +98,10 @@ namespace Authentication.DomainService.Authentication
                 await _idpSessionService.RevokeSessionAsync(sessionId, "logout_all");
                 return true;
             }
+
             var bc = BlocksContext.GetContext();
-            var userId = user.FindFirst(bc?.UserId)?.Value ?? user.FindFirst("sub")?.Value;
+            var userId = user.FindFirst(bc?.UserId)?.Value ?? user.FindFirst("user_id")?.Value;
+
             if (string.IsNullOrWhiteSpace(userId))
             {
                 return false;
@@ -110,8 +112,8 @@ namespace Authentication.DomainService.Authentication
                 ?? bc?.TenantId;
 
             await _idpSessionService.RemoveAccountAsync(sessionId, userId, tenantId);
-
             var session = await _idpSessionService.GetSessionAsync(sessionId);
+
             if (session == null || session.RevokedAt.HasValue || session.IsExpired())
             {
                 return true;
