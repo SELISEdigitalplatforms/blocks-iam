@@ -198,7 +198,7 @@ export function OidcAuthShell({
             className="w-full rounded-[1.5rem] overflow-hidden flex flex-col md:flex-row shadow-2xl"
             style={{
               background: "var(--surface)",
-              maxHeight: "min(640px, calc(100dvh - 2.5rem))",
+              height: "min(620px, calc(100dvh - 3rem))",
             }}
           >
               {/* Left — form / success */}
