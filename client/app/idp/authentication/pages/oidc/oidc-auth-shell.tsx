@@ -197,11 +197,11 @@ export function OidcAuthShell({
           {/* Outer framed wrapper */}
           <div
             className="w-full h-full shadow-2xl"
-            style={{
-              background: "linear-gradient(145deg,rgba(0,102,178,.12) 0%,rgba(0,102,178,.03) 100%)",
-              padding: 1,
-              borderRadius: "1.5rem",
-            }}
+            // style={{
+            //   background: "linear-gradient(145deg,rgba(0,102,178,.12) 0%,rgba(0,102,178,.03) 100%)",
+            //   padding: 1,
+            //   borderRadius: "1.5rem",
+            // }}
           >
             <div
               className="rounded-[calc(1.5rem-1px)] overflow-hidden flex flex-col md:flex-row h-full"

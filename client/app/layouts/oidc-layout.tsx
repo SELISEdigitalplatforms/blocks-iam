@@ -104,16 +104,8 @@ function OidcLayoutContent({ children }: { children: ReactNode }) {
       className="flex min-h-screen flex-col items-center py-[24px] lg:py-[64px] xl:px-[154px]"
       style={{ "--theme-color": themeColor } as React.CSSProperties}
     >
-      {/* <div className="flex w-full items-center justify-center">
-        <Logo
-          src={logoUrl || "/Logo.svg"}
-          alt="OIDC Logo"
-          width={128}
-          height={55}
-          className="max-h-[55px] max-w-[128px]"
-        />
-      </div> */}
-      <div className="mt-[20px] flex w-full flex-col justify-center gap-0 md:px-[24px] lg:mt-[70px] lg:flex-row lg:gap-20 lg:px-0 2xl:mt-[80px]">
+     
+      <div className="flex w-full flex-col justify-center gap-0 md:px-[24px] lg:mt-[70px] lg:flex-row lg:gap-20 lg:px-0 2xl:mt-[80px]">
         <div>
           <Outlet />
         </div>
