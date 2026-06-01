@@ -422,9 +422,9 @@ public class AuthenticationController : ControllerBase
     /// </summary>
     [HttpGet("userinfo")]
     [Authorize]
-    public IActionResult RetrieveUserInformation()
+    public async Task<IActionResult> RetrieveUserInformation()
     {
-        var (isValid, userInfo) = _authenticationService.BuildOidcUserInfo(User);
+        var (isValid, userInfo) = await _authenticationService.BuildOidcUserInfoAsync(User);
         if (!isValid)
         {
             return Unauthorized(new { error = "invalid_token", error_description = "Missing required 'sub' claim in token" });
