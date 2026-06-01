@@ -476,11 +476,11 @@ public class DiscoveryService : IDiscoveryService
         var request = _httpContextAccessor.HttpContext?.Request;
         if (request != null)
         {
-            return $"{request.Scheme}://{request.Host.Value}";
+            return $"https://{request.Host.Value}";   // was: $"{request.Scheme}://{request.Host.Value}"
         }
-
         return null;
     }
+
 
     private string GetConfiguredIssuerFallback()
     {
