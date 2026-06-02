@@ -168,7 +168,7 @@ export const ResetPasswordForm = ({ code }: ResetPasswordFormProps) => {
       </form>
 
       <Link to="/login" className="oidc-sci-fi-link text-sm text-center">
-        Back to sign in
+        Back to login
       </Link>
     </div>
   );
