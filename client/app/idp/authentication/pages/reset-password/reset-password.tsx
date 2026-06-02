@@ -53,7 +53,7 @@ export const ResetPassword = ({ code }: ResetPasswordProps) => {
             padding: "2.5rem",
             backdropFilter: "blur(16px)",
             width: "100%",
-            maxWidth: "24rem",
+            maxWidth: "28rem",
           }}
         >
           <div className="flex items-center gap-3 mb-8">
