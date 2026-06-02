@@ -14,12 +14,13 @@ import { LoginOption } from "@blocks-idp/authentication/models/auth-configuratio
 import { useCaptcha } from "@blocks-idp/captcha/hooks/use-captcha";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { Link, useNavigate } from "react-router-dom";
-import { useEffect, useRef, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import { useForm } from "react-hook-form";
 import { z } from "zod";
 import { ArrowRight, Loader } from "lucide-react";
 import { SsoSignin } from "../login/sso-signin";
 import { signupFormDefaultValue, signupFormSchema } from "./utils";
+import { useOidcAuthAnimation } from "@blocks-idp/authentication/pages/oidc/oidc-auth-shell";
 
 export const SignupForm = ({
   loginOption,
@@ -31,8 +32,8 @@ export const SignupForm = ({
   ssoSignUpEnabled: boolean;
 }) => {
   const [isChecked, setIsChecked] = useState(false);
-  const [isSubmitting, setIsSubmitting] = useState(false);
   const navigate = useNavigate();
+  const animCtx = useOidcAuthAnimation();
   const formRef = useRef<HTMLFormElement>(null);
 
   const form = useForm({
@@ -52,36 +53,51 @@ export const SignupForm = ({
   });
 
   const { isValid } = form.formState;
-  const isAuthenticating = isPending || isSubmitting;
+
+  const isAuthenticating =
+    isPending ||
+    animCtx?.phase === "submitting" ||
+    animCtx?.phase === "succeeded";
 
   function shake() {
     if (!formRef.current) return;
-    formRef.current.classList.remove("su-shake");
+    formRef.current.classList.remove("oidc-animate-shake");
     void formRef.current.offsetWidth;
-    formRef.current.classList.add("su-shake");
+    formRef.current.classList.add("oidc-animate-shake");
   }
 
   const onSubmitHandler = async (values: z.infer<typeof signupFormSchema>) => {
-    setIsSubmitting(true);
+    animCtx?.startAnimation();
     try {
-      const res = await mutateAsync({ ...values, captchaCode });
+      const res = await mutateAsync({
+        ...values,
+        captchaCode,
+      });
       if (!res.isSuccess) {
         resetCaptcha();
+        const msg = Array.isArray(res.errors)
+          ? res.errors[0]
+          : (res.errors as string) || "Registration failed";
         shake();
+        await animCtx?.failAnimation(msg);
         showErrorToast({ errors: res.errors });
         return;
       }
+      await animCtx?.succeedAnimation();
       navigate(`/signup-email-sent?email=${values.email}`);
     } catch (error) {
       resetCaptcha();
       shake();
       if (isErrorWithErrors(error)) {
+        const msg = Array.isArray(error.errors)
+          ? (error.errors[0] as string)
+          : (error.errors as unknown as string) || "Something went wrong";
+        await animCtx?.failAnimation(msg);
         showErrorToast({ errors: error.errors });
       } else {
+        await animCtx?.failAnimation("Something went wrong");
         showErrorToast({ errors: "Something went wrong" });
       }
-    } finally {
-      setIsSubmitting(false);
     }
   };
 
@@ -92,79 +108,83 @@ export const SignupForm = ({
   const showSocialLogin = ssoSignUpEnabled && !!loginOption?.ssoInfo?.length;
 
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: "16px", width: "100%" }}>
-      <style>{`
-        @keyframes su-shake-kf {
-          0%,100%{transform:translateX(0)}
-          20%{transform:translateX(-8px)}
-          40%{transform:translateX(8px)}
-          60%{transform:translateX(-4px)}
-          80%{transform:translateX(4px)}
-        }
-        .su-shake { animation: su-shake-kf 0.4s ease; }
-      `}</style>
-
+    <div className="flex flex-col gap-4 w-full">
       {emailSignUpEnabled && (
         <Form {...form}>
-          <form
-            ref={formRef}
-            onSubmit={form.handleSubmit(onSubmitHandler, shake)}
-            style={{ display: "flex", flexDirection: "column", gap: "18px" }}
-            noValidate
-          >
+          <form ref={formRef} onSubmit={form.handleSubmit(onSubmitHandler, shake)} className="flex flex-col gap-5 w-full" noValidate>
             {/* Email */}
             <FormField
               control={form.control}
               name="email"
               render={({ field }) => (
                 <FormItem>
-                  <div style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
-                    <label htmlFor="signup-email" className="su-label">Work Email</label>
+                  <div className="flex flex-col gap-2">
+                    <label htmlFor="signup-email" className="oidc-sci-fi-label">
+                      Work Email
+                    </label>
                     <FormControl>
                       <input
                         id="signup-email"
                         type="email"
                         autoComplete="email"
                         placeholder="name@company.com"
-                        className="su-input"
+                        className="oidc-sci-fi-input"
                         aria-invalid={!!form.formState.errors.email}
                         disabled={isAuthenticating}
                         {...field}
                       />
                     </FormControl>
-                    <FormMessage className="su-error" />
+                    <FormMessage className="text-xs oidc-font-rajdhani" style={{ color: "var(--danger)" }} />
                   </div>
                 </FormItem>
               )}
             />
 
-            {/* CAPTCHA */}
+            {/* CAPTCHA (shown when form is valid) */}
             {isValid && (
               <div>
                 <Captcha {...(captcha as any)} />
               </div>
             )}
 
-            {/* Terms */}
-            <div style={{ display: "flex", alignItems: "flex-start", gap: "10px" }}>
+            {/* Terms checkbox */}
+            <div className="flex items-start gap-3">
               <input
                 id="signup-terms"
                 type="checkbox"
                 checked={isChecked}
                 onChange={(e) => setIsChecked(e.target.checked)}
                 disabled={isAuthenticating}
-                style={{ marginTop: "2px", accentColor: "var(--su-accent)", width: "14px", height: "14px", flexShrink: 0, cursor: "pointer" }}
+                style={{
+                  marginTop: "2px",
+                  accentColor: "var(--accent)",
+                  width: "14px",
+                  height: "14px",
+                  flexShrink: 0,
+                  cursor: "pointer",
+                }}
               />
               <label
                 htmlFor="signup-terms"
-                style={{ fontSize: "0.75rem", color: "var(--su-muted)", lineHeight: 1.5, cursor: "pointer", fontFamily: "system-ui, sans-serif" }}
+                className="text-xs oidc-font-rajdhani"
+                style={{ color: "var(--muted)", lineHeight: 1.5, cursor: "pointer" }}
               >
                 I agree to the{" "}
-                <Link to="https://selisegroup.com/software-development-terms/" className="su-link" target="_blank" rel="noopener noreferrer">
+                <Link
+                  to="https://selisegroup.com/software-development-terms/"
+                  className="oidc-sci-fi-link"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                >
                   Terms of Service
                 </Link>{" "}
                 and the{" "}
-                <Link to="https://selisegroup.com/privacy-policy/" className="su-link" target="_blank" rel="noopener noreferrer">
+                <Link
+                  to="https://selisegroup.com/privacy-policy/"
+                  className="oidc-sci-fi-link"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                >
                   Privacy Policy
                 </Link>
                 .
@@ -175,17 +195,17 @@ export const SignupForm = ({
             <button
               type="submit"
               disabled={isAuthenticating || !isValid || !captchaCode || !isChecked}
-              className="su-btn"
+              className="oidc-sci-fi-btn mt-1 w-full flex items-center justify-center gap-2"
             >
               {isAuthenticating ? (
                 <>
-                  <Loader size={15} style={{ animation: "su-spin 1s linear infinite" }} />
+                  <Loader size={16} className="oidc-spin-slow" />
                   <span>Creating Account…</span>
                 </>
               ) : (
                 <>
                   <span>Create Account</span>
-                  <ArrowRight size={15} />
+                  <ArrowRight size={16} />
                 </>
               )}
             </button>
@@ -194,14 +214,16 @@ export const SignupForm = ({
       )}
 
       {emailSignUpEnabled && showSocialLogin && (
-        <div style={{ display: "flex", alignItems: "center", gap: "12px", margin: "4px 0" }}>
-          <div style={{ flex: 1, borderTop: "1px solid var(--su-border)" }} />
-          <span style={{ fontSize: "0.72rem", color: "var(--su-muted)", fontFamily: "system-ui, sans-serif" }}>or</span>
-          <div style={{ flex: 1, borderTop: "1px solid var(--su-border)" }} />
+        <div className="my-2 mt-4 flex items-center gap-3">
+          <div className="flex-1 border-t" style={{ borderColor: "var(--border)" }} />
+          <span className="text-xs oidc-font-rajdhani" style={{ color: "var(--muted)" }}>or</span>
+          <div className="flex-1 border-t" style={{ borderColor: "var(--border)" }} />
         </div>
       )}
 
-      {showSocialLogin && <SsoSignin loginOption={loginOption} />}
+      {showSocialLogin && (
+        <SsoSignin loginOption={loginOption} />
+      )}
     </div>
   );
 };
