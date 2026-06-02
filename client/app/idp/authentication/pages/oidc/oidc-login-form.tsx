@@ -123,6 +123,19 @@ export const OidcLoginForm = ({
   const activationUrl = buildOIDCNavigationUrl("/oidc/activation");
 
   const ensurePkceState = async () => {
+    // External relying party (e.g. Dependency-Track) already supplied its own
+    // code_challenge in the authorize/login URL. Its matching code_verifier lives
+    // on the RP's own origin and is exchanged there, so we MUST forward the
+    // challenge verbatim and must NOT generate our own or touch sessionStorage —
+    // doing so would bind the auth code to a challenge whose verifier the RP
+    // never has, causing "PKCE code_verifier is invalid" at token exchange.
+    if (codeChallenge) {
+      return {
+        codeChallenge,
+        codeChallengeMethod: codeChallengeMethod || "S256",
+      };
+    }
+
     const existingVerifier = sessionStorage.getItem("oidc-code-verifier");
 
     if (existingVerifier && activeCodeChallenge) {

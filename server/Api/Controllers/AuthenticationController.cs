@@ -532,21 +532,21 @@ public class AuthenticationController : ControllerBase
 
     #region Client Credential Management
 
-   
+    [Authorize]
     [HttpPost("SaveClientCredential")]
     public async Task<BaseResponse> SaveClientCredential([FromBody] SaveClientCredentialRequest request)
     {
         return await _authenticationDomainService.SaveClientCredentialAsync(request);
     }
 
-
+    [Authorize]
     [HttpPost("DeleteClientCredential")]
     public async Task<BaseResponse> DeleteClientCredential([FromBody] DeleteClientCredentialRequest request)
     {
         return await _authenticationDomainService.DeleteClientCredentialAsync(request);
     }
 
-    
+    [Authorize]
     [HttpGet("GetClientCredentials")]
     public async Task<List<ClientCredential>> GetClientCredentials([FromQuery] GetAllClientCredentialsRequest request)
     {
