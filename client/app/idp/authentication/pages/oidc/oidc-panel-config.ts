@@ -74,3 +74,68 @@ export const OIDC_LOGIN_PANEL: OidcPanelConfig = {
     { text: "  > code_challenge_method=S256",     color: "var(--muted)"  },
   ],
 };
+
+/* ──────────────────────────────────────────────────────────────
+   SIGNUP — real service flow:
+     IAM Service validates email uniqueness (POST /api/account/signup) →
+     IAM provisions a new user record →
+     Mail Service dispatches the activation email to the inbox
+   ────────────────────────────────────────────────────────────── */
+export const SIGNUP_PANEL: OidcPanelConfig = {
+  heading: "Account Registration Pipeline",
+  subtext:
+    "Your email is validated against the Blocks IAM service. A new user record is provisioned and an activation link is dispatched to your inbox.",
+
+  idleBadge:       "Ready",
+  submittingBadge: "Registering",
+  successBadge:    "Account Created",
+  failedBadge:     "Registration Failed",
+
+  idleNode: {
+    icon:        "cursor",
+    title:       "Awaiting Input",
+    description: "Enter your email address to create a Blocks account.",
+  },
+
+  validatingNode: {
+    icon:         "shield-check",
+    service:      "IAM Service",
+    title:        "Validating Email",
+    activeLabel:  "POST /api/account/signup …",
+    successLabel: "Email accepted",
+    failLabel:    "Registration rejected by IAM",
+  },
+
+  successNodes: [
+    {
+      icon:         "key",
+      service:      "IAM Service",
+      title:        "Creating Account",
+      activeLabel:  "Provisioning user record…",
+      successLabel: "Account created successfully",
+    },
+    {
+      icon:         "external",
+      service:      "Mail Service",
+      title:        "Sending Activation Email",
+      activeLabel:  "Dispatching verification link…",
+      successLabel: "Activation email sent",
+    },
+  ],
+
+  terminalMessages: [
+    { text: "$ POST /api/account/signup",           color: "var(--accent2)" },
+    { text: "  > content-type: application/json",   color: "var(--muted)"   },
+    { text: "200 OK — email accepted",               color: "var(--success)" },
+    { text: "$ iam.createAccount(email)",            color: "var(--fg)"      },
+    { text: "  > user_id provisioned",               color: "var(--muted)"   },
+    { text: "$ mail.sendActivation(email)",          color: "var(--fg)"      },
+    { text: "  > template: account-activation",      color: "var(--muted)"   },
+    { text: "activation email dispatched",           color: "var(--success)" },
+  ],
+
+  errorTerminalPrefix: [
+    { text: "$ POST /api/account/signup",          color: "var(--accent2)" },
+    { text: "  > content-type: application/json",  color: "var(--muted)"  },
+  ],
+};
