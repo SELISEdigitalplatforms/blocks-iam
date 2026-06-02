@@ -1,4 +1,4 @@
-import { createContext, useContext, useEffect, useRef, useState } from "react";
+import { createContext, useCallback, useContext, useEffect, useRef, useState } from "react";
 import { SciFiBackgroundOidc } from "./sci-fi-background-oidc";
 import {
   NodesPanelOidc,
@@ -17,6 +17,7 @@ export interface OidcAuthAnimContextValue {
   succeedAnimation: () => Promise<void>;
   failAnimation:    (message?: string) => Promise<void>;
   resetAnimation:   () => void;
+  setPanelIdleSlot?: (node: React.ReactNode) => void;
 }
 
 const OidcAuthAnimContext = createContext<OidcAuthAnimContextValue | null>(null);
@@ -128,6 +129,10 @@ export function OidcAuthShell({
   const [phase, setPhase] = useState<OidcAnimPhase>("idle");
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [cascadeDone, setCascadeDone] = useState(false);
+  const [panelIdleSlot, setPanelIdleSlotState] = useState<React.ReactNode>(null);
+  const setPanelIdleSlot = useCallback((node: React.ReactNode) => {
+    setPanelIdleSlotState(node);
+  }, []);
 
   /* Detect panel visibility (≥ md) and reduced-motion preference */
   const panelVisibleRef = useRef(true);
@@ -174,6 +179,7 @@ export function OidcAuthShell({
       setCascadeDone(false);
       setPhase("idle");
     },
+    setPanelIdleSlot,
   };
 
   const formContainerStyle: React.CSSProperties =
@@ -248,6 +254,7 @@ export function OidcAuthShell({
                 config={panelConfig}
                 phase={phase}
                 errorMessage={errorMessage}
+                idleContent={panelIdleSlot}
               />
           </div>
         </main>

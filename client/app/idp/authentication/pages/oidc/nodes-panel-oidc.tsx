@@ -68,6 +68,7 @@ interface NodesPanelOidcProps {
   config: OidcPanelConfig;
   phase: OidcAnimPhase;
   errorMessage?: string | null;
+  idleContent?: React.ReactNode;
 }
 
 type NodeState = "idle" | "active" | "complete" | "failed";
@@ -234,7 +235,7 @@ function IdleCard({ icon, title, description, badge }: {
 }
 
 /* ── Main panel ─────────────────────────────────────────────── */
-export function NodesPanelOidc({ config, phase, errorMessage }: NodesPanelOidcProps) {
+export function NodesPanelOidc({ config, phase, errorMessage, idleContent }: NodesPanelOidcProps) {
   type VisibleNode =
     | { kind: "validating"; state: NodeState }
     | { kind: "success"; index: number; state: NodeState };
@@ -355,17 +356,25 @@ export function NodesPanelOidc({ config, phase, errorMessage }: NodesPanelOidcPr
           {/* Body */}
           <div
             className={`mt-4 flex-1 min-h-0 relative max-w-sm overflow-hidden ${
-              phase === "idle" ? "flex flex-col justify-end" : "flex flex-col justify-start"
+              phase === "idle" ? "flex flex-col" : "flex flex-col justify-start"
             }`}
           >
             {phase === "idle" ? (
-              <div className="oidc-animate-fade-up">
-                <IdleCard
-                  icon={config.idleNode.icon}
-                  title={config.idleNode.title}
-                  description={config.idleNode.description}
-                  badge={config.idleBadge}
-                />
+              <div className="oidc-animate-fade-up flex flex-col gap-4 h-full">
+                {idleContent && (
+                  <div className="flex-1 min-h-0 overflow-y-auto rounded-xl p-4"
+                    style={{ background: "var(--node-bg)", border: "1px solid var(--border)" }}>
+                    {idleContent}
+                  </div>
+                )}
+                <div className={idleContent ? "flex-shrink-0" : "mt-auto"}>
+                  <IdleCard
+                    icon={config.idleNode.icon}
+                    title={config.idleNode.title}
+                    description={config.idleNode.description}
+                    badge={config.idleBadge}
+                  />
+                </div>
               </div>
             ) : (
               <div
