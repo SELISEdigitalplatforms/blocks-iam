@@ -9,19 +9,21 @@ import {
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useNavigate } from "react-router-dom";
 import { Captcha } from "@/components/captcha";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useAccountResetPassword } from "@blocks-idp/iam/hooks/use-account";
 import { isErrorWithErrors } from "@/lib/error";
 import { useCaptcha } from "@blocks-idp/captcha/hooks/use-captcha";
 import { PasswordStrengthChecker } from "@blocks-idp/authentication/components/password-strength-checker/password-strength-checker";
 import { Switch } from "@/components/ui-kits/switch/switch";
 import { ArrowRight, Loader } from "lucide-react";
+import { useOidcAuthAnimation } from "../oidc/oidc-auth-shell";
 
 type ResetPasswordFormProps = { code: string };
 
 export const ResetPasswordForm = ({ code }: ResetPasswordFormProps) => {
   const navigate = useNavigate();
-  const [serverError, setServerError] = useState<string | null>(null);
+  const animCtx = useOidcAuthAnimation();
+  const formRef = useRef<HTMLFormElement>(null);
   const [requirementsMet, setRequirementsMet] = useState(false);
 
   const form = useForm<ResetPasswordFormValuesType>({
@@ -43,12 +45,24 @@ export const ResetPasswordForm = ({ code }: ResetPasswordFormProps) => {
   const confirmPassword = form.watch("confirmPassword");
   const logoutFromAllDevices = form.watch("logoutFromAllDevices");
 
+  const isAuthenticating =
+    isPending ||
+    animCtx?.phase === "submitting" ||
+    animCtx?.phase === "succeeded";
+
+  function shake() {
+    if (!formRef.current) return;
+    formRef.current.classList.remove("oidc-animate-shake");
+    void formRef.current.offsetWidth;
+    formRef.current.classList.add("oidc-animate-shake");
+  }
+
   useEffect(() => {
     if (!isValid && !requirementsMet && captchaCode) resetCaptcha();
   }, [captchaCode, isValid, requirementsMet, resetCaptcha]);
 
   const onSubmitHandler = async (values: ResetPasswordFormValuesType) => {
-    setServerError(null);
+    animCtx?.startAnimation();
     try {
       const res = await mutateAsync({
         code,
@@ -63,37 +77,31 @@ export const ResetPasswordForm = ({ code }: ResetPasswordFormProps) => {
           : res.errors && typeof res.errors === "object"
           ? (Object.values(res.errors as Record<string, string>)[0] ?? "Reset failed")
           : (res.errors as string) || "Reset failed";
-        setServerError(msg);
+        shake();
+        await animCtx?.failAnimation(msg);
         return;
       }
+      await animCtx?.succeedAnimation();
       navigate("/reset-password-success");
     } catch (error) {
       resetCaptcha();
+      shake();
       if (isErrorWithErrors(error)) {
         const msg = Array.isArray(error.errors)
           ? (error.errors[0] as string)
           : error.errors && typeof error.errors === "object"
           ? (Object.values(error.errors as Record<string, string>)[0] ?? "Something went wrong")
           : (error.errors as unknown as string) || "Something went wrong";
-        setServerError(msg);
+        await animCtx?.failAnimation(msg);
       } else {
-        setServerError("Something went wrong");
+        await animCtx?.failAnimation("Something went wrong");
       }
     }
   };
 
   return (
-    <div className="flex flex-col gap-6">
-      <div>
-        <h2 className="text-xl font-semibold mb-2" style={{ color: "var(--fg)", fontFamily: "system-ui, -apple-system, sans-serif" }}>
-          Set New Password
-        </h2>
-        <p className="text-sm" style={{ color: "var(--muted)", fontFamily: "system-ui, -apple-system, sans-serif" }}>
-          Choose a strong password for your account.
-        </p>
-      </div>
-
-      <form onSubmit={form.handleSubmit(onSubmitHandler)} className="flex flex-col gap-5">
+    <div className="flex flex-col gap-5">
+      <form ref={formRef} onSubmit={form.handleSubmit(onSubmitHandler, shake)} className="flex flex-col gap-5">
         <div className="flex flex-col gap-2">
           <label className="oidc-sci-fi-label">New Password</label>
           <input
@@ -102,6 +110,7 @@ export const ResetPasswordForm = ({ code }: ResetPasswordFormProps) => {
             autoComplete="new-password"
             className="oidc-sci-fi-input"
             aria-invalid={!!form.formState.errors.password}
+            disabled={isAuthenticating}
             {...form.register("password")}
           />
           {form.formState.errors.password && (
@@ -117,6 +126,7 @@ export const ResetPasswordForm = ({ code }: ResetPasswordFormProps) => {
             autoComplete="new-password"
             className="oidc-sci-fi-input"
             aria-invalid={!!form.formState.errors.confirmPassword}
+            disabled={isAuthenticating}
             {...form.register("confirmPassword")}
           />
           {form.formState.errors.confirmPassword && (
@@ -150,17 +160,13 @@ export const ResetPasswordForm = ({ code }: ResetPasswordFormProps) => {
 
         {isValid && requirementsMet && <Captcha {...captcha} />}
 
-        {serverError && (
-          <p className="text-sm" style={{ color: "var(--danger)", fontFamily: "system-ui, sans-serif" }}>{serverError}</p>
-        )}
-
         <button
           type="submit"
-          disabled={isPending || !captchaCode || !isValid || !requirementsMet}
-          className="oidc-sci-fi-btn w-full flex items-center justify-center gap-2"
+          disabled={isAuthenticating || !captchaCode || !isValid || !requirementsMet}
+          className="oidc-sci-fi-btn mt-1 w-full flex items-center justify-center gap-2"
         >
-          {isPending ? (
-            <><Loader size={16} style={{ animation: "oidc-spin 1s linear infinite" }} /><span>Saving...</span></>
+          {isAuthenticating ? (
+            <><Loader size={16} style={{ animation: "oidc-spin 1s linear infinite" }} /><span>Resetting…</span></>
           ) : (
             <><span>Set Password</span><ArrowRight size={16} /></>
           )}
