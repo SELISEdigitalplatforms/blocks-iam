@@ -6,7 +6,6 @@ import {
   FormMessage,
 } from "@/components/ui-kits/form/form";
 import { Captcha } from "@/components/captcha";
-import { showErrorToast } from "@/hooks/use-toast";
 import { isErrorWithErrors } from "@/lib/error";
 import { getRuntimeEnv } from "@/lib/runtime-env";
 import { useSignupByEmail } from "@blocks-idp/authentication/hooks/use-auth";
@@ -77,10 +76,11 @@ export const SignupForm = ({
         resetCaptcha();
         const msg = Array.isArray(res.errors)
           ? res.errors[0]
+          : res.errors && typeof res.errors === "object"
+          ? (Object.values(res.errors as Record<string, string>)[0] ?? "Registration failed")
           : (res.errors as string) || "Registration failed";
         shake();
         await animCtx?.failAnimation(msg);
-        showErrorToast({ errors: res.errors });
         return;
       }
       await animCtx?.succeedAnimation();
@@ -91,12 +91,12 @@ export const SignupForm = ({
       if (isErrorWithErrors(error)) {
         const msg = Array.isArray(error.errors)
           ? (error.errors[0] as string)
+          : error.errors && typeof error.errors === "object"
+          ? (Object.values(error.errors as Record<string, string>)[0] ?? "Something went wrong")
           : (error.errors as unknown as string) || "Something went wrong";
         await animCtx?.failAnimation(msg);
-        showErrorToast({ errors: error.errors });
       } else {
         await animCtx?.failAnimation("Something went wrong");
-        showErrorToast({ errors: "Something went wrong" });
       }
     }
   };
