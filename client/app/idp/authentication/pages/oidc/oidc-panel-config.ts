@@ -139,3 +139,68 @@ export const SIGNUP_PANEL: OidcPanelConfig = {
     { text: "  > content-type: application/json",  color: "var(--muted)"  },
   ],
 };
+
+/* ──────────────────────────────────────────────────────────────
+   RESET PASSWORD — real service flow:
+     IAM Service validates the reset code (POST /api/account/reset-password) →
+     IAM updates the password hash →
+     IAM revokes active session tokens (when logoutFromAllDevices is on)
+   ────────────────────────────────────────────────────────────── */
+export const RESET_PASSWORD_PANEL: OidcPanelConfig = {
+  heading: "Password Reset Pipeline",
+  subtext:
+    "Your reset code is validated by the Blocks IAM service. The new password is applied and active sessions are revoked if requested.",
+
+  idleBadge:       "Awaiting Input",
+  submittingBadge: "Resetting",
+  successBadge:    "Password Updated",
+  failedBadge:     "Reset Failed",
+
+  idleNode: {
+    icon:        "cursor",
+    title:       "Awaiting Input",
+    description: "Enter and confirm your new password to begin the reset flow.",
+  },
+
+  validatingNode: {
+    icon:         "key",
+    service:      "IAM Service",
+    title:        "Validating Reset Code",
+    activeLabel:  "POST /api/account/reset-password …",
+    successLabel: "Reset code verified",
+    failLabel:    "Reset code rejected by IAM",
+  },
+
+  successNodes: [
+    {
+      icon:         "shield-check",
+      service:      "IAM Service",
+      title:        "Updating Password",
+      activeLabel:  "Applying new password hash…",
+      successLabel: "Password updated successfully",
+    },
+    {
+      icon:         "cookie",
+      service:      "IAM Service",
+      title:        "Invalidating Sessions",
+      activeLabel:  "Revoking active session tokens…",
+      successLabel: "Sessions cleared",
+    },
+  ],
+
+  terminalMessages: [
+    { text: "$ POST /api/account/reset-password",  color: "var(--accent2)" },
+    { text: "  > content-type: application/json",  color: "var(--muted)"   },
+    { text: "200 OK — reset code verified",        color: "var(--success)" },
+    { text: "$ iam.updatePassword(user_id)",        color: "var(--fg)"      },
+    { text: "  > password_hash updated",            color: "var(--muted)"   },
+    { text: "$ iam.revokeSessions(user_id)",        color: "var(--fg)"      },
+    { text: "  > active_tokens revoked",            color: "var(--muted)"   },
+    { text: "password reset complete",              color: "var(--success)" },
+  ],
+
+  errorTerminalPrefix: [
+    { text: "$ POST /api/account/reset-password", color: "var(--accent2)" },
+    { text: "  > content-type: application/json", color: "var(--muted)"  },
+  ],
+};
