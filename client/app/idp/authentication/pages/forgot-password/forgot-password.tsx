@@ -1,82 +1,67 @@
-import { Logo } from "@/components/logo";
+import { useEffect, useState } from "react";
 import { ModeToggle } from "@/components/mode-toggle/mode-toggle";
-import { KeyRound, Lock, ShieldCheck } from "lucide-react";
-import { Link } from "react-router-dom";
+import { SciFiBackgroundOidc } from "../oidc/sci-fi-background-oidc";
 import { ForgotPasswordForm } from "./forgot-password-form";
+import "../oidc/sci-fi-oidc.css";
+
+function BlocksLogo() {
+  return (
+    <svg className="h-7 w-auto" viewBox="0 0 246 360" xmlns="http://www.w3.org/2000/svg" fill="var(--accent)" aria-hidden>
+      <path d="M245.455 68.162V129.87L168.982 156.65V93.9637L245.455 68.162Z" />
+      <path d="M240.389 62.3805L165.49 87.6573L5.30945 24.2563L85.3315 0L240.389 62.3805Z" />
+      <path d="M161.797 93.8295V156.43L81.1141 122.607V188.07L0 152.738V29.6846L161.797 93.8295Z" />
+      <path d="M76.4728 266.036L0 291.837V230.123L76.4728 203.329V266.036Z" />
+      <path d="M160.122 360L5.07166 297.619L79.9639 272.343L240.144 335.743L160.122 360Z" />
+      <path d="M245.454 330.315L83.6569 266.175V203.57L164.34 237.395V171.93L245.454 207.262V330.315Z" />
+    </svg>
+  );
+}
 
 export const ForgotPassword = () => {
+  const [htmlTheme, setHtmlTheme] = useState<"dark" | "light">(() =>
+    typeof document !== "undefined" && document.documentElement.classList.contains("dark")
+      ? "dark" : "light"
+  );
+  useEffect(() => {
+    const observer = new MutationObserver(() => {
+      setHtmlTheme(document.documentElement.classList.contains("dark") ? "dark" : "light");
+    });
+    observer.observe(document.documentElement, { attributes: true, attributeFilter: ["class"] });
+    return () => observer.disconnect();
+  }, []);
+
   return (
-    <div className="fixed inset-0 z-50 flex flex-col bg-[hsl(var(--surface-app))]">
-      {/* Background decorations */}
-      <div className="pointer-events-none absolute inset-0 overflow-hidden">
-        <div className="absolute -left-40 -top-40 h-96 w-96 rounded-full bg-primary/5 blur-3xl" />
-        <div className="absolute -bottom-40 right-10 h-80 w-80 rounded-full bg-primary/5 blur-3xl" />
-        <div className="absolute left-1/2 top-1/4 h-64 w-64 -translate-x-1/2 rounded-full bg-primary/3 blur-3xl" />
-      </div>
-
-      {/* Header */}
-      <header className="relative z-10 flex items-center px-6 py-5 xl:px-[154px]">
-        <Link to="/login" className="transition-opacity hover:opacity-80">
-          <Logo width={120} height={52} />
-        </Link>
-        <div className="absolute right-6 top-5 xl:right-[154px]">
-          <ModeToggle />
-        </div>
-      </header>
-
-      {/* Main */}
-      <main className="relative z-10 min-h-0 flex-1 overflow-y-auto">
-        <div className="flex min-h-full items-center justify-center px-6 py-8">
-        <div className="w-full max-w-[420px]">
-          {/* Card */}
-          <div className="overflow-hidden rounded-2xl border border-[hsl(var(--border-default))] bg-[hsl(var(--card))] shadow-md">
-            {/* Card header */}
-            <div className="relative overflow-hidden rounded-t-2xl blocks-gradient px-6 py-7">
-              <div className="absolute -right-8 -top-8 h-32 w-32 rounded-full bg-white/5" />
-              <div className="absolute -bottom-6 right-4 h-20 w-20 rounded-full bg-white/5" />
-              <span className="relative inline-flex items-center rounded-full bg-white/15 px-2.5 py-0.5 text-[10px] font-semibold uppercase tracking-widest text-primary-foreground/80">
-                Password Recovery
-              </span>
-              <div className="relative mt-3">
-                <h1 className="text-lg font-bold leading-tight text-primary-foreground">
-                  Blocks Identity Provider
-                </h1>
-                <p className="mt-0.5 text-xs text-primary-foreground/70">
-                  Reset your password via email
-                </p>
-              </div>
-            </div>
-
-            {/* Card body */}
-            <div className="p-6">
-              <ForgotPasswordForm />
-            </div>
+    <div
+      className="oidc-scifi-root min-h-screen overflow-hidden relative"
+      style={{ background: "var(--bg)" }}
+      data-theme={htmlTheme}
+    >
+      <SciFiBackgroundOidc />
+      <main className="relative z-10 min-h-screen flex flex-col items-center justify-center px-4 gap-6">
+        <div
+          style={{
+            background: "var(--node-bg)",
+            border: "1px solid var(--border)",
+            borderRadius: "1rem",
+            padding: "2.5rem",
+            backdropFilter: "blur(16px)",
+            width: "100%",
+            maxWidth: "24rem",
+          }}
+        >
+          <div className="flex items-center gap-3 mb-8">
+            <BlocksLogo />
+            <div className="w-px h-4" style={{ background: "var(--border)" }} />
+            <span
+              className="text-xs font-semibold tracking-[.18em] uppercase"
+              style={{ color: "var(--muted)", fontFamily: "system-ui, -apple-system, sans-serif" }}
+            >
+              Blocks IDP
+            </span>
           </div>
-
-          {/* Trust row */}
-          <div className="mt-5 flex items-center justify-center gap-4">
-            <div className="flex items-center gap-1.5 text-[11px] text-[hsl(var(--low-emphasis))]">
-              <ShieldCheck className="h-3.5 w-3.5 text-primary/60" />
-              MFA Ready
-            </div>
-            <span className="h-3 w-px bg-[hsl(var(--border-default))]" />
-            <div className="flex items-center gap-1.5 text-[11px] text-[hsl(var(--low-emphasis))]">
-              <KeyRound className="h-3.5 w-3.5 text-primary/60" />
-              SSO Enabled
-            </div>
-            <span className="h-3 w-px bg-[hsl(var(--border-default))]" />
-            <div className="flex items-center gap-1.5 text-[11px] text-[hsl(var(--low-emphasis))]">
-              <Lock className="h-3.5 w-3.5 text-primary/60" />
-              Encrypted
-            </div>
-          </div>
-
-          {/* Copyright */}
-          <p className="mt-4 text-center text-[11px] text-[hsl(var(--low-emphasis))]">
-            © {new Date().getFullYear()} SELISE Digital Platforms. All rights reserved.
-          </p>
+          <ForgotPasswordForm />
         </div>
-        </div>
+        <ModeToggle />
       </main>
     </div>
   );
