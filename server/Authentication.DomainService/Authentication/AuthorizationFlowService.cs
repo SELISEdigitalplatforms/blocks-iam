@@ -486,10 +486,10 @@ namespace Authentication.DomainService.Authentication
                 return new BadRequestObjectResult(new { error = "invalid_client", error_description = "Missing client authentication" });
             }
 
-            if (!await HasOidcClientConfigurationAsync(clientId))
-            {
-                return new BadRequestObjectResult(new { error = "invalid_client", error_description = "Client configuration not found" });
-            }
+            //if (!await HasOidcClientConfigurationAsync(clientId))
+            //{
+            //    return new BadRequestObjectResult(new { error = "invalid_client", error_description = "Client configuration not found" });
+            //}
 
             var authConfiguration = await _authenticationRepository.GetAuthenticationConfigurationAsync();
             if (authConfiguration == null)
