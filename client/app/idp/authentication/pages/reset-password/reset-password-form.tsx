@@ -45,6 +45,20 @@ export const ResetPasswordForm = ({ code }: ResetPasswordFormProps) => {
   const confirmPassword = form.watch("confirmPassword");
   const logoutFromAllDevices = form.watch("logoutFromAllDevices");
 
+  /* Inject PasswordStrengthChecker into the right panel's idle slot */
+  const setPanelIdleSlot = animCtx?.setPanelIdleSlot;
+  useEffect(() => {
+    setPanelIdleSlot?.(
+      <PasswordStrengthChecker
+        password={password}
+        confirmPassword={confirmPassword}
+        onRequirementsMet={setRequirementsMet}
+      />
+    );
+    return () => { setPanelIdleSlot?.(null); };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [password, confirmPassword, setPanelIdleSlot]);
+
   const isAuthenticating =
     isPending ||
     animCtx?.phase === "submitting" ||
@@ -133,12 +147,6 @@ export const ResetPasswordForm = ({ code }: ResetPasswordFormProps) => {
             <p className="text-xs" style={{ color: "var(--danger)" }}>{form.formState.errors.confirmPassword.message}</p>
           )}
         </div>
-
-        <PasswordStrengthChecker
-          password={password}
-          confirmPassword={confirmPassword}
-          onRequirementsMet={setRequirementsMet}
-        />
 
         <div
           className="rounded-lg p-4 flex items-center justify-between gap-3"
