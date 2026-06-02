@@ -115,7 +115,12 @@ export const ResetPasswordForm = ({ code }: ResetPasswordFormProps) => {
 
   return (
     <div className="flex flex-col gap-5">
-      <form ref={formRef} onSubmit={form.handleSubmit(onSubmitHandler, shake)} className="flex flex-col gap-5">
+      <form
+        ref={formRef}
+        onSubmit={form.handleSubmit(onSubmitHandler, shake)}
+        onInput={() => { if (animCtx?.phase === "failed") animCtx?.resetAnimation(); }}
+        className="flex flex-col gap-5"
+      >
         <div className="flex flex-col gap-2">
           <label className="oidc-sci-fi-label">New Password</label>
           <input
@@ -149,17 +154,12 @@ export const ResetPasswordForm = ({ code }: ResetPasswordFormProps) => {
         </div>
 
         <div
-          className="rounded-lg p-4 flex items-center justify-between gap-3"
+          className="rounded-lg py-2.5 px-3 flex items-center justify-between gap-3"
           style={{ border: "1px solid var(--border)", background: "var(--accent-softer)" }}
         >
-          <div>
-            <p className="text-sm font-medium" style={{ color: "var(--fg)", fontFamily: "system-ui, sans-serif" }}>
-              Logout from all devices
-            </p>
-            <p className="text-xs mt-0.5" style={{ color: "var(--muted)", fontFamily: "system-ui, sans-serif" }}>
-              Recommended for account safety.
-            </p>
-          </div>
+          <p className="text-sm font-medium" style={{ color: "var(--fg)", fontFamily: "system-ui, sans-serif" }}>
+            Logout from all devices
+          </p>
           <Switch
             checked={logoutFromAllDevices ?? true}
             onCheckedChange={(val) => form.setValue("logoutFromAllDevices", val)}
