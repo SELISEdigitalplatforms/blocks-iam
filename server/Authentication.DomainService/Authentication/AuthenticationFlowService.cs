@@ -564,6 +564,8 @@ namespace Authentication.DomainService.Authentication
 
             httpResponse.Cookies.Append(domain, response.AccessToken, accessCookieOptions);
 
+            Console.WriteLine($"Domain: {domain}, AccessTonke: {response.AccessToken}");
+
             if (!string.IsNullOrWhiteSpace(response.RefreshToken))
             {
                 httpResponse.Cookies.Append($"{IdpConstants.RefreshTokenCookieName}_{domain}", response.RefreshToken, refreshCookieOptions);
@@ -788,6 +790,8 @@ namespace Authentication.DomainService.Authentication
                 var tokenResponse = await _oAuthJwtAccessTokenManager.ManageTokenAsync(tokenRequest, authConfiguration, user);
                 await _unifiedTokenSessionService.RevokeRefreshToken(rootRefreshToken);
 
+                Console.WriteLine($"Before settinCookie AccessToken: {tokenResponse.AccessToken}");
+
                 var cookiesSet = AppendCookies(tokenResponse, httpResponse, rootDomain);
 
                 Console.WriteLine($"IsCookieSet: {cookiesSet}");
@@ -808,7 +812,7 @@ namespace Authentication.DomainService.Authentication
                     });
                 }
 
-                var sessionCookieOptions = DomainResolver.CreateCookieOptions(rootCookieDomain, rootRefreshCache.ExpiresUtc);
+               // var sessionCookieOptions = DomainResolver.CreateCookieOptions(rootCookieDomain, rootRefreshCache.ExpiresUtc);
 
               //  httpResponse.Cookies.Delete(IdpConstants.ImpersonationIdCookieName, sessionCookieOptions);
               //  httpResponse.Cookies.Append(IdpConstants.ImpersonationIdCookieName, sessionId, sessionCookieOptions);
