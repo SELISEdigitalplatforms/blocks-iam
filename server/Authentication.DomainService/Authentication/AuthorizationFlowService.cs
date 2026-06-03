@@ -275,7 +275,7 @@ namespace Authentication.DomainService.Authentication
 
 
                 var claimUserId = userPrincipal.FindFirst("sub")?.Value;
-                Boolean.TryParse( userPrincipal.FindFirst("imperesonated")?.Value, out var isImpersonated);
+                Boolean.TryParse( userPrincipal.FindFirst("impersonated")?.Value, out var isImpersonated);
                 var originalTenantId = userPrincipal.FindFirst("original_tenant_id")?.Value;
                 var tenatId = userPrincipal.FindFirst("tenant_id")?.Value;
                 var tenantHint = isImpersonated ? originalTenantId : tenant_id;
