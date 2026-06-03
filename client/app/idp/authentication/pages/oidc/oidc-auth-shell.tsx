@@ -207,7 +207,7 @@ export function OidcAuthShell({
                     <BlocksLogo />
                     <Separator orientation="vertical" className="h-4 bg-[var(--border)]" />
                     <span className="text-xs font-semibold tracking-[.18em] uppercase text-[var(--fg)] font-sans">
-                      Blocks IDP
+                      Blocks IAM
                     </span>
                   </div>
                   <ModeToggle />
