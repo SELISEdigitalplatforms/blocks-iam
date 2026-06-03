@@ -97,6 +97,7 @@ export const OIDCSignin = () => {
         panelConfig={OIDC_LOGIN_PANEL}
         heading="Sign in to continue to your application"
         headingDimFirst={3}
+        showCorners={false}
         footerNote={
           <p className="text-xs" style={{ fontFamily: "'Rajdhani', sans-serif", color: "var(--muted)" }}>
             © {new Date().getFullYear()} SELISE Digital Platforms. All rights reserved.

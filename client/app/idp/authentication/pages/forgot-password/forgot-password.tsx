@@ -36,7 +36,7 @@ export const ForgotPassword = () => {
       style={{ background: "var(--bg)" }}
       data-theme={htmlTheme}
     >
-      <SciFiBackgroundOidc />
+      <SciFiBackgroundOidc showCorners={false} />
       <main className="relative z-10 min-h-screen flex flex-col items-center justify-center px-4 gap-6">
         <div
           style={{

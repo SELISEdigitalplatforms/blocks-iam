@@ -22,6 +22,7 @@ export const Signup = () => {
       headingDimFirst={3}
       successTitle="Account Created"
       successSubtitle="Check your inbox for the activation link…"
+      showCorners={false}
       footerNote={
         <p className="text-xs" style={{ color: "var(--muted)", fontFamily: "system-ui, sans-serif" }}>
           Already a member?{" "}

@@ -17,6 +17,7 @@ export const ResetPassword = ({ code }: ResetPasswordProps) => {
       headingDimFirst={3}
       successTitle="Password Updated"
       successSubtitle="Your password has been reset. Redirecting to login…"
+      showCorners={false}
       footerNote={
         <p className="text-xs" style={{ color: "var(--muted)", fontFamily: "system-ui, sans-serif" }}>
           © {new Date().getFullYear()} SELISE Digital Platforms. All rights reserved.
