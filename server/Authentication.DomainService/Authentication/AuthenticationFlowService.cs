@@ -783,13 +783,17 @@ namespace Authentication.DomainService.Authentication
                     Request = httpRequest
                 };
 
-                Console.WriteLine($"Impersonation tokenRequest: {tokenRequest.IsImpersonation}");
+                
 
                 var tokenResponse = await _oAuthJwtAccessTokenManager.ManageTokenAsync(tokenRequest, authConfiguration, user);
 
+                Console.WriteLine($"Response CookieDomain: {tokenResponse.CookieDomain}");
                 await _unifiedTokenSessionService.RevokeRefreshToken(rootRefreshToken);
 
                 var cookiesSet = AppendCookies(tokenResponse, httpResponse, rootDomain);
+
+                Console.WriteLine($"IsCookieSet: {cookiesSet}");
+                Console.WriteLine($"AccessToken: {tokenResponse.AccessToken}");
                 if (!cookiesSet)
                 {
                     return new OkObjectResult(new
