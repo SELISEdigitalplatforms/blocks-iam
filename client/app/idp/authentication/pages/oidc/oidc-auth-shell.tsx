@@ -93,6 +93,7 @@ interface OidcAuthShellProps {
   footerNote?: React.ReactNode;
   successTitle?: string;
   successSubtitle?: string;
+  showCorners?: boolean;
 }
 
 /* ── Auth shell ─────────────────────────────────────────────── */
@@ -104,6 +105,7 @@ export function OidcAuthShell({
   footerNote,
   successTitle    = "Access Granted",
   successSubtitle = "Redirecting to your application…",
+  showCorners = true,
 }: OidcAuthShellProps) {
   /* Track html.dark class reactively via MutationObserver */
   const [htmlTheme, setHtmlTheme] = useState<"dark" | "light">(() =>
@@ -190,7 +192,7 @@ export function OidcAuthShell({
         data-theme={htmlTheme}
         data-anim-phase={phase}
       >
-        <SciFiBackgroundOidc />
+        <SciFiBackgroundOidc showCorners={showCorners} />
 
         <main className="relative z-10 flex-1 min-h-0 w-full max-w-5xl mx-auto px-3 py-3 sm:px-4 sm:py-4 md:px-6 md:py-5 flex items-center justify-center">
           <div
