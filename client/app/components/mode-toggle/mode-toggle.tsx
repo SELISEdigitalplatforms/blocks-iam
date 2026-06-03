@@ -1,5 +1,5 @@
 import { Monitor, Moon, Sun } from "lucide-react";
-import { cn } from "@/lib/utils";
+import { Tabs, TabsList, TabsTrigger } from "@/components/ui-kits/tabs/tabs";
 import { useTheme } from "@/hooks/use-theme";
 
 type ThemeOption = "light" | "dark" | "system";
@@ -14,33 +14,19 @@ export function ModeToggle() {
   const { theme, setTheme } = useTheme();
 
   return (
-    <div
-      role="radiogroup"
-      aria-label="Theme"
-      className="inline-flex items-center gap-0.5 rounded-md p-0.5 bg-[hsl(var(--muted))] border border-[hsl(var(--border-default)/0.4)]"
-    >
-      {OPTIONS.map(({ value, Icon, label }) => {
-        const active = theme === value;
-        return (
-          <button
+    <Tabs value={theme} onValueChange={(value) => setTheme(value as ThemeOption)}>
+      <TabsList className="bg-[hsl(var(--muted))] border border-[hsl(var(--border-default)/0.4)] rounded-md gap-0.5">
+        {OPTIONS.map(({ value, Icon, label }) => (
+          <TabsTrigger
             key={value}
-            type="button"
-            role="radio"
-            aria-checked={active}
-            aria-label={label}
-            onClick={() => setTheme(value)}
-            className={cn(
-              "flex items-center gap-1.5 px-2 py-1 rounded-sm transition-all duration-150 text-xs font-medium select-none",
-              active
-                ? "bg-[hsl(var(--background))] text-[hsl(var(--primary))] shadow-sm"
-                : "text-[hsl(var(--muted-foreground))] hover:text-[hsl(var(--foreground))]"
-            )}
+            value={value}
+            className="px-2 py-1 rounded-sm text-xs font-medium data-[state=active]:bg-[hsl(var(--background))] data-[state=active]:text-[hsl(var(--primary))] data-[state=active]:shadow-sm data-[state=inactive]:text-[hsl(var(--muted-foreground))]"
           >
-            <Icon size={13} aria-hidden />
-            {active && <span>{label}</span>}
-          </button>
-        );
-      })}
-    </div>
+            <Icon size={13} className="mr-1.5" aria-hidden />
+            <span>{label}</span>
+          </TabsTrigger>
+        ))}
+      </TabsList>
+    </Tabs>
   );
 }
