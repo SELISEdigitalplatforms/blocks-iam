@@ -38,12 +38,12 @@ export const SSOProviderCardSkelton = () => {
 };
 export const SSOProviderCard = ({ configuration }: SSOProviderCardProps) => {
   const [open, setOpen] = useState<boolean>(false);
-  const { theme } = useTheme();
+  const { resolvedTheme } = useTheme();
   const imageSrc = useMemo(() => {
-    return theme === "light"
+    return resolvedTheme === "light"
       ? configuration.imageSrc
       : configuration.imageSrcDark || configuration.imageSrc;
-  }, [configuration, theme]);
+  }, [configuration, resolvedTheme]);
   return (
     <>
       <Card>
