@@ -786,14 +786,12 @@ namespace Authentication.DomainService.Authentication
                 
 
                 var tokenResponse = await _oAuthJwtAccessTokenManager.ManageTokenAsync(tokenRequest, authConfiguration, user);
-
-                Console.WriteLine($"Response CookieDomain: {tokenResponse.CookieDomain}");
                 await _unifiedTokenSessionService.RevokeRefreshToken(rootRefreshToken);
 
                 var cookiesSet = AppendCookies(tokenResponse, httpResponse, rootDomain);
 
                 Console.WriteLine($"IsCookieSet: {cookiesSet}");
-                Console.WriteLine($"AccessToken: {tokenResponse.AccessToken}");
+                Console.WriteLine($"RoodDomain: {rootDomain}");
                 if (!cookiesSet)
                 {
                     return new OkObjectResult(new
