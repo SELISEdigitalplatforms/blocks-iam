@@ -15,7 +15,7 @@ export function ModeToggle() {
 
   return (
     <Tabs value={theme} onValueChange={(value) => setTheme(value as ThemeOption)}>
-      <TabsList className="h-auto p-0.5 bg-[hsl(var(--muted))] rounded-md gap-0.5">
+      <TabsList className="h-auto p-0.5 rounded-md gap-0.5 !bg-transparent">
         {OPTIONS.map(({ value, Icon, label }) => (
           <TabsTrigger
             key={value}
