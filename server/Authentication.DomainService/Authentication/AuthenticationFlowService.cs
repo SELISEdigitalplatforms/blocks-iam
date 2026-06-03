@@ -684,7 +684,7 @@ namespace Authentication.DomainService.Authentication
                                 IsImpersonation = true,
                                 OriginalTenantId = rootTenant.TenantId,
                                 TargetTenantId = request.TargetTenantId,
-                                ImpersonatorUserId = bc.UserId,
+                                ImpersonatorUserId = userId,
                                 Request = httpRequest
                             };
 
@@ -699,7 +699,7 @@ namespace Authentication.DomainService.Authentication
                                 };
                             }
 
-                            await WriteImpersonationAuditEventAsync(httpRequest, "org_switched", bc.UserId, request.TargetTenantId, "INFO", "success", rootTenant.TenantId);
+                            await WriteImpersonationAuditEventAsync(httpRequest, "org_switched", userId, request.TargetTenantId, "INFO", "success", rootTenant.TenantId);
 
                             var cookiesSet = AppendCookies(newTokenResponse, httpResponse, rootDomain);
                             if (cookiesSet)
@@ -750,7 +750,7 @@ namespace Authentication.DomainService.Authentication
                 try
                 {
                     sessionId = await _impersonationFlowHelper.CreateAndBackupImpersonationSessionAsync(
-                        bc.UserId,
+                        userId,
                         rootTenant.TenantId,
                         request.TargetTenantId,
                         clientId,
@@ -758,15 +758,15 @@ namespace Authentication.DomainService.Authentication
                 }
                 catch (Exception ex)
                 {
-                    _logger.LogError(ex, "Failed to create impersonation session record for user {UserId}", bc.UserId);
+                    _logger.LogError(ex, "Failed to create impersonation session record for user {UserId}", userId);
                     return new ObjectResult(new { error = "session_creation_failed", error_description = "Failed to create impersonation session" })
                     {
                         StatusCode = StatusCodes.Status500InternalServerError
                     };
                 }
 
-                _logger.LogInformation("Impersonation started by user {UserId} from root tenant {RootTenantId} to target tenant {TargetTenantId}", bc.UserId, rootTenant.TenantId, request.TargetTenantId);
-                await WriteImpersonationAuditEventAsync(httpRequest, "impersonation_started", bc.UserId, request.TargetTenantId, "INFO", "success", rootTenant.TenantId);
+                _logger.LogInformation("Impersonation started by user {UserId} from root tenant {RootTenantId} to target tenant {TargetTenantId}", userId, rootTenant.TenantId, request.TargetTenantId);
+                await WriteImpersonationAuditEventAsync(httpRequest, "impersonation_started", userId, request.TargetTenantId, "INFO", "success", rootTenant.TenantId);
 
                 var tokenRequest = new TokenRequest
                 {
@@ -778,10 +778,12 @@ namespace Authentication.DomainService.Authentication
                     IsImpersonation = true,
                     OriginalTenantId = rootTenant.TenantId,
                     TargetTenantId = request.TargetTenantId,
-                    ImpersonatorUserId = bc.UserId,
+                    ImpersonatorUserId = userId,
                     ImpersonationSessionId = sessionId,
                     Request = httpRequest
                 };
+
+                Console.WriteLine($"Impersonation tokenRequest: {tokenRequest.IsImpersonation}");
 
                 var tokenResponse = await _oAuthJwtAccessTokenManager.ManageTokenAsync(tokenRequest, authConfiguration, user);
 
@@ -813,7 +815,7 @@ namespace Authentication.DomainService.Authentication
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Unexpected error during impersonation for user {UserId} to tenant {TargetTenantId}", bc.UserId, request.TargetTenantId);
+                _logger.LogError(ex, "Unexpected error during impersonation for user {UserId} to tenant {TargetTenantId}", userId, request.TargetTenantId);
                 return new ObjectResult(new { error = "impersonation_failed", error_description = "An unexpected error occurred during impersonation" })
                 {
                     StatusCode = StatusCodes.Status500InternalServerError
