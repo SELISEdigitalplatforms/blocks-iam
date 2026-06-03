@@ -271,19 +271,10 @@ namespace Authentication.DomainService.Authentication
                     });
                 }
 
-                
-
+                var tenantHint = tenant_id;
 
                 var claimUserId = userPrincipal.FindFirst("sub")?.Value;
-                Boolean.TryParse( userPrincipal.FindFirst("impersonated")?.Value, out var isImpersonated);
-                var originalTenantId = userPrincipal.FindFirst("original_tenant_id")?.Value;
-                var tenatId = userPrincipal.FindFirst("tenant_id")?.Value;
-                var tenantHint = isImpersonated ? originalTenantId : tenant_id;
-
-
-
-               // var claimTenantId = userPrincipal.FindFirst("tenant_id")?.Value;
-              
+                var claimTenantId = userPrincipal.FindFirst("tenant_id")?.Value;
                 var effectiveSessionId = request.Cookies[IdpSessionCookieName];
 
                 string? resolvedUserId = null;
@@ -314,7 +305,7 @@ namespace Authentication.DomainService.Authentication
                 if (string.IsNullOrWhiteSpace(resolvedUserId))
                 {
                     resolvedUserId = claimUserId;
-                    resolvedTenantId = tenantHint;
+                    resolvedTenantId = claimTenantId ?? tenantHint;
                 }
 
                 if (!string.IsNullOrWhiteSpace(resolvedUserId) && !string.IsNullOrWhiteSpace(resolvedTenantId))
