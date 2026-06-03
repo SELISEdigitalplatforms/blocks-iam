@@ -273,9 +273,9 @@ namespace Authentication.DomainService.Authentication
 
                 var tenantHint = tenant_id;
 
-                var claimUserId = userPrincipal.FindFirst("user_id")?.Value;
-                var claimTenantId = userPrincipal.FindFirst("tenant_id")?.Value;
-                bool.TryParse(userPrincipal.FindFirst("impersonated")?.Value, out bool impersonated);
+                var claimUserId = userPrincipal?.FindFirst("user_id")?.Value;
+                var claimTenantId = userPrincipal?.FindFirst("tenant_id")?.Value;
+                bool.TryParse(userPrincipal?.FindFirst("impersonated")?.Value, out bool impersonated);
                 var effectiveSessionId = request.Cookies[IdpSessionCookieName];
                 
 
