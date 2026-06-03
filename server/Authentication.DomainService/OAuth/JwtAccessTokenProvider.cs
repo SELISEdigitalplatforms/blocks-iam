@@ -120,6 +120,7 @@ namespace Authentication.DomainService.OAuth
                 claimsIdentity.AddClaim(new Claim(BlocksContext.IMPERSONATED_CLAIM, "true", ClaimValueTypes.Boolean));
                 claimsIdentity.AddClaim(new Claim(BlocksContext.ORIGINAL_TENANT_ID_CLAIM, tokenRequest.OriginalTenantId));
                 claimsIdentity.AddClaim(new Claim(BlocksContext.TENANT_ID_CLAIM, tokenRequest.TargetTenantId));
+                claimsIdentity.AddClaim(new Claim(BlocksContext.IMPERSONATION_SESSION_ID_CLAIM, tokenRequest.ImpersonationSessionId ?? string.Empty));
             }
             else
             {

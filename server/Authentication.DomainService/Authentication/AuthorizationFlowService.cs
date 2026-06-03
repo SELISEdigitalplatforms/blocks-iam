@@ -273,9 +273,11 @@ namespace Authentication.DomainService.Authentication
 
                 var tenantHint = tenant_id;
 
-                var claimUserId = userPrincipal.FindFirst("sub")?.Value;
+                var claimUserId = userPrincipal.FindFirst("user_id")?.Value;
                 var claimTenantId = userPrincipal.FindFirst("tenant_id")?.Value;
+                bool.TryParse(userPrincipal.FindFirst("impersonated")?.Value, out bool impersonated);
                 var effectiveSessionId = request.Cookies[IdpSessionCookieName];
+                
 
                 string? resolvedUserId = null;
                 string? resolvedTenantId = null;
@@ -371,6 +373,9 @@ namespace Authentication.DomainService.Authentication
                 await PersistLastUsedOrganizationAsync(user, effectiveOrganizationId);
 
                 var authCode = GenerateRandomCode(32);
+                var impesonatingRefreshToken = _authenticationService.CookieToken(request);
+
+
                 var codeModel = new AuthorizationCodeModel
                 {
                     Code = authCode,
@@ -387,7 +392,11 @@ namespace Authentication.DomainService.Authentication
                     ExpiresAt = DateTime.UtcNow.AddMinutes(10),
                     CreatedAt = DateTime.UtcNow,
                     CreatedByIpAddress = GetClientIpAddress(request),
-                    IsUsed = false
+                    IsUsed = false,
+                    Impersonated = impersonated,
+                    TergatedTenantId = claimTenantId,
+                    ImpersonatedUserId = claimUserId,
+                    ImpesonatingRefreshToken = impesonatingRefreshToken
                 };
 
                 await _authCodeRepo.CreateAsync(codeModel);
