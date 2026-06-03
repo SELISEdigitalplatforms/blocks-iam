@@ -20,10 +20,10 @@ export function ModeToggle() {
           <TabsTrigger
             key={value}
             value={value}
-            className="group h-auto px-2 py-1 rounded-sm text-xs font-medium data-[state=active]:bg-[hsl(var(--background))] data-[state=active]:text-[hsl(var(--primary))] data-[state=active]:shadow-sm data-[state=inactive]:text-[hsl(var(--muted-foreground))] data-[state=active]:[&_svg]:mr-1.5"
+            className="group h-auto px-2 py-1 rounded-sm text-xs font-medium data-[state=active]:bg-[hsl(var(--background))] data-[state=active]:text-[hsl(var(--primary))] data-[state=active]:shadow-sm data-[state=inactive]:text-[hsl(var(--muted-foreground)/0.9)] data-[state=inactive]:hover:text-[hsl(var(--foreground)/0.9)]"
           >
             <Icon size={13} aria-hidden />
-            <span className="hidden group-data-[state=active]:inline"> {label}</span>
+            <span className="ml-1.5 hidden group-data-[state=active]:inline">{label}</span>
           </TabsTrigger>
         ))}
       </TabsList>
