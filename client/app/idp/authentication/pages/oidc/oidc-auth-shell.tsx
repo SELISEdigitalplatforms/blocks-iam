@@ -8,6 +8,7 @@ import {
   type OidcPanelConfig,
 } from "./nodes-panel-oidc";
 import { ModeToggle } from "@/components/mode-toggle/mode-toggle";
+import { Separator } from "@/components/ui-kits/separator/separator";
 import "./sci-fi-oidc.css";
 
 /* ── Animation context ──────────────────────────────────────── */
@@ -50,10 +51,10 @@ function BlocksLogo() {
 function SectionHeading({ text, dimFirst = 3 }: { text: string; dimFirst?: number }) {
   const words = text.split(" ");
   return (
-    <h1 className="text-xl sm:text-2xl font-semibold tracking-tight leading-snug max-w-sm mb-5"
-        style={{ fontFamily: "system-ui, -apple-system, sans-serif" }}>
+    <h1 className="text-xl sm:text-2xl font-semibold tracking-tight leading-snug max-w-sm mb-5 font-sans">
       {words.map((word, i) => (
-        <span key={i}
+        <span
+          key={i}
           className="inline-block mr-1.5"
           style={{ color: i < dimFirst ? "var(--muted)" : "var(--fg)" }}
         >
@@ -68,10 +69,7 @@ function SectionHeading({ text, dimFirst = 3 }: { text: string; dimFirst?: numbe
 function SuccessState({ title, subtitle }: { title: string; subtitle: string }) {
   return (
     <div className="flex-1 flex flex-col justify-center items-center text-center oidc-animate-fade-up">
-      <div
-        className="w-16 h-16 rounded-full flex items-center justify-center mb-6"
-        style={{ background: "var(--success-soft)", border: "1px solid var(--success-border)" }}
-      >
+      <div className="w-16 h-16 rounded-full flex items-center justify-center mb-6 bg-[var(--success-soft)] border border-[var(--success-border)]">
         <svg
           width="32" height="32" viewBox="0 0 24 24"
           fill="none" stroke="var(--success)"
@@ -80,12 +78,8 @@ function SuccessState({ title, subtitle }: { title: string; subtitle: string }) 
           <path className="oidc-checkmark-path animate" d="M20 6L9 17l-5-5" />
         </svg>
       </div>
-      <h2 className="text-xl font-semibold mb-2" style={{ color: "var(--fg)" }}>
-        {title}
-      </h2>
-      <p className="text-sm" style={{ color: "var(--muted)" }}>
-        {subtitle}
-      </p>
+      <h2 className="text-xl font-semibold mb-2 text-[var(--fg)]">{title}</h2>
+      <p className="text-sm text-[var(--muted)]">{subtitle}</p>
     </div>
   );
 }
@@ -182,18 +176,17 @@ export function OidcAuthShell({
     setPanelIdleSlot,
   };
 
-  const formContainerStyle: React.CSSProperties =
+  const formContainerClass =
     phase === "succeeded" && cascadeDone
-      ? { opacity: 0, transform: "translateY(-20px)", pointerEvents: "none" }
+      ? "opacity-0 -translate-y-5 pointer-events-none"
       : phase === "succeeded"
-      ? { opacity: 1, transform: "translateY(0)", pointerEvents: "none" }
-      : { opacity: 1, transform: "translateY(0)" };
+      ? "opacity-100 translate-y-0 pointer-events-none"
+      : "opacity-100 translate-y-0";
 
   return (
     <OidcAuthAnimContext.Provider value={ctx}>
       <div
-        className="oidc-scifi-root h-screen overflow-hidden flex flex-col"
-        style={{ background: "var(--bg)" }}
+        className="oidc-scifi-root h-screen overflow-hidden flex flex-col bg-[var(--bg)]"
         data-theme={htmlTheme}
         data-anim-phase={phase}
       >
@@ -201,11 +194,8 @@ export function OidcAuthShell({
 
         <main className="relative z-10 flex-1 min-h-0 w-full max-w-5xl mx-auto px-3 py-3 sm:px-4 sm:py-4 md:px-6 md:py-5 flex items-center justify-center">
           <div
-            className="w-full rounded-[1.5rem] overflow-hidden flex flex-col md:flex-row shadow-2xl"
-            style={{
-              background: "var(--surface)",
-              height: "min(620px, calc(100dvh - 3rem))",
-            }}
+            className="w-full rounded-[1.5rem] overflow-hidden flex flex-col md:flex-row shadow-2xl bg-[var(--surface)]"
+            style={{ height: "min(620px, calc(100dvh - 3rem))" }}
           >
               {/* Left — form / success */}
               <div className="w-full md:w-1/2 px-6 pt-5 pb-4 sm:px-7 md:px-8 flex flex-col min-h-0 overflow-y-auto">
@@ -213,11 +203,8 @@ export function OidcAuthShell({
                 <div className="flex items-center justify-between mb-4">
                   <div className="flex items-center gap-3">
                     <BlocksLogo />
-                    <div className="w-px h-4" style={{ background: "var(--border)" }} />
-                    <span
-                      className="text-xs font-semibold tracking-[.18em] uppercase"
-                      style={{ color: "var(--fg)", fontFamily: "system-ui, -apple-system, sans-serif" }}
-                    >
+                    <Separator orientation="vertical" className="h-4 bg-[var(--border)]" />
+                    <span className="text-xs font-semibold tracking-[.18em] uppercase text-[var(--fg)] font-sans">
                       Blocks IDP
                     </span>
                   </div>
@@ -230,8 +217,7 @@ export function OidcAuthShell({
                     <SuccessState title={successTitle} subtitle={successSubtitle} />
                   ) : (
                     <div
-                      className="flex flex-col"
-                      style={{ ...formContainerStyle, transition: "opacity 0.6s ease, transform 0.6s ease" }}
+                      className={`flex flex-col transition-[opacity,transform] duration-[600ms] ease-[ease] ${formContainerClass}`}
                     >
                       <SectionHeading text={heading} dimFirst={headingDimFirst} />
                       {children}
@@ -242,7 +228,7 @@ export function OidcAuthShell({
                 {/* Footer */}
                 <div className="mt-4">
                   {footerNote ?? (
-                    <p className="text-xs" style={{ color: "var(--muted)", fontFamily: "system-ui, sans-serif" }}>
+                    <p className="text-xs text-[var(--muted)] font-sans">
                       © {new Date().getFullYear()} SELISE Digital Platforms. Secure OIDC flow.
                     </p>
                   )}
