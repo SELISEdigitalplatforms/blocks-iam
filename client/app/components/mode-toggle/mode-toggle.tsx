@@ -17,7 +17,7 @@ export function ModeToggle() {
     <div
       role="radiogroup"
       aria-label="Theme"
-      className="inline-flex items-center gap-0.5 rounded-md p-0.5 bg-[hsl(var(--muted))] border border-[hsl(var(--border-default))]"
+      className="inline-flex items-center gap-0.5 rounded-md p-0.5 bg-[hsl(var(--muted))] border border-[hsl(var(--border-default)/0.4)]"
     >
       {OPTIONS.map(({ value, Icon, label }) => {
         const active = theme === value;
