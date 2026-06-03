@@ -10,7 +10,16 @@ import { useEffect, useState } from "react";
 import { useAccountRecover } from "@blocks-idp/iam/hooks/use-account";
 import { isErrorWithErrors } from "@/lib/error";
 import { useCaptcha } from "@blocks-idp/captcha/hooks/use-captcha";
-import { ArrowRight, Loader } from "lucide-react";
+import { ArrowRight } from "lucide-react";
+import { Skeleton } from "@/components/ui-kits/skeleton/skeleton";
+import {
+  Form,
+  FormControl,
+  FormField,
+  FormItem,
+  FormLabel,
+  FormMessage,
+} from "@/components/ui-kits/form/form";
 
 export const ForgotPasswordForm = () => {
   const navigate = useNavigate();
@@ -65,48 +74,55 @@ export const ForgotPasswordForm = () => {
   return (
     <div className="flex flex-col gap-6">
       <div>
-        <h2 className="text-xl font-semibold mb-2" style={{ color: "var(--fg)", fontFamily: "system-ui, -apple-system, sans-serif" }}>
+        <h2 className="text-xl font-semibold mb-2 font-sans text-[var(--fg)]">
           Reset Password
         </h2>
-        <p className="text-sm" style={{ color: "var(--muted)", fontFamily: "system-ui, -apple-system, sans-serif" }}>
+        <p className="text-sm font-sans text-[var(--muted)]">
           Enter your email and we&apos;ll dispatch a recovery link.
         </p>
       </div>
 
-      <form onSubmit={form.handleSubmit(onSubmitHandler)} className="flex flex-col gap-5">
-        <div className="flex flex-col gap-2">
-          <label className="oidc-sci-fi-label">Email</label>
-          <input
-            type="email"
-            placeholder="name@company.com"
-            autoComplete="email"
-            className="oidc-sci-fi-input"
-            aria-invalid={!!form.formState.errors.email}
-            {...form.register("email")}
+      <Form {...form}>
+        <form onSubmit={form.handleSubmit(onSubmitHandler)} className="flex flex-col gap-5">
+          <FormField
+            control={form.control}
+            name="email"
+            render={({ field }) => (
+              <FormItem>
+                <FormLabel className="oidc-sci-fi-label">Email</FormLabel>
+                <FormControl>
+                  <input
+                    type="email"
+                    placeholder="name@company.com"
+                    autoComplete="email"
+                    className="oidc-sci-fi-input"
+                    {...field}
+                  />
+                </FormControl>
+                <FormMessage className="text-xs text-[var(--danger)]" />
+              </FormItem>
+            )}
           />
-          {form.formState.errors.email && (
-            <p className="text-xs" style={{ color: "var(--danger)" }}>{form.formState.errors.email.message}</p>
+
+          {isValid && <Captcha {...captcha} />}
+
+          {serverError && (
+            <p className="text-sm font-sans text-[var(--danger)]">{serverError}</p>
           )}
-        </div>
 
-        {isValid && <Captcha {...captcha} />}
-
-        {serverError && (
-          <p className="text-sm" style={{ color: "var(--danger)", fontFamily: "system-ui, sans-serif" }}>{serverError}</p>
-        )}
-
-        <button
-          type="submit"
-          disabled={isPending || !isValid || !captchaCode}
-          className="oidc-sci-fi-btn w-full flex items-center justify-center gap-2"
-        >
           {isPending ? (
-            <><Loader size={16} style={{ animation: "oidc-spin 1s linear infinite" }} /><span>Sending...</span></>
+            <Skeleton className="h-10 w-full rounded-md" />
           ) : (
-            <><span>Send Recovery Link</span><ArrowRight size={16} /></>
+            <button
+              type="submit"
+              disabled={!isValid || !captchaCode}
+              className="oidc-sci-fi-btn w-full flex items-center justify-center gap-2"
+            >
+              <span>Send Recovery Link</span><ArrowRight size={16} />
+            </button>
           )}
-        </button>
-      </form>
+        </form>
+      </Form>
 
       <Link to="/login" className="oidc-sci-fi-link text-sm text-center">
         Back to login

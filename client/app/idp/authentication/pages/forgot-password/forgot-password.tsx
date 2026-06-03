@@ -38,7 +38,7 @@ export const ForgotPassword = () => {
     >
       <SciFiBackgroundOidc showCorners={false} />
       <main className="relative z-10 min-h-screen flex flex-col items-center justify-center px-4 gap-6">
-        <div className="w-full max-w-sm rounded-2xl border border-[var(--border)] bg-[var(--node-bg)] p-10 backdrop-blur-[16px]">
+        <div className="w-full max-w-lg rounded-2xl border border-[var(--border)] bg-[var(--node-bg)] p-10 backdrop-blur-[16px]">
           <div className="flex items-center gap-3 mb-8">
             <BlocksLogo />
             <Separator orientation="vertical" className="h-4 bg-[var(--border)]" />
