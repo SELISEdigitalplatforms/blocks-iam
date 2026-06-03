@@ -178,9 +178,10 @@ namespace Authentication.DomainService.Authentication
 
                 if(authCode.Impersonated)
                 {
+                    Console.WriteLine($"Inside callback: {authCode.Impersonated}");
                    await  _authenticationFlowService.ExecuteImpersonateAsync(new ImpersonateRequest { TargetTenantId = authCode.TergatedTenantId, ImpersontingUserId = authCode.ImpersonatedUserId, RefreshToken = authCode.ImpesonatingRefreshToken}, _httpContextAccessor.HttpContext.Request, _httpContextAccessor.HttpContext.Response);
                    await _cacheClient.RemoveKeyAsync(cacheKey);
-                    return new OkObjectResult ( new {Impersonated = true} );
+                   return new OkObjectResult ( new {Impersonated = true} );
                 }
 
                 // Exchange authorization code for tokens at IdP
