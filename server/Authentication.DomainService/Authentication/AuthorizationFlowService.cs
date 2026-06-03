@@ -277,7 +277,7 @@ namespace Authentication.DomainService.Authentication
                 var claimTenantId = userPrincipal?.FindFirst("tenant_id")?.Value;
                 bool.TryParse(userPrincipal?.FindFirst("impersonated")?.Value, out bool impersonated);
                 var effectiveSessionId = request.Cookies[IdpSessionCookieName];
-                
+                Console.WriteLine($"Isimpesonated: {impersonated}");
 
                 string? resolvedUserId = null;
                 string? resolvedTenantId = null;
@@ -398,6 +398,8 @@ namespace Authentication.DomainService.Authentication
                     ImpersonatedUserId = claimUserId,
                     ImpesonatingRefreshToken = impesonatingRefreshToken
                 };
+
+                Console.WriteLine(codeModel);
 
                 await _authCodeRepo.CreateAsync(codeModel);
 
