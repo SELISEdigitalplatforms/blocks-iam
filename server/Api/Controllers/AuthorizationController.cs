@@ -1,6 +1,7 @@
 using Authentication.DomainService.Authentication;
 using Authentication.DomainService.OAuth.RequestModel;
 using Authentication.DomainService.Oidc.Services;
+using Authentication.DomainService.Utilities;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using System.Security.Claims;
@@ -51,6 +52,7 @@ namespace Blocks.Api.Controllers
             [FromQuery] string? prompt = null,
             [FromQuery] string? tenant_id = null)
         {
+            DomainResolver.ResetToOriginalBlocksContextForImpersonation();
             return await _authorizationFlowService.AuthorizeAsync(
                 client_id,
                 response_type,
