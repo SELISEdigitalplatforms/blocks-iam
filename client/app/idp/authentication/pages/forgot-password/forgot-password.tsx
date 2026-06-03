@@ -56,7 +56,7 @@ export const ForgotPassword = () => {
               className="text-xs font-semibold tracking-[.18em] uppercase"
               style={{ color: "var(--muted)", fontFamily: "system-ui, -apple-system, sans-serif" }}
             >
-              Blocks IDP
+              Blocks IAM
             </span>
           </div>
           <ForgotPasswordForm />
