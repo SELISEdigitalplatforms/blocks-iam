@@ -1,4 +1,5 @@
 using Authentication.DomainService.OAuth;
+using Authentication.DomainService.Services;
 using Iam.DomainService.Dtos;
 using Iam.DomainService.Entities;
 using Iam.DomainService.Shared.Entities;
@@ -10,12 +11,14 @@ namespace XUnitTest.DomainService.OAuth;
 public class AuthorizationClaimsResolverTests
 {
     private readonly Mock<IUserRepository> _userRepository;
+    private readonly Mock<IAuthenticationRepository> _authenticationRepository;
     private readonly AuthorizationClaimsResolver _resolver;
 
     public AuthorizationClaimsResolverTests()
     {
         _userRepository = new Mock<IUserRepository>();
-        _resolver = new AuthorizationClaimsResolver(_userRepository.Object);
+        _authenticationRepository = new Mock<IAuthenticationRepository>();
+        _resolver = new AuthorizationClaimsResolver(_userRepository.Object, _authenticationRepository.Object);
     }
 
     [Fact]
