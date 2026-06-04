@@ -12,10 +12,12 @@ import { profileMfaContext } from "../../profile-mfa";
 import { ProfileMfaVerifyGuideLineTotp } from "./profile-mfa-verify-guideline-totp";
 import { ProfileMfaVerifyGuideLineEmail } from "./profile-mfa-verify-guideline-email";
 import { useGenerateUserMfaOTP } from "@blocks-idp/mfa/hooks/use-mfa-config";
+import { useQueryClient } from "@tanstack/react-query";
 
 export const ProfileMFAVerify = () => {
   const { isVerifyModalOpen, setIsVerifyModalOpen, mfaMethodType, projectKey, userId } =
     useContext(profileMfaContext);
+    const queryClient = useQueryClient();
   const { mutateAsync } = useGenerateUserMfaOTP();
   const isFirstMount = useRef<boolean>(true);
   const [mfaId, setMfaId] = useState<string>("");
@@ -27,6 +29,7 @@ export const ProfileMFAVerify = () => {
         isFirstMount.current = true;
         setIsVerifyModalOpen(false);
       }
+      queryClient.invalidateQueries({ queryKey: ["user-by-id", userId] });
       setMfaId(res.mfaId);
     } catch (_error) {
       //
