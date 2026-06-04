@@ -180,7 +180,7 @@ namespace Authentication.DomainService.Authentication
                 {
                    var impersonatedResult = await  _authenticationFlowService.ExecuteImpersonateAsync(new ImpersonateRequest { TargetTenantId = authCode.TergatedTenantId, ImpersontingUserId = authCode.ImpersonatedUserId, RefreshToken = authCode.ImpesonatingRefreshToken}, _httpContextAccessor.HttpContext.Request, _httpContextAccessor.HttpContext.Response);
                    await _cacheClient.RemoveKeyAsync(cacheKey);
-                   return new OkObjectResult ( new {Impersonated = true, Result = impersonatedResult} );
+                   return new OkObjectResult ( new {Impersonated = true} );
                 }
 
                 // Exchange authorization code for tokens at IdP
