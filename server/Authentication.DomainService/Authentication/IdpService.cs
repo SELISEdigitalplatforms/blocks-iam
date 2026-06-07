@@ -51,7 +51,7 @@ namespace Authentication.DomainService.Authentication
             _logger = logger;
         }
 
-        public async Task<IActionResult> StartAuthenticationFlowAsync(string clientId, string redirectUri)
+        public async Task<IActionResult> StartAuthenticationFlowAsync(string clientId, string redirectUri, string? forwardedTo)
         {
             try
             {
@@ -91,7 +91,8 @@ namespace Authentication.DomainService.Authentication
                     tenantId = effectiveTenantId,
                     clientId = identityProvider.ClientId,
                     redirectUri,
-                    createdAt = DateTime.UtcNow
+                    createdAt = DateTime.UtcNow,
+                    forwardedTo = forwardedTo
                 };
                 var cacheKey = $"idp_flow:{state}";
                 await _cacheClient.AddStringValueAsync(cacheKey, System.Text.Json.JsonSerializer.Serialize(flowContext), 600);
@@ -449,6 +450,9 @@ namespace Authentication.DomainService.Authentication
 
             [JsonPropertyName("createdAt")]
             public DateTime CreatedAt { get; set; }
+
+            [JsonPropertyName("forwardedTo")]
+            public string? ForwardedTo { get; set; } = null!;
         }
     }
 }
