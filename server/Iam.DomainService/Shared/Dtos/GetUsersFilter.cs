@@ -4,8 +4,8 @@ namespace Iam.DomainService.Dtos
 {
     public class GetUsersFilter
     {
-        public string Email { get; set; }
-        public string Name { get; set; }
+        public string? Email { get; set; }
+        public string? Name { get; set; }
         public List<string> UserIds { get; set; } = [];
         public Status? Status { get; set; }
         public MFA? Mfa { get; set; }
