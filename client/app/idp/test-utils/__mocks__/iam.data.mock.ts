@@ -414,16 +414,11 @@ export const mockSaveOrganizationPayload: ICreateOrUpdateOrganizationPayload = {
 };
 
 export const mockOrganizationConfigResponse = {
-  createdDate: "2026-01-15T10:00:00Z",
-  lastUpdatedDate: "2026-01-15T10:00:00Z",
-  createdBy: "admin",
-  language: "en",
-  lastUpdatedBy: "admin",
-  organizationIds: [],
-  tags: [],
-  allowOrgCreationFromCloud: true,
-  allowOrgCreationFromConstruct: false,
-  isMultiOrgEnabled: false,
+  AllowOrgCreationFromCloud: true,
+  AllowOrgCreationFromConstruct: false,
+  IsMultiOrgEnabled: false,
+  DefaultRoleOnOrgCreation: [],
+  ItemId: "mock-config-id",
 };
 
 export const mockSaveOrganizationConfigPayload: IOrganizationConfigPayload = {

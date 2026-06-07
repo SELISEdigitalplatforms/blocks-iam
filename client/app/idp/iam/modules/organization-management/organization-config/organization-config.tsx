@@ -71,11 +71,11 @@ export const OrganizationConfig = ({}: OrganizationConfigProps) => {
   const handleModalOpenChange = (value: boolean) => {
     if (!value) {
       form.reset({
-        isMultiOrgEnabled: configData?.isMultiOrgEnabled ?? false,
-        allowOrgCreationFromCloud: configData?.allowOrgCreationFromCloud ?? true,
-        allowOrgCreationFromConstruct: configData?.allowOrgCreationFromConstruct ?? false,
+        isMultiOrgEnabled: configData?.IsMultiOrgEnabled ?? false,
+        allowOrgCreationFromCloud: configData?.AllowOrgCreationFromCloud ?? true,
+        allowOrgCreationFromConstruct: configData?.AllowOrgCreationFromConstruct ?? false,
       });
-      setSelectedRoles(configData?.roles ?? []);
+      setSelectedRoles(configData?.DefaultRoleOnOrgCreation ?? []);
     }
     setIsModalOpen(value);
   };
@@ -84,11 +84,11 @@ export const OrganizationConfig = ({}: OrganizationConfigProps) => {
   useEffect(() => {
     if (configData) {
       form.reset({
-        isMultiOrgEnabled: configData.isMultiOrgEnabled ?? false,
-        allowOrgCreationFromCloud: configData.allowOrgCreationFromCloud ?? true,
-        allowOrgCreationFromConstruct: configData.allowOrgCreationFromConstruct ?? false,
+        isMultiOrgEnabled: configData.IsMultiOrgEnabled ?? false,
+        allowOrgCreationFromCloud: configData.AllowOrgCreationFromCloud ?? true,
+        allowOrgCreationFromConstruct: configData.AllowOrgCreationFromConstruct ?? false,
       });
-      setSelectedRoles(configData.roles ?? []);
+      setSelectedRoles(configData.DefaultRoleOnOrgCreation ?? []);
     }
   }, [configData, form]);
 
@@ -108,7 +108,7 @@ export const OrganizationConfig = ({}: OrganizationConfigProps) => {
           ? data.allowOrgCreationFromConstruct
           : false,
         isMultiOrgEnabled: data.isMultiOrgEnabled,
-        roles: data.isMultiOrgEnabled && data.allowOrgCreationFromConstruct ? selectedRoles : [],
+        defaultRoleOnOrgCreation: data.isMultiOrgEnabled && data.allowOrgCreationFromConstruct ? selectedRoles : [],
       });
       if (!res.isSuccess) {
         showErrorToast({ errors: res.errors });
