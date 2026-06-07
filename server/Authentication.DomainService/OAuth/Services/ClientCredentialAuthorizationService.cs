@@ -50,26 +50,26 @@ namespace Authentication.DomainService.OAuth.Services
                 };
             }
 
-            var orgPermissions = ResolveOrgPermissions(client!, requestedOrgId);
-            if (orgPermissions.Count == 0)
-            {
-                return new TokenResponse
-                {
-                    Error = "invalid_scope",
-                    ErrorDescription = "No permissions configured for the requested organization"
-                };
-            }
+            //var orgPermissions = ResolveOrgPermissions(client!, requestedOrgId);
+            //if (orgPermissions.Count == 0)
+            //{
+            //    return new TokenResponse
+            //    {
+            //        Error = "invalid_scope",
+            //        ErrorDescription = "No permissions configured for the requested organization"
+            //    };
+            //}
 
-            if (orgPermissions.Count > 10)
-            {
-                return new TokenResponse
-                {
-                    Error = "invalid_scope",
-                    ErrorDescription = "A maximum of 10 permissions is allowed per organization"
-                };
-            }
+            //if (orgPermissions.Count > 10)
+            //{
+            //    return new TokenResponse
+            //    {
+            //        Error = "invalid_scope",
+            //        ErrorDescription = "A maximum of 10 permissions is allowed per organization"
+            //    };
+            //}
 
-            var jwtToken = await GetJwtAccessToken(authenticationConfiguration, client!, requestedOrgId, orgPermissions);
+            var jwtToken = await GetJwtAccessToken(authenticationConfiguration, client!, requestedOrgId, []);
             var accessToken =  OAuthJwtAccessTokenManager.CreateJwtAccessToken(jwtToken);
 
             return new TokenResponse
