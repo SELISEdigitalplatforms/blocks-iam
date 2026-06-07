@@ -661,7 +661,7 @@ namespace Authentication.DomainService.Authentication
             // Check for organization switch within existing impersonation
             var existingSessionId = bc.ImpersonationSessionId;
 
-            if (bc.Impersonated)
+            if (!string.IsNullOrWhiteSpace(existingSessionId))
             {
                 var existingSession = await _authenticationRepository.GetImpersonationSessionByIdAsync(existingSessionId);
                 if (existingSession != null && existingSession.Status == "active" &&
