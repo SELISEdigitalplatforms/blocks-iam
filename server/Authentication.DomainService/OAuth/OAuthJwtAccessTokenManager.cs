@@ -55,12 +55,13 @@ namespace Authentication.DomainService.OAuth
         {
             var bc = BlocksContext.GetContext();
             
-            var tokenResponse = await ProcessCheckPoints(tokenRequest, user);
+            //TODO: Tobe implement later
+            //var tokenResponse = await ProcessCheckPoints(tokenRequest, user);
 
-            if (tokenResponse != null)
-            {
-                return tokenResponse;
-            }
+            //if (tokenResponse != null)
+            //{
+            //    return tokenResponse;
+            //}
 
             var tenant = _tenants.GetTenantByID(bc?.TenantId ?? "");
             if (tenant == null)
