@@ -1,7 +1,6 @@
 import { z } from "zod";
 
 export interface IOrganizationConfigResponse {
-  itemId: string;
   createdDate: string;
   lastUpdatedDate: string;
   createdBy: string;
@@ -16,7 +15,6 @@ export interface IOrganizationConfigResponse {
 }
 
 export interface IOrganizationConfigPayload {
-  itemId: string;
   allowOrgCreationFromCloud: boolean;
   allowOrgCreationFromConstruct: boolean;
   isMultiOrgEnabled: boolean;

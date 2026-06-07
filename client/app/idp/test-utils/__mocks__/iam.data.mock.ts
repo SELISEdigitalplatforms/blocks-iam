@@ -414,7 +414,6 @@ export const mockSaveOrganizationPayload: ICreateOrUpdateOrganizationPayload = {
 };
 
 export const mockOrganizationConfigResponse = {
-  itemId: "org-config-001",
   createdDate: "2026-01-15T10:00:00Z",
   lastUpdatedDate: "2026-01-15T10:00:00Z",
   createdBy: "admin",
@@ -423,12 +422,14 @@ export const mockOrganizationConfigResponse = {
   organizationIds: [],
   tags: [],
   allowOrgCreationFromCloud: true,
-  allowOrgCreationFromConstruct: false,: IOrganizationConfigPayload = {
-  itemId: "org-config-001",
+  allowOrgCreationFromConstruct: false,
+  isMultiOrgEnabled: false,
+};
+
+export const mockSaveOrganizationConfigPayload: IOrganizationConfigPayload = {
   allowOrgCreationFromCloud: true,
   allowOrgCreationFromConstruct: false,
   isMultiOrgEnabled: false,
-  projectKey: TEST_PROJECT_KEY,
 };
 
 // ─── IAM Configuration Mocks ────────────────────────────────────────────────
