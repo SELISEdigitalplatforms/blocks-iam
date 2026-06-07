@@ -49,22 +49,22 @@ export const useUpdateOrganization = () => {
   });
 };
 
-export const useGetOrganizationConfig = (projectKey?: string) => {
+export const useGetOrganizationConfig = (projectId?: string) => {
   return useQuery({
-    queryKey: ["organization", "config", projectKey],
+    queryKey: ["organization", "config", projectId],
     queryFn: () => iamService.organization.getOrganizationConfig(),
-    enabled: !!projectKey,
+    enabled: !!projectId,
   });
 };
 
-export const useSaveOrganizationConfig = () => {
+export const useSaveOrganizationConfig = (projectId: string) => {
   const queryClient = useQueryClient();
   return useMutation({
     mutationKey: ["organization", "config", "save"],
     mutationFn: (payload: IOrganizationConfigPayload) =>
       iamService.organization.saveOrganizationConfig(payload),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["organization", "config"] });
+      queryClient.invalidateQueries({ queryKey: ["organization", "config", projectId] });
     },
   });
 };
