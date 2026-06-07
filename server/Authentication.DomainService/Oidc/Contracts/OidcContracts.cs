@@ -44,6 +44,13 @@ public class AuthorizationCodeModel
     public string? UsedByIpAddress { get; set; }
     public bool IsRevoked { get; set; }
     public DateTime? RevokedAt { get; set; }
+
+    public bool Impersonated { get; set; } = false;
+
+    public string? TergatedTenantId { get; set; } = string.Empty;
+
+    public string? ImpersonatedUserId { get; set; } = string.Empty;
+    public string? ImpesonatingRefreshToken { get; set; } = string.Empty;
 }
 
 public class RefreshTokenModel

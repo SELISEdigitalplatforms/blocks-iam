@@ -16,6 +16,8 @@ namespace Authentication.DomainService.Shared.RequestModel
         [JsonPropertyName("impersonation_id")]
         public string? ImpersonationId { get; set; }
 
+        public string? ImpersontingUserId { get; set; }
+
     }
 
     public class StopImpersonationRequest
