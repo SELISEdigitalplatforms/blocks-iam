@@ -2,7 +2,6 @@
 
 import { ClientCredentials } from "@blocks-idp/authentication/components/client-credentials";
 import { CreateClientCredential } from "@blocks-idp/authentication/components/create-client-credential";
-import { useGetOrganizationConfig } from "@blocks-idp/iam/hooks/use-organization";
 import {
   Organizations,
   OrganizationConfig,
@@ -18,7 +17,6 @@ interface AuthenticationConfigProps {
 }
 
 export const AuthenticationConfig = ({ section }: AuthenticationConfigProps) => {
-  const { data: orgConfigData, isLoading: isOrgConfigLoading } = useGetOrganizationConfig();
   const pageTitle = section === "client-credential" ? "Client Credential" : section === "organizations" ? "Organizations" : "Users";
 
   return (
@@ -34,7 +32,7 @@ export const AuthenticationConfig = ({ section }: AuthenticationConfigProps) => 
             </>
           )}
           {section === "organizations" && (
-            <OrganizationConfig configData={orgConfigData} isLoading={isOrgConfigLoading} />
+            <OrganizationConfig />
           )}
         </div>
       </div>
