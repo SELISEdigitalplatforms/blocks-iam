@@ -54,7 +54,6 @@ import LoginSimplePage from "./routes/auth/login-simple";
 import {
   AuthResolver,
   PublicGuard,
-  LoginPage,
   ProtectedGuard,
   ConsoleLayout,
   ImpersonationChecker,
