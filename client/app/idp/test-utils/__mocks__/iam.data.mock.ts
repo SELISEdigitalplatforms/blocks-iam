@@ -422,15 +422,11 @@ export const mockOrganizationConfigResponse = {
   lastUpdatedBy: "admin",
   organizationIds: [],
   tags: [],
-  allowCreationFromCloud: true,
-  allowCreationFromConstruct: false,
-  isMultiOrgEnabled: false,
-};
-
-export const mockSaveOrganizationConfigPayload: IOrganizationConfigPayload = {
+  allowOrgCreationFromCloud: true,
+  allowOrgCreationFromConstruct: false,: IOrganizationConfigPayload = {
   itemId: "org-config-001",
-  allowCreationFromCloud: true,
-  allowCreationFromConstruct: false,
+  allowOrgCreationFromCloud: true,
+  allowOrgCreationFromConstruct: false,
   isMultiOrgEnabled: false,
   projectKey: TEST_PROJECT_KEY,
 };

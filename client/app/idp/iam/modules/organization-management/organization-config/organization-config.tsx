@@ -45,7 +45,7 @@ export const OrganizationConfig = ({}: OrganizationConfigProps) => {
   const tenantId = useProjectStore().selectedProject?.tenantId || "";
 
   const { mutateAsync, isPending } = useSaveOrganizationConfig();
-  const { data: configData, isLoading } = useGetOrganizationConfig();
+  const { data: configData, isLoading } = useGetOrganizationConfig(tenantId);
 
   const { data: rolesData, isLoading: isRolesLoading } = useGetRoles({
     projectKey: tenantId,
@@ -76,8 +76,8 @@ export const OrganizationConfig = ({}: OrganizationConfigProps) => {
     if (!value) {
       form.reset({
         isMultiOrgEnabled: configData?.isMultiOrgEnabled ?? false,
-        allowCreationFromCloud: configData?.allowCreationFromCloud ?? true,
-        allowCreationFromConstruct: configData?.allowCreationFromConstruct ?? false,
+        allowOrgCreationFromCloud: configData?.allowOrgCreationFromCloud ?? true,
+        allowOrgCreationFromConstruct: configData?.allowOrgCreationFromConstruct ?? false,
       });
       setSelectedRoles(configData?.roles ?? []);
     }
@@ -89,8 +89,8 @@ export const OrganizationConfig = ({}: OrganizationConfigProps) => {
     if (configData) {
       form.reset({
         isMultiOrgEnabled: configData.isMultiOrgEnabled ?? false,
-        allowCreationFromCloud: configData.allowCreationFromCloud ?? true,
-        allowCreationFromConstruct: configData.allowCreationFromConstruct ?? false,
+        allowOrgCreationFromCloud: configData.allowOrgCreationFromCloud ?? true,
+        allowOrgCreationFromConstruct: configData.allowOrgCreationFromConstruct ?? false,
       });
       setSelectedRoles(configData.roles ?? []);
     }
@@ -99,8 +99,8 @@ export const OrganizationConfig = ({}: OrganizationConfigProps) => {
   // Reset dependent fields when isMultiOrgEnabled is toggled off
   useEffect(() => {
     if (!isMultiOrgEnabled) {
-      form.setValue("allowCreationFromCloud", true);
-      form.setValue("allowCreationFromConstruct", false);
+      form.setValue("allowOrgCreationFromCloud", true);
+      form.setValue("allowOrgCreationFromConstruct", false);
     }
   }, [isMultiOrgEnabled, form]);
 
@@ -108,12 +108,12 @@ export const OrganizationConfig = ({}: OrganizationConfigProps) => {
     try {
       const res = await mutateAsync({
         itemId: configData?.itemId || "",
-        allowCreationFromCloud: data.isMultiOrgEnabled ? data.allowCreationFromCloud : true,
-        allowCreationFromConstruct: data.isMultiOrgEnabled
-          ? data.allowCreationFromConstruct
+        allowOrgCreationFromCloud: data.isMultiOrgEnabled ? data.allowOrgCreationFromCloud : true,
+        allowOrgCreationFromConstruct: data.isMultiOrgEnabled
+          ? data.allowOrgCreationFromConstruct
           : false,
         isMultiOrgEnabled: data.isMultiOrgEnabled,
-        roles: data.isMultiOrgEnabled && data.allowCreationFromConstruct ? selectedRoles : [],
+        roles: data.isMultiOrgEnabled && data.allowOrgCreationFromConstruct ? selectedRoles : [],
       });
       if (!res.isSuccess) {
         showErrorToast({ errors: res.errors });
@@ -166,7 +166,7 @@ export const OrganizationConfig = ({}: OrganizationConfigProps) => {
               {isMultiOrgEnabled && (
                 <div className="ml-6 flex flex-col gap-3 pl-4">
                   <FormField
-                    name="allowCreationFromCloud"
+                    name="allowOrgCreationFromCloud"
                     control={form.control}
                     render={({ field }) => (
                       <FormItem className="flex items-center gap-2">
@@ -183,7 +183,7 @@ export const OrganizationConfig = ({}: OrganizationConfigProps) => {
                   />
 
                   <FormField
-                    name="allowCreationFromConstruct"
+                    name="allowOrgCreationFromConstruct"
                     control={form.control}
                     render={({ field }) => (
                       <FormItem className="flex items-center gap-2">
@@ -200,7 +200,7 @@ export const OrganizationConfig = ({}: OrganizationConfigProps) => {
                     )}
                   />
 
-                  {form.watch("allowCreationFromConstruct") && (
+                  {form.watch("allowOrgCreationFromConstruct") && (
                     <div className="mt-3 space-y-2">
                       <label className="text-sm font-medium">Default Roles</label>
                       {isRolesLoading ? (

@@ -9,16 +9,16 @@ export interface IOrganizationConfigResponse {
   lastUpdatedBy: string;
   organizationIds: string[];
   tags: string[];
-  allowCreationFromCloud: boolean;
-  allowCreationFromConstruct: boolean;
+  allowOrgCreationFromCloud: boolean;
+  allowOrgCreationFromConstruct: boolean;
   isMultiOrgEnabled: boolean;
   roles?: string[];
 }
 
 export interface IOrganizationConfigPayload {
   itemId: string;
-  allowCreationFromCloud: boolean;
-  allowCreationFromConstruct: boolean;
+  allowOrgCreationFromCloud: boolean;
+  allowOrgCreationFromConstruct: boolean;
   isMultiOrgEnabled: boolean;
   roles?: string[];
 }
@@ -30,14 +30,14 @@ export interface IOrganizationConfigSaveResponse {
 
 export const organizationConfigFormSchema = z.object({
   isMultiOrgEnabled: z.boolean(),
-  allowCreationFromCloud: z.boolean(),
-  allowCreationFromConstruct: z.boolean(),
+  allowOrgCreationFromCloud: z.boolean(),
+  allowOrgCreationFromConstruct: z.boolean(),
 });
 
 export type IOrganizationConfigForm = z.infer<typeof organizationConfigFormSchema>;
 
 export const organizationConfigFormDefaultValues: IOrganizationConfigForm = {
   isMultiOrgEnabled: false,
-  allowCreationFromCloud: true,
-  allowCreationFromConstruct: false,
+  allowOrgCreationFromCloud: true,
+  allowOrgCreationFromConstruct: false,
 };
