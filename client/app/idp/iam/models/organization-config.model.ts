@@ -1,24 +1,18 @@
 import { z } from "zod";
 
 export interface IOrganizationConfigResponse {
-  createdDate: string;
-  lastUpdatedDate: string;
-  createdBy: string;
-  language: string;
-  lastUpdatedBy: string;
-  organizationIds: string[];
-  tags: string[];
-  allowOrgCreationFromCloud: boolean;
-  allowOrgCreationFromConstruct: boolean;
-  isMultiOrgEnabled: boolean;
-  roles?: string[];
+  AllowOrgCreationFromCloud: boolean;
+  AllowOrgCreationFromConstruct: boolean;
+  IsMultiOrgEnabled: boolean;
+  DefaultRoleOnOrgCreation: string[];
+  ItemId: string;
 }
 
 export interface IOrganizationConfigPayload {
   allowOrgCreationFromCloud: boolean;
   allowOrgCreationFromConstruct: boolean;
   isMultiOrgEnabled: boolean;
-  roles?: string[];
+  defaultRoleOnOrgCreation?: string[];
 }
 
 export interface IOrganizationConfigSaveResponse {
