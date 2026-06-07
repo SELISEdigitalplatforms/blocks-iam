@@ -107,7 +107,6 @@ export const OrganizationConfig = ({}: OrganizationConfigProps) => {
   const onSubmit: SubmitHandler<IOrganizationConfigForm> = async (data) => {
     try {
       const res = await mutateAsync({
-        itemId: configData?.itemId || "",
         allowOrgCreationFromCloud: data.isMultiOrgEnabled ? data.allowOrgCreationFromCloud : true,
         allowOrgCreationFromConstruct: data.isMultiOrgEnabled
           ? data.allowOrgCreationFromConstruct
