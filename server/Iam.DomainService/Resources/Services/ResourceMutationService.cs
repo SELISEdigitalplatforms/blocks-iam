@@ -920,7 +920,8 @@ namespace Iam.DomainService.Resources
                 { "AllowOrgCreationFromPortal", tenantConfig?.AllowOrgCreationFromPortal ?? false },
                 { "IsMultiOrgEnabled", tenantConfig?.IsMultiOrgEnabled ?? false },
                 { "DefaultRoleOnOrgCreation", tenantConfig?.DefaultRoleOnOrgCreation ?? new List<string>() },
-                { "DefaultPermissionOnOrgCreation", tenantConfig?.DefaultPermissionOnOrgCreation ?? new List<string>() }
+                { "DefaultPermissionOnOrgCreation", tenantConfig?.DefaultPermissionOnOrgCreation ?? new List<string>() },
+                { "ItemId", tenantConfig?.ItemId ?? "" }
             };
         }
 
