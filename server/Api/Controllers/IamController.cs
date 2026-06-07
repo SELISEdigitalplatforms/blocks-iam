@@ -199,6 +199,7 @@ namespace Api.Controllers
 
         [HttpGet("users")]
         //[ProtectedEndPoint("blocks-idp::get-users")]
+        [Authorize]
         public async Task<GetUsersResponse> GetUsers([FromQuery] GetUsersRequest query)
         {
             return await _userManagementQueryService.GetUsersAsync(query);
@@ -206,6 +207,7 @@ namespace Api.Controllers
 
         [HttpGet("users/{id}")]
         //[ProtectedEndPoint("blocks-idp::get-user")]
+        [Authorize]
         public async Task<GetUserResponse> GetUser([FromRoute] string id)
         {
             return await _userManagementQueryService.GetUserAsync(id);
@@ -234,6 +236,7 @@ namespace Api.Controllers
 
         [HttpPost("users/roles-and-permissions")]
         //[ProtectedEndPoint("blocks-idp::role-and-permission-management")]
+        [Authorize]
         public async Task<IActionResult> SaveRolesAndPermissions(SaveRolesAndPermissionsRequest command)
         {
             var result = await _userManagementMutationService.SaveRolesAndPermissionsAsync(command);
@@ -242,6 +245,7 @@ namespace Api.Controllers
 
         [HttpPost("users/org-update")]
         //[ProtectedEndPoint("blocks-idp::update-organization-user")]
+        [Authorize] 
         public async Task<IActionResult> UpdateOrganizationUser(UpdateOrganizationUserRequest command)
         {
             var result = await _userManagementMutationService.UpdateOrganizationUserAsync(command);
@@ -260,6 +264,7 @@ namespace Api.Controllers
 
         [HttpGet("users/timeline")]
         //[ProtectedEndPoint("blocks-idp::users-timeline")]
+        [Authorize]
         public async Task<List<UserTimeline>> GetUserTimelines(GetUserTimeLineRequest request)
         {
             return await _userManagementQueryService.GetUserTimelinesAsync(request);
@@ -319,6 +324,7 @@ namespace Api.Controllers
         }
 
         [HttpGet("signup-settings")]
+        
         public async Task<Dictionary<string, object>> GetSignUpSetting()
         {
             return await _accountService.GetSignUpSettingAsync();
@@ -328,6 +334,7 @@ namespace Api.Controllers
         #region Cloud configuration
         [HttpPost("config")]
         //[ProtectedEndPoint("blocks-idp::save-iam-configuration")]
+        [Authorize]
         public async Task<IActionResult> Save([FromBody] SaveIamConfigurationRequest request)
         {
             var result = await _configurationService.SaveIamConfigurationAsync(request);
@@ -336,6 +343,7 @@ namespace Api.Controllers
 
         [HttpGet("config")]
         //[ProtectedEndPoint("blocks-idp::get-iam-configuration")]
+        [Authorize]
         public async Task<GetConfigurationResponse> Get([FromQuery] GetAuthenticationConfigurationRequest request)
         {
             return await _configurationService.GetIamConfigurationAsync();
