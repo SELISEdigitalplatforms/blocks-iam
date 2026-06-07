@@ -47,9 +47,13 @@ export interface IGetOrganizationByIdResponse {
 }
 
 export interface ICreateOrUpdateOrganizationPayload {
-  projectKey: string;
   name: string;
+  createdFrom?: number;
+}
+
+export interface IUpdateOrganizationPayload {
   itemId: string;
+  name: string;
   isEnable: boolean;
 }
 

@@ -1,6 +1,7 @@
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { IGetOrganizationByIdParams, IOrganizationFilter } from "@blocks-idp/iam/models/organization";
 import { IOrganizationConfigPayload } from "@blocks-idp/iam/models/organization-config.model";
+import { IUpdateOrganizationPayload } from "@blocks-idp/iam/models/organization";
 import { iamService } from "@blocks-idp/iam/services/iam.service";
 
 export const useGetOrganizations = (options: IOrganizationFilter) => {
@@ -36,21 +37,34 @@ export const useSaveOrganization = () => {
   });
 };
 
-export const useGetOrganizationConfig = () => {
-  return useQuery({
-    queryKey: ["organization", "config"],
-    queryFn: () => iamService.organization.getOrganizationConfig(),
+export const useUpdateOrganization = () => {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationKey: ["organization", "update"],
+    mutationFn: (payload: IUpdateOrganizationPayload) =>
+      iamService.organization.updateOrganization(payload),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["organizations"] });
+    },
   });
 };
 
-export const useSaveOrganizationConfig = () => {
+export const useGetOrganizationConfig = (projectId?: string) => {
+  return useQuery({
+    queryKey: ["organization", "config", projectId],
+    queryFn: () => iamService.organization.getOrganizationConfig(),
+    enabled: !!projectId,
+  });
+};
+
+export const useSaveOrganizationConfig = (projectId: string) => {
   const queryClient = useQueryClient();
   return useMutation({
     mutationKey: ["organization", "config", "save"],
     mutationFn: (payload: IOrganizationConfigPayload) =>
       iamService.organization.saveOrganizationConfig(payload),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["organization", "config"] });
+      queryClient.invalidateQueries({ queryKey: ["organization", "config", projectId] });
     },
   });
 };

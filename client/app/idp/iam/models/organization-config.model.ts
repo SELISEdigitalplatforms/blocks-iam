@@ -1,26 +1,18 @@
 import { z } from "zod";
 
 export interface IOrganizationConfigResponse {
-  itemId: string;
-  createdDate: string;
-  lastUpdatedDate: string;
-  createdBy: string;
-  language: string;
-  lastUpdatedBy: string;
-  organizationIds: string[];
-  tags: string[];
-  allowCreationFromCloud: boolean;
-  allowCreationFromConstruct: boolean;
-  isMultiOrgEnabled: boolean;
-  roles?: string[];
+  AllowOrgCreationFromCloud: boolean;
+  AllowOrgCreationFromConstruct: boolean;
+  IsMultiOrgEnabled: boolean;
+  DefaultRoleOnOrgCreation: string[];
+  ItemId: string;
 }
 
 export interface IOrganizationConfigPayload {
-  itemId: string;
-  allowCreationFromCloud: boolean;
-  allowCreationFromConstruct: boolean;
+  allowOrgCreationFromCloud: boolean;
+  allowOrgCreationFromConstruct: boolean;
   isMultiOrgEnabled: boolean;
-  roles?: string[];
+  defaultRoleOnOrgCreation?: string[];
 }
 
 export interface IOrganizationConfigSaveResponse {
@@ -30,14 +22,14 @@ export interface IOrganizationConfigSaveResponse {
 
 export const organizationConfigFormSchema = z.object({
   isMultiOrgEnabled: z.boolean(),
-  allowCreationFromCloud: z.boolean(),
-  allowCreationFromConstruct: z.boolean(),
+  allowOrgCreationFromCloud: z.boolean(),
+  allowOrgCreationFromConstruct: z.boolean(),
 });
 
 export type IOrganizationConfigForm = z.infer<typeof organizationConfigFormSchema>;
 
 export const organizationConfigFormDefaultValues: IOrganizationConfigForm = {
   isMultiOrgEnabled: false,
-  allowCreationFromCloud: true,
-  allowCreationFromConstruct: false,
+  allowOrgCreationFromCloud: true,
+  allowOrgCreationFromConstruct: false,
 };
