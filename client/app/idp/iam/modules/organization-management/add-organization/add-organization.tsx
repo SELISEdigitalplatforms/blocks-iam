@@ -25,7 +25,6 @@ import {
   FormMessage,
 } from "@/components/ui-kits/form/form";
 import { z } from "zod";
-import { useProjectStore } from "@/store/useProjectStore";
 import { useSaveOrganization } from "@blocks-idp/iam/hooks/use-organization";
 import { Plus } from "lucide-react";
 
@@ -36,7 +35,6 @@ interface AddOrganizationProps {
 export const AddOrganization = ({ disabled }: AddOrganizationProps) => {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const { mutateAsync, isPending } = useSaveOrganization();
-  const tenantId = useProjectStore().selectedProject?.tenantId || "";
 
   const form = useForm({
     defaultValues: addOrganizationFormDefaultValue,
@@ -50,10 +48,8 @@ export const AddOrganization = ({ disabled }: AddOrganizationProps) => {
   const onSubmit: SubmitHandler<z.infer<typeof addOrganizationFormSchema>> = async (data) => {
     try {
       const res = await mutateAsync({
-        projectKey: tenantId,
         name: data.name,
-        itemId: "",
-        isEnable: true,
+        createdFrom: 1,
       });
       if (!res.isSuccess) {
         showErrorToast({ errors: res.errors });

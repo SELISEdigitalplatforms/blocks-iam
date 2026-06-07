@@ -30,7 +30,7 @@ export class OrganizationService {
   saveOrganization = (
     payload: ICreateOrUpdateOrganizationPayload,
   ): Promise<ICreateOrUpdateOrganizationResponse> => {
-    return http.post(ORGANIZATION_ENDPOINTS.SAVE_ORGANIZATION, payload);
+    return http.post(ORGANIZATION_ENDPOINTS.CREATE_ORGANIZATION, payload);
   };
 
   getOrganizationConfig(): Promise<IOrganizationConfigResponse | null> {

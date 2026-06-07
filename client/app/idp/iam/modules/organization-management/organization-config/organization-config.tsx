@@ -17,7 +17,7 @@ import { showErrorToast, showSuccessToast } from "@/hooks/use-toast";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { Form, FormControl, FormField, FormItem, FormLabel } from "@/components/ui-kits/form/form";
 import { useProjectStore } from "@/store/useProjectStore";
-import { useSaveOrganizationConfig } from "@blocks-idp/iam/hooks/use-organization";
+import { useGetOrganizations, useSaveOrganizationConfig } from "@blocks-idp/iam/hooks/use-organization";
 import { useGetRoles } from "@blocks-idp/iam/hooks/use-roles";
 import {
   IOrganizationConfigForm,
@@ -49,6 +49,12 @@ export const OrganizationConfig = ({ configData, isLoading }: OrganizationConfig
   const tenantId = useProjectStore().selectedProject?.tenantId || "";
 
   const { mutateAsync, isPending } = useSaveOrganizationConfig();
+
+  const { data: orgsData } = useGetOrganizations({
+    page: 0,
+    pageSize: 10,
+    projectKey: tenantId,
+  });
 
   const { data: rolesData, isLoading: isRolesLoading } = useGetRoles({
     projectKey: tenantId,
@@ -110,7 +116,7 @@ export const OrganizationConfig = ({ configData, isLoading }: OrganizationConfig
   const onSubmit: SubmitHandler<IOrganizationConfigForm> = async (data) => {
     try {
       const res = await mutateAsync({
-        itemId: configData?.itemId || "",
+        itemId: orgsData?.organizations?.[0]?.itemId || "",
         allowCreationFromCloud: data.isMultiOrgEnabled ? data.allowCreationFromCloud : true,
         allowCreationFromConstruct: data.isMultiOrgEnabled
           ? data.allowCreationFromConstruct
