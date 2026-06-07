@@ -49,6 +49,7 @@ import ProfilePage from "./routes/dashboard/profile";
 import { DashboardOverview } from "./pages/dashboard/dashboard-overview";
 import { EnvironmentsPage } from "./pages/environments/environments";
 import { CreateProjectWrapper } from "./pages/create-project/create-project";
+import LoginSimplePage from "./routes/auth/login-simple";
 
 import {
   AuthResolver,
@@ -108,7 +109,7 @@ export const router = createBrowserRouter([
               </PublicGuard>
             ),
             children: [
-              { path: "/login", element: <LoginPage /> },
+              { path: "/login", element: <LoginSimplePage /> },
               {
                 element: <AuthLayout />,
                 children: [
