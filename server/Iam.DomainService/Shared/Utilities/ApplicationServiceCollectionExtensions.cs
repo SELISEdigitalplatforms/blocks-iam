@@ -41,6 +41,7 @@ namespace Iam.DomainService.Utilities
             services.AddTransient<IValidator<ChangePasswordRequest>, ChangePasswordValidator>();
             services.AddTransient<IValidator<CreateUserRequest>, CreateUserValidator>();
             services.AddTransient<IValidator<UpdateUserRequest>, UpdateUserValidator>();
+            services.AddTransient<IValidator<GetUsersRequest>, GetUsersRequestValidator>();
             services.AddTransient<IValidator<CreatePermissionRequest>, CreatePermissionValidator>();
             services.AddTransient<IValidator<CreateRoleRequest>, RoleValidator>();
             services.AddTransient<IValidator<UpdatePermissionRequest>, UpdatePermissionValidator>();

@@ -51,13 +51,9 @@ import ProfilePage from "./routes/dashboard/profile";
 // Console pages
 import { DashboardOverview } from "./pages/dashboard/dashboard-overview";
 import { EnvironmentsPage } from "./pages/environments/environments";
-import { PeopleManagement } from "./pages/people/people-management";
-import { RepositoriesPage } from "./pages/repositories/repositories";
-import { SettingsPage } from "./pages/settings/settings";
 import { CreateProjectWrapper } from "./pages/create-project/create-project";
 import CallbackPage from "./routes/callback/callback";
 import { Console } from "./pages/console/console";
-import OidcLogin from "./routes/auth/oidc-login";
 import LoginSimplePage from "./routes/auth/login-simple";
 import LoginCallbackPage from "./routes/auth/callback";
 import SSOCallbackPage from "./routes/auth/sso-callback";
@@ -73,8 +69,6 @@ export const router = createBrowserRouter([
     ],
   },
   // ── Simple login (no guards, no API calls) ──
-  // { path: "/login", element: <OidcLogin /> },
-
   {
     path: "/login",
     children: [
@@ -171,9 +165,7 @@ export const router = createBrowserRouter([
         element: <Navigate to="/project-overview/environments" replace />,
       },
       { path: "/project-overview/environments", element: <EnvironmentsPage /> },
-      // { path: "/project-overview/people", element: <PeopleManagement /> },
-      // { path: "/project-overview/repositories", element: <RepositoriesPage /> },
-      // { path: "/project-overview/settings", element: <SettingsPage /> },
+
     ],
   },
 
