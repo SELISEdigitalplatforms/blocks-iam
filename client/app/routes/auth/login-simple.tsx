@@ -29,11 +29,8 @@ export default function LoginSimplePage() {
       if (blocksKey) headers["X-Blocks-Key"] = blocksKey;
 
       const response = await fetch(initiateUrl.toString(), { headers });
-      if (response.status === 400) {
-        window.location.href = "/console";
-        return;
-      }
       const data = await response.json();
+
       if (data.redirect_uri) {
         window.location.href = data.redirect_uri;
       } else {

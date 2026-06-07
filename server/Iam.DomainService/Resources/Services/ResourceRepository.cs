@@ -87,7 +87,20 @@ namespace Iam.DomainService.Resources
         {
             var collection = _identityAccessManagementRepository.GetCollection<Permission>();
             var organizationId = ResolveOrganizationId();
-            var filter = Builders<Permission>.Filter.Eq(x => x.OrganizationId, organizationId);
+            //var filter = Builders<Permission>.Filter.Eq(x => x.OrganizationId, organizationId);
+            var filter = Builders<Permission>.Filter.Empty;
+            if (organizationId == "default")
+            {
+                filter =
+                    Builders<Permission>.Filter.AnyEq(x => x.OrganizationIds, organizationId) |
+                    Builders<Permission>.Filter.Size(x => x.OrganizationIds, 0);
+            }
+            else
+            {
+                filter =
+                    Builders<Permission>.Filter.AnyEq(x => x.OrganizationIds, organizationId);
+            }
+
             var permissionCursor = await collection.FindAsync(filter);
             var severityGroups = permissionCursor.ToList().GroupBy(p => p.PermissionSeverity)
                 .Select(g => new PermissionGroupBySeverityResponse
@@ -103,7 +116,19 @@ namespace Iam.DomainService.Resources
         {
             var collection = _identityAccessManagementRepository.GetCollection<Permission>();
             var organizationId = ResolveOrganizationId();
-            var filter = Builders<Permission>.Filter.Eq(x => x.OrganizationId, organizationId);
+            //var filter = Builders<Permission>.Filter.Eq(x => x.OrganizationId, organizationId);
+            var filter = Builders<Permission>.Filter.Empty;
+            if (organizationId == "default")
+            {
+                filter =
+                    Builders<Permission>.Filter.AnyEq(x => x.OrganizationIds, organizationId) |
+                    Builders<Permission>.Filter.Size(x => x.OrganizationIds, 0);
+            }
+            else
+            {
+                filter =
+                    Builders<Permission>.Filter.AnyEq(x => x.OrganizationIds, organizationId);
+            }
 
             SortDefinition<Permission>? sort = null;
 
@@ -186,9 +211,20 @@ namespace Iam.DomainService.Resources
         {
             var collection = _identityAccessManagementRepository.GetCollection<Role>();
             var organizationId = ResolveOrganizationId();
-
-            var filter = Builders<Role>.Filter.Eq(x => x.Slug, slug)
-                & Builders<Role>.Filter.Eq(x => x.OrganizationId, organizationId);
+            var filter = Builders<Role>.Filter.Empty;
+            if (organizationId == "default")
+            {
+                filter =
+                    Builders<Role>.Filter.AnyEq(x => x.OrganizationIds, organizationId) |
+                    Builders<Role>.Filter.Size(x => x.OrganizationIds, 0);
+            }
+            else
+            {
+                filter =
+                    Builders<Role>.Filter.AnyEq(x => x.OrganizationIds, organizationId);
+            }
+             filter &= Builders<Role>.Filter.Eq(x => x.Slug, slug);
+               
 
             return await collection.Find(filter).FirstOrDefaultAsync();
         }
@@ -279,7 +315,23 @@ namespace Iam.DomainService.Resources
             var collection = _identityAccessManagementRepository.GetCollectionByName<BsonDocument>("Permissions");
             var organizationId = ResolveOrganizationId();
 
-            var filter = Builders<BsonDocument>.Filter.In("ItemId", permissions) & Builders<BsonDocument>.Filter.Eq("OrganizationId", organizationId);
+            FilterDefinition<BsonDocument> filter;
+
+            if (organizationId == "default")
+            {
+                filter =
+                    (Builders<BsonDocument>.Filter.AnyEq("OrganizationIds", organizationId) |
+                     Builders<BsonDocument>.Filter.Size("OrganizationIds", 0))
+                    &
+                    Builders<BsonDocument>.Filter.In("ItemId", permissions);
+            }
+            else
+            {
+                filter =
+                    Builders<BsonDocument>.Filter.AnyEq("OrganizationIds", organizationId)
+                    &
+                    Builders<BsonDocument>.Filter.In("ItemId", permissions);
+            }
 
             var update = Builders<BsonDocument>.Update.AddToSet($"Roles", slug);
             var result = await collection.UpdateManyAsync(filter, update);
@@ -291,7 +343,23 @@ namespace Iam.DomainService.Resources
             var collection = _identityAccessManagementRepository.GetCollectionByName<BsonDocument>("Permissions");
             var organizationId = ResolveOrganizationId();
 
-            var filter = Builders<BsonDocument>.Filter.In("ItemId", permissions) & Builders<BsonDocument>.Filter.Eq("OrganizationId", organizationId);
+            FilterDefinition<BsonDocument> filter;
+
+            if (organizationId == "default")
+            {
+                filter =
+                    (Builders<BsonDocument>.Filter.AnyEq("OrganizationIds", organizationId) |
+                     Builders<BsonDocument>.Filter.Size("OrganizationIds", 0))
+                    &
+                    Builders<BsonDocument>.Filter.In("ItemId", permissions);
+            }
+            else
+            {
+                filter =
+                    Builders<BsonDocument>.Filter.AnyEq("OrganizationIds", organizationId)
+                    &
+                    Builders<BsonDocument>.Filter.In("ItemId", permissions);
+            }
 
             var update = Builders<BsonDocument>.Update.Pull($"Roles", slug);
             var result = await collection.UpdateManyAsync(filter, update);

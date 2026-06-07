@@ -8,9 +8,17 @@ import {
   TooltipTrigger,
   TooltipContent,
 } from "@/components/ui-kits/tooltip/tooltip";
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@/components/ui-kits/popover/popover";
 import { environmentOptions } from "@/constants/environment-options";
 import { useProjectStore } from "@/store/useProjectStore";
 import { ChevronRight, Settings2 } from "lucide-react";
+
+const INLINE_LIMIT = 3;
+
 type ProjectCardProps = {
   project: IProject;
   projects: IProject[];
@@ -28,13 +36,14 @@ export const ProjectCard = ({ project, projects }: ProjectCardProps) => {
     e.stopPropagation();
     setTennantGroup(envProject.tenantGroupId);
     setSelectedProject(envProject);
-    navigate("/services/authentication/users");
+    navigate("/dashboard");
   };
-  const renderEnvChip = (env: string, envProject: IProject) => {
-    const label = environmentOptions.find((o) => o.value === env)?.label;
+
+  const renderEnvChip = (envProject: IProject) => {
+    const label = environmentOptions.find((o) => o.value === envProject.environment)?.label;
     return (
       <button
-        key={env}
+        key={envProject.environment}
         onClick={(e) => onEnvBadgeClick(e, envProject)}
         className="group/chip inline-flex cursor-pointer items-center gap-1 rounded-full border border-primary bg-primary px-2.5 py-0.5 text-xs font-medium text-primary-foreground transition-all duration-150 hover:border-[hsl(var(--blocks-primary-50))] hover:bg-[hsl(var(--blocks-primary-25))] hover:text-primary active:scale-95"
       >
@@ -43,7 +52,11 @@ export const ProjectCard = ({ project, projects }: ProjectCardProps) => {
       </button>
     );
   };
-  const envList = projects.map((p) => p.environment);
+
+  const hasOverflow = projects.length > INLINE_LIMIT;
+  const visibleProjects = hasOverflow ? projects.slice(0, INLINE_LIMIT) : projects;
+  const overflowCount = projects.length - INLINE_LIMIT;
+
   return (
     <Card className="group flex h-[160px] flex-col overflow-hidden rounded-xl border border-border/60 bg-card p-4 shadow-sm transition-all duration-200 hover:border-primary/30 hover:shadow-md">
       <div className="relative flex items-start justify-between gap-2">
@@ -69,33 +82,47 @@ export const ProjectCard = ({ project, projects }: ProjectCardProps) => {
         </div>
       </div>
       <div className="mt-auto">
-        {envList.length === 0 ? (
+        {projects.length === 0 ? (
           <span className="inline-flex items-center rounded-full border border-border/60 bg-muted/40 px-2.5 py-0.5 text-xs text-muted-foreground">
             No environments
           </span>
-        ) : envList.length > 3 ? (
-          <TooltipProvider>
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <div className="flex flex-wrap gap-1.5">
-                  {projects
-                    .slice(0, 3)
-                    .map((p) => renderEnvChip(p.environment, p))}
-                  <span className="inline-flex items-center rounded-full border border-border/60 bg-muted/40 px-2.5 py-0.5 text-xs font-medium text-muted-foreground">
-                    +{projects.length - 3}
-                  </span>
-                </div>
-              </TooltipTrigger>
-              <TooltipContent>
-                <div className="flex flex-wrap gap-1.5 p-1">
-                  {projects.map((p) => renderEnvChip(p.environment, p))}
-                </div>
-              </TooltipContent>
-            </Tooltip>
-          </TooltipProvider>
         ) : (
-          <div className="flex flex-wrap gap-1.5">
-            {projects.map((p) => renderEnvChip(p.environment, p))}
+          <div className="flex flex-wrap items-center gap-1.5">
+            {visibleProjects.map((p) => renderEnvChip(p))}
+            {hasOverflow && (
+              <Popover>
+                <PopoverTrigger asChild>
+                  <button
+                    onClick={(e) => e.stopPropagation()}
+                    className="inline-flex cursor-pointer items-center rounded-full border border-border/60 bg-muted/40 px-2.5 py-0.5 text-xs font-medium text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+                  >
+                    +{overflowCount} more
+                  </button>
+                </PopoverTrigger>
+                <PopoverContent
+                  className="w-52 p-1.5"
+                  align="start"
+                  onClick={(e) => e.stopPropagation()}
+                >
+                  <p className="px-2 pb-1.5 pt-1 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
+                    All environments
+                  </p>
+                  {projects.map((p) => {
+                    const opt = environmentOptions.find((o) => o.value === p.environment);
+                    return (
+                      <button
+                        key={p.environment}
+                        onClick={(e) => onEnvBadgeClick(e, p)}
+                        className="group/item flex w-full items-center justify-between rounded-md px-2 py-1.5 text-sm transition-colors hover:bg-accent"
+                      >
+                        <span className="font-medium">{opt?.label ?? p.environment}</span>
+                        <ChevronRight className="h-3.5 w-3.5 text-muted-foreground transition-transform duration-150 group-hover/item:translate-x-0.5 group-hover/item:text-foreground" />
+                      </button>
+                    );
+                  })}
+                </PopoverContent>
+              </Popover>
+            )}
           </div>
         )}
       </div>

@@ -27,6 +27,16 @@ const LoadingSkelton = () => (
 );
 
 const EVENT_TYPE = {
+  login_via_mfa_code: "Login via MFA Code",
+  login_via_social: "Login via Social",
+  login_via_sso_consent: "Login via SSO Consent",
+  revoke_access_by_logout_all: "Access Revoked (Logout) All",
+  session_revoked: "Session Revoked",
+  token_renewed: "Token Renewed",
+  login_via_password: "Login via Password",
+  login_via_authorization_code: "Login via Authorization Code",
+  revoke_refresh_token: "Revoke Refresh Token",
+  renew_refresh_token: "Renew Refresh Token",
   issued_refresh_token: "Refresh Token Issued",
   revoke_access_by_logout: "Access Revoked (Logout)",
 };
