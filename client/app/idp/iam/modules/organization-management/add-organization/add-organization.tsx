@@ -25,7 +25,7 @@ import {
   FormMessage,
 } from "@/components/ui-kits/form/form";
 import { z } from "zod";
-import { useSaveOrganization } from "@blocks-idp/iam/hooks/use-organization";
+import { useSaveOrganization, useGetOrganizationConfig } from "@blocks-idp/iam/hooks/use-organization";
 import { Plus } from "lucide-react";
 
 interface AddOrganizationProps {
@@ -35,6 +35,8 @@ interface AddOrganizationProps {
 export const AddOrganization = ({ disabled }: AddOrganizationProps) => {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const { mutateAsync, isPending } = useSaveOrganization();
+  const { data: orgConfig } = useGetOrganizationConfig();
+  const isDisabled = disabled || !orgConfig?.isMultiOrgEnabled || !orgConfig?.allowCreationFromCloud;
 
   const form = useForm({
     defaultValues: addOrganizationFormDefaultValue,
@@ -75,7 +77,7 @@ export const AddOrganization = ({ disabled }: AddOrganizationProps) => {
   return (
     <Dialog open={isModalOpen} onOpenChange={handleModalOpenChange}>
       <DialogTrigger asChild>
-        <Button variant="ghost" size="sm" disabled={disabled} className="text-primary">
+        <Button variant="ghost" size="sm" disabled={isDisabled} className="text-primary">
           <Plus className="h-5 w-5 text-primary md:mr-2.5" />
           <span className="sr-only sm:not-sr-only">Add Organization</span>
         </Button>
