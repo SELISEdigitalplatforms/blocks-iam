@@ -1,4 +1,5 @@
 import { http } from "@/lib/http-client";
+import { getRuntimeEnv } from "@/lib/runtime-env";
 import { CLOUD_BUILD_ENDPOINTS } from "../constants/endpoint.constant";
 import { IBuildApiResponse } from "../models/deployed-logs";
 import {
@@ -112,8 +113,8 @@ export class GithubInfoService {
   }
 
   async getAllProjects(projectKey: string): Promise<any> {
-    const url = `${CLOUD_BUILD_ENDPOINTS.REPOS_LIST}?ProjectKey=${encodeURIComponent(projectKey)}`;
-    return http.get(url);
+    const url = `${getRuntimeEnv("BLOCKS_RELEASE_BASE_URL")}${CLOUD_BUILD_ENDPOINTS.REPOS_LIST}?ProjectKey=${encodeURIComponent(projectKey)}`;
+    return http.get(url, undefined, { absoluteUrl: true });
   }
 
   async getRepoDetails(projectKey: string, repoId: string): Promise<any> {
