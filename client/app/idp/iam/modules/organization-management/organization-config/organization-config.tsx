@@ -105,24 +105,38 @@ export const OrganizationConfig = ({}: OrganizationConfigProps) => {
   }, [isMultiOrgEnabled, form]);
 
   const onSubmit: SubmitHandler<IOrganizationConfigForm> = async (data) => {
+    console.log("Form submit started with tenantId:", tenantId);
+    console.log("Form data:", data);
+    console.log("Selected roles:", selectedRoles);
+    
     try {
-      const res = await mutateAsync({
+      const payload = {
         allowOrgCreationFromCloud: data.isMultiOrgEnabled ? data.allowOrgCreationFromCloud : true,
         allowOrgCreationFromConstruct: data.isMultiOrgEnabled
           ? data.allowOrgCreationFromConstruct
           : false,
         isMultiOrgEnabled: data.isMultiOrgEnabled,
         roles: data.isMultiOrgEnabled && data.allowOrgCreationFromConstruct ? selectedRoles : [],
-      });
+      };
+      console.log("Sending payload:", payload);
+      
+      const res = await mutateAsync(payload);
+      console.log("Response received:", res);
+      
       if (!res.isSuccess) {
+        console.error("API returned isSuccess: false", res.errors);
         showErrorToast({ errors: res.errors });
         return;
       }
+      console.log("Config saved successfully!");
       showSuccessToast({ description: "Organization config saved successfully" });
       setIsModalOpen(false);
     } catch (error: unknown) {
+      console.error("Error caught in onSubmit:", error);
       if (error && typeof error === "object" && "errors" in error) {
-        showErrorToast({ errors: error.errors });
+        showErrorToast({ errors: (error as any).errors });
+      } else {
+        showErrorToast({ errors: error });
       }
     }
   };
