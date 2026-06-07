@@ -60,15 +60,11 @@ export const useGetOrganizationConfig = (projectId?: string) => {
 export const useSaveOrganizationConfig = (projectId: string) => {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationKey: ["organization", "config", "save", projectId],
+    mutationKey: ["organization", "config", "save"],
     mutationFn: (payload: IOrganizationConfigPayload) =>
       iamService.organization.saveOrganizationConfig(payload),
-    onSuccess: (data) => {
-      console.log("Config saved successfully:", data);
+    onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["organization", "config", projectId] });
-    },
-    onError: (error) => {
-      console.error("Config save error:", error);
     },
   });
 };
