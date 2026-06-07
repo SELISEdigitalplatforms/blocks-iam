@@ -98,8 +98,10 @@ namespace Authentication.DomainService.Authentication
                 await _idpSessionService.RevokeSessionAsync(sessionId, "logout_all");
                 return true;
             }
+
             var bc = BlocksContext.GetContext();
-            var userId = user.FindFirst(bc?.UserId)?.Value ?? user.FindFirst("sub")?.Value;
+            var userId = user.FindFirst(bc?.UserId)?.Value ?? user.FindFirst("user_id")?.Value;
+
             if (string.IsNullOrWhiteSpace(userId))
             {
                 return false;
@@ -110,8 +112,8 @@ namespace Authentication.DomainService.Authentication
                 ?? bc?.TenantId;
 
             await _idpSessionService.RemoveAccountAsync(sessionId, userId, tenantId);
-
             var session = await _idpSessionService.GetSessionAsync(sessionId);
+
             if (session == null || session.RevokedAt.HasValue || session.IsExpired())
             {
                 return true;
@@ -247,7 +249,7 @@ namespace Authentication.DomainService.Authentication
 
             request.HttpContext.Response.Cookies.Delete($"{IdpConstants.RefreshTokenCookieName}_{domain}", cookieOptions);
             request.HttpContext.Response.Cookies.Delete($"{domain}", cookieOptions);
-            request.HttpContext.Response.Cookies.Delete(IdpConstants.ImpersonationIdCookieName, cookieOptions);
+           // request.HttpContext.Response.Cookies.Delete(IdpConstants.ImpersonationIdCookieName, cookieOptions);
             return true;
         }
 
@@ -622,7 +624,7 @@ namespace Authentication.DomainService.Authentication
             return null;
         }
 
-        public (bool IsValid, Dictionary<string, object> UserInfo) BuildOidcUserInfo(ClaimsPrincipal principal)
+        public async Task<(bool IsValid, Dictionary<string, object> UserInfo)> BuildOidcUserInfoAsync(ClaimsPrincipal principal)
         {
             var sub = principal.FindFirst(JwtRegisteredClaimNames.Sub)?.Value
                 ?? principal.FindFirst(BlocksContext.USER_ID_CLAIM)?.Value;
@@ -638,16 +640,25 @@ namespace Authentication.DomainService.Authentication
             };
 
             var grantedScopes = GetGrantedScopes(principal);
+            var user = await _authenticationRepository.GetUserByIdAsync(sub);
 
             if (HasScope(grantedScopes, "profile"))
             {
-                AddSingleClaimIfPresent(principal, userInfo, "name", BlocksContext.DISPLAY_NAME_CLAIM);
-                AddSingleClaimIfPresent(principal, userInfo, "preferred_username", BlocksContext.USER_NAME_CLAIM);
+                var fullName = string.Join(' ', new[] { user?.FirstName, user?.LastName }
+                    .Where(s => !string.IsNullOrWhiteSpace(s)));
+                if (!string.IsNullOrWhiteSpace(fullName))
+                {
+                    userInfo["name"] = fullName;
+                }
+                if (!string.IsNullOrWhiteSpace(user?.UserName))
+                {
+                    userInfo["preferred_username"] = user.UserName;
+                }
             }
 
-            if (HasScope(grantedScopes, "email"))
+            if (HasScope(grantedScopes, "email") && !string.IsNullOrWhiteSpace(user?.Email))
             {
-                AddSingleClaimIfPresent(principal, userInfo, "email", BlocksContext.EMAIL_CLAIM);
+                userInfo["email"] = user.Email;
             }
 
             if (HasScope(grantedScopes, "phone"))
