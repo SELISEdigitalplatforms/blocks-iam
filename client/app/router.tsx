@@ -62,6 +62,7 @@ import {
   ConsolePage,
   CallbackPage,
 } from "@seliseblocks/blocks-kit";
+import { ProjectOverviewLayout } from "./layouts/project-overview-layout";
 
 export const router = createBrowserRouter([
   {
@@ -157,6 +158,16 @@ export const router = createBrowserRouter([
                   { path: "/profile", element: <ProfilePage /> },
                 ],
               },
+              {
+                path: "/project-overview",
+                element: <ProjectOverviewLayout />,
+                children: [
+                  {
+                    path: "environments",
+                    element: <EnvironmentsPage />,
+                  },
+                ],
+              },
 
               // ── Dashboard group (impersonation synchronized) ──
               {
@@ -167,6 +178,7 @@ export const router = createBrowserRouter([
                     </ImpersonationSynchronizer>
                   </ImpersonationChecker>
                 ),
+                
                 children: [
                   { path: "/services/iam", element: <IamPage /> },
                   { path: "/services/iam/user-detail/:id", element: <IamUserDetailPage /> },
@@ -186,8 +198,10 @@ export const router = createBrowserRouter([
                   { path: "/managed-services", element: <ManagedServicesPage /> },
                   { path: "/services/captcha/logs", element: <CaptchaLogsPage /> },
                   { path: "/dashboard", element: <DashboardOverview /> },
-                  { path: "/project-overview", element: <Navigate to="/project-overview/environments" replace /> },
-                  { path: "/project-overview/environments", element: <EnvironmentsPage /> },
+                  // { path: "/project-overview", element: <Navigate to="/project-overview/environments" replace /> },
+                  // { path: "/project-overview/environments", element: <EnvironmentsPage /> },
+
+                  
                 ],
               },
             ],
