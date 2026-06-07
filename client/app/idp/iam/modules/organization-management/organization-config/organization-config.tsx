@@ -17,11 +17,10 @@ import { showErrorToast, showSuccessToast } from "@/hooks/use-toast";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { Form, FormControl, FormField, FormItem, FormLabel } from "@/components/ui-kits/form/form";
 import { useProjectStore } from "@/store/useProjectStore";
-import { useGetOrganizations, useSaveOrganizationConfig } from "@blocks-idp/iam/hooks/use-organization";
+import { useGetOrganizationConfig, useSaveOrganizationConfig } from "@blocks-idp/iam/hooks/use-organization";
 import { useGetRoles } from "@blocks-idp/iam/hooks/use-roles";
 import {
   IOrganizationConfigForm,
-  IOrganizationConfigResponse,
   organizationConfigFormDefaultValues,
   organizationConfigFormSchema,
 } from "@blocks-idp/iam/models/organization-config.model";
@@ -38,23 +37,15 @@ import { Badge } from "@/components/ui-kits/badge/badge";
 import { cn } from "@/lib/utils";
 import { ChevronsUpDown, Check, Settings } from "lucide-react";
 
-interface OrganizationConfigProps {
-  configData: IOrganizationConfigResponse | null | undefined;
-  isLoading: boolean;
-}
+interface OrganizationConfigProps {}
 
-export const OrganizationConfig = ({ configData, isLoading }: OrganizationConfigProps) => {
+export const OrganizationConfig = ({}: OrganizationConfigProps) => {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [selectedRoles, setSelectedRoles] = useState<string[]>([]);
   const tenantId = useProjectStore().selectedProject?.tenantId || "";
 
   const { mutateAsync, isPending } = useSaveOrganizationConfig();
-
-  const { data: orgsData } = useGetOrganizations({
-    page: 0,
-    pageSize: 10,
-    projectKey: tenantId,
-  });
+  const { data: configData, isLoading } = useGetOrganizationConfig();
 
   const { data: rolesData, isLoading: isRolesLoading } = useGetRoles({
     projectKey: tenantId,
@@ -116,7 +107,7 @@ export const OrganizationConfig = ({ configData, isLoading }: OrganizationConfig
   const onSubmit: SubmitHandler<IOrganizationConfigForm> = async (data) => {
     try {
       const res = await mutateAsync({
-        itemId: orgsData?.organizations?.[0]?.itemId || "",
+        itemId: configData?.itemId || "",
         allowCreationFromCloud: data.isMultiOrgEnabled ? data.allowCreationFromCloud : true,
         allowCreationFromConstruct: data.isMultiOrgEnabled
           ? data.allowCreationFromConstruct
