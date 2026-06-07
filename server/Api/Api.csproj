@@ -17,7 +17,7 @@
     <None Include="appsettings.Development.json" />
   </ItemGroup>
   <ItemGroup>
-    <PackageReference Include="FluentValidation.AspNetCore"/>
+    <PackageReference Include="FluentValidation.AspNetCore" />
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="..\Authentication.DomainService\Authentication.DomainService.csproj" />

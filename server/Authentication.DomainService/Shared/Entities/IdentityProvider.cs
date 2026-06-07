@@ -14,8 +14,8 @@ namespace Authentication.DomainService.Entities
         public required string ClientId { get; set; }
         public required string ClientSecret { get; set; }
         public string? Issuer { get; set; }
-        public required string AuthorizationUrl { get; set; }
-        public required string TokenUrl { get; set; }
+        public  string? AuthorizationUrl { get; set; }
+        public  string? TokenUrl { get; set; }
         public string? UserInfoUrl { get; set; }
         public string? JwksUri { get; set; }
         public string? WellKnownUrl { get; set; }
