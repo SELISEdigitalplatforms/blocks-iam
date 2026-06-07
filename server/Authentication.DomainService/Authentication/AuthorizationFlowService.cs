@@ -16,11 +16,13 @@ using Idp.DomainService.Oidc.Services;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.Logging;
+using Serilog.Context;
 using System.Net.Http.Headers;
 using System.Security.Claims;
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
+using System.Text.Json.Serialization;
 using BCryptNet = BCrypt.Net.BCrypt;
 
 namespace Authentication.DomainService.Authentication
@@ -248,6 +250,7 @@ namespace Authentication.DomainService.Authentication
                 };
 
                 var validationResult = _authorizeValidator.Validate(authorizeRequest);
+
                 if (!validationResult.IsValid)
                 {
                     _logger.LogWarning($"Authorization request validation failed for {client_id}: {string.Join(", ", validationResult.Errors)}");
@@ -272,7 +275,6 @@ namespace Authentication.DomainService.Authentication
                 }
 
                 var tenantHint = tenant_id;
-
                 var claimUserId = string.IsNullOrWhiteSpace(userPrincipal?.FindFirst("sub")?.Value)? 
                                         userPrincipal?.FindFirst("user_id")?.Value : 
                                         userPrincipal?.FindFirst("sub")?.Value;
@@ -336,6 +338,10 @@ namespace Authentication.DomainService.Authentication
                     return new BadRequestObjectResult(new { error = "invalid_request", error_description = "Invalid redirect_uri" });
                 }
 
+                var cacheKey = $"idp_flow:{state}";
+                var flowContextJson = await _cacheClient.GetStringValueAsync(cacheKey);
+                var forworedToContext = JsonSerializer.Deserialize<FlowContext>(flowContextJson);
+
                 canRedirectToClient = true;
 
                 IActionResult BuildAuthorizeError(string error, string errorDescription)
@@ -346,7 +352,8 @@ namespace Authentication.DomainService.Authentication
                         {
                             { "error", error },
                             { "error_description", errorDescription },
-                            { "state", state }
+                            { "state", state },
+                            { "forwardedTo", forworedToContext?.ForwardedTo ?? string.Empty },
                         };
 
                         return new RedirectResult(BuildRedirectUri(redirect_uri, errorParams));
@@ -411,7 +418,8 @@ namespace Authentication.DomainService.Authentication
                 {
                     { "code", authCode },
                     { "state", state },
-                    { "tenant_id", resolvedTenantId ?? tenant_id ?? string.Empty }
+                    { "tenant_id", resolvedTenantId ?? tenant_id ?? string.Empty },
+                    { "forwardedTo", forworedToContext?.ForwardedTo ?? string.Empty }
                 };
 
                 var callbackUri = BuildRedirectUri(redirect_uri, callbackParams);
@@ -1372,5 +1380,13 @@ namespace Authentication.DomainService.Authentication
             httpResponse.Cookies.Delete(domain, accessCookieOptions);
             httpResponse.Cookies.Delete($"{IdpConstants.RefreshTokenCookieName}_{domain}", refreshCookieOptions);
         }
+
+        private sealed class FlowContext
+        {
+            [JsonPropertyName("forwardedTo")]
+            public string? ForwardedTo { get; set; } = null!;
+        }
     }
 }
+
+
