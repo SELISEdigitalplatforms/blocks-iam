@@ -16,7 +16,11 @@ createRoot(document.getElementById("root")!).render(
          <BlocksAppLayout
             config={{
               userBaseUrlKey: "BLOCKS_IAM_BASE_URL",
-              projectBaseUrlKey: "BLOCKS_IAM_BASE_URL",
+              projectBaseUrlKey: "BLOCKS_LOGIC_BASE_URL",
+               appLogoUrl:{
+                dark:"/iam_dark_mode.svg",
+                light:"/iam_light_mode.svg"
+              }
             }}
           >
             <RouterProvider router={router} />
