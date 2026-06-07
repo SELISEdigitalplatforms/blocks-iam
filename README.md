@@ -107,6 +107,10 @@ Controller route templates omit the **`api`** segment in code; **`GlobalApiRoute
 
 **`/api` is reserved for the HTTP API.** The React router redirects mistaken navigations to `/api` back home and, in development, **`assertFePathNotApi`** helps catch invalid route paths at startup.
 
+## Local HTTPS
+
+Frontend dev server and backend API serve HTTPS on `dev-iam.blocksdevelopers.com` when the machine env vars `IAM_SSL_CERT` and `IAM_SSL_KEY` (mkcert PEM cert + key paths) are both set and both files exist; otherwise they fall back to HTTP (no crash). No cert path is committed, and the deployed Docker artifact is unaffected. One-time setup (mkcert, hosts entry, env vars, behavior matrix): see [LOCAL_GUIDE.md](LOCAL_GUIDE.md#local-https-frontend--backend).
+
 ## License
 
 See [LICENSE](LICENSE).

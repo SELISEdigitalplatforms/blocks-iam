@@ -273,8 +273,12 @@ namespace Authentication.DomainService.Authentication
 
                 var tenantHint = tenant_id;
 
-                var claimUserId = userPrincipal.FindFirst("sub")?.Value;
-                var claimTenantId = userPrincipal.FindFirst("tenant_id")?.Value;
+                var claimUserId = string.IsNullOrWhiteSpace(userPrincipal?.FindFirst("sub")?.Value)? 
+                                        userPrincipal?.FindFirst("user_id")?.Value : 
+                                        userPrincipal?.FindFirst("sub")?.Value;
+
+                var claimTenantId = userPrincipal?.FindFirst("tenant_id")?.Value;
+                bool.TryParse(userPrincipal?.FindFirst("impersonated")?.Value, out bool impersonated);
                 var effectiveSessionId = request.Cookies[IdpSessionCookieName];
 
                 string? resolvedUserId = null;
@@ -371,6 +375,9 @@ namespace Authentication.DomainService.Authentication
                 await PersistLastUsedOrganizationAsync(user, effectiveOrganizationId);
 
                 var authCode = GenerateRandomCode(32);
+                var impesonatingRefreshToken = _authenticationService.CookieToken(request);
+
+
                 var codeModel = new AuthorizationCodeModel
                 {
                     Code = authCode,
@@ -387,8 +394,14 @@ namespace Authentication.DomainService.Authentication
                     ExpiresAt = DateTime.UtcNow.AddMinutes(10),
                     CreatedAt = DateTime.UtcNow,
                     CreatedByIpAddress = GetClientIpAddress(request),
-                    IsUsed = false
+                    IsUsed = false,
+                    Impersonated = impersonated,
+                    TergatedTenantId = claimTenantId,
+                    ImpersonatedUserId = claimUserId,
+                    ImpesonatingRefreshToken = impesonatingRefreshToken
                 };
+
+                Console.WriteLine(codeModel);
 
                 await _authCodeRepo.CreateAsync(codeModel);
 
@@ -486,10 +499,10 @@ namespace Authentication.DomainService.Authentication
                 return new BadRequestObjectResult(new { error = "invalid_client", error_description = "Missing client authentication" });
             }
 
-            if (!await HasOidcClientConfigurationAsync(clientId))
-            {
-                return new BadRequestObjectResult(new { error = "invalid_client", error_description = "Client configuration not found" });
-            }
+            //if (!await HasOidcClientConfigurationAsync(clientId))
+            //{
+            //    return new BadRequestObjectResult(new { error = "invalid_client", error_description = "Client configuration not found" });
+            //}
 
             var authConfiguration = await _authenticationRepository.GetAuthenticationConfigurationAsync();
             if (authConfiguration == null)
@@ -537,6 +550,11 @@ namespace Authentication.DomainService.Authentication
             var code_verifier = request.Form["code_verifier"].ToString();
             var client_id = request.Form["client_id"].ToString();
             var redirect_uri = request.Form["redirect_uri"].ToString();
+
+            if (string.IsNullOrWhiteSpace(client_id))
+            {
+                TryReadBasicClientAuthentication(request, out client_id, out _);
+            }
 
             // Tenant ID resolution: form > query > header (X-Blocks-Key)
             var tenant_id = !string.IsNullOrWhiteSpace(request.Form["tenant_id"].ToString())
@@ -723,6 +741,9 @@ namespace Authentication.DomainService.Authentication
 
             var tenantAudience = DomainResolver.GetAudience(tenant);
 
+            var fullName = string.Join(' ', new[] { user.FirstName, user.LastName }
+                .Where(s => !string.IsNullOrWhiteSpace(s)));
+
             var claims = new OidcClaims
             {
                 Sub = authCode.UserId,
@@ -734,6 +755,9 @@ namespace Authentication.DomainService.Authentication
                 ClientId = client_id,
                 Audience = tenantAudience,
                 Scope = authCode.Scope,
+                Email = user.Email,
+                Name = string.IsNullOrWhiteSpace(fullName) ? null : fullName,
+                UserName = user.UserName,
                 Roles = resolvedClaims.Roles,
                 Resources = resolvedClaims.Resources,
                 Permissions = resolvedClaims.Permissions

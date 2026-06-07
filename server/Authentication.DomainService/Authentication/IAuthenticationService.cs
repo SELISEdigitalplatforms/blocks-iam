@@ -22,7 +22,7 @@ namespace Authentication.DomainService.Authentication
         Task<OidcClientRegistration> GetClientCredentialAsync(string clientId);
         Task<object> HandleTokenResponseConditionallyAsync(TokenResponse response, HttpResponse httpResponse, bool useTokensCookie, string? clientId = null);
         Task<ClaimsPrincipal?> GetPrincipalFromTokenAsync(HttpRequest request, string tenantId, bool IsUserInfoGetRequest = false);
-        (bool IsValid, Dictionary<string, object> UserInfo) BuildOidcUserInfo(ClaimsPrincipal principal);
+        Task<(bool IsValid, Dictionary<string, object> UserInfo)> BuildOidcUserInfoAsync(ClaimsPrincipal principal);
         Task<bool> TriggerBackchannelLogoutAllAsync(HttpRequest httpRequest);
         Task<bool> EnsureIdpSessionForOidcCallbackAsync(HttpContext httpContext, string userId, string tenantId);
         Task<BaseResponse> CreateIdentityProviderAsync(IdentityProvider provider);
