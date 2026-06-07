@@ -685,7 +685,8 @@ namespace Authentication.DomainService.Authentication
                                 OriginalTenantId = rootTenant.TenantId,
                                 TargetTenantId = request.TargetTenantId,
                                 ImpersonatorUserId = userId,
-                                Request = httpRequest
+                                Request = httpRequest,
+                                ImpersonationSessionId = existingSessionId,
                             };
 
                             var newTokenResponse = await _oAuthJwtAccessTokenManager.ManageTokenAsync(newTokenRequest, authConfiguration, user);
