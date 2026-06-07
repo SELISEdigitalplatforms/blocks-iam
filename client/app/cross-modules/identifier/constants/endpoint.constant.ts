@@ -73,9 +73,9 @@ export const SERVICE_REGISTRY_ENDPOINTS = {
 
 // ─── Cloud Build endpoints ────────────────────────────────────────────────────
 
-const BUILD_SUBPATH = "/build";
+const DEPLOYMENT_SUBPATH = "/deployment";
 
 export const CLOUD_BUILD_ENDPOINTS = {
-  REPOS_LIST: `/api${BUILD_SUBPATH}/repos-list`,
-  REPO_UPDATE: `/api${BUILD_SUBPATH}/repo-update`,
+  REPOS_LIST: `/api${DEPLOYMENT_SUBPATH}/GetReposList`,
+  REPO_UPDATE: `/api${DEPLOYMENT_SUBPATH}/repo-update`,
 } as const;
