@@ -30,7 +30,8 @@ export const UserDevices = ({ id, projectKey }: DevicesProps) => {
                 pageSize={filter.pageSize}
                 onChange={(page) => setFilter((filter) => ({ ...filter, page }))}
                 totalCount={data?.totalCount || 0}
-                pageSizeOptions={[10]}
+                onPageSizeChange={(pageSize) => setFilter((filter) => ({ ...filter, pageSize }))} 
+                pageSizeOptions={[5,10,20,40]}
               />
             </div>
           )}

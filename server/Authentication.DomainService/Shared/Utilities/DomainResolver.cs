@@ -217,7 +217,8 @@ namespace Authentication.DomainService.Utilities
                 displayName: bc.DisplayName,
                 oauthToken: bc.OAuthToken,
                 originalTenantId: bc.OriginalTenantId,
-                applicationDomain: bc.ApplicationDomain)
+                applicationDomain: bc.ApplicationDomain,
+                impersonationSessionId: bc.ImpersonationSessionId)
             );
         }
 

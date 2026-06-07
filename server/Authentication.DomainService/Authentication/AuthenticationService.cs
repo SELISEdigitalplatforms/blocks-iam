@@ -249,7 +249,7 @@ namespace Authentication.DomainService.Authentication
 
             request.HttpContext.Response.Cookies.Delete($"{IdpConstants.RefreshTokenCookieName}_{domain}", cookieOptions);
             request.HttpContext.Response.Cookies.Delete($"{domain}", cookieOptions);
-            request.HttpContext.Response.Cookies.Delete(IdpConstants.ImpersonationIdCookieName, cookieOptions);
+           // request.HttpContext.Response.Cookies.Delete(IdpConstants.ImpersonationIdCookieName, cookieOptions);
             return true;
         }
 

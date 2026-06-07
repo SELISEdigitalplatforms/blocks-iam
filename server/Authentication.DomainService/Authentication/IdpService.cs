@@ -1,7 +1,10 @@
 using Authentication.DomainService.Entities;
 using Authentication.DomainService.OAuth.ResponseModel;
+using Authentication.DomainService.Oidc.Repositories;
 using Authentication.DomainService.Services;
+using Authentication.DomainService.Shared.RequestModel;
 using Authentication.DomainService.Utilities;
+using Azure;
 using Azure.Core;
 using Blocks.Genesis;
 using Microsoft.AspNetCore.Http;
@@ -20,6 +23,9 @@ namespace Authentication.DomainService.Authentication
     public class IdpService : IIdpService
     {
         private readonly IAuthenticationRepository _authenticationRepository;
+        private readonly IAuthorizationCodeRepository _authCodeRepo;
+        private readonly IAuthenticationFlowService _authenticationFlowService;
+        private readonly IHttpContextAccessor _httpContextAccessor;
         private readonly ICacheClient _cacheClient;
         private readonly IHttpService _httpService;
         private readonly ITenants _tenants;
@@ -27,12 +33,18 @@ namespace Authentication.DomainService.Authentication
 
         public IdpService(
             IAuthenticationRepository authenticationRepository,
+            IAuthorizationCodeRepository authCodeRepo,
+            IAuthenticationFlowService authenticationFlowService,
+            IHttpContextAccessor httpContextAccessor,
             ICacheClient cacheClient,
             IHttpService httpService,
             ITenants tenants,
             ILogger<IdpService> logger)
         {
             _authenticationRepository = authenticationRepository;
+            _authCodeRepo = authCodeRepo;
+            _authenticationFlowService = authenticationFlowService;
+            _httpContextAccessor = httpContextAccessor;
             _cacheClient = cacheClient;
             _httpService = httpService;
             _tenants = tenants;
@@ -160,6 +172,15 @@ namespace Authentication.DomainService.Authentication
                 {
                     _logger.LogWarning($"Identity provider not found or inactive: {flowContext.Provider}");
                     return new BadRequestObjectResult(new { error = "invalid_provider", error_description = "Provider not configured" });
+                }
+
+               var authCode = await _authCodeRepo.GetByCodeAsync(code);
+
+                if(authCode.Impersonated)
+                {
+                   var impersonatedResult = await  _authenticationFlowService.ExecuteImpersonateAsync(new ImpersonateRequest { TargetTenantId = authCode.TergatedTenantId, ImpersontingUserId = authCode.ImpersonatedUserId, RefreshToken = authCode.ImpesonatingRefreshToken}, _httpContextAccessor.HttpContext.Request, _httpContextAccessor.HttpContext.Response);
+                   await _cacheClient.RemoveKeyAsync(cacheKey);
+                   return new OkObjectResult ( new {Impersonated = true} );
                 }
 
                 // Exchange authorization code for tokens at IdP

@@ -12,8 +12,7 @@ import {
 import { IPATResponse } from "@blocks-idp/iam/models/user";
 import { ColumnDef, flexRender, getCoreRowModel, useReactTable } from "@tanstack/react-table";
 import { Trash } from "lucide-react";
-import { useMemo, useState } from "react";
-import { GenerateTokenModal } from "./generate-pat-modal";
+import { useMemo } from "react";
 import { CopyToClipboardButton } from "@/components/copy-to-clipboard-button/copy-to-clipboard-button";
 import useIsMobile from "@/hooks/use-is-mobile";
 import { cn } from "@/lib/utils";
@@ -22,7 +21,6 @@ import { format } from "date-fns";
 type PATListProps = {
   isLoading: boolean;
   data: IPATResponse[];
-  id: string;
 };
 
 const LoadingSkelton = () => (
@@ -33,7 +31,7 @@ const LoadingSkelton = () => (
   </div>
 );
 
-export const UserPATList = ({ isLoading, data, id }: PATListProps) => {
+export const UserPATList = ({ isLoading, data }: PATListProps) => {
   const isMobile = useIsMobile();
 
   const columns: ColumnDef<IPATResponse>[] = useMemo(
@@ -143,19 +141,11 @@ export const UserPATList = ({ isLoading, data, id }: PATListProps) => {
     columns,
     getCoreRowModel: getCoreRowModel(),
   });
-  const [isModalOpen, setIsModalOpen] = useState(false);
 
   if (isLoading) return <LoadingSkelton />;
 
   return (
     <>
-      <div className="mb-5 flex items-center justify-between text-lg font-bold text-high-emphasis">
-        <h1>PATs (Personal Access Tokens)</h1>
-        <Button onClick={() => setIsModalOpen(true)} size="sm">
-          Generate PAT
-        </Button>
-      </div>
-
       <Table className="text-sm">
         <TableHeader>
           {table.getHeaderGroups().map((headerGroup) => (
@@ -197,8 +187,6 @@ export const UserPATList = ({ isLoading, data, id }: PATListProps) => {
           )}
         </TableBody>
       </Table>
-
-      <GenerateTokenModal isOpen={isModalOpen} onClose={() => setIsModalOpen(false)} id={id} />
     </>
   );
 };

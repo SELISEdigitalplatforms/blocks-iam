@@ -11,7 +11,7 @@ namespace Authentication.DomainService.Utilities
         public const string MfaQueueName = "blocks_idp_mfa_listener";
 
         public const string RefreshTokenCookieName = "rt";
-        public const string ImpersonationIdCookieName = "impersonation_session_id";
+      //  public const string ImpersonationIdCookieName = "impersonation_session_id";
         public const string IdpSessionCookieName = "idp_session_id";
 
         public const string BlocksProviderName = "blocks-idp";
