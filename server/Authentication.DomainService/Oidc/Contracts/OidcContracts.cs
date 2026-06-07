@@ -14,6 +14,9 @@ public class OidcClaims
     public string? ClientId { get; set; }
     public string? Audience { get; set; }
     public string? Scope { get; set; }
+    public string? Email { get; set; }
+    public string? Name { get; set; }
+    public string? UserName { get; set; }
     public List<string> Roles { get; set; } = [];
     public List<string> Resources { get; set; } = [];
     public List<string> Permissions { get; set; } = [];
@@ -41,6 +44,13 @@ public class AuthorizationCodeModel
     public string? UsedByIpAddress { get; set; }
     public bool IsRevoked { get; set; }
     public DateTime? RevokedAt { get; set; }
+
+    public bool Impersonated { get; set; } = false;
+
+    public string? TergatedTenantId { get; set; } = string.Empty;
+
+    public string? ImpersonatedUserId { get; set; } = string.Empty;
+    public string? ImpesonatingRefreshToken { get; set; } = string.Empty;
 }
 
 public class RefreshTokenModel

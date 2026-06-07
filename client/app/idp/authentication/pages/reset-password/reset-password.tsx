@@ -1,8 +1,7 @@
-import { Logo } from "@/components/logo";
-import { ModeToggle } from "@/components/mode-toggle/mode-toggle";
-import { Button } from "@/components/ui-kits/button/button";
-import { AlertTriangle, KeyRound, Lock, ShieldCheck } from "lucide-react";
+import { AlertTriangle } from "lucide-react";
 import { Link } from "react-router-dom";
+import { OidcAuthShell } from "../oidc/oidc-auth-shell";
+import { RESET_PASSWORD_PANEL } from "../oidc/oidc-panel-config";
 import { ResetPasswordForm } from "./reset-password-form";
 
 type ResetPasswordProps = {
@@ -11,97 +10,42 @@ type ResetPasswordProps = {
 };
 
 export const ResetPassword = ({ code }: ResetPasswordProps) => {
-  const headerBadge = code ? "Set New Password" : "Invalid Link";
-  const headerSubtitle = code
-    ? "Choose a password to secure your account"
-    : "This reset link is missing or invalid";
-
   return (
-    <div className="fixed inset-0 z-50 flex flex-col bg-[hsl(var(--surface-app))]">
-      {/* Background decorations */}
-      <div className="pointer-events-none absolute inset-0 overflow-hidden">
-        <div className="absolute -left-40 -top-40 h-96 w-96 rounded-full bg-primary/5 blur-3xl" />
-        <div className="absolute -bottom-40 right-10 h-80 w-80 rounded-full bg-primary/5 blur-3xl" />
-        <div className="absolute left-1/2 top-1/4 h-64 w-64 -translate-x-1/2 rounded-full bg-primary/3 blur-3xl" />
-      </div>
-
-      {/* Header */}
-      <header className="relative z-10 flex items-center px-6 py-5 xl:px-[154px]">
-        <Link to="/login" className="transition-opacity hover:opacity-80">
-          <Logo width={120} height={52} />
-        </Link>
-        <div className="absolute right-6 top-5 xl:right-[154px]">
-          <ModeToggle />
-        </div>
-      </header>
-
-      {/* Main */}
-      <main className="relative z-10 min-h-0 flex-1 overflow-y-auto">
-        <div className="flex min-h-full items-center justify-center px-6 py-8">
-        <div className="w-full max-w-[420px]">
-          {/* Card */}
-          <div className="overflow-hidden rounded-2xl border border-[hsl(var(--border-default))] bg-[hsl(var(--card))] shadow-md">
-            {/* Card header */}
-            <div className="relative overflow-hidden rounded-t-2xl blocks-gradient px-6 py-7">
-              <div className="absolute -right-8 -top-8 h-32 w-32 rounded-full bg-white/5" />
-              <div className="absolute -bottom-6 right-4 h-20 w-20 rounded-full bg-white/5" />
-              <span className="relative inline-flex items-center rounded-full bg-white/15 px-2.5 py-0.5 text-[10px] font-semibold uppercase tracking-widest text-primary-foreground/80">
-                {headerBadge}
-              </span>
-              <div className="relative mt-3">
-                <h1 className="text-lg font-bold leading-tight text-primary-foreground">
-                  Blocks Identity Provider
-                </h1>
-                <p className="mt-0.5 text-xs text-primary-foreground/70">
-                  {headerSubtitle}
-                </p>
-              </div>
-            </div>
-
-            {/* Card body */}
-            <div className="p-6">
-              {code ? (
-                <ResetPasswordForm code={code} />
-              ) : (
-                <div className="flex flex-col items-center gap-3 py-4 text-center">
-                  <AlertTriangle className="h-10 w-10 text-amber-500" />
-                  <p className="text-sm text-muted-foreground">
-                    The reset code is missing or invalid. Please request a new
-                    reset link.
-                  </p>
-                  <Button asChild className="mt-2 w-full rounded">
-                    <a href="/forgot-password">Request a new reset link</a>
-                  </Button>
-                </div>
-              )}
-            </div>
+    <OidcAuthShell
+      panelConfig={RESET_PASSWORD_PANEL}
+      heading="Set a new password"
+      headingDimFirst={3}
+      successTitle="Password Updated"
+      successSubtitle="Your password has been reset. Redirecting to login…"
+      showCorners={false}
+      footerNote={
+        <p className="text-xs" style={{ color: "var(--muted)", fontFamily: "system-ui, sans-serif" }}>
+          © {new Date().getFullYear()} SELISE Digital Platforms. All rights reserved.
+        </p>
+      }
+    >
+      {code ? (
+        <ResetPasswordForm code={code} />
+      ) : (
+        <div className="flex flex-col items-center gap-4 py-4 text-center">
+          <div
+            className="w-12 h-12 rounded-full flex items-center justify-center"
+            style={{ background: "rgba(234,179,8,.1)", border: "1px solid rgba(234,179,8,.25)" }}
+          >
+            <AlertTriangle size={22} style={{ color: "var(--warn)" }} />
           </div>
-
-          {/* Trust row */}
-          <div className="mt-5 flex items-center justify-center gap-4">
-            <div className="flex items-center gap-1.5 text-[11px] text-[hsl(var(--low-emphasis))]">
-              <ShieldCheck className="h-3.5 w-3.5 text-primary/60" />
-              MFA Ready
-            </div>
-            <span className="h-3 w-px bg-[hsl(var(--border-default))]" />
-            <div className="flex items-center gap-1.5 text-[11px] text-[hsl(var(--low-emphasis))]">
-              <KeyRound className="h-3.5 w-3.5 text-primary/60" />
-              SSO Enabled
-            </div>
-            <span className="h-3 w-px bg-[hsl(var(--border-default))]" />
-            <div className="flex items-center gap-1.5 text-[11px] text-[hsl(var(--low-emphasis))]">
-              <Lock className="h-3.5 w-3.5 text-primary/60" />
-              Encrypted
-            </div>
-          </div>
-
-          {/* Copyright */}
-          <p className="mt-4 text-center text-[11px] text-[hsl(var(--low-emphasis))]">
-            © {new Date().getFullYear()} SELISE Digital Platforms. All rights reserved.
+          <p className="text-sm" style={{ color: "var(--muted)", fontFamily: "system-ui, sans-serif" }}>
+            The reset code is missing or invalid. Please request a new reset link.
           </p>
+          <Link
+            to="/forgot-password"
+            className="oidc-sci-fi-btn"
+            style={{ textDecoration: "none", display: "inline-block", textAlign: "center", padding: "10px 20px" }}
+          >
+            Request new reset link
+          </Link>
         </div>
-        </div>
-      </main>
-    </div>
+      )}
+    </OidcAuthShell>
   );
 };

@@ -4,8 +4,18 @@
     <meta charset="UTF-8" />
     <link rel="icon" type="image/svg+xml" href="/Icon.svg" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-
     <title>Blocks IAM</title>
+    <!-- Theme init: apply dark class synchronously before first paint to avoid flash -->
+    <script>
+      (function () {
+        try {
+          var stored = localStorage.getItem("theme") || "system";
+          var prefersDark = window.matchMedia("(prefers-color-scheme: dark)").matches;
+          var isDark = stored === "dark" || (stored === "system" && prefersDark);
+          if (isDark) document.documentElement.classList.add("dark");
+        } catch (_) {}
+      })();
+    </script>
   </head>
   <body
     class="min-h-screen bg-background font-sans text-foreground antialiased"

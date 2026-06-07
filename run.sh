@@ -11,6 +11,10 @@ WWWROOT_DIR="$SCRIPT_DIR/server/Api/wwwroot"
 API_PORT=5000
 FRONTEND_PORT=4000
 
+# Ensure SSL vars are explicitly in scope for Vite
+export IAM_SSL_CERT="${IAM_SSL_CERT:-}"
+export IAM_SSL_KEY="${IAM_SSL_KEY:-}"
+
 API_PID=""
 WORKER_PID=""
 
@@ -103,9 +107,26 @@ build_frontend() {
 }
 
 # ---------- BACKEND ----------
+
+# HTTPS is driven by the machine env vars IAM_SSL_CERT / IAM_SSL_KEY.
+# Both set + both files present -> HTTPS on $API_PORT; otherwise -> HTTP (fallback).
+configure_backend_tls() {
+    if [ -n "${IAM_SSL_CERT:-}" ] && [ -n "${IAM_SSL_KEY:-}" ] \
+       && [ -f "$IAM_SSL_CERT" ] && [ -f "$IAM_SSL_KEY" ]; then
+        export Kestrel__Certificates__Default__Path="$IAM_SSL_CERT"
+        export Kestrel__Certificates__Default__KeyPath="$IAM_SSL_KEY"
+        export ASPNETCORE_URLS="https://0.0.0.0:$API_PORT"
+        echo "Backend TLS: HTTPS on $API_PORT"
+    else
+        export ASPNETCORE_URLS="http://0.0.0.0:$API_PORT"
+        echo "Backend TLS: cert env not set/found — HTTP on $API_PORT"
+    fi
+}
+
 run_backend() {
+    configure_backend_tls
     echo "Running .NET API on port $API_PORT..."
-    dotnet run --project "$API_PROJECT"
+    dotnet run --project "$API_PROJECT" -- --urls "$ASPNETCORE_URLS"
 }
 
 run_worker() {

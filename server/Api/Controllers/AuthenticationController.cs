@@ -422,9 +422,9 @@ public class AuthenticationController : ControllerBase
     /// </summary>
     [HttpGet("userinfo")]
     [Authorize]
-    public IActionResult RetrieveUserInformation()
+    public async Task<IActionResult> RetrieveUserInformation()
     {
-        var (isValid, userInfo) = _authenticationService.BuildOidcUserInfo(User);
+        var (isValid, userInfo) = await _authenticationService.BuildOidcUserInfoAsync(User);
         if (!isValid)
         {
             return Unauthorized(new { error = "invalid_token", error_description = "Missing required 'sub' claim in token" });
@@ -529,5 +529,30 @@ public class AuthenticationController : ControllerBase
     {
         return await _authenticationRepository.GetUserCodesByUserIdAsync(BlocksContext.GetContext()?.UserId);
     }
+
+    #region Client Credential Management
+
+    [Authorize]
+    [HttpPost("SaveClientCredential")]
+    public async Task<BaseResponse> SaveClientCredential([FromBody] SaveClientCredentialRequest request)
+    {
+        return await _authenticationDomainService.SaveClientCredentialAsync(request);
+    }
+
+    [Authorize]
+    [HttpPost("DeleteClientCredential")]
+    public async Task<BaseResponse> DeleteClientCredential([FromBody] DeleteClientCredentialRequest request)
+    {
+        return await _authenticationDomainService.DeleteClientCredentialAsync(request);
+    }
+
+    [Authorize]
+    [HttpGet("GetClientCredentials")]
+    public async Task<List<ClientCredential>> GetClientCredentials([FromQuery] GetAllClientCredentialsRequest request)
+    {
+        return await _authenticationRepository.GetClientCredentialsAsync();
+    }
+
+    #endregion
 
 }
