@@ -34,8 +34,9 @@ function resolveDevHttps(): { cert: Buffer; key: Buffer } | undefined {
 
 export default defineConfig(({ mode }) => {
   const env = loadEnv(mode, __dirname, "BLOCKS_");
-  const proxyTarget = env.BLOCKS_API_BASE_URL;
-  const logicTarget = env.BLOCKS_LOGIC_BASE_URL || "https://dev-logic.blocksdevelopers.com";
+  const proxyTarget = env.BLOCKS_IAM_BASE_URL;
+  const logicTarget = env.BLOCKS_LOGIC_BASE_URL;
+  const devHost = env.BLOCKS_DEV_HOST || true;
   const httpsConfig = resolveDevHttps();
 
 
@@ -61,7 +62,7 @@ export default defineConfig(({ mode }) => {
       emptyOutDir: true,
     },
     server: {
-      host: "dev-iam.blocksdevelopers.com", // Listen on all addresses (0.0.0.0)
+      host: devHost,
       port: 4000,
       strictPort: true, // Fail if port is not available
       https: httpsConfig,

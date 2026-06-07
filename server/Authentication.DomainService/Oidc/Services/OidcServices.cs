@@ -501,9 +501,9 @@ public class DiscoveryService : IDiscoveryService
     private string GetConfiguredIssuerFallback()
     {
 
-        var configuredBaseUrl = Environment.GetEnvironmentVariable("BLOCKS_API_BASE_URL")
-            ?? _configuration["BLOCKS_API_BASE_URL"]
-            ?? _configuration["FrontendRuntime:BLOCKS_API_BASE_URL"];
+        var configuredBaseUrl = Environment.GetEnvironmentVariable("BLOCKS_IAM_BASE_URL")
+            ?? _configuration["BLOCKS_IAM_BASE_URL"]
+            ?? _configuration["FrontendRuntime:BLOCKS_IAM_BASE_URL"];
 
         if (Uri.TryCreate(configuredBaseUrl, UriKind.Absolute, out var uri))
         {
