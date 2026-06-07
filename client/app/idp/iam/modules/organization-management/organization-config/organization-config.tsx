@@ -44,7 +44,7 @@ export const OrganizationConfig = ({}: OrganizationConfigProps) => {
   const [selectedRoles, setSelectedRoles] = useState<string[]>([]);
   const tenantId = useProjectStore().selectedProject?.tenantId || "";
 
-  const { mutateAsync, isPending } = useSaveOrganizationConfig();
+  const { mutateAsync, isPending } = useSaveOrganizationConfig(tenantId);
   const { data: configData, isLoading } = useGetOrganizationConfig(tenantId);
 
   const { data: rolesData, isLoading: isRolesLoading } = useGetRoles({
