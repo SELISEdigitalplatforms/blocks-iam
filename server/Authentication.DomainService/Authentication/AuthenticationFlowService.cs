@@ -661,7 +661,7 @@ namespace Authentication.DomainService.Authentication
             // Check for organization switch within existing impersonation
             var existingSessionId = bc.ImpersonationSessionId;
 
-            if (bc.Impersonated)
+            if (!string.IsNullOrWhiteSpace(existingSessionId))
             {
                 var existingSession = await _authenticationRepository.GetImpersonationSessionByIdAsync(existingSessionId);
                 if (existingSession != null && existingSession.Status == "active" &&
@@ -685,7 +685,8 @@ namespace Authentication.DomainService.Authentication
                                 OriginalTenantId = rootTenant.TenantId,
                                 TargetTenantId = request.TargetTenantId,
                                 ImpersonatorUserId = userId,
-                                Request = httpRequest
+                                Request = httpRequest,
+                                ImpersonationSessionId = existingSessionId,
                             };
 
                             var newTokenResponse = await _oAuthJwtAccessTokenManager.ManageTokenAsync(newTokenRequest, authConfiguration, user);
