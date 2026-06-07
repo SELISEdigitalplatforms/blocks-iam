@@ -49,10 +49,11 @@ export const useUpdateOrganization = () => {
   });
 };
 
-export const useGetOrganizationConfig = () => {
+export const useGetOrganizationConfig = (projectKey?: string) => {
   return useQuery({
-    queryKey: ["organization", "config"],
+    queryKey: ["organization", "config", projectKey],
     queryFn: () => iamService.organization.getOrganizationConfig(),
+    enabled: !!projectKey,
   });
 };
 

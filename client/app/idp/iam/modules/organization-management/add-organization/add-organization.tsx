@@ -26,6 +26,7 @@ import {
 } from "@/components/ui-kits/form/form";
 import { z } from "zod";
 import { useSaveOrganization, useGetOrganizationConfig } from "@blocks-idp/iam/hooks/use-organization";
+import { useProjectStore } from "@/store/useProjectStore";
 import { Plus } from "lucide-react";
 
 interface AddOrganizationProps {
@@ -35,8 +36,9 @@ interface AddOrganizationProps {
 export const AddOrganization = ({ disabled }: AddOrganizationProps) => {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const { mutateAsync, isPending } = useSaveOrganization();
-  const { data: orgConfig } = useGetOrganizationConfig();
-  const isDisabled = disabled || !orgConfig?.isMultiOrgEnabled || !orgConfig?.allowCreationFromCloud;
+  const tenantId = useProjectStore().selectedProject?.tenantId || "";
+  const { data: orgConfig } = useGetOrganizationConfig(tenantId);
+  const isDisabled = disabled || !orgConfig?.isMultiOrgEnabled || !orgConfig?.allowOrgCreationFromCloud;
 
   const form = useForm({
     defaultValues: addOrganizationFormDefaultValue,
