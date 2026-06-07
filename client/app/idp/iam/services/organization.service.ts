@@ -6,6 +6,7 @@ import {
   IGetOrganizationByIdResponse,
   IGetOrganizationsParams,
   IGetOrganizationsResponse,
+  IUpdateOrganizationPayload,
 } from "@blocks-idp/iam/models/organization";
 import {
   IOrganizationConfigPayload,
@@ -30,7 +31,16 @@ export class OrganizationService {
   saveOrganization = (
     payload: ICreateOrUpdateOrganizationPayload,
   ): Promise<ICreateOrUpdateOrganizationResponse> => {
-    return http.post(ORGANIZATION_ENDPOINTS.SAVE_ORGANIZATION, payload);
+    return http.post(ORGANIZATION_ENDPOINTS.CREATE_ORGANIZATION, payload);
+  };
+
+  updateOrganization = (
+    payload: IUpdateOrganizationPayload,
+  ): Promise<ICreateOrUpdateOrganizationResponse> => {
+    return http.post(`${ORGANIZATION_ENDPOINTS.UPDATE_ORGANIZATION}/${payload.itemId}`, {
+      name: payload.name,
+      isEnable: payload.isEnable,
+    });
   };
 
   getOrganizationConfig(): Promise<IOrganizationConfigResponse | null> {

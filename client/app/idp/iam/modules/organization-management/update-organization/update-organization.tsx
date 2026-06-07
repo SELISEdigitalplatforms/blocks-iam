@@ -19,8 +19,7 @@ import {
 } from "@/components/ui-kits/form/form";
 import { Input } from "@/components/ui-kits/input/input";
 import { showErrorToast, showSuccessToast } from "@/hooks/use-toast";
-import { useProjectStore } from "@/store/useProjectStore";
-import { useSaveOrganization } from "@blocks-idp/iam/hooks/use-organization";
+import { useUpdateOrganization } from "@blocks-idp/iam/hooks/use-organization";
 import { IOrganization } from "@blocks-idp/iam/models/organization";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useEffect } from "react";
@@ -34,8 +33,7 @@ type UpdateOrganizationProps = {
 };
 
 export const UpdateOrganization = ({ organization, isOpen }: UpdateOrganizationProps) => {
-  const { mutateAsync, isPending } = useSaveOrganization();
-  const tenantId = useProjectStore().selectedProject?.tenantId || "";
+  const { mutateAsync, isPending } = useUpdateOrganization();
 
   const form = useForm({
     defaultValues: { name: organization.name },
@@ -49,9 +47,8 @@ export const UpdateOrganization = ({ organization, isOpen }: UpdateOrganizationP
   const onSubmit: SubmitHandler<z.infer<typeof updateOrganizationFormSchema>> = async (data) => {
     try {
       const res = await mutateAsync({
-        projectKey: tenantId,
-        name: data.name,
         itemId: organization.itemId,
+        name: data.name,
         isEnable: organization.isEnable,
       });
       if (!res.isSuccess) {
