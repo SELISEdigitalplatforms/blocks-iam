@@ -884,15 +884,23 @@ namespace Iam.DomainService.Resources
             var tenantConfig = await _resourceRepository.GetTenantConfigurationAsync();
             if (tenantConfig == null)
             {
-                return new BaseResponse
+                //return new BaseResponse
+                //{
+                //    IsSuccess = false,
+                //    Errors = new Dictionary<string, string>
+                //    {
+                //        { "invalid_request", "Organization configuration not found" }
+                //    }
+                //};
+
+                tenantConfig = new TenantConfiguration
                 {
-                    IsSuccess = false,
-                    Errors = new Dictionary<string, string>
-                    {
-                        { "invalid_request", "Organization configuration not found" }
-                    }
+                    ItemId = Guid.NewGuid().ToString(),
+                    CreatedBy = BlocksContext.GetContext()?.UserId,
+                    CreatedDate = DateTime.UtcNow
                 };
             }
+
             tenantConfig.AllowOrgCreationFromCloud = request.AllowOrgCreationFromCloud;
             tenantConfig.AllowOrgCreationFromConstruct = request.AllowOrgCreationFromConstruct;
             tenantConfig.AllowOrgCreationFromSignup = request.AllowOrgCreationFromSignup;
