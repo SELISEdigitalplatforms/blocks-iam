@@ -51,6 +51,12 @@ export interface ICreateOrUpdateOrganizationPayload {
   createdFrom?: number;
 }
 
+export interface IUpdateOrganizationPayload {
+  itemId: string;
+  name: string;
+  isEnable: boolean;
+}
+
 export interface ICreateOrUpdateOrganizationResponse {
   errors: unknown;
   isSuccess: boolean;
