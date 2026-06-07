@@ -1,4 +1,4 @@
-import { http } from "@/lib/http-client";
+import { http, serviceClientInstances } from "@/lib/http-client";
 import {
   ICreateProjectPayload,
   IDisableProjectPayload,
@@ -37,6 +37,7 @@ import {
 } from "@blocks-identifier/constants/endpoint.constant";
 
 export class ProjectService {
+  private readonly logicClient = serviceClientInstances.logicClient;
   getProjects(page: number, pageSize: number, tenantGroupId: string): Promise<IProjectGroup[]> {
     const url = `${PROJECT_ENDPOINTS.GETS}?page=${page}&pageSize=${pageSize}&tenantGroupId=${tenantGroupId}`;
     return http.get(url, undefined, { absoluteUrl: true });
@@ -64,13 +65,13 @@ export class ProjectService {
     return http.post(PROJECT_ENDPOINTS.ADD_ASSET, payload, undefined, { absoluteUrl: true });
   }
 
-  getEnvRepositories(projectkey: string): Promise<{
+  getEnvRepositories(projectKey: string): Promise<{
     data: IEnvRepository[];
     errors: unknown | null;
     isSuccess: boolean;
   }> {
-    const url = `${CLOUD_BUILD_ENDPOINTS.REPOS_LIST}?projectkey=${projectkey}`;
-    return http.get(url);
+    const url = `${CLOUD_BUILD_ENDPOINTS.REPOS_LIST}?projectkey=${projectKey}`;
+    return this.logicClient.get(url);
   }
 
   repoUpdate(payload: {
