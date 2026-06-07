@@ -1,6 +1,8 @@
 using Authentication.DomainService.Authentication;
 using Authentication.DomainService.OAuth.RequestModel;
 using Authentication.DomainService.Oidc.Services;
+using Authentication.DomainService.Utilities;
+using Blocks.Genesis;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using System.Security.Claims;
@@ -14,12 +16,16 @@ namespace Blocks.Api.Controllers
     {
         private readonly IAuthorizationFlowService _authorizationFlowService;
         private readonly IOidcCallbackHandler _oidcCallbackHandler;
+        private readonly IAuthenticationService _authenticationService;
 
 
-        public AuthorizationController(IAuthorizationFlowService authorizationFlowService, IOidcCallbackHandler oidcCallbackHandler)
+        public AuthorizationController(IAuthorizationFlowService authorizationFlowService, 
+                                       IOidcCallbackHandler oidcCallbackHandler,
+                                       IAuthenticationService authenticationService)
         {
             _authorizationFlowService = authorizationFlowService;
             _oidcCallbackHandler = oidcCallbackHandler;
+            _authenticationService = authenticationService;
         }
 
         /// <summary>
@@ -45,12 +51,14 @@ namespace Blocks.Api.Controllers
             [FromQuery] string redirect_uri,
             [FromQuery] string scope,
             [FromQuery] string state,
-            [FromQuery] string nonce,
+            [FromQuery] string? nonce,
             [FromQuery] string? code_challenge,
             [FromQuery] string code_challenge_method = "S256",
             [FromQuery] string? prompt = null,
             [FromQuery] string? tenant_id = null)
         {
+            var claimsPrincipal = await _authenticationService.GetPrincipalFromTokenAsync(Request, BlocksContext.GetContext()?.TenantId ?? "", IsUserInfoGetRequest: false);
+
             return await _authorizationFlowService.AuthorizeAsync(
                 client_id,
                 response_type,
@@ -62,7 +70,7 @@ namespace Blocks.Api.Controllers
                 code_challenge_method,
                 prompt,
                 tenant_id,
-                User,
+                claimsPrincipal,
                 Request,
                 Response);
         }

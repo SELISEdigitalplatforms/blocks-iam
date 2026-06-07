@@ -118,9 +118,30 @@ function Build-Frontend {
     }
 }
 
+# HTTPS is driven by the machine env vars IAM_SSL_CERT / IAM_SSL_KEY.
+# Both set + both files present -> HTTPS on $ApiPort; otherwise -> HTTP (fallback).
+# Sets the Kestrel cert env vars (inherited by child Start-Process) and stores
+# the URL in $script:AspNetCoreUrls to pass on the command line.
+function Set-BackendTls {
+    $cert = $env:IAM_SSL_CERT
+    $key  = $env:IAM_SSL_KEY
+    if ($cert -and $key -and (Test-Path $cert) -and (Test-Path $key)) {
+        $env:Kestrel__Certificates__Default__Path = $cert
+        $env:Kestrel__Certificates__Default__KeyPath = $key
+        $script:AspNetCoreUrls = "https://0.0.0.0:$ApiPort"
+        Write-Host "Backend TLS: HTTPS on $ApiPort"
+    }
+    else {
+        $script:AspNetCoreUrls = "http://0.0.0.0:$ApiPort"
+        Write-Host "Backend TLS: cert env not set/found - HTTP on $ApiPort"
+    }
+}
+
 function Run-Backend {
+    Set-BackendTls
     Write-Host "Running .NET API..."
-    dotnet run --project $ApiProject
+    # --urls on the command line outranks launchSettings.json applicationUrl.
+    dotnet run --project $ApiProject -- --urls $script:AspNetCoreUrls
 }
 
 function Run-Worker {

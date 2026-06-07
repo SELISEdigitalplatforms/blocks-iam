@@ -173,6 +173,22 @@ public class TokenGenerationService : ITokenGenerationService
             jwtClaims.Add(new Claim(JwtRegisteredClaimNames.Nonce, claims.Nonce));
         }
 
+        if (includeNonce)
+        {
+            if (!string.IsNullOrWhiteSpace(claims.Email))
+            {
+                jwtClaims.Add(new Claim(BlocksContext.EMAIL_CLAIM, claims.Email));
+            }
+            if (!string.IsNullOrWhiteSpace(claims.Name))
+            {
+                jwtClaims.Add(new Claim(BlocksContext.DISPLAY_NAME_CLAIM, claims.Name));
+            }
+            if (!string.IsNullOrWhiteSpace(claims.UserName))
+            {
+                jwtClaims.Add(new Claim(BlocksContext.USER_NAME_CLAIM, claims.UserName));
+            }
+        }
+
         // Add token_use claim to distinguish id_token from access_token
         jwtClaims.Add(new Claim("token_use", includeNonce ? "id_token" : "access_token"));
 
@@ -197,7 +213,7 @@ public class TokenGenerationService : ITokenGenerationService
 
         var token = new JwtSecurityToken(
             issuer: resolvedIssuer,
-            audience: claims.Audience ?? claims.ClientId,
+            audience: includeNonce ? (claims.ClientId ?? claims.Audience) : (claims.Audience ?? claims.ClientId),
             claims: jwtClaims,
             notBefore: now,
             expires: now.AddSeconds(expiresInSeconds),
@@ -476,18 +492,18 @@ public class DiscoveryService : IDiscoveryService
         var request = _httpContextAccessor.HttpContext?.Request;
         if (request != null)
         {
-            return $"{request.Scheme}://{request.Host.Value}";
+            return $"https://{request.Host.Value}";   // was: $"{request.Scheme}://{request.Host.Value}"
         }
-
         return null;
     }
+
 
     private string GetConfiguredIssuerFallback()
     {
 
-        var configuredBaseUrl = Environment.GetEnvironmentVariable("BLOCKS_API_BASE_URL")
-            ?? _configuration["BLOCKS_API_BASE_URL"]
-            ?? _configuration["FrontendRuntime:BLOCKS_API_BASE_URL"];
+        var configuredBaseUrl = Environment.GetEnvironmentVariable("BLOCKS_IAM_BASE_URL")
+            ?? _configuration["BLOCKS_IAM_BASE_URL"]
+            ?? _configuration["FrontendRuntime:BLOCKS_IAM_BASE_URL"];
 
         if (Uri.TryCreate(configuredBaseUrl, UriKind.Absolute, out var uri))
         {
