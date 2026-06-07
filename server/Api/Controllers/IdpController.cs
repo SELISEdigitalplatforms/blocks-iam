@@ -28,9 +28,9 @@ public class IdpController : ControllerBase
     /// </summary>
     [HttpGet("initiate")]
     [AllowAnonymous]
-    public async Task<IActionResult> InitiateAuthenticationFlow([FromQuery] string clientId, [FromQuery] string redirectUri)
+    public async Task<IActionResult> InitiateAuthenticationFlow([FromQuery] string clientId, [FromQuery] string redirectUri, [FromQuery] string? forwardedTo)
     {
-        return await _idpService.StartAuthenticationFlowAsync(clientId, redirectUri);
+        return await _idpService.StartAuthenticationFlowAsync(clientId, redirectUri, forwardedTo);
     }
 
     /// <summary>
