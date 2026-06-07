@@ -54,7 +54,7 @@ class HttpClient {
   constructor(
     private baseURL: string,
     private BLOCKS_KEY: string,
-  ) {}
+  ) { }
 
   private normalizeHeaders(
     headers?: HeadersInit,
@@ -143,7 +143,7 @@ class HttpClient {
     const config: RequestInit = {
       method,
       headers: normalizedHeaders,
-      credentials: withCredentials ? "include" : "omit",    
+      credentials: withCredentials ? "include" : "omit",
     };
 
     if (body) {
@@ -302,5 +302,12 @@ export const http = new HttpClient(
   getRuntimeEnv("BLOCKS_IAM_BASE_URL") || "",
   getRuntimeEnv("BLOCKS_X_BLOCKS_KEY") || "",
 );
+
+export const serviceClientInstances = {
+  logicClient: new HttpClient(
+    getRuntimeEnv("BLOCKS_LOGIC_BASE_URL") || "",
+    getRuntimeEnv("BLOCKS_X_BLOCKS_KEY") || ""
+  )
+};
 
 export { HttpClient, HttpError };
