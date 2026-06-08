@@ -133,7 +133,7 @@ namespace Authentication.DomainService.Authentication
 
             var isAll = string.IsNullOrWhiteSpace(refreshToken);
 
-            var result = isAll ? await ProcessLogoutAll(httpRequest) : await ProcessLogout(refreshToken, httpRequest);
+            var result = /*isAll ? await ProcessLogoutAll(httpRequest) :*/ await ProcessLogout(refreshToken, httpRequest);
 
             await ProcessTimeline(httpRequest, isAll);
             return new LogoutResponse
