@@ -401,6 +401,23 @@ namespace Authentication.DomainService.Authentication
                 };
             }
 
+            if (tokenCache.Impersonated && !string.IsNullOrWhiteSpace(tokenCache.ImpersonationId))
+            {
+                var existingSession = await _authenticationRepository.GetImpersonationSessionByIdAsync(tokenCache.ImpersonationId);
+                return await ExecuteImpersonateAsync(
+                    new ImpersonateRequest
+                    {
+                        TargetTenantId = existingSession.TargetTenantId,
+                        OrganizationId = tokenCache.OrganizationId,
+                        ImpersonationId = tokenCache.ImpersonationId,
+                        ImpersontingUserId = tokenCache.UserId,
+                        RefreshToken = response.RefreshToken
+                    },
+                    httpRequest,
+                    httpResponse
+                );
+            }
+
             var useTokensCookie = await ResolveUseTokensCookieAsync(request.ClientId);
 
             if (useTokensCookie)
@@ -659,7 +676,7 @@ namespace Authentication.DomainService.Authentication
 
             var authConfiguration = await _authenticationRepository.GetAuthenticationConfigurationAsync();
             // Check for organization switch within existing impersonation
-            var existingSessionId = bc.ImpersonationSessionId;
+            var existingSessionId = string.IsNullOrWhiteSpace(bc.ImpersonationSessionId) ? request.ImpersonationId : bc.ImpersonationSessionId;
 
             if (!string.IsNullOrWhiteSpace(existingSessionId))
             {
