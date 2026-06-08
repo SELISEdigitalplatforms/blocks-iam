@@ -107,6 +107,8 @@ export const OrganizationConfig = ({}: OrganizationConfigProps) => {
         allowOrgCreationFromConstruct: data.isMultiOrgEnabled
           ? data.allowOrgCreationFromConstruct
           : false,
+        allowOrgCreationFromSignup: configData?.AllowOrgCreationFromSignup ?? false,
+        allowOrgCreationFromPortal: configData?.AllowOrgCreationFromPortal ?? false,
         isMultiOrgEnabled: data.isMultiOrgEnabled,
         defaultRoleOnOrgCreation: data.isMultiOrgEnabled && data.allowOrgCreationFromConstruct ? selectedRoles : [],
       });
@@ -187,7 +189,7 @@ export const OrganizationConfig = ({}: OrganizationConfigProps) => {
                             className="h-5 w-5"
                             checked={field.value}
                             onCheckedChange={field.onChange}
-                            disabled={true}
+                            disabled
                           />
                         </FormControl>
                         <FormLabel className="!mt-0">Allow Creation From Construct</FormLabel>

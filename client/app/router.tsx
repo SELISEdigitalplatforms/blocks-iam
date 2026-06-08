@@ -61,6 +61,7 @@ import {
   ImpersonationSynchronizer,
   ConsolePage,
   CallbackPage,
+  LoginPage,
 } from "@seliseblocks/blocks-kit";
 import { ProjectOverviewLayout } from "./layouts/project-overview-layout";
 
@@ -97,8 +98,10 @@ export const router = createBrowserRouter([
                 <Outlet />
               </PublicGuard>
             ),
+
             children: [
-              { path: "/login", element: <LoginSimplePage /> },
+              { path: "/login", element: <LoginPage name="blocks-iam" /> },
+              
               {
                 element: <AuthLayout />,
                 children: [
