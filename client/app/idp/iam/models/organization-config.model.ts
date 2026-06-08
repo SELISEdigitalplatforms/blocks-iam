@@ -3,6 +3,8 @@ import { z } from "zod";
 export interface IOrganizationConfigResponse {
   AllowOrgCreationFromCloud: boolean;
   AllowOrgCreationFromConstruct: boolean;
+  AllowOrgCreationFromSignup: boolean;
+  AllowOrgCreationFromPortal: boolean;
   IsMultiOrgEnabled: boolean;
   DefaultRoleOnOrgCreation: string[];
   ItemId: string;
@@ -11,6 +13,8 @@ export interface IOrganizationConfigResponse {
 export interface IOrganizationConfigPayload {
   allowOrgCreationFromCloud: boolean;
   allowOrgCreationFromConstruct: boolean;
+  allowOrgCreationFromSignup: boolean;
+  allowOrgCreationFromPortal: boolean;
   isMultiOrgEnabled: boolean;
   defaultRoleOnOrgCreation?: string[];
 }
