@@ -435,6 +435,9 @@ namespace Iam.DomainService.Resources
             await collection.UpdateOneAsync(
                 Builders<TenantConfiguration>.Filter.Empty,
                 Builders<TenantConfiguration>.Update
+                    .SetOnInsert(c => c.ItemId, config.ItemId)
+                    .SetOnInsert(c => c.CreatedBy, config.CreatedBy)
+                    .SetOnInsert(c => c.CreatedDate, config.CreatedDate)
                     .Set(c => c.AllowOrgCreationFromCloud, config.AllowOrgCreationFromCloud)
                     .Set(c => c.AllowOrgCreationFromConstruct, config.AllowOrgCreationFromConstruct)
                     .Set(c => c.AllowOrgCreationFromSignup, config.AllowOrgCreationFromSignup)
@@ -443,7 +446,7 @@ namespace Iam.DomainService.Resources
                     .Set(c => c.DefaultRoleOnOrgCreation, config.DefaultRoleOnOrgCreation)
                     .Set(c => c.DefaultPermissionOnOrgCreation, config.DefaultPermissionOnOrgCreation)
                     .Set(c => c.LastUpdatedBy, config.LastUpdatedBy)
-                    .Set(c => c.LastUpdatedDate, config.LastUpdatedDate));
+                    .Set(c => c.LastUpdatedDate, config.LastUpdatedDate), new UpdateOptions { IsUpsert = true });
         }
 
         private static string ResolveOrganizationId()
