@@ -189,6 +189,7 @@ export const OrganizationConfig = ({}: OrganizationConfigProps) => {
                             className="h-5 w-5"
                             checked={field.value}
                             onCheckedChange={field.onChange}
+                            disabled
                           />
                         </FormControl>
                         <FormLabel className="!mt-0">Allow Creation From Construct</FormLabel>
