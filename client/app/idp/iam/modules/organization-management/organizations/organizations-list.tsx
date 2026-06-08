@@ -26,7 +26,6 @@ import { Dialog } from "@/components/ui-kits/dialog/dialog";
 import { EllipsisVertical, Pencil, Power, PowerOff } from "lucide-react";
 import { UpdateOrganization } from "../update-organization";
 import { ToggleOrganizationStatus } from "../toggle-organization-status";
-import { useNavigate } from "react-router-dom";
 
 type OrganizationTableProps = {
   organizations: IOrganization[];
@@ -96,13 +95,6 @@ const OrganizationActions = ({ organization }: OrganizationActionsProps) => {
 
 export const OrganizationsList = ({ organizations, isLoading }: OrganizationTableProps) => {
   const { sortQueryParams, setSortQueryParams } = useOrganizationsSortQueryParams();
-  const navigate = useNavigate();
-
-  const handleRowClick = (e: React.MouseEvent<HTMLTableRowElement>, itemId: string) => {
-    const target = e.target as HTMLElement;
-    if (target.closest("[data-actions]")) return;
-    navigate(`/services/iam/organization-detail/${itemId}`);
-  };
 
   const columns = useMemo<ColumnDef<IOrganization>[]>(
     () => [
@@ -200,9 +192,6 @@ export const OrganizationsList = ({ organizations, isLoading }: OrganizationTabl
         {table.getRowModel().rows.map((row) => (
           <TableRow
             key={row.id}
-            className="cursor-pointer"
-            onClick={(e) => handleRowClick(e, row.original.itemId)}
-            isHoverable
           >
             {row.getVisibleCells().map((cell) => (
               <TableCell key={cell.id}>
