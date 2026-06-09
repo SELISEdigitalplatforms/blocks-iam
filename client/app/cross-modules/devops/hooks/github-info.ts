@@ -6,7 +6,7 @@ import {
   IChangeSettings,
   IManualDeploymentPayload,
 } from "../models/utils";
-import { useProjectStore } from "@/store/useProjectStore";
+import { useProjectStore } from "@seliseblocks/blocks-kit";
 
 export const useGithubVerification = (code: string) => {
   const projectKey = useProjectStore().selectedProject?.tenantId || "";

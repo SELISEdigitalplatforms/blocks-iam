@@ -16,7 +16,7 @@ import {
   useGetSignUpSetting,
   useSaveSignUpSetting,
 } from "@blocks-idp/iam/hooks/use-user";
-import { useProjectStore } from "@/store/useProjectStore";
+import { useProjectStore } from "@seliseblocks/blocks-kit";
 
 export const SignupSettings = () => {
   const [open, setOpen] = useState(false);
