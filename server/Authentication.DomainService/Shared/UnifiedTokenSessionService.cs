@@ -63,7 +63,8 @@ namespace Authentication.DomainService.Shared
                 RememberMeIssuedUtc = tokenRequest.RememberMe ? now : null,
                 RememberMeExpiresUtc = tokenRequest.RememberMe ? absoluteRefreshTokenExpireOn : null,
                 Scope = tokenRequest.Scope,
-                Impersonated = impersoanted
+                Impersonated = impersoanted,
+                ImpersonationId = tokenRequest.ImpersonationSessionId
             };
 
 
@@ -85,6 +86,7 @@ namespace Authentication.DomainService.Shared
                 IpAddress = refreshTokenCache.IpAddresses ?? string.Empty,
                 IsRevoked = false,
                 Impersonated = impersoanted,
+                ImpersonationId = tokenRequest.ImpersonationSessionId,
                 UserAgent = tokenRequest.Request?.Headers != null && tokenRequest.Request.Headers.ContainsKey("User-Agent") ? tokenRequest.Request.Headers["User-Agent"].ToString() : string.Empty
             };
             await _refreshTokenRepository.CreateAsync(refreshTokenModel);
@@ -104,7 +106,8 @@ namespace Authentication.DomainService.Shared
                 IsRevoke = false,
                 IsLogin = true,
                 GrantType = tokenRequest.GrantType ?? string.Empty,
-                Impersonated = impersoanted
+                Impersonated = impersoanted,
+                ImpersonationId = tokenRequest.ImpersonationSessionId
             };
             await _authenticationDomainService.SendToQueueAsync(IdpConstants.AuthenticationQueue, addRefreshTokenEvent);
 
@@ -131,6 +134,7 @@ namespace Authentication.DomainService.Shared
                         IsLogin = false,
                         GrantType = tokenRequest.GrantType ?? string.Empty,
                         Impersonated = impersoanted,
+                        ImpersonationId = tokenRequest.ImpersonationSessionId
                     };
                     await _authenticationDomainService.SendToQueueAsync(IdpConstants.AuthenticationQueue, revokeOldTokenEvent);
                 }

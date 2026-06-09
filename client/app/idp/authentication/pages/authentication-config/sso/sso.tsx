@@ -1,4 +1,4 @@
-import { useProjectStore } from "@/store/useProjectStore";
+import { useProjectStore } from "@seliseblocks/blocks-kit";
 import { SSOProviderList } from "./sso-provider-list";
 
 export const SSO = () => {

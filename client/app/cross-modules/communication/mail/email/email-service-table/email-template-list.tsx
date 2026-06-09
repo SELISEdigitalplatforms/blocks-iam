@@ -30,7 +30,7 @@ import {
   useCloneTemplate,
   useDeleteEmailTemplate,
 } from "@blocks-communication/mail/hooks/use-email-template";
-import { useProjectStore } from "@/store/useProjectStore";
+import { useProjectStore } from "@seliseblocks/blocks-kit";
 import { useNavigate } from "react-router-dom";
 
 type EmailTemplateListProps = {

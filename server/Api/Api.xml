@@ -180,7 +180,7 @@
             Initialize IDP controller with IDP service
             </summary>
         </member>
-        <member name="M:Api.Controllers.IdpController.InitiateAuthenticationFlow(System.String,System.String)">
+        <member name="M:Api.Controllers.IdpController.InitiateAuthenticationFlow(System.String,System.String,System.String)">
             <summary>
             Initiate identity provider authentication flow for a specific client
             Delegates to IDP service for OIDC param generation and URL building
