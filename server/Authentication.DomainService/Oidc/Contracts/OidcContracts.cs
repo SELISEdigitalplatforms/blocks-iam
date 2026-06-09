@@ -72,6 +72,7 @@ public class RefreshTokenModel
     public string? IpAddress { get; set; }
     public string? UserAgent { get; set; }
     public bool Impersonated { get; set; }
+    public string? ImpersonationId { get; set; }
 
     public bool IsExpired()
     {

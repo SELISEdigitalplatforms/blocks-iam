@@ -1,7 +1,7 @@
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui-kits/card/card";
 import { Skeleton } from "@/components/ui-kits/skeleton/skeleton";
 import { useGetProject } from "@/hooks/use-project";
-import { useProjectStore } from "@/store/useProjectStore";
+import { useProjectStore } from "@seliseblocks/blocks-kit";
 import { CopyableSnippet } from "@/components/copyable-snippet/copyable-snippet";
 import { getProjectBlocksApiUrl } from "@/lib/domain";
 
