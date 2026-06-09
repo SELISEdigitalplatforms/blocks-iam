@@ -13,7 +13,7 @@ import EditCommunication from "@blocks-communication/mail/components/email-servi
 import { checkValidDate, formatFullDate, parseDateString } from "@/lib/utils";
 import { toast } from "@/hooks/use-toast";
 import { useGetUser } from "@blocks-idp/iam/hooks/use-user";
-import { useProjectStore } from "@/store/useProjectStore";
+import { useProjectStore } from "@seliseblocks/blocks-kit";
 import { useNavigate } from "react-router-dom";
 import { useGetEmailConfigs } from "@blocks-communication/mail/hooks/use-email-config";
 import { langConfigureData } from "@blocks-localization/constants/language-dummy-data";
