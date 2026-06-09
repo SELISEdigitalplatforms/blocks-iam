@@ -3,7 +3,7 @@ import { useLanguageViewStore } from "@/cross-modules/localization/store/use-lan
 import { useLogout } from "@/idp/authentication/hooks/use-auth";
 import { getQueryClient } from "@/providers/query-provider";
 import { useAuthStore } from "@/store/useAuthStore";
-import { useProjectStore } from "@/store/useProjectStore";
+import { useProjectStore } from "@seliseblocks/blocks-kit";
 
 export function LogOutButton() {
   const queryClient = getQueryClient();
