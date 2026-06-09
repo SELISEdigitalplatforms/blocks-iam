@@ -26,7 +26,7 @@ import {
 } from "@/components/ui-kits/form/form";
 
 import { useGetProjects, useUpdateTenantGroup } from "@/hooks/use-project";
-import { useProjectStore } from "@/store/useProjectStore";
+import { useProjectStore } from "@seliseblocks/blocks-kit";
 import { formatDate } from "@/lib/utils";
 
 const SettingsLoading = () => (

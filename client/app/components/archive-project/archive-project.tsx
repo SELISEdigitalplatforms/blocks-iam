@@ -5,7 +5,7 @@ import ConfirmationModal from "@/components/confirmation-modal/confirmation-moda
 import { Dialog, DialogTrigger } from "@/components/ui-kits/dialog/dialog";
 import { showErrorToast, showSuccessToast } from "@/hooks/use-toast";
 import { Button } from "@/components/ui-kits/button/button";
-import { useProjectStore } from "@/store/useProjectStore";
+import { useProjectStore } from "@seliseblocks/blocks-kit";
 import { useDisableProject } from "@/hooks/use-project";
 import { isErrorWithErrors } from "@/lib/error";
 
