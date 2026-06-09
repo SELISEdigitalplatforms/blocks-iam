@@ -268,6 +268,7 @@ public class AuthenticationController : ControllerBase
     public async Task<IActionResult> ExecuteLogout([FromBody] LogoutRequest request)
     {
         DomainResolver.ResetToOriginalBlocksContextForImpersonation();
+
         var refreshToken = string.IsNullOrWhiteSpace(request.RefreshToken)
             ? _authenticationService.CookieToken(Request)
             : request.RefreshToken;
