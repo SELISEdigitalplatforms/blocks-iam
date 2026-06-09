@@ -29,8 +29,6 @@ namespace Authentication.DomainService.Authentication
 {
     public class AuthorizationFlowService : IAuthorizationFlowService
     {
-        private const string IdpSessionCookieName = "idp_session_id";
-
         private readonly IAuthorizationCodeRepository _authCodeRepo;
         private readonly IRefreshTokenRepository _refreshTokenRepo;
         private readonly IIdpSessionRepository _sessionRepo;
@@ -156,7 +154,7 @@ namespace Authentication.DomainService.Authentication
 
             // Single tenant - proceed with auth code flow
             // Establish IDP session (sets idp_session_id cookie)
-            var currentSessionId = httpRequest.Cookies[$"{IdpSessionCookieName}_{requestedTenantId}"];
+            var currentSessionId = httpRequest.Cookies[$"{IdpConstants.IdpSessionCookieName}_{requestedTenantId}"];
             await EnsureIdpSessionAsync(httpRequest, httpResponse, currentSessionId, user.ItemId, requestedTenantId);
 
             // Create claims principal with authenticated user (don't rely on cookie in same request)
@@ -281,7 +279,7 @@ namespace Authentication.DomainService.Authentication
 
                 var claimTenantId = userPrincipal?.FindFirst("tenant_id")?.Value;
                 bool.TryParse(userPrincipal?.FindFirst("impersonated")?.Value, out bool impersonated);
-                var effectiveSessionId = request.Cookies[$"{IdpSessionCookieName}_{tenant_id}"];
+                var effectiveSessionId = request.Cookies[$"{IdpConstants.IdpSessionCookieName}_{tenant_id}"];
 
                 string? resolvedUserId = null;
                 string? resolvedTenantId = null;
@@ -1253,7 +1251,7 @@ namespace Authentication.DomainService.Authentication
             var (domain, _, _) = DomainResolver.ResolveDomain(tenant, null);
             var isLocal = DomainResolver.IsLocalhost();
             var adjustedCookieDomain = isLocal ? null : domain;
-            response.Cookies.Append($"{IdpSessionCookieName}_{tenantId}", sessionId, new CookieOptions
+            response.Cookies.Append($"{IdpConstants.IdpSessionCookieName}_{tenantId}", sessionId, new CookieOptions
             {
                 Domain = adjustedCookieDomain,
                 HttpOnly = true,

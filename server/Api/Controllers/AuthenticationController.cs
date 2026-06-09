@@ -376,7 +376,7 @@ public class AuthenticationController : ControllerBase
     public async Task<IActionResult> ExecuteGlobalLogout([FromBody] LogoutAllRequest? request = null)
     {
         request ??= new LogoutAllRequest();
-        var logoutAllResult = await _authenticationService.LogoutUser(string.Empty, Request);
+        var logoutAllResult = await _authenticationService.LogoutAll(Request);
         if (!logoutAllResult.IsSuccess)
         {
             return BadRequest(new
