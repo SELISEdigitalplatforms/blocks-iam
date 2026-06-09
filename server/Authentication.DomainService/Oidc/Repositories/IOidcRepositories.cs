@@ -31,6 +31,7 @@ namespace Authentication.DomainService.Oidc.Repositories
         Task<bool> UpdateSlidingExpiryAsync(string tokenId);
         Task<bool> DeleteAsync(string tokenId);
         Task<IEnumerable<RefreshTokenModel>> GetExpiredAsync();
+        Task<bool> MarkAsConsumedAsync(string tokenId, DateTime consumedAt);
     }
 
     /// <summary>

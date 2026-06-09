@@ -335,6 +335,13 @@ namespace Authentication.DomainService.Authentication
                 return new BadRequestObjectResult(new { error = OAuthError.InvalidRefreshToken, error_description = "Refresh token is invalid or expired" });
             }
 
+            // SECURITY FIX: Check if token was already consumed (detects reuse/race condition)
+            if (tokenCache.IsConsumed)
+            {
+                await HandlePotentialRefreshTokenReuseAsync(refreshToken);
+                return new UnauthorizedObjectResult(new { error = OAuthError.InvalidRefreshToken, error_description = "Refresh token has already been consumed (possible replay/reuse)" });
+            }
+
             if (string.IsNullOrWhiteSpace(tokenCache.ClientId) || !await HasOidcClientConfigurationAsync(tokenCache.ClientId))
             {
                 return new UnauthorizedObjectResult(new { error = "invalid_client", error_description = "Client configuration not found" });
