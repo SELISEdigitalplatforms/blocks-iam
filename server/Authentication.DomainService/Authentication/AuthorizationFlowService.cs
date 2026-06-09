@@ -17,7 +17,6 @@ using Idp.DomainService.Oidc.Services;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.Logging;
-using Serilog.Context;
 using System.Net.Http.Headers;
 using System.Security.Claims;
 using System.Security.Cryptography;
@@ -157,7 +156,7 @@ namespace Authentication.DomainService.Authentication
 
             // Single tenant - proceed with auth code flow
             // Establish IDP session (sets idp_session_id cookie)
-            var currentSessionId = httpRequest.Cookies[IdpSessionCookieName];
+            var currentSessionId = httpRequest.Cookies[$"{IdpSessionCookieName}_{requestedTenantId}"];
             await EnsureIdpSessionAsync(httpRequest, httpResponse, currentSessionId, user.ItemId, requestedTenantId);
 
             // Create claims principal with authenticated user (don't rely on cookie in same request)
@@ -276,13 +275,13 @@ namespace Authentication.DomainService.Authentication
                 }
 
                 var tenantHint = tenant_id;
-                var claimUserId = string.IsNullOrWhiteSpace(userPrincipal?.FindFirst("sub")?.Value)? 
-                                        userPrincipal?.FindFirst("user_id")?.Value : 
+                var claimUserId = string.IsNullOrWhiteSpace(userPrincipal?.FindFirst("sub")?.Value) ?
+                                        userPrincipal?.FindFirst("user_id")?.Value :
                                         userPrincipal?.FindFirst("sub")?.Value;
 
                 var claimTenantId = userPrincipal?.FindFirst("tenant_id")?.Value;
                 bool.TryParse(userPrincipal?.FindFirst("impersonated")?.Value, out bool impersonated);
-                var effectiveSessionId = request.Cookies[IdpSessionCookieName];
+                var effectiveSessionId = request.Cookies[$"{IdpSessionCookieName}_{tenant_id}"];
 
                 string? resolvedUserId = null;
                 string? resolvedTenantId = null;
@@ -1251,10 +1250,10 @@ namespace Authentication.DomainService.Authentication
         private void SetIdpSessionCookie(HttpResponse response, string tenantId, string sessionId, DateTime absoluteExpiry)
         {
             var tenant = _tenants.GetTenantByID(tenantId);
-            var (_, cookieDomain, _) = DomainResolver.ResolveDomain(tenant, null);
+            var (domain, _, _) = DomainResolver.ResolveDomain(tenant, null);
             var isLocal = DomainResolver.IsLocalhost();
-            var adjustedCookieDomain = isLocal ? null : cookieDomain;
-            response.Cookies.Append(IdpSessionCookieName, sessionId, new CookieOptions
+            var adjustedCookieDomain = isLocal ? null : domain;
+            response.Cookies.Append($"{IdpSessionCookieName}_{tenantId}", sessionId, new CookieOptions
             {
                 Domain = adjustedCookieDomain,
                 HttpOnly = true,
