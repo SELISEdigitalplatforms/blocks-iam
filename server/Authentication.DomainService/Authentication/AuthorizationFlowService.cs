@@ -181,7 +181,8 @@ namespace Authentication.DomainService.Authentication
                 principal,
                 httpRequest,
                 httpResponse,
-                false);
+                false,
+                user.ItemId);
         }
 
         public bool VerifyPassword(string? password, string? passwordHash, string? optionalSalt = null)
@@ -321,7 +322,7 @@ namespace Authentication.DomainService.Authentication
 
                 var cacheKey = $"idp_flow:{state}";
                 var flowContextJson = await _cacheClient.GetStringValueAsync(cacheKey);
-                var forwardedToContext = JsonSerializer.Deserialize<FlowContext>(flowContextJson);
+                var forwardedToContext = flowContextJson !=null?  JsonSerializer.Deserialize<FlowContext>(flowContextJson) : null;
 
                 canRedirectToClient = true;
 
