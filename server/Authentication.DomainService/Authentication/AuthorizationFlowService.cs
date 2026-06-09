@@ -7,6 +7,7 @@ using Authentication.DomainService.OAuth.Services;
 using Authentication.DomainService.Oidc.Repositories;
 using Authentication.DomainService.Oidc.Validation;
 using Authentication.DomainService.Services;
+using Authentication.DomainService.Shared.RequestModel;
 using Authentication.DomainService.Utilities;
 using Blocks.Genesis;
 using Iam.DomainService.Entities;
@@ -16,7 +17,6 @@ using Idp.DomainService.Oidc.Services;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.Logging;
-using Serilog.Context;
 using System.Net.Http.Headers;
 using System.Security.Claims;
 using System.Security.Cryptography;
@@ -29,8 +29,6 @@ namespace Authentication.DomainService.Authentication
 {
     public class AuthorizationFlowService : IAuthorizationFlowService
     {
-        private const string IdpSessionCookieName = "idp_session_id";
-
         private readonly IAuthorizationCodeRepository _authCodeRepo;
         private readonly IRefreshTokenRepository _refreshTokenRepo;
         private readonly IIdpSessionRepository _sessionRepo;
@@ -156,7 +154,7 @@ namespace Authentication.DomainService.Authentication
 
             // Single tenant - proceed with auth code flow
             // Establish IDP session (sets idp_session_id cookie)
-            var currentSessionId = httpRequest.Cookies[IdpSessionCookieName];
+            var currentSessionId = httpRequest.Cookies[$"{IdpConstants.IdpSessionCookieName}_{requestedTenantId}"];
             await EnsureIdpSessionAsync(httpRequest, httpResponse, currentSessionId, user.ItemId, requestedTenantId);
 
             // Create claims principal with authenticated user (don't rely on cookie in same request)
@@ -230,7 +228,8 @@ namespace Authentication.DomainService.Authentication
             ClaimsPrincipal userPrincipal,
             HttpRequest request,
             HttpResponse response,
-            bool returnRedirectResponse = true)
+            bool returnRedirectResponse = true,
+            string? blocksUserId = null)
         {
             var canRedirectToClient = false;
 
@@ -274,17 +273,9 @@ namespace Authentication.DomainService.Authentication
                     });
                 }
 
-                var tenantHint = tenant_id;
-                var claimUserId = string.IsNullOrWhiteSpace(userPrincipal?.FindFirst("sub")?.Value)? 
-                                        userPrincipal?.FindFirst("user_id")?.Value : 
-                                        userPrincipal?.FindFirst("sub")?.Value;
+                var effectiveSessionId = request.Cookies[$"{IdpConstants.IdpSessionCookieName}_{tenant_id}"];
 
-                var claimTenantId = userPrincipal?.FindFirst("tenant_id")?.Value;
-                bool.TryParse(userPrincipal?.FindFirst("impersonated")?.Value, out bool impersonated);
-                var effectiveSessionId = request.Cookies[IdpSessionCookieName];
-
-                string? resolvedUserId = null;
-                string? resolvedTenantId = null;
+                string? resolvedUserId = blocksUserId;
 
                 if (!string.IsNullOrWhiteSpace(effectiveSessionId))
                 {
@@ -292,9 +283,9 @@ namespace Authentication.DomainService.Authentication
                     if (session != null && !session.RevokedAt.HasValue && !session.IsExpired())
                     {
                         var sessionAccounts = session.Accounts.AsEnumerable();
-                        if (!string.IsNullOrWhiteSpace(tenantHint))
+                        if (!string.IsNullOrWhiteSpace(tenant_id))
                         {
-                            sessionAccounts = sessionAccounts.Where(a => string.Equals(a.TenantId, tenantHint, StringComparison.OrdinalIgnoreCase));
+                            sessionAccounts = sessionAccounts.Where(a => string.Equals(a.TenantId, tenant_id, StringComparison.OrdinalIgnoreCase));
                         }
 
                         var filteredAccounts = sessionAccounts.ToList();
@@ -302,7 +293,6 @@ namespace Authentication.DomainService.Authentication
                         if (filteredAccounts.Count == 1)
                         {
                             resolvedUserId = filteredAccounts[0].UserId;
-                            resolvedTenantId = filteredAccounts[0].TenantId;
                             await _sessionRepo.UpdateActivityAsync(effectiveSessionId);
                         }
                     }
@@ -310,20 +300,11 @@ namespace Authentication.DomainService.Authentication
 
                 if (string.IsNullOrWhiteSpace(resolvedUserId))
                 {
-                    resolvedUserId = claimUserId;
-                    resolvedTenantId = claimTenantId ?? tenantHint;
-                }
-
-                if (!string.IsNullOrWhiteSpace(resolvedUserId) && !string.IsNullOrWhiteSpace(resolvedTenantId))
-                {
-                    await EnsureIdpSessionAsync(request, response, effectiveSessionId, resolvedUserId, resolvedTenantId);
-                }
-
-                if (string.IsNullOrWhiteSpace(resolvedUserId))
-                {
                     _logger.LogInformation($"Unauthenticated authorization request for {client_id}");
-                    return new RedirectResult(BuildLoginUrl(client_id, response_type, redirect_uri, scope, state, nonce, code_challenge, code_challenge_method, tenantHint));
+                    return new RedirectResult(BuildLoginUrl(client_id, response_type, redirect_uri, scope, state, nonce, code_challenge, code_challenge_method, tenant_id));
                 }
+
+                await EnsureIdpSessionAsync(request, response, effectiveSessionId, resolvedUserId, tenant_id);
 
                 var client = await _authenticationRepository.GetOidcClientRegistrationAsync(client_id);
                 if (client == null)
@@ -340,7 +321,7 @@ namespace Authentication.DomainService.Authentication
 
                 var cacheKey = $"idp_flow:{state}";
                 var flowContextJson = await _cacheClient.GetStringValueAsync(cacheKey);
-                var forworedToContext = JsonSerializer.Deserialize<FlowContext>(flowContextJson);
+                var forwardedToContext = JsonSerializer.Deserialize<FlowContext>(flowContextJson);
 
                 canRedirectToClient = true;
 
@@ -353,7 +334,7 @@ namespace Authentication.DomainService.Authentication
                             { "error", error },
                             { "error_description", errorDescription },
                             { "state", state },
-                            { "forwardedTo", forworedToContext?.ForwardedTo ?? string.Empty },
+                            { "forwardedTo", forwardedToContext?.ForwardedTo ?? string.Empty },
                         };
 
                         return new RedirectResult(BuildRedirectUri(redirect_uri, errorParams));
@@ -366,12 +347,6 @@ namespace Authentication.DomainService.Authentication
                     });
                 }
 
-                if (!await HasOidcClientConfigurationAsync(client_id))
-                {
-                    _logger.LogWarning($"OIDC client config missing for client: {client_id}");
-                    return BuildAuthorizeError("invalid_client", "Client configuration not found");
-                }
-
                 var user = await _userRepository.GetUserByIdAsync(resolvedUserId);
                 if (user == null)
                 {
@@ -382,14 +357,12 @@ namespace Authentication.DomainService.Authentication
                 await PersistLastUsedOrganizationAsync(user, effectiveOrganizationId);
 
                 var authCode = GenerateRandomCode(32);
-                var impesonatingRefreshToken = _authenticationService.CookieToken(request);
-
 
                 var codeModel = new AuthorizationCodeModel
                 {
                     Code = authCode,
                     ClientId = client_id,
-                    TenantId = resolvedTenantId,
+                    TenantId = tenant_id,
                     UserId = resolvedUserId,
                     OrganizationId = effectiveOrganizationId,
                     RedirectUri = redirect_uri,
@@ -402,11 +375,22 @@ namespace Authentication.DomainService.Authentication
                     CreatedAt = DateTime.UtcNow,
                     CreatedByIpAddress = GetClientIpAddress(request),
                     IsUsed = false,
-                    Impersonated = impersonated,
-                    TergatedTenantId = claimTenantId,
-                    ImpersonatedUserId = claimUserId,
-                    ImpesonatingRefreshToken = impesonatingRefreshToken
                 };
+
+                bool.TryParse(userPrincipal?.FindFirst("impersonated")?.Value, out bool impersonated);
+
+                if (impersonated)
+                {
+                    var claimUserId = string.IsNullOrWhiteSpace(userPrincipal?.FindFirst("sub")?.Value) ?
+                                        userPrincipal?.FindFirst("user_id")?.Value :
+                                        userPrincipal?.FindFirst("sub")?.Value;
+
+                    var claimTenantId = userPrincipal?.FindFirst("tenant_id")?.Value;
+
+                    codeModel.Impersonated = true;
+                    codeModel.ImpersonatedUserId = claimUserId;
+                    codeModel.TargetedTenantId = claimTenantId;
+                }
 
                 Console.WriteLine(codeModel);
 
@@ -418,8 +402,8 @@ namespace Authentication.DomainService.Authentication
                 {
                     { "code", authCode },
                     { "state", state },
-                    { "tenant_id", resolvedTenantId ?? tenant_id ?? string.Empty },
-                    { "forwardedTo", forworedToContext?.ForwardedTo ?? string.Empty }
+                    { "tenant_id", tenant_id ?? string.Empty },
+                    { "forwardedTo", forwardedToContext?.ForwardedTo ?? string.Empty }
                 };
 
                 var callbackUri = BuildRedirectUri(redirect_uri, callbackParams);
@@ -1027,6 +1011,23 @@ namespace Authentication.DomainService.Authentication
                 };
             }
 
+            if (tokenCache.Impersonated && !string.IsNullOrWhiteSpace(tokenCache.ImpersonationId))
+            {
+                var existingSession = await _authenticationRepository.GetImpersonationSessionByIdAsync(tokenCache.ImpersonationId);
+                return await _authenticationService.ExecuteImpersonateAsync(
+                    new ImpersonateRequest
+                    {
+                        TargetTenantId = existingSession.TargetTenantId,
+                        OrganizationId = tokenCache.OrganizationId,
+                        ImpersonationId = tokenCache.ImpersonationId,
+                        ImpersontingUserId = tokenCache.UserId,
+                        RefreshToken = response.RefreshToken
+                    },
+                    request.HttpContext.Request,
+                    request.HttpContext.Response
+                );
+            }
+
             var useTokensCookie = client.UseTokensCookie;
             if (useTokensCookie)
             {
@@ -1233,10 +1234,10 @@ namespace Authentication.DomainService.Authentication
         private void SetIdpSessionCookie(HttpResponse response, string tenantId, string sessionId, DateTime absoluteExpiry)
         {
             var tenant = _tenants.GetTenantByID(tenantId);
-            var (_, cookieDomain, _) = DomainResolver.ResolveDomain(tenant, null);
+            var (domain, _, _) = DomainResolver.ResolveDomain(tenant, null);
             var isLocal = DomainResolver.IsLocalhost();
-            var adjustedCookieDomain = isLocal ? null : cookieDomain;
-            response.Cookies.Append(IdpSessionCookieName, sessionId, new CookieOptions
+            var adjustedCookieDomain = isLocal ? null : domain;
+            response.Cookies.Append($"{IdpConstants.IdpSessionCookieName}_{tenantId}", sessionId, new CookieOptions
             {
                 Domain = adjustedCookieDomain,
                 HttpOnly = true,

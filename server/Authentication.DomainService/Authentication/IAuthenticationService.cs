@@ -1,6 +1,7 @@
-using Blocks.Genesis;
 using Authentication.DomainService.Entities;
 using Authentication.DomainService.OAuth.ResponseModel;
+using Authentication.DomainService.Shared.RequestModel;
+using Blocks.Genesis;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using System.Security.Claims;
@@ -13,6 +14,7 @@ namespace Authentication.DomainService.Authentication
         Task<bool> UpdateIdpSessionForLogoutAsync(HttpContext httpContext, ClaimsPrincipal user, bool isGlobalLogout);
         void ClearIdpSessionCookie(HttpResponse response);
         Task<LogoutResponse> LogoutUser(string refreshToken, HttpRequest httpRequest);
+        Task<LogoutResponse> LogoutAll(HttpRequest httpRequest);
         string CookieToken(HttpRequest request);
         bool DeleteCookie(HttpRequest request);
         Task AppendSessionCookies(HttpContext httpContext, string? accessToken, string? refreshToken, DateTime? accessExpiresUtc = null, DateTime? refreshExpiresUtc = null);
@@ -32,5 +34,7 @@ namespace Authentication.DomainService.Authentication
         Task<BaseResponse> UpdateIdentityProviderAsync(IdentityProvider provider);
         Task<BaseResponse> DeleteIdentityProviderAsync(string id);
         Task<BaseResponse> UpdateIdentityProviderStatusAsync(string id, bool isActive);
+        Task<IActionResult> ExecuteImpersonateAsync(ImpersonateRequest request, HttpRequest httpRequest, HttpResponse httpResponse);
+        Task<IActionResult> ExecuteStopImpersonationAsync(StopImpersonationRequest request, HttpRequest httpRequest, HttpResponse httpResponse);
     }
 }

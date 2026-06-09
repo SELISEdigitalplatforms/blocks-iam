@@ -1,5 +1,5 @@
 import { useGetProject } from "@/hooks/use-project";
-import { useProjectStore } from "@/store/useProjectStore";
+import { useProjectStore } from "@seliseblocks/blocks-kit";
 import { ArchivedProject } from "@/components/archive-project/archive-project";
 import { EditProject } from "@/components/edit-project/edit-project";
 import { useGetUser } from "@blocks-idp/iam/hooks/use-user";

@@ -93,7 +93,8 @@ namespace Authentication.DomainService.Authentication
             ClaimsPrincipal userPrincipal,
             HttpRequest request,
             HttpResponse response,
-            bool returnRedirectResponse = true);
+            bool returnRedirectResponse = true,
+            string? blocksUserId = null);
 
 
         Task<IActionResult> TokenAsync(string grantType, HttpRequest request);
