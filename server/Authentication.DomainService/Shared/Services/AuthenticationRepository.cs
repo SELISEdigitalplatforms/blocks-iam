@@ -54,16 +54,15 @@ namespace Authentication.DomainService.Services
         {
             var collection = GetCollection<User>();
 
-            if (!string.IsNullOrWhiteSpace(organizationId))
-            {
-                var filter = Builders<User>.Filter.And(
-                             Builders<User>.Filter.Eq(u => u.UserName, username),
-                             Builders<User>.Filter.AnyEq("OrganizationIds", organizationId));
+            var filter = Builders<User>.Filter.Eq(u => u.UserName, username) | Builders<User>.Filter.Eq(u => u.Email, username);
 
-                return await collection.Find(filter).FirstOrDefaultAsync();
+            if (!string.IsNullOrWhiteSpace(organizationId) && organizationId != "default")
+            {
+
+                filter &= Builders<User>.Filter.AnyEq("OrganizationIds", organizationId);
             }
 
-            return await collection.Find(x => x.UserName == username).FirstOrDefaultAsync();
+            return await collection.Find(filter).FirstOrDefaultAsync();
         }
 
         public async Task<User> GetUserByIdAsync(string itemId)

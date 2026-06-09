@@ -7,6 +7,7 @@ using Authentication.DomainService.OAuth.Services;
 using Authentication.DomainService.Oidc.Repositories;
 using Authentication.DomainService.Oidc.Validation;
 using Authentication.DomainService.Services;
+using Authentication.DomainService.Shared.RequestModel;
 using Authentication.DomainService.Utilities;
 using Blocks.Genesis;
 using Iam.DomainService.Entities;
@@ -1025,6 +1026,23 @@ namespace Authentication.DomainService.Authentication
                 {
                     StatusCode = statusCode
                 };
+            }
+
+            if (tokenCache.Impersonated && !string.IsNullOrWhiteSpace(tokenCache.ImpersonationId))
+            {
+                var existingSession = await _authenticationRepository.GetImpersonationSessionByIdAsync(tokenCache.ImpersonationId);
+                return await _authenticationService.ExecuteImpersonateAsync(
+                    new ImpersonateRequest
+                    {
+                        TargetTenantId = existingSession.TargetTenantId,
+                        OrganizationId = tokenCache.OrganizationId,
+                        ImpersonationId = tokenCache.ImpersonationId,
+                        ImpersontingUserId = tokenCache.UserId,
+                        RefreshToken = response.RefreshToken
+                    },
+                    request.HttpContext.Request,
+                    request.HttpContext.Response
+                );
             }
 
             var useTokensCookie = client.UseTokensCookie;

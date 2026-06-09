@@ -24,7 +24,7 @@ import {
   FormMessage,
 } from "@/components/ui-kits/form/form";
 import { z } from "zod";
-import { useProjectStore } from "@/store/useProjectStore";
+import { useProjectStore } from "@seliseblocks/blocks-kit";
 import { useAddRole } from "@blocks-idp/iam/hooks/use-roles";
 import { PrimaryButton } from "@/components/action-buttons/primary-button";
 import { Textarea } from "@/components/ui-kits/textarea/textarea";
