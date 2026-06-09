@@ -952,6 +952,14 @@ namespace Authentication.DomainService.Authentication
                 return new BadRequestObjectResult(new { error = "invalid_grant", error_description = "Refresh token is invalid or expired" });
             }
 
+            // SECURITY FIX: Check if token was already consumed (detects reuse/race condition)
+            if (tokenCache.IsConsumed)
+            {
+                await _authenticationRepository.RevokeIdentitySessionsByRefreshTokensAsync(new List<string> { refresh_token });
+                await _cacheClient.RemoveKeyAsync(refresh_token);
+                return new UnauthorizedObjectResult(new { error = "invalid_grant", error_description = "Refresh token has already been consumed (possible replay/reuse)" });
+            }
+
             if (string.IsNullOrWhiteSpace(tokenCache.ClientId) || !await HasOidcClientConfigurationAsync(tokenCache.ClientId))
             {
                 return new UnauthorizedObjectResult(new { error = "invalid_client", error_description = "Client configuration not found" });
