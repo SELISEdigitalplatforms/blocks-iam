@@ -47,10 +47,9 @@ public class AuthorizationCodeModel
 
     public bool Impersonated { get; set; } = false;
 
-    public string? TergatedTenantId { get; set; } = string.Empty;
+    public string? TargetedTenantId { get; set; } = string.Empty;
 
     public string? ImpersonatedUserId { get; set; } = string.Empty;
-    public string? ImpesonatingRefreshToken { get; set; } = string.Empty;
 }
 
 public class RefreshTokenModel
@@ -72,6 +71,7 @@ public class RefreshTokenModel
     public string? IpAddress { get; set; }
     public string? UserAgent { get; set; }
     public bool Impersonated { get; set; }
+    public string? ImpersonationId { get; set; }
 
     public bool IsExpired()
     {

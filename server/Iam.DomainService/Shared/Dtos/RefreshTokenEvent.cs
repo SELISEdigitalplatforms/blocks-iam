@@ -16,5 +16,6 @@
         public bool IsRevoke { get; set; }
         public string? GrantType { get; set; }
         public bool Impersonated { get; set; }
+        public string? ImpersonationId { get; set; }
     }
 }
