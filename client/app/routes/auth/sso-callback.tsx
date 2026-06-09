@@ -19,7 +19,7 @@ export default function SSOCallbackPage() {
     hasProcessed.current = true;
 
     const callbackUrl = new URL(
-      "/api/oidc/oidc/callback",
+      "/api/oidc/callback",
       getRuntimeEnv("BLOCKS_IAM_BASE_URL"),
     );
     if (code) callbackUrl.searchParams.set("code", code);
