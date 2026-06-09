@@ -9,6 +9,7 @@ using Authentication.DomainService.Oidc.Validation;
 using Authentication.DomainService.Services;
 using Authentication.DomainService.Shared.RequestModel;
 using Authentication.DomainService.Utilities;
+using Azure.Core;
 using Blocks.Genesis;
 using Iam.DomainService.Entities;
 using Iam.DomainService.Users;
@@ -364,7 +365,7 @@ namespace Authentication.DomainService.Authentication
                 };
 
                 // Blocks Cloud Impersonation Support
-                var userPrincipal = request.HttpContext?.User;
+                var userPrincipal = await _authenticationService.GetPrincipalFromTokenAsync(request, BlocksContext.GetContext()?.TenantId ?? "", IsUserInfoGetRequest: false);
 
                 if (userPrincipal != null)
                 {
