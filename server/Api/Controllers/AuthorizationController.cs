@@ -56,8 +56,7 @@ namespace Blocks.Api.Controllers
             [FromQuery] string? prompt = null,
             [FromQuery] string? tenant_id = null)
         {
-            var claimsPrincipal = await _authenticationService.GetPrincipalFromTokenAsync(Request, BlocksContext.GetContext()?.TenantId ?? "", IsUserInfoGetRequest: false);
-
+            
             return await _authorizationFlowService.AuthorizeAsync(
                 client_id,
                 response_type,
