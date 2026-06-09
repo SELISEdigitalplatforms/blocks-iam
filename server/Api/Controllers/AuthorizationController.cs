@@ -69,7 +69,6 @@ namespace Blocks.Api.Controllers
                 code_challenge_method,
                 prompt,
                 tenant_id,
-                claimsPrincipal,
                 Request,
                 Response);
         }
@@ -130,13 +129,6 @@ namespace Blocks.Api.Controllers
                 });
             }
 
-            var claims = new[]
-            {
-                new Claim("sub", result.BlocksUserId),
-                new Claim("tenant_id", result.TenantId ?? string.Empty)
-            };
-            var principal = new ClaimsPrincipal(new ClaimsIdentity(claims, "Bearer"));
-
             return await _authorizationFlowService.AuthorizeAsync(
                 result.ClientId,
                 "code",
@@ -148,11 +140,10 @@ namespace Blocks.Api.Controllers
                 result.CodeChallengeMethod ?? "S256",
                 null,
                 result.TenantId ?? string.Empty,
-                principal,
                 Request,
                 Response,
-                true,
-                result.BlocksUserId);
+                result.BlocksUserId,
+                true);
         }
 
         #endregion

@@ -87,12 +87,8 @@ namespace Authentication.DomainService.Authentication
             // If provider is specified, initiate social authentication flow
             if (!string.IsNullOrWhiteSpace(request.ProviderClientId))
             {
-                // Generate OIDC state to track this authentication flow through social provider
                 var oidcState = Guid.NewGuid().ToString("n");
 
-                // Store OIDC context in cache for the entire flow
-                // Key: oidc_context:{oidcState}
-                // Value: { clientId, state, redirectUri, ... } - the original OIDC request parameters
                 var contextKey = $"oidc_context:{oidcState}";
                 var contextValue = JsonSerializer.Serialize(new
                 {
@@ -157,15 +153,6 @@ namespace Authentication.DomainService.Authentication
             var currentSessionId = httpRequest.Cookies[$"{IdpConstants.IdpSessionCookieName}_{requestedTenantId}"];
             await EnsureIdpSessionAsync(httpRequest, httpResponse, currentSessionId, user.ItemId, requestedTenantId);
 
-            // Create claims principal with authenticated user (don't rely on cookie in same request)
-            var claims = new[]
-            {
-                new Claim("sub", user.ItemId),
-                new Claim("tenant_id", requestedTenantId ?? string.Empty)
-            };
-            var identity = new ClaimsIdentity(claims, "Bearer");
-            var principal = new ClaimsPrincipal(identity);
-
             // Issue the authorization code directly (skip login UI)
             return await AuthorizeAsync(
                 request.ClientId,
@@ -178,11 +165,10 @@ namespace Authentication.DomainService.Authentication
                 request.CodeChallengeMethod ?? "S256",
                 null,
                 requestedTenantId ?? string.Empty,
-                principal,
                 httpRequest,
                 httpResponse,
-                false,
-                user.ItemId);
+                user.ItemId,
+                false);
         }
 
         public bool VerifyPassword(string? password, string? passwordHash, string? optionalSalt = null)
@@ -226,11 +212,10 @@ namespace Authentication.DomainService.Authentication
             string code_challenge_method,
             string? prompt,
             string? tenant_id,
-            ClaimsPrincipal userPrincipal,
             HttpRequest request,
             HttpResponse response,
-            bool returnRedirectResponse = true,
-            string? blocksUserId = null)
+            string? blocksUserId = null,
+            bool returnRedirectResponse = true)
         {
             var canRedirectToClient = false;
 
@@ -322,7 +307,7 @@ namespace Authentication.DomainService.Authentication
 
                 var cacheKey = $"idp_flow:{state}";
                 var flowContextJson = await _cacheClient.GetStringValueAsync(cacheKey);
-                var forwardedToContext = flowContextJson !=null?  JsonSerializer.Deserialize<FlowContext>(flowContextJson) : null;
+                var forwardedToContext = flowContextJson !=null ?  JsonSerializer.Deserialize<FlowContext>(flowContextJson) : null;
 
                 canRedirectToClient = true;
 
@@ -378,10 +363,13 @@ namespace Authentication.DomainService.Authentication
                     IsUsed = false,
                 };
 
-                bool.TryParse(userPrincipal?.FindFirst("impersonated")?.Value, out bool impersonated);
+                // Blocks Cloud Impersonation Support
+                var userPrincipal = request.HttpContext?.User;
 
-                if (impersonated)
+                if (userPrincipal != null)
                 {
+                    bool.TryParse(userPrincipal?.FindFirst("impersonated")?.Value, out bool impersonated);
+
                     var claimUserId = string.IsNullOrWhiteSpace(userPrincipal?.FindFirst("sub")?.Value) ?
                                         userPrincipal?.FindFirst("user_id")?.Value :
                                         userPrincipal?.FindFirst("sub")?.Value;
