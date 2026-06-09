@@ -1,6 +1,6 @@
 import { useEffect } from "react";
 import { useNavigate } from "react-router-dom";
-import { useProjectStore } from "@/store/useProjectStore";
+import { useProjectStore } from "@seliseblocks/blocks-kit";
 import { useGetProjects } from "@/hooks/use-project";
 
 export function ProjectGuard({ children }: { children: React.ReactNode }) {

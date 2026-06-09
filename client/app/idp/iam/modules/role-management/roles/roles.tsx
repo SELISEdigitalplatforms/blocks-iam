@@ -8,7 +8,7 @@ import {
   useRolesFilterQueryParams,
   useRolesSortQueryParams,
 } from "./roles-filter-toolbar";
-import { useProjectStore } from "@/store/useProjectStore";
+import { useProjectStore } from "@seliseblocks/blocks-kit";
 
 export const Roles = () => {
   const { queryParams, setQueryParams } = useRolesFilterQueryParams();

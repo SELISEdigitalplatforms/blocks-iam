@@ -24,7 +24,7 @@ import {
 } from "@/components/ui-kits/form/form";
 import { useAddUser } from "@blocks-idp/iam/hooks/use-user";
 import { z } from "zod";
-import { useProjectStore } from "@/store/useProjectStore";
+import { useProjectStore } from "@seliseblocks/blocks-kit";
 import { useState } from "react";
 import { isErrorWithErrors } from "@/lib/error";
 import { PrimaryButton } from "@/components/action-buttons/primary-button";

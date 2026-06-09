@@ -3,7 +3,7 @@
 import { BREADCRUMB_CUSTOM_TITLES } from "@/constants/breadcrumb-custom-title";
 import PageBreadcrumb from "@/components/breadcrumb/breadcrumb";
 import { useGetOrganizationById } from "@blocks-idp/iam/hooks/use-organization";
-import { useProjectStore } from "@/store/useProjectStore";
+import { useProjectStore } from "@seliseblocks/blocks-kit";
 import { Skeleton } from "@/components/ui-kits/skeleton/skeleton";
 import {
   OrganizationUsers,

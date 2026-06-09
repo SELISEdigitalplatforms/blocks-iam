@@ -3,7 +3,7 @@
 import { Card, CardContent, CardHeader } from "@/components/ui-kits/card/card";
 import { Pagination } from "@/components/ui-kits/pagination/pagination";
 import { useGetPermissions } from "@blocks-idp/iam/hooks/use-permission";
-import { useProjectStore } from "@/store/useProjectStore";
+import { useProjectStore } from "@seliseblocks/blocks-kit";
 import { PermissionsList } from "./permissions-list";
 import {
   PermissionsFilterToolbar,
