@@ -1,7 +1,6 @@
 using Authentication.DomainService.Authentication;
 using Authentication.DomainService.OAuth.RequestModel;
 using Authentication.DomainService.Oidc.Services;
-using Authentication.DomainService.Utilities;
 using Blocks.Genesis;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
@@ -19,7 +18,7 @@ namespace Blocks.Api.Controllers
         private readonly IAuthenticationService _authenticationService;
 
 
-        public AuthorizationController(IAuthorizationFlowService authorizationFlowService, 
+        public AuthorizationController(IAuthorizationFlowService authorizationFlowService,
                                        IOidcCallbackHandler oidcCallbackHandler,
                                        IAuthenticationService authenticationService)
         {
@@ -94,8 +93,8 @@ namespace Blocks.Api.Controllers
         /// Exchanges code for tokens, validates JWT signature and claims
         /// RFC 6749: OAuth 2.0 | RFC 3986: OpenID Connect | RFC 7519: JWT | RFC 5280: X.509
         /// </summary>
-        [HttpGet("oidc/callback")]
-        [HttpPost("oidc/callback")]
+        [HttpGet("callback")]
+        [HttpPost("callback")]
         [AllowAnonymous]
         public async Task<IActionResult> HandleOidcCallbackGet(
             [FromQuery] string code,
@@ -152,7 +151,8 @@ namespace Blocks.Api.Controllers
                 principal,
                 Request,
                 Response,
-                true);
+                true,
+                result.BlocksUserId);
         }
 
         #endregion
