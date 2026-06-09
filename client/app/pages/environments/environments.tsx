@@ -1,4 +1,4 @@
-import { useProjectStore } from "@/store/useProjectStore";
+import { useProjectStore } from "@seliseblocks/blocks-kit";
 import { useGetProjects } from "@/hooks/use-project";
 // import { useGetMigrationStatus } from "@/hooks/use-project";
 // import { useGetPeople } from "@/hooks/use-people";

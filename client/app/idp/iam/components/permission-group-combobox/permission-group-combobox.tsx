@@ -1,7 +1,7 @@
 import { Button } from "@/components/ui-kits/button/button";
 import { Command, CommandInput, CommandItem, CommandList } from "@/components/ui-kits/command/command";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui-kits/popover/popover";
-import { useProjectStore } from "@/store/useProjectStore";
+import { useProjectStore } from "@seliseblocks/blocks-kit";
 import { useGetResourceGroup } from "@blocks-idp/iam/hooks/use-permission";
 import { Plus } from "lucide-react";
 import { useMemo, useState } from "react";
