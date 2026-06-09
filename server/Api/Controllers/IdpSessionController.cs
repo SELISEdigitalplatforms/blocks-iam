@@ -1,5 +1,6 @@
 using Authentication.DomainService.Oidc.Services;
 using Authentication.DomainService.Utilities;
+using Blocks.Genesis;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 
@@ -15,8 +16,6 @@ namespace Blocks.Api.Controllers
     [Authorize(AuthenticationSchemes = "Bearer")]
     public class IdpSessionController : ControllerBase
     {
-        private const string IdpSessionCookieName = "idp_session_id";
-
         private readonly IIdpSessionService _sessionService;
         private readonly ILogger<IdpSessionController> _logger;
 
@@ -40,7 +39,9 @@ namespace Blocks.Api.Controllers
         {
             try
             {
-                var sessionId = GetSessionIdFromToken();
+                var bc = BlocksContext.GetContext();
+                var sessionCookieName = $"{IdpConstants.IdpSessionCookieName}_{bc.TenantId}";
+                var sessionId = GetSessionIdFromToken(sessionCookieName);
                 if (string.IsNullOrEmpty(sessionId))
                 {
                     _logger.LogWarning("Session ID not found in token");
@@ -98,7 +99,9 @@ namespace Blocks.Api.Controllers
         {
             try
             {
-                var sessionId = GetSessionIdFromToken();
+                var bc = BlocksContext.GetContext();
+                var sessionCookieName = $"{IdpConstants.IdpSessionCookieName}_{bc.TenantId}";
+                var sessionId = GetSessionIdFromToken(sessionCookieName);
                 if (string.IsNullOrEmpty(sessionId))
                 {
                     return Unauthorized(new { error = "session_not_found" });
@@ -155,8 +158,10 @@ namespace Blocks.Api.Controllers
                 {
                     return StatusCode(403, new { error = "csrf_validation_failed" });
                 }
+                var bc = BlocksContext.GetContext();
+                var sessionCookieName = $"{IdpConstants.IdpSessionCookieName}_{request.TenantId ?? bc.TenantId}";
 
-                var sessionId = GetSessionIdFromToken();
+                var sessionId = GetSessionIdFromToken(sessionCookieName);
                 if (string.IsNullOrEmpty(sessionId))
                 {
                     return Unauthorized(new { error = "session_not_found" });
@@ -175,7 +180,7 @@ namespace Blocks.Api.Controllers
 
                 await _sessionService.UpdateActivityAsync(sessionId);
                 var rotatedSessionId = await _sessionService.RotateSessionAsync(sessionId, "account_add") ?? sessionId;
-                Response.Cookies.Append(IdpSessionCookieName, rotatedSessionId, CreateSessionCookieOptions());
+                Response.Cookies.Append(sessionCookieName, rotatedSessionId, CreateSessionCookieOptions());
                 return Ok(new AddAccountResponse { Success = true });
             }
             catch (Exception ex)
@@ -209,7 +214,9 @@ namespace Blocks.Api.Controllers
                     return StatusCode(403, new { error = "csrf_validation_failed" });
                 }
 
-                var sessionId = GetSessionIdFromToken();
+                var bc = BlocksContext.GetContext();
+                var sessionCookieName = $"{IdpConstants.IdpSessionCookieName}_{bc.TenantId}";
+                var sessionId = GetSessionIdFromToken(sessionCookieName);
                 if (string.IsNullOrEmpty(sessionId))
                 {
                     return Unauthorized(new { error = "session_not_found" });
@@ -223,7 +230,7 @@ namespace Blocks.Api.Controllers
 
                 await _sessionService.UpdateActivityAsync(sessionId);
                 var rotatedSessionId = await _sessionService.RotateSessionAsync(sessionId, "account_select") ?? sessionId;
-                Response.Cookies.Append(IdpSessionCookieName, rotatedSessionId, CreateSessionCookieOptions());
+                Response.Cookies.Append(sessionCookieName, rotatedSessionId, CreateSessionCookieOptions());
                 return Ok(new SelectAccountResponse { Success = true, UserId = request.UserId });
             }
             catch (Exception ex)
@@ -256,7 +263,9 @@ namespace Blocks.Api.Controllers
                     return StatusCode(403, new { error = "csrf_validation_failed" });
                 }
 
-                var sessionId = GetSessionIdFromToken();
+                var bc = BlocksContext.GetContext();
+                var sessionCookieName = $"{IdpConstants.IdpSessionCookieName}_{bc.TenantId}";
+                var sessionId = GetSessionIdFromToken(sessionCookieName);
                 if (string.IsNullOrEmpty(sessionId))
                 {
                     return Unauthorized(new { error = "session_not_found" });
@@ -270,7 +279,7 @@ namespace Blocks.Api.Controllers
 
                 await _sessionService.UpdateActivityAsync(sessionId);
                 var rotatedSessionId = await _sessionService.RotateSessionAsync(sessionId, "account_remove") ?? sessionId;
-                Response.Cookies.Append(IdpSessionCookieName, rotatedSessionId, CreateSessionCookieOptions());
+                Response.Cookies.Append(sessionCookieName, rotatedSessionId, CreateSessionCookieOptions());
                 return Ok(new { success = true });
             }
             catch (Exception ex)
@@ -298,7 +307,9 @@ namespace Blocks.Api.Controllers
                     return StatusCode(403, new { error = "csrf_validation_failed" });
                 }
 
-                var sessionId = GetSessionIdFromToken();
+                var bc = BlocksContext.GetContext();
+                var sessionCookieName = $"{IdpConstants.IdpSessionCookieName}_{bc.TenantId}";
+                var sessionId = GetSessionIdFromToken(sessionCookieName);
                 if (string.IsNullOrEmpty(sessionId))
                 {
                     return Unauthorized(new { error = "session_not_found" });
@@ -311,8 +322,7 @@ namespace Blocks.Api.Controllers
                 {
                     return BadRequest(new { error = "failed_to_revoke_session" });
                 }
-
-                Response.Cookies.Delete(IdpSessionCookieName);
+                Response.Cookies.Delete(sessionCookieName);
                 return Ok(new { success = true });
             }
             catch (Exception ex)
@@ -323,12 +333,12 @@ namespace Blocks.Api.Controllers
         }
 
         // Helper method
-        private string GetSessionIdFromToken()
+        private string GetSessionIdFromToken(string cookieName)
         {
             // Prefer sid claim, fallback to browser IdP session cookie.
             var sessionIdClaim = User?.FindFirst("sid")?.Value;
             return string.IsNullOrWhiteSpace(sessionIdClaim)
-                ? Request.Cookies[IdpSessionCookieName]
+                ? Request.Cookies[cookieName]
                 : sessionIdClaim;
         }
 
@@ -371,7 +381,7 @@ namespace Blocks.Api.Controllers
                 HttpOnly = true,
                 Secure = true,
                 SameSite = isLocal ? SameSiteMode.None : SameSiteMode.Strict,
-                Path = "/",
+                Path = "/api/oidc",
                 Expires = DateTime.UtcNow.AddDays(30)
             };
         }

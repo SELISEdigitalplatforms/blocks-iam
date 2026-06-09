@@ -14,6 +14,7 @@ namespace Authentication.DomainService.Authentication
         Task<bool> UpdateIdpSessionForLogoutAsync(HttpContext httpContext, ClaimsPrincipal user, bool isGlobalLogout);
         void ClearIdpSessionCookie(HttpResponse response);
         Task<LogoutResponse> LogoutUser(string refreshToken, HttpRequest httpRequest);
+        Task<LogoutResponse> LogoutAll(HttpRequest httpRequest);
         string CookieToken(HttpRequest request);
         bool DeleteCookie(HttpRequest request);
         Task AppendSessionCookies(HttpContext httpContext, string? accessToken, string? refreshToken, DateTime? accessExpiresUtc = null, DateTime? refreshExpiresUtc = null);
