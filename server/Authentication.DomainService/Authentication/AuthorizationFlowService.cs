@@ -272,17 +272,9 @@ namespace Authentication.DomainService.Authentication
                     });
                 }
 
-                var tenantHint = tenant_id;
-                var claimUserId = string.IsNullOrWhiteSpace(userPrincipal?.FindFirst("sub")?.Value) ?
-                                        userPrincipal?.FindFirst("user_id")?.Value :
-                                        userPrincipal?.FindFirst("sub")?.Value;
-
-                var claimTenantId = userPrincipal?.FindFirst("tenant_id")?.Value;
-                bool.TryParse(userPrincipal?.FindFirst("impersonated")?.Value, out bool impersonated);
                 var effectiveSessionId = request.Cookies[$"{IdpConstants.IdpSessionCookieName}_{tenant_id}"];
 
                 string? resolvedUserId = null;
-                string? resolvedTenantId = null;
 
                 if (!string.IsNullOrWhiteSpace(effectiveSessionId))
                 {
@@ -290,9 +282,9 @@ namespace Authentication.DomainService.Authentication
                     if (session != null && !session.RevokedAt.HasValue && !session.IsExpired())
                     {
                         var sessionAccounts = session.Accounts.AsEnumerable();
-                        if (!string.IsNullOrWhiteSpace(tenantHint))
+                        if (!string.IsNullOrWhiteSpace(tenant_id))
                         {
-                            sessionAccounts = sessionAccounts.Where(a => string.Equals(a.TenantId, tenantHint, StringComparison.OrdinalIgnoreCase));
+                            sessionAccounts = sessionAccounts.Where(a => string.Equals(a.TenantId, tenant_id, StringComparison.OrdinalIgnoreCase));
                         }
 
                         var filteredAccounts = sessionAccounts.ToList();
@@ -300,7 +292,6 @@ namespace Authentication.DomainService.Authentication
                         if (filteredAccounts.Count == 1)
                         {
                             resolvedUserId = filteredAccounts[0].UserId;
-                            resolvedTenantId = filteredAccounts[0].TenantId;
                             await _sessionRepo.UpdateActivityAsync(effectiveSessionId);
                         }
                     }
@@ -308,20 +299,11 @@ namespace Authentication.DomainService.Authentication
 
                 if (string.IsNullOrWhiteSpace(resolvedUserId))
                 {
-                    resolvedUserId = claimUserId;
-                    resolvedTenantId = claimTenantId ?? tenantHint;
-                }
-
-                if (!string.IsNullOrWhiteSpace(resolvedUserId) && !string.IsNullOrWhiteSpace(resolvedTenantId))
-                {
-                    await EnsureIdpSessionAsync(request, response, effectiveSessionId, resolvedUserId, resolvedTenantId);
-                }
-
-                if (string.IsNullOrWhiteSpace(resolvedUserId))
-                {
                     _logger.LogInformation($"Unauthenticated authorization request for {client_id}");
-                    return new RedirectResult(BuildLoginUrl(client_id, response_type, redirect_uri, scope, state, nonce, code_challenge, code_challenge_method, tenantHint));
+                    return new RedirectResult(BuildLoginUrl(client_id, response_type, redirect_uri, scope, state, nonce, code_challenge, code_challenge_method, tenant_id));
                 }
+
+                await EnsureIdpSessionAsync(request, response, effectiveSessionId, resolvedUserId, tenant_id);
 
                 var client = await _authenticationRepository.GetOidcClientRegistrationAsync(client_id);
                 if (client == null)
@@ -338,7 +320,7 @@ namespace Authentication.DomainService.Authentication
 
                 var cacheKey = $"idp_flow:{state}";
                 var flowContextJson = await _cacheClient.GetStringValueAsync(cacheKey);
-                var forworedToContext = JsonSerializer.Deserialize<FlowContext>(flowContextJson);
+                var forwardedToContext = JsonSerializer.Deserialize<FlowContext>(flowContextJson);
 
                 canRedirectToClient = true;
 
@@ -351,7 +333,7 @@ namespace Authentication.DomainService.Authentication
                             { "error", error },
                             { "error_description", errorDescription },
                             { "state", state },
-                            { "forwardedTo", forworedToContext?.ForwardedTo ?? string.Empty },
+                            { "forwardedTo", forwardedToContext?.ForwardedTo ?? string.Empty },
                         };
 
                         return new RedirectResult(BuildRedirectUri(redirect_uri, errorParams));
@@ -364,12 +346,6 @@ namespace Authentication.DomainService.Authentication
                     });
                 }
 
-                if (!await HasOidcClientConfigurationAsync(client_id))
-                {
-                    _logger.LogWarning($"OIDC client config missing for client: {client_id}");
-                    return BuildAuthorizeError("invalid_client", "Client configuration not found");
-                }
-
                 var user = await _userRepository.GetUserByIdAsync(resolvedUserId);
                 if (user == null)
                 {
@@ -380,14 +356,12 @@ namespace Authentication.DomainService.Authentication
                 await PersistLastUsedOrganizationAsync(user, effectiveOrganizationId);
 
                 var authCode = GenerateRandomCode(32);
-                var impesonatingRefreshToken = _authenticationService.CookieToken(request);
-
 
                 var codeModel = new AuthorizationCodeModel
                 {
                     Code = authCode,
                     ClientId = client_id,
-                    TenantId = resolvedTenantId,
+                    TenantId = tenant_id,
                     UserId = resolvedUserId,
                     OrganizationId = effectiveOrganizationId,
                     RedirectUri = redirect_uri,
@@ -400,11 +374,22 @@ namespace Authentication.DomainService.Authentication
                     CreatedAt = DateTime.UtcNow,
                     CreatedByIpAddress = GetClientIpAddress(request),
                     IsUsed = false,
-                    Impersonated = impersonated,
-                    TergatedTenantId = claimTenantId,
-                    ImpersonatedUserId = claimUserId,
-                    ImpesonatingRefreshToken = impesonatingRefreshToken
                 };
+
+                bool.TryParse(userPrincipal?.FindFirst("impersonated")?.Value, out bool impersonated);
+
+                if (impersonated)
+                {
+                    var claimUserId = string.IsNullOrWhiteSpace(userPrincipal?.FindFirst("sub")?.Value) ?
+                                        userPrincipal?.FindFirst("user_id")?.Value :
+                                        userPrincipal?.FindFirst("sub")?.Value;
+
+                    var claimTenantId = userPrincipal?.FindFirst("tenant_id")?.Value;
+
+                    codeModel.Impersonated = true;
+                    codeModel.ImpersonatedUserId = claimUserId;
+                    codeModel.TargetedTenantId = claimTenantId;
+                }
 
                 Console.WriteLine(codeModel);
 
@@ -416,8 +401,8 @@ namespace Authentication.DomainService.Authentication
                 {
                     { "code", authCode },
                     { "state", state },
-                    { "tenant_id", resolvedTenantId ?? tenant_id ?? string.Empty },
-                    { "forwardedTo", forworedToContext?.ForwardedTo ?? string.Empty }
+                    { "tenant_id", tenant_id ?? string.Empty },
+                    { "forwardedTo", forwardedToContext?.ForwardedTo ?? string.Empty }
                 };
 
                 var callbackUri = BuildRedirectUri(redirect_uri, callbackParams);
