@@ -14,7 +14,7 @@ import {
   PopoverTrigger,
 } from "@/components/ui-kits/popover/popover";
 import { environmentOptions } from "@/constants/environment-options";
-import { useProjectStore } from "@/store/useProjectStore";
+import { useProjectStore } from "@seliseblocks/blocks-kit";
 import { ChevronRight, Settings2 } from "lucide-react";
 
 const INLINE_LIMIT = 3;
@@ -25,16 +25,16 @@ type ProjectCardProps = {
 };
 export const ProjectCard = ({ project, projects }: ProjectCardProps) => {
   const navigate = useNavigate();
-  const { setTennantGroup, setSelectedProject } = useProjectStore();
+  const { setTenantGroup, setSelectedProject } = useProjectStore();
 
   const onConfigureClick = () => {
-    setTennantGroup(project.tenantGroupId);
+    setTenantGroup(project.tenantGroupId);
     navigate("/project-overview/environments");
   };
 
   const onEnvBadgeClick = (e: React.MouseEvent, envProject: IProject) => {
     e.stopPropagation();
-    setTennantGroup(envProject.tenantGroupId);
+    setTenantGroup(envProject.tenantGroupId);
     setSelectedProject(envProject);
     navigate("/dashboard");
   };
@@ -102,7 +102,7 @@ export const ProjectCard = ({ project, projects }: ProjectCardProps) => {
                 <PopoverContent
                   className="w-52 p-1.5"
                   align="start"
-                  onClick={(e) => e.stopPropagation()}
+                  onClick={(e: React.MouseEvent) => e.stopPropagation()}
                 >
                   <p className="px-2 pb-1.5 pt-1 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
                     All environments

@@ -22,7 +22,7 @@ import {
 } from "@/components/ui-kits/form/form";
 import { z } from "zod";
 import { updateRoleFormSchema } from "./utils";
-import { useProjectStore } from "@/store/useProjectStore";
+import { useProjectStore } from "@seliseblocks/blocks-kit";
 import { IRole } from "@blocks-idp/iam/models/role";
 import { useUpdateRole } from "@blocks-idp/iam/hooks/use-roles";
 import { isErrorWithErrors } from "@/lib/error";

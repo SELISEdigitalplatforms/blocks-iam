@@ -10,7 +10,7 @@ import {
   DialogTrigger,
 } from "@/components/ui-kits/dialog/dialog";
 import { toast } from "@/hooks/use-toast";
-import { useProjectStore } from "@/store/useProjectStore";
+import { useProjectStore } from "@seliseblocks/blocks-kit";
 import { useUserPermissions } from "@blocks-idp/iam/hooks/use-user";
 import { IPermission } from "@blocks-idp/iam/models/permission";
 import { X } from "lucide-react";
