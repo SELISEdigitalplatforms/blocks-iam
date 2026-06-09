@@ -228,7 +228,8 @@ namespace Authentication.DomainService.Authentication
             ClaimsPrincipal userPrincipal,
             HttpRequest request,
             HttpResponse response,
-            bool returnRedirectResponse = true)
+            bool returnRedirectResponse = true,
+            string? blocksUserId = null)
         {
             var canRedirectToClient = false;
 
@@ -274,7 +275,7 @@ namespace Authentication.DomainService.Authentication
 
                 var effectiveSessionId = request.Cookies[$"{IdpConstants.IdpSessionCookieName}_{tenant_id}"];
 
-                string? resolvedUserId = null;
+                string? resolvedUserId = blocksUserId;
 
                 if (!string.IsNullOrWhiteSpace(effectiveSessionId))
                 {
