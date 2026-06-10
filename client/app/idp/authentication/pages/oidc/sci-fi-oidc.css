@@ -202,6 +202,35 @@
 }
 .oidc-scifi-root .oidc-sci-fi-input[aria-invalid="true"] { border-color: var(--danger); }
 
+/* OTP slots */
+.oidc-scifi-root .oidc-sci-fi-otp-slot {
+  background: var(--input-bg);
+  border: 1px solid var(--border);
+  border-left-width: 1px;
+  border-right-width: 1px;
+  color: var(--fg);
+  font-family: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  font-size: 1.1rem;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  box-shadow: none;
+  transition: border-color var(--dur-base) ease,
+              box-shadow var(--dur-base) ease,
+              background-color var(--dur-base) ease;
+}
+.oidc-scifi-root .oidc-sci-fi-otp-slot[data-active="true"] {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 1px rgba(0, 102, 178, 0.15),
+              0 0 16px rgba(0, 102, 178, 0.08);
+}
+.oidc-scifi-root .oidc-sci-fi-otp-slot.ring-1 {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 1px rgba(0, 102, 178, 0.15),
+              0 0 16px rgba(0, 102, 178, 0.08);
+  --tw-ring-color: var(--accent);
+  --tw-ring-shadow: 0 0 0 1px var(--accent);
+}
+
 /* Primary button */
 .oidc-scifi-root .oidc-sci-fi-btn {
   position: relative;
