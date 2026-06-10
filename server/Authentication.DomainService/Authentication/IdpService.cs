@@ -243,7 +243,7 @@ namespace Authentication.DomainService.Authentication
                     : configuredAccessLifetimeSeconds;
 
                 var tenant = _tenants.GetTenantByID(resolvedTenantId);
-                var (domain, cookieDomain, isResolved) = DomainResolver.ResolveDomain(tenant, httpRequest);
+                var (domain, cookieDomain, isResolved) = DomainResolver.ResolveDomain(tenant, httpRequest, flowContext.RedirectUri);
                 var tokenResponseObj = new TokenResponse
                 {
                     AccessToken = tokenResponse.AccessToken,
