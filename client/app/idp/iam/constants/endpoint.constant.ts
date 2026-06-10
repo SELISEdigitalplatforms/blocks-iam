@@ -37,6 +37,7 @@ export const ACCOUNT_ENDPOINTS = {
   RECOVER: `/api${AUTH_SUBPATH}/recover`,
   RESET_PASSWORD: `/api${AUTH_SUBPATH}/reset-password`,
   VALIDATE_ACTIVATION_CODE: `/api${AUTH_SUBPATH}/validate-activation`,
+  CHANGE_PASSWORD: `/api${AUTH_SUBPATH}/change-password`,
 } as const;
 
 // ─── Role endpoints (role.service) ──────────────────────────────────────────

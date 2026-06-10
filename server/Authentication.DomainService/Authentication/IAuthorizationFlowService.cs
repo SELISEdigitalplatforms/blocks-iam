@@ -90,9 +90,9 @@ namespace Authentication.DomainService.Authentication
             string code_challenge_method,
             string? prompt,
             string? tenant_id,
-            ClaimsPrincipal userPrincipal,
             HttpRequest request,
             HttpResponse response,
+            string? blocksUserId = null,
             bool returnRedirectResponse = true);
 
 
