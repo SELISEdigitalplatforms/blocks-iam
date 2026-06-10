@@ -228,7 +228,9 @@ namespace Authentication.DomainService.Authentication
                         _httpContextAccessor.HttpContext.Request, 
                         _httpContextAccessor.HttpContext.Response
                     );
-                    await _cacheClient.RemoveKeyAsync(cacheKey);
+
+                    Console.WriteLine($"IsImpersonated: {authCode.Impersonated}");
+                    await _cacheClient.RemoveKeyAsync(cacheKey); 
                     return new OkObjectResult(new { Impersonated = true });
                 }
 
