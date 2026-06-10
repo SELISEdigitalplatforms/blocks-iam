@@ -100,7 +100,7 @@ export const router = createBrowserRouter([
             ),
 
             children: [
-              { path: "/login", element: <LoginPage name="blocks-iam" /> },
+              { path: "/login", element: <LoginPage /> },
               
               {
                 element: <AuthLayout />,
