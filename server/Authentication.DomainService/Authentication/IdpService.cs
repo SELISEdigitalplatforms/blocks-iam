@@ -258,6 +258,8 @@ namespace Authentication.DomainService.Authentication
 
                 await _cacheClient.RemoveKeyAsync(cacheKey);
 
+                Console.WriteLine($"Domain: {domain}, cookieDomain: {cookieDomain}, IsResolved: {isResolved} ");
+
                 if (isResolved && !string.IsNullOrWhiteSpace(domain))
                 {
                     AppendCookies(tokenResponseObj, httpResponse, domain);

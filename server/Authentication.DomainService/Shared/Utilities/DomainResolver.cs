@@ -229,7 +229,7 @@ namespace Authentication.DomainService.Utilities
             // for "localhost"). Otherwise scope the cookie to the configured shared
             // parent domain (e.g. ".blocksdevelopers.com") so a cookie set by the
             // IDP host is also sent to the app host on the same site.
-            cookieDomain = isLocal ? null : (string.IsNullOrWhiteSpace(cookieDomain) ? null : cookieDomain);
+            cookieDomain = isLocal ? "localhost" : (string.IsNullOrWhiteSpace(cookieDomain) ? null : cookieDomain);
 
             return new CookieOptions
             {
