@@ -319,6 +319,17 @@ export interface IAccountResetPasswordResponse {
   errors: unknown | null;
   isSuccess: boolean;
 }
+export interface IChangePasswordPayload {
+  oldPassword: string;
+  newPassword: string;
+  confirmNewPassword: string;
+}
+
+export interface IChangePasswordResponse {
+  errors: unknown | null;
+  isSuccess: boolean;
+}
+
 export interface IActivationCodeValidationPayload {
   activationCode: string;
 }
