@@ -377,7 +377,7 @@ namespace Authentication.DomainService.Authentication
 
                     var claimTenantId = userPrincipal?.FindFirst("tenant_id")?.Value;
 
-                    codeModel.Impersonated = true;
+                    codeModel.Impersonated = impersonated;
                     codeModel.ImpersonatedUserId = claimUserId;
                     codeModel.TargetedTenantId = claimTenantId;
                 }
