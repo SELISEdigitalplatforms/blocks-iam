@@ -1,9 +1,5 @@
 using Authentication.DomainService.Utilities;
 using Blocks.Genesis;
-using CloudConfiguration.DomainService.Authentication.RequestModel;
-using CloudConfiguration.DomainService.IAM.RequestModel;
-using CloudConfiguration.DomainService.IAM.ResponseModel;
-using CloudConfiguration.DomainService.Shared.Services;
 using Iam.DomainService.Accounts;
 using Iam.DomainService.Activities;
 using Iam.DomainService.Entities;
@@ -29,14 +25,13 @@ namespace Api.Controllers
         private readonly IUserManagementMutationService _userManagementMutationService;
         private readonly IResourceMutationService _resourceMutationService;
         private readonly IResourceQueryService _resourceQueryService;
-        private readonly IConfigurationService _configurationService;
 
         public IamController(IAccountService accountService,
                              IUserActivityService userActivityService,
                              IResourceMutationService resourceMutationService,
                              IResourceQueryService resourceQueryService,
                              IUserManagementQueryService userManagementQueryService,
-                             IUserManagementMutationService userManagementMutationService, IConfigurationService configurationService)
+                             IUserManagementMutationService userManagementMutationService)
         {
             _userActivityService = userActivityService;
             _resourceMutationService = resourceMutationService;
@@ -44,7 +39,6 @@ namespace Api.Controllers
             _userManagementQueryService = userManagementQueryService;
             _userManagementMutationService = userManagementMutationService;
             _accountService = accountService;
-            _configurationService = configurationService;
         }
 
 
@@ -345,22 +339,6 @@ namespace Api.Controllers
             return await _accountService.GetSignUpSettingAsync();
         }
 
-        #endregion
-        #region Cloud configuration
-        [HttpPost("config")]
-        [Authorize]
-        public async Task<IActionResult> Save([FromBody] SaveIamConfigurationRequest request)
-        {
-            var result = await _configurationService.SaveIamConfigurationAsync(request);
-            return result.IsSuccess ? Ok(result) : BadRequest(result);
-        }
-
-        [HttpGet("config")]
-        [Authorize]
-        public async Task<GetConfigurationResponse> Get([FromQuery] GetAuthenticationConfigurationRequest request)
-        {
-            return await _configurationService.GetIamConfigurationAsync();
-        }
         #endregion
     }
 }

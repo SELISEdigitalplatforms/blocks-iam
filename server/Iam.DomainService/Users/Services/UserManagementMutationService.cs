@@ -373,7 +373,7 @@ namespace Iam.DomainService.Users
             _logger.LogInformation("Send Activation for {Id}", user.ItemId);
             var config = await _userRepository.GetIamConfigurationAsync();
             var key = Guid.NewGuid().ToString("n");
-            var accountActivationUri = string.Format("{0}?code={1}&lang={2}", config.AccountActivationUrl, key, user.Language);
+            var accountActivationUri = string.Format("{0}?code={1}&lang={2}", config.AccountActivationPath, key, user.Language);
 
             await _cacheClient.AddStringValueAsync(key, user.ItemId, config.ActivationUrlLifetimeInMinutes * 60);
 
