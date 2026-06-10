@@ -121,42 +121,40 @@ const ChangePasswordDialog = ({ open, onOpenChange }: ChangePasswordDialogProps)
               )}
             />
 
-            <div className="flex flex-col gap-4">
-              <FormField
-                control={form.control}
-                name="newPassword"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>New Password</FormLabel>
-                    <FormControl>
-                      <PasswordInput placeholder="Enter your new password" {...field} />
-                    </FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-              <FormField
-                control={form.control}
-                name="confirmNewPassword"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Confirm New Password</FormLabel>
-                    <FormControl>
-                      <PasswordInput placeholder="Confirm your new password" {...field} />
-                    </FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-              {newPassword && (
-                <PasswordStrengthChecker
-                  password={newPassword}
-                  confirmPassword={confirmNewPassword}
-                  excludePassword={oldPassword}
-                  onRequirementsMet={setPasswordRequirementsMet}
-                />
+            <FormField
+              control={form.control}
+              name="newPassword"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>New Password</FormLabel>
+                  <FormControl>
+                    <PasswordInput placeholder="Enter your new password" {...field} />
+                  </FormControl>
+                  <FormMessage />
+                </FormItem>
               )}
-            </div>
+            />
+            <FormField
+              control={form.control}
+              name="confirmNewPassword"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Confirm New Password</FormLabel>
+                  <FormControl>
+                    <PasswordInput placeholder="Confirm your new password" {...field} />
+                  </FormControl>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+            {newPassword && (
+              <PasswordStrengthChecker
+                password={newPassword}
+                confirmPassword={confirmNewPassword}
+                excludePassword={oldPassword}
+                onRequirementsMet={setPasswordRequirementsMet}
+              />
+            )}
 
             <DialogFooter>
               <DialogTrigger asChild>
