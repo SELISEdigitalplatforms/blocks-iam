@@ -21,7 +21,6 @@ import {
   FormLabel,
   FormMessage,
 } from "@/components/ui-kits/form/form";
-import { Separator } from "@/components/ui-kits/separator/separator";
 import { PasswordInput } from "@/components/password-input/password-input";
 import { PasswordStrengthChecker } from "@blocks-idp/authentication/components/password-strength-checker/password-strength-checker";
 import { useChangePassword } from "@blocks-idp/iam/hooks/use-account";
@@ -121,8 +120,6 @@ const ChangePasswordDialog = ({ open, onOpenChange }: ChangePasswordDialogProps)
                 </FormItem>
               )}
             />
-
-            <Separator />
 
             <div className="flex flex-col gap-4">
               <FormField
