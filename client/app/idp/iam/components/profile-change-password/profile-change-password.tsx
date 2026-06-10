@@ -2,7 +2,7 @@ import { useState } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
-import { Lock } from "lucide-react";
+import { KeyRound, Loader } from "lucide-react";
 import {
   Dialog,
   DialogContent,
@@ -21,6 +21,7 @@ import {
   FormLabel,
   FormMessage,
 } from "@/components/ui-kits/form/form";
+import { Separator } from "@/components/ui-kits/separator/separator";
 import { PasswordInput } from "@/components/password-input/password-input";
 import { PasswordStrengthChecker } from "@blocks-idp/authentication/components/password-strength-checker/password-strength-checker";
 import { useChangePassword } from "@blocks-idp/iam/hooks/use-account";
@@ -90,33 +91,46 @@ const ChangePasswordDialog = ({ open, onOpenChange }: ChangePasswordDialogProps)
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="rounded-md sm:max-w-[500px] overflow-y-auto max-h-screen">
+      <DialogContent className="sm:max-w-[460px]">
         <DialogHeader>
-          <DialogTitle>Update Password</DialogTitle>
-          <DialogDescription>Secure your account with a new password.</DialogDescription>
+          <div className="flex items-center gap-3">
+            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-primary/10">
+              <KeyRound className="h-5 w-5 text-primary" />
+            </div>
+            <div>
+              <DialogTitle>Change Password</DialogTitle>
+              <DialogDescription className="mt-0.5">
+                Choose a strong password you don't use elsewhere.
+              </DialogDescription>
+            </div>
+          </div>
         </DialogHeader>
+
         <Form {...form}>
-          <form onSubmit={form.handleSubmit(onSubmit)} className="flex flex-col gap-4">
-            <div className="grid grid-cols-1 gap-4">
-              <FormField
-                control={form.control}
-                name="oldPassword"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel className="text-sm font-normal">Current Password</FormLabel>
-                    <FormControl>
-                      <PasswordInput placeholder="Enter your current password" {...field} />
-                    </FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
+          <form onSubmit={form.handleSubmit(onSubmit)} className="flex flex-col gap-5 pt-1">
+            <FormField
+              control={form.control}
+              name="oldPassword"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Current Password</FormLabel>
+                  <FormControl>
+                    <PasswordInput placeholder="Enter your current password" {...field} />
+                  </FormControl>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+
+            <Separator />
+
+            <div className="flex flex-col gap-4">
               <FormField
                 control={form.control}
                 name="newPassword"
                 render={({ field }) => (
                   <FormItem>
-                    <FormLabel className="text-sm font-normal">New Password</FormLabel>
+                    <FormLabel>New Password</FormLabel>
                     <FormControl>
                       <PasswordInput placeholder="Enter your new password" {...field} />
                     </FormControl>
@@ -129,7 +143,7 @@ const ChangePasswordDialog = ({ open, onOpenChange }: ChangePasswordDialogProps)
                 name="confirmNewPassword"
                 render={({ field }) => (
                   <FormItem>
-                    <FormLabel className="text-sm font-normal">Confirm New Password</FormLabel>
+                    <FormLabel>Confirm New Password</FormLabel>
                     <FormControl>
                       <PasswordInput placeholder="Confirm your new password" {...field} />
                     </FormControl>
@@ -137,21 +151,25 @@ const ChangePasswordDialog = ({ open, onOpenChange }: ChangePasswordDialogProps)
                   </FormItem>
                 )}
               />
-              <PasswordStrengthChecker
-                password={newPassword}
-                confirmPassword={confirmNewPassword}
-                excludePassword={oldPassword}
-                onRequirementsMet={setPasswordRequirementsMet}
-              />
+              {newPassword && (
+                <PasswordStrengthChecker
+                  password={newPassword}
+                  confirmPassword={confirmNewPassword}
+                  excludePassword={oldPassword}
+                  onRequirementsMet={setPasswordRequirementsMet}
+                />
+              )}
             </div>
-            <DialogFooter className="mt-2 flex justify-end gap-2">
+
+            <DialogFooter>
               <DialogTrigger asChild>
-                <Button variant="outline" disabled={isPending} onClick={onClose}>
+                <Button variant="outline" size="sm" disabled={isPending} onClick={onClose}>
                   Cancel
                 </Button>
               </DialogTrigger>
-              <Button type="submit" disabled={isPending || !passwordRequirementsMet}>
-                Change
+              <Button type="submit" size="sm" disabled={isPending || !passwordRequirementsMet}>
+                {isPending && <Loader className="mr-1.5 h-3.5 w-3.5 animate-spin" />}
+                {isPending ? "Saving…" : "Save Changes"}
               </Button>
             </DialogFooter>
           </form>
@@ -169,20 +187,15 @@ export const ProfileChangePassword = () => {
       <CardHeader>
         <div className="flex items-center justify-between">
           <CardTitle>Change Password</CardTitle>
-          <Button
-            size="sm"
-            variant="outline"
-            onClick={() => setOpen(true)}
-          >
-            <Lock className="w-4 h-4 mr-1.5" />
+          <Button size="sm" variant="outline" onClick={() => setOpen(true)}>
             Update Password
           </Button>
         </div>
       </CardHeader>
       <CardContent className="!pt-0">
-        <p className="text-sm text-muted-foreground">
-          Update your password to keep your account safe.
-        </p>
+        <div className="space-y-2 text-base font-normal text-high-emphasis">
+          <p>Update your password regularly to keep your account secure.</p>
+        </div>
       </CardContent>
       <ChangePasswordDialog open={open} onOpenChange={setOpen} />
     </Card>
