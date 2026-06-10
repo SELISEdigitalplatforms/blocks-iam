@@ -246,5 +246,18 @@ namespace Authentication.DomainService.Utilities
                 Expires = expiresUtc == default ? DateTime.UtcNow : expiresUtc
             };
         }
+
+        public static string GetRootDomain(string host)
+        {
+            if (string.IsNullOrWhiteSpace(host))
+                return host;
+
+            var parts = host.Split('.');
+
+            return parts.Length < 2
+                ? host
+                : $"{parts[^2]}.{parts[^1]}";
+        }
+
     }
 }
