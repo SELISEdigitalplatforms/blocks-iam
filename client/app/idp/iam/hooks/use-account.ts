@@ -47,3 +47,10 @@ export const useAccountActivationCodeExpiration = () => {
     mutationFn: userService.account.checkActivationCodeExpiration,
   });
 };
+
+export const useChangePassword = () => {
+  return useMutation({
+    mutationKey: ["account", "change-password"],
+    mutationFn: userService.account.changePassword,
+  });
+};
