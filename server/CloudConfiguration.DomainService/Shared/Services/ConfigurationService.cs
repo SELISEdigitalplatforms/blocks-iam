@@ -92,6 +92,20 @@ namespace CloudConfiguration.DomainService.Shared.Services
             var currentConfiguration = await _configurationRepository.GetAuthenticationConfigurationAsync();
             bool? isOidcEnabled = currentConfiguration == null ? null : currentConfiguration.IsOidcEnabled;
             var accountActionBaseUrl = currentConfiguration?.AccountActionBaseUrl;
+            var tenant = _tenants.GetTenantByID(BlocksContext.GetContext()?.TenantId ?? "");
+
+            if (!string.IsNullOrWhiteSpace(accountActionBaseUrl)
+                && !IsAllowedAccountActionBaseUrl(accountActionBaseUrl, tenant))
+            {
+                return new BaseResponse
+                {
+                    IsSuccess = false,
+                    Errors = new Dictionary<string, string>
+                    {
+                        { "AccountActionBaseUrl", "AccountActionBaseUrl_Must_Be_In_Tenant_Allowed_Domains" }
+                    }
+                };
+            }
 
             var refreshTokenValidForNumberMinutes = configuration.RefreshTokenValidForNumberMinutes > 0
                 ? configuration.RefreshTokenValidForNumberMinutes
@@ -187,6 +201,40 @@ namespace CloudConfiguration.DomainService.Shared.Services
             await _configurationRepository.UpdateAuthenticationConfigAsync(authConfiguration);
 
             return new BaseResponse { IsSuccess = true };
+        }
+
+        private static bool IsAllowedAccountActionBaseUrl(string accountActionBaseUrl, dynamic? tenant)
+        {
+            if (!Uri.TryCreate(accountActionBaseUrl, UriKind.Absolute, out var targetUri))
+            {
+                return false;
+            }
+
+            var allowedDomains = ((IEnumerable<dynamic>?)tenant?.Applications ?? [])
+                .Select(application => (string?)application?.Domain)
+                .Where(domain => !string.IsNullOrWhiteSpace(domain))
+                .Select(domain => NormalizeHost(domain!))
+                .Where(domain => !string.IsNullOrWhiteSpace(domain))
+                .ToHashSet(StringComparer.OrdinalIgnoreCase);
+
+            if (allowedDomains.Count == 0)
+            {
+                return true;
+            }
+
+            return allowedDomains.Contains(targetUri.Host);
+        }
+
+        private static string NormalizeHost(string value)
+        {
+            if (Uri.TryCreate(value, UriKind.Absolute, out var uri))
+            {
+                return uri.Host;
+            }
+
+            return value.Replace("https://", string.Empty, StringComparison.OrdinalIgnoreCase)
+                        .Replace("http://", string.Empty, StringComparison.OrdinalIgnoreCase)
+                        .TrimEnd('/');
         }
 
         #endregion
