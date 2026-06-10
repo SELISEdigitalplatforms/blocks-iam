@@ -152,26 +152,6 @@ namespace Authentication.DomainService.Oidc.Repositories
                 throw;
             }
         }
-
-        public async Task<bool> MarkAsConsumedAsync(string tokenId, DateTime consumedAt)
-        {
-            try
-            {
-                var collection = GetDatabase().GetCollection<RefreshTokenModel>("IdpRefreshTokens");
-                var filter = Builders<RefreshTokenModel>.Filter.Eq(t => t.TokenId, tokenId);
-                var update = Builders<RefreshTokenModel>.Update
-                    .Set(t => t.IsConsumed, true)
-                    .Set(t => t.ConsumedAt, consumedAt);
-
-                var result = await collection.UpdateOneAsync(filter, update);
-                return result.ModifiedCount > 0;
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, $"Error marking refresh token as consumed: {tokenId}");
-                throw;
-            }
-        }
     }
 }
 
