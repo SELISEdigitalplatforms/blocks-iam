@@ -19,12 +19,5 @@ namespace Authentication.DomainService.Dtos
         public string? Scope { get; set; }
         public bool Impersonated { get; set; }
         public string? ImpersonationId { get; set; }
-        
-        // Token-family tracking for replay detection and audit
-        public string? TokenFamilyId { get; set; }
-        public string? ParentTokenId { get; set; }
-        public bool IsConsumed { get; set; }
-        public bool WasReused { get; set; }
-        public DateTime? ConsumedAt { get; set; }
     }
 }

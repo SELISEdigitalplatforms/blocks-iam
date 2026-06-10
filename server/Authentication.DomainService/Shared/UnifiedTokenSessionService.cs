@@ -44,25 +44,7 @@ namespace Authentication.DomainService.Shared
             int absoluteLifetime = authenticationConfiguration.AbsoluteRefreshTokenValidForNumberMinutes > 0 ? authenticationConfiguration.AbsoluteRefreshTokenValidForNumberMinutes : refreshTokenLifetime;
             if (absoluteLifetime < refreshTokenLifetime) absoluteLifetime = refreshTokenLifetime;
             DateTime refreshTokenExpireOn = now.AddMinutes(refreshTokenLifetime);
-            
-            // SECURITY FIX: Preserve absolute expiry from original token, don't reset it on rotation
-            // This prevents unbounded session extension through repeated refreshes
-            DateTime absoluteRefreshTokenExpireOn;
-            string tokenFamilyId;
-            if (oldRefreshTokenCache != null && !string.IsNullOrWhiteSpace(oldRefreshTokenCache.TokenFamilyId))
-            {
-                // Rotation: preserve family and use minimum of (old absolute, now + policy)
-                tokenFamilyId = oldRefreshTokenCache.TokenFamilyId;
-                absoluteRefreshTokenExpireOn = oldRefreshTokenCache.AbsoluteExpiresUtc < now.AddMinutes(absoluteLifetime)
-                    ? oldRefreshTokenCache.AbsoluteExpiresUtc
-                    : now.AddMinutes(absoluteLifetime);
-            }
-            else
-            {
-                // Initial issuance: new family
-                tokenFamilyId = Guid.NewGuid().ToString("N");
-                absoluteRefreshTokenExpireOn = now.AddMinutes(absoluteLifetime);
-            }
+            DateTime absoluteRefreshTokenExpireOn = now.AddMinutes(absoluteLifetime);
 
             var refreshTokenCache = new RefreshTokenCache
             {
@@ -82,11 +64,7 @@ namespace Authentication.DomainService.Shared
                 RememberMeExpiresUtc = tokenRequest.RememberMe ? absoluteRefreshTokenExpireOn : null,
                 Scope = tokenRequest.Scope,
                 Impersonated = impersoanted,
-                ImpersonationId = tokenRequest.ImpersonationSessionId,
-                TokenFamilyId = tokenFamilyId,
-                ParentTokenId = oldRefreshToken,
-                IsConsumed = false,
-                WasReused = false
+                ImpersonationId = tokenRequest.ImpersonationSessionId
             };
 
 
@@ -109,11 +87,7 @@ namespace Authentication.DomainService.Shared
                 IsRevoked = false,
                 Impersonated = impersoanted,
                 ImpersonationId = tokenRequest.ImpersonationSessionId,
-                UserAgent = tokenRequest.Request?.Headers != null && tokenRequest.Request.Headers.ContainsKey("User-Agent") ? tokenRequest.Request.Headers["User-Agent"].ToString() : string.Empty,
-                TokenFamilyId = refreshTokenCache.TokenFamilyId,
-                ParentTokenId = refreshTokenCache.ParentTokenId,
-                IsConsumed = false,
-                WasReused = false
+                UserAgent = tokenRequest.Request?.Headers != null && tokenRequest.Request.Headers.ContainsKey("User-Agent") ? tokenRequest.Request.Headers["User-Agent"].ToString() : string.Empty
             };
             await _refreshTokenRepository.CreateAsync(refreshTokenModel);
 
@@ -140,10 +114,6 @@ namespace Authentication.DomainService.Shared
 
             if (!string.IsNullOrWhiteSpace(oldRefreshToken))
             {
-                // SECURITY FIX: Mark old token as consumed atomically to prevent reuse/race
-                // This is the critical step to enforce one-time token consumption
-                await _refreshTokenRepository.MarkAsConsumedAsync(oldRefreshToken, now);
-                
                 await _cacheClient.RemoveKeyAsync(oldRefreshToken);
                 await _refreshTokenRepository.DeleteAsync(oldRefreshToken);
                 if (oldRefreshTokenCache != null)
