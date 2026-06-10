@@ -229,7 +229,6 @@ namespace Authentication.DomainService.Authentication
                         _httpContextAccessor.HttpContext.Response
                     );
 
-                    Console.WriteLine($"IsImpersonated: {authCode.Impersonated}");
                     await _cacheClient.RemoveKeyAsync(cacheKey); 
                     return new OkObjectResult(new { Impersonated = true });
                 }
@@ -259,8 +258,6 @@ namespace Authentication.DomainService.Authentication
                 };
 
                 await _cacheClient.RemoveKeyAsync(cacheKey);
-
-                Console.WriteLine($"Domain: {domain}, cookieDomain: {cookieDomain}, IsResolved: {isResolved} ");
 
                 if (isResolved && !string.IsNullOrWhiteSpace(domain))
                 {
