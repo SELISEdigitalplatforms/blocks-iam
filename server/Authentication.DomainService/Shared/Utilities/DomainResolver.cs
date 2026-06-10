@@ -224,12 +224,12 @@ namespace Authentication.DomainService.Utilities
 
         public static CookieOptions CreateCookieOptions(string? cookieDomain, DateTime expiresUtc)
         {
-            var isLocalRequest = IsLocalhost();
+            var isLocal = IsLocalhost();
             // True localhost dev -> host-only cookie (a Domain attribute is invalid
             // for "localhost"). Otherwise scope the cookie to the configured shared
             // parent domain (e.g. ".blocksdevelopers.com") so a cookie set by the
             // IDP host is also sent to the app host on the same site.
-            cookieDomain = isLocalRequest ? null : (string.IsNullOrWhiteSpace(cookieDomain) ? null : cookieDomain);
+            cookieDomain = isLocal ? null : (string.IsNullOrWhiteSpace(cookieDomain) ? null : cookieDomain);
 
             return new CookieOptions
             {
@@ -241,10 +241,23 @@ namespace Authentication.DomainService.Utilities
                 // cookies must be SameSite=None (which mandates Secure, set above).
                 // SameSite=Strict would stop the browser from accepting/sending them
                 // on the cross-site flow.
-                SameSite = SameSiteMode.None,
+                SameSite = isLocal ? SameSiteMode.None : SameSiteMode.Strict,
                 Path = "/",
                 Expires = expiresUtc == default ? DateTime.UtcNow : expiresUtc
             };
         }
+
+        public static string GetRootDomain(string host)
+        {
+            if (string.IsNullOrWhiteSpace(host))
+                return host;
+
+            var parts = host.Split('.');
+
+            return parts.Length < 2
+                ? host
+                : $"{parts[^2]}.{parts[^1]}";
+        }
+
     }
 }
