@@ -181,7 +181,12 @@ describe("MFAService", () => {
 
       const result = await service.disableMFA(mockDisableMfaPayload);
 
-      expect(http.post).toHaveBeenCalledWith(MFA_ENDPOINTS.DISABLE_MFA, mockDisableMfaPayload);
+      expect(http.post).toHaveBeenCalledWith(
+        MFA_ENDPOINTS.DISABLE_MFA,
+        mockDisableMfaPayload,
+        undefined,
+        { absoluteUrl: true },
+      );
       expect(result).toEqual(mockSuccessResponse);
     });
 
