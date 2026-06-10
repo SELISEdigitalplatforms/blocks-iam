@@ -90,11 +90,10 @@ namespace Authentication.DomainService.Authentication
             string code_challenge_method,
             string? prompt,
             string? tenant_id,
-            ClaimsPrincipal userPrincipal,
             HttpRequest request,
             HttpResponse response,
-            bool returnRedirectResponse = true,
-            string? blocksUserId = null);
+            string? blocksUserId = null,
+            bool returnRedirectResponse = true);
 
 
         Task<IActionResult> TokenAsync(string grantType, HttpRequest request);

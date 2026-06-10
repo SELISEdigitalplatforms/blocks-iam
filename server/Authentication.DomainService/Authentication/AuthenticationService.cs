@@ -124,11 +124,7 @@ namespace Authentication.DomainService.Authentication
                 return false;
             }
 
-            var tenantId = user.FindFirst(bc?.TenantId)?.Value
-                ?? user.FindFirst("tenant_id")?.Value
-                ?? bc?.TenantId;
-
-            await _idpSessionService.RemoveAccountAsync(sessionId, userId, tenantId);
+            await _idpSessionService.RemoveAccountAsync(sessionId, userId, bc.TenantId);
             var session = await _idpSessionService.GetSessionAsync(sessionId);
 
             if (session == null || session.RevokedAt.HasValue || session.IsExpired())
