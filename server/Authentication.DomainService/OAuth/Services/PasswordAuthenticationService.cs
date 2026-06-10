@@ -43,7 +43,7 @@ namespace Authentication.DomainService.OAuth
             _cacheClient = cacheClient;
             _accountService = accountService;
         }
-        public async Task<TokenResponse> AuthenticateAsync(TokenRequest request, AuthenticationConfiguration authenticationConfiguration, User? user = null)
+        public async Task<TokenResponse> AuthenticateAsync(TokenRequest request, IdentityConfiguration authenticationConfiguration, User? user = null)
         {
             _logger.LogInformation("Password Authentication start");
 
@@ -259,7 +259,7 @@ namespace Authentication.DomainService.OAuth
         private async Task<IpRateLimitResult> CheckIpRateLimitAsync(
             string clientIp,
             string username,
-            AuthenticationConfiguration config)
+            IdentityConfiguration config)
         {
             var now = DateTime.UtcNow;
             

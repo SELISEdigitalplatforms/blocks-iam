@@ -69,7 +69,7 @@ namespace XUnitTest.DomainService.OAuth.Services
         [Fact]
         public void AuthenticationConfiguration_DefaultDailyLimit_Is500()
         {
-            var config = new AuthenticationConfiguration();
+            var config = new IdentityConfiguration();
 
             config.MaxLoginAttemptsPerIpPerDay.Should().Be(500);
         }
@@ -79,7 +79,7 @@ namespace XUnitTest.DomainService.OAuth.Services
         {
             // Arrange
             var request = BuildTokenRequest("nonexistent@example.com", "password123", "org-123");
-            var authConfig = new AuthenticationConfiguration();
+            var authConfig = new IdentityConfiguration();
 
             _oAuthRepository
                 .Setup(x => x.GetUserByUsernameAsync(request.Username, request.OrganizationId))
@@ -93,7 +93,7 @@ namespace XUnitTest.DomainService.OAuth.Services
             result.Error.Should().NotBeNullOrEmpty();
             _oAuthRepository.Verify(x => x.GetUserByUsernameAsync(request.Username, request.OrganizationId), Times.Once);
             _oAuthJwtAccessTokenManager.Verify(
-                x => x.ManageTokenAsync(It.IsAny<TokenRequest>(), It.IsAny<AuthenticationConfiguration>(), It.IsAny<User>(), It.IsAny<StateInfo>()),
+                x => x.ManageTokenAsync(It.IsAny<TokenRequest>(), It.IsAny<IdentityConfiguration>(), It.IsAny<User>(), It.IsAny<StateInfo>()),
                 Times.Never);
         }
 
@@ -102,7 +102,7 @@ namespace XUnitTest.DomainService.OAuth.Services
         {
             // Arrange
             var request = BuildTokenRequest("test@example.com", "password123", "org-123");
-            var authConfig = new AuthenticationConfiguration
+            var authConfig = new IdentityConfiguration
             {
                 MaxLoginAttemptsPerIpPerHour = 100,
                 MaxLoginAttemptsPerIpPerDay = 500
@@ -142,7 +142,7 @@ namespace XUnitTest.DomainService.OAuth.Services
         {
             // Arrange
             var request = BuildTokenRequest("lockme@example.com", "wrong-password", "org-123");
-            var authConfig = new AuthenticationConfiguration
+            var authConfig = new IdentityConfiguration
             {
                 MaxLoginAttemptsPerIpPerHour = 100,
                 MaxLoginAttemptsPerIpPerDay = 500,

@@ -23,7 +23,7 @@ namespace Authentication.DomainService.OAuth.Services
             _oAuthRepository = oAuthRepository;
         }
 
-        public async Task<TokenResponse> AuthenticateAsync(TokenRequest request, AuthenticationConfiguration authenticationConfiguration, User? user = null)
+        public async Task<TokenResponse> AuthenticateAsync(TokenRequest request, IdentityConfiguration authenticationConfiguration, User? user = null)
         {
             var otpService = _tpServiceFactory.GetOTPService(request.MfaType);
             var response = await otpService.VerifyAsync(new VerifyOtpRequest { AuthType = request.MfaType, MfaId = request.MfaId, VerificationCode = request.Code });

@@ -22,14 +22,14 @@ namespace XUnitTest.DomainService.Worker
         public async Task Consume_WithIsEnableTrue_AndMfaNotInList_AddsMfaGrantType()
         {
             // Arrange
-            var config = new AuthenticationConfiguration
+            var config = new IdentityConfiguration
             {
                 AllowedGrantTypes = new List<string> { "password", "refresh_token" }
             };
             var mfaEvent = new MfaActionEvent { IsEnable = true, ProjectKey = "test-project" };
 
             _authenticationRepository.Setup(x => x.GetAuthenticationConfigurationAsync()).ReturnsAsync(config);
-            _authenticationRepository.Setup(x => x.UpdateAuthenticationConfigurationAsync(It.IsAny<AuthenticationConfiguration>())).Returns(Task.CompletedTask);
+            _authenticationRepository.Setup(x => x.UpdateAuthenticationConfigurationAsync(It.IsAny<IdentityConfiguration>())).Returns(Task.CompletedTask);
 
             // Act
             await _service.Consume(mfaEvent);
@@ -44,14 +44,14 @@ namespace XUnitTest.DomainService.Worker
         public async Task Consume_WithIsEnableTrue_AndMfaAlreadyInList_DoesNotAddDuplicate()
         {
             // Arrange
-            var config = new AuthenticationConfiguration
+            var config = new IdentityConfiguration
             {
                 AllowedGrantTypes = new List<string> { "password", MfaGrantType, "refresh_token" }
             };
             var mfaEvent = new MfaActionEvent { IsEnable = true, ProjectKey = "test-project" };
 
             _authenticationRepository.Setup(x => x.GetAuthenticationConfigurationAsync()).ReturnsAsync(config);
-            _authenticationRepository.Setup(x => x.UpdateAuthenticationConfigurationAsync(It.IsAny<AuthenticationConfiguration>())).Returns(Task.CompletedTask);
+            _authenticationRepository.Setup(x => x.UpdateAuthenticationConfigurationAsync(It.IsAny<IdentityConfiguration>())).Returns(Task.CompletedTask);
 
             // Act
             await _service.Consume(mfaEvent);
@@ -67,14 +67,14 @@ namespace XUnitTest.DomainService.Worker
         public async Task Consume_WithIsEnableFalse_RemovesMfaGrantType()
         {
             // Arrange
-            var config = new AuthenticationConfiguration
+            var config = new IdentityConfiguration
             {
                 AllowedGrantTypes = new List<string> { "password", MfaGrantType, "refresh_token" }
             };
             var mfaEvent = new MfaActionEvent { IsEnable = false, ProjectKey = "test-project" };
 
             _authenticationRepository.Setup(x => x.GetAuthenticationConfigurationAsync()).ReturnsAsync(config);
-            _authenticationRepository.Setup(x => x.UpdateAuthenticationConfigurationAsync(It.IsAny<AuthenticationConfiguration>())).Returns(Task.CompletedTask);
+            _authenticationRepository.Setup(x => x.UpdateAuthenticationConfigurationAsync(It.IsAny<IdentityConfiguration>())).Returns(Task.CompletedTask);
 
             // Act
             await _service.Consume(mfaEvent);
@@ -89,14 +89,14 @@ namespace XUnitTest.DomainService.Worker
         public async Task Consume_WithIsEnableFalse_AndMfaNotInList_DoesNotThrow()
         {
             // Arrange
-            var config = new AuthenticationConfiguration
+            var config = new IdentityConfiguration
             {
                 AllowedGrantTypes = new List<string> { "password", "refresh_token" }
             };
             var mfaEvent = new MfaActionEvent { IsEnable = false, ProjectKey = "test-project" };
 
             _authenticationRepository.Setup(x => x.GetAuthenticationConfigurationAsync()).ReturnsAsync(config);
-            _authenticationRepository.Setup(x => x.UpdateAuthenticationConfigurationAsync(It.IsAny<AuthenticationConfiguration>())).Returns(Task.CompletedTask);
+            _authenticationRepository.Setup(x => x.UpdateAuthenticationConfigurationAsync(It.IsAny<IdentityConfiguration>())).Returns(Task.CompletedTask);
 
             // Act
             await _service.Consume(mfaEvent);

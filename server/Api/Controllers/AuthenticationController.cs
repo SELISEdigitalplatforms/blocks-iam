@@ -505,27 +505,28 @@ public class AuthenticationController : ControllerBase
 
     #endregion
     [Authorize]
-    [HttpGet("Config")]
+    [HttpGet("config")]
     public async Task<IActionResult> Get([FromQuery] GetAuthenticationConfigurationRequest request)
     {
         
         return await _configurationService.GetAuthenticationConfigAsync();
     }
     [Authorize]
-    [HttpPost("Config_Update")]
+    [HttpPost("config")]
     public async Task<BaseResponse> Update([FromBody] UpdateAuthenticationConfigurationRequest configuration)
     {
         return await _configurationService.UpdateAuthenticationConfigAsync(configuration);
     }
+
+    [HttpPost("user-codes")]
     [Authorize]
-    [HttpPost("GenerateUserCode")]
     public async Task<BaseResponse> GenerateUserCode([FromBody] GenerateUserCodeRequest request)
     {
         return await _authenticationDomainService.GenerateUserCodeByClientAsync(request);
     }
 
+    [HttpGet("user-codes")]
     [Authorize]
-    [HttpGet("GetUserCodes")]
     public async Task<List<GetUserCodesByUserIdResponse>> GetUserCodes()
     {
         return await _authenticationRepository.GetUserCodesByUserIdAsync(BlocksContext.GetContext()?.UserId);
@@ -534,21 +535,21 @@ public class AuthenticationController : ControllerBase
     #region Client Credential Management
 
     [Authorize]
-    [HttpPost("SaveClientCredential")]
+    [HttpPost("client-credentials")]
     public async Task<BaseResponse> SaveClientCredential([FromBody] SaveClientCredentialRequest request)
     {
         return await _authenticationDomainService.SaveClientCredentialAsync(request);
     }
 
     [Authorize]
-    [HttpPost("DeleteClientCredential")]
+    [HttpPost("client-credentials/delete")]
     public async Task<BaseResponse> DeleteClientCredential([FromBody] DeleteClientCredentialRequest request)
     {
         return await _authenticationDomainService.DeleteClientCredentialAsync(request);
     }
 
     [Authorize]
-    [HttpGet("GetClientCredentials")]
+    [HttpGet("client-credentials")]
     public async Task<List<ClientCredential>> GetClientCredentials([FromQuery] GetAllClientCredentialsRequest request)
     {
         return await _authenticationRepository.GetClientCredentialsAsync();

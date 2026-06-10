@@ -369,17 +369,17 @@ namespace Authentication.DomainService.Services
             await collection.UpdateOneAsync(filter, combinedUpdate);
         }
 
-        public async Task<AuthenticationConfiguration> GetAuthenticationConfigurationAsync()
+        public async Task<IdentityConfiguration> GetAuthenticationConfigurationAsync()
         {
-            var collection = GetCollection<AuthenticationConfiguration>();
-            var filter = Builders<AuthenticationConfiguration>.Filter.Where(_ => true);
+            var collection = GetCollection<IdentityConfiguration>();
+            var filter = Builders<IdentityConfiguration>.Filter.Where(_ => true);
             return await (await collection.FindAsync(filter)).FirstOrDefaultAsync();
         }
 
-        public async Task UpdateAuthenticationConfigurationAsync(AuthenticationConfiguration authenticationConfiguration)
+        public async Task UpdateAuthenticationConfigurationAsync(IdentityConfiguration authenticationConfiguration)
         {
-            var collection = GetCollection<AuthenticationConfiguration>();
-            var filter = Builders<AuthenticationConfiguration>.Filter.Eq("_id", authenticationConfiguration.ItemId);
+            var collection = GetCollection<IdentityConfiguration>();
+            var filter = Builders<IdentityConfiguration>.Filter.Eq("_id", authenticationConfiguration.ItemId);
             await collection.ReplaceOneAsync(filter, authenticationConfiguration);
         }
 
