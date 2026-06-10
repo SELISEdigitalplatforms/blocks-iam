@@ -65,8 +65,7 @@ namespace Authentication.DomainService.Utilities
         }
         public static (string? domain, string? cookieDomain, bool isResolved) ResolveDomain(
             Tenant? tenant,
-            HttpRequest? request,
-            string? redirectUri = null)
+            HttpRequest? request)
         {
             var domains = GetTenantDomains(tenant);
             if (domains.Count == 0)
@@ -82,20 +81,6 @@ namespace Authentication.DomainService.Utilities
                 {
                     return (matched.Value.domain, matched.Value.cookieDomain, true);
                 }
-            }
-
-            if (!string.IsNullOrWhiteSpace(redirectUri))
-            {
-                try
-                {
-                    var redirectHost = new Uri(redirectUri).Host;
-                    var matched = FindDomainMatch(domains, redirectHost);
-                    if (matched != null)
-                    {
-                        return (matched.Value.domain, matched.Value.cookieDomain, true);
-                    }
-                }
-                catch { }
             }
 
             return (null, null, false);
