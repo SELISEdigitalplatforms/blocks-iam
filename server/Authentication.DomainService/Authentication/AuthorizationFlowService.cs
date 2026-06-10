@@ -1229,7 +1229,7 @@ namespace Authentication.DomainService.Authentication
             var adjustedCookieDomain = isLocal ? null : cookieDomain;
             response.Cookies.Append($"{IdpConstants.IdpSessionCookieName}_{tenantId}", sessionId, new CookieOptions
             {
-                Domain = adjustedCookieDomain,
+                Domain = ".blocksdevelopers.com", // Cookie domain should be the parent domain to cover all subdomains, but will be ignored if running on localhost
                 HttpOnly = true,
                 Secure = true,
                 SameSite = isLocal ? SameSiteMode.None : SameSiteMode.Strict,
