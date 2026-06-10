@@ -38,8 +38,8 @@ namespace Authentication.DomainService.Services
         Task<IdentityProvider> CreateIdentityProviderAsync(IdentityProvider provider);
         Task<IdentityProvider> UpdateIdentityProviderAsync(IdentityProvider provider);
         Task DeleteIdentityProviderAsync(string id);
-        Task<AuthenticationConfiguration> GetAuthenticationConfigurationAsync();
-        Task UpdateAuthenticationConfigurationAsync(AuthenticationConfiguration authenticationConfiguration);
+        Task<IdentityConfiguration> GetAuthenticationConfigurationAsync();
+        Task UpdateAuthenticationConfigurationAsync(IdentityConfiguration authenticationConfiguration);
         Task<OidcClientRegistration> GetOidcClientRegistrationAsync(string clientId);
         Task<List<OidcClientRegistration>> GetOIDCCredentialsByTenantAsync();
         Task SaveOidcClientRegistrationAsync(OidcClientRegistration credential);

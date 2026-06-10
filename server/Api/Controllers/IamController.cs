@@ -332,7 +332,6 @@ namespace Api.Controllers
         }
 
         [HttpPost("signup-settings")]
-        //[ProtectedEndPoint("blocks-idp::save-signup-setting")]
         [Authorize]
         public async Task<SaveSignUpSettingResponse> SaveSignUpSetting([FromBody] SaveSignUpSettingRequest request)
         {
@@ -340,7 +339,7 @@ namespace Api.Controllers
         }
 
         [HttpGet("signup-settings")]
-        
+        [Authorize]
         public async Task<Dictionary<string, object>> GetSignUpSetting()
         {
             return await _accountService.GetSignUpSettingAsync();
@@ -349,7 +348,6 @@ namespace Api.Controllers
         #endregion
         #region Cloud configuration
         [HttpPost("config")]
-        //[ProtectedEndPoint("blocks-idp::save-iam-configuration")]
         [Authorize]
         public async Task<IActionResult> Save([FromBody] SaveIamConfigurationRequest request)
         {
@@ -358,7 +356,6 @@ namespace Api.Controllers
         }
 
         [HttpGet("config")]
-        //[ProtectedEndPoint("blocks-idp::get-iam-configuration")]
         [Authorize]
         public async Task<GetConfigurationResponse> Get([FromQuery] GetAuthenticationConfigurationRequest request)
         {

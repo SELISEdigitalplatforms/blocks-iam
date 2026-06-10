@@ -281,8 +281,8 @@ namespace Authentication.DomainService.Authentication
                 return;
             }
             var authConfiguration = await _authenticationRepository.GetAuthenticationConfigurationAsync();
-            var accessLifetimeMinutes = Math.Max(authConfiguration?.AccessTokenValidForNumberMinutes ?? AuthenticationConfiguration.DefaultAccessTokenValidForNumberMinutes, 1);
-            var refreshLifetimeMinutes = Math.Max(authConfiguration?.AbsoluteRefreshTokenValidForNumberMinutes ?? AuthenticationConfiguration.DefaultRememberMeRefreshTokenValidForNumberMinutes, 1);
+            var accessLifetimeMinutes = Math.Max(authConfiguration?.AccessTokenValidForNumberMinutes ?? IdentityConfiguration.DefaultAccessTokenValidForNumberMinutes, 1);
+            var refreshLifetimeMinutes = Math.Max(authConfiguration?.AbsoluteRefreshTokenValidForNumberMinutes ?? IdentityConfiguration.DefaultRememberMeRefreshTokenValidForNumberMinutes, 1);
 
             var accessCookieOptions = CreateCookieOptions(cookieDomain, accessExpiresUtc ?? DateTime.UtcNow.AddMinutes(accessLifetimeMinutes));
             var refreshCookieOptions = CreateCookieOptions(cookieDomain, refreshExpiresUtc ?? DateTime.UtcNow.AddMinutes(refreshLifetimeMinutes));

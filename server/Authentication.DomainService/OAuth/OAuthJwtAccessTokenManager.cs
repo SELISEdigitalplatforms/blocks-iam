@@ -51,7 +51,7 @@ namespace Authentication.DomainService.OAuth
             _unifiedTokenSessionService = unifiedTokenSessionService;
         }
 
-        public async Task<TokenResponse> ManageTokenAsync(TokenRequest tokenRequest, AuthenticationConfiguration authenticationConfiguration, User user, StateInfo? stateInfo = null)
+        public async Task<TokenResponse> ManageTokenAsync(TokenRequest tokenRequest, IdentityConfiguration authenticationConfiguration, User user, StateInfo? stateInfo = null)
         {
             var bc = BlocksContext.GetContext();
             
@@ -208,7 +208,7 @@ namespace Authentication.DomainService.OAuth
             return new JwtSecurityTokenHandler().WriteToken(jwtToken);
         }
 
-        public async Task<(string, DateTime)> ManageRefreshTokenAsync(TokenRequest tokenRequest, JwtAccessToken jwtAccessToken, AuthenticationConfiguration authenticationConfiguration, Tenant tenant, User user)
+        public async Task<(string, DateTime)> ManageRefreshTokenAsync(TokenRequest tokenRequest, JwtAccessToken jwtAccessToken, IdentityConfiguration authenticationConfiguration, Tenant tenant, User user)
         {
             var visitorsIpAddresses = _authenticationDomainService.GetVisitorsIpAddresses(tokenRequest.Request.HttpContext) ?? new List<string>();
             // Unify both initial and rotation flows

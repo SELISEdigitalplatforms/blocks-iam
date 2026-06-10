@@ -32,7 +32,7 @@ namespace XUnitTest.DomainService.OAuth.Services
                 BiometricId = "invalid-id",
                 BiometricKey = "invalid-key"
             };
-            var authConfig = new AuthenticationConfiguration();
+            var authConfig = new IdentityConfiguration();
 
             _authenticationRepository
                 .Setup(x => x.AuthenticateBiometricCredentialAsync(request.BiometricId, request.BiometricKey))
@@ -47,7 +47,7 @@ namespace XUnitTest.DomainService.OAuth.Services
             result.ErrorDescription.Should().Be("The biometricId or biometricKey is not valid");
             _authenticationRepository.Verify(x => x.GetUserByIdAsync(It.IsAny<string>()), Times.Never);
             _oAuthJwtAccessTokenManager.Verify(
-                x => x.ManageTokenAsync(It.IsAny<TokenRequest>(), It.IsAny<AuthenticationConfiguration>(), It.IsAny<User>(), It.IsAny<StateInfo?>()),
+                x => x.ManageTokenAsync(It.IsAny<TokenRequest>(), It.IsAny<IdentityConfiguration>(), It.IsAny<User>(), It.IsAny<StateInfo?>()),
                 Times.Never);
         }
 
@@ -60,7 +60,7 @@ namespace XUnitTest.DomainService.OAuth.Services
                 BiometricId = "valid-id",
                 BiometricKey = "valid-key"
             };
-            var authConfig = new AuthenticationConfiguration();
+            var authConfig = new IdentityConfiguration();
             var biometricClient = new BiometricCredential { UserId = "user-123" };
 
             _authenticationRepository
@@ -79,7 +79,7 @@ namespace XUnitTest.DomainService.OAuth.Services
             result.ErrorDescription.Should().Be("The biometricId or biometricKey is not valid");
             _authenticationRepository.Verify(x => x.GetUserByIdAsync(biometricClient.UserId), Times.Once);
             _oAuthJwtAccessTokenManager.Verify(
-                x => x.ManageTokenAsync(It.IsAny<TokenRequest>(), It.IsAny<AuthenticationConfiguration>(), It.IsAny<User>(), It.IsAny<StateInfo?>()),
+                x => x.ManageTokenAsync(It.IsAny<TokenRequest>(), It.IsAny<IdentityConfiguration>(), It.IsAny<User>(), It.IsAny<StateInfo?>()),
                 Times.Never);
         }
 
@@ -92,7 +92,7 @@ namespace XUnitTest.DomainService.OAuth.Services
                 BiometricId = "valid-id",
                 BiometricKey = "valid-key"
             };
-            var authConfig = new AuthenticationConfiguration();
+            var authConfig = new IdentityConfiguration();
             var biometricClient = new BiometricCredential { UserId = "user-123" };
             var inactiveUser = new User
             {
@@ -118,7 +118,7 @@ namespace XUnitTest.DomainService.OAuth.Services
             result.ErrorDescription.Should().Be("The biometricId or biometricKey is not valid");
             _authenticationRepository.Verify(x => x.GetUserByIdAsync(biometricClient.UserId), Times.Once);
             _oAuthJwtAccessTokenManager.Verify(
-                x => x.ManageTokenAsync(It.IsAny<TokenRequest>(), It.IsAny<AuthenticationConfiguration>(), It.IsAny<User>(), It.IsAny<StateInfo?>()),
+                x => x.ManageTokenAsync(It.IsAny<TokenRequest>(), It.IsAny<IdentityConfiguration>(), It.IsAny<User>(), It.IsAny<StateInfo?>()),
                 Times.Never);
         }
 
@@ -132,7 +132,7 @@ namespace XUnitTest.DomainService.OAuth.Services
                 BiometricKey = "valid-key",
                 GrantType = "biometric"
             };
-            var authConfig = new AuthenticationConfiguration();
+            var authConfig = new IdentityConfiguration();
             var biometricClient = new BiometricCredential 
             { 
                 UserId = "user-123",
