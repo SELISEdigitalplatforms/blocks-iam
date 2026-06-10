@@ -16,9 +16,6 @@ namespace Authentication.DomainService.Entities
         public const int DefaultTokenRotationGracePeriodMinutes = 5;
         public const int DefaultMaxTokenRotationAttempts = 3;
         
-        // IP-based rate limiting
-        public const int DefaultMaxLoginAttemptsPerIpPerHour = 100;    // Max attempts from single IP per hour (configurable)
-        public const int DefaultMaxLoginAttemptsPerIpPerDay = 500;     // Max attempts from single IP per day (configurable)
 
         [BsonId]
         public ObjectId ItemId { get; set; }
@@ -33,8 +30,5 @@ namespace Authentication.DomainService.Entities
         public int TokenRotationGracePeriodMinutes { get; set; } = DefaultTokenRotationGracePeriodMinutes;
         public int MaxTokenRotationAttempts { get; set; } = DefaultMaxTokenRotationAttempts;
         
-        // IP-based rate limiting
-        public int MaxLoginAttemptsPerIpPerHour { get; set; } = DefaultMaxLoginAttemptsPerIpPerHour;
-        public int MaxLoginAttemptsPerIpPerDay { get; set; } = DefaultMaxLoginAttemptsPerIpPerDay;
     }
 }
