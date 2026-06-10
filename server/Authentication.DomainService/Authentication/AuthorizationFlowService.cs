@@ -1232,7 +1232,7 @@ namespace Authentication.DomainService.Authentication
                 Domain = adjustedCookieDomain,
                 HttpOnly = true,
                 Secure = true,
-                SameSite = isLocal ? SameSiteMode.None : SameSiteMode.Lax,
+                SameSite = isLocal ? SameSiteMode.None : SameSiteMode.Strict,
                 Path = "/",
                 Expires = absoluteExpiry == default ? DateTime.UtcNow.Add(GetIdpSessionAbsoluteTimeout()) : absoluteExpiry
             });
