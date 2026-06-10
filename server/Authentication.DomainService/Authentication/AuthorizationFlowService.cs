@@ -1224,9 +1224,9 @@ namespace Authentication.DomainService.Authentication
         private void SetIdpSessionCookie(HttpResponse response, string tenantId, string sessionId, DateTime absoluteExpiry)
         {
             var tenant = _tenants.GetTenantByID(tenantId);
-            var (domain, _, _) = DomainResolver.ResolveDomain(tenant, null);
+            var (_, cookieDomain, _) = DomainResolver.ResolveDomain(tenant, null);
             var isLocal = DomainResolver.IsLocalhost();
-            var adjustedCookieDomain = isLocal ? null : domain;
+            var adjustedCookieDomain = isLocal ? null : cookieDomain;
             response.Cookies.Append($"{IdpConstants.IdpSessionCookieName}_{tenantId}", sessionId, new CookieOptions
             {
                 Domain = adjustedCookieDomain,
