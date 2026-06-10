@@ -7,9 +7,6 @@ using CloudConfiguration.DomainService.Authentication.Entities;
 using CloudConfiguration.DomainService.Captcha.Entities;
 using CloudConfiguration.DomainService.Captcha.RequestModel;
 using CloudConfiguration.DomainService.Captcha.ResponseModel;
-using CloudConfiguration.DomainService.IAM.Entities;
-using CloudConfiguration.DomainService.IAM.RequestModel;
-using CloudConfiguration.DomainService.IAM.ResponseModel;
 using CloudConfiguration.DomainService.MFA.RequestModel;
 using CloudConfiguration.DomainService.MFA.ResponseModel;
 using CloudConfiguration.DomainService.MFA.Entities;
@@ -33,7 +30,6 @@ namespace CloudConfiguration.DomainService.Shared.Services
 
         private readonly IConfigurationRepository _configurationRepository;
         private readonly IValidator<SaveCaptchaConfigurationRequest> _captchaConfigurationValidator;
-        private readonly IValidator<SaveIamConfigurationRequest> _iamConfigurationValidator;
         private readonly IValidator<SaveNotificatonConfigurationRequest> _notificatonConfigurationValidator;
         private readonly IValidator<SaveStorageConfigurationRequest> _storageConfigurationValidator;
         private readonly IValidator<MailConfiguration> _mailConfigurationValidator;
@@ -44,7 +40,6 @@ namespace CloudConfiguration.DomainService.Shared.Services
 
         public ConfigurationService(IConfigurationRepository configurationRepository,
                                     IValidator<SaveCaptchaConfigurationRequest> configurationValidator,
-                                    IValidator<SaveIamConfigurationRequest> iamConfigurationValidator,
                                     IValidator<SaveNotificatonConfigurationRequest> notificatonConfigurationValidator,
                                     IValidator<SaveStorageConfigurationRequest> storageConfigurationValidator,
                                     IValidator<MailConfiguration> mailConfigurationValidator,
@@ -54,7 +49,6 @@ namespace CloudConfiguration.DomainService.Shared.Services
         {
             _configurationRepository = configurationRepository;
             _captchaConfigurationValidator = configurationValidator;
-            _iamConfigurationValidator = iamConfigurationValidator;
             _notificatonConfigurationValidator = notificatonConfigurationValidator;
             _storageConfigurationValidator = storageConfigurationValidator;
             _mailConfigurationValidator = mailConfigurationValidator;
@@ -86,16 +80,26 @@ namespace CloudConfiguration.DomainService.Shared.Services
 
         public async Task<BaseResponse> UpdateAuthenticationConfigAsync(UpdateAuthenticationConfigurationRequest configuration)
         {
-            var authConfiguration = new AuthenticationConfiguration
+            var currentConfiguration = await _configurationRepository.GetAuthenticationConfigurationAsync();
+
+            var authConfiguration = new IdentityConfiguration
             {
-                ItemId = ObjectId.Parse(configuration.ItemId),
+                ItemId = currentConfiguration?.ItemId ?? ObjectId.Parse(configuration.ItemId),
                 RefreshTokenValidForNumberMinutes = configuration.RefreshTokenValidForNumberMinutes,
                 AbsoluteRefreshTokenValidForNumberMinutes = configuration.AbsoluteRefreshTokenValidForNumberMinutes,
                 AccessTokenValidForNumberMinutes = configuration.AccessTokenValidForNumberMinutes,
                 RememberMeRefreshTokenValidForNumberMinutes = configuration.RememberMeRefreshTokenValidForNumberMinutes,
                 AllowedGrantTypes = configuration.AllowedGrantTypes,
                 GetNumberOfWrongAttemptsToLockTheAccount = configuration.GetNumberOfWrongAttemptsToLockTheAccount,
-                AccountLockDurationInMinutes = configuration.AccountLockDurationInMinutes
+                AccountLockDurationInMinutes = configuration.AccountLockDurationInMinutes,
+                PublicCertificatePath = currentConfiguration?.PublicCertificatePath,
+                AccountActivationPath = currentConfiguration?.AccountActivationPath,
+                AccountVerificationPath = currentConfiguration?.AccountVerificationPath,
+                RecoverAccountPath = currentConfiguration?.RecoverAccountPath,
+                ActivationUrlLifetimeInMinutes = currentConfiguration?.ActivationUrlLifetimeInMinutes ?? 60 * 24,
+                RecoverAccountUrlLifetimeInMinutes = currentConfiguration?.RecoverAccountUrlLifetimeInMinutes ?? 10,
+                LogoutOnPasswordChange = currentConfiguration?.LogoutOnPasswordChange ?? true,
+                PasswordStrengthCheckerRegex = currentConfiguration?.PasswordStrengthCheckerRegex
             };
 
             await _configurationRepository.UpdateAuthenticationConfigAsync(authConfiguration);
@@ -160,49 +164,6 @@ namespace CloudConfiguration.DomainService.Shared.Services
             repoConfiguration.IsEnable = configuration.IsEnable;
 
             return repoConfiguration;
-        }
-
-        #endregion
-
-        #region IAM
-
-        public async Task<BaseMutationResponse> SaveIamConfigurationAsync(SaveIamConfigurationRequest request)
-        {
-            var validationResult = await _iamConfigurationValidator.ValidateAsync(request);
-
-            if (!validationResult.IsValid)
-            {
-                return new BaseMutationResponse
-                {
-                    Errors = validationResult.Errors.ToDictionary(x => x.PropertyName, x => x.ErrorMessage)
-                };
-            }
-
-            await Process(request);
-
-            return new BaseMutationResponse { IsSuccess = true };
-        }
-
-        public async Task<GetConfigurationResponse> GetIamConfigurationAsync()
-        {
-            var result = await _configurationRepository.GetIamConfigurationAsync();
-            return new GetConfigurationResponse { Data = result };
-        }
-
-        public async Task Process(SaveIamConfigurationRequest request)
-        {
-            var config = await _configurationRepository.GetIamConfigurationAsync() ?? new IamConfiguration();
-
-            config.AccountActivationUrl = request.AccountActivationUrl;
-            config.AccountVerificationUrl = request.AccountVerificationUrl;
-            config.RecoverAccountUrl = request.RecoverAccountUrl;
-            config.ActivationUrlLifetimeInMinutes = request.ActivationUrlLifetimeInMinutes;
-            config.RecoverAccountUrlLifetimeInMinutes = request.RecoverAccountUrlLifetimeInMinutes;
-            config.LogoutOnPasswordChange = request.LogoutOnPasswordChange;
-            config.PasswordStrengthCheckerRegex = string.IsNullOrWhiteSpace(request.PasswordStrengthCheckerRegex) ? config.PasswordStrengthCheckerRegex : request.PasswordStrengthCheckerRegex;
-
-            await _configurationRepository.SaveIamConfigurationAsync(config);
-
         }
 
         #endregion

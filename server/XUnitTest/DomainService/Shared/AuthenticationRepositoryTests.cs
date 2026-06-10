@@ -758,7 +758,7 @@ namespace XUnitTest.DomainService.Shared
                 It.IsAny<CancellationToken>()))
                 .ReturnsAsync(mockCursor.Object);
 
-            _dbContextProvider.Setup(x => x.GetCollection<IdentityConfiguration>("AuthenticationConfigurations"))
+            _dbContextProvider.Setup(x => x.GetCollection<IdentityConfiguration>("IdentityConfigurations"))
                 .Returns(mockCollection.Object);
 
             // Act
@@ -791,7 +791,7 @@ namespace XUnitTest.DomainService.Shared
                 It.IsAny<CancellationToken>()))
                 .ReturnsAsync(replaceResult);
 
-            _dbContextProvider.Setup(x => x.GetCollection<IdentityConfiguration>("AuthenticationConfigurations"))
+            _dbContextProvider.Setup(x => x.GetCollection<IdentityConfiguration>("IdentityConfigurations"))
                 .Returns(mockCollection.Object);
 
             // Act

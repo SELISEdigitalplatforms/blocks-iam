@@ -519,7 +519,7 @@ namespace Iam.DomainService.Accounts
         {
             var config = await _repository.GetIamConfigurationAsync();
             var key = Guid.NewGuid().ToString("n");
-            var recoverAccountUrl = string.Format("{0}?code={1}&lang={2}", config.RecoverAccountUrl, key, user.Language);
+            var recoverAccountUrl = string.Format("{0}?code={1}&lang={2}", config.RecoverAccountPath, key, user.Language);
 
             await _cacheClient.AddStringValueAsync(key, user.ItemId, config.RecoverAccountUrlLifetimeInMinutes * 60);
 
@@ -718,7 +718,7 @@ namespace Iam.DomainService.Accounts
         {
             var config = await _repository.GetIamConfigurationAsync();
             var key = Guid.NewGuid().ToString("n");
-            var accountActivationUri = string.Format("{0}?code={1}&lang={2}", config.AccountActivationUrl, key, user.Language);
+            var accountActivationUri = string.Format("{0}?code={1}&lang={2}", config.AccountActivationPath, key, user.Language);
 
             await _cacheClient.AddStringValueAsync(key, user.ItemId, config.ActivationUrlLifetimeInMinutes * 60);
 
