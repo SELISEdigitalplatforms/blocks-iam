@@ -62,7 +62,7 @@ namespace CloudConfiguration.DomainService.Shared.Services
         public async Task<IActionResult> GetAuthenticationConfigAsync()
         {
             var config = await _configurationRepository.GetAuthenticationConfigurationAsync();
-            var publicCertificatePath = (_tenants.GetTenantByID(BlocksContext.GetContext()?.TenantId ?? ""))?.JwtTokenParameters.PublicCertificatePath;
+            var publicCertificatePath = _tenants.GetTenantByID(BlocksContext.GetContext()?.TenantId ?? "")?.JwtTokenParameters.PublicCertificatePath;
 
             return new OkObjectResult(new
             {
@@ -74,33 +74,115 @@ namespace CloudConfiguration.DomainService.Shared.Services
                 config.AllowedGrantTypes,
                 config.GetNumberOfWrongAttemptsToLockTheAccount,
                 config.AccountLockDurationInMinutes,
-                PublicCertificatePath = publicCertificatePath
+                PublicCertificatePath = publicCertificatePath,
+                config.AccountActivationPath,
+                config.AccountVerificationPath,
+                config.RecoverAccountPath,
+                config.IsOidcEnabled,
+                config.AccountActionBaseUrl,
+                config.ActivationUrlLifetimeInMinutes,
+                config.RecoverAccountUrlLifetimeInMinutes,
+                config.LogoutOnPasswordChange,
+                config.PasswordStrengthCheckerRegex
             });
         }
 
         public async Task<BaseResponse> UpdateAuthenticationConfigAsync(UpdateAuthenticationConfigurationRequest configuration)
         {
             var currentConfiguration = await _configurationRepository.GetAuthenticationConfigurationAsync();
+            bool? isOidcEnabled = currentConfiguration == null ? null : currentConfiguration.IsOidcEnabled;
+            var accountActionBaseUrl = currentConfiguration?.AccountActionBaseUrl;
+
+            var refreshTokenValidForNumberMinutes = configuration.RefreshTokenValidForNumberMinutes > 0
+                ? configuration.RefreshTokenValidForNumberMinutes
+                : currentConfiguration?.RefreshTokenValidForNumberMinutes ?? IdentityConfiguration.DefaultRefreshTokenValidForNumberMinutes;
+
+            var absoluteRefreshTokenValidForNumberMinutes = configuration.AbsoluteRefreshTokenValidForNumberMinutes > 0
+                ? configuration.AbsoluteRefreshTokenValidForNumberMinutes
+                : currentConfiguration?.AbsoluteRefreshTokenValidForNumberMinutes ?? IdentityConfiguration.DefaultAbsoluteRefreshTokenValidForNumberMinutes;
+
+            var accessTokenValidForNumberMinutes = configuration.AccessTokenValidForNumberMinutes > 0
+                ? configuration.AccessTokenValidForNumberMinutes
+                : currentConfiguration?.AccessTokenValidForNumberMinutes ?? IdentityConfiguration.DefaultAccessTokenValidForNumberMinutes;
+
+            var rememberMeRefreshTokenValidForNumberMinutes = configuration.RememberMeRefreshTokenValidForNumberMinutes > 0
+                ? configuration.RememberMeRefreshTokenValidForNumberMinutes
+                : currentConfiguration?.RememberMeRefreshTokenValidForNumberMinutes ?? IdentityConfiguration.DefaultRememberMeRefreshTokenValidForNumberMinutes;
+
+            var allowedGrantTypes = configuration.AllowedGrantTypes != null && configuration.AllowedGrantTypes.Count > 0
+                ? configuration.AllowedGrantTypes
+                : currentConfiguration?.AllowedGrantTypes ?? [];
+
+            var getNumberOfWrongAttemptsToLockTheAccount = configuration.GetNumberOfWrongAttemptsToLockTheAccount > 0
+                ? configuration.GetNumberOfWrongAttemptsToLockTheAccount
+                : currentConfiguration?.GetNumberOfWrongAttemptsToLockTheAccount ?? IdentityConfiguration.DefaultGetNumberOfWrongAttemptsToLockTheAccount;
+
+            var accountLockDurationInMinutes = configuration.AccountLockDurationInMinutes > 0
+                ? configuration.AccountLockDurationInMinutes
+                : currentConfiguration?.AccountLockDurationInMinutes ?? IdentityConfiguration.DefaultAccountLockDurationInMinutes;
 
             var authConfiguration = new IdentityConfiguration
             {
                 ItemId = currentConfiguration?.ItemId ?? ObjectId.Parse(configuration.ItemId),
-                RefreshTokenValidForNumberMinutes = configuration.RefreshTokenValidForNumberMinutes,
-                AbsoluteRefreshTokenValidForNumberMinutes = configuration.AbsoluteRefreshTokenValidForNumberMinutes,
-                AccessTokenValidForNumberMinutes = configuration.AccessTokenValidForNumberMinutes,
-                RememberMeRefreshTokenValidForNumberMinutes = configuration.RememberMeRefreshTokenValidForNumberMinutes,
-                AllowedGrantTypes = configuration.AllowedGrantTypes,
-                GetNumberOfWrongAttemptsToLockTheAccount = configuration.GetNumberOfWrongAttemptsToLockTheAccount,
-                AccountLockDurationInMinutes = configuration.AccountLockDurationInMinutes,
-                PublicCertificatePath = currentConfiguration?.PublicCertificatePath,
-                AccountActivationPath = currentConfiguration?.AccountActivationPath,
-                AccountVerificationPath = currentConfiguration?.AccountVerificationPath,
-                RecoverAccountPath = currentConfiguration?.RecoverAccountPath,
-                ActivationUrlLifetimeInMinutes = currentConfiguration?.ActivationUrlLifetimeInMinutes ?? 60 * 24,
-                RecoverAccountUrlLifetimeInMinutes = currentConfiguration?.RecoverAccountUrlLifetimeInMinutes ?? 10,
-                LogoutOnPasswordChange = currentConfiguration?.LogoutOnPasswordChange ?? true,
-                PasswordStrengthCheckerRegex = currentConfiguration?.PasswordStrengthCheckerRegex
+                RefreshTokenValidForNumberMinutes = refreshTokenValidForNumberMinutes,
+                AbsoluteRefreshTokenValidForNumberMinutes = absoluteRefreshTokenValidForNumberMinutes,
+                AccessTokenValidForNumberMinutes = accessTokenValidForNumberMinutes,
+                RememberMeRefreshTokenValidForNumberMinutes = rememberMeRefreshTokenValidForNumberMinutes,
+                AllowedGrantTypes = allowedGrantTypes,
+                GetNumberOfWrongAttemptsToLockTheAccount = getNumberOfWrongAttemptsToLockTheAccount,
+                AccountLockDurationInMinutes = accountLockDurationInMinutes
             };
+
+            // Backward compatibility: only carry these fields if they already exist with meaningful values.
+            if (!string.IsNullOrWhiteSpace(currentConfiguration?.PublicCertificatePath))
+            {
+                authConfiguration.PublicCertificatePath = currentConfiguration.PublicCertificatePath;
+            }
+
+            if (!string.IsNullOrWhiteSpace(currentConfiguration?.AccountActivationPath))
+            {
+                authConfiguration.AccountActivationPath = currentConfiguration.AccountActivationPath;
+            }
+
+            if (!string.IsNullOrWhiteSpace(currentConfiguration?.AccountVerificationPath))
+            {
+                authConfiguration.AccountVerificationPath = currentConfiguration.AccountVerificationPath;
+            }
+
+            if (!string.IsNullOrWhiteSpace(currentConfiguration?.RecoverAccountPath))
+            {
+                authConfiguration.RecoverAccountPath = currentConfiguration.RecoverAccountPath;
+            }
+
+            if (currentConfiguration?.ActivationUrlLifetimeInMinutes > 0)
+            {
+                authConfiguration.ActivationUrlLifetimeInMinutes = currentConfiguration.ActivationUrlLifetimeInMinutes;
+            }
+
+            if (currentConfiguration?.RecoverAccountUrlLifetimeInMinutes > 0)
+            {
+                authConfiguration.RecoverAccountUrlLifetimeInMinutes = currentConfiguration.RecoverAccountUrlLifetimeInMinutes;
+            }
+
+            if (currentConfiguration != null)
+            {
+                authConfiguration.LogoutOnPasswordChange = currentConfiguration.LogoutOnPasswordChange;
+            }
+
+            if (!string.IsNullOrWhiteSpace(currentConfiguration?.PasswordStrengthCheckerRegex))
+            {
+                authConfiguration.PasswordStrengthCheckerRegex = currentConfiguration.PasswordStrengthCheckerRegex;
+            }
+
+            if (isOidcEnabled.HasValue)
+            {
+                authConfiguration.IsOidcEnabled = isOidcEnabled.Value;
+            }
+
+            if (!string.IsNullOrWhiteSpace(accountActionBaseUrl))
+            {
+                authConfiguration.AccountActionBaseUrl = accountActionBaseUrl;
+            }
 
             await _configurationRepository.UpdateAuthenticationConfigAsync(authConfiguration);
 
