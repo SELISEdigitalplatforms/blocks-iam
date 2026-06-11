@@ -354,8 +354,8 @@ export interface ISaveSignUpSettingResponse {
 }
 
 export interface IGetSignUpSettingResponse {
-  isEmailPasswordSignUpEnabled: boolean;
-  isSSoSignUpEnabled: boolean;
-  defaultRolesForNewUser: string[];
-  defaultPermissionsForNewUser: string[];
+  IsEmailPasswordSignUpEnabled: boolean;
+  IsSSoSignUpEnabled: boolean;
+  DefaultRolesForNewUser: string[];
+  DefaultPermissionsForNewUser: string[];
 }
