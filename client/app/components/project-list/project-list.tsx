@@ -11,7 +11,7 @@ import {
 } from "@/components/ui-kits/dropdown-menu/dropdown-menu";
 import { useGetProject, useGetProjects } from "@/hooks/use-project";
 import { IProject } from "@/models/project.model";
-import { useProjectStore } from "@/store/useProjectStore";
+import { useProjectStore } from "@seliseblocks/blocks-kit";
 const redirectPaths: Record<string, string> = {
   "/services/iam/user-detail/*": "/services/iam",
   "/services/iam/role-detail/*": "/services/iam?tab=roles",

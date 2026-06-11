@@ -15,7 +15,7 @@ import { isErrorWithErrors } from "@/lib/error";
 import { useCaptcha } from "@blocks-idp/captcha/hooks/use-captcha";
 import { PasswordStrengthChecker } from "@blocks-idp/authentication/components/password-strength-checker/password-strength-checker";
 import { Switch } from "@/components/ui-kits/switch/switch";
-import { ArrowRight, Loader } from "lucide-react";
+import { ArrowRight, Eye, EyeOff, Loader } from "lucide-react";
 import { useOidcAuthAnimation } from "../oidc/oidc-auth-shell";
 
 type ResetPasswordFormProps = { code: string };
@@ -25,6 +25,8 @@ export const ResetPasswordForm = ({ code }: ResetPasswordFormProps) => {
   const animCtx = useOidcAuthAnimation();
   const formRef = useRef<HTMLFormElement>(null);
   const [requirementsMet, setRequirementsMet] = useState(false);
+  const [showPassword, setShowPassword] = useState(false);
+  const [showConfirmPassword, setShowConfirmPassword] = useState(false);
 
   const form = useForm<ResetPasswordFormValuesType>({
     defaultValues: resetPasswordFormDefaultValue,
@@ -123,15 +125,28 @@ export const ResetPasswordForm = ({ code }: ResetPasswordFormProps) => {
       >
         <div className="flex flex-col gap-2">
           <label className="oidc-sci-fi-label">New Password</label>
-          <input
-            type="password"
-            placeholder="••••••••"
-            autoComplete="new-password"
-            className="oidc-sci-fi-input"
-            aria-invalid={!!form.formState.errors.password}
-            disabled={isAuthenticating}
-            {...form.register("password")}
-          />
+          <div className="relative">
+            <input
+              type={showPassword ? "text" : "password"}
+              placeholder="••••••••"
+              autoComplete="new-password"
+              className="oidc-sci-fi-input"
+              style={{ paddingRight: "2.75rem" }}
+              aria-invalid={!!form.formState.errors.password}
+              disabled={isAuthenticating}
+              {...form.register("password")}
+            />
+            <button
+              type="button"
+              tabIndex={-1}
+              onClick={() => setShowPassword(v => !v)}
+              className="absolute right-3 top-1/2 -translate-y-1/2"
+              style={{ color: "var(--muted)", background: "none", border: "none", cursor: "pointer", padding: 0 }}
+              aria-label={showPassword ? "Hide password" : "Show password"}
+            >
+              {showPassword ? <EyeOff size={16} /> : <Eye size={16} />}
+            </button>
+          </div>
           {form.formState.errors.password && (
             <p className="text-xs" style={{ color: "var(--danger)" }}>{form.formState.errors.password.message}</p>
           )}
@@ -139,15 +154,28 @@ export const ResetPasswordForm = ({ code }: ResetPasswordFormProps) => {
 
         <div className="flex flex-col gap-2">
           <label className="oidc-sci-fi-label">Confirm Password</label>
-          <input
-            type="password"
-            placeholder="••••••••"
-            autoComplete="new-password"
-            className="oidc-sci-fi-input"
-            aria-invalid={!!form.formState.errors.confirmPassword}
-            disabled={isAuthenticating}
-            {...form.register("confirmPassword")}
-          />
+          <div className="relative">
+            <input
+              type={showConfirmPassword ? "text" : "password"}
+              placeholder="••••••••"
+              autoComplete="new-password"
+              className="oidc-sci-fi-input"
+              style={{ paddingRight: "2.75rem" }}
+              aria-invalid={!!form.formState.errors.confirmPassword}
+              disabled={isAuthenticating}
+              {...form.register("confirmPassword")}
+            />
+            <button
+              type="button"
+              tabIndex={-1}
+              onClick={() => setShowConfirmPassword(v => !v)}
+              className="absolute right-3 top-1/2 -translate-y-1/2"
+              style={{ color: "var(--muted)", background: "none", border: "none", cursor: "pointer", padding: 0 }}
+              aria-label={showConfirmPassword ? "Hide password" : "Show password"}
+            >
+              {showConfirmPassword ? <EyeOff size={16} /> : <Eye size={16} />}
+            </button>
+          </div>
           {form.formState.errors.confirmPassword && (
             <p className="text-xs" style={{ color: "var(--danger)" }}>{form.formState.errors.confirmPassword.message}</p>
           )}

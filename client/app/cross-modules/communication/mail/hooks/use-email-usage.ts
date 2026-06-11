@@ -1,6 +1,6 @@
 import { useQuery } from "@tanstack/react-query";
 import { emailService } from "@blocks-communication/mail/services/email.services";
-import { useProjectStore } from "@/store/useProjectStore";
+import { useProjectStore } from "@seliseblocks/blocks-kit";
 import { EMAIL_USAGE_REFETCH_INTERVAL } from "@blocks-communication/mail/constants/email-usage";
 
 export const useGetEmailUsage = (
