@@ -98,7 +98,16 @@ namespace Authentication.DomainService.OAuth
                 return new TokenResponse { Error = OAuthError.InValidUseNamePassword, ErrorDescription = "Invalid username or password", StatusCode = 401 };
             }
 
-            if (user.FailedLoginCount > 0 || user.LastFailedLoginUtc.HasValue || user.LockoutUntilUtc.HasValue)
+            request.OrganizationId = ResolveSignInOrganizationId(user, request.OrganizationId);
+            var tokenResponse = await _oAuthJwtAccessTokenManager.ManageTokenAsync(request, authenticationConfiguration, user);
+
+            if (tokenResponse != null
+                && string.IsNullOrWhiteSpace(tokenResponse.Error)
+                && (user.FailedLoginCount > 0
+                    || user.LastFailedLoginUtc.HasValue
+                    || user.FailedMfaCount > 0
+                    || user.LastFailedMfaUtc.HasValue
+                    || user.LockoutUntilUtc.HasValue))
             {
                 await _oAuthRepository.UpdatePartialAsync<User>(
                     user.ItemId,
@@ -106,15 +115,14 @@ namespace Authentication.DomainService.OAuth
                     {
                         { nameof(User.FailedLoginCount), 0 },
                         { nameof(User.LastFailedLoginUtc), null! },
+                        { nameof(User.FailedMfaCount), 0 },
+                        { nameof(User.LastFailedMfaUtc), null! },
                         { nameof(User.LockoutUntilUtc), null! },
                         { nameof(User.LockoutCount), 0 }, // Reset exponential backoff counter on successful login
                         { nameof(User.LastUpdatedDate), DateTime.UtcNow },
                         { nameof(User.LastUpdatedBy), user.ItemId }
                     });
             }
-
-            request.OrganizationId = ResolveSignInOrganizationId(user, request.OrganizationId);
-            var tokenResponse = await _oAuthJwtAccessTokenManager.ManageTokenAsync(request, authenticationConfiguration, user);
 
             if (tokenResponse != null
                 && string.IsNullOrWhiteSpace(tokenResponse.Error)

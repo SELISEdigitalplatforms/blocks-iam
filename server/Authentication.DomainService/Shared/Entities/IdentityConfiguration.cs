@@ -12,7 +12,7 @@ namespace Authentication.DomainService.Entities
         public const int DefaultRememberMeRefreshTokenValidForNumberMinutes = 30 * 60 * 24;
         public const int DefaultRememberMeAbsoluteRefreshTokenValidForNumberMinutes = 3 * 30 * 60 * 24;
         public const int DefaultGetNumberOfWrongAttemptsToLockTheAccount = 5;
-        public const int DefaultAccountLockDurationInMinutes = 5;
+        public const int DefaultAccountLockDurationInMinutes = 15;
         public const int DefaultTokenRotationGracePeriodMinutes = 5;
         public const int DefaultMaxTokenRotationAttempts = 3;
         

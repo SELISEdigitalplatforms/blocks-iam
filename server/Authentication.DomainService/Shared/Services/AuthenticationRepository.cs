@@ -229,6 +229,69 @@ namespace Authentication.DomainService.Services
             return userAfterLock ?? userAfterIncrement;
         }
 
+        public async Task<User?> IncrementFailedMfaAndApplyLockoutAsync(string userId, int lockThreshold, int lockDurationInMinutes, DateTime nowUtc)
+        {
+            var collection = GetCollection<User>();
+
+            var incrementFilter = Builders<User>.Filter.Eq(x => x.ItemId, userId);
+            var incrementUpdate = Builders<User>.Update
+                .Inc(x => x.FailedMfaCount, 1)
+                .Set(x => x.LastFailedMfaUtc, nowUtc)
+                .Set(x => x.LastUpdatedDate, nowUtc)
+                .Set(x => x.LastUpdatedBy, userId);
+
+            var userAfterIncrement = await collection.FindOneAndUpdateAsync(
+                incrementFilter,
+                incrementUpdate,
+                new FindOneAndUpdateOptions<User>
+                {
+                    ReturnDocument = ReturnDocument.After
+                });
+
+            if (userAfterIncrement == null)
+            {
+                return null;
+            }
+
+            if (userAfterIncrement.FailedMfaCount < lockThreshold)
+            {
+                return userAfterIncrement;
+            }
+
+            if (userAfterIncrement.LockoutUntilUtc.HasValue && userAfterIncrement.LockoutUntilUtc.Value > nowUtc)
+            {
+                return userAfterIncrement;
+            }
+
+            var actualLockoutDurationInMinutes = CalculateExponentialBackoffLockoutDuration(
+                userAfterIncrement.LockoutCount,
+                userAfterIncrement.LastLockoutUtc,
+                lockDurationInMinutes,
+                7);
+
+            var lockoutUntilUtc = nowUtc.AddMinutes(actualLockoutDurationInMinutes);
+            var lockFilter = Builders<User>.Filter.And(
+                Builders<User>.Filter.Eq(x => x.ItemId, userId),
+                Builders<User>.Filter.Eq(x => x.FailedMfaCount, userAfterIncrement.FailedMfaCount));
+
+            var lockUpdate = Builders<User>.Update
+                .Set(x => x.LockoutUntilUtc, lockoutUntilUtc)
+                .Inc(x => x.LockoutCount, 1)
+                .Set(x => x.LastLockoutUtc, nowUtc)
+                .Set(x => x.LastUpdatedDate, nowUtc)
+                .Set(x => x.LastUpdatedBy, userId);
+
+            var userAfterLock = await collection.FindOneAndUpdateAsync(
+                lockFilter,
+                lockUpdate,
+                new FindOneAndUpdateOptions<User>
+                {
+                    ReturnDocument = ReturnDocument.After
+                });
+
+            return userAfterLock ?? userAfterIncrement;
+        }
+
         /// <summary>
         /// Calculates exponential backoff lockout duration.
         /// - 1st lockout: baseDuration (5 min)
