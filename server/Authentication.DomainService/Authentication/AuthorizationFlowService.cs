@@ -377,7 +377,7 @@ namespace Authentication.DomainService.Authentication
 
                     var claimTenantId = userPrincipal?.FindFirst("tenant_id")?.Value;
 
-                    codeModel.Impersonated = true;
+                    codeModel.Impersonated = impersonated;
                     codeModel.ImpersonatedUserId = claimUserId;
                     codeModel.TargetedTenantId = claimTenantId;
                 }
@@ -612,7 +612,8 @@ namespace Authentication.DomainService.Authentication
             // Fallback: client not configured for cookie-based token delivery or domain resolution failed
             if (useTokensCookie && !exchangeResult.CanSetCookies)
             {
-                _logger.LogWarning($"Cannot set cookies for client {client_id}: domain resolution failed. Returning tokens in response body.");
+               // _logger.LogWarning($"Cannot set cookies for client {client_id}: domain resolution failed. Returning tokens in response body.");
+                Console.WriteLine($"Cannot set cookies for client {client_id}: domain resolution failed. Returning tokens in response body.");
             }
 
             return new OkObjectResult(new
