@@ -71,6 +71,20 @@ export const router = createBrowserRouter([
     children: [
       // ── Callbacks outside AuthResolver ──
       {
+        path: "/oidc",
+        element: <OidcLayout />,
+        children: [
+          { index: true, element: <OidcIndexPage /> },
+          { path: "login", element: <OidcLoginPage /> },
+          { path: "permission", element: <OidcPermissionPage /> },
+          { path: "error", element: <OidcErrorPage /> },
+          {
+            path: "email-sent-confirmation",
+            element: <OidcEmailSentConfirmationPage />,
+          },
+        ],
+      },
+      {
         element: <Outlet />,
         children: [
           {
@@ -101,7 +115,7 @@ export const router = createBrowserRouter([
 
             children: [
               { path: "/login", element: <LoginPage /> },
-              
+
               {
                 element: <AuthLayout />,
                 children: [
@@ -131,20 +145,6 @@ export const router = createBrowserRouter([
                   {
                     path: "/reset-password-success",
                     element: <ResetPasswordSuccessPage />,
-                  },
-                ],
-              },
-              {
-                path: "/oidc",
-                element: <OidcLayout />,
-                children: [
-                  { index: true, element: <OidcIndexPage /> },
-                  { path: "login", element: <OidcLoginPage /> },
-                  { path: "permission", element: <OidcPermissionPage /> },
-                  { path: "error", element: <OidcErrorPage /> },
-                  {
-                    path: "email-sent-confirmation",
-                    element: <OidcEmailSentConfirmationPage />,
                   },
                 ],
               },
