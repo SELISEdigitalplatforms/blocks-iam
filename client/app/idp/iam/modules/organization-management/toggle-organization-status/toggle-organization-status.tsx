@@ -9,9 +9,8 @@ import {
   DialogTrigger,
 } from "@/components/ui-kits/dialog/dialog";
 import { showErrorToast, showSuccessToast } from "@/hooks/use-toast";
-import { useProjectStore } from "@/store/useProjectStore";
 import { IOrganization } from "@blocks-idp/iam/models/organization";
-import { useSaveOrganization } from "@blocks-idp/iam/hooks/use-organization";
+import { useUpdateOrganization } from "@blocks-idp/iam/hooks/use-organization";
 
 type ToggleOrganizationStatusProps = {
   organization: IOrganization;
@@ -22,8 +21,7 @@ export const ToggleOrganizationStatus = ({
   organization,
   onClose,
 }: ToggleOrganizationStatusProps) => {
-  const { mutateAsync, isPending } = useSaveOrganization();
-  const tenantId = useProjectStore().selectedProject?.tenantId || "";
+  const { mutateAsync, isPending } = useUpdateOrganization();
 
   const isEnabling = !organization.isEnable;
   const action = isEnabling ? "enable" : "disable";
@@ -33,9 +31,8 @@ export const ToggleOrganizationStatus = ({
   const handleConfirm = async () => {
     try {
       const res = await mutateAsync({
-        projectKey: tenantId,
-        name: organization.name,
         itemId: organization.itemId,
+        name: organization.name,
         isEnable: isEnabling,
       });
       if (!res.isSuccess) {

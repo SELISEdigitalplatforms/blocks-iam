@@ -19,7 +19,7 @@ export const CLOUD_BUILD_ENDPOINTS = {
 
   // Repository Management
   REPOS: "/cloudbuild/v1/repos",
-  REPOS_LIST: "/cloudbuild/v1/repos/list",
+  REPOS_LIST: "/api/build/repos-list",
   REPO_DETAILS: "/cloudbuild/v1/repos/details",
 
   // Build Settings

@@ -16,12 +16,11 @@ import { Checkbox } from "@/components/ui-kits/checkbox/checkbox";
 import { showErrorToast, showSuccessToast } from "@/hooks/use-toast";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { Form, FormControl, FormField, FormItem, FormLabel } from "@/components/ui-kits/form/form";
-import { useProjectStore } from "@/store/useProjectStore";
-import { useSaveOrganizationConfig } from "@blocks-idp/iam/hooks/use-organization";
+import { useProjectStore } from "@seliseblocks/blocks-kit";
+import { useGetOrganizationConfig, useSaveOrganizationConfig } from "@blocks-idp/iam/hooks/use-organization";
 import { useGetRoles } from "@blocks-idp/iam/hooks/use-roles";
 import {
   IOrganizationConfigForm,
-  IOrganizationConfigResponse,
   organizationConfigFormDefaultValues,
   organizationConfigFormSchema,
 } from "@blocks-idp/iam/models/organization-config.model";
@@ -38,17 +37,15 @@ import { Badge } from "@/components/ui-kits/badge/badge";
 import { cn } from "@/lib/utils";
 import { ChevronsUpDown, Check, Settings } from "lucide-react";
 
-interface OrganizationConfigProps {
-  configData: IOrganizationConfigResponse | null | undefined;
-  isLoading: boolean;
-}
+interface OrganizationConfigProps {}
 
-export const OrganizationConfig = ({ configData, isLoading }: OrganizationConfigProps) => {
+export const OrganizationConfig = ({}: OrganizationConfigProps) => {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [selectedRoles, setSelectedRoles] = useState<string[]>([]);
   const tenantId = useProjectStore().selectedProject?.tenantId || "";
 
-  const { mutateAsync, isPending } = useSaveOrganizationConfig();
+  const { mutateAsync, isPending } = useSaveOrganizationConfig(tenantId);
+  const { data: configData, isLoading } = useGetOrganizationConfig(tenantId);
 
   const { data: rolesData, isLoading: isRolesLoading } = useGetRoles({
     projectKey: tenantId,
@@ -69,20 +66,16 @@ export const OrganizationConfig = ({ configData, isLoading }: OrganizationConfig
     resolver: zodResolver(organizationConfigFormSchema),
   });
 
-  const {
-    formState: { isDirty },
-  } = form;
-
   const isMultiOrgEnabled = form.watch("isMultiOrgEnabled");
 
   const handleModalOpenChange = (value: boolean) => {
     if (!value) {
       form.reset({
-        isMultiOrgEnabled: configData?.isMultiOrgEnabled ?? false,
-        allowCreationFromCloud: configData?.allowCreationFromCloud ?? true,
-        allowCreationFromConstruct: configData?.allowCreationFromConstruct ?? false,
+        isMultiOrgEnabled: configData?.IsMultiOrgEnabled ?? false,
+        allowOrgCreationFromCloud: configData?.AllowOrgCreationFromCloud ?? true,
+        allowOrgCreationFromConstruct: configData?.AllowOrgCreationFromConstruct ?? false,
       });
-      setSelectedRoles(configData?.roles ?? []);
+      setSelectedRoles(configData?.DefaultRoleOnOrgCreation ?? []);
     }
     setIsModalOpen(value);
   };
@@ -91,32 +84,33 @@ export const OrganizationConfig = ({ configData, isLoading }: OrganizationConfig
   useEffect(() => {
     if (configData) {
       form.reset({
-        isMultiOrgEnabled: configData.isMultiOrgEnabled ?? false,
-        allowCreationFromCloud: configData.allowCreationFromCloud ?? true,
-        allowCreationFromConstruct: configData.allowCreationFromConstruct ?? false,
+        isMultiOrgEnabled: configData.IsMultiOrgEnabled ?? false,
+        allowOrgCreationFromCloud: configData.AllowOrgCreationFromCloud ?? true,
+        allowOrgCreationFromConstruct: configData.AllowOrgCreationFromConstruct ?? false,
       });
-      setSelectedRoles(configData.roles ?? []);
+      setSelectedRoles(configData.DefaultRoleOnOrgCreation ?? []);
     }
   }, [configData, form]);
 
   // Reset dependent fields when isMultiOrgEnabled is toggled off
   useEffect(() => {
     if (!isMultiOrgEnabled) {
-      form.setValue("allowCreationFromCloud", true);
-      form.setValue("allowCreationFromConstruct", false);
+      form.setValue("allowOrgCreationFromCloud", true);
+      form.setValue("allowOrgCreationFromConstruct", false);
     }
   }, [isMultiOrgEnabled, form]);
 
   const onSubmit: SubmitHandler<IOrganizationConfigForm> = async (data) => {
     try {
       const res = await mutateAsync({
-        itemId: configData?.itemId || "",
-        allowCreationFromCloud: data.isMultiOrgEnabled ? data.allowCreationFromCloud : true,
-        allowCreationFromConstruct: data.isMultiOrgEnabled
-          ? data.allowCreationFromConstruct
+        allowOrgCreationFromCloud: data.isMultiOrgEnabled ? data.allowOrgCreationFromCloud : true,
+        allowOrgCreationFromConstruct: data.isMultiOrgEnabled
+          ? data.allowOrgCreationFromConstruct
           : false,
+        allowOrgCreationFromSignup: configData?.AllowOrgCreationFromSignup ?? false,
+        allowOrgCreationFromPortal: configData?.AllowOrgCreationFromPortal ?? false,
         isMultiOrgEnabled: data.isMultiOrgEnabled,
-        roles: data.isMultiOrgEnabled && data.allowCreationFromConstruct ? selectedRoles : [],
+        defaultRoleOnOrgCreation: data.isMultiOrgEnabled && data.allowOrgCreationFromConstruct ? selectedRoles : [],
       });
       if (!res.isSuccess) {
         showErrorToast({ errors: res.errors });
@@ -169,7 +163,7 @@ export const OrganizationConfig = ({ configData, isLoading }: OrganizationConfig
               {isMultiOrgEnabled && (
                 <div className="ml-6 flex flex-col gap-3 pl-4">
                   <FormField
-                    name="allowCreationFromCloud"
+                    name="allowOrgCreationFromCloud"
                     control={form.control}
                     render={({ field }) => (
                       <FormItem className="flex items-center gap-2">
@@ -186,7 +180,7 @@ export const OrganizationConfig = ({ configData, isLoading }: OrganizationConfig
                   />
 
                   <FormField
-                    name="allowCreationFromConstruct"
+                    name="allowOrgCreationFromConstruct"
                     control={form.control}
                     render={({ field }) => (
                       <FormItem className="flex items-center gap-2">
@@ -195,7 +189,7 @@ export const OrganizationConfig = ({ configData, isLoading }: OrganizationConfig
                             className="h-5 w-5"
                             checked={field.value}
                             onCheckedChange={field.onChange}
-                            disabled={true}
+                            disabled
                           />
                         </FormControl>
                         <FormLabel className="!mt-0">Allow Creation From Construct</FormLabel>
@@ -203,7 +197,7 @@ export const OrganizationConfig = ({ configData, isLoading }: OrganizationConfig
                     )}
                   />
 
-                  {form.watch("allowCreationFromConstruct") && (
+                  {form.watch("allowOrgCreationFromConstruct") && (
                     <div className="mt-3 space-y-2">
                       <label className="text-sm font-medium">Default Roles</label>
                       {isRolesLoading ? (
@@ -286,7 +280,7 @@ export const OrganizationConfig = ({ configData, isLoading }: OrganizationConfig
                     Cancel
                   </Button>
                 </DialogClose>
-                <Button className="min-w-[80px]" type="submit" disabled={isPending || !isDirty}>
+                <Button className="min-w-[80px]" type="submit" disabled={isPending}>
                   {isPending ? "Saving..." : "Save"}
                 </Button>
               </DialogFooter>

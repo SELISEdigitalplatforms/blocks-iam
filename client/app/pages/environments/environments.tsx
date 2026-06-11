@@ -1,8 +1,8 @@
-import { useProjectStore } from "@/store/useProjectStore";
+import { useProjectStore } from "@seliseblocks/blocks-kit";
 import { useGetProjects } from "@/hooks/use-project";
 // import { useGetMigrationStatus } from "@/hooks/use-project";
 // import { useGetPeople } from "@/hooks/use-people";
-import { EnvironmentCard } from "@/components/environment-card/environment-card";
+// import { EnvironmentCard } from "@/components/environment-card/environment-card";
 import { AddEnvironmentModal } from "@/components/environment-card/add-environment-modal";
 import { Plus, ArrowRightLeft, CircleHelp } from "lucide-react";
 import { Button } from "@/components/ui-kits/button/button";
@@ -20,6 +20,7 @@ import { ProjectCardLoading } from "@/components/project-card/loading";
 import { useNavigate } from "react-router-dom";
 // import { useNotificationListener } from "@/cross-modules/communication/hooks/use-notification-listener";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui-kits/tooltip/tooltip";
+import { EnvironmentCard } from "@seliseblocks/blocks-kit";
 
 const ProjectGroupLoading = () => (
   <main className="flex flex-1 flex-col gap-4 p-4 sm:mx-10 md:gap-6">

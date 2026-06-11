@@ -25,8 +25,8 @@ import {
   FormMessage,
 } from "@/components/ui-kits/form/form";
 import { z } from "zod";
-import { useProjectStore } from "@/store/useProjectStore";
-import { useSaveOrganization } from "@blocks-idp/iam/hooks/use-organization";
+import { useSaveOrganization, useGetOrganizationConfig } from "@blocks-idp/iam/hooks/use-organization";
+import { useProjectStore } from "@seliseblocks/blocks-kit";
 import { Plus } from "lucide-react";
 
 interface AddOrganizationProps {
@@ -37,6 +37,8 @@ export const AddOrganization = ({ disabled }: AddOrganizationProps) => {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const { mutateAsync, isPending } = useSaveOrganization();
   const tenantId = useProjectStore().selectedProject?.tenantId || "";
+  const { data: orgConfig } = useGetOrganizationConfig(tenantId);
+  const isDisabled = disabled || !orgConfig?.IsMultiOrgEnabled || !orgConfig?.AllowOrgCreationFromCloud;
 
   const form = useForm({
     defaultValues: addOrganizationFormDefaultValue,
@@ -50,10 +52,8 @@ export const AddOrganization = ({ disabled }: AddOrganizationProps) => {
   const onSubmit: SubmitHandler<z.infer<typeof addOrganizationFormSchema>> = async (data) => {
     try {
       const res = await mutateAsync({
-        projectKey: tenantId,
         name: data.name,
-        itemId: "",
-        isEnable: true,
+        createdFrom: 1,
       });
       if (!res.isSuccess) {
         showErrorToast({ errors: res.errors });
@@ -79,7 +79,7 @@ export const AddOrganization = ({ disabled }: AddOrganizationProps) => {
   return (
     <Dialog open={isModalOpen} onOpenChange={handleModalOpenChange}>
       <DialogTrigger asChild>
-        <Button variant="ghost" size="sm" disabled={disabled} className="text-primary">
+        <Button variant="ghost" size="sm" disabled={isDisabled} className="text-primary">
           <Plus className="h-5 w-5 text-primary md:mr-2.5" />
           <span className="sr-only sm:not-sr-only">Add Organization</span>
         </Button>

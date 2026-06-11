@@ -10,6 +10,8 @@ import {
   IAccountResetPasswordResponse,
   IActivationCodeExpirationResponse,
   IActivationCodeValidationPayload,
+  IChangePasswordPayload,
+  IChangePasswordResponse,
 } from "@blocks-idp/iam/models/user";
 import { ACCOUNT_ENDPOINTS } from "../constants/endpoint.constant";
 
@@ -38,5 +40,9 @@ export class UserAccountService {
     payload: IActivationCodeValidationPayload,
   ): Promise<IActivationCodeExpirationResponse> {
     return http.post(ACCOUNT_ENDPOINTS.VALIDATE_ACTIVATION_CODE, payload);
+  }
+
+  changePassword(payload: IChangePasswordPayload): Promise<IChangePasswordResponse> {
+    return http.post(ACCOUNT_ENDPOINTS.CHANGE_PASSWORD, payload);
   }
 }
