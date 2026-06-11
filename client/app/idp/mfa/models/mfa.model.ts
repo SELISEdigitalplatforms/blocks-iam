@@ -74,7 +74,6 @@ export interface IVerifyMfaOtpResponse {
 }
 export interface IDisableMFAPayload {
   userId: string;
-  projectKey: string;
 }
 export interface IDisableMFAResponse {
   errors: unknown;

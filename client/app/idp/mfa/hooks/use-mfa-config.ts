@@ -64,7 +64,7 @@ export const useResendMfaOTP = () => {
     mutationFn: mfaService.resendOtp,
   });
 };
-export const useDisableMfa = (option: { id: string; projectKey: string }) => {
+export const useDisableMfa = (option: { id: string }) => {
   const queryClient = useQueryClient();
   return useMutation({
     mutationKey: ["mfa-config", "disable"],

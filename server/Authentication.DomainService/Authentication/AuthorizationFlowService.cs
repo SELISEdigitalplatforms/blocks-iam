@@ -377,7 +377,7 @@ namespace Authentication.DomainService.Authentication
 
                     var claimTenantId = userPrincipal?.FindFirst("tenant_id")?.Value;
 
-                    codeModel.Impersonated = true;
+                    codeModel.Impersonated = impersonated;
                     codeModel.ImpersonatedUserId = claimUserId;
                     codeModel.TargetedTenantId = claimTenantId;
                 }
@@ -612,7 +612,8 @@ namespace Authentication.DomainService.Authentication
             // Fallback: client not configured for cookie-based token delivery or domain resolution failed
             if (useTokensCookie && !exchangeResult.CanSetCookies)
             {
-                _logger.LogWarning($"Cannot set cookies for client {client_id}: domain resolution failed. Returning tokens in response body.");
+               // _logger.LogWarning($"Cannot set cookies for client {client_id}: domain resolution failed. Returning tokens in response body.");
+                Console.WriteLine($"Cannot set cookies for client {client_id}: domain resolution failed. Returning tokens in response body.");
             }
 
             return new OkObjectResult(new
@@ -1195,7 +1196,7 @@ namespace Authentication.DomainService.Authentication
                 };
 
                 await _sessionRepo.CreateAsync(newSession);
-                SetIdpSessionCookie(response, tenantId, newSession.SessionId, newSession.AbsoluteExpiry);
+                SetIdpSessionCookie(request, response, tenantId, newSession.SessionId, newSession.AbsoluteExpiry);
                 return;
             }
 
@@ -1218,24 +1219,43 @@ namespace Authentication.DomainService.Authentication
                 await _sessionRepo.UpdateActivityAsync(session.SessionId);
             }
 
-            SetIdpSessionCookie(response, tenantId, session.SessionId, session.AbsoluteExpiry);
+            SetIdpSessionCookie(request, response, tenantId, session.SessionId, session.AbsoluteExpiry);
         }
 
-        private void SetIdpSessionCookie(HttpResponse response, string tenantId, string sessionId, DateTime absoluteExpiry)
+        private void SetIdpSessionCookie(
+            HttpRequest httpRequest,
+            HttpResponse response,
+            string tenantId,
+            string sessionId,
+            DateTime absoluteExpiry)
         {
-            var tenant = _tenants.GetTenantByID(tenantId);
-            var (domain, _, _) = DomainResolver.ResolveDomain(tenant, null);
             var isLocal = DomainResolver.IsLocalhost();
-            var adjustedCookieDomain = isLocal ? null : domain;
-            response.Cookies.Append($"{IdpConstants.IdpSessionCookieName}_{tenantId}", sessionId, new CookieOptions
+            var domain = BlocksContext.ResolveApplicationDomain(httpRequest);
+
+            var cookieOptions = new CookieOptions
             {
-                Domain = adjustedCookieDomain,
                 HttpOnly = true,
                 Secure = true,
-                SameSite = isLocal ? SameSiteMode.None : SameSiteMode.Strict,
+                SameSite = (isLocal || DomainResolver.IsLocalOrHttpOrigin()) ? SameSiteMode.None : SameSiteMode.Strict,
                 Path = "/",
-                Expires = absoluteExpiry == default ? DateTime.UtcNow.Add(GetIdpSessionAbsoluteTimeout()) : absoluteExpiry
-            });
+                Expires = absoluteExpiry == default
+                    ? DateTime.UtcNow.Add(GetIdpSessionAbsoluteTimeout())
+                    : absoluteExpiry
+            };
+
+            if (!isLocal && !string.IsNullOrWhiteSpace(domain))
+            {
+                var tenant = _tenants.GetTenantByID(tenantId);
+
+                cookieOptions.Domain = tenant.IsRootTenant
+                    ? DomainResolver.GetRootDomain(domain)
+                    : domain;
+            }
+
+            response.Cookies.Append(
+                $"{IdpConstants.IdpSessionCookieName}_{tenantId}",
+                sessionId,
+                cookieOptions);
         }
 
         private static TimeSpan GetIdpSessionIdleTimeout()

@@ -1,3 +1,4 @@
+using Azure.Core;
 using Blocks.Genesis;
 using Microsoft.AspNetCore.Http;
 using System.Collections;
@@ -224,12 +225,12 @@ namespace Authentication.DomainService.Utilities
 
         public static CookieOptions CreateCookieOptions(string? cookieDomain, DateTime expiresUtc)
         {
-            var isLocalRequest = IsLocalhost();
+            var isLocal = IsLocalhost();
             // True localhost dev -> host-only cookie (a Domain attribute is invalid
             // for "localhost"). Otherwise scope the cookie to the configured shared
             // parent domain (e.g. ".blocksdevelopers.com") so a cookie set by the
             // IDP host is also sent to the app host on the same site.
-            cookieDomain = isLocalRequest ? null : (string.IsNullOrWhiteSpace(cookieDomain) ? null : cookieDomain);
+            cookieDomain = isLocal ? "localhost" : (string.IsNullOrWhiteSpace(cookieDomain) ? null : cookieDomain);
 
             return new CookieOptions
             {
@@ -241,10 +242,50 @@ namespace Authentication.DomainService.Utilities
                 // cookies must be SameSite=None (which mandates Secure, set above).
                 // SameSite=Strict would stop the browser from accepting/sending them
                 // on the cross-site flow.
-                SameSite = SameSiteMode.None,
+                SameSite = (isLocal || IsLocalOrHttpOrigin()) ? SameSiteMode.None : SameSiteMode.Strict,
                 Path = "/",
                 Expires = expiresUtc == default ? DateTime.UtcNow : expiresUtc
             };
         }
+
+        public static bool IsLocalOrHttpOrigin()
+        {
+            var request = _httpContextAccessor?.HttpContext?.Request;
+
+            var origin = request?.Headers.Origin.ToString();
+            var referer = request?.Headers.Referer.ToString();
+
+            var value = !string.IsNullOrWhiteSpace(origin)
+                ? origin
+                : referer;
+
+            if (string.IsNullOrWhiteSpace(value))
+                return false;
+
+            if (!Uri.TryCreate(value, UriKind.Absolute, out var uri))
+                return false;
+
+            var isHttpOrHttps =
+                uri.Scheme.Equals("http", StringComparison.OrdinalIgnoreCase) ||
+                uri.Scheme.Equals("https", StringComparison.OrdinalIgnoreCase);
+
+            var isValidPort =
+                uri.Port > 0 && uri.Port <= 65535;
+
+            return isHttpOrHttps && isValidPort;
+        }
+
+        public static string GetRootDomain(string host)
+        {
+            if (string.IsNullOrWhiteSpace(host))
+                return host;
+
+            var parts = host.Split('.');
+
+            return parts.Length < 2
+                ? host
+                : $"{parts[^2]}.{parts[^1]}";
+        }
+
     }
 }

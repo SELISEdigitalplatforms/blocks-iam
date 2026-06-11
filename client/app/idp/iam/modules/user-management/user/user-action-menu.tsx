@@ -83,7 +83,6 @@ export const UserActionMenu = ({ id, projectKey }: UserActionMenuProps) => {
       />
       <UserDisableMFA
         userId={id}
-        projectKey={projectKey}
         open={isDisableMFAModalOpen}
         setOpen={setIsDisableMFAModalOpen}
       />
