@@ -84,6 +84,11 @@ namespace Iam.DomainService.Utilities
                 logger?.LogWarning("OIDC is enabled but request base URL could not be determined. Falling back to AccountActionBaseUrl.");
             }
 
+            if (config.UseAccountActionBaseUrlAsDefault && !string.IsNullOrWhiteSpace(config.AccountActionBaseUrl))
+            {
+                return config.AccountActionBaseUrl;
+            }
+
             var originOrRefererBaseUrl = GetOriginOrRefererBaseUrl(httpContextAccessor);
 
             if (!string.IsNullOrWhiteSpace(originOrRefererBaseUrl))
