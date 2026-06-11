@@ -23,7 +23,6 @@ import {
   ISaveRolesAndPermissionsResponse,
   IUpdateUserPayload,
   IUpdateUserResponse,
-  IGetSignUpSettingPayload,
   IGetSignUpSettingResponse,
   ISaveSignUpSettingPayload,
   ISaveSignUpSettingResponse,
