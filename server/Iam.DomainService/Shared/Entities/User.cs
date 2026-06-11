@@ -44,7 +44,6 @@ namespace Iam.DomainService.Entities
         public string LastLoggedInDeviceInfo { get; set; } = string.Empty;
         public int LogInCount { get; set; }
         public List<UserLogInType> AllowedLogInType { get; set; } = new List<UserLogInType>();
-        public bool IsDefault { get; set; }
         public string? MailPurpose { get; set; }
         public bool IsMfaVerified { get; set; }
         public DateTime? EmailVerifiedAtUtc { get; set; }
