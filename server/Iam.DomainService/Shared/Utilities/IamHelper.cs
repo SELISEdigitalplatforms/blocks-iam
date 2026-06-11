@@ -1,4 +1,4 @@
-using System.Net;
+using Blocks.Genesis;
 using Iam.DomainService.Dtos;
 using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.Logging;
@@ -15,8 +15,8 @@ namespace Iam.DomainService.Utilities
             {
                 return string.Empty;
             }
-
-            return $"{request.Scheme}://{request.Host}".TrimEnd('/');
+            var bc = BlocksContext.GetContext();
+            return $"{request.Scheme}://{request.Host}/{bc.TenantId}".TrimEnd('/');
         }
 
         public static string GetOriginOrRefererBaseUrl(IHttpContextAccessor? httpContextAccessor)
@@ -36,8 +36,6 @@ namespace Iam.DomainService.Utilities
         public static bool TryBuildUserActionUrl(
             IamConfiguration config,
             string path,
-            string key,
-            string language,
             out string url,
             IHttpContextAccessor? httpContextAccessor = null,
             ILogger? logger = null)
@@ -64,15 +62,7 @@ namespace Iam.DomainService.Utilities
                 ? path
                 : "/" + path;
 
-            var target = baseUrl + normalizedPath;
-
-            var separator = target.Contains('?', StringComparison.Ordinal)
-                ? "&"
-                : "?";
-
-            url = $"{target}{separator}" +
-                $"code={WebUtility.UrlEncode(key)}" +
-                $"&lang={WebUtility.UrlEncode(language)}";
+            url = baseUrl + normalizedPath;
 
             return true;
         }

@@ -522,8 +522,8 @@ namespace Iam.DomainService.Accounts
         {
             var config = await _repository.GetIamConfigurationAsync();
             var key = Guid.NewGuid().ToString("n");
-
-            if (!IamHelper.TryBuildUserActionUrl(config, config.RecoverAccountPath, key, user.Language, out var recoverAccountUrl, _httpContextAccessor, logger: _logger))
+            var path = $"{(config.IsOidcEnabled ? "oidc/recover" : config.RecoverAccountPath)}?code={key}&lang={user.Language}";
+            if (!IamHelper.TryBuildUserActionUrl(config, path, out var recoverAccountUrl, _httpContextAccessor, logger: _logger))
             {
                 _logger.LogWarning("Recover account URL could not be built for user {UserId}", user.ItemId);
                 return false;
@@ -540,7 +540,7 @@ namespace Iam.DomainService.Accounts
                 Key = key,
                 UserId = user.ItemId,
                 IssueDate = DateTime.Now,
-                ExpireDate = DateTime.Now.AddMinutes(config.ActivationUrlLifetimeInMinutes),
+                ExpireDate = DateTime.Now.AddMinutes(config.RecoverAccountUrlLifetimeInMinutes),
                 Value = recoverAccountUrl,
                 MailPurpose = emailPurpose
             });
@@ -726,8 +726,8 @@ namespace Iam.DomainService.Accounts
         {
             var config = await _repository.GetIamConfigurationAsync();
             var key = Guid.NewGuid().ToString("n");
-
-            if (!IamHelper.TryBuildUserActionUrl(config, config.AccountActivationPath, key, user.Language, out var accountActivationUri, _httpContextAccessor, logger: _logger))
+            var path = $"{(config.IsOidcEnabled ? "oidc/activate" : config.AccountActivationPath)}?code={key}&lang={user.Language}";
+            if (!IamHelper.TryBuildUserActionUrl(config, path, out var accountActivationUri, _httpContextAccessor, logger: _logger))
             {
                 _logger.LogWarning("Activation URL could not be built for user {UserId}", user.ItemId);
                 return false;
