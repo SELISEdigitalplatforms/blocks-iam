@@ -11,7 +11,6 @@ import {
   mockUser,
   mockCreateUserPayload,
   mockUpdateUserPayload,
-  mockGetSignUpSettingPayload,
   mockSignUpSettingResponse,
   mockSaveSignUpSettingPayload,
   mockSaveRolesAndPermissionsPayload,
@@ -140,23 +139,19 @@ describe("UserService", () => {
 
   // ─── getSignUpSetting ─────────────────────────────────────────────────────
   describe("getSignUpSetting", () => {
-    it("should GET with correct query params", async () => {
+    it("should GET the signup-settings endpoint", async () => {
       vi.mocked(http.get).mockResolvedValue(mockSignUpSettingResponse);
 
-      const result = await service.getSignUpSetting(mockGetSignUpSettingPayload);
+      const result = await service.getSignUpSetting();
 
-      expect(http.get).toHaveBeenCalledWith(
-        `${ORGANIZATION_ENDPOINTS.GET_SIGNUP_SETTING}?ProjectKey=${mockGetSignUpSettingPayload.projectKey}`,
-      );
+      expect(http.get).toHaveBeenCalledWith(ORGANIZATION_ENDPOINTS.GET_SIGNUP_SETTING);
       expect(result).toEqual(mockSignUpSettingResponse);
     });
 
     it("should throw when the API call fails", async () => {
       vi.mocked(http.get).mockRejectedValue(new Error("Network error"));
 
-      await expect(service.getSignUpSetting(mockGetSignUpSettingPayload)).rejects.toThrow(
-        "Network error",
-      );
+      await expect(service.getSignUpSetting()).rejects.toThrow("Network error");
     });
   });
 

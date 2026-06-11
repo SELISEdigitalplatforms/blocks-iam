@@ -3,7 +3,6 @@ import {
   IGetUserByIdPayload,
   IGetUserRolesPayload,
   IGetUsersPayload,
-  IGetSignUpSettingPayload,
 } from "@blocks-idp/iam/models/user";
 import { userService } from "@blocks-idp/iam/services/user.service";
 import { normalizeSearchQueryText } from "@/lib/utils";
@@ -114,12 +113,9 @@ export const useUpdateUser = (options: {
   });
 };
 
-export const useGetSignUpSetting = (
-  option: IGetSignUpSettingPayload,
-  options?: { enabled?: boolean },
-) => {
+export const useGetSignUpSetting = (options?: { enabled?: boolean }) => {
   return useQuery({
-    queryKey: ["sign-up-setting", option],
+    queryKey: ["sign-up-setting"],
     queryFn: () => userService.getSignUpSetting(),
     ...options,
   });
