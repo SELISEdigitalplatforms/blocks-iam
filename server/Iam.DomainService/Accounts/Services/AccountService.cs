@@ -522,7 +522,8 @@ namespace Iam.DomainService.Accounts
         {
             var config = await _repository.GetIamConfigurationAsync();
             var key = Guid.NewGuid().ToString("n");
-            var path = $"{(config.IsOidcEnabled ? "oidc/recover" : config.RecoverAccountPath)}?code={key}&lang={user.Language}";
+            var bc = BlocksContext.GetContext();
+            var path = $"{(config.IsOidcEnabled ? "oidc/recover/" + bc.TenantId : config.RecoverAccountPath)}?code={key}&lang={user.Language}";
             if (!IamHelper.TryBuildUserActionUrl(config, path, out var recoverAccountUrl, _httpContextAccessor, logger: _logger))
             {
                 _logger.LogWarning("Recover account URL could not be built for user {UserId}", user.ItemId);
@@ -726,7 +727,8 @@ namespace Iam.DomainService.Accounts
         {
             var config = await _repository.GetIamConfigurationAsync();
             var key = Guid.NewGuid().ToString("n");
-            var path = $"{(config.IsOidcEnabled ? "oidc/activate" : config.AccountActivationPath)}?code={key}&lang={user.Language}";
+            var bc = BlocksContext.GetContext();
+            var path = $"{(config.IsOidcEnabled ? "oidc/activate/" + bc.TenantId : config.AccountActivationPath)}?code={key}&lang={user.Language}";
             if (!IamHelper.TryBuildUserActionUrl(config, path, out var accountActivationUri, _httpContextAccessor, logger: _logger))
             {
                 _logger.LogWarning("Activation URL could not be built for user {UserId}", user.ItemId);

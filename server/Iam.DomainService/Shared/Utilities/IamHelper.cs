@@ -1,4 +1,3 @@
-using Blocks.Genesis;
 using Iam.DomainService.Dtos;
 using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.Logging;
@@ -15,8 +14,8 @@ namespace Iam.DomainService.Utilities
             {
                 return string.Empty;
             }
-            var bc = BlocksContext.GetContext();
-            return $"{request.Scheme}://{request.Host}/{bc.TenantId}".TrimEnd('/');
+            
+            return $"{request.Scheme}://{request.Host}".TrimEnd('/');
         }
 
         public static string GetOriginOrRefererBaseUrl(IHttpContextAccessor? httpContextAccessor)
