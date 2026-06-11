@@ -8,7 +8,6 @@ import {
   mockUser,
   mockCreateUserPayload,
   mockUpdateUserPayload,
-  mockGetSignUpSettingPayload,
   mockSignUpSettingResponse,
   mockSaveSignUpSettingPayload,
   mockSaveRolesAndPermissionsPayload,
@@ -120,13 +119,13 @@ describe("use-user hooks", () => {
     it("should fetch sign-up setting successfully", async () => {
       vi.mocked(userService.getSignUpSetting).mockResolvedValue(mockSignUpSettingResponse);
 
-      const { result } = renderHook(() => useGetSignUpSetting(mockGetSignUpSettingPayload), {
+      const { result } = renderHook(() => useGetSignUpSetting(), {
         wrapper: createWrapper(),
       });
 
       await waitFor(() => expect(result.current.isSuccess).toBe(true));
       expect(result.current.data).toEqual(mockSignUpSettingResponse);
-      expect(userService.getSignUpSetting).toHaveBeenCalledWith(mockGetSignUpSettingPayload);
+      expect(userService.getSignUpSetting).toHaveBeenCalled();
     });
   });
 

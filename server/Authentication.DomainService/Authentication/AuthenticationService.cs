@@ -104,7 +104,8 @@ namespace Authentication.DomainService.Authentication
 
         public async Task<bool> UpdateIdpSessionForLogoutAsync(HttpContext httpContext, ClaimsPrincipal user, bool isGlobalLogout)
         {
-            var sessionId = httpContext.Request.Cookies[IdpConstants.IdpSessionCookieName];
+            var bc = BlocksContext.GetContext();
+            var sessionId = httpContext.Request.Cookies[$"{IdpConstants.IdpSessionCookieName}_{bc.TenantId}"];
             if (string.IsNullOrWhiteSpace(sessionId))
             {
                 return true;
@@ -116,7 +117,6 @@ namespace Authentication.DomainService.Authentication
                 return true;
             }
 
-            var bc = BlocksContext.GetContext();
             var userId = user.FindFirst(bc?.UserId)?.Value ?? user.FindFirst("user_id")?.Value;
 
             if (string.IsNullOrWhiteSpace(userId))
@@ -124,11 +124,7 @@ namespace Authentication.DomainService.Authentication
                 return false;
             }
 
-            var tenantId = user.FindFirst(bc?.TenantId)?.Value
-                ?? user.FindFirst("tenant_id")?.Value
-                ?? bc?.TenantId;
-
-            await _idpSessionService.RemoveAccountAsync(sessionId, userId, tenantId);
+            await _idpSessionService.RemoveAccountAsync(sessionId, userId, bc.TenantId);
             var session = await _idpSessionService.GetSessionAsync(sessionId);
 
             if (session == null || session.RevokedAt.HasValue || session.IsExpired())
@@ -141,18 +137,17 @@ namespace Authentication.DomainService.Authentication
 
         public void ClearIdpSessionCookie(HttpResponse response)
         {
-            response.Cookies.Delete(IdpConstants.IdpSessionCookieName);
+            var bc = BlocksContext.GetContext();
+            response.Cookies.Delete($"{IdpConstants.IdpSessionCookieName}_{bc.TenantId}");
         }
 
         public async Task<LogoutResponse> LogoutUser(string refreshToken, HttpRequest httpRequest)
         {
             _logger.LogInformation("Logout process start");
 
-            var isAll = string.IsNullOrWhiteSpace(refreshToken);
+            var result = await ProcessLogout(refreshToken, httpRequest);
 
-            var result = /*isAll ? await ProcessLogoutAll(httpRequest) :*/ await ProcessLogout(refreshToken, httpRequest);
-
-            await ProcessTimeline(httpRequest, isAll);
+            await ProcessTimeline(httpRequest, false);
             return new LogoutResponse
             {
                 IsSuccess = result,
@@ -197,7 +192,7 @@ namespace Authentication.DomainService.Authentication
             return result;
         }
 
-        public async Task<bool> ProcessLogoutAll(HttpRequest httpRequest)
+        public async Task<LogoutResponse> LogoutAll(HttpRequest httpRequest)
         {
             var bc = BlocksContext.GetContext();
 
@@ -215,7 +210,12 @@ namespace Authentication.DomainService.Authentication
             await Task.WhenAll(revokeTasks);
 
             var result = await _authenticationRepository.RevokeIdentitySessionsByRefreshTokensAsync(refreshTokens);
-            return result;
+
+            await ProcessTimeline(httpRequest, true);
+            return new LogoutResponse
+            {
+                IsSuccess = result,
+            };
         }
 
         public async Task<bool> ProcessTimeline(HttpRequest httpRequest, bool isFromAll)
@@ -606,7 +606,7 @@ namespace Authentication.DomainService.Authentication
                 ActionBy = actionBy,
                 UserId = bc?.UserId,
                 TenantId = bc?.TenantId,
-                SessionId = request?.Cookies[IdpConstants.IdpSessionCookieName],
+                SessionId = request?.Cookies[$"{IdpConstants.IdpSessionCookieName}_{bc?.TenantId}"],
                 CorrelationId = correlationId,
                 Outcome = outcome,
                 ReasonCode = reasonCode,
@@ -940,8 +940,8 @@ namespace Authentication.DomainService.Authentication
             {
                 return;
             }
-
-            var sessionId = httpContext.Request.Cookies[IdpConstants.IdpSessionCookieName];
+            var bc = BlocksContext.GetContext();
+            var sessionId = httpContext.Request.Cookies[$"{IdpConstants.IdpSessionCookieName}_{bc?.TenantId}"];
             if (string.IsNullOrWhiteSpace(sessionId))
             {
                 sessionId = await _idpSessionService.CreateSessionAsync(userId, tenantId, httpContext.Connection.RemoteIpAddress?.ToString() ?? "unknown");
@@ -973,7 +973,7 @@ namespace Authentication.DomainService.Authentication
                 }
             }
 
-            httpContext.Response.Cookies.Append(IdpConstants.IdpSessionCookieName, sessionId, CreateCookieOptions(tokenResponse.CookieDomain, tokenResponse.RefreshExpiresUtc));
+            httpContext.Response.Cookies.Append($"{IdpConstants.IdpSessionCookieName}_{bc?.TenantId}", sessionId, CreateCookieOptions(tokenResponse.CookieDomain, tokenResponse.RefreshExpiresUtc));
         }
 
         public async Task<bool> EnsureIdpSessionForOidcCallbackAsync(HttpContext httpContext, string userId, string tenantId)
@@ -986,7 +986,8 @@ namespace Authentication.DomainService.Authentication
 
             try
             {
-                var sessionId = httpContext.Request.Cookies[IdpConstants.IdpSessionCookieName];
+                var bc = BlocksContext.GetContext();
+                var sessionId = httpContext.Request.Cookies[$"{IdpConstants.IdpSessionCookieName}_{bc?.TenantId}"];
                 if (string.IsNullOrWhiteSpace(sessionId))
                 {
                     // Create new session for this OIDC callback
@@ -1024,7 +1025,7 @@ namespace Authentication.DomainService.Authentication
 
                 // Set session cookie
                 var domain = DomainResolver.ResolveDomain(_tenants.GetTenantByID(tenantId), httpContext.Request).domain;
-                httpContext.Response.Cookies.Append(IdpConstants.IdpSessionCookieName, sessionId, CreateCookieOptions(null, DateTime.UtcNow.AddDays(30)));
+                httpContext.Response.Cookies.Append($"{IdpConstants.IdpSessionCookieName}_{bc?.TenantId}", sessionId, CreateCookieOptions(null, DateTime.UtcNow.AddDays(30)));
                 return true;
             }
             catch (Exception ex)

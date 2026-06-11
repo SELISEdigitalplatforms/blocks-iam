@@ -54,7 +54,7 @@ export class MFAService {
     return http.post(MFA_ENDPOINTS.RESEND_OTP, payload.mfaId);
   }
   disableMFA(payload: IDisableMFAPayload): Promise<IDisableMFAResponse> {
-    return http.post(MFA_ENDPOINTS.DISABLE_MFA, payload);
+    return http.post(toLogicUrl(MFA_ENDPOINTS.DISABLE_MFA), payload, undefined, { absoluteUrl: true });
   }
 }
 

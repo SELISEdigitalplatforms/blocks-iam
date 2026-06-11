@@ -1,7 +1,6 @@
 using Authentication.DomainService.Authentication;
 using Authentication.DomainService.OAuth.RequestModel;
 using Authentication.DomainService.Oidc.Services;
-using Authentication.DomainService.Utilities;
 using Blocks.Genesis;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
@@ -19,7 +18,7 @@ namespace Blocks.Api.Controllers
         private readonly IAuthenticationService _authenticationService;
 
 
-        public AuthorizationController(IAuthorizationFlowService authorizationFlowService, 
+        public AuthorizationController(IAuthorizationFlowService authorizationFlowService,
                                        IOidcCallbackHandler oidcCallbackHandler,
                                        IAuthenticationService authenticationService)
         {
@@ -57,8 +56,7 @@ namespace Blocks.Api.Controllers
             [FromQuery] string? prompt = null,
             [FromQuery] string? tenant_id = null)
         {
-            var claimsPrincipal = await _authenticationService.GetPrincipalFromTokenAsync(Request, BlocksContext.GetContext()?.TenantId ?? "", IsUserInfoGetRequest: false);
-
+            
             return await _authorizationFlowService.AuthorizeAsync(
                 client_id,
                 response_type,
@@ -70,7 +68,6 @@ namespace Blocks.Api.Controllers
                 code_challenge_method,
                 prompt,
                 tenant_id,
-                claimsPrincipal,
                 Request,
                 Response);
         }
@@ -94,8 +91,8 @@ namespace Blocks.Api.Controllers
         /// Exchanges code for tokens, validates JWT signature and claims
         /// RFC 6749: OAuth 2.0 | RFC 3986: OpenID Connect | RFC 7519: JWT | RFC 5280: X.509
         /// </summary>
-        [HttpGet("oidc/callback")]
-        [HttpPost("oidc/callback")]
+        [HttpGet("callback")]
+        [HttpPost("callback")]
         [AllowAnonymous]
         public async Task<IActionResult> HandleOidcCallbackGet(
             [FromQuery] string code,
@@ -131,13 +128,6 @@ namespace Blocks.Api.Controllers
                 });
             }
 
-            var claims = new[]
-            {
-                new Claim("sub", result.BlocksUserId),
-                new Claim("tenant_id", result.TenantId ?? string.Empty)
-            };
-            var principal = new ClaimsPrincipal(new ClaimsIdentity(claims, "Bearer"));
-
             return await _authorizationFlowService.AuthorizeAsync(
                 result.ClientId,
                 "code",
@@ -149,9 +139,9 @@ namespace Blocks.Api.Controllers
                 result.CodeChallengeMethod ?? "S256",
                 null,
                 result.TenantId ?? string.Empty,
-                principal,
                 Request,
                 Response,
+                result.BlocksUserId,
                 true);
         }
 

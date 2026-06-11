@@ -4,8 +4,6 @@ using Authentication.DomainService.Oidc.Repositories;
 using Authentication.DomainService.Services;
 using Authentication.DomainService.Shared.RequestModel;
 using Authentication.DomainService.Utilities;
-using Azure;
-using Azure.Core;
 using Blocks.Genesis;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
@@ -175,15 +173,6 @@ namespace Authentication.DomainService.Authentication
                     return new BadRequestObjectResult(new { error = "invalid_provider", error_description = "Provider not configured" });
                 }
 
-               var authCode = await _authCodeRepo.GetByCodeAsync(code);
-
-                if(authCode.Impersonated)
-                {
-                   var impersonatedResult = await  _authenticationFlowService.ExecuteImpersonateAsync(new ImpersonateRequest { TargetTenantId = authCode.TergatedTenantId, ImpersontingUserId = authCode.ImpersonatedUserId, RefreshToken = authCode.ImpesonatingRefreshToken}, _httpContextAccessor.HttpContext.Request, _httpContextAccessor.HttpContext.Response);
-                   await _cacheClient.RemoveKeyAsync(cacheKey);
-                   return new OkObjectResult ( new {Impersonated = true} );
-                }
-
                 // Exchange authorization code for tokens at IdP
                 var tokenEndpoint = identityProvider.TokenUrl;
                 var form = new Dictionary<string, string>
@@ -222,6 +211,26 @@ namespace Authentication.DomainService.Authentication
                 {
                     _logger.LogWarning($"Token exchange failed: {tokenError ?? "empty token response"}");
                     return new BadRequestObjectResult(new { error = "invalid_grant", error_description = "Failed to exchange authorization code" });
+                }
+
+                var authCode = await _authCodeRepo.GetByCodeAsync(code);
+
+                if (authCode.Impersonated)
+                {
+                    var impersonatedResult = await _authenticationFlowService.ExecuteImpersonateAsync(
+                        new ImpersonateRequest 
+                        { 
+                            TargetTenantId = authCode.TargetedTenantId, 
+                            ImpersontingUserId = authCode.ImpersonatedUserId, 
+                            RefreshToken = tokenResponse.RefreshToken,
+                            OrganizationId = authCode.OrganizationId,
+                        }, 
+                        _httpContextAccessor.HttpContext.Request, 
+                        _httpContextAccessor.HttpContext.Response
+                    );
+
+                    await _cacheClient.RemoveKeyAsync(cacheKey); 
+                    return new OkObjectResult(new { Impersonated = true });
                 }
 
                 // Resolve tenant_id: flowContext > BlocksContext > default
@@ -327,7 +336,7 @@ namespace Authentication.DomainService.Authentication
                 return false;
             }
 
-            
+
             var accessCookieOptions = DomainResolver.CreateCookieOptions(response.CookieDomain, response.ExpiresUtc);
             var refreshCookieOptions = DomainResolver.CreateCookieOptions(response.CookieDomain, response.RefreshExpiresUtc);
 
