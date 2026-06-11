@@ -37,8 +37,8 @@ export const Signup = () => {
       ) : !loginOption || loginOption.allowedGrantTypes?.length < 1 || !signUpSetting ? null : (
         <SignupForm
           loginOption={loginOption}
-          emailSignUpEnabled={signUpSetting?.isEmailPasswordSignUpEnabled || false}
-          ssoSignUpEnabled={signUpSetting?.isSSoSignUpEnabled || false}
+          emailSignUpEnabled={signUpSetting?.IsEmailPasswordSignUpEnabled || false}
+          ssoSignUpEnabled={signUpSetting?.IsSSoSignUpEnabled || false}
         />
       )}
     </OidcAuthShell>
