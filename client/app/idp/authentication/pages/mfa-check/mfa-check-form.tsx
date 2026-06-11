@@ -16,6 +16,7 @@ import { useResendOtp } from "@blocks-idp/mfa/hooks/use-resend-otp";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useNavigate } from "react-router-dom";
 import { parseAsInteger, parseAsString, useQueryStates } from "nuqs";
+import { ArrowRight, RotateCcw } from "lucide-react";
 
 import { useForm } from "react-hook-form";
 import { z } from "zod";
@@ -24,7 +25,7 @@ const CustomInputOTPSlot = ({ index }: { index: number }) => {
   return (
     <InputOTPSlot
       index={index}
-      className="h-12 w-[46px] rounded-sm border px-4 py-3.5 first:rounded-l-sm first:border-l last:rounded-r-sm"
+      className="oidc-sci-fi-otp-slot h-12 w-[46px] rounded-sm first:rounded-l-sm last:rounded-r-sm"
     />
   );
 };
@@ -67,7 +68,7 @@ export const MfaCheckFrom = () => {
 
   return (
     <Form {...form}>
-      <form onSubmit={form.handleSubmit(submitHandler)}>
+      <form onSubmit={form.handleSubmit(submitHandler)} className="flex flex-col gap-5">
         <FormField
           control={form.control}
           name="code"
@@ -85,31 +86,36 @@ export const MfaCheckFrom = () => {
                   </InputOTPGroup>
                 </InputOTP>
               </FormControl>
-              <FormMessage />
+              <FormMessage className="text-xs text-[var(--danger)]" />
             </FormItem>
           )}
         />
+
         {mfa_type === 2 && (
-          <div className="mt-4 text-right">
+          <div className="flex items-center justify-end text-sm">
             <Button
               type="button"
               variant="link"
-              className="p-0 text-sm font-medium !no-underline"
+              className="oidc-sci-fi-link flex items-center gap-1.5 p-0 text-sm font-medium !no-underline"
               onClick={resend}
               disabled={!!remainingTime}
             >
-              Resend Otp
+              <RotateCcw size={14} />
+              Resend Code
               {remainingTime > 0 &&
                 ` (${Math.floor(remainingTime / 60)}:${String(remainingTime % 60).padStart(2, "0")})`}
             </Button>
           </div>
         )}
 
-        <div className="mt-4">
-          <Button className="w-full" disabled={!isValid || isPending}>
-            Verify
-          </Button>
-        </div>
+        <button
+          type="submit"
+          className="oidc-sci-fi-btn w-full flex items-center justify-center gap-2"
+          disabled={!isValid || isPending}
+        >
+          <span>Verify</span>
+          <ArrowRight size={16} />
+        </button>
       </form>
     </Form>
   );
