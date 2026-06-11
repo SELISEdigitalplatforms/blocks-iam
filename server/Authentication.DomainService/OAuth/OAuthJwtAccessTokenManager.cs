@@ -54,14 +54,12 @@ namespace Authentication.DomainService.OAuth
         public async Task<TokenResponse> ManageTokenAsync(TokenRequest tokenRequest, IdentityConfiguration authenticationConfiguration, User user, StateInfo? stateInfo = null)
         {
             var bc = BlocksContext.GetContext();
-            
-            //TODO: Tobe implement later
-            //var tokenResponse = await ProcessCheckPoints(tokenRequest, user);
 
-            //if (tokenResponse != null)
-            //{
-            //    return tokenResponse;
-            //}
+            var tokenResponse = await ProcessCheckPoints(tokenRequest, user);
+            if (tokenResponse != null)
+            {
+                return tokenResponse;
+            }
 
             var tenant = _tenants.GetTenantByID(bc?.TenantId ?? "");
             if (tenant == null)

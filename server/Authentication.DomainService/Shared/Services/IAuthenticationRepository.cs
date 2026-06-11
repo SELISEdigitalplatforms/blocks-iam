@@ -22,6 +22,7 @@ namespace Authentication.DomainService.Services
         Task<bool> InsertIdentityEventAsync(IdentityEvent identityEvent);
         Task<bool> InsertUserAuthenticationTimelineAsync(UserAuthenticationTimeline userAuthenticationTimeline);
         Task<User?> IncrementFailedLoginAndApplyLockoutAsync(string userId, int lockThreshold, int lockDurationInMinutes, DateTime nowUtc);
+        Task<User?> IncrementFailedMfaAndApplyLockoutAsync(string userId, int lockThreshold, int lockDurationInMinutes, DateTime nowUtc);
         Task<IEnumerable<IdentitySession>> GetActiveIdentitySessionByUserIdAsync(string userId);
         Task<IdentitySession?> GetIdentitySessionByRefreshTokenAsync(string refreshToken);
         Task<IEnumerable<IdentitySession>> GetActiveIdentitySessionBySessionIdAsync(string sessionId);
