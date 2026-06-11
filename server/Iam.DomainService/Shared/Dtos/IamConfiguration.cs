@@ -13,6 +13,7 @@ namespace Iam.DomainService.Dtos
         public string RecoverAccountPath { get; set; }
         public bool IsOidcEnabled { get; set; } = false;
         public string AccountActionBaseUrl { get; set; }
+        public bool UseAccountActionBaseUrlAsDefault { get; set; } = true;
         public int ActivationUrlLifetimeInMinutes { get; set; } = 60 * 24;
         public int RecoverAccountUrlLifetimeInMinutes { get; set; } = 10;
         public bool LogoutOnPasswordChange { get; set; } = true;

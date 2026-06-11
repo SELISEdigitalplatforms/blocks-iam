@@ -80,6 +80,7 @@ namespace CloudConfiguration.DomainService.Shared.Services
                 config.RecoverAccountPath,
                 config.IsOidcEnabled,
                 config.AccountActionBaseUrl,
+                config.UseAccountActionBaseUrlAsDefault,
                 config.ActivationUrlLifetimeInMinutes,
                 config.RecoverAccountUrlLifetimeInMinutes,
                 config.LogoutOnPasswordChange,
@@ -89,118 +90,143 @@ namespace CloudConfiguration.DomainService.Shared.Services
 
         public async Task<BaseResponse> UpdateAuthenticationConfigAsync(UpdateAuthenticationConfigurationRequest configuration)
         {
-            var currentConfiguration = await _configurationRepository.GetAuthenticationConfigurationAsync();
-            bool? isOidcEnabled = currentConfiguration == null ? null : currentConfiguration.IsOidcEnabled;
-            var accountActionBaseUrl = currentConfiguration?.AccountActionBaseUrl;
-            var tenant = _tenants.GetTenantByID(BlocksContext.GetContext()?.TenantId ?? "");
+            var current = await _configurationRepository.GetAuthenticationConfigurationAsync();
 
-            if (!string.IsNullOrWhiteSpace(accountActionBaseUrl)
-                && !IsAllowedAccountActionBaseUrl(accountActionBaseUrl, tenant))
+            var tenant = _tenants.GetTenantByID(
+                BlocksContext.GetContext()?.TenantId ?? string.Empty);
+
+            // Resolve effective values first
+            var isOidcEnabled =
+                configuration.IsOidcEnabled
+                ?? current?.IsOidcEnabled
+                ?? false;
+
+            var useAccountActionBaseUrlAsDefault =
+                configuration.UseAccountActionBaseUrlAsDefault
+                ?? current?.UseAccountActionBaseUrlAsDefault
+                ?? true;
+
+            var logoutOnPasswordChange =
+                configuration.LogoutOnPasswordChange
+                ?? current?.LogoutOnPasswordChange
+                ?? true;
+
+            var accountActionBaseUrl =
+                !string.IsNullOrWhiteSpace(configuration.AccountActionBaseUrl)
+                    ? configuration.AccountActionBaseUrl
+                    : current?.AccountActionBaseUrl;
+
+            if ((!isOidcEnabled
+                    && useAccountActionBaseUrlAsDefault
+                    && string.IsNullOrWhiteSpace(accountActionBaseUrl))
+                ||
+                (!string.IsNullOrWhiteSpace(accountActionBaseUrl)
+                    && !IsAllowedAccountActionBaseUrl(accountActionBaseUrl, tenant)))
             {
                 return new BaseResponse
                 {
                     IsSuccess = false,
                     Errors = new Dictionary<string, string>
                     {
-                        { "AccountActionBaseUrl", "AccountActionBaseUrl_Must_Be_In_Tenant_Allowed_Domains" }
+                        {
+                            "AccountActionBaseUrl",
+                            "AccountActionBaseUrl_Must_Be_In_Tenant_Allowed_Domains"
+                        }
                     }
                 };
             }
 
-            var refreshTokenValidForNumberMinutes = configuration.RefreshTokenValidForNumberMinutes > 0
-                ? configuration.RefreshTokenValidForNumberMinutes
-                : currentConfiguration?.RefreshTokenValidForNumberMinutes ?? IdentityConfiguration.DefaultRefreshTokenValidForNumberMinutes;
+            static int ResolveInt(int requested, int? currentValue, int defaultValue)
+                => requested > 0
+                    ? requested
+                    : currentValue ?? defaultValue;
 
-            var absoluteRefreshTokenValidForNumberMinutes = configuration.AbsoluteRefreshTokenValidForNumberMinutes > 0
-                ? configuration.AbsoluteRefreshTokenValidForNumberMinutes
-                : currentConfiguration?.AbsoluteRefreshTokenValidForNumberMinutes ?? IdentityConfiguration.DefaultAbsoluteRefreshTokenValidForNumberMinutes;
-
-            var accessTokenValidForNumberMinutes = configuration.AccessTokenValidForNumberMinutes > 0
-                ? configuration.AccessTokenValidForNumberMinutes
-                : currentConfiguration?.AccessTokenValidForNumberMinutes ?? IdentityConfiguration.DefaultAccessTokenValidForNumberMinutes;
-
-            var rememberMeRefreshTokenValidForNumberMinutes = configuration.RememberMeRefreshTokenValidForNumberMinutes > 0
-                ? configuration.RememberMeRefreshTokenValidForNumberMinutes
-                : currentConfiguration?.RememberMeRefreshTokenValidForNumberMinutes ?? IdentityConfiguration.DefaultRememberMeRefreshTokenValidForNumberMinutes;
-
-            var allowedGrantTypes = configuration.AllowedGrantTypes != null && configuration.AllowedGrantTypes.Count > 0
-                ? configuration.AllowedGrantTypes
-                : currentConfiguration?.AllowedGrantTypes ?? [];
-
-            var getNumberOfWrongAttemptsToLockTheAccount = configuration.GetNumberOfWrongAttemptsToLockTheAccount > 0
-                ? configuration.GetNumberOfWrongAttemptsToLockTheAccount
-                : currentConfiguration?.GetNumberOfWrongAttemptsToLockTheAccount ?? IdentityConfiguration.DefaultGetNumberOfWrongAttemptsToLockTheAccount;
-
-            var accountLockDurationInMinutes = configuration.AccountLockDurationInMinutes > 0
-                ? configuration.AccountLockDurationInMinutes
-                : currentConfiguration?.AccountLockDurationInMinutes ?? IdentityConfiguration.DefaultAccountLockDurationInMinutes;
+            static string ResolveString(string requested, string currentValue)
+                => !string.IsNullOrWhiteSpace(requested)
+                    ? requested
+                    : currentValue;
 
             var authConfiguration = new IdentityConfiguration
             {
-                ItemId = currentConfiguration?.ItemId ?? ObjectId.Parse(configuration.ItemId),
-                RefreshTokenValidForNumberMinutes = refreshTokenValidForNumberMinutes,
-                AbsoluteRefreshTokenValidForNumberMinutes = absoluteRefreshTokenValidForNumberMinutes,
-                AccessTokenValidForNumberMinutes = accessTokenValidForNumberMinutes,
-                RememberMeRefreshTokenValidForNumberMinutes = rememberMeRefreshTokenValidForNumberMinutes,
-                AllowedGrantTypes = allowedGrantTypes,
-                GetNumberOfWrongAttemptsToLockTheAccount = getNumberOfWrongAttemptsToLockTheAccount,
-                AccountLockDurationInMinutes = accountLockDurationInMinutes
+                ItemId = current?.ItemId ?? ObjectId.Parse(configuration.ItemId),
+
+                RefreshTokenValidForNumberMinutes = ResolveInt(
+                    configuration.RefreshTokenValidForNumberMinutes,
+                    current?.RefreshTokenValidForNumberMinutes,
+                    IdentityConfiguration.DefaultRefreshTokenValidForNumberMinutes),
+
+                AbsoluteRefreshTokenValidForNumberMinutes = ResolveInt(
+                    configuration.AbsoluteRefreshTokenValidForNumberMinutes,
+                    current?.AbsoluteRefreshTokenValidForNumberMinutes,
+                    IdentityConfiguration.DefaultAbsoluteRefreshTokenValidForNumberMinutes),
+
+                AccessTokenValidForNumberMinutes = ResolveInt(
+                    configuration.AccessTokenValidForNumberMinutes,
+                    current?.AccessTokenValidForNumberMinutes,
+                    IdentityConfiguration.DefaultAccessTokenValidForNumberMinutes),
+
+                RememberMeRefreshTokenValidForNumberMinutes = ResolveInt(
+                    configuration.RememberMeRefreshTokenValidForNumberMinutes,
+                    current?.RememberMeRefreshTokenValidForNumberMinutes,
+                    IdentityConfiguration.DefaultRememberMeRefreshTokenValidForNumberMinutes),
+
+                GetNumberOfWrongAttemptsToLockTheAccount = ResolveInt(
+                    configuration.GetNumberOfWrongAttemptsToLockTheAccount,
+                    current?.GetNumberOfWrongAttemptsToLockTheAccount,
+                    IdentityConfiguration.DefaultGetNumberOfWrongAttemptsToLockTheAccount),
+
+                AccountLockDurationInMinutes = ResolveInt(
+                    configuration.AccountLockDurationInMinutes,
+                    current?.AccountLockDurationInMinutes,
+                    IdentityConfiguration.DefaultAccountLockDurationInMinutes),
+
+                AllowedGrantTypes =
+                    configuration.AllowedGrantTypes?.Count > 0
+                        ? configuration.AllowedGrantTypes
+                        : current?.AllowedGrantTypes ?? [],
+
+                PublicCertificatePath = ResolveString(
+                    configuration.PublicCertificatePath,
+                    current?.PublicCertificatePath),
+
+                AccountActivationPath = ResolveString(
+                    configuration.AccountActivationPath,
+                    current?.AccountActivationPath),
+
+                AccountVerificationPath = ResolveString(
+                    configuration.AccountVerificationPath,
+                    current?.AccountVerificationPath),
+
+                RecoverAccountPath = ResolveString(
+                    configuration.RecoverAccountPath,
+                    current?.RecoverAccountPath),
+
+                ActivationUrlLifetimeInMinutes = ResolveInt(
+                    configuration.ActivationUrlLifetimeInMinutes,
+                    current?.ActivationUrlLifetimeInMinutes,
+                    60 * 24),
+
+                RecoverAccountUrlLifetimeInMinutes = ResolveInt(
+                    configuration.RecoverAccountUrlLifetimeInMinutes,
+                    current?.RecoverAccountUrlLifetimeInMinutes,
+                    10),
+
+                PasswordStrengthCheckerRegex = ResolveString(
+                    configuration.PasswordStrengthCheckerRegex,
+                    current?.PasswordStrengthCheckerRegex),
+
+                IsOidcEnabled = isOidcEnabled,
+                UseAccountActionBaseUrlAsDefault = useAccountActionBaseUrlAsDefault,
+                LogoutOnPasswordChange = logoutOnPasswordChange,
+                AccountActionBaseUrl = accountActionBaseUrl
             };
-
-            // Backward compatibility: only carry these fields if they already exist with meaningful values.
-            if (!string.IsNullOrWhiteSpace(currentConfiguration?.PublicCertificatePath))
-            {
-                authConfiguration.PublicCertificatePath = currentConfiguration.PublicCertificatePath;
-            }
-
-            if (!string.IsNullOrWhiteSpace(currentConfiguration?.AccountActivationPath))
-            {
-                authConfiguration.AccountActivationPath = currentConfiguration.AccountActivationPath;
-            }
-
-            if (!string.IsNullOrWhiteSpace(currentConfiguration?.AccountVerificationPath))
-            {
-                authConfiguration.AccountVerificationPath = currentConfiguration.AccountVerificationPath;
-            }
-
-            if (!string.IsNullOrWhiteSpace(currentConfiguration?.RecoverAccountPath))
-            {
-                authConfiguration.RecoverAccountPath = currentConfiguration.RecoverAccountPath;
-            }
-
-            if (currentConfiguration?.ActivationUrlLifetimeInMinutes > 0)
-            {
-                authConfiguration.ActivationUrlLifetimeInMinutes = currentConfiguration.ActivationUrlLifetimeInMinutes;
-            }
-
-            if (currentConfiguration?.RecoverAccountUrlLifetimeInMinutes > 0)
-            {
-                authConfiguration.RecoverAccountUrlLifetimeInMinutes = currentConfiguration.RecoverAccountUrlLifetimeInMinutes;
-            }
-
-            if (currentConfiguration != null)
-            {
-                authConfiguration.LogoutOnPasswordChange = currentConfiguration.LogoutOnPasswordChange;
-            }
-
-            if (!string.IsNullOrWhiteSpace(currentConfiguration?.PasswordStrengthCheckerRegex))
-            {
-                authConfiguration.PasswordStrengthCheckerRegex = currentConfiguration.PasswordStrengthCheckerRegex;
-            }
-
-            if (isOidcEnabled.HasValue)
-            {
-                authConfiguration.IsOidcEnabled = isOidcEnabled.Value;
-            }
-
-            if (!string.IsNullOrWhiteSpace(accountActionBaseUrl))
-            {
-                authConfiguration.AccountActionBaseUrl = accountActionBaseUrl;
-            }
 
             await _configurationRepository.UpdateAuthenticationConfigAsync(authConfiguration);
 
-            return new BaseResponse { IsSuccess = true };
+            return new BaseResponse
+            {
+                IsSuccess = true
+            };
         }
 
         private static bool IsAllowedAccountActionBaseUrl(string accountActionBaseUrl, dynamic? tenant)
