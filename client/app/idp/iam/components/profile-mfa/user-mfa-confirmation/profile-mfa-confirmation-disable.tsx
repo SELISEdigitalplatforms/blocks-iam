@@ -15,13 +15,12 @@ import { useContext } from "react";
 import { profileMfaContext } from "../profile-mfa";
 
 export const UserMFAConfirmationDisable = () => {
-  const { projectKey, userId, isDisableModalOpen, setIsDisableModalOpen } =
+  const { userId, isDisableModalOpen, setIsDisableModalOpen } =
     useContext(profileMfaContext);
-  const { isPending, mutateAsync } = useDisableMfa({ id: userId, projectKey });
+  const { isPending, mutateAsync } = useDisableMfa({ id: userId });
   const onClickHandler = async () => {
     try {
       const res = await mutateAsync({
-        projectKey,
         userId,
       });
       if (!res.isSuccess) return showErrorToast({ errors: res.errors });
@@ -44,13 +43,13 @@ export const UserMFAConfirmationDisable = () => {
             Disabling MFA may reduce the security of this account.
           </DialogDescription>
         </DialogHeader>
-        <DialogFooter className="mt-4 flex flex-row gap-2">
+        <DialogFooter className="mt-4 flex flex-col-reverse items-stretch gap-2 sm:flex-row sm:items-center sm:justify-end">
           <DialogTrigger asChild>
-            <Button variant="outline" size="sm" disabled={isPending}>
+            <Button variant="outline" size="sm" disabled={isPending} className="w-full sm:w-auto">
               Cancel
             </Button>
           </DialogTrigger>
-          <Button size="sm" onClick={onClickHandler} disabled={isPending}>
+          <Button size="sm" onClick={onClickHandler} disabled={isPending} className="w-full sm:w-auto">
             {isPending ? "Processing" : "Yes"}
           </Button>
         </DialogFooter>

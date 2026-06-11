@@ -145,10 +145,9 @@ describe("use-mfa-config hooks", () => {
     it("should disable MFA successfully", async () => {
       vi.mocked(mfaService.disableMFA).mockResolvedValue(undefined as never);
 
-      const { result } = renderHook(
-        () => useDisableMfa({ id: MOCK_MFA_USER_ID, projectKey: TEST_PROJECT_KEY }),
-        { wrapper: createWrapper() },
-      );
+      const { result } = renderHook(() => useDisableMfa({ id: MOCK_MFA_USER_ID }), {
+        wrapper: createWrapper(),
+      });
 
       result.current.mutate(mockDisableMfaPayload);
       await waitFor(() => expect(result.current.isSuccess).toBe(true));
