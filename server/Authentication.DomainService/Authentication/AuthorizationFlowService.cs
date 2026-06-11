@@ -183,18 +183,21 @@ namespace Authentication.DomainService.Authentication
 
             await ResetAuthFailureCountersAsync(user);
 
-            return await CompleteOidcAuthorizationAfterLoginAsync(
-                user,
-                request.ClientId,
-                request.RedirectUri,
-                request.Scope,
-                request.State,
-                request.Nonce,
-                request.CodeChallenge,
-                request.CodeChallengeMethod,
-                requestedTenantId,
+            return await AuthorizeAsync(
+                request.ClientId ?? string.Empty,
+                "code",
+                request.RedirectUri ?? string.Empty,
+                request.Scope ?? "openid profile email offline_access",
+                request.State ?? string.Empty,
+                request.Nonce ?? string.Empty,
+                request.CodeChallenge ?? string.Empty,
+                request.CodeChallengeMethod ?? "S256",
+                null,
+                requestedTenantId ?? string.Empty,
                 httpRequest,
                 httpResponse,
+                user.ItemId,
+                false,
                 mfaCompleted: false);
         }
 
@@ -264,18 +267,21 @@ namespace Authentication.DomainService.Authentication
             await ResetAuthFailureCountersAsync(user);
             await _cacheClient.RemoveKeyAsync($"oidc_mfa_login:{request.MfaId}");
 
-            return await CompleteOidcAuthorizationAfterLoginAsync(
-                user,
-                mfaContext.ClientId,
-                mfaContext.RedirectUri,
-                mfaContext.Scope,
-                mfaContext.State,
-                mfaContext.Nonce,
-                mfaContext.CodeChallenge,
-                mfaContext.CodeChallengeMethod,
-                mfaContext.TenantId,
+            return await AuthorizeAsync(
+                mfaContext.ClientId ?? string.Empty,
+                "code",
+                mfaContext.RedirectUri ?? string.Empty,
+                mfaContext.Scope ?? "openid profile email offline_access",
+                mfaContext.State ?? string.Empty,
+                mfaContext.Nonce ?? string.Empty,
+                mfaContext.CodeChallenge ?? string.Empty,
+                mfaContext.CodeChallengeMethod ?? "S256",
+                null,
+                mfaContext.TenantId ?? string.Empty,
                 httpRequest,
                 httpResponse,
+                user.ItemId,
+                false,
                 mfaCompleted: true);
         }
 
@@ -332,77 +338,12 @@ namespace Authentication.DomainService.Authentication
                 user_mfa = user.UserMfaType.ToString()
             });
         }
-
-        private async Task<IActionResult> CompleteOidcAuthorizationAfterLoginAsync(
-            User user,
-            string? clientId,
-            string? redirectUri,
-            string? scope,
-            string? state,
-            string? nonce,
-            string? codeChallenge,
-            string? codeChallengeMethod,
-            string? tenantId,
-            HttpRequest httpRequest,
-            HttpResponse httpResponse,
-            bool mfaCompleted)
-        {
-            if (!string.IsNullOrWhiteSpace(state))
-            {
-                var amr = BuildAmr(user, mfaCompleted);
-                await _cacheClient.AddStringValueAsync(
-                    $"oidc_amr:{state}:{user.ItemId}",
-                    JsonSerializer.Serialize(amr),
-                    600);
-            }
-
-            // Single tenant - proceed with auth code flow
-            // Establish IDP session (sets idp_session_id cookie)
-            var currentSessionId = httpRequest.Cookies[$"{IdpConstants.IdpSessionCookieName}_{tenantId}"];
-            await EnsureIdpSessionAsync(httpRequest, httpResponse, currentSessionId, user.ItemId, tenantId ?? string.Empty);
-
-            // Issue the authorization code directly (skip login UI)
-            return await AuthorizeAsync(
-                clientId ?? string.Empty,
-                "code",
-                redirectUri ?? string.Empty,
-                scope ?? "openid profile email offline_access",
-                state ?? string.Empty,
-                nonce ?? string.Empty,
-                codeChallenge ?? string.Empty,
-                codeChallengeMethod ?? "S256",
-                null,
-                tenantId ?? string.Empty,
-                httpRequest,
-                httpResponse,
-                user.ItemId,
-                false);
-        }
-
+        
         private async Task<bool> IsMfaRequiredAsync(User user)
         {
             var mfaConfiguration = await _mfaConfigurationService.GetAsync();
             var mfaProviders = mfaConfiguration.UserMfaType ?? [];
             return user.MfaEnabled && mfaProviders.Contains(user.UserMfaType);
-        }
-
-        private async Task<List<string>> ResolveAmrForAuthorizationAsync(string state, string userId)
-        {
-            if (string.IsNullOrWhiteSpace(state) || string.IsNullOrWhiteSpace(userId))
-            {
-                return ["pwd"];
-            }
-
-            var key = $"oidc_amr:{state}:{userId}";
-            var amrRaw = await _cacheClient.GetStringValueAsync(key);
-            if (string.IsNullOrWhiteSpace(amrRaw))
-            {
-                return ["pwd"];
-            }
-
-            await _cacheClient.RemoveKeyAsync(key);
-            var amr = JsonSerializer.Deserialize<List<string>>(amrRaw);
-            return amr is { Count: > 0 } ? amr : ["pwd"];
         }
 
         private static List<string> BuildAmr(User user, bool mfaCompleted)
@@ -499,7 +440,8 @@ namespace Authentication.DomainService.Authentication
             HttpRequest request,
             HttpResponse response,
             string? blocksUserId = null,
-            bool returnRedirectResponse = true)
+            bool returnRedirectResponse = true,
+            bool mfaCompleted = false)
         {
             var canRedirectToClient = false;
 
@@ -632,6 +574,7 @@ namespace Authentication.DomainService.Authentication
                 await PersistLastUsedOrganizationAsync(user, effectiveOrganizationId);
 
                 var authCode = GenerateRandomCode(32);
+                var amr = BuildAmr(user, mfaCompleted);
 
                 var codeModel = new AuthorizationCodeModel
                 {
@@ -646,7 +589,7 @@ namespace Authentication.DomainService.Authentication
                     State = state,
                     CodeChallenge = code_challenge,
                     CodeChallengeMethod = code_challenge_method,
-                    Amr = await ResolveAmrForAuthorizationAsync(state, resolvedUserId),
+                    Amr = amr,
                     ExpiresAt = DateTime.UtcNow.AddMinutes(10),
                     CreatedAt = DateTime.UtcNow,
                     CreatedByIpAddress = GetClientIpAddress(request),
