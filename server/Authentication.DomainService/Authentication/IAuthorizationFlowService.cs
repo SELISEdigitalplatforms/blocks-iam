@@ -98,7 +98,8 @@ namespace Authentication.DomainService.Authentication
             HttpRequest request,
             HttpResponse response,
             string? blocksUserId = null,
-            bool returnRedirectResponse = true);
+            bool returnRedirectResponse = true,
+            bool mfaCompleted = false);
 
 
         Task<IActionResult> TokenAsync(string grantType, HttpRequest request);
