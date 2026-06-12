@@ -10,6 +10,8 @@ using Authentication.DomainService.Services;
 using Authentication.DomainService.Shared.RequestModel;
 using Authentication.DomainService.Utilities;
 using Blocks.Genesis;
+using Captcha.DomainService.Captcha;
+using Captcha.DomainService.Configuration;
 using Iam.DomainService.Entities;
 using Iam.DomainService.Users;
 using Idp.DomainService.Oidc.Contracts;
@@ -47,9 +49,11 @@ namespace Authentication.DomainService.Authentication
         private readonly IMfaConfigurationService _mfaConfigurationService;
         private readonly IOtpServiceFactory _otpServiceFactory;
         private readonly ITenants _tenants;
-        private readonly ILogger<AuthorizationFlowService> _logger;
         private readonly IAuthenticationService _authenticationService;
         private readonly ICacheClient _cacheClient;
+        private readonly ICaptchaService _captchaService;
+        private readonly ICaptchaConfigurationService _captchaConfigurationService;
+        private readonly ILogger<AuthorizationFlowService> _logger;
 
         public AuthorizationFlowService(
             IAuthorizationCodeRepository authCodeRepo,
@@ -69,6 +73,8 @@ namespace Authentication.DomainService.Authentication
             ITenants tenants,
             IAuthenticationService authenticationService,
             ICacheClient cacheClient,
+            ICaptchaService captchaService,
+            ICaptchaConfigurationService captchaConfigurationService,
             ILogger<AuthorizationFlowService> logger)
         {
             _authCodeRepo = authCodeRepo;
@@ -88,6 +94,8 @@ namespace Authentication.DomainService.Authentication
             _tenants = tenants;
             _authenticationService = authenticationService;
             _cacheClient = cacheClient;
+            _captchaService = captchaService;
+            _captchaConfigurationService = captchaConfigurationService;
             _logger = logger;
         }
 
@@ -148,6 +156,12 @@ namespace Authentication.DomainService.Authentication
 
             if (user.LockoutUntilUtc.HasValue && user.LockoutUntilUtc.Value > DateTime.UtcNow)
                 return new ObjectResult(new { error = "account_locked" }) { StatusCode = 423 };
+
+            var captchaValidationResult = await ValidateCaptchaIfRequiredAsync(user, request.CaptchaCode);
+            if (captchaValidationResult != null)
+            {
+                return captchaValidationResult;
+            }
 
             bool passwordValid;
             try
@@ -338,12 +352,49 @@ namespace Authentication.DomainService.Authentication
                 user_mfa = user.UserMfaType.ToString()
             });
         }
-        
+
         private async Task<bool> IsMfaRequiredAsync(User user)
         {
             var mfaConfiguration = await _mfaConfigurationService.GetAsync();
             var mfaProviders = mfaConfiguration.UserMfaType ?? [];
             return user.MfaEnabled && mfaProviders.Contains(user.UserMfaType);
+        }
+
+        private async Task<IActionResult?> ValidateCaptchaIfRequiredAsync(User user, string? captchaCode)
+        {
+            if (user.FailedLoginCount < 2)
+            {
+                return null;
+            }
+
+            var captchaConfiguration = await _captchaConfigurationService.GetCaptchaConfigurationAsync();
+            if (captchaConfiguration == null || !captchaConfiguration.IsEnable)
+            {
+                return null;
+            }
+
+            if (string.IsNullOrWhiteSpace(captchaCode))
+            {
+                return BuildCaptchaRequiredResult();
+            }
+
+            var verifyCaptchaResponse = await _captchaService.VerifyCaptchaAsync(new VerifyCaptchaRequest
+            {
+                VerificationCode = captchaCode,
+                ConfigurationName = captchaConfiguration.Provider
+            });
+
+            return verifyCaptchaResponse.Verified ? null : BuildCaptchaRequiredResult();
+        }
+
+        private static IActionResult BuildCaptchaRequiredResult()
+        {
+            return new BadRequestObjectResult(new
+            {
+                error = OAuthError.CaptchaEnabled,
+                error_description = "Captcha verification is required",
+                enable_captcha = true
+            });
         }
 
         private static List<string> BuildAmr(User user, bool mfaCompleted)

@@ -8,7 +8,6 @@ using Iam.DomainService.Entities;
 using Mfa.DomainService.Configuration;
 using Mfa.DomainService.Entities;
 using Mfa.DomainService.Services;
-using Microsoft.Extensions.Configuration;
 using System.IdentityModel.Tokens.Jwt;
 using System.Text.Json;
 using Authentication.DomainService.Utilities;
@@ -23,7 +22,6 @@ namespace Authentication.DomainService.OAuth
         private readonly IAuthenticationRepository _authenticationRepository;
         private readonly IOtpServiceFactory _otpServiceFactory;
         private readonly IMfaConfigurationService _configurationService;
-        private readonly IConfiguration _configuration;
         private readonly ICacheClient _cacheClient;
         private readonly ITenants _tenants;
         private readonly UnifiedTokenSessionService _unifiedTokenSessionService;
@@ -36,7 +34,6 @@ namespace Authentication.DomainService.OAuth
             ICacheClient cacheClient,
             ITenants tenants,
             IOtpServiceFactory otpServiceFactory,
-            IConfiguration configuration,
             UnifiedTokenSessionService unifiedTokenSessionService
         )
         {
@@ -47,7 +44,6 @@ namespace Authentication.DomainService.OAuth
             _cacheClient = cacheClient;
             _tenants = tenants;
             _otpServiceFactory = otpServiceFactory;
-            _configuration = configuration;
             _unifiedTokenSessionService = unifiedTokenSessionService;
         }
 
@@ -72,7 +68,7 @@ namespace Authentication.DomainService.OAuth
                 };
             }
 
-            var (clientAllowedScopes, allowedServiceAccessResources) = await ResolveClientAuthorizationConfigAsync(tokenRequest.ClientId);
+            var (_, allowedServiceAccessResources) = await ResolveClientAuthorizationConfigAsync(tokenRequest.ClientId);
             var jwtAccessToken = await _jwtAccessTokenProvider.GetJwtAccessToken(
                 authenticationConfiguration,
                 tenant,
