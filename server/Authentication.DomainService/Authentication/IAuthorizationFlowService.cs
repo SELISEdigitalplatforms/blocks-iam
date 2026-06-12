@@ -45,6 +45,9 @@ namespace Authentication.DomainService.Authentication
 
         [System.Text.Json.Serialization.JsonPropertyName("mfa_code")]
         public string? MfaCode { get; set; }
+
+        [System.Text.Json.Serialization.JsonPropertyName("captcha_code")]
+        public string? CaptchaCode { get; set; }
     }
 
     public class OidcLoginResponse

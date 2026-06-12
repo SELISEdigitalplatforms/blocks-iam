@@ -200,43 +200,19 @@ public class AuthenticationController : ControllerBase
     }
 
     /// <summary>
-    /// Social provider callback handler (Both Browser Redirect & API Pattern)
-    /// Receives authorization code from social provider via GET query params or POST body
+    /// Social provider callback handler (API Pattern)
+    /// Receives authorization code from social provider via POST body
     /// Exchanges code for tokens, validates JWT, creates/updates user
     /// Sets secure HTTP-only cookie with tokens
-    /// Supports both patterns:
-    /// - GET /social/callback?code=...&state=...&provider=... (Browser redirect)
-    /// - POST /social/callback with request body (SPA/API pattern)
+    /// Endpoint:
+    /// - POST /social/callback with request body
     /// RFC 6749: OAuth 2.0 | RFC 3986: OpenID Connect | RFC 7519: JWT
     /// </summary>
-    [HttpGet("social/callback")]
     [HttpPost("social/callback")]
     [AllowAnonymous]
-    public async Task<IActionResult> HandleSocialCallback(
-        [FromQuery] string? code = null,
-        [FromQuery] string? state = null,
-        [FromQuery] string? provider = null,
-        [FromBody] SocialLoginRequest? request = null)
+    public async Task<IActionResult> HandleSocialCallback([FromBody] SocialLoginRequest request)
     {
-        // Handle POST body pattern
-        if (request != null)
-        {
-            code = request.Code;
-            state = request.State;
-            provider ??= request.Provider;
-        }
-
-        if (string.IsNullOrWhiteSpace(code))
-            return BadRequest(new { error = "authorization_code_missing", error_description = "Authorization code is required" });
-
-        if (string.IsNullOrWhiteSpace(state))
-            return BadRequest(new { error = "state_missing", error_description = "State parameter is required" });
-
-        if (string.IsNullOrWhiteSpace(provider))
-            return BadRequest(new { error = "provider_missing", error_description = "Provider name is required" });
-
-        var loginRequest = new SocialLoginRequest { Code = code, State = state };
-        var result = await _authenticationFlowService.ExecuteSocialLoginAsync(loginRequest, Request);
+        var result = await _authenticationFlowService.ExecuteSocialLoginAsync(request, Request);
 
         return await _authenticationService.BuildFlowResultAsync(result, HttpContext);
     }
