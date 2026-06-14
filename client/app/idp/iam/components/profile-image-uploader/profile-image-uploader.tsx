@@ -108,18 +108,18 @@ export const ProfileImageUploader = ({ projectKey, id }: ProfileImageUploaderPro
           e.stopPropagation();
           fileInputRef.current?.click();
         }}
-        className="group relative aspect-square w-full max-w-[200px] cursor-pointer overflow-hidden rounded-full bg-gray-50 disabled:cursor-not-allowed dark:bg-gray-800"
+        className="group relative aspect-square w-full max-w-[200px] cursor-pointer overflow-hidden rounded-lg bg-gray-50 disabled:cursor-not-allowed dark:bg-gray-800"
       >
         <img
           src={image ?? emptyProfilePhoto}
           alt="Profile Image"
-          className="h-full w-full rounded-full object-cover"
+          className="h-full w-full rounded-lg object-cover"
         />
-        <div className="absolute inset-0 flex items-center justify-center rounded-full bg-black/0 transition-colors group-hover:bg-black/40 group-disabled:bg-black/0">
+        <div className="absolute inset-0 flex items-center justify-center rounded-lg bg-black/0 transition-colors group-hover:bg-black/40 group-disabled:bg-black/0">
           <Camera className="h-7 w-7 text-white opacity-0 transition-opacity group-hover:opacity-100 group-disabled:opacity-0" />
         </div>
         {isProfileImageUploading && (
-          <div className="absolute inset-0 flex items-center justify-center rounded-full bg-gray-50/75 dark:bg-gray-800/75" />
+          <div className="absolute inset-0 flex items-center justify-center rounded-lg bg-gray-50/75 dark:bg-gray-800/75" />
         )}
       </button>
     </div>

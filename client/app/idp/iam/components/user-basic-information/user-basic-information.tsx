@@ -23,10 +23,12 @@ export const UserBasicInformation = ({
   id,
   projectKey,
   detailsGridClassName = "",
+  className = "",
 }: {
   id: string;
   projectKey: string;
   detailsGridClassName?: string;
+  className?: string;
 }) => {
   const { isLoading, data } = useGetUserById({ id, projectKey });
 
@@ -34,7 +36,7 @@ export const UserBasicInformation = ({
   const user = data?.data;
 
   return (
-    <Card>
+    <Card className={className}>
       <CardHeader>
         <CardTitle>Basic Information</CardTitle>
       </CardHeader>

@@ -60,11 +60,11 @@ export const UserPATList = ({ isLoading, data }: PATListProps) => {
         ),
         cell: ({ row }) => {
           return (
-            <div className="group flex w-[120px] flex-col sm:w-[150px] lg:w-[200px]">
+            <div className="group flex w-[280px] min-w-[280px] max-w-[380px] flex-col">
               <div className="relative rounded-[4px] px-2 py-1">
                 <span
                   className={cn(
-                    "block truncate lg:overflow-visible lg:text-clip lg:whitespace-normal",
+                    "block truncate",
                     isMobile && "transition-all group-hover:blur-sm",
                   )}
                   title={row.original.code}
@@ -145,7 +145,7 @@ export const UserPATList = ({ isLoading, data }: PATListProps) => {
   if (isLoading) return <LoadingSkelton />;
 
   return (
-    <>
+    <div className="overflow-x-auto">
       <Table className="text-sm">
         <TableHeader>
           {table.getHeaderGroups().map((headerGroup) => (
@@ -187,6 +187,6 @@ export const UserPATList = ({ isLoading, data }: PATListProps) => {
           )}
         </TableBody>
       </Table>
-    </>
+    </div>
   );
 };

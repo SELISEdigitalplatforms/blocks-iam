@@ -69,12 +69,19 @@ export const Profile = () => {
 
 export const UserProfile = ({ id }: { id: string }) => {
   const [tabId, setTabId] = useQueryState("userDetails", { defaultValue: "details" });
+  const { data } = useGetMe();
+  const firstName = data?.data?.firstName;
+  const lastName = data?.data?.lastName;
+  const hasName =
+    typeof firstName === "string" && firstName.trim() !== "" &&
+    typeof lastName === "string" && lastName.trim() !== "";
+  const title = hasName ? `${firstName} ${lastName}` : "My Profile";
 
   return (
     <div className="flex w-full flex-col p-6 md:p-10">
-      <h3 className="text-2xl font-semibold">My Profile</h3>
+      <h3 className="text-2xl font-semibold">{title}</h3>
 
-      <div className="mt-6 grid grid-cols-1 gap-6 lg:grid-cols-[30%_1fr]">
+      <div className="mt-6 grid grid-cols-1 items-stretch gap-6 lg:grid-cols-[40%_1fr]">
         {/* Left column: avatar + general info */}
         <div className="flex flex-col gap-4">
           <ProfileImageUploader id={id} projectKey={x_blocks_key} />
@@ -82,6 +89,7 @@ export const UserProfile = ({ id }: { id: string }) => {
             id={id}
             projectKey={x_blocks_key}
             detailsGridClassName="grid-cols-1 sm:grid-cols-2"
+            className="flex-1"
           />
         </div>
 
