@@ -1,4 +1,3 @@
-import { PrimaryButton } from "@/components/action-buttons/primary-button";
 import { Button } from "@/components/ui-kits/button/button";
 import {
   Dialog,
@@ -83,7 +82,20 @@ export const UpdateUser = ({ id, projectKey, own = false }: UpdateUserProps) => 
       }}
     >
       <DialogTrigger asChild>
-        <PrimaryButton label="Edit User" Icon={Pen} />
+        {own ? (
+          <Button 
+            variant="outline" 
+            className="w-full gap-2 border-primary/20 bg-primary/5 font-medium text-primary transition-all hover:border-primary/40 hover:bg-primary/10"
+          >
+            <Pen className="h-4 w-4" />
+            Edit Profile
+          </Button>
+        ) : (
+          <Button variant="outline" size="sm" className="gap-2">
+            <Pen className="h-4 w-4" />
+            <span className="sr-only sm:not-sr-only">Edit User</span>
+          </Button>
+        )}
       </DialogTrigger>
       <DialogContent>
         <DialogHeader>
