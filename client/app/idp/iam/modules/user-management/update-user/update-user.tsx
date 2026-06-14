@@ -83,9 +83,8 @@ export const UpdateUser = ({ id, projectKey, own = false }: UpdateUserProps) => 
     >
       <DialogTrigger asChild>
         {own ? (
-          <Button 
-            variant="outline" 
-            className="w-full gap-2 border-primary/20 bg-primary/5 font-medium text-primary transition-all hover:border-primary/40 hover:bg-primary/10"
+          <Button
+            className="w-full gap-2 rounded-lg border border-border/70 bg-background font-medium text-foreground shadow-sm transition-all hover:bg-muted"
           >
             <Pen className="h-4 w-4" />
             Edit Profile
