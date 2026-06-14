@@ -11,7 +11,8 @@ import { UserHistories } from "../user-histories";
 import { UserPats } from "../user-pat";
 import { Card } from "@/components/ui-kits/card/card";
 import { Badge } from "@/components/ui-kits/badge/badge";
-import { Mail, Shield, Smartphone, Clock, Key, Settings } from "lucide-react";
+import { Mail, Shield, Smartphone, Clock, Key, User, Calendar } from "lucide-react";
+import { checkValidDate, formatFullDate } from "@/lib/utils";
 import { Skeleton } from "@/components/ui-kits/skeleton/skeleton";
 
 const x_blocks_key = getRuntimeEnv("BLOCKS_X_BLOCKS_KEY") || "";
@@ -37,7 +38,7 @@ export const Profile = () => {
 };
 
 export const UserProfile = ({ id }: { id: string }) => {
-  const [tabId, setTabId] = useQueryState("userDetails", { defaultValue: "details" });
+  const [tabId, setTabId] = useQueryState("userDetails", { defaultValue: "info" });
   const { data } = useGetMe();
   const user = data?.data;
 
@@ -55,41 +56,59 @@ export const UserProfile = ({ id }: { id: string }) => {
   return (
     <div className="mx-auto w-full max-w-6xl space-y-8 p-6 md:p-10">
       {/* Hero Profile Header */}
-      <Card className="overflow-hidden border-0 bg-gradient-to-br from-background to-muted/30 shadow-sm">
-        <div className="flex flex-col items-center gap-6 p-8 md:flex-row md:items-start md:gap-8">
+      <Card className="group relative overflow-hidden border border-border/40 bg-gradient-to-br from-background via-background to-primary/[0.03] shadow-lg shadow-primary/[0.02] transition-all duration-300 hover:shadow-xl hover:shadow-primary/[0.04]">
+        {/* Decorative elements */}
+        <div className="absolute -right-20 -top-20 h-40 w-40 rounded-full bg-primary/[0.03] blur-3xl" />
+        <div className="absolute -bottom-10 -left-10 h-32 w-32 rounded-full bg-primary/[0.02] blur-2xl" />
+        
+        <div className="relative flex flex-col items-center gap-8 p-8 md:flex-row md:items-center md:gap-10 lg:p-10">
           {/* Avatar */}
-          <div className="shrink-0">
+          <div className="shrink-0 rounded-2xl bg-gradient-to-br from-primary/10 to-primary/5 p-1.5 shadow-inner">
             <ProfileImageUploader id={id} projectKey={x_blocks_key} />
           </div>
 
           {/* User Info */}
-          <div className="flex flex-1 flex-col items-center gap-4 md:items-start">
-            <div className="text-center md:text-left">
-              <h1 className="text-2xl font-bold tracking-tight text-foreground md:text-3xl">
-                {fullName}
-              </h1>
-              <div className="mt-2 flex items-center justify-center gap-2 text-muted-foreground md:justify-start">
-                <Mail className="h-4 w-4" />
-                <span className="text-sm">{email}</span>
+          <div className="flex flex-1 flex-col items-center gap-5 md:items-start">
+            <div className="space-y-3 text-center md:text-left">
+              <div className="flex flex-col items-center gap-3 md:flex-row md:items-center">
+                <h1 className="text-2xl font-bold tracking-tight text-foreground md:text-3xl">
+                  {fullName}
+                </h1>
+                <Badge
+                  variant={isActive ? "success" : "error"}
+                  className="rounded-full px-3 py-1 text-xs font-semibold uppercase tracking-wide"
+                >
+                  {isActive ? "Active" : "Inactive"}
+                </Badge>
+              </div>
+              
+              <div className="flex flex-col items-center gap-3 text-muted-foreground md:flex-row md:items-center md:gap-4">
+                <div className="flex items-center gap-2">
+                  <Mail className="h-4 w-4 text-primary/60" />
+                  <span className="text-sm font-medium">{email}</span>
+                </div>
+                {user?.logInCount !== undefined && (
+                  <div className="hidden h-1 w-1 rounded-full bg-border md:block" />
+                )}
+                {user?.logInCount !== undefined && (
+                  <span className="text-sm text-muted-foreground/70">
+                    {user.logInCount} total logins
+                  </span>
+                )}
+                {user?.lastLoggedInTime && checkValidDate(user.lastLoggedInTime) && (
+                  <>
+                    <div className="hidden h-1 w-1 rounded-full bg-border md:block" />
+                    <div className="flex items-center gap-1.5 text-sm text-muted-foreground/70">
+                      <Calendar className="h-3.5 w-3.5" />
+                      <span>Last login {formatFullDate(new Date(user.lastLoggedInTime))}</span>
+                    </div>
+                  </>
+                )}
               </div>
             </div>
 
-            <div className="flex flex-wrap items-center justify-center gap-2 md:justify-start">
-              <Badge
-                variant={isActive ? "success" : "error"}
-                className="rounded-full px-3 py-1 text-xs font-medium"
-              >
-                {isActive ? "Active" : "Inactive"}
-              </Badge>
-              {user?.logInCount !== undefined && (
-                <Badge variant="secondary" className="rounded-full px-3 py-1 text-xs font-medium">
-                  {user.logInCount} logins
-                </Badge>
-              )}
-            </div>
-
             {/* Quick Actions */}
-            <div className="mt-2">
+            <div className="pt-1">
               <UpdateUser id={id} projectKey={x_blocks_key} own />
             </div>
           </div>
@@ -100,20 +119,20 @@ export const UserProfile = ({ id }: { id: string }) => {
       <Tabs value={tabId} className="space-y-6">
         <TabsList className="inline-flex h-auto w-full justify-start gap-1 rounded-xl bg-muted/50 p-1.5 md:w-auto">
           <TabsTrigger
-            onClick={() => setTabId("details")}
-            value="details"
-            className="flex items-center gap-2 rounded-lg px-4 py-2.5 text-sm font-medium transition-all data-[state=active]:bg-background data-[state=active]:shadow-sm"
-          >
-            <Shield className="h-4 w-4" />
-            <span className="hidden sm:inline">Security</span>
-          </TabsTrigger>
-          <TabsTrigger
             onClick={() => setTabId("info")}
             value="info"
             className="flex items-center gap-2 rounded-lg px-4 py-2.5 text-sm font-medium transition-all data-[state=active]:bg-background data-[state=active]:shadow-sm"
           >
-            <Settings className="h-4 w-4" />
-            <span className="hidden sm:inline">Info</span>
+            <User className="h-4 w-4" />
+            <span className="hidden sm:inline">Details</span>
+          </TabsTrigger>
+          <TabsTrigger
+            onClick={() => setTabId("security")}
+            value="security"
+            className="flex items-center gap-2 rounded-lg px-4 py-2.5 text-sm font-medium transition-all data-[state=active]:bg-background data-[state=active]:shadow-sm"
+          >
+            <Shield className="h-4 w-4" />
+            <span className="hidden sm:inline">Security</span>
           </TabsTrigger>
           <TabsTrigger
             onClick={() => setTabId("devices")}
@@ -141,16 +160,17 @@ export const UserProfile = ({ id }: { id: string }) => {
           </TabsTrigger>
         </TabsList>
 
-        <TabsContent value="details" className="mt-0 space-y-6">
-          <ProfileDetails id={id} />
-        </TabsContent>
-
         <TabsContent value="info" className="mt-0">
           <UserBasicInformation
             id={id}
             projectKey={x_blocks_key}
             detailsGridClassName="grid-cols-1 sm:grid-cols-2 lg:grid-cols-3"
+            hideRedundantFields
           />
+        </TabsContent>
+
+        <TabsContent value="security" className="mt-0 space-y-6">
+          <ProfileDetails id={id} />
         </TabsContent>
 
         <TabsContent value="devices" className="mt-0">
