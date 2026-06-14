@@ -399,6 +399,54 @@ namespace Iam.DomainService.Resources
             return await  (await collection.FindAsync(Builders<Organization>.Filter.Where(r=>r.ItemId == id))).FirstOrDefaultAsync();
         }
 
+        public async Task<List<string>> GetOrganizationIdsByUserIdAsync(string userId)
+        {
+            if (string.IsNullOrWhiteSpace(userId))
+            {
+                return [];
+            }
+
+            var userCollection = _identityAccessManagementRepository.GetCollectionByName<BsonDocument>("Users");
+            var filter = Builders<BsonDocument>.Filter.Eq("ItemId", userId);
+            var projection = Builders<BsonDocument>.Projection.Include("OrganizationIds");
+            var user = await userCollection.Find(filter).Project(projection).FirstOrDefaultAsync();
+
+            if (user == null || !user.TryGetValue("OrganizationIds", out var organizationIdsValue) || !organizationIdsValue.IsBsonArray)
+            {
+                return [];
+            }
+
+            return organizationIdsValue
+                .AsBsonArray
+                .Where(x => x.IsString)
+                .Select(x => x.AsString)
+                .Where(x => !string.IsNullOrWhiteSpace(x))
+                .Distinct()
+                .ToList();
+        }
+
+        public async Task<List<Organization>> GetOrganizationsByIdsAsync(List<string> organizationIds)
+        {
+            if (organizationIds == null || organizationIds.Count == 0)
+            {
+                return [];
+            }
+
+            var validOrganizationIds = organizationIds
+                .Where(x => !string.IsNullOrWhiteSpace(x))
+                .Distinct()
+                .ToList();
+
+            if (validOrganizationIds.Count == 0)
+            {
+                return [];
+            }
+
+            var collection = _identityAccessManagementRepository.GetCollection<Organization>();
+            var filter = Builders<Organization>.Filter.In(x => x.ItemId, validOrganizationIds);
+            return await collection.Find(filter).ToListAsync();
+        }
+
         public async Task SaveOrganizationAsync(Organization organization)
         {
             var collection = _identityAccessManagementRepository.GetCollection<Organization>();

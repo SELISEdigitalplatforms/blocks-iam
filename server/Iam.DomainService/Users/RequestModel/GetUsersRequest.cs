@@ -7,7 +7,7 @@ namespace Iam.DomainService.Users
     {
     }
 
-    public class GetUsersResponse : BaseQueryListResponse<IQueryable<GetUser>>
+    public class GetUsersResponse : BaseQueryListResponse<IQueryable<Dictionary<string, object>>>
     {
 
     }
