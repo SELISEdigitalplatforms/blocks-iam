@@ -381,7 +381,7 @@ namespace Blocks.Api.Controllers
                 HttpOnly = true,
                 Secure = true,
                 SameSite = isLocal ? SameSiteMode.None : SameSiteMode.Strict,
-                Path = "/",
+                Path = "/api/oidc",
                 Expires = DateTime.UtcNow.AddDays(30)
             };
         }
