@@ -37,7 +37,6 @@ IHostBuilder CreateHostBuilder(string[] args) =>
 
             services.AddSingleton<IConsumer<RefreshTokenEvent>, RefreshTokenWorkerService>();
             services.AddSingleton<IConsumer<UserAuthenticationTimelineEvent>, UserAuthenticationTimelineWorkerService>();
-            services.AddSingleton<IConsumer<MfaActionEvent>, UpdateMfaConfigurationService>();
 
             services.AddSingleton<IConsumer<ResourceMutationEvent>, ResourceMutationConsumer>();
             services.AddSingleton<IConsumer<ResourceSetToPermissionMutationEvent>, ResourceSetToPermissionMutationConsumer>();

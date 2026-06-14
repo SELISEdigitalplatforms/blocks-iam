@@ -309,7 +309,7 @@ namespace Authentication.DomainService.Authentication
                 .ToList();
 
             // Return only metadata, NOT authorization URLs
-            var ssoInfo = config.AllowedGrantTypes.Contains("social") && socialProviders.Any()
+            var ssoInfo = socialProviders.Any()
                           ? socialProviders.Select(provider => new
                           {
                               provider = provider.Provider,
