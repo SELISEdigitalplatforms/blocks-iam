@@ -4,8 +4,6 @@
     {
         public string ItemId { get; set; }
 
-        public List<string> AllowedGrantTypes { get; set; }
-
         public int RefreshTokenValidForNumberMinutes { get; set; }
 
         public int AbsoluteRefreshTokenValidForNumberMinutes { get; set; }

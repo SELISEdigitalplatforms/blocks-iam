@@ -180,11 +180,6 @@ namespace CloudConfiguration.DomainService.Shared.Services
                     current?.AccountLockDurationInMinutes,
                     IdentityConfiguration.DefaultAccountLockDurationInMinutes),
 
-                AllowedGrantTypes =
-                    configuration.AllowedGrantTypes?.Count > 0
-                        ? configuration.AllowedGrantTypes
-                        : current?.AllowedGrantTypes ?? [],
-
                 PublicCertificatePath = ResolveString(
                     configuration.PublicCertificatePath,
                     current?.PublicCertificatePath),
@@ -338,16 +333,6 @@ namespace CloudConfiguration.DomainService.Shared.Services
             mafConfiguration.MfaTemplate = request.MfaTemplate ?? new MfaTemplate { TemplateId = Constants.DefaultMfaTemplateId, TemplateName = Constants.DefaultMfaTemplateName };
 
             await _configurationRepository.UpsertAsync(mafConfiguration, (m => m.ItemId == mafConfiguration.ItemId));
-
-            var bc = BlocksContext.GetContext();
-            await _messageClient.SendToConsumerAsync(new ConsumerMessage<MfaActionEvent>
-            {
-                Payload = new MfaActionEvent
-                {
-                    IsEnable = mafConfiguration.EnableMfa,
-                },
-                ConsumerName = Constants.AuthenticationQueue,
-            });
 
             return new BaseResponse { IsSuccess = true };
         }
