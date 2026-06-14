@@ -155,17 +155,14 @@ export const ProfileSidebar = ({ id, projectKey, user }: ProfileSidebarProps) =>
         </span>
       </div>
 
-      <div className="border-b border-border/40 py-2">
-        <div className="flex justify-center">
+      {/* Name + email */}
+      <div className="px-5">
+        <div className="flex items-center justify-between gap-2">
+          <h1 className="text-[15px] font-semibold leading-snug tracking-tight text-foreground">{fullName}</h1>
           <UpdateUser id={id} projectKey={projectKey} own iconOnly />
         </div>
-      </div>
-
-      {/* Name + email */}
-      <div className="border-b border-border/40 px-5 py-4">
-        <h1 className="text-[15px] font-semibold leading-snug tracking-tight text-foreground">{fullName}</h1>
         {email && (
-          <div className="mt-1 flex min-w-0 items-center gap-1.5">
+          <div className="flex min-w-0 items-center gap-1.5">
             <span className="min-w-0 flex-1 truncate text-[13px] text-muted-foreground">{email}</span>
             <CopyToClipboardButton textToCopy={email}>
               <span className="sr-only">Copy email</span>
@@ -193,21 +190,21 @@ export const UserProfile = ({ id }: { id: string }) => {
 
   return (
     <div className="mx-auto w-full max-w-7xl overflow-x-hidden p-4 sm:p-6 md:p-8">
-      <div className="grid grid-cols-1 gap-8 md:grid-cols-[340px_1fr]">
+      <div className="grid grid-cols-1 gap-5 md:grid-cols-[340px_minmax(0,1fr)] md:gap-6 lg:gap-8">
         {/* Left Sidebar - Profile Card */}
-        <div className="mx-auto w-full max-w-[420px] space-y-6 md:mx-0 md:max-w-none">
+        <div className="mx-auto w-full max-w-[420px] md:mx-0 md:max-w-none">
           <ProfileSidebar id={id} projectKey={x_blocks_key} user={user} />
         </div>
 
         {/* Right Content - Tabs */}
-        <div>
+        <div className="min-w-0">
           <Tabs value={tabId} className="space-y-6 overflow-hidden">
-            <TabsList className="inline-flex h-auto w-full max-w-full justify-start gap-1 overflow-x-auto rounded-xl bg-muted/50 p-1.5">
+            <TabsList className="inline-flex h-auto w-full max-w-full justify-start gap-1 overflow-x-auto rounded-xl bg-muted/50 p-1.5 md:flex-wrap lg:flex-nowrap">
               {/* Details tab - Only visible on mobile */}
               <TabsTrigger
                 onClick={() => setTabId("info")}
                 value="info"
-                className="flex items-center gap-2 rounded-lg px-4 py-2.5 text-sm font-medium transition-all data-[state=active]:bg-background data-[state=active]:shadow-sm lg:hidden"
+                className="shrink-0 flex items-center gap-2 rounded-lg px-4 py-2.5 text-sm font-medium transition-all data-[state=active]:bg-background data-[state=active]:shadow-sm lg:hidden"
               >
                 <User className="h-4 w-4" />
                 <span>Details</span>
@@ -215,7 +212,7 @@ export const UserProfile = ({ id }: { id: string }) => {
               <TabsTrigger
                 onClick={() => setTabId("security")}
                 value="security"
-                className="flex items-center gap-2 rounded-lg px-4 py-2.5 text-sm font-medium transition-all data-[state=active]:bg-background data-[state=active]:shadow-sm"
+                className="shrink-0 flex items-center gap-2 rounded-lg px-4 py-2.5 text-sm font-medium transition-all data-[state=active]:bg-background data-[state=active]:shadow-sm"
               >
                 <Shield className="h-4 w-4" />
                 <span className="hidden sm:inline">Security</span>
@@ -223,7 +220,7 @@ export const UserProfile = ({ id }: { id: string }) => {
               <TabsTrigger
                 onClick={() => setTabId("devices")}
                 value="devices"
-                className="flex items-center gap-2 rounded-lg px-4 py-2.5 text-sm font-medium transition-all data-[state=active]:bg-background data-[state=active]:shadow-sm"
+                className="shrink-0 flex items-center gap-2 rounded-lg px-4 py-2.5 text-sm font-medium transition-all data-[state=active]:bg-background data-[state=active]:shadow-sm"
               >
                 <Smartphone className="h-4 w-4" />
                 <span className="hidden sm:inline">Devices</span>
@@ -231,7 +228,7 @@ export const UserProfile = ({ id }: { id: string }) => {
               <TabsTrigger
                 onClick={() => setTabId("history")}
                 value="history"
-                className="flex items-center gap-2 rounded-lg px-4 py-2.5 text-sm font-medium transition-all data-[state=active]:bg-background data-[state=active]:shadow-sm"
+                className="shrink-0 flex items-center gap-2 rounded-lg px-4 py-2.5 text-sm font-medium transition-all data-[state=active]:bg-background data-[state=active]:shadow-sm"
               >
                 <Clock className="h-4 w-4" />
                 <span className="hidden sm:inline">History</span>
@@ -239,7 +236,7 @@ export const UserProfile = ({ id }: { id: string }) => {
               <TabsTrigger
                 onClick={() => setTabId("personalAccessTokens")}
                 value="personalAccessTokens"
-                className="flex items-center gap-2 rounded-lg px-4 py-2.5 text-sm font-medium transition-all data-[state=active]:bg-background data-[state=active]:shadow-sm"
+                className="shrink-0 flex items-center gap-2 rounded-lg px-4 py-2.5 text-sm font-medium transition-all data-[state=active]:bg-background data-[state=active]:shadow-sm"
               >
                 <Key className="h-4 w-4" />
                 <span className="hidden sm:inline">PATs</span>
