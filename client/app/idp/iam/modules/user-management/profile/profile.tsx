@@ -21,7 +21,7 @@ const x_blocks_key = getRuntimeEnv("BLOCKS_X_BLOCKS_KEY") || "";
 
 const ProfileSkeleton = () => (
   <div className="mx-auto w-full max-w-7xl p-6 md:p-8">
-    <div className="grid grid-cols-1 gap-8 lg:grid-cols-[340px_1fr]">
+    <div className="grid grid-cols-1 gap-8 md:grid-cols-[340px_1fr]">
       <div className="space-y-6">
         <Skeleton className="h-[500px] w-full rounded-2xl" />
       </div>
@@ -122,7 +122,7 @@ export const ProfileSidebar = ({ id, projectKey, user }: ProfileSidebarProps) =>
   return (
     <Card className="overflow-hidden border border-border/50">
       {/* Avatar - full-width square */}
-      <div className="relative mx-auto w-full max-w-[420px] lg:max-w-none" style={{ aspectRatio: "1 / 1" }}>
+      <div className="relative mx-auto w-full max-w-[420px] md:max-w-none" style={{ aspectRatio: "1 / 1" }}>
         <div className="absolute inset-0 flex items-center justify-center bg-muted/30">
           <ProfileImageUploader
             id={id}
@@ -155,6 +155,12 @@ export const ProfileSidebar = ({ id, projectKey, user }: ProfileSidebarProps) =>
         </span>
       </div>
 
+      <div className="border-b border-border/40 py-2">
+        <div className="flex justify-center">
+          <UpdateUser id={id} projectKey={projectKey} own iconOnly />
+        </div>
+      </div>
+
       {/* Name + email */}
       <div className="border-b border-border/40 px-5 py-4">
         <h1 className="text-[15px] font-semibold leading-snug tracking-tight text-foreground">{fullName}</h1>
@@ -169,16 +175,12 @@ export const ProfileSidebar = ({ id, projectKey, user }: ProfileSidebarProps) =>
       </div>
 
       {/* Account details */}
-      <CardContent className="hidden p-5 lg:block">
+      <CardContent className="hidden p-5 md:block">
         <p className="mb-3 text-[10px] font-semibold uppercase tracking-widest text-muted-foreground/60">
           Account details
         </p>
 
         <ProfileSidebarDetails user={user} />
-
-        <div className="mt-5">
-          <UpdateUser id={id} projectKey={projectKey} own />
-        </div>
       </CardContent>
     </Card>
   );
@@ -191,9 +193,9 @@ export const UserProfile = ({ id }: { id: string }) => {
 
   return (
     <div className="mx-auto w-full max-w-7xl overflow-x-hidden p-4 sm:p-6 md:p-8">
-      <div className="grid grid-cols-1 gap-8 lg:grid-cols-[340px_1fr]">
+      <div className="grid grid-cols-1 gap-8 md:grid-cols-[340px_1fr]">
         {/* Left Sidebar - Profile Card */}
-        <div className="mx-auto w-full max-w-[420px] space-y-6 lg:mx-0 lg:max-w-none">
+        <div className="mx-auto w-full max-w-[420px] space-y-6 md:mx-0 md:max-w-none">
           <ProfileSidebar id={id} projectKey={x_blocks_key} user={user} />
         </div>
 
@@ -245,7 +247,7 @@ export const UserProfile = ({ id }: { id: string }) => {
             </TabsList>
 
             {/* Details tab content - Only visible on mobile */}
-            <TabsContent value="info" className="mt-0 lg:hidden">
+            <TabsContent value="info" className="mt-0 md:hidden">
               <Card className="border border-border/50">
                 <CardContent className="p-5">
                   <p className="mb-3 text-[10px] font-semibold uppercase tracking-widest text-muted-foreground/60">
