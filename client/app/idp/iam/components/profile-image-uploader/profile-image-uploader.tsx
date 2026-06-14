@@ -6,11 +6,12 @@ import { useGetUserById, useUpdateUser } from "@blocks-idp/iam/hooks/use-user";
 import { showErrorToast, showSuccessToast } from "@/hooks/use-toast";
 import { isErrorWithErrors } from "@/lib/error";
 import { useProfileImageSrc } from "@/hooks/use-profile-image-src";
+import { cn } from "@/lib/utils";
 import { useQueryClient } from "@tanstack/react-query";
 const emptyProfilePhoto = "/assets/images/empty-profile-photo.png";
 import { ModuleName } from "@/constants/modules.constants";
-type ProfileImageUploaderProps = { projectKey: string; id: string };
-export const ProfileImageUploader = ({ projectKey, id }: ProfileImageUploaderProps) => {
+type ProfileImageUploaderProps = { projectKey: string; id: string; className?: string };
+export const ProfileImageUploader = ({ projectKey, id, className }: ProfileImageUploaderProps) => {
   const [localPreview, setLocalPreview] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const queryClient = useQueryClient();
@@ -108,7 +109,10 @@ export const ProfileImageUploader = ({ projectKey, id }: ProfileImageUploaderPro
           e.stopPropagation();
           fileInputRef.current?.click();
         }}
-        className="group relative aspect-square w-full max-w-[200px] cursor-pointer overflow-hidden rounded-lg bg-gray-50 disabled:cursor-not-allowed dark:bg-gray-800"
+        className={cn(
+          "group relative aspect-square w-full max-w-[200px] cursor-pointer overflow-hidden rounded-lg bg-gray-50 disabled:cursor-not-allowed dark:bg-gray-800",
+          className,
+        )}
       >
         <img
           src={image ?? emptyProfilePhoto}
