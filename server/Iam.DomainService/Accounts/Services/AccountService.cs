@@ -818,19 +818,21 @@ namespace Iam.DomainService.Accounts
             {
                 return new Dictionary<string, object>
                 {
-                    { "IsEmailPasswordSignUpEnabled", false },
-                    { "IsSSoSignUpEnabled", false },
-                    { "DefaultRolesForNewUser", new List<string>() },
-                    { "DefaultPermissionsForNewUser", new List<string>() }
+                    { "isSignUpEnable", false },
+                    { "isEmailPasswordSignUpEnabled", false },
+                    { "isSSoSignUpEnabled", false },
+                    { "defaultRolesForNewUser", new List<string>() },
+                    { "defaultPermissionsForNewUser", new List<string>() }
                 };
             }
 
             return new Dictionary<string, object>
             {
-                { "IsEmailPasswordSignUpEnabled", tenantConfiguration.IsEmailPasswordSignUpEnabled },
-                { "IsSSoSignUpEnabled", tenantConfiguration.IsSSoSignUpEnabled },
-                { "DefaultRolesForNewUser", tenantConfiguration.DefaultRolesForNewUserOnSignUp },
-                { "DefaultPermissionsForNewUser", tenantConfiguration.DefaultPermissionsForNewUserOnSignUp }
+                { "isSignUpEnable", tenantConfiguration.IsEmailPasswordSignUpEnabled || tenantConfiguration.IsSSoSignUpEnabled },
+                { "isEmailPasswordSignUpEnabled", tenantConfiguration.IsEmailPasswordSignUpEnabled },
+                { "isSSoSignUpEnabled", tenantConfiguration.IsSSoSignUpEnabled },
+                { "defaultRolesForNewUser", tenantConfiguration.DefaultRolesForNewUserOnSignUp },
+                { "defaultPermissionsForNewUser", tenantConfiguration.DefaultPermissionsForNewUserOnSignUp }
             };
         }
 

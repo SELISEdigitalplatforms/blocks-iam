@@ -881,6 +881,19 @@ namespace Iam.DomainService.Resources
 
         public async Task<GetMyOrganizationsResponse> GetMyOrganizationAsync()
         {
+            var tenantConfig = await _resourceRepository.GetTenantConfigurationAsync();
+            if (!tenantConfig.IsMultiOrgEnabled)
+            {
+                return new GetMyOrganizationsResponse
+                {
+                    IsSuccess = false,
+                    Errors = new Dictionary<string, string>
+                    {
+                        { "multi_org_disabled", "Multi-organization mode is disabled." }
+                    }
+                };
+            }
+
             var userId = BlocksContext.GetContext()?.UserId;
             if (string.IsNullOrWhiteSpace(userId))
             {
@@ -963,14 +976,14 @@ namespace Iam.DomainService.Resources
 
             return new Dictionary<string, object>
             {
-                { "AllowOrgCreationFromCloud", tenantConfig?.AllowOrgCreationFromCloud ?? false },
-                { "AllowOrgCreationFromConstruct", tenantConfig?.AllowOrgCreationFromConstruct ?? false },
-                { "AllowOrgCreationFromSignup", tenantConfig?.AllowOrgCreationFromSignup ?? false },
-                { "AllowOrgCreationFromPortal", tenantConfig?.AllowOrgCreationFromPortal ?? false },
-                { "IsMultiOrgEnabled", tenantConfig?.IsMultiOrgEnabled ?? false },
-                { "DefaultRoleOnOrgCreation", tenantConfig?.DefaultRoleOnOrgCreation ?? new List<string>() },
-                { "DefaultPermissionOnOrgCreation", tenantConfig?.DefaultPermissionOnOrgCreation ?? new List<string>() },
-                { "ItemId", tenantConfig?.ItemId ?? "" }
+                { "allowOrgCreationFromCloud", tenantConfig?.AllowOrgCreationFromCloud ?? false },
+                { "allowOrgCreationFromConstruct", tenantConfig?.AllowOrgCreationFromConstruct ?? false },
+                { "allowOrgCreationFromSignup", tenantConfig?.AllowOrgCreationFromSignup ?? false },
+                { "allowOrgCreationFromPortal", tenantConfig?.AllowOrgCreationFromPortal ?? false },
+                { "isMultiOrgEnabled", tenantConfig?.IsMultiOrgEnabled ?? false },
+                { "defaultRoleOnOrgCreation", tenantConfig?.DefaultRoleOnOrgCreation ?? new List<string>() },
+                { "defaultPermissionOnOrgCreation", tenantConfig?.DefaultPermissionOnOrgCreation ?? new List<string>() },
+                { "itemId", tenantConfig?.ItemId ?? "" }
             };
         }
 
