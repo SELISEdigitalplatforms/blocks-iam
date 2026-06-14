@@ -66,25 +66,25 @@ namespace CloudConfiguration.DomainService.Shared.Services
 
             return new OkObjectResult(new
             {
-                ItemId = config.ItemId.ToString(),
-                config.RefreshTokenValidForNumberMinutes,
-                config.AbsoluteRefreshTokenValidForNumberMinutes,
-                config.AccessTokenValidForNumberMinutes,
-                config.RememberMeRefreshTokenValidForNumberMinutes,
-                config.AllowedGrantTypes,
-                config.GetNumberOfWrongAttemptsToLockTheAccount,
-                config.AccountLockDurationInMinutes,
+                ItemId = config?.ItemId.ToString(),
+                config?.RefreshTokenValidForNumberMinutes,
+                config?.AbsoluteRefreshTokenValidForNumberMinutes,
+                config?.AccessTokenValidForNumberMinutes,
+                config?.RememberMeRefreshTokenValidForNumberMinutes,
+                config?.AllowedGrantTypes,
+                config?.GetNumberOfWrongAttemptsToLockTheAccount,
+                config?.AccountLockDurationInMinutes,
                 PublicCertificatePath = publicCertificatePath,
-                config.AccountActivationPath,
-                config.AccountVerificationPath,
-                config.RecoverAccountPath,
-                config.IsOidcEnabled,
-                config.AccountActionBaseUrl,
-                config.UseAccountActionBaseUrlAsDefault,
-                config.ActivationUrlLifetimeInMinutes,
-                config.RecoverAccountUrlLifetimeInMinutes,
-                config.LogoutOnPasswordChange,
-                config.PasswordStrengthCheckerRegex
+                config?.AccountActivationPath,
+                config?.AccountVerificationPath,
+                config?.RecoverAccountPath,
+                config?.IsOidcEnabled,
+                config?.AccountActionBaseUrl,
+                config?.UseAccountActionBaseUrlAsDefault,
+                config?.ActivationUrlLifetimeInMinutes,
+                config?.RecoverAccountUrlLifetimeInMinutes,
+                config?.LogoutOnPasswordChange,
+                config?.PasswordStrengthCheckerRegex
             });
         }
 
