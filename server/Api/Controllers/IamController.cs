@@ -225,7 +225,7 @@ namespace Api.Controllers
         [HttpGet("me")]
         //[ProtectedEndPoint("blocks-idp::get-my-account")]
         [Authorize]
-        public async Task<GetAccountResponse> GetMyAccount()
+        public async Task<GetUserResponse> GetMyAccount()
         {
             DomainResolver.ResetToOriginalBlocksContextForImpersonation();
             return await _userManagementQueryService.GetAccountAsync();
@@ -309,6 +309,13 @@ namespace Api.Controllers
         public async Task<GetOrganizationResponse> GetOrganization([FromRoute]  string id)
         {
             return await _resourceMutationService.GetOrganizationAsync(id);
+        }
+
+        [HttpGet("organizations/my")]
+        [Authorize]
+        public async Task<GetMyOrganizationsResponse> GetMyOrganization()
+        {
+            return await _resourceMutationService.GetMyOrganizationAsync();
         }
 
         [HttpPost("organizations/config")]

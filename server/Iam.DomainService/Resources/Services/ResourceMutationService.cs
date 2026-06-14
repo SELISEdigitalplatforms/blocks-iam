@@ -879,20 +879,54 @@ namespace Iam.DomainService.Resources
             return new GetOrganizationResponse { IsSuccess = true, Organization = organization };
         }
 
+        public async Task<GetMyOrganizationsResponse> GetMyOrganizationAsync()
+        {
+            var userId = BlocksContext.GetContext()?.UserId;
+            if (string.IsNullOrWhiteSpace(userId))
+            {
+                return new GetMyOrganizationsResponse
+                {
+                    IsSuccess = false,
+                    Errors = new Dictionary<string, string>
+                    {
+                        { "invalid_request", "User ID is required" }
+                    }
+                };
+            }
+
+            var organizationIds = await _resourceRepository.GetOrganizationIdsByUserIdAsync(userId);
+            if (organizationIds.Count == 0)
+            {
+                return new GetMyOrganizationsResponse
+                {
+                    IsSuccess = true,
+                    Organizations = []
+                };
+            }
+
+            var organizations = await _resourceRepository.GetOrganizationsByIdsAsync(organizationIds);
+            var myOrganizations = organizations
+                .Select(x => new MyOrganizationInfo
+                {
+                    ItemId = x.ItemId,
+                    Name = x.Name,
+                    CreatedDate = x.CreatedDate
+                })
+                .OrderBy(x => organizationIds.IndexOf(x.ItemId))
+                .ToList();
+
+            return new GetMyOrganizationsResponse
+            {
+                IsSuccess = true,
+                Organizations = myOrganizations
+            };
+        }
+
         public async Task<BaseResponse> SaveOrganizationConfigAsync(SaveOrganizationConfigRequest request)
         {
             var tenantConfig = await _resourceRepository.GetTenantConfigurationAsync();
             if (tenantConfig == null)
             {
-                //return new BaseResponse
-                //{
-                //    IsSuccess = false,
-                //    Errors = new Dictionary<string, string>
-                //    {
-                //        { "invalid_request", "Organization configuration not found" }
-                //    }
-                //};
-
                 tenantConfig = new TenantConfiguration
                 {
                     ItemId = Guid.NewGuid().ToString(),
@@ -905,12 +939,19 @@ namespace Iam.DomainService.Resources
             tenantConfig.AllowOrgCreationFromConstruct = request.AllowOrgCreationFromConstruct;
             tenantConfig.AllowOrgCreationFromSignup = request.AllowOrgCreationFromSignup;
             tenantConfig.AllowOrgCreationFromPortal = request.AllowOrgCreationFromPortal;
-            tenantConfig.IsMultiOrgEnabled = request.IsMultiOrgEnabled;
+            
             tenantConfig.DefaultRoleOnOrgCreation = request.DefaultRoleOnOrgCreation;
             tenantConfig.DefaultPermissionOnOrgCreation = request.DefaultPermissionOnOrgCreation;
             tenantConfig.LastUpdatedBy = BlocksContext.GetContext()?.UserId;
             tenantConfig.LastUpdatedDate = DateTime.UtcNow;
-            
+
+            if (!tenantConfig.IsMultiOrgEnabled && !tenantConfig.ConsentForMultiOrgEnable && request.IsMultiOrgEnabled && request.ConsentForMultiOrgEnable)
+            {
+                tenantConfig.IsMultiOrgEnabled = true;
+                tenantConfig.ConsentForMultiOrgEnable = true;
+                tenantConfig.ConsentTimeForMultiOrgEnable = DateTime.UtcNow;
+            }
+
             await _resourceRepository.SaveOrganizationConfig(tenantConfig);
 
             return new BaseResponse { IsSuccess = true };
