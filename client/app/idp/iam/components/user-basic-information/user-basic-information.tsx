@@ -24,11 +24,13 @@ export const UserBasicInformation = ({
   projectKey,
   detailsGridClassName = "",
   className = "",
+  hideRedundantFields = false,
 }: {
   id: string;
   projectKey: string;
   detailsGridClassName?: string;
   className?: string;
+  hideRedundantFields?: boolean;
 }) => {
   const { isLoading, data } = useGetUserById({ id, projectKey });
 
@@ -38,44 +40,69 @@ export const UserBasicInformation = ({
   return (
     <Card className={className}>
       <CardHeader>
-        <CardTitle>Basic Information</CardTitle>
+        <CardTitle>{hideRedundantFields ? "Account Details" : "Basic Information"}</CardTitle>
       </CardHeader>
       <CardContent>
         <div className={cn("grid grid-cols-1 gap-4 md:grid-cols-3 md:gap-y-[22px]", detailsGridClassName)}>
-          <Item label="Name" isLoading={isLoading}>
-            {user?.firstName} {user?.lastName}
-          </Item>
+          {!hideRedundantFields && (
+            <Item label="Name" isLoading={isLoading}>
+              {user?.firstName} {user?.lastName}
+            </Item>
+          )}
 
-          <Item label="Email" isLoading={isLoading}>
-            <div className="flex items-center gap-2">
-              {user?.email && <CopyToClipboardButton textToCopy={user?.email}>{user?.email}</CopyToClipboardButton>}
-            </div>
-          </Item>
+          {!hideRedundantFields && (
+            <Item label="Email" isLoading={isLoading}>
+              <div className="flex items-center gap-2">
+                {user?.email && <CopyToClipboardButton textToCopy={user?.email}>{user?.email}</CopyToClipboardButton>}
+              </div>
+            </Item>
+          )}
 
-          <Item label="No. of logins" isLoading={isLoading}>
-            {user?.logInCount ?? "-"}
-          </Item>
+          {!hideRedundantFields && (
+            <Item label="No. of logins" isLoading={isLoading}>
+              {user?.logInCount ?? "-"}
+            </Item>
+          )}
 
-          <Item label="Status" isLoading={isLoading}>
-            <Badge variant={user?.active ? "success" : "error"} className="w-fit rounded-sm py-1.5">
-              {user?.active ? "Active" : " Inactive"}
-            </Badge>
-          </Item>
-          <Item label="Latest login" isLoading={isLoading}>
-            {user?.lastLoggedInTime && checkValidDate(user?.lastLoggedInTime)
-              ? formatFullDate(new Date(user?.lastLoggedInTime))
-              : "-"}
-          </Item>
+          {!hideRedundantFields && (
+            <Item label="Status" isLoading={isLoading}>
+              <Badge variant={user?.active ? "success" : "error"} className="w-fit rounded-sm py-1.5">
+                {user?.active ? "Active" : " Inactive"}
+              </Badge>
+            </Item>
+          )}
 
-          <Item label="Signed up" isLoading={isLoading}>
+          {!hideRedundantFields && (
+            <Item label="Latest login" isLoading={isLoading}>
+              {user?.lastLoggedInTime && checkValidDate(user?.lastLoggedInTime)
+                ? formatFullDate(new Date(user?.lastLoggedInTime))
+                : "-"}
+            </Item>
+          )}
+
+          <Item label="Signed up via" isLoading={isLoading}>
             {user?.userCreationType && UserCreationType[user?.userCreationType] ? (
               <Badge variant="info" className="w-fit">
                 {UserCreationType[user?.userCreationType]}
               </Badge>
             ) : (
-              ""
+              "-"
             )}
           </Item>
+
+          {hideRedundantFields && (
+            <Item label="User ID" isLoading={isLoading}>
+              <div className="flex items-center gap-2">
+                {id && <CopyToClipboardButton textToCopy={id}><span className="font-mono text-xs">{id}</span></CopyToClipboardButton>}
+              </div>
+            </Item>
+          )}
+
+          {hideRedundantFields && user?.userName && (
+            <Item label="Username" isLoading={isLoading}>
+              {user.userName}
+            </Item>
+          )}
         </div>
       </CardContent>
     </Card>
