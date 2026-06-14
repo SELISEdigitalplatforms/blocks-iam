@@ -1,4 +1,4 @@
-import { ChevronRight, Languages, LogOut, UserRound } from "lucide-react";
+import { ChevronRight, Languages, LogOut, Moon, UserRound } from "lucide-react";
 import { Link } from "react-router-dom";
 import { Button } from "@/components/ui-kits/button/button";
 import {
@@ -10,6 +10,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui-kits/dropdown-menu/dropdown-menu";
 import { useGetMe } from "@/idp/iam/hooks/use-user";
+import { useTheme } from "@/hooks/use-theme";
 import { useLogout } from "@/idp/authentication/hooks/use-auth";
 import { useAuthStore } from "@/store/useAuthStore";
 import { useLanguageViewStore } from "@/cross-modules/localization/store/use-language-view-store";
@@ -66,6 +67,7 @@ function UserAvatar({ size = "sm" }: { size?: "sm" | "lg" }) {
 export function UserDropdownMenu() {
   const { data } = useGetMe();
   const userData = data?.data;
+  const { theme, resolvedTheme, setTheme } = useTheme();
   const { isPending, mutateAsync } = useLogout();
   const { reset } = useProjectStore();
   const { setUnAuthenticated, clearTokens } = useAuthStore();
@@ -77,6 +79,15 @@ export function UserDropdownMenu() {
   const roles = Object.values(userData?.roles || {}).flat();
   const languageCode = userData?.language || "en";
   const languageName = LANGUAGE_NAMES[languageCode] ?? languageCode;
+
+  const themeLabel =
+    theme === "system" ? "Auto" : resolvedTheme === "dark" ? "Dark" : "Light";
+
+  const cycleTheme = () => {
+    const order = ["light", "dark", "system"] as const;
+    const next = order[(order.indexOf(theme as (typeof order)[number]) + 1) % order.length];
+    setTheme(next);
+  };
 
   const handleLogout = async () => {
     try {
@@ -145,7 +156,7 @@ export function UserDropdownMenu() {
 
         <DropdownMenuSeparator className="my-0 bg-border/80" />
 
-        {/* Language */}
+        {/* Language & Theme */}
         <DropdownMenuGroup className="p-1.5">
           <DropdownMenuItem
             className="cursor-default rounded-md px-4 py-3.5"
@@ -158,8 +169,22 @@ export function UserDropdownMenu() {
               </span>
               <span className="flex items-center gap-2 text-sm text-muted-foreground">
                 {languageName}
-                <ChevronRight className="h-4.5 w-4.5" />
+                <ChevronRight className="h-4 w-4" />
               </span>
+            </div>
+          </DropdownMenuItem>
+
+          <DropdownMenuItem
+            className="cursor-pointer rounded-md px-4 py-3.5"
+            onSelect={(e) => {
+              e.preventDefault();
+              cycleTheme();
+            }}
+          >
+            <div className="flex w-full items-center gap-4">
+              <Moon className="h-5 w-5 shrink-0 text-foreground/80" />
+              <span className="flex-1 text-sm font-medium text-foreground">Theme</span>
+              <span className="text-sm text-muted-foreground">{themeLabel}</span>
             </div>
           </DropdownMenuItem>
         </DropdownMenuGroup>
