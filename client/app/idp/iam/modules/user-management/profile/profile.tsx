@@ -1,10 +1,10 @@
+import { ElementType, ReactNode } from "react";
 import { useGetMe } from "@blocks-idp/iam/hooks/use-user";
 import { useQueryState } from "nuqs";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui-kits/tabs/tabs";
 import { getRuntimeEnv } from "@/lib/runtime-env";
 import { ProfileDetails } from "@blocks-idp/iam/components/profile-details";
 import { ProfileImageUploader } from "@blocks-idp/iam/components/profile-image-uploader";
-import { UserBasicInformation } from "@blocks-idp/iam/components/user-basic-information";
 import { UpdateUser } from "../update-user";
 import { UserDevices } from "../user-devices";
 import { UserHistories } from "../user-histories";
@@ -12,10 +12,9 @@ import { UserPats } from "../user-pat";
 import { Card, CardContent } from "@/components/ui-kits/card/card";
 import { Badge } from "@/components/ui-kits/badge/badge";
 import { CopyToClipboardButton } from "@/components/copy-to-clipboard-button";
-import { Mail, Shield, Smartphone, Clock, Key, User, Calendar, Hash, UserCircle, Activity } from "lucide-react";
-import { checkValidDate, formatFullDate } from "@/lib/utils";
+import { Shield, Smartphone, Clock, Key, User, Calendar, UserCircle, Activity, Camera, Sparkles } from "lucide-react";
+import { checkValidDate, cn, formatFullDate } from "@/lib/utils";
 import { Skeleton } from "@/components/ui-kits/skeleton/skeleton";
-import { Separator } from "@/components/ui-kits/separator/separator";
 import { UserCreationType } from "@blocks-idp/authentication/constants/authentication.constant";
 
 const x_blocks_key = getRuntimeEnv("BLOCKS_X_BLOCKS_KEY") || "";
@@ -38,10 +37,10 @@ export const Profile = () => {
 };
 
 // Info row component for the sidebar
-const InfoRow = ({ icon: Icon, label, value, copyable = false }: { 
-  icon: React.ElementType; 
-  label: string; 
-  value: React.ReactNode;
+const InfoRow = ({ icon: Icon, label, value, copyable = false }: {
+  icon: ElementType;
+  label: string;
+  value: ReactNode;
   copyable?: boolean;
 }) => (
   <div className="flex items-start gap-3 py-2.5">
@@ -63,11 +62,52 @@ const InfoRow = ({ icon: Icon, label, value, copyable = false }: {
   </div>
 );
 
-export const UserProfile = ({ id }: { id: string }) => {
-  const [tabId, setTabId] = useQueryState("userDetails", { defaultValue: "security" });
-  const { data } = useGetMe();
-  const user = data?.data;
+type ProfileSidebarUser = {
+  firstName?: string;
+  lastName?: string;
+  email?: string;
+  active?: boolean;
+  userName?: string;
+  logInCount?: number;
+  lastLoggedInTime?: string;
+  userCreationType?: number;
+};
 
+type ProfileSidebarProps = {
+  id: string;
+  projectKey: string;
+  user?: ProfileSidebarUser;
+};
+
+const ProfileSidebarDetails = ({ user }: { user?: ProfileSidebarUser }) => (
+  <div>
+    {user?.userName && <InfoRow icon={UserCircle} label="Username" value={user.userName} />}
+
+    <InfoRow icon={Activity} label="Total logins" value={user?.logInCount ?? 0} />
+
+    {user?.lastLoggedInTime && checkValidDate(user.lastLoggedInTime) && (
+      <InfoRow
+        icon={Calendar}
+        label="Last login"
+        value={formatFullDate(new Date(user.lastLoggedInTime))}
+      />
+    )}
+
+    {user?.userCreationType && UserCreationType[user.userCreationType] && (
+      <InfoRow
+        icon={Sparkles}
+        label="Signed up via"
+        value={
+          <Badge variant="info" className="mt-0.5 rounded px-2 py-0.5 text-[11px]">
+            {UserCreationType[user.userCreationType]}
+          </Badge>
+        }
+      />
+    )}
+  </div>
+);
+
+export const ProfileSidebar = ({ id, projectKey, user }: ProfileSidebarProps) => {
   const firstName = user?.firstName;
   const lastName = user?.lastName;
   const hasName =
@@ -76,103 +116,85 @@ export const UserProfile = ({ id }: { id: string }) => {
     typeof lastName === "string" &&
     lastName.trim() !== "";
   const fullName = hasName ? `${firstName} ${lastName}` : "My Profile";
-  const email = user?.email || "";
+  const email = user?.email ?? "";
   const isActive = user?.active ?? false;
+
+  return (
+    <Card className="overflow-hidden border border-border/50">
+      {/* Avatar - full-width square */}
+      <div className="relative w-full" style={{ aspectRatio: "1 / 1" }}>
+        <div className="absolute inset-0 flex items-center justify-center bg-muted/30">
+          <ProfileImageUploader
+            id={id}
+            projectKey={projectKey}
+            className="h-full w-full max-w-none rounded-none bg-transparent dark:bg-transparent"
+          />
+        </div>
+
+        {/* Center camera upload indicator */}
+        <div className="pointer-events-none absolute inset-0 flex items-center justify-center">
+          <div className="flex h-12 w-12 items-center justify-center rounded-full border border-white/25 bg-black/35 text-white shadow-lg backdrop-blur-[2px]">
+            <Camera className="h-5 w-5" />
+          </div>
+        </div>
+
+        {/* Status badge */}
+        <span
+          className={cn(
+            "absolute bottom-3 right-3 flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[11px] font-medium backdrop-blur-[2px]",
+            isActive ? "bg-green-500/25 text-green-200" : "bg-red-500/25 text-red-200",
+          )}
+        >
+          <span
+            className={cn(
+              "h-1.5 w-1.5 rounded-full",
+              isActive ? "bg-green-300" : "bg-red-300",
+            )}
+          />
+          {isActive ? "Active" : "Inactive"}
+        </span>
+      </div>
+
+      {/* Name + email */}
+      <div className="border-b border-border/40 px-5 py-4">
+        <h1 className="text-[15px] font-semibold leading-snug tracking-tight text-foreground">{fullName}</h1>
+        {email && (
+          <div className="mt-1 flex items-center gap-1.5">
+            <span className="truncate text-[13px] text-muted-foreground">{email}</span>
+            <CopyToClipboardButton textToCopy={email}>
+              <span className="text-[11px] font-medium text-muted-foreground/80">Copy</span>
+            </CopyToClipboardButton>
+          </div>
+        )}
+      </div>
+
+      {/* Account details */}
+      <CardContent className="hidden p-5 lg:block">
+        <p className="mb-3 text-[10px] font-semibold uppercase tracking-widest text-muted-foreground/60">
+          Account details
+        </p>
+
+        <ProfileSidebarDetails user={user} />
+
+        <div className="mt-5">
+          <UpdateUser id={id} projectKey={projectKey} own />
+        </div>
+      </CardContent>
+    </Card>
+  );
+};
+
+export const UserProfile = ({ id }: { id: string }) => {
+  const [tabId, setTabId] = useQueryState("userDetails", { defaultValue: "security" });
+  const { data } = useGetMe();
+  const user = data?.data;
 
   return (
     <div className="mx-auto w-full max-w-7xl p-6 md:p-8">
       <div className="grid grid-cols-1 gap-8 lg:grid-cols-[340px_1fr]">
         {/* Left Sidebar - Profile Card */}
         <div className="space-y-6">
-          <Card className="overflow-hidden border-0 bg-gradient-to-b from-background to-muted/20 shadow-xl shadow-black/5">
-            {/* Profile Header with Avatar */}
-            <div className="relative">
-              {/* Background Pattern */}
-              <div className="absolute inset-0 bg-gradient-to-br from-primary/8 via-primary/4 to-transparent" />
-              <div className="absolute inset-0 bg-[radial-gradient(circle_at_30%_20%,rgba(var(--primary)/0.1),transparent_50%)]" />
-              
-              <div className="relative px-6 pb-6 pt-8">
-                {/* Avatar */}
-                <div className="flex justify-center">
-                  <div className="relative">
-                    <div className="rounded-2xl bg-gradient-to-br from-primary/20 via-primary/10 to-primary/5 p-1 shadow-lg shadow-primary/10">
-                      <ProfileImageUploader id={id} projectKey={x_blocks_key} />
-                    </div>
-                    {/* Status indicator */}
-                    <div className={`absolute -bottom-1 -right-1 h-5 w-5 rounded-full border-[3px] border-background ${isActive ? 'bg-emerald-500' : 'bg-red-500'}`} />
-                  </div>
-                </div>
-
-                {/* Name & Status */}
-                <div className="mt-5 text-center">
-                  <h1 className="text-xl font-bold tracking-tight text-foreground">
-                    {fullName}
-                  </h1>
-                  <p className="mt-1 text-sm text-muted-foreground">{email}</p>
-                  <div className="mt-3 flex justify-center">
-                    <Badge
-                      variant={isActive ? "success" : "error"}
-                      className="rounded-full px-3 py-1 text-xs font-semibold"
-                    >
-                      {isActive ? "Active Account" : "Inactive Account"}
-                    </Badge>
-                  </div>
-                </div>
-
-                {/* Edit Button */}
-                <div className="mt-5">
-                  <UpdateUser id={id} projectKey={x_blocks_key} own />
-                </div>
-              </div>
-            </div>
-
-            <Separator className="mx-6 w-auto" />
-
-            {/* Account Details - Hidden on mobile, shown in sidebar on desktop */}
-            <CardContent className="hidden p-6 lg:block">
-              <h3 className="mb-4 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-                Account Details
-              </h3>
-              <div className="space-y-1">
-                {user?.userName && (
-                  <InfoRow 
-                    icon={UserCircle} 
-                    label="Username" 
-                    value={user.userName} 
-                  />
-                )}
-                <InfoRow 
-                  icon={Hash} 
-                  label="User ID" 
-                  value={<span className="font-mono text-xs">{id}</span>}
-                  copyable
-                />
-                <InfoRow 
-                  icon={Activity} 
-                  label="Total Logins" 
-                  value={user?.logInCount ?? 0} 
-                />
-                {user?.lastLoggedInTime && checkValidDate(user.lastLoggedInTime) && (
-                  <InfoRow 
-                    icon={Calendar} 
-                    label="Last Login" 
-                    value={formatFullDate(new Date(user.lastLoggedInTime))} 
-                  />
-                )}
-                {user?.userCreationType && UserCreationType[user.userCreationType] && (
-                  <InfoRow 
-                    icon={User} 
-                    label="Signed Up Via" 
-                    value={
-                      <Badge variant="info" className="mt-0.5 rounded-md text-xs">
-                        {UserCreationType[user.userCreationType]}
-                      </Badge>
-                    } 
-                  />
-                )}
-              </div>
-            </CardContent>
-          </Card>
+          <ProfileSidebar id={id} projectKey={x_blocks_key} user={user} />
         </div>
 
         {/* Right Content - Tabs */}
@@ -224,12 +246,14 @@ export const UserProfile = ({ id }: { id: string }) => {
 
             {/* Details tab content - Only visible on mobile */}
             <TabsContent value="info" className="mt-0 lg:hidden">
-              <UserBasicInformation
-                id={id}
-                projectKey={x_blocks_key}
-                detailsGridClassName="grid-cols-1 sm:grid-cols-2"
-                hideRedundantFields
-              />
+              <Card className="border border-border/50">
+                <CardContent className="p-5">
+                  <p className="mb-3 text-[10px] font-semibold uppercase tracking-widest text-muted-foreground/60">
+                    Account details
+                  </p>
+                  <ProfileSidebarDetails user={user} />
+                </CardContent>
+              </Card>
             </TabsContent>
 
             <TabsContent value="security" className="mt-0 space-y-6">
