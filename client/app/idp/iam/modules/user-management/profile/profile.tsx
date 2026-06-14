@@ -98,7 +98,7 @@ const ProfileSidebarDetails = ({ user }: { user?: ProfileSidebarUser }) => (
         icon={Sparkles}
         label="Signed up via"
         value={
-          <Badge variant="info" className="mt-0.5 rounded px-2 py-0.5 text-[11px]">
+          <Badge variant="info" className="mt-0.5 w-fit rounded px-2 py-0.5 text-[11px]">
             {UserCreationType[user.userCreationType]}
           </Badge>
         }
@@ -122,7 +122,7 @@ export const ProfileSidebar = ({ id, projectKey, user }: ProfileSidebarProps) =>
   return (
     <Card className="overflow-hidden border border-border/50">
       {/* Avatar - full-width square */}
-      <div className="relative w-full" style={{ aspectRatio: "1 / 1" }}>
+      <div className="relative mx-auto w-full max-w-[420px] lg:max-w-none" style={{ aspectRatio: "1 / 1" }}>
         <div className="absolute inset-0 flex items-center justify-center bg-muted/30">
           <ProfileImageUploader
             id={id}
@@ -159,10 +159,10 @@ export const ProfileSidebar = ({ id, projectKey, user }: ProfileSidebarProps) =>
       <div className="border-b border-border/40 px-5 py-4">
         <h1 className="text-[15px] font-semibold leading-snug tracking-tight text-foreground">{fullName}</h1>
         {email && (
-          <div className="mt-1 flex items-center gap-1.5">
-            <span className="truncate text-[13px] text-muted-foreground">{email}</span>
+          <div className="mt-1 flex min-w-0 items-center gap-1.5">
+            <span className="min-w-0 flex-1 truncate text-[13px] text-muted-foreground">{email}</span>
             <CopyToClipboardButton textToCopy={email}>
-              <span className="text-[11px] font-medium text-muted-foreground/80">Copy</span>
+              <span className="sr-only">Copy email</span>
             </CopyToClipboardButton>
           </div>
         )}
@@ -190,17 +190,17 @@ export const UserProfile = ({ id }: { id: string }) => {
   const user = data?.data;
 
   return (
-    <div className="mx-auto w-full max-w-7xl p-6 md:p-8">
+    <div className="mx-auto w-full max-w-7xl overflow-x-hidden p-4 sm:p-6 md:p-8">
       <div className="grid grid-cols-1 gap-8 lg:grid-cols-[340px_1fr]">
         {/* Left Sidebar - Profile Card */}
-        <div className="space-y-6">
+        <div className="mx-auto w-full max-w-[420px] space-y-6 lg:mx-0 lg:max-w-none">
           <ProfileSidebar id={id} projectKey={x_blocks_key} user={user} />
         </div>
 
         {/* Right Content - Tabs */}
         <div>
-          <Tabs value={tabId} className="space-y-6">
-            <TabsList className="inline-flex h-auto w-full justify-start gap-1 overflow-x-auto rounded-xl bg-muted/50 p-1.5">
+          <Tabs value={tabId} className="space-y-6 overflow-hidden">
+            <TabsList className="inline-flex h-auto w-full max-w-full justify-start gap-1 overflow-x-auto rounded-xl bg-muted/50 p-1.5">
               {/* Details tab - Only visible on mobile */}
               <TabsTrigger
                 onClick={() => setTabId("info")}
