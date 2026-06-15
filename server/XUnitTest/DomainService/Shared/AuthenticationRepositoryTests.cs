@@ -740,12 +740,12 @@ namespace XUnitTest.DomainService.Shared
         public async Task GetAuthenticationConfigurationAsync_ReturnsConfiguration()
         {
             // Arrange
-            var expectedConfig = new AuthenticationConfiguration 
+            var expectedConfig = new IdentityConfiguration 
             { 
                 ItemId = ObjectId.Parse("507f1f77bcf86cd799439011")
             };
-            var mockCollection = new Mock<IMongoCollection<AuthenticationConfiguration>>();
-            var mockCursor = new Mock<IAsyncCursor<AuthenticationConfiguration>>();
+            var mockCollection = new Mock<IMongoCollection<IdentityConfiguration>>();
+            var mockCursor = new Mock<IAsyncCursor<IdentityConfiguration>>();
 
             mockCursor.Setup(x => x.Current).Returns(new[] { expectedConfig });
             mockCursor.SetupSequence(x => x.MoveNextAsync(It.IsAny<CancellationToken>()))
@@ -753,12 +753,12 @@ namespace XUnitTest.DomainService.Shared
                 .ReturnsAsync(false);
 
             mockCollection.Setup(x => x.FindAsync(
-                It.IsAny<FilterDefinition<AuthenticationConfiguration>>(),
-                It.IsAny<FindOptions<AuthenticationConfiguration>>(),
+                It.IsAny<FilterDefinition<IdentityConfiguration>>(),
+                It.IsAny<FindOptions<IdentityConfiguration>>(),
                 It.IsAny<CancellationToken>()))
                 .ReturnsAsync(mockCursor.Object);
 
-            _dbContextProvider.Setup(x => x.GetCollection<AuthenticationConfiguration>("AuthenticationConfigurations"))
+            _dbContextProvider.Setup(x => x.GetCollection<IdentityConfiguration>("IdentityConfigurations"))
                 .Returns(mockCollection.Object);
 
             // Act
@@ -777,21 +777,21 @@ namespace XUnitTest.DomainService.Shared
         public async Task UpdateAuthenticationConfigurationAsync_WithValidConfig_UpdatesConfiguration()
         {
             // Arrange
-            var config = new AuthenticationConfiguration 
+            var config = new IdentityConfiguration 
             { 
                 ItemId = ObjectId.Parse("507f1f77bcf86cd799439011")
             };
-            var mockCollection = new Mock<IMongoCollection<AuthenticationConfiguration>>();
+            var mockCollection = new Mock<IMongoCollection<IdentityConfiguration>>();
             var replaceResult = new ReplaceOneResult.Acknowledged(1, 1, null);
 
             mockCollection.Setup(x => x.ReplaceOneAsync(
-                It.IsAny<FilterDefinition<AuthenticationConfiguration>>(),
+                It.IsAny<FilterDefinition<IdentityConfiguration>>(),
                 config,
                 It.IsAny<ReplaceOptions>(),
                 It.IsAny<CancellationToken>()))
                 .ReturnsAsync(replaceResult);
 
-            _dbContextProvider.Setup(x => x.GetCollection<AuthenticationConfiguration>("AuthenticationConfigurations"))
+            _dbContextProvider.Setup(x => x.GetCollection<IdentityConfiguration>("IdentityConfigurations"))
                 .Returns(mockCollection.Object);
 
             // Act
@@ -799,7 +799,7 @@ namespace XUnitTest.DomainService.Shared
 
             // Assert
             mockCollection.Verify(x => x.ReplaceOneAsync(
-                It.IsAny<FilterDefinition<AuthenticationConfiguration>>(),
+                It.IsAny<FilterDefinition<IdentityConfiguration>>(),
                 config,
                 It.IsAny<ReplaceOptions>(),
                 It.IsAny<CancellationToken>()), Times.Once);

@@ -35,7 +35,7 @@ namespace Authentication.DomainService.OAuth.Services
             _userManagementMutationService = userManagementMutationService;
         }
 
-        public async Task<TokenResponse> AuthenticateAsync(TokenRequest request, AuthenticationConfiguration authenticationConfiguration, User? user = null)
+        public async Task<TokenResponse> AuthenticateAsync(TokenRequest request, IdentityConfiguration authenticationConfiguration, User? user = null)
         {
             _logger.LogInformation("Social Authentication start");
 

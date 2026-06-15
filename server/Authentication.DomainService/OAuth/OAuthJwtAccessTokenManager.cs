@@ -8,7 +8,6 @@ using Iam.DomainService.Entities;
 using Mfa.DomainService.Configuration;
 using Mfa.DomainService.Entities;
 using Mfa.DomainService.Services;
-using Microsoft.Extensions.Configuration;
 using System.IdentityModel.Tokens.Jwt;
 using System.Text.Json;
 using Authentication.DomainService.Utilities;
@@ -23,7 +22,6 @@ namespace Authentication.DomainService.OAuth
         private readonly IAuthenticationRepository _authenticationRepository;
         private readonly IOtpServiceFactory _otpServiceFactory;
         private readonly IMfaConfigurationService _configurationService;
-        private readonly IConfiguration _configuration;
         private readonly ICacheClient _cacheClient;
         private readonly ITenants _tenants;
         private readonly UnifiedTokenSessionService _unifiedTokenSessionService;
@@ -36,7 +34,6 @@ namespace Authentication.DomainService.OAuth
             ICacheClient cacheClient,
             ITenants tenants,
             IOtpServiceFactory otpServiceFactory,
-            IConfiguration configuration,
             UnifiedTokenSessionService unifiedTokenSessionService
         )
         {
@@ -47,21 +44,18 @@ namespace Authentication.DomainService.OAuth
             _cacheClient = cacheClient;
             _tenants = tenants;
             _otpServiceFactory = otpServiceFactory;
-            _configuration = configuration;
             _unifiedTokenSessionService = unifiedTokenSessionService;
         }
 
-        public async Task<TokenResponse> ManageTokenAsync(TokenRequest tokenRequest, AuthenticationConfiguration authenticationConfiguration, User user, StateInfo? stateInfo = null)
+        public async Task<TokenResponse> ManageTokenAsync(TokenRequest tokenRequest, IdentityConfiguration authenticationConfiguration, User user, StateInfo? stateInfo = null)
         {
             var bc = BlocksContext.GetContext();
-            
-            //TODO: Tobe implement later
-            //var tokenResponse = await ProcessCheckPoints(tokenRequest, user);
 
-            //if (tokenResponse != null)
-            //{
-            //    return tokenResponse;
-            //}
+            var tokenResponse = await ProcessCheckPoints(tokenRequest, user);
+            if (tokenResponse != null)
+            {
+                return tokenResponse;
+            }
 
             var tenant = _tenants.GetTenantByID(bc?.TenantId ?? "");
             if (tenant == null)
@@ -74,7 +68,7 @@ namespace Authentication.DomainService.OAuth
                 };
             }
 
-            var (clientAllowedScopes, allowedServiceAccessResources) = await ResolveClientAuthorizationConfigAsync(tokenRequest.ClientId);
+            var (_, allowedServiceAccessResources) = await ResolveClientAuthorizationConfigAsync(tokenRequest.ClientId);
             var jwtAccessToken = await _jwtAccessTokenProvider.GetJwtAccessToken(
                 authenticationConfiguration,
                 tenant,
@@ -208,7 +202,7 @@ namespace Authentication.DomainService.OAuth
             return new JwtSecurityTokenHandler().WriteToken(jwtToken);
         }
 
-        public async Task<(string, DateTime)> ManageRefreshTokenAsync(TokenRequest tokenRequest, JwtAccessToken jwtAccessToken, AuthenticationConfiguration authenticationConfiguration, Tenant tenant, User user)
+        public async Task<(string, DateTime)> ManageRefreshTokenAsync(TokenRequest tokenRequest, JwtAccessToken jwtAccessToken, IdentityConfiguration authenticationConfiguration, Tenant tenant, User user)
         {
             var visitorsIpAddresses = _authenticationDomainService.GetVisitorsIpAddresses(tokenRequest.Request.HttpContext) ?? new List<string>();
             // Unify both initial and rotation flows

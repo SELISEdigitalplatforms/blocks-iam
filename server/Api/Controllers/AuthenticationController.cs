@@ -200,43 +200,19 @@ public class AuthenticationController : ControllerBase
     }
 
     /// <summary>
-    /// Social provider callback handler (Both Browser Redirect & API Pattern)
-    /// Receives authorization code from social provider via GET query params or POST body
+    /// Social provider callback handler (API Pattern)
+    /// Receives authorization code from social provider via POST body
     /// Exchanges code for tokens, validates JWT, creates/updates user
     /// Sets secure HTTP-only cookie with tokens
-    /// Supports both patterns:
-    /// - GET /social/callback?code=...&state=...&provider=... (Browser redirect)
-    /// - POST /social/callback with request body (SPA/API pattern)
+    /// Endpoint:
+    /// - POST /social/callback with request body
     /// RFC 6749: OAuth 2.0 | RFC 3986: OpenID Connect | RFC 7519: JWT
     /// </summary>
-    [HttpGet("social/callback")]
     [HttpPost("social/callback")]
     [AllowAnonymous]
-    public async Task<IActionResult> HandleSocialCallback(
-        [FromQuery] string? code = null,
-        [FromQuery] string? state = null,
-        [FromQuery] string? provider = null,
-        [FromBody] SocialLoginRequest? request = null)
+    public async Task<IActionResult> HandleSocialCallback([FromBody] SocialLoginRequest request)
     {
-        // Handle POST body pattern
-        if (request != null)
-        {
-            code = request.Code;
-            state = request.State;
-            provider ??= request.Provider;
-        }
-
-        if (string.IsNullOrWhiteSpace(code))
-            return BadRequest(new { error = "authorization_code_missing", error_description = "Authorization code is required" });
-
-        if (string.IsNullOrWhiteSpace(state))
-            return BadRequest(new { error = "state_missing", error_description = "State parameter is required" });
-
-        if (string.IsNullOrWhiteSpace(provider))
-            return BadRequest(new { error = "provider_missing", error_description = "Provider name is required" });
-
-        var loginRequest = new SocialLoginRequest { Code = code, State = state };
-        var result = await _authenticationFlowService.ExecuteSocialLoginAsync(loginRequest, Request);
+        var result = await _authenticationFlowService.ExecuteSocialLoginAsync(request, Request);
 
         return await _authenticationService.BuildFlowResultAsync(result, HttpContext);
     }
@@ -505,27 +481,28 @@ public class AuthenticationController : ControllerBase
 
     #endregion
     [Authorize]
-    [HttpGet("Config")]
+    [HttpGet("config")]
     public async Task<IActionResult> Get([FromQuery] GetAuthenticationConfigurationRequest request)
     {
         
         return await _configurationService.GetAuthenticationConfigAsync();
     }
     [Authorize]
-    [HttpPost("Config_Update")]
+    [HttpPost("config")]
     public async Task<BaseResponse> Update([FromBody] UpdateAuthenticationConfigurationRequest configuration)
     {
         return await _configurationService.UpdateAuthenticationConfigAsync(configuration);
     }
+
+    [HttpPost("user-codes")]
     [Authorize]
-    [HttpPost("GenerateUserCode")]
     public async Task<BaseResponse> GenerateUserCode([FromBody] GenerateUserCodeRequest request)
     {
         return await _authenticationDomainService.GenerateUserCodeByClientAsync(request);
     }
 
+    [HttpGet("user-codes")]
     [Authorize]
-    [HttpGet("GetUserCodes")]
     public async Task<List<GetUserCodesByUserIdResponse>> GetUserCodes()
     {
         return await _authenticationRepository.GetUserCodesByUserIdAsync(BlocksContext.GetContext()?.UserId);
@@ -534,21 +511,21 @@ public class AuthenticationController : ControllerBase
     #region Client Credential Management
 
     [Authorize]
-    [HttpPost("SaveClientCredential")]
+    [HttpPost("client-credentials")]
     public async Task<BaseResponse> SaveClientCredential([FromBody] SaveClientCredentialRequest request)
     {
         return await _authenticationDomainService.SaveClientCredentialAsync(request);
     }
 
     [Authorize]
-    [HttpPost("DeleteClientCredential")]
+    [HttpPost("client-credentials/delete")]
     public async Task<BaseResponse> DeleteClientCredential([FromBody] DeleteClientCredentialRequest request)
     {
         return await _authenticationDomainService.DeleteClientCredentialAsync(request);
     }
 
     [Authorize]
-    [HttpGet("GetClientCredentials")]
+    [HttpGet("client-credentials")]
     public async Task<List<ClientCredential>> GetClientCredentials([FromQuery] GetAllClientCredentialsRequest request)
     {
         return await _authenticationRepository.GetClientCredentialsAsync();

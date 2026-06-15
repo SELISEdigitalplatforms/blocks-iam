@@ -3,7 +3,6 @@ using CloudConfiguration.DomainService.Authentication.Entities;
 using CloudConfiguration.DomainService.Captcha.Entities;
 using CloudConfiguration.DomainService.Captcha.RequestModel;
 using CloudConfiguration.DomainService.Captcha.ResponseModel;
-using CloudConfiguration.DomainService.IAM.Entities;
 using CloudConfiguration.DomainService.MFA.Entities;
 using CloudConfiguration.DomainService.Notification.Entities;
 using CloudConfiguration.DomainService.Notification.RequestModel;
@@ -18,8 +17,8 @@ namespace CloudConfiguration.DomainService.Shared.Services
     public interface IConfigurationRepository
     {
         #region Authentication
-        Task<AuthenticationConfiguration> GetAuthenticationConfigurationAsync();
-        Task UpdateAuthenticationConfigAsync(AuthenticationConfiguration configuration);
+        Task<IdentityConfiguration> GetAuthenticationConfigurationAsync();
+        Task UpdateAuthenticationConfigAsync(IdentityConfiguration configuration);
         #endregion
 
         #region Captcha
@@ -29,13 +28,6 @@ namespace CloudConfiguration.DomainService.Shared.Services
         Task<CaptchaConfiguration> GetCaptchaConfigurationByProviderAsync(string provider);
         Task<GetCaptchaConfigurationsResponse> GetCaptchaConfigurationsAsync(GetCaptchaConfigurationsRequest request);
         Task<CaptchaConfiguration> GetCaptchaConfigurationAsync();
-        #endregion
-
-        #region IAM
-
-        Task SaveIamConfigurationAsync(IamConfiguration iamConfiguration);
-        Task<IamConfiguration> GetIamConfigurationAsync();
-
         #endregion
 
         #region MFA

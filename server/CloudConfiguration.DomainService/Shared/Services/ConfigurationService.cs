@@ -7,9 +7,6 @@ using CloudConfiguration.DomainService.Authentication.Entities;
 using CloudConfiguration.DomainService.Captcha.Entities;
 using CloudConfiguration.DomainService.Captcha.RequestModel;
 using CloudConfiguration.DomainService.Captcha.ResponseModel;
-using CloudConfiguration.DomainService.IAM.Entities;
-using CloudConfiguration.DomainService.IAM.RequestModel;
-using CloudConfiguration.DomainService.IAM.ResponseModel;
 using CloudConfiguration.DomainService.MFA.RequestModel;
 using CloudConfiguration.DomainService.MFA.ResponseModel;
 using CloudConfiguration.DomainService.MFA.Entities;
@@ -33,7 +30,6 @@ namespace CloudConfiguration.DomainService.Shared.Services
 
         private readonly IConfigurationRepository _configurationRepository;
         private readonly IValidator<SaveCaptchaConfigurationRequest> _captchaConfigurationValidator;
-        private readonly IValidator<SaveIamConfigurationRequest> _iamConfigurationValidator;
         private readonly IValidator<SaveNotificatonConfigurationRequest> _notificatonConfigurationValidator;
         private readonly IValidator<SaveStorageConfigurationRequest> _storageConfigurationValidator;
         private readonly IValidator<MailConfiguration> _mailConfigurationValidator;
@@ -44,7 +40,6 @@ namespace CloudConfiguration.DomainService.Shared.Services
 
         public ConfigurationService(IConfigurationRepository configurationRepository,
                                     IValidator<SaveCaptchaConfigurationRequest> configurationValidator,
-                                    IValidator<SaveIamConfigurationRequest> iamConfigurationValidator,
                                     IValidator<SaveNotificatonConfigurationRequest> notificatonConfigurationValidator,
                                     IValidator<SaveStorageConfigurationRequest> storageConfigurationValidator,
                                     IValidator<MailConfiguration> mailConfigurationValidator,
@@ -54,7 +49,6 @@ namespace CloudConfiguration.DomainService.Shared.Services
         {
             _configurationRepository = configurationRepository;
             _captchaConfigurationValidator = configurationValidator;
-            _iamConfigurationValidator = iamConfigurationValidator;
             _notificatonConfigurationValidator = notificatonConfigurationValidator;
             _storageConfigurationValidator = storageConfigurationValidator;
             _mailConfigurationValidator = mailConfigurationValidator;
@@ -68,39 +62,200 @@ namespace CloudConfiguration.DomainService.Shared.Services
         public async Task<IActionResult> GetAuthenticationConfigAsync()
         {
             var config = await _configurationRepository.GetAuthenticationConfigurationAsync();
-            var publicCertificatePath = (_tenants.GetTenantByID(BlocksContext.GetContext()?.TenantId ?? ""))?.JwtTokenParameters.PublicCertificatePath;
+            var publicCertificatePath = _tenants.GetTenantByID(BlocksContext.GetContext()?.TenantId ?? "")?.JwtTokenParameters.PublicCertificatePath;
 
             return new OkObjectResult(new
             {
-                ItemId = config.ItemId.ToString(),
-                config.RefreshTokenValidForNumberMinutes,
-                config.AbsoluteRefreshTokenValidForNumberMinutes,
-                config.AccessTokenValidForNumberMinutes,
-                config.RememberMeRefreshTokenValidForNumberMinutes,
-                config.AllowedGrantTypes,
-                config.GetNumberOfWrongAttemptsToLockTheAccount,
-                config.AccountLockDurationInMinutes,
-                PublicCertificatePath = publicCertificatePath
+                ItemId = config?.ItemId.ToString(),
+                config?.RefreshTokenValidForNumberMinutes,
+                config?.AbsoluteRefreshTokenValidForNumberMinutes,
+                config?.AccessTokenValidForNumberMinutes,
+                config?.RememberMeRefreshTokenValidForNumberMinutes,
+                config?.AllowedGrantTypes,
+                config?.GetNumberOfWrongAttemptsToLockTheAccount,
+                config?.AccountLockDurationInMinutes,
+                PublicCertificatePath = publicCertificatePath,
+                config?.AccountActivationPath,
+                config?.AccountVerificationPath,
+                config?.RecoverAccountPath,
+                config?.IsOidcEnabled,
+                config?.AccountActionBaseUrl,
+                config?.UseAccountActionBaseUrlAsDefault,
+                config?.ActivationUrlLifetimeInMinutes,
+                config?.RecoverAccountUrlLifetimeInMinutes,
+                config?.LogoutOnPasswordChange,
+                config?.PasswordStrengthCheckerRegex
             });
         }
 
         public async Task<BaseResponse> UpdateAuthenticationConfigAsync(UpdateAuthenticationConfigurationRequest configuration)
         {
-            var authConfiguration = new AuthenticationConfiguration
+            var current = await _configurationRepository.GetAuthenticationConfigurationAsync();
+
+            var tenant = _tenants.GetTenantByID(
+                BlocksContext.GetContext()?.TenantId ?? string.Empty);
+
+            // Resolve effective values first
+            var isOidcEnabled =
+                configuration.IsOidcEnabled
+                ?? current?.IsOidcEnabled
+                ?? false;
+
+            var useAccountActionBaseUrlAsDefault =
+                configuration.UseAccountActionBaseUrlAsDefault
+                ?? current?.UseAccountActionBaseUrlAsDefault
+                ?? true;
+
+            var logoutOnPasswordChange =
+                configuration.LogoutOnPasswordChange
+                ?? current?.LogoutOnPasswordChange
+                ?? true;
+
+            var accountActionBaseUrl =
+                !string.IsNullOrWhiteSpace(configuration.AccountActionBaseUrl)
+                    ? configuration.AccountActionBaseUrl
+                    : current?.AccountActionBaseUrl;
+
+            if ((!isOidcEnabled
+                    && useAccountActionBaseUrlAsDefault
+                    && string.IsNullOrWhiteSpace(accountActionBaseUrl))
+                ||
+                (!string.IsNullOrWhiteSpace(accountActionBaseUrl)
+                    && !IsAllowedAccountActionBaseUrl(accountActionBaseUrl, tenant)))
             {
-                ItemId = ObjectId.Parse(configuration.ItemId),
-                RefreshTokenValidForNumberMinutes = configuration.RefreshTokenValidForNumberMinutes,
-                AbsoluteRefreshTokenValidForNumberMinutes = configuration.AbsoluteRefreshTokenValidForNumberMinutes,
-                AccessTokenValidForNumberMinutes = configuration.AccessTokenValidForNumberMinutes,
-                RememberMeRefreshTokenValidForNumberMinutes = configuration.RememberMeRefreshTokenValidForNumberMinutes,
-                AllowedGrantTypes = configuration.AllowedGrantTypes,
-                GetNumberOfWrongAttemptsToLockTheAccount = configuration.GetNumberOfWrongAttemptsToLockTheAccount,
-                AccountLockDurationInMinutes = configuration.AccountLockDurationInMinutes
+                return new BaseResponse
+                {
+                    IsSuccess = false,
+                    Errors = new Dictionary<string, string>
+                    {
+                        {
+                            "AccountActionBaseUrl",
+                            "AccountActionBaseUrl_Must_Be_In_Tenant_Allowed_Domains"
+                        }
+                    }
+                };
+            }
+
+            static int ResolveInt(int requested, int? currentValue, int defaultValue)
+                => requested > 0
+                    ? requested
+                    : currentValue ?? defaultValue;
+
+            static string ResolveString(string requested, string currentValue)
+                => !string.IsNullOrWhiteSpace(requested)
+                    ? requested
+                    : currentValue;
+
+            var authConfiguration = new IdentityConfiguration
+            {
+                ItemId = current?.ItemId ?? ObjectId.Parse(configuration.ItemId),
+
+                RefreshTokenValidForNumberMinutes = ResolveInt(
+                    configuration.RefreshTokenValidForNumberMinutes,
+                    current?.RefreshTokenValidForNumberMinutes,
+                    IdentityConfiguration.DefaultRefreshTokenValidForNumberMinutes),
+
+                AbsoluteRefreshTokenValidForNumberMinutes = ResolveInt(
+                    configuration.AbsoluteRefreshTokenValidForNumberMinutes,
+                    current?.AbsoluteRefreshTokenValidForNumberMinutes,
+                    IdentityConfiguration.DefaultAbsoluteRefreshTokenValidForNumberMinutes),
+
+                AccessTokenValidForNumberMinutes = ResolveInt(
+                    configuration.AccessTokenValidForNumberMinutes,
+                    current?.AccessTokenValidForNumberMinutes,
+                    IdentityConfiguration.DefaultAccessTokenValidForNumberMinutes),
+
+                RememberMeRefreshTokenValidForNumberMinutes = ResolveInt(
+                    configuration.RememberMeRefreshTokenValidForNumberMinutes,
+                    current?.RememberMeRefreshTokenValidForNumberMinutes,
+                    IdentityConfiguration.DefaultRememberMeRefreshTokenValidForNumberMinutes),
+
+                GetNumberOfWrongAttemptsToLockTheAccount = ResolveInt(
+                    configuration.GetNumberOfWrongAttemptsToLockTheAccount,
+                    current?.GetNumberOfWrongAttemptsToLockTheAccount,
+                    IdentityConfiguration.DefaultGetNumberOfWrongAttemptsToLockTheAccount),
+
+                AccountLockDurationInMinutes = ResolveInt(
+                    configuration.AccountLockDurationInMinutes,
+                    current?.AccountLockDurationInMinutes,
+                    IdentityConfiguration.DefaultAccountLockDurationInMinutes),
+
+                PublicCertificatePath = ResolveString(
+                    configuration.PublicCertificatePath,
+                    current?.PublicCertificatePath),
+
+                AccountActivationPath = ResolveString(
+                    configuration.AccountActivationPath,
+                    current?.AccountActivationPath),
+
+                AccountVerificationPath = ResolveString(
+                    configuration.AccountVerificationPath,
+                    current?.AccountVerificationPath),
+
+                RecoverAccountPath = ResolveString(
+                    configuration.RecoverAccountPath,
+                    current?.RecoverAccountPath),
+
+                ActivationUrlLifetimeInMinutes = ResolveInt(
+                    configuration.ActivationUrlLifetimeInMinutes,
+                    current?.ActivationUrlLifetimeInMinutes,
+                    60 * 24),
+
+                RecoverAccountUrlLifetimeInMinutes = ResolveInt(
+                    configuration.RecoverAccountUrlLifetimeInMinutes,
+                    current?.RecoverAccountUrlLifetimeInMinutes,
+                    10),
+
+                PasswordStrengthCheckerRegex = ResolveString(
+                    configuration.PasswordStrengthCheckerRegex,
+                    current?.PasswordStrengthCheckerRegex),
+
+                IsOidcEnabled = isOidcEnabled,
+                UseAccountActionBaseUrlAsDefault = useAccountActionBaseUrlAsDefault,
+                LogoutOnPasswordChange = logoutOnPasswordChange,
+                AccountActionBaseUrl = accountActionBaseUrl
             };
 
             await _configurationRepository.UpdateAuthenticationConfigAsync(authConfiguration);
 
-            return new BaseResponse { IsSuccess = true };
+            return new BaseResponse
+            {
+                IsSuccess = true
+            };
+        }
+
+        private static bool IsAllowedAccountActionBaseUrl(string accountActionBaseUrl, dynamic? tenant)
+        {
+            if (!Uri.TryCreate(accountActionBaseUrl, UriKind.Absolute, out var targetUri))
+            {
+                return false;
+            }
+
+            var allowedDomains = ((IEnumerable<dynamic>?)tenant?.Applications ?? [])
+                .Select(application => (string?)application?.Domain)
+                .Where(domain => !string.IsNullOrWhiteSpace(domain))
+                .Select(domain => NormalizeHost(domain!))
+                .Where(domain => !string.IsNullOrWhiteSpace(domain))
+                .ToHashSet(StringComparer.OrdinalIgnoreCase);
+
+            if (allowedDomains.Count == 0)
+            {
+                return true;
+            }
+
+            return allowedDomains.Contains(targetUri.Host);
+        }
+
+        private static string NormalizeHost(string value)
+        {
+            if (Uri.TryCreate(value, UriKind.Absolute, out var uri))
+            {
+                return uri.Host;
+            }
+
+            return value.Replace("https://", string.Empty, StringComparison.OrdinalIgnoreCase)
+                        .Replace("http://", string.Empty, StringComparison.OrdinalIgnoreCase)
+                        .TrimEnd('/');
         }
 
         #endregion
@@ -164,49 +319,6 @@ namespace CloudConfiguration.DomainService.Shared.Services
 
         #endregion
 
-        #region IAM
-
-        public async Task<BaseMutationResponse> SaveIamConfigurationAsync(SaveIamConfigurationRequest request)
-        {
-            var validationResult = await _iamConfigurationValidator.ValidateAsync(request);
-
-            if (!validationResult.IsValid)
-            {
-                return new BaseMutationResponse
-                {
-                    Errors = validationResult.Errors.ToDictionary(x => x.PropertyName, x => x.ErrorMessage)
-                };
-            }
-
-            await Process(request);
-
-            return new BaseMutationResponse { IsSuccess = true };
-        }
-
-        public async Task<GetConfigurationResponse> GetIamConfigurationAsync()
-        {
-            var result = await _configurationRepository.GetIamConfigurationAsync();
-            return new GetConfigurationResponse { Data = result };
-        }
-
-        public async Task Process(SaveIamConfigurationRequest request)
-        {
-            var config = await _configurationRepository.GetIamConfigurationAsync() ?? new IamConfiguration();
-
-            config.AccountActivationUrl = request.AccountActivationUrl;
-            config.AccountVerificationUrl = request.AccountVerificationUrl;
-            config.RecoverAccountUrl = request.RecoverAccountUrl;
-            config.ActivationUrlLifetimeInMinutes = request.ActivationUrlLifetimeInMinutes;
-            config.RecoverAccountUrlLifetimeInMinutes = request.RecoverAccountUrlLifetimeInMinutes;
-            config.LogoutOnPasswordChange = request.LogoutOnPasswordChange;
-            config.PasswordStrengthCheckerRegex = string.IsNullOrWhiteSpace(request.PasswordStrengthCheckerRegex) ? config.PasswordStrengthCheckerRegex : request.PasswordStrengthCheckerRegex;
-
-            await _configurationRepository.SaveIamConfigurationAsync(config);
-
-        }
-
-        #endregion
-
         #region MFA
 
         public async Task<BaseResponse> SaveMfaConfigurationAsync(SaveMfaConfigurationRequest request)
@@ -221,16 +333,6 @@ namespace CloudConfiguration.DomainService.Shared.Services
             mafConfiguration.MfaTemplate = request.MfaTemplate ?? new MfaTemplate { TemplateId = Constants.DefaultMfaTemplateId, TemplateName = Constants.DefaultMfaTemplateName };
 
             await _configurationRepository.UpsertAsync(mafConfiguration, (m => m.ItemId == mafConfiguration.ItemId));
-
-            var bc = BlocksContext.GetContext();
-            await _messageClient.SendToConsumerAsync(new ConsumerMessage<MfaActionEvent>
-            {
-                Payload = new MfaActionEvent
-                {
-                    IsEnable = mafConfiguration.EnableMfa,
-                },
-                ConsumerName = Constants.AuthenticationQueue,
-            });
 
             return new BaseResponse { IsSuccess = true };
         }

@@ -40,7 +40,7 @@ namespace Authentication.DomainService.OAuth
         }
 
         public async Task<JwtAccessToken> GetJwtAccessToken(
-            AuthenticationConfiguration authenticationConfiguration,
+            IdentityConfiguration authenticationConfiguration,
             Tenant tenant,
             User user,
             TokenRequest tokenRequest,
@@ -54,7 +54,7 @@ namespace Authentication.DomainService.OAuth
             return MapJwtAccessToken(authenticationConfiguration, tenant, user, certificate, resolvedClaims, tokenRequest, stateInfo: state);
         }
 
-        public JwtAccessToken MapJwtAccessToken(AuthenticationConfiguration authenticationConfiguration, Tenant tenant, User user, byte[] certificate, ResolvedAuthorizationClaims resolvedClaims, TokenRequest tokenRequest, StateInfo? stateInfo = null)
+        public JwtAccessToken MapJwtAccessToken(IdentityConfiguration authenticationConfiguration, Tenant tenant, User user, byte[] certificate, ResolvedAuthorizationClaims resolvedClaims, TokenRequest tokenRequest, StateInfo? stateInfo = null)
         {
             var jwtAccessToken = new JwtAccessToken
             {
