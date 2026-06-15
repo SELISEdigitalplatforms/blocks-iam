@@ -1,17 +1,17 @@
 import { useRef, useState } from "react";
 import { Camera } from "lucide-react";
-import { Button } from "@/components/ui-kits/button/button";
 import { useGetPreSignedUrlForUpload, useUploadFile } from "@blocks-storage/hooks/use-storage-file";
 import { storageService } from "@blocks-storage/services/storage.service";
 import { useGetUserById, useUpdateUser } from "@blocks-idp/iam/hooks/use-user";
 import { showErrorToast, showSuccessToast } from "@/hooks/use-toast";
 import { isErrorWithErrors } from "@/lib/error";
 import { useProfileImageSrc } from "@/hooks/use-profile-image-src";
+import { cn } from "@/lib/utils";
 import { useQueryClient } from "@tanstack/react-query";
 const emptyProfilePhoto = "/assets/images/empty-profile-photo.png";
 import { ModuleName } from "@/constants/modules.constants";
-type ProfileImageUploaderProps = { projectKey: string; id: string };
-export const ProfileImageUploader = ({ projectKey, id }: ProfileImageUploaderProps) => {
+type ProfileImageUploaderProps = { projectKey: string; id: string; className?: string };
+export const ProfileImageUploader = ({ projectKey, id, className }: ProfileImageUploaderProps) => {
   const [localPreview, setLocalPreview] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const queryClient = useQueryClient();
@@ -93,27 +93,7 @@ export const ProfileImageUploader = ({ projectKey, id }: ProfileImageUploaderPro
     event.target.value = "";
   };
   return (
-    <div className="flex flex-col items-center justify-center gap-8 lg:col-span-3 lg:justify-start">
-      <div className="relative aspect-square w-full max-w-[200px] overflow-hidden rounded-full bg-gray-50 dark:bg-gray-800">
-        {image ? (
-          <>
-            <img
-              src={image}
-              alt="Profile Image"
-              className="rounded-full object-cover"
-            />
-            {isProfileImageUploading && (
-              <div className="absolute bottom-0 left-0 right-0 top-0 bg-gray-50 opacity-75 dark:bg-gray-800"></div>
-            )}
-          </>
-        ) : (
-          <img
-            src={emptyProfilePhoto}
-            alt="Empty Profile Image"
-            className="rounded-full object-cover"
-          />
-        )}
-      </div>
+    <div className="flex flex-col items-center justify-center">
       <input
         type="file"
         accept="image/*"
@@ -121,17 +101,31 @@ export const ProfileImageUploader = ({ projectKey, id }: ProfileImageUploaderPro
         className="hidden"
         onChange={handleFileChange}
       />
-      <Button
-        variant="outline"
+      <button
+        type="button"
+        aria-label="Change profile image"
         disabled={isProfileImageUploading}
         onClick={(e) => {
           e.stopPropagation();
           fileInputRef.current?.click();
         }}
+        className={cn(
+          "group relative aspect-square w-full max-w-[200px] cursor-pointer overflow-hidden rounded-lg bg-gray-50 disabled:cursor-not-allowed dark:bg-gray-800",
+          className,
+        )}
       >
-        <Camera className="h-5 w-5" />
-        <span className="ml-2.5">Change Image</span>
-      </Button>
+        <img
+          src={image ?? emptyProfilePhoto}
+          alt="Profile Image"
+          className="h-full w-full rounded-lg object-cover"
+        />
+        <div className="absolute inset-0 flex items-center justify-center rounded-lg bg-black/0 transition-colors group-hover:bg-black/40 group-disabled:bg-black/0">
+          <Camera className="h-7 w-7 text-white opacity-0 transition-opacity group-hover:opacity-100 group-disabled:opacity-0" />
+        </div>
+        {isProfileImageUploading && (
+          <div className="absolute inset-0 flex items-center justify-center rounded-lg bg-gray-50/75 dark:bg-gray-800/75" />
+        )}
+      </button>
     </div>
   );
 };

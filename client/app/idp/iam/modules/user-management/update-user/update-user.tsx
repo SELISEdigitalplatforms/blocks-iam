@@ -1,4 +1,3 @@
-import { PrimaryButton } from "@/components/action-buttons/primary-button";
 import { Button } from "@/components/ui-kits/button/button";
 import {
   Dialog,
@@ -32,9 +31,10 @@ type UpdateUserProps = {
   id: string;
   projectKey: string;
   own?: boolean;
+  iconOnly?: boolean;
 };
 
-export const UpdateUser = ({ id, projectKey, own = false }: UpdateUserProps) => {
+export const UpdateUser = ({ id, projectKey, own = false, iconOnly = false }: UpdateUserProps) => {
   const [open, setOpen] = useState<boolean>(false);
   const { data: userByIdData, isLoading, isFetching } = useGetUserById(
     { id, projectKey },
@@ -83,7 +83,30 @@ export const UpdateUser = ({ id, projectKey, own = false }: UpdateUserProps) => 
       }}
     >
       <DialogTrigger asChild>
-        <PrimaryButton label="Edit User" Icon={Pen} />
+        {own ? (
+          iconOnly ? (
+            <Button
+              variant="ghost"
+              size="icon"
+              aria-label="Edit profile"
+              className="h-9 w-9 rounded-full text-muted-foreground hover:bg-muted hover:text-foreground"
+            >
+              <Pen className="h-4 w-4" />
+            </Button>
+          ) : (
+            <Button
+              className="w-full gap-2 rounded-lg border border-border/70 bg-background font-medium text-foreground shadow-sm transition-all hover:bg-muted"
+            >
+              <Pen className="h-4 w-4" />
+              Edit Profile
+            </Button>
+          )
+        ) : (
+          <Button variant="outline" size="sm" className="gap-2">
+            <Pen className="h-4 w-4" />
+            <span className="sr-only sm:not-sr-only">Edit User</span>
+          </Button>
+        )}
       </DialogTrigger>
       <DialogContent>
         <DialogHeader>
