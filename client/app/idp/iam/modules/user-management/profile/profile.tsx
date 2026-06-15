@@ -12,8 +12,8 @@ import { UserPats } from "../user-pat";
 import { Card, CardContent } from "@/components/ui-kits/card/card";
 import { Badge } from "@/components/ui-kits/badge/badge";
 import { CopyToClipboardButton } from "@/components/copy-to-clipboard-button";
-import { Shield, Smartphone, Clock, Key, User, Calendar, UserCircle, Activity, Camera, Sparkles } from "lucide-react";
-import { checkValidDate, cn, formatFullDate } from "@/lib/utils";
+import { Shield, Smartphone, Clock, Key, User, Calendar, Activity, Camera, Sparkles } from "lucide-react";
+import { checkValidDate, formatFullDate } from "@/lib/utils";
 import { Skeleton } from "@/components/ui-kits/skeleton/skeleton";
 import { UserCreationType } from "@blocks-idp/authentication/constants/authentication.constant";
 
@@ -67,7 +67,6 @@ type ProfileSidebarUser = {
   lastName?: string;
   email?: string;
   active?: boolean;
-  userName?: string;
   logInCount?: number;
   lastLoggedInTime?: string;
   userCreationType?: number;
@@ -81,7 +80,16 @@ type ProfileSidebarProps = {
 
 const ProfileSidebarDetails = ({ user }: { user?: ProfileSidebarUser }) => (
   <div>
-    {user?.userName && <InfoRow icon={UserCircle} label="Username" value={user.userName} />}
+    <InfoRow
+      icon={Shield}
+      label="Status"
+      value={
+        <span className={`mt-0.5 inline-flex w-fit items-center gap-1.5 rounded-full px-2.5 py-1 text-[11px] font-semibold ${user?.active ? 'bg-emerald-500/15 text-emerald-600 dark:text-emerald-400' : 'bg-red-500/15 text-red-600 dark:text-red-400'}`}>
+          <span className={`h-1.5 w-1.5 rounded-full ${user?.active ? 'bg-emerald-500' : 'bg-red-500'}`} />
+          {user?.active ? "Active" : "Inactive"}
+        </span>
+      }
+    />
 
     <InfoRow icon={Activity} label="Total logins" value={user?.logInCount ?? 0} />
 
@@ -108,71 +116,25 @@ const ProfileSidebarDetails = ({ user }: { user?: ProfileSidebarUser }) => (
 );
 
 export const ProfileSidebar = ({ id, projectKey, user }: ProfileSidebarProps) => {
-  const firstName = user?.firstName;
-  const lastName = user?.lastName;
-  const hasName =
-    typeof firstName === "string" &&
-    firstName.trim() !== "" &&
-    typeof lastName === "string" &&
-    lastName.trim() !== "";
-  const fullName = hasName ? `${firstName} ${lastName}` : "My Profile";
-  const email = user?.email ?? "";
-  const isActive = user?.active ?? false;
-
   return (
-    <Card className="overflow-hidden border border-border/50">
-      {/* Avatar - full-width square */}
-      <div className="relative mx-auto w-full max-w-[420px] md:max-w-none" style={{ aspectRatio: "1 / 1" }}>
-        <div className="absolute inset-0 flex items-center justify-center bg-muted/30">
-          <ProfileImageUploader
-            id={id}
-            projectKey={projectKey}
-            className="h-full w-full max-w-none rounded-none bg-transparent dark:bg-transparent"
-          />
-        </div>
-
+    <Card className="overflow-hidden border-0 bg-transparent shadow-none">
+      {/* Avatar */}
+      <div className="relative mx-auto w-full max-w-[280px]" style={{ aspectRatio: "1 / 1" }}>
+        <ProfileImageUploader
+          id={id}
+          projectKey={projectKey}
+          className="h-full w-full max-w-none rounded-full bg-transparent shadow-none dark:bg-transparent"
+        />
         {/* Center camera upload indicator */}
         <div className="pointer-events-none absolute inset-0 flex items-center justify-center">
-          <div className="flex h-12 w-12 items-center justify-center rounded-full border border-white/25 bg-black/35 text-white shadow-lg backdrop-blur-[2px]">
-            <Camera className="h-5 w-5" />
+          <div className="flex h-10 w-10 items-center justify-center rounded-full border border-white/30 text-white drop-shadow">
+            <Camera className="h-4 w-4" />
           </div>
         </div>
-
-        {/* Status badge */}
-        <span
-          className={cn(
-            "absolute bottom-3 right-3 flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[11px] font-medium backdrop-blur-[2px]",
-            isActive ? "bg-green-500/25 text-green-200" : "bg-red-500/25 text-red-200",
-          )}
-        >
-          <span
-            className={cn(
-              "h-1.5 w-1.5 rounded-full",
-              isActive ? "bg-green-300" : "bg-red-300",
-            )}
-          />
-          {isActive ? "Active" : "Inactive"}
-        </span>
-      </div>
-
-      {/* Name + email */}
-      <div className="px-5">
-        <div className="flex items-center justify-between gap-2">
-          <h1 className="text-[15px] font-semibold leading-snug tracking-tight text-foreground">{fullName}</h1>
-          <UpdateUser id={id} projectKey={projectKey} own iconOnly />
-        </div>
-        {email && (
-          <div className="flex min-w-0 items-center gap-1.5">
-            <span className="min-w-0 flex-1 truncate text-[13px] text-muted-foreground">{email}</span>
-            <CopyToClipboardButton textToCopy={email}>
-              <span className="sr-only">Copy email</span>
-            </CopyToClipboardButton>
-          </div>
-        )}
       </div>
 
       {/* Account details */}
-      <CardContent className="hidden p-5 md:block">
+      <CardContent className="mx-auto mt-4 hidden w-full max-w-[280px] rounded-xl bg-card p-5 shadow-sm ring-1 ring-border/50 md:block">
         <p className="mb-3 text-[10px] font-semibold uppercase tracking-widest text-muted-foreground/60">
           Account details
         </p>
@@ -187,66 +149,98 @@ export const UserProfile = ({ id }: { id: string }) => {
   const [tabId, setTabId] = useQueryState("userDetails", { defaultValue: "security" });
   const { data } = useGetMe();
   const user = data?.data;
+  const firstName = user?.firstName;
+  const lastName = user?.lastName;
+  const hasName =
+    typeof firstName === "string" &&
+    firstName.trim() !== "" &&
+    typeof lastName === "string" &&
+    lastName.trim() !== "";
+  const fullName = hasName ? `${firstName} ${lastName}` : "My Profile";
+  const email = user?.email ?? "";
 
   return (
     <div className="mx-auto w-full max-w-7xl overflow-x-hidden p-4 sm:p-6 md:p-8">
-      <div className="grid grid-cols-1 gap-5 md:grid-cols-[340px_minmax(0,1fr)] md:gap-6 lg:gap-8">
-        {/* Left Sidebar - Profile Card */}
-        <div className="mx-auto w-full max-w-[420px] md:mx-0 md:max-w-none">
-          <ProfileSidebar id={id} projectKey={x_blocks_key} user={user} />
+      <Tabs value={tabId} className="space-y-5 overflow-hidden md:space-y-6">
+        {/* Header with name and tabs */}
+        <div className="flex flex-col gap-4">
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+            <div className="min-w-0">
+              <div className="flex items-center gap-2">
+                <h1 className="truncate text-xl font-semibold tracking-tight text-foreground md:text-2xl">
+                  {fullName}
+                </h1>
+                <UpdateUser id={id} projectKey={x_blocks_key} own iconOnly />
+              </div>
+              {email && (
+                <div className="mt-1 flex min-w-0 items-center gap-1.5">
+                  <span className="min-w-0 flex-1 truncate text-sm text-muted-foreground">{email}</span>
+                  <CopyToClipboardButton textToCopy={email}>
+                    <span className="sr-only">Copy email</span>
+                  </CopyToClipboardButton>
+                </div>
+              )}
+            </div>
+          </div>
+
+          {/* Tabs navigation - modern underline style */}
+          <TabsList className="inline-flex h-auto w-full justify-start gap-1 overflow-x-auto border-b border-border/40 bg-transparent p-0 pb-px">
+            {/* Details tab - Only visible on mobile */}
+            <TabsTrigger
+              onClick={() => setTabId("info")}
+              value="info"
+              className="relative shrink-0 flex items-center gap-1.5 bg-transparent px-3 py-2 text-xs font-medium text-muted-foreground transition-colors hover:text-foreground data-[state=active]:text-foreground md:hidden after:absolute after:bottom-0 after:left-0 after:right-0 after:h-0.5 after:rounded-full after:bg-transparent data-[state=active]:after:bg-primary"
+            >
+              <User className="h-3.5 w-3.5" />
+              <span>Details</span>
+            </TabsTrigger>
+            <TabsTrigger
+              onClick={() => setTabId("security")}
+              value="security"
+              className="relative shrink-0 flex items-center gap-1.5 bg-transparent px-3 py-2 text-xs font-medium text-muted-foreground transition-colors hover:text-foreground data-[state=active]:text-foreground after:absolute after:bottom-0 after:left-0 after:right-0 after:h-0.5 after:rounded-full after:bg-transparent data-[state=active]:after:bg-primary"
+            >
+              <Shield className="h-3.5 w-3.5" />
+              <span>Security</span>
+            </TabsTrigger>
+            <TabsTrigger
+              onClick={() => setTabId("devices")}
+              value="devices"
+              className="relative shrink-0 flex items-center gap-1.5 bg-transparent px-3 py-2 text-xs font-medium text-muted-foreground transition-colors hover:text-foreground data-[state=active]:text-foreground after:absolute after:bottom-0 after:left-0 after:right-0 after:h-0.5 after:rounded-full after:bg-transparent data-[state=active]:after:bg-primary"
+            >
+              <Smartphone className="h-3.5 w-3.5" />
+              <span>Devices</span>
+            </TabsTrigger>
+            <TabsTrigger
+              onClick={() => setTabId("history")}
+              value="history"
+              className="relative shrink-0 flex items-center gap-1.5 bg-transparent px-3 py-2 text-xs font-medium text-muted-foreground transition-colors hover:text-foreground data-[state=active]:text-foreground after:absolute after:bottom-0 after:left-0 after:right-0 after:h-0.5 after:rounded-full after:bg-transparent data-[state=active]:after:bg-primary"
+            >
+              <Clock className="h-3.5 w-3.5" />
+              <span>History</span>
+            </TabsTrigger>
+            <TabsTrigger
+              onClick={() => setTabId("personalAccessTokens")}
+              value="personalAccessTokens"
+              className="relative shrink-0 flex items-center gap-1.5 bg-transparent px-3 py-2 text-xs font-medium text-muted-foreground transition-colors hover:text-foreground data-[state=active]:text-foreground after:absolute after:bottom-0 after:left-0 after:right-0 after:h-0.5 after:rounded-full after:bg-transparent data-[state=active]:after:bg-primary"
+            >
+              <Key className="h-3.5 w-3.5" />
+              <span>PATs</span>
+            </TabsTrigger>
+          </TabsList>
         </div>
 
-        {/* Right Content - Tabs */}
-        <div className="min-w-0">
-          <Tabs value={tabId} className="space-y-6 overflow-hidden">
-            <TabsList className="inline-flex h-auto w-full max-w-full justify-start gap-1 overflow-x-auto rounded-xl bg-muted/50 p-1.5 md:flex-wrap lg:flex-nowrap">
-              {/* Details tab - Only visible on mobile */}
-              <TabsTrigger
-                onClick={() => setTabId("info")}
-                value="info"
-                className="shrink-0 flex items-center gap-2 rounded-lg px-4 py-2.5 text-sm font-medium transition-all data-[state=active]:bg-background data-[state=active]:shadow-sm lg:hidden"
-              >
-                <User className="h-4 w-4" />
-                <span>Details</span>
-              </TabsTrigger>
-              <TabsTrigger
-                onClick={() => setTabId("security")}
-                value="security"
-                className="shrink-0 flex items-center gap-2 rounded-lg px-4 py-2.5 text-sm font-medium transition-all data-[state=active]:bg-background data-[state=active]:shadow-sm"
-              >
-                <Shield className="h-4 w-4" />
-                <span className="hidden sm:inline">Security</span>
-              </TabsTrigger>
-              <TabsTrigger
-                onClick={() => setTabId("devices")}
-                value="devices"
-                className="shrink-0 flex items-center gap-2 rounded-lg px-4 py-2.5 text-sm font-medium transition-all data-[state=active]:bg-background data-[state=active]:shadow-sm"
-              >
-                <Smartphone className="h-4 w-4" />
-                <span className="hidden sm:inline">Devices</span>
-              </TabsTrigger>
-              <TabsTrigger
-                onClick={() => setTabId("history")}
-                value="history"
-                className="shrink-0 flex items-center gap-2 rounded-lg px-4 py-2.5 text-sm font-medium transition-all data-[state=active]:bg-background data-[state=active]:shadow-sm"
-              >
-                <Clock className="h-4 w-4" />
-                <span className="hidden sm:inline">History</span>
-              </TabsTrigger>
-              <TabsTrigger
-                onClick={() => setTabId("personalAccessTokens")}
-                value="personalAccessTokens"
-                className="shrink-0 flex items-center gap-2 rounded-lg px-4 py-2.5 text-sm font-medium transition-all data-[state=active]:bg-background data-[state=active]:shadow-sm"
-              >
-                <Key className="h-4 w-4" />
-                <span className="hidden sm:inline">PATs</span>
-              </TabsTrigger>
-            </TabsList>
+        <div className="grid grid-cols-1 gap-5 md:grid-cols-[280px_minmax(0,1fr)] md:gap-6 lg:gap-8">
+          {/* Left Sidebar - Profile Card */}
+          <div className="mx-auto w-full max-w-[320px] md:mx-0 md:max-w-none">
+            <ProfileSidebar id={id} projectKey={x_blocks_key} user={user} />
+          </div>
 
+          {/* Right Content */}
+          <div className="min-w-0">
             {/* Details tab content - Only visible on mobile */}
             <TabsContent value="info" className="mt-0 md:hidden">
-              <Card className="border border-border/50">
-                <CardContent className="p-5">
+              <Card className="border-0 bg-transparent shadow-none">
+                <CardContent className="rounded-xl bg-card p-5 shadow-sm ring-1 ring-border/50">
                   <p className="mb-3 text-[10px] font-semibold uppercase tracking-widest text-muted-foreground/60">
                     Account details
                   </p>
@@ -270,9 +264,9 @@ export const UserProfile = ({ id }: { id: string }) => {
             <TabsContent value="personalAccessTokens" className="mt-0">
               <UserPats id={id} />
             </TabsContent>
-          </Tabs>
+          </div>
         </div>
-      </div>
+      </Tabs>
     </div>
   );
 };
