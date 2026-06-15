@@ -149,89 +149,45 @@ export const UserProfile = ({ id }: { id: string }) => {
   const [tabId, setTabId] = useQueryState("userDetails", { defaultValue: "security" });
   const { data } = useGetMe();
   const user = data?.data;
-  const firstName = user?.firstName;
-  const lastName = user?.lastName;
-  const hasName =
-    typeof firstName === "string" &&
-    firstName.trim() !== "" &&
-    typeof lastName === "string" &&
-    lastName.trim() !== "";
-  const fullName = hasName ? `${firstName} ${lastName}` : "My Profile";
-  const email = user?.email ?? "";
 
   return (
     <div className="mx-auto w-full max-w-7xl overflow-x-hidden p-4 sm:p-6 md:p-8">
-      <Tabs value={tabId} className="space-y-5 overflow-hidden md:space-y-6">
-        {/* Header with name and tabs */}
-        <div className="flex flex-col gap-4">
-          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-            <div className="min-w-0">
-              <div className="flex items-center gap-2">
-                <h1 className="truncate text-xl font-semibold tracking-tight text-foreground md:text-2xl">
-                  {fullName}
-                </h1>
-                <UpdateUser id={id} projectKey={x_blocks_key} own iconOnly />
-              </div>
-              {email && (
-                <div className="mt-1 flex min-w-0 items-center gap-1.5">
-                  <span className="min-w-0 flex-1 truncate text-sm text-muted-foreground">{email}</span>
-                  <CopyToClipboardButton textToCopy={email}>
-                    <span className="sr-only">Copy email</span>
-                  </CopyToClipboardButton>
-                </div>
-              )}
-            </div>
+      <Tabs value={tabId} className="space-y-6">
+        {/* Header: Title left, Tabs right */}
+        <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+          <div>
+            <h1 className="text-xl font-semibold tracking-tight text-foreground md:text-2xl">My Profile</h1>
+            <p className="mt-0.5 text-sm text-muted-foreground">Manage your account settings and preferences</p>
           </div>
 
-          {/* Tabs navigation - modern underline style */}
-          <TabsList className="inline-flex h-auto w-full justify-start gap-1 overflow-x-auto border-b border-border/40 bg-transparent p-0 pb-px">
-            {/* Details tab - Only visible on mobile */}
-            <TabsTrigger
-              onClick={() => setTabId("info")}
-              value="info"
-              className="relative shrink-0 flex items-center gap-1.5 bg-transparent px-3 py-2 text-xs font-medium text-muted-foreground transition-colors hover:text-foreground data-[state=active]:text-foreground md:hidden after:absolute after:bottom-0 after:left-0 after:right-0 after:h-0.5 after:rounded-full after:bg-transparent data-[state=active]:after:bg-primary"
-            >
-              <User className="h-3.5 w-3.5" />
+          {/* Tabs - shadcn default style */}
+          <TabsList className="h-10 w-fit shrink-0">
+            <TabsTrigger onClick={() => setTabId("info")} value="info" className="gap-1.5 md:hidden">
+              <User className="h-4 w-4" />
               <span>Details</span>
             </TabsTrigger>
-            <TabsTrigger
-              onClick={() => setTabId("security")}
-              value="security"
-              className="relative shrink-0 flex items-center gap-1.5 bg-transparent px-3 py-2 text-xs font-medium text-muted-foreground transition-colors hover:text-foreground data-[state=active]:text-foreground after:absolute after:bottom-0 after:left-0 after:right-0 after:h-0.5 after:rounded-full after:bg-transparent data-[state=active]:after:bg-primary"
-            >
-              <Shield className="h-3.5 w-3.5" />
-              <span>Security</span>
+            <TabsTrigger onClick={() => setTabId("security")} value="security" className="gap-1.5">
+              <Shield className="h-4 w-4" />
+              <span className="hidden sm:inline">Security</span>
             </TabsTrigger>
-            <TabsTrigger
-              onClick={() => setTabId("devices")}
-              value="devices"
-              className="relative shrink-0 flex items-center gap-1.5 bg-transparent px-3 py-2 text-xs font-medium text-muted-foreground transition-colors hover:text-foreground data-[state=active]:text-foreground after:absolute after:bottom-0 after:left-0 after:right-0 after:h-0.5 after:rounded-full after:bg-transparent data-[state=active]:after:bg-primary"
-            >
-              <Smartphone className="h-3.5 w-3.5" />
-              <span>Devices</span>
+            <TabsTrigger onClick={() => setTabId("devices")} value="devices" className="gap-1.5">
+              <Smartphone className="h-4 w-4" />
+              <span className="hidden sm:inline">Devices</span>
             </TabsTrigger>
-            <TabsTrigger
-              onClick={() => setTabId("history")}
-              value="history"
-              className="relative shrink-0 flex items-center gap-1.5 bg-transparent px-3 py-2 text-xs font-medium text-muted-foreground transition-colors hover:text-foreground data-[state=active]:text-foreground after:absolute after:bottom-0 after:left-0 after:right-0 after:h-0.5 after:rounded-full after:bg-transparent data-[state=active]:after:bg-primary"
-            >
-              <Clock className="h-3.5 w-3.5" />
-              <span>History</span>
+            <TabsTrigger onClick={() => setTabId("history")} value="history" className="gap-1.5">
+              <Clock className="h-4 w-4" />
+              <span className="hidden sm:inline">History</span>
             </TabsTrigger>
-            <TabsTrigger
-              onClick={() => setTabId("personalAccessTokens")}
-              value="personalAccessTokens"
-              className="relative shrink-0 flex items-center gap-1.5 bg-transparent px-3 py-2 text-xs font-medium text-muted-foreground transition-colors hover:text-foreground data-[state=active]:text-foreground after:absolute after:bottom-0 after:left-0 after:right-0 after:h-0.5 after:rounded-full after:bg-transparent data-[state=active]:after:bg-primary"
-            >
-              <Key className="h-3.5 w-3.5" />
-              <span>PATs</span>
+            <TabsTrigger onClick={() => setTabId("personalAccessTokens")} value="personalAccessTokens" className="gap-1.5">
+              <Key className="h-4 w-4" />
+              <span className="hidden sm:inline">PATs</span>
             </TabsTrigger>
           </TabsList>
         </div>
 
-        <div className="grid grid-cols-1 gap-5 md:grid-cols-[280px_minmax(0,1fr)] md:gap-6 lg:gap-8">
+        <div className="grid grid-cols-1 gap-5 md:grid-cols-[380px_minmax(0,1fr)] md:gap-6 lg:gap-8">
           {/* Left Sidebar - Profile Card */}
-          <div className="mx-auto w-full max-w-[320px] md:mx-0 md:max-w-none">
+          <div className="mx-auto w-full max-w-[420px] md:mx-0 md:max-w-none">
             <ProfileSidebar id={id} projectKey={x_blocks_key} user={user} />
           </div>
 
