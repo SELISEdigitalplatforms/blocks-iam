@@ -26,7 +26,7 @@ import { PasswordStrengthChecker } from "@blocks-idp/authentication/components/p
 import { useChangePassword } from "@blocks-idp/iam/hooks/use-account";
 import { showErrorToast, showSuccessToast } from "@/hooks/use-toast";
 import { isErrorWithErrors } from "@/lib/error";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui-kits/card/card";
+import { Card, CardContent, CardTitle } from "@/components/ui-kits/card/card";
 
 const changePasswordSchema = z
   .object({
@@ -179,18 +179,14 @@ export const ProfileChangePassword = () => {
 
   return (
     <Card>
-      <CardHeader>
-        <div className="flex items-center justify-between">
-          <CardTitle>Change Password</CardTitle>
-          <Button size="sm" variant="outline" onClick={() => setOpen(true)}>
-            Update Password
-          </Button>
+      <CardContent className="flex items-center justify-between gap-4 py-4">
+        <div>
+          <CardTitle className="text-sm font-semibold">Change Password</CardTitle>
+          <p className="mt-0.5 text-sm text-muted-foreground">Update your password regularly to keep your account secure.</p>
         </div>
-      </CardHeader>
-      <CardContent className="!pt-0">
-        <div className="space-y-2 text-base font-normal text-high-emphasis">
-          <p>Update your password regularly to keep your account secure.</p>
-        </div>
+        <Button size="sm" variant="outline" className="shrink-0" onClick={() => setOpen(true)}>
+          Update Password
+        </Button>
       </CardContent>
       <ChangePasswordDialog open={open} onOpenChange={setOpen} />
     </Card>
