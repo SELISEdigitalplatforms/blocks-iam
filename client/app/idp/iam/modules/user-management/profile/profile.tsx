@@ -12,7 +12,8 @@ import { UserPats } from "../user-pat";
 import { Card, CardContent } from "@/components/ui-kits/card/card";
 import { Badge } from "@/components/ui-kits/badge/badge";
 import { CopyToClipboardButton } from "@/components/copy-to-clipboard-button";
-import { Shield, Smartphone, Clock, Key, User, Calendar, Activity, Sparkles } from "lucide-react";
+import { Shield, Smartphone, Clock, Key, Calendar, Activity, Sparkles } from "lucide-react";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui-kits/select/select";
 import { checkValidDate, formatFullDate } from "@/lib/utils";
 import { Skeleton } from "@/components/ui-kits/skeleton/skeleton";
 import { UserCreationType } from "@blocks-idp/authentication/constants/authentication.constant";
@@ -157,34 +158,41 @@ export const UserProfile = ({ id }: { id: string }) => {
   return (
     <div className="mx-auto w-full max-w-7xl overflow-x-hidden p-4 sm:p-6 md:p-8">
       <Tabs value={tabId}>
-        <div className="grid grid-cols-1 gap-5 md:grid-cols-[300px_minmax(0,1fr)] md:gap-6 lg:gap-8">
-          {/* Left column — name+email (desktop) then sidebar */}
-          <div className="space-y-3 md:space-y-4">
-            <div className="hidden min-w-0 md:block">
-              <div className="flex items-center gap-2">
-                <h1 className="truncate text-xl font-semibold tracking-tight text-foreground md:text-2xl">{fullName}</h1>
-                <UpdateUser id={id} projectKey={x_blocks_key} own iconOnly />
-              </div>
-              {email && (
-                <div className="mt-0.5 flex min-w-0 items-center gap-1.5">
-                  <span className="min-w-0 truncate text-sm text-muted-foreground">{email}</span>
-                  <CopyToClipboardButton textToCopy={email}>
-                    <span className="sr-only">Copy email</span>
-                  </CopyToClipboardButton>
-                </div>
-              )}
-            </div>
+        {/*
+          Desktop grid: 2 cols × 2 rows.
+          Row 1, col 1: name+email  |  Row 1, col 2: (empty)
+          Row 2, col 1: sidebar     |  Row 2, col 2: tabs + content
+          Right column therefore starts at the avatar top edge.
+        */}
+        <div className="grid grid-cols-1 gap-4 md:grid-cols-[300px_minmax(0,1fr)] md:gap-x-6 md:gap-y-3 lg:gap-x-8">
 
-            <div className="mx-auto w-full max-w-[460px] md:mx-0 md:max-w-none">
-              <ProfileSidebar id={id} projectKey={x_blocks_key} user={user} />
+          {/* Desktop: name+email — col 1, row 1 */}
+          <div className="hidden min-w-0 md:col-start-1 md:row-start-1 md:block">
+            <div className="flex items-center gap-2">
+              <h1 className="truncate text-2xl font-semibold tracking-tight text-foreground">{fullName}</h1>
+              <UpdateUser id={id} projectKey={x_blocks_key} own iconOnly />
             </div>
+            {email && (
+              <div className="mt-0.5 flex min-w-0 items-center gap-1.5">
+                <span className="min-w-0 truncate text-sm text-muted-foreground">{email}</span>
+                <CopyToClipboardButton textToCopy={email}>
+                  <span className="sr-only">Copy email</span>
+                </CopyToClipboardButton>
+              </div>
+            )}
           </div>
 
-          {/* Right column — tabs header then tab content */}
-          <div className="min-w-0 space-y-4">
-            {/* Mobile: name+email above, tabs right-aligned below; Desktop: tabs only */}
-            <div className="md:block">
-              <div className="min-w-0 md:hidden">
+          {/* Sidebar — col 1, row 2 */}
+          <div className="mx-auto w-full max-w-[460px] md:col-start-1 md:row-start-2 md:mx-0 md:max-w-none">
+            <ProfileSidebar id={id} projectKey={x_blocks_key} user={user} />
+          </div>
+
+          {/* Right column — col 2, row 2 (aligns with avatar top) */}
+          <div className="min-w-0 space-y-4 md:col-start-2 md:row-start-2">
+
+            {/* Mobile header: name+email left, dropdown right */}
+            <div className="flex items-center justify-between gap-3 md:hidden">
+              <div className="min-w-0">
                 <div className="flex items-center gap-2">
                   <h1 className="truncate text-xl font-semibold tracking-tight text-foreground">{fullName}</h1>
                   <UpdateUser id={id} projectKey={x_blocks_key} own iconOnly />
@@ -198,41 +206,52 @@ export const UserProfile = ({ id }: { id: string }) => {
                   </div>
                 )}
               </div>
-              <div className="mt-2 flex justify-end md:mt-0 md:justify-start">
-                <TabsList className="h-8 w-fit p-0.5">
-                  <TabsTrigger onClick={() => setTabId("info")} value="info" className="h-7 gap-1 px-2.5 text-xs md:hidden">
-                    <User className="h-3.5 w-3.5" />
-                    <span>Details</span>
-                  </TabsTrigger>
-                  <TabsTrigger onClick={() => setTabId("security")} value="security" className="h-7 gap-1 px-2.5 text-xs">
-                    <Shield className="h-3.5 w-3.5" />
-                    <span className="hidden sm:inline">Security</span>
-                  </TabsTrigger>
-                  <TabsTrigger onClick={() => setTabId("devices")} value="devices" className="h-7 gap-1 px-2.5 text-xs">
-                    <Smartphone className="h-3.5 w-3.5" />
-                    <span className="hidden sm:inline">Devices</span>
-                  </TabsTrigger>
-                  <TabsTrigger onClick={() => setTabId("history")} value="history" className="h-7 gap-1 px-2.5 text-xs">
-                    <Clock className="h-3.5 w-3.5" />
-                    <span className="hidden sm:inline">History</span>
-                  </TabsTrigger>
-                  <TabsTrigger onClick={() => setTabId("personalAccessTokens")} value="personalAccessTokens" className="h-7 gap-1 px-2.5 text-xs">
-                    <Key className="h-3.5 w-3.5" />
-                    <span className="hidden sm:inline">PATs</span>
-                  </TabsTrigger>
-                </TabsList>
+              <div className="shrink-0">
+                <Select value={tabId} onValueChange={(v) => { setTabId(v); }}>
+                  <SelectTrigger className="h-8 w-auto min-w-[100px] border-border/60 px-2.5 text-xs">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="info">Details</SelectItem>
+                    <SelectItem value="security">Security</SelectItem>
+                    <SelectItem value="devices">Devices</SelectItem>
+                    <SelectItem value="history">History</SelectItem>
+                    <SelectItem value="personalAccessTokens">PATs</SelectItem>
+                  </SelectContent>
+                </Select>
               </div>
             </div>
 
+            {/* Desktop: TabsList */}
+            <div className="hidden md:block">
+              <TabsList className="h-8 w-fit p-0.5">
+                <TabsTrigger onClick={() => setTabId("security")} value="security" className="h-7 gap-1 px-2.5 text-xs">
+                  <Shield className="h-3.5 w-3.5" />
+                  <span>Security</span>
+                </TabsTrigger>
+                <TabsTrigger onClick={() => setTabId("devices")} value="devices" className="h-7 gap-1 px-2.5 text-xs">
+                  <Smartphone className="h-3.5 w-3.5" />
+                  <span>Devices</span>
+                </TabsTrigger>
+                <TabsTrigger onClick={() => setTabId("history")} value="history" className="h-7 gap-1 px-2.5 text-xs">
+                  <Clock className="h-3.5 w-3.5" />
+                  <span>History</span>
+                </TabsTrigger>
+                <TabsTrigger onClick={() => setTabId("personalAccessTokens")} value="personalAccessTokens" className="h-7 gap-1 px-2.5 text-xs">
+                  <Key className="h-3.5 w-3.5" />
+                  <span>PATs</span>
+                </TabsTrigger>
+              </TabsList>
+            </div>
+
+            {/* Tab content */}
             <TabsContent value="info" className="mt-0 md:hidden">
-              <Card className="border-0 bg-transparent shadow-none">
-                <CardContent className="rounded-xl bg-card p-5 shadow-sm ring-1 ring-border/50">
-                  <p className="mb-3 text-[10px] font-semibold uppercase tracking-widest text-muted-foreground/60">
-                    Account details
-                  </p>
-                  <ProfileSidebarDetails user={user} />
-                </CardContent>
-              </Card>
+              <CardContent className="rounded-xl bg-card p-5 shadow-sm ring-1 ring-border/50">
+                <p className="mb-3 text-[10px] font-semibold uppercase tracking-widest text-muted-foreground/60">
+                  Account details
+                </p>
+                <ProfileSidebarDetails user={user} />
+              </CardContent>
             </TabsContent>
 
             <TabsContent value="security" className="mt-0 space-y-6">
