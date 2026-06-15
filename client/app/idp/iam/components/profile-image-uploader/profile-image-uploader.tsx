@@ -10,8 +10,13 @@ import { cn } from "@/lib/utils";
 import { useQueryClient } from "@tanstack/react-query";
 const emptyProfilePhoto = "/assets/images/empty-profile-photo.png";
 import { ModuleName } from "@/constants/modules.constants";
-type ProfileImageUploaderProps = { projectKey: string; id: string; className?: string };
-export const ProfileImageUploader = ({ projectKey, id, className }: ProfileImageUploaderProps) => {
+type ProfileImageUploaderProps = {
+  projectKey: string;
+  id: string;
+  className?: string;
+  containerClassName?: string;
+};
+export const ProfileImageUploader = ({ projectKey, id, className, containerClassName }: ProfileImageUploaderProps) => {
   const [localPreview, setLocalPreview] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const queryClient = useQueryClient();
@@ -93,7 +98,7 @@ export const ProfileImageUploader = ({ projectKey, id, className }: ProfileImage
     event.target.value = "";
   };
   return (
-    <div className="flex flex-col items-center justify-center">
+    <div className={cn("flex flex-col items-center justify-center", containerClassName)}>
       <input
         type="file"
         accept="image/*"
@@ -117,7 +122,7 @@ export const ProfileImageUploader = ({ projectKey, id, className }: ProfileImage
         <img
           src={image ?? emptyProfilePhoto}
           alt="Profile Image"
-          className="h-full w-full rounded-[inherit] object-cover"
+          className="h-full w-full rounded-[inherit] object-cover object-center"
         />
         <div className="absolute inset-0 flex items-center justify-center rounded-[inherit] bg-black/0 transition-colors group-hover:bg-black/40 group-disabled:bg-black/0">
           <Camera className="h-7 w-7 text-white opacity-0 transition-opacity group-hover:opacity-100 group-disabled:opacity-0" />
