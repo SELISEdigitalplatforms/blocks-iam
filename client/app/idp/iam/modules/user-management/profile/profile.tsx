@@ -13,7 +13,7 @@ import { Card, CardContent } from "@/components/ui-kits/card/card";
 import { Badge } from "@/components/ui-kits/badge/badge";
 import { CopyToClipboardButton } from "@/components/copy-to-clipboard-button";
 import { Shield, Smartphone, Clock, Key, User, Calendar, Activity, Camera, Sparkles } from "lucide-react";
-import { checkValidDate, cn, formatFullDate } from "@/lib/utils";
+import { checkValidDate, formatFullDate } from "@/lib/utils";
 import { Skeleton } from "@/components/ui-kits/skeleton/skeleton";
 import { UserCreationType } from "@blocks-idp/authentication/constants/authentication.constant";
 
@@ -80,6 +80,16 @@ type ProfileSidebarProps = {
 
 const ProfileSidebarDetails = ({ user }: { user?: ProfileSidebarUser }) => (
   <div>
+    <InfoRow
+      icon={Shield}
+      label="Status"
+      value={
+        <Badge variant={user?.active ? "success" : "error"} className="mt-0.5 w-fit rounded px-2 py-0.5 text-[11px]">
+          {user?.active ? "Active" : "Inactive"}
+        </Badge>
+      }
+    />
+
     <InfoRow icon={Activity} label="Total logins" value={user?.logInCount ?? 0} />
 
     {user?.lastLoggedInTime && checkValidDate(user.lastLoggedInTime) && (
@@ -105,8 +115,6 @@ const ProfileSidebarDetails = ({ user }: { user?: ProfileSidebarUser }) => (
 );
 
 export const ProfileSidebar = ({ id, projectKey, user }: ProfileSidebarProps) => {
-  const isActive = user?.active ?? false;
-
   return (
     <Card className="overflow-hidden border border-border/50">
       {/* Avatar - full-width square */}
@@ -121,30 +129,14 @@ export const ProfileSidebar = ({ id, projectKey, user }: ProfileSidebarProps) =>
 
         {/* Center camera upload indicator */}
         <div className="pointer-events-none absolute inset-0 flex items-center justify-center">
-          <div className="flex h-12 w-12 items-center justify-center rounded-full border border-white/25 bg-black/35 text-white shadow-lg backdrop-blur-[2px]">
+          <div className="flex h-12 w-12 items-center justify-center rounded-full border border-white/30 text-white drop-shadow">
             <Camera className="h-5 w-5" />
           </div>
         </div>
-
-        {/* Status badge */}
-        <span
-          className={cn(
-            "absolute bottom-3 right-3 flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[11px] font-medium backdrop-blur-[2px]",
-            isActive ? "bg-green-500/25 text-green-200" : "bg-red-500/25 text-red-200",
-          )}
-        >
-          <span
-            className={cn(
-              "h-1.5 w-1.5 rounded-full",
-              isActive ? "bg-green-300" : "bg-red-300",
-            )}
-          />
-          {isActive ? "Active" : "Inactive"}
-        </span>
       </div>
 
       {/* Account details */}
-      <CardContent className="hidden p-5 md:block">
+      <CardContent className="hidden bg-muted/20 p-5 md:block">
         <p className="mb-3 text-[10px] font-semibold uppercase tracking-widest text-muted-foreground/60">
           Account details
         </p>
@@ -191,7 +183,7 @@ export const UserProfile = ({ id }: { id: string }) => {
           </div>
 
           <div className="min-w-0 md:flex md:justify-end">
-            <TabsList className="inline-flex h-auto w-full max-w-full justify-start gap-1.5 overflow-x-auto rounded-2xl border border-border/60 bg-card/80 p-1.5 shadow-sm backdrop-blur md:w-auto md:max-w-[52%] md:justify-end md:flex-wrap lg:max-w-none lg:flex-nowrap">
+            <TabsList className="inline-flex h-auto w-full max-w-full justify-start gap-1.5 overflow-x-auto rounded-2xl border border-border/60 bg-transparent p-1.5 md:w-auto md:max-w-[52%] md:justify-end md:flex-wrap lg:max-w-none lg:flex-nowrap">
               {/* Details tab - Only visible on mobile */}
               <TabsTrigger
                 onClick={() => setTabId("info")}
@@ -248,7 +240,7 @@ export const UserProfile = ({ id }: { id: string }) => {
             {/* Details tab content - Only visible on mobile */}
             <TabsContent value="info" className="mt-0 md:hidden">
               <Card className="border border-border/50">
-                <CardContent className="p-5">
+                <CardContent className="bg-muted/20 p-5">
                   <p className="mb-3 text-[10px] font-semibold uppercase tracking-widest text-muted-foreground/60">
                     Account details
                   </p>
