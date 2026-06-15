@@ -119,14 +119,14 @@ export const ProfileSidebar = ({ id, projectKey, user }: ProfileSidebarProps) =>
   return (
     <Card className="overflow-hidden border-0 bg-transparent shadow-none">
       {/* Avatar */}
-      <div className="relative mx-auto w-full max-w-[280px]" style={{ aspectRatio: "1 / 1" }}>
+      <div className="group relative mx-auto w-full max-w-[280px]" style={{ aspectRatio: "1 / 1" }}>
         <ProfileImageUploader
           id={id}
           projectKey={projectKey}
           className="h-full w-full max-w-none rounded-full bg-transparent shadow-none dark:bg-transparent"
         />
-        {/* Center camera upload indicator */}
-        <div className="pointer-events-none absolute inset-0 flex items-center justify-center">
+        {/* Center camera upload indicator - visible on hover */}
+        <div className="pointer-events-none absolute inset-0 flex items-center justify-center opacity-0 transition-opacity group-hover:opacity-100">
           <div className="flex h-10 w-10 items-center justify-center rounded-full border border-white/30 text-white drop-shadow">
             <Camera className="h-4 w-4" />
           </div>
@@ -152,47 +152,45 @@ export const UserProfile = ({ id }: { id: string }) => {
 
   return (
     <div className="mx-auto w-full max-w-7xl overflow-x-hidden p-4 sm:p-6 md:p-8">
-      <Tabs value={tabId} className="space-y-6">
-        {/* Header: Title left, Tabs right */}
-        <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-          <div>
-            <h1 className="text-xl font-semibold tracking-tight text-foreground md:text-2xl">My Profile</h1>
-            <p className="mt-0.5 text-sm text-muted-foreground">Manage your account settings and preferences</p>
-          </div>
-
-          {/* Tabs - shadcn default style */}
-          <TabsList className="h-10 w-fit shrink-0">
-            <TabsTrigger onClick={() => setTabId("info")} value="info" className="gap-1.5 md:hidden">
-              <User className="h-4 w-4" />
-              <span>Details</span>
-            </TabsTrigger>
-            <TabsTrigger onClick={() => setTabId("security")} value="security" className="gap-1.5">
-              <Shield className="h-4 w-4" />
-              <span className="hidden sm:inline">Security</span>
-            </TabsTrigger>
-            <TabsTrigger onClick={() => setTabId("devices")} value="devices" className="gap-1.5">
-              <Smartphone className="h-4 w-4" />
-              <span className="hidden sm:inline">Devices</span>
-            </TabsTrigger>
-            <TabsTrigger onClick={() => setTabId("history")} value="history" className="gap-1.5">
-              <Clock className="h-4 w-4" />
-              <span className="hidden sm:inline">History</span>
-            </TabsTrigger>
-            <TabsTrigger onClick={() => setTabId("personalAccessTokens")} value="personalAccessTokens" className="gap-1.5">
-              <Key className="h-4 w-4" />
-              <span className="hidden sm:inline">PATs</span>
-            </TabsTrigger>
-          </TabsList>
+      <Tabs value={tabId} className="space-y-5">
+        {/* Header */}
+        <div>
+          <h1 className="text-xl font-semibold tracking-tight text-foreground md:text-2xl">My Profile</h1>
+          <p className="mt-0.5 text-sm text-muted-foreground">Manage your account settings and preferences</p>
         </div>
 
-        <div className="grid grid-cols-1 gap-5 md:grid-cols-[380px_minmax(0,1fr)] md:gap-6 lg:gap-8">
+        <div className="grid grid-cols-1 gap-5 md:grid-cols-[420px_minmax(0,1fr)] md:gap-6 lg:gap-8">
           {/* Left Sidebar - Profile Card */}
-          <div className="mx-auto w-full max-w-[420px] md:mx-0 md:max-w-none">
+          <div className="mx-auto w-full max-w-[460px] md:mx-0 md:max-w-none">
             <ProfileSidebar id={id} projectKey={x_blocks_key} user={user} />
           </div>
 
           {/* Right Content */}
-          <div className="min-w-0">
+          <div className="min-w-0 space-y-4">
+            {/* Tabs - compact shadcn style aligned with content */}
+            <TabsList className="h-8 w-fit p-0.5">
+              <TabsTrigger onClick={() => setTabId("info")} value="info" className="h-7 gap-1 px-2.5 text-xs md:hidden">
+                <User className="h-3.5 w-3.5" />
+                <span>Details</span>
+              </TabsTrigger>
+              <TabsTrigger onClick={() => setTabId("security")} value="security" className="h-7 gap-1 px-2.5 text-xs">
+                <Shield className="h-3.5 w-3.5" />
+                <span className="hidden sm:inline">Security</span>
+              </TabsTrigger>
+              <TabsTrigger onClick={() => setTabId("devices")} value="devices" className="h-7 gap-1 px-2.5 text-xs">
+                <Smartphone className="h-3.5 w-3.5" />
+                <span className="hidden sm:inline">Devices</span>
+              </TabsTrigger>
+              <TabsTrigger onClick={() => setTabId("history")} value="history" className="h-7 gap-1 px-2.5 text-xs">
+                <Clock className="h-3.5 w-3.5" />
+                <span className="hidden sm:inline">History</span>
+              </TabsTrigger>
+              <TabsTrigger onClick={() => setTabId("personalAccessTokens")} value="personalAccessTokens" className="h-7 gap-1 px-2.5 text-xs">
+                <Key className="h-3.5 w-3.5" />
+                <span className="hidden sm:inline">PATs</span>
+              </TabsTrigger>
+            </TabsList>
+
             {/* Details tab content - Only visible on mobile */}
             <TabsContent value="info" className="mt-0 md:hidden">
               <Card className="border-0 bg-transparent shadow-none">
