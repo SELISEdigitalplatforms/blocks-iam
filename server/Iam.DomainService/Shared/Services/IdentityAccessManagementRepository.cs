@@ -1,4 +1,5 @@
 ﻿using Blocks.Genesis;
+using Iam.DomainService.Dtos;
 using Iam.DomainService.Entities;
 using Iam.DomainService.Shared.Entities;
 using MongoDB.Driver;
@@ -7,13 +8,15 @@ namespace Iam.DomainService.Services
 {
     public class IdentityAccessManagementRepository : BaseRepository, IIdentityAccessManagementRepository
     {
+        private const string IdentityConfigurationCollectionName = "IdentityConfigurations";
+
         public IdentityAccessManagementRepository(IDbContextProvider dbContextProvider) : base(dbContextProvider)
         {
         }
 
         public async Task<IamConfiguration> GetIamConfigurationAsync()
         {
-            var collection = GetCollection<IamConfiguration>();
+            var collection = GetCollectionByName<IamConfiguration>(IdentityConfigurationCollectionName);
 
             return await collection.Find(_ => true).FirstOrDefaultAsync();
         }

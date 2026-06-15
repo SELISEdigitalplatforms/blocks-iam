@@ -237,8 +237,8 @@ namespace Authentication.DomainService.Authentication
                 var blocksContext = BlocksContext.GetContext();
                 var resolvedTenantId = flowContext.TenantId ?? blocksContext?.TenantId ?? string.Empty;
                 var authConfiguration = await _authenticationRepository.GetAuthenticationConfigurationAsync();
-                var configuredAccessLifetimeSeconds = Math.Max((authConfiguration?.AccessTokenValidForNumberMinutes ?? AuthenticationConfiguration.DefaultAccessTokenValidForNumberMinutes) * 60, 60);
-                var configuredRefreshLifetimeMinutes = Math.Max(authConfiguration?.AbsoluteRefreshTokenValidForNumberMinutes ?? AuthenticationConfiguration.DefaultRememberMeRefreshTokenValidForNumberMinutes, 1);
+                var configuredAccessLifetimeSeconds = Math.Max((authConfiguration?.AccessTokenValidForNumberMinutes ?? IdentityConfiguration.DefaultAccessTokenValidForNumberMinutes) * 60, 60);
+                var configuredRefreshLifetimeMinutes = Math.Max(authConfiguration?.AbsoluteRefreshTokenValidForNumberMinutes ?? IdentityConfiguration.DefaultRememberMeRefreshTokenValidForNumberMinutes, 1);
                 var resolvedAccessLifetimeSeconds = tokenResponse.ExpiresIn.HasValue
                     ? Math.Max(tokenResponse.ExpiresIn.Value, 60)
                     : configuredAccessLifetimeSeconds;

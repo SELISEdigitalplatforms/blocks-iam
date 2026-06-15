@@ -36,6 +36,8 @@ namespace Iam.DomainService.Resources
         Task<bool> UpdateRolesCountAsync(string slug);
         Task<List<GetResourceGroupResponse>> GetResourceGroupsAsync();
         Task<Organization> GetOrganizationById(string id);
+        Task<List<string>> GetOrganizationIdsByUserIdAsync(string userId);
+        Task<List<Organization>> GetOrganizationsByIdsAsync(List<string> organizationIds);
         Task SaveOrganizationAsync(Organization organization);
         Task<GetOrganizationsResponse> GetOrganizationsAsync(GetOrganizationsRequest request);
         Task SaveOrganizationConfig(TenantConfiguration tenantConfiguration);
@@ -44,10 +46,18 @@ namespace Iam.DomainService.Resources
         Task<List<Role>> GetRolesBySlugAndOrgAsync(List<string> slugs, string organizationId);
         Task<bool> InsertRolesAsync(List<Role> roles);
         Task<bool> UpdateAllSamePermissionAsync(Permission permission);
+        Task<List<Permission>> GetPermissionsByOrgAsync(string organizationId, int? pageNumber = null, int? pageSize = null);
+        Task<bool> AddRoleToPermissionsByResourcesAsync(string slug, List<string> resources, string organizationId);
+        Task<bool> RemoveRoleFromPermissionsByResourcesAsync(string slug, List<string> resources, string organizationId);
         Task<List<Permission>> GetPermissionsByRoleAsync(string roleSlug, string organizationId);
         Task<List<Permission>> GetPermissionsByRolesAsync(List<string> roleSlugs, string organizationId, int pageNumber = 1, int pageSize = 10);
         Task<List<Permission>> GetPermissionsByGroupsAsync(List<string> groups, string organizationId, int pageNumber = 1, int pageSize = 10);
         Task<List<Permission>> GetPermissionsByIdsAsync(List<string> ids);
         Task<bool> InsertPermissionsAsync(List<Permission> permissions);
+        Task<List<Permission>> GetFeResourceFeaturesAsync(List<string> roleSlugs, List<string> permissionKeys, string? search = null, bool? isBuiltIn = null);
+        Task<List<Permission>> GetPermissionsByResourceAsync(string resource);
+        Task<List<Role>> GetRolesBySlugAsync(string slug);
+        Task<bool> UpdatePermissionsAsync(List<Permission> permissions);
+        Task<bool> UpdateRolesAsync(List<Role> roles);
     }
 }

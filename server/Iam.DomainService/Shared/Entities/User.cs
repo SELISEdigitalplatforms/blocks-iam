@@ -1,5 +1,4 @@
 ﻿using Blocks.Genesis;
-using Iam.DomainService.Shared.Entities;
 using MongoDB.Bson.Serialization.Attributes;
 
 namespace Iam.DomainService.Entities
@@ -30,6 +29,8 @@ namespace Iam.DomainService.Entities
         public DateTime? LastCredentialRotationAtUtc { get; set; }
         public int FailedLoginCount { get; set; }
         public DateTime? LastFailedLoginUtc { get; set; }
+        public int FailedMfaCount { get; set; }
+        public DateTime? LastFailedMfaUtc { get; set; }
         public DateTime? LockoutUntilUtc { get; set; }
         public int LockoutCount { get; set; } // Tracks how many times account has been locked (for exponential backoff)
         public DateTime? LastLockoutUtc { get; set; } // When the last lockout was applied
