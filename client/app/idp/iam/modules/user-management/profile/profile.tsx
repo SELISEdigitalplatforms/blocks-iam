@@ -12,7 +12,7 @@ import { UserPats } from "../user-pat";
 import { Card, CardContent } from "@/components/ui-kits/card/card";
 import { Badge } from "@/components/ui-kits/badge/badge";
 import { CopyToClipboardButton } from "@/components/copy-to-clipboard-button";
-import { Shield, Smartphone, Clock, Key, User, Calendar, Activity, Camera, Sparkles } from "lucide-react";
+import { Shield, Smartphone, Clock, Key, User, Calendar, Activity, Sparkles } from "lucide-react";
 import { checkValidDate, formatFullDate } from "@/lib/utils";
 import { Skeleton } from "@/components/ui-kits/skeleton/skeleton";
 import { UserCreationType } from "@blocks-idp/authentication/constants/authentication.constant";
@@ -143,43 +143,66 @@ export const UserProfile = ({ id }: { id: string }) => {
   const [tabId, setTabId] = useQueryState("userDetails", { defaultValue: "security" });
   const { data } = useGetMe();
   const user = data?.data;
+  const firstName = user?.firstName;
+  const lastName = user?.lastName;
+  const hasName =
+    typeof firstName === "string" &&
+    firstName.trim() !== "" &&
+    typeof lastName === "string" &&
+    lastName.trim() !== "";
+  const fullName = hasName ? `${firstName} ${lastName}` : "My Profile";
+  const email = user?.email ?? "";
 
   return (
     <div className="mx-auto w-full max-w-7xl overflow-x-hidden p-4 sm:p-6 md:p-8">
       <Tabs value={tabId} className="space-y-5">
-        {/* Header with title/subtitle aligned with tabs on right */}
-        <div className="grid grid-cols-1 gap-5 md:grid-cols-[420px_minmax(0,1fr)] md:gap-6 lg:gap-8">
-          <div>
-            <div className="flex items-center gap-2">
-              <h1 className="text-xl font-semibold tracking-tight text-foreground md:text-2xl">My Profile</h1>
-              <UpdateUser id={id} projectKey={x_blocks_key} own iconOnly />
+        {/* Header */}
+        <div className="space-y-3">
+          <div className="grid grid-cols-1 gap-5 md:grid-cols-[420px_minmax(0,1fr)] md:gap-6 lg:gap-8">
+            <div className="min-w-0">
+              <div className="flex items-center gap-2">
+                <h1 className="truncate text-xl font-semibold tracking-tight text-foreground md:text-2xl">{fullName}</h1>
+                <UpdateUser id={id} projectKey={x_blocks_key} own iconOnly />
+              </div>
+              {email && (
+                <div className="mt-0.5 flex min-w-0 items-center gap-1.5">
+                  <span className="min-w-0 truncate text-sm text-muted-foreground">{email}</span>
+                  <CopyToClipboardButton textToCopy={email}>
+                    <span className="sr-only">Copy email</span>
+                  </CopyToClipboardButton>
+                </div>
+              )}
             </div>
-            <p className="mt-0.5 text-sm text-muted-foreground">Manage your account settings and preferences</p>
           </div>
 
-          {/* Tabs aligned with right content */}
-          <TabsList className="h-8 w-fit p-0.5">
-            <TabsTrigger onClick={() => setTabId("info")} value="info" className="h-7 gap-1 px-2.5 text-xs md:hidden">
-              <User className="h-3.5 w-3.5" />
-              <span>Details</span>
-            </TabsTrigger>
-            <TabsTrigger onClick={() => setTabId("security")} value="security" className="h-7 gap-1 px-2.5 text-xs">
-              <Shield className="h-3.5 w-3.5" />
-              <span className="hidden sm:inline">Security</span>
-            </TabsTrigger>
-            <TabsTrigger onClick={() => setTabId("devices")} value="devices" className="h-7 gap-1 px-2.5 text-xs">
-              <Smartphone className="h-3.5 w-3.5" />
-              <span className="hidden sm:inline">Devices</span>
-            </TabsTrigger>
-            <TabsTrigger onClick={() => setTabId("history")} value="history" className="h-7 gap-1 px-2.5 text-xs">
-              <Clock className="h-3.5 w-3.5" />
-              <span className="hidden sm:inline">History</span>
-            </TabsTrigger>
-            <TabsTrigger onClick={() => setTabId("personalAccessTokens")} value="personalAccessTokens" className="h-7 gap-1 px-2.5 text-xs">
-              <Key className="h-3.5 w-3.5" />
-              <span className="hidden sm:inline">PATs</span>
-            </TabsTrigger>
-          </TabsList>
+          {/* Tabs row below header, aligned with right content column */}
+          <div className="grid grid-cols-1 gap-5 md:grid-cols-[420px_minmax(0,1fr)] md:gap-6 lg:gap-8">
+            <div className="hidden md:block" />
+            <div className="min-w-0">
+              <TabsList className="h-8 w-fit p-0.5">
+                <TabsTrigger onClick={() => setTabId("info")} value="info" className="h-7 gap-1 px-2.5 text-xs md:hidden">
+                  <User className="h-3.5 w-3.5" />
+                  <span>Details</span>
+                </TabsTrigger>
+                <TabsTrigger onClick={() => setTabId("security")} value="security" className="h-7 gap-1 px-2.5 text-xs">
+                  <Shield className="h-3.5 w-3.5" />
+                  <span className="hidden sm:inline">Security</span>
+                </TabsTrigger>
+                <TabsTrigger onClick={() => setTabId("devices")} value="devices" className="h-7 gap-1 px-2.5 text-xs">
+                  <Smartphone className="h-3.5 w-3.5" />
+                  <span className="hidden sm:inline">Devices</span>
+                </TabsTrigger>
+                <TabsTrigger onClick={() => setTabId("history")} value="history" className="h-7 gap-1 px-2.5 text-xs">
+                  <Clock className="h-3.5 w-3.5" />
+                  <span className="hidden sm:inline">History</span>
+                </TabsTrigger>
+                <TabsTrigger onClick={() => setTabId("personalAccessTokens")} value="personalAccessTokens" className="h-7 gap-1 px-2.5 text-xs">
+                  <Key className="h-3.5 w-3.5" />
+                  <span className="hidden sm:inline">PATs</span>
+                </TabsTrigger>
+              </TabsList>
+            </div>
+          </div>
         </div>
 
         <div className="grid grid-cols-1 gap-5 md:grid-cols-[420px_minmax(0,1fr)] md:gap-6 lg:gap-8">
