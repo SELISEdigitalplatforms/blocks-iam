@@ -12,7 +12,6 @@ namespace Authentication.DomainService.Entities
         public List<string> PostLogoutRedirectUris { get; set; } = new();
         public List<string> AllowedScopes { get; set; } = new();
         public List<string> AllowedServiceAccessResources { get; set; } = new();
-        public List<string> AllowedGrantTypes { get; set; } = new();
         public List<string> AllowedResponseTypes { get; set; } = new() { "code" };
         public string? ClientName { get; set; }
         public string? LogoUri { get; set; }

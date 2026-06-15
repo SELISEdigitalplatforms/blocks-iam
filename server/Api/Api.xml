@@ -95,7 +95,17 @@
             RFC 6749: OAuth 2.0 Framework | RFC 7636: PKCE
             </summary>
         </member>
-        <!-- Badly formed XML comment ignored for member "M:Api.Controllers.AuthenticationController.HandleSocialCallback(System.String,System.String,System.String,Authentication.DomainService.OAuth.RequestModel.SocialLoginRequest)" -->
+        <member name="M:Api.Controllers.AuthenticationController.HandleSocialCallback(Authentication.DomainService.OAuth.RequestModel.SocialLoginRequest)">
+            <summary>
+            Social provider callback handler (API Pattern)
+            Receives authorization code from social provider via POST body
+            Exchanges code for tokens, validates JWT, creates/updates user
+            Sets secure HTTP-only cookie with tokens
+            Endpoint:
+            - POST /social/callback with request body
+            RFC 6749: OAuth 2.0 | RFC 3986: OpenID Connect | RFC 7519: JWT
+            </summary>
+        </member>
         <member name="M:Api.Controllers.AuthenticationController.RefreshAccessToken(Authentication.DomainService.OAuth.RequestModel.RefreshRequest)">
             <summary>
             Refresh access token using refresh token

@@ -3,8 +3,6 @@ using Microsoft.AspNetCore.Mvc;
 using CloudConfiguration.DomainService.Authentication;
 using CloudConfiguration.DomainService.Captcha.RequestModel;
 using CloudConfiguration.DomainService.Captcha.ResponseModel;
-using CloudConfiguration.DomainService.IAM.RequestModel;
-using CloudConfiguration.DomainService.IAM.ResponseModel;
 using CloudConfiguration.DomainService.MFA.RequestModel;
 using CloudConfiguration.DomainService.MFA.ResponseModel;
 using CloudConfiguration.DomainService.Notification.RequestModel;
@@ -29,11 +27,6 @@ namespace CloudConfiguration.DomainService.Shared.Services
         Task<BaseMutationResponse> UpdateCaptchaConfigurationStatusAsync(UpdateCaptchaConfigurationStatusRequest request);
         Task<GetCaptchaConfigurationResponse> GetCaptchaConfigurationAsync(string provider);
         Task<GetCaptchaConfigurationsResponse> GetCaptchaConfigurationsAsync(GetCaptchaConfigurationsRequest request);
-        #endregion
-
-        #region IAM
-        Task<BaseMutationResponse> SaveIamConfigurationAsync(SaveIamConfigurationRequest request);
-        Task<GetConfigurationResponse> GetIamConfigurationAsync();
         #endregion
 
         #region MFA

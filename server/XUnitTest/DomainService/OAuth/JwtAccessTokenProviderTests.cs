@@ -305,7 +305,7 @@ namespace XUnitTest.DomainService.OAuth
 
         #region Helper Methods
 
-        private AuthenticationConfiguration CreateAuthenticationConfiguration() => new()
+        private IdentityConfiguration CreateAuthenticationConfiguration() => new()
         {
             AccessTokenValidForNumberMinutes = 15,
             RefreshTokenValidForNumberMinutes = 1440,

@@ -596,7 +596,7 @@ namespace XUnitTest.DomainService.Authentication
         public async Task GetLoginOptionsAsync_Should_ReturnAllowedGrantTypes()
         {
             // Arrange
-            var config = new AuthenticationConfiguration
+            var config = new IdentityConfiguration
             {
                 AllowedGrantTypes = new List<string> { "password", "authorization_code", "mfa_code", "refresh_token", "social" }
             };
@@ -659,7 +659,7 @@ namespace XUnitTest.DomainService.Authentication
         public async Task GetLoginOptionsAsync_WithSocial_Should_ReturnSsoInfo()
         {
             // Arrange
-            var config = new AuthenticationConfiguration
+            var config = new IdentityConfiguration
             {
                 AllowedGrantTypes = new List<string> { "password", "social" }
             };
@@ -718,7 +718,7 @@ namespace XUnitTest.DomainService.Authentication
         public async Task GetLoginOptionsAsync_WithoutSocial_Should_ReturnNullSsoInfo()
         {
             // Arrange
-            var config = new AuthenticationConfiguration
+            var config = new IdentityConfiguration
             {
                 AllowedGrantTypes = new List<string> { "password", "authorization_code" }
             };

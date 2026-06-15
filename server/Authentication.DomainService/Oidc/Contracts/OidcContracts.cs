@@ -17,6 +17,7 @@ public class OidcClaims
     public string? Email { get; set; }
     public string? Name { get; set; }
     public string? UserName { get; set; }
+    public List<string> Amr { get; set; } = [];
     public List<string> Roles { get; set; } = [];
     public List<string> Resources { get; set; } = [];
     public List<string> Permissions { get; set; } = [];
@@ -36,6 +37,7 @@ public class AuthorizationCodeModel
     public string? State { get; set; }
     public string CodeChallenge { get; set; } = string.Empty;
     public string CodeChallengeMethod { get; set; } = "S256";
+    public List<string> Amr { get; set; } = [];
     public DateTime ExpiresAt { get; set; }
     public DateTime CreatedAt { get; set; }
     public string? CreatedByIpAddress { get; set; }

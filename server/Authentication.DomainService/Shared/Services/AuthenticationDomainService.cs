@@ -181,7 +181,6 @@ namespace Authentication.DomainService.Services
             credential.AllowedServiceAccessResources = allowedServiceAccessResources;
             credential.ServiceAccessResource = allowedServiceAccessResources.FirstOrDefault();
 
-            credential.AllowedGrantTypes = request.AllowedGrantTypes.Where(x => !string.IsNullOrWhiteSpace(x)).Distinct(StringComparer.OrdinalIgnoreCase).ToList();
             credential.AllowedResponseTypes = request.AllowedResponseTypes.Where(x => !string.IsNullOrWhiteSpace(x)).Distinct(StringComparer.OrdinalIgnoreCase).ToList();
             if (credential.AllowedResponseTypes.Count == 0)
             {
@@ -237,7 +236,7 @@ namespace Authentication.DomainService.Services
                     RedirectUris = redirectUris,
                     Scope = credential.Scope,
                     ResponseType = "code",
-                    GrantTypes = credential.AllowedGrantTypes ?? ["authorization_code", "refresh_token"],
+                    GrantTypes = ["authorization_code", "refresh_token"],
                     RequirePkce = credential.RequirePkce,
                     TokenEndpointAuthMethod = credential.TokenEndpointAuthMethod,
                     InitialRoles = [],
@@ -262,7 +261,7 @@ namespace Authentication.DomainService.Services
                 existingProvider.UserInfoUrl = request.ExternalDiscoveryEndpoint ?? "";
                 existingProvider.RedirectUris = redirectUris;
                 existingProvider.Scope = credential.Scope;
-                existingProvider.GrantTypes = credential.AllowedGrantTypes ?? ["authorization_code", "refresh_token"];
+                existingProvider.GrantTypes = ["authorization_code", "refresh_token"];
                 existingProvider.RequirePkce = credential.RequirePkce;
                 existingProvider.TokenEndpointAuthMethod = credential.TokenEndpointAuthMethod;
                 existingProvider.IsActive = credential.IsActive;

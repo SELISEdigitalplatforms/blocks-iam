@@ -53,7 +53,7 @@ namespace XUnitTest.DomainService.OAuth
         public async Task AuthenticateAsync_ConfigNotFound_ReturnsInvalidRequest()
         {
             var request = CreateTokenRequest(GrantTypes.Password);
-            _repository.Setup(x => x.GetAuthenticationConfigurationAsync()).ReturnsAsync((AuthenticationConfiguration)null);
+            _repository.Setup(x => x.GetAuthenticationConfigurationAsync()).ReturnsAsync((IdentityConfiguration)null);
 
             var result = await _provider.AuthenticateAsync(request);
 
@@ -369,7 +369,7 @@ namespace XUnitTest.DomainService.OAuth
             };
         }
 
-        private AuthenticationConfiguration CreateAuthConfig(string[] allowedGrantTypes) => new()
+        private IdentityConfiguration CreateAuthConfig(string[] allowedGrantTypes) => new()
         {
             AllowedGrantTypes = allowedGrantTypes.ToList(),
             AccessTokenValidForNumberMinutes = 15,

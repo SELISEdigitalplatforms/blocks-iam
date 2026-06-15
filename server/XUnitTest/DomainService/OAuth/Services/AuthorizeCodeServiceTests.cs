@@ -32,7 +32,7 @@ namespace XUnitTest.DomainService.OAuth.Services
         {
             // Arrange
             var request = new TokenRequest { Code = "invalid-code" };
-            var authConfig = new AuthenticationConfiguration();
+            var authConfig = new IdentityConfiguration();
 
             _cacheClient.Setup(x => x.GetStringValueAsync(request.Code))
                 .ReturnsAsync((string)null);
@@ -53,7 +53,7 @@ namespace XUnitTest.DomainService.OAuth.Services
         {
             // Arrange
             var request = new TokenRequest { Code = "test-code" };
-            var authConfig = new AuthenticationConfiguration();
+            var authConfig = new IdentityConfiguration();
             var stateInfo = new StateInfo { UserName = "", Provider = "test-provider", Audience = "test-audience" };
             var serializedState = JsonSerializer.Serialize(stateInfo);
 
@@ -76,7 +76,7 @@ namespace XUnitTest.DomainService.OAuth.Services
         {
             // Arrange
             var request = new TokenRequest { Code = "test-code", GrantType = "authorization_code" };
-            var authConfig = new AuthenticationConfiguration();
+            var authConfig = new IdentityConfiguration();
             var stateInfo = new StateInfo { UserName = "test@example.com", Scope = "openid", Provider = "test-provider", Audience = "test-audience" };
             var serializedState = JsonSerializer.Serialize(stateInfo);
 
@@ -96,7 +96,7 @@ namespace XUnitTest.DomainService.OAuth.Services
             _cacheClient.Verify(x => x.RemoveKeyAsync(request.Code), Times.Once);
             _oAuthRepository.Verify(x => x.GetUserByEmailAsync(stateInfo.UserName), Times.Once);
             _oAuthJwtAccessTokenManager.Verify(
-                x => x.ManageTokenAsync(It.IsAny<TokenRequest>(), It.IsAny<AuthenticationConfiguration>(), It.IsAny<User>(), It.IsAny<StateInfo>()),
+                x => x.ManageTokenAsync(It.IsAny<TokenRequest>(), It.IsAny<IdentityConfiguration>(), It.IsAny<User>(), It.IsAny<StateInfo>()),
                 Times.Never);
         }
 
@@ -105,7 +105,7 @@ namespace XUnitTest.DomainService.OAuth.Services
         {
             // Arrange
             var request = new TokenRequest { Code = "test-code" };
-            var authConfig = new AuthenticationConfiguration();
+            var authConfig = new IdentityConfiguration();
             var stateInfo = new StateInfo { UserName = "test@example.com", Scope = "openid", Provider = "test-provider", Audience = "test-audience" };
             var serializedState = JsonSerializer.Serialize(stateInfo);
             var user = new User { Email = "test@example.com", Active = false, IsVerified = true };
@@ -125,7 +125,7 @@ namespace XUnitTest.DomainService.OAuth.Services
             result.Error.Should().NotBeNullOrEmpty();
             _oAuthRepository.Verify(x => x.GetUserByEmailAsync(stateInfo.UserName), Times.Once);
             _oAuthJwtAccessTokenManager.Verify(
-                x => x.ManageTokenAsync(It.IsAny<TokenRequest>(), It.IsAny<AuthenticationConfiguration>(), It.IsAny<User>(), It.IsAny<StateInfo>()),
+                x => x.ManageTokenAsync(It.IsAny<TokenRequest>(), It.IsAny<IdentityConfiguration>(), It.IsAny<User>(), It.IsAny<StateInfo>()),
                 Times.Never);
         }
 
@@ -134,7 +134,7 @@ namespace XUnitTest.DomainService.OAuth.Services
         {
             // Arrange
             var request = new TokenRequest { Code = "test-code" };
-            var authConfig = new AuthenticationConfiguration();
+            var authConfig = new IdentityConfiguration();
             var stateInfo = new StateInfo { UserName = "test@example.com", Scope = "openid", Provider = "test-provider", Audience = "test-audience" };
             var serializedState = JsonSerializer.Serialize(stateInfo);
             var user = new User { Email = "test@example.com", Active = true, IsVerified = false };
@@ -154,7 +154,7 @@ namespace XUnitTest.DomainService.OAuth.Services
             result.Error.Should().NotBeNullOrEmpty();
             _oAuthRepository.Verify(x => x.GetUserByEmailAsync(stateInfo.UserName), Times.Once);
             _oAuthJwtAccessTokenManager.Verify(
-                x => x.ManageTokenAsync(It.IsAny<TokenRequest>(), It.IsAny<AuthenticationConfiguration>(), It.IsAny<User>(), It.IsAny<StateInfo>()),
+                x => x.ManageTokenAsync(It.IsAny<TokenRequest>(), It.IsAny<IdentityConfiguration>(), It.IsAny<User>(), It.IsAny<StateInfo>()),
                 Times.Never);
         }
 
@@ -163,7 +163,7 @@ namespace XUnitTest.DomainService.OAuth.Services
         {
             // Arrange
             var request = new TokenRequest { Code = "test-code", GrantType = "authorization_code" };
-            var authConfig = new AuthenticationConfiguration();
+            var authConfig = new IdentityConfiguration();
             var stateInfo = new StateInfo { UserName = "test@example.com", Scope = "openid profile", Provider = "test-provider", Audience = "test-audience" };
             var serializedState = JsonSerializer.Serialize(stateInfo);
             var user = new User
@@ -231,7 +231,7 @@ namespace XUnitTest.DomainService.OAuth.Services
         {
             // Arrange
             var request = new TokenRequest { Code = "test-code" };
-            var authConfig = new AuthenticationConfiguration();
+            var authConfig = new IdentityConfiguration();
             var stateInfo = new StateInfo { UserName = "test@example.com", Scope = "openid", Provider = "test-provider", Audience = "test-audience" };
             var serializedState = JsonSerializer.Serialize(stateInfo);
             var user = new User { Email = "test@example.com", Active = true, IsVerified = true };
@@ -244,7 +244,7 @@ namespace XUnitTest.DomainService.OAuth.Services
                 .ReturnsAsync(user);
             _oAuthJwtAccessTokenManager.Setup(x => x.ManageTokenAsync(
                     It.IsAny<TokenRequest>(),
-                    It.IsAny<AuthenticationConfiguration>(),
+                    It.IsAny<IdentityConfiguration>(),
                     It.IsAny<User>(),
                     It.IsAny<StateInfo>()))
                 .ReturnsAsync(new TokenResponse { AccessToken = "token" });
@@ -261,7 +261,7 @@ namespace XUnitTest.DomainService.OAuth.Services
         {
             // Arrange
             var request = new TokenRequest { Code = "test-code", Scope = "" };
-            var authConfig = new AuthenticationConfiguration();
+            var authConfig = new IdentityConfiguration();
             var expectedScope = "openid profile email";
             var stateInfo = new StateInfo { UserName = "test@example.com", Scope = expectedScope, Provider = "test-provider", Audience = "test-audience" };
             var serializedState = JsonSerializer.Serialize(stateInfo);
@@ -275,7 +275,7 @@ namespace XUnitTest.DomainService.OAuth.Services
                 .ReturnsAsync(user);
             _oAuthJwtAccessTokenManager.Setup(x => x.ManageTokenAsync(
                     It.IsAny<TokenRequest>(),
-                    It.IsAny<AuthenticationConfiguration>(),
+                    It.IsAny<IdentityConfiguration>(),
                     It.IsAny<User>(),
                     It.IsAny<StateInfo>()))
                 .ReturnsAsync(new TokenResponse { AccessToken = "token" });
