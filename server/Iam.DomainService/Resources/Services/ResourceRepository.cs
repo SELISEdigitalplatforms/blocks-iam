@@ -269,6 +269,16 @@ namespace Iam.DomainService.Resources
             return await collection.Find(filter).ToListAsync();
         }
 
+        public async Task<List<Role>> GetDefaultDerivedRolesBySlugAsync(string slug)
+        {
+            var collection = _identityAccessManagementRepository.GetCollection<Role>();
+            var filter = Builders<Role>.Filter.Eq(x => x.Slug, slug)
+                & Builders<Role>.Filter.Eq(x => x.CreatedFromDefault, true)
+                & Builders<Role>.Filter.Ne(x => x.OrganizationId, "default");
+
+            return await collection.Find(filter).ToListAsync();
+        }
+
         public async Task<bool> InsertRolesAsync(List<Role> roles)
         {
             var collection = _identityAccessManagementRepository.GetCollection<Role>();
@@ -469,6 +479,8 @@ namespace Iam.DomainService.Resources
                     .Set(c => c.IsMultiOrgEnabled, config.IsMultiOrgEnabled)
                     .Set(c => c.DefaultRolesOnOrgCreation, config.DefaultRolesOnOrgCreation)
                     .Set(c => c.DefaultPermissionsOnOrgCreation, config.DefaultPermissionsOnOrgCreation)
+                    .Set(c => c.KeepOrgRolesSameAsDefaultRoles, config.KeepOrgRolesSameAsDefaultRoles)
+                    .Set(c => c.KeepOrgPermissionsSameAsDefaultPermissions, config.KeepOrgPermissionsSameAsDefaultPermissions)
                     .Set(c => c.LastUpdatedBy, config.LastUpdatedBy)
                     .Set(c => c.LastUpdatedDate, config.LastUpdatedDate), new UpdateOptions { IsUpsert = true });
         }
@@ -542,6 +554,67 @@ namespace Iam.DomainService.Resources
                 .Set(x => x.LastUpdatedBy, permission.LastUpdatedBy)
                 .Set(x => x.LastUpdatedDate, permission.LastUpdatedDate);
 
+            var result = await collection.UpdateManyAsync(filter, update);
+            return result?.IsAcknowledged ?? false;
+        }
+
+        public async Task<bool> UpdateDefaultDerivedRolesBySlugAsync(Role defaultRole)
+        {
+            var collection = _identityAccessManagementRepository.GetCollection<Role>();
+            var filter = Builders<Role>.Filter.Eq(x => x.Slug, defaultRole.Slug)
+                         & Builders<Role>.Filter.Eq(x => x.CreatedFromDefault, true)
+                         & Builders<Role>.Filter.Ne(x => x.OrganizationId, "default");
+
+            var update = Builders<Role>.Update
+                .Set(x => x.Description, defaultRole.Description)
+                .Set(x => x.ParentRoleSlug, defaultRole.ParentRoleSlug)
+                .Set(x => x.CanCreateOwn, defaultRole.CanCreateOwn)
+                .Set(x => x.LastUpdatedBy, defaultRole.LastUpdatedBy)
+                .Set(x => x.LastUpdatedDate, defaultRole.LastUpdatedDate);
+
+            var result = await collection.UpdateManyAsync(filter, update);
+            return result?.IsAcknowledged ?? false;
+        }
+
+        public async Task<List<Permission>> GetPermissionsByOrgAsync(string organizationId)
+        {
+            var collection = _identityAccessManagementRepository.GetCollectionByName<Permission>("Permissions");
+            var filter = Builders<Permission>.Filter.Eq(x => x.OrganizationId, organizationId)
+                & Builders<Permission>.Filter.Eq(x => x.IsArchived, false);
+
+            return await collection.Find(filter).ToListAsync();
+        }
+
+        public async Task<bool> AddRoleToPermissionsByResourcesAsync(string slug, List<string> resources, string organizationId)
+        {
+            if (string.IsNullOrWhiteSpace(slug) || resources == null || resources.Count == 0 || string.IsNullOrWhiteSpace(organizationId))
+            {
+                return true;
+            }
+
+            var collection = _identityAccessManagementRepository.GetCollection<Permission>();
+            var filter = Builders<Permission>.Filter.Eq(x => x.OrganizationId, organizationId)
+                & Builders<Permission>.Filter.In(x => x.Resource, resources)
+                & Builders<Permission>.Filter.Eq(x => x.IsArchived, false);
+
+            var update = Builders<Permission>.Update.AddToSet(x => x.Roles, slug);
+            var result = await collection.UpdateManyAsync(filter, update);
+            return result?.IsAcknowledged ?? false;
+        }
+
+        public async Task<bool> RemoveRoleFromPermissionsByResourcesAsync(string slug, List<string> resources, string organizationId)
+        {
+            if (string.IsNullOrWhiteSpace(slug) || resources == null || resources.Count == 0 || string.IsNullOrWhiteSpace(organizationId))
+            {
+                return true;
+            }
+
+            var collection = _identityAccessManagementRepository.GetCollection<Permission>();
+            var filter = Builders<Permission>.Filter.Eq(x => x.OrganizationId, organizationId)
+                & Builders<Permission>.Filter.In(x => x.Resource, resources)
+                & Builders<Permission>.Filter.Eq(x => x.IsArchived, false);
+
+            var update = Builders<Permission>.Update.Pull(x => x.Roles, slug);
             var result = await collection.UpdateManyAsync(filter, update);
             return result?.IsAcknowledged ?? false;
         }

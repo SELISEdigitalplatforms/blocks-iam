@@ -44,8 +44,13 @@ namespace Iam.DomainService.Resources
         Task<List<PermissionGroupBySeverityResponse>> GetPermissionsGroupBySeverityAsync();
         Task<TenantConfiguration> GetTenantConfigurationAsync();
         Task<List<Role>> GetRolesBySlugAndOrgAsync(List<string> slugs, string organizationId);
+        Task<List<Role>> GetDefaultDerivedRolesBySlugAsync(string slug);
         Task<bool> InsertRolesAsync(List<Role> roles);
         Task<bool> UpdateAllSamePermissionAsync(Permission permission);
+        Task<bool> UpdateDefaultDerivedRolesBySlugAsync(Role defaultRole);
+        Task<List<Permission>> GetPermissionsByOrgAsync(string organizationId);
+        Task<bool> AddRoleToPermissionsByResourcesAsync(string slug, List<string> resources, string organizationId);
+        Task<bool> RemoveRoleFromPermissionsByResourcesAsync(string slug, List<string> resources, string organizationId);
         Task<List<Permission>> GetPermissionsByRoleAsync(string roleSlug, string organizationId);
         Task<List<Permission>> GetPermissionsByRolesAsync(List<string> roleSlugs, string organizationId, int pageNumber = 1, int pageSize = 10);
         Task<List<Permission>> GetPermissionsByGroupsAsync(List<string> groups, string organizationId, int pageNumber = 1, int pageSize = 10);

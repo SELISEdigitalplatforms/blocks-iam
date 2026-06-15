@@ -9,6 +9,7 @@ namespace Iam.DomainService.Entities
         public string OrganizationId { get; set; } = "default";  // Role is org-scoped
         public string Name { get; set; }
         public string Slug { get; set; }
+        public int Level { get; set; }
         // Parent role slug is the source-of-truth for hierarchy.
         public string? ParentRoleSlug { get; set; }
         public bool CanCreateOwn { get; set; } = true; // Indicates if users with this role can create their own roles under it
