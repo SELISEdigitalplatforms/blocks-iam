@@ -41,6 +41,19 @@ namespace Iam.DomainService.Resources
 
         public async Task<BaseMutationResponse> CreatePermissionAsync(CreatePermissionRequest command)
         {
+            var blocksContext = BlocksContext.GetContext();
+            if (!(string.IsNullOrWhiteSpace(blocksContext.OrganizationId) || blocksContext.OrganizationId == DefaultOrganizationId))
+            {
+                return new BaseMutationResponse
+                {
+                    IsSuccess = false,
+                    Errors = new Dictionary<string, string>
+                    {
+                        { "forbidden", "Not allowed to create permission in this organization" }
+                    }
+                };
+            }
+
             _logger.LogInformation("Permission creation start");
             var validationResult = await _permissionValidator.ValidateAsync(command);
             if (!validationResult.IsValid)
@@ -92,7 +105,7 @@ namespace Iam.DomainService.Resources
                 ResourceGroup = command.ResourceGroup,
                 PermissionSeverity = command.PermissionSeverity,
                 DependentPermissions = command.DependentPermissions,
-                OrganizationId = "default" // Permission is global by default, can be updated later if needed
+                OrganizationId = "default"
                 
             };
             await _resourceRepository.InsertPermissionAsync(permission);
@@ -155,6 +168,9 @@ namespace Iam.DomainService.Resources
                 Name = command.Name,
                 Description = command.Description,
                 Slug = command.Slug.ToLower(),
+                ParentRoleSlug = string.IsNullOrWhiteSpace(command.ParentRoleSlug)
+                    ? null
+                    : command.ParentRoleSlug.ToLower(),
             };
 
             await _resourceRepository.InsertRoleAsync(role);
@@ -165,6 +181,19 @@ namespace Iam.DomainService.Resources
 
         public async Task<BaseMutationResponse> UpdatePermissionAsync(string id, UpdatePermissionRequest command)
         {
+            var blocksContext = BlocksContext.GetContext();
+            if (!(string.IsNullOrWhiteSpace(blocksContext.OrganizationId) || blocksContext.OrganizationId == DefaultOrganizationId))
+            {
+                return new BaseMutationResponse
+                {
+                    IsSuccess = false,
+                    Errors = new Dictionary<string, string>
+                    {
+                        { "forbidden", "Not allowed to update permission in this organization" }
+                    }
+                };
+            }
+
             _logger.LogInformation("Permission update start");
 
             var permission = await _resourceRepository.GetPermissionByIdAsync(id);
@@ -189,8 +218,6 @@ namespace Iam.DomainService.Resources
                     Errors = validationResult.Errors.ToDictionary(x => x.PropertyName, x => x.ErrorMessage)
                 };
             }
-
-            var blocksContext = BlocksContext.GetContext();
 
             permission.Name = command.Name;
             permission.Description = command.Description;
@@ -275,6 +302,9 @@ namespace Iam.DomainService.Resources
 
             role.Name = command.Name;
             role.Description = command.Description;
+            role.ParentRoleSlug = string.IsNullOrWhiteSpace(command.ParentRoleSlug)
+                ? null
+                : command.ParentRoleSlug.ToLower();
             role.LastUpdatedDate = DateTime.Now;
             role.LastUpdatedBy = blocksContext?.UserId;
 
@@ -734,9 +764,9 @@ namespace Iam.DomainService.Resources
                 LastUpdatedBy = createdByUserId
             };
 
-            if (tenantConfig.DefaultRoleOnOrgCreation != null && tenantConfig.DefaultRoleOnOrgCreation.Any())
+            if (tenantConfig.DefaultRolesOnOrgCreation != null && tenantConfig.DefaultRolesOnOrgCreation.Any())
             {
-                var defaultRoles = await _resourceRepository.GetRolesBySlugAndOrgAsync(tenantConfig.DefaultRoleOnOrgCreation, DefaultOrganizationId);
+                var defaultRoles = await _resourceRepository.GetRolesBySlugAndOrgAsync(tenantConfig.DefaultRolesOnOrgCreation, DefaultOrganizationId);
                 foreach (var role in defaultRoles)
                 {
                     role.ItemId = Guid.NewGuid().ToString();
@@ -754,7 +784,7 @@ namespace Iam.DomainService.Resources
                 
                 while (true)
                 {
-                    var rolePermissions = await _resourceRepository.GetPermissionsByRolesAsync(tenantConfig.DefaultRoleOnOrgCreation, DefaultOrganizationId, pageNumber, pageSize);
+                    var rolePermissions = await _resourceRepository.GetPermissionsByRolesAsync(tenantConfig.DefaultRolesOnOrgCreation, DefaultOrganizationId, pageNumber, pageSize);
                     
                     if (rolePermissions == null || rolePermissions.Count == 0)
                     {
@@ -767,7 +797,7 @@ namespace Iam.DomainService.Resources
                         rp.LastUpdatedBy = createdByUserId;
                         rp.LastUpdatedDate = DateTime.UtcNow;
                         rp.OrganizationId = organization.ItemId; // Assign to new org
-                        rp.Roles = (rp?.Roles?.Where(r => tenantConfig.DefaultRoleOnOrgCreation.Contains(r)).ToList()) ?? new List<string>();
+                        rp.Roles = (rp?.Roles?.Where(r => tenantConfig.DefaultRolesOnOrgCreation.Contains(r)).ToList()) ?? new List<string>();
                     }
 
                     await _resourceRepository.InsertPermissionsAsync(rolePermissions);
@@ -781,16 +811,16 @@ namespace Iam.DomainService.Resources
                 }
             }
 
-            if(tenantConfig.DefaultPermissionOnOrgCreation != null && tenantConfig.DefaultPermissionOnOrgCreation.Any())
+            if(tenantConfig.DefaultPermissionsOnOrgCreation != null && tenantConfig.DefaultPermissionsOnOrgCreation.Any())
             {
-                var permissions = await _resourceRepository.GetPermissionsByResourcesAsync(tenantConfig.DefaultPermissionOnOrgCreation, DefaultOrganizationId);
+                var permissions = await _resourceRepository.GetPermissionsByResourcesAsync(tenantConfig.DefaultPermissionsOnOrgCreation, DefaultOrganizationId);
                 foreach (var permission in permissions)
                 {
                     permission.ItemId = Guid.NewGuid().ToString();
                     permission.LastUpdatedBy = createdByUserId;
                     permission.LastUpdatedDate = DateTime.UtcNow;
                     permission.OrganizationId = organization.ItemId; // Assign to new org
-                    permission.Roles = (permission?.Roles?.Where(r => tenantConfig.DefaultRoleOnOrgCreation.Contains(r)).ToList()) ?? new List<string>();
+                    permission.Roles = (permission?.Roles?.Where(r => tenantConfig.DefaultRolesOnOrgCreation.Contains(r)).ToList()) ?? new List<string>();
                 }
 
                 await _resourceRepository.InsertPermissionsAsync(permissions);
@@ -810,7 +840,7 @@ namespace Iam.DomainService.Resources
                 // {
                 //     OrganizationId = organization.ItemId,
                 //     UserId = creatorId ?? contextUserId,
-                //     Roles = tenantConfig.DefaultRoleOnOrgCreation,
+                //     Roles = tenantConfig.DefaultRolesOnOrgCreation,
                 //     Permissions = new List<string>()
                 // });
             }
@@ -820,6 +850,19 @@ namespace Iam.DomainService.Resources
 
         public async Task<BaseResponse> UpdateOrganizationAsync(string id, SaveOrganizationRequest request)
         {
+            var tenantConfig = await _resourceRepository.GetTenantConfigurationAsync();
+            if (!tenantConfig.IsMultiOrgEnabled)
+            {
+                return new GetOrganizationsResponse
+                {
+                    IsSuccess = false,
+                    Errors = new Dictionary<string, string>
+                    {
+                        { "multi_org_disabled", "Multi-organization mode is disabled." }
+                    }
+                };
+            }
+
             if (string.IsNullOrWhiteSpace(id))
             {
                 return new BaseResponse
@@ -857,12 +900,38 @@ namespace Iam.DomainService.Resources
 
         public async Task<GetOrganizationsResponse> GetOrganizationsAsync(GetOrganizationsRequest request)
         {
+            var tenantConfig = await _resourceRepository.GetTenantConfigurationAsync();
+            if (!tenantConfig.IsMultiOrgEnabled)
+            {
+                return new GetOrganizationsResponse
+                {
+                    IsSuccess = false,
+                    Errors = new Dictionary<string, string>
+                    {
+                        { "multi_org_disabled", "Multi-organization mode is disabled." }
+                    }
+                };
+            }
+            
             var response = await _resourceRepository.GetOrganizationsAsync(request);
             return response;
         }
 
         public async Task<GetOrganizationResponse> GetOrganizationAsync(string id)
         {
+            var tenantConfig = await _resourceRepository.GetTenantConfigurationAsync();
+            if (!tenantConfig.IsMultiOrgEnabled)
+            {
+                return new GetOrganizationResponse
+                {
+                    IsSuccess = false,
+                    Errors = new Dictionary<string, string>
+                    {
+                        { "multi_org_disabled", "Multi-organization mode is disabled." }
+                    }
+                };
+            }
+
             if (string.IsNullOrWhiteSpace(id))
             {
                 return new GetOrganizationResponse
@@ -953,8 +1022,8 @@ namespace Iam.DomainService.Resources
             tenantConfig.AllowOrgCreationFromSignup = request.AllowOrgCreationFromSignup;
             tenantConfig.AllowOrgCreationFromPortal = request.AllowOrgCreationFromPortal;
             
-            tenantConfig.DefaultRoleOnOrgCreation = request.DefaultRoleOnOrgCreation;
-            tenantConfig.DefaultPermissionOnOrgCreation = request.DefaultPermissionOnOrgCreation;
+            tenantConfig.DefaultRolesOnOrgCreation = request.DefaultRolesOnOrgCreation;
+            tenantConfig.DefaultPermissionsOnOrgCreation = request.DefaultPermissionsOnOrgCreation;
             tenantConfig.LastUpdatedBy = BlocksContext.GetContext()?.UserId;
             tenantConfig.LastUpdatedDate = DateTime.UtcNow;
 
@@ -981,8 +1050,8 @@ namespace Iam.DomainService.Resources
                 { "allowOrgCreationFromSignup", tenantConfig?.AllowOrgCreationFromSignup ?? false },
                 { "allowOrgCreationFromPortal", tenantConfig?.AllowOrgCreationFromPortal ?? false },
                 { "isMultiOrgEnabled", tenantConfig?.IsMultiOrgEnabled ?? false },
-                { "defaultRoleOnOrgCreation", tenantConfig?.DefaultRoleOnOrgCreation ?? new List<string>() },
-                { "defaultPermissionOnOrgCreation", tenantConfig?.DefaultPermissionOnOrgCreation ?? new List<string>() },
+                { "defaultRolesOnOrgCreation", tenantConfig?.DefaultRolesOnOrgCreation ?? new List<string>() },
+                { "defaultPermissionsOnOrgCreation", tenantConfig?.DefaultPermissionsOnOrgCreation ?? new List<string>() },
                 { "itemId", tenantConfig?.ItemId ?? "" }
             };
         }

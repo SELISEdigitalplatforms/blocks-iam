@@ -17,7 +17,10 @@ namespace Iam.DomainService.Shared.Entities
         public bool IsMultiOrgEnabled { get; set; }
         public bool ConsentForMultiOrgEnable { get; set; }
         public DateTime ConsentTimeForMultiOrgEnable { get; set; }
-        public List<string> DefaultRoleOnOrgCreation { get; set; } = new List<string>();
-        public List<string> DefaultPermissionOnOrgCreation { get; set; } = new List<string>();
+        public List<string> DefaultRolesOnOrgCreation { get; set; } = new List<string>();
+        public List<string> DefaultPermissionsOnOrgCreation { get; set; } = new List<string>();
+        public bool KeepOrgRolesSameAsDefaultRoles { get; set; } = true;
+        public bool KeepOrgPermissionsSameAsDefaultPermissions { get; set; } = true;
+
     }
 }

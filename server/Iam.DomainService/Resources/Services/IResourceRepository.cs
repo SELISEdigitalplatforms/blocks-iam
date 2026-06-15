@@ -51,5 +51,6 @@ namespace Iam.DomainService.Resources
         Task<List<Permission>> GetPermissionsByGroupsAsync(List<string> groups, string organizationId, int pageNumber = 1, int pageSize = 10);
         Task<List<Permission>> GetPermissionsByIdsAsync(List<string> ids);
         Task<bool> InsertPermissionsAsync(List<Permission> permissions);
+        Task<List<Permission>> GetFeResourceFeaturesAsync(List<string> roleSlugs, List<string> permissionKeys, string? search = null, bool? isBuiltIn = null);
     }
 }
