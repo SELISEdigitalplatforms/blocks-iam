@@ -41,9 +41,6 @@ public class AuthorizationCodeModel
     public DateTime ExpiresAt { get; set; }
     public DateTime CreatedAt { get; set; }
     public string? CreatedByIpAddress { get; set; }
-    public bool IsUsed { get; set; }
-    public DateTime? UsedAt { get; set; }
-    public string? UsedByIpAddress { get; set; }
     public bool IsRevoked { get; set; }
     public DateTime? RevokedAt { get; set; }
 
