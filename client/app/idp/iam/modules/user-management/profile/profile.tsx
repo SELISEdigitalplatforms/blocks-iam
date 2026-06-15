@@ -143,12 +143,6 @@ export const ProfileSidebar = ({ id, projectKey, user }: ProfileSidebarProps) =>
         </span>
       </div>
 
-      <div className="py-2">
-        <div className="flex justify-center">
-          <UpdateUser id={id} projectKey={projectKey} own iconOnly />
-        </div>
-      </div>
-
       {/* Account details */}
       <CardContent className="hidden p-5 md:block">
         <p className="mb-3 text-[10px] font-semibold uppercase tracking-widest text-muted-foreground/60">
@@ -177,36 +171,32 @@ export const UserProfile = ({ id }: { id: string }) => {
 
   return (
     <div className="mx-auto w-full max-w-7xl overflow-x-hidden p-4 sm:p-6 md:p-8">
-      <div className="grid grid-cols-1 gap-5 md:grid-cols-[340px_minmax(0,1fr)] md:gap-6 lg:gap-8">
-        {/* Left Sidebar - Profile Card */}
-        <div className="mx-auto w-full max-w-[420px] md:mx-0 md:max-w-none">
-          <ProfileSidebar id={id} projectKey={x_blocks_key} user={user} />
-        </div>
-
-        {/* Right Content - Tabs */}
-        <div className="min-w-0">
-          <Tabs value={tabId} className="space-y-6 overflow-hidden">
-            <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
-              <div className="min-w-0 md:max-w-[55%]">
-                <h1 className="truncate text-xl font-semibold tracking-tight text-foreground md:text-2xl">
-                  {fullName}
-                </h1>
-                {email && (
-                  <div className="mt-1 flex min-w-0 items-center gap-1.5">
-                    <span className="min-w-0 flex-1 truncate text-sm text-muted-foreground">{email}</span>
-                    <CopyToClipboardButton textToCopy={email}>
-                      <span className="sr-only">Copy email</span>
-                    </CopyToClipboardButton>
-                  </div>
-                )}
+      <Tabs value={tabId} className="space-y-5 overflow-hidden md:space-y-6">
+        <div className="grid grid-cols-1 gap-3 md:grid-cols-[340px_minmax(0,1fr)] md:gap-6 lg:gap-8">
+          <div className="min-w-0">
+            <div className="flex items-center gap-2">
+              <h1 className="truncate text-xl font-semibold tracking-tight text-foreground md:text-2xl">
+                {fullName}
+              </h1>
+              <UpdateUser id={id} projectKey={x_blocks_key} own iconOnly />
+            </div>
+            {email && (
+              <div className="mt-1 flex min-w-0 items-center gap-1.5">
+                <span className="min-w-0 flex-1 truncate text-sm text-muted-foreground">{email}</span>
+                <CopyToClipboardButton textToCopy={email}>
+                  <span className="sr-only">Copy email</span>
+                </CopyToClipboardButton>
               </div>
+            )}
+          </div>
 
-              <TabsList className="inline-flex h-auto w-full max-w-full justify-start gap-1 overflow-x-auto rounded-xl bg-muted/50 p-1.5 md:w-auto md:max-w-[45%] md:justify-end md:flex-wrap lg:flex-nowrap">
+          <div className="min-w-0 md:flex md:justify-end">
+            <TabsList className="inline-flex h-auto w-full max-w-full justify-start gap-1.5 overflow-x-auto rounded-2xl border border-border/60 bg-card/80 p-1.5 shadow-sm backdrop-blur md:w-auto md:max-w-[52%] md:justify-end md:flex-wrap lg:max-w-none lg:flex-nowrap">
               {/* Details tab - Only visible on mobile */}
               <TabsTrigger
                 onClick={() => setTabId("info")}
                 value="info"
-                className="shrink-0 flex items-center gap-2 rounded-lg px-4 py-2.5 text-sm font-medium transition-all data-[state=active]:bg-background data-[state=active]:shadow-sm lg:hidden"
+                className="shrink-0 flex items-center gap-2 rounded-xl px-4 py-2 text-sm font-medium text-muted-foreground transition-all hover:text-foreground data-[state=active]:bg-background data-[state=active]:text-foreground data-[state=active]:shadow-sm lg:hidden"
               >
                 <User className="h-4 w-4" />
                 <span>Details</span>
@@ -214,7 +204,7 @@ export const UserProfile = ({ id }: { id: string }) => {
               <TabsTrigger
                 onClick={() => setTabId("security")}
                 value="security"
-                className="shrink-0 flex items-center gap-2 rounded-lg px-4 py-2.5 text-sm font-medium transition-all data-[state=active]:bg-background data-[state=active]:shadow-sm"
+                className="shrink-0 flex items-center gap-2 rounded-xl px-4 py-2 text-sm font-medium text-muted-foreground transition-all hover:text-foreground data-[state=active]:bg-background data-[state=active]:text-foreground data-[state=active]:shadow-sm"
               >
                 <Shield className="h-4 w-4" />
                 <span className="hidden sm:inline">Security</span>
@@ -222,7 +212,7 @@ export const UserProfile = ({ id }: { id: string }) => {
               <TabsTrigger
                 onClick={() => setTabId("devices")}
                 value="devices"
-                className="shrink-0 flex items-center gap-2 rounded-lg px-4 py-2.5 text-sm font-medium transition-all data-[state=active]:bg-background data-[state=active]:shadow-sm"
+                className="shrink-0 flex items-center gap-2 rounded-xl px-4 py-2 text-sm font-medium text-muted-foreground transition-all hover:text-foreground data-[state=active]:bg-background data-[state=active]:text-foreground data-[state=active]:shadow-sm"
               >
                 <Smartphone className="h-4 w-4" />
                 <span className="hidden sm:inline">Devices</span>
@@ -230,7 +220,7 @@ export const UserProfile = ({ id }: { id: string }) => {
               <TabsTrigger
                 onClick={() => setTabId("history")}
                 value="history"
-                className="shrink-0 flex items-center gap-2 rounded-lg px-4 py-2.5 text-sm font-medium transition-all data-[state=active]:bg-background data-[state=active]:shadow-sm"
+                className="shrink-0 flex items-center gap-2 rounded-xl px-4 py-2 text-sm font-medium text-muted-foreground transition-all hover:text-foreground data-[state=active]:bg-background data-[state=active]:text-foreground data-[state=active]:shadow-sm"
               >
                 <Clock className="h-4 w-4" />
                 <span className="hidden sm:inline">History</span>
@@ -238,14 +228,23 @@ export const UserProfile = ({ id }: { id: string }) => {
               <TabsTrigger
                 onClick={() => setTabId("personalAccessTokens")}
                 value="personalAccessTokens"
-                className="shrink-0 flex items-center gap-2 rounded-lg px-4 py-2.5 text-sm font-medium transition-all data-[state=active]:bg-background data-[state=active]:shadow-sm"
+                className="shrink-0 flex items-center gap-2 rounded-xl px-4 py-2 text-sm font-medium text-muted-foreground transition-all hover:text-foreground data-[state=active]:bg-background data-[state=active]:text-foreground data-[state=active]:shadow-sm"
               >
                 <Key className="h-4 w-4" />
                 <span className="hidden sm:inline">PATs</span>
               </TabsTrigger>
-              </TabsList>
-            </div>
+            </TabsList>
+          </div>
+        </div>
 
+        <div className="grid grid-cols-1 gap-5 md:grid-cols-[340px_minmax(0,1fr)] md:gap-6 lg:gap-8">
+          {/* Left Sidebar - Profile Card */}
+          <div className="mx-auto w-full max-w-[420px] md:mx-0 md:max-w-none">
+            <ProfileSidebar id={id} projectKey={x_blocks_key} user={user} />
+          </div>
+
+          {/* Right Content */}
+          <div className="min-w-0">
             {/* Details tab content - Only visible on mobile */}
             <TabsContent value="info" className="mt-0 md:hidden">
               <Card className="border border-border/50">
@@ -273,9 +272,9 @@ export const UserProfile = ({ id }: { id: string }) => {
             <TabsContent value="personalAccessTokens" className="mt-0">
               <UserPats id={id} />
             </TabsContent>
-          </Tabs>
+          </div>
         </div>
-      </div>
+      </Tabs>
     </div>
   );
 };
