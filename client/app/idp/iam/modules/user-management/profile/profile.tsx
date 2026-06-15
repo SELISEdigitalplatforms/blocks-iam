@@ -118,7 +118,7 @@ const ProfileSidebarDetails = ({ user }: { user?: ProfileSidebarUser }) => (
 
 export const ProfileSidebar = ({ id, projectKey, user }: ProfileSidebarProps) => {
   return (
-    <Card className="overflow-hidden border-0 bg-transparent shadow-none">
+    <Card className="overflow-hidden border-0 bg-transparent shadow-none md:flex md:h-full md:flex-col">
       {/* Avatar */}
       <div className="relative mx-auto w-full max-w-[280px]" style={{ aspectRatio: "1 / 1" }}>
         <ProfileImageUploader
@@ -130,7 +130,7 @@ export const ProfileSidebar = ({ id, projectKey, user }: ProfileSidebarProps) =>
       </div>
 
       {/* Account details */}
-      <CardContent className="mx-auto mt-4 hidden w-full max-w-[280px] rounded-xl bg-card p-5 shadow-sm ring-1 ring-border/50 md:block">
+      <CardContent className="mt-4 hidden w-full flex-1 rounded-sm border bg-card p-5 shadow-sm md:block">
         <p className="mb-3 text-[10px] font-semibold uppercase tracking-widest text-muted-foreground/60">
           Account details
         </p>
