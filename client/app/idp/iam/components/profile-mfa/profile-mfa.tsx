@@ -15,7 +15,7 @@ type ProfileMFAProps = {
 export const ProfileConfigMFA = () => {
   return (
     <Card>
-      <CardHeader>
+      <CardHeader className="mb-3">
         <CardTitle>Multi-factor Authentication</CardTitle>
       </CardHeader>
       <CardContent>
@@ -31,7 +31,7 @@ export const ProfileConfigMFA = () => {
 export const ProjectMFA = () => {
   return (
     <Card>
-      <CardHeader>
+      <CardHeader className="mb-3">
         <div className="flex items-center justify-between">
           <CardTitle>Multi-factor Authentication</CardTitle>
           <Button asChild variant="outline" size="sm">
@@ -39,14 +39,12 @@ export const ProjectMFA = () => {
           </Button>
         </div>
       </CardHeader>
-      <CardContent className="!pt-0">
-        <div className="space-y-2 text-base font-normal text-high-emphasis">
-          <p>
-            Multi-Factor Authentication (MFA) enhances your account security by requiring an
-            additional verification step. To enable MFA, you need to first activate it for your
-            project.
-          </p>
-        </div>
+      <CardContent>
+        <p className="text-sm text-muted-foreground">
+          Multi-Factor Authentication (MFA) enhances your account security by requiring an
+          additional verification step. To enable MFA, you need to first activate it for your
+          project.
+        </p>
       </CardContent>
     </Card>
   );
@@ -55,13 +53,13 @@ export const ProjectMFA = () => {
 const LoadingSkelton = () => {
   return (
     <Card className="rounded shadow-none">
-      <CardHeader>
+      <CardHeader className="mb-3">
         <div className="flex items-center justify-between">
-          <CardTitle className="text-xl text-high-emphasis">Multi-factor Authentication</CardTitle>
+          <CardTitle>Multi-factor Authentication</CardTitle>
           <Skeleton className="h-6 w-1/6" />
         </div>
       </CardHeader>
-      <CardContent className="!pt-0">
+      <CardContent>
         <Skeleton className="h-6 w-1/2" />
         <Skeleton className="my-2 h-6" />
         <Skeleton className="my-2 h-6" />

@@ -22,18 +22,18 @@ export const ProfileMFADetails = () => {
   return (
     <>
       {data?.data.mfaEnabled ? (
-        <div className="text-base font-normal text-high-emphasis">
+        <p className="text-sm text-muted-foreground">
           Multi-Factor Authentication (MFA) is enabled on your account, providing an extra layer of
           security against unauthorized access. Even if your password is compromised, MFA helps keep
           your account safe.
-        </div>
+        </p>
       ) : (
-        <div className="text-base font-normal text-high-emphasis">
+        <p className="text-sm text-muted-foreground">
           Enabling Multi-Factor Authentication (MFA) is a simple yet powerful way to protect your
           online presence. Don’t wait for a security breach to realize the importance of MFA. Enable
           it today and enjoy the peace of mind that comes with knowing your accounts are more
           secure.
-        </div>
+        </p>
       )}
     </>
   );
