@@ -1,4 +1,6 @@
-﻿using Iam.DomainService.Resources.RequestModel;
+﻿using Blocks.Genesis;
+using Iam.DomainService.Entities;
+using Iam.DomainService.Enums;
 using Iam.DomainService.Resources.ResponseModel;
 using Microsoft.Extensions.Logging;
 
@@ -83,7 +85,36 @@ namespace Iam.DomainService.Resources
 
         public async Task<List<GetResourceGroupResponse>> GetResourceGroupsAsync()
         {
-            return (await _resourceRepository.GetResourceGroupsAsync());
+            return await _resourceRepository.GetResourceGroupsAsync();
+        }
+
+        public async Task<List<GetFeResourceFeatureResponse>> GetFeResourceFeaturesAsync(GetFeResourceFeatureRequest request)
+        {
+            var bc = BlocksContext.GetContext();
+            var roles = bc?.Roles ?? [];
+            var permissions = bc?.Permissions ?? [];
+
+            if (!roles.Any() && !permissions.Any())
+            {
+                return [];
+            }
+
+            var data = await _resourceRepository.GetFeResourceFeaturesAsync(
+                roles.ToList(),
+                permissions.ToList(),
+                request?.Search,
+                request?.IsBuiltIn
+            );
+
+            return data
+                .Where(x => x.Type == ResourceType.FrontendAction)
+                .Select(x => new GetFeResourceFeatureResponse
+                {
+                    Resource = x.Resource,
+                    Name = x.Name,
+                    Description = x.Description
+                })
+                .ToList();
         }
     }
 }

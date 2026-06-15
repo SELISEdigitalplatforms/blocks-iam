@@ -175,6 +175,13 @@ namespace Api.Controllers
             return await _resourceQueryService.GetResourceGroupsAsync();
         }
 
+        [HttpGet("resource/features")]
+        [Authorize]
+        public async Task<List<GetFeResourceFeatureResponse>> GetFeResourceFeatures([FromQuery] GetFeResourceFeatureRequest request)
+        {
+            return await _resourceQueryService.GetFeResourceFeaturesAsync(request);
+        }
+
         #endregion
 
         #region User
@@ -317,6 +324,9 @@ namespace Api.Controllers
         {
             return await _resourceMutationService.GetMyOrganizationAsync();
         }
+        #endregion
+        
+        #region Config
 
         [HttpPost("organizations/config")]
         [Authorize]
