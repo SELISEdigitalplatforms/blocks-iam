@@ -123,6 +123,7 @@ export const ProfileSidebar = ({ id, projectKey, user }: ProfileSidebarProps) =>
         <ProfileImageUploader
           id={id}
           projectKey={projectKey}
+          containerClassName="h-full w-full"
           className="h-full w-full max-w-none rounded-full bg-transparent shadow-none dark:bg-transparent"
         />
       </div>
