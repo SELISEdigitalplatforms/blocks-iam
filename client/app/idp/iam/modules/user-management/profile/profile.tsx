@@ -12,7 +12,7 @@ import { UserPats } from "../user-pat";
 import { Card, CardContent } from "@/components/ui-kits/card/card";
 import { Badge } from "@/components/ui-kits/badge/badge";
 import { CopyToClipboardButton } from "@/components/copy-to-clipboard-button";
-import { Shield, Smartphone, Clock, Key, User, Calendar, UserCircle, Activity, Camera, Sparkles } from "lucide-react";
+import { Shield, Smartphone, Clock, Key, User, Calendar, Activity, Camera, Sparkles } from "lucide-react";
 import { checkValidDate, cn, formatFullDate } from "@/lib/utils";
 import { Skeleton } from "@/components/ui-kits/skeleton/skeleton";
 import { UserCreationType } from "@blocks-idp/authentication/constants/authentication.constant";
@@ -67,7 +67,6 @@ type ProfileSidebarUser = {
   lastName?: string;
   email?: string;
   active?: boolean;
-  userName?: string;
   logInCount?: number;
   lastLoggedInTime?: string;
   userCreationType?: number;
@@ -81,8 +80,6 @@ type ProfileSidebarProps = {
 
 const ProfileSidebarDetails = ({ user }: { user?: ProfileSidebarUser }) => (
   <div>
-    {user?.userName && <InfoRow icon={UserCircle} label="Username" value={user.userName} />}
-
     <InfoRow icon={Activity} label="Total logins" value={user?.logInCount ?? 0} />
 
     {user?.lastLoggedInTime && checkValidDate(user.lastLoggedInTime) && (
@@ -108,26 +105,17 @@ const ProfileSidebarDetails = ({ user }: { user?: ProfileSidebarUser }) => (
 );
 
 export const ProfileSidebar = ({ id, projectKey, user }: ProfileSidebarProps) => {
-  const firstName = user?.firstName;
-  const lastName = user?.lastName;
-  const hasName =
-    typeof firstName === "string" &&
-    firstName.trim() !== "" &&
-    typeof lastName === "string" &&
-    lastName.trim() !== "";
-  const fullName = hasName ? `${firstName} ${lastName}` : "My Profile";
-  const email = user?.email ?? "";
   const isActive = user?.active ?? false;
 
   return (
     <Card className="overflow-hidden border border-border/50">
       {/* Avatar - full-width square */}
       <div className="relative mx-auto w-full max-w-[420px] md:max-w-none" style={{ aspectRatio: "1 / 1" }}>
-        <div className="absolute inset-0 flex items-center justify-center bg-muted/30">
+        <div className="absolute inset-0 flex items-center justify-center">
           <ProfileImageUploader
             id={id}
             projectKey={projectKey}
-            className="h-full w-full max-w-none rounded-none bg-transparent dark:bg-transparent"
+            className="h-[72%] w-[72%] max-w-none rounded-full bg-transparent shadow-none dark:bg-transparent"
           />
         </div>
 
@@ -155,20 +143,10 @@ export const ProfileSidebar = ({ id, projectKey, user }: ProfileSidebarProps) =>
         </span>
       </div>
 
-      {/* Name + email */}
-      <div className="px-5">
-        <div className="flex items-center justify-between gap-2">
-          <h1 className="text-[15px] font-semibold leading-snug tracking-tight text-foreground">{fullName}</h1>
+      <div className="py-2">
+        <div className="flex justify-center">
           <UpdateUser id={id} projectKey={projectKey} own iconOnly />
         </div>
-        {email && (
-          <div className="flex min-w-0 items-center gap-1.5">
-            <span className="min-w-0 flex-1 truncate text-[13px] text-muted-foreground">{email}</span>
-            <CopyToClipboardButton textToCopy={email}>
-              <span className="sr-only">Copy email</span>
-            </CopyToClipboardButton>
-          </div>
-        )}
       </div>
 
       {/* Account details */}
@@ -187,6 +165,15 @@ export const UserProfile = ({ id }: { id: string }) => {
   const [tabId, setTabId] = useQueryState("userDetails", { defaultValue: "security" });
   const { data } = useGetMe();
   const user = data?.data;
+  const firstName = user?.firstName;
+  const lastName = user?.lastName;
+  const hasName =
+    typeof firstName === "string" &&
+    firstName.trim() !== "" &&
+    typeof lastName === "string" &&
+    lastName.trim() !== "";
+  const fullName = hasName ? `${firstName} ${lastName}` : "My Profile";
+  const email = user?.email ?? "";
 
   return (
     <div className="mx-auto w-full max-w-7xl overflow-x-hidden p-4 sm:p-6 md:p-8">
@@ -199,7 +186,22 @@ export const UserProfile = ({ id }: { id: string }) => {
         {/* Right Content - Tabs */}
         <div className="min-w-0">
           <Tabs value={tabId} className="space-y-6 overflow-hidden">
-            <TabsList className="inline-flex h-auto w-full max-w-full justify-start gap-1 overflow-x-auto rounded-xl bg-muted/50 p-1.5 md:flex-wrap lg:flex-nowrap">
+            <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
+              <div className="min-w-0 md:max-w-[55%]">
+                <h1 className="truncate text-xl font-semibold tracking-tight text-foreground md:text-2xl">
+                  {fullName}
+                </h1>
+                {email && (
+                  <div className="mt-1 flex min-w-0 items-center gap-1.5">
+                    <span className="min-w-0 flex-1 truncate text-sm text-muted-foreground">{email}</span>
+                    <CopyToClipboardButton textToCopy={email}>
+                      <span className="sr-only">Copy email</span>
+                    </CopyToClipboardButton>
+                  </div>
+                )}
+              </div>
+
+              <TabsList className="inline-flex h-auto w-full max-w-full justify-start gap-1 overflow-x-auto rounded-xl bg-muted/50 p-1.5 md:w-auto md:max-w-[45%] md:justify-end md:flex-wrap lg:flex-nowrap">
               {/* Details tab - Only visible on mobile */}
               <TabsTrigger
                 onClick={() => setTabId("info")}
@@ -241,7 +243,8 @@ export const UserProfile = ({ id }: { id: string }) => {
                 <Key className="h-4 w-4" />
                 <span className="hidden sm:inline">PATs</span>
               </TabsTrigger>
-            </TabsList>
+              </TabsList>
+            </div>
 
             {/* Details tab content - Only visible on mobile */}
             <TabsContent value="info" className="mt-0 md:hidden">
