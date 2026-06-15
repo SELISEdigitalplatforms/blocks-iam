@@ -13,7 +13,6 @@ namespace Authentication.DomainService.Oidc.Repositories
     {
         Task<string> CreateAsync(AuthorizationCodeModel code);
         Task<AuthorizationCodeModel> GetByCodeAsync(string code);
-        Task<bool> MarkAsUsedAsync(string code, DateTime usedAt, string ipAddress);
         Task<bool> DeleteAsync(string code);
         Task<IEnumerable<AuthorizationCodeModel>> GetExpiredAsync();
     }
