@@ -53,27 +53,6 @@ namespace Authentication.DomainService.Oidc.Repositories
             }
         }
 
-        public async Task<bool> MarkAsUsedAsync(string code, DateTime usedAt, string ipAddress)
-        {
-            try
-            {
-                var collection = GetDatabase().GetCollection<AuthorizationCodeModel>("IdpAuthorizationCodes");
-                var filter = Builders<AuthorizationCodeModel>.Filter.Eq(c => c.Code, code);
-                var update = Builders<AuthorizationCodeModel>.Update
-                    .Set(c => c.IsUsed, true)
-                    .Set(c => c.UsedAt, usedAt)
-                    .Set(c => c.UsedByIpAddress, ipAddress);
-
-                var result = await collection.UpdateOneAsync(filter, update);
-                return result.ModifiedCount > 0;
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, $"Error marking authorization code as used: {code}");
-                throw;
-            }
-        }
-
         public async Task<bool> DeleteAsync(string code)
         {
             try

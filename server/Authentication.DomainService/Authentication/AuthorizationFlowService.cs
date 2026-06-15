@@ -644,7 +644,6 @@ namespace Authentication.DomainService.Authentication
                     ExpiresAt = DateTime.UtcNow.AddMinutes(10),
                     CreatedAt = DateTime.UtcNow,
                     CreatedByIpAddress = GetClientIpAddress(request),
-                    IsUsed = false,
                 };
 
                 // Blocks Cloud Impersonation Support
@@ -945,13 +944,6 @@ namespace Authentication.DomainService.Authentication
                 return OidcExchangeResult.FromError(new BadRequestObjectResult(new { error = "invalid_grant", error_description = "Authorization code has expired" }));
             }
 
-            if (authCode.IsUsed)
-            {
-                _logger.LogCritical($"REUSE ATTACK DETECTED: Code reused by IP {GetClientIpAddress(request)}, original IP {authCode.UsedByIpAddress}. Revoking token family.");
-                await RevokeUserTokens(authCode.UserId, authCode.ClientId, authCode.TenantId ?? tenantId ?? string.Empty);
-                return OidcExchangeResult.FromError(new BadRequestObjectResult(new { error = "invalid_grant", error_description = "Authorization code has already been used" }));
-            }
-
             var client = await _authenticationRepository.GetOidcClientRegistrationAsync(client_id);
             if (client == null || client.ClientId != authCode.ClientId)
             {
@@ -979,14 +971,6 @@ namespace Authentication.DomainService.Authentication
                     _logger.LogWarning($"PKCE validation failed for client {client_id}");
                     return OidcExchangeResult.FromError(new BadRequestObjectResult(new { error = "invalid_grant", error_description = "PKCE code_verifier is invalid" }));
                 }
-            }
-
-
-            var markUsedSuccess = await _authCodeRepo.MarkAsUsedAsync(code, DateTime.UtcNow, GetClientIpAddress(request));
-            if (!markUsedSuccess)
-            {
-                _logger.LogWarning($"Failed to mark authorization code as used: {code}");
-                return OidcExchangeResult.FromError(new BadRequestObjectResult(new { error = "invalid_grant", error_description = "Could not process authorization code" }));
             }
 
             var user = await _userRepository.GetUserByIdAsync(authCode.UserId);
