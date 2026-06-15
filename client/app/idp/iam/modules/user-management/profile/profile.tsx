@@ -118,7 +118,7 @@ const ProfileSidebarDetails = ({ user }: { user?: ProfileSidebarUser }) => (
 
 export const ProfileSidebar = ({ id, projectKey, user }: ProfileSidebarProps) => {
   return (
-    <Card className="overflow-hidden border-0 bg-transparent shadow-none md:flex md:h-full md:flex-col">
+    <Card className="overflow-hidden border-0 bg-transparent shadow-none md:grid md:h-full md:grid-rows-[auto_1fr] md:gap-4">
       {/* Avatar */}
       <div className="relative mx-auto w-full max-w-[280px]" style={{ aspectRatio: "1 / 1" }}>
         <ProfileImageUploader
@@ -130,7 +130,7 @@ export const ProfileSidebar = ({ id, projectKey, user }: ProfileSidebarProps) =>
       </div>
 
       {/* Account details */}
-      <CardContent className="mt-4 hidden w-full flex-1 rounded-sm border bg-card p-5 shadow-sm md:block">
+      <CardContent className="hidden w-full rounded-sm border bg-card p-5 shadow-sm md:block">
         <p className="mb-3 text-[10px] font-semibold uppercase tracking-widest text-muted-foreground/60">
           Account details
         </p>
@@ -158,37 +158,31 @@ export const UserProfile = ({ id }: { id: string }) => {
   return (
     <div className="mx-auto w-full max-w-7xl overflow-x-hidden p-4 sm:p-6 md:p-8">
       <Tabs value={tabId}>
-        {/*
-          Desktop grid: 2 cols × 2 rows.
-          Row 1, col 1: name+email  |  Row 1, col 2: (empty)
-          Row 2, col 1: sidebar     |  Row 2, col 2: tabs + content
-          Right column therefore starts at the avatar top edge.
-        */}
-        <div className="grid grid-cols-1 gap-4 md:grid-cols-[300px_minmax(0,1fr)] md:gap-x-6 md:gap-y-3 lg:gap-x-8">
+        <div className="grid grid-cols-1 gap-4 md:grid-cols-[300px_minmax(0,1fr)] md:gap-x-6 lg:gap-x-8">
 
-          {/* Desktop: name+email — col 1, row 1 */}
-          <div className="hidden min-w-0 md:col-start-1 md:row-start-1 md:block">
-            <div className="flex items-center gap-2">
-              <h1 className="truncate text-2xl font-semibold tracking-tight text-foreground">{fullName}</h1>
-              <UpdateUser id={id} projectKey={x_blocks_key} own iconOnly />
-            </div>
-            {email && (
-              <div className="mt-0.5 flex min-w-0 items-center gap-1.5">
-                <span className="min-w-0 truncate text-sm text-muted-foreground">{email}</span>
-                <CopyToClipboardButton textToCopy={email}>
-                  <span className="sr-only">Copy email</span>
-                </CopyToClipboardButton>
+          {/* Left column — name+email then sidebar, unified flex column */}
+          <div className="flex flex-col gap-3 md:gap-4">
+            <div className="hidden min-w-0 md:block">
+              <div className="flex items-center gap-2">
+                <h1 className="truncate text-2xl font-semibold tracking-tight text-foreground">{fullName}</h1>
+                <UpdateUser id={id} projectKey={x_blocks_key} own iconOnly />
               </div>
-            )}
+              {email && (
+                <div className="mt-0.5 flex min-w-0 items-center gap-1.5">
+                  <span className="min-w-0 truncate text-sm text-muted-foreground">{email}</span>
+                  <CopyToClipboardButton textToCopy={email}>
+                    <span className="sr-only">Copy email</span>
+                  </CopyToClipboardButton>
+                </div>
+              )}
+            </div>
+            <div className="mx-auto w-full max-w-[460px] md:mx-0 md:max-w-none md:flex-1">
+              <ProfileSidebar id={id} projectKey={x_blocks_key} user={user} />
+            </div>
           </div>
 
-          {/* Sidebar — col 1, row 2 */}
-          <div className="mx-auto w-full max-w-[460px] md:col-start-1 md:row-start-2 md:mx-0 md:max-w-none">
-            <ProfileSidebar id={id} projectKey={x_blocks_key} user={user} />
-          </div>
-
-          {/* Right column — col 2, row 2 (aligns with avatar top) */}
-          <div className="min-w-0 space-y-4 md:col-start-2 md:row-start-2">
+          {/* Right column */}
+          <div className="min-w-0 space-y-4">
 
             {/* Mobile header: name+email left, dropdown right */}
             <div className="flex items-center justify-between gap-3 md:hidden">
