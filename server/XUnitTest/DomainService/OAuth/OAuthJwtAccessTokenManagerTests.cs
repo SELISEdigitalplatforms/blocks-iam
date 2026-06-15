@@ -268,7 +268,7 @@ namespace XUnitTest.DomainService.OAuth
             };
         }
 
-        private AuthenticationConfiguration CreateAuthConfig() => new()
+        private IdentityConfiguration CreateAuthConfig() => new()
         {
             AccessTokenValidForNumberMinutes = 15,
             RefreshTokenValidForNumberMinutes = 1440,
