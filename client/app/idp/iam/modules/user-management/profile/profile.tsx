@@ -158,31 +158,53 @@ export const UserProfile = ({ id }: { id: string }) => {
   return (
     <div className="mx-auto w-full max-w-7xl overflow-x-hidden p-4 sm:p-6 md:p-8">
       <Tabs value={tabId}>
-        <div className="grid grid-cols-1 gap-4 md:grid-cols-[300px_minmax(0,1fr)] md:gap-x-6 lg:gap-x-8">
+        <div className="grid grid-cols-1 gap-4 md:grid-cols-[300px_minmax(0,1fr)] md:gap-x-6 md:gap-y-3 lg:gap-x-8">
 
-          {/* Left column — name+email then sidebar, unified flex column */}
-          <div className="flex flex-col gap-3 md:gap-4">
-            <div className="hidden min-w-0 md:block">
-              <div className="flex items-center gap-2">
-                <h1 className="truncate text-2xl font-semibold tracking-tight text-foreground">{fullName}</h1>
-                <UpdateUser id={id} projectKey={x_blocks_key} own iconOnly />
+          {/* Name+email — col 1, row 1 */}
+          <div className="hidden min-w-0 md:col-start-1 md:row-start-1 md:block">
+            <div className="flex items-center gap-2">
+              <h1 className="truncate text-2xl font-semibold tracking-tight text-foreground">{fullName}</h1>
+              <UpdateUser id={id} projectKey={x_blocks_key} own iconOnly />
+            </div>
+            {email && (
+              <div className="mt-0.5 flex min-w-0 items-center gap-1.5">
+                <span className="min-w-0 truncate text-sm text-muted-foreground">{email}</span>
+                <CopyToClipboardButton textToCopy={email}>
+                  <span className="sr-only">Copy email</span>
+                </CopyToClipboardButton>
               </div>
-              {email && (
-                <div className="mt-0.5 flex min-w-0 items-center gap-1.5">
-                  <span className="min-w-0 truncate text-sm text-muted-foreground">{email}</span>
-                  <CopyToClipboardButton textToCopy={email}>
-                    <span className="sr-only">Copy email</span>
-                  </CopyToClipboardButton>
-                </div>
-              )}
-            </div>
-            <div className="mx-auto w-full max-w-[460px] md:mx-0 md:max-w-none md:flex-1">
-              <ProfileSidebar id={id} projectKey={x_blocks_key} user={user} />
-            </div>
+            )}
           </div>
 
-          {/* Right column */}
-          <div className="min-w-0 space-y-4">
+          {/* TabsList — col 2, row 1, bottom-aligned so its bottom meets the email line */}
+          <div className="hidden md:col-start-2 md:row-start-1 md:flex md:items-end">
+            <TabsList className="h-8 w-fit p-0.5">
+              <TabsTrigger onClick={() => setTabId("security")} value="security" className="h-7 gap-1 px-2.5 text-xs">
+                <Shield className="h-3.5 w-3.5" />
+                <span>Security</span>
+              </TabsTrigger>
+              <TabsTrigger onClick={() => setTabId("devices")} value="devices" className="h-7 gap-1 px-2.5 text-xs">
+                <Smartphone className="h-3.5 w-3.5" />
+                <span>Devices</span>
+              </TabsTrigger>
+              <TabsTrigger onClick={() => setTabId("history")} value="history" className="h-7 gap-1 px-2.5 text-xs">
+                <Clock className="h-3.5 w-3.5" />
+                <span>History</span>
+              </TabsTrigger>
+              <TabsTrigger onClick={() => setTabId("personalAccessTokens")} value="personalAccessTokens" className="h-7 gap-1 px-2.5 text-xs">
+                <Key className="h-3.5 w-3.5" />
+                <span>PATs</span>
+              </TabsTrigger>
+            </TabsList>
+          </div>
+
+          {/* Sidebar — col 1, row 2 */}
+          <div className="mx-auto w-full max-w-[460px] md:col-start-1 md:mx-0 md:max-w-none md:row-start-2">
+            <ProfileSidebar id={id} projectKey={x_blocks_key} user={user} />
+          </div>
+
+          {/* Right column — col 2, row 2: starts level with the avatar */}
+          <div className="min-w-0 space-y-4 md:col-start-2 md:row-start-2">
 
             {/* Mobile header: name+email left, dropdown right */}
             <div className="flex items-center justify-between gap-3 md:hidden">
@@ -214,28 +236,6 @@ export const UserProfile = ({ id }: { id: string }) => {
                   </SelectContent>
                 </Select>
               </div>
-            </div>
-
-            {/* Desktop: TabsList */}
-            <div className="hidden md:block">
-              <TabsList className="h-8 w-fit p-0.5">
-                <TabsTrigger onClick={() => setTabId("security")} value="security" className="h-7 gap-1 px-2.5 text-xs">
-                  <Shield className="h-3.5 w-3.5" />
-                  <span>Security</span>
-                </TabsTrigger>
-                <TabsTrigger onClick={() => setTabId("devices")} value="devices" className="h-7 gap-1 px-2.5 text-xs">
-                  <Smartphone className="h-3.5 w-3.5" />
-                  <span>Devices</span>
-                </TabsTrigger>
-                <TabsTrigger onClick={() => setTabId("history")} value="history" className="h-7 gap-1 px-2.5 text-xs">
-                  <Clock className="h-3.5 w-3.5" />
-                  <span>History</span>
-                </TabsTrigger>
-                <TabsTrigger onClick={() => setTabId("personalAccessTokens")} value="personalAccessTokens" className="h-7 gap-1 px-2.5 text-xs">
-                  <Key className="h-3.5 w-3.5" />
-                  <span>PATs</span>
-                </TabsTrigger>
-              </TabsList>
             </div>
 
             {/* Tab content */}
