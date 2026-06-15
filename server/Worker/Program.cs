@@ -6,7 +6,6 @@ using Iam.DomainService.Accounts;
 using Iam.DomainService.Dtos;
 using Iam.DomainService.Users;
 using Identifier.DomainService.Shared;
-using Mfa.DomainService.Configuration;
 using Worker;
 using Worker.Consumers;
 
@@ -45,6 +44,8 @@ IHostBuilder CreateHostBuilder(string[] args) =>
             services.AddSingleton<IConsumer<CreateUserByEmailEvent>, CreateUserByEmailConsumer>();
             services.AddSingleton<IConsumer<CreateUserRequest>, CreateUserConsumer>();
             services.AddSingleton<IConsumer<CreateUserViaSsoEvent>, CreateUserViaSsoConsumer>();
+            services.AddSingleton<IConsumer<OrganizationProvisioningEvent>, OrganizationProvisioningConsumer>();
+            services.AddSingleton<IConsumer<UpdateOrganizationUserEvent>, UpdateOrganizationUserConsumer>();
 
             services.AddHostedService<PeriodicPingBackgroundService>();
 

@@ -150,23 +150,6 @@ namespace Api.Controllers
             return result.Success ? Ok(result) : BadRequest(result);
         }
 
-        [HttpPost("permissions/assign-org")]
-        //[ProtectedEndPoint("blocks-idp::assign-permissions-to-organization")]
-        public async Task<IActionResult> AssignPermissionsToOrganization([FromBody] AssignPermissionsToOrganizationRequest command)
-        {
-            var result = await _resourceMutationService.AssignPermissionsToOrganizationAsync(command);
-            return result.IsSuccess ? Ok(result) : BadRequest(result);
-        }
-
-        [HttpPost("roles/assign-org")]
-        //[ProtectedEndPoint("blocks-idp::assign-roles-to-organization")]
-        [Authorize]
-        public async Task<IActionResult> AssignRolesToOrganization([FromBody] AssignRolesToOrganizationRequest command)
-        {
-            var result = await _resourceMutationService.AssignRolesToOrganizationAsync(command);
-            return result.IsSuccess ? Ok(result) : BadRequest(result);
-        }
-
         [HttpGet("resource-groups")]
         //[ProtectedEndPoint("blocks-idp::get-resource-groups")]
         [Authorize]

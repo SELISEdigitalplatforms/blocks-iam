@@ -87,19 +87,7 @@ namespace Iam.DomainService.Resources
         {
             var collection = _identityAccessManagementRepository.GetCollection<Permission>();
             var organizationId = ResolveOrganizationId();
-            //var filter = Builders<Permission>.Filter.Eq(x => x.OrganizationId, organizationId);
-            var filter = Builders<Permission>.Filter.Empty;
-            if (organizationId == "default")
-            {
-                filter =
-                    Builders<Permission>.Filter.AnyEq(x => x.OrganizationIds, organizationId) |
-                    Builders<Permission>.Filter.Size(x => x.OrganizationIds, 0);
-            }
-            else
-            {
-                filter =
-                    Builders<Permission>.Filter.AnyEq(x => x.OrganizationIds, organizationId);
-            }
+            var filter = Builders<Permission>.Filter.Eq(x => x.OrganizationId, organizationId);
 
             var permissionCursor = await collection.FindAsync(filter);
             var severityGroups = permissionCursor.ToList().GroupBy(p => p.PermissionSeverity)
@@ -199,20 +187,8 @@ namespace Iam.DomainService.Resources
         {
             var collection = _identityAccessManagementRepository.GetCollection<Role>();
             var organizationId = ResolveOrganizationId();
-            var filter = Builders<Role>.Filter.Empty;
-            if (organizationId == "default")
-            {
-                filter =
-                    Builders<Role>.Filter.AnyEq(x => x.OrganizationIds, organizationId) |
-                    Builders<Role>.Filter.Size(x => x.OrganizationIds, 0);
-            }
-            else
-            {
-                filter =
-                    Builders<Role>.Filter.AnyEq(x => x.OrganizationIds, organizationId);
-            }
-             filter &= Builders<Role>.Filter.Eq(x => x.Slug, slug);
-               
+            FilterDefinition<Role> filter = Builders<Role>.Filter.Eq("OrganizationId", organizationId);
+            filter &= Builders<Role>.Filter.Eq(x => x.Slug, slug);
 
             return await collection.Find(filter).FirstOrDefaultAsync();
         }
@@ -269,16 +245,6 @@ namespace Iam.DomainService.Resources
             return await collection.Find(filter).ToListAsync();
         }
 
-        public async Task<List<Role>> GetDefaultDerivedRolesBySlugAsync(string slug)
-        {
-            var collection = _identityAccessManagementRepository.GetCollection<Role>();
-            var filter = Builders<Role>.Filter.Eq(x => x.Slug, slug)
-                & Builders<Role>.Filter.Eq(x => x.CreatedFromDefault, true)
-                & Builders<Role>.Filter.Ne(x => x.OrganizationId, "default");
-
-            return await collection.Find(filter).ToListAsync();
-        }
-
         public async Task<bool> InsertRolesAsync(List<Role> roles)
         {
             var collection = _identityAccessManagementRepository.GetCollection<Role>();
@@ -301,23 +267,8 @@ namespace Iam.DomainService.Resources
             var collection = _identityAccessManagementRepository.GetCollectionByName<BsonDocument>("Permissions");
             var organizationId = ResolveOrganizationId();
 
-            FilterDefinition<BsonDocument> filter;
-
-            if (organizationId == "default")
-            {
-                filter =
-                    (Builders<BsonDocument>.Filter.AnyEq("OrganizationIds", organizationId) |
-                     Builders<BsonDocument>.Filter.Size("OrganizationIds", 0))
-                    &
-                    Builders<BsonDocument>.Filter.In("ItemId", permissions);
-            }
-            else
-            {
-                filter =
-                    Builders<BsonDocument>.Filter.AnyEq("OrganizationIds", organizationId)
-                    &
-                    Builders<BsonDocument>.Filter.In("ItemId", permissions);
-            }
+            FilterDefinition<BsonDocument> filter = Builders<BsonDocument>.Filter.Eq("OrganizationId", organizationId)
+                & Builders<BsonDocument>.Filter.In("ItemId", permissions);
 
             var update = Builders<BsonDocument>.Update.AddToSet($"Roles", slug);
             var result = await collection.UpdateManyAsync(filter, update);
@@ -329,23 +280,8 @@ namespace Iam.DomainService.Resources
             var collection = _identityAccessManagementRepository.GetCollectionByName<BsonDocument>("Permissions");
             var organizationId = ResolveOrganizationId();
 
-            FilterDefinition<BsonDocument> filter;
-
-            if (organizationId == "default")
-            {
-                filter =
-                    (Builders<BsonDocument>.Filter.AnyEq("OrganizationIds", organizationId) |
-                     Builders<BsonDocument>.Filter.Size("OrganizationIds", 0))
-                    &
-                    Builders<BsonDocument>.Filter.In("ItemId", permissions);
-            }
-            else
-            {
-                filter =
-                    Builders<BsonDocument>.Filter.AnyEq("OrganizationIds", organizationId)
-                    &
-                    Builders<BsonDocument>.Filter.In("ItemId", permissions);
-            }
+            FilterDefinition<BsonDocument> filter = Builders<BsonDocument>.Filter.Eq("OrganizationId", organizationId)
+                & Builders<BsonDocument>.Filter.In("ItemId", permissions);
 
             var update = Builders<BsonDocument>.Update.Pull($"Roles", slug);
             var result = await collection.UpdateManyAsync(filter, update);
@@ -477,10 +413,6 @@ namespace Iam.DomainService.Resources
                     .Set(c => c.AllowOrgCreationFromSignup, config.AllowOrgCreationFromSignup)
                     .Set(c => c.AllowOrgCreationFromPortal, config.AllowOrgCreationFromPortal)
                     .Set(c => c.IsMultiOrgEnabled, config.IsMultiOrgEnabled)
-                    .Set(c => c.DefaultRolesOnOrgCreation, config.DefaultRolesOnOrgCreation)
-                    .Set(c => c.DefaultPermissionsOnOrgCreation, config.DefaultPermissionsOnOrgCreation)
-                    .Set(c => c.KeepOrgRolesSameAsDefaultRoles, config.KeepOrgRolesSameAsDefaultRoles)
-                    .Set(c => c.KeepOrgPermissionsSameAsDefaultPermissions, config.KeepOrgPermissionsSameAsDefaultPermissions)
                     .Set(c => c.LastUpdatedBy, config.LastUpdatedBy)
                     .Set(c => c.LastUpdatedDate, config.LastUpdatedDate), new UpdateOptions { IsUpsert = true });
         }
@@ -558,31 +490,21 @@ namespace Iam.DomainService.Resources
             return result?.IsAcknowledged ?? false;
         }
 
-        public async Task<bool> UpdateDefaultDerivedRolesBySlugAsync(Role defaultRole)
-        {
-            var collection = _identityAccessManagementRepository.GetCollection<Role>();
-            var filter = Builders<Role>.Filter.Eq(x => x.Slug, defaultRole.Slug)
-                         & Builders<Role>.Filter.Eq(x => x.CreatedFromDefault, true)
-                         & Builders<Role>.Filter.Ne(x => x.OrganizationId, "default");
-
-            var update = Builders<Role>.Update
-                .Set(x => x.Description, defaultRole.Description)
-                .Set(x => x.ParentRoleSlug, defaultRole.ParentRoleSlug)
-                .Set(x => x.CanCreateOwn, defaultRole.CanCreateOwn)
-                .Set(x => x.LastUpdatedBy, defaultRole.LastUpdatedBy)
-                .Set(x => x.LastUpdatedDate, defaultRole.LastUpdatedDate);
-
-            var result = await collection.UpdateManyAsync(filter, update);
-            return result?.IsAcknowledged ?? false;
-        }
-
-        public async Task<List<Permission>> GetPermissionsByOrgAsync(string organizationId)
+        public async Task<List<Permission>> GetPermissionsByOrgAsync(string organizationId, int? pageNumber = null, int? pageSize = null)
         {
             var collection = _identityAccessManagementRepository.GetCollectionByName<Permission>("Permissions");
             var filter = Builders<Permission>.Filter.Eq(x => x.OrganizationId, organizationId)
                 & Builders<Permission>.Filter.Eq(x => x.IsArchived, false);
 
-            return await collection.Find(filter).ToListAsync();
+            var query = collection.Find(filter);
+
+            if (pageNumber.HasValue && pageSize.HasValue && pageNumber.Value > 0 && pageSize.Value > 0)
+            {
+                var skip = (pageNumber.Value - 1) * pageSize.Value;
+                query = query.SortBy(x => x.ItemId).Skip(skip).Limit(pageSize.Value);
+            }
+
+            return await query.ToListAsync();
         }
 
         public async Task<bool> AddRoleToPermissionsByResourcesAsync(string slug, List<string> resources, string organizationId)
@@ -732,6 +654,83 @@ namespace Iam.DomainService.Resources
             await collection.InsertManyAsync(permissions);
             return true;
         }
-        
+
+
+        public async Task<List<Permission>> GetPermissionsByResourceAsync(string resource)
+        {
+            var collection = _identityAccessManagementRepository.GetCollectionByName<Permission>("Permissions");
+
+            var filter = Builders<Permission>.Filter.Eq(x => x.Resource, resource);
+            return await collection.Find(filter).ToListAsync();
+        }
+
+        public async Task<bool> UpdatePermissionsAsync(List<Permission> permissions)
+        {
+            if (permissions == null || permissions.Count == 0)
+            {
+                return true;
+            }
+
+            var collection = _identityAccessManagementRepository.GetCollection<Permission>();
+
+            var operations = permissions
+                .Select(permission =>
+                    new ReplaceOneModel<Permission>(
+                        Builders<Permission>.Filter.Eq(x => x.ItemId, permission.ItemId),
+                        permission)
+                    {
+                        IsUpsert = false
+                    })
+                .Cast<WriteModel<Permission>>()
+                .ToList();
+
+            var result = await collection.BulkWriteAsync(
+                operations,
+                new BulkWriteOptions
+                {
+                    IsOrdered = false
+                });
+
+            return result.IsAcknowledged;
+        }
+
+        public async Task<List<Role>> GetRolesBySlugAsync(string slug)
+        {
+            var collection = _identityAccessManagementRepository.GetCollectionByName<Role>("Roles");
+
+            var filter = Builders<Role>.Filter.Eq(x => x.Slug, slug);
+            return await collection.Find(filter).ToListAsync();
+        }
+
+        public async Task<bool> UpdateRolesAsync(List<Role> roles)
+        {
+            if (roles == null || roles.Count == 0)
+            {
+                return true;
+            }
+
+            var collection = _identityAccessManagementRepository.GetCollection<Role>();
+
+            var operations = roles
+                .Select(role =>
+                    new ReplaceOneModel<Role>(
+                        Builders<Role>.Filter.Eq(x => x.ItemId, role.ItemId),
+                        role)
+                    {
+                        IsUpsert = false
+                    })
+                .Cast<WriteModel<Role>>()
+                .ToList();
+
+            var result = await collection.BulkWriteAsync(
+                operations,
+                new BulkWriteOptions
+                {
+                    IsOrdered = false
+                });
+
+            return result.IsAcknowledged;
+        }
+
     }
 }

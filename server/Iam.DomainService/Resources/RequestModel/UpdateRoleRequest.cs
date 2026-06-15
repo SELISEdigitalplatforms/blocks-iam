@@ -1,6 +1,4 @@
-﻿using Blocks.Genesis;
-
-namespace Iam.DomainService.Resources
+﻿namespace Iam.DomainService.Resources
 {
     public class UpdateRoleRequest
     {
@@ -8,5 +6,7 @@ namespace Iam.DomainService.Resources
         public string Name { get; set; }
         public string? Description { get; set; }
         public string? ParentRoleSlug { get; set; }
+        public bool PropagateToOtherOrg { get; set; }
+        public bool CanCreateOwn { get; set; }
     }
 }
