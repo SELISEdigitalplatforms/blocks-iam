@@ -27,7 +27,11 @@ export class UserAccountService {
   }
 
   accountRecover(payload: IAccountRecoverPayload): Promise<IAccountRecoverResponse> {
-    return http.post(ACCOUNT_ENDPOINTS.RECOVER, payload);
+    const headers: Record<string, string> = {};
+    if (payload.tenantId) {
+      headers["X-Blocks-Key"] = payload.tenantId;
+    }
+    return http.post(ACCOUNT_ENDPOINTS.RECOVER, payload, headers);
   }
 
   accountResetPassword(
