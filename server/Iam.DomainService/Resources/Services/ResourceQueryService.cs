@@ -116,5 +116,73 @@ namespace Iam.DomainService.Resources
                 })
                 .ToList();
         }
+
+        public async Task<GetAssignableRolesResponse> GetAssignableRolesAsync()
+        {
+            var bc = BlocksContext.GetContext();
+            var userRoles = bc?.Roles ?? [];
+
+            var (roles, count) = await _resourceRepository.GetRolesAsync(new GetRolesRequest
+            {
+                PageSize = 1000
+            });
+
+            var referencedAncestorSlugs = roles
+                .SelectMany(x => x.AncestorRoleSlugs ?? new List<string>())
+                .ToHashSet(StringComparer.OrdinalIgnoreCase);
+
+            // User roles that can create descendants
+            var creatableRoles = roles
+                .Where(x =>
+                    userRoles.Contains(x.Slug, StringComparer.OrdinalIgnoreCase)
+                    && x.CanCreateOwn)
+                .Select(x => x.Slug)
+                .ToHashSet(StringComparer.OrdinalIgnoreCase);
+
+            var hierarchy = new List<AssignableRole>();
+            var standalone = new List<AssignableRole>();
+
+            foreach (var role in roles)
+            {
+                var isStandalone =
+                    !role.CanCreateOwn &&
+                    string.IsNullOrWhiteSpace(role.ParentRoleSlug) &&
+                    !role.AncestorRoleSlugs.Any() &&
+                    !referencedAncestorSlugs.Contains(role.Slug);
+
+                if (isStandalone)
+                {
+                    standalone.Add(new AssignableRole
+                    {
+                        Slug = role.Slug,
+                        Name = role.Name
+                    });
+
+                    continue;
+                }
+
+                var isDescendantOrSelf =
+                    creatableRoles.Contains(role.Slug) ||
+                    role.AncestorRoleSlugs.Any(a =>
+                        creatableRoles.Contains(a));
+
+                if (isDescendantOrSelf)
+                {
+                    hierarchy.Add(new AssignableRole
+                    {
+                        Slug = role.Slug,
+                        Name = role.Name
+                    });
+                }
+            }
+
+            return new GetAssignableRolesResponse
+            {
+                Hierarchy = hierarchy,
+                Standalone = standalone
+            };
+        }
+
+
     }
 }
