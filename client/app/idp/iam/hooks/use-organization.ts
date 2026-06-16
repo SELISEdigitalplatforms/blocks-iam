@@ -57,6 +57,13 @@ export const useGetOrganizationConfig = (projectId?: string) => {
   });
 };
 
+export const useGetMyOrganizations = () => {
+  return useQuery({
+    queryKey: ["organizations", "my"],
+    queryFn: () => iamService.organization.getMyOrganizations(),
+  });
+};
+
 export const useSaveOrganizationConfig = (projectId: string) => {
   const queryClient = useQueryClient();
   return useMutation({
