@@ -1316,7 +1316,7 @@ namespace Iam.DomainService.Resources
             tenantConfig.LastUpdatedBy = BlocksContext.GetContext()?.UserId;
             tenantConfig.LastUpdatedDate = DateTime.UtcNow;
 
-            if (!tenantConfig.IsMultiOrgEnabled && !tenantConfig.ConsentForMultiOrgEnable && request.IsMultiOrgEnabled && request.ConsentForMultiOrgEnable)
+            if (!tenantConfig.ConsentForMultiOrgEnable && request.IsMultiOrgEnabled && request.ConsentForMultiOrgEnable)
             {
                 tenantConfig.IsMultiOrgEnabled = true;
                 tenantConfig.ConsentForMultiOrgEnable = true;
