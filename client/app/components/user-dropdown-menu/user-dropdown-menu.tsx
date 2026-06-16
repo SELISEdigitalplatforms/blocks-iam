@@ -148,7 +148,7 @@ export function UserDropdownMenu() {
                 <Skeleton className="h-9 w-full rounded-md" />
               </div>
             ) : organizations.length === 0 ? (
-              <p className="px-4 py-3 text-xs text-muted-foreground">No organizations</p>
+              <p className="px-4 py-3 text-xs text-muted-foreground">No organizations found.</p>
             ) : (
               organizations.map((org) => {
                 const isActive = org.itemId === activeOrgId;
