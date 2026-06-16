@@ -11,5 +11,6 @@ namespace Iam.DomainService.Resources
         Task<List<GetResourceGroupResponse>> GetResourceGroupsAsync();
         Task<List<PermissionGroupBySeverityResponse>> GetPermissionsGroupBySeverityAsync();
         Task<List<GetFeResourceFeatureResponse>> GetFeResourceFeaturesAsync(GetFeResourceFeatureRequest request);
+        Task<GetAssignableRolesResponse> GetAssignableRolesAsync();
     }
 }
