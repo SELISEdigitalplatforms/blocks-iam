@@ -1,4 +1,4 @@
-import { LogOut, UserRound } from "lucide-react";
+import { Building2, Check, LogOut, UserRound } from "lucide-react";
 import { Link } from "react-router-dom";
 import { Button } from "@/components/ui-kits/button/button";
 import {
@@ -6,10 +6,13 @@ import {
   DropdownMenuContent,
   DropdownMenuGroup,
   DropdownMenuItem,
+  DropdownMenuLabel,
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui-kits/dropdown-menu/dropdown-menu";
+import { Skeleton } from "@/components/ui-kits/skeleton/skeleton";
 import { useGetMe } from "@/idp/iam/hooks/use-user";
+import { useGetMyOrganizations } from "@/idp/iam/hooks/use-organization";
 import { useLogout } from "@/idp/authentication/hooks/use-auth";
 import { useAuthStore } from "@/store/useAuthStore";
 import { useLanguageViewStore } from "@/cross-modules/localization/store/use-language-view-store";
@@ -54,11 +57,14 @@ export function UserDropdownMenu() {
   const { reset } = useProjectStore();
   const { setUnAuthenticated, clearTokens } = useAuthStore();
   const { resetSelectedLanguages } = useLanguageViewStore();
+  const { data: myOrgsData, isLoading: isOrgsLoading } = useGetMyOrganizations();
 
   const fullName =
     [userData?.firstName, userData?.lastName].filter(Boolean).join(" ") || "—";
   const email = userData?.email || "";
   const roles = Object.values(userData?.roles || {}).flat();
+  const organizations = myOrgsData?.organizations ?? [];
+  const activeOrgId = userData?.lastUsedOrganizationId ?? null;
 
   const handleLogout = async () => {
     try {
@@ -123,6 +129,57 @@ export function UserDropdownMenu() {
               <span className="text-sm font-medium">My Profile</span>
             </Link>
           </DropdownMenuItem>
+        </DropdownMenuGroup>
+
+        <DropdownMenuSeparator className="my-0 bg-border/80" />
+
+        {/* Organizations */}
+        <DropdownMenuGroup className="p-1.5">
+          <DropdownMenuLabel className="flex items-center gap-2 px-4 py-2 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground/70">
+            <Building2 className="h-3.5 w-3.5" />
+            <span>Organizations</span>
+          </DropdownMenuLabel>
+
+          <div className="max-h-56 overflow-y-auto">
+            {isOrgsLoading ? (
+              <div className="space-y-1.5 px-4 py-2">
+                <Skeleton className="h-9 w-full rounded-md" />
+                <Skeleton className="h-9 w-full rounded-md" />
+                <Skeleton className="h-9 w-full rounded-md" />
+              </div>
+            ) : organizations.length === 0 ? (
+              <p className="px-4 py-3 text-xs text-muted-foreground">No organizations</p>
+            ) : (
+              organizations.map((org) => {
+                const isActive = org.itemId === activeOrgId;
+                return (
+                  <DropdownMenuItem
+                    key={org.itemId}
+                    className="cursor-pointer rounded-md px-4 py-2.5"
+                  >
+                    <div className="flex w-full min-w-0 items-center gap-3">
+                      <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md bg-[hsl(var(--avatar-surface-default))] text-xs font-semibold text-[hsl(var(--avatar-text-high-emphasis))]">
+                        {org.name?.[0]?.toUpperCase() || (
+                          <Building2 className="h-3.5 w-3.5" />
+                        )}
+                      </div>
+                      <span
+                        className={cn(
+                          "min-w-0 flex-1 truncate text-sm",
+                          isActive ? "font-semibold text-foreground" : "font-medium text-foreground/90",
+                        )}
+                      >
+                        {org.name}
+                      </span>
+                      {isActive && (
+                        <Check className="h-4 w-4 shrink-0 text-emerald-500" />
+                      )}
+                    </div>
+                  </DropdownMenuItem>
+                );
+              })
+            )}
+          </div>
         </DropdownMenuGroup>
 
         <DropdownMenuSeparator className="my-0 bg-border/80" />

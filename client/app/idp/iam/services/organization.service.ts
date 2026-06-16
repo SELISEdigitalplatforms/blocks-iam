@@ -2,6 +2,7 @@ import { http } from "@/lib/http-client";
 import {
   ICreateOrUpdateOrganizationPayload,
   ICreateOrUpdateOrganizationResponse,
+  IGetMyOrganizationsResponse,
   IGetOrganizationByIdParams,
   IGetOrganizationByIdResponse,
   IGetOrganizationsParams,
@@ -45,6 +46,10 @@ export class OrganizationService {
 
   getOrganizationConfig(): Promise<IOrganizationConfigResponse | null> {
     return http.get(`${ORGANIZATION_ENDPOINTS.GET_ORGANIZATION_CONFIG}`);
+  }
+
+  getMyOrganizations(): Promise<IGetMyOrganizationsResponse> {
+    return http.get(ORGANIZATION_ENDPOINTS.GET_MY_ORGANIZATIONS);
   }
 
   saveOrganizationConfig = (
