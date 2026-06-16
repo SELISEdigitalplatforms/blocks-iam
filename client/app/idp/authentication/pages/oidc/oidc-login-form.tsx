@@ -436,7 +436,7 @@ export const OidcLoginForm = ({
                         Password
                       </label>
                       <Link
-                        to="/forgot-password"
+                        to="/oidc/forgot-password"
                         className="oidc-sci-fi-link"
                         style={{ fontSize: "0.75rem" }}
                       >
