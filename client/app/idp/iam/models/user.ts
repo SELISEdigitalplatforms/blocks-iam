@@ -286,6 +286,7 @@ export interface IAccountActivationPayload {
   captchaCode?: string;
   mailPurpose?: string;
   preventPostEvent: boolean;
+  tenantId?: string;
 }
 
 export interface IAccountActivationResponse {
@@ -295,6 +296,7 @@ export interface IAccountActivationResponse {
 
 export interface IAccountResendActivationPayload {
   userId: string;
+  tenantId?: string;
 }
 export interface IAccountResendActivationResponse {
   errors: unknown | null;
@@ -333,6 +335,7 @@ export interface IChangePasswordResponse {
 
 export interface IActivationCodeValidationPayload {
   activationCode: string;
+  tenantId?: string;
 }
 
 export interface IActivationCodeExpirationResponse {

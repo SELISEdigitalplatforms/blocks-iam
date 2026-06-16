@@ -85,6 +85,8 @@ export const router = createBrowserRouter([
 
           // OIDC-scoped auth pages (relative paths under /oidc)
           { path: "forgot-password", element: <ForgotPasswordPage /> },
+          { path: "activate", element: <ActivatePage /> },
+
         ],
       },
       {
@@ -129,7 +131,7 @@ export const router = createBrowserRouter([
               {
                 element: <PublicLayout />,
                 children: [
-                  { path: "/activate", element: <ActivatePage /> },
+                  // { path: "/activate", element: <ActivatePage /> },
 
                   // { path: "/forgot-password", element: <ForgotPasswordPage /> },
 

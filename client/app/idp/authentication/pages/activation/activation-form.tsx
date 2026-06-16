@@ -26,9 +26,10 @@ import { zodResolver } from "@hookform/resolvers/zod";
 
 type ActivationFormProps = {
   code: string;
+  tenantId?: string;
 };
 
-export const ActivationForm = ({ code }: ActivationFormProps) => {
+export const ActivationForm = ({ code, tenantId }: ActivationFormProps) => {
   const navigate = useNavigate();
   const form = useForm({
     defaultValues: activationFormDefaultValue,
@@ -68,6 +69,7 @@ export const ActivationForm = ({ code }: ActivationFormProps) => {
         firstname: values.firstname,
         lastname: values.lastname,
         captchaCode,
+        tenantId,
       });
       if (!res.isSuccess) {
         resetCaptcha();
