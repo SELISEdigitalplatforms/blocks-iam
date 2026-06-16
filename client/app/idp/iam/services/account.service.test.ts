@@ -37,8 +37,24 @@ describe("UserAccountService", () => {
       expect(http.post).toHaveBeenCalledWith(
         ACCOUNT_ENDPOINTS.ACTIVATE,
         mockAccountActivationPayload,
+        {},
       );
       expect(result).toEqual(mockSuccessResponse);
+    });
+
+    it("should set X-Blocks-Key header when tenantId is provided", async () => {
+      vi.mocked(http.post).mockResolvedValue(mockSuccessResponse);
+
+      await service.accountActivation({
+        ...mockAccountActivationPayload,
+        tenantId: "***REMOVED***",
+      });
+
+      expect(http.post).toHaveBeenCalledWith(
+        ACCOUNT_ENDPOINTS.ACTIVATE,
+        expect.objectContaining({ tenantId: "***REMOVED***" }),
+        { "X-Blocks-Key": "***REMOVED***" },
+      );
     });
 
     it("should throw when the API call fails", async () => {
@@ -60,8 +76,24 @@ describe("UserAccountService", () => {
       expect(http.post).toHaveBeenCalledWith(
         ACCOUNT_ENDPOINTS.RESEND_ACTIVATION,
         mockResendActivationPayload,
+        {},
       );
       expect(result).toEqual(mockSuccessResponse);
+    });
+
+    it("should set X-Blocks-Key header when tenantId is provided", async () => {
+      vi.mocked(http.post).mockResolvedValue(mockSuccessResponse);
+
+      await service.accountResendActivation({
+        ...mockResendActivationPayload,
+        tenantId: "***REMOVED***",
+      });
+
+      expect(http.post).toHaveBeenCalledWith(
+        ACCOUNT_ENDPOINTS.RESEND_ACTIVATION,
+        expect.objectContaining({ tenantId: "***REMOVED***" }),
+        { "X-Blocks-Key": "***REMOVED***" },
+      );
     });
 
     it("should throw when the API call fails", async () => {
@@ -80,8 +112,27 @@ describe("UserAccountService", () => {
 
       const result = await service.accountRecover(mockAccountRecoverPayload);
 
-      expect(http.post).toHaveBeenCalledWith(ACCOUNT_ENDPOINTS.RECOVER, mockAccountRecoverPayload);
+      expect(http.post).toHaveBeenCalledWith(
+        ACCOUNT_ENDPOINTS.RECOVER,
+        mockAccountRecoverPayload,
+        {},
+      );
       expect(result).toEqual(mockSuccessResponse);
+    });
+
+    it("should set X-Blocks-Key header when tenantId is provided", async () => {
+      vi.mocked(http.post).mockResolvedValue(mockSuccessResponse);
+
+      await service.accountRecover({
+        ...mockAccountRecoverPayload,
+        tenantId: "***REMOVED***",
+      });
+
+      expect(http.post).toHaveBeenCalledWith(
+        ACCOUNT_ENDPOINTS.RECOVER,
+        expect.objectContaining({ tenantId: "***REMOVED***" }),
+        { "X-Blocks-Key": "***REMOVED***" },
+      );
     });
 
     it("should throw when the API call fails", async () => {
@@ -128,8 +179,24 @@ describe("UserAccountService", () => {
       expect(http.post).toHaveBeenCalledWith(
         ACCOUNT_ENDPOINTS.VALIDATE_ACTIVATION_CODE,
         mockActivationCodeValidationPayload,
+        {},
       );
       expect(result).toEqual(mockActivationCodeExpirationResponse);
+    });
+
+    it("should set X-Blocks-Key header when tenantId is provided", async () => {
+      vi.mocked(http.post).mockResolvedValue(mockActivationCodeExpirationResponse);
+
+      await service.checkActivationCodeExpiration({
+        ...mockActivationCodeValidationPayload,
+        tenantId: "***REMOVED***",
+      });
+
+      expect(http.post).toHaveBeenCalledWith(
+        ACCOUNT_ENDPOINTS.VALIDATE_ACTIVATION_CODE,
+        expect.objectContaining({ tenantId: "***REMOVED***" }),
+        { "X-Blocks-Key": "***REMOVED***" },
+      );
     });
 
     it("should throw when the API call fails", async () => {

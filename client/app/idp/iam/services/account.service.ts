@@ -17,13 +17,21 @@ import { ACCOUNT_ENDPOINTS } from "../constants/endpoint.constant";
 
 export class UserAccountService {
   accountActivation(payload: IAccountActivationPayload): Promise<IAccountActivationResponse> {
-    return http.post(ACCOUNT_ENDPOINTS.ACTIVATE, payload);
+    const headers: Record<string, string> = {};
+    if (payload.tenantId) {
+      headers["X-Blocks-Key"] = payload.tenantId;
+    }
+    return http.post(ACCOUNT_ENDPOINTS.ACTIVATE, payload, headers);
   }
 
   accountResendActivation(
     payload: IAccountResendActivationPayload,
   ): Promise<IAccountResendActivationResponse> {
-    return http.post(ACCOUNT_ENDPOINTS.RESEND_ACTIVATION, payload);
+    const headers: Record<string, string> = {};
+    if (payload.tenantId) {
+      headers["X-Blocks-Key"] = payload.tenantId;
+    }
+    return http.post(ACCOUNT_ENDPOINTS.RESEND_ACTIVATION, payload, headers);
   }
 
   accountRecover(payload: IAccountRecoverPayload): Promise<IAccountRecoverResponse> {
@@ -43,7 +51,11 @@ export class UserAccountService {
   checkActivationCodeExpiration(
     payload: IActivationCodeValidationPayload,
   ): Promise<IActivationCodeExpirationResponse> {
-    return http.post(ACCOUNT_ENDPOINTS.VALIDATE_ACTIVATION_CODE, payload);
+    const headers: Record<string, string> = {};
+    if (payload.tenantId) {
+      headers["X-Blocks-Key"] = payload.tenantId;
+    }
+    return http.post(ACCOUNT_ENDPOINTS.VALIDATE_ACTIVATION_CODE, payload, headers);
   }
 
   changePassword(payload: IChangePasswordPayload): Promise<IChangePasswordResponse> {
