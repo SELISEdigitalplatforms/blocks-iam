@@ -84,7 +84,7 @@ export const router = createBrowserRouter([
           },
 
           // OIDC-scoped auth pages (relative paths under /oidc)
-          { path: "forgot-password", element: <ForgotPasswordPage /> },
+          { path: "forget/:tenantId", element: <ForgotPasswordPage /> },
         ],
       },
       {
