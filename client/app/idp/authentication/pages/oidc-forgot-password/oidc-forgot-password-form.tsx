@@ -1,5 +1,5 @@
 import { getRuntimeEnv } from "@/lib/runtime-env";
-import { Link } from "react-router-dom";
+import { Link, useSearchParams } from "react-router-dom";
 import { useForm } from "react-hook-form";
 import { forgotPasswordFormSchema, forgotPasswordFormDefaultValue } from "./utils";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -23,6 +23,11 @@ import {
 
 export const OIDCForgotPasswordForm = () => {
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
+  const tenantId =
+    searchParams.get("tenant_id") ||
+    searchParams.get("tenantId") ||
+    undefined;
   const [serverError, setServerError] = useState<string | null>(null);
 
   const form = useForm({
@@ -40,7 +45,7 @@ export const OIDCForgotPasswordForm = () => {
   const onSubmitHandler = async (values: z.infer<typeof forgotPasswordFormSchema>) => {
     setServerError(null);
     try {
-      const res = await mutateAsync({ ...values, captchaCode });
+      const res = await mutateAsync({ ...values, captchaCode, tenantId });
       if (!res.isSuccess) {
         resetCaptcha();
         const msg = Array.isArray(res.errors)

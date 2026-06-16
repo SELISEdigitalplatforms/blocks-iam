@@ -121,6 +121,7 @@ export const OidcLoginForm = ({
   const isTokenNeed = submitCount >= 3;
 
   const activationUrl = buildOIDCNavigationUrl("/oidc/activation");
+  const forgotPasswordUrl = buildOIDCNavigationUrl("/oidc/forgot-password");
 
   const ensurePkceState = async () => {
     // External relying party (e.g. Dependency-Track) already supplied its own
@@ -436,7 +437,7 @@ export const OidcLoginForm = ({
                         Password
                       </label>
                       <Link
-                        to="/oidc/forgot-password"
+                        to={forgotPasswordUrl}
                         className="oidc-sci-fi-link"
                         style={{ fontSize: "0.75rem" }}
                       >
