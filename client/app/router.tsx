@@ -82,7 +82,6 @@ export const router = createBrowserRouter([
             path: "email-sent-confirmation",
             element: <OidcEmailSentConfirmationPage />,
           },
-          { path: "/forgot-password", element: <ForgotPasswordPage /> },
 
           //new OIDC routes
           // { path: "/activate", element: <ActivatePage /> },
@@ -150,7 +149,10 @@ export const router = createBrowserRouter([
                 element: <PublicLayout />,
                 children: [
                   { path: "/activate", element: <ActivatePage /> },
-                //   { path: "/forgot-password", element: <ForgotPasswordPage /> },
+
+                  // { path: "/forgot-password", element: <ForgotPasswordPage /> },
+                                    { path: "/oidc/forgot-password", element: <ForgotPasswordPage /> },
+
                   { path: "/resetpassword", element: <ResetPasswordPage /> },
                   {
                     path: "/activate-success",
