@@ -367,7 +367,7 @@ namespace Iam.DomainService.Users
             var config = await _userRepository.GetIamConfigurationAsync();
             var key = Guid.NewGuid().ToString("n");
             var bc = BlocksContext.GetContext();
-            var path = $"{(config.IsOidcEnabled ? "oidc/activate/" + bc.TenantId : config.AccountActivationPath)}?code={key}&lang={user.Language}";
+            var path = $"{(config.IsOidcEnabled ? IamHelper.OidcActivateRoute + bc.TenantId : config.AccountActivationPath)}?code={key}&lang={user.Language}";
             if (!IamHelper.TryBuildUserActionUrl(config, path, out var accountActivationUri, _httpContextAccessor, logger: _logger))
             {
                 _logger.LogWarning("Activation URL could not be built for user {Id}", user.ItemId);
