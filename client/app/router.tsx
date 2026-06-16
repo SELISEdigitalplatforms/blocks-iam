@@ -82,6 +82,7 @@ export const router = createBrowserRouter([
             path: "email-sent-confirmation",
             element: <OidcEmailSentConfirmationPage />,
           },
+          { path: "/forgot-password", element: <ForgotPasswordPage /> },
 
           //new OIDC routes
           // { path: "/activate", element: <ActivatePage /> },
