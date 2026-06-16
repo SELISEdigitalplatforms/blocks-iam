@@ -84,26 +84,26 @@ export const router = createBrowserRouter([
           },
 
           //new OIDC routes
-          // { path: "/activate", element: <ActivatePage /> },
-          // { path: "/forgot-password", element: <ForgotPasswordPage /> },
-          // { path: "/resetpassword", element: <ResetPasswordPage /> },
-          // {
-          //   path: "/activate-success",
-          //   element: <ActivateSuccessPage />,
-          // },
-          // {
-          //   path: "/forgot-email-sent",
-          //   element: <ForgotEmailSentPage />,
-          // },
-          // {
-          //   path: "/signup-email-sent",
-          //   element: <SignupEmailSentPage />,
-          // },
-          // { path: "/mfa-check", element: <MfaCheckPage /> },
-          // {
-          //   path: "/reset-password-success",
-          //   element: <ResetPasswordSuccessPage />,
-          // },
+          { path: "/activate", element: <ActivatePage /> },
+          { path: "/forgot-password", element: <ForgotPasswordPage /> },
+          { path: "/resetpassword", element: <ResetPasswordPage /> },
+          {
+            path: "/activate-success",
+            element: <ActivateSuccessPage />,
+          },
+          {
+            path: "/forgot-email-sent",
+            element: <ForgotEmailSentPage />,
+          },
+          {
+            path: "/signup-email-sent",
+            element: <SignupEmailSentPage />,
+          },
+          { path: "/mfa-check", element: <MfaCheckPage /> },
+          {
+            path: "/reset-password-success",
+            element: <ResetPasswordSuccessPage />,
+          },
         ],
       },
       {
@@ -147,28 +147,28 @@ export const router = createBrowserRouter([
               },
               {
                 element: <PublicLayout />,
-                children: [
-                  { path: "/activate", element: <ActivatePage /> },
-                  { path: "/forgot-password", element: <ForgotPasswordPage /> },
-                  { path: "/resetpassword", element: <ResetPasswordPage /> },
-                  {
-                    path: "/activate-success",
-                    element: <ActivateSuccessPage />,
-                  },
-                  {
-                    path: "/forgot-email-sent",
-                    element: <ForgotEmailSentPage />,
-                  },
-                  {
-                    path: "/signup-email-sent",
-                    element: <SignupEmailSentPage />,
-                  },
-                  { path: "/mfa-check", element: <MfaCheckPage /> },
-                  {
-                    path: "/reset-password-success",
-                    element: <ResetPasswordSuccessPage />,
-                  },
-                ],
+                // children: [
+                //   { path: "/activate", element: <ActivatePage /> },
+                //   { path: "/forgot-password", element: <ForgotPasswordPage /> },
+                //   { path: "/resetpassword", element: <ResetPasswordPage /> },
+                //   {
+                //     path: "/activate-success",
+                //     element: <ActivateSuccessPage />,
+                //   },
+                //   {
+                //     path: "/forgot-email-sent",
+                //     element: <ForgotEmailSentPage />,
+                //   },
+                //   {
+                //     path: "/signup-email-sent",
+                //     element: <SignupEmailSentPage />,
+                //   },
+                //   { path: "/mfa-check", element: <MfaCheckPage /> },
+                //   {
+                //     path: "/reset-password-success",
+                //     element: <ResetPasswordSuccessPage />,
+                //   },
+                // ],
               },
             ],
           },
