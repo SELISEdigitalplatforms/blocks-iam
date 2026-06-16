@@ -83,27 +83,8 @@ export const router = createBrowserRouter([
             element: <OidcEmailSentConfirmationPage />,
           },
 
-          //new OIDC routes
-          // { path: "/activate", element: <ActivatePage /> },
-          // { path: "/forgot-password", element: <ForgotPasswordPage /> },
-          // { path: "/resetpassword", element: <ResetPasswordPage /> },
-          // {
-          //   path: "/activate-success",
-          //   element: <ActivateSuccessPage />,
-          // },
-          // {
-          //   path: "/forgot-email-sent",
-          //   element: <ForgotEmailSentPage />,
-          // },
-          // {
-          //   path: "/signup-email-sent",
-          //   element: <SignupEmailSentPage />,
-          // },
-          // { path: "/mfa-check", element: <MfaCheckPage /> },
-          // {
-          //   path: "/reset-password-success",
-          //   element: <ResetPasswordSuccessPage />,
-          // },
+          // OIDC-scoped auth pages (relative paths under /oidc)
+          { path: "forgot-password", element: <ForgotPasswordPage /> },
         ],
       },
       {
@@ -151,7 +132,6 @@ export const router = createBrowserRouter([
                   { path: "/activate", element: <ActivatePage /> },
 
                   // { path: "/forgot-password", element: <ForgotPasswordPage /> },
-                                    { path: "/oidc/forgot-password", element: <ForgotPasswordPage /> },
 
                   { path: "/resetpassword", element: <ResetPasswordPage /> },
                   {
