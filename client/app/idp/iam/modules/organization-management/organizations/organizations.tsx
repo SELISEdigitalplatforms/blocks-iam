@@ -1,7 +1,7 @@
 import { Card, CardContent, CardHeader } from "@/components/ui-kits/card/card";
 import { Pagination } from "@/components/ui-kits/pagination/pagination";
 import { normalizeSearchQueryText } from "@/lib/utils";
-import { useGetOrganizations } from "@blocks-idp/iam/hooks/use-organization";
+import { useGetOrganizationConfig, useGetOrganizations } from "@blocks-idp/iam/hooks/use-organization";
 import { useProjectStore } from "@seliseblocks/blocks-kit";
 import { OrganizationsList } from "./organizations-list";
 import { AddOrganization } from "../add-organization/add-organization";
@@ -10,6 +10,8 @@ import {
   useOrganizationsFilterQueryParams,
   useOrganizationsSortQueryParams,
 } from "./organizations-filter-toolbar";
+import { OrganizationConfig } from "../organization-config/organization-config";
+import { Info } from "lucide-react";
 
 export function Organizations() {
   const { tenantId } = useProjectStore().selectedProject || { tenantId: "" };
@@ -22,6 +24,7 @@ export function Organizations() {
     sort: sortQueryParams,
     projectKey: tenantId,
   });
+  const { data: configData, isLoading: isConfigLoading } = useGetOrganizationConfig(tenantId);
   const onPageChangeHandler = (page: number) => {
     setQueryParams((prev) => ({
       ...prev,
@@ -32,6 +35,32 @@ export function Organizations() {
   const loading = isLoading || isFetching;
   const organizationsList = data?.organizations || [];
   const totalCount = data?.totalCount || 0;
+  const isMultiOrgEnabled = configData?.IsMultiOrgEnabled ?? true;
+
+  if (!isConfigLoading && !isMultiOrgEnabled) {
+    return (
+      <div>
+        <Card className="border-blue-200 bg-blue-50">
+          <CardContent className="flex items-start gap-4 pt-6">
+            <Info className="mt-0.5 h-5 w-5 shrink-0 text-blue-500" />
+            <div className="flex flex-col gap-1">
+              <p className="text-sm font-medium text-blue-900">Multiple Organization is not enabled</p>
+              <p className="text-sm text-blue-700">
+                To view or add organizations, you need to enable Multiple Organization.{" "}
+                <OrganizationConfig
+                  trigger={
+                    <button className="font-medium underline underline-offset-2 hover:text-blue-900">
+                      Click here to enable it.
+                    </button>
+                  }
+                />
+              </p>
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+    );
+  }
 
   return (
     <div>
