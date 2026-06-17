@@ -150,6 +150,14 @@ namespace Api.Controllers
             return result.Success ? Ok(result) : BadRequest(result);
         }
 
+        [HttpGet("roles/assignable")]
+        //[ProtectedEndPoint("blocks-idp::get-assignable-roles")]
+        [Authorize]
+        public async Task<GetAssignableRolesResponse> GetAssignableRoles()
+        {
+            return await _resourceQueryService.GetAssignableRolesAsync();
+        }
+
         [HttpGet("resource-groups")]
         //[ProtectedEndPoint("blocks-idp::get-resource-groups")]
         [Authorize]
