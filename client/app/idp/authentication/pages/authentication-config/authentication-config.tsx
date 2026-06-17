@@ -50,9 +50,8 @@ export const AuthenticationConfig = ({ section }: AuthenticationConfigProps) => 
                 </div>
               )}
               <OrganizationConfig
-                redirectToOs
                 trigger={
-                  <Button variant="outline" size="sm" className="gap-2">
+                  <Button variant="secondary" size="sm" className="gap-2">
                     <Settings2 className="h-4 w-4" />
                     Configure Organization
                   </Button>
