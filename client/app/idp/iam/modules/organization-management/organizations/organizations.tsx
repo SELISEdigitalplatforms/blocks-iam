@@ -53,7 +53,7 @@ export function Organizations() {
             </div>
             <OrganizationConfig
               trigger={
-                <Button variant="secondary" size="sm" className="gap-2">
+                <Button size="sm" className="gap-2">
                   <Settings2 className="h-4 w-4" />
                   Configure Organization
                 </Button>
