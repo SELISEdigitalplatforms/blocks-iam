@@ -1,4 +1,4 @@
-import { http } from "@/lib/http-client";
+import { serviceInstances } from "@/lib/http-client";
 import { getRuntimeEnv } from "@/lib/runtime-env";
 import { INotification, INotificationConfig } from "../models/notification.model";
 import {
@@ -23,11 +23,11 @@ export class NotificationService {
       pageSize: String(pageSize),
     });
     const url = toLogicUrl(`${NOTIFICATION_ENDPOINTS.GET_NOTIFICATIONS}?${params}`);
-    return http.get(url, undefined, { absoluteUrl: true });
+    return serviceInstances.idpService.get(url, undefined, { absoluteUrl: true });
   };
 
   markAsRead = (notificationId: string): Promise<{ errors: null | unknown; isSuccess: boolean }> => {
-    return http.post(
+    return serviceInstances.idpService.post(
       toLogicUrl(NOTIFICATION_ENDPOINTS.MARK_AS_READ),
       { id: notificationId },
       undefined,
@@ -36,7 +36,7 @@ export class NotificationService {
   };
 
   markAllNotificationsAsRead = (): Promise<{ errors: null | unknown; isSuccess: boolean }> => {
-    return http.post(
+    return serviceInstances.idpService.post(
       toLogicUrl(NOTIFICATION_ENDPOINTS.MARK_ALL_AS_READ),
       {},
       undefined,
@@ -75,7 +75,7 @@ export class NotificationService {
     isSuccess: boolean;
   }> => {
     const url = toLogicUrl(`${NOTIFICATION_CONFIG_ENDPOINTS.GET_CONFIGS}?page=${page}&pageSize=${pageSize}&projectKey=${projectKey}`);
-    return http.get(url, undefined, { absoluteUrl: true });
+    return serviceInstances.idpService.get(url, undefined, { absoluteUrl: true });
   };
 
   saveNotificationConfig = (payload: {
@@ -91,7 +91,7 @@ export class NotificationService {
     errors: null | unknown;
     isSuccess: boolean;
   }> => {
-    return http.post(toLogicUrl(NOTIFICATION_CONFIG_ENDPOINTS.SAVE_CONFIG), payload, undefined, { absoluteUrl: true });
+    return serviceInstances.idpService.post(toLogicUrl(NOTIFICATION_CONFIG_ENDPOINTS.SAVE_CONFIG), payload, undefined, { absoluteUrl: true });
   };
 
   deleteNotificationConfig = (payload: {
@@ -102,7 +102,7 @@ export class NotificationService {
     isSuccess: boolean;
   }> => {
     const url = toLogicUrl(`${NOTIFICATION_CONFIG_ENDPOINTS.DELETE_CONFIG}?itemId=${payload.itemId}&projectKey=${payload.projectKey}`);
-    return http.delete(url, undefined, { absoluteUrl: true });
+    return serviceInstances.idpService.delete(url, undefined, { absoluteUrl: true });
   };
 }
 

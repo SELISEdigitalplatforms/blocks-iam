@@ -1,4 +1,4 @@
-import { http } from "@/lib/http-client";
+import { serviceInstances } from "@/lib/http-client";
 import {
   IAccountActivationPayload,
   IAccountActivationResponse,
@@ -21,7 +21,7 @@ export class UserAccountService {
     if (payload.tenantId) {
       headers["X-Blocks-Key"] = payload.tenantId;
     }
-    return http.post(ACCOUNT_ENDPOINTS.ACTIVATE, payload, headers);
+    return serviceInstances.idpService.post(ACCOUNT_ENDPOINTS.ACTIVATE, payload, headers);
   }
 
   accountResendActivation(
@@ -31,7 +31,7 @@ export class UserAccountService {
     if (payload.tenantId) {
       headers["X-Blocks-Key"] = payload.tenantId;
     }
-    return http.post(ACCOUNT_ENDPOINTS.RESEND_ACTIVATION, payload, headers);
+    return serviceInstances.idpService.post(ACCOUNT_ENDPOINTS.RESEND_ACTIVATION, payload, headers);
   }
 
   accountRecover(payload: IAccountRecoverPayload): Promise<IAccountRecoverResponse> {
@@ -39,13 +39,13 @@ export class UserAccountService {
     if (payload.tenantId) {
       headers["X-Blocks-Key"] = payload.tenantId;
     }
-    return http.post(ACCOUNT_ENDPOINTS.RECOVER, payload, headers);
+    return serviceInstances.idpService.post(ACCOUNT_ENDPOINTS.RECOVER, payload, headers);
   }
 
   accountResetPassword(
     payload: IAccountResetPasswordPayload,
   ): Promise<IAccountResetPasswordResponse> {
-    return http.post(ACCOUNT_ENDPOINTS.RESET_PASSWORD, payload);
+    return serviceInstances.idpService.post(ACCOUNT_ENDPOINTS.RESET_PASSWORD, payload);
   }
 
   checkActivationCodeExpiration(
@@ -55,10 +55,10 @@ export class UserAccountService {
     if (payload.tenantId) {
       headers["X-Blocks-Key"] = payload.tenantId;
     }
-    return http.post(ACCOUNT_ENDPOINTS.VALIDATE_ACTIVATION_CODE, payload, headers);
+    return serviceInstances.idpService.post(ACCOUNT_ENDPOINTS.VALIDATE_ACTIVATION_CODE, payload, headers);
   }
 
   changePassword(payload: IChangePasswordPayload): Promise<IChangePasswordResponse> {
-    return http.post(ACCOUNT_ENDPOINTS.CHANGE_PASSWORD, payload);
+    return serviceInstances.idpService.post(ACCOUNT_ENDPOINTS.CHANGE_PASSWORD, payload);
   }
 }

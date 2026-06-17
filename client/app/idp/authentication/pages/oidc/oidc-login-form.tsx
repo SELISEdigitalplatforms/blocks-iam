@@ -22,7 +22,7 @@ import {
 } from "@blocks-idp/authentication/utils/oidc-utils";
 import { useGetLoginOptions } from "@blocks-idp/authentication/hooks/use-auth";
 import { SsoSignin } from "@blocks-idp/authentication/pages/login/sso-signin";
-import { useAuthStore } from "@/store/useAuthStore";
+import { useAuthStore } from "@seliseblocks/blocks-kit";
 import { sha256 } from "js-sha256";
 import { OidcAccountInfo, OidcAccountSelector } from "./oidc-account-selector";
 import { useOidcAuthAnimation } from "./oidc-auth-shell";

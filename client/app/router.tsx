@@ -46,10 +46,9 @@ import ManagedServicesPage from "./routes/dashboard/managed-services";
 import ProfilePage from "./routes/dashboard/profile";
 
 // Console pages
-import { DashboardOverview } from "./pages/dashboard/dashboard-overview";
 import { EnvironmentsPage } from "./pages/environments/environments";
 import { CreateProjectWrapper } from "./pages/create-project/create-project";
-import LoginSimplePage from "./routes/auth/login-simple";
+// import LoginSimplePage from "./routes/auth/login-simple";
 
 import {
   AuthResolver,
@@ -62,6 +61,7 @@ import {
   ConsolePage,
   CallbackPage,
   LoginPage,
+  DashboardOverview,
 } from "@seliseblocks/blocks-kit";
 import { ProjectOverviewLayout } from "./layouts/project-overview-layout";
 

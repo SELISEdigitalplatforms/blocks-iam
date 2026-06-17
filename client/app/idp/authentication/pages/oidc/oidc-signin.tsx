@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { Loader } from "lucide-react";
 import { showErrorToast } from "@/hooks/use-toast";
-import { useAuthStore } from "@/store/useAuthStore";
+import { useAuthStore } from "@seliseblocks/blocks-kit";
 import { Signin } from "@blocks-idp/authentication/pages/login";
 import { oauthService } from "@blocks-idp/authentication/services/oauth.service";
 import { useOIDCContext } from "@/layouts/oidc-layout";

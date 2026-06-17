@@ -1,4 +1,4 @@
-import { http } from "@/lib/http-client";
+import { serviceInstances } from "@/lib/http-client";
 import { INotificationConfig } from "../models/notification.model";
 import { NOTIFICATION_CONFIG_ENDPOINTS } from "../constants/endpoint.constant";
 
@@ -14,7 +14,7 @@ export class NotificationService {
     isSuccess: boolean;
   }> => {
     const url = `${NOTIFICATION_CONFIG_ENDPOINTS.GET_CONFIGS}?page=${page}&pageSize=${pageSize}&projectKey=${projectKey}`;
-    return http.get(url);
+    return serviceInstances.idpService.get(url);
   };
 
   saveNotificationConfig = (payload: {
@@ -30,7 +30,7 @@ export class NotificationService {
     errors: null | unknown;
     isSuccess: boolean;
   }> => {
-    return http.post(NOTIFICATION_CONFIG_ENDPOINTS.SAVE_CONFIG, payload);
+    return serviceInstances.idpService.post(NOTIFICATION_CONFIG_ENDPOINTS.SAVE_CONFIG, payload);
   };
 
   deleteNotificationConfig = (payload: {
@@ -41,7 +41,7 @@ export class NotificationService {
     isSuccess: boolean;
   }> => {
     const url = `${NOTIFICATION_CONFIG_ENDPOINTS.DELETE_CONFIG}?itemId=${payload.itemId}&projectKey=${payload.projectKey}`;
-    return http.delete(url);
+    return serviceInstances.idpService.delete(url);
   };
 }
 
