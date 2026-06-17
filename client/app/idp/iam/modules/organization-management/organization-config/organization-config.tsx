@@ -36,15 +36,30 @@ import {
 import { Badge } from "@/components/ui-kits/badge/badge";
 import { cn } from "@/lib/utils";
 import { ChevronsUpDown, Check, Settings } from "lucide-react";
+import { OS_APP, initiateAppLogin } from "@/components/blocks-app-launcher/blocks-app-launcher";
 
 interface OrganizationConfigProps {
   trigger?: ReactNode;
+  redirectToOs?: boolean;
 }
 
-export const OrganizationConfig = ({ trigger }: OrganizationConfigProps) => {
+export const OrganizationConfig = ({ trigger, redirectToOs = false }: OrganizationConfigProps) => {
   const [isModalOpen, setIsModalOpen] = useState(false);
+  const [isRedirecting, setIsRedirecting] = useState(false);
   const [selectedRoles, setSelectedRoles] = useState<string[]>([]);
   const tenantId = useProjectStore().selectedProject?.tenantId || "";
+
+  const handleRedirectToOs = async () => {
+    if (isRedirecting) return;
+    try {
+      setIsRedirecting(true);
+      await initiateAppLogin(OS_APP, "/services/authentication?tab=config&settingsTab=organization-config");
+    } catch (error) {
+      console.error("OS app login initiation error:", error);
+      showErrorToast({ errors: "Unable to open OS. Please try again." });
+      setIsRedirecting(false);
+    }
+  };
 
   const { mutateAsync, isPending } = useSaveOrganizationConfig(tenantId);
   const { data: configData, isLoading } = useGetOrganizationConfig(tenantId);
@@ -127,16 +142,38 @@ export const OrganizationConfig = ({ trigger }: OrganizationConfigProps) => {
     }
   };
 
+  const renderTrigger = () => {
+    if (trigger) return trigger;
+    if (redirectToOs) {
+      return (
+        <Button
+          size="sm"
+          variant="outline"
+          onClick={handleRedirectToOs}
+          disabled={isRedirecting}
+        >
+          <Settings className="h-5 w-5" />
+          <span className="sr-only sm:not-sr-only sm:ml-2.5">
+            {isRedirecting ? "Opening OS…" : "Configure Organization"}
+          </span>
+        </Button>
+      );
+    }
+    return (
+      <Button size="sm" variant="outline">
+        <Settings className="h-5 w-5" />
+        <span className="sr-only sm:not-sr-only sm:ml-2.5">Configure Organization</span>
+      </Button>
+    );
+  };
+
   return (
     <Dialog open={isModalOpen} onOpenChange={handleModalOpenChange}>
-      <DialogTrigger asChild>
-        {trigger ?? (
-          <Button size="sm" variant="outline">
-            <Settings className="h-5 w-5" />
-            <span className="sr-only sm:not-sr-only sm:ml-2.5">Configure Organization</span>
-          </Button>
-        )}
-      </DialogTrigger>
+      {redirectToOs ? (
+        renderTrigger()
+      ) : (
+        <DialogTrigger asChild>{renderTrigger()}</DialogTrigger>
+      )}
       <DialogContent>
         <DialogHeader className="mb-4">
           <DialogTitle>Organization Configuration</DialogTitle>
