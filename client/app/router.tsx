@@ -55,9 +55,7 @@ import {
   PublicGuard,
   ProtectedGuard,
   ConsoleLayout,
-  ImpersonationChecker,
-  ImpersonationTerminator,
-  ImpersonationSynchronizer,
+
   ConsolePage,
   CallbackPage,
   LoginPage,
@@ -182,13 +180,9 @@ export const router = createBrowserRouter([
               // ── Console group (no impersonation allowed) ──
               {
                 element: (
-                  <ImpersonationChecker>
-                    <ImpersonationTerminator>
                       <ConsoleLayout>
                         <Outlet />
                       </ConsoleLayout>
-                    </ImpersonationTerminator>
-                  </ImpersonationChecker>
                 ),
                 children: [
                   { path: "/console", element: <ConsolePage /> },
@@ -199,17 +193,6 @@ export const router = createBrowserRouter([
                   { path: "/profile", element: <ProfilePage /> },
                 ],
               },
-              // {
-              //   path: "/project-overview",
-              //   element: <ProjectOverviewLayout />,
-              //   children: [
-              //     {
-              //       path: "environments",
-              //       element: <EnvironmentsPage />,
-              //     },
-              //   ],
-              // },
-
               {
                 path: "/project-overview",
                 element: (
@@ -219,16 +202,17 @@ export const router = createBrowserRouter([
                     <Outlet />
                   </ProjectOverviewLayout>
                 ),
+                 children: [
+                  {
+                    path: "environments",
+                    element: <EnvironmentsPage />,
+                  },
+                ],
               },
               // ── Dashboard group (impersonation synchronized) ──
               {
                 element: (
-                  // <ImpersonationChecker>
-                  //   <ImpersonationSynchronizer>
-                  //     <DashboardLayout />
-                  //   </ImpersonationSynchronizer>
-                  // </ImpersonationChecker>
-
+          
                   <DashboardLayout
                     redirectPaths={redirectPaths}
                     navigationMenus={navigationMenus}>
