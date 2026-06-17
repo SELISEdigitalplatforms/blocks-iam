@@ -1,5 +1,5 @@
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, ReactNode } from "react";
 import { useForm, SubmitHandler } from "react-hook-form";
 import { Button } from "@/components/ui-kits/button/button";
 import {
@@ -37,9 +37,11 @@ import { Badge } from "@/components/ui-kits/badge/badge";
 import { cn } from "@/lib/utils";
 import { ChevronsUpDown, Check, Settings } from "lucide-react";
 
-interface OrganizationConfigProps {}
+interface OrganizationConfigProps {
+  trigger?: ReactNode;
+}
 
-export const OrganizationConfig = ({}: OrganizationConfigProps) => {
+export const OrganizationConfig = ({ trigger }: OrganizationConfigProps) => {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [selectedRoles, setSelectedRoles] = useState<string[]>([]);
   const tenantId = useProjectStore().selectedProject?.tenantId || "";
@@ -128,10 +130,12 @@ export const OrganizationConfig = ({}: OrganizationConfigProps) => {
   return (
     <Dialog open={isModalOpen} onOpenChange={handleModalOpenChange}>
       <DialogTrigger asChild>
-        <Button size="sm" variant="outline">
-          <Settings className="h-5 w-5" />
-          <span className="sr-only sm:not-sr-only sm:ml-2.5">Configure Organization</span>
-        </Button>
+        {trigger ?? (
+          <Button size="sm" variant="outline">
+            <Settings className="h-5 w-5" />
+            <span className="sr-only sm:not-sr-only sm:ml-2.5">Configure Organization</span>
+          </Button>
+        )}
       </DialogTrigger>
       <DialogContent>
         <DialogHeader className="mb-4">
