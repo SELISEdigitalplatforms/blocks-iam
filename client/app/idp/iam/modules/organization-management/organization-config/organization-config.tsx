@@ -31,7 +31,7 @@ export const OrganizationConfig = ({ trigger }: OrganizationConfigProps) => {
   const defaultTrigger = (
     <Button
       size="sm"
-      variant="outline"
+      variant="secondary"
       className="gap-2"
       onClick={handleRedirectToOs}
       disabled={isRedirecting}
