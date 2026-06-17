@@ -1,4 +1,5 @@
 import { Card, CardContent, CardHeader } from "@/components/ui-kits/card/card";
+import { Button } from "@/components/ui-kits/button/button";
 import { Pagination } from "@/components/ui-kits/pagination/pagination";
 import { normalizeSearchQueryText } from "@/lib/utils";
 import { useGetOrganizationConfig, useGetOrganizations } from "@blocks-idp/iam/hooks/use-organization";
@@ -54,10 +55,10 @@ export function Organizations() {
             <OrganizationConfig
               redirectToOs
               trigger={
-                <button className="inline-flex items-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground shadow-sm transition-colors hover:bg-primary/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+                <Button>
                   <Settings2 className="h-4 w-4" />
                   Configure Organization
-                </button>
+                </Button>
               }
             />
           </div>

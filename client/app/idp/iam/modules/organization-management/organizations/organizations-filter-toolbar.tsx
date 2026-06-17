@@ -1,7 +1,9 @@
-import { FilterToolbar, useSortQueryParams } from "@/components/filter-toolbar";
+import { useRef, useState } from "react";
+import { useSortQueryParams } from "@/components/filter-toolbar";
 import { parseAsInteger, parseAsString, useQueryStates } from "nuqs";
+import { Input } from "@/components/ui-kits/input/input";
+import { Search, X } from "lucide-react";
 
-/** nuqs state: search text, pagination (page is reset when filters change). */
 export const useOrganizationsFilterQueryParams = () => {
   const [queryParams, setQueryParams] = useQueryStates({
     search: parseAsString.withDefault(""),
@@ -14,39 +16,42 @@ export const useOrganizationsFilterQueryParams = () => {
 export const useOrganizationsSortQueryParams = () =>
   useSortQueryParams({ initial: { property: "Name", isDescending: false } });
 
-const SEARCH_FILTER = {
-  key: "search" as const,
-  type: "SearchInput" as const,
-  label: "Organization search",
-  props: {
-    placeholder: "Search by name (minimum 3 characters)",
-    className: "min-w-[17rem] md:min-w-[20rem]",
-  },
-};
-
-/** URL filters for the organizations table; search debounce lives in the shared SearchInput. */
 export function OrganizationsFilterToolbar() {
   const { queryParams, setQueryParams } = useOrganizationsFilterQueryParams();
+  const [localSearch, setLocalSearch] = useState(queryParams.search);
+  const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  const changeHandler = (key: string, value: unknown) => {
-    setQueryParams((prev) => ({
-      ...prev,
-      [key]: value,
-      page: 0,
-    }));
+  const handleSearchChange = (value: string) => {
+    setLocalSearch(value);
+    if (debounceRef.current) clearTimeout(debounceRef.current);
+    debounceRef.current = setTimeout(() => {
+      setQueryParams((prev) => ({ ...prev, search: value, page: 0 }));
+    }, 300);
   };
 
-  const resetHandler = () => setQueryParams(null);
+  const handleClear = () => {
+    setLocalSearch("");
+    setQueryParams((prev) => ({ ...prev, search: "", page: 0 }));
+  };
 
   return (
-    <FilterToolbar
-      filters={[SEARCH_FILTER]}
-      values={{
-        search: queryParams.search,
-      }}
-      defaultValues={{ search: "" }}
-      onChange={changeHandler}
-      onReset={resetHandler}
-    />
+    <div className="relative min-w-[17rem] md:min-w-[20rem]">
+      <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+      <Input
+        value={localSearch}
+        onChange={(e) => handleSearchChange(e.target.value)}
+        placeholder="Search organizations..."
+        className="pl-9 pr-8"
+      />
+      {localSearch && (
+        <button
+          onClick={handleClear}
+          aria-label="Clear search"
+          className="absolute right-2.5 top-1/2 -translate-y-1/2 rounded p-0.5 text-muted-foreground transition-colors hover:text-foreground"
+        >
+          <X className="h-3.5 w-3.5" />
+        </button>
+      )}
+    </div>
   );
 }
