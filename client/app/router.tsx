@@ -3,7 +3,7 @@ import { createBrowserRouter, Navigate, Outlet } from "react-router-dom";
 import { AuthLayout } from "./layouts/auth-layout";
 import { PublicLayout } from "./layouts/public-layout";
 import { OidcLayout } from "./layouts/oidc-layout";
-import { DashboardLayout } from "./layouts/dashboard-layout";
+// import { DashboardLayout } from "./layouts/dashboard-layout";
 
 // Auth routes (public, with auth layout)
 import SignupPage from "./routes/auth/signup";
@@ -46,7 +46,7 @@ import ManagedServicesPage from "./routes/dashboard/managed-services";
 import ProfilePage from "./routes/dashboard/profile";
 
 // Console pages
-import { EnvironmentsPage } from "./pages/environments/environments";
+// import { EnvironmentsPage } from "./pages/environments/environments";
 import { CreateProjectWrapper } from "./pages/create-project/create-project";
 // import LoginSimplePage from "./routes/auth/login-simple";
 
@@ -62,8 +62,21 @@ import {
   CallbackPage,
   LoginPage,
   DashboardOverview,
+  ProjectOverviewLayout,
+  DashboardLayout,
+  EnvironmentsPage 
 } from "@seliseblocks/blocks-kit";
-import { ProjectOverviewLayout } from "./layouts/project-overview-layout";
+import { navigationMenus } from "./constants/navigation-menus";
+// import { ProjectOverviewLayout } from "./layouts/project-overview-layout";
+
+
+const redirectPaths: Record<string, string> = {
+  "/services/iam/user-detail/*": "/services/iam",
+  "/services/iam/role-detail/*": "/services/iam?tab=roles",
+  "/services/iam/organization-detail/*": "/services/iam",
+  "/services/iam/permission-detail/*": "/services/iam",
+  "/services/authentication/sso-configuration": "/services/authentication?tab=social",
+};
 
 export const router = createBrowserRouter([
   {
@@ -186,25 +199,41 @@ export const router = createBrowserRouter([
                   { path: "/profile", element: <ProfilePage /> },
                 ],
               },
+              // {
+              //   path: "/project-overview",
+              //   element: <ProjectOverviewLayout />,
+              //   children: [
+              //     {
+              //       path: "environments",
+              //       element: <EnvironmentsPage />,
+              //     },
+              //   ],
+              // },
+
               {
                 path: "/project-overview",
-                element: <ProjectOverviewLayout />,
-                children: [
-                  {
-                    path: "environments",
-                    element: <EnvironmentsPage />,
-                  },
-                ],
+                element: (
+                  <ProjectOverviewLayout
+                    redirectPaths={redirectPaths}
+                    navigationMenus={navigationMenus}>
+                    <Outlet />
+                  </ProjectOverviewLayout>
+                ),
               },
-
               // ── Dashboard group (impersonation synchronized) ──
               {
                 element: (
-                  <ImpersonationChecker>
-                    <ImpersonationSynchronizer>
-                      <DashboardLayout />
-                    </ImpersonationSynchronizer>
-                  </ImpersonationChecker>
+                  // <ImpersonationChecker>
+                  //   <ImpersonationSynchronizer>
+                  //     <DashboardLayout />
+                  //   </ImpersonationSynchronizer>
+                  // </ImpersonationChecker>
+
+                  <DashboardLayout
+                    redirectPaths={redirectPaths}
+                    navigationMenus={navigationMenus}>
+                    <Outlet />
+                  </DashboardLayout>
                 ),
 
                 children: [
