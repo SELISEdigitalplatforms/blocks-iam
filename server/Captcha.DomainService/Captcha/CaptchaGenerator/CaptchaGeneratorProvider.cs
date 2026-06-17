@@ -6,7 +6,7 @@ namespace Captcha.DomainService.Captcha
 {
     public class CaptchaGeneratorProvider : ICaptchaGeneratorProvider
     {
-        private readonly string _collectionName = "Secret";
+        private readonly string _collectionName = "Secrets";
         private readonly IDbContextProvider _dbContextProvider;
 
         private static readonly IDictionary<string, ICaptchaGenerator> CaptchaGenerators = new Dictionary<string, ICaptchaGenerator>

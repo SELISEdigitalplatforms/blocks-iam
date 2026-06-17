@@ -6,7 +6,7 @@ namespace Captcha.DomainService.Configuration
     public class CaptchaConfigurationRepository : ICaptchaConfigurationRepository
     {
         private readonly IDbContextProvider _dbContextProvider;
-        private const string _collectionName = "Secret";
+        private const string _collectionName = "Secrets";
 
         public CaptchaConfigurationRepository(IDbContextProvider dbContextProvider)
         {
@@ -15,7 +15,7 @@ namespace Captcha.DomainService.Configuration
 
         public async Task<CaptchaConfiguration> GetByProviderAsync(string provider)
         {
-            var collection = _dbContextProvider.GetCollection<Secret>("Secrets");
+            var collection = _dbContextProvider.GetCollection<Secret>(_collectionName);
             var filter = Builders<Secret>.Filter.And(
                 Builders<Secret>.Filter.Eq(s => s.SecretKey, CaptchaSecretKeys.SecretKey),
                 Builders<Secret>.Filter.Eq($"KeyValuePairs.{CaptchaSecretKeys.Provider}", provider));
@@ -27,7 +27,7 @@ namespace Captcha.DomainService.Configuration
 
         public async Task<CaptchaConfiguration?> GetCaptchaConfigurationAsync()
         {
-            var collection = _dbContextProvider.GetCollection<Secret>("Secrets");
+            var collection = _dbContextProvider.GetCollection<Secret>(_collectionName);
             var filter = Builders<Secret>.Filter.Eq(s => s.SecretKey, CaptchaSecretKeys.SecretKey);
 
             var secrets = await (await collection.FindAsync(filter)).ToListAsync();
