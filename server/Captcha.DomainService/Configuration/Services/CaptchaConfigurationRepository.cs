@@ -1,12 +1,12 @@
 ﻿using Blocks.Genesis;
 using MongoDB.Driver;
-
+using Authentication.DomainService.Utilities;
 namespace Captcha.DomainService.Configuration
 {
     public class CaptchaConfigurationRepository : ICaptchaConfigurationRepository
     {
         private readonly IDbContextProvider _dbContextProvider;
-        private const string _collectionName = "CaptchaConfigurations";
+        private const string _collectionName = "Secrets";
 
         public CaptchaConfigurationRepository(IDbContextProvider dbContextProvider)
         {
@@ -15,16 +15,25 @@ namespace Captcha.DomainService.Configuration
 
         public async Task<CaptchaConfiguration> GetByProviderAsync(string provider)
         {
-            var collection = _dbContextProvider.GetCollection<CaptchaConfiguration>(_collectionName);
-            var filter = Builders<CaptchaConfiguration>.Filter.Eq(mc => mc.Provider, provider);
+            var collection = _dbContextProvider.GetCollection<Secret>(_collectionName);
+            var filter = Builders<Secret>.Filter.And(
+                Builders<Secret>.Filter.Eq(s => s.SecretKey, CaptchaSecretKeys.SecretKey),
+                Builders<Secret>.Filter.Eq($"KeyValuePairs.{CaptchaSecretKeys.Provider}", provider));
 
-            return await (await collection.FindAsync(filter)).FirstOrDefaultAsync();
+
+            var secret = await (await collection.FindAsync(filter)).FirstOrDefaultAsync();
+            return IdpConstants.MapToCaptchaConfiguration(secret);
         }
 
-        public async Task<CaptchaConfiguration> GetCaptchaConfigurationAsync()
+        public async Task<CaptchaConfiguration?> GetCaptchaConfigurationAsync()
         {
-            var collection = _dbContextProvider.GetCollection<CaptchaConfiguration>(_collectionName);
-            return await (await collection.FindAsync(Builders<CaptchaConfiguration>.Filter.Eq(mc => mc.IsEnable, true))).FirstOrDefaultAsync();
+            var collection = _dbContextProvider.GetCollection<Secret>(_collectionName);
+            var filter = Builders<Secret>.Filter.Eq(s => s.SecretKey, CaptchaSecretKeys.SecretKey);
+
+            var secrets = await (await collection.FindAsync(filter)).ToListAsync();
+
+            var configuration = secrets.Select(IdpConstants.MapToCaptchaConfiguration).FirstOrDefault(configuration => configuration is { IsEnable: true });
+            return configuration is { IsEnable: true } ? configuration : null;
         }
     }
 }
