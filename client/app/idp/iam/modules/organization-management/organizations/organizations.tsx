@@ -35,7 +35,7 @@ export function Organizations() {
   const loading = isLoading || isFetching;
   const organizationsList = data?.organizations || [];
   const totalCount = data?.totalCount || 0;
-  const isMultiOrgEnabled = configData?.IsMultiOrgEnabled ?? true;
+  const isMultiOrgEnabled = configData?.isMultiOrgEnabled ?? true;
 
   if (!isConfigLoading && !isMultiOrgEnabled) {
     return (

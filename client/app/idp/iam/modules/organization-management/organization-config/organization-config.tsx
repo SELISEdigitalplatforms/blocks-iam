@@ -73,11 +73,11 @@ export const OrganizationConfig = ({ trigger }: OrganizationConfigProps) => {
   const handleModalOpenChange = (value: boolean) => {
     if (!value) {
       form.reset({
-        isMultiOrgEnabled: configData?.IsMultiOrgEnabled ?? false,
-        allowOrgCreationFromCloud: configData?.AllowOrgCreationFromCloud ?? true,
-        allowOrgCreationFromConstruct: configData?.AllowOrgCreationFromConstruct ?? false,
+        isMultiOrgEnabled: configData?.isMultiOrgEnabled ?? false,
+        allowOrgCreationFromCloud: configData?.allowOrgCreationFromCloud ?? true,
+        allowOrgCreationFromConstruct: configData?.allowOrgCreationFromConstruct ?? false,
       });
-      setSelectedRoles(configData?.DefaultRoleOnOrgCreation ?? []);
+      setSelectedRoles(configData?.defaultRoleOnOrgCreation ?? []);
     }
     setIsModalOpen(value);
   };
@@ -86,11 +86,11 @@ export const OrganizationConfig = ({ trigger }: OrganizationConfigProps) => {
   useEffect(() => {
     if (configData) {
       form.reset({
-        isMultiOrgEnabled: configData.IsMultiOrgEnabled ?? false,
-        allowOrgCreationFromCloud: configData.AllowOrgCreationFromCloud ?? true,
-        allowOrgCreationFromConstruct: configData.AllowOrgCreationFromConstruct ?? false,
+        isMultiOrgEnabled: configData.isMultiOrgEnabled ?? false,
+        allowOrgCreationFromCloud: configData.allowOrgCreationFromCloud ?? true,
+        allowOrgCreationFromConstruct: configData.allowOrgCreationFromConstruct ?? false,
       });
-      setSelectedRoles(configData.DefaultRoleOnOrgCreation ?? []);
+      setSelectedRoles(configData.defaultRoleOnOrgCreation ?? []);
     }
   }, [configData, form]);
 
@@ -109,8 +109,8 @@ export const OrganizationConfig = ({ trigger }: OrganizationConfigProps) => {
         allowOrgCreationFromConstruct: data.isMultiOrgEnabled
           ? data.allowOrgCreationFromConstruct
           : false,
-        allowOrgCreationFromSignup: configData?.AllowOrgCreationFromSignup ?? false,
-        allowOrgCreationFromPortal: configData?.AllowOrgCreationFromPortal ?? false,
+        allowOrgCreationFromSignup: configData?.allowOrgCreationFromSignup ?? false,
+        allowOrgCreationFromPortal: configData?.allowOrgCreationFromPortal ?? false,
         isMultiOrgEnabled: data.isMultiOrgEnabled,
         defaultRoleOnOrgCreation: data.isMultiOrgEnabled && data.allowOrgCreationFromConstruct ? selectedRoles : [],
       });

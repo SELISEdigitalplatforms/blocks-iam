@@ -44,7 +44,7 @@ import type {
   IGetOrganizationByIdParams,
   ICreateOrUpdateOrganizationPayload,
 } from "../../iam/models/organization";
-import type { IOrganizationConfigPayload } from "../../iam/models/organization-config.model";
+import type { IOrganizationConfigPayload, IOrganizationConfigResponse } from "../../iam/models/organization-config.model";
 import type {
   IIAMConfiguration,
   IIAMConfigurationSavePayload,
@@ -402,12 +402,15 @@ export const mockSaveOrganizationPayload: ICreateOrUpdateOrganizationPayload = {
   isEnable: true,
 };
 
-export const mockOrganizationConfigResponse = {
-  AllowOrgCreationFromCloud: true,
-  AllowOrgCreationFromConstruct: false,
-  IsMultiOrgEnabled: false,
-  DefaultRoleOnOrgCreation: [],
-  ItemId: "mock-config-id",
+export const mockOrganizationConfigResponse: IOrganizationConfigResponse = {
+  allowOrgCreationFromCloud: true,
+  allowOrgCreationFromConstruct: false,
+  allowOrgCreationFromSignup: false,
+  allowOrgCreationFromPortal: false,
+  isMultiOrgEnabled: false,
+  consentForMultiOrgEnable: false,
+  defaultRoleOnOrgCreation: [],
+  itemId: "mock-config-id",
 };
 
 export const mockSaveOrganizationConfigPayload: IOrganizationConfigPayload = {

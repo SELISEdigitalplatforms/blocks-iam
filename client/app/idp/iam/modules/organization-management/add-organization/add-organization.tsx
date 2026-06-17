@@ -38,7 +38,7 @@ export const AddOrganization = ({ disabled }: AddOrganizationProps) => {
   const { mutateAsync, isPending } = useSaveOrganization();
   const tenantId = useProjectStore().selectedProject?.tenantId || "";
   const { data: orgConfig } = useGetOrganizationConfig(tenantId);
-  const isDisabled = disabled || !orgConfig?.IsMultiOrgEnabled || !orgConfig?.AllowOrgCreationFromCloud;
+  const isDisabled = disabled || !orgConfig?.isMultiOrgEnabled || !orgConfig?.allowOrgCreationFromCloud;
 
   const form = useForm({
     defaultValues: addOrganizationFormDefaultValue,
