@@ -39,16 +39,8 @@ export const AuthenticationConfig = ({ section }: AuthenticationConfigProps) => 
               <InviteUser />
             </>
           )}
-          {section === "organizations" && (
+          {section === "organizations" && isMultiOrgEnabled && (
             <>
-              {!isMultiOrgEnabled && (
-                <div
-                  className="flex items-center gap-2 rounded-md border border-blue-200 bg-blue-50 px-3 py-1.5 text-sm text-blue-700"
-                  role="status"
-                >
-                  <span className="font-medium text-blue-900">Multiple Organizations not enabled</span>
-                </div>
-              )}
               <OrganizationConfig
                 trigger={
                   <Button variant="secondary" size="sm" className="gap-2">
@@ -57,7 +49,7 @@ export const AuthenticationConfig = ({ section }: AuthenticationConfigProps) => 
                   </Button>
                 }
               />
-              {isMultiOrgEnabled && <AddOrganization />}
+              <AddOrganization />
             </>
           )}
         </div>
