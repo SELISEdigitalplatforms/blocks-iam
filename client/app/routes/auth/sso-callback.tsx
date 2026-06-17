@@ -1,6 +1,6 @@
 import { useEffect, useRef } from "react";
 import { useSearchParams } from "react-router-dom";
-import { useAuthStore } from "@/store/useAuthStore";
+import { useAuthStore } from "@seliseblocks/blocks-kit";
 import { getRuntimeEnv } from "@/lib/runtime-env";
 
 export default function SSOCallbackPage() {

@@ -1,4 +1,4 @@
-import { http } from "@/lib/http-client";
+import { serviceInstances } from "@/lib/http-client";
 import { getRuntimeEnv } from "@/lib/runtime-env";
 import {
   IDeleteFilePayload,
@@ -20,7 +20,7 @@ const toLogicUrl = (path: string) =>
 
 export class StorageFile {
   getFileByFileId(payload: IGetFileByFileIDPayload): Promise<IGetFileByFileIDResponse> {
-    return http.get(
+    return serviceInstances.idpService.get(
       toLogicUrl(`${STORAGE_FILE_ENDPOINTS.GET_FILE}?FileId=${payload.itemId}&ProjectKey=${payload.projectKey}&ConfigurationName=${payload.configurationName ?? ""}`),
       undefined,
       { absoluteUrl: true },
@@ -28,34 +28,34 @@ export class StorageFile {
   }
 
   deleteFileByFileId(payload: IDeleteFilePayload): Promise<IDeleteResourceResponse> {
-    return http.post(toLogicUrl(STORAGE_FILE_ENDPOINTS.DELETE_FILE), payload, undefined, { absoluteUrl: true });
+    return serviceInstances.idpService.post(toLogicUrl(STORAGE_FILE_ENDPOINTS.DELETE_FILE), payload, undefined, { absoluteUrl: true });
   }
 
   deleteFolderByFileId(payload: IDeleteFolderPayload): Promise<IDeleteResourceResponse> {
-    return http.post(toLogicUrl(STORAGE_FILE_ENDPOINTS.DELETE_FOLDER), payload, undefined, { absoluteUrl: true });
+    return serviceInstances.idpService.post(toLogicUrl(STORAGE_FILE_ENDPOINTS.DELETE_FOLDER), payload, undefined, { absoluteUrl: true });
   }
 
   getPreSignedUrlForUpload(
     payload: IGetPreSignedUrlForUploadPayload,
   ): Promise<IGetPreSignedUrlForUploadResponse> {
-    return http.post(toLogicUrl(STORAGE_FILE_ENDPOINTS.GET_PRESIGNED_URL), payload, undefined, { absoluteUrl: true });
+    return serviceInstances.idpService.post(toLogicUrl(STORAGE_FILE_ENDPOINTS.GET_PRESIGNED_URL), payload, undefined, { absoluteUrl: true });
   }
 
   getFilesInfoUrlForUpload(payload: IGetFilesInfoPayload): Promise<IGetFilesInfoResponse> {
-    return http.post(toLogicUrl(STORAGE_FILE_ENDPOINTS.GET_FILES_INFO), payload, undefined, { absoluteUrl: true });
+    return serviceInstances.idpService.post(toLogicUrl(STORAGE_FILE_ENDPOINTS.GET_FILES_INFO), payload, undefined, { absoluteUrl: true });
   }
 
   updateFileAdditionalInfo(
     payload: IUpdateFileAdditionalInfoPayload,
   ): Promise<IUpdateFileAdditionalInfoResponse> {
-    return http.post(toLogicUrl(STORAGE_FILE_ENDPOINTS.UPDATE_FILE_ADDITIONAL_INFO), payload, undefined, { absoluteUrl: true });
+    return serviceInstances.idpService.post(toLogicUrl(STORAGE_FILE_ENDPOINTS.UPDATE_FILE_ADDITIONAL_INFO), payload, undefined, { absoluteUrl: true });
   }
 
   getFilesDownloadUrl(meta: {
     fileId: string;
     projectKey: string;
   }): Promise<IGetFileByFileIDResponse> {
-    return http.get(
+    return serviceInstances.idpService.get(
       toLogicUrl(`${STORAGE_FILE_ENDPOINTS.GET_FILE}?FileId=${meta.fileId}&ProjectKey=${meta.projectKey}`),
       undefined,
       { absoluteUrl: true },

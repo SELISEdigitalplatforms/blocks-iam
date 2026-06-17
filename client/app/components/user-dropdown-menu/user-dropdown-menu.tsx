@@ -14,7 +14,7 @@ import { Skeleton } from "@/components/ui-kits/skeleton/skeleton";
 import { useGetMe } from "@/idp/iam/hooks/use-user";
 import { useGetMyOrganizations } from "@/idp/iam/hooks/use-organization";
 import { useLogout } from "@/idp/authentication/hooks/use-auth";
-import { useAuthStore } from "@/store/useAuthStore";
+import { useAuthStore } from "@seliseblocks/blocks-kit";
 import { useLanguageViewStore } from "@/cross-modules/localization/store/use-language-view-store";
 import { useProjectStore } from "@seliseblocks/blocks-kit";
 import { getQueryClient } from "@/providers/query-provider";
@@ -54,7 +54,7 @@ export function UserDropdownMenu() {
   const { data } = useGetMe();
   const userData = data?.data;
   const { isPending, mutateAsync } = useLogout();
-  const { reset } = useProjectStore();
+  const { resetProjectStore: reset } = useProjectStore();
   const { setUnAuthenticated, clearTokens } = useAuthStore();
   const { resetSelectedLanguages } = useLanguageViewStore();
   const { data: myOrgsData, isLoading: isOrgsLoading } = useGetMyOrganizations();
