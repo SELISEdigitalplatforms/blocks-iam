@@ -43,9 +43,9 @@ export const AuthenticationConfig = ({ section }: AuthenticationConfigProps) => 
             <>
               <OrganizationConfig
                 trigger={
-                  <Button variant="secondary" size="sm" className="gap-2">
-                    <Settings2 className="h-4 w-4" />
-                    Configure Organization
+                  <Button variant="outline">
+                    <Settings2 className="mr-2 aspect-square w-4" />
+                    <span>Configure Organization</span>
                   </Button>
                 }
               />
