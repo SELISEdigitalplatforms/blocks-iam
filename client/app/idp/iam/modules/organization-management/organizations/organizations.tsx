@@ -10,8 +10,7 @@ import {
   useOrganizationsFilterQueryParams,
   useOrganizationsSortQueryParams,
 } from "./organizations-filter-toolbar";
-import { OrganizationConfig } from "../organization-config/organization-config";
-import { Info } from "lucide-react";
+import { Building2 } from "lucide-react";
 
 export function Organizations() {
   const { tenantId } = useProjectStore().selectedProject || { tenantId: "" };
@@ -39,25 +38,18 @@ export function Organizations() {
 
   if (!isConfigLoading && !isMultiOrgEnabled) {
     return (
-      <div>
-        <Card className="border-blue-200 bg-blue-50">
-          <CardContent className="flex items-start gap-4 pt-6">
-            <Info className="mt-0.5 h-5 w-5 shrink-0 text-blue-500" />
-            <div className="flex flex-col gap-1">
-              <p className="text-sm font-medium text-blue-900">Multiple Organization is not enabled</p>
-              <p className="text-sm text-blue-700">
-                To view or add organizations, you need to enable Multiple Organization.{" "}
-                <OrganizationConfig
-                  trigger={
-                    <button className="font-medium underline underline-offset-2 hover:text-blue-900">
-                      Click here to enable it.
-                    </button>
-                  }
-                />
-              </p>
-            </div>
-          </CardContent>
-        </Card>
+      <div className="flex items-center justify-center py-16">
+        <div className="flex max-w-md flex-col items-center gap-6 text-center">
+          <div className="flex h-16 w-16 items-center justify-center rounded-2xl bg-muted">
+            <Building2 className="h-8 w-8 text-muted-foreground" />
+          </div>
+          <div className="flex flex-col gap-2">
+            <h3 className="text-base font-semibold text-foreground">Multiple Organizations not enabled</h3>
+            <p className="text-sm text-muted-foreground leading-relaxed">
+              To view and manage organizations, you first need to enable the Multiple Organization feature from your project settings.
+            </p>
+          </div>
+        </div>
       </div>
     );
   }
