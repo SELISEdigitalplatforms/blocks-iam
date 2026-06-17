@@ -177,3 +177,5 @@ graphify-out/
 server/graphify-out/
 client/graphify-out/
 docs/
+
+.cursor/
