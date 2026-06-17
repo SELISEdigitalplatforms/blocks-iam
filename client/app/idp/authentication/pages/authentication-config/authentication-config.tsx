@@ -6,11 +6,14 @@ import {
   Organizations,
   OrganizationConfig,
 } from "@blocks-idp/iam/modules/organization-management";
+import { AddOrganization } from "@blocks-idp/iam/modules/organization-management/add-organization/add-organization";
 import { useGetOrganizationConfig } from "@blocks-idp/iam/hooks/use-organization";
 import { InviteUser } from "@blocks-idp/iam/modules/user-management/invite-user/invite-user";
 import { Users } from "@blocks-idp/iam/modules/user-management/users";
 import { SignupSettings } from "@blocks-idp/iam/modules/user-management/signup-settings";
 import { useProjectStore } from "@seliseblocks/blocks-kit";
+import { Button } from "@/components/ui-kits/button/button";
+import { Settings2 } from "lucide-react";
 
 type AuthenticationSection = "users" | "organizations" | "client-credential";
 
@@ -26,9 +29,9 @@ export const AuthenticationConfig = ({ section }: AuthenticationConfigProps) => 
 
   return (
     <div>
-      <div className="mb-4 flex items-start justify-between gap-4 md:mb-6">
+      <div className="mb-4 flex flex-wrap items-start justify-between gap-4 md:mb-6">
         <h1 className="text-lg font-semibold md:text-2xl">{pageTitle}</h1>
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
           {section === "client-credential" && <CreateClientCredential />}
           {section === "users" && (
             <>
@@ -36,8 +39,27 @@ export const AuthenticationConfig = ({ section }: AuthenticationConfigProps) => 
               <InviteUser />
             </>
           )}
-          {section === "organizations" && isMultiOrgEnabled && (
-            <OrganizationConfig />
+          {section === "organizations" && (
+            <>
+              {!isMultiOrgEnabled && (
+                <div
+                  className="flex items-center gap-2 rounded-md border border-blue-200 bg-blue-50 px-3 py-1.5 text-sm text-blue-700"
+                  role="status"
+                >
+                  <span className="font-medium text-blue-900">Multiple Organizations not enabled</span>
+                </div>
+              )}
+              <OrganizationConfig
+                redirectToOs
+                trigger={
+                  <Button variant="outline" size="sm" className="gap-2">
+                    <Settings2 className="h-4 w-4" />
+                    Configure Organization
+                  </Button>
+                }
+              />
+              {isMultiOrgEnabled && <AddOrganization />}
+            </>
           )}
         </div>
       </div>
