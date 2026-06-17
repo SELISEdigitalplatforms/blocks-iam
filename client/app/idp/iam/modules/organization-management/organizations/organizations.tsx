@@ -10,7 +10,8 @@ import {
   useOrganizationsFilterQueryParams,
   useOrganizationsSortQueryParams,
 } from "./organizations-filter-toolbar";
-import { Building2 } from "lucide-react";
+import { OrganizationConfig } from "../organization-config/organization-config";
+import { Building2, Settings2 } from "lucide-react";
 
 export function Organizations() {
   const { tenantId } = useProjectStore().selectedProject || { tenantId: "" };
@@ -38,19 +39,29 @@ export function Organizations() {
 
   if (!isConfigLoading && !isMultiOrgEnabled) {
     return (
-      <div className="flex items-center justify-center py-16">
-        <div className="flex max-w-md flex-col items-center gap-6 text-center">
-          <div className="flex h-16 w-16 items-center justify-center rounded-2xl bg-muted">
-            <Building2 className="h-8 w-8 text-muted-foreground" />
+      <Card>
+        <CardContent className="flex items-center justify-center py-16">
+          <div className="flex max-w-md flex-col items-center gap-6 text-center">
+            <div className="flex h-16 w-16 items-center justify-center rounded-2xl bg-muted">
+              <Building2 className="h-8 w-8 text-muted-foreground" />
+            </div>
+            <div className="flex flex-col gap-2">
+              <h3 className="text-base font-semibold text-foreground">Multiple Organizations not enabled</h3>
+              <p className="text-sm text-muted-foreground leading-relaxed">
+                To view and manage organizations, you first need to enable the Multiple Organization feature from organization configuration.
+              </p>
+            </div>
+            <OrganizationConfig
+              trigger={
+                <button className="inline-flex items-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground shadow-sm transition-colors hover:bg-primary/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+                  <Settings2 className="h-4 w-4" />
+                  Configure Organization
+                </button>
+              }
+            />
           </div>
-          <div className="flex flex-col gap-2">
-            <h3 className="text-base font-semibold text-foreground">Multiple Organizations not enabled</h3>
-            <p className="text-sm text-muted-foreground leading-relaxed">
-              To view and manage organizations, you first need to enable the Multiple Organization feature from your project settings.
-            </p>
-          </div>
-        </div>
-      </div>
+        </CardContent>
+      </Card>
     );
   }
 
