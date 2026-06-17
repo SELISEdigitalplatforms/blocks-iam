@@ -135,9 +135,9 @@ export function UserDropdownMenu() {
 
         {/* Organizations */}
         <DropdownMenuGroup className="p-1.5">
-          <DropdownMenuLabel className="flex items-center gap-4 px-4 py-3.5 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground/70">
+          <DropdownMenuLabel className="flex items-center gap-4 px-4 py-3.5 text-sm font-medium text-muted-foreground/70">
             <Building2 className="h-5 w-5 shrink-0 text-foreground/90" />
-            <span className="text-sm font-medium">Organizations</span>
+            <span className="text-sm font-medium text-foreground">Organizations</span>
           </DropdownMenuLabel>
 
           <div className="max-h-56 overflow-y-auto">
