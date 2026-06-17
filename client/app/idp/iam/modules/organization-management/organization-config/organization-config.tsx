@@ -35,7 +35,7 @@ import {
 } from "@/components/ui-kits/command/command";
 import { Badge } from "@/components/ui-kits/badge/badge";
 import { cn } from "@/lib/utils";
-import { ChevronsUpDown, Check, Settings } from "lucide-react";
+import { ChevronsUpDown, Check, Settings2 } from "lucide-react";
 import { OS_APP, initiateAppLogin } from "@/components/blocks-app-launcher/blocks-app-launcher";
 
 interface OrganizationConfigProps {
@@ -142,48 +142,38 @@ export const OrganizationConfig = ({ trigger, redirectToOs = false }: Organizati
     }
   };
 
-  if (redirectToOs) {
-    const node = trigger ?? (
-      <Button
-        size="sm"
-        variant="outline"
-        disabled={isRedirecting}
-      >
-        <Settings className="h-5 w-5" />
-        <span className="sr-only sm:not-sr-only sm:ml-2.5">
-          {isRedirecting ? "Opening OS…" : "Configure Organization"}
-        </span>
+  const renderTrigger = () => {
+    if (trigger) return trigger;
+    if (redirectToOs) {
+      return (
+        <Button
+          size="sm"
+          variant="outline"
+          onClick={handleRedirectToOs}
+          disabled={isRedirecting}
+        >
+          <Settings2 className="h-5 w-5" />
+          <span className="sr-only sm:not-sr-only sm:ml-2.5">
+            {isRedirecting ? "Opening OS…" : "Configure Organization"}
+          </span>
+        </Button>
+      );
+    }
+    return (
+      <Button size="sm" variant="outline">
+        <Settings2 className="h-5 w-5" />
+        <span className="sr-only sm:not-sr-only sm:ml-2.5">Configure Organization</span>
       </Button>
     );
-    if (isValidElement(node)) {
-      const element = node as React.ReactElement<{
-        onClick?: React.MouseEventHandler;
-        disabled?: boolean;
-      }>;
-      const existingOnClick = element.props.onClick;
-      const existingDisabled = element.props.disabled;
-      return cloneElement(element, {
-        onClick: (event: React.MouseEvent) => {
-          if (existingDisabled || isRedirecting) return;
-          if (existingOnClick) existingOnClick(event);
-          if (!event.defaultPrevented) handleRedirectToOs();
-        },
-        disabled: existingDisabled || isRedirecting,
-      });
-    }
-    return <span onClick={handleRedirectToOs}>{node}</span>;
-  }
+  };
 
   return (
     <Dialog open={isModalOpen} onOpenChange={handleModalOpenChange}>
-      <DialogTrigger asChild>
-        {trigger ?? (
-          <Button size="sm" variant="outline">
-            <Settings className="h-5 w-5" />
-            <span className="sr-only sm:not-sr-only sm:ml-2.5">Configure Organization</span>
-          </Button>
-        )}
-      </DialogTrigger>
+      {redirectToOs ? (
+        renderTrigger()
+      ) : (
+        <DialogTrigger asChild>{renderTrigger()}</DialogTrigger>
+      )}
       <DialogContent>
         <DialogHeader className="mb-4">
           <DialogTitle>Organization Configuration</DialogTitle>
