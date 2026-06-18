@@ -14,6 +14,8 @@ export const OrganizationDetail = ({ id }: { id: string }) => {
   const tenantId = useProjectStore().selectedProject?.tenantId || "";
   const { data, isLoading } = useGetOrganizationById({ itemId: id, projectKey: tenantId });
 
+   BREADCRUMB_CUSTOM_TITLES[`/app/organizations`] =
+   'Organizations';
   BREADCRUMB_CUSTOM_TITLES[`/app/organization-detail/${id}`] =
     data?.organization?.name ?? null;
 
