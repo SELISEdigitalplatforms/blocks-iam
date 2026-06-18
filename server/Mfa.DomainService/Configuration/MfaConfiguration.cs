@@ -1,8 +1,10 @@
 ﻿using Blocks.Genesis;
 using Iam.DomainService.Entities;
+using MongoDB.Bson.Serialization.Attributes;
 
 namespace Mfa.DomainService.Configuration
 {
+    [BsonIgnoreExtraElements]
     public class MfaConfiguration : BaseEntity
     {
         public string Name { get; set; } = "Default";

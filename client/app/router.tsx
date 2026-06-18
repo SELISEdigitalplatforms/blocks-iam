@@ -55,18 +55,16 @@ import {
   PublicGuard,
   ProtectedGuard,
   ConsoleLayout,
-
   ConsolePage,
   CallbackPage,
   LoginPage,
   DashboardOverview,
   ProjectOverviewLayout,
   DashboardLayout,
-  EnvironmentsPage 
+  EnvironmentsPage,
 } from "@seliseblocks/blocks-kit";
 import { navigationMenus } from "./constants/navigation-menus";
 // import { ProjectOverviewLayout } from "./layouts/project-overview-layout";
-
 
 const redirectPaths: Record<string, string> = {
   "/app/user-detail/*": "/app/iam",
@@ -89,15 +87,19 @@ export const router = createBrowserRouter([
           { path: "login", element: <OidcLoginPage /> },
           { path: "permission", element: <OidcPermissionPage /> },
           { path: "error", element: <OidcErrorPage /> },
-          {
-            path: "email-sent-confirmation",
-            element: <OidcEmailSentConfirmationPage />,
-          },
+          
+          // {
+          //   path: "email-sent-confirmation",
+          //   element: <OidcEmailSentConfirmationPage />,
+          // },
 
           // OIDC-scoped auth pages (relative paths under /oidc)
           { path: "forgot-password", element: <ForgotPasswordPage /> },
+          {
+            path: "forgot-email-sent",
+            element: <ForgotEmailSentPage />,
+          },
           { path: "activate", element: <ActivatePage /> },
-
         ],
       },
       {
@@ -180,9 +182,9 @@ export const router = createBrowserRouter([
               // ── Console group (no impersonation allowed) ──
               {
                 element: (
-                      <ConsoleLayout>
-                        <Outlet />
-                      </ConsoleLayout>
+                  <ConsoleLayout>
+                    <Outlet />
+                  </ConsoleLayout>
                 ),
                 children: [
                   { path: "/console", element: <ConsolePage /> },
@@ -198,11 +200,12 @@ export const router = createBrowserRouter([
                 element: (
                   <ProjectOverviewLayout
                     redirectPaths={redirectPaths}
-                    navigationMenus={navigationMenus}>
+                    navigationMenus={navigationMenus}
+                  >
                     <Outlet />
                   </ProjectOverviewLayout>
                 ),
-                 children: [
+                children: [
                   {
                     path: "environments",
                     element: <EnvironmentsPage />,
@@ -212,15 +215,15 @@ export const router = createBrowserRouter([
               // ── Dashboard group (impersonation synchronized) ──
               {
                 element: (
-          
                   <DashboardLayout
                     redirectPaths={redirectPaths}
-                    navigationMenus={navigationMenus}>
+                    navigationMenus={navigationMenus}
+                  >
                     <Outlet />
                   </DashboardLayout>
                 ),
 
-children: [
+                children: [
                   { path: "/app/iam", element: <IamPage /> },
                   {
                     path: "/app/user-detail/:id",
@@ -253,9 +256,7 @@ children: [
                   },
                   {
                     path: "/app/users",
-                    element: (
-                      <AuthenticationConfigPage section="users" />
-                    ),
+                    element: <AuthenticationConfigPage section="users" />,
                   },
                   {
                     path: "/app/organizations",
