@@ -1,7 +1,10 @@
 
 
-import { BREADCRUMB_CUSTOM_TITLES } from "@/constants/breadcrumb-custom-title";
 import PageBreadcrumb from "@/components/breadcrumb/breadcrumb";
+import {
+  BREADCRUMB_CUSTOM_TITLES,
+  BREADCRUMB_LINK_OVERRIDES,
+} from "@/constants/breadcrumb-custom-title";
 import { useGetOrganizationById } from "@blocks-idp/iam/hooks/use-organization";
 import { useProjectStore } from "@seliseblocks/blocks-kit";
 import { Skeleton } from "@/components/ui-kits/skeleton/skeleton";
@@ -15,13 +18,15 @@ export const OrganizationDetail = ({ id }: { id: string }) => {
   const { data, isLoading } = useGetOrganizationById({ itemId: id, projectKey: tenantId });
 
   BREADCRUMB_CUSTOM_TITLES["/app/organization-detail"] = "Organizations";
+  BREADCRUMB_CUSTOM_TITLES["/app/organizations"] = "Organizations";
+  BREADCRUMB_LINK_OVERRIDES["/app/organization-detail"] = "/app/organizations";
   BREADCRUMB_CUSTOM_TITLES[`/app/organization-detail/${id}`] =
     data?.organization?.name ?? null;
 
   return (
     <div>
       <div className="mb-4 md:mb-6">
-        <PageBreadcrumb breadcrumbIndex={3} />
+        <PageBreadcrumb breadcrumbIndex={2} />
       </div>
 
       <div className="mb-4 flex flex-wrap items-start justify-between gap-4 md:mb-6">

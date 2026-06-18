@@ -10,6 +10,7 @@ import { useEffect, useState } from "react";
 import { useAccountRecover } from "@blocks-idp/iam/hooks/use-account";
 import { isErrorWithErrors } from "@/lib/error";
 import { useCaptcha } from "@blocks-idp/captcha/hooks/use-captcha";
+import { useOidcUiConfig } from "@blocks-idp/authentication/hooks/use-oidc-ui-config";
 import { ArrowRight } from "lucide-react";
 import { Skeleton } from "@/components/ui-kits/skeleton/skeleton";
 import {
@@ -35,10 +36,15 @@ export const OIDCForgotPasswordForm = () => {
     resolver: zodResolver(forgotPasswordFormSchema),
   });
   const { isPending, mutateAsync } = useAccountRecover();
-  const googleSiteKey = getRuntimeEnv("BLOCKS_GOOGLE_SITE_KEY") || "";
+
+  const { data: oidcUiConfig } = useOidcUiConfig();
+  const googleSiteKey =
+    oidcUiConfig?.captcha?.key || getRuntimeEnv("BLOCKS_GOOGLE_SITE_KEY") || "";
+
   const { captcha, code: captchaCode, reset: resetCaptcha } = useCaptcha({
     siteKey: googleSiteKey,
-    type: "reCaptcha-v2-checkbox",
+    type: oidcUiConfig?.captcha?.provider === "hcaptcha" ? "hCaptcha" : "reCaptcha-v2-checkbox",
+    generator: oidcUiConfig?.captcha?.generator,
   });
   const { isValid } = form.formState;
 
@@ -56,7 +62,10 @@ export const OIDCForgotPasswordForm = () => {
         setServerError(msg);
         return;
       }
-      navigate(`/forgot-email-sent?email=${values.email}`);
+      if (res?.isSuccess) {
+        navigate(`/oidc/forgot-email-sent?email=${values.email}`);
+        return;
+      }
     } catch (error) {
       resetCaptcha();
       if (isErrorWithErrors(error)) {
