@@ -11,7 +11,7 @@ export interface IOidcUiConfig {
   captcha: IOidcUiCaptchaConfig | null;
 }
 
-const OIDC_UI_CONFIG_ENDPOINT = "/idp/oidc-ui-config";
+const OIDC_UI_CONFIG_ENDPOINT = "/api/idp/oidc-ui-config";
 
 export const useOidcUiConfig = () => {
   return useQuery<IOidcUiConfig>({
