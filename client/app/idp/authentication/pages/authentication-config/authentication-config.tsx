@@ -10,7 +10,6 @@ import { AddOrganization } from "@blocks-idp/iam/modules/organization-management
 import { useGetOrganizationConfig } from "@blocks-idp/iam/hooks/use-organization";
 import { InviteUser } from "@blocks-idp/iam/modules/user-management/invite-user/invite-user";
 import { Users } from "@blocks-idp/iam/modules/user-management/users";
-import { SignupSettings } from "@blocks-idp/iam/modules/user-management/signup-settings";
 import { useProjectStore } from "@seliseblocks/blocks-kit";
 import { Button } from "@/components/ui-kits/button/button";
 import { Settings2 } from "lucide-react";
@@ -35,7 +34,6 @@ export const AuthenticationConfig = ({ section }: AuthenticationConfigProps) => 
           {section === "client-credential" && <CreateClientCredential />}
           {section === "users" && (
             <>
-              <SignupSettings />
               <InviteUser />
             </>
           )}
