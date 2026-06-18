@@ -56,8 +56,8 @@ export const PermissionDetails = ({ id }: PermissionDetailsProps) => {
     }
   };
 
-  BREADCRUMB_CUSTOM_TITLES["/app/iam/permission-detail"] = "Permissions";
-  BREADCRUMB_CUSTOM_TITLES[`/app/iam/permission-detail/${id}`] = data?.data.name || "";
+  BREADCRUMB_CUSTOM_TITLES["/app/permission-detail"] = "Permissions";
+  BREADCRUMB_CUSTOM_TITLES[`/app/permission-detail/${id}`] = data?.data.name || "";
 
   return (
     <div className="px-4 pt-4 md:px-6 md:pt-6">

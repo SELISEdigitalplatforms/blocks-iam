@@ -132,7 +132,7 @@ export const RolesList = ({ roles, isLoading }: RolesTableProps) => {
   });
 
   const onRowClickHandler = (itemId: number | string) => {
-    navigate(`/app/iam/role-detail/${itemId}`);
+    navigate(`/app/role-detail/${itemId}`);
   };
 
   if (isLoading) return <LoadingSkelton />;
