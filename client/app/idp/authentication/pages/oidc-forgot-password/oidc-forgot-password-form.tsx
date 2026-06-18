@@ -10,7 +10,7 @@ import { useEffect, useState } from "react";
 import { useAccountRecover } from "@blocks-idp/iam/hooks/use-account";
 import { isErrorWithErrors } from "@/lib/error";
 import { useCaptcha } from "@blocks-idp/captcha/hooks/use-captcha";
-import { useGetCaptchaConfigs } from "@blocks-idp/captcha/hooks/use-captcha-config";
+import { useOidcUiConfig } from "@blocks-idp/authentication/hooks/use-oidc-ui-config";
 import { ArrowRight } from "lucide-react";
 import { Skeleton } from "@/components/ui-kits/skeleton/skeleton";
 import {
@@ -37,10 +37,9 @@ export const OIDCForgotPasswordForm = () => {
   });
   const { isPending, mutateAsync } = useAccountRecover();
 
-  const effectiveTenantId = tenantId || getRuntimeEnv("BLOCKS_X_BLOCKS_KEY") || "";
-  const { data: captchaConfigData } = useGetCaptchaConfigs({ projectKey: effectiveTenantId });
-  const enabledCaptchaConfig = captchaConfigData?.configurations?.find(c => c.isEnable);
-  const googleSiteKey = enabledCaptchaConfig?.captchaKey || getRuntimeEnv("BLOCKS_GOOGLE_SITE_KEY") || "";
+  const { data: oidcUiConfig } = useOidcUiConfig();
+  const googleSiteKey =
+    oidcUiConfig?.captcha?.key || getRuntimeEnv("BLOCKS_GOOGLE_SITE_KEY") || "";
 
   const { captcha, code: captchaCode, reset: resetCaptcha } = useCaptcha({
     siteKey: googleSiteKey,
