@@ -19,25 +19,23 @@ export const OrganizationDetail = ({ id }: { id: string }) => {
     data?.organization?.name ?? null;
 
   return (
-    <main className="flex flex-col">
-      <div className="hidden md:flex">
+    <main className="mx-auto w-full max-w-7xl overflow-x-hidden p-4 sm:p-6 md:p-8">
+      <div className="mb-4 md:mb-6">
         <PageBreadcrumb breadcrumbIndex={3} />
       </div>
-      <div className="flex w-full flex-col">
-        <div className="flex items-center justify-between text-base text-high-emphasis md:mt-5">
-          {isLoading ? (
-            <Skeleton className="h-8 w-48" />
-          ) : (
-            <h3 className="text-2xl font-bold tracking-tight">
-              {data?.organization?.name}
-            </h3>
-          )}
-          <InviteOrganizationUser organizationId={id} />
-        </div>
-        <div className="mt-6">
-          <OrganizationUsers organizationId={id} />
-        </div>
+
+      <div className="flex items-center justify-between mb-6">
+        {isLoading ? (
+          <Skeleton className="h-8 w-48" />
+        ) : (
+          <h1 className="text-2xl font-semibold tracking-tight text-foreground">
+            {data?.organization?.name}
+          </h1>
+        )}
+        <InviteOrganizationUser organizationId={id} />
       </div>
+
+      <OrganizationUsers organizationId={id} />
     </main>
   );
 };
