@@ -87,10 +87,7 @@ export const router = createBrowserRouter([
           { path: "login", element: <OidcLoginPage /> },
           { path: "permission", element: <OidcPermissionPage /> },
           { path: "error", element: <OidcErrorPage /> },
-          {
-            path: "/forgot-email-sent",
-            element: <ForgotEmailSentPage />,
-          },
+          
           // {
           //   path: "email-sent-confirmation",
           //   element: <OidcEmailSentConfirmationPage />,
@@ -98,6 +95,10 @@ export const router = createBrowserRouter([
 
           // OIDC-scoped auth pages (relative paths under /oidc)
           { path: "forgot-password", element: <ForgotPasswordPage /> },
+          {
+            path: "forgot-email-sent",
+            element: <ForgotEmailSentPage />,
+          },
           { path: "activate", element: <ActivatePage /> },
         ],
       },
