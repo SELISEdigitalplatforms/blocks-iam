@@ -54,7 +54,7 @@ export const MfaCheckFrom = () => {
     try {
       setAuthenticated();
       // showSuccessToast({ description: "You've successfully logged in" });
-      navigate("/services/authentication/users");
+      navigate("/app/users");
     } catch (error) {
       if (isErrorWithErrors(error)) {
         showErrorToast({ errors: error.errors.error_description || `Something went wrong` });

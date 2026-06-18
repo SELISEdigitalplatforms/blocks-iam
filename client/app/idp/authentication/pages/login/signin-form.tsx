@@ -183,7 +183,7 @@ export const SigninForm = ({ mode = "default", oidcContext }: SigninFormProps) =
 //       }
 
 //       setAuthenticated();
-//       navigate("/services/authentication/users");
+//       navigate("/app/users");
 //     } catch (error: unknown) {
 //       if (isErrorWithErrors(error)) {
 //         showErrorToast({ errors: error.errors.error_description || `Something went wrong` });

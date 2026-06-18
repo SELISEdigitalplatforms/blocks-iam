@@ -69,11 +69,11 @@ import { navigationMenus } from "./constants/navigation-menus";
 
 
 const redirectPaths: Record<string, string> = {
-  "/services/iam/user-detail/*": "/services/iam",
-  "/services/iam/role-detail/*": "/services/iam?tab=roles",
-  "/services/iam/organization-detail/*": "/services/iam",
-  "/services/iam/permission-detail/*": "/services/iam",
-  "/services/authentication/sso-configuration": "/services/authentication?tab=social",
+  "/app/iam/user-detail/*": "/app/iam",
+  "/app/iam/role-detail/*": "/app/iam?tab=roles",
+  "/app/iam/organization-detail/*": "/app/authentication/organizations",
+  "/app/iam/permission-detail/*": "/app/iam?tab=permissions",
+  "/app/sso-configuration": "/app/authentication?tab=social",
 };
 
 export const router = createBrowserRouter([
@@ -220,60 +220,69 @@ export const router = createBrowserRouter([
                   </DashboardLayout>
                 ),
 
-                children: [
-                  { path: "/services/iam", element: <IamPage /> },
+children: [
+                  { path: "/app/iam", element: <IamPage /> },
                   {
-                    path: "/services/iam/user-detail/:id",
+                    path: "/app/iam/user-detail/:id",
                     element: <IamUserDetailPage />,
                   },
                   {
-                    path: "/services/iam/role-detail/:id",
+                    path: "/app/iam/role-detail/:id",
                     element: <IamRoleDetailPage />,
                   },
                   {
-                    path: "/services/iam/permission-detail/new",
+                    path: "/app/iam/permission-detail/new",
                     element: <IamAddPermissionPage />,
                   },
                   {
-                    path: "/services/iam/permission-detail/:id",
+                    path: "/app/iam/permission-detail/:id",
                     element: <IamPermissionDetailPage />,
                   },
                   {
-                    path: "/services/iam/organization-detail/:itemId",
+                    path: "/app/iam/organization-detail/:itemId",
                     element: <IamOrgDetailPage />,
                   },
-                  { path: "/services/iam/logs", element: <IamLogsPage /> },
+                  { path: "/app/iam/logs", element: <IamLogsPage /> },
                   {
-                    path: "/services/iam/configure",
+                    path: "/app/iam/configure",
                     element: <IamConfigurePage />,
                   },
                   {
-                    path: "/services/authentication/users",
+                    path: "/app/authentication",
                     element: <AuthenticationConfigPage section="users" />,
                   },
                   {
-                    path: "/services/authentication/organizations",
+                    path: "/app/users",
+                    element: (
+                      <AuthenticationConfigPage section="users" />
+                    ),
+                  },
+                  {
+                    path: "/app/organizations",
                     element: (
                       <AuthenticationConfigPage section="organizations" />
                     ),
                   },
                   {
-                    path: "/services/authentication/client-credential",
+                    path: "/app/client-credential",
                     element: (
                       <AuthenticationConfigPage section="client-credential" />
                     ),
                   },
                   {
-                    path: "/services/authentication/sso-configuration",
+                    path: "/app/sso-configuration",
                     element: <SsoConfigurationPage />,
                   },
                   {
-                    path: "/services/authentication/logs",
+                    path: "/app/authentication/logs",
                     element: <AuthLogsPage />,
                   },
-                  { path: "/services/mfa/logs", element: <MfaLogsPage /> },
                   {
-                    path: "/services/rate-limiter",
+                    path: "/app/mfa/logs",
+                    element: <MfaLogsPage />,
+                  },
+                  {
+                    path: "/app/rate-limiter",
                     element: <RateLimiterPage />,
                   },
                   {
@@ -281,7 +290,7 @@ export const router = createBrowserRouter([
                     element: <ManagedServicesPage />,
                   },
                   {
-                    path: "/services/captcha/logs",
+                    path: "/app/captcha/logs",
                     element: <CaptchaLogsPage />,
                   },
                   { path: "/dashboard", element: <DashboardOverview /> },

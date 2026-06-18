@@ -87,7 +87,7 @@ export const PermissionRolesList = ({ slugs }: RolesTableProps) => {
   });
 
   const onRowClickHandler = (itemId: number | string) => {
-    navigate(`/services/iam/role-detail/${itemId}`);
+    navigate(`/app/iam/role-detail/${itemId}`);
   };
   const onPageChangeHandler = (page: number) => {
     setQueryParams((params) => ({ ...params, page }));
