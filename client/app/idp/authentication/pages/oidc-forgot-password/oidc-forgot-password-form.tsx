@@ -63,7 +63,7 @@ export const OIDCForgotPasswordForm = () => {
         return;
       }
       if (res?.isSuccess) {
-        navigate(`/oidc/email-sent-confirmation?email=${values.email}`);
+        navigate(`/oidc/forgot-email-sent?email=${values.email}`);
         return;
       }
     } catch (error) {
