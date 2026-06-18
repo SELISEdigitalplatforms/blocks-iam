@@ -13,11 +13,11 @@ import { useGetProject, useGetProjects } from "@/hooks/use-project";
 import { IProject } from "@/models/project.model";
 import { useProjectStore } from "@seliseblocks/blocks-kit";
 const redirectPaths: Record<string, string> = {
-  "/services/iam/user-detail/*": "/services/iam",
-  "/services/iam/role-detail/*": "/services/iam?tab=roles",
-  "/services/iam/organization-detail/*": "/services/iam",
-  "/services/iam/permission-detail/*": "/services/iam",
-  "/services/authentication/sso-configuration": "/services/authentication?tab=social",
+  "/app/iam/user-detail/*": "/app/iam",
+  "/app/iam/role-detail/*": "/app/iam?tab=roles",
+  "/app/iam/organization-detail/*": "/app/iam",
+  "/app/iam/permission-detail/*": "/app/iam",
+  "/app/sso-configuration": "/app/authentication?tab=social",
 };
 const wildcardToRegex = (pattern: string) => {
   const escaped = pattern.replace(/[-/\\^$+?.()|[\]{}]/g, "\\$&");

@@ -26,8 +26,8 @@ export function RoleDetailsContainer() {
   const permissionMap = useRoleDetailsStore((state) => state.permissionMap);
   const { isPending, mutateAsync } = useSetRoles(role?.slug);
 
-  BREADCRUMB_CUSTOM_TITLES["/services/iam/role-detail"] = "Roles";
-  BREADCRUMB_CUSTOM_TITLES["/services/iam/role-detail/" + role?.itemId] = role?.name || "";
+  BREADCRUMB_CUSTOM_TITLES["/app/iam/role-detail"] = "Roles";
+  BREADCRUMB_CUSTOM_TITLES["/app/iam/role-detail/" + role?.itemId] = role?.name || "";
 
   const onSaveClick = async () => {
     const changedPermissions = Array.from(permissionMap.values()).reduce(

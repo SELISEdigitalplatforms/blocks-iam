@@ -19,7 +19,7 @@ export const OrganizationConfig = ({ trigger }: OrganizationConfigProps) => {
       setIsRedirecting(true);
       await initiateAppLogin(
         OS_APP,
-        "/services/authentication?tab=config&settingsTab=organization-config",
+        "/app/authentication?tab=config&settingsTab=organization-config",
       );
     } catch (error) {
       console.error("OS app login initiation error:", error);
