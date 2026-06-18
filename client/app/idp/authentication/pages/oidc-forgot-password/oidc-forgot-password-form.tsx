@@ -43,7 +43,9 @@ export const OIDCForgotPasswordForm = () => {
 
   const { captcha, code: captchaCode, reset: resetCaptcha } = useCaptcha({
     siteKey: googleSiteKey,
-    type: "reCaptcha-v2-checkbox",
+    // type: "reCaptcha-v2-checkbox",
+    type: oidcUiConfig?.captcha?.provider === "recaptcha" ? "reCaptcha-v2-checkbox" : "hCaptcha",
+    // generator: oidcUiConfig?.captcha?.generator,
   });
   const { isValid } = form.formState;
 
