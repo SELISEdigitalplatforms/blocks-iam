@@ -61,7 +61,10 @@ export const OIDCForgotPasswordForm = () => {
         setServerError(msg);
         return;
       }
-      navigate(`/forgot-email-sent?email=${values.email}`);
+      if (res?.isSuccess) {
+        navigate(`/oidc/email-sent-confirmation?email=${values.email}`);
+        return;
+      }
     } catch (error) {
       resetCaptcha();
       if (isErrorWithErrors(error)) {
