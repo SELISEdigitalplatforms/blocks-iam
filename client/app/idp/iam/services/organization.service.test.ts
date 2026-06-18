@@ -59,7 +59,7 @@ describe("OrganizationService", () => {
       const result = await service.getOrganizationById(mockGetOrganizationByIdPayload);
 
       expect(http.get).toHaveBeenCalledWith(
-        `${ORGANIZATION_ENDPOINTS.GET_ORGANIZATION}?ProjectKey=${mockGetOrganizationByIdPayload.projectKey}&ItemId=${mockGetOrganizationByIdPayload.itemId}`,
+        `${ORGANIZATION_ENDPOINTS.GET_ORGANIZATION}/${mockGetOrganizationByIdPayload.itemId}`,
       );
       expect(result).toEqual(mockGetOrganizationByIdResponse);
     });

@@ -25,7 +25,7 @@ export class OrganizationService {
 
   getOrganizationById(params: IGetOrganizationByIdParams): Promise<IGetOrganizationByIdResponse> {
     return serviceInstances.idpService.get(
-      `${ORGANIZATION_ENDPOINTS.GET_ORGANIZATION}?ProjectKey=${params.projectKey}&ItemId=${params.itemId}`,
+      `${ORGANIZATION_ENDPOINTS.GET_ORGANIZATION}/${params.itemId}`,
     );
   }
 
