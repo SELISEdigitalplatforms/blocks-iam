@@ -290,7 +290,7 @@ shake();
         setLastAttemptedEmail(values.username);
         setShowActivationError(true);
       } else if (errorCode === "captcha_enabled") {
-        const msg = "Captcha verification is required. Please complete the captcha below.";
+        const msg = "Captcha verification is required. Please complete the given captcha.";
         setServerError(msg);
         await animCtx?.failAnimation(msg);
         setCaptchaRequired(true);
