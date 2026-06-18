@@ -598,7 +598,7 @@ namespace Iam.DomainService.Resources
                 OrganizationId = orgId,
 
                 // Create new list instances
-                OrganizationIds = permission.OrganizationIds,
+                // OrganizationIds = permission.OrganizationIds,
                 Tags = permission.Tags,
                 DependentPermissions = permission.DependentPermissions,
                 Roles = permission.Roles
