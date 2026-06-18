@@ -44,8 +44,8 @@ export const User = ({ id }: { id: string }) => {
   const [tabId, setTabId] = useQueryState("userDetails", { defaultValue: "details" });
   const { data } = useGetUserById({ id, projectKey: tenantId });
 
-  BREADCRUMB_CUSTOM_TITLES["/app/iam/user-detail"] = "Users";
-  BREADCRUMB_CUSTOM_TITLES[`/app/iam/user-detail/${data?.data?.itemId}`] =
+  BREADCRUMB_CUSTOM_TITLES["/app/user-detail"] = "Users";
+  BREADCRUMB_CUSTOM_TITLES[`/app/user-detail/${data?.data?.itemId}`] =
     data?.data?.lastName ?? null;
   return (
     <div className="px-4 pt-4 md:px-6 md:pt-6">

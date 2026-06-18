@@ -13,10 +13,10 @@ import { useGetProject, useGetProjects } from "@/hooks/use-project";
 import { IProject } from "@/models/project.model";
 import { useProjectStore } from "@seliseblocks/blocks-kit";
 const redirectPaths: Record<string, string> = {
-  "/app/iam/user-detail/*": "/app/iam",
-  "/app/iam/role-detail/*": "/app/iam?tab=roles",
-  "/app/iam/organization-detail/*": "/app/iam",
-  "/app/iam/permission-detail/*": "/app/iam",
+  "/app/user-detail/*": "/app/iam",
+  "/app/role-detail/*": "/app/iam?tab=roles",
+  "/app/organization-detail/*": "/app/iam",
+  "/app/permission-detail/*": "/app/iam",
   "/app/sso-configuration": "/app/authentication?tab=social",
 };
 const wildcardToRegex = (pattern: string) => {

@@ -69,10 +69,10 @@ import { navigationMenus } from "./constants/navigation-menus";
 
 
 const redirectPaths: Record<string, string> = {
-  "/app/iam/user-detail/*": "/app/iam",
-  "/app/iam/role-detail/*": "/app/iam?tab=roles",
-  "/app/iam/organization-detail/*": "/app/authentication/organizations",
-  "/app/iam/permission-detail/*": "/app/iam?tab=permissions",
+  "/app/user-detail/*": "/app/iam",
+  "/app/role-detail/*": "/app/iam?tab=roles",
+  "/app/organization-detail/*": "/app/authentication/organizations",
+  "/app/permission-detail/*": "/app/iam?tab=permissions",
   "/app/sso-configuration": "/app/authentication?tab=social",
 };
 
@@ -223,23 +223,23 @@ export const router = createBrowserRouter([
 children: [
                   { path: "/app/iam", element: <IamPage /> },
                   {
-                    path: "/app/iam/user-detail/:id",
+                    path: "/app/user-detail/:id",
                     element: <IamUserDetailPage />,
                   },
                   {
-                    path: "/app/iam/role-detail/:id",
+                    path: "/app/role-detail/:id",
                     element: <IamRoleDetailPage />,
                   },
                   {
-                    path: "/app/iam/permission-detail/new",
+                    path: "/app/permission-detail/new",
                     element: <IamAddPermissionPage />,
                   },
                   {
-                    path: "/app/iam/permission-detail/:id",
+                    path: "/app/permission-detail/:id",
                     element: <IamPermissionDetailPage />,
                   },
                   {
-                    path: "/app/iam/organization-detail/:itemId",
+                    path: "/app/organization-detail/:itemId",
                     element: <IamOrgDetailPage />,
                   },
                   { path: "/app/iam/logs", element: <IamLogsPage /> },

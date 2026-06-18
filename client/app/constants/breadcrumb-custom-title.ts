@@ -9,8 +9,8 @@ export const BREADCRUMB_CUSTOM_TITLES: Record<string, string | null> = {
 
 /** Parent segments from useRoutePathSegments often point at URLs with no route; map them to the real list pages. */
 export const BREADCRUMB_LINK_OVERRIDES: Record<string, string> = {
-  "/app/iam/user-detail": "/app/users",
-  "/app/iam/role-detail": "/app/iam?tab=roles",
-  "/app/iam/organization-detail": "/app/organizations",
-  "/app/iam/permission-detail": "/app/iam?tab=permissions",
+  "/app/user-detail": "/app/users",
+  "/app/role-detail": "/app/iam?tab=roles",
+  "/app/organization-detail": "/app/organizations",
+  "/app/permission-detail": "/app/iam?tab=permissions",
 };
