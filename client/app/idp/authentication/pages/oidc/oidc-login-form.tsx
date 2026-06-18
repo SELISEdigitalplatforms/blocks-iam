@@ -12,9 +12,10 @@ import { Link, useNavigate } from "react-router-dom";
 import { z } from "zod";
 import { authService } from "@blocks-idp/authentication/services/auth.service";
 import { AUTH_ENDPOINTS } from "@blocks-idp/authentication/constants/endpoint.constant";
-import React, { useRef, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import { Captcha } from "@/components/captcha";
-import { useTheme } from "@/hooks/use-theme";
+import { useCaptcha } from "@blocks-idp/captcha/hooks/use-captcha";
+import { useOidcUiConfig } from "@blocks-idp/authentication/hooks/use-oidc-ui-config";
 import { isErrorWithErrors } from "@/lib/error";
 import {
   getCurrentOIDCParams,
@@ -77,9 +78,9 @@ export const OidcLoginForm = ({
   tenantId,
 }: OidcLoginFormProps) => {
   const navigate = useNavigate();
-  const { theme } = useTheme();
   const animCtx = useOidcAuthAnimation();
   const { data: loginOption } = useGetLoginOptions(tenantId, true);
+  const { data: oidcUiConfig } = useOidcUiConfig();
   const [token, setToken] = useState("");
   const [accounts, setAccounts] = useState<OidcAccountInfo[]>([]);
   const [isSelectingAccount, setIsSelectingAccount] = useState(false);
@@ -115,9 +116,18 @@ export const OidcLoginForm = ({
   });
 
   const {
-    formState: { submitCount },
+    formState: { submitCount, isValid },
   } = form;
-  const googleSiteKey = getRuntimeEnv("BLOCKS_GOOGLE_SITE_KEY") || "";
+
+  const googleSiteKey =
+    oidcUiConfig?.captcha?.key || getRuntimeEnv("BLOCKS_GOOGLE_SITE_KEY") || "";
+  const captchaType =
+    oidcUiConfig?.captcha?.provider === "hcaptcha" ? "hCaptcha" : "reCaptcha-v2-checkbox";
+  const { captcha, code: captchaCode, reset: resetCaptcha } = useCaptcha({
+    siteKey: googleSiteKey,
+    type: captchaType,
+    generator: oidcUiConfig?.captcha?.generator,
+  });
   const isTokenNeed = submitCount >= 3;
 
   const activationUrl = buildOIDCNavigationUrl("/oidc/activation");
@@ -338,6 +348,10 @@ export const OidcLoginForm = ({
     }
   };
 
+  useEffect(() => {
+    if (!isValid && captchaCode) resetCaptcha();
+  }, [captchaCode, isValid, resetCaptcha]);
+
   if (isSelectingAccount && accounts.length > 0) {
     return (
       <OidcAccountSelector
@@ -476,15 +490,7 @@ export const OidcLoginForm = ({
             />
 
             {/* CAPTCHA (shown after 3 failed attempts) */}
-            {isTokenNeed &&
-              React.createElement(Captcha, {
-                type: "reCaptcha-v2-checkbox",
-                siteKey: googleSiteKey,
-                theme: theme === "dark" ? "dark" : "light",
-                onVerify: (t: string) => setToken(t),
-                onExpired: () => setToken(""),
-                onError: () => setToken(""),
-              } as any)}
+            {isTokenNeed && isValid && <Captcha {...captcha} />}
 
             {/* Inline server error */}
             {serverError && (
@@ -496,7 +502,7 @@ export const OidcLoginForm = ({
             {/* Submit */}
             <button
               type="submit"
-              disabled={isAuthenticating || (isTokenNeed && !token)}
+              disabled={isAuthenticating || (isTokenNeed && !captchaCode)}
               className="oidc-sci-fi-btn mt-3 w-full flex items-center justify-center gap-2"
             >
               {isAuthenticating ? (
