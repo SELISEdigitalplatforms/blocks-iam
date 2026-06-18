@@ -93,6 +93,8 @@ export const OidcLoginForm = ({
   const [activeCodeChallengeMethod, setActiveCodeChallengeMethod] = useState(
     codeChallengeMethod || "S256",
   );
+  const [failedAttempts, setFailedAttempts] = useState(0);
+  const [captchaRequired, setCaptchaRequired] = useState(false);
   const formRef = useRef<HTMLFormElement>(null);
 
   const isAuthenticating =
@@ -116,7 +118,7 @@ export const OidcLoginForm = ({
   });
 
   const {
-    formState: { submitCount, isValid },
+    formState: { isValid },
   } = form;
 
   const googleSiteKey =
@@ -128,7 +130,7 @@ export const OidcLoginForm = ({
     type: captchaType,
     generator: oidcUiConfig?.captcha?.generator,
   });
-  const isTokenNeed = submitCount >= 3;
+  const isTokenNeed = captchaRequired || failedAttempts >= 3;
 
   const activationUrl = buildOIDCNavigationUrl("/oidc/activation");
   const forgotPasswordUrl = buildOIDCNavigationUrl("/oidc/forgot-password");
@@ -196,6 +198,7 @@ export const OidcLoginForm = ({
         code_challenge: effectiveCodeChallenge,
         code_challenge_method: effectiveCodeChallengeMethod,
         tenant_id: finalTenantId || "",
+        ...(isTokenNeed ? { captchaCode } : {}),
       };
 
       // Use fetch with redirect: 'manual' to handle redirects explicitly
@@ -212,6 +215,8 @@ export const OidcLoginForm = ({
 
       if (response.ok) {
         const data = await response.json();
+        setFailedAttempts(0);
+        setCaptchaRequired(false);
         await animCtx?.succeedAnimation();
         window.location.href = data.redirect_uri;
       }
@@ -262,10 +267,14 @@ export const OidcLoginForm = ({
           setAccounts(data.accounts);
           setIsSelectingAccount(true);
           setIsLoading(false);
+          setFailedAttempts(0);
+          setCaptchaRequired(false);
           return;
         }
 
         // Otherwise code is already in URL, let the SPA handle it
+        setFailedAttempts(0);
+        setCaptchaRequired(false);
         await animCtx?.succeedAnimation();
         return;
       }
@@ -284,10 +293,21 @@ export const OidcLoginForm = ({
         animCtx?.resetAnimation();
         setLastAttemptedEmail(values.username);
         setShowActivationError(true);
-      } else if (errorCode === "invalid_credentials") {
-        const msg = "Invalid email or password. Please try again.";
+      } else if (errorCode === "captcha_enabled") {
+        const msg = "Captcha verification is required. Please complete the captcha below.";
         setServerError(msg);
         await animCtx?.failAnimation(msg);
+        setCaptchaRequired(true);
+        resetCaptcha();
+      } else if (errorCode === "invalid_credentials" || errorCode === "captcha_invalid") {
+        const msg =
+          errorCode === "captcha_invalid"
+            ? "Captcha verification failed. Please try again."
+            : "Invalid email or password. Please try again.";
+        setServerError(msg);
+        await animCtx?.failAnimation(msg);
+        setFailedAttempts((prev) => prev + 1);
+        resetCaptcha();
       } else {
         setServerError(errorMsg);
         await animCtx?.failAnimation(errorMsg);
