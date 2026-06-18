@@ -18,7 +18,6 @@ export const useOidcUiConfig = () => {
     queryKey: ["oidc-ui-config"],
     queryFn: () =>
       serviceInstances.idpService
-        .get(OIDC_UI_CONFIG_ENDPOINT, undefined, { absoluteUrl: true })
-        .then((res: unknown) => (res as { data: IOidcUiConfig }).data),
+        .get(OIDC_UI_CONFIG_ENDPOINT, undefined, { absoluteUrl: true }) as Promise<IOidcUiConfig>,
   });
 };
