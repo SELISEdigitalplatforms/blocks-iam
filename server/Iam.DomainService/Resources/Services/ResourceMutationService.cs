@@ -1020,6 +1020,19 @@ namespace Iam.DomainService.Resources
                 };
             }
 
+            var existingOrganization = await _resourceRepository.GetOrganizationByNameAsync(request.Name);
+            if (existingOrganization != null)
+            {
+                return new BaseMutationResponse
+                {
+                    IsSuccess = false,
+                    Errors = new Dictionary<string, string>
+                    {
+                        { "name_already_exists", "Organization with same name already exists." }
+                    }
+                };
+            }
+
             // Create organization
             var contextUserId = BlocksContext.GetContext()?.UserId;
             var createdByUserId = creatorId ?? contextUserId;

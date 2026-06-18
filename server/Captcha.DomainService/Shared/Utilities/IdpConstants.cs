@@ -66,7 +66,8 @@ namespace Authentication.DomainService.Utilities
                                              ConsumerSubscription.BindToQueue(MfaQueueName),
                                              ConsumerSubscription.BindToQueue(DataCleanupQueue),
                                              ConsumerSubscription.BindToQueue(LanguageDataMigrationQueue),
-                                             ConsumerSubscription.BindToQueue(GenericMigrationQueue)],
+                                             ConsumerSubscription.BindToQueue(GenericMigrationQueue),
+                                             ConsumerSubscription.BindToQueue(IamOrgQueue)],
                 }
             };
         }
@@ -77,7 +78,7 @@ namespace Authentication.DomainService.Utilities
             {
                 AzureServiceBusConfiguration = new AzureServiceBusConfiguration
                 {
-                    Queues = [AuthenticationQueue, IamQueue, MfaQueueName, DataCleanupQueue, LanguageDataMigrationQueue, GenericMigrationQueue],
+                    Queues = [AuthenticationQueue, IamQueue, MfaQueueName, DataCleanupQueue, LanguageDataMigrationQueue, GenericMigrationQueue, IamOrgQueue],
                     Topics = [MigrationCompletionTopic]
                 }
             };
