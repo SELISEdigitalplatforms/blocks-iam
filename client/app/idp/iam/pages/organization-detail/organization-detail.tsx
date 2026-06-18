@@ -14,28 +14,27 @@ export const OrganizationDetail = ({ id }: { id: string }) => {
   const tenantId = useProjectStore().selectedProject?.tenantId || "";
   const { data, isLoading } = useGetOrganizationById({ itemId: id, projectKey: tenantId });
 
+  const orgName = data?.organization?.name ?? "Organization";
+
   BREADCRUMB_CUSTOM_TITLES["/app/organization-detail"] = "Organizations";
-  BREADCRUMB_CUSTOM_TITLES[`/app/organization-detail/${id}`] =
-    data?.organization?.name ?? null;
+  BREADCRUMB_CUSTOM_TITLES[`/app/organization-detail/${id}`] = orgName;
 
   return (
-    <main className="mx-auto w-full max-w-7xl overflow-x-hidden p-4 sm:p-6 md:p-8">
+    <div>
       <div className="mb-4 md:mb-6">
         <PageBreadcrumb breadcrumbIndex={3} />
       </div>
 
-      <div className="flex items-center justify-between mb-6">
+      <div className="mb-4 flex flex-wrap items-start justify-between gap-4 md:mb-6">
         {isLoading ? (
           <Skeleton className="h-8 w-48" />
         ) : (
-          <h1 className="text-2xl font-semibold tracking-tight text-foreground">
-            {data?.organization?.name}
-          </h1>
+          <h1 className="text-lg font-semibold md:text-2xl">{orgName}</h1>
         )}
         <InviteOrganizationUser organizationId={id} />
       </div>
 
       <OrganizationUsers organizationId={id} />
-    </main>
+    </div>
   );
 };

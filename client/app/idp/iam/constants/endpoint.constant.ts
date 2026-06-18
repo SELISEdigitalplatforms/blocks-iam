@@ -65,7 +65,7 @@ export const PERMISSION_ENDPOINTS = {
 
 export const ORGANIZATION_ENDPOINTS = {
   GET_ORGANIZATIONS: `/api${IAM_SUBPATH}/organizations`,
-  GET_ORGANIZATION: `/api${IAM_SUBPATH}/organization`,
+  GET_ORGANIZATION: `/api${IAM_SUBPATH}/organizations`,
   CREATE_ORGANIZATION: `/api${IAM_SUBPATH}/organizations/create`,
   SAVE_ORGANIZATION: `/api${IAM_SUBPATH}/organizations`,
   UPDATE_ORGANIZATION: `/api${IAM_SUBPATH}/organizations`,
