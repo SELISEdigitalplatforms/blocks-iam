@@ -93,7 +93,6 @@ export const OidcLoginForm = ({
   const [activeCodeChallengeMethod, setActiveCodeChallengeMethod] = useState(
     codeChallengeMethod || "S256",
   );
-  const [failedAttempts, setFailedAttempts] = useState(0);
   const [captchaRequired, setCaptchaRequired] = useState(false);
   const formRef = useRef<HTMLFormElement>(null);
 
@@ -130,7 +129,7 @@ export const OidcLoginForm = ({
     type: captchaType,
     generator: oidcUiConfig?.captcha?.generator,
   });
-  const isTokenNeed = captchaRequired || failedAttempts >= 3;
+  const isTokenNeed = captchaRequired;
 
   const activationUrl = buildOIDCNavigationUrl("/oidc/activation");
   const forgotPasswordUrl = buildOIDCNavigationUrl("/oidc/forgot-password");
@@ -215,7 +214,6 @@ export const OidcLoginForm = ({
 
       if (response.ok) {
         const data = await response.json();
-        setFailedAttempts(0);
         setCaptchaRequired(false);
         await animCtx?.succeedAnimation();
         window.location.href = data.redirect_uri;
@@ -267,13 +265,11 @@ export const OidcLoginForm = ({
           setAccounts(data.accounts);
           setIsSelectingAccount(true);
           setIsLoading(false);
-          setFailedAttempts(0);
           setCaptchaRequired(false);
           return;
         }
 
         // Otherwise code is already in URL, let the SPA handle it
-        setFailedAttempts(0);
         setCaptchaRequired(false);
         await animCtx?.succeedAnimation();
         return;
@@ -284,7 +280,7 @@ export const OidcLoginForm = ({
         data?.error_description || data?.message || "Login failed";
       const errorCode = data?.error;
 
-      shake();
+shake();
       if (errorCode === "account_locked") {
         const msg = "Your account is locked. Please contact support or reset your password.";
         setServerError(msg);
@@ -306,7 +302,6 @@ export const OidcLoginForm = ({
             : "Invalid email or password. Please try again.";
         setServerError(msg);
         await animCtx?.failAnimation(msg);
-        setFailedAttempts((prev) => prev + 1);
         resetCaptcha();
       } else {
         setServerError(errorMsg);
