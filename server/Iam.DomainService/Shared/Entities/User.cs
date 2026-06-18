@@ -57,6 +57,7 @@ namespace Iam.DomainService.Entities
         public string? DeactivatedBy { get; set; }
         public string? ExternalUserId { get; set; }
         public List<ExternalIdentity> ExternalIdentities { get; set; } = new List<ExternalIdentity>();
+        public List<string> OrganizationIds { get; set; } = [];
         public Dictionary<string, object> Attributes { get; set; } = new Dictionary<string, object>(); // For any additional info that doesn't fit into existing properties
     }
 
