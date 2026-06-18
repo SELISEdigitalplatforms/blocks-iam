@@ -624,7 +624,7 @@ namespace CloudConfiguration.DomainService.Shared.Services
                 LastUpdatedDate = DateTime.UtcNow,
                 CreatedBy = BlocksContext.GetContext()?.UserId,
                 LastUpdatedBy = BlocksContext.GetContext()?.UserId,
-                OrganizationIds = config.OrganizationIds,
+               // OrganizationIds = config.OrganizationIds,
                 Tags = config.Tags,
                 Name = config.Name + " - Copy",
                 Host = config.Host,

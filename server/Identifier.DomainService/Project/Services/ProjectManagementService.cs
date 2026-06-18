@@ -48,7 +48,7 @@ namespace Identifier.DomainService.Projects
                 CreatedDate = repoProject.CreatedDate,
                 LastUpdatedDate = repoProject.LastUpdatedDate,
                 LastUpdatedBy = repoProject.LastUpdatedBy,
-                OrganizationIds = repoProject.OrganizationIds,
+               // OrganizationIds = repoProject.OrganizationIds,
                 CreatedBy = repoProject.CreatedBy,
                 Tags = repoProject.Tags,
                 TenantId = repoProject.TenantId,
