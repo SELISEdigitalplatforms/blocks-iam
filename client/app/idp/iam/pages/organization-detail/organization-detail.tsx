@@ -1,13 +1,10 @@
 
 
 import { BREADCRUMB_CUSTOM_TITLES } from "@/constants/breadcrumb-custom-title";
-import PageBreadcrumb from "@/components/breadcrumb/breadcrumb";
 import { useGetOrganizationById } from "@blocks-idp/iam/hooks/use-organization";
 import { useProjectStore } from "@seliseblocks/blocks-kit";
-import { Skeleton } from "@/components/ui-kits/skeleton/skeleton";
 import {
   OrganizationUsers,
-  InviteOrganizationUser,
 } from "@blocks-idp/iam/modules/organization-management/organization-users";
 
 export const OrganizationDetail = ({ id }: { id: string }) => {
@@ -21,20 +18,11 @@ export const OrganizationDetail = ({ id }: { id: string }) => {
 
   return (
     <div>
-      <div className="mb-4 md:mb-6">
-        <PageBreadcrumb breadcrumbIndex={3} />
+      <div className="flex w-full flex-col">
+        <div>
+          <OrganizationUsers organizationId={id} />
+        </div>
       </div>
-
-      <div className="mb-4 flex flex-wrap items-start justify-between gap-4 md:mb-6">
-        {isLoading ? (
-          <Skeleton className="h-8 w-48" />
-        ) : (
-          <h1 className="text-lg font-semibold md:text-2xl">{orgName}</h1>
-        )}
-        <InviteOrganizationUser organizationId={id} />
-      </div>
-
-      <OrganizationUsers organizationId={id} />
     </div>
   );
 };

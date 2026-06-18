@@ -25,8 +25,7 @@ export function OrganizationsFilterToolbar() {
     setLocalSearch(value);
     if (debounceRef.current) clearTimeout(debounceRef.current);
     debounceRef.current = setTimeout(() => {
-      const nextSearch = value.trim().length >= 3 ? value : "";
-      setQueryParams((prev) => ({ ...prev, search: nextSearch, page: 0 }));
+      setQueryParams((prev) => ({ ...prev, search: value, page: 0 }));
     }, 300);
   };
 
