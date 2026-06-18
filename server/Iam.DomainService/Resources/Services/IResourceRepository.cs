@@ -36,6 +36,7 @@ namespace Iam.DomainService.Resources
         Task<bool> UpdateRolesCountAsync(string slug);
         Task<List<GetResourceGroupResponse>> GetResourceGroupsAsync();
         Task<Organization> GetOrganizationById(string id);
+        Task<Organization> GetOrganizationByNameAsync(string name);
         Task<List<string>> GetOrganizationIdsByUserIdAsync(string userId);
         Task<List<Organization>> GetOrganizationsByIdsAsync(List<string> organizationIds);
         Task SaveOrganizationAsync(Organization organization);

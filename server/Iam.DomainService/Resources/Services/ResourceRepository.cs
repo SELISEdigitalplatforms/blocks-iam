@@ -6,6 +6,7 @@ using Iam.DomainService.Services;
 using Iam.DomainService.Shared.Entities;
 using MongoDB.Bson;
 using MongoDB.Driver;
+using System.Text.RegularExpressions;
 
 namespace Iam.DomainService.Resources
 {
@@ -319,6 +320,22 @@ namespace Iam.DomainService.Resources
         {
             var collection = _identityAccessManagementRepository.GetCollection<Organization>();
             return await  (await collection.FindAsync(Builders<Organization>.Filter.Where(r=>r.ItemId == id))).FirstOrDefaultAsync();
+        }
+
+        public async Task<Organization> GetOrganizationByNameAsync(string name)
+        {
+            if (string.IsNullOrWhiteSpace(name))
+            {
+                return null;
+            }
+
+            var collection = _identityAccessManagementRepository.GetCollection<Organization>();
+            var normalizedName = name.Trim();
+            var escapedName = Regex.Escape(normalizedName);
+            var regex = new BsonRegularExpression($"^{escapedName}$", "i");
+            var filter = Builders<Organization>.Filter.Regex(x => x.Name, regex);
+
+            return await collection.Find(filter).FirstOrDefaultAsync();
         }
 
         public async Task<List<string>> GetOrganizationIdsByUserIdAsync(string userId)
