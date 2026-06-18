@@ -8,6 +8,8 @@ namespace Captcha.DomainService.Configuration
     /// are distinguished by <see cref="SecretKey"/> (e.g. "captcha"), with the actual values
     /// stored as string entries inside <see cref="KeyValuePairs"/>.
     /// </summary>
+
+    [BsonIgnoreExtraElements]
     public class Secret : BaseEntity
     {
         [BsonElement("SecretKey")]
