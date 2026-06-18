@@ -1042,11 +1042,16 @@ namespace Iam.DomainService.Resources
                 CreatedBy = createdByUserId,
                 CreatedDate = DateTime.UtcNow,
                 Name = request.Name,
-                IsEnable = true,
                 DefaultRoleForMembers = request.DefaultRoleForMembers,
                 DefaultPermissionsForMembers = request.DefaultPermissionsForMembers,
                 LastUpdatedDate = DateTime.UtcNow,
-                LastUpdatedBy = createdByUserId
+                LastUpdatedBy = createdByUserId,
+                Description = request.Description,
+                Email = request.Email,
+                PhoneNumber = request.PhoneNumber,
+                WebsiteUrl = request.WebsiteUrl,
+                Addresses = request.Addresses,
+                Attributes = request.Attributes,
             };
 
             await _resourceRepository.SaveOrganizationAsync(organization);
@@ -1195,8 +1200,24 @@ namespace Iam.DomainService.Resources
             organization.LastUpdatedDate = DateTime.UtcNow;
             organization.Name = request.Name;
             organization.LastUpdatedBy = BlocksContext.GetContext()?.UserId;
-            organization.IsEnable = request.IsEnable;
             organization.DefaultRoleForMembers = request.DefaultRoleForMembers;
+            organization.DefaultPermissionsForMembers = request.DefaultPermissionsForMembers;
+            organization.Description = request.Description;
+            organization.Email = request.Email;
+            organization.PhoneNumber = request.PhoneNumber;
+            organization.WebsiteUrl = request.WebsiteUrl;
+            organization.Addresses = request.Addresses;
+            organization.Attributes = request.Attributes;
+            organization.Theme = request.Theme;
+            organization.LogoUrl = request.LogoUrl;
+            organization.LogoId = request.LogoId;
+            organization.Locale = request.Locale;
+            organization.TimeFormat = request.TimeFormat;
+            organization.DateFormat = request.DateFormat;
+            organization.Currency = request.Currency;
+            organization.TimeZone = request.TimeZone;
+            organization.Industry = request.Industry;
+
             await _resourceRepository.SaveOrganizationAsync(organization);
             return new BaseResponse { IsSuccess = true };
         }
