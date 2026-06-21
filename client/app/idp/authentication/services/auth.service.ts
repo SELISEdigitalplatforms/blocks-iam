@@ -29,6 +29,7 @@ export class AuthService {
         username: payload.username,
         password: payload.password,
         clientId: payload.clientId || "",
+        ...(payload.captchaCode ? { captchaCode: payload.captchaCode } : {}),
       },
       undefined,
       {
