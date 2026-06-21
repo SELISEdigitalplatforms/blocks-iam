@@ -158,7 +158,7 @@ public class AuthenticationController : ControllerBase
     /// <response code="200">Activation email resent successfully</response>
     /// <response code="400">User not found or already activated</response>
     [HttpPost("resend-activation")]
-    [AllowAnonymous]
+    [Authorize]
     public async Task<IActionResult> ResendActivation([FromBody] ResendActivationRequest command)
     {
         var result = await _accountService.ResendActivationAsync(command);
