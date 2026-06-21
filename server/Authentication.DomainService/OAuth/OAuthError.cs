@@ -9,6 +9,7 @@ namespace Authentication.DomainService.OAuth
         public const string AccountLocked = "account_locked";
         public const string MfaEnabled = "mfa_enabled";
         public const string CaptchaEnabled = "captcha_enabled";
+        public const string CaptchaInvalid = "captcha_invalid";
         public const string InValidUseNamePassword = "invalid_username_password";
         public const string UserInActiveOrNotVerified = "user_inactive_or_not_verified";
         public const string RefreshTokenCookieNotFound = "refresh_token_not_found_in_cookie";

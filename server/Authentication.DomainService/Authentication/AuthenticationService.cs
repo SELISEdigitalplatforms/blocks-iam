@@ -80,7 +80,9 @@ namespace Authentication.DomainService.Authentication
                 return new ObjectResult(new
                 {
                     error = result.Error,
-                    error_description = result.ErrorDescription
+                    error_description = result.ErrorDescription,
+                    captcha_required = result.CaptchaRequired || string.Equals(result.Error, OAuthError.CaptchaEnabled, StringComparison.OrdinalIgnoreCase),
+                    captcha_site_key = result.CaptchaSiteKey
                 })
                 {
                     StatusCode = result.StatusCode

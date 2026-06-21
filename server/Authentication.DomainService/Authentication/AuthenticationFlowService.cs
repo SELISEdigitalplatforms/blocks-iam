@@ -4,6 +4,7 @@ using Authentication.DomainService.OAuth;
 using Authentication.DomainService.OAuth.RequestModel;
 using Authentication.DomainService.OAuth.ResponseModel;
 using Authentication.DomainService.OAuth.Services;
+using Authentication.DomainService.Oidc.Repositories;
 using Authentication.DomainService.Services;
 using Authentication.DomainService.Shared.RequestModel;
 using Authentication.DomainService.Utilities;
@@ -11,6 +12,7 @@ using Blocks.Genesis;
 using Captcha.DomainService.Captcha;
 using Captcha.DomainService.Configuration;
 using Iam.DomainService.Entities;
+using Idp.DomainService.Oidc.Contracts;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.Logging;
@@ -33,6 +35,7 @@ namespace Authentication.DomainService.Authentication
         private readonly ICacheClient _cacheClient;
         private readonly ICaptchaService _captchaService;
         private readonly ICaptchaConfigurationService _captchaConfigurationService;
+        private readonly IAuditLogRepository _auditLogRepo;
         private readonly ILogger<AuthenticationFlowService> _logger;
 
         public AuthenticationFlowService(
@@ -47,6 +50,7 @@ namespace Authentication.DomainService.Authentication
             ICacheClient cacheClient,
             ICaptchaService captchaService,
             ICaptchaConfigurationService captchaConfigurationService,
+            IAuditLogRepository auditLogRepo,
             ILogger<AuthenticationFlowService> logger)
         {
             _authenticationRepository = authenticationRepository;
@@ -60,6 +64,7 @@ namespace Authentication.DomainService.Authentication
             _cacheClient = cacheClient;
             _captchaService = captchaService;
             _captchaConfigurationService = captchaConfigurationService;
+            _auditLogRepo = auditLogRepo;
             _logger = logger;
         }
 
@@ -105,6 +110,11 @@ namespace Authentication.DomainService.Authentication
             var captchaValidationResult = await ValidateCaptchaIfRequiredAsync(user, request.CaptchaCode);
             if (captchaValidationResult != null)
             {
+                if (user != null
+                    && string.Equals(captchaValidationResult.Error, OAuthError.CaptchaInvalid, StringComparison.OrdinalIgnoreCase))
+                {
+                    await WriteLoginAuditAsync(user, clientId, httpRequest, LoginAuditEvents.CaptchaValidationFailure, captchaValidationResult.ErrorDescription);
+                }
                 return captchaValidationResult;
             }
 
@@ -120,9 +130,21 @@ namespace Authentication.DomainService.Authentication
                 Request = httpRequest
             };
 
+            var tokenResponse = await _passwordAuthenticationService.AuthenticateAsync(tokenRequest, configuration);
+
+            if (user != null && !string.IsNullOrWhiteSpace(tokenResponse.Error)
+                && string.Equals(tokenResponse.Error, OAuthError.InValidUseNamePassword, StringComparison.OrdinalIgnoreCase))
+            {
+                await WriteLoginAuditAsync(user, clientId, httpRequest, LoginAuditEvents.LoginFailure, tokenResponse.ErrorDescription);
+            }
+            else if (user != null && string.IsNullOrWhiteSpace(tokenResponse.Error))
+            {
+                await WriteLoginAuditAsync(user, clientId, httpRequest, LoginAuditEvents.LoginSuccess, tokenResponse.ErrorDescription);
+            }
+
             return new AuthenticationFlowResult
             {
-                TokenResponse = await _passwordAuthenticationService.AuthenticateAsync(tokenRequest, configuration)
+                TokenResponse = tokenResponse
             };
         }
 
@@ -283,7 +305,7 @@ namespace Authentication.DomainService.Authentication
 
         private async Task<AuthenticationFlowResult?> ValidateCaptchaIfRequiredAsync(User? user, string? captchaCode)
         {
-            if (user == null || user.FailedLoginCount < 2)
+            if (!CaptchaGate.IsCaptchaRequired(user))
             {
                 return null;
             }
@@ -296,7 +318,7 @@ namespace Authentication.DomainService.Authentication
 
             if (string.IsNullOrWhiteSpace(captchaCode))
             {
-                return BuildCaptchaRequiredResult();
+                return BuildCaptchaRequiredResult(captchaConfiguration.CaptchaKey);
             }
 
             var verifyCaptchaResponse = await _captchaService.VerifyCaptchaAsync(new VerifyCaptchaRequest
@@ -305,17 +327,69 @@ namespace Authentication.DomainService.Authentication
                 ConfigurationName = captchaConfiguration.Provider
             });
 
-            return verifyCaptchaResponse.Verified ? null : BuildCaptchaRequiredResult();
+            return verifyCaptchaResponse.Verified
+                ? null
+                : BuildCaptchaInvalidResult(captchaConfiguration.CaptchaKey);
         }
 
-        private static AuthenticationFlowResult BuildCaptchaRequiredResult()
+        private static AuthenticationFlowResult BuildCaptchaRequiredResult(string? siteKey)
         {
             return new AuthenticationFlowResult
             {
                 StatusCode = StatusCodes.Status400BadRequest,
                 Error = OAuthError.CaptchaEnabled,
-                ErrorDescription = "Captcha verification is required"
+                ErrorDescription = "Captcha verification is required",
+                CaptchaRequired = true,
+                CaptchaSiteKey = siteKey
             };
+        }
+
+        private static AuthenticationFlowResult BuildCaptchaInvalidResult(string? siteKey)
+        {
+            return new AuthenticationFlowResult
+            {
+                StatusCode = StatusCodes.Status400BadRequest,
+                Error = OAuthError.CaptchaInvalid,
+                ErrorDescription = "Captcha answer is invalid. Please try again.",
+                CaptchaRequired = true,
+                CaptchaSiteKey = siteKey
+            };
+        }
+
+        private async Task WriteLoginAuditAsync(User user, string clientId, HttpRequest httpRequest, string eventType, string? details)
+        {
+            try
+            {
+                var isFailure = eventType.Contains("failure", StringComparison.OrdinalIgnoreCase)
+                    || eventType.Contains("locked", StringComparison.OrdinalIgnoreCase);
+                var isSuccess = eventType.Contains("success", StringComparison.OrdinalIgnoreCase);
+
+                await _auditLogRepo.CreateAsync(new AuditLogModel
+                {
+                    EventType = eventType,
+                    UserId = user.ItemId,
+                    ClientId = clientId,
+                    TenantId = BlocksContext.GetContext()?.TenantId,
+                    IpAddress = GetClientIpAddress(httpRequest),
+                    UserAgent = httpRequest.Headers.UserAgent.ToString(),
+                    Severity = isFailure ? "WARN" : "INFO",
+                    Status = isSuccess ? "success" : "failure",
+                    Details = details ?? eventType
+                });
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "Failed to write login audit event {EventType} for user {UserId}", eventType, user.ItemId);
+            }
+        }
+
+        private static string GetClientIpAddress(HttpRequest request)
+        {
+            if (request?.HttpContext?.Connection?.RemoteIpAddress != null)
+            {
+                return request.HttpContext.Connection.RemoteIpAddress.ToString();
+            }
+            return "unknown";
         }
 
         private static string ResolveOrgIdFromUser(User? user)
