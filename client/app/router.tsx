@@ -101,6 +101,7 @@ export const router = createBrowserRouter([
           },
           { path: "recover/:tenantId", element: <ResetPasswordPage /> },
           { path: "activate/:tenantId", element: <ActivatePage /> },
+          { path: "mfa-check", element: <MfaCheckPage /> },
 
         ],
       },
