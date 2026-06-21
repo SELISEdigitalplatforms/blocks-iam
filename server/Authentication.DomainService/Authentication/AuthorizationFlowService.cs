@@ -47,6 +47,8 @@ namespace Authentication.DomainService.Authentication
         private readonly ClientCredentialAuthorizationService _clientCredentialAuthorizationService;
         private readonly RefreshTokenAuthenticationService _refreshTokenAuthenticationService;
         private readonly IMfaConfigurationService _mfaConfigurationService;
+        private readonly IMfaPolicyService _mfaPolicyService;
+        private readonly IMfaAuditService _mfaAuditService;
         private readonly IOtpServiceFactory _otpServiceFactory;
         private readonly ITenants _tenants;
         private readonly IAuthenticationService _authenticationService;
@@ -69,6 +71,8 @@ namespace Authentication.DomainService.Authentication
             ClientCredentialAuthorizationService clientCredentialAuthorizationService,
             RefreshTokenAuthenticationService refreshTokenAuthenticationService,
             IMfaConfigurationService mfaConfigurationService,
+            IMfaPolicyService mfaPolicyService,
+            IMfaAuditService mfaAuditService,
             IOtpServiceFactory otpServiceFactory,
             ITenants tenants,
             IAuthenticationService authenticationService,
@@ -90,6 +94,8 @@ namespace Authentication.DomainService.Authentication
             _clientCredentialAuthorizationService = clientCredentialAuthorizationService;
             _refreshTokenAuthenticationService = refreshTokenAuthenticationService;
             _mfaConfigurationService = mfaConfigurationService;
+            _mfaPolicyService = mfaPolicyService;
+            _mfaAuditService = mfaAuditService;
             _otpServiceFactory = otpServiceFactory;
             _tenants = tenants;
             _authenticationService = authenticationService;
@@ -280,6 +286,18 @@ namespace Authentication.DomainService.Authentication
                     authConfiguration.AccountLockDurationInMinutes,
                     DateTime.UtcNow);
 
+                await _mfaAuditService.WriteAsync(new MfaAuditEvent
+                {
+                    EventType = updatedUser?.LockoutUntilUtc.HasValue == true && updatedUser.LockoutUntilUtc.Value > DateTime.UtcNow
+                        ? LoginAuditEvents.MfaAccountLocked
+                        : LoginAuditEvents.MfaVerificationFailure,
+                    UserId = user.ItemId,
+                    ClientId = request.ClientId,
+                    MfaType = user.UserMfaType,
+                    Severity = "WARN",
+                    Status = "failure"
+                });
+
                 if (updatedUser?.LockoutUntilUtc.HasValue == true && updatedUser.LockoutUntilUtc.Value > DateTime.UtcNow)
                 {
                     return new ObjectResult(new { error = "account_locked" }) { StatusCode = StatusCodes.Status423Locked };
@@ -290,6 +308,15 @@ namespace Authentication.DomainService.Authentication
 
             await ResetAuthFailureCountersAsync(user);
             await _cacheClient.RemoveKeyAsync($"oidc_mfa_login:{request.MfaId}");
+
+            await _mfaAuditService.WriteAsync(new MfaAuditEvent
+            {
+                EventType = LoginAuditEvents.MfaVerificationSuccess,
+                UserId = user.ItemId,
+                ClientId = request.ClientId,
+                MfaType = user.UserMfaType,
+                Status = "success"
+            });
 
             return await AuthorizeAsync(
                 mfaContext.ClientId ?? string.Empty,
@@ -365,9 +392,8 @@ namespace Authentication.DomainService.Authentication
 
         private async Task<bool> IsMfaRequiredAsync(User user)
         {
-            var mfaConfiguration = await _mfaConfigurationService.GetAsync();
-            var mfaProviders = mfaConfiguration.UserMfaType ?? [];
-            return user.MfaEnabled && mfaProviders.Contains(user.UserMfaType);
+            var decision = await _mfaPolicyService.EvaluateAsync(user, clientId: null);
+            return decision.Required;
         }
 
         private async Task<OidcCaptchaEvaluation> EvaluateOidcCaptchaAsync(User user, string? captchaCode)

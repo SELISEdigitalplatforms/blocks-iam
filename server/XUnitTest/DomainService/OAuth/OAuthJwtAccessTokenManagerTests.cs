@@ -1,8 +1,10 @@
 using Blocks.Genesis;
+using Authentication.DomainService.Authentication;
 using Authentication.DomainService.Entities;
 using Authentication.DomainService.OAuth;
 using Authentication.DomainService.OAuth.RequestModel;
 using Authentication.DomainService.Services;
+using Authentication.DomainService.Shared;
 using Iam.DomainService.Dtos;
 using Iam.DomainService.Entities;
 using Mfa.DomainService.Configuration;
@@ -22,7 +24,8 @@ namespace XUnitTest.DomainService.OAuth
         private readonly Mock<IAuthenticationDomainService> _authenticationDomainService;
         private readonly Mock<IOtpServiceFactory> _otpServiceFactory;
         private readonly Mock<IMfaConfigurationService> _configurationService;
-        private readonly Mock<IConfiguration> _configuration;
+        private readonly Mock<IMfaPolicyService> _mfaPolicyService;
+        private readonly Mock<IAuthenticationRepository> _authenticationRepository;
         private readonly Mock<ICacheClient> _cacheClient;
         private readonly Mock<ITenants> _tenants;
         private readonly OAuthJwtAccessTokenManager _manager;
@@ -33,31 +36,46 @@ namespace XUnitTest.DomainService.OAuth
             _authenticationDomainService = new Mock<IAuthenticationDomainService>();
             _otpServiceFactory = new Mock<IOtpServiceFactory>();
             _configurationService = new Mock<IMfaConfigurationService>();
-            _configuration = new Mock<IConfiguration>();
+            _mfaPolicyService = new Mock<IMfaPolicyService>();
+            _authenticationRepository = new Mock<IAuthenticationRepository>();
             _cacheClient = new Mock<ICacheClient>();
             _tenants = new Mock<ITenants>();
+
+            _mfaPolicyService.Setup(x => x.EvaluateAsync(It.IsAny<User>(), It.IsAny<string>(), It.IsAny<CancellationToken>()))
+                .ReturnsAsync(new MfaPolicyDecision { Required = false });
+
+            var refreshTokenRepo = new Mock<IRefreshTokenRepository>();
+            var unifiedTokenSession = new UnifiedTokenSessionService(_cacheClient.Object, _authenticationDomainService.Object, refreshTokenRepo.Object);
 
             _manager = new OAuthJwtAccessTokenManager(
                 _jwtAccessTokenProvider.Object,
                 _authenticationDomainService.Object,
+                _authenticationRepository.Object,
                 _configurationService.Object,
+                _mfaPolicyService.Object,
                 _cacheClient.Object,
                 _tenants.Object,
                 _otpServiceFactory.Object,
-                _configuration.Object
+                unifiedTokenSession
             );
         }
 
         [Fact]
-        public async Task ManageTokenAsync_WithMfaEnabled_ReturnsMfaResponse()
+        public async Task ManageTokenAsync_WhenMfaPolicyRequires_ReturnsMfaResponse()
         {
             var tokenRequest = CreateTokenRequest(GrantTypes.Password);
             var authConfig = CreateAuthConfig();
             var user = CreateUser(mfaEnabled: true);
-            var mfaConfig = new Configuration { UserMfaType = new List<UserMfaType> { UserMfaType.Email } };
             var otpService = new Mock<IOtpService>();
 
-            _configurationService.Setup(x => x.GetAsync()).ReturnsAsync(mfaConfig);
+            _mfaPolicyService.Reset();
+            _mfaPolicyService.Setup(x => x.EvaluateAsync(It.IsAny<User>(), It.IsAny<string>(), It.IsAny<CancellationToken>()))
+                .ReturnsAsync(new MfaPolicyDecision
+                {
+                    Required = true,
+                    PreferredMethod = UserMfaType.Email,
+                    AllowedMethods = new List<UserMfaType> { UserMfaType.Email }
+                });
             _otpServiceFactory.Setup(x => x.GetOTPService(UserMfaType.Email)).Returns(otpService.Object);
             otpService.Setup(x => x.GenerateAsync(It.IsAny<UserInfo>(), It.IsAny<string>())).ReturnsAsync(new OtpGenerationResponse { MfaId = "mfa-123" });
 
@@ -175,85 +193,6 @@ namespace XUnitTest.DomainService.OAuth
             Assert.NotNull(token);
             var handler = new JwtSecurityTokenHandler();
             Assert.True(handler.CanReadToken(token));
-        }
-
-        [Fact]
-        public void ProcessAccountLock_WhenNotLocked_ReturnsEmptyResponse()
-        {
-            var authConfig = CreateAuthConfig();
-            var tenant = CreateTenant();
-            var user = CreateUser(mfaEnabled: false);
-
-            _cacheClient.Setup(x => x.GetStringValue(It.IsAny<string>())).Returns((string)null);
-
-            var result = _manager.ProcessAccountLock(authConfig, tenant, user);
-
-            Assert.Null(result.Error);
-        }
-
-        [Fact]
-        public void ProcessAccountLock_WhenLocked_ReturnsLockedError()
-        {
-            var authConfig = CreateAuthConfig();
-            authConfig.GetNumberOfWrongAttemptsToLockTheAccount = 3;
-            var tenant = CreateTenant();
-            var user = CreateUser(mfaEnabled: false);
-
-            _cacheClient.Setup(x => x.GetStringValue(It.IsAny<string>())).Returns("3");
-
-            var result = _manager.ProcessAccountLock(authConfig, tenant, user);
-
-            Assert.Equal(OAuthError.AccountLocked, result.Error);
-        }
-
-        [Fact]
-        public void Lock_IncrementsLockCount()
-        {
-            _cacheClient.Setup(x => x.GetStringValue(It.IsAny<string>())).Returns("1");
-
-            _manager.Lock("test-key", 30, 5);
-
-            _cacheClient.Verify(x => x.AddStringValue("test-key", "2", 1800), Times.Once);
-        }
-
-        [Fact]
-        public void Lock_WhenMaxAttemptsReached_DoesNotIncrement()
-        {
-            _cacheClient.Setup(x => x.GetStringValue(It.IsAny<string>())).Returns("5");
-
-            _manager.Lock("test-key", 30, 5);
-
-            _cacheClient.Verify(x => x.AddStringValue(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<int>()), Times.Never);
-        }
-
-        [Fact]
-        public void IsLocked_WhenBelowMaxAttempts_ReturnsFalse()
-        {
-            _cacheClient.Setup(x => x.GetStringValue(It.IsAny<string>())).Returns("2");
-
-            var result = _manager.IsLocked("test-key", 5);
-
-            Assert.False(result);
-        }
-
-        [Fact]
-        public void IsLocked_WhenAtOrAboveMaxAttempts_ReturnsTrue()
-        {
-            _cacheClient.Setup(x => x.GetStringValue(It.IsAny<string>())).Returns("5");
-
-            var result = _manager.IsLocked("test-key", 5);
-
-            Assert.True(result);
-        }
-
-        [Fact]
-        public void IsLocked_WhenNoCache_ReturnsFalse()
-        {
-            _cacheClient.Setup(x => x.GetStringValue(It.IsAny<string>())).Returns((string)null);
-
-            var result = _manager.IsLocked("test-key", 5);
-
-            Assert.False(result);
         }
 
         private TokenRequest CreateTokenRequest(string grantType)

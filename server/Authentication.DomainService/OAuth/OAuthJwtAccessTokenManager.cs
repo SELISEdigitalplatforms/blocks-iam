@@ -1,10 +1,12 @@
 using Blocks.Genesis;
+using Authentication.DomainService.Authentication;
 using Authentication.DomainService.Dtos;
 using Authentication.DomainService.Entities;
 using Authentication.DomainService.OAuth.RequestModel;
 using Authentication.DomainService.OAuth.ResponseModel;
 using Authentication.DomainService.Services;
 using Iam.DomainService.Entities;
+using Microsoft.AspNetCore.Http;
 using Mfa.DomainService.Configuration;
 using Mfa.DomainService.Entities;
 using Mfa.DomainService.Services;
@@ -22,6 +24,7 @@ namespace Authentication.DomainService.OAuth
         private readonly IAuthenticationRepository _authenticationRepository;
         private readonly IOtpServiceFactory _otpServiceFactory;
         private readonly IMfaConfigurationService _configurationService;
+        private readonly IMfaPolicyService _mfaPolicyService;
         private readonly ICacheClient _cacheClient;
         private readonly ITenants _tenants;
         private readonly UnifiedTokenSessionService _unifiedTokenSessionService;
@@ -31,6 +34,7 @@ namespace Authentication.DomainService.OAuth
             IAuthenticationDomainService authenticationDomainService,
             IAuthenticationRepository authenticationRepository,
             IMfaConfigurationService configurationService,
+            IMfaPolicyService mfaPolicyService,
             ICacheClient cacheClient,
             ITenants tenants,
             IOtpServiceFactory otpServiceFactory,
@@ -41,6 +45,7 @@ namespace Authentication.DomainService.OAuth
             _authenticationDomainService = authenticationDomainService;
             _authenticationRepository = authenticationRepository;
             _configurationService = configurationService;
+            _mfaPolicyService = mfaPolicyService;
             _cacheClient = cacheClient;
             _tenants = tenants;
             _otpServiceFactory = otpServiceFactory;
@@ -51,11 +56,11 @@ namespace Authentication.DomainService.OAuth
         {
             var bc = BlocksContext.GetContext();
 
-            //var tokenResponse = await ProcessCheckPoints(tokenRequest, user);
-            //if (tokenResponse != null)
-            //{
-            //    return tokenResponse;
-            //}
+            var checkpointResponse = await ProcessCheckPointsAsync(tokenRequest, user, tokenRequest.ClientId);
+            if (checkpointResponse != null)
+            {
+                return checkpointResponse;
+            }
 
             var tenant = _tenants.GetTenantByID(bc?.TenantId ?? "");
             if (tenant == null)
@@ -116,21 +121,43 @@ namespace Authentication.DomainService.OAuth
             return (allowedScopes, allowedServiceAccessResources);
         }
 
-        private async Task<TokenResponse?> ProcessCheckPoints(TokenRequest tokenRequest, User user)
+        private async Task<TokenResponse?> ProcessCheckPointsAsync(TokenRequest tokenRequest, User user, string? clientId)
         {
-            if (tokenRequest.GrantType != GrantTypes.MfaCode && tokenRequest.GrantType != GrantTypes.ClientCredential && await CheckIfMfaIsApplicable(user))
+            if (tokenRequest.GrantType == GrantTypes.MfaCode
+                || tokenRequest.GrantType == GrantTypes.ClientCredential
+                || tokenRequest.GrantType == GrantTypes.RefreshToken
+                || tokenRequest.GrantType == GrantTypes.SwitchOrganization)
             {
-                return await HandleMfaAuthentication(user);
+                return null;
             }
 
-            return null;
+            var policy = await _mfaPolicyService.EvaluateAsync(user, clientId);
+            if (!policy.Required)
+            {
+                return null;
+            }
+
+            if (policy.MustEnrollFirst)
+            {
+                return new TokenResponse
+                {
+                    Error = OAuthError.MfaEnrollmentRequired,
+                    ErrorDescription = "Mfa enrollment is required before authentication can complete",
+                    MfaRequired = true,
+                    MfaMethods = string.Join(",", policy.AllowedMethods.Select(m => m.ToString())),
+                    StatusCode = StatusCodes.Status403Forbidden
+                };
+            }
+
+            return await HandleMfaAuthenticationAsync(user, clientId, policy);
         }
 
-        private async Task<TokenResponse> HandleMfaAuthentication(User user)
+        private async Task<TokenResponse> HandleMfaAuthenticationAsync(User user, string? clientId, MfaPolicyDecision policy)
         {
             try
             {
-                var otpService = _otpServiceFactory.GetOTPService(user.UserMfaType);
+                var mfaType = policy.PreferredMethod ?? user.UserMfaType;
+                var otpService = _otpServiceFactory.GetOTPService(mfaType);
                 if (otpService == null)
                 {
                     return new TokenResponse
@@ -161,9 +188,12 @@ namespace Authentication.DomainService.OAuth
                 return new TokenResponse
                 {
                     MfaId = response.MfaId,
-                    UserMfa = user.UserMfaType,
+                    UserMfa = mfaType,
+                    MfaRequired = true,
+                    MfaMethods = string.Join(",", policy.AllowedMethods.Select(m => m.ToString())),
                     Error = OAuthError.MfaEnabled,
                     ErrorDescription = "Mfa code required",
+                    ClientId = clientId,
                     StatusCode = 200
                 };
             }
@@ -176,15 +206,6 @@ namespace Authentication.DomainService.OAuth
                     StatusCode = 500
                 };
             }
-        }
-
-
-        private async Task<bool> CheckIfMfaIsApplicable(User user)
-        {
-            var mfaConfiguration = await _configurationService.GetAsync();
-            var mfaProviders = mfaConfiguration.UserMfaType ?? [];
-
-            return user.MfaEnabled && mfaProviders.Contains(user.UserMfaType);
         }
 
         public static string CreateJwtAccessToken(JwtAccessToken jwtAccessToken, StateInfo? stateInfo = null)
