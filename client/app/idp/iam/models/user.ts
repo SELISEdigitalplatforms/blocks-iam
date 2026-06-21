@@ -317,6 +317,7 @@ export interface IAccountResetPasswordPayload {
   password: string;
   captchaCode?: string;
   logoutFromAllDevices?: boolean;
+  tenantId?: string;
 }
 export interface IAccountResetPasswordResponse {
   errors: unknown | null;
