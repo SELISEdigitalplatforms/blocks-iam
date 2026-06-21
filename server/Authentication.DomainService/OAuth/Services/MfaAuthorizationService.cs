@@ -1,3 +1,4 @@
+using Authentication.DomainService.Authentication;
 using Authentication.DomainService.Entities;
 using Authentication.DomainService.OAuth.RequestModel;
 using Authentication.DomainService.OAuth.ResponseModel;
@@ -15,22 +16,25 @@ namespace Authentication.DomainService.OAuth.Services
         private readonly IOAuthJwtAccessTokenManager _oAuthJwtAccessTokenManager;
         private readonly IOtpServiceFactory _tpServiceFactory;
         private readonly IAuthenticationRepository _oAuthRepository;
+        private readonly IMfaAuditService _auditService;
 
         public MfaAuthorizationService(ILogger<MfaAuthorizationService> logger,
                                        IOAuthJwtAccessTokenManager oAuthJwtAccessTokenManager,
                                        IOtpServiceFactory tpServiceFactory,
-                                       IAuthenticationRepository oAuthRepository)
+                                       IAuthenticationRepository oAuthRepository,
+                                       IMfaAuditService auditService)
         {
             _logger = logger;
             _oAuthJwtAccessTokenManager = oAuthJwtAccessTokenManager;
             _tpServiceFactory = tpServiceFactory;
             _oAuthRepository = oAuthRepository;
+            _auditService = auditService;
         }
 
         public async Task<TokenResponse> AuthenticateAsync(TokenRequest request, IdentityConfiguration authenticationConfiguration, User? user = null)
         {
             var otpService = _tpServiceFactory.GetOTPService(request.MfaType);
-            var response = await otpService.VerifyAsync(new VerifyOtpRequest { AuthType = request.MfaType, MfaId = request.MfaId, VerificationCode = request.Code });
+            var response = await otpService.VerifyAsync(new VerifyOtpRequest { AuthType = request.MfaType, MfaId = request.MfaId, VerificationCode = request.Code, IsFromTokenCall = true });
 
             if (response.IsValid)
             {
@@ -78,12 +82,31 @@ namespace Authentication.DomainService.OAuth.Services
                         });
                 }
 
+                await _auditService.WriteAsync(new MfaAuditEvent
+                {
+                    EventType = "mfa_verification_success",
+                    UserId = user.ItemId,
+                    ClientId = request.ClientId,
+                    MfaType = request.MfaType,
+                    Status = "success"
+                });
+
                 return tokenResponse;
             }
 
             await TrackFailedMfaAttemptAsync(response.UserId, authenticationConfiguration);
 
-            return new TokenResponse { Error = "invalid_mfa_code", ErrorDescription = "Mfa code is not valid", StatusCode = 401 };
+            await _auditService.WriteAsync(new MfaAuditEvent
+            {
+                EventType = "mfa_verification_failure",
+                UserId = response.UserId,
+                ClientId = request.ClientId,
+                MfaType = request.MfaType,
+                Status = "failure",
+                Severity = "WARN"
+            });
+
+            return new TokenResponse { Error = OAuthError.MfaInvalidCode, ErrorDescription = "Mfa code is not valid", StatusCode = 401 };
         }
 
         private async Task TrackFailedMfaAttemptAsync(string? userId, IdentityConfiguration authenticationConfiguration)
