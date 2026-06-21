@@ -10,8 +10,8 @@ using Authentication.DomainService.Services;
 using Authentication.DomainService.Shared.RequestModel;
 using Authentication.DomainService.Utilities;
 using Blocks.Genesis;
-using Captcha.DomainService.Captcha;
-using Captcha.DomainService.Configuration;
+// using Captcha.DomainService.Captcha;
+// using Captcha.DomainService.Configuration;
 using Iam.DomainService.Entities;
 using Iam.DomainService.Users;
 using Idp.DomainService.Oidc.Contracts;
@@ -51,8 +51,8 @@ namespace Authentication.DomainService.Authentication
         private readonly ITenants _tenants;
         private readonly IAuthenticationService _authenticationService;
         private readonly ICacheClient _cacheClient;
-        private readonly ICaptchaService _captchaService;
-        private readonly ICaptchaConfigurationService _captchaConfigurationService;
+        // private readonly ICaptchaService _captchaService;
+        // private readonly ICaptchaConfigurationService _captchaConfigurationService;
         private readonly ILogger<AuthorizationFlowService> _logger;
 
         public AuthorizationFlowService(
@@ -73,8 +73,8 @@ namespace Authentication.DomainService.Authentication
             ITenants tenants,
             IAuthenticationService authenticationService,
             ICacheClient cacheClient,
-            ICaptchaService captchaService,
-            ICaptchaConfigurationService captchaConfigurationService,
+            // ICaptchaService captchaService,
+            // ICaptchaConfigurationService captchaConfigurationService,
             ILogger<AuthorizationFlowService> logger)
         {
             _authCodeRepo = authCodeRepo;
@@ -94,8 +94,8 @@ namespace Authentication.DomainService.Authentication
             _tenants = tenants;
             _authenticationService = authenticationService;
             _cacheClient = cacheClient;
-            _captchaService = captchaService;
-            _captchaConfigurationService = captchaConfigurationService;
+            // _captchaService = captchaService;
+            // _captchaConfigurationService = captchaConfigurationService;
             _logger = logger;
         }
 
@@ -157,11 +157,11 @@ namespace Authentication.DomainService.Authentication
             if (user.LockoutUntilUtc.HasValue && user.LockoutUntilUtc.Value > DateTime.UtcNow)
                 return new ObjectResult(new { error = "account_locked" }) { StatusCode = 423 };
 
-            var captchaValidationResult = await ValidateCaptchaIfRequiredAsync(user, request.CaptchaCode);
-            if (captchaValidationResult != null)
-            {
-                return captchaValidationResult;
-            }
+            // var captchaValidationResult = await ValidateCaptchaIfRequiredAsync(user, request.CaptchaCode);
+            // if (captchaValidationResult != null)
+            // {
+            //     return captchaValidationResult;
+            // }
 
             bool passwordValid;
             try
@@ -360,42 +360,42 @@ namespace Authentication.DomainService.Authentication
             return user.MfaEnabled && mfaProviders.Contains(user.UserMfaType);
         }
 
-        private async Task<IActionResult?> ValidateCaptchaIfRequiredAsync(User user, string? captchaCode)
-        {
-            if (user.FailedLoginCount < 2)
-            {
-                return null;
-            }
+        // private async Task<IActionResult?> ValidateCaptchaIfRequiredAsync(User user, string? captchaCode)
+        // {
+        //     if (user.FailedLoginCount < 2)
+        //     {
+        //         return null;
+        //     }
 
-            var captchaConfiguration = await _captchaConfigurationService.GetCaptchaConfigurationAsync();
-            if (captchaConfiguration == null || !captchaConfiguration.IsEnable)
-            {
-                return null;
-            }
+        //     var captchaConfiguration = await _captchaConfigurationService.GetCaptchaConfigurationAsync();
+        //     if (captchaConfiguration == null || !captchaConfiguration.IsEnable)
+        //     {
+        //         return null;
+        //     }
 
-            if (string.IsNullOrWhiteSpace(captchaCode))
-            {
-                return BuildCaptchaRequiredResult();
-            }
+        //     if (string.IsNullOrWhiteSpace(captchaCode))
+        //     {
+        //         return BuildCaptchaRequiredResult();
+        //     }
 
-            var verifyCaptchaResponse = await _captchaService.VerifyCaptchaAsync(new VerifyCaptchaRequest
-            {
-                VerificationCode = captchaCode,
-                ConfigurationName = captchaConfiguration.Provider
-            });
+        //     var verifyCaptchaResponse = await _captchaService.VerifyCaptchaAsync(new VerifyCaptchaRequest
+        //     {
+        //         VerificationCode = captchaCode,
+        //         ConfigurationName = captchaConfiguration.Provider
+        //     });
 
-            return verifyCaptchaResponse.Verified ? null : BuildCaptchaRequiredResult();
-        }
+        //     return verifyCaptchaResponse.Verified ? null : BuildCaptchaRequiredResult();
+        // }
 
-        private static IActionResult BuildCaptchaRequiredResult()
-        {
-            return new BadRequestObjectResult(new
-            {
-                error = OAuthError.CaptchaEnabled,
-                error_description = "Captcha verification is required",
-                enable_captcha = true
-            });
-        }
+        // private static IActionResult BuildCaptchaRequiredResult()
+        // {
+        //     return new BadRequestObjectResult(new
+        //     {
+        //         error = OAuthError.CaptchaEnabled,
+        //         error_description = "Captcha verification is required",
+        //         enable_captcha = true
+        //     });
+        // }
 
         private static List<string> BuildAmr(User user, bool mfaCompleted)
         {
@@ -763,11 +763,6 @@ namespace Authentication.DomainService.Authentication
                 return new BadRequestObjectResult(new { error = "invalid_client", error_description = "Missing client authentication" });
             }
 
-            //if (!await HasOidcClientConfigurationAsync(clientId))
-            //{
-            //    return new BadRequestObjectResult(new { error = "invalid_client", error_description = "Client configuration not found" });
-            //}
-
             var authConfiguration = await _authenticationRepository.GetAuthenticationConfigurationAsync();
             if (authConfiguration == null)
             {
@@ -979,14 +974,14 @@ namespace Authentication.DomainService.Authentication
                 return OidcExchangeResult.FromError(new BadRequestObjectResult(new { error = "invalid_grant", error_description = "User not found" }));
             }
 
-            if (user.LockoutUntilUtc.HasValue && user.LockoutUntilUtc.Value > DateTime.UtcNow)
-            {
-                _logger.LogWarning("Token exchange denied for locked account {UserId}", authCode.UserId);
-                return OidcExchangeResult.FromError(new ObjectResult(new { error = "account_locked", error_description = "Account is temporarily locked due to failed authentication attempts" })
-                {
-                    StatusCode = StatusCodes.Status423Locked
-                });
-            }
+            // if (user.LockoutUntilUtc.HasValue && user.LockoutUntilUtc.Value > DateTime.UtcNow)
+            // {
+            //     _logger.LogWarning("Token exchange denied for locked account {UserId}", authCode.UserId);
+            //     return OidcExchangeResult.FromError(new ObjectResult(new { error = "account_locked", error_description = "Account is temporarily locked due to failed authentication attempts" })
+            //     {
+            //         StatusCode = StatusCodes.Status423Locked
+            //     });
+            // }
 
             var effectiveTenantId = authCode.TenantId ?? tenant_id ?? "default";
             var tenant = _tenants.GetTenantByID(effectiveTenantId);
