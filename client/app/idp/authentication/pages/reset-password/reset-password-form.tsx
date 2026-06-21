@@ -18,9 +18,9 @@ import { Switch } from "@/components/ui-kits/switch/switch";
 import { ArrowRight, Eye, EyeOff, Loader } from "lucide-react";
 import { useOidcAuthAnimation } from "../oidc/oidc-auth-shell";
 
-type ResetPasswordFormProps = { code: string };
+type ResetPasswordFormProps = { code: string; tenantId?: string };
 
-export const ResetPasswordForm = ({ code }: ResetPasswordFormProps) => {
+export const ResetPasswordForm = ({ code, tenantId }: ResetPasswordFormProps) => {
   const navigate = useNavigate();
   const animCtx = useOidcAuthAnimation();
   const formRef = useRef<HTMLFormElement>(null);
@@ -85,6 +85,7 @@ export const ResetPasswordForm = ({ code }: ResetPasswordFormProps) => {
         captchaCode,
         logoutFromAllDevices: values.logoutFromAllDevices,
         password: values.password,
+        tenantId,
       });
       if (!res.isSuccess) {
         resetCaptcha();

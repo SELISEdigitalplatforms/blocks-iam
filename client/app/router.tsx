@@ -99,7 +99,9 @@ export const router = createBrowserRouter([
             path: "forgot-email-sent",
             element: <ForgotEmailSentPage />,
           },
-          { path: "activate", element: <ActivatePage /> },
+          { path: "recover/:tenantId", element: <ResetPasswordPage /> },
+          { path: "activate/:tenantId", element: <ActivatePage /> },
+
         ],
       },
       {
@@ -148,7 +150,7 @@ export const router = createBrowserRouter([
 
                   // { path: "/forgot-password", element: <ForgotPasswordPage /> },
 
-                  { path: "/resetpassword", element: <ResetPasswordPage /> },
+                  // { path: "/resetpassword", element: <ResetPasswordPage /> },
                   {
                     path: "/activate-success",
                     element: <ActivateSuccessPage />,

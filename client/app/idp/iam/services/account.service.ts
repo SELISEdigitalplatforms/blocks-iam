@@ -45,7 +45,11 @@ export class UserAccountService {
   accountResetPassword(
     payload: IAccountResetPasswordPayload,
   ): Promise<IAccountResetPasswordResponse> {
-    return serviceInstances.idpService.post(ACCOUNT_ENDPOINTS.RESET_PASSWORD, payload);
+    const headers: Record<string, string> = {};
+    if (payload.tenantId) {
+      headers["X-Blocks-Key"] = payload.tenantId;
+    }
+    return serviceInstances.idpService.post(ACCOUNT_ENDPOINTS.RESET_PASSWORD, payload, headers);
   }
 
   checkActivationCodeExpiration(
