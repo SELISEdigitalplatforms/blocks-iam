@@ -8,6 +8,9 @@ namespace Authentication.DomainService.OAuth
     {
         public const string AccountLocked = "account_locked";
         public const string MfaEnabled = "mfa_enabled";
+        public const string MfaEnrollmentRequired = "mfa_enrollment_required";
+        public const string MfaInvalidCode = "invalid_mfa_code";
+        public const string MfaSessionExpired = "mfa_session_expired";
         public const string CaptchaEnabled = "captcha_enabled";
         public const string CaptchaInvalid = "captcha_invalid";
         public const string InValidUseNamePassword = "invalid_username_password";
