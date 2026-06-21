@@ -1,4 +1,5 @@
 using Blocks.Genesis;
+using Iam.DomainService.Entities;
 using MongoDB.Bson.Serialization.Attributes;
 
 namespace Authentication.DomainService.Entities
@@ -27,6 +28,8 @@ namespace Authentication.DomainService.Entities
         public string? ClientType { get; set; }
         public string? UiBrandColor { get; set; }
         public bool UseTokensCookie { get; set; } = true; // Default: tokens in cookies
+        public bool RequireMfa { get; set; }
+        public List<UserMfaType>? AllowedMfaMethods { get; set; }
 
         [BsonIgnore]
         public string? RedirectUri

@@ -1,3 +1,4 @@
+using Iam.DomainService.Entities;
 
 namespace Authentication.DomainService.RequestModel
 {
@@ -24,5 +25,7 @@ namespace Authentication.DomainService.RequestModel
         public string? ClientDisplayName { get; set; }
         public string? ClientBrandColor { get; set; }
         public bool UseTokensCookie { get; set; } = true;
+        public bool RequireMfa { get; set; }
+        public List<UserMfaType>? AllowedMfaMethods { get; set; }
     }
 }
