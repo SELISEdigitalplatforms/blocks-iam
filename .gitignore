@@ -172,6 +172,10 @@ client/.cursor/context/
 client/.moat/
 
 
+# Extracted PEM cert/key from PFX (created by client/scripts/extract-pfx.sh)
+client/.ssl/
+
+
 #graphify 
 graphify-out/
 server/graphify-out/

@@ -4,7 +4,8 @@
   "version": "0.0.1",
   "type": "module",
   "scripts": {
-    "dev": "vite --port 4000 --host",
+    "dev": "vite --port 4000 --host dev-iam.blocksdevelopers.com",
+    "dev:https": ". scripts/extract-pfx.sh && vite --port 4000 --host dev-iam.blocksdevelopers.com",
     "build": "tsc -b && vite build",
     "preview": "vite preview",
     "type-check": "tsc --noEmit"
