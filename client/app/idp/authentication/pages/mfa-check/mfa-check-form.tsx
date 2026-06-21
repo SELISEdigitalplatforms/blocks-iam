@@ -39,7 +39,7 @@ export const MfaCheckFrom = () => {
     mfa_id: parseAsString.withDefault(""),
     mfa_type: parseAsInteger.withDefault(0),
   });
-  const { isPending } = useVerifyMfa();
+  const { mutateAsync, isPending } = useVerifyMfa();
   const { setAuthenticated } = useAuthStore();
   const { remainingTime, resend } = useResendOtp({ mfaId: mfa_id });
 
@@ -52,9 +52,14 @@ export const MfaCheckFrom = () => {
 
   const submitHandler = async ({ code }: { code: string }) => {
     try {
+      const res = await mutateAsync({ code, mfa_id, mfa_type });
       setAuthenticated();
-      // showSuccessToast({ description: "You've successfully logged in" });
-      navigate("/app/users");
+      const redirectUrl = (res as any)?.redirect_uri || (res as any)?.redirectUrl;
+      if (redirectUrl) {
+        window.location.href = redirectUrl;
+        return;
+      }
+      navigate("/console");
     } catch (error) {
       if (isErrorWithErrors(error)) {
         showErrorToast({ errors: error.errors.error_description || `Something went wrong` });

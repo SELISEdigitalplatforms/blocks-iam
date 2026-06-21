@@ -49,6 +49,17 @@ const generatePkcePair = async () => {
   return { verifier, challenge };
 };
 
+// Maps the backend's `user_mfa` channel string to the integer `mfa_type` the
+// /mfa-check form expects: 1 = authenticator (6 digits, no resend), 2 = email
+// / SMS / OTP-with-resend (5 digits). Unknown values fall back to 2.
+const mapUserMfaToType = (channel: string | undefined): number => {
+  if (!channel) return 2;
+  const c = channel.toLowerCase();
+  if (c === "authenticator" || c === "totp") return 1;
+  if (c === "email" || c === "sms") return 2;
+  return 2;
+};
+
 const oidcLoginFormSchema = z.object({
   username: z.string().email("Invalid email address"),
   password: z.string().min(1, "Password is required"),
@@ -215,6 +226,20 @@ export const OidcLoginForm = ({
       if (response.ok) {
         const data = await response.json();
         setCaptchaRequired(false);
+
+        // Backend may signal MFA required via a 200 with `error: "mfa_enabled"`
+        // (matches /api/oidc/login contract: { error, error_description, mfa_id, user_mfa }).
+        if (data?.error === "mfa_enabled" && data?.mfa_id) {
+          animCtx?.resetAnimation();
+          const mfaType = mapUserMfaToType(data.user_mfa);
+          navigate(
+            buildOIDCNavigationUrl(
+              `/oidc/mfa-check?mfa_id=${encodeURIComponent(data.mfa_id)}&mfa_type=${mfaType}`,
+            ),
+          );
+          return;
+        }
+
         await animCtx?.succeedAnimation();
         window.location.href = data.redirect_uri;
       }
