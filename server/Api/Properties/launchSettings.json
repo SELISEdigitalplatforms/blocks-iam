@@ -5,13 +5,13 @@
       "commandName": "Project",
       "dotnetRunMessages": true,
       "launchBrowser": true,
-      "launchUrl": "https://dev-iam.blocksdevelopers.com:5001",
-      "applicationUrl": "https://dev-iam.blocksdevelopers.com:5001",
-      "environmentVariables": {
-        "ASPNETCORE_ENVIRONMENT": "Production",
-                "BLOCKS_VAULT_TYPE": "Azure"
+      "launchUrl": "http://localhost:5001",
+     // "applicationUrl": "https://dev-iam.blocksdevelopers.com:5001"
+      //"environmentVariables": {
+      //  "ASPNETCORE_ENVIRONMENT": "Production",
+      //          "BLOCKS_VAULT_TYPE": "Azure"
 
-      }
+      //}
     }
   }
 }
