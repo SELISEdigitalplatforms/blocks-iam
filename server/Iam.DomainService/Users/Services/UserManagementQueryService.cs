@@ -183,6 +183,7 @@ namespace Iam.DomainService.Users
                 ["logInCount"] = user.LogInCount,
                 ["lastLoggedInTime"] = user.LastLoggedInTime,
                 ["lastLoggedInDeviceInfo"] = user.LastLoggedInDeviceInfo ?? string.Empty,
+                ["OrganizationIds"] = user.OrganizationIds
             };
         }
     }
