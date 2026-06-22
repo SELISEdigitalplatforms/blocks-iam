@@ -1197,29 +1197,38 @@ namespace Iam.DomainService.Resources
                 };
             }
 
+            var userId = BlocksContext.GetContext()?.UserId;
             organization.LastUpdatedDate = DateTime.UtcNow;
-            organization.Name = request.Name;
-            organization.LastUpdatedBy = BlocksContext.GetContext()?.UserId;
-            organization.DefaultRoleForMembers = request.DefaultRoleForMembers;
-            organization.DefaultPermissionsForMembers = request.DefaultPermissionsForMembers;
-            organization.Description = request.Description;
-            organization.Email = request.Email;
-            organization.PhoneNumber = request.PhoneNumber;
-            organization.WebsiteUrl = request.WebsiteUrl;
-            organization.Addresses = request.Addresses;
-            organization.Attributes = request.Attributes;
-            organization.Theme = request.Theme;
-            organization.LogoUrl = request.LogoUrl;
-            organization.LogoId = request.LogoId;
-            organization.Locale = request.Locale;
-            organization.TimeFormat = request.TimeFormat;
-            organization.DateFormat = request.DateFormat;
-            organization.Currency = request.Currency;
-            organization.TimeZone = request.TimeZone;
-            organization.Industry = request.Industry;
+            organization.LastUpdatedBy = userId;
+
+            ApplyProperty(request.Name, value => organization.Name = value, v => !string.IsNullOrWhiteSpace(v));
+            ApplyProperty(request.Description, value => organization.Description = value, v => !string.IsNullOrWhiteSpace(v));
+            ApplyProperty(request.DefaultRoleForMembers, value => organization.DefaultRoleForMembers = value, v => v?.Count > 0);
+            ApplyProperty(request.DefaultPermissionsForMembers, value => organization.DefaultPermissionsForMembers = value, v => v?.Count > 0);
+            ApplyProperty(request.Email, value => organization.Email = value, v => !string.IsNullOrWhiteSpace(v));
+            ApplyProperty(request.PhoneNumber, value => organization.PhoneNumber = value, v => !string.IsNullOrWhiteSpace(v));
+            ApplyProperty(request.WebsiteUrl, value => organization.WebsiteUrl = value, v => !string.IsNullOrWhiteSpace(v));
+            ApplyProperty(request.Addresses, value => organization.Addresses = value, v => v?.Count > 0);
+            ApplyProperty(request.Attributes, value => organization.Attributes = value, v => v?.Count > 0);
+            ApplyProperty(request.Theme, value => organization.Theme = value, v => v != null);
+            ApplyProperty(request.LogoUrl, value => organization.LogoUrl = value, v => !string.IsNullOrWhiteSpace(v));
+            ApplyProperty(request.LogoId, value => organization.LogoId = value, v => !string.IsNullOrWhiteSpace(v));
+            ApplyProperty(request.Locale, value => organization.Locale = value, v => !string.IsNullOrWhiteSpace(v));
+            ApplyProperty(request.TimeFormat, value => organization.TimeFormat = value, v => !string.IsNullOrWhiteSpace(v));
+            ApplyProperty(request.DateFormat, value => organization.DateFormat = value, v => !string.IsNullOrWhiteSpace(v));
+            ApplyProperty(request.Currency, value => organization.Currency = value, v => !string.IsNullOrWhiteSpace(v));
+            ApplyProperty(request.TimeZone, value => organization.TimeZone = value, v => !string.IsNullOrWhiteSpace(v));
+            ApplyProperty(request.Industry, value => organization.Industry = value, v => !string.IsNullOrWhiteSpace(v));
+            ApplyProperty(request.IsEnable, value => organization.IsEnabled = value ?? false, v => v.HasValue);
 
             await _resourceRepository.SaveOrganizationAsync(organization);
             return new BaseResponse { IsSuccess = true };
+        }
+
+        private static void ApplyProperty<T>(T? value, Action<T> apply, Func<T?, bool> isValid)
+        {
+            if (isValid(value))
+                apply(value!);
         }
 
 

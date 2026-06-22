@@ -57,7 +57,7 @@ namespace Authentication.DomainService.Authentication
         {
             var captchaConfiguration = await _captchaConfigurationRepository.GetCaptchaConfigurationAsync();
 
-            var response = new
+            return new OkObjectResult(new
             {
                 Captcha = captchaConfiguration == null || !captchaConfiguration.IsEnable ? null : new
                 {
@@ -66,14 +66,7 @@ namespace Authentication.DomainService.Authentication
                     Generator = captchaConfiguration.CaptchaGenerator
                 }
 
-            };
-
-            return new ContentResult
-            {
-                Content = System.Text.Json.JsonSerializer.Serialize(response),
-                ContentType = "application/json",
-                StatusCode = StatusCodes.Status200OK
-            };
+            });
         }
 
         public async Task<IActionResult> StartAuthenticationFlowAsync(string clientId, string redirectUri, string? forwardedTo)
