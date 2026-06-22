@@ -38,9 +38,7 @@ namespace Iam.DomainService.Users
 
             var (data, count) = await _userRepository.GetUsersAsync<GetAccounts, GetUsersRequest>(query);
 
-            var bc = BlocksContext.GetContext();
-            var contextOrgId = string.IsNullOrWhiteSpace(bc?.OrganizationId) ? "default" : bc.OrganizationId;
-
+            var contextOrgId = string.IsNullOrWhiteSpace(query.Filter.OrganizationId) ? "default" : query.Filter.OrganizationId;
             var selectedUsers = data?.Select(user => MapToListAccountFields(user, contextOrgId)).AsQueryable() ?? Enumerable.Empty<Dictionary<string, object>>().AsQueryable();
 
             _logger.LogInformation("User get end");
@@ -96,7 +94,7 @@ namespace Iam.DomainService.Users
 
         private static Dictionary<string, object> MapToListAccountFields(GetAccounts user, string contextOrgId)
         {
-            if(!user.OrganizationIds.Contains(contextOrgId) || contextOrgId != "default")
+            if(!user.OrganizationIds.Contains(contextOrgId))
             {
                 return new Dictionary<string, object>();
             }
