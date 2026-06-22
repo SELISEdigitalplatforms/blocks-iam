@@ -68,14 +68,14 @@ namespace Iam.DomainService.Users
             };
         }
 
-        public async Task<GetUserResponse> GetUserAsync(string id)
+        public async Task<GetUserResponse> GetUserAsync(string id, string? organizationId)
         {
             _logger.LogInformation("User get start");
 
             var bc = BlocksContext.GetContext();
             var userId = string.IsNullOrWhiteSpace(id) ? (bc?.UserId ?? string.Empty) : id;
             var user = await _userRepository.GetUserByIdAsync<GetAccounts>(userId);
-            var contextOrgId = string.IsNullOrWhiteSpace(bc?.OrganizationId) ? "default" : bc.OrganizationId;
+            var contextOrgId = string.IsNullOrWhiteSpace(organizationId) ? (bc?.OrganizationId ?? "default") : organizationId;
 
             var data = user == null ? null : MapToSingleUserFields(user, contextOrgId);
 
@@ -153,7 +153,7 @@ namespace Iam.DomainService.Users
 
         private static Dictionary<string, object> MapToSingleUserFields(GetAccounts user, string contextOrgId)
         {
-            if (!user.OrganizationIds.Contains(contextOrgId) || contextOrgId != "default")
+            if (!user.OrganizationIds.Contains(contextOrgId))
             {
                 return new Dictionary<string, object>();
             }
