@@ -10,13 +10,16 @@ import {
 import { InputOTP, InputOTPGroup, InputOTPSlot } from "@/components/ui-kits/input-otp/input-otp";
 import { showErrorToast } from "@/hooks/use-toast";
 import { isErrorWithErrors } from "@/lib/error";
+import { getRuntimeEnv } from "@/lib/runtime-env";
 import { useAuthStore } from "@seliseblocks/blocks-kit";
-import { useVerifyMfa } from "@blocks-idp/authentication/hooks/use-auth";
 import { useResendOtp } from "@blocks-idp/mfa/hooks/use-resend-otp";
+import { AUTH_ENDPOINTS } from "@blocks-idp/authentication/constants/endpoint.constant";
+import { useOidcAuthAnimation } from "@blocks-idp/authentication/pages/oidc/oidc-auth-shell";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useNavigate } from "react-router-dom";
 import { parseAsInteger, parseAsString, useQueryStates } from "nuqs";
-import { ArrowRight, RotateCcw } from "lucide-react";
+import { ArrowRight, Loader, RotateCcw } from "lucide-react";
+import { useState } from "react";
 
 import { useForm } from "react-hook-form";
 import { z } from "zod";
@@ -35,11 +38,13 @@ const getFormSchema = (type: number) =>
   });
 export const MfaCheckFrom = () => {
   const navigate = useNavigate();
+  const animCtx = useOidcAuthAnimation();
   const [{ mfa_id, mfa_type }] = useQueryStates({
     mfa_id: parseAsString.withDefault(""),
     mfa_type: parseAsInteger.withDefault(0),
   });
-  const { mutateAsync, isPending } = useVerifyMfa();
+  const [isLoading, setIsLoading] = useState(false);
+  const [serverError, setServerError] = useState<string | null>(null);
   const { setAuthenticated } = useAuthStore();
   const { remainingTime, resend } = useResendOtp({ mfaId: mfa_id });
 
@@ -50,22 +55,82 @@ export const MfaCheckFrom = () => {
     },
   });
 
+  const isAuthenticating =
+    isLoading ||
+    animCtx?.phase === "submitting" ||
+    animCtx?.phase === "succeeded";
+
   const submitHandler = async ({ code }: { code: string }) => {
+    setIsLoading(true);
+    setServerError(null);
+    animCtx?.startAnimation();
+
     try {
-      const res = await mutateAsync({ code, mfa_id, mfa_type });
-      setAuthenticated();
-      const redirectUrl = (res as any)?.redirect_uri || (res as any)?.redirectUrl;
-      if (redirectUrl) {
-        window.location.href = redirectUrl;
+      const finalTenantId =
+        getRuntimeEnv("BLOCKS_X_BLOCKS_KEY") || undefined;
+
+      const payload = {
+        mfa_id,
+        mfa_code: code,
+        tenant_id: finalTenantId || "",
+      };
+
+      const response = await fetch(AUTH_ENDPOINTS.OIDC_LOGIN, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "X-Blocks-Key": finalTenantId || "",
+        },
+        body: JSON.stringify(payload),
+      });
+
+      const contentType = response.headers.get("content-type");
+      const data = contentType?.includes("application/json")
+        ? await response.json()
+        : null;
+
+      if (response.ok) {
+        setAuthenticated();
+        const redirectUrl =
+          data?.redirect_uri || data?.redirect_url || data?.redirectUrl;
+        if (redirectUrl) {
+          await animCtx?.succeedAnimation();
+          window.location.href = redirectUrl;
+          return;
+        }
+        await animCtx?.succeedAnimation();
+        navigate("/console");
         return;
       }
-      navigate("/console");
+
+      const errorCode = data?.error;
+      const errorMsg =
+        data?.error_description || data?.message || "Verification failed";
+
+      if (errorCode === "account_locked") {
+        const msg =
+          "Your account is locked. Please contact support or reset your password.";
+        setServerError(msg);
+        await animCtx?.failAnimation(msg);
+      } else if (errorCode === "invalid_mfa_code") {
+        const msg = "Invalid verification code. Please try again.";
+        setServerError(msg);
+        await animCtx?.failAnimation(msg);
+        form.reset();
+      } else {
+        setServerError(errorMsg);
+        await animCtx?.failAnimation(errorMsg);
+      }
     } catch (error) {
       if (isErrorWithErrors(error)) {
-        showErrorToast({ errors: error.errors.error_description || `Something went wrong` });
+        showErrorToast({
+          errors: error.errors.error_description || "Something went wrong",
+        });
       } else {
         showErrorToast({ errors: "Something went wrong" });
       }
+    } finally {
+      setIsLoading(false);
     }
   };
 
@@ -113,13 +178,34 @@ export const MfaCheckFrom = () => {
           </div>
         )}
 
+        {serverError && (
+          <p
+            className="text-sm"
+            style={{
+              color: "var(--danger)",
+              fontFamily: "system-ui, sans-serif",
+            }}
+          >
+            {serverError}
+          </p>
+        )}
+
         <button
           type="submit"
           className="oidc-sci-fi-btn w-full flex items-center justify-center gap-2"
-          disabled={!isValid || isPending}
+          disabled={!isValid || isAuthenticating}
         >
-          <span>Verify</span>
-          <ArrowRight size={16} />
+          {isAuthenticating ? (
+            <>
+              <Loader size={16} className="oidc-spin-slow" />
+              <span>Verifying...</span>
+            </>
+          ) : (
+            <>
+              <span>Verify</span>
+              <ArrowRight size={16} />
+            </>
+          )}
         </button>
       </form>
     </Form>
