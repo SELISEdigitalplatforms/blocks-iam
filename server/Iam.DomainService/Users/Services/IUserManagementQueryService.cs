@@ -6,7 +6,7 @@ namespace Iam.DomainService.Users
     {
         Task<bool> IsUserAvailableAsync(IsEmailAvailableRequest query);
         Task<GetUsersResponse> GetUsersAsync(GetUsersRequest query);
-        Task<GetUserResponse> GetUserAsync(string id);
+        Task<GetUserResponse> GetUserAsync(string id, string? organizationId);
         Task<GetUserResponse> GetAccountAsync();
         Task<List<UserTimeline>> GetUserTimelinesAsync(GetUserTimeLineRequest request);
     }
