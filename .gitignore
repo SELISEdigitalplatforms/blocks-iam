@@ -183,3 +183,5 @@ client/graphify-out/
 docs/
 
 .cursor/
+
+.kilo/

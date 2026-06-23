@@ -208,16 +208,15 @@ export const OidcLoginForm = ({
         code_challenge: effectiveCodeChallenge,
         code_challenge_method: effectiveCodeChallengeMethod,
         tenant_id: finalTenantId || "",
-        ...(isTokenNeed ? { captchaCode } : {}),
+        // binds the JSON field name "captcha_code" — not "captchaCode".
+        ...(isTokenNeed && captchaCode ? { captcha_code: captchaCode } : {}),
       };
 
-      // Use fetch with redirect: 'manual' to handle redirects explicitly
-      // The backend will redirect to the redirect_uri with the authorization code
+ 
       const response = await fetch(AUTH_ENDPOINTS.OIDC_LOGIN, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          // Include tenant_id as X-Blocks-Key header for tenant validation middleware
           "X-Blocks-Key": finalTenantId || "",
         },
         body: JSON.stringify(payload),
@@ -244,17 +243,8 @@ export const OidcLoginForm = ({
         window.location.href = data.redirect_uri;
       }
 
-      // Handle 3xx redirects (302, 303, etc.)
-      // if (response.status >= 300 && response.status < 400) {
-      //   const location = response.headers.get('Location');
-      //   if (location) {
-      //     // Use window.location to navigate - this bypasses CORS and lets the browser handle the redirect
-      //     window.location.href = location;
-      //     return;
-      //   }
-      // }
+      
 
-      // Parse response as JSON
       let data;
       try {
         const contentType = response.headers.get("content-type");
@@ -279,9 +269,7 @@ export const OidcLoginForm = ({
         return;
       }
 
-      // If response is OK, check for account selection required
       if (response.ok || response.status === 200) {
-        // Check if backend requires account selection
         if (
           data?.status === "account_selection_required" &&
           data?.accounts?.length > 0
@@ -294,13 +282,11 @@ export const OidcLoginForm = ({
           return;
         }
 
-        // Otherwise code is already in URL, let the SPA handle it
         setCaptchaRequired(false);
         await animCtx?.succeedAnimation();
         return;
       }
 
-      // Handle error responses
       const errorMsg =
         data?.error_description || data?.message || "Login failed";
       const errorCode = data?.error;
@@ -403,7 +389,6 @@ shake();
   }
 
   const showPasswordLogin = true;
-  // Show social login by default - if loginOption is available, check the config; otherwise default to true
   const showSocialLogin = !!loginOption?.ssoInfo?.length;
 
   if (showActivationError) {
