@@ -215,9 +215,9 @@ namespace Api.Controllers
         [HttpGet("users/{id}")]
         //[ProtectedEndPoint("blocks-idp::get-user")]
         [Authorize]
-        public async Task<GetUserResponse> GetUser([FromRoute] string id)
+        public async Task<GetUserResponse> GetUser([FromRoute] string id, [FromQuery] string? organizationId)
         {
-            return await _userManagementQueryService.GetUserAsync(id);
+            return await _userManagementQueryService.GetUserAsync(id, organizationId);
         }
 
         [HttpGet("me")]
