@@ -22,5 +22,6 @@ namespace Iam.DomainService.Resources
         public string? DateFormat { get; set; }
         public string? TimeFormat { get; set; }
         public string? Locale { get; set; }
+        public bool? IsEnable { get; set; }
     }
 }
