@@ -34,11 +34,24 @@ namespace Authentication.DomainService.OAuth.Services
         public async Task<TokenResponse> AuthenticateAsync(TokenRequest request, IdentityConfiguration authenticationConfiguration, User? user = null)
         {
             var otpService = _tpServiceFactory.GetOTPService(request.MfaType);
+
+            if (user != null
+                && user.LockoutUntilUtc.HasValue
+                && user.LockoutUntilUtc.Value > DateTime.UtcNow)
+            {
+                return new TokenResponse
+                {
+                    Error = OAuthError.AccountLocked,
+                    ErrorDescription = "Account is temporarily locked due to failed authentication attempts",
+                    StatusCode = 423
+                };
+            }
+
             var response = await otpService.VerifyAsync(new VerifyOtpRequest { AuthType = request.MfaType, MfaId = request.MfaId, VerificationCode = request.Code, IsFromTokenCall = true });
 
             if (response.IsValid)
             {
-                user = await _oAuthRepository.GetUserByIdAsync(response.UserId);
+                user ??= await _oAuthRepository.GetUserByIdAsync(response.UserId);
                 if (user == null)
                 {
                     return new TokenResponse { Error = "invalid_request", ErrorDescription = "User not found for mfa session", StatusCode = 400 };
@@ -94,31 +107,44 @@ namespace Authentication.DomainService.OAuth.Services
                 return tokenResponse;
             }
 
-            await TrackFailedMfaAttemptAsync(response.UserId, authenticationConfiguration);
+            var updatedUser = await TrackFailedMfaAttemptAsync(response.UserId, authenticationConfiguration);
+
+            var justLocked = updatedUser?.LockoutUntilUtc.HasValue == true
+                && updatedUser.LockoutUntilUtc.Value > DateTime.UtcNow;
 
             await _auditService.WriteAsync(new MfaAuditEvent
             {
-                EventType = "mfa_verification_failure",
+                EventType = justLocked ? LoginAuditEvents.MfaAccountLocked : LoginAuditEvents.MfaVerificationFailure,
                 UserId = response.UserId,
                 ClientId = request.ClientId,
                 MfaType = request.MfaType,
                 Status = "failure",
-                Severity = "WARN"
+                Severity = justLocked ? "WARN" : "WARN"
             });
+
+            if (justLocked)
+            {
+                return new TokenResponse
+                {
+                    Error = OAuthError.AccountLocked,
+                    ErrorDescription = "Account is temporarily locked due to failed authentication attempts",
+                    StatusCode = 423
+                };
+            }
 
             return new TokenResponse { Error = OAuthError.MfaInvalidCode, ErrorDescription = "Mfa code is not valid", StatusCode = 401 };
         }
 
-        private async Task TrackFailedMfaAttemptAsync(string? userId, IdentityConfiguration authenticationConfiguration)
+        private async Task<User?> TrackFailedMfaAttemptAsync(string? userId, IdentityConfiguration authenticationConfiguration)
         {
             if (string.IsNullOrWhiteSpace(userId))
             {
-                return;
+                return null;
             }
 
             try
             {
-                await _oAuthRepository.IncrementFailedMfaAndApplyLockoutAsync(
+                return await _oAuthRepository.IncrementFailedMfaAndApplyLockoutAsync(
                     userId,
                     authenticationConfiguration.GetNumberOfWrongAttemptsToLockTheAccount,
                     authenticationConfiguration.AccountLockDurationInMinutes,
@@ -127,6 +153,7 @@ namespace Authentication.DomainService.OAuth.Services
             catch (Exception ex)
             {
                 _logger.LogWarning(ex, "Failed to track MFA failure for user {UserId}", userId);
+                return null;
             }
         }
     }

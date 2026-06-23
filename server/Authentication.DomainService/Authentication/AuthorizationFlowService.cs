@@ -657,6 +657,19 @@ namespace Authentication.DomainService.Authentication
                     return new RedirectResult(BuildLoginUrl(client_id, response_type, redirect_uri, scope, state, nonce, code_challenge, code_challenge_method, tenant_id));
                 }
 
+                var lockoutCheckUser = await _userRepository.GetUserByIdAsync(resolvedUserId);
+                if (lockoutCheckUser != null
+                    && lockoutCheckUser.LockoutUntilUtc.HasValue
+                    && lockoutCheckUser.LockoutUntilUtc.Value > DateTime.UtcNow)
+                {
+                    _logger.LogWarning("Authorize request denied for locked account {UserId}", resolvedUserId);
+                    return new BadRequestObjectResult(new
+                    {
+                        error = "account_locked",
+                        error_description = "Account is temporarily locked due to failed authentication attempts"
+                    });
+                }
+
                 await EnsureIdpSessionAsync(request, response, effectiveSessionId, resolvedUserId, tenant_id);
 
                 var client = await _authenticationRepository.GetOidcClientRegistrationAsync(client_id);
@@ -1064,14 +1077,14 @@ namespace Authentication.DomainService.Authentication
                 return OidcExchangeResult.FromError(new BadRequestObjectResult(new { error = "invalid_grant", error_description = "User not found" }));
             }
 
-            // if (user.LockoutUntilUtc.HasValue && user.LockoutUntilUtc.Value > DateTime.UtcNow)
-            // {
-            //     _logger.LogWarning("Token exchange denied for locked account {UserId}", authCode.UserId);
-            //     return OidcExchangeResult.FromError(new ObjectResult(new { error = "account_locked", error_description = "Account is temporarily locked due to failed authentication attempts" })
-            //     {
-            //         StatusCode = StatusCodes.Status423Locked
-            //     });
-            // }
+            if (user.LockoutUntilUtc.HasValue && user.LockoutUntilUtc.Value > DateTime.UtcNow)
+            {
+                _logger.LogWarning("Token exchange denied for locked account {UserId}", authCode.UserId);
+                return OidcExchangeResult.FromError(new ObjectResult(new { error = "account_locked", error_description = "Account is temporarily locked due to failed authentication attempts" })
+                {
+                    StatusCode = StatusCodes.Status423Locked
+                });
+            }
 
             var effectiveTenantId = authCode.TenantId ?? tenant_id ?? "default";
             var tenant = _tenants.GetTenantByID(effectiveTenantId);
@@ -1339,6 +1352,18 @@ namespace Authentication.DomainService.Authentication
             if (user == null)
             {
                 return new UnauthorizedObjectResult(new { error = "invalid_user" });
+            }
+
+            if (user.LockoutUntilUtc.HasValue && user.LockoutUntilUtc.Value > DateTime.UtcNow)
+            {
+                return new ObjectResult(new
+                {
+                    error = OAuthError.AccountLocked,
+                    error_description = "Account is temporarily locked due to failed authentication attempts"
+                })
+                {
+                    StatusCode = StatusCodes.Status423Locked
+                };
             }
 
             var tokenRequest = new TokenRequest

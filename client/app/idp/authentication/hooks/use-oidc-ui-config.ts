@@ -1,5 +1,7 @@
 import { useQuery } from "@tanstack/react-query";
 import { serviceInstances } from "@/lib/http-client";
+import { getRuntimeEnv } from "@/lib/runtime-env";
+import { extractOIDCParams } from "@blocks-idp/authentication/utils/oidc-utils";
 
 export interface IOidcUiCaptchaConfig {
   key: string;
@@ -13,11 +15,30 @@ export interface IOidcUiConfig {
 
 const OIDC_UI_CONFIG_ENDPOINT = "/api/idp/oidc-ui-config";
 
+const resolveTenantId = (): string => {
+  if (typeof window !== "undefined") {
+    const fromUrl = extractOIDCParams().tenantId;
+    if (fromUrl) return fromUrl;
+  }
+  return getRuntimeEnv("BLOCKS_X_BLOCKS_KEY") || "";
+};
+
 export const useOidcUiConfig = () => {
+  const tenantId = resolveTenantId();
+  const url = tenantId
+    ? `${OIDC_UI_CONFIG_ENDPOINT}?tenantId=${encodeURIComponent(tenantId)}`
+    : OIDC_UI_CONFIG_ENDPOINT;
+
+  const headers: Record<string, string> = tenantId
+    ? { "X-Blocks-Key": tenantId }
+    : {};
+
   return useQuery<IOidcUiConfig>({
-    queryKey: ["oidc-ui-config"],
+    queryKey: ["oidc-ui-config", tenantId],
     queryFn: () =>
-      serviceInstances.idpService
-        .get(OIDC_UI_CONFIG_ENDPOINT, undefined, { absoluteUrl: true }) as Promise<IOidcUiConfig>,
+      serviceInstances.idpService.get(url, headers, {
+        absoluteUrl: true,
+        skipBlocksKey: true,
+      }) as Promise<IOidcUiConfig>,
   });
 };
