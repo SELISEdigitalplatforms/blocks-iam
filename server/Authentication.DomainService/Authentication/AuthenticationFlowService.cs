@@ -101,12 +101,26 @@ namespace Authentication.DomainService.Authentication
                 };
             }
 
-            if (IsEmbeddedMfaVerificationRequest(request))
+            var user = await _authenticationRepository.GetUserByUsernameAsync(request.Username);
+
+            if (user != null
+                && user.LockoutUntilUtc.HasValue
+                && user.LockoutUntilUtc.Value > DateTime.UtcNow)
             {
-                return await ExecuteEmbeddedMfaVerificationAsync(request, httpRequest, clientId, configuration);
+                await WriteLoginAuditAsync(user, clientId, httpRequest, LoginAuditEvents.LoginFailureAccountLocked, "embedded_login_account_locked");
+                return new AuthenticationFlowResult
+                {
+                    StatusCode = StatusCodes.Status423Locked,
+                    Error = OAuthError.AccountLocked,
+                    ErrorDescription = "Account is temporarily locked due to failed authentication attempts"
+                };
             }
 
-            var user = await _authenticationRepository.GetUserByUsernameAsync(request.Username);
+            if (IsEmbeddedMfaVerificationRequest(request))
+            {
+                return await ExecuteEmbeddedMfaVerificationAsync(request, httpRequest, clientId, configuration, user);
+            }
+
             var captchaValidationResult = await ValidateCaptchaIfRequiredAsync(user, request.CaptchaCode);
             if (captchaValidationResult != null)
             {
@@ -255,7 +269,8 @@ namespace Authentication.DomainService.Authentication
             EmbeddedLoginRequest request,
             HttpRequest httpRequest,
             string clientId,
-            IdentityConfiguration configuration)
+            IdentityConfiguration configuration,
+            User? user)
         {
             return await ExecuteMfaVerificationAsync(
                 request.MfaId,
@@ -263,7 +278,8 @@ namespace Authentication.DomainService.Authentication
                 request.MfaType,
                 httpRequest,
                 clientId,
-                configuration);
+                configuration,
+                user);
         }
 
         private async Task<AuthenticationFlowResult> ExecuteMfaVerificationAsync(
@@ -272,7 +288,8 @@ namespace Authentication.DomainService.Authentication
             UserMfaType? mfaType,
             HttpRequest httpRequest,
             string clientId,
-            IdentityConfiguration configuration)
+            IdentityConfiguration configuration,
+            User? user = null)
         {
             if (string.IsNullOrWhiteSpace(mfaId)
                 || string.IsNullOrWhiteSpace(mfaCode)
@@ -299,7 +316,7 @@ namespace Authentication.DomainService.Authentication
 
             return new AuthenticationFlowResult
             {
-                TokenResponse = await _mfaAuthorizationService.AuthenticateAsync(tokenRequest, configuration)
+                TokenResponse = await _mfaAuthorizationService.AuthenticateAsync(tokenRequest, configuration, user)
             };
         }
 
@@ -600,6 +617,18 @@ namespace Authentication.DomainService.Authentication
             if (user == null)
             {
                 return new UnauthorizedObjectResult(new { error = "invalid_user" });
+            }
+
+            if (user.LockoutUntilUtc.HasValue && user.LockoutUntilUtc.Value > DateTime.UtcNow)
+            {
+                return new ObjectResult(new
+                {
+                    error = OAuthError.AccountLocked,
+                    error_description = "Account is temporarily locked due to failed authentication attempts"
+                })
+                {
+                    StatusCode = StatusCodes.Status423Locked
+                };
             }
 
             var tokenRequest = new TokenRequest
