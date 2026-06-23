@@ -26,7 +26,8 @@ export const useConfigureUserMFA = (option: { id: string; projectKey: string }) 
     mutationKey: ["mfa-config", "configure"],
     mutationFn: mfaService.configureUserMFA,
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["user", option] });
+      queryClient.invalidateQueries({ queryKey: ["user-by-id", option] });
+      queryClient.invalidateQueries({ queryKey: ["user"] });
     },
   });
 };
@@ -52,8 +53,8 @@ export const useVerifyMfaOTP = (option: IGetUserByIdPayload & { own?: boolean })
     mutationKey: ["mfa-config", "verify-otp"],
     mutationFn: mfaService.verifyOtp,
     onSuccess: () => {
-      if (own) return queryClient.invalidateQueries({ queryKey: ["user"] });
-      queryClient.invalidateQueries({ queryKey: ["user", rest] });
+      queryClient.invalidateQueries({ queryKey: ["user-by-id", rest] });
+      queryClient.invalidateQueries({ queryKey: ["user"] });
     },
   });
 };
@@ -70,7 +71,8 @@ export const useDisableMfa = (option: { id: string }) => {
     mutationKey: ["mfa-config", "disable"],
     mutationFn: mfaService.disableMFA,
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["user", option] });
+      queryClient.invalidateQueries({ queryKey: ["user-by-id", option] });
+      queryClient.invalidateQueries({ queryKey: ["user"] });
     },
   });
 };
