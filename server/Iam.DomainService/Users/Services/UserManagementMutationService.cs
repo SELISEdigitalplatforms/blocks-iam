@@ -118,6 +118,7 @@ namespace Iam.DomainService.Users
             command.OrganizationId = tenantConfig?.IsMultiOrgEnabled ?? false 
             ? string.IsNullOrWhiteSpace(command.OrganizationId) ? DefaultOrganizationId : command.OrganizationId
             : DefaultOrganizationId;
+
             var organization = null as Organization;
             if (command.OrganizationId != DefaultOrganizationId)
             {
@@ -128,15 +129,12 @@ namespace Iam.DomainService.Users
             {
                 command.Roles = organization != null && organization.DefaultRoleForMembers != null && organization.DefaultRoleForMembers.Count > 0
                     ? organization.DefaultRoleForMembers
-                    : new List<string>();
+                    : [];
             }
-            
-            if(command.Permissions == null)
-            {
-                command.Permissions = organization != null && organization.DefaultPermissionsForMembers != null && organization.DefaultPermissionsForMembers.Count > 0
+
+            command.Permissions ??= organization != null && organization.DefaultPermissionsForMembers != null && organization.DefaultPermissionsForMembers.Count > 0
                     ? organization.DefaultPermissionsForMembers
-                    : new List<string>();
-            }
+                    : [];
 
             var user = MapUser(command);
             await _userRepository.CreateUserAsync(user);
@@ -170,9 +168,6 @@ namespace Iam.DomainService.Users
                 FirstName = command.FirstName ?? string.Empty,
                 LastName = command.LastName ?? string.Empty,
                 Platform = command.Platform,
-                OrganizationIds = new List<string> { command.OrganizationId },
-                Roles = new Dictionary<string, List<string>> { [command.OrganizationId] = command.Roles ?? new List<string>() },
-                Permissions = new Dictionary<string, List<string>> { [command.OrganizationId] = command.Permissions ?? new List<string>() },
                 UserCreationType = command.UserCreationType,
                 UserPassType = command.UserPassType,
                 Tags = command.Tags ?? new List<string>(),
@@ -198,6 +193,12 @@ namespace Iam.DomainService.Users
                 ExternalIdentities = new List<ExternalIdentity>(),
                 Attributes = command.Attributes ?? new Dictionary<string, object>(),
             };
+
+            if (!string.IsNullOrWhiteSpace(command.OrganizationId) && !user.OrganizationIds.Contains(command.OrganizationId)) 
+                 user.OrganizationIds.Add(command.OrganizationId) ;
+
+            user.Roles = !user.Roles.ContainsKey(command.OrganizationId)?  new Dictionary<string, List<string>> { [command.OrganizationId] = command.Roles ?? [] }: user.Roles;
+            user.Permissions = !user.Permissions.ContainsKey(command.OrganizationId)?  new Dictionary<string, List<string>> { [command.OrganizationId] = command.Permissions ?? [] }: user.Permissions;
 
             return user;
         }
