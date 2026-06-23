@@ -26,7 +26,7 @@ const resolveTenantId = (): string => {
 export const useOidcUiConfig = () => {
   const tenantId = resolveTenantId();
   const url = tenantId
-    ? `${OIDC_UI_CONFIG_ENDPOINT}?tenant_id=${encodeURIComponent(tenantId)}`
+    ? `${OIDC_UI_CONFIG_ENDPOINT}?tenantId=${encodeURIComponent(tenantId)}`
     : OIDC_UI_CONFIG_ENDPOINT;
 
   const headers: Record<string, string> = tenantId
