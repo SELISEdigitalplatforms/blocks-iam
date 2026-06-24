@@ -397,7 +397,7 @@ public class AuthenticationController : ControllerBase
     /// Includes standard OIDC claims (sub, email, name, picture) and custom Blocks claims
     /// RFC 3986: OpenID Connect UserInfo Endpoint
     /// </summary>
-    [HttpGet("userinfo")]
+    [HttpGet("me")]
     [Authorize]
     public async Task<IActionResult> RetrieveUserInformation()
     {
