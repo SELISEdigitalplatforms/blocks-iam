@@ -101,6 +101,16 @@ namespace Authentication.DomainService.OAuth.Services
                 return new TokenResponse { Error = "There is a user with external user id but is not active.", ErrorDescription = "There is a user with external user id but is not active", StatusCode = 401 };
             }
 
+            if (user.LockoutUntilUtc.HasValue && user.LockoutUntilUtc.Value > DateTime.UtcNow)
+            {
+                return new TokenResponse
+                {
+                    Error = OAuthError.AccountLocked,
+                    ErrorDescription = "Account is temporarily locked due to failed authentication attempts",
+                    StatusCode = 423
+                };
+            }
+
             request.OrganizationId = ResolveSignInOrganizationId(user, request.OrganizationId);
             var tokenResponse = await _oAuthJwtAccessTokenManager.ManageTokenAsync(request, authenticationConfiguration, user);
 

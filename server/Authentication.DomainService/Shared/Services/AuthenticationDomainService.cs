@@ -201,6 +201,8 @@ namespace Authentication.DomainService.Services
             credential.IsActive = request.IsActive;
             credential.IsAutoRedirect = request.IsAutoRedirect;
             credential.UseTokensCookie = request.UseTokensCookie;
+            credential.RequireMfa = request.RequireMfa;
+            credential.AllowedMfaMethods = request.AllowedMfaMethods;
             credential.LastUpdatedBy = BlocksContext.GetContext()?.UserId;
             credential.LastUpdatedDate = DateTime.UtcNow;
             credential.LogoUri = request.ClientLogoUrl;
