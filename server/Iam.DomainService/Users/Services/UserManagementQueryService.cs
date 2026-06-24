@@ -112,7 +112,8 @@ namespace Iam.DomainService.Users
                 ["profileImageUrl"] = user.ProfileImageUrl ?? string.Empty,
                 ["mfaEnabled"] = user.MfaEnabled,
                 ["lastLoggedInTime"] = user.LastLoggedInTime,
-                ["loginCount"] = user.LogInCount
+                ["loginCount"] = user.LogInCount,
+                ["createdDate"] = user.CreatedDate
             };
         }
 
