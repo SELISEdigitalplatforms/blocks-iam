@@ -70,7 +70,7 @@ export const extractOIDCParams = (debug = false): OIDCParams => {
 
   let projectKey = searchParams.get("x-blocks-key") || undefined;
   let userName = searchParams.get("userName") || undefined;
-  let clientId = searchParams.get("clientId") || undefined;
+  let clientId = searchParams.get("client_id") || searchParams.get("clientId") || undefined;
   let logoUrl = searchParams.get("logoUrl") || undefined;
   let themeColor = searchParams.get("brandColor") || undefined;
   let state = searchParams.get("state") || undefined;
@@ -108,7 +108,7 @@ export const extractOIDCParams = (debug = false): OIDCParams => {
           projectKey = hashParams.get("x-blocks-key") || undefined;
         }
         if (!clientId) {
-          clientId = hashParams.get("clientId") || undefined;
+          clientId = hashParams.get("client_id") || hashParams.get("clientId") || undefined;
         }
         if (!userName) {
           userName = hashParams.get("userName") || undefined;
@@ -141,8 +141,8 @@ export const extractOIDCParams = (debug = false): OIDCParams => {
           if (!projectKey && hashParams.has("x-blocks-key")) {
             projectKey = hashParams.get("x-blocks-key") || undefined;
           }
-          if (!clientId && hashParams.has("clientId")) {
-            clientId = hashParams.get("clientId") || undefined;
+          if (!clientId && (hashParams.has("client_id") || hashParams.has("clientId"))) {
+            clientId = hashParams.get("client_id") || hashParams.get("clientId") || undefined;
           }
           if (!userName && hashParams.has("userName")) {
             userName = hashParams.get("userName") || undefined;
