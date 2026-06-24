@@ -15,16 +15,34 @@ export interface IOidcUiConfig {
 
 const OIDC_UI_CONFIG_ENDPOINT = "/api/idp/oidc-ui-config";
 
-const resolveTenantId = (): string => {
+const TENANT_PATH_PATTERNS: RegExp[] = [
+  /^\/oidc\/recover\/([^/?#]+)/,
+  /^\/oidc\/activate\/([^/?#]+)/,
+];
+
+const resolveTenantIdFromPath = (): string | undefined => {
+  if (typeof window === "undefined") return undefined;
+  const path = window.location.pathname;
+  for (const pattern of TENANT_PATH_PATTERNS) {
+    const match = path.match(pattern);
+    if (match?.[1]) return decodeURIComponent(match[1]);
+  }
+  return undefined;
+};
+
+const resolveTenantId = (override?: string): string => {
+  if (override) return override;
   if (typeof window !== "undefined") {
     const fromUrl = extractOIDCParams().tenantId;
     if (fromUrl) return fromUrl;
+    const fromPath = resolveTenantIdFromPath();
+    if (fromPath) return fromPath;
   }
   return getRuntimeEnv("BLOCKS_X_BLOCKS_KEY") || "";
 };
 
-export const useOidcUiConfig = () => {
-  const tenantId = resolveTenantId();
+export const useOidcUiConfig = (tenantIdOverride?: string) => {
+  const tenantId = resolveTenantId(tenantIdOverride);
   const url = tenantId
     ? `${OIDC_UI_CONFIG_ENDPOINT}?tenantId=${encodeURIComponent(tenantId)}`
     : OIDC_UI_CONFIG_ENDPOINT;
