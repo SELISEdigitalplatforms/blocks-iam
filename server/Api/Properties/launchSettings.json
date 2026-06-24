@@ -7,11 +7,6 @@
       "launchBrowser": true,
       "launchUrl": "http://localhost:5001",
       "applicationUrl": "http://localhost:5001"
-      //"environmentVariables": {
-      //  "ASPNETCORE_ENVIRONMENT": "Production",
-      //          "BLOCKS_VAULT_TYPE": "Azure"
-
-      //}
     }
   }
 }

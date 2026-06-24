@@ -10,8 +10,8 @@ using Authentication.DomainService.Services;
 using Authentication.DomainService.Shared.RequestModel;
 using Authentication.DomainService.Utilities;
 using Blocks.Genesis;
-// using Captcha.DomainService.Captcha;
-// using Captcha.DomainService.Configuration;
+using Captcha.DomainService.Captcha;
+using Captcha.DomainService.Configuration;
 using Iam.DomainService.Entities;
 using Iam.DomainService.Users;
 using Idp.DomainService.Oidc.Contracts;
@@ -47,12 +47,14 @@ namespace Authentication.DomainService.Authentication
         private readonly ClientCredentialAuthorizationService _clientCredentialAuthorizationService;
         private readonly RefreshTokenAuthenticationService _refreshTokenAuthenticationService;
         private readonly IMfaConfigurationService _mfaConfigurationService;
+        private readonly IMfaPolicyService _mfaPolicyService;
+        private readonly IMfaAuditService _mfaAuditService;
         private readonly IOtpServiceFactory _otpServiceFactory;
         private readonly ITenants _tenants;
         private readonly IAuthenticationService _authenticationService;
         private readonly ICacheClient _cacheClient;
-        // private readonly ICaptchaService _captchaService;
-        // private readonly ICaptchaConfigurationService _captchaConfigurationService;
+        private readonly ICaptchaService _captchaService;
+        private readonly ICaptchaConfigurationService _captchaConfigurationService;
         private readonly ILogger<AuthorizationFlowService> _logger;
 
         public AuthorizationFlowService(
@@ -69,12 +71,14 @@ namespace Authentication.DomainService.Authentication
             ClientCredentialAuthorizationService clientCredentialAuthorizationService,
             RefreshTokenAuthenticationService refreshTokenAuthenticationService,
             IMfaConfigurationService mfaConfigurationService,
+            IMfaPolicyService mfaPolicyService,
+            IMfaAuditService mfaAuditService,
             IOtpServiceFactory otpServiceFactory,
             ITenants tenants,
             IAuthenticationService authenticationService,
             ICacheClient cacheClient,
-            // ICaptchaService captchaService,
-            // ICaptchaConfigurationService captchaConfigurationService,
+            ICaptchaService captchaService,
+            ICaptchaConfigurationService captchaConfigurationService,
             ILogger<AuthorizationFlowService> logger)
         {
             _authCodeRepo = authCodeRepo;
@@ -90,12 +94,14 @@ namespace Authentication.DomainService.Authentication
             _clientCredentialAuthorizationService = clientCredentialAuthorizationService;
             _refreshTokenAuthenticationService = refreshTokenAuthenticationService;
             _mfaConfigurationService = mfaConfigurationService;
+            _mfaPolicyService = mfaPolicyService;
+            _mfaAuditService = mfaAuditService;
             _otpServiceFactory = otpServiceFactory;
             _tenants = tenants;
             _authenticationService = authenticationService;
             _cacheClient = cacheClient;
-            // _captchaService = captchaService;
-            // _captchaConfigurationService = captchaConfigurationService;
+            _captchaService = captchaService;
+            _captchaConfigurationService = captchaConfigurationService;
             _logger = logger;
         }
 
@@ -157,11 +163,17 @@ namespace Authentication.DomainService.Authentication
             if (user.LockoutUntilUtc.HasValue && user.LockoutUntilUtc.Value > DateTime.UtcNow)
                 return new ObjectResult(new { error = "account_locked" }) { StatusCode = 423 };
 
-            // var captchaValidationResult = await ValidateCaptchaIfRequiredAsync(user, request.CaptchaCode);
-            // if (captchaValidationResult != null)
-            // {
-            //     return captchaValidationResult;
-            // }
+            var captcha = await EvaluateOidcCaptchaAsync(user, request.CaptchaCode);
+            if (captcha.Required)
+            {
+                await WriteOidcLoginAuditAsync(request, user, httpRequest, captcha.Outcome switch
+                {
+                    CaptchaOutcome.Missing => LoginAuditEvents.CaptchaValidationFailure,
+                    CaptchaOutcome.Invalid => LoginAuditEvents.CaptchaValidationFailure,
+                    _ => LoginAuditEvents.LoginFailure
+                }, "oidc_login_captcha_invalid");
+                return BuildCaptchaResult(captcha);
+            }
 
             bool passwordValid;
             try
@@ -182,11 +194,14 @@ namespace Authentication.DomainService.Authentication
                     authConfiguration.AccountLockDurationInMinutes,
                     DateTime.UtcNow);
 
-                if (updatedUser?.LockoutUntilUtc.HasValue == true && updatedUser.LockoutUntilUtc.Value > DateTime.UtcNow)
+                var accountLocked = updatedUser?.LockoutUntilUtc.HasValue == true && updatedUser.LockoutUntilUtc.Value > DateTime.UtcNow;
+                if (accountLocked)
                 {
+                    await WriteOidcLoginAuditAsync(request, user, httpRequest, LoginAuditEvents.LoginFailureAccountLocked, "oidc_login_account_locked");
                     return new ObjectResult(new { error = "account_locked" }) { StatusCode = StatusCodes.Status423Locked };
                 }
 
+                await WriteOidcLoginAuditAsync(request, user, httpRequest, LoginAuditEvents.LoginFailure, "oidc_login_invalid_credentials");
                 return new UnauthorizedObjectResult(new { error = "invalid_credentials" });
             }
 
@@ -196,6 +211,7 @@ namespace Authentication.DomainService.Authentication
             }
 
             await ResetAuthFailureCountersAsync(user);
+            await WriteOidcLoginAuditAsync(request, user, httpRequest, LoginAuditEvents.LoginSuccess, "oidc_login_success");
 
             return await AuthorizeAsync(
                 request.ClientId ?? string.Empty,
@@ -270,6 +286,18 @@ namespace Authentication.DomainService.Authentication
                     authConfiguration.AccountLockDurationInMinutes,
                     DateTime.UtcNow);
 
+                await _mfaAuditService.WriteAsync(new MfaAuditEvent
+                {
+                    EventType = updatedUser?.LockoutUntilUtc.HasValue == true && updatedUser.LockoutUntilUtc.Value > DateTime.UtcNow
+                        ? LoginAuditEvents.MfaAccountLocked
+                        : LoginAuditEvents.MfaVerificationFailure,
+                    UserId = user.ItemId,
+                    ClientId = request.ClientId,
+                    MfaType = user.UserMfaType,
+                    Severity = "WARN",
+                    Status = "failure"
+                });
+
                 if (updatedUser?.LockoutUntilUtc.HasValue == true && updatedUser.LockoutUntilUtc.Value > DateTime.UtcNow)
                 {
                     return new ObjectResult(new { error = "account_locked" }) { StatusCode = StatusCodes.Status423Locked };
@@ -280,6 +308,15 @@ namespace Authentication.DomainService.Authentication
 
             await ResetAuthFailureCountersAsync(user);
             await _cacheClient.RemoveKeyAsync($"oidc_mfa_login:{request.MfaId}");
+
+            await _mfaAuditService.WriteAsync(new MfaAuditEvent
+            {
+                EventType = LoginAuditEvents.MfaVerificationSuccess,
+                UserId = user.ItemId,
+                ClientId = request.ClientId,
+                MfaType = user.UserMfaType,
+                Status = "success"
+            });
 
             return await AuthorizeAsync(
                 mfaContext.ClientId ?? string.Empty,
@@ -355,47 +392,100 @@ namespace Authentication.DomainService.Authentication
 
         private async Task<bool> IsMfaRequiredAsync(User user)
         {
-            var mfaConfiguration = await _mfaConfigurationService.GetAsync();
-            var mfaProviders = mfaConfiguration.UserMfaType ?? [];
-            return user.MfaEnabled && mfaProviders.Contains(user.UserMfaType);
+            var decision = await _mfaPolicyService.EvaluateAsync(user, clientId: null);
+            return decision.Required;
         }
 
-        // private async Task<IActionResult?> ValidateCaptchaIfRequiredAsync(User user, string? captchaCode)
-        // {
-        //     if (user.FailedLoginCount < 2)
-        //     {
-        //         return null;
-        //     }
+        private async Task<OidcCaptchaEvaluation> EvaluateOidcCaptchaAsync(User user, string? captchaCode)
+        {
+            if (!CaptchaGate.IsCaptchaRequired(user))
+            {
+                return OidcCaptchaEvaluation.Pass();
+            }
 
-        //     var captchaConfiguration = await _captchaConfigurationService.GetCaptchaConfigurationAsync();
-        //     if (captchaConfiguration == null || !captchaConfiguration.IsEnable)
-        //     {
-        //         return null;
-        //     }
+            var captchaConfiguration = await _captchaConfigurationService.GetCaptchaConfigurationAsync();
+            if (captchaConfiguration == null || !captchaConfiguration.IsEnable)
+            {
+                return OidcCaptchaEvaluation.Pass();
+            }
 
-        //     if (string.IsNullOrWhiteSpace(captchaCode))
-        //     {
-        //         return BuildCaptchaRequiredResult();
-        //     }
+            if (string.IsNullOrWhiteSpace(captchaCode))
+            {
+                return OidcCaptchaEvaluation.Require(OAuthError.CaptchaEnabled, "Captcha verification is required", captchaConfiguration.CaptchaKey, CaptchaOutcome.Missing);
+            }
 
-        //     var verifyCaptchaResponse = await _captchaService.VerifyCaptchaAsync(new VerifyCaptchaRequest
-        //     {
-        //         VerificationCode = captchaCode,
-        //         ConfigurationName = captchaConfiguration.Provider
-        //     });
+            var verifyCaptchaResponse = await _captchaService.VerifyCaptchaAsync(new VerifyCaptchaRequest
+            {
+                VerificationCode = captchaCode,
+                ConfigurationName = captchaConfiguration.Provider
+            });
 
-        //     return verifyCaptchaResponse.Verified ? null : BuildCaptchaRequiredResult();
-        // }
+            if (verifyCaptchaResponse.Verified)
+            {
+                return OidcCaptchaEvaluation.Pass();
+            }
 
-        // private static IActionResult BuildCaptchaRequiredResult()
-        // {
-        //     return new BadRequestObjectResult(new
-        //     {
-        //         error = OAuthError.CaptchaEnabled,
-        //         error_description = "Captcha verification is required",
-        //         enable_captcha = true
-        //     });
-        // }
+            return OidcCaptchaEvaluation.Require(OAuthError.CaptchaInvalid, "Captcha answer is invalid. Please try again.", captchaConfiguration.CaptchaKey, CaptchaOutcome.Invalid);
+        }
+
+        private static IActionResult BuildCaptchaResult(OidcCaptchaEvaluation evaluation)
+        {
+            return new BadRequestObjectResult(new
+            {
+                error = evaluation.Error,
+                error_description = evaluation.ErrorDescription,
+                captcha_required = true,
+                captcha_site_key = evaluation.SiteKey
+            });
+        }
+
+        private enum CaptchaOutcome
+        {
+            Pass,
+            Missing,
+            Invalid
+        }
+
+        private sealed class OidcCaptchaEvaluation
+        {
+            public bool Required { get; init; }
+            public string? Error { get; init; }
+            public string? ErrorDescription { get; init; }
+            public string? SiteKey { get; init; }
+            public CaptchaOutcome Outcome { get; init; } = CaptchaOutcome.Pass;
+
+            public static OidcCaptchaEvaluation Pass() => new() { Required = false, Outcome = CaptchaOutcome.Pass };
+
+            public static OidcCaptchaEvaluation Require(string error, string description, string? siteKey, CaptchaOutcome outcome) =>
+                new() { Required = true, Error = error, ErrorDescription = description, SiteKey = siteKey, Outcome = outcome };
+        }
+
+        private async Task WriteOidcLoginAuditAsync(OidcLoginRequest request, User user, HttpRequest httpRequest, string eventType, string? details)
+        {
+            try
+            {
+                var isFailure = eventType.Contains("failure", StringComparison.OrdinalIgnoreCase)
+                    || eventType.Contains("locked", StringComparison.OrdinalIgnoreCase);
+                var isSuccess = eventType.Contains("success", StringComparison.OrdinalIgnoreCase);
+
+                await _auditLogRepo.CreateAsync(new AuditLogModel
+                {
+                    EventType = eventType,
+                    UserId = user.ItemId,
+                    ClientId = request.ClientId,
+                    TenantId = request.TenantId ?? BlocksContext.GetContext()?.TenantId,
+                    IpAddress = GetClientIpAddress(httpRequest),
+                    UserAgent = httpRequest.Headers.UserAgent.ToString(),
+                    Severity = isFailure ? "WARN" : "INFO",
+                    Status = isSuccess ? "success" : "failure",
+                    Details = details ?? eventType
+                });
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "Failed to write OIDC login audit event {EventType} for user {UserId}", eventType, user.ItemId);
+            }
+        }
 
         private static List<string> BuildAmr(User user, bool mfaCompleted)
         {
@@ -565,6 +655,19 @@ namespace Authentication.DomainService.Authentication
                 {
                     _logger.LogInformation($"Unauthenticated authorization request for {client_id}");
                     return new RedirectResult(BuildLoginUrl(client_id, response_type, redirect_uri, scope, state, nonce, code_challenge, code_challenge_method, tenant_id));
+                }
+
+                var lockoutCheckUser = await _userRepository.GetUserByIdAsync(resolvedUserId);
+                if (lockoutCheckUser != null
+                    && lockoutCheckUser.LockoutUntilUtc.HasValue
+                    && lockoutCheckUser.LockoutUntilUtc.Value > DateTime.UtcNow)
+                {
+                    _logger.LogWarning("Authorize request denied for locked account {UserId}", resolvedUserId);
+                    return new BadRequestObjectResult(new
+                    {
+                        error = "account_locked",
+                        error_description = "Account is temporarily locked due to failed authentication attempts"
+                    });
                 }
 
                 await EnsureIdpSessionAsync(request, response, effectiveSessionId, resolvedUserId, tenant_id);
@@ -974,14 +1077,14 @@ namespace Authentication.DomainService.Authentication
                 return OidcExchangeResult.FromError(new BadRequestObjectResult(new { error = "invalid_grant", error_description = "User not found" }));
             }
 
-            // if (user.LockoutUntilUtc.HasValue && user.LockoutUntilUtc.Value > DateTime.UtcNow)
-            // {
-            //     _logger.LogWarning("Token exchange denied for locked account {UserId}", authCode.UserId);
-            //     return OidcExchangeResult.FromError(new ObjectResult(new { error = "account_locked", error_description = "Account is temporarily locked due to failed authentication attempts" })
-            //     {
-            //         StatusCode = StatusCodes.Status423Locked
-            //     });
-            // }
+            if (user.LockoutUntilUtc.HasValue && user.LockoutUntilUtc.Value > DateTime.UtcNow)
+            {
+                _logger.LogWarning("Token exchange denied for locked account {UserId}", authCode.UserId);
+                return OidcExchangeResult.FromError(new ObjectResult(new { error = "account_locked", error_description = "Account is temporarily locked due to failed authentication attempts" })
+                {
+                    StatusCode = StatusCodes.Status423Locked
+                });
+            }
 
             var effectiveTenantId = authCode.TenantId ?? tenant_id ?? "default";
             var tenant = _tenants.GetTenantByID(effectiveTenantId);
@@ -1249,6 +1352,18 @@ namespace Authentication.DomainService.Authentication
             if (user == null)
             {
                 return new UnauthorizedObjectResult(new { error = "invalid_user" });
+            }
+
+            if (user.LockoutUntilUtc.HasValue && user.LockoutUntilUtc.Value > DateTime.UtcNow)
+            {
+                return new ObjectResult(new
+                {
+                    error = OAuthError.AccountLocked,
+                    error_description = "Account is temporarily locked due to failed authentication attempts"
+                })
+                {
+                    StatusCode = StatusCodes.Status423Locked
+                };
             }
 
             var tokenRequest = new TokenRequest
