@@ -118,7 +118,7 @@ namespace Iam.DomainService.Users
 
         private static Dictionary<string, object> MapToSingleAccountFields(GetAccounts user, string contextOrgId)
         {
-            if (!user.OrganizationIds.Contains(contextOrgId) || contextOrgId != "default")
+            if (!user.OrganizationIds.Contains(contextOrgId))
             {
                 return new Dictionary<string, object>();
             }
@@ -148,6 +148,7 @@ namespace Iam.DomainService.Users
                 ["logInCount"] = user.LogInCount,
                 ["lastLoggedInTime"] = user.LastLoggedInTime,
                 ["lastLoggedInDeviceInfo"] = user.LastLoggedInDeviceInfo ?? string.Empty,
+                ["OrganizationId"] = contextOrgId
             };
         }
 
