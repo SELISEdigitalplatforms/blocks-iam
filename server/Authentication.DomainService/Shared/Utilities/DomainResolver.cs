@@ -239,11 +239,9 @@ namespace Authentication.DomainService.Utilities
         public static CookieOptions CreateCookieOptions(string? cookieDomain, DateTime expiresUtc)
         {
             var isLocal = IsLocalhost();
-            // True localhost dev -> host-only cookie (a Domain attribute is invalid
-            // for "localhost"). Otherwise scope the cookie to the configured shared
-            // parent domain (e.g. ".blocksdevelopers.com") so a cookie set by the
-            // IDP host is also sent to the app host on the same site.
-            cookieDomain = isLocal ? "localhost" : (string.IsNullOrWhiteSpace(cookieDomain) ? null : cookieDomain);
+            // True localhost dev -> host-only cookie (Domain attribute invalid for "localhost").
+            // Otherwise scope to the configured shared parent domain so the IDP cookie reaches the app host.
+            cookieDomain = isLocal ? null : (string.IsNullOrWhiteSpace(cookieDomain) ? null : cookieDomain);
 
             return new CookieOptions
             {
