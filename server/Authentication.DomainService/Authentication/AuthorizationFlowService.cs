@@ -1179,10 +1179,10 @@ namespace Authentication.DomainService.Authentication
 
             var isLocal = DomainResolver.IsLocalhost();
             var accessOptions = isLocal
-                ? DomainResolver.CreateLoopbackCookieOptions(accessExpiry)
+                ? DomainResolver.CreateLoopbackCookieOptions(cookieDomain, accessExpiry)
                 : DomainResolver.CreateProductionCookieOptions(cookieDomain, accessExpiry);
             var refreshOptions = isLocal
-                ? DomainResolver.CreateLoopbackCookieOptions(refreshExpiry)
+                ? DomainResolver.CreateLoopbackCookieOptions(cookieDomain, refreshExpiry)
                 : DomainResolver.CreateProductionCookieOptions(cookieDomain, refreshExpiry);
 
             response.Cookies.Append($"{tokenDomain}", accessToken, accessOptions);
@@ -1610,23 +1610,18 @@ namespace Authentication.DomainService.Authentication
                 ? DateTime.UtcNow.Add(GetIdpSessionAbsoluteTimeout())
                 : absoluteExpiry;
 
-            CookieOptions cookieOptions;
-            if (isLocal)
+            string? resolvedDomain = null;
+            if (!string.IsNullOrWhiteSpace(domain))
             {
-                cookieOptions = DomainResolver.CreateLoopbackCookieOptions(effectiveExpiry);
+                var tenant = _tenants.GetTenantByID(tenantId);
+                resolvedDomain = tenant.IsRootTenant
+                    ? DomainResolver.GetRootDomain(domain)
+                    : domain;
             }
-            else
-            {
-                string? resolvedDomain = null;
-                if (!string.IsNullOrWhiteSpace(domain))
-                {
-                    var tenant = _tenants.GetTenantByID(tenantId);
-                    resolvedDomain = tenant.IsRootTenant
-                        ? DomainResolver.GetRootDomain(domain)
-                        : domain;
-                }
-                cookieOptions = DomainResolver.CreateProductionCookieOptions(resolvedDomain, effectiveExpiry);
-            }
+
+            var cookieOptions = isLocal
+                ? DomainResolver.CreateLoopbackCookieOptions(resolvedDomain, effectiveExpiry)
+                : DomainResolver.CreateProductionCookieOptions(resolvedDomain, effectiveExpiry);
 
             response.Cookies.Append(
                 $"{IdpConstants.IdpSessionCookieName}_{tenantId}",
