@@ -1,0 +1,4 @@
+#!/usr/bin/env sh
+
+dotnet build server
+npm --prefix client run build
