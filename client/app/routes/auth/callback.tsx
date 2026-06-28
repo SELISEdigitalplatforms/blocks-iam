@@ -45,7 +45,7 @@ export default function LoginCallbackPage() {
       .then((res) => {
         if (res.ok) {
           setAuthenticated();
-          window.location.href = "/console";
+          window.location.href = "/app/console";
         } else {
           window.location.href = "/login?error=callback_failed";
         }

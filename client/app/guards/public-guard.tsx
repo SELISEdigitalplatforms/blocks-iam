@@ -21,7 +21,7 @@ export function PublicGuard({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     if (!isMounted) return;
     if (isSSOCallback) return;
-    if (isAuthenticated) return navigate("/console", { replace: true });
+    if (isAuthenticated) return navigate("/app/console", { replace: true });
   }, [isAuthenticated, isMounted, isSSOCallback, navigate]);
   if (!isMounted || (isAuthenticated && !isSSOCallback)) return null;
   return <>{children}</>;

@@ -82,7 +82,7 @@ export const SigninForm = ({ mode = "default", oidcContext }: SigninFormProps) =
         params.set("userName", values.username);
         navigate(`/oidc/permission?${params.toString()}`);
       } else {
-        navigate("/console");
+        navigate("/app/console");
       }
     } catch (error: unknown) {
       if (isErrorWithErrors(error)) {
