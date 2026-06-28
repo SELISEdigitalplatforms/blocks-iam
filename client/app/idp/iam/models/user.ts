@@ -286,6 +286,7 @@ export interface IAccountActivationPayload {
   captchaCode?: string;
   mailPurpose?: string;
   preventPostEvent: boolean;
+  tenantId?: string;
 }
 
 export interface IAccountActivationResponse {
@@ -295,6 +296,7 @@ export interface IAccountActivationResponse {
 
 export interface IAccountResendActivationPayload {
   userId: string;
+  tenantId?: string;
 }
 export interface IAccountResendActivationResponse {
   errors: unknown | null;
@@ -304,6 +306,7 @@ export interface IAccountRecoverPayload {
   email: string;
   captchaCode?: string;
   mailPurpose?: string;
+  tenantId?: string;
 }
 export interface IAccountRecoverResponse {
   errors: unknown | null;
@@ -314,6 +317,7 @@ export interface IAccountResetPasswordPayload {
   password: string;
   captchaCode?: string;
   logoutFromAllDevices?: boolean;
+  tenantId?: string;
 }
 export interface IAccountResetPasswordResponse {
   errors: unknown | null;
@@ -332,6 +336,7 @@ export interface IChangePasswordResponse {
 
 export interface IActivationCodeValidationPayload {
   activationCode: string;
+  tenantId?: string;
 }
 
 export interface IActivationCodeExpirationResponse {

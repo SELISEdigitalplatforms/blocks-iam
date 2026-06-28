@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { mockHttpClientFactory } from "@/test-utils/__mocks__";
-import { http } from "@/lib/http-client";
+import { serviceInstances } from "@/lib/http-client";
 import { CaptchaService } from "./captcha.service";
 import { CAPTCHA_ENDPOINTS } from "../constants/endpoint.constant";
 import {

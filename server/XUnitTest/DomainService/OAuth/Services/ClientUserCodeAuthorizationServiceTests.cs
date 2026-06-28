@@ -33,7 +33,7 @@ namespace XUnitTest.DomainService.OAuth.Services
                 UserCode = "user-code-123",
                 GrantType = "user_code"
             };
-            var authConfig = new AuthenticationConfiguration();
+            var authConfig = new IdentityConfiguration();
 
             _authenticationRepository
                 .Setup(x => x.GetBlocksClientAsync(request.ClientId))
@@ -49,7 +49,7 @@ namespace XUnitTest.DomainService.OAuth.Services
             _authenticationRepository.Verify(x => x.GetBlocksClientAsync(request.ClientId), Times.Once);
             _authenticationRepository.Verify(x => x.GetUserCodeAsync(It.IsAny<string>()), Times.Never);
             _oAuthJwtAccessTokenManager.Verify(
-                x => x.ManageTokenAsync(It.IsAny<TokenRequest>(), It.IsAny<AuthenticationConfiguration>(), It.IsAny<User>(), It.IsAny<StateInfo?>()),
+                x => x.ManageTokenAsync(It.IsAny<TokenRequest>(), It.IsAny<IdentityConfiguration>(), It.IsAny<User>(), It.IsAny<StateInfo?>()),
                 Times.Never);
         }
 
@@ -63,7 +63,7 @@ namespace XUnitTest.DomainService.OAuth.Services
                 UserCode = "user-code-123",
                 GrantType = "user_code"
             };
-            var authConfig = new AuthenticationConfiguration();
+            var authConfig = new IdentityConfiguration();
             var client = new BlocksClientConfig
             {
                 ItemId = "valid-client-id",

@@ -29,7 +29,7 @@ export const ProfileMFAVerify = () => {
         isFirstMount.current = true;
         setIsVerifyModalOpen(false);
       }
-      queryClient.invalidateQueries({ queryKey: ["user-by-id", userId] });
+      queryClient.invalidateQueries({ queryKey: ["user-by-id", { id: userId, projectKey }] });
       setMfaId(res.mfaId);
     } catch (_error) {
       //

@@ -13,9 +13,9 @@ using Iam.DomainService.Users;
 using Iam.DomainService.Users.RequestModel;
 using Iam.DomainService.Users.ResponseModel;
 using Iam.DomainService.Utilities;
+using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.Logging;
 using MongoDB.Driver;
-using System.Security.Cryptography.Xml;
 
 namespace Iam.DomainService.Accounts
 {
@@ -33,6 +33,7 @@ namespace Iam.DomainService.Accounts
         private readonly IResourceMutationService _resourceMutationService;
         private readonly ICaptchaService _captchaService;
         private readonly IDbContextProvider _dbContextProvider;
+        private readonly IHttpContextAccessor? _httpContextAccessor;
 
         public AccountService(
             ILogger<AccountService> logger,
@@ -46,7 +47,8 @@ namespace Iam.DomainService.Accounts
             IUserManagementMutationService userManagementMutationService,
             IResourceMutationService resourceMutationService,
             ICaptchaService captchaService,
-            IDbContextProvider dbContextProvider
+            IDbContextProvider dbContextProvider,
+            IHttpContextAccessor? httpContextAccessor = null
         )
         {
             _logger = logger;
@@ -61,6 +63,7 @@ namespace Iam.DomainService.Accounts
             _resourceMutationService = resourceMutationService;
             _captchaService = captchaService;
             _dbContextProvider = dbContextProvider;
+            _httpContextAccessor = httpContextAccessor;
         }
 
         public async Task<BaseAccountResponse> SignupAccountAsync(SignupUserRequest signupUserRequest)
@@ -519,7 +522,13 @@ namespace Iam.DomainService.Accounts
         {
             var config = await _repository.GetIamConfigurationAsync();
             var key = Guid.NewGuid().ToString("n");
-            var recoverAccountUrl = string.Format("{0}?code={1}&lang={2}", config.RecoverAccountUrl, key, user.Language);
+            var bc = BlocksContext.GetContext();
+            var path = $"{(config.IsOidcEnabled ? IamHelper.OidcRecoverRoute + bc.TenantId : config.RecoverAccountPath)}?code={key}&lang={user.Language}";
+            if (!IamHelper.TryBuildUserActionUrl(config, path, out var recoverAccountUrl, _httpContextAccessor, logger: _logger))
+            {
+                _logger.LogWarning("Recover account URL could not be built for user {UserId}", user.ItemId);
+                return false;
+            }
 
             await _cacheClient.AddStringValueAsync(key, user.ItemId, config.RecoverAccountUrlLifetimeInMinutes * 60);
 
@@ -532,7 +541,7 @@ namespace Iam.DomainService.Accounts
                 Key = key,
                 UserId = user.ItemId,
                 IssueDate = DateTime.Now,
-                ExpireDate = DateTime.Now.AddMinutes(config.ActivationUrlLifetimeInMinutes),
+                ExpireDate = DateTime.Now.AddMinutes(config.RecoverAccountUrlLifetimeInMinutes),
                 Value = recoverAccountUrl,
                 MailPurpose = emailPurpose
             });
@@ -718,7 +727,13 @@ namespace Iam.DomainService.Accounts
         {
             var config = await _repository.GetIamConfigurationAsync();
             var key = Guid.NewGuid().ToString("n");
-            var accountActivationUri = string.Format("{0}?code={1}&lang={2}", config.AccountActivationUrl, key, user.Language);
+            var bc = BlocksContext.GetContext();
+            var path = $"{(config.IsOidcEnabled ? IamHelper.OidcActivateRoute + bc.TenantId : config.AccountActivationPath)}?code={key}&lang={user.Language}";
+            if (!IamHelper.TryBuildUserActionUrl(config, path, out var accountActivationUri, _httpContextAccessor, logger: _logger))
+            {
+                _logger.LogWarning("Activation URL could not be built for user {UserId}", user.ItemId);
+                return false;
+            }
 
             await _cacheClient.AddStringValueAsync(key, user.ItemId, config.ActivationUrlLifetimeInMinutes * 60);
 
@@ -803,19 +818,21 @@ namespace Iam.DomainService.Accounts
             {
                 return new Dictionary<string, object>
                 {
-                    { "IsEmailPasswordSignUpEnabled", false },
-                    { "IsSSoSignUpEnabled", false },
-                    { "DefaultRolesForNewUser", new List<string>() },
-                    { "DefaultPermissionsForNewUser", new List<string>() }
+                    { "isSignUpEnable", false },
+                    { "isEmailPasswordSignUpEnabled", false },
+                    { "isSSoSignUpEnabled", false },
+                    { "defaultRolesForNewUser", new List<string>() },
+                    { "defaultPermissionsForNewUser", new List<string>() }
                 };
             }
 
             return new Dictionary<string, object>
             {
-                { "IsEmailPasswordSignUpEnabled", tenantConfiguration.IsEmailPasswordSignUpEnabled },
-                { "IsSSoSignUpEnabled", tenantConfiguration.IsSSoSignUpEnabled },
-                { "DefaultRolesForNewUser", tenantConfiguration.DefaultRolesForNewUserOnSignUp },
-                { "DefaultPermissionsForNewUser", tenantConfiguration.DefaultPermissionsForNewUserOnSignUp }
+                { "isSignUpEnable", tenantConfiguration.IsEmailPasswordSignUpEnabled || tenantConfiguration.IsSSoSignUpEnabled },
+                { "isEmailPasswordSignUpEnabled", tenantConfiguration.IsEmailPasswordSignUpEnabled },
+                { "isSSoSignUpEnabled", tenantConfiguration.IsSSoSignUpEnabled },
+                { "defaultRolesForNewUser", tenantConfiguration.DefaultRolesForNewUserOnSignUp },
+                { "defaultPermissionsForNewUser", tenantConfiguration.DefaultPermissionsForNewUserOnSignUp }
             };
         }
 

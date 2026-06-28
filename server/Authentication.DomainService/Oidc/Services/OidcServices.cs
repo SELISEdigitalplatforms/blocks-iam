@@ -173,6 +173,14 @@ public class TokenGenerationService : ITokenGenerationService
             jwtClaims.Add(new Claim(JwtRegisteredClaimNames.Nonce, claims.Nonce));
         }
 
+        if (claims.Amr is { Count: > 0 })
+        {
+            foreach (var amr in claims.Amr.Where(m => !string.IsNullOrWhiteSpace(m)).Distinct(StringComparer.OrdinalIgnoreCase))
+            {
+                jwtClaims.Add(new Claim("amr", amr));
+            }
+        }
+
         if (includeNonce)
         {
             if (!string.IsNullOrWhiteSpace(claims.Email))

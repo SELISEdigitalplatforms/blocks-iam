@@ -1,4 +1,4 @@
-import { http } from "@/lib/http-client";
+import { serviceInstances } from "@/lib/http-client";
 import {
   ISigninByEmailPayload,
   ISigninByEmailResponse,
@@ -23,12 +23,13 @@ export class AuthService {
       sessionStorage.removeItem("blocks-auth-client-id");
     }
 
-    return http.post(
+    return serviceInstances.idpService.post(
       AUTH_ENDPOINTS.LOGIN,
       {
         username: payload.username,
         password: payload.password,
         clientId: payload.clientId || "",
+        ...(payload.captchaCode ? { captchaCode: payload.captchaCode } : {}),
       },
       undefined,
       {
@@ -43,7 +44,7 @@ export class AuthService {
     body.append("code", payload.code);
     body.append("mfa_id", payload.mfa_id);
     body.append("mfa_type", payload.mfa_type.toString());
-    return http.post(AUTH_ENDPOINTS.OIDC_TOKEN, body, {
+    return serviceInstances.idpService.post(AUTH_ENDPOINTS.OIDC_TOKEN, body, {
       "Content-Type": "application/x-www-form-urlencoded",
     });
   }
@@ -74,7 +75,7 @@ export class AuthService {
       body.tenant_id = payload.tenantId;
     }
 
-    return http.post(AUTH_ENDPOINTS.TOKEN_EXCHANGE, body);
+    return serviceInstances.idpService.post(AUTH_ENDPOINTS.TOKEN_EXCHANGE, body);
   }
 
   verifySsoConsent(code: string): Promise<any> {
@@ -82,7 +83,7 @@ export class AuthService {
     body.append("grant_type", "sso_consent");
     body.append("code", code);
 
-    return http.post(AUTH_ENDPOINTS.OIDC_TOKEN, body, {
+    return serviceInstances.idpService.post(AUTH_ENDPOINTS.OIDC_TOKEN, body, {
       "Content-Type": "application/x-www-form-urlencoded",
     });
   }
@@ -90,7 +91,7 @@ export class AuthService {
   signupByEmail(
     payload: ISignupByEmailPayload,
   ): Promise<ISignupByEmailResponse> {
-    return http.post(AUTH_ENDPOINTS.SIGNUP, {
+    return serviceInstances.idpService.post(AUTH_ENDPOINTS.SIGNUP, {
       ...payload,
       isSsoSignup: false,
     });
@@ -99,24 +100,24 @@ export class AuthService {
   activateAccount(
     payload: IActivateAccountPayload,
   ): Promise<IActivateAccountResponse> {
-    return http.post(AUTH_ENDPOINTS.ACTIVATE_ACCOUNT, payload);
+    return serviceInstances.idpService.post(AUTH_ENDPOINTS.ACTIVATE_ACCOUNT, payload);
   }
 
   recoverAccount(
     payload: IRecoverAccountPayload,
   ): Promise<IRecoverAccountResponse> {
-    return http.post(AUTH_ENDPOINTS.RECOVER, payload);
+    return serviceInstances.idpService.post(AUTH_ENDPOINTS.RECOVER, payload);
   }
 
   getLoginOptions(tenantId?: string): Promise<any> {
     const url = tenantId
       ? `${AUTH_ENDPOINTS.GET_LOGIN_OPTIONS}?tenantId=${encodeURIComponent(tenantId)}`
       : AUTH_ENDPOINTS.GET_LOGIN_OPTIONS;
-    return http.get(url);
+    return serviceInstances.idpService.get(url);
   }
 
   logout() {
-    return http.post(AUTH_ENDPOINTS.LOGOUT, {});
+    return serviceInstances.idpService.post(AUTH_ENDPOINTS.LOGOUT, {});
   }
 
   stopImpersonation(): Promise<{
@@ -124,7 +125,7 @@ export class AuthService {
     status: string;
     reason?: string;
   }> {
-    return http.post(AUTH_ENDPOINTS.STOP_IMPERSONATION, {});
+    return serviceInstances.idpService.post(AUTH_ENDPOINTS.STOP_IMPERSONATION, {});
   }
 
   startImpersonation(payload: {
@@ -132,7 +133,7 @@ export class AuthService {
     orgId?: string;
     clientId?: string;
   }): Promise<any> {
-    return http.post(AUTH_ENDPOINTS.IMPERSONATE, payload);
+    return serviceInstances.idpService.post(AUTH_ENDPOINTS.IMPERSONATE, payload);
   }
 
   signinByOidcEmail(payload: {
@@ -148,7 +149,7 @@ export class AuthService {
     provider_client_id: string;
     provider_redirect_uri: string;
   }): Promise<any> {
-    return http.post(
+    return serviceInstances.idpService.post(
       AUTH_ENDPOINTS.OIDC_LOGIN,
       {
         ...(payload.provider && { provider: payload.provider }),
@@ -182,7 +183,7 @@ export class AuthService {
     code_challenge?: string;
     code_challenge_method?: string;
   }): Promise<any> {
-    return http.post(
+    return serviceInstances.idpService.post(
       AUTH_ENDPOINTS.OIDC_LOGIN_SELECT_ACCOUNT,
       {
         user_id: payload.userId,
@@ -205,7 +206,7 @@ export class AuthService {
 
 export const authService = new AuthService();
 
-// import { http } from "@/lib/http-client";
+// import { serviceInstances } from "@/lib/http-client";
 // import { getRuntimeEnv } from "@/lib/runtime-env";
 // import { useAuthStore } from "@/store/useAuthStore";
 // import {
@@ -226,7 +227,7 @@ export const authService = new AuthService();
 //     body.append("username", payload.username);
 //     body.append("password", payload.password);
 
-//     return http.post(
+//     return serviceInstances.idpService.post(
 //       AUTH_ENDPOINTS.TOKEN,
 //       body,
 //       {
@@ -244,7 +245,7 @@ export const authService = new AuthService();
 //     body.append("code", payload.code);
 //     body.append("mfa_id", payload.mfa_id);
 //     body.append("mfa_type", payload.mfa_type.toString());
-//     return http.post(AUTH_ENDPOINTS.TOKEN, body, {
+//     return serviceInstances.idpService.post(AUTH_ENDPOINTS.TOKEN, body, {
 //       "Content-Type": "application/x-www-form-urlencoded",
 //     });
 //   }
@@ -256,7 +257,7 @@ export const authService = new AuthService();
 //     body.append("state", payload.state);
 //     body.append("client_secret", "***REMOVED***");
 
-//     return http.post(
+//     return serviceInstances.idpService.post(
 //       `https://dev-idp.blocksdevelopers.com${AUTH_ENDPOINTS.TOKEN}`,
 //       body,
 //       {
@@ -271,18 +272,18 @@ export const authService = new AuthService();
 //   }
 
 //   signupByEmail(payload: ISignupByEmailPayload): Promise<ISignupByEmailResponse> {
-//     return http.post(PEOPLE_ENDPOINTS.SIGNUP, payload);
+//     return serviceInstances.idpService.post(PEOPLE_ENDPOINTS.SIGNUP, payload);
 //   }
 
 //   getLoginOptions(): Promise<any> {
-//     return http.get(AUTH_ENDPOINTS.GET_LOGIN_OPTIONS);
+//     return serviceInstances.idpService.get(AUTH_ENDPOINTS.GET_LOGIN_OPTIONS);
 //   }
 
 //   logout() {
 //     // For localhost, send actual refresh token; for remote, send empty (uses cookie)
 //     const isLocalhost = getRuntimeEnv("BLOCKS_IAM_BASE_URL")?.includes("localhost");
 //     const refreshToken = isLocalhost ? (useAuthStore.getState().refreshToken || "") : "";
-//     return http.post(AUTH_ENDPOINTS.LOGOUT, { refreshToken });
+//     return serviceInstances.idpService.post(AUTH_ENDPOINTS.LOGOUT, { refreshToken });
 //   }
 // }
 

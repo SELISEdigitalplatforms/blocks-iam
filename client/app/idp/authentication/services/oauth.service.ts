@@ -1,4 +1,4 @@
-import { http } from "@/lib/http-client";
+import { serviceInstances } from "@/lib/http-client";
 import {
   IGetSocialLoginEndpointPayload,
   IGetSocialLoginEndpointResponse,
@@ -11,11 +11,11 @@ export class OAuthService {
   getSocialLoginEndpoint(
     payload: IGetSocialLoginEndpointPayload,
   ): Promise<IGetSocialLoginEndpointResponse> {
-    return http.post(AUTH_ENDPOINTS.SOCIAL_AUTHORIZE, payload);
+    return serviceInstances.idpService.post(AUTH_ENDPOINTS.SOCIAL_AUTHORIZE, payload);
   }
 
   signinBySSO(payload: ISigninBySSOPayload & { clientId?: string }): Promise<ISigninBySSOResponse> {
-    return http.post(
+    return serviceInstances.idpService.post(
       AUTH_ENDPOINTS.SOCIAL_LOGIN,
       {
         code: payload.code,
@@ -34,7 +34,7 @@ export const oauthService = new OAuthService();
 
 
 
-// import { http } from "@/lib/http-client";
+// import { serviceInstances } from "@/lib/http-client";
 // import {
 //   IGetSocialLoginEndpointPayload,
 //   IGetSocialLoginEndpointResponse,
@@ -48,7 +48,7 @@ export const oauthService = new OAuthService();
 //   getSocialLoginEndpoint(
 //     payload: IGetSocialLoginEndpointPayload,
 //   ): Promise<IGetSocialLoginEndpointResponse> {
-//     return http.post(AUTH_ENDPOINTS.GET_SOCIAL_LOGIN_ENDPOINT, payload);
+//     return serviceInstances.idpService.post(AUTH_ENDPOINTS.GET_SOCIAL_LOGIN_ENDPOINT, payload);
 //   }
 
 //   signinBySSO(payload: ISigninBySSOPayload): Promise<ISigninBySSOResponse> {
@@ -57,7 +57,7 @@ export const oauthService = new OAuthService();
 //     body.append("code", payload.code);
 //     body.append("state", payload.state);
 
-//     return http.post(
+//     return serviceInstances.idpService.post(
 //       IDP_ENDPOINTS.AUTHENTICATION.TOKEN,
 //       body,
 //       {

@@ -12,7 +12,8 @@ import { UserPats } from "../user-pat";
 import { Card, CardContent } from "@/components/ui-kits/card/card";
 import { Badge } from "@/components/ui-kits/badge/badge";
 import { CopyToClipboardButton } from "@/components/copy-to-clipboard-button";
-import { Shield, Smartphone, Clock, Key, User, Calendar, Activity, Camera, Sparkles } from "lucide-react";
+import { Shield, Smartphone, Clock, Key, Calendar, Activity, Sparkles } from "lucide-react";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui-kits/select/select";
 import { checkValidDate, formatFullDate } from "@/lib/utils";
 import { Skeleton } from "@/components/ui-kits/skeleton/skeleton";
 import { UserCreationType } from "@blocks-idp/authentication/constants/authentication.constant";
@@ -117,24 +118,19 @@ const ProfileSidebarDetails = ({ user }: { user?: ProfileSidebarUser }) => (
 
 export const ProfileSidebar = ({ id, projectKey, user }: ProfileSidebarProps) => {
   return (
-    <Card className="overflow-hidden border-0 bg-transparent shadow-none">
+    <Card className="overflow-hidden border-0 bg-transparent shadow-none md:grid md:h-full md:grid-rows-[auto_1fr] md:gap-4">
       {/* Avatar */}
       <div className="relative mx-auto w-full max-w-[280px]" style={{ aspectRatio: "1 / 1" }}>
         <ProfileImageUploader
           id={id}
           projectKey={projectKey}
+          containerClassName="h-full w-full"
           className="h-full w-full max-w-none rounded-full bg-transparent shadow-none dark:bg-transparent"
         />
-        {/* Center camera upload indicator */}
-        <div className="pointer-events-none absolute inset-0 flex items-center justify-center">
-          <div className="flex h-10 w-10 items-center justify-center rounded-full border border-white/30 text-white drop-shadow">
-            <Camera className="h-4 w-4" />
-          </div>
-        </div>
       </div>
 
       {/* Account details */}
-      <CardContent className="mx-auto mt-4 hidden w-full max-w-[280px] rounded-xl bg-card p-5 shadow-sm ring-1 ring-border/50 md:block">
+      <CardContent className="hidden w-full rounded-sm border bg-card p-5 shadow-sm md:block">
         <p className="mb-3 text-[10px] font-semibold uppercase tracking-widest text-muted-foreground/60">
           Account details
         </p>
@@ -161,92 +157,95 @@ export const UserProfile = ({ id }: { id: string }) => {
 
   return (
     <div className="mx-auto w-full max-w-7xl overflow-x-hidden p-4 sm:p-6 md:p-8">
-      <Tabs value={tabId} className="space-y-5 overflow-hidden md:space-y-6">
-        {/* Header with name and tabs */}
-        <div className="flex flex-col gap-4">
-          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-            <div className="min-w-0">
-              <div className="flex items-center gap-2">
-                <h1 className="truncate text-xl font-semibold tracking-tight text-foreground md:text-2xl">
-                  {fullName}
-                </h1>
-                <UpdateUser id={id} projectKey={x_blocks_key} own iconOnly />
-              </div>
-              {email && (
-                <div className="mt-1 flex min-w-0 items-center gap-1.5">
-                  <span className="min-w-0 flex-1 truncate text-sm text-muted-foreground">{email}</span>
-                  <CopyToClipboardButton textToCopy={email}>
-                    <span className="sr-only">Copy email</span>
-                  </CopyToClipboardButton>
-                </div>
-              )}
+      <Tabs value={tabId}>
+        <div className="grid grid-cols-1 gap-4 md:grid-cols-[300px_minmax(0,1fr)] md:gap-x-6 md:gap-y-3 lg:gap-x-8">
+
+          {/* Name+email — col 1, row 1 */}
+          <div className="hidden min-w-0 md:col-start-1 md:row-start-1 md:block">
+            <div className="flex items-center gap-2">
+              <h1 className="truncate text-2xl font-semibold tracking-tight text-foreground">{fullName}</h1>
+              <UpdateUser id={id} projectKey={x_blocks_key} own iconOnly />
             </div>
+            {email && (
+              <div className="mt-0.5 flex min-w-0 items-center gap-1.5">
+                <span className="min-w-0 truncate text-sm text-muted-foreground">{email}</span>
+                <CopyToClipboardButton textToCopy={email}>
+                  <span className="sr-only">Copy email</span>
+                </CopyToClipboardButton>
+              </div>
+            )}
           </div>
 
-          {/* Tabs navigation - modern underline style */}
-          <TabsList className="inline-flex h-auto w-full justify-start gap-1 overflow-x-auto border-b border-border/40 bg-transparent p-0 pb-px">
-            {/* Details tab - Only visible on mobile */}
-            <TabsTrigger
-              onClick={() => setTabId("info")}
-              value="info"
-              className="relative shrink-0 flex items-center gap-1.5 bg-transparent px-3 py-2 text-xs font-medium text-muted-foreground transition-colors hover:text-foreground data-[state=active]:text-foreground md:hidden after:absolute after:bottom-0 after:left-0 after:right-0 after:h-0.5 after:rounded-full after:bg-transparent data-[state=active]:after:bg-primary"
-            >
-              <User className="h-3.5 w-3.5" />
-              <span>Details</span>
-            </TabsTrigger>
-            <TabsTrigger
-              onClick={() => setTabId("security")}
-              value="security"
-              className="relative shrink-0 flex items-center gap-1.5 bg-transparent px-3 py-2 text-xs font-medium text-muted-foreground transition-colors hover:text-foreground data-[state=active]:text-foreground after:absolute after:bottom-0 after:left-0 after:right-0 after:h-0.5 after:rounded-full after:bg-transparent data-[state=active]:after:bg-primary"
-            >
-              <Shield className="h-3.5 w-3.5" />
-              <span>Security</span>
-            </TabsTrigger>
-            <TabsTrigger
-              onClick={() => setTabId("devices")}
-              value="devices"
-              className="relative shrink-0 flex items-center gap-1.5 bg-transparent px-3 py-2 text-xs font-medium text-muted-foreground transition-colors hover:text-foreground data-[state=active]:text-foreground after:absolute after:bottom-0 after:left-0 after:right-0 after:h-0.5 after:rounded-full after:bg-transparent data-[state=active]:after:bg-primary"
-            >
-              <Smartphone className="h-3.5 w-3.5" />
-              <span>Devices</span>
-            </TabsTrigger>
-            <TabsTrigger
-              onClick={() => setTabId("history")}
-              value="history"
-              className="relative shrink-0 flex items-center gap-1.5 bg-transparent px-3 py-2 text-xs font-medium text-muted-foreground transition-colors hover:text-foreground data-[state=active]:text-foreground after:absolute after:bottom-0 after:left-0 after:right-0 after:h-0.5 after:rounded-full after:bg-transparent data-[state=active]:after:bg-primary"
-            >
-              <Clock className="h-3.5 w-3.5" />
-              <span>History</span>
-            </TabsTrigger>
-            <TabsTrigger
-              onClick={() => setTabId("personalAccessTokens")}
-              value="personalAccessTokens"
-              className="relative shrink-0 flex items-center gap-1.5 bg-transparent px-3 py-2 text-xs font-medium text-muted-foreground transition-colors hover:text-foreground data-[state=active]:text-foreground after:absolute after:bottom-0 after:left-0 after:right-0 after:h-0.5 after:rounded-full after:bg-transparent data-[state=active]:after:bg-primary"
-            >
-              <Key className="h-3.5 w-3.5" />
-              <span>PATs</span>
-            </TabsTrigger>
-          </TabsList>
-        </div>
+          {/* TabsList — col 2, row 1, bottom-aligned so its bottom meets the email line */}
+          <div className="hidden md:col-start-2 md:row-start-1 md:flex md:items-end">
+            <TabsList className="h-8 w-fit p-0.5">
+              <TabsTrigger onClick={() => setTabId("security")} value="security" className="h-7 gap-1 px-2.5 text-xs">
+                <Shield className="h-3.5 w-3.5" />
+                <span>Security</span>
+              </TabsTrigger>
+              <TabsTrigger onClick={() => setTabId("devices")} value="devices" className="h-7 gap-1 px-2.5 text-xs">
+                <Smartphone className="h-3.5 w-3.5" />
+                <span>Devices</span>
+              </TabsTrigger>
+              <TabsTrigger onClick={() => setTabId("history")} value="history" className="h-7 gap-1 px-2.5 text-xs">
+                <Clock className="h-3.5 w-3.5" />
+                <span>History</span>
+              </TabsTrigger>
+              <TabsTrigger onClick={() => setTabId("personalAccessTokens")} value="personalAccessTokens" className="h-7 gap-1 px-2.5 text-xs">
+                <Key className="h-3.5 w-3.5" />
+                <span>PATs</span>
+              </TabsTrigger>
+            </TabsList>
+          </div>
 
-        <div className="grid grid-cols-1 gap-5 md:grid-cols-[280px_minmax(0,1fr)] md:gap-6 lg:gap-8">
-          {/* Left Sidebar - Profile Card */}
-          <div className="mx-auto w-full max-w-[320px] md:mx-0 md:max-w-none">
+          {/* Sidebar — col 1, row 2 */}
+          <div className="mx-auto w-full max-w-[460px] md:col-start-1 md:mx-0 md:max-w-none md:row-start-2">
             <ProfileSidebar id={id} projectKey={x_blocks_key} user={user} />
           </div>
 
-          {/* Right Content */}
-          <div className="min-w-0">
-            {/* Details tab content - Only visible on mobile */}
+          {/* Right column — col 2, row 2: starts level with the avatar */}
+          <div className="min-w-0 space-y-4 md:col-start-2 md:row-start-2">
+
+            {/* Mobile header: name+email left, dropdown right */}
+            <div className="flex items-center justify-between gap-3 md:hidden">
+              <div className="min-w-0">
+                <div className="flex items-center gap-2">
+                  <h1 className="truncate text-xl font-semibold tracking-tight text-foreground">{fullName}</h1>
+                  <UpdateUser id={id} projectKey={x_blocks_key} own iconOnly />
+                </div>
+                {email && (
+                  <div className="mt-0.5 flex min-w-0 items-center gap-1.5">
+                    <span className="min-w-0 truncate text-sm text-muted-foreground">{email}</span>
+                    <CopyToClipboardButton textToCopy={email}>
+                      <span className="sr-only">Copy email</span>
+                    </CopyToClipboardButton>
+                  </div>
+                )}
+              </div>
+              <div className="shrink-0">
+                <Select value={tabId} onValueChange={(v) => { setTabId(v); }}>
+                  <SelectTrigger className="h-8 w-auto min-w-[100px] border-border/60 px-2.5 text-xs">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="info">Details</SelectItem>
+                    <SelectItem value="security">Security</SelectItem>
+                    <SelectItem value="devices">Devices</SelectItem>
+                    <SelectItem value="history">History</SelectItem>
+                    <SelectItem value="personalAccessTokens">PATs</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+
+            {/* Tab content */}
             <TabsContent value="info" className="mt-0 md:hidden">
-              <Card className="border-0 bg-transparent shadow-none">
-                <CardContent className="rounded-xl bg-card p-5 shadow-sm ring-1 ring-border/50">
-                  <p className="mb-3 text-[10px] font-semibold uppercase tracking-widest text-muted-foreground/60">
-                    Account details
-                  </p>
-                  <ProfileSidebarDetails user={user} />
-                </CardContent>
-              </Card>
+              <CardContent className="rounded-xl bg-card p-5 shadow-sm ring-1 ring-border/50">
+                <p className="mb-3 text-[10px] font-semibold uppercase tracking-widest text-muted-foreground/60">
+                  Account details
+                </p>
+                <ProfileSidebarDetails user={user} />
+              </CardContent>
             </TabsContent>
 
             <TabsContent value="security" className="mt-0 space-y-6">

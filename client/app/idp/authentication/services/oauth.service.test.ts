@@ -1,5 +1,5 @@
 import { mockHttpClientFactory } from "@/test-utils/__mocks__";
-import { http } from "@/lib/http-client";
+import { serviceInstances } from "@/lib/http-client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   mockGetSocialLoginPayload,

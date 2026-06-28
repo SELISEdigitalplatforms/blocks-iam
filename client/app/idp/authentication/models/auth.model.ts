@@ -16,6 +16,7 @@ export interface ISigninByEmailPayload {
   nonce?: string;
   scope?: string;
   redirectUri?: string;
+  captchaCode?: string;
 }
 export interface ISigninByEmailResponse {
   access_token: string;
