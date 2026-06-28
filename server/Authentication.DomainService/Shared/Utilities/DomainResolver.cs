@@ -247,7 +247,7 @@ namespace Authentication.DomainService.Utilities
             {
                 Domain = cookieDomain,
                 HttpOnly = true,
-                Secure = IsCurrentRequestSecure(),
+                Secure = true,
                 // Local dev (loopback or hosts-file on http) -> None.
                 // Production https -> Strict: cookies are first-party and secure.
                 SameSite = IsCrossOriginHttpFlow() ? SameSiteMode.None : SameSiteMode.Strict,

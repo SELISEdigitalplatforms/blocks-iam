@@ -384,7 +384,7 @@ namespace Blocks.Api.Controllers
             var cookieOptions = new CookieOptions
             {
                 HttpOnly = true,
-                Secure = DomainResolver.IsCurrentRequestSecure(),
+                Secure = true,
                 SameSite = DomainResolver.IsCrossOriginHttpFlow() ? SameSiteMode.None : SameSiteMode.Strict,
                 Domain = !isLocal && isResolved && !string.IsNullOrWhiteSpace(cookieDomain) ? cookieDomain : null,
                 Path = "/api/oidc",
