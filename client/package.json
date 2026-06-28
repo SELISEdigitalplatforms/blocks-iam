@@ -8,7 +8,12 @@
     "dev:https": ". scripts/extract-pfx.sh && vite --port 4000 --host dev-iam.blocksdevelopers.com",
     "build": "tsc -b && vite build",
     "preview": "vite preview",
-    "type-check": "tsc --noEmit"
+    "type-check": "tsc --noEmit",
+    "lint": "eslint \"app/**/*.{ts,tsx}\"",
+    "lint:fix": "eslint \"app/**/*.{ts,tsx}\" --fix"
+  },
+  "lint-staged": {
+    "app/**/*.{ts,tsx}": "eslint --max-warnings 0"
   },
   "dependencies": {
     "@beefree.io/sdk": "^11.4.0",
@@ -75,6 +80,9 @@
     "@types/uuid": "^10.0.0",
     "@vitejs/plugin-react": "^4.3.0",
     "autoprefixer": "^10.4.19",
+    "eslint": "^10.6.0",
+    "husky": "^9.1.7",
+    "lint-staged": "^17.0.8",
     "postcss": "^8.4.38",
     "tailwindcss": "^3.4.1",
     "typescript": "~5.7.0",
