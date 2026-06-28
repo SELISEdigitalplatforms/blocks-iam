@@ -239,7 +239,7 @@ namespace Authentication.DomainService.Utilities
             {
                 Domain = cookieDomain,
                 HttpOnly = true,
-                Secure = true,
+                Secure = !isLocal,
                 // This is a cross-origin SSO flow: the SPA fetches the IDP callback
                 // from a different origin than the IDP itself, so the auth/refresh
                 // cookies must be SameSite=None (which mandates Secure, set above).
