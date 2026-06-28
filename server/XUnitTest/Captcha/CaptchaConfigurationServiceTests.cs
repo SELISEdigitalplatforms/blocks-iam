@@ -1,4 +1,4 @@
-using Captcha.DomainService.Configuration;
+using Blocks.CaptchaDriver;
 using FluentAssertions;
 using Microsoft.Extensions.Logging;
 using Moq;

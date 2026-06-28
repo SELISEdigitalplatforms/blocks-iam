@@ -1,6 +1,5 @@
+using Blocks.CaptchaDriver;
 using Blocks.Genesis;
-using Captcha.DomainService.Captcha;
-using Captcha.DomainService.Configuration;
 using FluentAssertions;
 using FluentValidation.TestHelper;
 using Iam.DomainService.Accounts;

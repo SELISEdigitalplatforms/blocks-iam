@@ -16,36 +16,16 @@
 		<PackageReadmeFile>README.md</PackageReadmeFile>
 	</PropertyGroup>
 
-
 	<ItemGroup>
 	  <None Include="README.md" Pack="true" PackagePath="\" />
 	</ItemGroup>
 
 	<ItemGroup>
-	  <ProjectReference Include="../Captcha.DomainService/Captcha.DomainService.csproj" PrivateAssets="All" />
+		<PackageReference Include="FluentValidation" />
+		<PackageReference Include="Microsoft.Extensions.DependencyInjection.Abstractions" />
+		<PackageReference Include="MongoDB.Driver" />
+		<PackageReference Include="Newtonsoft.Json" />
+		<PackageReference Include="SeliseBlocks.Genesis" />
 	</ItemGroup>
 
-
-	<ItemGroup>
-	  <None Remove="bin\Release\net10.0\Captcha.DomainService.dll" />
-	</ItemGroup>
-	<ItemGroup>
-   		<None Include="$(OutputPath)Captcha.DomainService.dll" Pack="true" PackagePath="lib/net10.0/" />
-	</ItemGroup>
-
-	<!--
-	  The bundled Captcha.DomainService.dll (added above via PrivateAssets="All" + manual
-	  pack) carries these transitive dependencies. They must be declared here so they flow
-	  to consumers as package dependencies; otherwise the bundled DLL fails to load at runtime.
-	-->
-	<ItemGroup>
-      <PackageReference Include="FluentValidation" />
-      <PackageReference Include="Microsoft.Extensions.DependencyInjection.Abstractions" />
-      <PackageReference Include="Newtonsoft.Json" />
-      <PackageReference Include="SeliseBlocks.Genesis" />
-      <PackageReference Include="SixLabors.Fonts" />
-      <PackageReference Include="SixLabors.ImageSharp" />
-      <PackageReference Include="SixLabors.ImageSharp.Drawing" />
-      <PackageReference Include="System.Drawing.Common" />
-	</ItemGroup>
 </Project>
