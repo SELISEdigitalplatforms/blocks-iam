@@ -194,8 +194,8 @@ namespace Authentication.DomainService.Authentication
                 }
 
                 // Exchange authorization code for tokens at IdP
-                // var tokenEndpoint = identityProvider.TokenUrl;
-                var tokenEndpoint = "https://dev-iam.blocksdevelopers.com:5001/api/oidc/token?tenant_id=***REMOVED***";
+                var tokenEndpoint = identityProvider.TokenUrl;
+                // var tokenEndpoint = "https://dev-iam.blocksdevelopers.com:5001/api/oidc/token?tenant_id=***REMOVED***";
  
                 var form = new Dictionary<string, string>
                 {
