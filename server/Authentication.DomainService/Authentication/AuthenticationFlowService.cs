@@ -1,12 +1,18 @@
 using Authentication.DomainService.Dtos;
+using Authentication.DomainService.Entities;
 using Authentication.DomainService.OAuth;
 using Authentication.DomainService.OAuth.RequestModel;
 using Authentication.DomainService.OAuth.ResponseModel;
+using Authentication.DomainService.OAuth.Services;
+using Authentication.DomainService.Oidc.Repositories;
 using Authentication.DomainService.Services;
 using Authentication.DomainService.Shared.RequestModel;
 using Authentication.DomainService.Utilities;
 using Blocks.Genesis;
+using Captcha.DomainService.Captcha;
+using Captcha.DomainService.Configuration;
 using Iam.DomainService.Entities;
+using Idp.DomainService.Oidc.Contracts;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.Logging;
@@ -21,32 +27,44 @@ namespace Authentication.DomainService.Authentication
         private readonly IAuthenticationRepository _authenticationRepository;
         private readonly ITenants _tenants;
         private readonly PasswordAuthenticationService _passwordAuthenticationService;
+        private readonly MfaAuthorizationService _mfaAuthorizationService;
         private readonly SocialAuthorizationService _socialAuthorizationService;
         private readonly RefreshTokenAuthenticationService _refreshTokenAuthenticationService;
         private readonly IOAuthJwtAccessTokenManager _oAuthJwtAccessTokenManager;
         private readonly IAuthenticationService _authenticationService;
         private readonly ICacheClient _cacheClient;
+        private readonly ICaptchaService _captchaService;
+        private readonly ICaptchaConfigurationService _captchaConfigurationService;
+        private readonly IAuditLogRepository _auditLogRepo;
         private readonly ILogger<AuthenticationFlowService> _logger;
 
         public AuthenticationFlowService(
             IAuthenticationRepository authenticationRepository,
             ITenants tenants,
             PasswordAuthenticationService passwordAuthenticationService,
+            MfaAuthorizationService mfaAuthorizationService,
             SocialAuthorizationService socialAuthorizationService,
             RefreshTokenAuthenticationService refreshTokenAuthenticationService,
             IOAuthJwtAccessTokenManager oAuthJwtAccessTokenManager,
             IAuthenticationService authenticationService,
             ICacheClient cacheClient,
+            ICaptchaService captchaService,
+            ICaptchaConfigurationService captchaConfigurationService,
+            IAuditLogRepository auditLogRepo,
             ILogger<AuthenticationFlowService> logger)
         {
             _authenticationRepository = authenticationRepository;
             _tenants = tenants;
             _passwordAuthenticationService = passwordAuthenticationService;
+            _mfaAuthorizationService = mfaAuthorizationService;
             _socialAuthorizationService = socialAuthorizationService;
             _refreshTokenAuthenticationService = refreshTokenAuthenticationService;
             _oAuthJwtAccessTokenManager = oAuthJwtAccessTokenManager;
             _authenticationService = authenticationService;
             _cacheClient = cacheClient;
+            _captchaService = captchaService;
+            _captchaConfigurationService = captchaConfigurationService;
+            _auditLogRepo = auditLogRepo;
             _logger = logger;
         }
 
@@ -84,6 +102,36 @@ namespace Authentication.DomainService.Authentication
             }
 
             var user = await _authenticationRepository.GetUserByUsernameAsync(request.Username);
+
+            if (user != null
+                && user.LockoutUntilUtc.HasValue
+                && user.LockoutUntilUtc.Value > DateTime.UtcNow)
+            {
+                await WriteLoginAuditAsync(user, clientId, httpRequest, LoginAuditEvents.LoginFailureAccountLocked, "embedded_login_account_locked");
+                return new AuthenticationFlowResult
+                {
+                    StatusCode = StatusCodes.Status423Locked,
+                    Error = OAuthError.AccountLocked,
+                    ErrorDescription = "Account is temporarily locked due to failed authentication attempts"
+                };
+            }
+
+            if (IsEmbeddedMfaVerificationRequest(request))
+            {
+                return await ExecuteEmbeddedMfaVerificationAsync(request, httpRequest, clientId, configuration, user);
+            }
+
+            var captchaValidationResult = await ValidateCaptchaIfRequiredAsync(user, request.CaptchaCode);
+            if (captchaValidationResult != null)
+            {
+                if (user != null
+                    && string.Equals(captchaValidationResult.Error, OAuthError.CaptchaInvalid, StringComparison.OrdinalIgnoreCase))
+                {
+                    await WriteLoginAuditAsync(user, clientId, httpRequest, LoginAuditEvents.CaptchaValidationFailure, captchaValidationResult.ErrorDescription);
+                }
+                return captchaValidationResult;
+            }
+
             var resolvedOrganizationId = ResolveOrgIdFromUser(user);
 
             var tokenRequest = new TokenRequest
@@ -96,9 +144,21 @@ namespace Authentication.DomainService.Authentication
                 Request = httpRequest
             };
 
+            var tokenResponse = await _passwordAuthenticationService.AuthenticateAsync(tokenRequest, configuration);
+
+            if (user != null && !string.IsNullOrWhiteSpace(tokenResponse.Error)
+                && string.Equals(tokenResponse.Error, OAuthError.InValidUseNamePassword, StringComparison.OrdinalIgnoreCase))
+            {
+                await WriteLoginAuditAsync(user, clientId, httpRequest, LoginAuditEvents.LoginFailure, tokenResponse.ErrorDescription);
+            }
+            else if (user != null && string.IsNullOrWhiteSpace(tokenResponse.Error))
+            {
+                await WriteLoginAuditAsync(user, clientId, httpRequest, LoginAuditEvents.LoginSuccess, tokenResponse.ErrorDescription);
+            }
+
             return new AuthenticationFlowResult
             {
-                TokenResponse = await _passwordAuthenticationService.AuthenticateAsync(tokenRequest, configuration)
+                TokenResponse = tokenResponse
             };
         }
 
@@ -135,6 +195,47 @@ namespace Authentication.DomainService.Authentication
                 };
             }
 
+            if (IsSocialMfaVerificationRequest(request))
+            {
+                return await ExecuteMfaVerificationAsync(
+                    request.MfaId,
+                    request.MfaCode,
+                    request.MfaType,
+                    httpRequest,
+                    clientId,
+                    configuration);
+            }
+
+            if (string.IsNullOrWhiteSpace(request.Code))
+            {
+                return new AuthenticationFlowResult
+                {
+                    StatusCode = StatusCodes.Status400BadRequest,
+                    Error = "authorization_code_missing",
+                    ErrorDescription = "Authorization code is required"
+                };
+            }
+
+            if (string.IsNullOrWhiteSpace(request.State))
+            {
+                return new AuthenticationFlowResult
+                {
+                    StatusCode = StatusCodes.Status400BadRequest,
+                    Error = "state_missing",
+                    ErrorDescription = "State parameter is required"
+                };
+            }
+
+            if (string.IsNullOrWhiteSpace(request.Provider))
+            {
+                return new AuthenticationFlowResult
+                {
+                    StatusCode = StatusCodes.Status400BadRequest,
+                    Error = "provider_missing",
+                    ErrorDescription = "Provider name is required"
+                };
+            }
+
             var tokenRequest = new TokenRequest
             {
                 GrantType = GrantTypes.Social,
@@ -148,6 +249,164 @@ namespace Authentication.DomainService.Authentication
             {
                 TokenResponse = await _socialAuthorizationService.AuthenticateAsync(tokenRequest, configuration)
             };
+        }
+
+        private static bool IsEmbeddedMfaVerificationRequest(EmbeddedLoginRequest request)
+        {
+            return !string.IsNullOrWhiteSpace(request.MfaId)
+                || !string.IsNullOrWhiteSpace(request.MfaCode)
+                || request.MfaType.HasValue;
+        }
+
+        private static bool IsSocialMfaVerificationRequest(SocialLoginRequest request)
+        {
+            return !string.IsNullOrWhiteSpace(request.MfaId)
+                || !string.IsNullOrWhiteSpace(request.MfaCode)
+                || request.MfaType.HasValue;
+        }
+
+        private async Task<AuthenticationFlowResult> ExecuteEmbeddedMfaVerificationAsync(
+            EmbeddedLoginRequest request,
+            HttpRequest httpRequest,
+            string clientId,
+            IdentityConfiguration configuration,
+            User? user)
+        {
+            return await ExecuteMfaVerificationAsync(
+                request.MfaId,
+                request.MfaCode,
+                request.MfaType,
+                httpRequest,
+                clientId,
+                configuration,
+                user);
+        }
+
+        private async Task<AuthenticationFlowResult> ExecuteMfaVerificationAsync(
+            string? mfaId,
+            string? mfaCode,
+            UserMfaType? mfaType,
+            HttpRequest httpRequest,
+            string clientId,
+            IdentityConfiguration configuration,
+            User? user = null)
+        {
+            if (string.IsNullOrWhiteSpace(mfaId)
+                || string.IsNullOrWhiteSpace(mfaCode)
+                || !mfaType.HasValue
+                || mfaType.Value == UserMfaType.None)
+            {
+                return new AuthenticationFlowResult
+                {
+                    StatusCode = StatusCodes.Status400BadRequest,
+                    Error = "invalid_request",
+                    ErrorDescription = "mfa_id, mfa_code and mfa_type are required"
+                };
+            }
+
+            var tokenRequest = new TokenRequest
+            {
+                GrantType = GrantTypes.MfaCode,
+                ClientId = clientId,
+                MfaId = mfaId,
+                Code = mfaCode,
+                MfaType = mfaType.Value,
+                Request = httpRequest
+            };
+
+            return new AuthenticationFlowResult
+            {
+                TokenResponse = await _mfaAuthorizationService.AuthenticateAsync(tokenRequest, configuration, user)
+            };
+        }
+
+        private async Task<AuthenticationFlowResult?> ValidateCaptchaIfRequiredAsync(User? user, string? captchaCode)
+        {
+            if (!CaptchaGate.IsCaptchaRequired(user))
+            {
+                return null;
+            }
+
+            var captchaConfiguration = await _captchaConfigurationService.GetCaptchaConfigurationAsync();
+            if (captchaConfiguration == null || !captchaConfiguration.IsEnable)
+            {
+                return null;
+            }
+
+            if (string.IsNullOrWhiteSpace(captchaCode))
+            {
+                return BuildCaptchaRequiredResult(captchaConfiguration.CaptchaKey);
+            }
+
+            var verifyCaptchaResponse = await _captchaService.VerifyCaptchaAsync(new VerifyCaptchaRequest
+            {
+                VerificationCode = captchaCode,
+                ConfigurationName = captchaConfiguration.Provider
+            });
+
+            return verifyCaptchaResponse.Verified
+                ? null
+                : BuildCaptchaInvalidResult(captchaConfiguration.CaptchaKey);
+        }
+
+        private static AuthenticationFlowResult BuildCaptchaRequiredResult(string? siteKey)
+        {
+            return new AuthenticationFlowResult
+            {
+                StatusCode = StatusCodes.Status400BadRequest,
+                Error = OAuthError.CaptchaEnabled,
+                ErrorDescription = "Captcha verification is required",
+                CaptchaRequired = true,
+                CaptchaSiteKey = siteKey
+            };
+        }
+
+        private static AuthenticationFlowResult BuildCaptchaInvalidResult(string? siteKey)
+        {
+            return new AuthenticationFlowResult
+            {
+                StatusCode = StatusCodes.Status400BadRequest,
+                Error = OAuthError.CaptchaInvalid,
+                ErrorDescription = "Captcha answer is invalid. Please try again.",
+                CaptchaRequired = true,
+                CaptchaSiteKey = siteKey
+            };
+        }
+
+        private async Task WriteLoginAuditAsync(User user, string clientId, HttpRequest httpRequest, string eventType, string? details)
+        {
+            try
+            {
+                var isFailure = eventType.Contains("failure", StringComparison.OrdinalIgnoreCase)
+                    || eventType.Contains("locked", StringComparison.OrdinalIgnoreCase);
+                var isSuccess = eventType.Contains("success", StringComparison.OrdinalIgnoreCase);
+
+                await _auditLogRepo.CreateAsync(new AuditLogModel
+                {
+                    EventType = eventType,
+                    UserId = user.ItemId,
+                    ClientId = clientId,
+                    TenantId = BlocksContext.GetContext()?.TenantId,
+                    IpAddress = GetClientIpAddress(httpRequest),
+                    UserAgent = httpRequest.Headers.UserAgent.ToString(),
+                    Severity = isFailure ? "WARN" : "INFO",
+                    Status = isSuccess ? "success" : "failure",
+                    Details = details ?? eventType
+                });
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "Failed to write login audit event {EventType} for user {UserId}", eventType, user.ItemId);
+            }
+        }
+
+        private static string GetClientIpAddress(HttpRequest request)
+        {
+            if (request?.HttpContext?.Connection?.RemoteIpAddress != null)
+            {
+                return request.HttpContext.Connection.RemoteIpAddress.ToString();
+            }
+            return "unknown";
         }
 
         private static string ResolveOrgIdFromUser(User? user)
@@ -358,6 +617,18 @@ namespace Authentication.DomainService.Authentication
             if (user == null)
             {
                 return new UnauthorizedObjectResult(new { error = "invalid_user" });
+            }
+
+            if (user.LockoutUntilUtc.HasValue && user.LockoutUntilUtc.Value > DateTime.UtcNow)
+            {
+                return new ObjectResult(new
+                {
+                    error = OAuthError.AccountLocked,
+                    error_description = "Account is temporarily locked due to failed authentication attempts"
+                })
+                {
+                    StatusCode = StatusCodes.Status423Locked
+                };
             }
 
             var tokenRequest = new TokenRequest

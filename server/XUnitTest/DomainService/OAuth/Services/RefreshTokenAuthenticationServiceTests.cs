@@ -40,7 +40,7 @@ namespace XUnitTest.DomainService.OAuth.Services
                 OrganizationId = "org-456",
                 GrantType = "refresh_token"
             };
-            var authConfig = new AuthenticationConfiguration
+            var authConfig = new IdentityConfiguration
             {
                 AccessTokenValidForNumberMinutes = 60
             };
@@ -125,7 +125,7 @@ namespace XUnitTest.DomainService.OAuth.Services
                 OrganizationId = "org-different-999",
                 GrantType = "refresh_token"
             };
-            var authConfig = new AuthenticationConfiguration
+            var authConfig = new IdentityConfiguration
             {
                 AccessTokenValidForNumberMinutes = 30
             };

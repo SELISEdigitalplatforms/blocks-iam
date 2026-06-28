@@ -40,7 +40,7 @@ namespace XUnitTest.DomainService.OAuth.Services
                 ClientSecret = "secret-123",
                 GrantType = "client_credentials"
             };
-            var authConfig = new AuthenticationConfiguration();
+            var authConfig = new IdentityConfiguration();
 
             _authenticationRepository
                 .Setup(x => x.GetClientCredentialByIdAsync(request.ClientId))
@@ -66,7 +66,7 @@ namespace XUnitTest.DomainService.OAuth.Services
                 ClientSecret = "wrong-secret",
                 GrantType = "client_credentials"
             };
-            var authConfig = new AuthenticationConfiguration();
+            var authConfig = new IdentityConfiguration();
             var client = new ClientCredential
             {
                 ItemId = "valid-client-id",

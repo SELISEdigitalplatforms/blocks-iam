@@ -225,5 +225,25 @@ namespace Mfa.DomainService.TOTP
 
             return new OtpVerificationResponse { IsSuccess = true, IsValid = isValid, UserId = tOTPInfo.CreatedBy };
         }
+
+        public async Task<OtpVerificationResponse> VerifyForUserAsync(string userId, string verificationCode)
+        {
+            if (string.IsNullOrWhiteSpace(userId) || string.IsNullOrWhiteSpace(verificationCode))
+            {
+                return new OtpVerificationResponse { Errors = new Dictionary<string, string> { { "invalid_request", "userId and verificationCode are required" } } };
+            }
+
+            var existing = await GetExistingOtpInfoAsync(userId);
+            if (existing == null || string.IsNullOrWhiteSpace(existing.Secret))
+            {
+                return new OtpVerificationResponse { Errors = new Dictionary<string, string> { { "totp_not_setup", "TOTP has not been set up for this user" } } };
+            }
+
+            var key = Base32Encoding.ToBytes(existing.Secret);
+            var totp = new Totp(key);
+            var isValid = totp.VerifyTotp(verificationCode, out _, VerificationWindow.RfcSpecifiedNetworkDelay);
+
+            return new OtpVerificationResponse { IsSuccess = true, IsValid = isValid, UserId = userId };
+        }
     }
 }

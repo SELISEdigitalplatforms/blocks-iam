@@ -22,5 +22,7 @@ namespace Authentication.DomainService.Authentication
         /// RFC 6749: OAuth 2.0 Authorization Code Flow | RFC 7636: PKCE
         /// </summary>
         Task<IActionResult> HandleCallbackAsync(string? code, string? state, string? error, string? error_description, HttpRequest httpRequest, HttpResponse httpResponse);
+
+        Task<IActionResult> GetUiConfigAsync();
     }
 }

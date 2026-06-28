@@ -3,7 +3,7 @@ import { useSearchParams, useNavigate } from "react-router-dom";
 import { OIDCPermissionWrapper } from "@blocks-idp/authentication/pages/oidc/permission-wrapper";
 import { OIDCSignin } from "@blocks-idp/authentication/pages/oidc/oidc-signin";
 import { authService } from "@blocks-idp/authentication/services/auth.service";
-import { useAuthStore } from "@/store/useAuthStore";
+import { useAuthStore } from "@seliseblocks/blocks-kit";
 import { getRuntimeEnv } from "@/lib/runtime-env";
 import { Loader } from "lucide-react";
 

@@ -1,4 +1,4 @@
-# Logs
+# Logs 
 logs
 *.log
 npm-debug.log*
@@ -172,8 +172,16 @@ client/.cursor/context/
 client/.moat/
 
 
+# Extracted PEM cert/key from PFX (created by client/scripts/extract-pfx.sh)
+client/.ssl/
+
+
 #graphify 
 graphify-out/
 server/graphify-out/
 client/graphify-out/
 docs/
+
+.cursor/
+
+.kilo/

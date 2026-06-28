@@ -32,7 +32,7 @@ namespace Authentication.DomainService.OAuth.Services
             _tenants = tenants;    
         }
 
-        public async Task<TokenResponse> AuthenticateAsync(TokenRequest request, AuthenticationConfiguration authenticationConfiguration, User? user = null)
+        public async Task<TokenResponse> AuthenticateAsync(TokenRequest request, IdentityConfiguration authenticationConfiguration, User? user = null)
         {
             var client = await _authenticationRepository.GetClientCredentialByIdAsync(request.ClientId);
             var validationResult = ValidateClient(client, request);
@@ -83,7 +83,7 @@ namespace Authentication.DomainService.OAuth.Services
         }
 
         private async Task<JwtAccessToken> GetJwtAccessToken(
-            AuthenticationConfiguration authenticationConfiguration,
+            IdentityConfiguration authenticationConfiguration,
             ClientCredential client,
             string organizationId,
             List<string> orgPermissions)
@@ -118,7 +118,7 @@ namespace Authentication.DomainService.OAuth.Services
         }
 
         private static JwtAccessToken MapJwtAccessToken(
-            AuthenticationConfiguration authenticationConfiguration,
+            IdentityConfiguration authenticationConfiguration,
             Tenant tenant,
             ClientCredential client,
             string organizationId,

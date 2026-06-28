@@ -20,7 +20,6 @@ namespace Authentication.DomainService.OAuth
         private readonly IAuthenticationRepository _oAuthRepository;
         private readonly ICryptoService _cryptoService;
         private readonly IAuthenticationDomainService _authenticationDomainService;
-        private readonly ICacheClient _cacheClient;
         private readonly IAccountService _accountService;
 
         public PasswordAuthenticationService(
@@ -30,7 +29,6 @@ namespace Authentication.DomainService.OAuth
             ICryptoService cryptoService,
             IAuthenticationRepository oAuthRepository,
             IAuthenticationDomainService authenticationDomainService,
-            ICacheClient cacheClient,
             IAccountService accountService
         )
         {
@@ -40,33 +38,14 @@ namespace Authentication.DomainService.OAuth
             _cryptoService = cryptoService;
             _oAuthRepository = oAuthRepository;
             _authenticationDomainService = authenticationDomainService;
-            _cacheClient = cacheClient;
             _accountService = accountService;
         }
-        public async Task<TokenResponse> AuthenticateAsync(TokenRequest request, AuthenticationConfiguration authenticationConfiguration, User? user = null)
+        public async Task<TokenResponse> AuthenticateAsync(TokenRequest request, IdentityConfiguration authenticationConfiguration, User? user = null)
         {
             _logger.LogInformation("Password Authentication start");
 
             user ??= await _oAuthRepository.GetUserByUsernameAsync(request.Username, request.OrganizationId);
             if (!IsValidUser(user) || !IsUserActiveAndVerified(user!)) return OAuthError.InValidResponse(request);
-
-            // Check IP-based rate limiting
-            var clientIp = _authenticationDomainService.GetVisitorsIpAddresses(request.Request.HttpContext).FirstOrDefault();
-            if (!string.IsNullOrWhiteSpace(clientIp))
-            {
-                var ipRateLimitCheckResult = await CheckIpRateLimitAsync(clientIp, request.Username, authenticationConfiguration);
-                if (!ipRateLimitCheckResult.IsAllowed)
-                {
-                    _logger.LogWarning($"IP rate limit exceeded for {clientIp} attempting to login as {request.Username}. Limit: {ipRateLimitCheckResult.LimitType}");
-                    await SendTimelineEventAsync(request, user.ItemId, "failed_login_ip_rate_limited", "password_auth_ip_rate_limited");
-                    return new TokenResponse
-                    {
-                        Error = "ip_rate_limited",
-                        ErrorDescription = $"Too many login attempts from your IP address. Please try again later.",
-                        StatusCode = 429
-                    };
-                }
-            }
 
             if (user.LockoutUntilUtc.HasValue && user.LockoutUntilUtc.Value > DateTime.UtcNow)
             {
@@ -119,7 +98,16 @@ namespace Authentication.DomainService.OAuth
                 return new TokenResponse { Error = OAuthError.InValidUseNamePassword, ErrorDescription = "Invalid username or password", StatusCode = 401 };
             }
 
-            if (user.FailedLoginCount > 0 || user.LastFailedLoginUtc.HasValue || user.LockoutUntilUtc.HasValue)
+            request.OrganizationId = ResolveSignInOrganizationId(user, request.OrganizationId);
+            var tokenResponse = await _oAuthJwtAccessTokenManager.ManageTokenAsync(request, authenticationConfiguration, user);
+
+            if (tokenResponse != null
+                && string.IsNullOrWhiteSpace(tokenResponse.Error)
+                && (user.FailedLoginCount > 0
+                    || user.LastFailedLoginUtc.HasValue
+                    || user.FailedMfaCount > 0
+                    || user.LastFailedMfaUtc.HasValue
+                    || user.LockoutUntilUtc.HasValue))
             {
                 await _oAuthRepository.UpdatePartialAsync<User>(
                     user.ItemId,
@@ -127,15 +115,14 @@ namespace Authentication.DomainService.OAuth
                     {
                         { nameof(User.FailedLoginCount), 0 },
                         { nameof(User.LastFailedLoginUtc), null! },
+                        { nameof(User.FailedMfaCount), 0 },
+                        { nameof(User.LastFailedMfaUtc), null! },
                         { nameof(User.LockoutUntilUtc), null! },
                         { nameof(User.LockoutCount), 0 }, // Reset exponential backoff counter on successful login
                         { nameof(User.LastUpdatedDate), DateTime.UtcNow },
                         { nameof(User.LastUpdatedBy), user.ItemId }
                     });
             }
-
-            request.OrganizationId = ResolveSignInOrganizationId(user, request.OrganizationId);
-            var tokenResponse = await _oAuthJwtAccessTokenManager.ManageTokenAsync(request, authenticationConfiguration, user);
 
             if (tokenResponse != null
                 && string.IsNullOrWhiteSpace(tokenResponse.Error)
@@ -251,51 +238,5 @@ namespace Authentication.DomainService.OAuth
                 || user.Permissions.ContainsKey(organizationId);
         }
 
-        /// <summary>
-        /// Checks IP-based rate limiting for login attempts.
-        /// Tracks attempts per IP per hour and per day.
-        /// Returns IsAllowed=false if limit exceeded.
-        /// </summary>
-        private async Task<IpRateLimitResult> CheckIpRateLimitAsync(
-            string clientIp,
-            string username,
-            AuthenticationConfiguration config)
-        {
-            var now = DateTime.UtcNow;
-            
-            // Limit keys: "login_ip_hourly:{ip}:{date-hour}", "login_ip_daily:{ip}:{date}"
-            var hourlyKey = $"login_ip_hourly:{clientIp}:{now:yyyy-MM-dd-HH}";
-            var dailyKey = $"login_ip_daily:{clientIp}:{now:yyyy-MM-dd}";
-
-            // Check hourly limit (configurable, default 100 attempts)
-            var hourlyAttempts = await _cacheClient.GetStringValueAsync(hourlyKey);
-            var hourlyCount = !string.IsNullOrWhiteSpace(hourlyAttempts) ? int.Parse(hourlyAttempts) : 0;
-            
-            if (hourlyCount >= config.MaxLoginAttemptsPerIpPerHour)
-            {
-                return new IpRateLimitResult { IsAllowed = false, LimitType = "hourly" };
-            }
-
-            // Check daily limit (configurable, default 500 attempts)
-            var dailyAttempts = await _cacheClient.GetStringValueAsync(dailyKey);
-            var dailyCount = !string.IsNullOrWhiteSpace(dailyAttempts) ? int.Parse(dailyAttempts) : 0;
-
-            if (dailyCount >= config.MaxLoginAttemptsPerIpPerDay)
-            {
-                return new IpRateLimitResult { IsAllowed = false, LimitType = "daily" };
-            }
-
-            // Increment counters (expiry in seconds: 3600 = 1 hour, 86400 = 1 day)
-            await _cacheClient.AddStringValueAsync(hourlyKey, (hourlyCount + 1).ToString(), 3600);
-            await _cacheClient.AddStringValueAsync(dailyKey, (dailyCount + 1).ToString(), 86400);
-
-            return new IpRateLimitResult { IsAllowed = true };
-        }
-
-        private class IpRateLimitResult
-        {
-            public bool IsAllowed { get; set; }
-            public string LimitType { get; set; } = string.Empty;
-        }
     }
 }
