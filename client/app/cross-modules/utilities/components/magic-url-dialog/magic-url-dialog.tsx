@@ -47,7 +47,7 @@ interface MagicUrlDialogProps {
 export function MagicUrlDialog({ open, onOpenChange, trigger, initialData }: MagicUrlDialogProps) {
   const tenantId = useProjectStore()?.selectedProject?.tenantId || "";
   const { user } = useAuthStore();
-  const userId = user?.itemId || "";
+  const userId = user?.sub || "";
 
   const {
     register,
