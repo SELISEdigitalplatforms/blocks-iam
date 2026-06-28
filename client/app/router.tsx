@@ -110,7 +110,7 @@ export const router = createBrowserRouter([
         children: [
           {
             path: "/login/callback",
-            element: <CallbackPage redirectUrl="/app/console" />,
+            element: <CallbackPage defaultRedirectUrl="/app/console" />,
           },
           { path: "/sso/:provider/callback", element: <SSOCallbackPage /> },
         ],
