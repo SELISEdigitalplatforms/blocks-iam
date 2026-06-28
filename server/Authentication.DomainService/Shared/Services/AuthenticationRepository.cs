@@ -394,6 +394,8 @@ namespace Authentication.DomainService.Services
             provider.ItemId = Guid.NewGuid().ToString();
             provider.CreatedDate = DateTime.UtcNow;
             provider.CreatedBy = BlocksContext.GetContext()?.UserId ?? "system";
+            provider.LastUpdatedDate = DateTime.UtcNow;
+            provider.LastUpdatedBy = BlocksContext.GetContext()?.UserId ?? "system";
 
             var collection = GetCollection<IdentityProvider>();
             await collection.InsertOneAsync(provider);
