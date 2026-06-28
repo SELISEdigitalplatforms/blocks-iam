@@ -12,7 +12,7 @@ export default function LoginSimplePage() {
   const navigate = useNavigate();
 
   useEffect(() => {
-    if (isAuthenticated) navigate("/console", { replace: true });
+    if (isAuthenticated) navigate("/app/console", { replace: true });
   }, [isAuthenticated, navigate]);
 
   const startLogin = async () => {

@@ -110,7 +110,7 @@ export const router = createBrowserRouter([
         children: [
           {
             path: "/login/callback",
-            element: <CallbackPage redirectUrl="/console" />,
+            element: <CallbackPage redirectUrl="/app/console" />,
           },
           { path: "/sso/:provider/callback", element: <SSOCallbackPage /> },
         ],
@@ -185,6 +185,7 @@ export const router = createBrowserRouter([
             children: [
               // ── Console group (no impersonation allowed) ──
               {
+                path: "/app",
                 element: (
                   <ConsoleLayout>
                     <Outlet />
@@ -306,7 +307,7 @@ export const router = createBrowserRouter([
             ],
           },
           // ── Catch-all ──
-          { path: "*", element: <Navigate to="/console" replace /> },
+          { path: "*", element: <Navigate to="/app/console" replace /> },
         ],
       },
     ],
