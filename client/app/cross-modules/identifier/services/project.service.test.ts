@@ -18,7 +18,7 @@ import {
   mockGetSubscriptionUsageResponse,
   mockResource,
 } from "../test-utils/__mocks__";
-import { http } from "@/lib/http-client";
+import { serviceInstances } from "@/lib/http-client";
 import {
   PROJECT_ENDPOINTS,
   DOMAIN_ENDPOINTS,

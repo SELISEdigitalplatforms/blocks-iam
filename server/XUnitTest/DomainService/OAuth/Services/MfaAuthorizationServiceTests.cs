@@ -38,7 +38,7 @@ namespace XUnitTest.DomainService.OAuth.Services
                 Code = "invalid-code",
                 GrantType = "mfa"
             };
-            var authConfig = new AuthenticationConfiguration();
+            var authConfig = new IdentityConfiguration();
             var mockOtpService = new Mock<IOtpService>();
             var verifyResponse = new OtpVerificationResponse
             {
@@ -70,7 +70,7 @@ namespace XUnitTest.DomainService.OAuth.Services
                 Times.Once);
             _oAuthRepository.Verify(x => x.GetUserByIdAsync(It.IsAny<string>()), Times.Never);
             _oAuthJwtAccessTokenManager.Verify(
-                x => x.ManageTokenAsync(It.IsAny<TokenRequest>(), It.IsAny<AuthenticationConfiguration>(), It.IsAny<User>(), It.IsAny<StateInfo?>()),
+                x => x.ManageTokenAsync(It.IsAny<TokenRequest>(), It.IsAny<IdentityConfiguration>(), It.IsAny<User>(), It.IsAny<StateInfo?>()),
                 Times.Never);
         }
 
@@ -85,7 +85,7 @@ namespace XUnitTest.DomainService.OAuth.Services
                 Code = "123456",
                 GrantType = "mfa"
             };
-            var authConfig = new AuthenticationConfiguration();
+            var authConfig = new IdentityConfiguration();
             var mockOtpService = new Mock<IOtpService>();
             var verifyResponse = new OtpVerificationResponse
             {

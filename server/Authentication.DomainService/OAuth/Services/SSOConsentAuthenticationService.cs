@@ -29,7 +29,7 @@ namespace Authentication.DomainService.OAuth.Services
             _userManagementMutationService = userManagementMutationService;
         }
 
-        public async Task<TokenResponse> AuthenticateAsync(TokenRequest request, AuthenticationConfiguration authenticationConfiguration, User? user = null)
+        public async Task<TokenResponse> AuthenticateAsync(TokenRequest request, IdentityConfiguration authenticationConfiguration, User? user = null)
         {
             if(!await _cacheClient.KeyExistsAsync(request.Code ))
             {

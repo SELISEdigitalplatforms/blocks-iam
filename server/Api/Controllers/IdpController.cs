@@ -44,4 +44,11 @@ public class IdpController : ControllerBase
     {
         return await _idpService.HandleCallbackAsync(code, state, error, error_description, Request, Response);
     }
+
+    [HttpGet("oidc-ui-config")]
+    [AllowAnonymous]
+    public async Task<IActionResult> OidcUiConfig()
+    {
+        return await _idpService.GetUiConfigAsync();
+    }
 }

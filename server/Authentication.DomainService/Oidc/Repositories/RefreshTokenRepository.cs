@@ -102,7 +102,7 @@ namespace Authentication.DomainService.Oidc.Repositories
             try
             {
                 var authConfiguration = await _authenticationRepository.GetAuthenticationConfigurationAsync();
-                var slidingMinutes = Math.Max(authConfiguration?.RefreshTokenValidForNumberMinutes ?? AuthenticationConfiguration.DefaultRefreshTokenValidForNumberMinutes, 1);
+                var slidingMinutes = Math.Max(authConfiguration?.RefreshTokenValidForNumberMinutes ?? IdentityConfiguration.DefaultRefreshTokenValidForNumberMinutes, 1);
                 var collection = GetDatabase().GetCollection<RefreshTokenModel>("IdpRefreshTokens");
                 var filter = Builders<RefreshTokenModel>.Filter.Eq(t => t.TokenId, tokenId);
                 var update = Builders<RefreshTokenModel>.Update

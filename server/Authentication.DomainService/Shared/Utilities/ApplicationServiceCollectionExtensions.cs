@@ -65,6 +65,8 @@ namespace Authentication.DomainService.Utilities
 
             serviceCollection.AddSingleton<PasswordAuthenticationService>();
             serviceCollection.AddSingleton<MfaAuthorizationService>();
+            serviceCollection.AddSingleton<IMfaPolicyService, MfaPolicyService>();
+            serviceCollection.AddSingleton<IMfaAuditService, MfaAuditService>();
             serviceCollection.AddSingleton<RefreshTokenAuthenticationService>();
             serviceCollection.AddSingleton<SocialAuthorizationService>();
             serviceCollection.AddSingleton<BYOSsoAuthorizationService>();
@@ -131,6 +133,9 @@ namespace Authentication.DomainService.Utilities
             serviceCollection.AddHttpContextAccessor();
 
             serviceCollection.AddTransient<IValidator<VerifyOtpRequest>, VerifyOtpRequestValidator>();
+
+            serviceCollection.AddSingleton<MfaAuditService>();
+            serviceCollection.AddSingleton<IMfaAuditService>(sp => sp.GetRequiredService<MfaAuditService>());
 
 
             serviceCollection.RegisterBlocksMailService();

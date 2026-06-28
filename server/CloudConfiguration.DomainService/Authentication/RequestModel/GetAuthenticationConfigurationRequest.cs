@@ -2,6 +2,5 @@
 {
     public class GetAuthenticationConfigurationRequest
     {
-        public string ProjectKey { get; set; }
     }
 }

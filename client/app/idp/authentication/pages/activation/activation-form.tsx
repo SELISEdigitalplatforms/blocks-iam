@@ -21,14 +21,16 @@ import { useEffect, useState } from "react";
 import { isErrorWithErrors } from "@/lib/error";
 import { Captcha } from "@/components/captcha";
 import { useCaptcha } from "@blocks-idp/captcha/hooks/use-captcha";
+import { useOidcUiConfig } from "@blocks-idp/authentication/hooks/use-oidc-ui-config";
 import { PasswordStrengthChecker } from "../../components/password-strength-checker/password-strength-checker";
 import { zodResolver } from "@hookform/resolvers/zod";
 
 type ActivationFormProps = {
   code: string;
+  tenantId?: string;
 };
 
-export const ActivationForm = ({ code }: ActivationFormProps) => {
+export const ActivationForm = ({ code, tenantId }: ActivationFormProps) => {
   const navigate = useNavigate();
   const form = useForm({
     defaultValues: activationFormDefaultValue,
@@ -38,14 +40,17 @@ export const ActivationForm = ({ code }: ActivationFormProps) => {
   });
   const [requirementsMet, setRequirementsMet] = useState(false);
 
-  const googleSiteKey = getRuntimeEnv("BLOCKS_GOOGLE_SITE_KEY") || "";
+  const { data: oidcUiConfig } = useOidcUiConfig(tenantId);
+  const googleSiteKey =
+    oidcUiConfig?.captcha?.key || getRuntimeEnv("BLOCKS_GOOGLE_SITE_KEY") || "";
   const {
     captcha,
     code: captchaCode,
     reset: resetCaptcha,
   } = useCaptcha({
     siteKey: googleSiteKey,
-    type: "reCaptcha-v2-checkbox",
+    type: oidcUiConfig?.captcha?.provider === "hcaptcha" ? "hCaptcha" : "reCaptcha-v2-checkbox",
+    generator: oidcUiConfig?.captcha?.generator,
   });
   const { isPending, mutateAsync } = useAccountActivation();
 
@@ -68,6 +73,7 @@ export const ActivationForm = ({ code }: ActivationFormProps) => {
         firstname: values.firstname,
         lastname: values.lastname,
         captchaCode,
+        tenantId,
       });
       if (!res.isSuccess) {
         resetCaptcha();

@@ -15,7 +15,57 @@ namespace Mfa.DomainService.Configuration
         {
             var repoConfiguration = await _repository.GetItemAsync<MfaConfiguration>(m => m.Name == "Default");
 
-            return repoConfiguration != null ? new Configuration { MfaTemplate = repoConfiguration.MfaTemplate, EnableMfa = repoConfiguration.EnableMfa, UserMfaType = repoConfiguration.UserMfaTypes } : new Configuration { MfaTemplate = new MfaTemplate(), UserMfaType = [] };
+            if (repoConfiguration == null)
+            {
+                return new Configuration
+                {
+                    MfaTemplate = new MfaTemplate(),
+                    UserMfaType = [],
+                    EnableMfa = false
+                };
+            }
+
+            return new Configuration
+            {
+                EnableMfa = repoConfiguration.EnableMfa,
+                UserMfaType = repoConfiguration.UserMfaTypes ?? [],
+                MfaTemplate = repoConfiguration.MfaTemplate,
+                RequireMfaForAllUsers = repoConfiguration.RequireMfaForAllUsers,
+                MfaRequiredRoles = repoConfiguration.MfaRequiredRoles ?? [],
+                MfaExemptRoles = repoConfiguration.MfaExemptRoles ?? [],
+                AllowUserOptOut = repoConfiguration.AllowUserOptOut,
+                AllowBackupCodes = repoConfiguration.AllowBackupCodes,
+                BackupCodesCount = repoConfiguration.BackupCodesCount > 0 ? repoConfiguration.BackupCodesCount : 10
+            };
+        }
+
+        public async Task SaveAsync(Configuration configuration)
+        {
+            var existing = await _repository.GetItemAsync<MfaConfiguration>(m => m.Name == "Default");
+
+            if (existing == null)
+            {
+                existing = new MfaConfiguration
+                {
+                    ItemId = Guid.NewGuid().ToString("n"),
+                    Name = "Default",
+                    CreatedDate = DateTime.UtcNow,
+                    LastUpdatedDate = DateTime.UtcNow
+                };
+            }
+
+            existing.EnableMfa = configuration.EnableMfa;
+            existing.UserMfaTypes = configuration.UserMfaType ?? [];
+            existing.MfaTemplate = configuration.MfaTemplate ?? new MfaTemplate();
+            existing.RequireMfaForAllUsers = configuration.RequireMfaForAllUsers;
+            existing.MfaRequiredRoles = configuration.MfaRequiredRoles ?? [];
+            existing.MfaExemptRoles = configuration.MfaExemptRoles ?? [];
+            existing.AllowUserOptOut = configuration.AllowUserOptOut;
+            existing.AllowBackupCodes = configuration.AllowBackupCodes;
+            existing.BackupCodesCount = configuration.BackupCodesCount;
+            existing.LastUpdatedDate = DateTime.UtcNow;
+
+            await _repository.UpsertAsync(existing, m => m.Name == "Default");
         }
     }
 }
