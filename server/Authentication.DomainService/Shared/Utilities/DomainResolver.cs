@@ -50,14 +50,6 @@ namespace Authentication.DomainService.Utilities
                 && uri.Port > 0 && uri.Port <= 65535;
         }
 
-        public static bool IsCurrentRequestSecure()
-        {
-            // Secure is derived purely from the scheme the caller advertised via Origin/Referer.
-            // No fallback to Request.IsHttps - that can lie when an upstream proxy terminates TLS.
-            return TryGetRequestOriginUri(out var uri)
-                && uri.Scheme.Equals("https", StringComparison.OrdinalIgnoreCase);
-        }
-
         private static bool TryGetRequestOriginUri(out Uri uri)
         {
             uri = null!;
