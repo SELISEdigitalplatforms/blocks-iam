@@ -1,4 +1,6 @@
-﻿using Iam.DomainService.Resources.RequestModel;
+﻿using Blocks.Genesis;
+using Iam.DomainService.Entities;
+using Iam.DomainService.Enums;
 using Iam.DomainService.Resources.ResponseModel;
 using Microsoft.Extensions.Logging;
 
@@ -83,7 +85,104 @@ namespace Iam.DomainService.Resources
 
         public async Task<List<GetResourceGroupResponse>> GetResourceGroupsAsync()
         {
-            return (await _resourceRepository.GetResourceGroupsAsync());
+            return await _resourceRepository.GetResourceGroupsAsync();
         }
+
+        public async Task<List<GetFeResourceFeatureResponse>> GetFeResourceFeaturesAsync(GetFeResourceFeatureRequest request)
+        {
+            var bc = BlocksContext.GetContext();
+            var roles = bc?.Roles ?? [];
+            var permissions = bc?.Permissions ?? [];
+
+            if (!roles.Any() && !permissions.Any())
+            {
+                return [];
+            }
+
+            var data = await _resourceRepository.GetFeResourceFeaturesAsync(
+                roles.ToList(),
+                permissions.ToList(),
+                request?.Search,
+                request?.IsBuiltIn
+            );
+
+            return data
+                .Where(x => x.Type == ResourceType.FrontendAction)
+                .Select(x => new GetFeResourceFeatureResponse
+                {
+                    Resource = x.Resource,
+                    Name = x.Name,
+                    Description = x.Description
+                })
+                .ToList();
+        }
+
+        public async Task<GetAssignableRolesResponse> GetAssignableRolesAsync()
+        {
+            var bc = BlocksContext.GetContext();
+            var userRoles = bc?.Roles ?? [];
+
+            var (roles, count) = await _resourceRepository.GetRolesAsync(new GetRolesRequest
+            {
+                PageSize = 1000
+            });
+
+            var referencedAncestorSlugs = roles
+                .SelectMany(x => x.AncestorRoleSlugs ?? new List<string>())
+                .ToHashSet(StringComparer.OrdinalIgnoreCase);
+
+            // User roles that can create descendants
+            var creatableRoles = roles
+                .Where(x =>
+                    userRoles.Contains(x.Slug, StringComparer.OrdinalIgnoreCase)
+                    && x.CanCreateOwn)
+                .Select(x => x.Slug)
+                .ToHashSet(StringComparer.OrdinalIgnoreCase);
+
+            var hierarchy = new List<AssignableRole>();
+            var standalone = new List<AssignableRole>();
+
+            foreach (var role in roles)
+            {
+                var isStandalone =
+                    !role.CanCreateOwn &&
+                    string.IsNullOrWhiteSpace(role.ParentRoleSlug) &&
+                    !role.AncestorRoleSlugs.Any() &&
+                    !referencedAncestorSlugs.Contains(role.Slug);
+
+                if (isStandalone)
+                {
+                    standalone.Add(new AssignableRole
+                    {
+                        Slug = role.Slug,
+                        Name = role.Name
+                    });
+
+                    continue;
+                }
+
+                var isDescendantOrSelf =
+                    creatableRoles.Contains(role.Slug) ||
+                    role.AncestorRoleSlugs.Any(a =>
+                        creatableRoles.Contains(a));
+
+                if (isDescendantOrSelf)
+                {
+                    hierarchy.Add(new AssignableRole
+                    {
+                        Slug = role.Slug,
+                        Name = role.Name
+                    });
+                }
+            }
+
+            return new GetAssignableRolesResponse
+            {
+                Hierarchy = hierarchy,
+                Standalone = standalone
+            };
+        }
+
+
     }
 }

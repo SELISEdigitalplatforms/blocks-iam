@@ -23,6 +23,8 @@ namespace Authentication.DomainService.Authentication
         public int StatusCode { get; set; } = StatusCodes.Status400BadRequest;
         public string? Error { get; set; }
         public string? ErrorDescription { get; set; }
+        public bool CaptchaRequired { get; set; }
+        public string? CaptchaSiteKey { get; set; }
     }
 
     public class GetContextForProjectResult

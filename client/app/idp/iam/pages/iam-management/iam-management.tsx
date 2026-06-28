@@ -13,7 +13,7 @@ const getActionComponents = (tab: string) => {
     case "permissions":
       // eslint-disable-next-line react/display-name
       return () => (
-        <Link to="/services/iam/permission-detail/new">
+        <Link to="/app/permission-detail/new">
           <PrimaryButton label="Add Permission" />
         </Link>
       );

@@ -23,11 +23,7 @@ namespace Iam.DomainService.Dtos
         public Dictionary<string, List<string>> Permissions { get; set; } = new();
         public bool Active { get; set; }
         public UserLifecycleStatus Status { get; set; } = UserLifecycleStatus.Active;
-        public string? StatusReason { get; set; }
-        public DateTime? DeactivatedAtUtc { get; set; }
         public bool IsVerified { get; set; }
-        public DateTime? EmailVerifiedAtUtc { get; set; }
-        public DateTime? PhoneVerifiedAtUtc { get; set; }
         public string? ProfileImageUrl { get; set; }
         public bool MfaEnabled { get; set; }
         public bool IsMfaVerified { get; set; }
@@ -35,18 +31,10 @@ namespace Iam.DomainService.Dtos
         public UserProvisioningSource ProvisioningSource { get; set; } = UserProvisioningSource.Manual;
         public List<ExternalIdentity> ExternalIdentities { get; set; } = [];
         public UserCreationType UserCreationType { get; set; }
-        public string? Department { get; set; }
-        public string? EmployeeId { get; set; }
-        
-        // Multi-org support: Return org summaries only when multi-org is enabled
-        public bool IsMultiOrgEnabled { get; set; }
-        public List<UserOrganizationSummary> Organizations { get; set; } = [];
+        public int LogInCount { get; set; }
+        public DateTime LastLoggedInTime { get; set; }
+        public string LastLoggedInDeviceInfo { get; set; } = string.Empty;
+        public Dictionary<string, object> Attributes { get; set; } = new Dictionary<string, object>();
     }
 
-    public class UserOrganizationSummary
-    {
-        public string OrganizationId { get; set; }
-        public string OrganizationName { get; set; }
-        public bool IsEnable { get; set; }
-    }
 }

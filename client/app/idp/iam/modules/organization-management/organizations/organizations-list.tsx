@@ -24,6 +24,7 @@ import {
 } from "@/components/ui-kits/dropdown-menu/dropdown-menu";
 import { Dialog } from "@/components/ui-kits/dialog/dialog";
 import { EllipsisVertical, Pencil, Power, PowerOff } from "lucide-react";
+import { useNavigate } from "react-router-dom";
 import { UpdateOrganization } from "../update-organization";
 import { ToggleOrganizationStatus } from "../toggle-organization-status";
 
@@ -94,6 +95,7 @@ const OrganizationActions = ({ organization }: OrganizationActionsProps) => {
 };
 
 export const OrganizationsList = ({ organizations, isLoading }: OrganizationTableProps) => {
+  const navigate = useNavigate();
   const { sortQueryParams, setSortQueryParams } = useOrganizationsSortQueryParams();
 
   const columns = useMemo<ColumnDef<IOrganization>[]>(
@@ -192,6 +194,12 @@ export const OrganizationsList = ({ organizations, isLoading }: OrganizationTabl
         {table.getRowModel().rows.map((row) => (
           <TableRow
             key={row.id}
+            onClick={(e) => {
+              const target = e.target as HTMLElement;
+              if (target.closest("[data-actions]")) return;
+              navigate(`/app/organization-detail/${row.original.itemId}`);
+            }}
+            className="cursor-pointer"
           >
             {row.getVisibleCells().map((cell) => (
               <TableCell key={cell.id}>

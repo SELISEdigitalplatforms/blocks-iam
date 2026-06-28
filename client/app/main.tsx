@@ -16,8 +16,6 @@ createRoot(document.getElementById("root")!).render(
          <BlocksAppLayout
             config={{
               name: "blocks-iam",
-              userBaseUrlKey: "BLOCKS_IAM_BASE_URL",
-              projectBaseUrlKey: "BLOCKS_LOGIC_BASE_URL",
                appLogoUrl:{
                 dark:"/blocks-logos/iam_dark_mode.svg",
                 light:"/blocks-logos/iam_light_mode.svg"
