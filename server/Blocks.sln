@@ -9,8 +9,7 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Authentication.DomainServic
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Captcha.Driver", "Captcha.Driver\Captcha.Driver.csproj", "{C3D4E5F6-A7B8-49CA-D1E2-F3A4B5C6D7E8}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "CloudConfiguration.DomainService", "CloudConfiguration.DomainService\CloudConfiguration.DomainService.csproj", "{5DB8EE31-1C0F-467A-BB1B-D010A824B305}"
-EndProject
+
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Iam.DomainService", "Iam.DomainService\Iam.DomainService.csproj", "{D4E5F6A7-B8C9-4ACB-E2F3-A4B5C6D7E8F9}"
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Mfa.DomainService", "Mfa.DomainService\Mfa.DomainService.csproj", "{F6A7B8C9-DAEB-4CED-A4B5-C6D7E8F9A0B1}"
@@ -35,10 +34,6 @@ Global
 		{C3D4E5F6-A7B8-49CA-D1E2-F3A4B5C6D7E8}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{C3D4E5F6-A7B8-49CA-D1E2-F3A4B5C6D7E8}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{C3D4E5F6-A7B8-49CA-D1E2-F3A4B5C6D7E8}.Release|Any CPU.Build.0 = Release|Any CPU
-		{5DB8EE31-1C0F-467A-BB1B-D010A824B305}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
-		{5DB8EE31-1C0F-467A-BB1B-D010A824B305}.Debug|Any CPU.Build.0 = Debug|Any CPU
-		{5DB8EE31-1C0F-467A-BB1B-D010A824B305}.Release|Any CPU.ActiveCfg = Release|Any CPU
-		{5DB8EE31-1C0F-467A-BB1B-D010A824B305}.Release|Any CPU.Build.0 = Release|Any CPU
 		{D4E5F6A7-B8C9-4ACB-E2F3-A4B5C6D7E8F9}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
 		{D4E5F6A7-B8C9-4ACB-E2F3-A4B5C6D7E8F9}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{D4E5F6A7-B8C9-4ACB-E2F3-A4B5C6D7E8F9}.Release|Any CPU.ActiveCfg = Release|Any CPU

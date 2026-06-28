@@ -1,6 +1,5 @@
 ﻿using Api.Controllers;
 using Blocks.Genesis;
-using CloudConfiguration.DomainService.Shared.Services;
 using FluentAssertions;
 using Iam.DomainService.Accounts;
 using Iam.DomainService.Activities;
@@ -24,11 +23,10 @@ namespace XUnitTest.Controllers
         private readonly Mock<IResourceQueryService> _resourceQueryService = new();
         private readonly Mock<ChangeControllerContext> _changeContext = new(new Mock<ITenants>().Object, new Mock<IDbContextProvider>().Object, new Mock<IHttpContextAccessor>().Object);
         private readonly IamController _controller;
-        private readonly Mock<IConfigurationService> _cloudConfig = new();
 
         public IamControllerTests()
         {
-            _controller = new IamController(_accountService.Object, _activityService.Object, _resourceMutationService.Object, _resourceQueryService.Object, _userQueryService.Object, _userMutationService.Object, _changeContext.Object, _cloudConfig.Object);
+            _controller = new IamController(_accountService.Object, _activityService.Object, _resourceMutationService.Object, _resourceQueryService.Object, _userQueryService.Object, _userMutationService.Object, _changeContext.Object);
         }
 
         private IamController CreateController()
@@ -40,8 +38,7 @@ namespace XUnitTest.Controllers
                 _resourceQueryService.Object,
                 _userQueryService.Object,
                 _userMutationService.Object,
-                _changeContext.Object,
-                _cloudConfig.Object
+                _changeContext.Object
             );
 
             controller.ControllerContext = new ControllerContext

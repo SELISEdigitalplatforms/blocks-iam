@@ -1,4 +1,4 @@
-﻿namespace CloudConfiguration.DomainService.Authentication
+namespace Authentication.DomainService.Authentication.RequestModel
 {
     public class UpdateAuthenticationConfigurationRequest
     {

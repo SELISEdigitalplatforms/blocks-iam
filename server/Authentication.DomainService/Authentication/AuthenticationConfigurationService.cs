@@ -1,28 +1,27 @@
-﻿using Blocks.Genesis;
+using System.Linq.Expressions;
+using Authentication.DomainService.Authentication.RequestModel;
+using Authentication.DomainService.Entities;
+using Authentication.DomainService.Services;
+using Blocks.Genesis;
 using Microsoft.AspNetCore.Mvc;
 using MongoDB.Bson;
-using CloudConfiguration.DomainService.Authentication;
-using CloudConfiguration.DomainService.Authentication.Entities;
-using CloudConfiguration.DomainService.Shared.Utilities;
 
-namespace CloudConfiguration.DomainService.Shared.Services
+namespace Authentication.DomainService.Authentication
 {
-    public class ConfigurationService : IConfigurationService
+    public class AuthenticationConfigurationService : IAuthenticationConfigurationService
     {
-        private readonly IConfigurationRepository _configurationRepository;
+        private readonly IAuthenticationRepository _authenticationRepository;
         private readonly ITenants _tenants;
 
-        public ConfigurationService(IConfigurationRepository configurationRepository, ITenants tenants)
+        public AuthenticationConfigurationService(IAuthenticationRepository authenticationRepository, ITenants tenants)
         {
-            _configurationRepository = configurationRepository;
+            _authenticationRepository = authenticationRepository;
             _tenants = tenants;
         }
 
-        #region Authentication
-
         public async Task<IActionResult> GetAuthenticationConfigAsync()
         {
-            var config = await _configurationRepository.GetAuthenticationConfigurationAsync();
+            var config = await _authenticationRepository.GetAuthenticationConfigurationAsync();
             var publicCertificatePath = _tenants.GetTenantByID(BlocksContext.GetContext()?.TenantId ?? "")?.JwtTokenParameters.PublicCertificatePath;
 
             return new OkObjectResult(new
@@ -51,7 +50,7 @@ namespace CloudConfiguration.DomainService.Shared.Services
 
         public async Task<BaseResponse> UpdateAuthenticationConfigAsync(UpdateAuthenticationConfigurationRequest configuration)
         {
-            var current = await _configurationRepository.GetAuthenticationConfigurationAsync();
+            var current = await _authenticationRepository.GetAuthenticationConfigurationAsync();
 
             var tenant = _tenants.GetTenantByID(
                 BlocksContext.GetContext()?.TenantId ?? string.Empty);
@@ -159,12 +158,12 @@ namespace CloudConfiguration.DomainService.Shared.Services
                 ActivationUrlLifetimeInMinutes = ResolveInt(
                     configuration.ActivationUrlLifetimeInMinutes,
                     current?.ActivationUrlLifetimeInMinutes,
-                    60 * 24),
+                    IdentityConfiguration.DefaultActivationUrlLifetimeInMinutes),
 
                 RecoverAccountUrlLifetimeInMinutes = ResolveInt(
                     configuration.RecoverAccountUrlLifetimeInMinutes,
                     current?.RecoverAccountUrlLifetimeInMinutes,
-                    10),
+                    IdentityConfiguration.DefaultRecoverAccountUrlLifetimeInMinutes),
 
                 PasswordStrengthCheckerRegex = ResolveString(
                     configuration.PasswordStrengthCheckerRegex,
@@ -176,7 +175,7 @@ namespace CloudConfiguration.DomainService.Shared.Services
                 AccountActionBaseUrl = accountActionBaseUrl
             };
 
-            await _configurationRepository.UpdateAuthenticationConfigAsync(authConfiguration);
+            await _authenticationRepository.UpdateAuthenticationConfigurationAsync(authConfiguration);
 
             return new BaseResponse
             {
@@ -217,7 +216,5 @@ namespace CloudConfiguration.DomainService.Shared.Services
                         .Replace("http://", string.Empty, StringComparison.OrdinalIgnoreCase)
                         .TrimEnd('/');
         }
-
-        #endregion
     }
 }
