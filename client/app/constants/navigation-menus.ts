@@ -6,7 +6,7 @@ export const navigationMenus: Menu[] = [
     id: "overview-project",
     type: "menu",
     name: "Overview",
-    path: "/dashboard",
+    path: "/app/dashboard",
     icon: Home,
   },
   {
@@ -17,7 +17,7 @@ export const navigationMenus: Menu[] = [
     id: "environments",
     type: "menu",
     name: "Environments",
-    path: "/project-overview/environments",
+    path: "/app/project-overview/environments",
     icon: Package,
   },
   // {

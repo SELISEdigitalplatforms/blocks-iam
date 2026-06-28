@@ -125,7 +125,6 @@ export const router = createBrowserRouter([
           </AuthResolver>
         ),
         children: [
-          // ── OIDC layout (un-guarded, themed) ──
 
           // ── Public routes (unauthenticated only) ──
           {
@@ -136,7 +135,7 @@ export const router = createBrowserRouter([
             ),
 
             children: [
-              { path: "/login", element: <LoginPage /> },
+              { path: "login", element: <LoginPage /> },
 
               {
                 element: <AuthLayout />,
