@@ -1,7 +1,7 @@
 export interface IOrganization {
   itemId: string;
   name: string;
-  isEnable: boolean;
+  isEnabled: boolean;
   createdDate: string;
   lastUpdatedDate: string;
   createdBy: string;

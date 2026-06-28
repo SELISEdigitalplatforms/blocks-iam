@@ -113,7 +113,14 @@ export class AuthService {
     const url = tenantId
       ? `${AUTH_ENDPOINTS.GET_LOGIN_OPTIONS}?tenantId=${encodeURIComponent(tenantId)}`
       : AUTH_ENDPOINTS.GET_LOGIN_OPTIONS;
-    return serviceInstances.idpService.get(url);
+    const headers: Record<string, string> = tenantId
+      ? { "X-Blocks-Key": tenantId }
+      : {};
+    return serviceInstances.idpService.get(
+      url,
+      headers,
+      tenantId ? { skipBlocksKey: true } : undefined,
+    );
   }
 
   logout() {
