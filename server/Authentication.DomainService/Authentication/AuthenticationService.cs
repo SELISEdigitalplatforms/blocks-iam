@@ -1198,7 +1198,7 @@ namespace Authentication.DomainService.Authentication
 
                             var newTokenRequest = new TokenRequest
                             {
-                                GrantType = GrantTypes.Password,
+                                GrantType = GrantTypes.ImpersonationCloud,
                                 ClientId = rootRefreshCache.ClientId,
                                 OrganizationId = request.OrganizationId ?? "default",
                                 IsImpersonation = true,
@@ -1291,7 +1291,7 @@ namespace Authentication.DomainService.Authentication
 
                 var tokenRequest = new TokenRequest
                 {
-                    GrantType = GrantTypes.Password,
+                    GrantType = GrantTypes.ImpersonationCloud,
                     ClientId = clientId,
                     OrganizationId = !string.IsNullOrWhiteSpace(request.OrganizationId)
                         ? request.OrganizationId
@@ -1469,7 +1469,7 @@ namespace Authentication.DomainService.Authentication
 
             var tokenRequest = new TokenRequest
             {
-                GrantType = GrantTypes.Password,
+                GrantType = GrantTypes.ImpersonationCloud,
                 ClientId = !string.IsNullOrWhiteSpace(session.ClientId) ? session.ClientId : rootRefreshCache.ClientId,
                 OrganizationId = session.OrganizationId,
                 IsImpersonation = false,
