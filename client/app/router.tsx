@@ -187,7 +187,9 @@ export const router = createBrowserRouter([
               {
                 element: (
                   <ConsoleLayout>
-                    <Outlet />
+                    <TooltipProvider delayDuration={0}>
+                      <Outlet />
+                    </TooltipProvider>
                   </ConsoleLayout>
                 ),
                 children: [
@@ -206,7 +208,9 @@ export const router = createBrowserRouter([
                     redirectPaths={redirectPaths}
                     navigationMenus={navigationMenus}
                   >
-                    <Outlet />
+                    <TooltipProvider delayDuration={0}>
+                      <Outlet />
+                    </TooltipProvider>
                   </ProjectOverviewLayout>
                 ),
                 children: [
