@@ -917,7 +917,7 @@ namespace Authentication.DomainService.Authentication
             {
                 Domain = cookieDomain,
                 HttpOnly = true,
-                Secure = !isLocal,
+                Secure = DomainResolver.IsCurrentRequestSecure(),
                 SameSite = isLocal ? SameSiteMode.None : SameSiteMode.Strict,
                 Path = "/",
                 Expires = expiresUtc == default ? DateTime.UtcNow : expiresUtc
