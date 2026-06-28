@@ -409,11 +409,6 @@ namespace Authentication.DomainService.Services
                 return;
             }
 
-            if (string.IsNullOrWhiteSpace(provider.WellKnownUrl))
-            {
-                provider.WellKnownUrl = GetDefaultWellKnownUrl(provider.Provider);
-            }
-
             OpenIdConnectConfiguration? metadata = null;
 
             if (!string.IsNullOrWhiteSpace(provider.WellKnownUrl))
