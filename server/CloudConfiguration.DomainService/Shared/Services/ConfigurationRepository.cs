@@ -4,7 +4,6 @@ using CloudConfiguration.DomainService.Authentication.Entities;
 using CloudConfiguration.DomainService.Captcha.Entities;
 using CloudConfiguration.DomainService.Captcha.RequestModel;
 using CloudConfiguration.DomainService.Captcha.ResponseModel;
-using CloudConfiguration.DomainService.IAM.Entities;
 using CloudConfiguration.DomainService.MFA.Entities;
 using System.Linq.Expressions;
 using CloudConfiguration.DomainService.Notification.Entities;
@@ -21,7 +20,7 @@ namespace CloudConfiguration.DomainService.Shared.Services
         private readonly IDbContextProvider _dbContextProvider;
 
         private const string _captchaConfigurationCollectionName = "CaptchaConfigurations";
-        private const string _iamConfigurationCollectionName = "IamConfigurations";
+        private const string _identityConfigurationCollectionName = "IdentityConfigurations";
         private const string _notificatonConfigurationCollectionName = "NotificationConfigurations";
         private const string _storageCollectionName = "StorageConfigurations";
         private const string _mailConfigurationCollectionName = "MailServerConfigurations";
@@ -33,17 +32,17 @@ namespace CloudConfiguration.DomainService.Shared.Services
 
         #region Authentication 
 
-        public async Task<AuthenticationConfiguration> GetAuthenticationConfigurationAsync()
+        public async Task<IdentityConfiguration> GetAuthenticationConfigurationAsync()
         {
-            var collection = _dbContextProvider.GetCollection<AuthenticationConfiguration>("AuthenticationConfigurations");
-            var filter = Builders<AuthenticationConfiguration>.Filter.Where(_ => true);
+            var collection = _dbContextProvider.GetCollection<IdentityConfiguration>(_identityConfigurationCollectionName);
+            var filter = Builders<IdentityConfiguration>.Filter.Where(_ => true);
             return await (await collection.FindAsync(filter)).FirstOrDefaultAsync();
         }
 
-        public async Task UpdateAuthenticationConfigAsync(AuthenticationConfiguration configuration)
+        public async Task UpdateAuthenticationConfigAsync(IdentityConfiguration configuration)
         {
-            var collection = _dbContextProvider.GetCollection<AuthenticationConfiguration>("AuthenticationConfigurations");
-            var filter = Builders<AuthenticationConfiguration>.Filter.Eq("_id", configuration.ItemId);
+            var collection = _dbContextProvider.GetCollection<IdentityConfiguration>(_identityConfigurationCollectionName);
+            var filter = Builders<IdentityConfiguration>.Filter.Eq("_id", configuration.ItemId);
             await collection.ReplaceOneAsync(filter, configuration);
         }
 
@@ -115,25 +114,6 @@ namespace CloudConfiguration.DomainService.Shared.Services
                    Builders<CaptchaConfiguration>.Update.Set(c => c.IsEnable, request.IsEnable)
                );
             }
-        }
-
-        #endregion
-
-        #region IAM
-
-        public async Task SaveIamConfigurationAsync(IamConfiguration iamConfiguration)
-        {
-            var collection = _dbContextProvider.GetCollection<IamConfiguration>(_iamConfigurationCollectionName);
-            var filter = Builders<IamConfiguration>.Filter.Eq("_id", iamConfiguration.ItemId);
-            await collection.ReplaceOneAsync(filter,
-                                              iamConfiguration,
-                                              new ReplaceOptions { IsUpsert = true });
-        }
-
-        public async Task<IamConfiguration> GetIamConfigurationAsync()
-        {
-            var collection = _dbContextProvider.GetCollection<IamConfiguration>(_iamConfigurationCollectionName);
-            return await collection.Find(_ => true).FirstOrDefaultAsync();
         }
 
         #endregion

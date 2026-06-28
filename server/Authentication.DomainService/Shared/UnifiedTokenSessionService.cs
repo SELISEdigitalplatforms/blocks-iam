@@ -32,7 +32,7 @@ namespace Authentication.DomainService.Shared
             string? oldRefreshToken,
             RefreshTokenCache? oldRefreshTokenCache,
             TokenRequest tokenRequest,
-            AuthenticationConfiguration authenticationConfiguration,
+            IdentityConfiguration authenticationConfiguration,
             Tenant tenant,
             User user,
             IEnumerable<string> visitorsIpAddresses,

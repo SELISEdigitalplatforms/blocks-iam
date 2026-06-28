@@ -4,7 +4,7 @@ import {
   IEmailUsageResponse,
   IGetMailBoxMailResponse,
 } from "../models/email";
-import { http } from "@/lib/http-client";
+import { serviceInstances } from "@/lib/http-client";
 import {
   EMAIL_TEMPLATE_ENDPOINTS,
   MAIL_CONFIG_ENDPOINTS,
@@ -17,7 +17,7 @@ class EmailService {
     pageNumber: number,
     pageSize: number,
   ): Promise<IEmailConfig[]> => {
-    return http.get(
+    return serviceInstances.idpService.get(
       `${MAIL_CONFIG_ENDPOINTS.GET_CONFIGS}?projectKey=${projectKey}&pageNumber=${pageNumber + 1}&pageSize=${pageSize}`,
     );
   };
@@ -32,13 +32,13 @@ class EmailService {
     language: string,
     mailConfigurationId: string,
   ): Promise<{ templates: IEmailTemplate[]; totalCount: number }> => {
-    return http.get(
+    return serviceInstances.idpService.get(
       `${EMAIL_TEMPLATE_ENDPOINTS.GET_TEMPLATES}?pageNumber=${pageNumber}&pageSize=${pageSize}&projectKey=${projectKey}&searchKey=${searchKey}&sortProperty=${sortProperty}&isDescending=${isDescending}&language=${language}&mailConfigurationId=${mailConfigurationId}`,
     );
   };
 
   fetchEmailTemplate = (projectKey: string, itemId: string): Promise<IEmailTemplate> => {
-    return http.get(
+    return serviceInstances.idpService.get(
       `${EMAIL_TEMPLATE_ENDPOINTS.GET_TEMPLATE}?itemId=${itemId}&projectKey=${projectKey}`,
     );
   };
@@ -73,11 +73,11 @@ class EmailService {
       params.append("SendDateRange.EndDate", endDate);
     }
 
-    return http.get(`${MAIL_ENDPOINTS.GET_MAILBOX_MAILS}?${params.toString()}`);
+    return serviceInstances.idpService.get(`${MAIL_ENDPOINTS.GET_MAILBOX_MAILS}?${params.toString()}`);
   };
 
   getMailBoxMail = (projectKey: string, messageId: string): Promise<IGetMailBoxMailResponse> => {
-    return http.get(
+    return serviceInstances.idpService.get(
       `${MAIL_ENDPOINTS.GET_MAILBOX_MAIL}?ProjectKey=${projectKey}&MessageId=${messageId}`,
     );
   };
@@ -100,7 +100,7 @@ class EmailService {
     isSuccess: boolean;
     itemId: string;
   }> => {
-    return http.post(MAIL_CONFIG_ENDPOINTS.SAVE_CONFIG, payload);
+    return serviceInstances.idpService.post(MAIL_CONFIG_ENDPOINTS.SAVE_CONFIG, payload);
   };
 
   sendTestMail = (data: {
@@ -121,7 +121,7 @@ class EmailService {
       projectKey: data.projectKey,
       isTestMail: true,
     };
-    return http.post(MAIL_ENDPOINTS.SEND_TO_ANY, payload);
+    return serviceInstances.idpService.post(MAIL_ENDPOINTS.SEND_TO_ANY, payload);
   };
 
   saveMailTemplate(requestBody: {
@@ -139,7 +139,7 @@ class EmailService {
     isSuccess: boolean;
     itemId: string;
   }> {
-    return http
+    return serviceInstances.idpService
       .post<{
         errors: null | unknown;
         isSuccess: boolean;
@@ -160,7 +160,7 @@ class EmailService {
     isSuccess: boolean;
     itemId: string;
   }> {
-    return http
+    return serviceInstances.idpService
       .post<{
         errors: null | unknown;
         isSuccess: boolean;
@@ -173,7 +173,7 @@ class EmailService {
     errors: null | unknown;
     isSuccess: boolean;
   }> {
-    return http
+    return serviceInstances.idpService
       .delete<{
         errors: unknown;
         isSuccess: boolean;
@@ -187,7 +187,7 @@ class EmailService {
     errors: null | unknown;
     isSuccess: boolean;
   }> {
-    return http
+    return serviceInstances.idpService
       .delete<{
         errors: unknown;
         isSuccess: boolean;

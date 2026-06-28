@@ -32,7 +32,7 @@ namespace Authentication.DomainService.OAuth
             _oAuthJwtAccessTokenManager = oAuthJwtAccessTokenManager;
             _authenticationRepository = authenticationRepository;
         }
-        public async Task<TokenResponse> AuthenticateAsync(TokenRequest request, AuthenticationConfiguration authenticationConfiguration, User user)
+        public async Task<TokenResponse> AuthenticateAsync(TokenRequest request, IdentityConfiguration authenticationConfiguration, User user)
         {
             _logger.LogInformation("Authenticate start for RefreshToken");
             var bc = BlocksContext.GetContext();

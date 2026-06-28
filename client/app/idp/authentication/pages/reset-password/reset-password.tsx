@@ -7,9 +7,10 @@ import { ResetPasswordForm } from "./reset-password-form";
 type ResetPasswordProps = {
   code?: string;
   lang?: string;
+  tenantId?: string;
 };
 
-export const ResetPassword = ({ code }: ResetPasswordProps) => {
+export const ResetPassword = ({ code, tenantId }: ResetPasswordProps) => {
   return (
     <OidcAuthShell
       panelConfig={RESET_PASSWORD_PANEL}
@@ -25,7 +26,7 @@ export const ResetPassword = ({ code }: ResetPasswordProps) => {
       }
     >
       {code ? (
-        <ResetPasswordForm code={code} />
+        <ResetPasswordForm code={code} tenantId={tenantId} />
       ) : (
         <div className="flex flex-col items-center gap-4 py-4 text-center">
           <div

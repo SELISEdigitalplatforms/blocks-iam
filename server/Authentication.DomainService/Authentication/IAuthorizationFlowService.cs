@@ -1,6 +1,5 @@
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
-using System.Security.Claims;
 
 namespace Authentication.DomainService.Authentication
 {
@@ -40,6 +39,15 @@ namespace Authentication.DomainService.Authentication
         public string? ProviderClientId { get; set; }
         [System.Text.Json.Serialization.JsonPropertyName("provider_redirect_uri")]
         public string? ProviderRedirectUri { get; set; }
+
+        [System.Text.Json.Serialization.JsonPropertyName("mfa_id")]
+        public string? MfaId { get; set; }
+
+        [System.Text.Json.Serialization.JsonPropertyName("mfa_code")]
+        public string? MfaCode { get; set; }
+
+        [System.Text.Json.Serialization.JsonPropertyName("captcha_code")]
+        public string? CaptchaCode { get; set; }
     }
 
     public class OidcLoginResponse
@@ -93,7 +101,8 @@ namespace Authentication.DomainService.Authentication
             HttpRequest request,
             HttpResponse response,
             string? blocksUserId = null,
-            bool returnRedirectResponse = true);
+            bool returnRedirectResponse = true,
+            bool mfaCompleted = false);
 
 
         Task<IActionResult> TokenAsync(string grantType, HttpRequest request);

@@ -19,37 +19,6 @@ namespace Iam.DomainService.Users
             _userRepository = userRepository;
         }
 
-        public async Task<GetAccountsResponse> GetAccountsAsync(GetAccountsRequest query)
-        {
-            _logger.LogInformation("Accounts get start");
-
-            var (data, count) = await _userRepository.GetUsersAsync<GetAccounts, GetAccountsRequest>(query);
-
-            _logger.LogInformation("Accounts get end");
-
-            return new GetAccountsResponse
-            {
-                Data = data,
-                TotalCount = count
-            };
-        }
-
-        public async Task<GetAccountResponse> GetAccountAsync()
-        {
-            _logger.LogInformation("Account get start");
-
-            var bc = BlocksContext.GetContext();
-            var user = await _userRepository.GetUserByIdAsync<GetUser>(bc.UserId);
-
-            _logger.LogInformation("Account get end");
-
-            return new GetAccountResponse
-            {
-                Data = user
-            };
-
-        }
-
         public async Task<bool> IsUserAvailableAsync(IsEmailAvailableRequest query)
         {
             _logger.LogInformation("User existance search start");
@@ -67,80 +36,54 @@ namespace Iam.DomainService.Users
 
             query.Filter ??= new GetUsersFilter();
 
-            var (data, count) = await _userRepository.GetUsersAsync<GetUser, GetUsersRequest>(query);
+            var (data, count) = await _userRepository.GetUsersAsync<GetAccounts, GetUsersRequest>(query);
+
+            var contextOrgId = string.IsNullOrWhiteSpace(query.Filter.OrganizationId) ? "default" : query.Filter.OrganizationId;
+            var selectedUsers = data?.Select(user => MapToListAccountFields(user, contextOrgId)).AsQueryable() ?? Enumerable.Empty<Dictionary<string, object>>().AsQueryable();
 
             _logger.LogInformation("User get end");
 
             return new GetUsersResponse
             {
-                Data = data,
+                Data = selectedUsers,
                 TotalCount = count
             };
         }
 
-        public async Task<GetUserResponse> GetUserAsync(string id)
+        public async Task<GetUserResponse> GetAccountAsync()
         {
             _logger.LogInformation("User get start");
 
             var bc = BlocksContext.GetContext();
-            var userId = string.IsNullOrWhiteSpace(id) ? bc.UserId : id;
-            var user = await _userRepository.GetUserByIdAsync<GetUser>(userId);
-            var contextOrgId = ResolveOrganizationId();
+            var user = await _userRepository.GetUserByIdAsync<GetAccounts>(bc?.UserId);
+            var contextOrgId = string.IsNullOrWhiteSpace(bc?.OrganizationId) ? "default" : bc.OrganizationId;
 
-            if (user is null || (contextOrgId != "default" && (user.OrganizationIds?.Count > 0 && !user.OrganizationIds.Contains(contextOrgId))))
-            {
-                user = null;
-            }
+            var data = user == null ? null : MapToSingleAccountFields(user, contextOrgId);
 
             _logger.LogInformation("User get end");
 
             return new GetUserResponse
             {
-                Data = user
+                Data = data
             };
         }
 
-        public async Task<GetAccountRolesResponse> GetAccountRolesAsync()
+        public async Task<GetUserResponse> GetUserAsync(string id, string? organizationId)
         {
+            _logger.LogInformation("User get start");
+
             var bc = BlocksContext.GetContext();
-            var roles = await _userRepository.GetRolesBySlugsAsync(bc.UserId);
+            var userId = string.IsNullOrWhiteSpace(id) ? (bc?.UserId ?? string.Empty) : id;
+            var user = await _userRepository.GetUserByIdAsync<GetAccounts>(userId);
+            var contextOrgId = string.IsNullOrWhiteSpace(organizationId) ? (bc?.OrganizationId ?? "default") : organizationId;
 
-            return new GetAccountRolesResponse
+            var data = user == null ? null : MapToSingleUserFields(user, contextOrgId);
+
+            _logger.LogInformation("User get end");
+
+            return new GetUserResponse
             {
-                Data = roles,
-            };
-        }
-
-        public async Task<GetAccountPermissionsResponse> GetAccountPermissionsAsync()
-        {
-            var bc = BlocksContext.GetContext();
-            var permissions = await _userRepository.GetPermissionsByResourcesAsync(bc.UserId);
-            return new GetAccountPermissionsResponse
-            {
-                Data = permissions,
-            };
-        }
-
-        public async Task<GetUserRolesResponse> GetUserRolesAsync(string id)
-        {
-            var bc = BlocksContext.GetContext();
-            var userId = string.IsNullOrWhiteSpace(id) ? bc.UserId : id;
-            var roles = await _userRepository.GetRolesBySlugsAsync(userId);
-
-            return new GetUserRolesResponse
-            {
-                Data = roles,
-            };
-        }
-
-        public async Task<GetUserPermissionsResponse> GetUserPermissionsAsync(string id)
-        {
-            var bc = BlocksContext.GetContext();
-            var userId = string.IsNullOrWhiteSpace(id) ? bc.UserId : id;
-            var permissions = await _userRepository.GetPermissionsByResourcesAsync(userId);
-            return new GetUserPermissionsResponse
-            {
-                Data = permissions,
+                Data = data
             };
         }
 
@@ -149,15 +92,101 @@ namespace Iam.DomainService.Users
             return await _userRepository.GetUserTimelinesAsync(request);
         }
 
-        private static string ResolveOrganizationId(string? requestedOrgId = null)
+        private static Dictionary<string, object> MapToListAccountFields(GetAccounts user, string contextOrgId)
         {
-            if (!string.IsNullOrWhiteSpace(requestedOrgId))
+            if(!user.OrganizationIds.Contains(contextOrgId))
             {
-                return requestedOrgId;
+                return new Dictionary<string, object>();
             }
 
-            var contextOrgId = BlocksContext.GetContext()?.OrganizationId;
-            return string.IsNullOrWhiteSpace(contextOrgId) ? "default" : contextOrgId;
+            return new Dictionary<string, object>
+            {
+                ["itemId"] = user.ItemId,
+                ["firstName"] = user.FirstName ?? string.Empty,
+                ["lastName"] = user.LastName ?? string.Empty,
+                ["email"] = user.Email,
+                ["userName"] = user.UserName ?? string.Empty,
+                ["active"] = user.Active,
+                ["status"] = user.Status,
+                ["isVerified"] = user.IsVerified,
+                ["profileImageUrl"] = user.ProfileImageUrl ?? string.Empty,
+                ["mfaEnabled"] = user.MfaEnabled,
+                ["lastLoggedInTime"] = user.LastLoggedInTime,
+                ["loginCount"] = user.LogInCount,
+                ["createdDate"] = user.CreatedDate
+            };
+        }
+
+        private static Dictionary<string, object> MapToSingleAccountFields(GetAccounts user, string contextOrgId)
+        {
+            if (!user.OrganizationIds.Contains(contextOrgId))
+            {
+                return new Dictionary<string, object>();
+            }
+
+            return new Dictionary<string, object>
+            {
+                ["itemId"] = user.ItemId,
+                ["createdDate"] = user.CreatedDate,
+                ["lastUpdatedDate"] = user.LastUpdatedDate,
+                ["language"] = user.Language ?? string.Empty,
+                ["salutation"] = user.Salutation ?? string.Empty,
+                ["firstName"] = user.FirstName ?? string.Empty,
+                ["lastName"] = user.LastName ?? string.Empty,
+                ["email"] = user.Email,
+                ["phoneNumber"] = user.PhoneNumber ?? string.Empty,
+                ["roles"] = user.Roles.ContainsKey(contextOrgId) ? user.Roles[contextOrgId] : new List<string>(),
+                ["permissions"] = user.Permissions.ContainsKey(contextOrgId) ? user.Permissions[contextOrgId] : new List<string>(),
+                ["active"] = user.Active,
+                ["status"] = user.Status,
+                ["isVerified"] = user.IsVerified,
+                ["profileImageUrl"] = user.ProfileImageUrl ?? string.Empty,
+                ["mfaEnabled"] = user.MfaEnabled,
+                ["isMfaVerified"] = user.IsMfaVerified,
+                ["userMfaType"] = user.UserMfaType,
+                ["externalIdentities"] = user.ExternalIdentities,
+                ["attributes"] = user.Attributes,
+                ["logInCount"] = user.LogInCount,
+                ["lastLoggedInTime"] = user.LastLoggedInTime,
+                ["lastLoggedInDeviceInfo"] = user.LastLoggedInDeviceInfo ?? string.Empty,
+                ["organizationId"] = contextOrgId
+            };
+        }
+
+        private static Dictionary<string, object> MapToSingleUserFields(GetAccounts user, string contextOrgId)
+        {
+            if (!user.OrganizationIds.Contains(contextOrgId))
+            {
+                return new Dictionary<string, object>();
+            }
+
+            return new Dictionary<string, object>
+            {
+                ["itemId"] = user.ItemId,
+                ["createdDate"] = user.CreatedDate,
+                ["lastUpdatedDate"] = user.LastUpdatedDate,
+                ["language"] = user.Language ?? string.Empty,
+                ["salutation"] = user.Salutation ?? string.Empty,
+                ["firstName"] = user.FirstName ?? string.Empty,
+                ["lastName"] = user.LastName ?? string.Empty,
+                ["email"] = user.Email,
+                ["phoneNumber"] = user.PhoneNumber ?? string.Empty,
+                ["roles"] = user.Roles.ContainsKey(contextOrgId) ? user.Roles[contextOrgId] : new List<string>(),
+                ["permissions"] = user.Permissions.ContainsKey(contextOrgId) ? user.Permissions[contextOrgId] : new List<string>(),
+                ["active"] = user.Active,
+                ["status"] = user.Status,
+                ["isVerified"] = user.IsVerified,
+                ["profileImageUrl"] = user.ProfileImageUrl ?? string.Empty,
+                ["mfaEnabled"] = user.MfaEnabled,
+                ["isMfaVerified"] = user.IsMfaVerified,
+                ["userMfaType"] = user.UserMfaType,
+                ["externalIdentities"] = user.ExternalIdentities,
+                ["attributes"] = user.Attributes,
+                ["logInCount"] = user.LogInCount,
+                ["lastLoggedInTime"] = user.LastLoggedInTime,
+                ["lastLoggedInDeviceInfo"] = user.LastLoggedInDeviceInfo ?? string.Empty,
+                ["OrganizationIds"] = user.OrganizationIds
+            };
         }
     }
 }
