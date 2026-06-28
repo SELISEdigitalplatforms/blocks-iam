@@ -51,7 +51,7 @@ export const useOidcUiConfig = (tenantIdOverride?: string) => {
     ? { "X-Blocks-Key": tenantId }
     : {};
 
-  return useQuery<IOidcUiConfig>({
+  const query = useQuery<IOidcUiConfig>({
     queryKey: ["oidc-ui-config", tenantId],
     queryFn: () =>
       serviceInstances.idpService.get(url, headers, {
@@ -59,4 +59,11 @@ export const useOidcUiConfig = (tenantIdOverride?: string) => {
         skipBlocksKey: true,
       }) as Promise<IOidcUiConfig>,
   });
+
+  const captchaEnabled = query.data?.captcha != null;
+
+  return {
+    ...query,
+    captchaEnabled,
+  };
 };
