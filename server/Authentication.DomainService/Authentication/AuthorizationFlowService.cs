@@ -1178,25 +1178,12 @@ namespace Authentication.DomainService.Authentication
             }
 
             var isLocal = DomainResolver.IsLocalhost();
-            cookieDomain = isLocal ? null : (string.IsNullOrWhiteSpace(cookieDomain) ? null : cookieDomain);
-            var accessOptions = new CookieOptions
-            {
-                Domain = cookieDomain,
-                HttpOnly = true,
-                Secure = true,
-                SameSite = DomainResolver.IsCrossOriginHttpFlow() ? SameSiteMode.None : SameSiteMode.Strict,
-                Path = "/",
-                Expires = accessExpiry
-            };
-            var refreshOptions = new CookieOptions
-            {
-                Domain = cookieDomain,
-                HttpOnly = true,
-                Secure = true,
-                SameSite = DomainResolver.IsCrossOriginHttpFlow() ? SameSiteMode.None : SameSiteMode.Strict,
-                Path = "/",
-                Expires = refreshExpiry
-            };
+            var accessOptions = isLocal
+                ? DomainResolver.CreateLoopbackCookieOptions(accessExpiry)
+                : DomainResolver.CreateProductionCookieOptions(cookieDomain, accessExpiry);
+            var refreshOptions = isLocal
+                ? DomainResolver.CreateLoopbackCookieOptions(refreshExpiry)
+                : DomainResolver.CreateProductionCookieOptions(cookieDomain, refreshExpiry);
 
             response.Cookies.Append($"{tokenDomain}", accessToken, accessOptions);
 
@@ -1619,25 +1606,26 @@ namespace Authentication.DomainService.Authentication
         {
             var isLocal = DomainResolver.IsLocalhost();
             var domain = BlocksContext.ResolveApplicationDomain(httpRequest);
+            var effectiveExpiry = absoluteExpiry == default
+                ? DateTime.UtcNow.Add(GetIdpSessionAbsoluteTimeout())
+                : absoluteExpiry;
 
-            var cookieOptions = new CookieOptions
+            CookieOptions cookieOptions;
+            if (isLocal)
             {
-                HttpOnly = true,
-                Secure = true,
-                SameSite = DomainResolver.IsCrossOriginHttpFlow() ? SameSiteMode.None : SameSiteMode.Strict,
-                Path = "/",
-                Expires = absoluteExpiry == default
-                    ? DateTime.UtcNow.Add(GetIdpSessionAbsoluteTimeout())
-                    : absoluteExpiry
-            };
-
-            if (!isLocal && !string.IsNullOrWhiteSpace(domain))
+                cookieOptions = DomainResolver.CreateLoopbackCookieOptions(effectiveExpiry);
+            }
+            else
             {
-                var tenant = _tenants.GetTenantByID(tenantId);
-
-                cookieOptions.Domain = tenant.IsRootTenant
-                    ? DomainResolver.GetRootDomain(domain)
-                    : domain;
+                string? resolvedDomain = null;
+                if (!string.IsNullOrWhiteSpace(domain))
+                {
+                    var tenant = _tenants.GetTenantByID(tenantId);
+                    resolvedDomain = tenant.IsRootTenant
+                        ? DomainResolver.GetRootDomain(domain)
+                        : domain;
+                }
+                cookieOptions = DomainResolver.CreateProductionCookieOptions(resolvedDomain, effectiveExpiry);
             }
 
             response.Cookies.Append(
