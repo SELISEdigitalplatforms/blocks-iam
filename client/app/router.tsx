@@ -176,6 +176,7 @@ export const router = createBrowserRouter([
 
           // ── Protected routes (authenticated only) ──
           {
+            path: "/app",
             element: (
               <ProtectedGuard>
                 <Outlet />
@@ -227,66 +228,66 @@ export const router = createBrowserRouter([
                 ),
 
                 children: [
-                  { path: "/app/iam", element: <IamPage /> },
+                  { path: "/iam", element: <IamPage /> },
                   {
-                    path: "/app/user-detail/:id",
+                    path: "/user-detail/:id",
                     element: <IamUserDetailPage />,
                   },
                   {
-                    path: "/app/role-detail/:id",
+                    path: "/role-detail/:id",
                     element: <IamRoleDetailPage />,
                   },
                   {
-                    path: "/app/permission-detail/new",
+                    path: "/permission-detail/new",
                     element: <IamAddPermissionPage />,
                   },
                   {
-                    path: "/app/permission-detail/:id",
+                    path: "/permission-detail/:id",
                     element: <IamPermissionDetailPage />,
                   },
                   {
-                    path: "/app/organization-detail/:itemId",
+                    path: "/organization-detail/:itemId",
                     element: <IamOrgDetailPage />,
                   },
-                  { path: "/app/iam/logs", element: <IamLogsPage /> },
+                  { path: "/iam/logs", element: <IamLogsPage /> },
                   {
-                    path: "/app/iam/configure",
+                    path: "/iam/configure",
                     element: <IamConfigurePage />,
                   },
                   {
-                    path: "/app/authentication",
+                    path: "/authentication",
                     element: <AuthenticationConfigPage section="users" />,
                   },
                   {
-                    path: "/app/users",
+                    path: "/users",
                     element: <AuthenticationConfigPage section="users" />,
                   },
                   {
-                    path: "/app/organizations",
+                    path: "/organizations",
                     element: (
                       <AuthenticationConfigPage section="organizations" />
                     ),
                   },
                   {
-                    path: "/app/client-credential",
+                    path: "/client-credential",
                     element: (
                       <AuthenticationConfigPage section="client-credential" />
                     ),
                   },
                   {
-                    path: "/app/sso-configuration",
+                    path: "/sso-configuration",
                     element: <SsoConfigurationPage />,
                   },
                   {
-                    path: "/app/authentication/logs",
+                    path: "/authentication/logs",
                     element: <AuthLogsPage />,
                   },
                   {
-                    path: "/app/mfa/logs",
+                    path: "/mfa/logs",
                     element: <MfaLogsPage />,
                   },
                   {
-                    path: "/app/rate-limiter",
+                    path: "/rate-limiter",
                     element: <RateLimiterPage />,
                   },
                   {
@@ -294,7 +295,7 @@ export const router = createBrowserRouter([
                     element: <ManagedServicesPage />,
                   },
                   {
-                    path: "/app/captcha/logs",
+                    path: "/captcha/logs",
                     element: <CaptchaLogsPage />,
                   },
                   { path: "/dashboard", element: <DashboardOverview /> },
