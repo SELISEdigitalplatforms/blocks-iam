@@ -67,7 +67,7 @@ const OrganizationActions = ({ organization }: OrganizationActionsProps) => {
             <span>Rename</span>
           </DropdownMenuItem>
           <DropdownMenuItem className="gap-2" onSelect={() => setIsToggleStatusModalOpen(true)}>
-            {organization.isEnable ? (
+            {organization.isEnabled ? (
               <>
                 <PowerOff className="aspect-square w-4" />
                 <span>Disable</span>
@@ -131,9 +131,9 @@ export const OrganizationsList = ({ organizations, isLoading }: OrganizationTabl
           <div>
             <Badge
               className="w-fit"
-              variant={organization.row.original.isEnable ? "success" : "error"}
+              variant={organization.row.original.isEnabled ? "success" : "error"}
             >
-              {organization.row.original.isEnable ? "Active" : "Disabled"}
+              {organization.row.original.isEnabled ? "Active" : "Disabled"}
             </Badge>
           </div>
         ),
