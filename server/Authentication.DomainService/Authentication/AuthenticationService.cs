@@ -911,17 +911,9 @@ namespace Authentication.DomainService.Authentication
 
         private static CookieOptions CreateCookieOptions(string? domain, DateTime expiresUtc)
         {
-            var isLocal = DomainResolver.IsLocalhost();
-            var cookieDomain = isLocal ? null : (string.IsNullOrWhiteSpace(domain) ? null : domain);
-            return new CookieOptions
-            {
-                Domain = cookieDomain,
-                HttpOnly = true,
-                Secure = true,
-                SameSite = isLocal ? SameSiteMode.None : SameSiteMode.Strict,
-                Path = "/",
-                Expires = expiresUtc == default ? DateTime.UtcNow : expiresUtc
-            };
+            return DomainResolver.IsLocalhost()
+                ? DomainResolver.CreateLoopbackCookieOptions(expiresUtc)
+                : DomainResolver.CreateProductionCookieOptions(domain, expiresUtc);
         }
 
 

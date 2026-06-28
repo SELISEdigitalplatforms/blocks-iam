@@ -375,22 +375,24 @@ namespace Blocks.Api.Controllers
             return false;
         }
 
-        private CookieOptions CreateSessionCookieOptions(string tenantId)
+private CookieOptions CreateSessionCookieOptions(string tenantId)
         {
-            var isLocal = DomainResolver.IsLocalhost();
+            var expiresAt = DateTime.UtcNow.AddDays(30);
+
+            if (DomainResolver.IsLocalhost())
+            {
+                var loopback = DomainResolver.CreateLoopbackCookieOptions(expiresAt);
+                loopback.Path = "/api/oidc";
+                return loopback;
+            }
+
             var tenant = _tenants.GetTenantByID(tenantId);
             var (_, cookieDomain, isResolved) = DomainResolver.ResolveDomain(tenant, Request);
-
-            var cookieOptions = new CookieOptions
-            {
-                HttpOnly = true,
-                Secure = true,
-                SameSite = DomainResolver.IsCrossOriginHttpFlow() ? SameSiteMode.None : SameSiteMode.Strict,
-                Domain = !isLocal && isResolved && !string.IsNullOrWhiteSpace(cookieDomain) ? cookieDomain : null,
-                Path = "/api/oidc",
-                Expires = DateTime.UtcNow.AddDays(30)
-            };
-            return cookieOptions;
+            var production = DomainResolver.CreateProductionCookieOptions(
+                isResolved ? cookieDomain : null,
+                expiresAt);
+            production.Path = "/api/oidc";
+            return production;
         }
     }
 
