@@ -1624,7 +1624,7 @@ namespace Authentication.DomainService.Authentication
             {
                 HttpOnly = true,
                 Secure = true,
-                SameSite = (isLocal || DomainResolver.IsLocalOrHttpOrigin()) ? SameSiteMode.None : SameSiteMode.Strict,
+                SameSite = isLocal ? SameSiteMode.None : SameSiteMode.Strict,
                 Path = "/",
                 Expires = absoluteExpiry == default
                     ? DateTime.UtcNow.Add(GetIdpSessionAbsoluteTimeout())
