@@ -60,7 +60,7 @@ export const useGetUser = (options?: { enabled?: boolean }) => {
 
 export const useGetMe = (options?: { enabled?: boolean }) => {
   // const authStore = useAuthStore();
-  return useQuery({
+  const query = useQuery({
     queryKey: ["user"],
     queryFn: async () => {
       const user = await userService.me();
@@ -71,6 +71,14 @@ export const useGetMe = (options?: { enabled?: boolean }) => {
     staleTime: Infinity,
     ...options,
   });
+
+  const userFound =
+    query.data?.data != null && Object.keys(query.data.data).length > 0;
+
+  return {
+    ...query,
+    userFound,
+  };
 };
 
 export const useGetUserById = (
