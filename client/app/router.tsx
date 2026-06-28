@@ -62,6 +62,7 @@ import {
   ProjectOverviewLayout,
   DashboardLayout,
   EnvironmentsPage,
+  TooltipProvider,
 } from "@seliseblocks/blocks-kit";
 import { navigationMenus } from "./constants/navigation-menus";
 // import { ProjectOverviewLayout } from "./layouts/project-overview-layout";
@@ -223,7 +224,9 @@ export const router = createBrowserRouter([
                     redirectPaths={redirectPaths}
                     navigationMenus={navigationMenus}
                   >
-                    <Outlet />
+                    <TooltipProvider delayDuration={0}>
+                      <Outlet />
+                    </TooltipProvider>
                   </DashboardLayout>
                 ),
 
