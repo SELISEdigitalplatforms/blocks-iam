@@ -1,4 +1,4 @@
-﻿using Iam.DomainService.Entities;
+﻿using Iam.DomainService.Dtos;
 
 namespace Iam.DomainService.Configurations
 {

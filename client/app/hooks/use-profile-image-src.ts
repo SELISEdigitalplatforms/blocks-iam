@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { http } from "@/lib/http-client";
+import { serviceInstances } from "@/lib/http-client";
 import { getRuntimeEnv } from "@/lib/runtime-env";
 
 const getLogicHostname = () => {
@@ -39,7 +39,7 @@ export const useProfileImageSrc = (url: string | null | undefined): string | nul
     let objectUrl: string | null = null;
     let cancelled = false;
 
-    http
+    serviceInstances.idpService
       .get<Blob>(url, undefined, { absoluteUrl: true })
       .then((result) => {
         if (cancelled) return;

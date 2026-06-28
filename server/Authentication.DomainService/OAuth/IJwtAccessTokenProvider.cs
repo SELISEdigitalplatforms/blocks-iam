@@ -8,7 +8,7 @@ namespace Authentication.DomainService.OAuth
     public interface IJwtAccessTokenProvider
     {
         Task<JwtAccessToken> GetJwtAccessToken(
-            AuthenticationConfiguration authenticationConfiguration,
+            IdentityConfiguration authenticationConfiguration,
             Tenant tenant,
             User user,
             TokenRequest tokenRequest,

@@ -3,5 +3,9 @@ import { OrganizationDetail } from "@blocks-idp/iam/pages/organization-detail/or
 
 export default function IamOrgDetailPage() {
 	const { itemId } = useParams<{ itemId: string }>();
-	return <OrganizationDetail id={itemId!} />;
+	return (
+		<div className="h-full w-full min-w-0 p-6">
+			<OrganizationDetail id={itemId!} />
+		</div>
+	);
 }

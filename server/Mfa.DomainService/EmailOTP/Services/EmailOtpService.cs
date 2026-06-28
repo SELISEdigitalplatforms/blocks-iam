@@ -1,9 +1,12 @@
-﻿using Blocks.Genesis;
+﻿using Authentication.DomainService.Utilities;
+using Blocks.Genesis;
 using Blocks.MailDriver;
 using Mfa.DomainService.Configuration;
 using Mfa.DomainService.Entities;
 using Mfa.DomainService.Services;
 using Mfa.DomainService.Shared;
+using System.Collections;
+using static QRCoder.PayloadGenerator;
 
 namespace Mfa.DomainService.OTP.Services
 {
@@ -11,18 +14,19 @@ namespace Mfa.DomainService.OTP.Services
     {
         private readonly ICacheClient _cacheClient;
         private readonly IMfaConfigurationService _configurationService;
-        private readonly IMailDriverService _mailDriverService;
+        //private readonly IMailDriverService _mailDriverService;
+        private readonly IMessageClient _messageClient;
 
         private const int _defaultLifeCycleInSecond = 300;
         private const string _defaultMfaTemplate = "MfaViaEmail";
 
         public EmailOtpService(ICacheClient cacheClient,
                                IMfaConfigurationService configurationService,
-                               IMailDriverService mailDriverService)
+                               IMessageClient messageClient)
         {
             _cacheClient = cacheClient;
             _configurationService = configurationService;
-            _mailDriverService = mailDriverService;
+            _messageClient = messageClient;
         }
 
         public async Task<OtpGenerationResponse> GenerateAsync(UserInfo userInfo, string? sendPhoneNumberAsEmailDomain = null)
@@ -67,9 +71,15 @@ namespace Mfa.DomainService.OTP.Services
                 SendPhoneNumberAsEmail = sendPhoneNumberAsEmail
             };
 
-            var response = await _mailDriverService.SendAsync(sendMailCommand);
+            //  var response = await _mailDriverService.SendAsync(sendMailCommand);
 
-            return response.IsSuccess;
+            await _messageClient.SendToConsumerAsync(new ConsumerMessage<SendMail>
+            {
+                ConsumerName = IdpConstants.MailQueue,
+                Payload = sendMailCommand
+            });
+
+            return true;
         }
 
         public async Task<OtpVerificationResponse> VerifyAsync(VerifyOtpRequest request)

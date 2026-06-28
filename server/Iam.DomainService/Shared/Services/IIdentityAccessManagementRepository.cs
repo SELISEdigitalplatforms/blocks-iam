@@ -1,4 +1,5 @@
-﻿using Iam.DomainService.Entities;
+﻿using Iam.DomainService.Dtos;
+using Iam.DomainService.Entities;
 using Iam.DomainService.Shared.Entities;
 using Iam.DomainService.Users.RequestModel;
 using MongoDB.Driver;

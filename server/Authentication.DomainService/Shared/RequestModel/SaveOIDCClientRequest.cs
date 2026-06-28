@@ -1,3 +1,4 @@
+using Iam.DomainService.Entities;
 
 namespace Authentication.DomainService.RequestModel
 {
@@ -9,7 +10,6 @@ namespace Authentication.DomainService.RequestModel
         public List<string> AllowedScopes { get; set; } = new();
         public string? ServiceAccessResource { get; set; }
         public List<string> AllowedServiceAccessResources { get; set; } = new();
-        public List<string> AllowedGrantTypes { get; set; } = new();
         public List<string> AllowedResponseTypes { get; set; } = new() { "code" };
         public bool RequirePkce { get; set; } = true;
         public bool RequireConsent { get; set; }
@@ -25,5 +25,7 @@ namespace Authentication.DomainService.RequestModel
         public string? ClientDisplayName { get; set; }
         public string? ClientBrandColor { get; set; }
         public bool UseTokensCookie { get; set; } = true;
+        public bool RequireMfa { get; set; }
+        public List<UserMfaType>? AllowedMfaMethods { get; set; }
     }
 }

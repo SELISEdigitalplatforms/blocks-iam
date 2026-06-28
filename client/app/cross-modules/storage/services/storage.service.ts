@@ -1,4 +1,4 @@
-import { http } from "@/lib/http-client";
+import { serviceInstances } from "@/lib/http-client";
 import { getRuntimeEnv } from "@/lib/runtime-env";
 import { StorageConfiguration } from "./storage-configuration.service";
 import { StorageFile } from "./storage-file.service";
@@ -24,7 +24,7 @@ export class StorageService {
   ) { }
 
   uploadFile(payload: IUploadImagePayload): Promise<{}> {
-    return http.put(
+    return serviceInstances.idpService.put(
       payload.url,
       payload.file,
       {
@@ -44,7 +44,7 @@ export class StorageService {
       },
       new FormData(),
     );
-    return http.post(toLogicUrl(STORAGE_FILE_ENDPOINTS.UPLOAD_TO_LOCAL_STORAGE), formData, undefined, { absoluteUrl: true });
+    return serviceInstances.idpService.post(toLogicUrl(STORAGE_FILE_ENDPOINTS.UPLOAD_TO_LOCAL_STORAGE), formData, undefined, { absoluteUrl: true });
   }
 
   uploadPublicCertificateFile(
@@ -57,7 +57,7 @@ export class StorageService {
       payload.file,
       (payload.file as File)?.name ?? "public-certificate.pfx",
     );
-    return http.post(
+    return serviceInstances.idpService.post(
       toLogicUrl(`${STORAGE_FILE_ENDPOINTS.UPLOAD_PUBLIC_CERTIFICATE}?TenantId=${payload.TenantId}&IsThirdParty=true`),
       formData,
       { Accept: "*/*" },
@@ -66,15 +66,15 @@ export class StorageService {
   }
 
   getFilesAndFolders(payload: IGetDmsFileAndFolderPayload): Promise<IGetDmsFileAndFolderResponse> {
-    return http.post(toLogicUrl(STORAGE_FILE_ENDPOINTS.GET_DMS_FILE_AND_FOLDER), payload, undefined, { absoluteUrl: true });
+    return serviceInstances.idpService.post(toLogicUrl(STORAGE_FILE_ENDPOINTS.GET_DMS_FILE_AND_FOLDER), payload, undefined, { absoluteUrl: true });
   }
 
   uploadDmsFile(payload: IUploadDmsFilePayload): Promise<IUploadDmsFileResponse> {
-    return http.post(toLogicUrl(STORAGE_FILE_ENDPOINTS.UPLOAD_DMS_FILE), payload, undefined, { absoluteUrl: true });
+    return serviceInstances.idpService.post(toLogicUrl(STORAGE_FILE_ENDPOINTS.UPLOAD_DMS_FILE), payload, undefined, { absoluteUrl: true });
   }
 
   createDmsFolder(payload: ICreateDmsFolderPayload): Promise<IUploadDmsFileResponse> {
-    return http.post(toLogicUrl(STORAGE_FILE_ENDPOINTS.CREATE_FOLDER), payload, undefined, { absoluteUrl: true });
+    return serviceInstances.idpService.post(toLogicUrl(STORAGE_FILE_ENDPOINTS.CREATE_FOLDER), payload, undefined, { absoluteUrl: true });
   }
 }
 
