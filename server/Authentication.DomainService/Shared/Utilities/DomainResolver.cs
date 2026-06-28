@@ -1,8 +1,8 @@
-using Azure.Core;
 using Blocks.Genesis;
 using Microsoft.AspNetCore.Http;
 using System.Collections;
 using System.Globalization;
+using System.Net;
 using System.Reflection;
 
 namespace Authentication.DomainService.Utilities
@@ -27,28 +27,60 @@ namespace Authentication.DomainService.Utilities
 
         public static bool IsLocalhost()
         {
-            // Check environment variable first
-            var hostEnv = Environment.GetEnvironmentVariable("ASPNETCORE_ENVIRONMENT") ?? string.Empty;
-            if (hostEnv.Equals("Development", StringComparison.OrdinalIgnoreCase))
-                return true;
+            // 1) Caller-advertised host is loopback (localhost / 127.0.0.1 / ::1), any port.
+            if (TryGetRequestOriginUri(out var uri))
+            {
+                if (IsLoopbackHost(uri.Host))
+                    return true;
 
-            return TryGetRequestOriginUri(out var uri) && IsLoopbackHost(uri.Host);
+                // 2) Non-default port in the Origin/Referer URI - explicit dev setup
+                //    (e.g. https://example.com:5001, http://staging.example.com:8080).
+                //    Production traffic stays on default ports (443/80).
+                if (!uri.IsDefaultPort)
+                    return true;
+            }
+
+            // 3) Connection came from a loopback IP - catches hosts-file entries
+            //    where the browser resolves dev-os.blocksdevelopers.com to 127.0.0.1
+            //    and connects directly to the loopback interface.
+            var remoteIp = _httpContextAccessor?.HttpContext?.Connection.RemoteIpAddress;
+            return remoteIp != null && IPAddress.IsLoopback(remoteIp);
         }
 
-        public static bool IsCrossOriginHttpFlow()
+        public static CookieOptions CreateCookieOptions(string? cookieDomain, DateTime expiresUtc)
         {
-            // True localhost dev -> always None.
-            if (IsLocalhost())
-                return true;
-
-            // Plain http origin (e.g. local dev with a hosts-file entry on http) -> None.
-            // https origins (production) -> Strict: cookies are first-party and secure.
-            if (!TryGetRequestOriginUri(out var uri))
-                return false;
-
-            return uri.Scheme.Equals("http", StringComparison.OrdinalIgnoreCase)
-                && uri.Port > 0 && uri.Port <= 65535;
+            return IsLocalhost()
+                ? CreateLoopbackCookieOptions(expiresUtc)
+                : CreateProductionCookieOptions(cookieDomain, expiresUtc);
         }
+
+        public static CookieOptions CreateLoopbackCookieOptions(DateTime expiresUtc)
+        {
+            // Local/dev: HttpOnly only. No Domain, no Secure, no SameSite.
+            return new CookieOptions
+            {
+                HttpOnly = true,
+                Path = "/",
+                Expires = NormalizeExpiry(expiresUtc)
+            };
+        }
+
+        public static CookieOptions CreateProductionCookieOptions(string? cookieDomain, DateTime expiresUtc)
+        {
+            // Production: full hardening.
+            return new CookieOptions
+            {
+                Domain = string.IsNullOrWhiteSpace(cookieDomain) ? null : cookieDomain,
+                HttpOnly = true,
+                Secure = true,
+                SameSite = SameSiteMode.Strict,
+                Path = "/",
+                Expires = NormalizeExpiry(expiresUtc)
+            };
+        }
+
+        private static DateTime NormalizeExpiry(DateTime expiresUtc) =>
+            expiresUtc == default ? DateTime.UtcNow : expiresUtc;
 
         private static bool TryGetRequestOriginUri(out Uri uri)
         {
@@ -226,26 +258,6 @@ namespace Authentication.DomainService.Utilities
                 applicationDomain: bc.ApplicationDomain,
                 impersonationSessionId: bc.ImpersonationSessionId)
             );
-        }
-
-        public static CookieOptions CreateCookieOptions(string? cookieDomain, DateTime expiresUtc)
-        {
-            var isLocal = IsLocalhost();
-            // True localhost dev -> host-only cookie (Domain attribute invalid for "localhost").
-            // Otherwise scope to the configured shared parent domain so the IDP cookie reaches the app host.
-            cookieDomain = isLocal ? null : (string.IsNullOrWhiteSpace(cookieDomain) ? null : cookieDomain);
-
-            return new CookieOptions
-            {
-                Domain = cookieDomain,
-                HttpOnly = true,
-                Secure = true,
-                // Local dev (loopback or hosts-file on http) -> None.
-                // Production https -> Strict: cookies are first-party and secure.
-                SameSite = IsCrossOriginHttpFlow() ? SameSiteMode.None : SameSiteMode.Strict,
-                Path = "/",
-                Expires = expiresUtc == default ? DateTime.UtcNow : expiresUtc
-            };
         }
 
         public static string GetRootDomain(string host)
