@@ -3,7 +3,7 @@ import { createBrowserRouter, Navigate, Outlet } from "react-router-dom";
 import { AuthLayout } from "./layouts/auth-layout";
 import { PublicLayout } from "./layouts/public-layout";
 import { OidcLayout } from "./layouts/oidc-layout";
-import { DashboardLayout } from "./layouts/dashboard-layout";
+// import { DashboardLayout } from "./layouts/dashboard-layout";
 
 // Auth routes (public, with auth layout)
 import SignupPage from "./routes/auth/signup";
@@ -46,24 +46,34 @@ import ManagedServicesPage from "./routes/dashboard/managed-services";
 import ProfilePage from "./routes/dashboard/profile";
 
 // Console pages
-import { DashboardOverview } from "./pages/dashboard/dashboard-overview";
-import { EnvironmentsPage } from "./pages/environments/environments";
+// import { EnvironmentsPage } from "./pages/environments/environments";
 import { CreateProjectWrapper } from "./pages/create-project/create-project";
-import LoginSimplePage from "./routes/auth/login-simple";
+// import LoginSimplePage from "./routes/auth/login-simple";
 
 import {
   AuthResolver,
   PublicGuard,
   ProtectedGuard,
   ConsoleLayout,
-  ImpersonationChecker,
-  ImpersonationTerminator,
-  ImpersonationSynchronizer,
   ConsolePage,
   CallbackPage,
   LoginPage,
+  DashboardOverview,
+  ProjectOverviewLayout,
+  DashboardLayout,
+  EnvironmentsPage,
+  TooltipProvider,
 } from "@seliseblocks/blocks-kit";
-import { ProjectOverviewLayout } from "./layouts/project-overview-layout";
+import { navigationMenus } from "./constants/navigation-menus";
+// import { ProjectOverviewLayout } from "./layouts/project-overview-layout";
+
+const redirectPaths: Record<string, string> = {
+  "/app/user-detail/*": "/app/iam",
+  "/app/role-detail/*": "/app/iam?tab=roles",
+  "/app/organization-detail/*": "/app/authentication/organizations",
+  "/app/permission-detail/*": "/app/iam?tab=permissions",
+  "/app/sso-configuration": "/app/authentication?tab=social",
+};
 
 export const router = createBrowserRouter([
   {
@@ -78,10 +88,22 @@ export const router = createBrowserRouter([
           { path: "login", element: <OidcLoginPage /> },
           { path: "permission", element: <OidcPermissionPage /> },
           { path: "error", element: <OidcErrorPage /> },
+          
+          // {
+          //   path: "email-sent-confirmation",
+          //   element: <OidcEmailSentConfirmationPage />,
+          // },
+
+          // OIDC-scoped auth pages (relative paths under /oidc)
+          { path: "forgot-password", element: <ForgotPasswordPage /> },
           {
-            path: "email-sent-confirmation",
-            element: <OidcEmailSentConfirmationPage />,
+            path: "forgot-email-sent",
+            element: <ForgotEmailSentPage />,
           },
+          { path: "recover/:tenantId", element: <ResetPasswordPage /> },
+          { path: "activate/:tenantId", element: <ActivatePage /> },
+          { path: "mfa-check", element: <MfaCheckPage /> },
+
         ],
       },
       {
@@ -89,7 +111,7 @@ export const router = createBrowserRouter([
         children: [
           {
             path: "/login/callback",
-            element: <CallbackPage redirectUrl="/console" />,
+            element: <CallbackPage defaultRedirectUrl="/app/console" />,
           },
           { path: "/sso/:provider/callback", element: <SSOCallbackPage /> },
         ],
@@ -103,7 +125,6 @@ export const router = createBrowserRouter([
           </AuthResolver>
         ),
         children: [
-          // ── OIDC layout (un-guarded, themed) ──
 
           // ── Public routes (unauthenticated only) ──
           {
@@ -114,7 +135,7 @@ export const router = createBrowserRouter([
             ),
 
             children: [
-              { path: "/login", element: <LoginPage /> },
+              { path: "login", element: <LoginPage /> },
 
               {
                 element: <AuthLayout />,
@@ -126,9 +147,11 @@ export const router = createBrowserRouter([
               {
                 element: <PublicLayout />,
                 children: [
-                  { path: "/activate", element: <ActivatePage /> },
-                  { path: "/forgot-password", element: <ForgotPasswordPage /> },
-                  { path: "/resetpassword", element: <ResetPasswordPage /> },
+                  // { path: "/activate", element: <ActivatePage /> },
+
+                  // { path: "/forgot-password", element: <ForgotPasswordPage /> },
+
+                  // { path: "/resetpassword", element: <ResetPasswordPage /> },
                   {
                     path: "/activate-success",
                     element: <ActivateSuccessPage />,
@@ -153,6 +176,7 @@ export const router = createBrowserRouter([
 
           // ── Protected routes (authenticated only) ──
           {
+            path: "/app",
             element: (
               <ProtectedGuard>
                 <Outlet />
@@ -162,26 +186,33 @@ export const router = createBrowserRouter([
               // ── Console group (no impersonation allowed) ──
               {
                 element: (
-                  <ImpersonationChecker>
-                    <ImpersonationTerminator>
-                      <ConsoleLayout>
-                        <Outlet />
-                      </ConsoleLayout>
-                    </ImpersonationTerminator>
-                  </ImpersonationChecker>
+                  <TooltipProvider delayDuration={0}>
+                    <ConsoleLayout>
+                      <Outlet />
+                    </ConsoleLayout>
+                  </TooltipProvider>
                 ),
                 children: [
-                  { path: "/console", element: <ConsolePage /> },
+                  { path: "console", element: <ConsolePage /> },
                   {
-                    path: "/create-project",
+                    path: "create-project",
                     element: <CreateProjectWrapper />,
                   },
-                  { path: "/profile", element: <ProfilePage /> },
+                  { path: "profile", element: <ProfilePage /> },
                 ],
               },
               {
-                path: "/project-overview",
-                element: <ProjectOverviewLayout />,
+                path: "project-overview",
+                element: (
+                  <TooltipProvider delayDuration={0}>
+                    <ProjectOverviewLayout
+                      redirectPaths={redirectPaths}
+                      navigationMenus={navigationMenus}
+                    >
+                      <Outlet />
+                    </ProjectOverviewLayout>
+                  </TooltipProvider>
+                ),
                 children: [
                   {
                     path: "environments",
@@ -189,90 +220,99 @@ export const router = createBrowserRouter([
                   },
                 ],
               },
-
               // ── Dashboard group (impersonation synchronized) ──
               {
                 element: (
-                  <ImpersonationChecker>
-                    <ImpersonationSynchronizer>
-                      <DashboardLayout />
-                    </ImpersonationSynchronizer>
-                  </ImpersonationChecker>
+                  <TooltipProvider delayDuration={0}>
+                    <DashboardLayout
+                      redirectPaths={redirectPaths}
+                      navigationMenus={navigationMenus}
+                    >
+                      <Outlet />
+                    </DashboardLayout>
+                  </TooltipProvider>
                 ),
 
                 children: [
-                  { path: "/services/iam", element: <IamPage /> },
+                  { path: "iam", element: <IamPage /> },
                   {
-                    path: "/services/iam/user-detail/:id",
+                    path: "user-detail/:id",
                     element: <IamUserDetailPage />,
                   },
                   {
-                    path: "/services/iam/role-detail/:id",
+                    path: "role-detail/:id",
                     element: <IamRoleDetailPage />,
                   },
                   {
-                    path: "/services/iam/permission-detail/new",
+                    path: "permission-detail/new",
                     element: <IamAddPermissionPage />,
                   },
                   {
-                    path: "/services/iam/permission-detail/:id",
+                    path: "permission-detail/:id",
                     element: <IamPermissionDetailPage />,
                   },
                   {
-                    path: "/services/iam/organization-detail/:itemId",
+                    path: "organization-detail/:itemId",
                     element: <IamOrgDetailPage />,
                   },
-                  { path: "/services/iam/logs", element: <IamLogsPage /> },
+                  { path: "iam/logs", element: <IamLogsPage /> },
                   {
-                    path: "/services/iam/configure",
+                    path: "iam/configure",
                     element: <IamConfigurePage />,
                   },
                   {
-                    path: "/services/authentication/users",
+                    path: "authentication",
                     element: <AuthenticationConfigPage section="users" />,
                   },
                   {
-                    path: "/services/authentication/organizations",
+                    path: "users",
+                    element: <AuthenticationConfigPage section="users" />,
+                  },
+                  {
+                    path: "organizations",
                     element: (
                       <AuthenticationConfigPage section="organizations" />
                     ),
                   },
                   {
-                    path: "/services/authentication/client-credential",
+                    path: "client-credential",
                     element: (
                       <AuthenticationConfigPage section="client-credential" />
                     ),
                   },
                   {
-                    path: "/services/authentication/sso-configuration",
+                    path: "sso-configuration",
                     element: <SsoConfigurationPage />,
                   },
                   {
-                    path: "/services/authentication/logs",
+                    path: "authentication/logs",
                     element: <AuthLogsPage />,
                   },
-                  { path: "/services/mfa/logs", element: <MfaLogsPage /> },
                   {
-                    path: "/services/rate-limiter",
+                    path: "mfa/logs",
+                    element: <MfaLogsPage />,
+                  },
+                  {
+                    path: "rate-limiter",
                     element: <RateLimiterPage />,
                   },
                   {
-                    path: "/managed-services",
+                    path: "managed-services",
                     element: <ManagedServicesPage />,
                   },
                   {
-                    path: "/services/captcha/logs",
+                    path: "captcha/logs",
                     element: <CaptchaLogsPage />,
                   },
-                  { path: "/dashboard", element: <DashboardOverview /> },
-                  // { path: "/project-overview", element: <Navigate to="/project-overview/environments" replace /> },
-                  // { path: "/project-overview/environments", element: <EnvironmentsPage /> },
+                  { path: "dashboard", element: <DashboardOverview /> },
+                  // { path: "project-overview", element: <Navigate to="project-overview/environments" replace /> },
+                  // { path: "project-overview/environments", element: <EnvironmentsPage /> },
                 ],
               },
             ],
           },
           // ── Catch-all ──
-          { path: "*", element: <Navigate to="/console" replace /> },
+          { path: "*", element: <Navigate to="/app/console" replace /> },
         ],
       },
     ],

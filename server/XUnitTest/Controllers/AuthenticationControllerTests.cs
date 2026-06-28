@@ -822,6 +822,10 @@ namespace XUnitTest.Controllers
             _domainService
                 .Setup(x => x.DeleteOidcClientAsync(request))
                 .ReturnsAsync(expectedResponse);
+        }
+
+        [Fact]
+        public async Task DeleteOIDCClient_CapturesRequest()
         {
             // Arrange
             var request = new DeleteOIDCClientRequest

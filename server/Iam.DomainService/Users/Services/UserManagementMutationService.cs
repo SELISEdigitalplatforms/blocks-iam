@@ -1,7 +1,6 @@
 ﻿using Authentication.DomainService.Utilities;
 using Blocks.Genesis;
 using FluentValidation;
-using FluentValidation.Results;
 using Iam.DomainService.Dtos;
 using Iam.DomainService.Entities;
 using Iam.DomainService.Enums;
@@ -10,6 +9,7 @@ using Iam.DomainService.Services;
 using Iam.DomainService.Shared.Dtos;
 using Iam.DomainService.Shared.Entities;
 using Iam.DomainService.Utilities;
+using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.Logging;
 using System.Text.Json;
 
@@ -28,6 +28,7 @@ namespace Iam.DomainService.Users
         private readonly IMessageClient _messageClient;
         private readonly ICacheClient _cacheClient;
         private readonly ITenants _tenants;
+        private readonly IHttpContextAccessor? _httpContextAccessor;
         public UserManagementMutationService(
             ILogger<UserManagementMutationService> logger,
             IValidator<CreateUserRequest> createValidator,
@@ -38,7 +39,8 @@ namespace Iam.DomainService.Users
             ICacheClient cacheClient,
             ITenants tenants,
             IIdentityAccessManagementRepository? identityAccessManagementRepository = null,
-            IResourceRepository? resourceRepository = null
+            IResourceRepository? resourceRepository = null,
+            IHttpContextAccessor? httpContextAccessor = null
         )
         {
             _logger = logger;
@@ -51,6 +53,7 @@ namespace Iam.DomainService.Users
             _tenants = tenants;
             _identityAccessManagementRepository = identityAccessManagementRepository;
             _resourceRepository = resourceRepository;
+            _httpContextAccessor = httpContextAccessor;
         }
 
         public async Task<BaseMutationResponse> CreateUserAsync(CreateUserRequest command)
@@ -83,16 +86,6 @@ namespace Iam.DomainService.Users
 
             await SendEvent(itemId, MutationEventType.Create);
             var bc = BlocksContext.GetContext();
-            //await _messageClient.SendToConsumerAsync(new ConsumerMessage<UpdateResourceUsageCommand>
-            //{
-            //    ConsumerName = Constants.IdentifierQueue,
-            //    Payload = new UpdateResourceUsageCommand
-            //    {
-            //        Resource = "blocks-idp::createuser",
-            //        TenantId = bc.TenantId,
-            //        Amount = 1
-            //    }
-            //});
 
             _logger.LogInformation("User creation end -- Success");
             return new BaseMutationResponse
@@ -125,6 +118,7 @@ namespace Iam.DomainService.Users
             command.OrganizationId = tenantConfig?.IsMultiOrgEnabled ?? false 
             ? string.IsNullOrWhiteSpace(command.OrganizationId) ? DefaultOrganizationId : command.OrganizationId
             : DefaultOrganizationId;
+
             var organization = null as Organization;
             if (command.OrganizationId != DefaultOrganizationId)
             {
@@ -135,15 +129,12 @@ namespace Iam.DomainService.Users
             {
                 command.Roles = organization != null && organization.DefaultRoleForMembers != null && organization.DefaultRoleForMembers.Count > 0
                     ? organization.DefaultRoleForMembers
-                    : new List<string>();
+                    : [];
             }
-            
-            if(command.Permissions == null)
-            {
-                command.Permissions = organization != null && organization.DefaultPermissionsForMembers != null && organization.DefaultPermissionsForMembers.Count > 0
+
+            command.Permissions ??= organization != null && organization.DefaultPermissionsForMembers != null && organization.DefaultPermissionsForMembers.Count > 0
                     ? organization.DefaultPermissionsForMembers
-                    : new List<string>();
-            }
+                    : [];
 
             var user = MapUser(command);
             await _userRepository.CreateUserAsync(user);
@@ -177,9 +168,6 @@ namespace Iam.DomainService.Users
                 FirstName = command.FirstName ?? string.Empty,
                 LastName = command.LastName ?? string.Empty,
                 Platform = command.Platform,
-                OrganizationIds = new List<string> { command.OrganizationId },
-                Roles = new Dictionary<string, List<string>> { [command.OrganizationId] = command.Roles ?? new List<string>() },
-                Permissions = new Dictionary<string, List<string>> { [command.OrganizationId] = command.Permissions ?? new List<string>() },
                 UserCreationType = command.UserCreationType,
                 UserPassType = command.UserPassType,
                 Tags = command.Tags ?? new List<string>(),
@@ -205,6 +193,12 @@ namespace Iam.DomainService.Users
                 ExternalIdentities = new List<ExternalIdentity>(),
                 Attributes = command.Attributes ?? new Dictionary<string, object>(),
             };
+
+            if (!string.IsNullOrWhiteSpace(command.OrganizationId) && !user.OrganizationIds.Contains(command.OrganizationId)) 
+                 user.OrganizationIds.Add(command.OrganizationId) ;
+
+            user.Roles = !user.Roles.ContainsKey(command.OrganizationId)?  new Dictionary<string, List<string>> { [command.OrganizationId] = command.Roles ?? [] }: user.Roles;
+            user.Permissions = !user.Permissions.ContainsKey(command.OrganizationId)?  new Dictionary<string, List<string>> { [command.OrganizationId] = command.Permissions ?? [] }: user.Permissions;
 
             return user;
         }
@@ -373,7 +367,13 @@ namespace Iam.DomainService.Users
             _logger.LogInformation("Send Activation for {Id}", user.ItemId);
             var config = await _userRepository.GetIamConfigurationAsync();
             var key = Guid.NewGuid().ToString("n");
-            var accountActivationUri = string.Format("{0}?code={1}&lang={2}", config.AccountActivationUrl, key, user.Language);
+            var bc = BlocksContext.GetContext();
+            var path = $"{(config.IsOidcEnabled ? IamHelper.OidcActivateRoute + bc.TenantId : config.AccountActivationPath)}?code={key}&lang={user.Language}";
+            if (!IamHelper.TryBuildUserActionUrl(config, path, out var accountActivationUri, _httpContextAccessor, logger: _logger))
+            {
+                _logger.LogWarning("Activation URL could not be built for user {Id}", user.ItemId);
+                return false;
+            }
 
             await _cacheClient.AddStringValueAsync(key, user.ItemId, config.ActivationUrlLifetimeInMinutes * 60);
 

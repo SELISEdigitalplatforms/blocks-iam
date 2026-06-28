@@ -43,7 +43,7 @@ namespace XUnitTest.DomainService.OAuth.Services
         {
             // Arrange
             var request = new TokenRequest { Code = null, State = "valid-state" };
-            var authConfig = new AuthenticationConfiguration();
+            var authConfig = new IdentityConfiguration();
 
             // Act
             var result = await _service.AuthenticateAsync(request, authConfig);
@@ -63,7 +63,7 @@ namespace XUnitTest.DomainService.OAuth.Services
         {
             // Arrange
             var request = new TokenRequest { Code = "valid-code", State = "valid-state", GrantType = "social" };
-            var authConfig = new AuthenticationConfiguration();
+            var authConfig = new IdentityConfiguration();
             var stateInfo = new StateInfo { Provider = "google", Audience = "test-audience" };
             var stateCacheData = JsonSerializer.Serialize(stateInfo);
             var externalUser = new Mock<IExternalUserData>();

@@ -5,6 +5,7 @@ using Authentication.DomainService.Services;
 using Authentication.DomainService.Shared.RequestModel;
 using Authentication.DomainService.Utilities;
 using Blocks.Genesis;
+using Captcha.DomainService.Configuration;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.Logging;
@@ -27,6 +28,7 @@ namespace Authentication.DomainService.Authentication
         private readonly ICacheClient _cacheClient;
         private readonly IHttpService _httpService;
         private readonly ITenants _tenants;
+        private readonly ICaptchaConfigurationRepository _captchaConfigurationRepository;
         private readonly ILogger<IdpService> _logger;
 
         public IdpService(
@@ -37,6 +39,7 @@ namespace Authentication.DomainService.Authentication
             ICacheClient cacheClient,
             IHttpService httpService,
             ITenants tenants,
+            ICaptchaConfigurationRepository captchaConfigurationRepository,
             ILogger<IdpService> logger)
         {
             _authenticationRepository = authenticationRepository;
@@ -46,7 +49,24 @@ namespace Authentication.DomainService.Authentication
             _cacheClient = cacheClient;
             _httpService = httpService;
             _tenants = tenants;
+            _captchaConfigurationRepository = captchaConfigurationRepository;
             _logger = logger;
+        }
+
+        public async Task<IActionResult> GetUiConfigAsync()
+        {
+            var captchaConfiguration = await _captchaConfigurationRepository.GetCaptchaConfigurationAsync();
+
+            return new OkObjectResult(new
+            {
+                Captcha = captchaConfiguration == null || !captchaConfiguration.IsEnable ? null : new
+                {
+                    Key = captchaConfiguration.CaptchaKey,
+                    Provider = captchaConfiguration.Provider,
+                    Generator = captchaConfiguration.CaptchaGenerator
+                }
+
+            });
         }
 
         public async Task<IActionResult> StartAuthenticationFlowAsync(string clientId, string redirectUri, string? forwardedTo)
@@ -175,6 +195,8 @@ namespace Authentication.DomainService.Authentication
 
                 // Exchange authorization code for tokens at IdP
                 var tokenEndpoint = identityProvider.TokenUrl;
+                // var tokenEndpoint = "https://dev-iam.blocksdevelopers.com:5001/api/oidc/token?tenant_id=f080a1bea04280a72149fd689d50a48c";
+ 
                 var form = new Dictionary<string, string>
                 {
                     { "grant_type", "authorization_code" },
@@ -237,8 +259,8 @@ namespace Authentication.DomainService.Authentication
                 var blocksContext = BlocksContext.GetContext();
                 var resolvedTenantId = flowContext.TenantId ?? blocksContext?.TenantId ?? string.Empty;
                 var authConfiguration = await _authenticationRepository.GetAuthenticationConfigurationAsync();
-                var configuredAccessLifetimeSeconds = Math.Max((authConfiguration?.AccessTokenValidForNumberMinutes ?? AuthenticationConfiguration.DefaultAccessTokenValidForNumberMinutes) * 60, 60);
-                var configuredRefreshLifetimeMinutes = Math.Max(authConfiguration?.AbsoluteRefreshTokenValidForNumberMinutes ?? AuthenticationConfiguration.DefaultRememberMeRefreshTokenValidForNumberMinutes, 1);
+                var configuredAccessLifetimeSeconds = Math.Max((authConfiguration?.AccessTokenValidForNumberMinutes ?? IdentityConfiguration.DefaultAccessTokenValidForNumberMinutes) * 60, 60);
+                var configuredRefreshLifetimeMinutes = Math.Max(authConfiguration?.AbsoluteRefreshTokenValidForNumberMinutes ?? IdentityConfiguration.DefaultRememberMeRefreshTokenValidForNumberMinutes, 1);
                 var resolvedAccessLifetimeSeconds = tokenResponse.ExpiresIn.HasValue
                     ? Math.Max(tokenResponse.ExpiresIn.Value, 60)
                     : configuredAccessLifetimeSeconds;

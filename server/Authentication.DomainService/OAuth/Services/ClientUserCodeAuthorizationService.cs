@@ -18,7 +18,7 @@ namespace Authentication.DomainService.OAuth.Services
             _oAuthJwtAccessTokenManager = oAuthJwtAccessTokenManager;
         }
 
-        public async Task<TokenResponse> AuthenticateAsync(TokenRequest request, AuthenticationConfiguration authenticationConfiguration, User? user = null)
+        public async Task<TokenResponse> AuthenticateAsync(TokenRequest request, IdentityConfiguration authenticationConfiguration, User? user = null)
         {
             var client = await _authenticationRepository.GetBlocksClientAsync(request.ClientId);
 

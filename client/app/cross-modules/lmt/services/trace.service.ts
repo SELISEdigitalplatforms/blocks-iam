@@ -1,4 +1,4 @@
-import { http } from "@/lib/http-client";
+import { serviceInstances } from "@/lib/http-client";
 import {
   IGetTraceByTraceIdPayload,
   IGetTracesPayload,
@@ -16,7 +16,7 @@ import { TRACE_ENDPOINTS } from "../constants/endpoint.constant";
 export class TraceService {
   async getTraces(payload: IGetTracesPayload): Promise<IGetTracesResponse> {
     try {
-      const response = await http.post<IAPIResponse<Trace[]>>(TRACE_ENDPOINTS.GET_TRACES, payload);
+      const response = await serviceInstances.idpService.post<IAPIResponse<Trace[]>>(TRACE_ENDPOINTS.GET_TRACES, payload);
 
       const parsedData: TraceTree[] = response.data.map((trace) => ({
         ...trace,
@@ -51,7 +51,7 @@ export class TraceService {
     projectKey,
   }: IGetTraceByTraceIdPayload): Promise<IAPIResponse<TraceTree>> {
     try {
-      const response = await http.get<IAPIResponse<Trace[]>>(
+      const response = await serviceInstances.idpService.get<IAPIResponse<Trace[]>>(
         `${TRACE_ENDPOINTS.GET_TRACE}?TraceId=${traceId}&ProjectKey=${projectKey}`,
       );
 
