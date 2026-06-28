@@ -1183,8 +1183,8 @@ namespace Authentication.DomainService.Authentication
             {
                 Domain = cookieDomain,
                 HttpOnly = true,
-                Secure = !isLocal,
-                SameSite = isLocal ? SameSiteMode.None : SameSiteMode.Strict,
+                Secure = DomainResolver.IsCurrentRequestSecure(),
+                SameSite = DomainResolver.IsCrossOriginHttpFlow() ? SameSiteMode.None : SameSiteMode.Strict,
                 Path = "/",
                 Expires = accessExpiry
             };
@@ -1192,8 +1192,8 @@ namespace Authentication.DomainService.Authentication
             {
                 Domain = cookieDomain,
                 HttpOnly = true,
-                Secure = !isLocal,
-                SameSite = isLocal ? SameSiteMode.None : SameSiteMode.Strict,
+                Secure = DomainResolver.IsCurrentRequestSecure(),
+                SameSite = DomainResolver.IsCrossOriginHttpFlow() ? SameSiteMode.None : SameSiteMode.Strict,
                 Path = "/",
                 Expires = refreshExpiry
             };
@@ -1623,8 +1623,8 @@ namespace Authentication.DomainService.Authentication
             var cookieOptions = new CookieOptions
             {
                 HttpOnly = true,
-                Secure = !isLocal,
-                SameSite = isLocal ? SameSiteMode.None : SameSiteMode.Strict,
+                Secure = DomainResolver.IsCurrentRequestSecure(),
+                SameSite = DomainResolver.IsCrossOriginHttpFlow() ? SameSiteMode.None : SameSiteMode.Strict,
                 Path = "/",
                 Expires = absoluteExpiry == default
                     ? DateTime.UtcNow.Add(GetIdpSessionAbsoluteTimeout())
