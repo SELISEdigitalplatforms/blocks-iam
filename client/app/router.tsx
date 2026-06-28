@@ -62,6 +62,7 @@ import {
   ProjectOverviewLayout,
   DashboardLayout,
   EnvironmentsPage,
+  TooltipProvider,
 } from "@seliseblocks/blocks-kit";
 import { navigationMenus } from "./constants/navigation-menus";
 // import { ProjectOverviewLayout } from "./layouts/project-overview-layout";
@@ -124,7 +125,6 @@ export const router = createBrowserRouter([
           </AuthResolver>
         ),
         children: [
-          // ── OIDC layout (un-guarded, themed) ──
 
           // ── Public routes (unauthenticated only) ──
           {
@@ -135,7 +135,7 @@ export const router = createBrowserRouter([
             ),
 
             children: [
-              { path: "/login", element: <LoginPage /> },
+              { path: "login", element: <LoginPage /> },
 
               {
                 element: <AuthLayout />,
@@ -185,23 +185,22 @@ export const router = createBrowserRouter([
             children: [
               // ── Console group (no impersonation allowed) ──
               {
-                path: "/app",
                 element: (
                   <ConsoleLayout>
                     <Outlet />
                   </ConsoleLayout>
                 ),
                 children: [
-                  { path: "/console", element: <ConsolePage /> },
+                  { path: "console", element: <ConsolePage /> },
                   {
-                    path: "/create-project",
+                    path: "create-project",
                     element: <CreateProjectWrapper />,
                   },
-                  { path: "/profile", element: <ProfilePage /> },
+                  { path: "profile", element: <ProfilePage /> },
                 ],
               },
               {
-                path: "/project-overview",
+                path: "project-overview",
                 element: (
                   <ProjectOverviewLayout
                     redirectPaths={redirectPaths}
@@ -224,84 +223,86 @@ export const router = createBrowserRouter([
                     redirectPaths={redirectPaths}
                     navigationMenus={navigationMenus}
                   >
-                    <Outlet />
+                    <TooltipProvider delayDuration={0}>
+                      <Outlet />
+                    </TooltipProvider>
                   </DashboardLayout>
                 ),
 
                 children: [
-                  { path: "/iam", element: <IamPage /> },
+                  { path: "iam", element: <IamPage /> },
                   {
-                    path: "/user-detail/:id",
+                    path: "user-detail/:id",
                     element: <IamUserDetailPage />,
                   },
                   {
-                    path: "/role-detail/:id",
+                    path: "role-detail/:id",
                     element: <IamRoleDetailPage />,
                   },
                   {
-                    path: "/permission-detail/new",
+                    path: "permission-detail/new",
                     element: <IamAddPermissionPage />,
                   },
                   {
-                    path: "/permission-detail/:id",
+                    path: "permission-detail/:id",
                     element: <IamPermissionDetailPage />,
                   },
                   {
-                    path: "/organization-detail/:itemId",
+                    path: "organization-detail/:itemId",
                     element: <IamOrgDetailPage />,
                   },
-                  { path: "/iam/logs", element: <IamLogsPage /> },
+                  { path: "iam/logs", element: <IamLogsPage /> },
                   {
-                    path: "/iam/configure",
+                    path: "iam/configure",
                     element: <IamConfigurePage />,
                   },
                   {
-                    path: "/authentication",
+                    path: "authentication",
                     element: <AuthenticationConfigPage section="users" />,
                   },
                   {
-                    path: "/users",
+                    path: "users",
                     element: <AuthenticationConfigPage section="users" />,
                   },
                   {
-                    path: "/organizations",
+                    path: "organizations",
                     element: (
                       <AuthenticationConfigPage section="organizations" />
                     ),
                   },
                   {
-                    path: "/client-credential",
+                    path: "client-credential",
                     element: (
                       <AuthenticationConfigPage section="client-credential" />
                     ),
                   },
                   {
-                    path: "/sso-configuration",
+                    path: "sso-configuration",
                     element: <SsoConfigurationPage />,
                   },
                   {
-                    path: "/authentication/logs",
+                    path: "authentication/logs",
                     element: <AuthLogsPage />,
                   },
                   {
-                    path: "/mfa/logs",
+                    path: "mfa/logs",
                     element: <MfaLogsPage />,
                   },
                   {
-                    path: "/rate-limiter",
+                    path: "rate-limiter",
                     element: <RateLimiterPage />,
                   },
                   {
-                    path: "/managed-services",
+                    path: "managed-services",
                     element: <ManagedServicesPage />,
                   },
                   {
-                    path: "/captcha/logs",
+                    path: "captcha/logs",
                     element: <CaptchaLogsPage />,
                   },
-                  { path: "/dashboard", element: <DashboardOverview /> },
-                  // { path: "/project-overview", element: <Navigate to="/project-overview/environments" replace /> },
-                  // { path: "/project-overview/environments", element: <EnvironmentsPage /> },
+                  { path: "dashboard", element: <DashboardOverview /> },
+                  // { path: "project-overview", element: <Navigate to="project-overview/environments" replace /> },
+                  // { path: "project-overview/environments", element: <EnvironmentsPage /> },
                 ],
               },
             ],
