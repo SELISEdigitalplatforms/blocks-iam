@@ -1,8 +1,6 @@
 using Blocks.Genesis;
-using Cloud.DomainService.Utilities;
 using Authentication.DomainService.Utilities;
 using Microsoft.AspNetCore.Http.Features;
-using CloudConfiguration.DomainService.Shared.Utilities;
 
 
 var builder = WebApplication.CreateBuilder(args);
@@ -43,8 +41,6 @@ Directory.CreateDirectory(wwwrootPath);
 ApplyFrontendRuntimeSettings(builder.Configuration, wwwrootPath);
 
 services.RegisterAllServices();
-services.AddCloudDomainServices();
-services.AddCloudConfigurationServices();
 
 
 var app = builder.Build();

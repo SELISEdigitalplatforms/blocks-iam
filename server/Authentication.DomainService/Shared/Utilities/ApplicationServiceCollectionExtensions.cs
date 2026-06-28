@@ -41,6 +41,7 @@ namespace Authentication.DomainService.Utilities
             serviceCollection.AddSingleton<IJwtAccessTokenProvider, JwtAccessTokenProvider>();
 
             serviceCollection.AddSingleton<IAuthenticationService, AuthenticationService>();
+            serviceCollection.AddSingleton<IAuthenticationConfigurationService, AuthenticationConfigurationService>();
             serviceCollection.AddSingleton<IAuthenticationFlowService, AuthenticationFlowService>();
             serviceCollection.AddSingleton<IAuthorizationFlowService, AuthorizationFlowService>();
             serviceCollection.AddSingleton<IIdpService, IdpService>();
