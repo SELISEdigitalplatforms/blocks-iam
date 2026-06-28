@@ -334,7 +334,7 @@ namespace Api.Controllers
         }
 
         [HttpPost("signup-settings")]
-        [Authorize]
+        // [Authorize]
         public async Task<SaveSignUpSettingResponse> SaveSignUpSetting([FromBody] SaveSignUpSettingRequest request)
         {
             return await _accountService.SaveSignUpSettingAsync(request);
