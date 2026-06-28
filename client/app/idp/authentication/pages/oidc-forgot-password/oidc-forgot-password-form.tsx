@@ -37,7 +37,7 @@ export const OIDCForgotPasswordForm = () => {
   });
   const { isPending, mutateAsync } = useAccountRecover();
 
-  const { data: oidcUiConfig } = useOidcUiConfig();
+  const { data: oidcUiConfig, captchaEnabled } = useOidcUiConfig();
   const googleSiteKey =
     oidcUiConfig?.captcha?.key || getRuntimeEnv("BLOCKS_GOOGLE_SITE_KEY") || "";
 
@@ -118,7 +118,7 @@ export const OIDCForgotPasswordForm = () => {
             )}
           />
 
-          {isValid && <Captcha {...captcha} />}
+          {captchaEnabled && isValid && <Captcha {...captcha} />}
 
           {serverError && (
             <p className="text-sm font-sans text-[var(--danger)]">{serverError}</p>
@@ -129,7 +129,7 @@ export const OIDCForgotPasswordForm = () => {
           ) : (
             <button
               type="submit"
-              disabled={!isValid || !captchaCode}
+              disabled={!isValid || (captchaEnabled && !captchaCode)}
               className="oidc-sci-fi-btn w-full flex items-center justify-center gap-2"
             >
               <span>Send Recovery Link</span><ArrowRight size={16} />

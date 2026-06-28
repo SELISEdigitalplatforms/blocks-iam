@@ -36,7 +36,7 @@ export const ResetPasswordForm = ({ code, tenantId }: ResetPasswordFormProps) =>
     resolver: zodResolver(resetPasswordFormSchema),
   });
 
-  const { data: oidcUiConfig } = useOidcUiConfig(tenantId);
+  const { data: oidcUiConfig, captchaEnabled } = useOidcUiConfig(tenantId);
   const googleSiteKey =
     oidcUiConfig?.captcha?.key || getRuntimeEnv("BLOCKS_GOOGLE_SITE_KEY") || "";
   const { captcha, code: captchaCode, reset: resetCaptcha } = useCaptcha({
@@ -199,11 +199,11 @@ export const ResetPasswordForm = ({ code, tenantId }: ResetPasswordFormProps) =>
           />
         </div>
 
-        {isValid && requirementsMet && <Captcha {...captcha} />}
+        {captchaEnabled && isValid && requirementsMet && <Captcha {...captcha} />}
 
         <button
           type="submit"
-          disabled={isAuthenticating || !captchaCode || !isValid || !requirementsMet}
+          disabled={isAuthenticating || (captchaEnabled && !captchaCode) || !isValid || !requirementsMet}
           className="oidc-sci-fi-btn mt-1 w-full flex items-center justify-center gap-2"
         >
           {isAuthenticating ? (
