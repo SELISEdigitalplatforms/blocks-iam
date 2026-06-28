@@ -8,7 +8,7 @@ const AUTH_SUBPATH = "/auth";
 export const USER_ENDPOINTS = {
   GET_USERS: `/api${IAM_SUBPATH}/users`,
   GET_USER: `/api${IAM_SUBPATH}/users`,
-  ME: `/api${AUTH_SUBPATH}/me`,
+  ME: `/api${IAM_SUBPATH}/me`,
 
   CREATE: `/api${IAM_SUBPATH}/users/create`,
   UPDATE: `/api${IAM_SUBPATH}/users/update`,
