@@ -1,4 +1,4 @@
-import { http } from "@/lib/http-client";
+import { serviceInstances } from "@/lib/http-client";
 
 const IMPERSONATION_BASE = "/api/auth";
 
@@ -23,11 +23,11 @@ export interface ImpersonationStatusResponse {
 
 class ImpersonationService {
   startImpersonation(request: ImpersonationRequest): Promise<ImpersonationState> {
-    return http.post(`${IMPERSONATION_BASE}/impersonate`, request);
+    return serviceInstances.idpService.post(`${IMPERSONATION_BASE}/impersonate`, request);
   }
 
    stopImpersonation(): Promise<void> {
-    return http.post(
+    return serviceInstances.idpService.post(
       `${IMPERSONATION_BASE}/impersonation/stop`,
       {},
       undefined,
@@ -36,7 +36,7 @@ class ImpersonationService {
   }
 
   impersonationStatus(): Promise<ImpersonationStatusResponse> {
-    return http.post(
+    return serviceInstances.idpService.post(
       `${IMPERSONATION_BASE}/impersonation/status`,
       null,
       undefined,

@@ -1,7 +1,7 @@
 export interface IOrganization {
   itemId: string;
   name: string;
-  isEnable: boolean;
+  isEnabled: boolean;
   createdDate: string;
   lastUpdatedDate: string;
   createdBy: string;
@@ -58,6 +58,18 @@ export interface IUpdateOrganizationPayload {
 }
 
 export interface ICreateOrUpdateOrganizationResponse {
+  errors: unknown;
+  isSuccess: boolean;
+}
+
+export interface IMyOrganization {
+  itemId: string;
+  name: string;
+  createdDate: string;
+}
+
+export interface IGetMyOrganizationsResponse {
+  organizations: IMyOrganization[];
   errors: unknown;
   isSuccess: boolean;
 }

@@ -35,7 +35,7 @@ namespace Authentication.DomainService.OAuth.Services
             _userManagementMutationService = userManagementMutationService;
         }
 
-        public async Task<TokenResponse> AuthenticateAsync(TokenRequest request, AuthenticationConfiguration authenticationConfiguration, User? user = null)
+        public async Task<TokenResponse> AuthenticateAsync(TokenRequest request, IdentityConfiguration authenticationConfiguration, User? user = null)
         {
             _logger.LogInformation("Social Authentication start");
 
@@ -99,6 +99,16 @@ namespace Authentication.DomainService.OAuth.Services
             if (!user.Active || !user.IsVerified)
             {
                 return new TokenResponse { Error = "There is a user with external user id but is not active.", ErrorDescription = "There is a user with external user id but is not active", StatusCode = 401 };
+            }
+
+            if (user.LockoutUntilUtc.HasValue && user.LockoutUntilUtc.Value > DateTime.UtcNow)
+            {
+                return new TokenResponse
+                {
+                    Error = OAuthError.AccountLocked,
+                    ErrorDescription = "Account is temporarily locked due to failed authentication attempts",
+                    StatusCode = 423
+                };
             }
 
             request.OrganizationId = ResolveSignInOrganizationId(user, request.OrganizationId);

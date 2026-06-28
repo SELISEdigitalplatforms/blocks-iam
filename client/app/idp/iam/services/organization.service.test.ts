@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { mockHttpClientFactory } from "@/test-utils/__mocks__";
-import { http } from "@/lib/http-client";
+import { serviceInstances } from "@/lib/http-client";
 import { OrganizationService } from "./organization.service";
 import { ORGANIZATION_ENDPOINTS } from "../constants/endpoint.constant";
 import {
@@ -59,7 +59,7 @@ describe("OrganizationService", () => {
       const result = await service.getOrganizationById(mockGetOrganizationByIdPayload);
 
       expect(http.get).toHaveBeenCalledWith(
-        `${ORGANIZATION_ENDPOINTS.GET_ORGANIZATION}?ProjectKey=${mockGetOrganizationByIdPayload.projectKey}&ItemId=${mockGetOrganizationByIdPayload.itemId}`,
+        `${ORGANIZATION_ENDPOINTS.GET_ORGANIZATION}/${mockGetOrganizationByIdPayload.itemId}`,
       );
       expect(result).toEqual(mockGetOrganizationByIdResponse);
     });

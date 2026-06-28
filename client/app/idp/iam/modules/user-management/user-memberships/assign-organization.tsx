@@ -66,7 +66,7 @@ export const AssignOrganization = ({ userId, projectKey }: AssignOrganizationPro
   const roles = rolesData?.data || [];
 
   // Show all enabled organizations (including already-assigned ones)
-  const orgOptions = organizations.filter((org) => org.isEnable);
+  const orgOptions = organizations.filter((org) => org.isEnabled);
 
   // Convert roles to options format for MultiSelect
   const roleOptions = roles.map((role) => ({
