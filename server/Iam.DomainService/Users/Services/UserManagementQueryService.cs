@@ -112,13 +112,14 @@ namespace Iam.DomainService.Users
                 ["profileImageUrl"] = user.ProfileImageUrl ?? string.Empty,
                 ["mfaEnabled"] = user.MfaEnabled,
                 ["lastLoggedInTime"] = user.LastLoggedInTime,
-                ["loginCount"] = user.LogInCount
+                ["loginCount"] = user.LogInCount,
+                ["createdDate"] = user.CreatedDate
             };
         }
 
         private static Dictionary<string, object> MapToSingleAccountFields(GetAccounts user, string contextOrgId)
         {
-            if (!user.OrganizationIds.Contains(contextOrgId) || contextOrgId != "default")
+            if (!user.OrganizationIds.Contains(contextOrgId))
             {
                 return new Dictionary<string, object>();
             }
@@ -148,6 +149,7 @@ namespace Iam.DomainService.Users
                 ["logInCount"] = user.LogInCount,
                 ["lastLoggedInTime"] = user.LastLoggedInTime,
                 ["lastLoggedInDeviceInfo"] = user.LastLoggedInDeviceInfo ?? string.Empty,
+                ["organizationId"] = contextOrgId
             };
         }
 
