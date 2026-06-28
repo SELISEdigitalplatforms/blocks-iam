@@ -378,21 +378,15 @@ namespace Blocks.Api.Controllers
 private CookieOptions CreateSessionCookieOptions(string tenantId)
         {
             var expiresAt = DateTime.UtcNow.AddDays(30);
-
-            if (DomainResolver.IsLocalhost())
-            {
-                var loopback = DomainResolver.CreateLoopbackCookieOptions(expiresAt);
-                loopback.Path = "/api/oidc";
-                return loopback;
-            }
-
             var tenant = _tenants.GetTenantByID(tenantId);
             var (_, cookieDomain, isResolved) = DomainResolver.ResolveDomain(tenant, Request);
-            var production = DomainResolver.CreateProductionCookieOptions(
-                isResolved ? cookieDomain : null,
-                expiresAt);
-            production.Path = "/api/oidc";
-            return production;
+            var resolvedDomain = isResolved ? cookieDomain : null;
+
+            var cookieOptions = DomainResolver.IsLocalhost()
+                ? DomainResolver.CreateLoopbackCookieOptions(resolvedDomain, expiresAt)
+                : DomainResolver.CreateProductionCookieOptions(resolvedDomain, expiresAt);
+            cookieOptions.Path = "/api/oidc";
+            return cookieOptions;
         }
     }
 

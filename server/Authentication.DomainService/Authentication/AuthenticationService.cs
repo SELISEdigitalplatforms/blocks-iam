@@ -912,7 +912,7 @@ namespace Authentication.DomainService.Authentication
         private static CookieOptions CreateCookieOptions(string? domain, DateTime expiresUtc)
         {
             return DomainResolver.IsLocalhost()
-                ? DomainResolver.CreateLoopbackCookieOptions(expiresUtc)
+                ? DomainResolver.CreateLoopbackCookieOptions(domain, expiresUtc)
                 : DomainResolver.CreateProductionCookieOptions(domain, expiresUtc);
         }
 
