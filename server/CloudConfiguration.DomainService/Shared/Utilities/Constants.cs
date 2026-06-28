@@ -51,8 +51,6 @@ namespace CloudConfiguration.DomainService.Shared.Utilities
         }
 
         public const string AuthenticationQueue = "blocks_authentication_listener";
-        public const string DefaultMfaTemplateName = "MfaViaEmail";
-        public const string DefaultMfaTemplateId = "0b121378-3c3d-44f3-a855-9da08cbef48c";
         public const string StorageQueue = "blocks_storage_listener";
         private const string DefaultProvider = "azure";
         private const string RabbitMqProvider = "rabbitmq";

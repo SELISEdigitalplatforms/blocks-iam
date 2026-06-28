@@ -1,9 +1,7 @@
 using Authentication.DomainService.OAuth.SocialServices;
+using Blocks.CaptchaDriver;
 using Blocks.Extension.DependencyInjection;
 using Idp.DomainService.Oidc.Services;
-using Captcha.DomainService.Captcha;
-using Captcha.DomainService.Configuration;
-using Captcha.DomainService.Utilities;
 using Authentication.DomainService.Authentication;
 using Authentication.DomainService.Oidc.Repositories;
 using Authentication.DomainService.Oidc.Services;
@@ -142,29 +140,7 @@ namespace Authentication.DomainService.Utilities
 
             #endregion
 
-            #region Captcha
-
-            // Verification handlers
-            serviceCollection.AddSingleton<ReCaptchaVerificationService>();
-            serviceCollection.AddSingleton<HCaptchaVerificationService>();
-            serviceCollection.AddSingleton<BlocksCaptchaVerificationService>();
-
-            // Register services
-            serviceCollection.AddSingleton<ICaptchaService, CaptchaService>();
-            serviceCollection.AddSingleton<ICaptchaConfigurationService, CaptchaConfigurationService>();
-            serviceCollection.AddSingleton<ICaptchaConfigurationRepository, CaptchaConfigurationRepository>();
-            serviceCollection.AddSingleton<ICaptchaGeneratorProvider, CaptchaGeneratorProvider>();
-            serviceCollection.AddSingleton<IContextCaptchaIdGeneratorService, ContextCaptchaIdGeneratorService>();
-            serviceCollection.AddSingleton<ICaptchaVerificationServiceProvider, CaptchaVerificationServiceProvider>();
-            serviceCollection.AddSingleton<IHttpClientService, HttpClientService>();
-            serviceCollection.AddSingleton<IRecaptchaConfigFactory, RecaptchaConfigFactory>();
-            serviceCollection.AddSingleton<ICaptchaProcessor, CaptchaProcessor>();
-
-            // Register validator
-            serviceCollection.AddTransient<IValidator<CreateCaptchaRequest>, CreateCaptchaCommandValidator>();
-            serviceCollection.AddTransient<IValidator<SubmitCaptchaRequest>, SubmitCaptchaCommandValidator>();
-
-            #endregion
+            serviceCollection.RegisterBlocksCaptchaService();
 
             serviceCollection.AddSingleton<UnifiedTokenSessionService, UnifiedTokenSessionService>();
             serviceCollection.AddSingleton<IImpersonationFlowHelper, ImpersonationFlowHelper>();

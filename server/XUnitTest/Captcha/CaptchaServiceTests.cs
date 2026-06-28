@@ -1,6 +1,5 @@
+using Blocks.CaptchaDriver;
 using Blocks.Genesis;
-using Captcha.DomainService.Captcha;
-using Captcha.DomainService.Configuration;
 using FluentAssertions;
 using FluentValidation;
 using FluentValidation.Results;
@@ -11,7 +10,6 @@ namespace XUnitTest.Captcha
 {
     public class CaptchaServiceTests
     {
-        private readonly Mock<IValidator<CreateCaptchaRequest>> _createCaptchaValidator;
         private readonly Mock<IValidator<SubmitCaptchaRequest>> _submitCaptchaValidator;
         private readonly Mock<ICaptchaProcessor> _captchaProcessor;
         private readonly Mock<ICaptchaConfigurationService> _configurationService;
@@ -20,7 +18,6 @@ namespace XUnitTest.Captcha
 
         public CaptchaServiceTests()
         {
-            _createCaptchaValidator = new Mock<IValidator<CreateCaptchaRequest>>();
             _submitCaptchaValidator = new Mock<IValidator<SubmitCaptchaRequest>>();
             _captchaProcessor = new Mock<ICaptchaProcessor>();
             _configurationService = new Mock<ICaptchaConfigurationService>();
@@ -28,67 +25,11 @@ namespace XUnitTest.Captcha
 
             _service = new CaptchaService(
                 _captchaProcessor.Object,
-                _createCaptchaValidator.Object,
                 _submitCaptchaValidator.Object,
                 _logger.Object,
                 _configurationService.Object
             );
         }
-
-        #region CreateCaptcha Tests
-
-        [Fact]
-        public void CreateCaptcha_WithValidRequest_ReturnsSuccessResponse()
-        {
-            // Arrange
-            var request = new CreateCaptchaRequest { ConfigurationName = "test-config" };
-            var validationResult = new ValidationResult();
-            var captchaInfo = new CaptchaInformation
-            {
-                Id = "captcha-123",
-                Captcha = "ABC123"
-            };
-
-            _createCaptchaValidator.Setup(x => x.Validate(request)).Returns(validationResult);
-            _captchaProcessor.Setup(x => x.GetCaptchaInformation(request.ConfigurationName))
-                .Returns(captchaInfo);
-
-            // Act
-            var result = _service.CreateCaptcha(request);
-
-            // Assert
-            result.Should().NotBeNull();
-            result.IsSuccess.Should().BeTrue();
-            result.Id.Should().Be("captcha-123");
-            result.Captcha.Should().Be("ABC123");
-            _createCaptchaValidator.Verify(x => x.Validate(request), Times.Once);
-            _captchaProcessor.Verify(x => x.GetCaptchaInformation(request.ConfigurationName), Times.Once);
-        }
-
-        [Fact]
-        public void CreateCaptcha_WithValidationFailure_ReturnsFailureResponse()
-        {
-            // Arrange
-            var request = new CreateCaptchaRequest { ConfigurationName = "" };
-            var validationResult = new ValidationResult(new[]
-            {
-                new ValidationFailure("ConfigurationName", "Configuration name is required")
-            });
-
-            _createCaptchaValidator.Setup(x => x.Validate(request)).Returns(validationResult);
-
-            // Act
-            var result = _service.CreateCaptcha(request);
-
-            // Assert
-            result.Should().NotBeNull();
-            result.IsSuccess.Should().BeFalse();
-            result.Errors.Should().ContainKey("ConfigurationName");
-            _createCaptchaValidator.Verify(x => x.Validate(request), Times.Once);
-            _captchaProcessor.Verify(x => x.GetCaptchaInformation(It.IsAny<string>()), Times.Never);
-        }
-
-        #endregion
 
         #region SubmitCaptchaAsync Tests
 
@@ -96,7 +37,7 @@ namespace XUnitTest.Captcha
         public async Task SubmitCaptchaAsync_WithValidRequest_ReturnsSuccessResponse()
         {
             // Arrange
-            var request = new SubmitCaptchaRequest { Id = "captcha-123", Value = "ABC123" };
+            var request = new SubmitCaptchaRequest { Id = "captcha-123" };
             var validationResult = new ValidationResult();
             var verificationCode = "verification-456";
 
@@ -120,7 +61,7 @@ namespace XUnitTest.Captcha
         public async Task SubmitCaptchaAsync_WithValidationFailure_ReturnsFailureResponse()
         {
             // Arrange
-            var request = new SubmitCaptchaRequest { Id = null, Value = "ABC123" };
+            var request = new SubmitCaptchaRequest { Id = null };
             var validationResult = new ValidationResult(new[]
             {
                 new ValidationFailure("Id", "Id cannot be null")

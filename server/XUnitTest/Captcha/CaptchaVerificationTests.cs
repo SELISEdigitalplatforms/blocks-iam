@@ -1,7 +1,5 @@
+using Blocks.CaptchaDriver;
 using Blocks.Genesis;
-using Captcha.DomainService.Captcha;
-using Captcha.DomainService.Configuration;
-using Captcha.DomainService.Utilities;
 using FluentAssertions;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;

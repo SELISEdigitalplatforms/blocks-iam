@@ -1,5 +1,5 @@
+using Blocks.CaptchaDriver;
 using Blocks.Genesis;
-using Captcha.DomainService.Configuration;
 using FluentAssertions;
 using MongoDB.Driver;
 using Moq;
