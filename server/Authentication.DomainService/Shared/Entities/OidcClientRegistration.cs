@@ -50,11 +50,12 @@ namespace Authentication.DomainService.Entities
         }
 
         [BsonIgnore]
-        public string? ServiceAccessResource
-        {
-            get => AllowedServiceAccessResources.FirstOrDefault();
-            set => AllowedServiceAccessResources = string.IsNullOrWhiteSpace(value) ? new() : new() { value };
-        }
+        public string? ServiceAccessResource { get;set;  }
+      //  {
+            // get => AllowedServiceAccessResources.FirstOrDefault();
+            // set => AllowedServiceAccessResources = string.IsNullOrWhiteSpace(value) ? new() : new() { value };
+
+       // }
 
         [BsonIgnore]
         public string? ClientDisplayName
