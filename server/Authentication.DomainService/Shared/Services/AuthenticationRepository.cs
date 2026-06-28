@@ -4,6 +4,7 @@ using Authentication.DomainService.RequestModel;
 using Authentication.DomainService.Shared.RequestModel;
 using Authentication.DomainService.Shared.ResponseModel;
 using Iam.DomainService.Entities;
+using Microsoft.IdentityModel.Protocols.OpenIdConnect;
 using MongoDB.Driver;
 
 namespace Authentication.DomainService.Services
@@ -139,7 +140,7 @@ namespace Authentication.DomainService.Services
         }
         public async Task<bool> RevokeIdentitySessionsBySessionIdsAsync(IEnumerable<string> sessionIds)
         {
-             var collection = GetCollection<IdentitySession>();
+            var collection = GetCollection<IdentitySession>();
             var update = Builders<IdentitySession>.Update.Set(x => x.IsActive, false)
                 .Set(x => x.ExpiresUtc, DateTime.UtcNow)
                 .Set(x => x.UpdatedAt, DateTime.UtcNow);
@@ -307,7 +308,7 @@ namespace Authentication.DomainService.Services
             int resetWindowDays)
         {
             var now = DateTime.UtcNow;
-            
+
             // Reset counter if last lockout was too long ago
             if (lastLockoutUtc.HasValue && (now - lastLockoutUtc.Value).TotalDays >= resetWindowDays)
             {
@@ -388,20 +389,88 @@ namespace Authentication.DomainService.Services
 
         public async Task<IdentityProvider> CreateIdentityProviderAsync(IdentityProvider provider)
         {
+            await PopulateProviderEndpointsFromWellKnownAsync(provider);
+
             provider.ItemId = Guid.NewGuid().ToString();
             provider.CreatedDate = DateTime.UtcNow;
             provider.CreatedBy = BlocksContext.GetContext()?.UserId ?? "system";
-            
+            provider.LastUpdatedDate = DateTime.UtcNow;
+            provider.LastUpdatedBy = BlocksContext.GetContext()?.UserId ?? "system";
+
             var collection = GetCollection<IdentityProvider>();
             await collection.InsertOneAsync(provider);
             return provider;
         }
 
+        private static async Task PopulateProviderEndpointsFromWellKnownAsync(IdentityProvider provider)
+        {
+            if (provider == null)
+            {
+                return;
+            }
+
+            if (string.IsNullOrWhiteSpace(provider.WellKnownUrl))
+            {
+                provider.WellKnownUrl = GetDefaultWellKnownUrl(provider.Provider);
+            }
+
+            OpenIdConnectConfiguration? metadata = null;
+
+            if (!string.IsNullOrWhiteSpace(provider.WellKnownUrl))
+            {
+                metadata = await AuthenticationDomainService.GetMetadataAsync(provider.WellKnownUrl);
+                provider.AuthorizationUrl = metadata?.AuthorizationEndpoint;
+                provider.TokenUrl = metadata?.TokenEndpoint;
+                provider.UserInfoUrl = metadata?.UserInfoEndpoint;
+                provider.JwksUri = metadata?.JwksUri;
+                provider.Issuer = metadata?.Issuer;
+            }
+
+            else
+            {
+                var socialMetadata = GetSocialMetadata(provider.Provider);
+
+                provider.WellKnownUrl ??= socialMetadata?.WellKnownUrl;
+                provider.AuthorizationUrl ??= socialMetadata?.AuthorizationUrl;
+                provider.TokenUrl ??= socialMetadata?.TokenUrl;
+            }
+        }
+
+        private static string? GetDefaultWellKnownUrl(string? providerName)
+        {
+            return GetSocialMetadata(providerName)?.WellKnownUrl;
+        }
+
+        private static SocialMetadata? GetSocialMetadata(string? providerName)
+        {
+            if (string.IsNullOrWhiteSpace(providerName))
+            {
+                return null;
+            }
+
+            var normalizedProviderName = providerName.Trim().ToLowerInvariant();
+
+            return normalizedProviderName switch
+            {
+                var value when value.Contains("google") => new SocialMetadata(
+                    "https://accounts.google.com/.well-known/openid-configuration",
+                    "https://accounts.google.com/o/oauth2/v2/auth",
+                    "https://oauth2.googleapis.com/token"),
+                var value when value.Contains("microsoft") => new SocialMetadata(
+                    "https://login.microsoftonline.com/common/v2.0/.well-known/openid-configuration",
+                    "https://login.microsoftonline.com/common/oauth2/v2.0/authorize",
+                    "https://login.microsoftonline.com/common/oauth2/v2.0/token"),
+                _ => null
+            };
+        }
+
+        private sealed record SocialMetadata(string WellKnownUrl, string AuthorizationUrl, string TokenUrl);
+
         public async Task<IdentityProvider> UpdateIdentityProviderAsync(IdentityProvider provider)
         {
             provider.LastUpdatedDate = DateTime.UtcNow;
             provider.LastUpdatedBy = BlocksContext.GetContext()?.UserId ?? "system";
-            
+
             var collection = GetCollection<IdentityProvider>();
             var filter = Builders<IdentityProvider>.Filter.Eq(x => x.ItemId, provider.ItemId);
             var options = new ReplaceOptions { IsUpsert = false };

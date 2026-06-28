@@ -362,7 +362,7 @@ export const mockResourceGroupResponse = [
 export const mockOrganization: IOrganization = {
   itemId: MOCK_ORGANIZATION_ITEM_ID,
   name: "Test Organization",
-  isEnable: true,
+  isEnabled: true,
   createdDate: "2026-01-15T10:00:00Z",
   lastUpdatedDate: "2026-01-15T10:00:00Z",
   createdBy: "admin",
@@ -399,7 +399,7 @@ export const mockSaveOrganizationPayload: ICreateOrUpdateOrganizationPayload = {
   projectKey: TEST_PROJECT_KEY,
   name: "New Organization",
   itemId: "",
-  isEnable: true,
+  isEnabled: true,
 };
 
 export const mockOrganizationConfigResponse: IOrganizationConfigResponse = {
