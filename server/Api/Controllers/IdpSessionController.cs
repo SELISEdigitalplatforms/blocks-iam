@@ -379,7 +379,7 @@ namespace Blocks.Api.Controllers
             return new CookieOptions
             {
                 HttpOnly = true,
-                Secure = !isLocal,
+                Secure = DomainResolver.IsCurrentRequestSecure(),
                 SameSite = isLocal ? SameSiteMode.None : SameSiteMode.Strict,
                 Path = "/api/oidc",
                 Expires = DateTime.UtcNow.AddDays(30)
