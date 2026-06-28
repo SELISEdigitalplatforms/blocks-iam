@@ -32,38 +32,41 @@ namespace Authentication.DomainService.Utilities
             if (hostEnv.Equals("Development", StringComparison.OrdinalIgnoreCase))
                 return true;
 
-            var request = _httpContextAccessor?.HttpContext?.Request;
+            if (!TryGetRequestOriginUri(out var uri))
+                return false;
 
-            string? origin = request?.Headers["Origin"].ToString();
-            string? referer = request?.Headers["Referer"].ToString();
-
-            if (IsLocalUrl(origin) || IsLocalUrl(referer))
+            // True localhost dev (any port on loopback hosts) -> local.
+            // Cross-origin http/https flow (e.g. SSO between app and idp hosts) -> also treated as local
+            // so that SameSite=None cookies can flow across origins.
+            if (IsLoopbackHost(uri.Host))
                 return true;
 
-            // Fallback: treat as production
-            return false;
+            var isHttpOrHttps =
+                uri.Scheme.Equals("http", StringComparison.OrdinalIgnoreCase) ||
+                uri.Scheme.Equals("https", StringComparison.OrdinalIgnoreCase);
+
+            return isHttpOrHttps && uri.Port > 0 && uri.Port <= 65535;
         }
 
-        private static bool IsLocalUrl(string? url)
+        private static bool TryGetRequestOriginUri(out Uri uri)
         {
-            if (string.IsNullOrWhiteSpace(url))
+            uri = null!;
+            var request = _httpContextAccessor?.HttpContext?.Request;
+            var origin = request?.Headers.Origin.ToString();
+            var referer = request?.Headers.Referer.ToString();
+
+            var raw = !string.IsNullOrWhiteSpace(origin) ? origin : referer;
+            if (string.IsNullOrWhiteSpace(raw))
                 return false;
-            try
-            {
-                var uri = new Uri(url);
-                // Only genuine loopback hosts count as "local". A non-default port
-                // (e.g. a real domain served on :5000) must NOT be treated as
-                // localhost - doing so previously forced the auth cookies to be
-                // host-only on the IDP host instead of scoped to the shared parent
-                // domain, so they never reached the app host.
-                if (uri.Host.Equals("localhost", StringComparison.OrdinalIgnoreCase)
-                    || uri.Host.Equals("127.0.0.1")
-                    || uri.Host.Equals("::1"))
-                    return true;
-            }
-            catch { /* ignore parse errors */ }
-            return false;
+
+            return Uri.TryCreate(raw, UriKind.Absolute, out uri);
         }
+
+        private static bool IsLoopbackHost(string host) =>
+            host.Equals("localhost", StringComparison.OrdinalIgnoreCase)
+                || host.Equals("127.0.0.1", StringComparison.OrdinalIgnoreCase)
+                || host.Equals("::1", StringComparison.OrdinalIgnoreCase);
+
         public static (string? domain, string? cookieDomain, bool isResolved) ResolveDomain(
             Tenant? tenant,
             HttpRequest? request)
@@ -242,37 +245,10 @@ namespace Authentication.DomainService.Utilities
                 // cookies must be SameSite=None (which mandates Secure, set above).
                 // SameSite=Strict would stop the browser from accepting/sending them
                 // on the cross-site flow.
-                SameSite = (isLocal || IsLocalOrHttpOrigin()) ? SameSiteMode.None : SameSiteMode.Strict,
+                SameSite = isLocal ? SameSiteMode.None : SameSiteMode.Strict,
                 Path = "/",
                 Expires = expiresUtc == default ? DateTime.UtcNow : expiresUtc
             };
-        }
-
-        public static bool IsLocalOrHttpOrigin()
-        {
-            var request = _httpContextAccessor?.HttpContext?.Request;
-
-            var origin = request?.Headers.Origin.ToString();
-            var referer = request?.Headers.Referer.ToString();
-
-            var value = !string.IsNullOrWhiteSpace(origin)
-                ? origin
-                : referer;
-
-            if (string.IsNullOrWhiteSpace(value))
-                return false;
-
-            if (!Uri.TryCreate(value, UriKind.Absolute, out var uri))
-                return false;
-
-            var isHttpOrHttps =
-                uri.Scheme.Equals("http", StringComparison.OrdinalIgnoreCase) ||
-                uri.Scheme.Equals("https", StringComparison.OrdinalIgnoreCase);
-
-            var isValidPort =
-                uri.Port > 0 && uri.Port <= 65535;
-
-            return isHttpOrHttps && isValidPort;
         }
 
         public static string GetRootDomain(string host)
