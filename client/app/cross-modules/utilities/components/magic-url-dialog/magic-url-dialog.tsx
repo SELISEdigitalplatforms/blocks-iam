@@ -49,6 +49,7 @@ export function MagicUrlDialog({ open, onOpenChange, trigger, initialData }: Mag
   const { user } = useAuthStore();
   const userId = user?.sub || "";
 
+
   const {
     register,
     formState: { errors, isValid },
