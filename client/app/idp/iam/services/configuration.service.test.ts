@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { mockHttpClientFactory } from "@/test-utils/__mocks__";
-import { http } from "@/lib/http-client";
+import { serviceInstances } from "@/lib/http-client";
 import { ConfigurationService } from "./configuration.service";
 import { IAM_CONFIGURATION_ENDPOINTS } from "../constants/endpoint.constant";
 import { TEST_PROJECT_KEY } from "@/test-utils/__mocks__/data.mock";

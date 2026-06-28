@@ -16,25 +16,17 @@ import {
   useGetSignUpSetting,
   useSaveSignUpSetting,
 } from "@blocks-idp/iam/hooks/use-user";
-import { useProjectStore } from "@seliseblocks/blocks-kit";
 
 export const SignupSettings = () => {
   const [open, setOpen] = useState(false);
   const [allowSignup, setAllowSignup] = useState(false);
   const [emailPassword, setEmailPassword] = useState(false);
   const [sso, setSso] = useState(false);
+  const [defaultRoles, setDefaultRoles] = useState<string[]>([]);
+  const [defaultPermissions, setDefaultPermissions] = useState<string[]>([]);
   const initializedRef = useRef(false);
 
-  const tenantId = useProjectStore().selectedProject?.tenantId || "";
-
-  const { data: signUpSettingData } = useGetSignUpSetting(
-    {
-      projectKey: tenantId,
-    },
-    {
-      enabled: !!tenantId,
-    },
-  );
+  const { data: signUpSettingData } = useGetSignUpSetting();
 
   const { mutateAsync: saveSignUpSetting, isPending } = useSaveSignUpSetting();
 
@@ -46,6 +38,8 @@ export const SignupSettings = () => {
       setEmailPassword(ep);
       setSso(ssoEnabled);
       setAllowSignup(ep || ssoEnabled);
+      setDefaultRoles(signUpSettingData.DefaultRolesForNewUser ?? []);
+      setDefaultPermissions(signUpSettingData.DefaultPermissionsForNewUser ?? []);
     }
   }, [signUpSettingData]);
 
@@ -63,8 +57,8 @@ export const SignupSettings = () => {
     await saveSignUpSetting({
       isEmailPasswordSignUpEnabled: allowSignup && emailPassword,
       isSSoSignUpEnabled: allowSignup && sso,
-      projectKey: tenantId,
-      itemId: signUpSettingData?.itemId || "",
+      defaultRolesForNewUserOnSignUp: defaultRoles,
+      defaultPermissionsForNewUserOnSignUp: defaultPermissions,
     });
     setOpen(false);
   };

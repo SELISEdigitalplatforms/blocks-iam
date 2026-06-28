@@ -6,7 +6,7 @@ namespace Captcha.DomainService.Captcha
 {
     public class CaptchaGeneratorProvider : ICaptchaGeneratorProvider
     {
-        private readonly string _collectionName = "CaptchaConfigurations";
+        private readonly string _collectionName = "Secrets";
         private readonly IDbContextProvider _dbContextProvider;
 
         private static readonly IDictionary<string, ICaptchaGenerator> CaptchaGenerators = new Dictionary<string, ICaptchaGenerator>
@@ -28,10 +28,13 @@ namespace Captcha.DomainService.Captcha
 
         public virtual string GetGeneratorName(string configurationName)
         {
-            var collection = _dbContextProvider.GetCollection<CaptchaConfiguration>(_collectionName);
-            var filter = Builders<CaptchaConfiguration>.Filter.Eq(mc => mc.Provider, configurationName);
+            var collection = _dbContextProvider.GetCollection<Secret>(_collectionName);
+            var filter = Builders<Secret>.Filter.And(
+                Builders<Secret>.Filter.Eq(s => s.SecretKey, CaptchaSecretKeys.SecretKey),
+                Builders<Secret>.Filter.Eq($"KeyValuePairs.{CaptchaSecretKeys.Provider}", configurationName));
             var setting = collection.Find(filter).FirstOrDefault();
-            var generatorName = setting == null ? nameof(HardCaptchaGenerator) : setting.CaptchaGenerator.ToString();
+            var captchaGenerator = setting?.KeyValuePairs?.GetValueOrDefault(CaptchaSecretKeys.CaptchaGenerator);
+            var generatorName = string.IsNullOrWhiteSpace(captchaGenerator) ? nameof(HardCaptchaGenerator) : captchaGenerator;
 
             return generatorName.ToLower();
         }

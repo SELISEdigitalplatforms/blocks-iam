@@ -1,11 +1,10 @@
 ﻿using Blocks.Genesis;
-using Iam.DomainService.Shared.Entities;
 using MongoDB.Bson.Serialization.Attributes;
 
 namespace Iam.DomainService.Entities
 {
     [BsonIgnoreExtraElements]
-    public class User : BaseEntity  
+    public class User   
     {
         public string? Salutation { get; set; }
         public string? FirstName { get; set; }
@@ -30,6 +29,8 @@ namespace Iam.DomainService.Entities
         public DateTime? LastCredentialRotationAtUtc { get; set; }
         public int FailedLoginCount { get; set; }
         public DateTime? LastFailedLoginUtc { get; set; }
+        public int FailedMfaCount { get; set; }
+        public DateTime? LastFailedMfaUtc { get; set; }
         public DateTime? LockoutUntilUtc { get; set; }
         public int LockoutCount { get; set; } // Tracks how many times account has been locked (for exponential backoff)
         public DateTime? LastLockoutUtc { get; set; } // When the last lockout was applied
@@ -56,7 +57,27 @@ namespace Iam.DomainService.Entities
         public string? DeactivatedBy { get; set; }
         public string? ExternalUserId { get; set; }
         public List<ExternalIdentity> ExternalIdentities { get; set; } = new List<ExternalIdentity>();
+        public List<string> OrganizationIds { get; set; } = [];
         public Dictionary<string, object> Attributes { get; set; } = new Dictionary<string, object>(); // For any additional info that doesn't fit into existing properties
+
+        #region BaseEntity properties
+
+        [BsonId]
+        public string ItemId { get; set; } = string.Empty;
+
+        public DateTime CreatedDate { get; set; }
+
+        public DateTime LastUpdatedDate { get; set; }
+
+        public string? CreatedBy { get; set; }
+
+        public string? Language { get; set; }
+
+        public string? LastUpdatedBy { get; set; }
+
+        public List<string> Tags { get; set; } = [];
+
+        #endregion
     }
 
     public class UserMfaEnrollment

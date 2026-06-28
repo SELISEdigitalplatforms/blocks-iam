@@ -23,7 +23,6 @@ namespace XUnitTest.DomainService.OAuth.Services
         private readonly Mock<ICryptoService> _cryptoService = new();
         private readonly Mock<IAuthenticationRepository> _oAuthRepository = new();
         private readonly Mock<IAuthenticationDomainService> _authenticationDomainService = new();
-        private readonly Mock<ICacheClient> _cacheClient = new();
         private readonly Mock<IAccountService> _accountService = new();
         private readonly PasswordAuthenticationService _service;
 
@@ -36,7 +35,6 @@ namespace XUnitTest.DomainService.OAuth.Services
                 _cryptoService.Object,
                 _oAuthRepository.Object,
                 _authenticationDomainService.Object,
-                _cacheClient.Object,
                 _accountService.Object);
 
             _authenticationDomainService
@@ -67,19 +65,11 @@ namespace XUnitTest.DomainService.OAuth.Services
         }
 
         [Fact]
-        public void AuthenticationConfiguration_DefaultDailyLimit_Is500()
-        {
-            var config = new AuthenticationConfiguration();
-
-            config.MaxLoginAttemptsPerIpPerDay.Should().Be(500);
-        }
-
-        [Fact]
         public async Task AuthenticateAsync_WithInvalidUser_ReturnsInvalidResponse()
         {
             // Arrange
             var request = BuildTokenRequest("nonexistent@example.com", "password123", "org-123");
-            var authConfig = new AuthenticationConfiguration();
+            var authConfig = new IdentityConfiguration();
 
             _oAuthRepository
                 .Setup(x => x.GetUserByUsernameAsync(request.Username, request.OrganizationId))
@@ -93,48 +83,8 @@ namespace XUnitTest.DomainService.OAuth.Services
             result.Error.Should().NotBeNullOrEmpty();
             _oAuthRepository.Verify(x => x.GetUserByUsernameAsync(request.Username, request.OrganizationId), Times.Once);
             _oAuthJwtAccessTokenManager.Verify(
-                x => x.ManageTokenAsync(It.IsAny<TokenRequest>(), It.IsAny<AuthenticationConfiguration>(), It.IsAny<User>(), It.IsAny<StateInfo>()),
+                x => x.ManageTokenAsync(It.IsAny<TokenRequest>(), It.IsAny<IdentityConfiguration>(), It.IsAny<User>(), It.IsAny<StateInfo>()),
                 Times.Never);
-        }
-
-        [Fact]
-        public async Task AuthenticateAsync_WhenDailyLimitExceeded_ReturnsIpRateLimited()
-        {
-            // Arrange
-            var request = BuildTokenRequest("test@example.com", "password123", "org-123");
-            var authConfig = new AuthenticationConfiguration
-            {
-                MaxLoginAttemptsPerIpPerHour = 100,
-                MaxLoginAttemptsPerIpPerDay = 500
-            };
-            var user = new User
-            {
-                ItemId = "user-789",
-                Email = "test@example.com",
-                UserName = "test@example.com",
-                Password = BCryptNet.HashPassword("password123"),
-                Active = true,
-                IsVerified = true
-            };
-
-            _oAuthRepository
-                .Setup(x => x.GetUserByUsernameAsync(request.Username, request.OrganizationId))
-                .ReturnsAsync(user);
-            _cacheClient
-                .Setup(x => x.GetStringValueAsync(It.Is<string>(k => k.StartsWith("login_ip_hourly:127.0.0.1:"))))
-                .ReturnsAsync("8");
-            _cacheClient
-                .Setup(x => x.GetStringValueAsync(It.Is<string>(k => k.StartsWith("login_ip_daily:127.0.0.1:"))))
-                .ReturnsAsync("500");
-
-            // Act
-            var result = await _service.AuthenticateAsync(request, authConfig);
-
-            // Assert
-            result.Should().NotBeNull();
-            result.StatusCode.Should().Be(429);
-            result.Error.Should().Be("ip_rate_limited");
-            _cacheClient.Verify(x => x.AddStringValueAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<int>()), Times.Never);
         }
 
         [Fact]
@@ -142,10 +92,8 @@ namespace XUnitTest.DomainService.OAuth.Services
         {
             // Arrange
             var request = BuildTokenRequest("lockme@example.com", "wrong-password", "org-123");
-            var authConfig = new AuthenticationConfiguration
+            var authConfig = new IdentityConfiguration
             {
-                MaxLoginAttemptsPerIpPerHour = 100,
-                MaxLoginAttemptsPerIpPerDay = 500,
                 GetNumberOfWrongAttemptsToLockTheAccount = 5,
                 AccountLockDurationInMinutes = 5
             };
@@ -178,16 +126,6 @@ namespace XUnitTest.DomainService.OAuth.Services
             _oAuthRepository
                 .Setup(x => x.IncrementFailedLoginAndApplyLockoutAsync(user.ItemId, authConfig.GetNumberOfWrongAttemptsToLockTheAccount, authConfig.AccountLockDurationInMinutes, It.IsAny<DateTime>()))
                 .ReturnsAsync(updatedUser);
-
-            _cacheClient
-                .Setup(x => x.GetStringValueAsync(It.Is<string>(k => k.StartsWith("login_ip_hourly:127.0.0.1:"))))
-                .ReturnsAsync("1");
-            _cacheClient
-                .Setup(x => x.GetStringValueAsync(It.Is<string>(k => k.StartsWith("login_ip_daily:127.0.0.1:"))))
-                .ReturnsAsync("1");
-            _cacheClient
-                .Setup(x => x.AddStringValueAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<int>()))
-                .ReturnsAsync(true);
 
             _accountService
                 .Setup(x => x.SendAccountLockedNotificationAsync(It.IsAny<User>(), It.IsAny<DateTime>()))

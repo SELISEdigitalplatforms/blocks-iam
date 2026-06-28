@@ -242,13 +242,13 @@ namespace Authentication.DomainService.Utilities
                 // cookies must be SameSite=None (which mandates Secure, set above).
                 // SameSite=Strict would stop the browser from accepting/sending them
                 // on the cross-site flow.
-                SameSite = isLocal || IsLocalOrHttpOrigin() ? SameSiteMode.None : SameSiteMode.Strict,
+                SameSite = (isLocal || IsLocalOrHttpOrigin()) ? SameSiteMode.None : SameSiteMode.Strict,
                 Path = "/",
                 Expires = expiresUtc == default ? DateTime.UtcNow : expiresUtc
             };
         }
 
-        private static bool IsLocalOrHttpOrigin()
+        public static bool IsLocalOrHttpOrigin()
         {
             var request = _httpContextAccessor?.HttpContext?.Request;
 

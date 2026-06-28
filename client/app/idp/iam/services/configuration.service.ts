@@ -1,4 +1,4 @@
-import { http } from "@/lib/http-client";
+import { serviceInstances } from "@/lib/http-client";
 import {
   IIAMConfigurationGetResponse,
   IIAMConfigurationSavePayload,
@@ -7,13 +7,13 @@ import { IAM_CONFIGURATION_ENDPOINTS } from "../constants/endpoint.constant";
 
 export class ConfigurationService {
   getIamConfiguration(projectKey: string) {
-    return http.get<IIAMConfigurationGetResponse>(
+    return serviceInstances.idpService.get<IIAMConfigurationGetResponse>(
       `${IAM_CONFIGURATION_ENDPOINTS.GET}?ProjectKey=${projectKey}`,
     );
   }
 
   saveIamConfiguration(payload: IIAMConfigurationSavePayload) {
-    return http.post<[]>(IAM_CONFIGURATION_ENDPOINTS.SAVE, { ...payload });
+    return serviceInstances.idpService.post<[]>(IAM_CONFIGURATION_ENDPOINTS.SAVE, { ...payload });
   }
 }
 
