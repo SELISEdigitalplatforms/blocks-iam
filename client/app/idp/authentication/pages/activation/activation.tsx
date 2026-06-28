@@ -14,9 +14,10 @@ import { ModeToggle } from "@/components/mode-toggle/mode-toggle";
 type ActivationProps = {
   code?: string;
   lang?: string;
+  tenantId?: string;
 };
 
-export const Activation = ({ code }: ActivationProps) => {
+export const Activation = ({ code, tenantId }: ActivationProps) => {
   const {
     isPending: isActivationPending,
     mutateAsync: activationCodeValidation,
@@ -42,7 +43,10 @@ export const Activation = ({ code }: ActivationProps) => {
 
     const validateCode = async () => {
       try {
-        const res = await activationCodeValidation({ activationCode: code });
+        const res = await activationCodeValidation({
+          activationCode: code,
+          tenantId,
+        });
 
         if (res.errors != null) {
           setActivationError("invalid");
@@ -72,7 +76,7 @@ export const Activation = ({ code }: ActivationProps) => {
     };
 
     validateCode();
-  }, [code, activationCodeValidation]);
+  }, [code, tenantId, activationCodeValidation]);
 
   const handleResendActivation = async () => {
     if (!activationUserId || isResendPending) return;
@@ -81,7 +85,10 @@ export const Activation = ({ code }: ActivationProps) => {
       setResendMessage(null);
       setResendSuccess(false);
 
-      const response = await resendActivationLink({ userId: activationUserId });
+      const response = await resendActivationLink({
+        userId: activationUserId,
+        tenantId,
+      });
 
       if (response?.isSuccess) {
         setResendSuccess(true);
@@ -161,7 +168,7 @@ export const Activation = ({ code }: ActivationProps) => {
                   <Loader className="h-8 w-8 animate-spin text-primary" />
                 </div>
               ) : activationError === null ? (
-                <ActivationForm code={code ?? ""} />
+                <ActivationForm code={code ?? ""} tenantId={tenantId} />
               ) : activationError === "invalid" ? (
                 <div className="flex flex-col items-center gap-3 py-4 text-center">
                   <AlertTriangle className="h-10 w-10 text-amber-500" />

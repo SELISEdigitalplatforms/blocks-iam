@@ -4,6 +4,7 @@
     {
         public string? ItemId { get; set; }
         public bool IsArchived { get; set; }
+        public bool PropagateToOtherOrg { get; set; } = false;
     }
 
 }

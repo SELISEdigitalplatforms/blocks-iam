@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
-import { useAuthStore } from "@/store/useAuthStore";
+import { useAuthStore } from "@seliseblocks/blocks-kit";
 export const useAppState = () => {
   const [isMounted, setIsMounted] = useState(false);
   useEffect(() => {
@@ -21,7 +21,7 @@ export function PublicGuard({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     if (!isMounted) return;
     if (isSSOCallback) return;
-    if (isAuthenticated) return navigate("/console", { replace: true });
+    if (isAuthenticated) return navigate("/app/console", { replace: true });
   }, [isAuthenticated, isMounted, isSSOCallback, navigate]);
   if (!isMounted || (isAuthenticated && !isSSOCallback)) return null;
   return <>{children}</>;

@@ -80,7 +80,9 @@ namespace Authentication.DomainService.Authentication
                 return new ObjectResult(new
                 {
                     error = result.Error,
-                    error_description = result.ErrorDescription
+                    error_description = result.ErrorDescription,
+                    captcha_required = result.CaptchaRequired || string.Equals(result.Error, OAuthError.CaptchaEnabled, StringComparison.OrdinalIgnoreCase),
+                    captcha_site_key = result.CaptchaSiteKey
                 })
                 {
                     StatusCode = result.StatusCode
@@ -281,8 +283,8 @@ namespace Authentication.DomainService.Authentication
                 return;
             }
             var authConfiguration = await _authenticationRepository.GetAuthenticationConfigurationAsync();
-            var accessLifetimeMinutes = Math.Max(authConfiguration?.AccessTokenValidForNumberMinutes ?? AuthenticationConfiguration.DefaultAccessTokenValidForNumberMinutes, 1);
-            var refreshLifetimeMinutes = Math.Max(authConfiguration?.AbsoluteRefreshTokenValidForNumberMinutes ?? AuthenticationConfiguration.DefaultRememberMeRefreshTokenValidForNumberMinutes, 1);
+            var accessLifetimeMinutes = Math.Max(authConfiguration?.AccessTokenValidForNumberMinutes ?? IdentityConfiguration.DefaultAccessTokenValidForNumberMinutes, 1);
+            var refreshLifetimeMinutes = Math.Max(authConfiguration?.AbsoluteRefreshTokenValidForNumberMinutes ?? IdentityConfiguration.DefaultRememberMeRefreshTokenValidForNumberMinutes, 1);
 
             var accessCookieOptions = CreateCookieOptions(cookieDomain, accessExpiresUtc ?? DateTime.UtcNow.AddMinutes(accessLifetimeMinutes));
             var refreshCookieOptions = CreateCookieOptions(cookieDomain, refreshExpiresUtc ?? DateTime.UtcNow.AddMinutes(refreshLifetimeMinutes));
@@ -309,7 +311,7 @@ namespace Authentication.DomainService.Authentication
                 .ToList();
 
             // Return only metadata, NOT authorization URLs
-            var ssoInfo = config.AllowedGrantTypes.Contains("social") && socialProviders.Any()
+            var ssoInfo = socialProviders.Any()
                           ? socialProviders.Select(provider => new
                           {
                               provider = provider.Provider,

@@ -1,6 +1,6 @@
 import { showErrorToast } from "@/hooks/use-toast";
 import { isErrorWithErrors } from "@/lib/error";
-import { useAuthStore } from "@/store/useAuthStore";
+import { useAuthStore } from "@seliseblocks/blocks-kit";
 import { useSigninBySSO } from "@blocks-idp/authentication/hooks/use-auth";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { useEffect, useRef } from "react";
@@ -92,7 +92,7 @@ export function useSsoActivation() {
         if (res.enable_mfa) return navigate(`/mfa-check?mfa_id=${res.mfaId}&mfa_type=${res.mfaType}`);
 
         setAuthenticated();
-        navigate("/services/authentication/users");
+        navigate("/app/users");
       } catch (error) {
         releaseGuard(state as string);
         reset();

@@ -1,7 +1,10 @@
 
 
-import { BREADCRUMB_CUSTOM_TITLES } from "@/constants/breadcrumb-custom-title";
 import PageBreadcrumb from "@/components/breadcrumb/breadcrumb";
+import {
+  BREADCRUMB_CUSTOM_TITLES,
+  BREADCRUMB_LINK_OVERRIDES,
+} from "@/constants/breadcrumb-custom-title";
 import { useGetOrganizationById } from "@blocks-idp/iam/hooks/use-organization";
 import { useProjectStore } from "@seliseblocks/blocks-kit";
 import { Skeleton } from "@/components/ui-kits/skeleton/skeleton";
@@ -14,30 +17,30 @@ export const OrganizationDetail = ({ id }: { id: string }) => {
   const tenantId = useProjectStore().selectedProject?.tenantId || "";
   const { data, isLoading } = useGetOrganizationById({ itemId: id, projectKey: tenantId });
 
-  BREADCRUMB_CUSTOM_TITLES["/services/iam/organization-detail"] = "Organizations";
-  BREADCRUMB_CUSTOM_TITLES[`/services/iam/organization-detail/${id}`] =
+  BREADCRUMB_CUSTOM_TITLES["/app/organization-detail"] = "Organizations";
+  BREADCRUMB_CUSTOM_TITLES["/app/organizations"] = "Organizations";
+  BREADCRUMB_LINK_OVERRIDES["/app/organization-detail"] = "/app/organizations";
+  BREADCRUMB_CUSTOM_TITLES[`/app/organization-detail/${id}`] =
     data?.organization?.name ?? null;
 
   return (
-    <main className="flex flex-col">
-      <div className="hidden md:flex">
-        <PageBreadcrumb breadcrumbIndex={3} />
+    <div>
+      <div className="mb-4 md:mb-6">
+        <PageBreadcrumb breadcrumbIndex={2} />
       </div>
-      <div className="flex w-full flex-col">
-        <div className="flex items-center justify-between text-base text-high-emphasis md:mt-5">
-          {isLoading ? (
-            <Skeleton className="h-8 w-48" />
-          ) : (
-            <h3 className="text-2xl font-bold tracking-tight">
-              {data?.organization?.name}
-            </h3>
-          )}
-          <InviteOrganizationUser organizationId={id} />
-        </div>
-        <div className="mt-6">
-          <OrganizationUsers organizationId={id} />
-        </div>
+
+      <div className="mb-4 flex flex-wrap items-start justify-between gap-4 md:mb-6">
+        {isLoading ? (
+          <Skeleton className="h-8 w-48" />
+        ) : (
+          <h1 className="text-lg font-semibold md:text-2xl">
+            {data?.organization?.name}
+          </h1>
+        )}
+        <InviteOrganizationUser organizationId={id} />
       </div>
-    </main>
+
+      <OrganizationUsers organizationId={id} />
+    </div>
   );
 };
