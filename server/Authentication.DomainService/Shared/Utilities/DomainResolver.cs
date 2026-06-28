@@ -32,20 +32,30 @@ namespace Authentication.DomainService.Utilities
             if (hostEnv.Equals("Development", StringComparison.OrdinalIgnoreCase))
                 return true;
 
+            return TryGetRequestOriginUri(out var uri) && IsLoopbackHost(uri.Host);
+        }
+
+        public static bool IsCrossOriginHttpFlow()
+        {
+            // True localhost dev -> always None.
+            if (IsLocalhost())
+                return true;
+
+            // Plain http origin (e.g. local dev with a hosts-file entry on http) -> None.
+            // https origins (production) -> Strict: cookies are first-party and secure.
             if (!TryGetRequestOriginUri(out var uri))
                 return false;
 
-            // True localhost dev (any port on loopback hosts) -> local.
-            // Cross-origin http/https flow (e.g. SSO between app and idp hosts) -> also treated as local
-            // so that SameSite=None cookies can flow across origins.
-            if (IsLoopbackHost(uri.Host))
-                return true;
+            return uri.Scheme.Equals("http", StringComparison.OrdinalIgnoreCase)
+                && uri.Port > 0 && uri.Port <= 65535;
+        }
 
-            var isHttpOrHttps =
-                uri.Scheme.Equals("http", StringComparison.OrdinalIgnoreCase) ||
-                uri.Scheme.Equals("https", StringComparison.OrdinalIgnoreCase);
-
-            return isHttpOrHttps && uri.Port > 0 && uri.Port <= 65535;
+        public static bool IsCurrentRequestSecure()
+        {
+            // Secure is derived purely from the scheme the caller advertised via Origin/Referer.
+            // No fallback to Request.IsHttps - that can lie when an upstream proxy terminates TLS.
+            return TryGetRequestOriginUri(out var uri)
+                && uri.Scheme.Equals("https", StringComparison.OrdinalIgnoreCase);
         }
 
         private static bool TryGetRequestOriginUri(out Uri uri)
@@ -229,23 +239,18 @@ namespace Authentication.DomainService.Utilities
         public static CookieOptions CreateCookieOptions(string? cookieDomain, DateTime expiresUtc)
         {
             var isLocal = IsLocalhost();
-            // True localhost dev -> host-only cookie (a Domain attribute is invalid
-            // for "localhost"). Otherwise scope the cookie to the configured shared
-            // parent domain (e.g. ".blocksdevelopers.com") so a cookie set by the
-            // IDP host is also sent to the app host on the same site.
-            cookieDomain = isLocal ? "localhost" : (string.IsNullOrWhiteSpace(cookieDomain) ? null : cookieDomain);
+            // True localhost dev -> host-only cookie (Domain attribute invalid for "localhost").
+            // Otherwise scope to the configured shared parent domain so the IDP cookie reaches the app host.
+            cookieDomain = isLocal ? null : (string.IsNullOrWhiteSpace(cookieDomain) ? null : cookieDomain);
 
             return new CookieOptions
             {
                 Domain = cookieDomain,
                 HttpOnly = true,
-                Secure = !isLocal,
-                // This is a cross-origin SSO flow: the SPA fetches the IDP callback
-                // from a different origin than the IDP itself, so the auth/refresh
-                // cookies must be SameSite=None (which mandates Secure, set above).
-                // SameSite=Strict would stop the browser from accepting/sending them
-                // on the cross-site flow.
-                SameSite = isLocal ? SameSiteMode.None : SameSiteMode.Strict,
+                Secure = IsCurrentRequestSecure(),
+                // Local dev (loopback or hosts-file on http) -> None.
+                // Production https -> Strict: cookies are first-party and secure.
+                SameSite = IsCrossOriginHttpFlow() ? SameSiteMode.None : SameSiteMode.Strict,
                 Path = "/",
                 Expires = expiresUtc == default ? DateTime.UtcNow : expiresUtc
             };
