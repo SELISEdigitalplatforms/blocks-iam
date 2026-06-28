@@ -50,15 +50,20 @@ namespace Authentication.DomainService.Utilities
         public static CookieOptions CreateCookieOptions(string? cookieDomain, DateTime expiresUtc)
         {
             return IsLocalhost()
-                ? CreateLoopbackCookieOptions(expiresUtc)
+                ? CreateLoopbackCookieOptions(cookieDomain, expiresUtc)
                 : CreateProductionCookieOptions(cookieDomain, expiresUtc);
         }
 
-        public static CookieOptions CreateLoopbackCookieOptions(DateTime expiresUtc)
+        public static CookieOptions CreateLoopbackCookieOptions(string? cookieDomain, DateTime expiresUtc)
         {
-            // Local/dev: HttpOnly only. No Domain, no Secure, no SameSite.
+            // Loopback mode (loopback host OR hosts-file entry OR non-default port):
+            // HttpOnly only, no Secure, no SameSite.
+            // The caller's resolved cookieDomain is already null for true loopback
+            // (ResolveDomain returns isResolved=false there) and resolved for hosts-file
+            // entries - so we just trust what was passed in.
             return new CookieOptions
             {
+                Domain = cookieDomain,
                 HttpOnly = true,
                 Path = "/",
                 Expires = NormalizeExpiry(expiresUtc)
@@ -67,7 +72,7 @@ namespace Authentication.DomainService.Utilities
 
         public static CookieOptions CreateProductionCookieOptions(string? cookieDomain, DateTime expiresUtc)
         {
-            // Production: full hardening.
+            // Production: full hardening with resolved domain.
             return new CookieOptions
             {
                 Domain = string.IsNullOrWhiteSpace(cookieDomain) ? null : cookieDomain,
