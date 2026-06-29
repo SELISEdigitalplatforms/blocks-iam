@@ -106,7 +106,6 @@ public class AuthenticationController : ControllerBase
     /// Validates token before allowing password change
     /// </summary>
     [HttpPost("reset-password")]
-    [Authorize]
     public async Task<IActionResult> ExecutePasswordReset([FromBody] ResetPasswordRequest request)
     {
         var result = await _accountService.ResetAccountPasswordAsync(request);
