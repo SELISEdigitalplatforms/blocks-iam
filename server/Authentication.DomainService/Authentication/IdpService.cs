@@ -1,7 +1,9 @@
 using Authentication.DomainService.Entities;
+using Authentication.DomainService.OAuth;
 using Authentication.DomainService.OAuth.ResponseModel;
 using Authentication.DomainService.Oidc.Repositories;
 using Authentication.DomainService.Services;
+using Authentication.DomainService.Shared;
 using Authentication.DomainService.Shared.RequestModel;
 using Authentication.DomainService.Utilities;
 using Blocks.CaptchaDriver;
@@ -118,7 +120,7 @@ namespace Authentication.DomainService.Authentication
                 // Build authorization URL
                 var authorizeUrl = BuildAuthorizeUrl(identityProvider, redirectUri, state, nonce, codeChallenge);
 
-                _logger.LogInformation($"Started authentication flow for provider {identityProvider.Provider} with state {state}");
+                _logger.LogInformation("Started authentication flow for provider {Provider} with state {State}", identityProvider.Provider, state);
 
                 // Return authorize URL - Frontend will redirect to IdP
                 return new OkObjectResult(new { redirect_uri = authorizeUrl });
@@ -140,7 +142,7 @@ namespace Authentication.DomainService.Authentication
                 // Check for IdP errors
                 if (!string.IsNullOrWhiteSpace(error))
                 {
-                    _logger.LogWarning($"IdP returned error: {error}, description: {error_description}");
+                    _logger.LogWarning("IdP returned error: {Error}, description: {ErrorDescription}", error, error_description);
                     return new BadRequestObjectResult(new
                     {
                         error = error,
@@ -167,7 +169,7 @@ namespace Authentication.DomainService.Authentication
 
                 if (string.IsNullOrWhiteSpace(flowContextJson))
                 {
-                    _logger.LogWarning($"Flow context not found or expired for state: {state}");
+                    _logger.LogWarning("Flow context not found or expired for state: {State}", state);
                     return new BadRequestObjectResult(new { error = "invalid_state", error_description = "State not found or expired (5 minute timeout)" });
                 }
 
@@ -175,13 +177,13 @@ namespace Authentication.DomainService.Authentication
                 var flowContext = System.Text.Json.JsonSerializer.Deserialize<FlowContext>(flowContextJson);
                 if (flowContext == null)
                 {
-                    _logger.LogWarning($"Failed to deserialize flow context for state: {state}");
+                    _logger.LogWarning("Failed to deserialize flow context for state: {State}", state);
                     return new BadRequestObjectResult(new { error = "server_error", error_description = "Invalid flow context" });
                 }
 
                 if (string.IsNullOrWhiteSpace(flowContext.Provider))
                 {
-                    _logger.LogWarning($"Flow context missing provider for state: {state}");
+                    _logger.LogWarning("Flow context missing provider for state: {State}", state);
                     return new BadRequestObjectResult(new { error = "invalid_provider", error_description = "Provider missing in flow context" });
                 }
 
@@ -189,7 +191,7 @@ namespace Authentication.DomainService.Authentication
                 var identityProvider = await _authenticationRepository.GetIdentityProviderAsync(flowContext.Provider);
                 if (identityProvider == null || !identityProvider.IsActive)
                 {
-                    _logger.LogWarning($"Identity provider not found or inactive: {flowContext.Provider}");
+                    _logger.LogWarning("Identity provider not found or inactive: {Provider}", flowContext.Provider);
                     return new BadRequestObjectResult(new { error = "invalid_provider", error_description = "Provider not configured" });
                 }
 
@@ -198,7 +200,7 @@ namespace Authentication.DomainService.Authentication
  
                 var form = new Dictionary<string, string>
                 {
-                    { "grant_type", "authorization_code" },
+                    { "grant_type", GrantTypes.AuthCode },
                     { "code", code },
                     { "client_id", identityProvider.ClientId ?? string.Empty },
                     { "client_secret", identityProvider.ClientSecret ?? string.Empty },
@@ -230,7 +232,7 @@ namespace Authentication.DomainService.Authentication
 
                 if (!string.IsNullOrWhiteSpace(tokenError) || tokenResponse == null || string.IsNullOrWhiteSpace(tokenResponse.AccessToken))
                 {
-                    _logger.LogWarning($"Token exchange failed: {tokenError ?? "empty token response"}");
+                    _logger.LogWarning("Token exchange failed: {TokenError}", tokenError ?? "empty token response");
                     return new BadRequestObjectResult(new { error = "invalid_grant", error_description = "Failed to exchange authorization code" });
                 }
 
@@ -283,7 +285,7 @@ namespace Authentication.DomainService.Authentication
                 if (isResolved && !string.IsNullOrWhiteSpace(domain))
                 {
                     AppendCookies(tokenResponseObj, httpResponse, domain);
-                    _logger.LogInformation($"Successfully completed authentication flow for state: {state}");
+                    _logger.LogInformation("Successfully completed authentication flow for state: {State}", state);
 
                     return new OkObjectResult(new
                     {
@@ -295,7 +297,7 @@ namespace Authentication.DomainService.Authentication
                 }
 
 
-                _logger.LogInformation($"Successfully completed authentication flow for state: {state}");
+                _logger.LogInformation("Successfully completed authentication flow for state: {State}", state);
 
                 return new OkObjectResult(new
                 {
@@ -414,7 +416,7 @@ namespace Authentication.DomainService.Authentication
                 { "client_id", provider.ClientId ?? string.Empty },
                 { "response_type", provider.ResponseType ?? "code" },
                 { "redirect_uri", redirectUri },
-                { "scope", provider.Scope ?? "openid profile email" },
+                { "scope", provider.Scope ?? AuthenticationConstants.OpenIdProfileEmailScope },
                 { "state", state },
                 { "nonce", nonce }
             };
@@ -422,7 +424,7 @@ namespace Authentication.DomainService.Authentication
             if (provider.RequirePkce && !string.IsNullOrEmpty(codeChallenge))
             {
                 queryParams["code_challenge"] = codeChallenge;
-                queryParams["code_challenge_method"] = "S256";
+                queryParams["code_challenge_method"] = AuthenticationConstants.PkceMethodS256;
             }
 
             var queryString = string.Join("&", queryParams.Select(kvp => $"{kvp.Key}={Uri.EscapeDataString(kvp.Value)}"));

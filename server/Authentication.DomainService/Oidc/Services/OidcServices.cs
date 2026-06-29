@@ -349,7 +349,7 @@ public sealed class PkceService : IPkceService
 {
     public Task<bool> ValidateVerifierAsync(string codeChallenge, string codeVerifier, string? codeChallengeMethod)
     {
-        if (!string.Equals(codeChallengeMethod, "S256", StringComparison.OrdinalIgnoreCase))
+        if (!string.Equals(codeChallengeMethod, AuthenticationConstants.PkceMethodS256, StringComparison.OrdinalIgnoreCase))
         {
             return Task.FromResult(false);
         }
@@ -518,7 +518,7 @@ public sealed class DiscoveryService : IDiscoveryService
             return $"{uri.Scheme}://{uri.Authority}";
         }
 
-        return "https://localhost:5000";
+        return AuthenticationConstants.FallbackIssuer;
     }
 
     private static string BuildUrl(string issuer, params string[] segments)

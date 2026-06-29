@@ -1,4 +1,5 @@
 using Authentication.DomainService.OAuth.RequestModel;
+using Authentication.DomainService.Shared;
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -44,8 +45,8 @@ namespace Authentication.DomainService.Oidc.Validation
 
             if (!string.IsNullOrWhiteSpace(request.CodeChallenge) && string.IsNullOrWhiteSpace(request.CodeChallengeMethod))
                 errors.Add("code_challenge_method is required when code_challenge is provided");
-            else if (!string.IsNullOrWhiteSpace(request.CodeChallengeMethod) && request.CodeChallengeMethod != "S256")
-                errors.Add("code_challenge_method must be 'S256' (plain method not supported)");
+            else if (!string.IsNullOrWhiteSpace(request.CodeChallengeMethod) && request.CodeChallengeMethod != AuthenticationConstants.PkceMethodS256)
+                errors.Add($"code_challenge_method must be '{AuthenticationConstants.PkceMethodS256}' (plain method not supported)");
 
             return new AuthorizeValidationResult
             {
