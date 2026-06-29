@@ -3,7 +3,7 @@ using Microsoft.IdentityModel.Tokens;
 
 namespace Idp.DomainService.Oidc.Contracts;
 
-public class OidcClaims
+public sealed class OidcClaims
 {
     public string Sub { get; set; } = string.Empty;
     public string TenantId { get; set; } = string.Empty;
@@ -23,7 +23,7 @@ public class OidcClaims
     public List<string> Permissions { get; set; } = [];
 }
 
-public class AuthorizationCodeModel
+public sealed class AuthorizationCodeModel
 {
     public string Id { get; set; } = Guid.NewGuid().ToString("n");
     public string Code { get; set; } = string.Empty;
@@ -51,7 +51,7 @@ public class AuthorizationCodeModel
     public string? ImpersonatedUserId { get; set; } = string.Empty;
 }
 
-public class RefreshTokenModel
+public sealed class RefreshTokenModel
 {
     public string Id { get; set; } = Guid.NewGuid().ToString("n");
     public string TokenId { get; set; } = Guid.NewGuid().ToString("n");
@@ -79,7 +79,7 @@ public class RefreshTokenModel
     }
 }
 
-public class IdpSessionAccount
+public sealed class IdpSessionAccount
 {
     public string UserId { get; set; } = string.Empty;
     public string TenantId { get; set; } = string.Empty;
@@ -87,7 +87,7 @@ public class IdpSessionAccount
     public DateTime LoginAt { get; set; }
 }
 
-public class IdpSessionModel
+public sealed class IdpSessionModel
 {
     public string Id { get; set; } = Guid.NewGuid().ToString("n");
     public string SessionId { get; set; } = Guid.NewGuid().ToString("n");
@@ -107,7 +107,7 @@ public class IdpSessionModel
     }
 }
 
-public class AuditLogModel
+public sealed class AuditLogModel
 {
     public string Id { get; set; } = Guid.NewGuid().ToString("n");
     public string EventType { get; set; } = string.Empty;
@@ -123,7 +123,7 @@ public class AuditLogModel
     public DateTime Timestamp { get; set; } = DateTime.UtcNow;
 }
 
-public class ConsentGrantModel
+public sealed class ConsentGrantModel
 {
     public string Id { get; set; } = Guid.NewGuid().ToString("n");
     public string UserId { get; set; } = string.Empty;
@@ -134,7 +134,7 @@ public class ConsentGrantModel
     public DateTime UpdatedAt { get; set; } = DateTime.UtcNow;
 }
 
-public class DiscoveryMetadata
+public sealed class DiscoveryMetadata
 {
     [JsonPropertyName("issuer")]
     public string Issuer { get; set; } = string.Empty;
@@ -179,7 +179,7 @@ public class DiscoveryMetadata
     public IEnumerable<string> ScopesSupported { get; set; } = ["openid", "profile", "email", "offline_access"];
 }
 
-public class OAuthAuthorizationServerMetadata
+public sealed class OAuthAuthorizationServerMetadata
 {
     [JsonPropertyName("issuer")]
     public string Issuer { get; set; } = string.Empty;
@@ -212,13 +212,13 @@ public class OAuthAuthorizationServerMetadata
     public IEnumerable<string> CodeChallengeMethodsSupported { get; set; } = ["S256"];
 }
 
-public class JwksResponse
+public sealed class JwksResponse
 {
     [JsonPropertyName("keys")]
     public List<JwkKey> Keys { get; set; } = [];
 }
 
-public class JwkKey
+public sealed class JwkKey
 {
     [JsonPropertyName("kty")]
     public string Kty { get; set; } = "RSA";

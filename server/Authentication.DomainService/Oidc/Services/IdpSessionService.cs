@@ -27,7 +27,7 @@ namespace Authentication.DomainService.Oidc.Services
         Task<IEnumerable<IdpSessionModel>> GetUserSessionsAsync(string userId, string tenantId);
     }
 
-    public class IdpSessionService : IIdpSessionService
+    public sealed class IdpSessionService : IIdpSessionService
     {
         private readonly IIdpSessionRepository _sessionRepo;
         private readonly IAuditLogRepository _auditLogRepo;

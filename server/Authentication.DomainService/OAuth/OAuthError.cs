@@ -128,7 +128,7 @@ namespace Authentication.DomainService.OAuth
             return new TokenResponse
             {
                 Error = UserInActiveOrNotVerified,
-                ErrorDescription = $"User is not exist within {organization} organization",
+                ErrorDescription = $"User does not exist within {organization} organization",
                 StatusCode = 400
             };
         }

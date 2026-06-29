@@ -6,7 +6,7 @@ using System.Text.Json;
 
 namespace Authentication.DomainService.OAuth.SocialServices
 {
-    public class TwitterLogInService : ISocialLogInService
+    public sealed class TwitterLogInService : ISocialLogInService
     {
         private readonly ILogger<TwitterLogInService> _logger;
         private readonly IAuthenticationRepository _authenticationRepository;

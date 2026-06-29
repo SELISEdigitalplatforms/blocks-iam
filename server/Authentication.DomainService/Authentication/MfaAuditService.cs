@@ -7,7 +7,7 @@ using Microsoft.Extensions.Logging;
 
 namespace Authentication.DomainService.Authentication
 {
-    public class MfaAuditService : IMfaAuditService
+    public sealed class MfaAuditService : IMfaAuditService
     {
         private readonly IAuditLogRepository _auditLogRepository;
         private readonly IHttpContextAccessor _httpContextAccessor;
@@ -38,7 +38,7 @@ namespace Authentication.DomainService.Authentication
                     UserId = auditEvent.UserId,
                     ClientId = auditEvent.ClientId,
                     TenantId = tenantId,
-                    IpAddress = auditEvent.IpAddress ?? GetClientIp(http),
+                    IpAddress = auditEvent.IpAddress ?? GetClientIpAddress(http),
                     UserAgent = auditEvent.UserAgent ?? (http?.Request?.Headers?.UserAgent.ToString() ?? string.Empty),
                     Severity = auditEvent.Severity,
                     Status = auditEvent.Status,
@@ -63,7 +63,5 @@ namespace Authentication.DomainService.Authentication
             }
             return "unknown";
         }
-
-        private static string GetClientIp(HttpContext? context) => GetClientIpAddress(context);
     }
 }

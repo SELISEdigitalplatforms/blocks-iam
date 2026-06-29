@@ -35,7 +35,6 @@ namespace Authentication.DomainService.OAuth
                 };
 
             var (response, error) = await _httpService.SendFormUrlEncoded<SocialOauthAccessToken>(HttpMethod.Post, postData, identityProvider.TokenUrl);
-            _logger.LogInformation("access token: {Response}", response);
             if (!string.IsNullOrWhiteSpace(error) || response == null)
             {
                 _logger.LogError("Error while getting access token: {Error}", error);
@@ -143,7 +142,7 @@ namespace Authentication.DomainService.OAuth
                     user.ProfileImageUrl = result.TryGetProperty("profilePicture", out JsonElement picture3) ? picture3.ToString() : "";
                     break;
 
-                case SocialLogInTypes.KeyCloak:
+                case SocialLogInTypes.Keycloak:
                     user.ExternalProviderUserId = result.TryGetProperty("sub", out JsonElement sub4) ? sub4.ToString() : "";
                     user.Email = result.TryGetProperty("email", out JsonElement email7) ? email7.ToString() : "";
                     user.DisplayName = result.TryGetProperty("name", out JsonElement name5) ? name5.ToString() : result.TryGetProperty("preferred_username", out JsonElement preferred1) ? preferred1.ToString() : "";
