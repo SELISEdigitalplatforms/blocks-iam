@@ -33,13 +33,13 @@ export const SignupSettings = () => {
   useEffect(() => {
     if (signUpSettingData && !initializedRef.current) {
       initializedRef.current = true;
-      const ep = signUpSettingData.IsEmailPasswordSignUpEnabled;
-      const ssoEnabled = signUpSettingData.IsSSoSignUpEnabled;
+      const ep = signUpSettingData.isEmailPasswordSignUpEnabled;
+      const ssoEnabled = signUpSettingData.isSSoSignUpEnabled;
       setEmailPassword(ep);
       setSso(ssoEnabled);
-      setAllowSignup(ep || ssoEnabled);
-      setDefaultRoles(signUpSettingData.DefaultRolesForNewUser ?? []);
-      setDefaultPermissions(signUpSettingData.DefaultPermissionsForNewUser ?? []);
+      setAllowSignup(signUpSettingData.isSignUpEnable ?? (ep || ssoEnabled));
+      setDefaultRoles(signUpSettingData.defaultRolesForNewUser ?? []);
+      setDefaultPermissions(signUpSettingData.defaultPermissionsForNewUser ?? []);
     }
   }, [signUpSettingData]);
 
