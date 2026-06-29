@@ -5,7 +5,7 @@ using System.Linq;
 
 namespace Authentication.DomainService.Oidc.Validation
 {
-    public class AuthorizeRequestValidator
+    public sealed class AuthorizeRequestValidator
     {
         public AuthorizeValidationResult Validate(AuthorizeRequest request)
         {
@@ -66,7 +66,7 @@ namespace Authentication.DomainService.Oidc.Validation
         }
     }
 
-    public class AuthorizeValidationResult
+    public sealed class AuthorizeValidationResult
     {
         public bool IsValid { get; set; }
         public List<string> Errors { get; set; } = new List<string>();

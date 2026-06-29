@@ -21,7 +21,7 @@ namespace Authentication.DomainService.OAuth
         public new string EmployeeId { get; set; }
     }
 
-    public class GoogleUserData : IExternalUserData
+    public sealed class GoogleUserData : IExternalUserData
     {
         [JsonPropertyName("name")]
         public new string DisplayName { get; set; }
@@ -52,7 +52,7 @@ namespace Authentication.DomainService.OAuth
         public new string EmployeeId { get; set; }
     }
 
-    public class MicrosoftUserData : IExternalUserData
+    public sealed class MicrosoftUserData : IExternalUserData
     {
         [JsonPropertyName("displayName")]
         public new string DisplayName { get; set; }
@@ -89,7 +89,7 @@ namespace Authentication.DomainService.OAuth
         public List<string> Permissions { get; set; } = [];
     }
 
-    public class BYOSsoUserData : IExternalUserData
+    public sealed class BYOSsoUserData : IExternalUserData
     {
         public string DisplayName { get; set; } = string.Empty;
         public string FirstName { get; set; } = string.Empty;
@@ -108,7 +108,7 @@ namespace Authentication.DomainService.OAuth
         public new string EmployeeId { get; set; }
     }
 
-    public class GithubUserData : IExternalUserData
+    public sealed class GithubUserData : IExternalUserData
     {
         [JsonPropertyName("id")]
         public long Id { get; set; }
@@ -139,7 +139,7 @@ namespace Authentication.DomainService.OAuth
         public new string EmployeeId { get; set; }
     }
 
-    public class GithubEmail
+    public sealed class GithubEmail
     {
         [JsonPropertyName("email")]
         public string Email { get; set; }
@@ -154,7 +154,7 @@ namespace Authentication.DomainService.OAuth
         public string Visibility { get; set; }
     }
 
-    public class LinkedinUserData : IExternalUserData
+    public sealed class LinkedinUserData : IExternalUserData
     {
         [JsonPropertyName("sub")]
         public string ExternalProviderUserId { get; set; }
@@ -184,7 +184,7 @@ namespace Authentication.DomainService.OAuth
         public new string EmployeeId { get; set; }
     }
 
-    public class LinkedinUserInfo
+    public sealed class LinkedinUserInfo
     {
         [JsonPropertyName("sub")]
         public string Sub { get; set; }
@@ -247,7 +247,7 @@ namespace Authentication.DomainService.OAuth
     public class AppleUserData : StandardSocialUserDataBase
     {
     }
-    public class AppleIdToken
+    public sealed class AppleIdToken
     {
 
         [JsonProperty("email")]

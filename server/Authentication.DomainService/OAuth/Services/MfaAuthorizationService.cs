@@ -10,7 +10,7 @@ using Microsoft.Extensions.Logging;
 
 namespace Authentication.DomainService.OAuth.Services
 {
-    public class MfaAuthorizationService : ITokenService
+    public sealed class MfaAuthorizationService : ITokenService
     {
         private readonly ILogger<MfaAuthorizationService> _logger;
         private readonly IOAuthJwtAccessTokenManager _oAuthJwtAccessTokenManager;
@@ -119,7 +119,7 @@ namespace Authentication.DomainService.OAuth.Services
                 ClientId = request.ClientId,
                 MfaType = request.MfaType,
                 Status = "failure",
-                Severity = justLocked ? "WARN" : "WARN"
+                Severity = "WARN"
             });
 
             if (justLocked)

@@ -2,10 +2,10 @@ using System.Text.Json.Serialization;
 
 namespace Authentication.DomainService.OAuth
 {
-    public class SocialOauthAccessToken
+    public sealed class SocialOauthAccessToken
     {
         [JsonPropertyName("expires_in")]
-        public int ExpireIn { get; set; }
+        public int ExpiresIn { get; set; }
 
         [JsonPropertyName("token_type")]
         public string TokenType { get; set; }
@@ -26,7 +26,7 @@ namespace Authentication.DomainService.OAuth
         public string ExternalProviderUserId { get; set; }
     }
 
-    public class TwitterOauthAccessToken
+    public sealed class TwitterOauthAccessToken
     {
         [JsonPropertyName("token_type")]
         public string TokenType { get; set; }

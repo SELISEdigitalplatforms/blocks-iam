@@ -1,6 +1,6 @@
 namespace Authentication.DomainService.OAuth
 {
-    public class SocialCallbackResult
+    public sealed class SocialCallbackResult
     {
         public IExternalUserData ExternalUserData { get; set; } = new BYOSsoUserData();
         public string? AccessToken { get; set; }

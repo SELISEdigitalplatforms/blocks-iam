@@ -1,6 +1,6 @@
 namespace Authentication.DomainService.Authentication.RequestModel
 {
-    public class UpdateAuthenticationConfigurationRequest
+    public sealed class UpdateAuthenticationConfigurationRequest
     {
         public string ItemId { get; set; }
 

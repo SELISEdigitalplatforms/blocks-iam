@@ -19,7 +19,7 @@ namespace Authentication.DomainService.Authentication
     /// IDP Service
     /// Manages identity provider authentication flow, token exchange, and OIDC operations
     /// </summary>
-    public class IdpService : IIdpService
+    public sealed class IdpService : IIdpService
     {
         private readonly IAuthenticationRepository _authenticationRepository;
         private readonly IAuthorizationCodeRepository _authCodeRepo;
@@ -195,7 +195,6 @@ namespace Authentication.DomainService.Authentication
 
                 // Exchange authorization code for tokens at IdP
                 var tokenEndpoint = identityProvider.TokenUrl;
-                // var tokenEndpoint = "https://dev-iam.blocksdevelopers.com:5001/api/oidc/token?tenant_id=***REMOVED***";
  
                 var form = new Dictionary<string, string>
                 {

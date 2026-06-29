@@ -2,7 +2,7 @@ using Microsoft.AspNetCore.Mvc;
 
 namespace Authentication.DomainService.OAuth.RequestModel
 {
-    public class AuthorizeRequest
+    public sealed class AuthorizeRequest
     {
         [FromQuery(Name = "response_type")]
         public string? ResponseType { get; set; }

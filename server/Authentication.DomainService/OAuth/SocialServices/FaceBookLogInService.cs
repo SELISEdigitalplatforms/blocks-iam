@@ -5,7 +5,7 @@ using Microsoft.Extensions.Logging;
 
 namespace Authentication.DomainService.OAuth.SocialServices
 {
-    public class FaceBookLogInService : ISocialLogInService
+    public sealed class FaceBookLogInService : ISocialLogInService
     {
         private readonly ILogger<FaceBookLogInService> _logger;
         private readonly IAuthenticationRepository _authenticationRepository;
@@ -31,9 +31,9 @@ namespace Authentication.DomainService.OAuth.SocialServices
                 return new SocialCallbackResult { ExternalUserData = new FaceBookUserData() };
             }
 
-            string faceBookGetAccessTokenUri = string.Format("{0}?client_id={1}&redirect_uri={2}&client_secret={3}&code={4}", identityProvider.TokenUrl, identityProvider.ClientId, stateInfo.RedirectUri, identityProvider.ClientSecret, stateInfo.Code);
-            _logger.LogInformation("faceBook Access Token Uri {AccessTokenUri}", faceBookGetAccessTokenUri);
-            var (tokenResponse, error) = await _httpService.Get<SocialOauthAccessToken>(faceBookGetAccessTokenUri);
+            var faceBookGetAccessTokenUri = new Uri(string.Format("{0}?client_id={1}&redirect_uri={2}&client_secret={3}&code={4}", identityProvider.TokenUrl, identityProvider.ClientId, stateInfo.RedirectUri, identityProvider.ClientSecret, stateInfo.Code));
+            _logger.LogInformation("facebook access token host: {Host}", faceBookGetAccessTokenUri.Host);
+            var (tokenResponse, error) = await _httpService.Get<SocialOauthAccessToken>(faceBookGetAccessTokenUri.ToString());
 
             if (!string.IsNullOrWhiteSpace(error) || tokenResponse == null)
             {

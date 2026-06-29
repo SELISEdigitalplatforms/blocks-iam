@@ -10,7 +10,7 @@ using System.Security.Cryptography;
 
 namespace Authentication.DomainService.OAuth.SocialServices
 {
-    public class AppleLogInService : ISocialLogInService
+    public sealed class AppleLogInService : ISocialLogInService
     {
         private readonly ILogger<AppleLogInService> _logger;
         private readonly IAuthenticationRepository _authenticationRepository;
