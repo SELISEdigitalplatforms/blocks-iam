@@ -159,7 +159,7 @@ namespace Iam.DomainService.Users
             var filters = new List<FilterDefinition<User>>();
             var contextOrgId = ResolveOrganizationId(filter?.OrganizationId);
 
-            filters.Add(builder.AnyEq("OrganizationIds", contextOrgId));
+            filters.Add(builder.AnyEq(x => x.OrganizationIds, contextOrgId));
 
             if (filter == null)
             {
@@ -203,7 +203,7 @@ namespace Iam.DomainService.Users
                 filters.Add(builder.Gte(u => u.LastLoggedInTime, filter.LastLogin.Value.Date));
 
             if (filter.UserIds is not null && filter.UserIds.Count > 0)
-                filters.Add(builder.In("_id", filter.UserIds));
+                filters.Add(builder.In(u => u.ItemId, filter.UserIds));
 
             return filters.Any() ? builder.And(filters) : builder.Empty;
         }
