@@ -66,6 +66,7 @@ namespace Authentication.DomainService.Utilities
             {
                 Domain = cookieDomain,
                 HttpOnly = true,
+                SameSite = SameSiteMode.None,
                 Path = "/",
                 Expires = NormalizeExpiry(expiresUtc)
             };
