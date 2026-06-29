@@ -1,4 +1,6 @@
 using System.Text.Json.Serialization;
+using Authentication.DomainService.OAuth;
+using Authentication.DomainService.Shared;
 using Microsoft.IdentityModel.Tokens;
 
 namespace Idp.DomainService.Oidc.Contracts;
@@ -116,7 +118,7 @@ public sealed class AuditLogModel
     public string? TenantId { get; set; }
     public string? IpAddress { get; set; }
     public string? UserAgent { get; set; }
-    public string Severity { get; set; } = "INFO";
+    public string Severity { get; set; } = AuthenticationConstants.SeverityInfo;
     public string? Status { get; set; }
     public string? Details { get; set; }
     public string? Message { get; set; }
@@ -161,7 +163,7 @@ public sealed class DiscoveryMetadata
     public IEnumerable<string> ResponseTypesSupported { get; set; } = ["code"];
 
     [JsonPropertyName("grant_types_supported")]
-    public IEnumerable<string> GrantTypesSupported { get; set; } = ["authorization_code", "refresh_token", "client_credentials"];
+    public IEnumerable<string> GrantTypesSupported { get; set; } = [GrantTypes.AuthCode, GrantTypes.RefreshToken, GrantTypes.ClientCredential];
 
     [JsonPropertyName("subject_types_supported")]
     public IEnumerable<string> SubjectTypesSupported { get; set; } = ["public"];
@@ -173,7 +175,7 @@ public sealed class DiscoveryMetadata
     public IEnumerable<string> TokenEndpointAuthMethodsSupported { get; set; } = ["client_secret_basic", "private_key_jwt"];
 
     [JsonPropertyName("code_challenge_methods_supported")]
-    public IEnumerable<string> CodeChallengeMethodsSupported { get; set; } = ["S256"];
+    public IEnumerable<string> CodeChallengeMethodsSupported { get; set; } = [AuthenticationConstants.PkceMethodS256];
 
     [JsonPropertyName("scopes_supported")]
     public IEnumerable<string> ScopesSupported { get; set; } = ["openid", "profile", "email", "offline_access"];
@@ -203,13 +205,13 @@ public sealed class OAuthAuthorizationServerMetadata
     public IEnumerable<string> ResponseTypesSupported { get; set; } = ["code"];
 
     [JsonPropertyName("grant_types_supported")]
-    public IEnumerable<string> GrantTypesSupported { get; set; } = ["authorization_code", "refresh_token", "client_credentials"];
+    public IEnumerable<string> GrantTypesSupported { get; set; } = [GrantTypes.AuthCode, GrantTypes.RefreshToken, GrantTypes.ClientCredential];
 
     [JsonPropertyName("token_endpoint_auth_methods_supported")]
     public IEnumerable<string> TokenEndpointAuthMethodsSupported { get; set; } = ["client_secret_basic", "private_key_jwt"];
 
     [JsonPropertyName("code_challenge_methods_supported")]
-    public IEnumerable<string> CodeChallengeMethodsSupported { get; set; } = ["S256"];
+    public IEnumerable<string> CodeChallengeMethodsSupported { get; set; } = [AuthenticationConstants.PkceMethodS256];
 }
 
 public sealed class JwksResponse
