@@ -15,7 +15,9 @@ namespace Authentication.DomainService.Entities
         public const int DefaultAccountLockDurationInMinutes = 15;
         public const int DefaultTokenRotationGracePeriodMinutes = 5;
         public const int DefaultMaxTokenRotationAttempts = 3;
-        
+        public const int DefaultActivationUrlLifetimeInMinutes = 60 * 24;
+        public const int DefaultRecoverAccountUrlLifetimeInMinutes = 10;
+
 
         [BsonId]
         public ObjectId ItemId { get; set; }
@@ -29,6 +31,17 @@ namespace Authentication.DomainService.Entities
         public int AccountLockDurationInMinutes { get; set; } = DefaultAccountLockDurationInMinutes;
         public int TokenRotationGracePeriodMinutes { get; set; } = DefaultTokenRotationGracePeriodMinutes;
         public int MaxTokenRotationAttempts { get; set; } = DefaultMaxTokenRotationAttempts;
-        
+
+        public string PublicCertificatePath { get; set; }
+        public string AccountActivationPath { get; set; }
+        public string AccountVerificationPath { get; set; }
+        public string RecoverAccountPath { get; set; }
+        public bool IsOidcEnabled { get; set; } = false;
+        public string AccountActionBaseUrl { get; set; }
+        public bool UseAccountActionBaseUrlAsDefault { get; set; } = true;
+        public int ActivationUrlLifetimeInMinutes { get; set; } = DefaultActivationUrlLifetimeInMinutes;
+        public int RecoverAccountUrlLifetimeInMinutes { get; set; } = DefaultRecoverAccountUrlLifetimeInMinutes;
+        public bool LogoutOnPasswordChange { get; set; } = true;
+        public string PasswordStrengthCheckerRegex { get; set; }
     }
 }
