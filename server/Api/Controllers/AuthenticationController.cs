@@ -82,7 +82,7 @@ public class AuthenticationController : ControllerBase
     /// Issues access and refresh tokens on success
     /// </summary>
     [HttpPost("login")]
-    [AllowAnonymous]
+
     public async Task<IActionResult> ExecutePasswordLogin([FromBody] EmbeddedLoginRequest request)
     {
         var result = await _authenticationFlowService.ExecuteEmbeddedLoginAsync(request, Request);
@@ -94,7 +94,7 @@ public class AuthenticationController : ControllerBase
     /// Sends recovery link to registered email address
     /// </summary>
     [HttpPost("recover")]
-    [AllowAnonymous]
+    [Authorize]
     public async Task<IActionResult> InitiateAccountRecovery([FromBody] RecoveryUserRequest request)
     {
         var result = await _accountService.RecoverAccountAsync(request);
@@ -106,7 +106,7 @@ public class AuthenticationController : ControllerBase
     /// Validates token before allowing password change
     /// </summary>
     [HttpPost("reset-password")]
-    [AllowAnonymous]
+    [Authorize]
     public async Task<IActionResult> ExecutePasswordReset([FromBody] ResetPasswordRequest request)
     {
         var result = await _accountService.ResetAccountPasswordAsync(request);
