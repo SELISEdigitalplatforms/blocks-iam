@@ -1,23 +1,25 @@
 using Blocks.Genesis;
 using Microsoft.AspNetCore.Http;
-using System.Collections;
 using System.Globalization;
 using System.Net;
-using System.Reflection;
 
 namespace Authentication.DomainService.Utilities
 {
     /// <summary>
-    /// Resolves application and cookie domain in this order:
-    /// 1) BlocksContext.ApplicationDomain (or provided blockContextDomain)
-    /// 2) Request Origin/Referer host
-    /// 3) Fallback to first configured tenant domain
+    /// Resolves application and cookie domain, and builds CookieOptions for auth flows.
+    ///
+    /// Cookie attributes follow a binary rule based on IsLocalhost():
+    ///   - Local/dev  : HttpOnly only, no Secure, no SameSite
+    ///   - Production : HttpOnly + Secure + SameSite=Strict + resolved Domain
+    ///
+    /// Domain resolution validates the request's Origin/Referer host against the
+    /// tenant's configured Applications[].Domain using exact match (replicates
+    /// TenantContextHelper.ResolveApplicationDomain from Genesis).
     /// </summary>
     public static class DomainResolver
     {
-        /// <summary>
-        /// Determines if the current environment or request is localhost/development.
-        /// </summary>
+        // HttpContextAccessor is required for IsLocalhost() to read RemoteIpAddress
+        // (catches hosts-file entries whose hosts resolve to 127.0.0.1).
         private static IHttpContextAccessor? _httpContextAccessor;
 
         public static void Configure(IHttpContextAccessor accessor)
@@ -58,9 +60,8 @@ namespace Authentication.DomainService.Utilities
         {
             // Loopback mode (loopback host OR hosts-file entry OR non-default port):
             // HttpOnly only, no Secure, no SameSite.
-            // The caller's resolved cookieDomain is already null for true loopback
-            // (ResolveDomain returns isResolved=false there) and resolved for hosts-file
-            // entries - so we just trust what was passed in.
+            // cookieDomain is already resolved by ResolveDomain (validated against
+            // tenant.Applications[].Domain), so we trust it.
             return new CookieOptions
             {
                 Domain = cookieDomain,
@@ -110,23 +111,77 @@ namespace Authentication.DomainService.Utilities
             Tenant? tenant,
             HttpRequest? request)
         {
-            var domains = GetTenantDomains(tenant);
-            if (domains.Count == 0)
+            if (tenant?.Applications == null || tenant.Applications.Count == 0)
             {
                 return (null, null, false);
             }
 
-            var effectiveContextDomain = BlocksContext.ResolveApplicationDomain(request);
-            if (!string.IsNullOrWhiteSpace(effectiveContextDomain))
+            // Replicates TenantContextHelper.ResolveApplicationDomain (internal in Genesis):
+            // validate the Origin/Referer host against the tenant's configured applications
+            // using exact match. Localhost origins/referers are skipped (resolved by
+            // IsLocalhost() at the cookie layer).
+            var browserHost = ResolveValidatedBrowserHost(request);
+            if (string.IsNullOrWhiteSpace(browserHost))
             {
-                var matched = FindDomainMatch(domains, effectiveContextDomain);
-                if (matched != null)
-                {
-                    return (matched.Value.domain, matched.Value.cookieDomain, true);
-                }
+                return (null, null, false);
             }
 
-            return (null, null, false);
+            var match = tenant.Applications
+                .FirstOrDefault(a => NormalizeHost(a.Domain).Equals(browserHost, StringComparison.OrdinalIgnoreCase));
+
+            if (match == null)
+            {
+                return (null, null, false);
+            }
+
+            var cookieDomain = string.IsNullOrWhiteSpace(match.CookieDomain) ? match.Domain : match.CookieDomain;
+            return (match.Domain, cookieDomain, true);
+        }
+
+        private static string ResolveValidatedBrowserHost(HttpRequest? request)
+        {
+            if (request?.Headers == null)
+            {
+                return string.Empty;
+            }
+
+            var origin = request.Headers.Origin.ToString();
+            var referer = request.Headers.Referer.ToString();
+
+            // Skip localhost origins/referers - they don't carry a valid production domain.
+            if (IsLocalhostUri(origin) || IsLocalhostUri(referer))
+            {
+                return string.Empty;
+            }
+
+            if (!string.IsNullOrWhiteSpace(origin)
+                && Uri.TryCreate(origin, UriKind.Absolute, out var originUri))
+            {
+                return NormalizeHost(originUri.Host);
+            }
+
+            if (!string.IsNullOrWhiteSpace(referer)
+                && Uri.TryCreate(referer, UriKind.Absolute, out var refererUri))
+            {
+                return NormalizeHost(refererUri.Host);
+            }
+
+            return string.Empty;
+        }
+
+        private static bool IsLocalhostUri(string? value)
+        {
+            if (string.IsNullOrWhiteSpace(value))
+            {
+                return false;
+            }
+            if (!Uri.TryCreate(value, UriKind.Absolute, out var uri))
+            {
+                return false;
+            }
+            var host = uri.Host;
+            return host.Equals("localhost", StringComparison.OrdinalIgnoreCase)
+                || (IPAddress.TryParse(host, out var ip) && IPAddress.IsLoopback(ip));
         }
 
         public static string GetAudience(Tenant? tenant)
@@ -151,83 +206,6 @@ namespace Authentication.DomainService.Utilities
             }
 
             return "selise-blocks";
-        }
-
-        private static List<(string domain, string? cookieDomain)> GetTenantDomains(Tenant? tenant)
-        {
-            var result = new List<(string domain, string? cookieDomain)>();
-            if (tenant == null)
-            {
-                return result;
-            }
-
-            // New model: Tenant.Applications[].Domain/CookieDomain
-            var applicationsObj = GetPropertyValue(tenant, "Applications");
-            if (applicationsObj is IEnumerable applications)
-            {
-                foreach (var app in applications)
-                {
-                    if (app == null)
-                    {
-                        continue;
-                    }
-
-                    var appDomain = GetPropertyValue(app, "Domain") as string;
-                    if (string.IsNullOrWhiteSpace(appDomain))
-                    {
-                        continue;
-                    }
-
-                    var appCookieDomain = GetPropertyValue(app, "CookieDomain") as string;
-                    result.Add((appDomain, string.IsNullOrWhiteSpace(appCookieDomain) ? appDomain : appCookieDomain));
-                }
-            }
-
-            return result;
-        }
-
-        private static object? GetPropertyValue(object obj, string propertyName)
-        {
-            try
-            {
-                var property = obj.GetType().GetProperty(propertyName, BindingFlags.Public | BindingFlags.Instance);
-                return property?.GetValue(obj);
-            }
-            catch
-            {
-                return null;
-            }
-        }
-
-        private static (string domain, string? cookieDomain)? FindDomainMatch(List<(string domain, string? cookieDomain)> domains, string? hostToMatch)
-        {
-            if (string.IsNullOrWhiteSpace(hostToMatch))
-            {
-                return null;
-            }
-
-            var normalizedMatch = NormalizeHost(hostToMatch);
-            if (string.IsNullOrWhiteSpace(normalizedMatch))
-            {
-                return null;
-            }
-
-            foreach (var item in domains)
-            {
-                var normalizedDomain = NormalizeHost(item.domain);
-                if (string.IsNullOrWhiteSpace(normalizedDomain))
-                {
-                    continue;
-                }
-
-                if (string.Equals(normalizedDomain, normalizedMatch, StringComparison.OrdinalIgnoreCase)
-                    || normalizedMatch.EndsWith($".{normalizedDomain}", StringComparison.OrdinalIgnoreCase))
-                {
-                    return (normalizedMatch, item.cookieDomain);
-                }
-            }
-
-            return null;
         }
 
         private static string NormalizeHost(string? value)
