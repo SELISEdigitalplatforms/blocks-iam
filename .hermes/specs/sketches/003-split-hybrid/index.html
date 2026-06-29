@@ -1,143 +1,161 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="en" class="light">
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Variant 3: Split Dashboard — Activity Timeline</title>
+<title>Variant 3: Split Hybrid — Activity Timeline</title>
 <style>
   :root {
-    --bg: #0a0a0f; --surface: #111118; --surface-hover: #181820;
-    --border: #1e1e2a; --text-primary: #f0f0f5; --text-secondary: #8888a0;
-    --text-muted: #5a5a72; --accent: #4f6ef7;
-    --radius: 12px; --radius-sm: 8px;
-    --blue: #3b82f6; --purple: #a855f7; --orange: #f97316;
-    --red: #ef4444; --green: #22c55e; --indigo: #6366f1;
+    --font-sans: 'DM Sans', system-ui, -apple-system, sans-serif;
+    --background: 0 0% 100%;
+    --foreground: 222.2 84% 4.9%;
+    --card: 0 0% 100%;
+    --card-foreground: 222.2 84% 4.9%;
+    --primary: 206 100% 35%;
+    --primary-foreground: 210 40% 98%;
+    --secondary: 210 40% 96.1%;
+    --muted: 210 40% 96.1%;
+    --muted-foreground: 215.4 16.3% 46.9%;
+    --accent: 210 40% 96.1%;
+    --border: 214.3 31.8% 91.4%;
+    --radius: 0.5rem;
+    --high-emphasis: 0 0% 15%;
+    --medium-emphasis: 0 0% 33%;
+    --low-emphasis: 0 0% 62%;
+    --success: 146 79% 44%;
+    --error: 0 100% 60%;
+    --surface-app: 220 33% 96%;
+    --primary-500: 218 78% 32%;
+    --primary-300: 214 39% 48%;
+    --primary-shades-300: 217 37% 93%;
+    --chart-purple: 277 66% 71%;
+    --chart-blue: 211 96% 70%;
+    --chart-orange: 30 92% 57%;
+    --chart-red: 2 71% 70%;
+    --chart-yellow: 49 89% 49%;
   }
   * { box-sizing: border-box; margin: 0; padding: 0; }
   body {
-    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Inter", Roboto, sans-serif;
-    background: var(--bg); color: var(--text-primary);
+    font-family: var(--font-sans);
+    background: hsl(var(--surface-app));
+    color: hsl(var(--high-emphasis));
     -webkit-font-smoothing: antialiased; line-height: 1.5;
   }
 
   .layout { display: flex; height: 100vh; }
 
-  /* Sidebar */
   .sidebar {
     width: 300px; flex-shrink: 0;
-    background: var(--surface); border-right: 1px solid var(--border);
+    background: hsl(var(--card)); border-right: 1px solid hsl(var(--border));
     padding: 24px 20px; overflow-y: auto;
   }
-  .sidebar h2 { font-size: 18px; font-weight: 700; margin-bottom: 20px; }
+  .sidebar h2 { font-size: 18px; font-weight: 700; color: hsl(var(--high-emphasis)); margin-bottom: 20px; }
 
   .sidebar-section { margin-bottom: 24px; }
   .sidebar-section h3 {
     font-size: 11px; text-transform: uppercase; letter-spacing: .6px;
-    color: var(--text-muted); margin-bottom: 10px; font-weight: 600;
+    color: hsl(var(--low-emphasis)); margin-bottom: 10px; font-weight: 600;
   }
 
   .chip-group { display: flex; flex-wrap: wrap; gap: 6px; }
   .chip {
-    padding: 5px 12px; background: transparent; border: 1px solid var(--border);
-    border-radius: 20px; font-size: 12px; color: var(--text-secondary);
-    cursor: pointer; transition: all .12s;
+    padding: 5px 12px; background: transparent; border: 1px solid hsl(var(--border));
+    border-radius: 20px; font-size: 12px; color: hsl(var(--medium-emphasis));
+    cursor: pointer; transition: all .12s; font-family: inherit;
   }
-  .chip:hover { border-color: var(--accent); }
-  .chip.active { background: var(--accent); border-color: var(--accent); color: white; }
+  .chip:hover { border-color: hsl(var(--primary)); }
+  .chip.active { background: hsl(var(--primary)); border-color: hsl(var(--primary)); color: hsl(var(--primary-foreground)); }
 
   .stat-mini {
     display: flex; justify-content: space-between; align-items: center;
-    padding: 8px 0; border-bottom: 1px solid var(--border);
-    font-size: 13px;
+    padding: 8px 0; border-bottom: 1px solid hsl(var(--border));
+    font-size: 13px; color: hsl(var(--medium-emphasis));
   }
-  .stat-mini .mini-count { font-weight: 700; font-size: 15px; }
+  .stat-mini .mini-count { font-weight: 700; font-size: 15px; color: hsl(var(--high-emphasis)); }
   .stat-mini .mini-dot { width: 8px; height: 8px; border-radius: 50%; display: inline-block; margin-right: 8px; }
 
   .sidebar-search {
-    width: 100%; padding: 8px 12px; background: var(--bg); border: 1px solid var(--border);
-    border-radius: var(--radius-sm); color: var(--text-primary); font-size: 13px;
-    margin-bottom: 20px; outline: none;
+    width: 100%; padding: 8px 12px; background: hsl(var(--surface-app)); border: 1px solid hsl(var(--border));
+    border-radius: calc(var(--radius) - 2px); color: hsl(var(--high-emphasis)); font-size: 13px;
+    margin-bottom: 20px; outline: none; font-family: inherit;
   }
-  .sidebar-search:focus { border-color: var(--accent); }
-  .sidebar-search::placeholder { color: var(--text-muted); }
+  .sidebar-search:focus { border-color: hsl(var(--primary)); }
+  .sidebar-search::placeholder { color: hsl(var(--low-emphasis)); }
 
-  /* Main */
   .main {
     flex: 1; padding: 24px 32px; overflow-y: auto;
+    background: hsl(var(--surface-app));
   }
   .main-header {
     display: flex; justify-content: space-between; align-items: center;
     margin-bottom: 20px;
   }
-  .main-header h1 { font-size: 22px; font-weight: 700; }
+  .main-header h1 { font-size: 22px; font-weight: 700; color: hsl(var(--high-emphasis)); }
   .btn-outline {
     display: flex; align-items: center; gap: 6px;
-    padding: 8px 16px; background: transparent;
-    border: 1px solid var(--border); border-radius: var(--radius-sm);
-    color: var(--text-secondary); font-size: 13px; cursor: pointer;
+    padding: 8px 16px; background: hsl(var(--card));
+    border: 1px solid hsl(var(--border)); border-radius: calc(var(--radius) - 2px);
+    color: hsl(var(--medium-emphasis)); font-size: 13px; cursor: pointer;
+    font-family: inherit; transition: all .15s;
   }
-  .btn-outline:hover { border-color: var(--accent); color: var(--text-primary); }
+  .btn-outline:hover { border-color: hsl(var(--primary)); color: hsl(var(--high-emphasis)); }
 
   .live-bar {
     display: flex; align-items: center; gap: 8px;
     padding: 10px 16px; margin-bottom: 16px;
-    background: rgba(79,110,247,0.06); border: 1px solid rgba(79,110,247,0.15);
-    border-radius: var(--radius-sm); font-size: 13px; color: var(--accent);
-    cursor: pointer;
+    background: hsl(var(--primary-shades-300)); border: 1px solid hsl(214 39% 48% / 0.2);
+    border-radius: calc(var(--radius) - 2px); font-size: 13px; color: hsl(var(--primary));
+    cursor: pointer; font-family: inherit;
   }
-  .live-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--green); animation: pulse 2s infinite; }
+  .live-dot { width: 8px; height: 8px; border-radius: 50%; background: hsl(var(--success)); animation: pulse 2s infinite; }
   @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:.4} }
 
-  /* Event list */
   .event-list { display: flex; flex-direction: column; gap: 1px; }
   .event-row {
     display: flex; align-items: center; gap: 14px;
-    padding: 12px 16px; background: var(--surface);
-    border: 1px solid transparent; border-radius: var(--radius-sm);
+    padding: 12px 16px; background: hsl(var(--card));
+    border: 1px solid transparent; border-radius: calc(var(--radius) - 2px);
     cursor: pointer; transition: all .12s;
   }
-  .event-row:hover { background: var(--surface-hover); border-color: var(--border); }
+  .event-row:hover { background: hsl(var(--accent)); border-color: hsl(var(--border)); }
   .event-row .ev-icon { font-size: 20px; width: 36px; text-align: center; flex-shrink: 0; }
   .event-row .ev-content { flex: 1; min-width: 0; }
-  .event-row .ev-title { font-weight: 600; font-size: 14px; }
-  .event-row .ev-sub { font-size: 12px; color: var(--text-secondary); margin-top: 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-  .event-row .ev-time { font-size: 12px; color: var(--text-muted); flex-shrink: 0; text-align: right; min-width: 140px; }
-  .event-row .ev-time .relative { font-weight: 500; color: var(--text-secondary); }
+  .event-row .ev-title { font-weight: 600; font-size: 14px; color: hsl(var(--high-emphasis)); }
+  .event-row .ev-sub { font-size: 12px; color: hsl(var(--medium-emphasis)); margin-top: 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .event-row .ev-time { font-size: 12px; color: hsl(var(--low-emphasis)); flex-shrink: 0; text-align: right; min-width: 140px; }
+  .event-row .ev-time .relative { font-weight: 500; color: hsl(var(--medium-emphasis)); }
   .event-row .ev-ip {
     font-size: 11px; font-family: "SF Mono", monospace;
-    padding: 2px 8px; background: rgba(255,255,255,0.04);
-    border-radius: 4px; color: var(--text-muted); flex-shrink: 0;
+    padding: 2px 8px; background: hsl(var(--accent));
+    border-radius: 4px; color: hsl(var(--low-emphasis)); flex-shrink: 0;
   }
   .event-row .ev-badge {
     display: inline-block; padding: 2px 8px; border-radius: 4px; font-size: 11px; font-weight: 600;
     flex-shrink: 0;
   }
-  .evb-blue { background: rgba(59,130,246,0.15); color: var(--blue); }
-  .evb-purple { background: rgba(168,85,247,0.15); color: var(--purple); }
-  .evb-orange { background: rgba(249,115,22,0.15); color: var(--orange); }
-  .evb-red { background: rgba(239,68,68,0.15); color: var(--red); }
-  .evb-green { background: rgba(34,197,94,0.15); color: var(--green); }
-  .evb-indigo { background: rgba(99,102,241,0.15); color: var(--indigo); }
+  .evb-blue { background: hsl(211 96% 70% / 0.15); color: hsl(211 96% 40%); }
+  .evb-purple { background: hsl(277 66% 71% / 0.15); color: hsl(277 66% 45%); }
+  .evb-orange { background: hsl(30 92% 57% / 0.15); color: hsl(30 92% 40%); }
+  .evb-red { background: hsl(2 71% 70% / 0.15); color: hsl(var(--error)); }
+  .evb-green { background: hsl(146 79% 44% / 0.15); color: hsl(146 79% 35%); }
+  .evb-indigo { background: hsl(218 78% 32% / 0.12); color: hsl(var(--primary-500)); }
 
   .date-divider {
     display: flex; align-items: center; gap: 12px;
-    padding: 16px 0 8px; font-size: 12px; color: var(--text-muted);
+    padding: 16px 0 8px; font-size: 12px; color: hsl(var(--low-emphasis));
     font-weight: 600; text-transform: uppercase; letter-spacing: .5px;
   }
-  .date-divider::after { content: ""; flex: 1; height: 1px; background: var(--border); }
+  .date-divider::after { content: ""; flex: 1; height: 1px; background: hsl(var(--border)); }
 
   .pagination-bar {
     display: flex; justify-content: center; gap: 6px; margin-top: 20px;
   }
-  .page-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--border); cursor: pointer; }
-  .page-dot.active { background: var(--accent); width: 24px; border-radius: 4px; }
+  .page-dot { width: 8px; height: 8px; border-radius: 50%; background: hsl(var(--border)); cursor: pointer; }
+  .page-dot.active { background: hsl(var(--primary)); width: 24px; border-radius: 4px; }
 </style>
 </head>
 <body>
-
 <div class="layout">
-
-  <!-- SIDEBAR -->
   <aside class="sidebar">
     <h2>⏱ Activity</h2>
     <input class="sidebar-search" placeholder="Search users or events...">
@@ -145,12 +163,8 @@
     <div class="sidebar-section">
       <h3>Event Type</h3>
       <div class="chip-group">
-        <span class="chip active">All</span>
-        <span class="chip">🔑 Login</span>
-        <span class="chip">🛡 MFA</span>
-        <span class="chip">👤 User</span>
-        <span class="chip">🔄 Tokens</span>
-        <span class="chip">⛔ Security</span>
+        <span class="chip active">All</span><span class="chip">🔑 Login</span><span class="chip">🛡 MFA</span>
+        <span class="chip">👤 User</span><span class="chip">🔄 Tokens</span><span class="chip">⛔ Security</span>
         <span class="chip">🔐 Permissions</span>
       </div>
     </div>
@@ -158,160 +172,58 @@
     <div class="sidebar-section">
       <h3>Time Range</h3>
       <div class="chip-group">
-        <span class="chip">1h</span>
-        <span class="chip">Today</span>
-        <span class="chip active">7 days</span>
-        <span class="chip">30 days</span>
-        <span class="chip">Custom</span>
+        <span class="chip">1h</span><span class="chip">Today</span><span class="chip active">7 days</span>
+        <span class="chip">30 days</span><span class="chip">Custom</span>
       </div>
     </div>
 
     <div class="sidebar-section">
       <h3>Organization</h3>
       <div class="chip-group">
-        <span class="chip active">All</span>
-        <span class="chip">Acme Corp</span>
-        <span class="chip">Globex</span>
+        <span class="chip active">All</span><span class="chip">Acme Corp</span><span class="chip">Globex</span>
       </div>
     </div>
 
     <div class="sidebar-section">
       <h3>Quick Stats</h3>
-      <div class="stat-mini">
-        <span><span class="mini-dot" style="background:var(--blue)"></span>Logins</span>
-        <span class="mini-count" style="color:var(--blue)">42</span>
-      </div>
-      <div class="stat-mini">
-        <span><span class="mini-dot" style="background:var(--purple)"></span>MFA</span>
-        <span class="mini-count" style="color:var(--purple)">15</span>
-      </div>
-      <div class="stat-mini">
-        <span><span class="mini-dot" style="background:var(--red)"></span>Failures</span>
-        <span class="mini-count" style="color:var(--red)">8</span>
-      </div>
-      <div class="stat-mini">
-        <span><span class="mini-dot" style="background:var(--green)"></span>Changes</span>
-        <span class="mini-count" style="color:var(--green)">12</span>
-      </div>
+      <div class="stat-mini"><span><span class="mini-dot" style="background:hsl(var(--chart-blue))"></span>Logins</span><span class="mini-count" style="color:hsl(var(--chart-blue))">42</span></div>
+      <div class="stat-mini"><span><span class="mini-dot" style="background:hsl(var(--chart-purple))"></span>MFA</span><span class="mini-count" style="color:hsl(var(--chart-purple))">15</span></div>
+      <div class="stat-mini"><span><span class="mini-dot" style="background:hsl(var(--error))"></span>Failures</span><span class="mini-count" style="color:hsl(var(--error))">8</span></div>
+      <div class="stat-mini"><span><span class="mini-dot" style="background:hsl(var(--success))"></span>Changes</span><span class="mini-count" style="color:hsl(var(--success))">12</span></div>
     </div>
   </aside>
 
-  <!-- MAIN -->
   <main class="main">
     <div class="main-header">
       <div>
-        <p style="font-size:12px;color:var(--text-muted);">IAM / Activity Timeline</p>
+        <p style="font-size:12px;color:hsl(var(--low-emphasis));">IAM / Activity Timeline</p>
         <h1>Activity Timeline</h1>
       </div>
-      <button class="btn-outline">
-        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
-        Export
-      </button>
+      <button class="btn-outline"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>Export</button>
     </div>
 
     <div class="live-bar" onclick="this.style.display='none'">
-      <span class="live-dot"></span>
-      <strong>3 new events</strong> &mdash; click to refresh
+      <span class="live-dot"></span><strong>3 new events</strong> — click to refresh
     </div>
 
     <div class="event-list">
       <div class="date-divider">Today</div>
 
-      <div class="event-row">
-        <div class="ev-icon">🔑</div>
-        <div class="ev-content">
-          <div class="ev-title">Jane Doe</div>
-          <div class="ev-sub">Login via Password &middot; jane@selise.com</div>
-        </div>
-        <span class="ev-badge evb-blue">Login</span>
-        <span class="ev-ip">10.0.0.1</span>
-        <div class="ev-time">
-          <div class="relative">2 min ago</div>
-          <div>14:32 UTC</div>
-        </div>
-      </div>
-
-      <div class="event-row">
-        <div class="ev-icon">🛡</div>
-        <div class="ev-content">
-          <div class="ev-title">Bob Smith</div>
-          <div class="ev-sub">MFA Enabled &middot; TOTP authenticator &middot; bob@selise.com</div>
-        </div>
-        <span class="ev-badge evb-purple">MFA</span>
-        <span class="ev-ip">10.0.0.42</span>
-        <div class="ev-time">
-          <div class="relative">12 min ago</div>
-          <div>14:22 UTC</div>
-        </div>
-      </div>
-
-      <div class="event-row">
-        <div class="ev-icon">👤</div>
-        <div class="ev-content">
-          <div class="ev-title">Admin User</div>
-          <div class="ev-sub">Created alice@selise.com with role member</div>
-        </div>
-        <span class="ev-badge evb-green">User</span>
-        <span class="ev-ip">—</span>
-        <div class="ev-time">
-          <div class="relative">1 hour ago</div>
-          <div>13:15 UTC</div>
-        </div>
-      </div>
-
-      <div class="event-row">
-        <div class="ev-icon">⛔</div>
-        <div class="ev-content">
-          <div class="ev-title">Carol Lee</div>
-          <div class="ev-sub">Account Deactivated by admin@selise.com</div>
-        </div>
-        <span class="ev-badge evb-red">Security</span>
-        <span class="ev-ip">—</span>
-        <div class="ev-time">
-          <div class="relative">2 hours ago</div>
-          <div>12:05 UTC</div>
-        </div>
-      </div>
+      <div class="event-row"><div class="ev-icon">🔑</div><div class="ev-content"><div class="ev-title">Jane Doe</div><div class="ev-sub">Login via Password · jane@selise.com</div></div><span class="ev-badge evb-blue">Login</span><span class="ev-ip">10.0.0.1</span><div class="ev-time"><div class="relative">2 min ago</div><div>14:32 UTC</div></div></div>
+      <div class="event-row"><div class="ev-icon">🛡</div><div class="ev-content"><div class="ev-title">Bob Smith</div><div class="ev-sub">MFA Enabled · TOTP authenticator · bob@selise.com</div></div><span class="ev-badge evb-purple">MFA</span><span class="ev-ip">10.0.0.42</span><div class="ev-time"><div class="relative">12 min ago</div><div>14:22 UTC</div></div></div>
+      <div class="event-row"><div class="ev-icon">👤</div><div class="ev-content"><div class="ev-title">Admin User</div><div class="ev-sub">Created alice@selise.com with role member</div></div><span class="ev-badge evb-green">User</span><span class="ev-ip">—</span><div class="ev-time"><div class="relative">1 hour ago</div><div>13:15 UTC</div></div></div>
+      <div class="event-row"><div class="ev-icon">⛔</div><div class="ev-content"><div class="ev-title">Carol Lee</div><div class="ev-sub">Account Deactivated by admin@selise.com</div></div><span class="ev-badge evb-red">Security</span><span class="ev-ip">—</span><div class="ev-time"><div class="relative">2 hours ago</div><div>12:05 UTC</div></div></div>
 
       <div class="date-divider">Yesterday</div>
 
-      <div class="event-row">
-        <div class="ev-icon">🔄</div>
-        <div class="ev-content">
-          <div class="ev-title">Dave Kim</div>
-          <div class="ev-sub">Token Renewed &middot; dave@selise.com</div>
-        </div>
-        <span class="ev-badge evb-orange">Token</span>
-        <span class="ev-ip">10.0.0.88</span>
-        <div class="ev-time">
-          <div class="relative">3 hours ago</div>
-          <div>11:42 UTC</div>
-        </div>
-      </div>
-
-      <div class="event-row">
-        <div class="ev-icon">🔐</div>
-        <div class="ev-content">
-          <div class="ev-title">Eva Martinez</div>
-          <div class="ev-sub">Roles changed: added manager, viewer &middot; eva@selise.com</div>
-        </div>
-        <span class="ev-badge evb-indigo">Roles</span>
-        <span class="ev-ip">—</span>
-        <div class="ev-time">
-          <div class="relative">5 hours ago</div>
-          <div>09:18 UTC</div>
-        </div>
-      </div>
+      <div class="event-row"><div class="ev-icon">🔄</div><div class="ev-content"><div class="ev-title">Dave Kim</div><div class="ev-sub">Token Renewed · dave@selise.com</div></div><span class="ev-badge evb-orange">Token</span><span class="ev-ip">10.0.0.88</span><div class="ev-time"><div class="relative">3 hours ago</div><div>11:42 UTC</div></div></div>
+      <div class="event-row"><div class="ev-icon">🔐</div><div class="ev-content"><div class="ev-title">Eva Martinez</div><div class="ev-sub">Roles changed: added manager, viewer · eva@selise.com</div></div><span class="ev-badge evb-indigo">Roles</span><span class="ev-ip">—</span><div class="ev-time"><div class="relative">5 hours ago</div><div>09:18 UTC</div></div></div>
     </div>
 
     <div class="pagination-bar">
-      <span class="page-dot active"></span>
-      <span class="page-dot"></span>
-      <span class="page-dot"></span>
-      <span class="page-dot"></span>
+      <span class="page-dot active"></span><span class="page-dot"></span><span class="page-dot"></span><span class="page-dot"></span>
     </div>
   </main>
 </div>
-
 </body>
 </html>
