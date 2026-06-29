@@ -69,6 +69,7 @@ namespace Authentication.DomainService.Utilities
                 Secure = true,
                 SameSite = SameSiteMode.None,
                 Path = "/",
+                Secure = true,
                 Expires = NormalizeExpiry(expiresUtc)
             };
         }
