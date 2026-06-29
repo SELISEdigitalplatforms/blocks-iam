@@ -341,7 +341,6 @@ namespace Api.Controllers
         }
 
         [HttpGet("signup-settings")]
-        [Authorize]
         public async Task<Dictionary<string, object>> GetSignUpSetting()
         {
             return await _accountService.GetSignUpSettingAsync();
