@@ -1154,7 +1154,7 @@ namespace Authentication.DomainService.Authentication
                 refreshTokenModel.TokenId,
                 effectiveTenantId,
                 isResolved ? domain : null,
-                DomainResolver.IsLocalhost() ? null : cookieDomain,
+                cookieDomain,
                 authCode.Scope,
                 accessTokenLifetimeSeconds,
                 accessExpiry,
