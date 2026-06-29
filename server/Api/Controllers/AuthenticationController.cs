@@ -94,7 +94,7 @@ public class AuthenticationController : ControllerBase
     /// Sends recovery link to registered email address
     /// </summary>
     [HttpPost("recover")]
-    [Authorize]
+
     public async Task<IActionResult> InitiateAccountRecovery([FromBody] RecoveryUserRequest request)
     {
         var result = await _accountService.RecoverAccountAsync(request);
