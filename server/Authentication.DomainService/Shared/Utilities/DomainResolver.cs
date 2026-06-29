@@ -135,7 +135,7 @@ namespace Authentication.DomainService.Utilities
             }
 
             var cookieDomain = string.IsNullOrWhiteSpace(match.CookieDomain) ? NormalizeHost(match.Domain) : match.CookieDomain;
-            return (match.Domain, cookieDomain, true);
+            return (NormalizeHost(match.Domain), cookieDomain, true);
         }
 
         private static string ResolveValidatedBrowserHost(HttpRequest? request)
