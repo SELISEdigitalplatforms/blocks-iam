@@ -212,63 +212,63 @@ namespace Authentication.DomainService.Services
             
             // Auto-insert/update IdentityProvider for OIDC client
             // Create provider name from client ID or client name
-            var providerName = !string.IsNullOrWhiteSpace(request.ClientDisplayName) 
-                ? request.ClientDisplayName.ToLower().Replace(" ", "-") 
-                : clientId.ToLower();
+            //var providerName = !string.IsNullOrWhiteSpace(request.ClientDisplayName) 
+            //    ? request.ClientDisplayName.ToLower().Replace(" ", "-") 
+            //    : clientId.ToLower();
             
-            var existingProvider = await _authenticationRepository.GetIdentityProviderAsync(providerName, IdpConstants.BlocksProviderType);
+            //var existingProvider = await _authenticationRepository.GetIdentityProviderAsync(providerName, IdpConstants.BlocksProviderType);
             
-            if (existingProvider == null)
-            {
-                // Create new IdentityProvider for this OIDC client
-                var newProvider = new IdentityProvider
-                {
-                    Provider = providerName,
-                    ProviderType = IdpConstants.BlocksProviderType,
-                    Protocol = IdpConstants.OidcProtocol,
-                    DisplayName = request.ClientDisplayName ?? clientId,
-                    IsActive = request.IsActive,
-                    ClientId = credential.ClientId,
-                    ClientSecret = credential.ClientSecret,
-                    Issuer = request.ExternalDiscoveryEndpoint,
-                    WellKnownUrl = request.ExternalDiscoveryEndpoint,
-                    AuthorizationUrl = request.ExternalDiscoveryEndpoint ?? "",
-                    TokenUrl = request.ExternalDiscoveryEndpoint ?? "",
-                    UserInfoUrl = request.ExternalDiscoveryEndpoint ?? "",
-                    RedirectUris = redirectUris,
-                    Scope = credential.Scope,
-                    ResponseType = "code",
-                    GrantTypes = ["authorization_code", "refresh_token"],
-                    RequirePkce = credential.RequirePkce,
-                    TokenEndpointAuthMethod = credential.TokenEndpointAuthMethod,
-                    InitialRoles = [],
-                    InitialPermissions = [],
-                    Icon = null
-                };
-                await _authenticationRepository.CreateIdentityProviderAsync(newProvider);
-            }
-            else
-            {
-                // Update existing provider with latest OIDC client config
-                existingProvider.Provider = providerName;
-                existingProvider.ProviderType = IdpConstants.BlocksProviderType;
-                existingProvider.Protocol = IdpConstants.OidcProtocol;
-                existingProvider.ClientId = credential.ClientId;
-                existingProvider.ClientSecret = credential.ClientSecret;
-                existingProvider.DisplayName = request.ClientDisplayName ?? clientId;
-                existingProvider.Issuer = request.ExternalDiscoveryEndpoint;
-                existingProvider.WellKnownUrl = request.ExternalDiscoveryEndpoint;
-                existingProvider.AuthorizationUrl = request.ExternalDiscoveryEndpoint ?? "";
-                existingProvider.TokenUrl = request.ExternalDiscoveryEndpoint ?? "";
-                existingProvider.UserInfoUrl = request.ExternalDiscoveryEndpoint ?? "";
-                existingProvider.RedirectUris = redirectUris;
-                existingProvider.Scope = credential.Scope;
-                existingProvider.GrantTypes = ["authorization_code", "refresh_token"];
-                existingProvider.RequirePkce = credential.RequirePkce;
-                existingProvider.TokenEndpointAuthMethod = credential.TokenEndpointAuthMethod;
-                existingProvider.IsActive = credential.IsActive;
-                await _authenticationRepository.UpdateIdentityProviderAsync(existingProvider);
-            }
+            //if (existingProvider == null)
+            //{
+            //    // Create new IdentityProvider for this OIDC client
+            //    var newProvider = new IdentityProvider
+            //    {
+            //        Provider = providerName,
+            //        ProviderType = IdpConstants.BlocksProviderType,
+            //        Protocol = IdpConstants.OidcProtocol,
+            //        DisplayName = request.ClientDisplayName ?? clientId,
+            //        IsActive = request.IsActive,
+            //        ClientId = credential.ClientId,
+            //        ClientSecret = credential.ClientSecret,
+            //        Issuer = request.ExternalDiscoveryEndpoint,
+            //        WellKnownUrl = request.ExternalDiscoveryEndpoint,
+            //        AuthorizationUrl = request.ExternalDiscoveryEndpoint ?? "",
+            //        TokenUrl = request.ExternalDiscoveryEndpoint ?? "",
+            //        UserInfoUrl = request.ExternalDiscoveryEndpoint ?? "",
+            //        RedirectUris = redirectUris,
+            //        Scope = credential.Scope,
+            //        ResponseType = "code",
+            //        GrantTypes = ["authorization_code", "refresh_token"],
+            //        RequirePkce = credential.RequirePkce,
+            //        TokenEndpointAuthMethod = credential.TokenEndpointAuthMethod,
+            //        InitialRoles = [],
+            //        InitialPermissions = [],
+            //        Icon = null
+            //    };
+            //    await _authenticationRepository.CreateIdentityProviderAsync(newProvider);
+            //}
+            //else
+            //{
+            //    // Update existing provider with latest OIDC client config
+            //    existingProvider.Provider = providerName;
+            //    existingProvider.ProviderType = IdpConstants.BlocksProviderType;
+            //    existingProvider.Protocol = IdpConstants.OidcProtocol;
+            //    existingProvider.ClientId = credential.ClientId;
+            //    existingProvider.ClientSecret = credential.ClientSecret;
+            //    existingProvider.DisplayName = request.ClientDisplayName ?? clientId;
+            //    existingProvider.Issuer = request.ExternalDiscoveryEndpoint;
+            //    existingProvider.WellKnownUrl = request.ExternalDiscoveryEndpoint;
+            //    existingProvider.AuthorizationUrl = request.ExternalDiscoveryEndpoint ?? "";
+            //    existingProvider.TokenUrl = request.ExternalDiscoveryEndpoint ?? "";
+            //    existingProvider.UserInfoUrl = request.ExternalDiscoveryEndpoint ?? "";
+            //    existingProvider.RedirectUris = redirectUris;
+            //    existingProvider.Scope = credential.Scope;
+            //    existingProvider.GrantTypes = ["authorization_code", "refresh_token"];
+            //    existingProvider.RequirePkce = credential.RequirePkce;
+            //    existingProvider.TokenEndpointAuthMethod = credential.TokenEndpointAuthMethod;
+            //    existingProvider.IsActive = credential.IsActive;
+            //    await _authenticationRepository.UpdateIdentityProviderAsync(existingProvider);
+            //}
             
             return new SaveOIDCClientResponse { IsSuccess = true, ItemId = credential.ItemId };
         }
