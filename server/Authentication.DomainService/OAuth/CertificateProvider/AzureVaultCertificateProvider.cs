@@ -5,7 +5,7 @@ using Microsoft.Extensions.Logging;
 
 namespace Authentication.DomainService.OAuth
 {
-    public class AzureVaultCertificateProvider : ICertificateProvider
+    public sealed class AzureVaultCertificateProvider : ICertificateProvider
     {
         private readonly ILogger _logger;
         private SecretClient _secretClient;
@@ -60,7 +60,7 @@ namespace Authentication.DomainService.OAuth
             }
             catch (Exception e)
             {
-                Console.WriteLine($"Error retrieving secret '{key}': {e.Message}");
+                _logger.LogError(e, "Error retrieving secret {Key}", key);
                 return string.Empty;
             }
         }

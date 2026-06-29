@@ -26,7 +26,7 @@ using System.Text.Json;
 
 namespace Authentication.DomainService.Authentication
 {
-    public class AuthenticationService : IAuthenticationService
+    public sealed class AuthenticationService : IAuthenticationService
     {
         private static readonly HttpClient BackchannelHttpClient = new();
         private readonly ILogger<AuthenticationService> _logger;
@@ -42,7 +42,7 @@ namespace Authentication.DomainService.Authentication
         private readonly UnifiedTokenSessionService _unifiedTokenSessionService;
         private readonly IOAuthJwtAccessTokenManager _oAuthJwtAccessTokenManager;
 
-        private const string Public_Cert_Cache_Prefix = "tetocertpublic::";
+        private const string PublicCertCachePrefix = "tetocertpublic::";
 
         public AuthenticationService(
             ILogger<AuthenticationService> logger,
@@ -631,7 +631,7 @@ namespace Authentication.DomainService.Authentication
             if (!string.IsNullOrEmpty(token))
             {
                 var tokenHandler = new JwtSecurityTokenHandler();
-                string cacheKey = $"{Public_Cert_Cache_Prefix}{tenant.TenantId}";
+                string cacheKey = $"{PublicCertCachePrefix}{tenant.TenantId}";
                 var certificateData = await _cacheClient.CacheDatabase().StringGetAsync(cacheKey);
                 var validationParams = tenant.JwtTokenParameters;
                 var publicCert = X509CertificateLoader.LoadPkcs12(certificateData, validationParams.PublicCertificatePassword);

@@ -14,7 +14,7 @@ namespace Authentication.DomainService.Oidc.Services
         Task<OidcCallbackResult> HandleCallbackAsync(string code, string state);
     }
 
-    public class OidcCallbackResult
+    public sealed class OidcCallbackResult
     {
         public bool IsSuccess { get; set; }
         public string? AccessToken { get; set; }
@@ -39,7 +39,7 @@ namespace Authentication.DomainService.Oidc.Services
         public string? TenantId { get; set; }
     }
 
-    public class OidcCallbackHandler : IOidcCallbackHandler
+    public sealed class OidcCallbackHandler : IOidcCallbackHandler
     {
         private readonly ILogger<OidcCallbackHandler> _logger;
         private readonly IAuthenticationRepository _authenticationRepository;

@@ -4,7 +4,7 @@ using Microsoft.Extensions.Logging;
 
 namespace Authentication.DomainService.OAuth
 {
-    public class GithubLogInService : ISocialLogInService
+    public sealed class GithubLogInService : ISocialLogInService
     {
         private readonly ILogger<GithubLogInService> _logger;
         private readonly IAuthenticationRepository _authenticationRepository;

@@ -3,17 +3,17 @@ using Authentication.DomainService.Entities;
 
 namespace Authentication.DomainService.RequestModel
 {
-    public class GetOIDCClientRequest
+    public sealed class GetOIDCClientRequest
     {
         public string? ClientId { get; set; }    
     }
 
-    public class GetOIDCClientsRequest
+    public sealed class GetOIDCClientsRequest
     {
 
     }
 
-    public class DeleteOIDCClientRequest
+    public sealed class DeleteOIDCClientRequest
     {
         public string? ItemId { get; set; }
     }

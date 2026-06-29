@@ -6,7 +6,7 @@ using Iam.DomainService.Entities;
 
 namespace Authentication.DomainService.OAuth.Services
 {
-    public class ClientUserCodeAuthorizationService : ITokenService
+    public sealed class ClientUserCodeAuthorizationService : ITokenService
     {
         private readonly IAuthenticationRepository _authenticationRepository;
         private readonly IOAuthJwtAccessTokenManager _oAuthJwtAccessTokenManager;

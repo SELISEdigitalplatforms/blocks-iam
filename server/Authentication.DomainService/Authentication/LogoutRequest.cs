@@ -1,16 +1,16 @@
 namespace Authentication.DomainService.Authentication
 {
-    public class LogoutRequest
+    public sealed class LogoutRequest
     {
         public string? RefreshToken { get; set; }
     }
 
-    public class LogoutAllRequest
+    public sealed class LogoutAllRequest
     {
         public bool UseBackchannel { get; set; } = false;
     }
 
-    public class LogoutResponse
+    public sealed class LogoutResponse
     {
         public bool IsSuccess { get; set; }
     }
