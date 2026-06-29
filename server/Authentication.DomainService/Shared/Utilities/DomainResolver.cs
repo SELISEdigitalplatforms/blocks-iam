@@ -68,6 +68,7 @@ namespace Authentication.DomainService.Utilities
                 HttpOnly = true,
                 SameSite = SameSiteMode.None,
                 Path = "/",
+                Secure = true,
                 Expires = NormalizeExpiry(expiresUtc)
             };
         }
