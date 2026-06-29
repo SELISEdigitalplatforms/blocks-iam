@@ -204,10 +204,10 @@ namespace Api.Controllers
             return result.IsSuccess ? Ok(result) : BadRequest(result);
         }
 
-        [HttpGet("users")]
+        [HttpPost("users")]
         //[ProtectedEndPoint("blocks-idp::get-users")]
         [Authorize]
-        public async Task<GetUsersResponse> GetUsers([FromQuery] GetUsersRequest query)
+        public async Task<GetUsersResponse> GetUsers([FromBody] GetUsersRequest query)
         {
             return await _userManagementQueryService.GetUsersAsync(query);
         }
