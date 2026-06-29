@@ -1,5 +1,6 @@
 using Authentication.DomainService.Entities;
 using Authentication.DomainService.Services;
+using Authentication.DomainService.Shared;
 using Blocks.Genesis;
 using Microsoft.Extensions.Logging;
 using Microsoft.IdentityModel.Tokens;
@@ -44,7 +45,7 @@ namespace Authentication.DomainService.OAuth.SocialServices
                     { "client_id", identityProvider.ClientId },
                     { "client_secret",  GenerateClientSecret(identityProvider)},
                     { "redirect_uri", stateInfo.RedirectUri },
-                    { "grant_type", "authorization_code" }
+                    { "grant_type", GrantTypes.AuthCode }
                 };
 
             var (response, error) = await _httpService.SendFormUrlEncoded<SocialOauthAccessToken>(HttpMethod.Post, postData, identityProvider.TokenUrl);
@@ -97,7 +98,7 @@ namespace Authentication.DomainService.OAuth.SocialServices
                 { "iss", teamId },
                 { "iat", now },
                 { "exp", now + 300 },
-                { "aud", identityProvider.AppleAudience ?? "https://appleid.apple.com" },
+                { "aud", identityProvider.AppleAudience ?? AuthenticationConstants.AppleAuthUrl },
                 { "sub", clientId }
             };
             var header = new JwtHeader(signingCredentials);

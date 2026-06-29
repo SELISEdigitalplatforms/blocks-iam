@@ -1,4 +1,5 @@
 using Authentication.DomainService.Services;
+using Authentication.DomainService.Shared;
 using Blocks.Genesis;
 using Microsoft.Extensions.Logging;
 using System.IdentityModel.Tokens.Jwt;
@@ -42,8 +43,8 @@ namespace Authentication.DomainService.OAuth
                 { "client_id", identityProvider.ClientId ?? string.Empty },
                 { "client_secret", identityProvider.ClientSecret ?? string.Empty },
                 { "redirect_uri", stateInfo.RedirectUri ?? string.Empty },
-                { "grant_type", "authorization_code" },
-                { "scope", "openid profile email" }
+                { "grant_type", GrantTypes.AuthCode },
+                { "scope", AuthenticationConstants.OpenIdProfileEmailScope }
             };
 
             var (response, error) = await _httpService.SendFormUrlEncoded<SocialOauthAccessToken>(HttpMethod.Post, postData, identityProvider.TokenUrl);

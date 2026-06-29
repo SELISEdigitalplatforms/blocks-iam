@@ -31,7 +31,7 @@ namespace Authentication.DomainService.OAuth
                     { "client_id", identityProvider.ClientId },
                     { "client_secret", identityProvider.ClientSecret },
                     { "redirect_uri", stateInfo.RedirectUri },
-                    { "grant_type", "authorization_code" }
+                    { "grant_type", GrantTypes.AuthCode }
                 };
 
             var (response, error) = await _httpService.SendFormUrlEncoded<SocialOauthAccessToken>(HttpMethod.Post, postData, identityProvider.TokenUrl);

@@ -7,6 +7,7 @@ using Authentication.DomainService.OAuth.Services;
 using Authentication.DomainService.Oidc.Repositories;
 using Authentication.DomainService.Oidc.Validation;
 using Authentication.DomainService.Services;
+using Authentication.DomainService.Shared;
 using Authentication.DomainService.Shared.RequestModel;
 using Authentication.DomainService.Utilities;
 using Blocks.CaptchaDriver;
@@ -126,7 +127,7 @@ namespace Authentication.DomainService.Authentication
                     tenantId = request.TenantId,
                     createdAt = DateTime.UtcNow
                 });
-                await _cacheClient.AddStringValueAsync(contextKey, contextValue, 600); // 10 minute TTL
+                await _cacheClient.AddStringValueAsync(contextKey, contextValue, AuthenticationConstants.OidcAuthorizationCodeCacheTtlSeconds); // 10 minute TTL
 
                 // Get social authorization URL
                 return await _authenticationService.GetOidcSocialAuthorizationUrlAsync(request.ProviderClientId, oidcState, request.ProviderRedirectUri ?? string.Empty);
@@ -220,7 +221,7 @@ namespace Authentication.DomainService.Authentication
                 request.State ?? string.Empty,
                 request.Nonce ?? string.Empty,
                 request.CodeChallenge ?? string.Empty,
-                request.CodeChallengeMethod ?? "S256",
+                request.CodeChallengeMethod ?? AuthenticationConstants.PkceMethodS256,
                 null,
                 requestedTenantId ?? string.Empty,
                 httpRequest,
@@ -293,8 +294,8 @@ namespace Authentication.DomainService.Authentication
                     UserId = user.ItemId,
                     ClientId = request.ClientId,
                     MfaType = user.UserMfaType,
-                    Severity = "WARN",
-                    Status = "failure"
+                    Severity = AuthenticationConstants.SeverityWarn,
+                    Status = AuthenticationConstants.StatusFailure
                 });
 
                 if (updatedUser?.LockoutUntilUtc.HasValue == true && updatedUser.LockoutUntilUtc.Value > DateTime.UtcNow)
@@ -314,7 +315,7 @@ namespace Authentication.DomainService.Authentication
                 UserId = user.ItemId,
                 ClientId = request.ClientId,
                 MfaType = user.UserMfaType,
-                Status = "success"
+Status = AuthenticationConstants.StatusSuccess
             });
 
             return await AuthorizeAsync(
@@ -325,7 +326,7 @@ namespace Authentication.DomainService.Authentication
                 mfaContext.State ?? string.Empty,
                 mfaContext.Nonce ?? string.Empty,
                 mfaContext.CodeChallenge ?? string.Empty,
-                mfaContext.CodeChallengeMethod ?? "S256",
+                mfaContext.CodeChallengeMethod ?? AuthenticationConstants.PkceMethodS256,
                 null,
                 mfaContext.TenantId ?? string.Empty,
                 httpRequest,
@@ -371,7 +372,7 @@ namespace Authentication.DomainService.Authentication
                 State = request.State ?? string.Empty,
                 Nonce = request.Nonce ?? string.Empty,
                 CodeChallenge = request.CodeChallenge ?? string.Empty,
-                CodeChallengeMethod = request.CodeChallengeMethod ?? "S256",
+                CodeChallengeMethod = request.CodeChallengeMethod ?? AuthenticationConstants.PkceMethodS256,
                 TenantId = tenantId ?? string.Empty
             };
 
@@ -475,8 +476,8 @@ namespace Authentication.DomainService.Authentication
                     TenantId = request.TenantId ?? BlocksContext.GetContext()?.TenantId,
                     IpAddress = GetClientIpAddress(httpRequest),
                     UserAgent = httpRequest.Headers.UserAgent.ToString(),
-                    Severity = isFailure ? "WARN" : "INFO",
-                    Status = isSuccess ? "success" : "failure",
+                    Severity = isFailure ? AuthenticationConstants.SeverityWarn : AuthenticationConstants.SeverityInfo,
+                    Status = isSuccess ? AuthenticationConstants.StatusSuccess : AuthenticationConstants.StatusFailure,
                     Details = details ?? eventType
                 });
             }
@@ -532,7 +533,7 @@ namespace Authentication.DomainService.Authentication
             public string State { get; set; } = string.Empty;
             public string Nonce { get; set; } = string.Empty;
             public string CodeChallenge { get; set; } = string.Empty;
-            public string CodeChallengeMethod { get; set; } = "S256";
+            public string CodeChallengeMethod { get; set; } = AuthenticationConstants.PkceMethodS256;
             public string TenantId { get; set; } = string.Empty;
         }
 
@@ -604,7 +605,7 @@ namespace Authentication.DomainService.Authentication
 
                 if (!validationResult.IsValid)
                 {
-                    _logger.LogWarning($"Authorization request validation failed for {client_id}: {string.Join(", ", validationResult.Errors)}");
+                    _logger.LogWarning("Authorization request validation failed for {ClientId}: {Errors}", client_id, string.Join(", ", validationResult.Errors));
 
                     var errorParams = new Dictionary<string, string>
                     {
@@ -652,7 +653,7 @@ namespace Authentication.DomainService.Authentication
 
                 if (string.IsNullOrWhiteSpace(resolvedUserId))
                 {
-                    _logger.LogInformation($"Unauthenticated authorization request for {client_id}");
+                    _logger.LogInformation("Unauthenticated authorization request for {ClientId}", client_id);
                     return new RedirectResult(BuildLoginUrl(client_id, response_type, redirect_uri, scope, state, nonce, code_challenge, code_challenge_method, tenant_id));
                 }
 
@@ -674,13 +675,13 @@ namespace Authentication.DomainService.Authentication
                 var client = await _authenticationRepository.GetOidcClientRegistrationAsync(client_id);
                 if (client == null)
                 {
-                    _logger.LogWarning($"Unknown client: {client_id}");
+                    _logger.LogWarning("Unknown client: {ClientId}", client_id);
                     return new BadRequestObjectResult(new { error = "invalid_client" });
                 }
 
                 if (!client.RedirectUris.Contains(redirect_uri))
                 {
-                    _logger.LogWarning($"Invalid redirect_uri for {client_id}: {redirect_uri}");
+                    _logger.LogWarning("Invalid redirect_uri for {ClientId}: {RedirectUri}", client_id, redirect_uri);
                     return new BadRequestObjectResult(new { error = "invalid_request", error_description = "Invalid redirect_uri" });
                 }
 
@@ -770,7 +771,7 @@ namespace Authentication.DomainService.Authentication
 
                 await _authCodeRepo.CreateAsync(codeModel);
 
-                _logger.LogInformation($"Authorization code issued for user {resolvedUserId}, client {client_id}");
+                _logger.LogInformation("Authorization code issued for user {UserId}, client {ClientId}", resolvedUserId, client_id);
 
                 var callbackParams = new Dictionary<string, string>
                 {
@@ -820,17 +821,17 @@ namespace Authentication.DomainService.Authentication
         {
             try
             {
-                if (grantType == "authorization_code")
+                if (grantType == GrantTypes.AuthCode)
                 {
                     return await ExchangeAuthorizationCode(request);
                 }
 
-                if (grantType == "refresh_token")
+                if (grantType == GrantTypes.RefreshToken)
                 {
                     return await RotateRefreshToken(request);
                 }
 
-                if (grantType == "client_credentials")
+                if (grantType == GrantTypes.ClientCredential)
                 {
                     return await IssueClientCredentialsToken(request);
                 }
@@ -945,7 +946,7 @@ namespace Authentication.DomainService.Authentication
             // Validate tokens are present before proceeding
             if (string.IsNullOrWhiteSpace(exchangeResult.AccessToken))
             {
-                _logger.LogError($"Access token generation failed for client {client_id}");
+                _logger.LogError("Access token generation failed for client {ClientId}", client_id);
                 return new BadRequestObjectResult(new { error = "server_error", error_description = "Failed to generate access token" });
             }
 
@@ -964,7 +965,7 @@ namespace Authentication.DomainService.Authentication
 
                 if (!cookiesSet)
                 {
-                    _logger.LogWarning($"Failed to set authentication cookies for client {client_id}, domain {tokenDomain}. Falling back to token response body.");
+                    _logger.LogWarning("Failed to set authentication cookies for client {ClientId}, domain {TokenDomain}. Falling back to token response body.", client_id, tokenDomain);
                     // Fallback: return tokens in response body instead of cookies
                     return new OkObjectResult(new
                     {
@@ -1022,7 +1023,7 @@ namespace Authentication.DomainService.Authentication
             var authCode = await _authCodeRepo.GetByCodeAsync(code);
             if (authCode == null)
             {
-                _logger.LogWarning($"Authorization code not found: {code}");
+                _logger.LogWarning("Authorization code not found: {Code}", code);
                 return OidcExchangeResult.FromError(new BadRequestObjectResult(new { error = "invalid_grant", error_description = "Authorization code is invalid or expired" }));
             }
 
@@ -1030,13 +1031,13 @@ namespace Authentication.DomainService.Authentication
                 && !string.IsNullOrWhiteSpace(authCode.TenantId)
                 && !string.Equals(authCode.TenantId, tenantId, StringComparison.OrdinalIgnoreCase))
             {
-                _logger.LogWarning($"Tenant mismatch for code exchange. Presented tenant: {tenantId}, code tenant: {authCode.TenantId}");
+                _logger.LogWarning("Tenant mismatch for code exchange. Presented tenant: {TenantId}, code tenant: {CodeTenantId}", tenantId, authCode.TenantId);
                 return OidcExchangeResult.FromError(new BadRequestObjectResult(new { error = "invalid_grant", error_description = "Tenant mismatch" }));
             }
 
             if (authCode.ExpiresAt < DateTime.UtcNow)
             {
-                _logger.LogWarning($"Authorization code expired: {code}");
+                _logger.LogWarning("Authorization code expired: {Code}", code);
                 return OidcExchangeResult.FromError(new BadRequestObjectResult(new { error = "invalid_grant", error_description = "Authorization code has expired" }));
             }
 
@@ -1049,7 +1050,7 @@ namespace Authentication.DomainService.Authentication
 
             if (!await HasOidcClientConfigurationAsync(client_id))
             {
-                _logger.LogWarning($"OIDC client config missing for code exchange: {client_id}");
+                _logger.LogWarning("OIDC client config missing for code exchange: {ClientId}", client_id);
                 return OidcExchangeResult.FromError(new BadRequestObjectResult(new { error = "invalid_client", error_description = "Client configuration not found" }));
             }
 
@@ -1064,7 +1065,7 @@ namespace Authentication.DomainService.Authentication
                 var pkceValid = await _pkceService.ValidateVerifierAsync(authCode.CodeChallenge, code_verifier, authCode.CodeChallengeMethod);
                 if (!pkceValid)
                 {
-                    _logger.LogWarning($"PKCE validation failed for client {client_id}");
+                    _logger.LogWarning("PKCE validation failed for client {ClientId}", client_id);
                     return OidcExchangeResult.FromError(new BadRequestObjectResult(new { error = "invalid_grant", error_description = "PKCE code_verifier is invalid" }));
                 }
             }
@@ -1139,7 +1140,7 @@ namespace Authentication.DomainService.Authentication
             refreshTokenModel.UserAgent = request.Headers["User-Agent"].ToString();
             await _refreshTokenRepo.CreateAsync(refreshTokenModel);
 
-            _logger.LogInformation($"Tokens issued for user {authCode.UserId}, client {client_id}");
+            _logger.LogInformation("Tokens issued for user {UserId}, client {ClientId}", authCode.UserId, client_id);
 
             var (domain, cookieDomain, isResolved) = DomainResolver.ResolveDomain(tenant, request);
             var accessExpiry = DateTime.UtcNow.AddSeconds(accessTokenLifetimeSeconds);
@@ -1630,23 +1631,23 @@ namespace Authentication.DomainService.Authentication
         private static TimeSpan GetIdpSessionIdleTimeout()
         {
             var configured = Environment.GetEnvironmentVariable("IDP_SESSION_IDLE_HOURS");
-            if (double.TryParse(configured, out var hours) && hours > 0 && hours <= 168)
+            if (double.TryParse(configured, out var hours) && hours > 0 && hours <= AuthenticationConstants.MaxIdpSessionHours)
             {
                 return TimeSpan.FromHours(hours);
             }
 
-            return TimeSpan.FromHours(24);
+            return TimeSpan.FromHours(AuthenticationConstants.DefaultIdpSessionIdleHours);
         }
 
         private static TimeSpan GetIdpSessionAbsoluteTimeout()
         {
             var configured = Environment.GetEnvironmentVariable("IDP_SESSION_ABSOLUTE_HOURS");
-            if (double.TryParse(configured, out var hours) && hours > 0 && hours <= 168)
+            if (double.TryParse(configured, out var hours) && hours > 0 && hours <= AuthenticationConstants.MaxIdpSessionHours)
             {
                 return TimeSpan.FromHours(hours);
             }
 
-            return TimeSpan.FromHours(5); // Default to 5 hours
+            return TimeSpan.FromHours(AuthenticationConstants.DefaultIdpSessionAbsoluteHours); // Default to 5 hours
         }
 
         private static string? ResolveEffectiveOrganizationId(User user)
@@ -1727,7 +1728,7 @@ namespace Authentication.DomainService.Authentication
                     IpAddress = "unknown",
                     UserAgent = "unknown",
                     Severity = "CRITICAL",
-                    Status = "success",
+                    Status = AuthenticationConstants.StatusSuccess,
                     Timestamp = DateTime.UtcNow
                 };
                 await _auditLogRepo.CreateAsync(auditLog);

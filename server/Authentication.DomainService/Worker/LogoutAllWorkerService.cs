@@ -1,5 +1,6 @@
 using Blocks.Genesis;
 using Authentication.DomainService.Dtos;
+using Authentication.DomainService.OAuth;
 using Authentication.DomainService.Services;
 using Authentication.DomainService.Utilities;
 using Iam.DomainService.Dtos;
@@ -35,7 +36,7 @@ namespace Authentication.DomainService.Worker
 
             var revokeTasks = refreshTokens.Select(async token =>
             {
-                var result = await _tokenRevocationService.RevokeTokenAsync(token, "refresh_token", string.Empty);
+                var result = await _tokenRevocationService.RevokeTokenAsync(token, GrantTypes.RefreshToken, string.Empty);
                 if (!result.Success)
                 {
                     _logger.LogWarning("Refresh-token revocation failed during logout-all: {Error}", result.Error ?? "unknown_error");
