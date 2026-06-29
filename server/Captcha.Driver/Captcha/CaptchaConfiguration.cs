@@ -1,7 +1,9 @@
 using Blocks.Genesis;
+using MongoDB.Bson.Serialization.Attributes;
 
 namespace Blocks.CaptchaDriver
 {
+    [BsonIgnoreExtraElements]
     public class CaptchaConfiguration : BaseEntity
     {
         public string CaptchaKey { get; set; }
