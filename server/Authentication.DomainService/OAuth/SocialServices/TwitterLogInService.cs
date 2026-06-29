@@ -42,7 +42,7 @@ namespace Authentication.DomainService.OAuth.SocialServices
             // Base post data (PKCE flow)
             var postData = new Dictionary<string, string>
             {
-                { "grant_type", "authorization_code" },
+                { "grant_type", GrantTypes.AuthCode },
                 { "code", stateInfo.Code },
                 { "redirect_uri", stateInfo.RedirectUri },
                 { "code_verifier", codeVerifier }

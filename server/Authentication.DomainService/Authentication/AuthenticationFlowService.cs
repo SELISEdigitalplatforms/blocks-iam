@@ -6,6 +6,7 @@ using Authentication.DomainService.OAuth.ResponseModel;
 using Authentication.DomainService.OAuth.Services;
 using Authentication.DomainService.Oidc.Repositories;
 using Authentication.DomainService.Services;
+using Authentication.DomainService.Shared;
 using Authentication.DomainService.Shared.RequestModel;
 using Authentication.DomainService.Utilities;
 using Blocks.CaptchaDriver;
@@ -388,8 +389,8 @@ namespace Authentication.DomainService.Authentication
                     TenantId = BlocksContext.GetContext()?.TenantId,
                     IpAddress = GetClientIpAddress(httpRequest),
                     UserAgent = httpRequest.Headers.UserAgent.ToString(),
-                    Severity = isFailure ? "WARN" : "INFO",
-                    Status = isSuccess ? "success" : "failure",
+                    Severity = isFailure ? AuthenticationConstants.SeverityWarn : AuthenticationConstants.SeverityInfo,
+                    Status = isSuccess ? AuthenticationConstants.StatusSuccess : AuthenticationConstants.StatusFailure,
                     Details = details ?? eventType
                 });
             }
