@@ -1,23 +1,25 @@
-using Azure.Core;
 using Blocks.Genesis;
 using Microsoft.AspNetCore.Http;
-using System.Collections;
 using System.Globalization;
-using System.Reflection;
+using System.Net;
 
 namespace Authentication.DomainService.Utilities
 {
     /// <summary>
-    /// Resolves application and cookie domain in this order:
-    /// 1) BlocksContext.ApplicationDomain (or provided blockContextDomain)
-    /// 2) Request Origin/Referer host
-    /// 3) Fallback to first configured tenant domain
+    /// Resolves application and cookie domain, and builds CookieOptions for auth flows.
+    ///
+    /// Cookie attributes follow a binary rule based on IsLocalhost():
+    ///   - Local/dev  : HttpOnly only, no Secure, no SameSite
+    ///   - Production : HttpOnly + Secure + SameSite=Strict + resolved Domain
+    ///
+    /// Domain resolution validates the request's Origin/Referer host against the
+    /// tenant's configured Applications[].Domain using exact match (replicates
+    /// TenantContextHelper.ResolveApplicationDomain from Genesis).
     /// </summary>
     public static class DomainResolver
     {
-        /// <summary>
-        /// Determines if the current environment or request is localhost/development.
-        /// </summary>
+        // HttpContextAccessor is required for IsLocalhost() to read RemoteIpAddress
+        // (catches hosts-file entries whose hosts resolve to 127.0.0.1).
         private static IHttpContextAccessor? _httpContextAccessor;
 
         public static void Configure(IHttpContextAccessor accessor)
@@ -27,64 +29,159 @@ namespace Authentication.DomainService.Utilities
 
         public static bool IsLocalhost()
         {
-            // Check environment variable first
-            var hostEnv = Environment.GetEnvironmentVariable("ASPNETCORE_ENVIRONMENT") ?? string.Empty;
-            if (hostEnv.Equals("Development", StringComparison.OrdinalIgnoreCase))
-                return true;
-
-            var request = _httpContextAccessor?.HttpContext?.Request;
-
-            string? origin = request?.Headers["Origin"].ToString();
-            string? referer = request?.Headers["Referer"].ToString();
-
-            if (IsLocalUrl(origin) || IsLocalUrl(referer))
-                return true;
-
-            // Fallback: treat as production
-            return false;
-        }
-
-        private static bool IsLocalUrl(string? url)
-        {
-            if (string.IsNullOrWhiteSpace(url))
-                return false;
-            try
+            // 1) Caller-advertised host is loopback (localhost / 127.0.0.1 / ::1), any port.
+            if (TryGetRequestOriginUri(out var uri))
             {
-                var uri = new Uri(url);
-                // Only genuine loopback hosts count as "local". A non-default port
-                // (e.g. a real domain served on :5000) must NOT be treated as
-                // localhost - doing so previously forced the auth cookies to be
-                // host-only on the IDP host instead of scoped to the shared parent
-                // domain, so they never reached the app host.
-                if (uri.Host.Equals("localhost", StringComparison.OrdinalIgnoreCase)
-                    || uri.Host.Equals("127.0.0.1")
-                    || uri.Host.Equals("::1"))
+                if (IsLoopbackHost(uri.Host))
+                    return true;
+
+                // 2) Non-default port in the Origin/Referer URI - explicit dev setup
+                //    (e.g. https://example.com:5001, http://staging.example.com:8080).
+                //    Production traffic stays on default ports (443/80).
+                if (!uri.IsDefaultPort)
                     return true;
             }
-            catch { /* ignore parse errors */ }
-            return false;
+
+            // 3) Connection came from a loopback IP - catches hosts-file entries
+            //    where the browser resolves dev-os.blocksdevelopers.com to 127.0.0.1
+            //    and connects directly to the loopback interface.
+            var remoteIp = _httpContextAccessor?.HttpContext?.Connection.RemoteIpAddress;
+            return remoteIp != null && IPAddress.IsLoopback(remoteIp);
         }
+
+        public static CookieOptions CreateCookieOptions(string? cookieDomain, DateTime expiresUtc)
+        {
+            return IsLocalhost()
+                ? CreateLoopbackCookieOptions(cookieDomain, expiresUtc)
+                : CreateProductionCookieOptions(cookieDomain, expiresUtc);
+        }
+
+        public static CookieOptions CreateLoopbackCookieOptions(string? cookieDomain, DateTime expiresUtc)
+        {
+            // Loopback mode (loopback host OR hosts-file entry OR non-default port):
+            // HttpOnly only, no Secure, no SameSite.
+            // cookieDomain is already resolved by ResolveDomain (validated against
+            // tenant.Applications[].Domain), so we trust it.
+            return new CookieOptions
+            {
+                Domain = cookieDomain,
+                HttpOnly = true,
+                Path = "/",
+                Expires = NormalizeExpiry(expiresUtc)
+            };
+        }
+
+        public static CookieOptions CreateProductionCookieOptions(string? cookieDomain, DateTime expiresUtc)
+        {
+            // Production: full hardening with resolved domain.
+            return new CookieOptions
+            {
+                Domain = string.IsNullOrWhiteSpace(cookieDomain) ? null : cookieDomain,
+                HttpOnly = true,
+                Secure = true,
+                SameSite = SameSiteMode.Strict,
+                Path = "/",
+                Expires = NormalizeExpiry(expiresUtc)
+            };
+        }
+
+        private static DateTime NormalizeExpiry(DateTime expiresUtc) =>
+            expiresUtc == default ? DateTime.UtcNow : expiresUtc;
+
+        private static bool TryGetRequestOriginUri(out Uri uri)
+        {
+            uri = null!;
+            var request = _httpContextAccessor?.HttpContext?.Request;
+            var origin = request?.Headers.Origin.ToString();
+            var referer = request?.Headers.Referer.ToString();
+
+            var raw = !string.IsNullOrWhiteSpace(origin) ? origin : referer;
+            if (string.IsNullOrWhiteSpace(raw))
+                return false;
+
+            return Uri.TryCreate(raw, UriKind.Absolute, out uri);
+        }
+
+        private static bool IsLoopbackHost(string host) =>
+            host.Equals("localhost", StringComparison.OrdinalIgnoreCase)
+                || host.Equals("127.0.0.1", StringComparison.OrdinalIgnoreCase)
+                || host.Equals("::1", StringComparison.OrdinalIgnoreCase);
+
         public static (string? domain, string? cookieDomain, bool isResolved) ResolveDomain(
             Tenant? tenant,
             HttpRequest? request)
         {
-            var domains = GetTenantDomains(tenant);
-            if (domains.Count == 0)
+            if (tenant?.Applications == null || tenant.Applications.Count == 0)
             {
                 return (null, null, false);
             }
 
-            var effectiveContextDomain = BlocksContext.ResolveApplicationDomain(request);
-            if (!string.IsNullOrWhiteSpace(effectiveContextDomain))
+            // Replicates TenantContextHelper.ResolveApplicationDomain (internal in Genesis):
+            // validate the Origin/Referer host against the tenant's configured applications
+            // using exact match. Localhost origins/referers are skipped (resolved by
+            // IsLocalhost() at the cookie layer).
+            var browserHost = ResolveValidatedBrowserHost(request);
+            if (string.IsNullOrWhiteSpace(browserHost))
             {
-                var matched = FindDomainMatch(domains, effectiveContextDomain);
-                if (matched != null)
-                {
-                    return (matched.Value.domain, matched.Value.cookieDomain, true);
-                }
+                return (null, null, false);
             }
 
-            return (null, null, false);
+            var match = tenant.Applications
+                .FirstOrDefault(a => NormalizeHost(a.Domain).Equals(browserHost, StringComparison.OrdinalIgnoreCase));
+
+            if (match == null)
+            {
+                return (null, null, false);
+            }
+
+            var cookieDomain = string.IsNullOrWhiteSpace(match.CookieDomain) ? match.Domain : match.CookieDomain;
+            return (match.Domain, cookieDomain, true);
+        }
+
+        private static string ResolveValidatedBrowserHost(HttpRequest? request)
+        {
+            if (request?.Headers == null)
+            {
+                return string.Empty;
+            }
+
+            var origin = request.Headers.Origin.ToString();
+            var referer = request.Headers.Referer.ToString();
+
+            // Skip localhost origins/referers - they don't carry a valid production domain.
+            if (IsLocalhostUri(origin) || IsLocalhostUri(referer))
+            {
+                return string.Empty;
+            }
+
+            if (!string.IsNullOrWhiteSpace(origin)
+                && Uri.TryCreate(origin, UriKind.Absolute, out var originUri))
+            {
+                return NormalizeHost(originUri.Host);
+            }
+
+            if (!string.IsNullOrWhiteSpace(referer)
+                && Uri.TryCreate(referer, UriKind.Absolute, out var refererUri))
+            {
+                return NormalizeHost(refererUri.Host);
+            }
+
+            return string.Empty;
+        }
+
+        private static bool IsLocalhostUri(string? value)
+        {
+            if (string.IsNullOrWhiteSpace(value))
+            {
+                return false;
+            }
+            if (!Uri.TryCreate(value, UriKind.Absolute, out var uri))
+            {
+                return false;
+            }
+            var host = uri.Host;
+            return host.Equals("localhost", StringComparison.OrdinalIgnoreCase)
+                || (IPAddress.TryParse(host, out var ip) && IPAddress.IsLoopback(ip));
         }
 
         public static string GetAudience(Tenant? tenant)
@@ -109,83 +206,6 @@ namespace Authentication.DomainService.Utilities
             }
 
             return "selise-blocks";
-        }
-
-        private static List<(string domain, string? cookieDomain)> GetTenantDomains(Tenant? tenant)
-        {
-            var result = new List<(string domain, string? cookieDomain)>();
-            if (tenant == null)
-            {
-                return result;
-            }
-
-            // New model: Tenant.Applications[].Domain/CookieDomain
-            var applicationsObj = GetPropertyValue(tenant, "Applications");
-            if (applicationsObj is IEnumerable applications)
-            {
-                foreach (var app in applications)
-                {
-                    if (app == null)
-                    {
-                        continue;
-                    }
-
-                    var appDomain = GetPropertyValue(app, "Domain") as string;
-                    if (string.IsNullOrWhiteSpace(appDomain))
-                    {
-                        continue;
-                    }
-
-                    var appCookieDomain = GetPropertyValue(app, "CookieDomain") as string;
-                    result.Add((appDomain, string.IsNullOrWhiteSpace(appCookieDomain) ? appDomain : appCookieDomain));
-                }
-            }
-
-            return result;
-        }
-
-        private static object? GetPropertyValue(object obj, string propertyName)
-        {
-            try
-            {
-                var property = obj.GetType().GetProperty(propertyName, BindingFlags.Public | BindingFlags.Instance);
-                return property?.GetValue(obj);
-            }
-            catch
-            {
-                return null;
-            }
-        }
-
-        private static (string domain, string? cookieDomain)? FindDomainMatch(List<(string domain, string? cookieDomain)> domains, string? hostToMatch)
-        {
-            if (string.IsNullOrWhiteSpace(hostToMatch))
-            {
-                return null;
-            }
-
-            var normalizedMatch = NormalizeHost(hostToMatch);
-            if (string.IsNullOrWhiteSpace(normalizedMatch))
-            {
-                return null;
-            }
-
-            foreach (var item in domains)
-            {
-                var normalizedDomain = NormalizeHost(item.domain);
-                if (string.IsNullOrWhiteSpace(normalizedDomain))
-                {
-                    continue;
-                }
-
-                if (string.Equals(normalizedDomain, normalizedMatch, StringComparison.OrdinalIgnoreCase)
-                    || normalizedMatch.EndsWith($".{normalizedDomain}", StringComparison.OrdinalIgnoreCase))
-                {
-                    return (normalizedMatch, item.cookieDomain);
-                }
-            }
-
-            return null;
         }
 
         private static string NormalizeHost(string? value)
@@ -221,58 +241,6 @@ namespace Authentication.DomainService.Utilities
                 applicationDomain: bc.ApplicationDomain,
                 impersonationSessionId: bc.ImpersonationSessionId)
             );
-        }
-
-        public static CookieOptions CreateCookieOptions(string? cookieDomain, DateTime expiresUtc)
-        {
-            var isLocal = IsLocalhost();
-            // True localhost dev -> host-only cookie (a Domain attribute is invalid
-            // for "localhost"). Otherwise scope the cookie to the configured shared
-            // parent domain (e.g. ".blocksdevelopers.com") so a cookie set by the
-            // IDP host is also sent to the app host on the same site.
-            cookieDomain = isLocal ? "localhost" : (string.IsNullOrWhiteSpace(cookieDomain) ? null : cookieDomain);
-
-            return new CookieOptions
-            {
-                Domain = cookieDomain,
-                HttpOnly = true,
-                Secure = true,
-                // This is a cross-origin SSO flow: the SPA fetches the IDP callback
-                // from a different origin than the IDP itself, so the auth/refresh
-                // cookies must be SameSite=None (which mandates Secure, set above).
-                // SameSite=Strict would stop the browser from accepting/sending them
-                // on the cross-site flow.
-                SameSite = (isLocal || IsLocalOrHttpOrigin()) ? SameSiteMode.None : SameSiteMode.Strict,
-                Path = "/",
-                Expires = expiresUtc == default ? DateTime.UtcNow : expiresUtc
-            };
-        }
-
-        public static bool IsLocalOrHttpOrigin()
-        {
-            var request = _httpContextAccessor?.HttpContext?.Request;
-
-            var origin = request?.Headers.Origin.ToString();
-            var referer = request?.Headers.Referer.ToString();
-
-            var value = !string.IsNullOrWhiteSpace(origin)
-                ? origin
-                : referer;
-
-            if (string.IsNullOrWhiteSpace(value))
-                return false;
-
-            if (!Uri.TryCreate(value, UriKind.Absolute, out var uri))
-                return false;
-
-            var isHttpOrHttps =
-                uri.Scheme.Equals("http", StringComparison.OrdinalIgnoreCase) ||
-                uri.Scheme.Equals("https", StringComparison.OrdinalIgnoreCase);
-
-            var isValidPort =
-                uri.Port > 0 && uri.Port <= 65535;
-
-            return isHttpOrHttps && isValidPort;
         }
 
         public static string GetRootDomain(string host)

@@ -911,17 +911,9 @@ namespace Authentication.DomainService.Authentication
 
         private static CookieOptions CreateCookieOptions(string? domain, DateTime expiresUtc)
         {
-            var isLocal = DomainResolver.IsLocalhost();
-            var cookieDomain = isLocal ? null : (string.IsNullOrWhiteSpace(domain) ? null : domain);
-            return new CookieOptions
-            {
-                Domain = cookieDomain,
-                HttpOnly = true,
-                Secure = true,
-                SameSite = isLocal ? SameSiteMode.None : SameSiteMode.Strict,
-                Path = "/",
-                Expires = expiresUtc == default ? DateTime.UtcNow : expiresUtc
-            };
+            return DomainResolver.IsLocalhost()
+                ? DomainResolver.CreateLoopbackCookieOptions(domain, expiresUtc)
+                : DomainResolver.CreateProductionCookieOptions(domain, expiresUtc);
         }
 
 
@@ -1198,7 +1190,7 @@ namespace Authentication.DomainService.Authentication
 
                             var newTokenRequest = new TokenRequest
                             {
-                                GrantType = GrantTypes.Password,
+                                GrantType = GrantTypes.ImpersonationCloud,
                                 ClientId = rootRefreshCache.ClientId,
                                 OrganizationId = request.OrganizationId ?? "default",
                                 IsImpersonation = true,
@@ -1291,7 +1283,7 @@ namespace Authentication.DomainService.Authentication
 
                 var tokenRequest = new TokenRequest
                 {
-                    GrantType = GrantTypes.Password,
+                    GrantType = GrantTypes.ImpersonationCloud,
                     ClientId = clientId,
                     OrganizationId = !string.IsNullOrWhiteSpace(request.OrganizationId)
                         ? request.OrganizationId
@@ -1469,7 +1461,7 @@ namespace Authentication.DomainService.Authentication
 
             var tokenRequest = new TokenRequest
             {
-                GrantType = GrantTypes.Password,
+                GrantType = GrantTypes.ImpersonationCloud,
                 ClientId = !string.IsNullOrWhiteSpace(session.ClientId) ? session.ClientId : rootRefreshCache.ClientId,
                 OrganizationId = session.OrganizationId,
                 IsImpersonation = false,
