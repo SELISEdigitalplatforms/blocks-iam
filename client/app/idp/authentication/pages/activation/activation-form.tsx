@@ -40,7 +40,7 @@ export const ActivationForm = ({ code, tenantId }: ActivationFormProps) => {
   });
   const [requirementsMet, setRequirementsMet] = useState(false);
 
-  const { data: oidcUiConfig } = useOidcUiConfig(tenantId);
+  const { data: oidcUiConfig, captchaEnabled } = useOidcUiConfig(tenantId);
   const googleSiteKey =
     oidcUiConfig?.captcha?.key || getRuntimeEnv("BLOCKS_GOOGLE_SITE_KEY") || "";
   const {
@@ -163,11 +163,11 @@ export const ActivationForm = ({ code, tenantId }: ActivationFormProps) => {
           onRequirementsMet={setRequirementsMet}
         />
 
-        {requirementsMet && isValid && <Captcha {...captcha} />}
+        {captchaEnabled && requirementsMet && isValid && <Captcha {...captcha} />}
         <Button
           type="submit"
           className="w-full"
-          disabled={isPending || !captchaCode || !requirementsMet || !isValid}
+          disabled={isPending || (captchaEnabled && !captchaCode) || !requirementsMet || !isValid}
         >
           Activate
         </Button>

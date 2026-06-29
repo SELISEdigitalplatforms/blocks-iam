@@ -96,6 +96,13 @@ namespace Authentication.DomainService.OAuth
                     StatusCode = 400
                 },
 
+                GrantTypes.ImpersonationCloud => new TokenResponse
+                {
+                    Error = "invalid_impersonation_request",
+                    ErrorDescription = "Impersonation request is missing required context",
+                    StatusCode = 400
+                },
+
                 _ => new TokenResponse
                 {
                     Error = "invalid_grant_type",

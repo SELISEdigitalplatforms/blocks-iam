@@ -655,23 +655,6 @@ namespace Authentication.DomainService.Authentication
                 };
             }
 
-            if (tokenCache.Impersonated && !string.IsNullOrWhiteSpace(tokenCache.ImpersonationId))
-            {
-                var existingSession = await _authenticationRepository.GetImpersonationSessionByIdAsync(tokenCache.ImpersonationId);
-                return await _authenticationService.ExecuteImpersonateAsync(
-                    new ImpersonateRequest
-                    {
-                        TargetTenantId = existingSession.TargetTenantId,
-                        OrganizationId = tokenCache.OrganizationId,
-                        ImpersonationId = tokenCache.ImpersonationId,
-                        ImpersontingUserId = tokenCache.UserId,
-                        RefreshToken = response.RefreshToken
-                    },
-                    httpRequest,
-                    httpResponse
-                );
-            }
-
             var useTokensCookie = await ResolveUseTokensCookieAsync(request.ClientId);
 
             if (useTokensCookie)
