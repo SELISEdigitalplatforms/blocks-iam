@@ -134,7 +134,7 @@ namespace Authentication.DomainService.Utilities
                 return (null, null, false);
             }
 
-            var cookieDomain = string.IsNullOrWhiteSpace(match.CookieDomain) ? match.Domain : match.CookieDomain;
+            var cookieDomain = string.IsNullOrWhiteSpace(match.CookieDomain) ? NormalizeHost(match.Domain) : match.CookieDomain;
             return (match.Domain, cookieDomain, true);
         }
 
