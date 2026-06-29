@@ -58,7 +58,7 @@ public sealed class OidcSigningKeyMaterial
     public SigningCredentials SigningCredentials { get; }
 }
 
-public class TokenGenerationService : ITokenGenerationService
+public sealed class TokenGenerationService : ITokenGenerationService
 {
     private readonly OidcSigningKeyMaterial _keyMaterial;
     private readonly ITenants _tenants;
@@ -345,7 +345,7 @@ public class TokenGenerationService : ITokenGenerationService
     }
 }
 
-public class PkceService : IPkceService
+public sealed class PkceService : IPkceService
 {
     public Task<bool> ValidateVerifierAsync(string codeChallenge, string codeVerifier, string? codeChallengeMethod)
     {
@@ -361,7 +361,7 @@ public class PkceService : IPkceService
     }
 }
 
-public class DiscoveryService : IDiscoveryService
+public sealed class DiscoveryService : IDiscoveryService
 {
     private const string DiscoveryCachePrefix = "oidcdiscovery::";
     private const string OAuthCachePrefix = "oidcoauth::";
@@ -543,7 +543,7 @@ public class DiscoveryService : IDiscoveryService
     }
 }
 
-public class JwksService : IJwksService
+public sealed class JwksService : IJwksService
 {
     private static readonly HttpClient PublicCertificateHttpClient = new();
 

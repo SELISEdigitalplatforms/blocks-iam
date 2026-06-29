@@ -12,8 +12,8 @@ namespace Authentication.DomainService.OAuth
         protected readonly IAuthenticationRepository _authenticationRepository;
         protected readonly ICacheClient _cacheClient;
         protected readonly IHttpService _httpService;
-        private const string googleProvider = "google";
-        private const string microsoftProvider = "microsoft";
+        private const string GoogleProvider = "google";
+        private const string MicrosoftProvider = "microsoft";
 
         protected SocialLogInServiceBase(
             ILogger logger,
@@ -56,14 +56,14 @@ namespace Authentication.DomainService.OAuth
 
             var externalUser = stateInfo.Provider switch
             {
-                googleProvider => await GetGoogleProfileVerification(identityProvider.UserInfoUrl, response.AccessToken),
-                microsoftProvider => await GetMicrosoftProfileVerification(identityProvider.UserInfoUrl, response.AccessToken, response.IdToken),
+                GoogleProvider => await GetGoogleProfileVerification(identityProvider.UserInfoUrl, response.AccessToken),
+                MicrosoftProvider => await GetMicrosoftProfileVerification(identityProvider.UserInfoUrl, response.AccessToken, response.IdToken),
                 _ => CreateEmptyUserData()
             };
 
             externalUser.Permissions = identityProvider.InitialPermissions;
 
-            Console.WriteLine($"IntraId Roles: {string.Join(", ", externalUser.Roles)}");
+            _logger.LogDebug("IntraId Roles: {Roles}", string.Join(", ", externalUser.Roles));
 
             if (externalUser.Roles.Count > 0)
                 externalUser.Roles.AddRange(identityProvider.InitialRoles);

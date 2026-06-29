@@ -4,7 +4,7 @@ using MongoDB.Bson.Serialization.Attributes;
 namespace Authentication.DomainService.Entities
 {
     [BsonIgnoreExtraElements]
-    public class IdentityConfiguration
+    public sealed class IdentityConfiguration
     {
         public const int DefaultAccessTokenValidForNumberMinutes = 7;
         public const int DefaultRefreshTokenValidForNumberMinutes = 30;

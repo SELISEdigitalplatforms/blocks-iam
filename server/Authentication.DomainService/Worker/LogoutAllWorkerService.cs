@@ -8,7 +8,7 @@ using Authentication.DomainService.Oidc.Repositories;
 
 namespace Authentication.DomainService.Worker
 {
-    public class LogoutAllWorkerService : IConsumer<LogoutAllEvent>
+    public sealed class LogoutAllWorkerService : IConsumer<LogoutAllEvent>
     {
         private readonly ICacheClient _cacheClient;
         private readonly IAuthenticationRepository _authenticationRepository;

@@ -31,7 +31,7 @@ using BCryptNet = BCrypt.Net.BCrypt;
 
 namespace Authentication.DomainService.Authentication
 {
-    public class AuthorizationFlowService : IAuthorizationFlowService
+    public sealed class AuthorizationFlowService : IAuthorizationFlowService
     {
         private readonly IAuthorizationCodeRepository _authCodeRepo;
         private readonly IRefreshTokenRepository _refreshTokenRepo;
@@ -766,7 +766,7 @@ namespace Authentication.DomainService.Authentication
                     codeModel.TargetedTenantId = claimTenantId;
                 }
 
-                Console.WriteLine(codeModel);
+                _logger.LogDebug("Authorization code model: {CodeModel}", codeModel);
 
                 await _authCodeRepo.CreateAsync(codeModel);
 
@@ -991,8 +991,7 @@ namespace Authentication.DomainService.Authentication
             // Fallback: client not configured for cookie-based token delivery or domain resolution failed
             if (useTokensCookie && !exchangeResult.CanSetCookies)
             {
-               // _logger.LogWarning($"Cannot set cookies for client {client_id}: domain resolution failed. Returning tokens in response body.");
-                Console.WriteLine($"Cannot set cookies for client {client_id}: domain resolution failed. Returning tokens in response body.");
+                _logger.LogWarning("Cannot set cookies for client {ClientId}: domain resolution failed. Returning tokens in response body.", client_id);
             }
 
             return new OkObjectResult(new

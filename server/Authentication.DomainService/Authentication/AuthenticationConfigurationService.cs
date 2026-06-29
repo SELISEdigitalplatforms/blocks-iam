@@ -8,7 +8,7 @@ using MongoDB.Bson;
 
 namespace Authentication.DomainService.Authentication
 {
-    public class AuthenticationConfigurationService : IAuthenticationConfigurationService
+    public sealed class AuthenticationConfigurationService : IAuthenticationConfigurationService
     {
         private readonly IAuthenticationRepository _authenticationRepository;
         private readonly ITenants _tenants;
