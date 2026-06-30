@@ -1,9 +1,7 @@
-﻿using Blocks.Genesis;
-using Captcha.DomainService.Captcha;
-using Captcha.DomainService.Configuration;
+﻿using Blocks.CaptchaDriver;
+using Blocks.Genesis;
 using FluentValidation;
 using MongoDB.Driver;
-using Authentication.DomainService.Utilities;
 
 namespace Iam.DomainService.Accounts
 {
@@ -43,7 +41,7 @@ namespace Iam.DomainService.Accounts
 
             var secrets = await (await collection.FindAsync(filter)).ToListAsync();
 
-            var configuration = secrets.Select(IdpConstants.MapToCaptchaConfiguration).FirstOrDefault(configuration => configuration is { IsEnable: true });
+            var configuration = secrets.Select(CaptchaConfigurationMapping.MapToCaptchaConfiguration).FirstOrDefault(configuration => configuration is { IsEnable: true });
             return configuration;
         }
     }

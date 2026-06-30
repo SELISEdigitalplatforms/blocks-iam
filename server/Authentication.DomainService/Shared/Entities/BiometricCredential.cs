@@ -8,7 +8,7 @@ namespace Authentication.DomainService.Entities
         public string? PhysicalAddress { get; set; }
         public bool IsActive { get; set; }
         public string? BiometricId { get; set; }
-        public string? BiometriKey { get; set; }
+        public string? BiometricKey { get; set; }
         public BiometricType BiometricType { get; set; }
         public string? DeviceInformation { get; set; }
     }

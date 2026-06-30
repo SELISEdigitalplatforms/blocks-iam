@@ -3,7 +3,7 @@ using Microsoft.Extensions.Logging;
 
 namespace Authentication.DomainService.OAuth
 {
-    public class FileSystemCertificateProvider : ICertificateProvider
+    public sealed class FileSystemCertificateProvider : ICertificateProvider
     {
         private readonly ILogger _logger;
 
@@ -14,9 +14,15 @@ namespace Authentication.DomainService.OAuth
 
         public async Task<byte[]> GetCertificateAsync(string key)
         {
+            if (string.IsNullOrWhiteSpace(key))
+            {
+                _logger.LogError("Certificate key is required for file-system provider");
+                return Array.Empty<byte>();
+            }
+
             try
             {
-                var path = "";
+                var path = Path.Combine(AppContext.BaseDirectory, key);
                 return await File.ReadAllBytesAsync(path);
             }
             catch (Exception e)
