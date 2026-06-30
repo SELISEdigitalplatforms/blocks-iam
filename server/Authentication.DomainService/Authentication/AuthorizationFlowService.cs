@@ -171,7 +171,7 @@ namespace Authentication.DomainService.Authentication
                     CaptchaOutcome.Missing => LoginAuditEvents.CaptchaValidationFailure,
                     CaptchaOutcome.Invalid => LoginAuditEvents.CaptchaValidationFailure,
                     _ => LoginAuditEvents.LoginFailure
-                }, "oidc_login_captcha_invalid");
+                }, LoginAuditEvents.OidcLoginCaptchaInvalid);
                 return BuildCaptchaResult(captcha);
             }
 
@@ -197,11 +197,11 @@ namespace Authentication.DomainService.Authentication
                 var accountLocked = updatedUser?.LockoutUntilUtc.HasValue == true && updatedUser.LockoutUntilUtc.Value > DateTime.UtcNow;
                 if (accountLocked)
                 {
-                    await WriteOidcLoginAuditAsync(request, user, httpRequest, LoginAuditEvents.LoginFailureAccountLocked, "oidc_login_account_locked");
+                    await WriteOidcLoginAuditAsync(request, user, httpRequest, LoginAuditEvents.LoginFailureAccountLocked, LoginAuditEvents.OidcLoginAccountLocked);
                     return new ObjectResult(new { error = "account_locked" }) { StatusCode = StatusCodes.Status423Locked };
                 }
 
-                await WriteOidcLoginAuditAsync(request, user, httpRequest, LoginAuditEvents.LoginFailure, "oidc_login_invalid_credentials");
+                await WriteOidcLoginAuditAsync(request, user, httpRequest, LoginAuditEvents.LoginFailure, LoginAuditEvents.OidcLoginFailure);
                 return new UnauthorizedObjectResult(new { error = "invalid_credentials" });
             }
 
@@ -211,7 +211,7 @@ namespace Authentication.DomainService.Authentication
             }
 
             await ResetAuthFailureCountersAsync(user);
-            await WriteOidcLoginAuditAsync(request, user, httpRequest, LoginAuditEvents.LoginSuccess, "oidc_login_success");
+            await WriteOidcLoginAuditAsync(request, user, httpRequest, LoginAuditEvents.LoginSuccess, LoginAuditEvents.OidcLoginSuccess);
 
             return await AuthorizeAsync(
                 request.ClientId ?? string.Empty,
@@ -1301,7 +1301,7 @@ Status = AuthenticationConstants.StatusSuccess
             var configuration = await _authenticationRepository.GetAuthenticationConfigurationAsync();
             if (configuration == null)
             {
-                return new BadRequestObjectResult(new { error = "auth_config_missing" });
+                return new BadRequestObjectResult(new { error = OAuthError.AuthConfigMissing });
             }
 
             var cachedRefreshToken = await _cacheClient.GetStringValueAsync(refresh_token);
@@ -1691,18 +1691,18 @@ Status = AuthenticationConstants.StatusSuccess
 
                 foreach (var token in clientTokens)
                 {
-                    await _refreshTokenRepo.RevokeByTokenIdAsync(token.TokenId, "authorization_code_reuse_detected");
+                    await _refreshTokenRepo.RevokeByTokenIdAsync(token.TokenId, LoginAuditEvents.AuthorizationCodeReuseDetected);
                 }
 
                 var auditLog = new AuditLogModel
                 {
-                    EventType = "code_reuse_attack",
+                    EventType = LoginAuditEvents.CodeReuseAttack,
                     UserId = userId,
                     ClientId = clientId,
                     TenantId = tenantId,
                     IpAddress = "unknown",
                     UserAgent = "unknown",
-                    Severity = "CRITICAL",
+                    Severity = AuthenticationConstants.SeverityCritical,
                     Status = AuthenticationConstants.StatusSuccess,
                     Timestamp = DateTime.UtcNow
                 };

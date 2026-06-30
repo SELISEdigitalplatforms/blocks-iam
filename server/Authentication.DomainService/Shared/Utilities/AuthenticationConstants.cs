@@ -13,6 +13,7 @@ namespace Authentication.DomainService.Shared
         public const string SeverityInfo = "INFO";
         public const string SeverityWarn = "WARN";
         public const string SeverityError = "ERROR";
+        public const string SeverityCritical = "CRITICAL";
 
         #endregion
 
@@ -20,6 +21,8 @@ namespace Authentication.DomainService.Shared
 
         public const string StatusSuccess = "success";
         public const string StatusFailure = "failure";
+        public const string StatusSent = "sent";
+        public const string StatusDelivered = "delivered";
 
         #endregion
 

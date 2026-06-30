@@ -97,7 +97,7 @@ namespace Authentication.DomainService.Authentication
                 return new AuthenticationFlowResult
                 {
                     StatusCode = StatusCodes.Status400BadRequest,
-                    Error = "auth_config_missing"
+                    Error = OAuthError.AuthConfigMissing
                 };
             }
 
@@ -191,7 +191,7 @@ namespace Authentication.DomainService.Authentication
                 return new AuthenticationFlowResult
                 {
                     StatusCode = StatusCodes.Status400BadRequest,
-                    Error = "auth_config_missing"
+                    Error = OAuthError.AuthConfigMissing
                 };
             }
 
@@ -452,7 +452,7 @@ namespace Authentication.DomainService.Authentication
                 return new AuthenticationFlowResult
                 {
                     StatusCode = StatusCodes.Status400BadRequest,
-                    Error = "auth_config_missing"
+                    Error = OAuthError.AuthConfigMissing
                 };
             }
 
@@ -511,7 +511,7 @@ namespace Authentication.DomainService.Authentication
                 return new AuthenticationFlowResult
                 {
                     StatusCode = StatusCodes.Status401Unauthorized,
-                    Error = "session_expired"
+                    Error = OAuthError.SessionExpired
                 };
             }
 
@@ -525,7 +525,7 @@ namespace Authentication.DomainService.Authentication
                 return new AuthenticationFlowResult
                 {
                     StatusCode = StatusCodes.Status401Unauthorized,
-                    Error = "session_expired"
+                    Error = OAuthError.SessionExpired
                 };
             }
 
@@ -535,7 +535,7 @@ namespace Authentication.DomainService.Authentication
                 return new AuthenticationFlowResult
                 {
                     StatusCode = StatusCodes.Status401Unauthorized,
-                    Error = "session_expired"
+                    Error = OAuthError.SessionExpired
                 };
             }
 
@@ -569,7 +569,7 @@ namespace Authentication.DomainService.Authentication
             var configuration = await _authenticationRepository.GetAuthenticationConfigurationAsync();
             if (configuration == null)
             {
-                return new BadRequestObjectResult(new { error = "auth_config_missing" });
+                return new BadRequestObjectResult(new { error = OAuthError.AuthConfigMissing });
             }
 
             var refreshToken = string.IsNullOrWhiteSpace(request.RefreshToken)
