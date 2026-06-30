@@ -23,7 +23,6 @@ namespace Authentication.DomainService.OAuth
         private readonly IAuthenticationDomainService _authenticationDomainService;
         private readonly IAuthenticationRepository _authenticationRepository;
         private readonly IOtpServiceFactory _otpServiceFactory;
-        private readonly IMfaConfigurationService _configurationService;
         private readonly IMfaPolicyService _mfaPolicyService;
         private readonly ICacheClient _cacheClient;
         private readonly ITenants _tenants;
@@ -45,7 +44,6 @@ namespace Authentication.DomainService.OAuth
             IJwtAccessTokenProvider jwtAccessTokenProvider,
             IAuthenticationDomainService authenticationDomainService,
             IAuthenticationRepository authenticationRepository,
-            IMfaConfigurationService configurationService,
             IMfaPolicyService mfaPolicyService,
             ICacheClient cacheClient,
             ITenants tenants,
@@ -56,7 +54,6 @@ namespace Authentication.DomainService.OAuth
             _jwtAccessTokenProvider = jwtAccessTokenProvider;
             _authenticationDomainService = authenticationDomainService;
             _authenticationRepository = authenticationRepository;
-            _configurationService = configurationService;
             _mfaPolicyService = mfaPolicyService;
             _cacheClient = cacheClient;
             _tenants = tenants;

@@ -25,45 +25,27 @@ namespace Authentication.DomainService.Authentication
     public sealed class AuthenticationFlowService : IAuthenticationFlowService
     {
         private readonly IAuthenticationRepository _authenticationRepository;
-        private readonly ITenants _tenants;
-        private readonly PasswordAuthenticationService _passwordAuthenticationService;
-        private readonly MfaAuthorizationService _mfaAuthorizationService;
-        private readonly SocialAuthorizationService _socialAuthorizationService;
-        private readonly RefreshTokenAuthenticationService _refreshTokenAuthenticationService;
-        private readonly IOAuthJwtAccessTokenManager _oAuthJwtAccessTokenManager;
+        private readonly IAuthStrategy _authStrategy;
+        private readonly ITokenRefresher _tokenRefresher;
         private readonly IAuthenticationService _authenticationService;
-        private readonly ICacheClient _cacheClient;
-        private readonly ICaptchaService _captchaService;
-        private readonly ICaptchaConfigurationService _captchaConfigurationService;
+        private readonly ICaptchaEvaluator _captchaEvaluator;
         private readonly IAuditLogRepository _auditLogRepo;
         private readonly ILogger<AuthenticationFlowService> _logger;
 
         public AuthenticationFlowService(
             IAuthenticationRepository authenticationRepository,
-            ITenants tenants,
-            PasswordAuthenticationService passwordAuthenticationService,
-            MfaAuthorizationService mfaAuthorizationService,
-            SocialAuthorizationService socialAuthorizationService,
-            RefreshTokenAuthenticationService refreshTokenAuthenticationService,
-            IOAuthJwtAccessTokenManager oAuthJwtAccessTokenManager,
+            IAuthStrategy authStrategy,
+            ITokenRefresher tokenRefresher,
             IAuthenticationService authenticationService,
-            ICacheClient cacheClient,
-            ICaptchaService captchaService,
-            ICaptchaConfigurationService captchaConfigurationService,
+            ICaptchaEvaluator captchaEvaluator,
             IAuditLogRepository auditLogRepo,
             ILogger<AuthenticationFlowService> logger)
         {
             _authenticationRepository = authenticationRepository;
-            _tenants = tenants;
-            _passwordAuthenticationService = passwordAuthenticationService;
-            _mfaAuthorizationService = mfaAuthorizationService;
-            _socialAuthorizationService = socialAuthorizationService;
-            _refreshTokenAuthenticationService = refreshTokenAuthenticationService;
-            _oAuthJwtAccessTokenManager = oAuthJwtAccessTokenManager;
+            _authStrategy = authStrategy;
+            _tokenRefresher = tokenRefresher;
             _authenticationService = authenticationService;
-            _cacheClient = cacheClient;
-            _captchaService = captchaService;
-            _captchaConfigurationService = captchaConfigurationService;
+            _captchaEvaluator = captchaEvaluator;
             _auditLogRepo = auditLogRepo;
             _logger = logger;
         }
@@ -144,7 +126,7 @@ namespace Authentication.DomainService.Authentication
                 Request = httpRequest
             };
 
-            var tokenResponse = await _passwordAuthenticationService.AuthenticateAsync(tokenRequest, configuration);
+            var tokenResponse = await _authStrategy.AuthenticatePasswordAsync(tokenRequest, configuration);
 
             if (user != null && !string.IsNullOrWhiteSpace(tokenResponse.Error)
                 && string.Equals(tokenResponse.Error, OAuthError.InValidUseNamePassword, StringComparison.OrdinalIgnoreCase))
@@ -247,7 +229,7 @@ namespace Authentication.DomainService.Authentication
 
             return new AuthenticationFlowResult
             {
-                TokenResponse = await _socialAuthorizationService.AuthenticateAsync(tokenRequest, configuration)
+                TokenResponse = await _authStrategy.AuthenticateSocialAsync(tokenRequest, configuration)
             };
         }
 
@@ -316,7 +298,7 @@ namespace Authentication.DomainService.Authentication
 
             return new AuthenticationFlowResult
             {
-                TokenResponse = await _mfaAuthorizationService.AuthenticateAsync(tokenRequest, configuration, user)
+                TokenResponse = await _authStrategy.AuthenticateMfaAsync(tokenRequest, configuration, user)
             };
         }
 
@@ -327,7 +309,7 @@ namespace Authentication.DomainService.Authentication
                 return null;
             }
 
-            var captchaConfiguration = await _captchaConfigurationService.GetCaptchaConfigurationAsync();
+            var captchaConfiguration = await _captchaEvaluator.GetConfigurationAsync();
             if (captchaConfiguration == null || !captchaConfiguration.IsEnable)
             {
                 return null;
@@ -338,13 +320,9 @@ namespace Authentication.DomainService.Authentication
                 return BuildCaptchaRequiredResult(captchaConfiguration.CaptchaKey);
             }
 
-            var verifyCaptchaResponse = await _captchaService.VerifyCaptchaAsync(new VerifyCaptchaRequest
-            {
-                VerificationCode = captchaCode,
-                ConfigurationName = captchaConfiguration.Provider
-            });
+            var verifyCaptchaResponse = await _captchaEvaluator.VerifyAsync(captchaCode);
 
-            return verifyCaptchaResponse.Verified
+            return (bool)verifyCaptchaResponse.GetType().GetProperty("Verified")!.GetValue(verifyCaptchaResponse)!
                 ? null
                 : BuildCaptchaInvalidResult(captchaConfiguration.CaptchaKey);
         }
@@ -515,7 +493,7 @@ namespace Authentication.DomainService.Authentication
                 };
             }
 
-            var refreshCacheRaw = await _cacheClient.GetStringValueAsync(refreshToken);
+            var refreshCacheRaw = await _tokenRefresher.GetCacheValueAsync(refreshToken);
             var refreshCache = string.IsNullOrWhiteSpace(refreshCacheRaw)
                 ? null
                 : JsonSerializer.Deserialize<RefreshTokenCache>(refreshCacheRaw);
@@ -560,7 +538,7 @@ namespace Authentication.DomainService.Authentication
 
             return new AuthenticationFlowResult
             {
-                TokenResponse = await _oAuthJwtAccessTokenManager.ManageTokenAsync(tokenRequest, configuration, user!)
+                TokenResponse = await _tokenRefresher.AuthenticateAsync(tokenRequest, configuration, user!)
             };
         }
 
@@ -581,7 +559,7 @@ namespace Authentication.DomainService.Authentication
                 return new BadRequestObjectResult(new { error = OAuthError.InvalidRefreshToken, error_description = "Refresh token is required" });
             }
 
-            var cachedRefreshToken = await _cacheClient.GetStringValueAsync(refreshToken);
+            var cachedRefreshToken = await _tokenRefresher.GetCacheValueAsync(refreshToken);
             if (string.IsNullOrWhiteSpace(cachedRefreshToken))
             {
                 await HandlePotentialRefreshTokenReuseAsync(refreshToken);
@@ -640,7 +618,7 @@ namespace Authentication.DomainService.Authentication
                 Request = httpRequest
             };
 
-            var response = await _refreshTokenAuthenticationService.AuthenticateAsync(tokenRequest, configuration, user);
+            var response = await _tokenRefresher.AuthenticateAsync(tokenRequest, configuration, user);
 
             if (!string.IsNullOrWhiteSpace(response.Error))
             {
@@ -661,7 +639,7 @@ namespace Authentication.DomainService.Authentication
             if (useTokensCookie)
             {
                 var tenantId = BlocksContext.GetContext()?.TenantId ?? "default";
-                var tenant = _tenants.GetTenantByID(tenantId);
+                var tenant = await _tokenRefresher.GetTenantByIDAsync(tenantId);
                 var (domain, _, _) = DomainResolver.ResolveDomain(tenant, httpRequest);
                 var cookiesSet = AppendCookies(response, httpResponse, domain);
                 if (cookiesSet)
@@ -694,7 +672,7 @@ namespace Authentication.DomainService.Authentication
         {
             await _authenticationRepository.RevokeIdentitySessionsByRefreshTokensAsync(new List<string> { refreshToken });
 
-            await _cacheClient.RemoveKeyAsync(refreshToken);
+            await _tokenRefresher.RemoveKeyAsync(refreshToken);
             var tokenFingerprint = TruncateToken(refreshToken);
             _logger.LogWarning("Potential refresh token reuse detected for token {TokenFingerprint}. Existing session revoked.", tokenFingerprint);
         }

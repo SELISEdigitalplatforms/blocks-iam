@@ -3,11 +3,11 @@ using Authentication.DomainService.Entities;
 using Authentication.DomainService.OAuth;
 using Authentication.DomainService.OAuth.RequestModel;
 using Authentication.DomainService.OAuth.ResponseModel;
-using Authentication.DomainService.OAuth.Services;
 using Authentication.DomainService.Oidc.Repositories;
 using Authentication.DomainService.Oidc.Validation;
 using Authentication.DomainService.Services;
 using Authentication.DomainService.Shared;
+using Authentication.DomainService.Shared.Dtos;
 using Authentication.DomainService.Shared.RequestModel;
 using Authentication.DomainService.Utilities;
 using Blocks.CaptchaDriver;
@@ -16,7 +16,6 @@ using Iam.DomainService.Entities;
 using Iam.DomainService.Users;
 using Idp.DomainService.Oidc.Contracts;
 using Idp.DomainService.Oidc.Services;
-using Mfa.DomainService.Configuration;
 using Mfa.DomainService.Entities;
 using Mfa.DomainService.Services;
 using Mfa.DomainService.Shared;
@@ -44,17 +43,13 @@ namespace Authentication.DomainService.Authentication
         private readonly IUserRepository _userRepository;
         private readonly IAuthorizationClaimsResolver _authorizationClaimsResolver;
         private readonly IAuthenticationRepository _authenticationRepository;
-        private readonly ClientCredentialAuthorizationService _clientCredentialAuthorizationService;
         private readonly RefreshTokenAuthenticationService _refreshTokenAuthenticationService;
-        private readonly IMfaConfigurationService _mfaConfigurationService;
-        private readonly IMfaPolicyService _mfaPolicyService;
-        private readonly IMfaAuditService _mfaAuditService;
-        private readonly IOtpServiceFactory _otpServiceFactory;
+        private readonly ClientCredentialsTokenIssuer _clientCredentialsTokenIssuer;
+        private readonly IMfaChallengeIssuer _mfaChallengeIssuer;
         private readonly ITenants _tenants;
         private readonly IAuthenticationService _authenticationService;
         private readonly ICacheClient _cacheClient;
-        private readonly ICaptchaService _captchaService;
-        private readonly ICaptchaConfigurationService _captchaConfigurationService;
+        private readonly ICaptchaEvaluator _captchaEvaluator;
         private readonly ILogger<AuthorizationFlowService> _logger;
 
         public AuthorizationFlowService(
@@ -68,17 +63,13 @@ namespace Authentication.DomainService.Authentication
             IUserRepository userRepository,
             IAuthorizationClaimsResolver authorizationClaimsResolver,
             IAuthenticationRepository authenticationRepository,
-            ClientCredentialAuthorizationService clientCredentialAuthorizationService,
             RefreshTokenAuthenticationService refreshTokenAuthenticationService,
-            IMfaConfigurationService mfaConfigurationService,
-            IMfaPolicyService mfaPolicyService,
-            IMfaAuditService mfaAuditService,
-            IOtpServiceFactory otpServiceFactory,
+            ClientCredentialsTokenIssuer clientCredentialsTokenIssuer,
+            IMfaChallengeIssuer mfaChallengeIssuer,
             ITenants tenants,
             IAuthenticationService authenticationService,
             ICacheClient cacheClient,
-            ICaptchaService captchaService,
-            ICaptchaConfigurationService captchaConfigurationService,
+            ICaptchaEvaluator captchaEvaluator,
             ILogger<AuthorizationFlowService> logger)
         {
             _authCodeRepo = authCodeRepo;
@@ -91,17 +82,13 @@ namespace Authentication.DomainService.Authentication
             _userRepository = userRepository;
             _authorizationClaimsResolver = authorizationClaimsResolver;
             _authenticationRepository = authenticationRepository;
-            _clientCredentialAuthorizationService = clientCredentialAuthorizationService;
             _refreshTokenAuthenticationService = refreshTokenAuthenticationService;
-            _mfaConfigurationService = mfaConfigurationService;
-            _mfaPolicyService = mfaPolicyService;
-            _mfaAuditService = mfaAuditService;
-            _otpServiceFactory = otpServiceFactory;
+            _clientCredentialsTokenIssuer = clientCredentialsTokenIssuer;
+            _mfaChallengeIssuer = mfaChallengeIssuer;
             _tenants = tenants;
             _authenticationService = authenticationService;
             _cacheClient = cacheClient;
-            _captchaService = captchaService;
-            _captchaConfigurationService = captchaConfigurationService;
+            _captchaEvaluator = captchaEvaluator;
             _logger = logger;
         }
 
@@ -110,27 +97,7 @@ namespace Authentication.DomainService.Authentication
             // If provider is specified, initiate social authentication flow
             if (!string.IsNullOrWhiteSpace(request.ProviderClientId))
             {
-                var oidcState = Guid.NewGuid().ToString("n");
-
-                var contextKey = $"oidc_context:{oidcState}";
-                var contextValue = JsonSerializer.Serialize(new
-                {
-                    clientId = request.ClientId,
-                    providerClientId = request.ProviderClientId,
-                    state = request.State,
-                    redirectUri = request.RedirectUri,
-                    providerRedirectUri = request.ProviderRedirectUri,
-                    scope = request.Scope,
-                    nonce = request.Nonce,
-                    codeChallenge = request.CodeChallenge,
-                    codeChallengeMethod = request.CodeChallengeMethod,
-                    tenantId = request.TenantId,
-                    createdAt = DateTime.UtcNow
-                });
-                await _cacheClient.AddStringValueAsync(contextKey, contextValue, AuthenticationConstants.OidcAuthorizationCodeCacheTtlSeconds); // 10 minute TTL
-
-                // Get social authorization URL
-                return await _authenticationService.GetOidcSocialAuthorizationUrlAsync(request.ProviderClientId, oidcState, request.ProviderRedirectUri ?? string.Empty);
+                return await InitiateSocialOidcLoginAsync(request);
             }
 
             if (!string.IsNullOrWhiteSpace(request.MfaId) || !string.IsNullOrWhiteSpace(request.MfaCode))
@@ -139,79 +106,30 @@ namespace Authentication.DomainService.Authentication
             }
 
             // Standard password-based OIDC login flow
-            if (string.IsNullOrWhiteSpace(request.Username) || string.IsNullOrWhiteSpace(request.Password))
-                return new BadRequestObjectResult(new { error = "invalid_request", error_description = "username and password are required" });
-
-            if (string.IsNullOrWhiteSpace(request.ClientId))
-                return new BadRequestObjectResult(new { error = "invalid_client", error_description = "client_id is required" });
-
-            if (string.IsNullOrWhiteSpace(request.RedirectUri))
-                return new BadRequestObjectResult(new { error = "invalid_request", error_description = "redirect_uri is required" });
-
-            var requestedTenantId = request.TenantId;
-
-            // Validate client exists
-            if (!await HasOidcClientConfigurationAsync(request.ClientId))
-                return new BadRequestObjectResult(new { error = "invalid_client", error_description = $"OIDC client '{request.ClientId}' not found or not configured" });
-
-            // Look up user and verify credentials (no tenant scoping on initial lookup, like embedded login)
-            var user = await _authenticationRepository.GetUserByUsernameAsync(request.Username);
-            var tenant = _tenants.GetTenantByID(requestedTenantId);
-            if (user == null || !user.Active || !user.IsVerified)
-                return new UnauthorizedObjectResult(new { error = "invalid_credentials" });
-
-            if (user.LockoutUntilUtc.HasValue && user.LockoutUntilUtc.Value > DateTime.UtcNow)
-                return new ObjectResult(new { error = "account_locked" }) { StatusCode = 423 };
-
-            var captcha = await EvaluateOidcCaptchaAsync(user, request.CaptchaCode);
-            if (captcha.Required)
+            var (inputError, user, tenant, requestedTenantId) = await ValidateOidcLoginInputsAsync(request);
+            if (inputError != null)
             {
-                await WriteOidcLoginAuditAsync(request, user, httpRequest, captcha.Outcome switch
-                {
-                    CaptchaOutcome.Missing => LoginAuditEvents.CaptchaValidationFailure,
-                    CaptchaOutcome.Invalid => LoginAuditEvents.CaptchaValidationFailure,
-                    _ => LoginAuditEvents.LoginFailure
-                }, LoginAuditEvents.OidcLoginCaptchaInvalid);
-                return BuildCaptchaResult(captcha);
+                return inputError;
             }
 
-            bool passwordValid;
-            try
+            var captchaResult = await EvaluateOidcCaptchaAndRespondAsync(request, user!, httpRequest);
+            if (captchaResult != null)
             {
-                passwordValid = VerifyPassword(request.Password, user.Password ?? string.Empty, tenant?.TenantSalt);
-            }
-            catch
-            {
-                passwordValid = false;
+                return captchaResult;
             }
 
-            if (!passwordValid)
+            if (!VerifyOidcLoginPassword(request, user!, tenant))
             {
-                var authConfiguration = await _authenticationRepository.GetAuthenticationConfigurationAsync() ?? new IdentityConfiguration();
-                var updatedUser = await _authenticationRepository.IncrementFailedLoginAndApplyLockoutAsync(
-                    user.ItemId,
-                    authConfiguration.GetNumberOfWrongAttemptsToLockTheAccount,
-                    authConfiguration.AccountLockDurationInMinutes,
-                    DateTime.UtcNow);
-
-                var accountLocked = updatedUser?.LockoutUntilUtc.HasValue == true && updatedUser.LockoutUntilUtc.Value > DateTime.UtcNow;
-                if (accountLocked)
-                {
-                    await WriteOidcLoginAuditAsync(request, user, httpRequest, LoginAuditEvents.LoginFailureAccountLocked, LoginAuditEvents.OidcLoginAccountLocked);
-                    return new ObjectResult(new { error = "account_locked" }) { StatusCode = StatusCodes.Status423Locked };
-                }
-
-                await WriteOidcLoginAuditAsync(request, user, httpRequest, LoginAuditEvents.LoginFailure, LoginAuditEvents.OidcLoginFailure);
-                return new UnauthorizedObjectResult(new { error = "invalid_credentials" });
+                return await HandleInvalidOidcPasswordAsync(request, user!, httpRequest);
             }
 
-            if (await IsMfaRequiredAsync(user))
+            if (await IsMfaRequiredAsync(user!))
             {
-                return await StartOidcMfaChallengeAsync(user, request, requestedTenantId);
+                return await StartOidcMfaChallengeAsync(user!, request, requestedTenantId);
             }
 
-            await ResetAuthFailureCountersAsync(user);
-            await WriteOidcLoginAuditAsync(request, user, httpRequest, LoginAuditEvents.LoginSuccess, LoginAuditEvents.OidcLoginSuccess);
+            await ResetAuthFailureCountersAsync(user!);
+            await WriteOidcLoginAuditAsync(request, user!, httpRequest, LoginAuditEvents.LoginSuccess, LoginAuditEvents.OidcLoginSuccess);
 
             return await AuthorizeAsync(
                 request.ClientId ?? string.Empty,
@@ -226,9 +144,120 @@ namespace Authentication.DomainService.Authentication
                 requestedTenantId ?? string.Empty,
                 httpRequest,
                 httpResponse,
-                user.ItemId,
+                user!.ItemId,
                 false,
                 mfaCompleted: false);
+        }
+
+        private async Task<IActionResult> InitiateSocialOidcLoginAsync(OidcLoginRequest request)
+        {
+            var oidcState = Guid.NewGuid().ToString("n");
+            var contextKey = $"oidc_context:{oidcState}";
+            var contextValue = JsonSerializer.Serialize(new OidcContext
+            {
+                ClientId = request.ClientId ?? string.Empty,
+                ProviderClientId = request.ProviderClientId ?? string.Empty,
+                State = request.State ?? string.Empty,
+                RedirectUri = request.RedirectUri ?? string.Empty,
+                ProviderRedirectUri = request.ProviderRedirectUri ?? string.Empty,
+                Scope = request.Scope,
+                Nonce = request.Nonce,
+                CodeChallenge = request.CodeChallenge,
+                CodeChallengeMethod = request.CodeChallengeMethod,
+                TenantId = request.TenantId,
+                CreatedAt = DateTime.UtcNow
+            });
+            await _cacheClient.AddStringValueAsync(contextKey, contextValue, AuthenticationConstants.OidcAuthorizationCodeCacheTtlSeconds);
+
+            return await _authenticationService.GetOidcSocialAuthorizationUrlAsync(request.ProviderClientId, oidcState, request.ProviderRedirectUri ?? string.Empty);
+        }
+
+        private async Task<(IActionResult? Error, User? User, Tenant? Tenant, string? RequestedTenantId)> ValidateOidcLoginInputsAsync(OidcLoginRequest request)
+        {
+            if (string.IsNullOrWhiteSpace(request.Username) || string.IsNullOrWhiteSpace(request.Password))
+            {
+                return (new BadRequestObjectResult(new { error = "invalid_request", error_description = "username and password are required" }), null, null, null);
+            }
+
+            if (string.IsNullOrWhiteSpace(request.ClientId))
+            {
+                return (new BadRequestObjectResult(new { error = "invalid_client", error_description = "client_id is required" }), null, null, null);
+            }
+
+            if (string.IsNullOrWhiteSpace(request.RedirectUri))
+            {
+                return (new BadRequestObjectResult(new { error = "invalid_request", error_description = "redirect_uri is required" }), null, null, null);
+            }
+
+            if (!await HasOidcClientConfigurationAsync(request.ClientId))
+            {
+                return (new BadRequestObjectResult(new { error = "invalid_client", error_description = $"OIDC client '{request.ClientId}' not found or not configured" }), null, null, null);
+            }
+
+            var user = await _authenticationRepository.GetUserByUsernameAsync(request.Username);
+            var tenant = _tenants.GetTenantByID(request.TenantId);
+
+            if (user == null || !user.Active || !user.IsVerified)
+            {
+                return (new UnauthorizedObjectResult(new { error = "invalid_credentials" }), null, null, null);
+            }
+
+            if (user.LockoutUntilUtc.HasValue && user.LockoutUntilUtc.Value > DateTime.UtcNow)
+            {
+                return (new ObjectResult(new { error = "account_locked" }) { StatusCode = 423 }, null, null, null);
+            }
+
+            return (null, user, tenant, request.TenantId);
+        }
+
+        private async Task<IActionResult?> EvaluateOidcCaptchaAndRespondAsync(OidcLoginRequest request, User user, HttpRequest httpRequest)
+        {
+            var captcha = await EvaluateOidcCaptchaAsync(user, request.CaptchaCode);
+            if (!captcha.Required)
+            {
+                return null;
+            }
+
+            await WriteOidcLoginAuditAsync(request, user, httpRequest, captcha.Outcome switch
+            {
+                CaptchaOutcome.Missing => LoginAuditEvents.CaptchaValidationFailure,
+                CaptchaOutcome.Invalid => LoginAuditEvents.CaptchaValidationFailure,
+                _ => LoginAuditEvents.LoginFailure
+            }, LoginAuditEvents.OidcLoginCaptchaInvalid);
+
+            return BuildCaptchaResult(captcha);
+        }
+
+        private bool VerifyOidcLoginPassword(OidcLoginRequest request, User user, Tenant? tenant)
+        {
+            try
+            {
+                return VerifyPassword(request.Password, user.Password ?? string.Empty, tenant?.TenantSalt);
+            }
+            catch
+            {
+                return false;
+            }
+        }
+
+        private async Task<IActionResult> HandleInvalidOidcPasswordAsync(OidcLoginRequest request, User user, HttpRequest httpRequest)
+        {
+            var authConfiguration = await _authenticationRepository.GetAuthenticationConfigurationAsync() ?? new IdentityConfiguration();
+            var updatedUser = await _authenticationRepository.IncrementFailedLoginAndApplyLockoutAsync(
+                user.ItemId,
+                authConfiguration.GetNumberOfWrongAttemptsToLockTheAccount,
+                authConfiguration.AccountLockDurationInMinutes,
+                DateTime.UtcNow);
+
+            var accountLocked = updatedUser?.LockoutUntilUtc.HasValue == true && updatedUser.LockoutUntilUtc.Value > DateTime.UtcNow;
+            if (accountLocked)
+            {
+                await WriteOidcLoginAuditAsync(request, user, httpRequest, LoginAuditEvents.LoginFailureAccountLocked, LoginAuditEvents.OidcLoginAccountLocked);
+                return new ObjectResult(new { error = "account_locked" }) { StatusCode = StatusCodes.Status423Locked };
+            }
+
+            await WriteOidcLoginAuditAsync(request, user, httpRequest, LoginAuditEvents.LoginFailure, LoginAuditEvents.OidcLoginFailure);
+            return new UnauthorizedObjectResult(new { error = "invalid_credentials" });
         }
 
         private async Task<IActionResult> CompleteOidcMfaLoginAsync(OidcLoginRequest request, HttpRequest httpRequest, HttpResponse httpResponse)
@@ -261,7 +290,7 @@ namespace Authentication.DomainService.Authentication
                 return new ObjectResult(new { error = "account_locked" }) { StatusCode = StatusCodes.Status423Locked };
             }
 
-            var otpService = _otpServiceFactory.GetOTPService(user.UserMfaType);
+            var otpService = _mfaChallengeIssuer.GetOtpServiceAsync(user.UserMfaType);
             if (otpService == null)
             {
                 return new ObjectResult(new { error = "server_error", error_description = "Mfa provider is not available" })
@@ -286,7 +315,7 @@ namespace Authentication.DomainService.Authentication
                     authConfiguration.AccountLockDurationInMinutes,
                     DateTime.UtcNow);
 
-                await _mfaAuditService.WriteAsync(new MfaAuditEvent
+                await _mfaChallengeIssuer.WriteAuditAsync(new MfaAuditEvent
                 {
                     EventType = updatedUser?.LockoutUntilUtc.HasValue == true && updatedUser.LockoutUntilUtc.Value > DateTime.UtcNow
                         ? LoginAuditEvents.MfaAccountLocked
@@ -309,7 +338,7 @@ namespace Authentication.DomainService.Authentication
             await ResetAuthFailureCountersAsync(user);
             await _cacheClient.RemoveKeyAsync($"oidc_mfa_login:{request.MfaId}");
 
-            await _mfaAuditService.WriteAsync(new MfaAuditEvent
+            await _mfaChallengeIssuer.WriteAuditAsync(new MfaAuditEvent
             {
                 EventType = LoginAuditEvents.MfaVerificationSuccess,
                 UserId = user.ItemId,
@@ -338,7 +367,7 @@ Status = AuthenticationConstants.StatusSuccess
 
         private async Task<IActionResult> StartOidcMfaChallengeAsync(User user, OidcLoginRequest request, string? tenantId)
         {
-            var otpService = _otpServiceFactory.GetOTPService(user.UserMfaType);
+            var otpService = _mfaChallengeIssuer.GetOtpServiceAsync(user.UserMfaType);
             if (otpService == null)
             {
                 return new ObjectResult(new { error = "server_error", error_description = "Mfa provider is not available" })
@@ -392,7 +421,7 @@ Status = AuthenticationConstants.StatusSuccess
 
         private async Task<bool> IsMfaRequiredAsync(User user)
         {
-            var decision = await _mfaPolicyService.EvaluateAsync(user, clientId: null);
+            var decision = await _mfaChallengeIssuer.IsRequiredAsync(user, clientId: null);
             return decision.Required;
         }
 
@@ -403,7 +432,7 @@ Status = AuthenticationConstants.StatusSuccess
                 return OidcCaptchaEvaluation.Pass();
             }
 
-            var captchaConfiguration = await _captchaConfigurationService.GetCaptchaConfigurationAsync();
+            var captchaConfiguration = await _captchaEvaluator.GetConfigurationAsync();
             if (captchaConfiguration == null || !captchaConfiguration.IsEnable)
             {
                 return OidcCaptchaEvaluation.Pass();
@@ -414,13 +443,10 @@ Status = AuthenticationConstants.StatusSuccess
                 return OidcCaptchaEvaluation.Require(OAuthError.CaptchaEnabled, "Captcha verification is required", captchaConfiguration.CaptchaKey, CaptchaOutcome.Missing);
             }
 
-            var verifyCaptchaResponse = await _captchaService.VerifyCaptchaAsync(new VerifyCaptchaRequest
-            {
-                VerificationCode = captchaCode,
-                ConfigurationName = captchaConfiguration.Provider
-            });
+            var verifyCaptchaResponse = await _captchaEvaluator.VerifyAsync(captchaCode);
+            var verified = (bool)verifyCaptchaResponse.GetType().GetProperty("Verified")!.GetValue(verifyCaptchaResponse)!;
 
-            if (verifyCaptchaResponse.Verified)
+            if (verified)
             {
                 return OidcCaptchaEvaluation.Pass();
             }
@@ -833,7 +859,7 @@ Status = AuthenticationConstants.StatusSuccess
 
                 if (grantType == GrantTypes.ClientCredential)
                 {
-                    return await IssueClientCredentialsToken(request);
+                    return await _clientCredentialsTokenIssuer.IssueAsync(request);
                 }
 
                 return new BadRequestObjectResult(new { error = "unsupported_grant_type", error_description = $"Grant type '{grantType}' not supported" });
@@ -847,61 +873,7 @@ Status = AuthenticationConstants.StatusSuccess
 
         private async Task<IActionResult> IssueClientCredentialsToken(HttpRequest request)
         {
-            var clientId = request.Form["client_id"].ToString();
-            var clientSecret = request.Form["client_secret"].ToString();
-
-            if (string.IsNullOrWhiteSpace(clientId) || string.IsNullOrWhiteSpace(clientSecret))
-            {
-                TryReadBasicClientAuthentication(request, out clientId, out clientSecret);
-            }
-
-            var organizationId = request.Form["organization_id"].ToString();
-            if (string.IsNullOrWhiteSpace(organizationId))
-            {
-                organizationId = request.Form["org_id"].ToString();
-            }
-
-            if (string.IsNullOrWhiteSpace(clientId) || string.IsNullOrWhiteSpace(clientSecret))
-            {
-                return new BadRequestObjectResult(new { error = "invalid_client", error_description = "Missing client authentication" });
-            }
-
-            var authConfiguration = await _authenticationRepository.GetAuthenticationConfigurationAsync();
-            if (authConfiguration == null)
-            {
-                return new BadRequestObjectResult(new { error = "server_error", error_description = "Authentication configuration missing" });
-            }
-
-            var tokenRequest = new TokenRequest
-            {
-                GrantType = GrantTypes.ClientCredential,
-                ClientId = clientId,
-                ClientSecret = clientSecret,
-                OrganizationId = organizationId,
-                Request = request
-            };
-
-            var result = await _clientCredentialAuthorizationService.AuthenticateAsync(tokenRequest, authConfiguration);
-            if (!string.IsNullOrWhiteSpace(result.Error))
-            {
-                var statusCode = string.Equals(result.Error, "invalid_client", StringComparison.OrdinalIgnoreCase)
-                    ? StatusCodes.Status401Unauthorized
-                    : StatusCodes.Status400BadRequest;
-
-                return new ObjectResult(new
-                {
-                    error = result.Error,
-                    error_description = result.ErrorDescription
-                })
-                { StatusCode = statusCode };
-            }
-
-            return new OkObjectResult(new TokenResponse
-            {
-                AccessToken = result.AccessToken,
-                TokenType = "Bearer",
-                ExpiresIn = result.ExpiresIn
-            });
+            return await _clientCredentialsTokenIssuer.IssueAsync(request);
         }
 
         #region OIDC Exchange (Reusable API Block)
@@ -1020,91 +992,30 @@ Status = AuthenticationConstants.StatusSuccess
                 ? tenant_id
                 : request.HttpContext.User.FindFirst("tenant_id")?.Value;
 
-            var authCode = await _authCodeRepo.GetByCodeAsync(code);
-            if (authCode == null)
+            var (validation, authCode, user, effectiveTenantId) = await ValidateExchangeInputsAsync(code, code_verifier, client_id, redirect_uri, tenantId, request);
+            if (validation != null)
             {
-                _logger.LogWarning("Authorization code not found: {Code}", code);
-                return OidcExchangeResult.FromError(new BadRequestObjectResult(new { error = "invalid_grant", error_description = "Authorization code is invalid or expired" }));
+                return validation;
             }
 
-            if (!string.IsNullOrWhiteSpace(tenantId)
-                && !string.IsNullOrWhiteSpace(authCode.TenantId)
-                && !string.Equals(authCode.TenantId, tenantId, StringComparison.OrdinalIgnoreCase))
-            {
-                _logger.LogWarning("Tenant mismatch for code exchange. Presented tenant: {TenantId}, code tenant: {CodeTenantId}", tenantId, authCode.TenantId);
-                return OidcExchangeResult.FromError(new BadRequestObjectResult(new { error = "invalid_grant", error_description = "Tenant mismatch" }));
-            }
-
-            if (authCode.ExpiresAt < DateTime.UtcNow)
-            {
-                _logger.LogWarning("Authorization code expired: {Code}", code);
-                return OidcExchangeResult.FromError(new BadRequestObjectResult(new { error = "invalid_grant", error_description = "Authorization code has expired" }));
-            }
-
-            var client = await _authenticationRepository.GetOidcClientRegistrationAsync(client_id);
-            if (client == null || client.ClientId != authCode.ClientId)
-            {
-                _logger.LogWarning("Client validation failed for code exchange");
-                return OidcExchangeResult.FromError(new BadRequestObjectResult(new { error = "invalid_client" }));
-            }
-
-            if (!await HasOidcClientConfigurationAsync(client_id))
-            {
-                _logger.LogWarning("OIDC client config missing for code exchange: {ClientId}", client_id);
-                return OidcExchangeResult.FromError(new BadRequestObjectResult(new { error = "invalid_client", error_description = "Client configuration not found" }));
-            }
-
-            if (authCode.RedirectUri != redirect_uri)
-            {
-                _logger.LogWarning("Redirect URI mismatch for code exchange");
-                return OidcExchangeResult.FromError(new BadRequestObjectResult(new { error = "invalid_grant", error_description = "Redirect URI mismatch" }));
-            }
-
-            if (!string.IsNullOrWhiteSpace(code_verifier))
-            {
-                var pkceValid = await _pkceService.ValidateVerifierAsync(authCode.CodeChallenge, code_verifier, authCode.CodeChallengeMethod);
-                if (!pkceValid)
-                {
-                    _logger.LogWarning("PKCE validation failed for client {ClientId}", client_id);
-                    return OidcExchangeResult.FromError(new BadRequestObjectResult(new { error = "invalid_grant", error_description = "PKCE code_verifier is invalid" }));
-                }
-            }
-
-            var user = await _userRepository.GetUserByIdAsync(authCode.UserId);
-            if (user == null)
-            {
-                return OidcExchangeResult.FromError(new BadRequestObjectResult(new { error = "invalid_grant", error_description = "User not found" }));
-            }
-
-            if (user.LockoutUntilUtc.HasValue && user.LockoutUntilUtc.Value > DateTime.UtcNow)
-            {
-                _logger.LogWarning("Token exchange denied for locked account {UserId}", authCode.UserId);
-                return OidcExchangeResult.FromError(new ObjectResult(new { error = "account_locked", error_description = "Account is temporarily locked due to failed authentication attempts" })
-                {
-                    StatusCode = StatusCodes.Status423Locked
-                });
-            }
-
-            var effectiveTenantId = authCode.TenantId ?? tenant_id ?? "default";
-            var tenant = _tenants.GetTenantByID(effectiveTenantId);
-            var allowedScopes = await ResolveAllowedScopesAsync(client);
-            var allowedServiceAccessResources = await ResolveAllowedServiceAccessResourcesAsync(client.ClientId);
+            var tenant = _tenants.GetTenantByID(effectiveTenantId!);
+            var allowedServiceAccessResources = await ResolveAllowedServiceAccessResourcesAsync(client_id);
             var resolvedClaims = await _authorizationClaimsResolver.ResolveAsync(
-                user,
-                authCode.OrganizationId,
+                user!,
+                authCode!.OrganizationId,
                 authCode.Scope,
                 allowedServiceAccessResources,
                 requireExplicitScope: true);
 
             var tenantAudience = DomainResolver.GetAudience(tenant);
 
-            var fullName = string.Join(' ', new[] { user.FirstName, user.LastName }
+            var fullName = string.Join(' ', new[] { user!.FirstName, user.LastName }
                 .Where(s => !string.IsNullOrWhiteSpace(s)));
 
             var claims = new OidcClaims
             {
                 Sub = authCode.UserId,
-                TenantId = effectiveTenantId,
+                TenantId = effectiveTenantId!,
                 OrgId = authCode.OrganizationId,
                 Nonce = authCode.Nonce,
                 AuthTime = DateTimeOffset.UtcNow.ToUnixTimeSeconds(),
@@ -1132,7 +1043,7 @@ Status = AuthenticationConstants.StatusSuccess
 
             refreshTokenModel.UserId = authCode.UserId;
             refreshTokenModel.ClientId = client_id;
-            refreshTokenModel.TenantId = effectiveTenantId;
+            refreshTokenModel.TenantId = effectiveTenantId!;
             refreshTokenModel.OrgId = authCode.OrganizationId;
             refreshTokenModel.Audience = tenantAudience;
             refreshTokenModel.Scope = authCode.Scope;
@@ -1152,13 +1063,90 @@ Status = AuthenticationConstants.StatusSuccess
                 accessToken,
                 idToken,
                 refreshTokenModel.TokenId,
-                effectiveTenantId,
+                effectiveTenantId!,
                 isResolved ? domain : null,
                 cookieDomain,
                 authCode.Scope,
                 accessTokenLifetimeSeconds,
                 accessExpiry,
                 refreshExpiry);
+        }
+
+        private async Task<(OidcExchangeResult? Error, AuthorizationCodeModel? AuthCode, User? User, string? EffectiveTenantId)> ValidateExchangeInputsAsync(
+            string code,
+            string code_verifier,
+            string client_id,
+            string redirect_uri,
+            string? tenantId,
+            HttpRequest request)
+        {
+            var authCode = await _authCodeRepo.GetByCodeAsync(code);
+            if (authCode == null)
+            {
+                _logger.LogWarning("Authorization code not found: {Code}", code);
+                return (OidcExchangeResult.FromError(new BadRequestObjectResult(new { error = "invalid_grant", error_description = "Authorization code is invalid or expired" })), null, null, null);
+            }
+
+            if (!string.IsNullOrWhiteSpace(tenantId)
+                && !string.IsNullOrWhiteSpace(authCode.TenantId)
+                && !string.Equals(authCode.TenantId, tenantId, StringComparison.OrdinalIgnoreCase))
+            {
+                _logger.LogWarning("Tenant mismatch for code exchange. Presented tenant: {TenantId}, code tenant: {CodeTenantId}", tenantId, authCode.TenantId);
+                return (OidcExchangeResult.FromError(new BadRequestObjectResult(new { error = "invalid_grant", error_description = "Tenant mismatch" })), null, null, null);
+            }
+
+            if (authCode.ExpiresAt < DateTime.UtcNow)
+            {
+                _logger.LogWarning("Authorization code expired: {Code}", code);
+                return (OidcExchangeResult.FromError(new BadRequestObjectResult(new { error = "invalid_grant", error_description = "Authorization code has expired" })), null, null, null);
+            }
+
+            var client = await _authenticationRepository.GetOidcClientRegistrationAsync(client_id);
+            if (client == null || client.ClientId != authCode.ClientId)
+            {
+                _logger.LogWarning("Client validation failed for code exchange");
+                return (OidcExchangeResult.FromError(new BadRequestObjectResult(new { error = "invalid_client" })), null, null, null);
+            }
+
+            if (!await HasOidcClientConfigurationAsync(client_id))
+            {
+                _logger.LogWarning("OIDC client config missing for code exchange: {ClientId}", client_id);
+                return (OidcExchangeResult.FromError(new BadRequestObjectResult(new { error = "invalid_client", error_description = "Client configuration not found" })), null, null, null);
+            }
+
+            if (authCode.RedirectUri != redirect_uri)
+            {
+                _logger.LogWarning("Redirect URI mismatch for code exchange");
+                return (OidcExchangeResult.FromError(new BadRequestObjectResult(new { error = "invalid_grant", error_description = "Redirect URI mismatch" })), null, null, null);
+            }
+
+            if (!string.IsNullOrWhiteSpace(code_verifier))
+            {
+                var pkceValid = await _pkceService.ValidateVerifierAsync(authCode.CodeChallenge, code_verifier, authCode.CodeChallengeMethod);
+                if (!pkceValid)
+                {
+                    _logger.LogWarning("PKCE validation failed for client {ClientId}", client_id);
+                    return (OidcExchangeResult.FromError(new BadRequestObjectResult(new { error = "invalid_grant", error_description = "PKCE code_verifier is invalid" })), null, null, null);
+                }
+            }
+
+            var user = await _userRepository.GetUserByIdAsync(authCode.UserId);
+            if (user == null)
+            {
+                return (OidcExchangeResult.FromError(new BadRequestObjectResult(new { error = "invalid_grant", error_description = "User not found" })), null, null, null);
+            }
+
+            if (user.LockoutUntilUtc.HasValue && user.LockoutUntilUtc.Value > DateTime.UtcNow)
+            {
+                _logger.LogWarning("Token exchange denied for locked account {UserId}", authCode.UserId);
+                return (OidcExchangeResult.FromError(new ObjectResult(new { error = "account_locked", error_description = "Account is temporarily locked due to failed authentication attempts" })
+                {
+                    StatusCode = StatusCodes.Status423Locked
+                }), null, null, null);
+            }
+
+            var effectiveTenantId = authCode.TenantId ?? tenantId ?? "default";
+            return (null, authCode, user, effectiveTenantId);
         }
 
         private static bool AppendAccessAndRefreshTokenCookies(
@@ -1260,32 +1248,7 @@ Status = AuthenticationConstants.StatusSuccess
                 return new BadRequestObjectResult(new { error = "invalid_client", error_description = "client not found" });
             }
 
-            var bc = BlocksContext.GetContext();
-            var tenant = _tenants.GetTenantByID(bc?.TenantId ?? "default");
-            string refresh_token = "";
-
-            if (client.UseTokensCookie)
-            {
-                var (domain, _, isResolved) = DomainResolver.ResolveDomain(tenant, request);
-                var cookieKey = isResolved && !string.IsNullOrWhiteSpace(domain)
-                    ? $"{IdpConstants.RefreshTokenCookieName}_{domain}"
-                    : string.Empty;
-                if (!string.IsNullOrWhiteSpace(cookieKey))
-                {
-                    refresh_token = request.HttpContext.Request.Cookies[cookieKey] ?? string.Empty;
-                }
-
-                // For API/postman callers (or unresolved domain), accept body token as runtime fallback.
-                if (string.IsNullOrWhiteSpace(refresh_token))
-                {
-                    refresh_token = request.Form["refresh_token"].ToString();
-                }
-            }
-            else
-            {
-                refresh_token = request.Form["refresh_token"].ToString();
-            }
-
+            var refresh_token = await ResolveRefreshTokenFromRequestAsync(client, request);
             if (string.IsNullOrWhiteSpace(refresh_token))
             {
                 return new BadRequestObjectResult(new { error = "invalid_request", error_description = "refresh token not found" });
@@ -1298,70 +1261,22 @@ Status = AuthenticationConstants.StatusSuccess
                 ClientId = client_id
             };
 
-            var configuration = await _authenticationRepository.GetAuthenticationConfigurationAsync();
-            if (configuration == null)
+            var (validation, configuration, tokenCache, user) = await ValidateRefreshTokenRequestAsync(refreshRequest, refresh_token, request);
+            if (validation != null)
             {
-                return new BadRequestObjectResult(new { error = OAuthError.AuthConfigMissing });
-            }
-
-            var cachedRefreshToken = await _cacheClient.GetStringValueAsync(refresh_token);
-            if (string.IsNullOrWhiteSpace(cachedRefreshToken))
-            {
-                return new BadRequestObjectResult(new { error = "invalid_grant", error_description = "Refresh token is invalid or expired" });
-            }
-
-            var tokenCache = JsonSerializer.Deserialize<RefreshTokenCache>(cachedRefreshToken);
-            if (tokenCache == null || string.IsNullOrWhiteSpace(tokenCache.UserId))
-            {
-                return new BadRequestObjectResult(new { error = "invalid_grant", error_description = "Refresh token is invalid or expired" });
-            }
-
-            if (string.IsNullOrWhiteSpace(tokenCache.ClientId) || !await HasOidcClientConfigurationAsync(tokenCache.ClientId))
-            {
-                return new UnauthorizedObjectResult(new { error = "invalid_client", error_description = "Client configuration not found" });
-            }
-
-            // Defense-in-depth: Validate sent client_id matches the cached/bound client_id
-            if (!string.IsNullOrWhiteSpace(refreshRequest.ClientId) &&
-                !string.Equals(refreshRequest.ClientId, tokenCache.ClientId, StringComparison.OrdinalIgnoreCase))
-            {
-                return new UnauthorizedObjectResult(new { error = "invalid_client", error_description = "Client mismatch: sent client_id does not match token binding" });
-            }
-
-            var currentTenantId = BlocksContext.GetContext()?.TenantId;
-            if (!string.Equals(tokenCache.TenantId, currentTenantId, StringComparison.OrdinalIgnoreCase))
-            {
-                return new BadRequestObjectResult(new { error = "invalid_grant", error_description = "Refresh token tenant mismatch" });
-            }
-
-            var user = await _authenticationRepository.GetUserByIdAsync(tokenCache.UserId);
-            if (user == null)
-            {
-                return new UnauthorizedObjectResult(new { error = "invalid_user" });
-            }
-
-            if (user.LockoutUntilUtc.HasValue && user.LockoutUntilUtc.Value > DateTime.UtcNow)
-            {
-                return new ObjectResult(new
-                {
-                    error = OAuthError.AccountLocked,
-                    error_description = "Account is temporarily locked due to failed authentication attempts"
-                })
-                {
-                    StatusCode = StatusCodes.Status423Locked
-                };
+                return validation;
             }
 
             var tokenRequest = new TokenRequest
             {
                 GrantType = GrantTypes.RefreshToken,
-                OrganizationId = string.IsNullOrWhiteSpace(tokenCache.OrganizationId) ? "default" : tokenCache.OrganizationId,
+                OrganizationId = string.IsNullOrWhiteSpace(tokenCache!.OrganizationId) ? "default" : tokenCache.OrganizationId,
                 ClientId = tokenCache.ClientId,
                 RefreshToken = refresh_token,
                 Request = request
             };
 
-            var response = await _refreshTokenAuthenticationService.AuthenticateAsync(tokenRequest, configuration, user);
+            var response = await _refreshTokenAuthenticationService.AuthenticateAsync(tokenRequest, configuration!, user!);
 
             if (!string.IsNullOrWhiteSpace(response.Error))
             {
@@ -1376,6 +1291,106 @@ Status = AuthenticationConstants.StatusSuccess
                 };
             }
 
+            return await BuildRefreshTokenResponseAsync(client, tokenCache, response, request);
+        }
+
+        private async Task<string> ResolveRefreshTokenFromRequestAsync(OidcClientRegistration client, HttpRequest request)
+        {
+            if (!client.UseTokensCookie)
+            {
+                return request.Form["refresh_token"].ToString();
+            }
+
+            var bc = BlocksContext.GetContext();
+            var tenant = _tenants.GetTenantByID(bc?.TenantId ?? "default");
+            var (domain, _, isResolved) = DomainResolver.ResolveDomain(tenant, request);
+            var cookieKey = isResolved && !string.IsNullOrWhiteSpace(domain)
+                ? $"{IdpConstants.RefreshTokenCookieName}_{domain}"
+                : string.Empty;
+
+            if (string.IsNullOrWhiteSpace(cookieKey))
+            {
+                return request.Form["refresh_token"].ToString();
+            }
+
+            var cookieToken = request.HttpContext.Request.Cookies[cookieKey];
+            if (!string.IsNullOrWhiteSpace(cookieToken))
+            {
+                return cookieToken;
+            }
+
+            // For API/postman callers (or unresolved domain), accept body token as runtime fallback.
+            return request.Form["refresh_token"].ToString();
+        }
+
+        private async Task<(IActionResult? Error, IdentityConfiguration? Configuration, RefreshTokenCache? TokenCache, User? User)> ValidateRefreshTokenRequestAsync(
+            RefreshRequest refreshRequest,
+            string refresh_token,
+            HttpRequest request)
+        {
+            var configuration = await _authenticationRepository.GetAuthenticationConfigurationAsync();
+            if (configuration == null)
+            {
+                return (new BadRequestObjectResult(new { error = OAuthError.AuthConfigMissing }), null, null, null);
+            }
+
+            var cachedRefreshToken = await _cacheClient.GetStringValueAsync(refresh_token);
+            if (string.IsNullOrWhiteSpace(cachedRefreshToken))
+            {
+                return (new BadRequestObjectResult(new { error = "invalid_grant", error_description = "Refresh token is invalid or expired" }), null, null, null);
+            }
+
+            var tokenCache = JsonSerializer.Deserialize<RefreshTokenCache>(cachedRefreshToken);
+            if (tokenCache == null || string.IsNullOrWhiteSpace(tokenCache.UserId))
+            {
+                return (new BadRequestObjectResult(new { error = "invalid_grant", error_description = "Refresh token is invalid or expired" }), null, null, null);
+            }
+
+            if (string.IsNullOrWhiteSpace(tokenCache.ClientId) || !await HasOidcClientConfigurationAsync(tokenCache.ClientId))
+            {
+                return (new UnauthorizedObjectResult(new { error = "invalid_client", error_description = "Client configuration not found" }), null, null, null);
+            }
+
+            // Defense-in-depth: Validate sent client_id matches the cached/bound client_id
+            if (!string.IsNullOrWhiteSpace(refreshRequest.ClientId) &&
+                !string.Equals(refreshRequest.ClientId, tokenCache.ClientId, StringComparison.OrdinalIgnoreCase))
+            {
+                return (new UnauthorizedObjectResult(new { error = "invalid_client", error_description = "Client mismatch: sent client_id does not match token binding" }), null, null, null);
+            }
+
+            var currentTenantId = BlocksContext.GetContext()?.TenantId;
+            if (!string.Equals(tokenCache.TenantId, currentTenantId, StringComparison.OrdinalIgnoreCase))
+            {
+                return (new BadRequestObjectResult(new { error = "invalid_grant", error_description = "Refresh token tenant mismatch" }), null, null, null);
+            }
+
+            var user = await _authenticationRepository.GetUserByIdAsync(tokenCache.UserId);
+            if (user == null)
+            {
+                return (new UnauthorizedObjectResult(new { error = "invalid_user" }), null, null, null);
+            }
+
+            if (user.LockoutUntilUtc.HasValue && user.LockoutUntilUtc.Value > DateTime.UtcNow)
+            {
+                return (new ObjectResult(new
+                {
+                    error = OAuthError.AccountLocked,
+                    error_description = "Account is temporarily locked due to failed authentication attempts"
+                })
+                {
+                    StatusCode = StatusCodes.Status423Locked
+                }, null, null, null);
+            }
+
+            return (null, configuration, tokenCache, user);
+        }
+
+        private async Task<IActionResult> BuildRefreshTokenResponseAsync(
+            OidcClientRegistration client,
+            RefreshTokenCache tokenCache,
+            TokenResponse response,
+            HttpRequest request)
+        {
             if (tokenCache.Impersonated && !string.IsNullOrWhiteSpace(tokenCache.ImpersonationId))
             {
                 var existingSession = await _authenticationRepository.GetImpersonationSessionByIdAsync(tokenCache.ImpersonationId);
@@ -1393,8 +1408,7 @@ Status = AuthenticationConstants.StatusSuccess
                 );
             }
 
-            var useTokensCookie = client.UseTokensCookie;
-            if (useTokensCookie)
+            if (client.UseTokensCookie)
             {
                 var tenantId = BlocksContext.GetContext()?.TenantId ?? "default";
                 var resolvedTenant = _tenants.GetTenantByID(tenantId);

@@ -58,39 +58,36 @@ public sealed class OidcSigningKeyMaterial
     public SigningCredentials SigningCredentials { get; }
 }
 
-public sealed class TokenGenerationService : ITokenGenerationService
-{
-    private readonly OidcSigningKeyMaterial _keyMaterial;
-    private readonly ITenants _tenants;
-    private readonly ICacheClient _cacheClient;
-    private readonly UnifiedTokenSessionService _unifiedTokenSessionService;
-    private readonly ICryptoService _cryptoService;
-    private readonly ICertificateProviderFactory _certificateProviderFactory;
-    private readonly IHttpContextAccessor _httpContextAccessor;
-    private readonly IAuthenticationRepository _authenticationRepository;
-    private readonly IRefreshTokenRepository _refreshTokenRepository;
-
-    public TokenGenerationService(
-        OidcSigningKeyMaterial keyMaterial,
-        ITenants tenants,
-        ICacheClient cacheClient,
-        ICryptoService cryptoService,
-        ICertificateProviderFactory certificateProviderFactory,
-        IHttpContextAccessor httpContextAccessor,
-        IAuthenticationRepository authenticationRepository,
-        IAuthenticationDomainService authenticationDomainService,
-        IRefreshTokenRepository refreshTokenRepository)
+    public sealed class TokenGenerationService : ITokenGenerationService
     {
-        _keyMaterial = keyMaterial;
-        _tenants = tenants;
-        _cacheClient = cacheClient;
-        _cryptoService = cryptoService;
-        _certificateProviderFactory = certificateProviderFactory;
-        _httpContextAccessor = httpContextAccessor;
-        _authenticationRepository = authenticationRepository;
-        _refreshTokenRepository = refreshTokenRepository;
-        _unifiedTokenSessionService = new UnifiedTokenSessionService(_cacheClient, authenticationDomainService, _refreshTokenRepository);
-    }
+        private readonly OidcSigningKeyMaterial _keyMaterial;
+        private readonly ITenants _tenants;
+        private readonly ICacheClient _cacheClient;
+        private readonly UnifiedTokenSessionService _unifiedTokenSessionService;
+        private readonly ICryptoService _cryptoService;
+        private readonly ICertificateProviderFactory _certificateProviderFactory;
+        private readonly IHttpContextAccessor _httpContextAccessor;
+        private readonly IAuthenticationRepository _authenticationRepository;
+
+        public TokenGenerationService(
+            OidcSigningKeyMaterial keyMaterial,
+            ITenants tenants,
+            ICacheClient cacheClient,
+            UnifiedTokenSessionService unifiedTokenSessionService,
+            ICryptoService cryptoService,
+            ICertificateProviderFactory certificateProviderFactory,
+            IHttpContextAccessor httpContextAccessor,
+            IAuthenticationRepository authenticationRepository)
+        {
+            _keyMaterial = keyMaterial;
+            _tenants = tenants;
+            _cacheClient = cacheClient;
+            _unifiedTokenSessionService = unifiedTokenSessionService;
+            _cryptoService = cryptoService;
+            _certificateProviderFactory = certificateProviderFactory;
+            _httpContextAccessor = httpContextAccessor;
+            _authenticationRepository = authenticationRepository;
+        }
 
     public Task<string> GenerateIdTokenAsync(Contracts.OidcClaims claims, string issuer, int expiresInSeconds)
     {
