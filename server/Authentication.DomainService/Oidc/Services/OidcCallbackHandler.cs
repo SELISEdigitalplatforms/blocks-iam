@@ -3,6 +3,7 @@ using System.Text.Json;
 using Authentication.DomainService.Entities;
 using Authentication.DomainService.OAuth;
 using Authentication.DomainService.Services;
+using Authentication.DomainService.Shared.Dtos;
 using Blocks.Genesis;
 using Iam.DomainService.Users;
 using Microsoft.Extensions.Logging;
@@ -95,21 +96,21 @@ namespace Authentication.DomainService.Oidc.Services
             try
             {
                 // Parse OIDC social state to get context
-                var oidcSocialState = JsonDocument.Parse(oidcSocialStateJson).RootElement;
-                var oidcState = oidcSocialState.GetProperty("oidcState").GetString();
-                var provider = oidcSocialState.GetProperty("provider").GetString();
-
-                if (string.IsNullOrWhiteSpace(oidcState))
+                var oidcSocialState = JsonSerializer.Deserialize<OidcSocialStateContext>(oidcSocialStateJson);
+                if (oidcSocialState == null || string.IsNullOrWhiteSpace(oidcSocialState.OidcState))
                 {
                     _logger.LogWarning("Invalid OIDC state in social callback");
                     return new OidcCallbackResult { IsSuccess = false, ErrorMessage = "Invalid OIDC context" };
                 }
 
-                if (string.IsNullOrWhiteSpace(provider))
+                if (string.IsNullOrWhiteSpace(oidcSocialState.Provider))
                 {
                     _logger.LogWarning("Provider not found in OIDC social state");
                     return new OidcCallbackResult { IsSuccess = false, ErrorMessage = "Provider not found in OIDC state" };
                 }
+
+                var oidcState = oidcSocialState.OidcState;
+                var provider = oidcSocialState.Provider;
 
                 // 1. Get OIDC context (original client request)
                 var contextKey = $"oidc_context:{oidcState}";
@@ -120,21 +121,21 @@ namespace Authentication.DomainService.Oidc.Services
                     return new OidcCallbackResult { IsSuccess = false, ErrorMessage = "OIDC flow expired" };
                 }
 
-                var context = JsonDocument.Parse(contextJson).RootElement;
-                var clientId = context.GetProperty("clientId").GetString();
-                var originalState = context.GetProperty("state").GetString();
-                var redirectUri = context.GetProperty("redirectUri").GetString();
-                var providerClientId = context.GetProperty("providerClientId").GetString();
-                var providerRedirectUri = context.GetProperty("providerRedirectUri").GetString();
+                var context = JsonSerializer.Deserialize<OidcContext>(contextJson);
+                if (context == null)
+                {
+                    _logger.LogWarning("Failed to deserialize OIDC context for state {OidcState}", oidcState);
+                    return new OidcCallbackResult { IsSuccess = false, ErrorMessage = "OIDC flow expired" };
+                }
 
                 // 3. Reuse social folder callback handling for provider token exchange + user extraction
                 var stateInfo = new StateInfo
                 {
-                    ClientId = providerClientId,
+                    ClientId = context.ProviderClientId,
                     Provider = provider,
                     Code = code,
-                    Audience = providerClientId,
-                    RedirectUri = providerRedirectUri,
+                    Audience = context.ProviderClientId,
+                    RedirectUri = context.ProviderRedirectUri,
                     FlowType = SocialFlowType.Oidc
                 };
 
@@ -165,16 +166,16 @@ namespace Authentication.DomainService.Oidc.Services
                 return new OidcCallbackResult
                 {
                     IsSuccess = true,
-                    ClientId = clientId,
-                    RedirectUri = redirectUri,
-                    OriginalState = originalState,
+                    ClientId = context.ClientId,
+                    RedirectUri = context.RedirectUri,
+                    OriginalState = context.State,
                     IsOidcFlow = true,
                     BlocksUserId = blocksUserId,
-                    TenantId = context.GetProperty("tenantId").GetString() ?? "default",
-                    Scope = context.GetProperty("scope").GetString(),
-                    Nonce = context.GetProperty("nonce").GetString(),
-                    CodeChallenge = context.GetProperty("codeChallenge").GetString(),
-                    CodeChallengeMethod = context.GetProperty("codeChallengeMethod").GetString()
+                    TenantId = string.IsNullOrWhiteSpace(context.TenantId) ? "default" : context.TenantId,
+                    Scope = context.Scope,
+                    Nonce = context.Nonce,
+                    CodeChallenge = context.CodeChallenge,
+                    CodeChallengeMethod = context.CodeChallengeMethod
                 };
             }
             catch (Exception ex)

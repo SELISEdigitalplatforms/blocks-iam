@@ -26,9 +26,8 @@ namespace Authentication.DomainService.Authentication
         private readonly IAuthenticationRepository _authenticationRepository;
         private readonly IAuthorizationCodeRepository _authCodeRepo;
         private readonly IAuthenticationFlowService _authenticationFlowService;
-        private readonly IHttpContextAccessor _httpContextAccessor;
         private readonly ICacheClient _cacheClient;
-        private readonly IHttpService _httpService;
+        private readonly IdpTokenExchangeClient _idpTokenExchangeClient;
         private readonly ITenants _tenants;
         private readonly ICaptchaConfigurationRepository _captchaConfigurationRepository;
         private readonly ILogger<IdpService> _logger;
@@ -37,9 +36,8 @@ namespace Authentication.DomainService.Authentication
             IAuthenticationRepository authenticationRepository,
             IAuthorizationCodeRepository authCodeRepo,
             IAuthenticationFlowService authenticationFlowService,
-            IHttpContextAccessor httpContextAccessor,
             ICacheClient cacheClient,
-            IHttpService httpService,
+            IdpTokenExchangeClient idpTokenExchangeClient,
             ITenants tenants,
             ICaptchaConfigurationRepository captchaConfigurationRepository,
             ILogger<IdpService> logger)
@@ -47,9 +45,8 @@ namespace Authentication.DomainService.Authentication
             _authenticationRepository = authenticationRepository;
             _authCodeRepo = authCodeRepo;
             _authenticationFlowService = authenticationFlowService;
-            _httpContextAccessor = httpContextAccessor;
             _cacheClient = cacheClient;
-            _httpService = httpService;
+            _idpTokenExchangeClient = idpTokenExchangeClient;
             _tenants = tenants;
             _captchaConfigurationRepository = captchaConfigurationRepository;
             _logger = logger;
@@ -139,130 +136,45 @@ namespace Authentication.DomainService.Authentication
         {
             try
             {
-                // Check for IdP errors
-                if (!string.IsNullOrWhiteSpace(error))
+                var (validation, flowContext, identityProvider, cacheKey) = await ValidateCallbackRequestAsync(code, state, error, error_description);
+                if (validation != null)
                 {
-                    _logger.LogWarning("IdP returned error: {Error}, description: {ErrorDescription}", error, error_description);
-                    return new BadRequestObjectResult(new
-                    {
-                        error = error,
-                        error_description = error_description ?? "Authorization failed at provider"
-                    });
+                    return validation;
                 }
 
-                // Validate authorization code and state
-                if (string.IsNullOrWhiteSpace(code))
+                var (exchangeError, tokenResponse) = await ExchangeCodeWithIdPAsync(identityProvider!, code!, flowContext!, httpRequest);
+                if (exchangeError != null)
                 {
-                    _logger.LogWarning("Callback received without authorization code");
-                    return new BadRequestObjectResult(new { error = "invalid_request", error_description = "code is required" });
+                    return exchangeError;
                 }
 
-                if (string.IsNullOrWhiteSpace(state))
-                {
-                    _logger.LogWarning("Callback received without state parameter");
-                    return new BadRequestObjectResult(new { error = "invalid_request", error_description = "state is required" });
-                }
-
-                // Retrieve flow context from cache
-                var cacheKey = $"idp_flow:{state}";
-                var flowContextJson = await _cacheClient.GetStringValueAsync(cacheKey);
-
-                if (string.IsNullOrWhiteSpace(flowContextJson))
-                {
-                    _logger.LogWarning("Flow context not found or expired for state: {State}", state);
-                    return new BadRequestObjectResult(new { error = "invalid_state", error_description = "State not found or expired (5 minute timeout)" });
-                }
-
-                // Deserialize flow context
-                var flowContext = System.Text.Json.JsonSerializer.Deserialize<FlowContext>(flowContextJson);
-                if (flowContext == null)
-                {
-                    _logger.LogWarning("Failed to deserialize flow context for state: {State}", state);
-                    return new BadRequestObjectResult(new { error = "server_error", error_description = "Invalid flow context" });
-                }
-
-                if (string.IsNullOrWhiteSpace(flowContext.Provider))
-                {
-                    _logger.LogWarning("Flow context missing provider for state: {State}", state);
-                    return new BadRequestObjectResult(new { error = "invalid_provider", error_description = "Provider missing in flow context" });
-                }
-
-                // Get IdP config
-                var identityProvider = await _authenticationRepository.GetIdentityProviderAsync(flowContext.Provider);
-                if (identityProvider == null || !identityProvider.IsActive)
-                {
-                    _logger.LogWarning("Identity provider not found or inactive: {Provider}", flowContext.Provider);
-                    return new BadRequestObjectResult(new { error = "invalid_provider", error_description = "Provider not configured" });
-                }
-
-                // Exchange authorization code for tokens at IdP
-                var tokenEndpoint = identityProvider.TokenUrl;
- 
-                var form = new Dictionary<string, string>
-                {
-                    { "grant_type", GrantTypes.AuthCode },
-                    { "code", code },
-                    { "client_id", identityProvider.ClientId ?? string.Empty },
-                    { "client_secret", identityProvider.ClientSecret ?? string.Empty },
-                    { "redirect_uri", flowContext.RedirectUri ?? string.Empty }
-                };
-
-                // Add PKCE code_verifier if present
-                if (!string.IsNullOrWhiteSpace(flowContext.CodeVerifier))
-                {
-                    form["code_verifier"] = flowContext.CodeVerifier;
-                }
-
-                OidcTokenEndpointResponse? tokenResponse;
-                string tokenError;
-                try
-                {
-                    var timeoutSeconds = (int)GetOutboundRequestTimeout().TotalSeconds;
-                    (tokenResponse, tokenError) = await ExchangeCodeForTokenAsync(
-                        tokenEndpoint,
-                        form,
-                        httpRequest.HttpContext.RequestAborted,
-                        timeoutSeconds: timeoutSeconds);
-                }
-                catch (Exception ex)
-                {
-                    _logger.LogWarning(ex, "Token exchange request failed");
-                    return new BadRequestObjectResult(new { error = "invalid_grant", error_description = "Failed to exchange authorization code" });
-                }
-
-                if (!string.IsNullOrWhiteSpace(tokenError) || tokenResponse == null || string.IsNullOrWhiteSpace(tokenResponse.AccessToken))
-                {
-                    _logger.LogWarning("Token exchange failed: {TokenError}", tokenError ?? "empty token response");
-                    return new BadRequestObjectResult(new { error = "invalid_grant", error_description = "Failed to exchange authorization code" });
-                }
-
-                var authCode = await _authCodeRepo.GetByCodeAsync(code);
+                var authCode = await _authCodeRepo.GetByCodeAsync(code!);
 
                 if (authCode.Impersonated)
                 {
                     var impersonatedResult = await _authenticationFlowService.ExecuteImpersonateAsync(
-                        new ImpersonateRequest 
-                        { 
-                            TargetTenantId = authCode.TargetedTenantId, 
-                            ImpersontingUserId = authCode.ImpersonatedUserId, 
-                            RefreshToken = tokenResponse.RefreshToken,
+                        new ImpersonateRequest
+                        {
+                            TargetTenantId = authCode.TargetedTenantId,
+                            ImpersontingUserId = authCode.ImpersonatedUserId,
+                            RefreshToken = tokenResponse!.RefreshToken,
                             OrganizationId = authCode.OrganizationId,
-                        }, 
-                        _httpContextAccessor.HttpContext.Request, 
-                        _httpContextAccessor.HttpContext.Response
+                        },
+                        httpRequest,
+                        httpResponse
                     );
 
-                    await _cacheClient.RemoveKeyAsync(cacheKey); 
+                    await _cacheClient.RemoveKeyAsync(cacheKey);
                     return new OkObjectResult(new { Impersonated = true });
                 }
 
                 // Resolve tenant_id: flowContext > BlocksContext > default
                 var blocksContext = BlocksContext.GetContext();
-                var resolvedTenantId = flowContext.TenantId ?? blocksContext?.TenantId ?? string.Empty;
+                var resolvedTenantId = flowContext!.TenantId ?? blocksContext?.TenantId ?? string.Empty;
                 var authConfiguration = await _authenticationRepository.GetAuthenticationConfigurationAsync();
                 var configuredAccessLifetimeSeconds = Math.Max((authConfiguration?.AccessTokenValidForNumberMinutes ?? IdentityConfiguration.DefaultAccessTokenValidForNumberMinutes) * AuthenticationConstants.SecondsPerMinute, AuthenticationConstants.MinAccessTokenLifetimeSeconds);
                 var configuredRefreshLifetimeMinutes = Math.Max(authConfiguration?.AbsoluteRefreshTokenValidForNumberMinutes ?? IdentityConfiguration.DefaultRememberMeRefreshTokenValidForNumberMinutes, AuthenticationConstants.MinTokenLifetimeMinutes);
-                var resolvedAccessLifetimeSeconds = tokenResponse.ExpiresIn.HasValue
+                var resolvedAccessLifetimeSeconds = tokenResponse!.ExpiresIn.HasValue
                     ? Math.Max(tokenResponse.ExpiresIn.Value, AuthenticationConstants.MinAccessTokenLifetimeSeconds)
                     : configuredAccessLifetimeSeconds;
 
@@ -319,6 +231,116 @@ namespace Authentication.DomainService.Authentication
             }
         }
 
+        private async Task<(IActionResult? Error, FlowContext? FlowContext, IdentityProvider? IdentityProvider, string CacheKey)> ValidateCallbackRequestAsync(
+            string? code,
+            string? state,
+            string? error,
+            string? error_description)
+        {
+            // Check for IdP errors
+            if (!string.IsNullOrWhiteSpace(error))
+            {
+                _logger.LogWarning("IdP returned error: {Error}, description: {ErrorDescription}", error, error_description);
+                return (new BadRequestObjectResult(new
+                {
+                    error = error,
+                    error_description = error_description ?? "Authorization failed at provider"
+                }), null, null, string.Empty);
+            }
+
+            // Validate authorization code and state
+            if (string.IsNullOrWhiteSpace(code))
+            {
+                _logger.LogWarning("Callback received without authorization code");
+                return (new BadRequestObjectResult(new { error = "invalid_request", error_description = "code is required" }), null, null, string.Empty);
+            }
+
+            if (string.IsNullOrWhiteSpace(state))
+            {
+                _logger.LogWarning("Callback received without state parameter");
+                return (new BadRequestObjectResult(new { error = "invalid_request", error_description = "state is required" }), null, null, string.Empty);
+            }
+
+            // Retrieve flow context from cache
+            var cacheKey = $"idp_flow:{state}";
+            var flowContextJson = await _cacheClient.GetStringValueAsync(cacheKey);
+
+            if (string.IsNullOrWhiteSpace(flowContextJson))
+            {
+                _logger.LogWarning("Flow context not found or expired for state: {State}", state);
+                return (new BadRequestObjectResult(new { error = "invalid_state", error_description = "State not found or expired (5 minute timeout)" }), null, null, string.Empty);
+            }
+
+            // Deserialize flow context
+            var flowContext = System.Text.Json.JsonSerializer.Deserialize<FlowContext>(flowContextJson);
+            if (flowContext == null)
+            {
+                _logger.LogWarning("Failed to deserialize flow context for state: {State}", state);
+                return (new BadRequestObjectResult(new { error = "server_error", error_description = "Invalid flow context" }), null, null, cacheKey);
+            }
+
+            if (string.IsNullOrWhiteSpace(flowContext.Provider))
+            {
+                _logger.LogWarning("Flow context missing provider for state: {State}", state);
+                return (new BadRequestObjectResult(new { error = "invalid_provider", error_description = "Provider missing in flow context" }), null, null, cacheKey);
+            }
+
+            // Get IdP config
+            var identityProvider = await _authenticationRepository.GetIdentityProviderAsync(flowContext.Provider);
+            if (identityProvider == null || !identityProvider.IsActive)
+            {
+                _logger.LogWarning("Identity provider not found or inactive: {Provider}", flowContext.Provider);
+                return (new BadRequestObjectResult(new { error = "invalid_provider", error_description = "Provider not configured" }), null, null, cacheKey);
+            }
+
+            return (null, flowContext, identityProvider, cacheKey);
+        }
+
+        private async Task<(IActionResult? Error, OidcTokenEndpointResponse? TokenResponse)> ExchangeCodeWithIdPAsync(
+            IdentityProvider identityProvider,
+            string code,
+            FlowContext flowContext,
+            HttpRequest httpRequest)
+        {
+            var form = new Dictionary<string, string>
+            {
+                { "grant_type", GrantTypes.AuthCode },
+                { "code", code },
+                { "client_id", identityProvider.ClientId ?? string.Empty },
+                { "client_secret", identityProvider.ClientSecret ?? string.Empty },
+                { "redirect_uri", flowContext.RedirectUri ?? string.Empty }
+            };
+
+            // Add PKCE code_verifier if present
+            if (!string.IsNullOrWhiteSpace(flowContext.CodeVerifier))
+            {
+                form["code_verifier"] = flowContext.CodeVerifier;
+            }
+
+            try
+            {
+                var timeoutSeconds = (int)GetOutboundRequestTimeout().TotalSeconds;
+                var (tokenResponse, tokenError) = await ExchangeCodeForTokenAsync(
+                    identityProvider.TokenUrl,
+                    form,
+                    httpRequest.HttpContext.RequestAborted,
+                    timeoutSeconds: timeoutSeconds);
+
+                if (!string.IsNullOrWhiteSpace(tokenError) || tokenResponse == null || string.IsNullOrWhiteSpace(tokenResponse.AccessToken))
+                {
+                    _logger.LogWarning("Token exchange failed: {TokenError}", tokenError ?? "empty token response");
+                    return (new BadRequestObjectResult(new { error = "invalid_grant", error_description = "Failed to exchange authorization code" }), null);
+                }
+
+                return (null, tokenResponse);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "Token exchange request failed");
+                return (new BadRequestObjectResult(new { error = "invalid_grant", error_description = "Failed to exchange authorization code" }), null);
+            }
+        }
+
         private string GenerateRandomBase64Url(int byteLength)
         {
             var randomBytes = new byte[byteLength];
@@ -368,19 +390,7 @@ namespace Authentication.DomainService.Authentication
             CancellationToken cancellationToken,
             int? timeoutSeconds = null)
         {
-            (var response, var error) = await _httpService.SendFormUrlEncoded<OidcTokenEndpointResponse>(
-                HttpMethod.Post,
-                form,
-                tokenEndpoint,
-                cancellationToken: cancellationToken,
-                timeoutSeconds: timeoutSeconds);
-
-            if (!string.IsNullOrWhiteSpace(error))
-            {
-                return (null, error);
-            }
-
-            return (response, error);
+            return await _idpTokenExchangeClient.ExchangeCodeForTokenAsync(tokenEndpoint, form, cancellationToken, timeoutSeconds);
         }
 
         private string BuildAuthorizeUrl(IdentityProvider provider, string redirectUri, string state, string nonce, string? codeChallenge)
@@ -408,27 +418,6 @@ namespace Authentication.DomainService.Authentication
                 : (baseUrl.Contains('?') ? "&" : "?");
 
             return $"{baseUrl}{separator}{queryString}";
-        }
-
-        private sealed class OidcTokenEndpointResponse
-        {
-            [JsonPropertyName("access_token")]
-            public string? AccessToken { get; set; }
-
-            [JsonPropertyName("refresh_token")]
-            public string? RefreshToken { get; set; }
-
-            [JsonPropertyName("id_token")]
-            public string? IdToken { get; set; }
-
-            [JsonPropertyName("token_type")]
-            public string? TokenType { get; set; }
-
-            [JsonPropertyName("expires_in")]
-            public int? ExpiresIn { get; set; }
-
-            [JsonPropertyName("scope")]
-            public string? Scope { get; set; }
         }
 
         private sealed class FlowContext
