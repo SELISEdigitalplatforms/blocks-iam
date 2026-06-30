@@ -3,7 +3,7 @@ using System.Security.Claims;
 
 namespace Authentication.DomainService.OAuth
 {
-    public class JwtAccessToken
+    public sealed class JwtAccessToken
     {
         public string? Issuer { get; set; }
         public string? Audience { get; set; }

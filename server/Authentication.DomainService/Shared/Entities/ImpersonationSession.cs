@@ -1,9 +1,9 @@
-﻿using MongoDB.Bson.Serialization.Attributes;
+using MongoDB.Bson.Serialization.Attributes;
 
 namespace Authentication.DomainService.Entities
 {
     [BsonIgnoreExtraElements]
-    public class ImpersonationSession
+    public sealed class ImpersonationSession
     {
         [BsonId]
         public string Id { get; set; } = Guid.NewGuid().ToString();

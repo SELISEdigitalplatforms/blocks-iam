@@ -1,3 +1,4 @@
+using Authentication.DomainService.Shared;
 using Blocks.Genesis;
 using Microsoft.AspNetCore.Http;
 using System.Globalization;
@@ -196,7 +197,7 @@ namespace Authentication.DomainService.Utilities
                 return configuredAudience.Trim();
             }
 
-            return "api://blocks-protected-api";
+            return AuthenticationConstants.ProtectedApiAudience;
         }
 
         public static string GetIssuer(Tenant? tenant)

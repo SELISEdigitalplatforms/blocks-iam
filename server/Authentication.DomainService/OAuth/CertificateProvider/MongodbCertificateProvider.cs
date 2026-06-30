@@ -5,7 +5,7 @@ using MongoDB.Driver;
 
 namespace Authentication.DomainService.OAuth
 {
-    public class MongodbCertificateProvider : ICertificateProvider
+    public sealed class MongodbCertificateProvider : ICertificateProvider
     {
         private readonly ILogger _logger;
         private readonly IMongoDatabase _database;
@@ -28,7 +28,7 @@ namespace Authentication.DomainService.OAuth
             }
             catch (Exception e)
             {
-                _logger.LogError(e, "Error retrieving certificate from file system");
+                _logger.LogError(e, "Error retrieving certificate from MongoDB");
                 return Array.Empty<byte>();
             }
         }

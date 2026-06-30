@@ -1,7 +1,4 @@
-﻿using Blocks.CaptchaDriver;
-using Captcha.DomainService.Captcha;
-
-namespace Blocks.CaptchaDriver
+﻿namespace Blocks.CaptchaDriver
 {
     public class CaptchaDriverService : ICaptchaDriverService
     {
@@ -10,11 +7,6 @@ namespace Blocks.CaptchaDriver
         public CaptchaDriverService(ICaptchaService captchaService)
         {
             _captchaService = captchaService;
-        }
-
-        public CreateCaptchaRequestResponse Create(CreateCaptchaRequest command)
-        {
-            return _captchaService.CreateCaptcha(command);
         }
 
         public async Task<SubmitCaptchaRequestResponse> Submit(SubmitCaptchaRequest command)

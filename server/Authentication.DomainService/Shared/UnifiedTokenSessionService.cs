@@ -12,7 +12,7 @@ using Authentication.DomainService.Oidc.Repositories;
 
 namespace Authentication.DomainService.Shared
 {
-    public class UnifiedTokenSessionService
+    public sealed class UnifiedTokenSessionService
     {
         private readonly ICacheClient _cacheClient;
         private readonly IAuthenticationDomainService _authenticationDomainService;

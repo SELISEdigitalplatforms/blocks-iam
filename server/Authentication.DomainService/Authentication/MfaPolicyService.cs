@@ -8,7 +8,7 @@ using Microsoft.Extensions.Logging;
 
 namespace Authentication.DomainService.Authentication
 {
-    public class MfaPolicyService : IMfaPolicyService
+    public sealed class MfaPolicyService : IMfaPolicyService
     {
         private readonly IMfaConfigurationService _mfaConfigurationService;
         private readonly IAuthenticationRepository _authenticationRepository;
