@@ -1,4 +1,5 @@
 using Idp.DomainService.Oidc.Contracts;
+using Authentication.DomainService.Authentication;
 using Authentication.DomainService.Oidc.Repositories;
 using Authentication.DomainService.Services;
 using Authentication.DomainService.Shared;
@@ -83,7 +84,7 @@ namespace Authentication.DomainService.Oidc.Services
 
                 await _sessionRepo.CreateAsync(session);
                 _logger.LogInformation("IdP session created: {SessionId}, user: {UserId}", session.SessionId, userId);
-                await LogSessionEvent("session_created", userId, session.SessionId);
+                await LogSessionEvent(SessionAuditEvents.SessionCreated, userId, session.SessionId);
 
                 return session.SessionId;
             }
@@ -144,7 +145,7 @@ namespace Authentication.DomainService.Oidc.Services
                 if (success)
                 {
                     _logger.LogInformation("Account added to session: {SessionId}, user: {UserId}", sessionId, userId);
-                    await LogSessionEvent("account_added", userId, sessionId);
+                    await LogSessionEvent(SessionAuditEvents.AccountAdded, userId, sessionId);
                 }
 
                 return success;
@@ -182,7 +183,7 @@ namespace Authentication.DomainService.Oidc.Services
                 if (success)
                 {
                     _logger.LogInformation("Account selected in session: {SessionId}, user: {UserId}", sessionId, userId);
-                    await LogSessionEvent("account_selected", userId, sessionId);
+                    await LogSessionEvent(SessionAuditEvents.AccountSelected, userId, sessionId);
                 }
 
                 return success;
@@ -230,7 +231,7 @@ namespace Authentication.DomainService.Oidc.Services
                 if (success)
                 {
                     _logger.LogInformation("Account removed from session: {SessionId}, user: {UserId}, tenant: {TenantId}", sessionId, userId, accountToRemove.TenantId);
-                    await LogSessionEvent("account_removed", userId, sessionId);
+                    await LogSessionEvent(SessionAuditEvents.AccountRemoved, userId, sessionId);
                 }
 
                 return success;
@@ -317,7 +318,7 @@ namespace Authentication.DomainService.Oidc.Services
 
                 foreach (var account in rotated.Accounts)
                 {
-                    await LogSessionEvent("session_rotated", account.UserId, rotated.SessionId, reason);
+                    await LogSessionEvent(SessionAuditEvents.SessionRotated, account.UserId, rotated.SessionId, reason);
                 }
 
                 return rotated.SessionId;
@@ -374,7 +375,7 @@ namespace Authentication.DomainService.Oidc.Services
                     // Log for each account in session
                     foreach (var account in session.Accounts)
                     {
-                        await LogSessionEvent("session_revoked", account.UserId, sessionId, reason);
+                        await LogSessionEvent(SessionAuditEvents.SessionRevoked, account.UserId, sessionId, reason);
                     }
                 }
 
