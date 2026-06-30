@@ -379,7 +379,7 @@ Status = AuthenticationConstants.StatusSuccess
             await _cacheClient.AddStringValueAsync(
                 $"oidc_mfa_login:{challengeResponse.MfaId}",
                 JsonSerializer.Serialize(mfaContext),
-                300);
+                AuthenticationConstants.OidcStateCacheTtlSeconds);
 
             return new OkObjectResult(new
             {
@@ -1122,7 +1122,7 @@ Status = AuthenticationConstants.StatusSuccess
             };
 
             var authConfiguration = await _authenticationRepository.GetAuthenticationConfigurationAsync();
-            var accessTokenLifetimeSeconds = Math.Max((authConfiguration?.AccessTokenValidForNumberMinutes ?? IdentityConfiguration.DefaultAccessTokenValidForNumberMinutes) * 60, 60);
+            var accessTokenLifetimeSeconds = Math.Max((authConfiguration?.AccessTokenValidForNumberMinutes ?? IdentityConfiguration.DefaultAccessTokenValidForNumberMinutes) * AuthenticationConstants.SecondsPerMinute, AuthenticationConstants.MinAccessTokenLifetimeSeconds);
             var absoluteRefreshTokenLifetimeMinutes = Math.Max(authConfiguration?.AbsoluteRefreshTokenValidForNumberMinutes ?? IdentityConfiguration.DefaultRememberMeRefreshTokenValidForNumberMinutes, 1);
 
             var issuer = DomainResolver.GetIssuer(tenant);

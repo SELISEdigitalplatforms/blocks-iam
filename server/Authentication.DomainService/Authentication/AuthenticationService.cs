@@ -181,7 +181,7 @@ namespace Authentication.DomainService.Authentication
             }
 
             // Revoke the refresh token (marks IsRevoked in IdpRefreshTokens and syncs identity session status).
-            var revokeResult = await _tokenRevocationService.RevokeTokenAsync(refreshToken, "refresh_token", refreshTokenSession?.ClientId);
+            var revokeResult = await _tokenRevocationService.RevokeTokenAsync(refreshToken, GrantTypes.RefreshToken, refreshTokenSession?.ClientId);
             if (!revokeResult.Success)
             {
                 _logger.LogWarning("Refresh-token revocation failed during logout: {Error}", revokeResult.Error ?? "unknown_error");
@@ -202,7 +202,7 @@ namespace Authentication.DomainService.Authentication
 
             var revokeTasks = refreshTokens.Select(async token =>
             {
-                var result = await _tokenRevocationService.RevokeTokenAsync(token, "refresh_token", string.Empty);
+                var result = await _tokenRevocationService.RevokeTokenAsync(token, GrantTypes.RefreshToken, string.Empty);
                 if (!result.Success)
                 {
                     _logger.LogWarning("Refresh-token revocation failed during logout-all: {Error}", result.Error ?? "unknown_error");
@@ -324,9 +324,9 @@ namespace Authentication.DomainService.Authentication
 
 
             var gts = new List<string> {
-                "authorization_code",
-                "client_credentials",
-                "refresh_token"
+                GrantTypes.AuthCode,
+                GrantTypes.ClientCredential,
+                GrantTypes.RefreshToken
             };
 
             return new OkObjectResult(new
@@ -368,7 +368,7 @@ namespace Authentication.DomainService.Authentication
                     RedirectUri = redirectUri,
                     Audience = clientId,
                 });
-                await _cacheClient.AddStringValueAsync(state, stateValue, 300); // 5 minutes in seconds
+                await _cacheClient.AddStringValueAsync(state, stateValue, AuthenticationConstants.OidcStateCacheTtlSeconds); // 5 minutes in seconds
 
                 // Build authorization URL
                 var scope = identityProvider.Scope ?? AuthenticationConstants.OpenIdProfileEmailScope;
@@ -433,7 +433,7 @@ namespace Authentication.DomainService.Authentication
                     provider = identityProvider.Provider,
                     createdAt = DateTime.UtcNow
                 });
-                await _cacheClient.AddStringValueAsync(stateKey, stateValue, 300); // 5 minute TTL
+                await _cacheClient.AddStringValueAsync(stateKey, stateValue, AuthenticationConstants.OidcStateCacheTtlSeconds); // 5 minute TTL
 
                 // Build authorization URL for social provider
                 // Callback should redirect to /auth/oidc/callback with provider and state
@@ -566,7 +566,7 @@ namespace Authentication.DomainService.Authentication
 
                     if (attempt < maxAttempts)
                     {
-                        await Task.Delay(TimeSpan.FromMilliseconds(250 * attempt));
+                        await Task.Delay(TimeSpan.FromMilliseconds(AuthenticationConstants.BackchannelRetryBackoffMilliseconds * attempt));
                     }
                 }
 
@@ -1019,7 +1019,7 @@ namespace Authentication.DomainService.Authentication
 
                 // Set session cookie
                 var domain = DomainResolver.ResolveDomain(_tenants.GetTenantByID(tenantId), httpContext.Request).domain;
-                httpContext.Response.Cookies.Append($"{IdpConstants.IdpSessionCookieName}_{bc?.TenantId}", sessionId, CreateCookieOptions(null, DateTime.UtcNow.AddDays(30)));
+                httpContext.Response.Cookies.Append($"{IdpConstants.IdpSessionCookieName}_{bc?.TenantId}", sessionId, CreateCookieOptions(null, DateTime.UtcNow.AddDays(AuthenticationConstants.IdpSessionCookieTtlDays)));
                 return true;
             }
             catch (Exception ex)
