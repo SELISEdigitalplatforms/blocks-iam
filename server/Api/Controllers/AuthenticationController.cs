@@ -1,4 +1,5 @@
 using Authentication.DomainService.Authentication;
+using Authentication.DomainService.Authentication.RequestModel;
 using Authentication.DomainService.Entities;
 using Authentication.DomainService.OAuth.RequestModel;
 using Authentication.DomainService.Services;
@@ -6,9 +7,6 @@ using Authentication.DomainService.Shared.RequestModel;
 using Authentication.DomainService.Shared.ResponseModel;
 using Authentication.DomainService.Utilities;
 using Blocks.Genesis;
-using CloudConfiguration.DomainService.Authentication;
-using CloudConfiguration.DomainService.Authentication.RequestModel;
-using CloudConfiguration.DomainService.Shared.Services;
 using Iam.DomainService.Accounts;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
@@ -32,7 +30,7 @@ public class AuthenticationController : ControllerBase
     private readonly IAuthenticationService _authenticationService;
     private readonly IAccountService _accountService;
     private readonly IAuthenticationFlowService _authenticationFlowService;
-    private readonly IConfigurationService _configurationService;
+    private readonly IAuthenticationConfigurationService _configurationService;
     private readonly IAuthenticationRepository _authenticationRepository;
     private readonly IAuthenticationDomainService _authenticationDomainService;
 
@@ -40,7 +38,7 @@ public class AuthenticationController : ControllerBase
         IAuthenticationService authenticationService,
         IAccountService accountService,
         IAuthenticationFlowService authenticationFlowService,
-        IConfigurationService configurationService, IAuthenticationRepository authenticationRepository,
+        IAuthenticationConfigurationService configurationService, IAuthenticationRepository authenticationRepository,
         IAuthenticationDomainService authenticationDomainService
     )
     {
@@ -84,7 +82,7 @@ public class AuthenticationController : ControllerBase
     /// Issues access and refresh tokens on success
     /// </summary>
     [HttpPost("login")]
-    [AllowAnonymous]
+
     public async Task<IActionResult> ExecutePasswordLogin([FromBody] EmbeddedLoginRequest request)
     {
         var result = await _authenticationFlowService.ExecuteEmbeddedLoginAsync(request, Request);
@@ -96,7 +94,7 @@ public class AuthenticationController : ControllerBase
     /// Sends recovery link to registered email address
     /// </summary>
     [HttpPost("recover")]
-    [AllowAnonymous]
+
     public async Task<IActionResult> InitiateAccountRecovery([FromBody] RecoveryUserRequest request)
     {
         var result = await _accountService.RecoverAccountAsync(request);
@@ -108,7 +106,6 @@ public class AuthenticationController : ControllerBase
     /// Validates token before allowing password change
     /// </summary>
     [HttpPost("reset-password")]
-    [AllowAnonymous]
     public async Task<IActionResult> ExecutePasswordReset([FromBody] ResetPasswordRequest request)
     {
         var result = await _accountService.ResetAccountPasswordAsync(request);

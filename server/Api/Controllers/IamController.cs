@@ -204,10 +204,10 @@ namespace Api.Controllers
             return result.IsSuccess ? Ok(result) : BadRequest(result);
         }
 
-        [HttpGet("users")]
+        [HttpPost("users")]
         //[ProtectedEndPoint("blocks-idp::get-users")]
         [Authorize]
-        public async Task<GetUsersResponse> GetUsers([FromQuery] GetUsersRequest query)
+        public async Task<GetUsersResponse> GetUsers([FromBody] GetUsersRequest query)
         {
             return await _userManagementQueryService.GetUsersAsync(query);
         }
@@ -341,7 +341,6 @@ namespace Api.Controllers
         }
 
         [HttpGet("signup-settings")]
-        [Authorize]
         public async Task<Dictionary<string, object>> GetSignUpSetting()
         {
             return await _accountService.GetSignUpSettingAsync();

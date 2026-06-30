@@ -7,15 +7,10 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Api", "Api\Api.csproj", "{A
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Authentication.DomainService", "Authentication.DomainService\Authentication.DomainService.csproj", "{B2C3D4E5-F6A7-48B9-C0D1-E2F3A4B5C6D7}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Captcha.DomainService", "Captcha.DomainService\Captcha.DomainService.csproj", "{C3D4E5F6-A7B8-49CA-D1E2-F3A4B5C6D7E8}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Captcha.Driver", "Captcha.Driver\Captcha.Driver.csproj", "{C3D4E5F6-A7B8-49CA-D1E2-F3A4B5C6D7E8}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Cloud.DomainService", "Cloud.DomainService\Cloud.DomainService.csproj", "{27FDD39A-ED6E-41F3-A08C-4569C01563D4}"
-EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "CloudConfiguration.DomainService", "CloudConfiguration.DomainService\CloudConfiguration.DomainService.csproj", "{5DB8EE31-1C0F-467A-BB1B-D010A824B305}"
-EndProject
+
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Iam.DomainService", "Iam.DomainService\Iam.DomainService.csproj", "{D4E5F6A7-B8C9-4ACB-E2F3-A4B5C6D7E8F9}"
-EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Identifier.DomainService", "Identifier.DomainService\Identifier.DomainService.csproj", "{E5F6A7B8-C9DA-4BDC-F3A4-B5C6D7E8F9A0}"
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Mfa.DomainService", "Mfa.DomainService\Mfa.DomainService.csproj", "{F6A7B8C9-DAEB-4CED-A4B5-C6D7E8F9A0B1}"
 EndProject
@@ -39,22 +34,10 @@ Global
 		{C3D4E5F6-A7B8-49CA-D1E2-F3A4B5C6D7E8}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{C3D4E5F6-A7B8-49CA-D1E2-F3A4B5C6D7E8}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{C3D4E5F6-A7B8-49CA-D1E2-F3A4B5C6D7E8}.Release|Any CPU.Build.0 = Release|Any CPU
-		{27FDD39A-ED6E-41F3-A08C-4569C01563D4}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
-		{27FDD39A-ED6E-41F3-A08C-4569C01563D4}.Debug|Any CPU.Build.0 = Debug|Any CPU
-		{27FDD39A-ED6E-41F3-A08C-4569C01563D4}.Release|Any CPU.ActiveCfg = Release|Any CPU
-		{27FDD39A-ED6E-41F3-A08C-4569C01563D4}.Release|Any CPU.Build.0 = Release|Any CPU
-		{5DB8EE31-1C0F-467A-BB1B-D010A824B305}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
-		{5DB8EE31-1C0F-467A-BB1B-D010A824B305}.Debug|Any CPU.Build.0 = Debug|Any CPU
-		{5DB8EE31-1C0F-467A-BB1B-D010A824B305}.Release|Any CPU.ActiveCfg = Release|Any CPU
-		{5DB8EE31-1C0F-467A-BB1B-D010A824B305}.Release|Any CPU.Build.0 = Release|Any CPU
 		{D4E5F6A7-B8C9-4ACB-E2F3-A4B5C6D7E8F9}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
 		{D4E5F6A7-B8C9-4ACB-E2F3-A4B5C6D7E8F9}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{D4E5F6A7-B8C9-4ACB-E2F3-A4B5C6D7E8F9}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{D4E5F6A7-B8C9-4ACB-E2F3-A4B5C6D7E8F9}.Release|Any CPU.Build.0 = Release|Any CPU
-		{E5F6A7B8-C9DA-4BDC-F3A4-B5C6D7E8F9A0}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
-		{E5F6A7B8-C9DA-4BDC-F3A4-B5C6D7E8F9A0}.Debug|Any CPU.Build.0 = Debug|Any CPU
-		{E5F6A7B8-C9DA-4BDC-F3A4-B5C6D7E8F9A0}.Release|Any CPU.ActiveCfg = Release|Any CPU
-		{E5F6A7B8-C9DA-4BDC-F3A4-B5C6D7E8F9A0}.Release|Any CPU.Build.0 = Release|Any CPU
 		{F6A7B8C9-DAEB-4CED-A4B5-C6D7E8F9A0B1}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
 		{F6A7B8C9-DAEB-4CED-A4B5-C6D7E8F9A0B1}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{F6A7B8C9-DAEB-4CED-A4B5-C6D7E8F9A0B1}.Release|Any CPU.ActiveCfg = Release|Any CPU

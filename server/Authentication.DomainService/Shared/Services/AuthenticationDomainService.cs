@@ -19,7 +19,7 @@ using Iam.DomainService.Dtos;
 
 namespace Authentication.DomainService.Services
 {
-    public class AuthenticationDomainService : IAuthenticationDomainService
+    public sealed class AuthenticationDomainService : IAuthenticationDomainService
     {
         private readonly IMessageClient _messageClient;
         private readonly IAuthenticationRepository _authenticationRepository;
