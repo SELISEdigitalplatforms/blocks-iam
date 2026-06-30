@@ -3,6 +3,7 @@ using Authentication.DomainService.Entities;
 using Authentication.DomainService.OAuth.RequestModel;
 using Authentication.DomainService.OAuth.ResponseModel;
 using Authentication.DomainService.Services;
+using Authentication.DomainService.Shared;
 using Iam.DomainService.Entities;
 using Mfa.DomainService.Services;
 using Mfa.DomainService.Shared;
@@ -10,7 +11,7 @@ using Microsoft.Extensions.Logging;
 
 namespace Authentication.DomainService.OAuth.Services
 {
-    public class MfaAuthorizationService : ITokenService
+    public sealed class MfaAuthorizationService : ITokenService
     {
         private readonly ILogger<MfaAuthorizationService> _logger;
         private readonly IOAuthJwtAccessTokenManager _oAuthJwtAccessTokenManager;
@@ -101,7 +102,7 @@ namespace Authentication.DomainService.OAuth.Services
                     UserId = user.ItemId,
                     ClientId = request.ClientId,
                     MfaType = request.MfaType,
-                    Status = "success"
+                    Status = AuthenticationConstants.StatusSuccess
                 });
 
                 return tokenResponse;
@@ -118,8 +119,8 @@ namespace Authentication.DomainService.OAuth.Services
                 UserId = response.UserId,
                 ClientId = request.ClientId,
                 MfaType = request.MfaType,
-                Status = "failure",
-                Severity = justLocked ? "WARN" : "WARN"
+                Status = AuthenticationConstants.StatusFailure,
+                Severity = AuthenticationConstants.SeverityWarn
             });
 
             if (justLocked)

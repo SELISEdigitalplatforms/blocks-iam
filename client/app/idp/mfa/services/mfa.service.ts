@@ -15,6 +15,7 @@ import {
   IVerifyMfaOtpPayload,
   IVerifyMfaOtpResponse,
   IResendMfaOtpPayload,
+  IResendMfaOtpResponse,
   IDisableMFAResponse,
   IDisableMFAPayload,
 } from "../models/mfa.model";
@@ -50,7 +51,7 @@ export class MFAService {
     return serviceInstances.idpService.post(toLogicUrl(MFA_ENDPOINTS.VERIFY_OTP), payload, undefined, { absoluteUrl: true });
   }
 
-  resendOtp(payload: IResendMfaOtpPayload): Promise<IVerifyMfaOtpResponse> {
+  resendOtp(payload: IResendMfaOtpPayload): Promise<IResendMfaOtpResponse> {
     return serviceInstances.idpService.post(MFA_ENDPOINTS.RESEND_OTP, payload.mfaId);
   }
   disableMFA(payload: IDisableMFAPayload): Promise<IDisableMFAResponse> {

@@ -9,7 +9,7 @@ import { Captcha } from "@/components/captcha";
 import { isErrorWithErrors } from "@/lib/error";
 import { getRuntimeEnv } from "@/lib/runtime-env";
 import { useSignupByEmail } from "@blocks-idp/authentication/hooks/use-auth";
-import { LoginOption } from "@blocks-idp/authentication/models/auth-configuration.model";
+import { LoginOption } from "@blocks-idp/authentication/models/auth.model";
 import { useCaptcha } from "@blocks-idp/captcha/hooks/use-captcha";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { Link, useNavigate } from "react-router-dom";
@@ -26,7 +26,7 @@ export const SignupForm = ({
   emailSignUpEnabled,
   ssoSignUpEnabled,
 }: {
-  loginOption: LoginOption;
+  loginOption?: LoginOption;
   emailSignUpEnabled: boolean;
   ssoSignUpEnabled: boolean;
 }) => {
@@ -221,7 +221,7 @@ export const SignupForm = ({
         </div>
       )}
 
-      {showSocialLogin && (
+      {showSocialLogin && loginOption && (
         <SsoSignin loginOption={loginOption} />
       )}
     </div>

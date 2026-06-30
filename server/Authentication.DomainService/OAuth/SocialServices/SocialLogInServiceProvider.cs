@@ -3,7 +3,7 @@ using Microsoft.Extensions.DependencyInjection;
 
 namespace Authentication.DomainService.OAuth
 {
-    public class SocialLogInServiceProvider : ISocialLogInServiceProvider
+    public sealed class SocialLogInServiceProvider : ISocialLogInServiceProvider
     {
         private readonly IDictionary<string, ISocialLogInService> _socialLogIns;
         private readonly ISocialLogInService _defaultService;

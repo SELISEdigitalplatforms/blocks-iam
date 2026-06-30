@@ -1,5 +1,4 @@
-﻿using Authentication.DomainService.Utilities;
-using Blocks.Genesis;
+﻿using Blocks.Genesis;
 using FluentValidation;
 using Iam.DomainService.Dtos;
 using Iam.DomainService.Entities;
@@ -7,6 +6,7 @@ using Iam.DomainService.Enums;
 using Iam.DomainService.Resources.ResponseModel;
 using Iam.DomainService.Services;
 using Iam.DomainService.Shared.Entities;
+using Iam.DomainService.Utilities;
 using Microsoft.Extensions.Logging;
 
 namespace Iam.DomainService.Resources
