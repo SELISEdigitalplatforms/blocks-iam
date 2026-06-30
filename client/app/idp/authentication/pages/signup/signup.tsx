@@ -10,7 +10,18 @@ export const Signup = () => {
   const { data: loginOption, isLoading: isLoginOptionLoading } = useGetLoginOptions();
   const { data: signUpSetting, isLoading: isSignUpSettingLoading } = useGetSignUpSetting();
 
-  const isLoading = isLoginOptionLoading || isSignUpSettingLoading;
+  const isSignUpEnabled = signUpSetting?.isSignUpEnable ?? false;
+  const emailSignUpEnabled = signUpSetting?.isEmailPasswordSignUpEnabled ?? false;
+  const ssoSignUpEnabled = signUpSetting?.isSSoSignUpEnabled ?? false;
+  const hasSsoProviders = (loginOption?.ssoInfo?.length ?? 0) > 0;
+
+  const showEmailSignup = isSignUpEnabled && emailSignUpEnabled;
+  const showSsoSignup = isSignUpEnabled && ssoSignUpEnabled && hasSsoProviders;
+  const showSignupForm = showEmailSignup || showSsoSignup;
+
+  const isLoading =
+    isSignUpSettingLoading ||
+    (ssoSignUpEnabled && isLoginOptionLoading);
 
   return (
     <OidcAuthShell
@@ -34,13 +45,13 @@ export const Signup = () => {
           <Skeleton className="h-9 w-full rounded-md" />
           <Skeleton className="h-9 w-1/2 rounded-md" />
         </div>
-      ) : !loginOption || loginOption.allowedGrantTypes?.length < 1 || !signUpSetting ? null : (
+      ) : showSignupForm ? (
         <SignupForm
           loginOption={loginOption}
-          emailSignUpEnabled={signUpSetting?.IsEmailPasswordSignUpEnabled || false}
-          ssoSignUpEnabled={signUpSetting?.IsSSoSignUpEnabled || false}
+          emailSignUpEnabled={showEmailSignup}
+          ssoSignUpEnabled={showSsoSignup}
         />
-      )}
+      ) : null}
     </OidcAuthShell>
   );
 };

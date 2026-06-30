@@ -11,7 +11,7 @@ using System.Text.Json;
 
 namespace Authentication.DomainService.OAuth.Services
 {
-    public class SSOConsentAuthenticationService : ITokenService
+    public sealed class SSOConsentAuthenticationService : ITokenService
     {
         private readonly ICacheClient _cacheClient;
         private readonly IAuthenticationRepository _authenticationRepository;

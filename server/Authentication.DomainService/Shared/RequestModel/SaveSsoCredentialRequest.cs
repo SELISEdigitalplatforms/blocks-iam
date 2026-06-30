@@ -1,6 +1,6 @@
 namespace Authentication.DomainService.Shared
 {
-    public class SaveSsoCredentialRequest
+    public sealed class SaveSsoCredentialRequest
     {
         public string? Provider { get; set; }
         public string? Audience { get; set; }

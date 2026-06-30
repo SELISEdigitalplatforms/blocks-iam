@@ -2,7 +2,7 @@ using Iam.DomainService.Dtos;
 
 namespace Authentication.DomainService.Dtos
 {
-    public class UserAuthenticationTimelineEvent
+    public sealed class UserAuthenticationTimelineEvent
     {
         public DeviceInformation? DeviceInformation { get; set; }
         public string? IpAddresses { get; set; }

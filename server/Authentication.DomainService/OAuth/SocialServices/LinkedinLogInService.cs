@@ -4,7 +4,7 @@ using Microsoft.Extensions.Logging;
 
 namespace Authentication.DomainService.OAuth.SocialServices
 {
-    public class LinkedinLogInService : ISocialLogInService
+    public sealed class LinkedinLogInService : ISocialLogInService
     {
         private readonly ILogger<LinkedinLogInService> _logger;
         private readonly IAuthenticationRepository _authenticationRepository;
@@ -38,7 +38,7 @@ namespace Authentication.DomainService.OAuth.SocialServices
                 { "client_id", identityProvider.ClientId },
                 { "client_secret", identityProvider.ClientSecret },
                 { "redirect_uri", stateInfo.RedirectUri },
-                { "grant_type", "authorization_code" }
+                { "grant_type", GrantTypes.AuthCode }
             };
 
             var (tokenResponse, error) = await _httpService.SendFormUrlEncoded<SocialOauthAccessToken>(
@@ -52,7 +52,7 @@ namespace Authentication.DomainService.OAuth.SocialServices
                 return new SocialCallbackResult { ExternalUserData = new LinkedinUserData() };
             }
 
-            var profileUrl = identityProvider.UserInfoUrl + $"oauth2_access_token={tokenResponse.AccessToken}";
+            var profileUrl = identityProvider.UserInfoUrl + $"?oauth2_access_token={tokenResponse.AccessToken}";
 
             (var userInfo, var profileError) = await _httpService.Get<LinkedinUserInfo>(
                 profileUrl);
