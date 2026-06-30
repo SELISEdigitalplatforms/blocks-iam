@@ -13,7 +13,7 @@ using Authentication.DomainService.OAuth.RequestModel;
 
 namespace Authentication.DomainService.OAuth
 {
-    public class JwtAccessTokenProvider : IJwtAccessTokenProvider
+    public sealed class JwtAccessTokenProvider : IJwtAccessTokenProvider
     {
         private readonly ILogger<JwtAccessTokenProvider> _logger;
         private readonly IDatabase _cacheDb;
@@ -88,10 +88,6 @@ namespace Authentication.DomainService.OAuth
                 resolvedOrgId = tokenRequest.OrganizationId;
             }
             claimsIdentity.AddClaim(new Claim(BlocksContext.ORGANIZATION_ID_CLAIM, resolvedOrgId));
-            // claimsIdentity.AddClaim(new Claim(BlocksContext.EMAIL_CLAIM, user.Email ?? string.Empty));
-            // claimsIdentity.AddClaim(new Claim(BlocksContext.USER_NAME_CLAIM, user.UserName ?? string.Empty));
-            // claimsIdentity.AddClaim(new Claim(BlocksContext.DISPLAY_NAME_CLAIM, $"{user.FirstName ?? string.Empty} {user.LastName ?? string.Empty}".Trim()));
-            // claimsIdentity.AddClaim(new Claim(BlocksContext.PHONE_NUMBER_CLAIM, user.PhoneNumber ?? string.Empty));
             claimsIdentity.AddClaim(new Claim("token_version", user.TokenVersion.ToString(), ClaimValueTypes.Integer32));
             claimsIdentity.AddClaim(new Claim("security_stamp", user.SecurityStamp ?? string.Empty));
 

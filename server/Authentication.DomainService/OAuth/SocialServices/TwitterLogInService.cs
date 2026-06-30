@@ -6,7 +6,7 @@ using System.Text.Json;
 
 namespace Authentication.DomainService.OAuth.SocialServices
 {
-    public class TwitterLogInService : ISocialLogInService
+    public sealed class TwitterLogInService : ISocialLogInService
     {
         private readonly ILogger<TwitterLogInService> _logger;
         private readonly IAuthenticationRepository _authenticationRepository;
@@ -42,7 +42,7 @@ namespace Authentication.DomainService.OAuth.SocialServices
             // Base post data (PKCE flow)
             var postData = new Dictionary<string, string>
             {
-                { "grant_type", "authorization_code" },
+                { "grant_type", GrantTypes.AuthCode },
                 { "code", stateInfo.Code },
                 { "redirect_uri", stateInfo.RedirectUri },
                 { "code_verifier", codeVerifier }

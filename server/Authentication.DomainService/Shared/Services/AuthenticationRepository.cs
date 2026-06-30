@@ -9,7 +9,7 @@ using MongoDB.Driver;
 
 namespace Authentication.DomainService.Services
 {
-    public class AuthenticationRepository : IAuthenticationRepository
+    public sealed class AuthenticationRepository : IAuthenticationRepository
     {
         private const string OidcClientRegistrationsCollectionName = "OidcClientRegistrations";
 
@@ -554,7 +554,7 @@ namespace Authentication.DomainService.Services
         public async Task<BiometricCredential> AuthenticateBiometricCredentialAsync(string biometricId, string biometricKey)
         {
             var collection = GetCollection<BiometricCredential>();
-            var filter = Builders<BiometricCredential>.Filter.Where(it => it.BiometricId == biometricId && it.BiometriKey == biometricId);
+            var filter = Builders<BiometricCredential>.Filter.Where(it => it.BiometricId == biometricId && it.BiometricKey == biometricKey);
             return await (await collection.FindAsync(filter)).FirstOrDefaultAsync();
         }
 

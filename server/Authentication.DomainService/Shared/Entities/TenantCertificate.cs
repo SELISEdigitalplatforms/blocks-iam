@@ -3,7 +3,7 @@ using MongoDB.Bson.Serialization.Attributes;
 namespace Authentication.DomainService.Entities
 {
     [BsonIgnoreExtraElements]
-    public class TenantCertificate
+    public sealed class TenantCertificate
     {
         [BsonId]
         public string? ItemId { get; set; }
