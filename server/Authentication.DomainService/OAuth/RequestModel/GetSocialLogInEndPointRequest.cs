@@ -10,7 +10,7 @@ namespace Authentication.DomainService.OAuth.RequestModel
         public bool SendAsResponse { get; set; } = true;
     }
 
-    public class GetSocialLogInEndPointResponse
+    public sealed class GetSocialLogInEndPointResponse
     {
         public bool IsAResponse { get; set; }
         public string? ProviderUrl { get; set; }

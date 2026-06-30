@@ -26,7 +26,6 @@ namespace Authentication.DomainService.OAuth.Services
 
             if (user == null)
             {
-                // return await CreateUser(stateInfo, externalUser); // for now, we will not auto create user, return error instead. Will add auto create user in the future if needed.   
                 return (null, string.Empty);
             }
 

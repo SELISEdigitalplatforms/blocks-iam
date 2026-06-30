@@ -1,9 +1,8 @@
 ﻿
-using Authentication.DomainService.Utilities;
+using Blocks.CaptchaDriver;
 using Blocks.Genesis;
-using Captcha.DomainService.Captcha;
-using Captcha.DomainService.Configuration;
 using FluentValidation;
+using Iam.DomainService.Utilities;
 using Iam.DomainService.Dtos;
 using Iam.DomainService.Entities;
 using Iam.DomainService.Resources;

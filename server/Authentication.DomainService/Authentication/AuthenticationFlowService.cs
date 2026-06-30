@@ -6,11 +6,11 @@ using Authentication.DomainService.OAuth.ResponseModel;
 using Authentication.DomainService.OAuth.Services;
 using Authentication.DomainService.Oidc.Repositories;
 using Authentication.DomainService.Services;
+using Authentication.DomainService.Shared;
 using Authentication.DomainService.Shared.RequestModel;
 using Authentication.DomainService.Utilities;
+using Blocks.CaptchaDriver;
 using Blocks.Genesis;
-using Captcha.DomainService.Captcha;
-using Captcha.DomainService.Configuration;
 using Iam.DomainService.Entities;
 using Idp.DomainService.Oidc.Contracts;
 using Microsoft.AspNetCore.Http;
@@ -22,7 +22,7 @@ using System.Text.Json;
 
 namespace Authentication.DomainService.Authentication
 {
-    public class AuthenticationFlowService : IAuthenticationFlowService
+    public sealed class AuthenticationFlowService : IAuthenticationFlowService
     {
         private readonly IAuthenticationRepository _authenticationRepository;
         private readonly ITenants _tenants;
@@ -389,8 +389,8 @@ namespace Authentication.DomainService.Authentication
                     TenantId = BlocksContext.GetContext()?.TenantId,
                     IpAddress = GetClientIpAddress(httpRequest),
                     UserAgent = httpRequest.Headers.UserAgent.ToString(),
-                    Severity = isFailure ? "WARN" : "INFO",
-                    Status = isSuccess ? "success" : "failure",
+                    Severity = isFailure ? AuthenticationConstants.SeverityWarn : AuthenticationConstants.SeverityInfo,
+                    Status = isSuccess ? AuthenticationConstants.StatusSuccess : AuthenticationConstants.StatusFailure,
                     Details = details ?? eventType
                 });
             }
@@ -695,7 +695,14 @@ namespace Authentication.DomainService.Authentication
             await _authenticationRepository.RevokeIdentitySessionsByRefreshTokensAsync(new List<string> { refreshToken });
 
             await _cacheClient.RemoveKeyAsync(refreshToken);
-            _logger.LogWarning("Potential refresh token reuse detected for token {RefreshToken}. Existing session revoked.", refreshToken);
+            var tokenFingerprint = TruncateToken(refreshToken);
+            _logger.LogWarning("Potential refresh token reuse detected for token {TokenFingerprint}. Existing session revoked.", tokenFingerprint);
+        }
+
+        private static string TruncateToken(string token)
+        {
+            const int visibleLength = 8;
+            return token.Length <= visibleLength ? token : string.Concat(token.AsSpan(0, visibleLength), "...");
         }
 
         private static string? ResolveClientId(HttpRequest request, string? modelClientId = null)

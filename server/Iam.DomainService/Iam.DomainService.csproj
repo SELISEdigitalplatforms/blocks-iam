@@ -6,7 +6,7 @@
   </ItemGroup>
 
   <ItemGroup>
-    <ProjectReference Include="..\Captcha.DomainService\Captcha.DomainService.csproj" />
+    <ProjectReference Include="..\Captcha.Driver\Captcha.Driver.csproj" />
   </ItemGroup>
 	
 	<ItemGroup>

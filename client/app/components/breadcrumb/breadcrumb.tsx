@@ -14,8 +14,12 @@ import {
   BREADCRUMB_CUSTOM_TITLES,
   BREADCRUMB_LINK_OVERRIDES,
 } from "@/constants/breadcrumb-custom-title";
+import { Skeleton } from "@/components/ui-kits/skeleton/skeleton";
 
-const PageBreadcrumb: React.FC<{ breadcrumbIndex?: number }> = ({ breadcrumbIndex }) => {
+const PageBreadcrumb: React.FC<{
+  breadcrumbIndex?: number;
+  isLoadingLastItem?: boolean;
+}> = ({ breadcrumbIndex, isLoadingLastItem }) => {
   let breadcrumbs = useRoutePathSegments();
   if (breadcrumbIndex && breadcrumbIndex > 0) {
     breadcrumbs = breadcrumbs.slice(breadcrumbIndex - 1);
@@ -28,7 +32,11 @@ const PageBreadcrumb: React.FC<{ breadcrumbIndex?: number }> = ({ breadcrumbInde
             <BreadcrumbItem>
               {index === breadcrumbs.length - 1 ? (
                 <BreadcrumbPage className="text-low-emphasis">
-                  {BREADCRUMB_CUSTOM_TITLES[breadcrumb.href] || breadcrumb.label}
+                  {isLoadingLastItem ? (
+                    <Skeleton className="h-4 w-32" aria-hidden="true" />
+                  ) : (
+                    BREADCRUMB_CUSTOM_TITLES[breadcrumb.href] || breadcrumb.label
+                  )}
                 </BreadcrumbPage>
               ) : (
                 <BreadcrumbLink asChild>
