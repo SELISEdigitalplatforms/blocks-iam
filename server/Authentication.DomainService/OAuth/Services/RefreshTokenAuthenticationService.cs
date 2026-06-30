@@ -10,7 +10,7 @@ using Authentication.DomainService.Utilities;
 
 namespace Authentication.DomainService.OAuth
 {
-    public class RefreshTokenAuthenticationService : ITokenService
+    public sealed class RefreshTokenAuthenticationService : ITokenService
     {
         private readonly ILogger<RefreshTokenAuthenticationService> _logger;
         private readonly IJwtAccessTokenProvider _jwtAccessTokenProvider;

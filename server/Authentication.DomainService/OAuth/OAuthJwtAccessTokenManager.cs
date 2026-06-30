@@ -17,7 +17,7 @@ using Authentication.DomainService.Shared;
 
 namespace Authentication.DomainService.OAuth
 {
-    public class OAuthJwtAccessTokenManager : IOAuthJwtAccessTokenManager
+    public sealed class OAuthJwtAccessTokenManager : IOAuthJwtAccessTokenManager
     {
         private readonly IJwtAccessTokenProvider _jwtAccessTokenProvider;
         private readonly IAuthenticationDomainService _authenticationDomainService;
@@ -28,6 +28,18 @@ namespace Authentication.DomainService.OAuth
         private readonly ICacheClient _cacheClient;
         private readonly ITenants _tenants;
         private readonly UnifiedTokenSessionService _unifiedTokenSessionService;
+
+        private static readonly HashSet<string> MfaCheckpointExemptGrantTypes = new(StringComparer.OrdinalIgnoreCase)
+        {
+            GrantTypes.MfaCode,
+            GrantTypes.ClientCredential,
+            GrantTypes.RefreshToken,
+            GrantTypes.SwitchOrganization,
+            GrantTypes.ImpersonationCloud
+        };
+
+        private static bool IsMfaCheckpointExempt(string? grantType) =>
+            !string.IsNullOrWhiteSpace(grantType) && MfaCheckpointExemptGrantTypes.Contains(grantType);
 
         public OAuthJwtAccessTokenManager(
             IJwtAccessTokenProvider jwtAccessTokenProvider,
@@ -123,10 +135,7 @@ namespace Authentication.DomainService.OAuth
 
         private async Task<TokenResponse?> ProcessCheckPointsAsync(TokenRequest tokenRequest, User user, string? clientId)
         {
-            if (tokenRequest.GrantType == GrantTypes.MfaCode
-                || tokenRequest.GrantType == GrantTypes.ClientCredential
-                || tokenRequest.GrantType == GrantTypes.RefreshToken
-                || tokenRequest.GrantType == GrantTypes.SwitchOrganization)
+            if (IsMfaCheckpointExempt(tokenRequest.GrantType))
             {
                 return null;
             }

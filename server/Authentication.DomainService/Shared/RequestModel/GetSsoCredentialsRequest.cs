@@ -1,7 +1,7 @@
 
 namespace Authentication.DomainService.RequestModel
 {
-    public class GetSsoCredentialsRequest
+    public sealed class GetSsoCredentialsRequest
     {
     }
 }

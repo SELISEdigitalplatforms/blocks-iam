@@ -1,6 +1,7 @@
 using Idp.DomainService.Oidc.Contracts;
 using Authentication.DomainService.Oidc.Repositories;
 using Authentication.DomainService.Services;
+using Authentication.DomainService.Shared;
 using Blocks.Genesis;
 using Microsoft.Extensions.Logging;
 
@@ -27,7 +28,7 @@ namespace Authentication.DomainService.Oidc.Services
         Task<IEnumerable<IdpSessionModel>> GetUserSessionsAsync(string userId, string tenantId);
     }
 
-    public class IdpSessionService : IIdpSessionService
+    public sealed class IdpSessionService : IIdpSessionService
     {
         private readonly IIdpSessionRepository _sessionRepo;
         private readonly IAuditLogRepository _auditLogRepo;
@@ -80,7 +81,7 @@ namespace Authentication.DomainService.Oidc.Services
                 };
 
                 await _sessionRepo.CreateAsync(session);
-                _logger.LogInformation($"IdP session created: {session.SessionId}, user: {userId}");
+                _logger.LogInformation("IdP session created: {SessionId}, user: {UserId}", session.SessionId, userId);
                 await LogSessionEvent("session_created", userId, session.SessionId);
 
                 return session.SessionId;
@@ -119,14 +120,14 @@ namespace Authentication.DomainService.Oidc.Services
                 var session = await _sessionRepo.GetBySessionIdAsync(sessionId);
                 if (session == null || session.RevokedAt.HasValue)
                 {
-                    _logger.LogWarning($"Cannot add account to invalid/revoked session: {sessionId}");
+                    _logger.LogWarning("Cannot add account to invalid/revoked session: {SessionId}", sessionId);
                     return false;
                 }
 
                 // Check if account already exists
                 if (session.Accounts.Any(a => a.UserId == userId && a.TenantId == tenantId))
                 {
-                    _logger.LogInformation($"Account already exists in session: {userId}");
+                    _logger.LogInformation("Account already exists in session: {UserId}", userId);
                     return true;
                 }
 
@@ -141,7 +142,7 @@ namespace Authentication.DomainService.Oidc.Services
                 var success = await _sessionRepo.AddAccountAsync(sessionId, newAccount);
                 if (success)
                 {
-                    _logger.LogInformation($"Account added to session: {sessionId}, user: {userId}");
+                    _logger.LogInformation("Account added to session: {SessionId}, user: {UserId}", sessionId, userId);
                     await LogSessionEvent("account_added", userId, sessionId);
                 }
 
@@ -171,7 +172,7 @@ namespace Authentication.DomainService.Oidc.Services
                 // Check account exists in session
                 if (!session.Accounts.Any(a => a.UserId == userId))
                 {
-                    _logger.LogWarning($"Account not found in session: {userId}");
+                    _logger.LogWarning("Account not found in session: {UserId}", userId);
                     return false;
                 }
 
@@ -179,7 +180,7 @@ namespace Authentication.DomainService.Oidc.Services
                 var success = await _sessionRepo.UpdateActivityAsync(sessionId);
                 if (success)
                 {
-                    _logger.LogInformation($"Account selected in session: {sessionId}, user: {userId}");
+                    _logger.LogInformation("Account selected in session: {SessionId}, user: {UserId}", sessionId, userId);
                     await LogSessionEvent("account_selected", userId, sessionId);
                 }
 
@@ -227,7 +228,7 @@ namespace Authentication.DomainService.Oidc.Services
 
                 if (success)
                 {
-                    _logger.LogInformation($"Account removed from session: {sessionId}, user: {userId}, tenant: {accountToRemove.TenantId}");
+                    _logger.LogInformation("Account removed from session: {SessionId}, user: {UserId}, tenant: {TenantId}", sessionId, userId, accountToRemove.TenantId);
                     await LogSessionEvent("account_removed", userId, sessionId);
                 }
 
@@ -272,7 +273,7 @@ namespace Authentication.DomainService.Oidc.Services
 
                 if (session.IsExpired())
                 {
-                    _logger.LogInformation($"Session expired, cannot update activity: {sessionId}");
+                    _logger.LogInformation("Session expired, cannot update activity: {SessionId}", sessionId);
                     return false;
                 }
 
@@ -367,7 +368,7 @@ namespace Authentication.DomainService.Oidc.Services
                 var success = await _sessionRepo.DeleteAsync(sessionId);
                 if (success)
                 {
-                    _logger.LogInformation($"Session revoked: {sessionId}, reason: {reason}");
+                    _logger.LogInformation("Session revoked: {SessionId}, reason: {Reason}", sessionId, reason);
 
                     // Log for each account in session
                     foreach (var account in session.Accounts)
@@ -439,8 +440,8 @@ namespace Authentication.DomainService.Oidc.Services
                 {
                     EventType = eventType,
                     UserId = userId,
-                    Severity = "INFO",
-                    Status = "success",
+                    Severity = AuthenticationConstants.SeverityInfo,
+                    Status = AuthenticationConstants.StatusSuccess,
                     Message = details ?? eventType,
                     Timestamp = DateTime.UtcNow
                 };
@@ -455,12 +456,12 @@ namespace Authentication.DomainService.Oidc.Services
         private static TimeSpan GetIdpSessionIdleTimeout()
         {
             var configured = Environment.GetEnvironmentVariable("IDP_SESSION_IDLE_HOURS");
-            if (double.TryParse(configured, out var hours) && hours > 0 && hours <= 168)
+            if (double.TryParse(configured, out var hours) && hours > 0 && hours <= AuthenticationConstants.MaxIdpSessionHours)
             {
                 return TimeSpan.FromHours(hours);
             }
 
-            return TimeSpan.FromHours(24);
+            return TimeSpan.FromHours(AuthenticationConstants.DefaultIdpSessionIdleHours);
         }
 
         private static TimeSpan GetIdpSessionAbsoluteTimeout()

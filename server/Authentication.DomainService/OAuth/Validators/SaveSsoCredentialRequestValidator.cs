@@ -5,10 +5,14 @@ using System.Text.Json;
 
 namespace Authentication.DomainService.OAuth
 {
-    public class SaveSsoCredentialRequestValidator : AbstractValidator<SaveSsoCredentialRequest>
+    public sealed class SaveSsoCredentialRequestValidator : AbstractValidator<SaveSsoCredentialRequest>
     {
-        public SaveSsoCredentialRequestValidator()
+        private readonly IHttpClientFactory _httpClientFactory;
+
+        public SaveSsoCredentialRequestValidator(IHttpClientFactory httpClientFactory)
         {
+            _httpClientFactory = httpClientFactory;
+
             RuleFor(x => x.WellKnownUrl)
                 .Cascade(CascadeMode.Stop)
                 .Must(BeAValidUrl)
@@ -24,11 +28,11 @@ namespace Authentication.DomainService.OAuth
                    (uriResult.Scheme == Uri.UriSchemeHttp || uriResult.Scheme == Uri.UriSchemeHttps);
         }
 
-        private static async Task<bool> HaveValidOidcMetadataAsync(string wellKnownUrl, CancellationToken cancellationToken)
+        private async Task<bool> HaveValidOidcMetadataAsync(string wellKnownUrl, CancellationToken cancellationToken)
         {
             try
             {
-                using var httpClient = new HttpClient();
+                using var httpClient = _httpClientFactory.CreateClient(nameof(SaveSsoCredentialRequestValidator));
 
                 var response = await httpClient.GetAsync(wellKnownUrl, cancellationToken);
                 if (!response.IsSuccessStatusCode) return false;

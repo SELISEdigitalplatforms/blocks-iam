@@ -9,7 +9,7 @@ namespace Authentication.DomainService.Oidc.Repositories
     /// Implements RFC 7009 Token Revocation and RFC 7662 Token Introspection
     /// Maintains JTI (JWT ID) blacklist for immediate token revocation
     /// </summary>
-    public class TokenRevocationRepository : ITokenRevocationRepository
+    public sealed class TokenRevocationRepository : ITokenRevocationRepository
     {
         private readonly IDbContextProvider _dbContextProvider;
         private readonly ILogger<TokenRevocationRepository> _logger;
@@ -31,26 +31,18 @@ namespace Authentication.DomainService.Oidc.Repositories
         /// </summary>
         public async Task<bool> RevokeTokenAsync(string jti, string userId, string reason, DateTime expiresAt)
         {
-            try
+            var collection = GetDatabase().GetCollection<TokenRevocationModel>("IdpRevokedTokens");
+            var model = new TokenRevocationModel
             {
-                var collection = GetDatabase().GetCollection<TokenRevocationModel>("IdpRevokedTokens");
-                var model = new TokenRevocationModel
-                {
-                    Jti = jti,
-                    UserId = userId,
-                    RevokedAt = DateTime.UtcNow,
-                    RevokeReason = reason,
-                    ExpiresAt = expiresAt
-                };
-                await collection.InsertOneAsync(model);
-                _logger.LogInformation($"Token revoked: {jti}, reason: {reason}");
-                return true;
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, $"Error revoking token: {jti}");
-                throw;
-            }
+                Jti = jti,
+                UserId = userId,
+                RevokedAt = DateTime.UtcNow,
+                RevokeReason = reason,
+                ExpiresAt = expiresAt
+            };
+            await collection.InsertOneAsync(model);
+            _logger.LogInformation("Token revoked: {Jti}, reason: {Reason}", jti, reason);
+            return true;
         }
 
         /// <summary>
@@ -58,18 +50,10 @@ namespace Authentication.DomainService.Oidc.Repositories
         /// </summary>
         public async Task<bool> IsRevokedAsync(string jti)
         {
-            try
-            {
-                var collection = GetDatabase().GetCollection<TokenRevocationModel>("IdpRevokedTokens");
-                var filter = Builders<TokenRevocationModel>.Filter.Eq(t => t.Jti, jti);
-                var result = await collection.Find(filter).FirstOrDefaultAsync();
-                return result != null;
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, $"Error checking token revocation: {jti}");
-                throw;
-            }
+            var collection = GetDatabase().GetCollection<TokenRevocationModel>("IdpRevokedTokens");
+            var filter = Builders<TokenRevocationModel>.Filter.Eq(t => t.Jti, jti);
+            var result = await collection.Find(filter).FirstOrDefaultAsync();
+            return result != null;
         }
 
         /// <summary>
@@ -77,22 +61,14 @@ namespace Authentication.DomainService.Oidc.Repositories
         /// </summary>
         public async Task<bool> DeleteAsync(string jti)
         {
-            try
-            {
-                var collection = GetDatabase().GetCollection<TokenRevocationModel>("IdpRevokedTokens");
-                var filter = Builders<TokenRevocationModel>.Filter.Eq(t => t.Jti, jti);
-                var update = Builders<TokenRevocationModel>.Update
-                    .Set(t => t.IsDeleted, true)
-                    .Set(t => t.DeletedAt, DateTime.UtcNow);
+            var collection = GetDatabase().GetCollection<TokenRevocationModel>("IdpRevokedTokens");
+            var filter = Builders<TokenRevocationModel>.Filter.Eq(t => t.Jti, jti);
+            var update = Builders<TokenRevocationModel>.Update
+                .Set(t => t.IsDeleted, true)
+                .Set(t => t.DeletedAt, DateTime.UtcNow);
 
-                var result = await collection.UpdateOneAsync(filter, update);
-                return result.ModifiedCount > 0;
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, $"Error soft deleting revocation record: {jti}");
-                throw;
-            }
+            var result = await collection.UpdateOneAsync(filter, update);
+            return result.ModifiedCount > 0;
         }
 
         /// <summary>
@@ -100,17 +76,9 @@ namespace Authentication.DomainService.Oidc.Repositories
         /// </summary>
         public async Task<TokenRevocationModel> GetRevocationDetailsAsync(string jti)
         {
-            try
-            {
-                var collection = GetDatabase().GetCollection<TokenRevocationModel>("IdpRevokedTokens");
-                var filter = Builders<TokenRevocationModel>.Filter.Eq(t => t.Jti, jti);
-                return await collection.Find(filter).FirstOrDefaultAsync();
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, $"Error fetching revocation details: {jti}");
-                throw;
-            }
+            var collection = GetDatabase().GetCollection<TokenRevocationModel>("IdpRevokedTokens");
+            var filter = Builders<TokenRevocationModel>.Filter.Eq(t => t.Jti, jti);
+            return await collection.Find(filter).FirstOrDefaultAsync();
         }
 
         /// <summary>
@@ -118,21 +86,13 @@ namespace Authentication.DomainService.Oidc.Repositories
         /// </summary>
         public async Task<IEnumerable<TokenRevocationModel>> GetRevokedTokensByUserAsync(string userId)
         {
-            try
-            {
-                var collection = GetDatabase().GetCollection<TokenRevocationModel>("IdpRevokedTokens");
-                var filter = Builders<TokenRevocationModel>.Filter.Eq(t => t.UserId, userId);
-                return await collection.Find(filter).SortByDescending(t => t.RevokedAt).ToListAsync();
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, $"Error fetching revoked tokens for user: {userId}");
-                throw;
-            }
+            var collection = GetDatabase().GetCollection<TokenRevocationModel>("IdpRevokedTokens");
+            var filter = Builders<TokenRevocationModel>.Filter.Eq(t => t.UserId, userId);
+            return await collection.Find(filter).SortByDescending(t => t.RevokedAt).ToListAsync();
         }
     }
 
-    public class TokenRevocationModel
+    public sealed class TokenRevocationModel
     {
         public string? Id { get; set; } // MongoDB ObjectId
         public string? Jti { get; set; } // JWT ID (unique token identifier)
@@ -144,4 +104,3 @@ namespace Authentication.DomainService.Oidc.Repositories
         public DateTime DeletedAt { get; set; } // Soft delete timestamp
     }
 }
-

@@ -12,7 +12,7 @@ using BCryptNet = BCrypt.Net.BCrypt;
 
 namespace Authentication.DomainService.OAuth
 {
-    public class PasswordAuthenticationService : ITokenService
+    public sealed class PasswordAuthenticationService : ITokenService
     {
         private readonly ILogger<PasswordAuthenticationService> _logger;
         private readonly IOAuthJwtAccessTokenManager _oAuthJwtAccessTokenManager;

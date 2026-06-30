@@ -2,7 +2,7 @@ using Iam.DomainService.Entities;
 
 namespace Authentication.DomainService.OAuth.ResponseModel
 {
-    public class TokenResponse
+    public sealed class TokenResponse
     {
         public string? AccessToken { get; set; }
         public string TokenType { get; set; } = "Bearer";
