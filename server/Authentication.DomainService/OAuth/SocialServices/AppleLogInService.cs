@@ -60,11 +60,13 @@ namespace Authentication.DomainService.OAuth.SocialServices
             var jwtToken = handler.ReadJwtToken(response.IdToken);
             var payload = JsonConvert.SerializeObject(jwtToken.Payload);
             var deserializeAppleIdToken = JsonConvert.DeserializeObject<AppleIdToken>(payload);
-            var appleUserData = new AppleUserData();
-            appleUserData.Email = deserializeAppleIdToken.Email;
-            appleUserData.ExternalProviderUserId = deserializeAppleIdToken.ExternalProviderUserId;
-            appleUserData.Roles = identityProvider?.InitialRoles ?? [];
-            appleUserData.Platform = stateInfo.Provider;
+            var appleUserData = new AppleUserData
+            {
+                Email = deserializeAppleIdToken?.Email,
+                ExternalProviderUserId = deserializeAppleIdToken?.ExternalProviderUserId,
+                Roles = identityProvider?.InitialRoles ?? [],
+                Platform = stateInfo.Provider
+            };
             return new SocialCallbackResult
             {
                 ExternalUserData = appleUserData,

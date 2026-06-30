@@ -347,40 +347,12 @@ namespace Authentication.DomainService.Authentication
 
         private static bool AppendCookies(TokenResponse response, HttpResponse httpResponse, string domain)
         {
-            // Validate response has no error indicator
-            if (!string.IsNullOrWhiteSpace(response.Error))
-            {
-                return false;
-            }
-
-            // Validate access token is present
-            if (string.IsNullOrWhiteSpace(response.AccessToken))
-            {
-                return false;
-            }
-
-
-            var accessCookieOptions = DomainResolver.CreateCookieOptions(response.CookieDomain, response.ExpiresUtc);
-            var refreshCookieOptions = DomainResolver.CreateCookieOptions(response.CookieDomain, response.RefreshExpiresUtc);
-
-            DeleteCookie(httpResponse, domain, accessCookieOptions, refreshCookieOptions);
-
-            httpResponse.Cookies.Append(domain, response.AccessToken, accessCookieOptions);
-
-            if (!string.IsNullOrWhiteSpace(response.RefreshToken))
-            {
-                httpResponse.Cookies.Append($"{IdpConstants.RefreshTokenCookieName}_{domain}", response.RefreshToken, refreshCookieOptions);
-            }
-
-            return true;
+            return CookieHelper.AppendCookies(response, httpResponse, domain);
         }
 
         private static void DeleteCookie(HttpResponse httpResponse, string domain, CookieOptions accessCookieOptions, CookieOptions refreshCookieOptions)
         {
-
-            httpResponse.Cookies.Delete(domain, accessCookieOptions);
-            httpResponse.Cookies.Delete($"{IdpConstants.RefreshTokenCookieName}_{domain}", refreshCookieOptions);
-
+            CookieHelper.DeleteAccessAndRefreshTokenCookies(httpResponse, domain, accessCookieOptions, refreshCookieOptions);
         }
 
         private static TimeSpan GetOutboundRequestTimeout()

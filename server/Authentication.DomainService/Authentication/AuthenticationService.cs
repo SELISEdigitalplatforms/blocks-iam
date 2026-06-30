@@ -107,7 +107,7 @@ namespace Authentication.DomainService.Authentication
         public async Task<bool> UpdateIdpSessionForLogoutAsync(HttpContext httpContext, ClaimsPrincipal user, bool isGlobalLogout)
         {
             var bc = BlocksContext.GetContext();
-            var sessionId = httpContext.Request.Cookies[$"{IdpConstants.IdpSessionCookieName}_{bc.TenantId}"];
+            var sessionId = httpContext.Request.Cookies[$"{IdpConstants.IdpSessionCookieName}_{bc!.TenantId}"];
             if (string.IsNullOrWhiteSpace(sessionId))
             {
                 return true;
@@ -140,7 +140,7 @@ namespace Authentication.DomainService.Authentication
         public void ClearIdpSessionCookie(HttpResponse response)
         {
             var bc = BlocksContext.GetContext();
-            response.Cookies.Delete($"{IdpConstants.IdpSessionCookieName}_{bc.TenantId}");
+            response.Cookies.Delete($"{IdpConstants.IdpSessionCookieName}_{bc!.TenantId}");
         }
 
         public async Task<LogoutResponse> LogoutUser(string refreshToken, HttpRequest httpRequest)
@@ -1097,7 +1097,7 @@ namespace Authentication.DomainService.Authentication
         {
             var bc = BlocksContext.GetContext();
 
-            var rootTenant = _tenants.GetTenantByID(bc.TenantId);
+            var rootTenant = _tenants.GetTenantByID(bc!.TenantId);
 
             if (rootTenant == null || !rootTenant.IsRootTenant)
             {
@@ -1335,45 +1335,12 @@ namespace Authentication.DomainService.Authentication
         }
         private static bool AppendCookies(TokenResponse response, HttpResponse httpResponse, string domain)
         {
-            // Validate response has no error indicator
-            if (!string.IsNullOrWhiteSpace(response.Error))
-            {
-                return false;
-            }
-
-            // Validate access token is present
-            if (string.IsNullOrWhiteSpace(response.AccessToken))
-            {
-                return false;
-            }
-
-            if (string.IsNullOrWhiteSpace(domain))
-            {
-                return false;
-            }
-
-
-            var accessCookieOptions = DomainResolver.CreateCookieOptions(response.CookieDomain, response.ExpiresUtc);
-            var refreshCookieOptions = DomainResolver.CreateCookieOptions(response.CookieDomain, response.RefreshExpiresUtc);
-
-            DeleteCookie(httpResponse, domain, accessCookieOptions, refreshCookieOptions);
-
-            httpResponse.Cookies.Append(domain, response.AccessToken, accessCookieOptions);
-
-            if (!string.IsNullOrWhiteSpace(response.RefreshToken))
-            {
-                httpResponse.Cookies.Append($"{IdpConstants.RefreshTokenCookieName}_{domain}", response.RefreshToken, refreshCookieOptions);
-            }
-
-            return true;
+            return CookieHelper.AppendCookies(response, httpResponse, domain);
         }
 
         private static void DeleteCookie(HttpResponse httpResponse, string domain, CookieOptions accessCookieOptions, CookieOptions refreshCookieOptions)
         {
-
-            httpResponse.Cookies.Delete(domain, accessCookieOptions);
-            httpResponse.Cookies.Delete($"{IdpConstants.RefreshTokenCookieName}_{domain}", refreshCookieOptions);
-
+            CookieHelper.DeleteAccessAndRefreshTokenCookies(httpResponse, domain, accessCookieOptions, refreshCookieOptions);
         }
 
 
@@ -1419,11 +1386,11 @@ namespace Authentication.DomainService.Authentication
         {
             var bc = BlocksContext.GetContext();
             ImpersonationSession? session = null;
-            var rootTenant = _tenants.GetTenantByID(bc.OriginalTenantId);
+            var rootTenant = _tenants.GetTenantByID(bc!.OriginalTenantId);
             var (rootDomain, rootCookieDomain, _) = DomainResolver.ResolveDomain(rootTenant, httpRequest);
 
             var impersonationSessionId = string.IsNullOrWhiteSpace(request.ImpersonationId)
-                ? bc.ImpersonationSessionId
+                ? bc!.ImpersonationSessionId
                 : request.ImpersonationId;
 
             if (!string.IsNullOrWhiteSpace(impersonationSessionId))
@@ -1433,7 +1400,7 @@ namespace Authentication.DomainService.Authentication
 
             if (session == null)
             {
-                await WriteImpersonationAuditEventAsync(httpRequest, "impersonation_stop_failed", bc.UserId, null, AuthenticationConstants.SeverityWarn, "session_not_found", rootTenant.TenantId);
+                await WriteImpersonationAuditEventAsync(httpRequest, "impersonation_stop_failed", bc!.UserId, null, AuthenticationConstants.SeverityWarn, "session_not_found", rootTenant.TenantId);
                 ClearImpersonationCookies(httpResponse, rootDomain, rootCookieDomain);
                 return new UnauthorizedObjectResult(new { error = "session_expired" });
             }
@@ -1472,10 +1439,10 @@ namespace Authentication.DomainService.Authentication
             };
 
             // Get root user
-            var rootUser = !string.IsNullOrWhiteSpace(bc.UserId) ? await _authenticationRepository.GetUserByIdAsync(bc.UserId) : null;
+            var rootUser = !string.IsNullOrWhiteSpace(bc!.UserId) ? await _authenticationRepository.GetUserByIdAsync(bc!.UserId) : null;
             if (rootUser == null)
             {
-                await WriteImpersonationAuditEventAsync(httpRequest, "impersonation_stop_failed", bc.UserId, session.TargetTenantId, AuthenticationConstants.SeverityWarn, "root_user_not_found", rootTenant.TenantId);
+                await WriteImpersonationAuditEventAsync(httpRequest, "impersonation_stop_failed", bc!.UserId, session.TargetTenantId, AuthenticationConstants.SeverityWarn, "root_user_not_found", rootTenant.TenantId);
                 ClearImpersonationCookies(httpResponse, rootDomain, rootCookieDomain);
                 return new BadRequestObjectResult(new { error = "session_expired" });
             }
@@ -1483,7 +1450,7 @@ namespace Authentication.DomainService.Authentication
             var tokenResponse = await _oAuthJwtAccessTokenManager.ManageTokenAsync(tokenRequest, configuration, rootUser);
             if (!string.IsNullOrWhiteSpace(tokenResponse.Error))
             {
-                await WriteImpersonationAuditEventAsync(httpRequest, "impersonation_stop_failed", bc.UserId, session.TargetTenantId, "WARN", tokenResponse.Error, rootTenant.TenantId);
+                await WriteImpersonationAuditEventAsync(httpRequest, "impersonation_stop_failed", bc!.UserId, session.TargetTenantId, "WARN", tokenResponse.Error, rootTenant.TenantId);
                 ClearImpersonationCookies(httpResponse, rootDomain, rootCookieDomain);
                 return new BadRequestObjectResult(new { error = tokenResponse.Error });
             }
@@ -1503,7 +1470,7 @@ namespace Authentication.DomainService.Authentication
                 _logger.LogWarning(ex, "Failed to cleanup impersonation session {SessionId}", impersonationSessionId);
             }
 
-            await WriteImpersonationAuditEventAsync(httpRequest, "impersonation_stopped", bc.UserId, session.TargetTenantId, AuthenticationConstants.SeverityInfo, AuthenticationConstants.StatusSuccess, rootTenant.TenantId);
+            await WriteImpersonationAuditEventAsync(httpRequest, "impersonation_stopped", bc!.UserId, session.TargetTenantId, AuthenticationConstants.SeverityInfo, AuthenticationConstants.StatusSuccess, rootTenant.TenantId);
 
             await _unifiedTokenSessionService.RevokeRefreshToken(refreshToken);
 

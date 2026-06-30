@@ -2,6 +2,7 @@ using Idp.DomainService.Oidc.Contracts;
 using Authentication.DomainService.Oidc.Repositories;
 using Authentication.DomainService.Services;
 using Authentication.DomainService.Shared;
+using Authentication.DomainService.Utilities;
 using Blocks.Genesis;
 using Microsoft.Extensions.Logging;
 
@@ -455,24 +456,12 @@ namespace Authentication.DomainService.Oidc.Services
 
         private static TimeSpan GetIdpSessionIdleTimeout()
         {
-            var configured = Environment.GetEnvironmentVariable("IDP_SESSION_IDLE_HOURS");
-            if (double.TryParse(configured, out var hours) && hours > 0 && hours <= AuthenticationConstants.MaxIdpSessionHours)
-            {
-                return TimeSpan.FromHours(hours);
-            }
-
-            return TimeSpan.FromHours(AuthenticationConstants.DefaultIdpSessionIdleHours);
+            return SessionTimeoutConfig.GetIdleTimeout();
         }
 
         private static TimeSpan GetIdpSessionAbsoluteTimeout()
         {
-            var configured = Environment.GetEnvironmentVariable("IDP_SESSION_ABSOLUTE_DAYS");
-            if (double.TryParse(configured, out var days) && days > 0 && days <= 365)
-            {
-                return TimeSpan.FromDays(days);
-            }
-
-            return TimeSpan.FromDays(30);
+            return SessionTimeoutConfig.GetAbsoluteTimeoutDays();
         }
     }
 }
