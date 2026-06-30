@@ -55,6 +55,28 @@ namespace Authentication.DomainService.Shared
 
         public const int SocialAuthorizationUrlCacheTtlSeconds = 300;
         public const int OidcAuthorizationCodeCacheTtlSeconds = 600;
+        public const int OidcStateCacheTtlSeconds = 300;
+        public const int IdpFlowCacheTtlSeconds = 600;
+
+        #endregion
+
+        #region Cookies
+
+        public const int IdpSessionCookieTtlDays = 30;
+
+        #endregion
+
+        #region Token lifetime
+
+        public const int MinAccessTokenLifetimeSeconds = 60;
+        public const int SecondsPerMinute = 60;
+        public const int MinTokenLifetimeMinutes = 1;
+
+        #endregion
+
+        #region Outbound HTTP
+
+        public const int OutboundRequestLocalhostTimeoutMinutes = 5;
 
         #endregion
 

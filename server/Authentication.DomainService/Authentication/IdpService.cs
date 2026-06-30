@@ -115,7 +115,7 @@ namespace Authentication.DomainService.Authentication
                     forwardedTo = forwardedTo
                 };
                 var cacheKey = $"idp_flow:{state}";
-                await _cacheClient.AddStringValueAsync(cacheKey, System.Text.Json.JsonSerializer.Serialize(flowContext), 600);
+                await _cacheClient.AddStringValueAsync(cacheKey, System.Text.Json.JsonSerializer.Serialize(flowContext), AuthenticationConstants.IdpFlowCacheTtlSeconds);
 
                 // Build authorization URL
                 var authorizeUrl = BuildAuthorizeUrl(identityProvider, redirectUri, state, nonce, codeChallenge);
@@ -260,10 +260,10 @@ namespace Authentication.DomainService.Authentication
                 var blocksContext = BlocksContext.GetContext();
                 var resolvedTenantId = flowContext.TenantId ?? blocksContext?.TenantId ?? string.Empty;
                 var authConfiguration = await _authenticationRepository.GetAuthenticationConfigurationAsync();
-                var configuredAccessLifetimeSeconds = Math.Max((authConfiguration?.AccessTokenValidForNumberMinutes ?? IdentityConfiguration.DefaultAccessTokenValidForNumberMinutes) * 60, 60);
-                var configuredRefreshLifetimeMinutes = Math.Max(authConfiguration?.AbsoluteRefreshTokenValidForNumberMinutes ?? IdentityConfiguration.DefaultRememberMeRefreshTokenValidForNumberMinutes, 1);
+                var configuredAccessLifetimeSeconds = Math.Max((authConfiguration?.AccessTokenValidForNumberMinutes ?? IdentityConfiguration.DefaultAccessTokenValidForNumberMinutes) * AuthenticationConstants.SecondsPerMinute, AuthenticationConstants.MinAccessTokenLifetimeSeconds);
+                var configuredRefreshLifetimeMinutes = Math.Max(authConfiguration?.AbsoluteRefreshTokenValidForNumberMinutes ?? IdentityConfiguration.DefaultRememberMeRefreshTokenValidForNumberMinutes, AuthenticationConstants.MinTokenLifetimeMinutes);
                 var resolvedAccessLifetimeSeconds = tokenResponse.ExpiresIn.HasValue
-                    ? Math.Max(tokenResponse.ExpiresIn.Value, 60)
+                    ? Math.Max(tokenResponse.ExpiresIn.Value, AuthenticationConstants.MinAccessTokenLifetimeSeconds)
                     : configuredAccessLifetimeSeconds;
 
                 var tenant = _tenants.GetTenantByID(resolvedTenantId);
@@ -357,7 +357,9 @@ namespace Authentication.DomainService.Authentication
 
         private static TimeSpan GetOutboundRequestTimeout()
         {
-            return DomainResolver.IsLocalhost() ? TimeSpan.FromMinutes(5) : TimeSpan.FromSeconds(100);
+            return DomainResolver.IsLocalhost()
+                ? TimeSpan.FromMinutes(AuthenticationConstants.OutboundRequestLocalhostTimeoutMinutes)
+                : TimeSpan.FromSeconds(AuthenticationConstants.BackchannelTimeoutSeconds);
         }
 
         private async Task<(OidcTokenEndpointResponse? Response, string Error)> ExchangeCodeForTokenAsync(
