@@ -57,6 +57,12 @@ namespace Authentication.DomainService.OAuth.SocialServices
             (var userInfo, var profileError) = await _httpService.Get<LinkedinUserInfo>(
                 profileUrl);
 
+            if (!string.IsNullOrWhiteSpace(profileError) || userInfo == null)
+            {
+                _logger.LogError("Error while getting LinkedIn user profile: {ProfileError}", profileError);
+                return new SocialCallbackResult { ExternalUserData = new LinkedinUserData() };
+            }
+
             var profile = new LinkedinUserData
             {
                 ExternalProviderUserId = userInfo.Sub,
@@ -66,12 +72,6 @@ namespace Authentication.DomainService.OAuth.SocialServices
                 DisplayName = userInfo.Name,
                 ProfileImageUrl = userInfo.Picture
             };
-
-            if (!string.IsNullOrWhiteSpace(profileError))
-            {
-                _logger.LogError("Error while getting LinkedIn user profile: {ProfileError}", profileError);
-                return new SocialCallbackResult { ExternalUserData = new LinkedinUserData() };
-            }
 
             profile.Permissions = identityProvider?.InitialPermissions ?? [];
             profile.Roles = identityProvider?.InitialRoles ?? [];

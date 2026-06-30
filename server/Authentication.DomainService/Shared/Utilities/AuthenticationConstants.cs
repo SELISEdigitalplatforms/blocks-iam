@@ -13,6 +13,7 @@ namespace Authentication.DomainService.Shared
         public const string SeverityInfo = "INFO";
         public const string SeverityWarn = "WARN";
         public const string SeverityError = "ERROR";
+        public const string SeverityCritical = "CRITICAL";
 
         #endregion
 
@@ -20,6 +21,8 @@ namespace Authentication.DomainService.Shared
 
         public const string StatusSuccess = "success";
         public const string StatusFailure = "failure";
+        public const string StatusSent = "sent";
+        public const string StatusDelivered = "delivered";
 
         #endregion
 
@@ -55,6 +58,28 @@ namespace Authentication.DomainService.Shared
 
         public const int SocialAuthorizationUrlCacheTtlSeconds = 300;
         public const int OidcAuthorizationCodeCacheTtlSeconds = 600;
+        public const int OidcStateCacheTtlSeconds = 300;
+        public const int IdpFlowCacheTtlSeconds = 600;
+
+        #endregion
+
+        #region Cookies
+
+        public const int IdpSessionCookieTtlDays = 30;
+
+        #endregion
+
+        #region Token lifetime
+
+        public const int MinAccessTokenLifetimeSeconds = 60;
+        public const int SecondsPerMinute = 60;
+        public const int MinTokenLifetimeMinutes = 1;
+
+        #endregion
+
+        #region Outbound HTTP
+
+        public const int OutboundRequestLocalhostTimeoutMinutes = 5;
 
         #endregion
 

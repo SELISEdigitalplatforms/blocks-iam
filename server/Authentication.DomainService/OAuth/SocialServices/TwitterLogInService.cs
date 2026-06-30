@@ -102,12 +102,15 @@ namespace Authentication.DomainService.OAuth.SocialServices
             {
                 var user = userProfile.RootElement.GetProperty("data");
 
+                var name = user.GetProperty("name").GetString() ?? string.Empty;
+                var nameParts = name.Split(' ', StringSplitOptions.RemoveEmptyEntries);
+
                 var twitterUser = new TwitterUserData
                 {
                     ExternalProviderUserId = user.GetProperty("id").GetString(),
-                    DisplayName = user.GetProperty("name").GetString(),
-                    FirstName = user.GetProperty("name").GetString().Split(" ").First(),
-                    LastName = user.GetProperty("name").GetString().Split(" ").Last(),
+                    DisplayName = name,
+                    FirstName = nameParts.Length > 0 ? nameParts[0] : string.Empty,
+                    LastName = nameParts.Length > 1 ? nameParts[^1] : string.Empty,
                     Email = user.GetProperty("confirmed_email").GetString(),
                     UserName = user.GetProperty("username").GetString(),
                     ProfileImageUrl = user.TryGetProperty("profile_image_url", out var img) ? img.GetString() : null,

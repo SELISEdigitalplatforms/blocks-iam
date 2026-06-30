@@ -95,14 +95,9 @@ namespace Authentication.DomainService.OAuth
 
             var (externalUser, error) = await _httpService.Get<GoogleUserData>(userAccessEndPoint);
 
-            if (!string.IsNullOrWhiteSpace(error))
-            {
-                _logger.LogError("Error while getting google user data: {Error}", error);
-                return new GoogleUserData();
-            }
             if (!string.IsNullOrWhiteSpace(error) || externalUser == null)
             {
-                _logger.LogError("Error while getting user data: {Error}", error);
+                _logger.LogError("Error while getting google user data: {Error}", error);
                 return CreateEmptyUserData();
             }
 
@@ -117,14 +112,9 @@ namespace Authentication.DomainService.OAuth
                 { "Authorization", $"bearer {accessToken}"  }
             });
 
-            if (!string.IsNullOrWhiteSpace(error))
-            {
-                _logger.LogError("Error while getting microsoft user data: {Error}", error);
-                return new MicrosoftUserData();
-            }
             if (!string.IsNullOrWhiteSpace(error) || externalUser == null)
             {
-                _logger.LogError("Error while getting user data: {Error}", error);
+                _logger.LogError("Error while getting microsoft user data: {Error}", error);
                 return CreateEmptyUserData();
             }
 
