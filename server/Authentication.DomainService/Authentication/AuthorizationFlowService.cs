@@ -1630,42 +1630,17 @@ Status = AuthenticationConstants.StatusSuccess
 
         private static TimeSpan GetIdpSessionIdleTimeout()
         {
-            var configured = Environment.GetEnvironmentVariable("IDP_SESSION_IDLE_HOURS");
-            if (double.TryParse(configured, out var hours) && hours > 0 && hours <= AuthenticationConstants.MaxIdpSessionHours)
-            {
-                return TimeSpan.FromHours(hours);
-            }
-
-            return TimeSpan.FromHours(AuthenticationConstants.DefaultIdpSessionIdleHours);
+            return SessionTimeoutConfig.GetIdleTimeout();
         }
 
         private static TimeSpan GetIdpSessionAbsoluteTimeout()
         {
-            var configured = Environment.GetEnvironmentVariable("IDP_SESSION_ABSOLUTE_HOURS");
-            if (double.TryParse(configured, out var hours) && hours > 0 && hours <= AuthenticationConstants.MaxIdpSessionHours)
-            {
-                return TimeSpan.FromHours(hours);
-            }
-
-            return TimeSpan.FromHours(AuthenticationConstants.DefaultIdpSessionAbsoluteHours); // Default to 5 hours
+            return SessionTimeoutConfig.GetAbsoluteTimeoutHours();
         }
 
         private static string? ResolveEffectiveOrganizationId(User user)
         {
-            if (!string.IsNullOrWhiteSpace(user.LastUsedOrganizationId)
-                && user.OrganizationIds.Contains(user.LastUsedOrganizationId))
-            {
-                return user.LastUsedOrganizationId;
-            }
-
-            if (user.OrganizationIds.Contains("default"))
-            {
-                return "default";
-            }
-
-            return user.OrganizationIds.FirstOrDefault()
-                ?? user.Roles.Keys.FirstOrDefault()
-                ?? user.Permissions.Keys.FirstOrDefault();
+            return OrganizationAccessResolver.ResolveEffectiveOrganizationId(user);
         }
 
         private async Task PersistLastUsedOrganizationAsync(User user, string? organizationId)
@@ -1741,25 +1716,12 @@ Status = AuthenticationConstants.StatusSuccess
 
         private static bool AppendCookies(TokenResponse response, HttpResponse httpResponse, string domain)
         {
-            if (!string.IsNullOrWhiteSpace(response.Error))
-                return false;
-            if (string.IsNullOrWhiteSpace(response.AccessToken))
-                return false;
-            if (string.IsNullOrWhiteSpace(domain))
-                return false;
-            var accessCookieOptions = DomainResolver.CreateCookieOptions(response.CookieDomain, response.ExpiresUtc);
-            var refreshCookieOptions = DomainResolver.CreateCookieOptions(response.CookieDomain, response.RefreshExpiresUtc);
-            DeleteCookie(httpResponse, domain, accessCookieOptions, refreshCookieOptions);
-            httpResponse.Cookies.Append(domain, response.AccessToken, accessCookieOptions);
-            if (!string.IsNullOrWhiteSpace(response.RefreshToken))
-                httpResponse.Cookies.Append($"{IdpConstants.RefreshTokenCookieName}_{domain}", response.RefreshToken, refreshCookieOptions);
-            return true;
+            return CookieHelper.AppendCookies(response, httpResponse, domain);
         }
 
         private static void DeleteCookie(HttpResponse httpResponse, string domain, CookieOptions accessCookieOptions, CookieOptions refreshCookieOptions)
         {
-            httpResponse.Cookies.Delete(domain, accessCookieOptions);
-            httpResponse.Cookies.Delete($"{IdpConstants.RefreshTokenCookieName}_{domain}", refreshCookieOptions);
+            CookieHelper.DeleteAccessAndRefreshTokenCookies(httpResponse, domain, accessCookieOptions, refreshCookieOptions);
         }
 
         private sealed class FlowContext
