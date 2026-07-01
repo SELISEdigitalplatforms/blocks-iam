@@ -66,7 +66,7 @@ export interface IResendMfaOtpPayload {
   mfaId: string;
   sendPhoneNumberAsEmailDomain?: string;
 }
-export interface IVerifyMfaOtpResponse {
+export interface IResendMfaOtpResponse {
   errors: unknown;
   isSuccess: boolean;
   isValid: boolean;

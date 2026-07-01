@@ -21,12 +21,9 @@
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="..\Authentication.DomainService\Authentication.DomainService.csproj" />
-    <ProjectReference Include="..\Captcha.DomainService\Captcha.DomainService.csproj" />
-    <ProjectReference Include="..\Cloud.DomainService\Cloud.DomainService.csproj" />
-    <ProjectReference Include="..\CloudConfiguration.DomainService\CloudConfiguration.DomainService.csproj" />
+    <ProjectReference Include="..\Captcha.Driver\Captcha.Driver.csproj" />
 
     <ProjectReference Include="..\Iam.DomainService\Iam.DomainService.csproj" />
-    <ProjectReference Include="..\Identifier.DomainService\Identifier.DomainService.csproj" />
     <ProjectReference Include="..\Mfa.DomainService\Mfa.DomainService.csproj" />
   </ItemGroup>
 </Project>

@@ -1,10 +1,11 @@
 using Authentication.DomainService.Services;
+using Authentication.DomainService.Shared;
 using Blocks.Genesis;
 using Microsoft.Extensions.Logging;
 
 namespace Authentication.DomainService.OAuth
 {
-    public class GithubLogInService : ISocialLogInService
+    public sealed class GithubLogInService : ISocialLogInService
     {
         private readonly ILogger<GithubLogInService> _logger;
         private readonly IAuthenticationRepository _authenticationRepository;
@@ -66,7 +67,7 @@ namespace Authentication.DomainService.OAuth
             if (string.IsNullOrEmpty(userResponse.Email))
             {
                 // GitHub email endpoint (hardcoded as it's provider-specific)
-                var githubEmailUrl = "https://api.github.com/user/emails";
+                var githubEmailUrl = AuthenticationConstants.GithubUserEmailsUrl;
                 var (emailResponse, emailError) = await _httpService.Get<List<GithubEmail>>(
                 githubEmailUrl,
                 headers: new Dictionary<string, string> { { "Authorization", $"Bearer {tokenResponse.AccessToken}" },

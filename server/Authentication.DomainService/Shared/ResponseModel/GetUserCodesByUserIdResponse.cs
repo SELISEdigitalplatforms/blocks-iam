@@ -2,7 +2,7 @@ using Blocks.Genesis;
 using Authentication.DomainService.Entities;
 namespace Authentication.DomainService.Shared.ResponseModel
 {
-    public class GetUserCodesByUserIdResponse
+    public sealed class GetUserCodesByUserIdResponse
     {
         public string? ItemId { get; set; }
         public DateTime CreatedDate { get; set; }

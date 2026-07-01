@@ -3,7 +3,7 @@ using Microsoft.AspNetCore.Http;
 
 namespace Authentication.DomainService.OAuth.RequestModel
 {
-    public class TokenRequest
+    public sealed class TokenRequest
     {
         public string? GrantType { get; set; }
         public string? Code { get; set; }

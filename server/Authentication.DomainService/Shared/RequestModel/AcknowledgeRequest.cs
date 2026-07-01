@@ -1,6 +1,6 @@
 namespace Authentication.DomainService.Shared.RequestModel
 {
-    public class AcknowledgeRequest
+    public sealed class AcknowledgeRequest
     {
         public string? ClientId { get; set; }
         public string? RedirectUri { get; set; }

@@ -1,6 +1,6 @@
 namespace Authentication.DomainService.Dtos
 {
-    public class RefreshTokenCache
+    public sealed class RefreshTokenCache
     {
         public string? RefreshToken { get; set; }
         public string? TenantId { get; set; }

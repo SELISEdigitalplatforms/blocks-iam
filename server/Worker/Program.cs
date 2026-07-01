@@ -5,7 +5,6 @@ using Blocks.Genesis;
 using Iam.DomainService.Accounts;
 using Iam.DomainService.Dtos;
 using Iam.DomainService.Users;
-using Identifier.DomainService.Shared;
 using Worker;
 using Worker.Consumers;
 
@@ -54,8 +53,6 @@ IHostBuilder CreateHostBuilder(string[] args) =>
 
 
             #region Identifier Service Consumers
-            services.AddApplicationServices();
-
             var workerMessageConfiguration = IdpConstants.GetMessageConfiguration(secret.MessageConnectionString);
             workerMessageConfiguration.ServiceName = serviceName;
             ApplicationConfigurations.ConfigureWorker(services, workerMessageConfiguration);

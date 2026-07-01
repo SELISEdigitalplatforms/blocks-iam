@@ -168,10 +168,11 @@ export const mockGetUserPermissionsPayload: IGetUserPermissionsPayload = {
 };
 
 export const mockSignUpSettingResponse = {
-  IsEmailPasswordSignUpEnabled: true,
-  IsSSoSignUpEnabled: false,
-  DefaultRolesForNewUser: ["user"],
-  DefaultPermissionsForNewUser: [],
+  isSignUpEnable: true,
+  isEmailPasswordSignUpEnabled: true,
+  isSSoSignUpEnabled: false,
+  defaultRolesForNewUser: ["user"],
+  defaultPermissionsForNewUser: [],
 };
 
 export const mockSaveSignUpSettingPayload: ISaveSignUpSettingPayload = {

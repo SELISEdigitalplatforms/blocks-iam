@@ -45,7 +45,7 @@ namespace Authentication.DomainService.OAuth
 
         protected override TokenResponse CreateUserNotFoundError(string userName)
         {
-            return new TokenResponse { Error = "user_not_found", ErrorDescription = $"{userName} is not exit", StatusCode = 401 };
+            return new TokenResponse { Error = "user_not_found", ErrorDescription = $"{userName} does not exist", StatusCode = 401 };
         }
 
         public override async Task<(User? user, string redirectUrl)> GetUser(StateInfo stateInfo, IExternalUserData externalUser)

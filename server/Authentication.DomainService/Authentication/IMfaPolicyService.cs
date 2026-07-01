@@ -8,7 +8,7 @@ namespace Authentication.DomainService.Authentication
         Task<MfaPolicyDecision> EvaluateAsync(User user, string? clientId, CancellationToken cancellationToken = default);
     }
 
-    public class MfaPolicyDecision
+    public sealed class MfaPolicyDecision
     {
         public bool Required { get; set; }
         public string Reason { get; set; } = string.Empty;

@@ -26,7 +26,7 @@ using System.Text.Json;
 
 namespace Authentication.DomainService.Authentication
 {
-    public class AuthenticationService : IAuthenticationService
+    public sealed class AuthenticationService : IAuthenticationService
     {
         private static readonly HttpClient BackchannelHttpClient = new();
         private readonly ILogger<AuthenticationService> _logger;
@@ -42,7 +42,7 @@ namespace Authentication.DomainService.Authentication
         private readonly UnifiedTokenSessionService _unifiedTokenSessionService;
         private readonly IOAuthJwtAccessTokenManager _oAuthJwtAccessTokenManager;
 
-        private const string Public_Cert_Cache_Prefix = "tetocertpublic::";
+        private const string PublicCertCachePrefix = "tetocertpublic::";
 
         public AuthenticationService(
             ILogger<AuthenticationService> logger,
@@ -107,7 +107,7 @@ namespace Authentication.DomainService.Authentication
         public async Task<bool> UpdateIdpSessionForLogoutAsync(HttpContext httpContext, ClaimsPrincipal user, bool isGlobalLogout)
         {
             var bc = BlocksContext.GetContext();
-            var sessionId = httpContext.Request.Cookies[$"{IdpConstants.IdpSessionCookieName}_{bc.TenantId}"];
+            var sessionId = httpContext.Request.Cookies[$"{IdpConstants.IdpSessionCookieName}_{bc!.TenantId}"];
             if (string.IsNullOrWhiteSpace(sessionId))
             {
                 return true;
@@ -140,7 +140,7 @@ namespace Authentication.DomainService.Authentication
         public void ClearIdpSessionCookie(HttpResponse response)
         {
             var bc = BlocksContext.GetContext();
-            response.Cookies.Delete($"{IdpConstants.IdpSessionCookieName}_{bc.TenantId}");
+            response.Cookies.Delete($"{IdpConstants.IdpSessionCookieName}_{bc!.TenantId}");
         }
 
         public async Task<LogoutResponse> LogoutUser(string refreshToken, HttpRequest httpRequest)
@@ -181,7 +181,7 @@ namespace Authentication.DomainService.Authentication
             }
 
             // Revoke the refresh token (marks IsRevoked in IdpRefreshTokens and syncs identity session status).
-            var revokeResult = await _tokenRevocationService.RevokeTokenAsync(refreshToken, "refresh_token", refreshTokenSession?.ClientId);
+            var revokeResult = await _tokenRevocationService.RevokeTokenAsync(refreshToken, GrantTypes.RefreshToken, refreshTokenSession?.ClientId);
             if (!revokeResult.Success)
             {
                 _logger.LogWarning("Refresh-token revocation failed during logout: {Error}", revokeResult.Error ?? "unknown_error");
@@ -202,7 +202,7 @@ namespace Authentication.DomainService.Authentication
 
             var revokeTasks = refreshTokens.Select(async token =>
             {
-                var result = await _tokenRevocationService.RevokeTokenAsync(token, "refresh_token", string.Empty);
+                var result = await _tokenRevocationService.RevokeTokenAsync(token, GrantTypes.RefreshToken, string.Empty);
                 if (!result.Success)
                 {
                     _logger.LogWarning("Refresh-token revocation failed during logout-all: {Error}", result.Error ?? "unknown_error");
@@ -324,9 +324,9 @@ namespace Authentication.DomainService.Authentication
 
 
             var gts = new List<string> {
-                "authorization_code",
-                "client_credentials",
-                "refresh_token"
+                GrantTypes.AuthCode,
+                GrantTypes.ClientCredential,
+                GrantTypes.RefreshToken
             };
 
             return new OkObjectResult(new
@@ -368,10 +368,10 @@ namespace Authentication.DomainService.Authentication
                     RedirectUri = redirectUri,
                     Audience = clientId,
                 });
-                await _cacheClient.AddStringValueAsync(state, stateValue, 300); // 5 minutes in seconds
+                await _cacheClient.AddStringValueAsync(state, stateValue, AuthenticationConstants.OidcStateCacheTtlSeconds); // 5 minutes in seconds
 
                 // Build authorization URL
-                var scope = identityProvider.Scope ?? "openid profile email";
+                var scope = identityProvider.Scope ?? AuthenticationConstants.OpenIdProfileEmailScope;
                 redirectUri = string.IsNullOrWhiteSpace(redirectUri) ? identityProvider.RedirectUris.FirstOrDefault() : redirectUri;
                 var authorizationUrl = BuildAuthorizationUrl(identityProvider, state, redirectUri, scope);
 
@@ -403,7 +403,7 @@ namespace Authentication.DomainService.Authentication
                 return new BadRequestObjectResult(new { error = "client_id_required", error_description = "Client ID is required" });
 
             if (string.IsNullOrWhiteSpace(oidcState))
-                return new BadRequestObjectResult(new { error = "oidc_state_required", error_description = "OIDC state is required" });
+                return new BadRequestObjectResult(new { error = OAuthError.OidcStateRequired, error_description = "OIDC state is required" });
 
             try
             {
@@ -433,11 +433,11 @@ namespace Authentication.DomainService.Authentication
                     provider = identityProvider.Provider,
                     createdAt = DateTime.UtcNow
                 });
-                await _cacheClient.AddStringValueAsync(stateKey, stateValue, 300); // 5 minute TTL
+                await _cacheClient.AddStringValueAsync(stateKey, stateValue, AuthenticationConstants.OidcStateCacheTtlSeconds); // 5 minute TTL
 
                 // Build authorization URL for social provider
                 // Callback should redirect to /auth/oidc/callback with provider and state
-                var scope = identityProvider.Scope ?? "openid profile email";
+                var scope = identityProvider.Scope ?? AuthenticationConstants.OpenIdProfileEmailScope;
                 providerRedirectUri = string.IsNullOrWhiteSpace(providerRedirectUri) ? identityProvider.RedirectUris.FirstOrDefault() : providerRedirectUri;
                 var authorizationUrl = BuildAuthorizationUrl(identityProvider, socialState, providerRedirectUri, scope);
 
@@ -529,8 +529,8 @@ namespace Authentication.DomainService.Authentication
                         if (response.IsSuccessStatusCode)
                         {
                             delivered = true;
-                            await PersistBackchannelDeliveryAuditAsync(logoutEventId, uri!, "sent", attempt, (int)response.StatusCode, "backchannel_logout_delivered");
-                            await PublishSecurityEventAsync(httpRequest, "backchannel_logout_succeeded", "dispatch_backchannel_logout", "success", null, logoutEventId, uri);
+                            await PersistBackchannelDeliveryAuditAsync(logoutEventId, uri!, AuthenticationConstants.StatusSent, attempt, (int)response.StatusCode, BackchannelAuditEvents.Delivered);
+                            await PublishSecurityEventAsync(httpRequest, BackchannelAuditEvents.Succeeded, BackchannelAuditEvents.Dispatch, AuthenticationConstants.StatusSuccess, null, logoutEventId, uri);
                             _logger.LogInformation(
                                 "SecurityEvent backchannel_logout_succeeded event={LogoutEventId} tenant={TenantId} uri={Uri} attempt={Attempt}",
                                 logoutEventId,
@@ -540,8 +540,8 @@ namespace Authentication.DomainService.Authentication
                             break;
                         }
 
-                        await PersistBackchannelDeliveryAuditAsync(logoutEventId, uri!, "failed", attempt, (int)response.StatusCode, "backchannel_logout_delivery_failed");
-                        await PublishSecurityEventAsync(httpRequest, "backchannel_logout_failed", "dispatch_backchannel_logout", "failed", $"status_{(int)response.StatusCode}", logoutEventId, uri);
+                            await PersistBackchannelDeliveryAuditAsync(logoutEventId, uri!, AuthenticationConstants.StatusFailure, attempt, (int)response.StatusCode, BackchannelAuditEvents.DeliveryFailed);
+                            await PublishSecurityEventAsync(httpRequest, BackchannelAuditEvents.Failed, BackchannelAuditEvents.Dispatch, AuthenticationConstants.StatusFailure, $"status_{(int)response.StatusCode}", logoutEventId, uri);
                         _logger.LogWarning(
                             "SecurityEvent backchannel_logout_failed event={LogoutEventId} tenant={TenantId} uri={Uri} status={StatusCode} attempt={Attempt}",
                             logoutEventId,
@@ -554,7 +554,7 @@ namespace Authentication.DomainService.Authentication
                     catch (Exception ex)
                     {
                         await PersistBackchannelDeliveryAuditAsync(logoutEventId, uri!, "failed_exception", attempt, null, ex.GetType().Name);
-                        await PublishSecurityEventAsync(httpRequest, "backchannel_logout_exception", "dispatch_backchannel_logout", "failed", ex.GetType().Name, logoutEventId, uri);
+                        await PublishSecurityEventAsync(httpRequest, BackchannelAuditEvents.Exception, BackchannelAuditEvents.Dispatch, AuthenticationConstants.StatusFailure, ex.GetType().Name, logoutEventId, uri);
                         _logger.LogWarning(
                             ex,
                             "SecurityEvent backchannel_logout_exception event={LogoutEventId} tenant={TenantId} uri={Uri} attempt={Attempt}",
@@ -566,7 +566,7 @@ namespace Authentication.DomainService.Authentication
 
                     if (attempt < maxAttempts)
                     {
-                        await Task.Delay(TimeSpan.FromMilliseconds(250 * attempt));
+                        await Task.Delay(TimeSpan.FromMilliseconds(AuthenticationConstants.BackchannelRetryBackoffMilliseconds * attempt));
                     }
                 }
 
@@ -584,10 +584,10 @@ namespace Authentication.DomainService.Authentication
             var bc = BlocksContext.GetContext();
             var log = new AuditLogModel
             {
-                EventType = "backchannel_logout_delivery",
+                    EventType = BackchannelAuditEvents.Delivery,
                 UserId = bc?.UserId,
                 TenantId = bc?.TenantId,
-                Severity = status.StartsWith("failed", StringComparison.OrdinalIgnoreCase) ? "WARN" : "INFO",
+                Severity = status.StartsWith("failed", StringComparison.OrdinalIgnoreCase) ? AuthenticationConstants.SeverityWarn : AuthenticationConstants.SeverityInfo,
                 Status = status,
                 Message = $"backchannel logout {status}",
                 Details = $"event={logoutEventId};attempt={attempt};uri={uri};status_code={(statusCode?.ToString() ?? "n/a")};reason={details}",
@@ -631,7 +631,7 @@ namespace Authentication.DomainService.Authentication
             if (!string.IsNullOrEmpty(token))
             {
                 var tokenHandler = new JwtSecurityTokenHandler();
-                string cacheKey = $"{Public_Cert_Cache_Prefix}{tenant.TenantId}";
+                string cacheKey = $"{PublicCertCachePrefix}{tenant.TenantId}";
                 var certificateData = await _cacheClient.CacheDatabase().StringGetAsync(cacheKey);
                 var validationParams = tenant.JwtTokenParameters;
                 var publicCert = X509CertificateLoader.LoadPkcs12(certificateData, validationParams.PublicCertificatePassword);
@@ -963,7 +963,7 @@ namespace Authentication.DomainService.Authentication
                     }
 
                     // Rotate session id on successful login transition to reduce fixation risk.
-                    sessionId = await _idpSessionService.RotateSessionAsync(sessionId, "login_success") ?? sessionId;
+                    sessionId = await _idpSessionService.RotateSessionAsync(sessionId, LoginAuditEvents.LoginSuccess) ?? sessionId;
                 }
             }
 
@@ -1013,13 +1013,13 @@ namespace Authentication.DomainService.Authentication
                         }
 
                         // Rotate session on callback for security
-                        sessionId = await _idpSessionService.RotateSessionAsync(sessionId, "oidc_callback") ?? sessionId;
+                        sessionId = await _idpSessionService.RotateSessionAsync(sessionId, LoginAuditEvents.OidcCallback) ?? sessionId;
                     }
                 }
 
                 // Set session cookie
                 var domain = DomainResolver.ResolveDomain(_tenants.GetTenantByID(tenantId), httpContext.Request).domain;
-                httpContext.Response.Cookies.Append($"{IdpConstants.IdpSessionCookieName}_{bc?.TenantId}", sessionId, CreateCookieOptions(null, DateTime.UtcNow.AddDays(30)));
+                httpContext.Response.Cookies.Append($"{IdpConstants.IdpSessionCookieName}_{bc?.TenantId}", sessionId, CreateCookieOptions(null, DateTime.UtcNow.AddDays(AuthenticationConstants.IdpSessionCookieTtlDays)));
                 return true;
             }
             catch (Exception ex)
@@ -1097,7 +1097,7 @@ namespace Authentication.DomainService.Authentication
         {
             var bc = BlocksContext.GetContext();
 
-            var rootTenant = _tenants.GetTenantByID(bc.TenantId);
+            var rootTenant = _tenants.GetTenantByID(bc!.TenantId);
 
             if (rootTenant == null || !rootTenant.IsRootTenant)
             {
@@ -1138,7 +1138,7 @@ namespace Authentication.DomainService.Authentication
             var isSharedWithUser = await IsTenantSharedWithUserAsync(userId, request.TargetTenantId);
             if (!isSharedWithUser)
             {
-                await WriteImpersonationAuditEventAsync(httpRequest, "impersonation_start_denied", userId, request.TargetTenantId, "WARN", "not_shared_with_user", rootTenant.TenantId);
+                await WriteImpersonationAuditEventAsync(httpRequest, LoginAuditEvents.ImpersonationStartDenied, userId, request.TargetTenantId, AuthenticationConstants.SeverityWarn, OAuthError.NotSharedWithUser, rootTenant.TenantId);
                 return new ObjectResult(new
                 {
                     error = "forbidden",
@@ -1156,7 +1156,7 @@ namespace Authentication.DomainService.Authentication
 
             if (string.IsNullOrWhiteSpace(rootRefreshToken))
             {
-                return new UnauthorizedObjectResult(new { error = "session_expired" });
+                return new UnauthorizedObjectResult(new { error = OAuthError.SessionExpired });
             }
 
             var rootRefreshCacheRaw = await _cacheClient.GetStringValueAsync(rootRefreshToken);
@@ -1166,7 +1166,7 @@ namespace Authentication.DomainService.Authentication
 
             if (rootRefreshCache == null || rootRefreshCache.ExpiresUtc <= DateTime.UtcNow)
             {
-                return new UnauthorizedObjectResult(new { error = "session_expired" });
+                return new UnauthorizedObjectResult(new { error = OAuthError.SessionExpired });
             }
 
             var authConfiguration = await _authenticationRepository.GetAuthenticationConfigurationAsync();
@@ -1212,7 +1212,7 @@ namespace Authentication.DomainService.Authentication
                                 };
                             }
 
-                            await WriteImpersonationAuditEventAsync(httpRequest, "org_switched", userId, request.TargetTenantId, "INFO", "success", rootTenant.TenantId);
+                            await WriteImpersonationAuditEventAsync(httpRequest, "org_switched", userId, request.TargetTenantId, AuthenticationConstants.SeverityInfo, AuthenticationConstants.StatusSuccess, rootTenant.TenantId);
 
                             var cookiesSet = AppendCookies(newTokenResponse, httpResponse, rootDomain);
                             if (cookiesSet)
@@ -1272,14 +1272,14 @@ namespace Authentication.DomainService.Authentication
                 catch (Exception ex)
                 {
                     _logger.LogError(ex, "Failed to create impersonation session record for user {UserId}", userId);
-                    return new ObjectResult(new { error = "session_creation_failed", error_description = "Failed to create impersonation session" })
+                    return new ObjectResult(new { error = OAuthError.SessionCreationFailed, error_description = "Failed to create impersonation session" })
                     {
                         StatusCode = StatusCodes.Status500InternalServerError
                     };
                 }
 
                 _logger.LogInformation("Impersonation started by user {UserId} from root tenant {RootTenantId} to target tenant {TargetTenantId}", userId, rootTenant.TenantId, request.TargetTenantId);
-                await WriteImpersonationAuditEventAsync(httpRequest, "impersonation_started", userId, request.TargetTenantId, "INFO", "success", rootTenant.TenantId);
+                await WriteImpersonationAuditEventAsync(httpRequest, LoginAuditEvents.ImpersonationStarted, userId, request.TargetTenantId, AuthenticationConstants.SeverityInfo, AuthenticationConstants.StatusSuccess, rootTenant.TenantId);
 
                 var tokenRequest = new TokenRequest
                 {
@@ -1335,45 +1335,12 @@ namespace Authentication.DomainService.Authentication
         }
         private static bool AppendCookies(TokenResponse response, HttpResponse httpResponse, string domain)
         {
-            // Validate response has no error indicator
-            if (!string.IsNullOrWhiteSpace(response.Error))
-            {
-                return false;
-            }
-
-            // Validate access token is present
-            if (string.IsNullOrWhiteSpace(response.AccessToken))
-            {
-                return false;
-            }
-
-            if (string.IsNullOrWhiteSpace(domain))
-            {
-                return false;
-            }
-
-
-            var accessCookieOptions = DomainResolver.CreateCookieOptions(response.CookieDomain, response.ExpiresUtc);
-            var refreshCookieOptions = DomainResolver.CreateCookieOptions(response.CookieDomain, response.RefreshExpiresUtc);
-
-            DeleteCookie(httpResponse, domain, accessCookieOptions, refreshCookieOptions);
-
-            httpResponse.Cookies.Append(domain, response.AccessToken, accessCookieOptions);
-
-            if (!string.IsNullOrWhiteSpace(response.RefreshToken))
-            {
-                httpResponse.Cookies.Append($"{IdpConstants.RefreshTokenCookieName}_{domain}", response.RefreshToken, refreshCookieOptions);
-            }
-
-            return true;
+            return CookieHelper.AppendCookies(response, httpResponse, domain);
         }
 
         private static void DeleteCookie(HttpResponse httpResponse, string domain, CookieOptions accessCookieOptions, CookieOptions refreshCookieOptions)
         {
-
-            httpResponse.Cookies.Delete(domain, accessCookieOptions);
-            httpResponse.Cookies.Delete($"{IdpConstants.RefreshTokenCookieName}_{domain}", refreshCookieOptions);
-
+            CookieHelper.DeleteAccessAndRefreshTokenCookies(httpResponse, domain, accessCookieOptions, refreshCookieOptions);
         }
 
 
@@ -1419,11 +1386,11 @@ namespace Authentication.DomainService.Authentication
         {
             var bc = BlocksContext.GetContext();
             ImpersonationSession? session = null;
-            var rootTenant = _tenants.GetTenantByID(bc.OriginalTenantId);
+            var rootTenant = _tenants.GetTenantByID(bc!.OriginalTenantId);
             var (rootDomain, rootCookieDomain, _) = DomainResolver.ResolveDomain(rootTenant, httpRequest);
 
             var impersonationSessionId = string.IsNullOrWhiteSpace(request.ImpersonationId)
-                ? bc.ImpersonationSessionId
+                ? bc!.ImpersonationSessionId
                 : request.ImpersonationId;
 
             if (!string.IsNullOrWhiteSpace(impersonationSessionId))
@@ -1433,9 +1400,9 @@ namespace Authentication.DomainService.Authentication
 
             if (session == null)
             {
-                await WriteImpersonationAuditEventAsync(httpRequest, "impersonation_stop_failed", bc.UserId, null, "WARN", "session_not_found", rootTenant.TenantId);
+                await WriteImpersonationAuditEventAsync(httpRequest, LoginAuditEvents.ImpersonationStopFailed, bc!.UserId, null, AuthenticationConstants.SeverityWarn, OAuthError.SessionNotFound, rootTenant.TenantId);
                 ClearImpersonationCookies(httpResponse, rootDomain, rootCookieDomain);
-                return new UnauthorizedObjectResult(new { error = "session_expired" });
+                return new UnauthorizedObjectResult(new { error = OAuthError.SessionExpired });
             }
 
             var refreshToken = string.IsNullOrWhiteSpace(request.RefreshToken)
@@ -1472,10 +1439,10 @@ namespace Authentication.DomainService.Authentication
             };
 
             // Get root user
-            var rootUser = !string.IsNullOrWhiteSpace(bc.UserId) ? await _authenticationRepository.GetUserByIdAsync(bc.UserId) : null;
+            var rootUser = !string.IsNullOrWhiteSpace(bc!.UserId) ? await _authenticationRepository.GetUserByIdAsync(bc!.UserId) : null;
             if (rootUser == null)
             {
-                await WriteImpersonationAuditEventAsync(httpRequest, "impersonation_stop_failed", bc.UserId, session.TargetTenantId, "WARN", "root_user_not_found", rootTenant.TenantId);
+                await WriteImpersonationAuditEventAsync(httpRequest, LoginAuditEvents.ImpersonationStopFailed, bc!.UserId, session.TargetTenantId, AuthenticationConstants.SeverityWarn, OAuthError.RootUserNotFound, rootTenant.TenantId);
                 ClearImpersonationCookies(httpResponse, rootDomain, rootCookieDomain);
                 return new BadRequestObjectResult(new { error = "session_expired" });
             }
@@ -1483,7 +1450,7 @@ namespace Authentication.DomainService.Authentication
             var tokenResponse = await _oAuthJwtAccessTokenManager.ManageTokenAsync(tokenRequest, configuration, rootUser);
             if (!string.IsNullOrWhiteSpace(tokenResponse.Error))
             {
-                await WriteImpersonationAuditEventAsync(httpRequest, "impersonation_stop_failed", bc.UserId, session.TargetTenantId, "WARN", tokenResponse.Error, rootTenant.TenantId);
+                await WriteImpersonationAuditEventAsync(httpRequest, LoginAuditEvents.ImpersonationStopFailed, bc!.UserId, session.TargetTenantId, AuthenticationConstants.SeverityWarn, tokenResponse.Error, rootTenant.TenantId);
                 ClearImpersonationCookies(httpResponse, rootDomain, rootCookieDomain);
                 return new BadRequestObjectResult(new { error = tokenResponse.Error });
             }
@@ -1503,7 +1470,7 @@ namespace Authentication.DomainService.Authentication
                 _logger.LogWarning(ex, "Failed to cleanup impersonation session {SessionId}", impersonationSessionId);
             }
 
-            await WriteImpersonationAuditEventAsync(httpRequest, "impersonation_stopped", bc.UserId, session.TargetTenantId, "INFO", "success", rootTenant.TenantId);
+            await WriteImpersonationAuditEventAsync(httpRequest, LoginAuditEvents.ImpersonationStopped, bc!.UserId, session.TargetTenantId, AuthenticationConstants.SeverityInfo, AuthenticationConstants.StatusSuccess, rootTenant.TenantId);
 
             await _unifiedTokenSessionService.RevokeRefreshToken(refreshToken);
 
