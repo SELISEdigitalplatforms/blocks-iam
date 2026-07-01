@@ -2,7 +2,7 @@ using Iam.DomainService.Entities;
 
 namespace Authentication.DomainService.RequestModel
 {
-    public class SaveOIDCClientRequest
+    public sealed class SaveOIDCClientRequest
     {
         public List<string> RedirectUris { get; set; } = new();
         public List<string> PostLogoutRedirectUris { get; set; } = new();

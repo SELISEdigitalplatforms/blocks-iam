@@ -1,4 +1,4 @@
-﻿using Authentication.DomainService.Entities;
+using Authentication.DomainService.Entities;
 using Authentication.DomainService.Services;
 using Blocks.Genesis;
 
@@ -17,7 +17,7 @@ namespace Authentication.DomainService.Shared.Services
 
     }
 
-    public class ImpersonationFlowHelper : IImpersonationFlowHelper
+    public sealed class ImpersonationFlowHelper : IImpersonationFlowHelper
     {
         private readonly IAuthenticationRepository _repository;
 

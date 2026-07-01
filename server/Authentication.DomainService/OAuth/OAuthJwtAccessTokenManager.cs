@@ -17,7 +17,7 @@ using Authentication.DomainService.Shared;
 
 namespace Authentication.DomainService.OAuth
 {
-    public class OAuthJwtAccessTokenManager : IOAuthJwtAccessTokenManager
+    public sealed class OAuthJwtAccessTokenManager : IOAuthJwtAccessTokenManager
     {
         private readonly IJwtAccessTokenProvider _jwtAccessTokenProvider;
         private readonly IAuthenticationDomainService _authenticationDomainService;

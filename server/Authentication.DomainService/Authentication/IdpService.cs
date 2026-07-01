@@ -1,11 +1,13 @@
 using Authentication.DomainService.Entities;
+using Authentication.DomainService.OAuth;
 using Authentication.DomainService.OAuth.ResponseModel;
 using Authentication.DomainService.Oidc.Repositories;
 using Authentication.DomainService.Services;
+using Authentication.DomainService.Shared;
 using Authentication.DomainService.Shared.RequestModel;
 using Authentication.DomainService.Utilities;
+using Blocks.CaptchaDriver;
 using Blocks.Genesis;
-using Captcha.DomainService.Configuration;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.Logging;
@@ -19,7 +21,7 @@ namespace Authentication.DomainService.Authentication
     /// IDP Service
     /// Manages identity provider authentication flow, token exchange, and OIDC operations
     /// </summary>
-    public class IdpService : IIdpService
+    public sealed class IdpService : IIdpService
     {
         private readonly IAuthenticationRepository _authenticationRepository;
         private readonly IAuthorizationCodeRepository _authCodeRepo;
@@ -113,12 +115,12 @@ namespace Authentication.DomainService.Authentication
                     forwardedTo = forwardedTo
                 };
                 var cacheKey = $"idp_flow:{state}";
-                await _cacheClient.AddStringValueAsync(cacheKey, System.Text.Json.JsonSerializer.Serialize(flowContext), 600);
+                await _cacheClient.AddStringValueAsync(cacheKey, System.Text.Json.JsonSerializer.Serialize(flowContext), AuthenticationConstants.IdpFlowCacheTtlSeconds);
 
                 // Build authorization URL
                 var authorizeUrl = BuildAuthorizeUrl(identityProvider, redirectUri, state, nonce, codeChallenge);
 
-                _logger.LogInformation($"Started authentication flow for provider {identityProvider.Provider} with state {state}");
+                _logger.LogInformation("Started authentication flow for provider {Provider} with state {State}", identityProvider.Provider, state);
 
                 // Return authorize URL - Frontend will redirect to IdP
                 return new OkObjectResult(new { redirect_uri = authorizeUrl });
@@ -140,7 +142,7 @@ namespace Authentication.DomainService.Authentication
                 // Check for IdP errors
                 if (!string.IsNullOrWhiteSpace(error))
                 {
-                    _logger.LogWarning($"IdP returned error: {error}, description: {error_description}");
+                    _logger.LogWarning("IdP returned error: {Error}, description: {ErrorDescription}", error, error_description);
                     return new BadRequestObjectResult(new
                     {
                         error = error,
@@ -167,7 +169,7 @@ namespace Authentication.DomainService.Authentication
 
                 if (string.IsNullOrWhiteSpace(flowContextJson))
                 {
-                    _logger.LogWarning($"Flow context not found or expired for state: {state}");
+                    _logger.LogWarning("Flow context not found or expired for state: {State}", state);
                     return new BadRequestObjectResult(new { error = "invalid_state", error_description = "State not found or expired (5 minute timeout)" });
                 }
 
@@ -175,13 +177,13 @@ namespace Authentication.DomainService.Authentication
                 var flowContext = System.Text.Json.JsonSerializer.Deserialize<FlowContext>(flowContextJson);
                 if (flowContext == null)
                 {
-                    _logger.LogWarning($"Failed to deserialize flow context for state: {state}");
+                    _logger.LogWarning("Failed to deserialize flow context for state: {State}", state);
                     return new BadRequestObjectResult(new { error = "server_error", error_description = "Invalid flow context" });
                 }
 
                 if (string.IsNullOrWhiteSpace(flowContext.Provider))
                 {
-                    _logger.LogWarning($"Flow context missing provider for state: {state}");
+                    _logger.LogWarning("Flow context missing provider for state: {State}", state);
                     return new BadRequestObjectResult(new { error = "invalid_provider", error_description = "Provider missing in flow context" });
                 }
 
@@ -189,17 +191,16 @@ namespace Authentication.DomainService.Authentication
                 var identityProvider = await _authenticationRepository.GetIdentityProviderAsync(flowContext.Provider);
                 if (identityProvider == null || !identityProvider.IsActive)
                 {
-                    _logger.LogWarning($"Identity provider not found or inactive: {flowContext.Provider}");
+                    _logger.LogWarning("Identity provider not found or inactive: {Provider}", flowContext.Provider);
                     return new BadRequestObjectResult(new { error = "invalid_provider", error_description = "Provider not configured" });
                 }
 
                 // Exchange authorization code for tokens at IdP
                 var tokenEndpoint = identityProvider.TokenUrl;
-                // var tokenEndpoint = "https://dev-iam.blocksdevelopers.com:5001/api/oidc/token?tenant_id=f080a1bea04280a72149fd689d50a48c";
  
                 var form = new Dictionary<string, string>
                 {
-                    { "grant_type", "authorization_code" },
+                    { "grant_type", GrantTypes.AuthCode },
                     { "code", code },
                     { "client_id", identityProvider.ClientId ?? string.Empty },
                     { "client_secret", identityProvider.ClientSecret ?? string.Empty },
@@ -231,7 +232,7 @@ namespace Authentication.DomainService.Authentication
 
                 if (!string.IsNullOrWhiteSpace(tokenError) || tokenResponse == null || string.IsNullOrWhiteSpace(tokenResponse.AccessToken))
                 {
-                    _logger.LogWarning($"Token exchange failed: {tokenError ?? "empty token response"}");
+                    _logger.LogWarning("Token exchange failed: {TokenError}", tokenError ?? "empty token response");
                     return new BadRequestObjectResult(new { error = "invalid_grant", error_description = "Failed to exchange authorization code" });
                 }
 
@@ -259,10 +260,10 @@ namespace Authentication.DomainService.Authentication
                 var blocksContext = BlocksContext.GetContext();
                 var resolvedTenantId = flowContext.TenantId ?? blocksContext?.TenantId ?? string.Empty;
                 var authConfiguration = await _authenticationRepository.GetAuthenticationConfigurationAsync();
-                var configuredAccessLifetimeSeconds = Math.Max((authConfiguration?.AccessTokenValidForNumberMinutes ?? IdentityConfiguration.DefaultAccessTokenValidForNumberMinutes) * 60, 60);
-                var configuredRefreshLifetimeMinutes = Math.Max(authConfiguration?.AbsoluteRefreshTokenValidForNumberMinutes ?? IdentityConfiguration.DefaultRememberMeRefreshTokenValidForNumberMinutes, 1);
+                var configuredAccessLifetimeSeconds = Math.Max((authConfiguration?.AccessTokenValidForNumberMinutes ?? IdentityConfiguration.DefaultAccessTokenValidForNumberMinutes) * AuthenticationConstants.SecondsPerMinute, AuthenticationConstants.MinAccessTokenLifetimeSeconds);
+                var configuredRefreshLifetimeMinutes = Math.Max(authConfiguration?.AbsoluteRefreshTokenValidForNumberMinutes ?? IdentityConfiguration.DefaultRememberMeRefreshTokenValidForNumberMinutes, AuthenticationConstants.MinTokenLifetimeMinutes);
                 var resolvedAccessLifetimeSeconds = tokenResponse.ExpiresIn.HasValue
-                    ? Math.Max(tokenResponse.ExpiresIn.Value, 60)
+                    ? Math.Max(tokenResponse.ExpiresIn.Value, AuthenticationConstants.MinAccessTokenLifetimeSeconds)
                     : configuredAccessLifetimeSeconds;
 
                 var tenant = _tenants.GetTenantByID(resolvedTenantId);
@@ -284,7 +285,7 @@ namespace Authentication.DomainService.Authentication
                 if (isResolved && !string.IsNullOrWhiteSpace(domain))
                 {
                     AppendCookies(tokenResponseObj, httpResponse, domain);
-                    _logger.LogInformation($"Successfully completed authentication flow for state: {state}");
+                    _logger.LogInformation("Successfully completed authentication flow for state: {State}", state);
 
                     return new OkObjectResult(new
                     {
@@ -296,7 +297,7 @@ namespace Authentication.DomainService.Authentication
                 }
 
 
-                _logger.LogInformation($"Successfully completed authentication flow for state: {state}");
+                _logger.LogInformation("Successfully completed authentication flow for state: {State}", state);
 
                 return new OkObjectResult(new
                 {
@@ -346,45 +347,19 @@ namespace Authentication.DomainService.Authentication
 
         private static bool AppendCookies(TokenResponse response, HttpResponse httpResponse, string domain)
         {
-            // Validate response has no error indicator
-            if (!string.IsNullOrWhiteSpace(response.Error))
-            {
-                return false;
-            }
-
-            // Validate access token is present
-            if (string.IsNullOrWhiteSpace(response.AccessToken))
-            {
-                return false;
-            }
-
-
-            var accessCookieOptions = DomainResolver.CreateCookieOptions(response.CookieDomain, response.ExpiresUtc);
-            var refreshCookieOptions = DomainResolver.CreateCookieOptions(response.CookieDomain, response.RefreshExpiresUtc);
-
-            DeleteCookie(httpResponse, domain, accessCookieOptions, refreshCookieOptions);
-
-            httpResponse.Cookies.Append(domain, response.AccessToken, accessCookieOptions);
-
-            if (!string.IsNullOrWhiteSpace(response.RefreshToken))
-            {
-                httpResponse.Cookies.Append($"{IdpConstants.RefreshTokenCookieName}_{domain}", response.RefreshToken, refreshCookieOptions);
-            }
-
-            return true;
+            return CookieHelper.AppendCookies(response, httpResponse, domain);
         }
 
         private static void DeleteCookie(HttpResponse httpResponse, string domain, CookieOptions accessCookieOptions, CookieOptions refreshCookieOptions)
         {
-
-            httpResponse.Cookies.Delete(domain, accessCookieOptions);
-            httpResponse.Cookies.Delete($"{IdpConstants.RefreshTokenCookieName}_{domain}", refreshCookieOptions);
-
+            CookieHelper.DeleteAccessAndRefreshTokenCookies(httpResponse, domain, accessCookieOptions, refreshCookieOptions);
         }
 
         private static TimeSpan GetOutboundRequestTimeout()
         {
-            return DomainResolver.IsLocalhost() ? TimeSpan.FromMinutes(5) : TimeSpan.FromSeconds(100);
+            return DomainResolver.IsLocalhost()
+                ? TimeSpan.FromMinutes(AuthenticationConstants.OutboundRequestLocalhostTimeoutMinutes)
+                : TimeSpan.FromSeconds(AuthenticationConstants.BackchannelTimeoutSeconds);
         }
 
         private async Task<(OidcTokenEndpointResponse? Response, string Error)> ExchangeCodeForTokenAsync(
@@ -415,7 +390,7 @@ namespace Authentication.DomainService.Authentication
                 { "client_id", provider.ClientId ?? string.Empty },
                 { "response_type", provider.ResponseType ?? "code" },
                 { "redirect_uri", redirectUri },
-                { "scope", provider.Scope ?? "openid profile email" },
+                { "scope", provider.Scope ?? AuthenticationConstants.OpenIdProfileEmailScope },
                 { "state", state },
                 { "nonce", nonce }
             };
@@ -423,7 +398,7 @@ namespace Authentication.DomainService.Authentication
             if (provider.RequirePkce && !string.IsNullOrEmpty(codeChallenge))
             {
                 queryParams["code_challenge"] = codeChallenge;
-                queryParams["code_challenge_method"] = "S256";
+                queryParams["code_challenge_method"] = AuthenticationConstants.PkceMethodS256;
             }
 
             var queryString = string.Join("&", queryParams.Select(kvp => $"{kvp.Key}={Uri.EscapeDataString(kvp.Value)}"));
