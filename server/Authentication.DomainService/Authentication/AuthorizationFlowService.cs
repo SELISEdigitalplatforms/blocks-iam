@@ -10,7 +10,6 @@ using Authentication.DomainService.Shared;
 using Authentication.DomainService.Shared.Dtos;
 using Authentication.DomainService.Shared.RequestModel;
 using Authentication.DomainService.Utilities;
-using Blocks.CaptchaDriver;
 using Blocks.Genesis;
 using Iam.DomainService.Entities;
 using Iam.DomainService.Users;
@@ -344,7 +343,7 @@ namespace Authentication.DomainService.Authentication
                 UserId = user.ItemId,
                 ClientId = request.ClientId,
                 MfaType = user.UserMfaType,
-Status = AuthenticationConstants.StatusSuccess
+                Status = AuthenticationConstants.StatusSuccess
             });
 
             return await AuthorizeAsync(
