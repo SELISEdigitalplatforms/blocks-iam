@@ -42,6 +42,9 @@ export const SSOSigninCard = ({
 
       // OIDC social login flow
       if (mode === "oidc" && oidcContext) {
+        // TEMP: hardcoded provider values for local debugging
+        const HARDCODED_PROVIDER_CLIENT_ID = "fd77cc93-eb44-4e8f-8b4c-e7bee44e82cd";
+        const HARDCODED_PROVIDER_REDIRECT_URI = "https://dev-iam.blocksdevelopers.com/sso/google/callback";
         const res = await authService.signinByOidcEmail({
           provider: providerConfig.provider,
           clientId: oidcContext.clientId || "",
@@ -52,8 +55,10 @@ export const SSOSigninCard = ({
           code_challenge: oidcContext.code_challenge,
           code_challenge_method: oidcContext.code_challenge_method,
           tenantId: oidcContext.tenantId,
-          provider_client_id: providerConfig.clientId,
-          provider_redirect_uri: providerConfig.redirectUrl,
+          // provider_client_id: providerConfig.clientId,
+          // provider_redirect_uri: providerConfig.redirectUrl,
+          provider_client_id: HARDCODED_PROVIDER_CLIENT_ID,
+          provider_redirect_uri: HARDCODED_PROVIDER_REDIRECT_URI,
         });
 
         if (res.error) return showErrorToast({ errors: res.error });
