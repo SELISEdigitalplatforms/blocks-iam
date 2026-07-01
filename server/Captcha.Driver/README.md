@@ -34,7 +34,7 @@ MongoDB-backed secret storage — all in a single NuGet package.
   `Secrets` collection.
 - **DI-friendly** — single extension method registers every dependency.
 - **Validated inputs** — `FluentValidation` rules for submit requests.
-- **Strongly-typed** — `Newtonsoft.Json` deserialization for provider responses.
+- **Strongly-typed** — `System.Text.Json` deserialization for provider responses.
 
 ---
 
@@ -54,7 +54,8 @@ Install-Package SeliseBlocks.CaptchaDriver
 
 The package targets **.NET 10.0** and brings in its own transitive dependencies
 (`FluentValidation`, `Microsoft.Extensions.DependencyInjection.Abstractions`,
-`MongoDB.Driver`, `Newtonsoft.Json`, `SeliseBlocks.Genesis`).
+`Microsoft.Extensions.Http`, `Microsoft.Extensions.Options.ConfigurationExtensions`,
+`MongoDB.Driver`, `SeliseBlocks.Genesis`).
 
 ---
 
@@ -81,9 +82,13 @@ public sealed class SignupService
 
     public SignupService(ICaptchaDriverService captcha) => _captcha = captcha;
 
-    public async Task<string> SubmitAsync(string captchaId, CancellationToken ct = default)
+    public async Task<string> SubmitAsync(string captchaId, string hostName, CancellationToken ct = default)
     {
-        var response = await _captcha.Submit(new SubmitCaptchaRequest { Id = captchaId });
+        var response = await _captcha.Submit(new SubmitCaptchaRequest
+        {
+            Id = captchaId,
+            HostName = hostName
+        });
         if (!response.IsSuccess)
         {
             throw new InvalidOperationException("Captcha submission failed.");
@@ -120,6 +125,26 @@ case-insensitive).
 | `CaptchaKey`    | `string` | Provider site/public key.                                      |
 | `CaptchaSecret` | `string` | Provider secret key.                                          |
 
+### Application configuration (appsettings.json)
+
+The driver binds a `Captcha` configuration section. Override defaults per environment:
+
+```json
+{
+  "Captcha": {
+    "VerificationCodeTtlSeconds": 600,
+    "RecaptchaVerificationUrl": "https://www.google.com/recaptcha/api/siteverify",
+    "HcaptchaVerificationUrl": "https://api.hcaptcha.com/siteverify"
+  }
+}
+```
+
+| Key                            | Default                                       | Description                                                            |
+| ------------------------------ | --------------------------------------------- | ---------------------------------------------------------------------- |
+| `Captcha:VerificationCodeTtlSeconds` | `600`                                   | Time-to-live of verification codes in the cache (in seconds).           |
+| `Captcha:RecaptchaVerificationUrl`   | `https://www.google.com/recaptcha/api/siteverify` | Google reCAPTCHA siteverify endpoint.                          |
+| `Captcha:HcaptchaVerificationUrl`     | `https://api.hcaptcha.com/siteverify`      | hCaptcha siteverify endpoint.                                          |
+
 ### Example document
 
 ```json
@@ -142,8 +167,8 @@ case-insensitive).
 | Provider    | Extra config                                                                                            |
 | ----------- | ------------------------------------------------------------------------------------------------------- |
 | `bcaptcha`  | None. Hostname is recorded against the verification code in the cache.                                  |
-| `recaptcha` | Optional DB override of the secret key via the `Secrets` document (otherwise uses `ReCaptchaSecretKey`). |
-| `hcaptcha`  | Requires `HCpatchaVerificationUrl` in `IConfiguration` (e.g. `https://api.hcaptcha.com/siteverify`).    |
+| `recaptcha` | Optional DB override of the secret key via the `Secrets` document. Verification URL is `Captcha:RecaptchaVerificationUrl`. |
+| `hcaptcha`  | Requires `Captcha:HcaptchaVerificationUrl` in configuration (defaults to `https://api.hcaptcha.com/siteverify`). |
 
 ---
 
@@ -161,7 +186,7 @@ case-insensitive).
 
 | Type                              | Purpose                                     |
 | --------------------------------- | ------------------------------------------- |
-| `SubmitCaptchaRequest`            | Payload for the Submit flow (`Id`, `Value`). |
+| `SubmitCaptchaRequest`            | Payload for the Submit flow (`Id`, `Value`, `HostName`). |
 | `SubmitCaptchaRequestResponse`    | Contains `VerificationCode` and errors.      |
 | `VerifyCaptchaRequest`            | Payload for the Verify flow (`VerificationCode`, `ConfigurationName`). |
 | `VerifyCaptchaRequestResponse`    | Contains `Verified`, `HostName`, and errors. |

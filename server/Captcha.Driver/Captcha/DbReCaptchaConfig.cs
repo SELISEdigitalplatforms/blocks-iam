@@ -1,23 +1,25 @@
-namespace Blocks.CaptchaDriver
+namespace Blocks.CaptchaDriver;
+
+/// <summary>
+/// Verifies a reCAPTCHA token using a secret configured in the secret store (database).
+/// </summary>
+public sealed class DbReCaptchaConfig : IRecaptchaConfig
 {
-    public class DbReCaptchaConfig : IRecaptchaConfig
+    private readonly string _verificationUriTemplate;
+    private readonly string? _token;
+
+    public DbReCaptchaConfig(CaptchaConfiguration config, string? token)
     {
-        private readonly string _verificationUri;
-        private readonly string _token;
+        ArgumentNullException.ThrowIfNull(config);
 
-        public DbReCaptchaConfig(CaptchaConfiguration config, string token)
-        {
-            _token = token;
+        _token = token;
+        _verificationUriTemplate =
+            $"https://www.google.com/recaptcha/api/siteverify?secret={Uri.EscapeDataString(config.CaptchaSecret ?? string.Empty)}&response={{0}}";
+    }
 
-            var reCaptchaSecretKey = config.CaptchaSecret;
-            _verificationUri = $"https://www.google.com/recaptcha/api/siteverify?secret={reCaptchaSecretKey}&response=" + "{0}";
-        }
-
-        public string ResolveRecaptchaUri()
-        {
-            var requestUri = string.Format(_verificationUri, _token);
-
-            return requestUri;
-        }
+    /// <inheritdoc />
+    public string ResolveRecaptchaUri()
+    {
+        return string.Format(System.Globalization.CultureInfo.InvariantCulture, _verificationUriTemplate, _token);
     }
 }

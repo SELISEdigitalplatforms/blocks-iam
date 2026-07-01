@@ -5,8 +5,6 @@ using Mfa.DomainService.Configuration;
 using Mfa.DomainService.Entities;
 using Mfa.DomainService.Services;
 using Mfa.DomainService.Shared;
-using System.Collections;
-using static QRCoder.PayloadGenerator;
 
 namespace Mfa.DomainService.OTP.Services
 {
