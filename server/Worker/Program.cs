@@ -2,10 +2,10 @@ using Authentication.DomainService.Dtos;
 using Authentication.DomainService.Utilities;
 using Authentication.DomainService.Worker;
 using Blocks.Genesis;
-using Iam.DomainService.Accounts;
 using Iam.DomainService.Dtos;
 using Iam.DomainService.Users;
 using Worker;
+using Worker.Configuration;
 using Worker.Consumers;
 
 var configuration = new ConfigurationBuilder()
@@ -25,13 +25,12 @@ await CreateHostBuilder(args).Build().RunAsync();
 
 IHostBuilder CreateHostBuilder(string[] args) =>
         Host.CreateDefaultBuilder(args)
-        .ConfigureAppConfiguration((context, builder) =>
-        {
-            // ApplicationConfigurations.ConfigureWorkerEnv(builder, args);
-        })
         .ConfigureServices((services) =>
         {
             services.AddHttpClient();
+
+            services.Configure<PeriodicPingConfiguration>(
+                configuration.GetSection("PeriodicPingConfiguration"));
 
             services.AddSingleton<IConsumer<RefreshTokenEvent>, RefreshTokenWorkerService>();
             services.AddSingleton<IConsumer<UserAuthenticationTimelineEvent>, UserAuthenticationTimelineWorkerService>();
@@ -56,7 +55,6 @@ IHostBuilder CreateHostBuilder(string[] args) =>
             var workerMessageConfiguration = IdpConstants.GetMessageConfiguration(secret.MessageConnectionString);
             workerMessageConfiguration.ServiceName = serviceName;
             ApplicationConfigurations.ConfigureWorker(services, workerMessageConfiguration);
-            //ApplicationConfigurations.ConfigureWorker(services, IdentifierConstants.GetMessageConfiguration(secret.MessageConnectionString));
             #endregion
         });
 
