@@ -103,7 +103,7 @@ export const router = createBrowserRouter([
           { path: "recover/:tenantId", element: <ResetPasswordPage /> },
           { path: "activate/:tenantId", element: <ActivatePage /> },
           { path: "mfa-check", element: <MfaCheckPage /> },
-
+          { path: ":provider/callback/:tenantId", element: <SSOCallbackPage  /> },
         ],
       },
       {
@@ -113,7 +113,7 @@ export const router = createBrowserRouter([
             path: "/login/callback",
             element: <CallbackPage defaultRedirectUrl="/app/console" />,
           },
-          { path: "/sso/:provider/callback", element: <SSOCallbackPage /> },
+          // { path: "/sso/:provider/callback", element: <SSOCallbackPage /> },
         ],
       },
 

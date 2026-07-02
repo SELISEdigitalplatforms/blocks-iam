@@ -20,9 +20,13 @@ export const useAccountDeactivate = () => {
   return useMutation({
     mutationKey: ["account", "deactivate"],
     mutationFn: userService.accountDeactivate,
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["user"] });
-      queryClient.invalidateQueries({ queryKey: ["users"] });
+    onSuccess: (_data, variables) => {
+      void queryClient.invalidateQueries({ queryKey: ["users"] });
+      void queryClient.invalidateQueries({
+        queryKey: ["user-by-id"],
+        predicate: (query) =>
+          (query.queryKey[1] as { id?: string } | undefined)?.id === variables.userId,
+      });
     },
   });
 };
