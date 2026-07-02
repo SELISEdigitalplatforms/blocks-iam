@@ -1,5 +1,6 @@
 using MongoDB.Driver;
 using Authentication.DomainService.Shared;
+using Authentication.DomainService.Utilities;
 using Blocks.Genesis;
 using Idp.DomainService.Oidc.Contracts;
 using Microsoft.Extensions.Logging;
@@ -107,13 +108,7 @@ namespace Authentication.DomainService.Oidc.Repositories
 
         private static TimeSpan GetIdpSessionIdleTimeout()
         {
-            var configured = Environment.GetEnvironmentVariable("IDP_SESSION_IDLE_HOURS");
-            if (double.TryParse(configured, out var hours) && hours > 0 && hours <= AuthenticationConstants.MaxIdpSessionHours)
-            {
-                return TimeSpan.FromHours(hours);
-            }
-
-            return TimeSpan.FromHours(AuthenticationConstants.DefaultIdpSessionIdleHours);
+            return SessionTimeoutConfig.GetIdleTimeout();
         }
     }
 }
