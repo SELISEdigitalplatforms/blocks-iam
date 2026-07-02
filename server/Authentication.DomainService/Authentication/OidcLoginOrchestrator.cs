@@ -21,7 +21,7 @@ namespace Authentication.DomainService.Authentication
 {
     /// <summary>
     /// Orchestrates the OIDC headless login flow:
-    /// social provider redirect → MFA challenge/completion → password captcha/MFA → call <see cref="IAuthorizationFlowService.AuthorizeAsync"/>.
+    /// social provider redirect → MFA challenge/completion → password captcha/MFA → call <see cref="OidcAuthorizationEndpoint.AuthorizeAsync"/>.
     /// Extracted from <c>AuthorizationFlowService.ExecuteOidcLoginAsync</c> to shrink the orchestrator.
     /// </summary>
     public sealed class OidcLoginOrchestrator
@@ -36,7 +36,7 @@ namespace Authentication.DomainService.Authentication
         private readonly PasswordHasher _passwordHasher;
         private readonly OidcLoginAuditWriter _auditWriter;
         private readonly OidcCaptchaEvaluator _captchaEvaluator;
-        private readonly IAuthorizationFlowService _authorizationFlowService;
+        private readonly OidcAuthorizationEndpoint _authorizationEndpoint;
         private readonly ILogger<OidcLoginOrchestrator> _logger;
 
         public OidcLoginOrchestrator(
@@ -50,7 +50,7 @@ namespace Authentication.DomainService.Authentication
             PasswordHasher passwordHasher,
             OidcLoginAuditWriter auditWriter,
             OidcCaptchaEvaluator captchaEvaluator,
-            IAuthorizationFlowService authorizationFlowService,
+            OidcAuthorizationEndpoint authorizationEndpoint,
             ILogger<OidcLoginOrchestrator> logger)
         {
             _authenticationRepository = authenticationRepository;
@@ -63,7 +63,7 @@ namespace Authentication.DomainService.Authentication
             _passwordHasher = passwordHasher;
             _auditWriter = auditWriter;
             _captchaEvaluator = captchaEvaluator;
-            _authorizationFlowService = authorizationFlowService;
+            _authorizationEndpoint = authorizationEndpoint;
             _logger = logger;
         }
 
@@ -139,7 +139,7 @@ namespace Authentication.DomainService.Authentication
             await ResetAuthFailureCountersAsync(user!);
             await _auditWriter.WriteAsync(request, user!, httpRequest, LoginAuditEvents.LoginSuccess, LoginAuditEvents.OidcLoginSuccess);
 
-            return await _authorizationFlowService.AuthorizeAsync(
+            return await _authorizationEndpoint.AuthorizeAsync(
                 request.ClientId ?? string.Empty,
                 "code",
                 request.RedirectUri ?? string.Empty,
@@ -368,7 +368,7 @@ namespace Authentication.DomainService.Authentication
                 Status = AuthenticationConstants.StatusSuccess
             });
 
-            return await _authorizationFlowService.AuthorizeAsync(
+            return await _authorizationEndpoint.AuthorizeAsync(
                 mfaContext.ClientId ?? string.Empty,
                 "code",
                 mfaContext.RedirectUri ?? string.Empty,
