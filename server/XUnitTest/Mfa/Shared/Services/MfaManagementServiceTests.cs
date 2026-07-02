@@ -36,7 +36,7 @@ namespace XUnitTest.Mfa.Shared.Services
         public async Task GenerateOTPAsync_WhenMfaDisabled_ReturnsErrorDict()
         {
             var service = CreateService(out _, out _, out var config, out _, out _);
-            config.Setup(c => c.GetAsync()).ReturnsAsync(new Mfa.DomainService.Configuration.Configuration { EnableMfa = false });
+            config.Setup(c => c.GetAsync()).ReturnsAsync(new global::Mfa.DomainService.Configuration.Configuration { EnableMfa = false });
 
             var result = await service.GenerateOTPAsync(new OtpGenerationRequest { UserId = "u1" });
 
@@ -48,7 +48,7 @@ namespace XUnitTest.Mfa.Shared.Services
         public async Task GenerateOTPAsync_WhenUserIdEmpty_ReturnsErrorDict()
         {
             var service = CreateService(out _, out _, out var config, out _, out _);
-            config.Setup(c => c.GetAsync()).ReturnsAsync(new Mfa.DomainService.Configuration.Configuration { EnableMfa = true });
+            config.Setup(c => c.GetAsync()).ReturnsAsync(new global::Mfa.DomainService.Configuration.Configuration { EnableMfa = true });
 
             var result = await service.GenerateOTPAsync(new OtpGenerationRequest { UserId = "" });
 
@@ -59,7 +59,7 @@ namespace XUnitTest.Mfa.Shared.Services
         public async Task GenerateOTPAsync_WhenUserInfoNull_ReturnsErrorDict()
         {
             var service = CreateService(out _, out var repo, out var config, out _, out _);
-            config.Setup(c => c.GetAsync()).ReturnsAsync(new Mfa.DomainService.Configuration.Configuration { EnableMfa = true });
+            config.Setup(c => c.GetAsync()).ReturnsAsync(new global::Mfa.DomainService.Configuration.Configuration { EnableMfa = true });
             repo.Setup(r => r.GetItemAsync<UserInfo>(It.IsAny<System.Linq.Expressions.Expression<Func<UserInfo, bool>>>(), It.IsAny<string>()))
                 .ReturnsAsync((UserInfo?)null);
 
@@ -72,7 +72,7 @@ namespace XUnitTest.Mfa.Shared.Services
         public async Task GenerateOTPAsync_DelegatesToFactoryAndService()
         {
             var service = CreateService(out var factory, out var repo, out var config, out _, out _);
-            config.Setup(c => c.GetAsync()).ReturnsAsync(new Mfa.DomainService.Configuration.Configuration { EnableMfa = true });
+            config.Setup(c => c.GetAsync()).ReturnsAsync(new global::Mfa.DomainService.Configuration.Configuration { EnableMfa = true });
             var userInfo = new UserInfo { ItemId = "u1", Email = "a@b.c", UserMfaType = UserMfaType.TOTP };
             repo.Setup(r => r.GetItemAsync<UserInfo>(It.IsAny<System.Linq.Expressions.Expression<Func<UserInfo, bool>>>(), It.IsAny<string>()))
                 .ReturnsAsync(userInfo);
@@ -92,7 +92,7 @@ namespace XUnitTest.Mfa.Shared.Services
         public async Task GenerateOTPAsync_PassesPhoneAsEmailDomain()
         {
             var service = CreateService(out var factory, out var repo, out var config, out _, out _);
-            config.Setup(c => c.GetAsync()).ReturnsAsync(new Mfa.DomainService.Configuration.Configuration { EnableMfa = true });
+            config.Setup(c => c.GetAsync()).ReturnsAsync(new global::Mfa.DomainService.Configuration.Configuration { EnableMfa = true });
             var userInfo = new UserInfo { ItemId = "u1", Email = "a@b.c", UserMfaType = UserMfaType.Email };
             repo.Setup(r => r.GetItemAsync<UserInfo>(It.IsAny<System.Linq.Expressions.Expression<Func<UserInfo, bool>>>(), It.IsAny<string>()))
                 .ReturnsAsync(userInfo);

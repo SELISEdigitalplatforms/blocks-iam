@@ -1,6 +1,7 @@
 using Blocks.Genesis;
 using FluentAssertions;
 using Iam.DomainService.Dtos;
+using Iam.DomainService.Enums;
 using Iam.DomainService.Resources;
 using Iam.DomainService.Users;
 using Microsoft.Extensions.Logging.Abstractions;
@@ -14,7 +15,12 @@ namespace XUnitTest.Worker.Consumers
         [Fact]
         public async Task Consume_DelegatesToService()
         {
-            var @event = new ResourceMutationEvent();
+            var @event = new ResourceMutationEvent
+            {
+                ItemId = "item-1",
+                Action = MutationEventType.Create,
+                Entity = ResourceEntity.Permission
+            };
             var service = new Mock<IResourceMutationService>();
             service.Setup(s => s.ExecuteResourceMutationCommandAsync(@event)).Returns(Task.CompletedTask).Verifiable();
 
@@ -31,7 +37,12 @@ namespace XUnitTest.Worker.Consumers
         [Fact]
         public async Task Consume_DelegatesToService()
         {
-            var @event = new ResourceSetToPermissionMutationEvent();
+            var @event = new ResourceSetToPermissionMutationEvent
+            {
+                AddPermissions = new List<string>(),
+                Slug = "slug-1",
+                Entity = ResourceEntity.Permission
+            };
             var service = new Mock<IResourceMutationService>();
             service.Setup(s => s.ProcessPermissionAsync(@event)).Returns(Task.FromResult(true)).Verifiable();
 
@@ -65,7 +76,12 @@ namespace XUnitTest.Worker.Consumers
         [Fact]
         public async Task Consume_DelegatesToService()
         {
-            var @event = new PropagationRolePermissionUpdateEvent();
+            var @event = new PropagationRolePermissionUpdateEvent
+            {
+                ItemId = "item-1",
+                Entity = "role",
+                Action = "update"
+            };
             var service = new Mock<IResourceMutationService>();
             service.Setup(s => s.ExecutePropagationRolePermissionUpdateAsync(@event)).Returns(Task.CompletedTask).Verifiable();
 
@@ -82,7 +98,11 @@ namespace XUnitTest.Worker.Consumers
         [Fact]
         public async Task Consume_DelegatesToService()
         {
-            var @event = new UserMutationEvent();
+            var @event = new UserMutationEvent
+            {
+                ItemId = "user-1",
+                Action = MutationEventType.Create
+            };
             var service = new Mock<IUserManagementMutationService>();
             service.Setup(s => s.ExecuteUserMutationCommandAsync(@event)).Returns(Task.CompletedTask).Verifiable();
 
@@ -116,7 +136,11 @@ namespace XUnitTest.Worker.Consumers
         [Fact]
         public async Task Consume_DelegatesToService()
         {
-            var @event = new CreateUserViaSsoEvent();
+            var @event = new CreateUserViaSsoEvent
+            {
+                ItemId = "user-1",
+                Action = MutationEventType.Create
+            };
             var service = new Mock<IUserManagementMutationService>();
             service.Setup(s => s.ExecuteUserMutationViaSsoCommandAsync(@event)).Returns(Task.CompletedTask).Verifiable();
 
