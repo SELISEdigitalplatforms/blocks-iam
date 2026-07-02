@@ -1,11 +1,9 @@
 using Authentication.DomainService.OAuth.SocialServices;
-using Blocks.CaptchaDriver;
 using Blocks.Extension.DependencyInjection;
 using Idp.DomainService.Oidc.Services;
 using Authentication.DomainService.Authentication;
 using Authentication.DomainService.Oidc.Repositories;
 using Authentication.DomainService.Oidc.Services;
-using Authentication.DomainService.Oidc.Validation;
 using Authentication.DomainService.OAuth;
 using Authentication.DomainService.OAuth.Services;
 using Authentication.DomainService.Services;
@@ -47,7 +45,6 @@ namespace Authentication.DomainService.Utilities
             serviceCollection.AddSingleton<IAuthenticationFlowService, AuthenticationFlowService>();
             serviceCollection.AddSingleton<IAuthorizationFlowService, AuthorizationFlowService>();
             serviceCollection.AddSingleton<IIdpService, IdpService>();
-            serviceCollection.AddSingleton<AuthorizeRequestValidator>();
 
             serviceCollection.AddSingleton<OidcSigningKeyMaterial>();
             serviceCollection.AddSingleton<ITokenGenerationService, TokenGenerationService>();

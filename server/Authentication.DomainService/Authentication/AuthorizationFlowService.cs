@@ -4,7 +4,6 @@ using Authentication.DomainService.OAuth;
 using Authentication.DomainService.OAuth.RequestModel;
 using Authentication.DomainService.OAuth.ResponseModel;
 using Authentication.DomainService.Oidc.Repositories;
-using Authentication.DomainService.Oidc.Validation;
 using Authentication.DomainService.Services;
 using Authentication.DomainService.Shared;
 using Authentication.DomainService.Shared.Dtos;
@@ -22,7 +21,6 @@ using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.Logging;
 using System.Net.Http.Headers;
-using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
 using System.Text.Json.Serialization;
@@ -38,7 +36,6 @@ namespace Authentication.DomainService.Authentication
         private readonly IAuditLogRepository _auditLogRepo;
         private readonly ITokenGenerationService _tokenService;
         private readonly IPkceService _pkceService;
-        private readonly AuthorizeRequestValidator _authorizeValidator;
         private readonly IUserRepository _userRepository;
         private readonly IAuthorizationClaimsResolver _authorizationClaimsResolver;
         private readonly IAuthenticationRepository _authenticationRepository;
@@ -58,7 +55,6 @@ namespace Authentication.DomainService.Authentication
             IAuditLogRepository auditLogRepo,
             ITokenGenerationService tokenService,
             IPkceService pkceService,
-            AuthorizeRequestValidator authorizeValidator,
             IUserRepository userRepository,
             IAuthorizationClaimsResolver authorizationClaimsResolver,
             IAuthenticationRepository authenticationRepository,
@@ -77,7 +73,6 @@ namespace Authentication.DomainService.Authentication
             _auditLogRepo = auditLogRepo;
             _tokenService = tokenService;
             _pkceService = pkceService;
-            _authorizeValidator = authorizeValidator;
             _userRepository = userRepository;
             _authorizationClaimsResolver = authorizationClaimsResolver;
             _authenticationRepository = authenticationRepository;
@@ -122,7 +117,7 @@ namespace Authentication.DomainService.Authentication
                 return await HandleInvalidOidcPasswordAsync(request, user!, httpRequest);
             }
 
-            if (await IsMfaRequiredAsync(user!))
+            if (await _mfaChallengeIssuer.IsRequiredAsync(user))
             {
                 return await StartOidcMfaChallengeAsync(user!, request, requestedTenantId);
             }
@@ -418,11 +413,6 @@ namespace Authentication.DomainService.Authentication
             });
         }
 
-        private async Task<bool> IsMfaRequiredAsync(User user)
-        {
-            return await _mfaChallengeIssuer.IsRequiredAsync(user);
-        }
-
         private async Task<OidcCaptchaEvaluation> EvaluateOidcCaptchaAsync(User user, string? captchaCode)
         {
             if (!CaptchaGate.IsCaptchaRequired(user))
@@ -591,6 +581,64 @@ namespace Authentication.DomainService.Authentication
                 : $"{password}::{optionalSalt}";
         }
 
+        private AuthorizeValidationResult ValidateAuthorizeRequest(AuthorizeRequest request)
+        {
+            var errors = new List<string>();
+
+            // client_id required
+            if (string.IsNullOrWhiteSpace(request.ClientId))
+                errors.Add("client_id is required");
+
+            // response_type must be "code"
+            if (string.IsNullOrWhiteSpace(request.ResponseType))
+                errors.Add("response_type is required");
+            else if (request.ResponseType != "code")
+                errors.Add("response_type must be 'code'");
+
+            // redirect_uri required
+            if (string.IsNullOrWhiteSpace(request.RedirectUri))
+                errors.Add("redirect_uri is required");
+
+            // scope required and must contain "openid"
+            if (string.IsNullOrWhiteSpace(request.Scope))
+                errors.Add("scope is required");
+            else if (!request.Scope
+                .Split(' ', StringSplitOptions.RemoveEmptyEntries)
+                .Contains("openid", StringComparer.Ordinal))
+                errors.Add("scope must include 'openid'");
+
+            // nonce is recommended for authorization code flow and required for implicit/hybrid.
+            // This endpoint supports code flow only, so we do not reject missing nonce.
+
+            // state is strongly recommended (CSRF prevention), but not mandatory.
+
+            // RFC 7636: if code_challenge is present, method must be present and supported.
+            if (!string.IsNullOrWhiteSpace(request.CodeChallenge) && !ValidatePkceFormat(request.CodeChallenge))
+                errors.Add("code_challenge has invalid format");
+
+            if (!string.IsNullOrWhiteSpace(request.CodeChallenge) && string.IsNullOrWhiteSpace(request.CodeChallengeMethod))
+                errors.Add("code_challenge_method is required when code_challenge is provided");
+            else if (!string.IsNullOrWhiteSpace(request.CodeChallengeMethod) && request.CodeChallengeMethod != AuthenticationConstants.PkceMethodS256)
+                errors.Add($"code_challenge_method must be '{AuthenticationConstants.PkceMethodS256}' (plain method not supported)");
+
+            return new AuthorizeValidationResult
+            {
+                IsValid = errors.Count == 0,
+                Errors = errors
+            };
+        }
+
+        private bool ValidatePkceFormat(string challenge)
+        {
+            // RFC 7636: code_challenge must be 43-128 BASE64URL characters
+            if (string.IsNullOrEmpty(challenge) || challenge.Length < 43 || challenge.Length > 128)
+                return false;
+
+            // BASE64URL characters for S256 challenge output.
+            var validChars = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_";
+            return challenge.All(c => validChars.Contains(c));
+        }
+        
         public async Task<IActionResult> AuthorizeAsync(
             string client_id,
             string response_type,
@@ -625,7 +673,7 @@ namespace Authentication.DomainService.Authentication
                     Prompt = prompt
                 };
 
-                var validationResult = _authorizeValidator.Validate(authorizeRequest);
+                var validationResult = ValidateAuthorizeRequest(authorizeRequest);
 
                 if (!validationResult.IsValid)
                 {
@@ -751,7 +799,7 @@ namespace Authentication.DomainService.Authentication
                 var effectiveOrganizationId = ResolveEffectiveOrganizationId(user);
                 await PersistLastUsedOrganizationAsync(user, effectiveOrganizationId);
 
-                var authCode = GenerateRandomCode(32);
+                var authCode = _pkceService.GenerateRandomCode(32);
                 var amr = BuildAmr(user, mfaCompleted);
 
                 var codeModel = new AuthorizationCodeModel
@@ -867,11 +915,6 @@ namespace Authentication.DomainService.Authentication
                 _logger.LogError(ex, "Error in token endpoint");
                 return new ObjectResult(new { error = "server_error" }) { StatusCode = 500 };
             }
-        }
-
-        private async Task<IActionResult> IssueClientCredentialsToken(HttpRequest request)
-        {
-            return await _clientCredentialsTokenIssuer.IssueAsync(request);
         }
 
         #region OIDC Exchange (Reusable API Block)
@@ -990,7 +1033,7 @@ namespace Authentication.DomainService.Authentication
                 ? tenant_id
                 : request.HttpContext.User.FindFirst("tenant_id")?.Value;
 
-            var (validation, authCode, user, effectiveTenantId) = await ValidateExchangeInputsAsync(code, code_verifier, client_id, redirect_uri, tenantId, request);
+            var (validation, authCode, user, effectiveTenantId) = await ValidateExchangeInputsAsync(code, code_verifier, client_id, redirect_uri, tenantId);
             if (validation != null)
             {
                 return validation;
@@ -1072,8 +1115,7 @@ namespace Authentication.DomainService.Authentication
             string code_verifier,
             string client_id,
             string redirect_uri,
-            string? tenantId,
-            HttpRequest request)
+            string? tenantId)
         {
             var authCode = await _authCodeRepo.GetByCodeAsync(code);
             if (authCode == null)
@@ -1255,7 +1297,7 @@ namespace Authentication.DomainService.Authentication
                 RefreshToken = refresh_token
             };
 
-            var (validation, configuration, tokenCache, user) = await ValidateRefreshTokenRequestAsync(refreshRequest, refresh_token, request);
+            var (validation, configuration, tokenCache, user) = await ValidateRefreshTokenRequestAsync(refresh_token);
             if (validation != null)
             {
                 return validation;
@@ -1317,10 +1359,7 @@ namespace Authentication.DomainService.Authentication
             return request.Form["refresh_token"].ToString();
         }
 
-        private async Task<(IActionResult? Error, IdentityConfiguration? Configuration, RefreshTokenCache? TokenCache, User? User)> ValidateRefreshTokenRequestAsync(
-            RefreshRequest refreshRequest,
-            string refresh_token,
-            HttpRequest request)
+        private async Task<(IActionResult? Error, IdentityConfiguration? Configuration, RefreshTokenCache? TokenCache, User? User)> ValidateRefreshTokenRequestAsync(string refresh_token)
         {
             var configuration = await _authenticationRepository.GetAuthenticationConfigurationAsync();
             if (configuration == null)
@@ -1400,7 +1439,7 @@ namespace Authentication.DomainService.Authentication
                 var tenantId = BlocksContext.GetContext()?.TenantId ?? "default";
                 var resolvedTenant = _tenants.GetTenantByID(tenantId);
                 var (domain, _, _) = DomainResolver.ResolveDomain(resolvedTenant, request);
-                var cookiesSet = AppendCookies(response, request.HttpContext.Response, domain);
+                var cookiesSet = CookieHelper.AppendCookies(response, request.HttpContext.Response, domain);
                 if (cookiesSet)
                 {
                     return new OkObjectResult(new
@@ -1423,26 +1462,6 @@ namespace Authentication.DomainService.Authentication
                 id_token = response.IdToken,
                 cookie_set = false
             });
-        }
-
-        private static string GenerateRandomCode(int length)
-        {
-            byte[] buffer = new byte[length];
-            RandomNumberGenerator.Fill(buffer);
-            return Convert.ToBase64String(buffer).Replace("/", "_").Replace("+", "-").Substring(0, 43);
-        }
-
-        private async Task<IReadOnlyCollection<string>> ResolveAllowedScopesAsync(OidcClientRegistration client)
-        {
-            if (client.AllowedScopes is { Count: > 0 })
-            {
-                return client.AllowedScopes
-                    .Where(scope => !string.IsNullOrWhiteSpace(scope))
-                    .Distinct(StringComparer.OrdinalIgnoreCase)
-                    .ToList();
-            }
-
-            return [];
         }
 
         private static string BuildRedirectUri(string baseUri, Dictionary<string, string> parameters)
@@ -1662,48 +1681,6 @@ namespace Authentication.DomainService.Authentication
 
             var oidcClient = await _authenticationRepository.GetOidcClientRegistrationAsync(clientId);
             return oidcClient != null;
-        }
-
-        private async Task RevokeUserTokens(string userId, string clientId, string tenantId)
-        {
-            try
-            {
-                var userTokens = await _refreshTokenRepo.GetByUserAsync(userId, tenantId);
-                var clientTokens = userTokens.Where(t => t.ClientId == clientId && !t.IsRevoked).ToList();
-
-                foreach (var token in clientTokens)
-                {
-                    await _refreshTokenRepo.RevokeByTokenIdAsync(token.TokenId, LoginAuditEvents.AuthorizationCodeReuseDetected);
-                }
-
-                var auditLog = new AuditLogModel
-                {
-                    EventType = LoginAuditEvents.CodeReuseAttack,
-                    UserId = userId,
-                    ClientId = clientId,
-                    TenantId = tenantId,
-                    IpAddress = "unknown",
-                    UserAgent = "unknown",
-                    Severity = AuthenticationConstants.SeverityCritical,
-                    Status = AuthenticationConstants.StatusSuccess,
-                    Timestamp = DateTime.UtcNow
-                };
-                await _auditLogRepo.CreateAsync(auditLog);
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, $"Error revoking user tokens for {userId}");
-            }
-        }
-
-        private static bool AppendCookies(TokenResponse response, HttpResponse httpResponse, string domain)
-        {
-            return CookieHelper.AppendCookies(response, httpResponse, domain);
-        }
-
-        private static void DeleteCookie(HttpResponse httpResponse, string domain, CookieOptions accessCookieOptions, CookieOptions refreshCookieOptions)
-        {
-            CookieHelper.DeleteAccessAndRefreshTokenCookies(httpResponse, domain, accessCookieOptions, refreshCookieOptions);
         }
 
         private sealed class FlowContext

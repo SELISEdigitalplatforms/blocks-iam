@@ -27,6 +27,7 @@ public interface ITokenGenerationService
 public interface IPkceService
 {
     Task<bool> ValidateVerifierAsync(string codeChallenge, string codeVerifier, string? codeChallengeMethod);
+    string GenerateRandomCode(int length);
 }
 
 public interface IDiscoveryService
@@ -350,6 +351,13 @@ public sealed class PkceService : IPkceService
         var hash = sha256.ComputeHash(Encoding.ASCII.GetBytes(codeVerifier));
         var encoded = Base64UrlEncoder.Encode(hash);
         return Task.FromResult(string.Equals(encoded, codeChallenge, StringComparison.Ordinal));
+    }
+
+    public string GenerateRandomCode(int length)
+    {
+        byte[] buffer = new byte[length];
+        RandomNumberGenerator.Fill(buffer);
+        return Convert.ToBase64String(buffer).Replace("/", "_").Replace("+", "-").Substring(0, 43);
     }
 }
 
