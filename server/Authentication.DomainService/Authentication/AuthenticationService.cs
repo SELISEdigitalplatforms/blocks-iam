@@ -470,7 +470,8 @@ namespace Authentication.DomainService.Authentication
                     $"client_id={Uri.EscapeDataString(provider.ClientId ?? "")}&" +
                     $"redirect_uri={Uri.EscapeDataString(redirectUri ?? "")}&" +
                     $"scope={Uri.EscapeDataString(scope)}&" +
-                    $"state={Uri.EscapeDataString(state)}";
+                    $"state={Uri.EscapeDataString(state)}" +
+                    $"tenant_id={Uri.EscapeDataString(BlocksContext.GetContext().TenantId)}";
 
                 // Add PKCE if required (code_challenge generated on frontend, passed from caller)
                 if (provider.RequirePkce == true && !string.IsNullOrWhiteSpace(codeChallenge))
