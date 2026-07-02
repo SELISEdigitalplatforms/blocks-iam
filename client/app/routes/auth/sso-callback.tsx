@@ -36,6 +36,7 @@ export default function SSOCallbackPage() {
     if (code) callbackUrl.searchParams.set("code", code);
     if (state) callbackUrl.searchParams.set("state", state);
     if (tenantId) callbackUrl.searchParams.set("tenant_id", tenantId);
+    window.location.href = callbackUrl.toString();
   }, [code, state, error, tenantId, setAuthenticated]);
 
   if (code && state) {
