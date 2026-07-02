@@ -28,6 +28,11 @@ namespace Mfa.DomainService.Services
 
     public class MfaBackupCodeService : IMfaBackupCodeService
     {
+        private const int CodePrefixLength = 4;
+        private const int MaxAllowedCount = 50;
+        private const int CodeGroupLength = 4;
+        private const int RandomByteCount = 8;
+
         private readonly IMfaManagementRepository _repository;
 
         public MfaBackupCodeService(IMfaManagementRepository repository)
@@ -42,7 +47,7 @@ namespace Mfa.DomainService.Services
                 return new MfaBackupCodeGenerationResult { Errors = new Dictionary<string, string> { { "empty_user_id", "userId is required" } } };
             }
 
-            if (count <= 0 || count > 50)
+            if (count <= 0 || count > MaxAllowedCount)
             {
                 return new MfaBackupCodeGenerationResult { Errors = new Dictionary<string, string> { { "invalid_count", "count must be between 1 and 50" } } };
             }
@@ -58,7 +63,7 @@ namespace Mfa.DomainService.Services
                 {
                     UserId = userId,
                     CodeHash = HashCode(code),
-                    CodePrefix = code[..Math.Min(4, code.Length)],
+                    CodePrefix = code[..Math.Min(CodePrefixLength, code.Length)],
                     CreatedDate = DateTime.UtcNow,
                     LastUpdatedDate = DateTime.UtcNow,
                     CreatedBy = userId,
@@ -117,10 +122,10 @@ namespace Mfa.DomainService.Services
 
         private static string GeneratePlainCode()
         {
-            Span<byte> bytes = stackalloc byte[8];
+            Span<byte> bytes = stackalloc byte[RandomByteCount];
             RandomNumberGenerator.Fill(bytes);
             var hex = Convert.ToHexString(bytes).ToLowerInvariant();
-            return $"{hex[..4]}-{hex.Substring(4, 4)}-{hex.Substring(8, 4)}-{hex.Substring(12, 4)}";
+            return $"{hex[..CodeGroupLength]}-{hex.Substring(CodeGroupLength, CodeGroupLength)}-{hex.Substring(CodeGroupLength * 2, CodeGroupLength)}-{hex.Substring(CodeGroupLength * 3, CodeGroupLength)}";
         }
 
         private static string NormalizeCode(string code)

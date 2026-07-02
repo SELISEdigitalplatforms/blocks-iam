@@ -1,107 +1,114 @@
-using Microsoft.Extensions.Configuration;
+using System.Text.Json;
 using Microsoft.Extensions.Logging;
-using Newtonsoft.Json;
+using Microsoft.Extensions.Options;
 
-namespace Blocks.CaptchaDriver
+namespace Blocks.CaptchaDriver;
+
+/// <summary>
+/// Verifies hCaptcha tokens against the hCaptcha siteverify endpoint.
+/// </summary>
+public sealed class HCaptchaVerificationService : ICaptchaVerificationService
 {
-    public class HCaptchaVerificationService : ICaptchaVerificationService
+    /// <inheritdoc />
+    public string Provider => "hcaptcha";
+
+    private const string LogContentType = "application/x-www-form-urlencoded";
+
+    private readonly ICaptchaConfigurationService _captchaConfigurationService;
+    private readonly ILogger<HCaptchaVerificationService> _logger;
+    private readonly IHttpClientService _httpClientService;
+    private readonly string _verificationUrl;
+
+    public HCaptchaVerificationService(
+        ICaptchaConfigurationService captchaConfigurationService,
+        IOptions<CaptchaOptions> options,
+        ILogger<HCaptchaVerificationService> logger,
+        IHttpClientService httpClientService)
     {
-        private readonly ICaptchaConfigurationService _captchaConfigurationService;
-        private readonly ILogger<HCaptchaVerificationService> _logger;
-        private readonly IHttpClientService _httpClientService;
-        private readonly string _verificationUrl;
+        _captchaConfigurationService = captchaConfigurationService;
+        _logger = logger;
+        _httpClientService = httpClientService;
+        _verificationUrl = options.Value.HcaptchaVerificationUrl;
+    }
 
-        public HCaptchaVerificationService(ICaptchaConfigurationService captchaConfigurationService,
-                                           IConfiguration configuration,
-                                           ILogger<HCaptchaVerificationService> logger,
-                                           IHttpClientService httpClientService)
+    /// <inheritdoc />
+    public async Task<VerificationResult> VerifyAsync(string verificationCode)
+    {
+        _logger.LogDebug("hCaptcha verification requested");
+
+        var hcaptchaResponse = await VerifyCaptchaAsync(verificationCode);
+
+        if (hcaptchaResponse is { Success: true })
         {
-            _captchaConfigurationService = captchaConfigurationService;
-            _logger = logger;
-            _httpClientService = httpClientService;
-            _verificationUrl = configuration["HCpatchaVerificationUrl"];
-        }
-
-        public Task<string> ResolveVerificationUri(string token)
-        {
-            throw new NotImplementedException();
-        }
-
-        public async Task<VerificationResult> VerifyAsync(string verificationCode)
-        {
-            _logger.LogInformation("HCaptchaVerificationHandler: In this method");
-
-            var hcaptchaResponse = await VerifyCaptchaAsync(verificationCode);
-
-            _logger.LogInformation("HCaptchaVerificationHandler: Response - {Response}", JsonConvert.SerializeObject(hcaptchaResponse));
-
-            if (hcaptchaResponse != null && hcaptchaResponse.Success)
-            {
-                return new VerificationResult
-                {
-                    Verified = true,
-                    HostName = hcaptchaResponse.HostName
-                };
-            }
-
             return new VerificationResult
             {
-                Verified = false,
-                Errors = new Dictionary<string, string>
-                {
-                    { "VerificationCode", "Verification failed" }
-                }
+                Verified = true,
+                HostName = hcaptchaResponse.HostName ?? string.Empty
             };
         }
 
-        public async Task<RecaptchaResponse> VerifyCaptchaAsync(string token)
+        return new VerificationResult
         {
-            try
+            Verified = false,
+            Errors = new Dictionary<string, string>
             {
-                CaptchaConfiguration dbConfig = await _captchaConfigurationService.GetCaptchaConfigurationAsync();
-                if (dbConfig is null)
-                {
-                    _logger.LogError("HCaptchaVerificationHandler -> VerifyCaptchaAsync: No config found in db");
-                    return new RecaptchaResponse { Success = false, HostName = null };
-                }
-
-                var secretKey = dbConfig.CaptchaSecret;
-                if (secretKey is null)
-                {
-                    _logger.LogError("HCaptchaVerificationHandler -> VerifyCaptchaAsync: CaptchaSecret is null in db");
-                    return new RecaptchaResponse { Success = false, HostName = null };
-                }
-
-                var contentPayloads = new List<KeyValuePair<string, string>>
-                {
-                    new KeyValuePair<string, string>("secret", secretKey),
-                    new KeyValuePair<string, string>("response", token)
-                };
-
-                var httpRequestMessage = new HttpRequestMessage
-                {
-                    Method = HttpMethod.Post,
-                    RequestUri = new Uri(_verificationUrl),
-                    Content = new FormUrlEncodedContent(contentPayloads)
-                };
-
-                var response = await _httpClientService.SendAsync(httpRequestMessage, "application/x-www-form-urlencoded");
-
-                _logger.LogInformation("HCaptchaVerificationHandler -> VerifyCaptchaAsync: {Response}", JsonConvert.SerializeObject(response));
-
-                if (response.IsSuccessStatusCode)
-                {
-                    var responseBody = await response.Content.ReadAsStringAsync();
-                    var verifyResponse = JsonConvert.DeserializeObject<RecaptchaResponse>(responseBody);
-                    return verifyResponse;
-                }
+                { "VerificationCode", "Verification failed" }
             }
-            catch (Exception ex)
+        };
+    }
+
+    private async Task<RecaptchaResponse> VerifyCaptchaAsync(string token)
+    {
+        try
+        {
+            var dbConfig = await _captchaConfigurationService.GetCaptchaConfigurationAsync();
+            if (dbConfig is null)
             {
-                _logger.LogError(ex, "HCaptchaVerificationHandler -> VerifyCaptchaAsync encountered an error.");
+                _logger.LogError("hCaptcha verification: no captcha configuration found in store");
+                return new RecaptchaResponse { Success = false };
             }
 
-            return new RecaptchaResponse { Success = false, HostName = null };
+            var secretKey = dbConfig.CaptchaSecret;
+            if (string.IsNullOrWhiteSpace(secretKey))
+            {
+                _logger.LogError("hCaptcha verification: configured captcha secret is empty");
+                return new RecaptchaResponse { Success = false };
+            }
+
+            var contentPayloads = new List<KeyValuePair<string, string>>
+            {
+                new("secret", secretKey),
+                new("response", token)
+            };
+
+            var request = new HttpRequestMessage
+            {
+                Method = HttpMethod.Post,
+                RequestUri = new Uri(_verificationUrl),
+                Content = new FormUrlEncodedContent(contentPayloads)
+            };
+
+            var response = await _httpClientService.SendAsync(request, LogContentType);
+
+            if (!response.IsSuccessStatusCode)
+            {
+                _logger.LogError(
+                    "hCaptcha siteverify call failed. Status: {StatusCode}",
+                    response.StatusCode);
+                return new RecaptchaResponse { Success = false };
+            }
+
+            await using var contentStream = await response.Content.ReadAsStreamAsync();
+            var verifyResponse = await JsonSerializer.DeserializeAsync<RecaptchaResponse>(
+                contentStream,
+                JsonOptions.Default);
+
+            return verifyResponse ?? new RecaptchaResponse { Success = false };
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "hCaptcha verification failed");
+            return new RecaptchaResponse { Success = false };
         }
     }
 }

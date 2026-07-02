@@ -44,8 +44,13 @@ namespace Mfa.DomainService.Services
 
             var userInfo = await _mfaRepository.GetItemAsync<UserInfo>(u => u.ItemId == request.UserId, "Users");
 
-            var otpService = _otpServiceFactory.GetOTPService(request?.MfaType ?? userInfo.UserMfaType);
-            return await otpService.GenerateAsync(userInfo, request?.SendPhoneNumberAsEmailDomain ?? "");
+            if (userInfo is null)
+            {
+                return new OtpGenerationResponse { Errors = new Dictionary<string, string> { { "user_not_found", "User not found for mfa" } } };
+            }
+
+            var otpService = _otpServiceFactory.GetOTPService(request.MfaType ?? userInfo.UserMfaType);
+            return await otpService.GenerateAsync(userInfo, request.SendPhoneNumberAsEmailDomain ?? string.Empty);
         }
 
         public async Task<OtpVerificationResponse> VerifyOTPAsync(VerifyOtpRequest request)
@@ -64,7 +69,7 @@ namespace Mfa.DomainService.Services
                                  { nameof(UserMfaInfo.IsMfaVerified), true }
                               };
 
-                    await _mfaRepository.UpdatePartialAsync<UserMfaInfo>(verificationResponse.UserId, updates, "Users");
+                    await _mfaRepository.UpdatePartialAsync<UserMfaInfo>(verificationResponse.UserId ?? string.Empty, updates, "Users");
                 }
 
                 await WriteAuditAsync("mfa_verification_success", verificationResponse.UserId, request.AuthType, "success");
@@ -79,7 +84,7 @@ namespace Mfa.DomainService.Services
 
         public async Task<BaseResponse> DisableUserMfa(DisableUserMfaRequest request)
         {
-            if(string.IsNullOrWhiteSpace(request.UserId))
+            if (string.IsNullOrWhiteSpace(request.UserId))
             {
                 return new BaseResponse { Errors = new Dictionary<string, string> { { "empty_user_id", "User id should not be empty" } } };
             }
@@ -106,12 +111,12 @@ namespace Mfa.DomainService.Services
 
             if (isAdmin)
             {
-                await WriteAuditAsync("mfa_reset", request.UserId, previousInfo?.UserMfaType, "success",
-                    new Dictionary<string, string> { { "actor", request.AdminActorUserId ?? "admin" }, { "reason", request.Reason ?? "" } });
+                await WriteAuditAsync("mfa_reset", request.UserId, previousInfo?.UserMfaType ?? UserMfaType.None, "success",
+                    new Dictionary<string, string> { { "actor", request.AdminActorUserId ?? "admin" }, { "reason", request.Reason ?? string.Empty } });
             }
             else
             {
-                await WriteAuditAsync("mfa_disabled", request.UserId, previousInfo?.UserMfaType, "success");
+                await WriteAuditAsync("mfa_disabled", request.UserId, previousInfo?.UserMfaType ?? UserMfaType.None, "success");
             }
 
             return new BaseResponse { IsSuccess = true };

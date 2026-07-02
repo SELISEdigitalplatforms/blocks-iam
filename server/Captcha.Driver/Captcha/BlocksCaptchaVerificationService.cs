@@ -1,50 +1,54 @@
 using Blocks.Genesis;
 
-namespace Blocks.CaptchaDriver
+namespace Blocks.CaptchaDriver;
+
+/// <summary>
+/// In-memory captcha verification backed by a cache. Used as the default
+/// <c>bcaptcha</c> provider for trusted callers. The cache key passed in
+/// <see cref="VerifyAsync"/> is fully qualified by the caller; this service
+/// does not assume any prefix.
+/// </summary>
+public sealed class BlocksCaptchaVerificationService : ICaptchaVerificationService
 {
-    public class BlocksCaptchaVerificationService : ICaptchaVerificationService
+    /// <inheritdoc />
+    public string Provider => "bcaptcha";
+
+    private readonly ICacheClient _cache;
+
+    public BlocksCaptchaVerificationService(ICacheClient cache)
     {
-        private readonly ICacheClient _cache;
+        _cache = cache;
+    }
 
-        public BlocksCaptchaVerificationService(ICacheClient cache)
+    /// <inheritdoc />
+    public async Task<VerificationResult> VerifyAsync(string? verificationCode)
+    {
+        if (verificationCode is null)
         {
-            _cache = cache;
+            throw new ArgumentNullException(nameof(verificationCode));
         }
 
-        public Task<string> ResolveVerificationUri(string token)
+        var savedHostName = await _cache.GetStringValueAsync(verificationCode);
+        var verified = !string.IsNullOrWhiteSpace(savedHostName);
+
+        if (!verified)
         {
-            throw new NotImplementedException();
-        }
-
-        public async Task<VerificationResult> VerifyAsync(string verificationCode)
-        {
-            var savedHostName = await _cache.GetStringValueAsync(verificationCode);
-            var verified = !string.IsNullOrWhiteSpace(savedHostName);
-
-            if (!verified)
-            {
-                return new VerificationResult
-                {
-                    Verified = false,
-                    Errors = new Dictionary<string, string>
-                    {
-                        { "VerificationCode", "Verification code incorrect or expire." }
-                    }
-                };
-            }
-
-            await _cache.RemoveKeyAsync(verificationCode);
-
             return new VerificationResult
             {
-                Verified = true,
-                HostName = savedHostName
+                Verified = false,
+                Errors = new Dictionary<string, string>
+                {
+                    { "VerificationCode", "Verification code incorrect or expired." }
+                }
             };
         }
 
-        public Task<RecaptchaResponse> VerifyCaptchaAsync(string token)
+        await _cache.RemoveKeyAsync(verificationCode);
+
+        return new VerificationResult
         {
-            throw new NotImplementedException();
-        }
+            Verified = true,
+            HostName = savedHostName
+        };
     }
 }
