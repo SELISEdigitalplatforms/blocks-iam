@@ -14,7 +14,7 @@ namespace Authentication.DomainService.Authentication
     public interface IMfaChallengeIssuer
     {
         Task<bool> IsRequiredAsync(User user);
-        Task<OtpService> GetOtpServiceAsync(User user);
+        Task<IOtpService> GetOtpServiceAsync(User user);
         Task WriteAuditAsync(MfaAuditEvent auditEvent, CancellationToken cancellationToken = default);
     }
 }

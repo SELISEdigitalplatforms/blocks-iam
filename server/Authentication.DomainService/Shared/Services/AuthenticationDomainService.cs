@@ -238,20 +238,11 @@ namespace Authentication.DomainService.Services
 
             var redirectUris = request.RedirectUris.Where(x => !string.IsNullOrWhiteSpace(x)).Distinct(StringComparer.OrdinalIgnoreCase).ToList();
 
-            var allowedServiceAccessResources = request.AllowedServiceAccessResources.Where(x => !string.IsNullOrWhiteSpace(x)).Distinct(StringComparer.OrdinalIgnoreCase).ToList();
-            if (allowedServiceAccessResources.Count == 0 && !string.IsNullOrWhiteSpace(request.ServiceAccessResource))
-            {
-                allowedServiceAccessResources = [request.ServiceAccessResource];
-            }
-
             credential.AllowedScopes = allowedScopes;
             credential.Scope = string.Join(' ', allowedScopes);
 
             credential.RedirectUris = redirectUris;
             credential.RedirectUri = redirectUris.FirstOrDefault();
-
-            credential.AllowedServiceAccessResources = allowedServiceAccessResources;
-            credential.ServiceAccessResource = allowedServiceAccessResources.FirstOrDefault();
 
             credential.AllowedResponseTypes = request.AllowedResponseTypes.Where(x => !string.IsNullOrWhiteSpace(x)).Distinct(StringComparer.OrdinalIgnoreCase).ToList();
             if (credential.AllowedResponseTypes.Count == 0)

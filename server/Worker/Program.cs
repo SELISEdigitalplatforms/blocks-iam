@@ -2,6 +2,7 @@ using Authentication.DomainService.Dtos;
 using Authentication.DomainService.Utilities;
 using Authentication.DomainService.Worker;
 using Blocks.Genesis;
+using Iam.DomainService.Accounts;
 using Iam.DomainService.Dtos;
 using Iam.DomainService.Users;
 using Worker;

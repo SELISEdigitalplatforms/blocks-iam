@@ -9,7 +9,6 @@ public sealed class ResolvedAuthorizationClaims
 {
     public List<string> Roles { get; set; } = [];
     public List<string> Permissions { get; set; } = [];
-    public List<string> Resources { get; set; } = [];
 }
 
 public interface IAuthorizationClaimsResolver
@@ -18,7 +17,6 @@ public interface IAuthorizationClaimsResolver
         User user,
         string? organizationId,
         string? requestedScope = null,
-        IEnumerable<string>? clientAllowedServiceAccessResources = null,
         bool requireExplicitScope = false);
 }
 
@@ -46,7 +44,6 @@ public sealed class AuthorizationClaimsResolver : IAuthorizationClaimsResolver
         User user,
         string? organizationId,
         string? requestedScope = null,
-        IEnumerable<string>? clientAllowedServiceAccessResources = null,
         bool requireExplicitScope = false)
     {
         var roles = ResolveRoles(user, organizationId)
@@ -59,19 +56,10 @@ public sealed class AuthorizationClaimsResolver : IAuthorizationClaimsResolver
             .Distinct(StringComparer.OrdinalIgnoreCase)
             .ToList();
 
-        var permissionCatalog = new List<GetUserPermission>();
-
-        var allowedServiceAccessResources = clientAllowedServiceAccessResources?
-            .Where(resource => !string.IsNullOrWhiteSpace(resource))
-            .Distinct(StringComparer.OrdinalIgnoreCase)
-            .ToList();
-
-
         return new ResolvedAuthorizationClaims
         {
             Roles = roles,
-            Permissions = permissions,
-            Resources = allowedServiceAccessResources ?? new List<string>()
+            Permissions = permissions
         };
     }
 
