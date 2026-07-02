@@ -541,8 +541,8 @@ namespace Authentication.DomainService.Authentication
                             break;
                         }
 
-                            await PersistBackchannelDeliveryAuditAsync(logoutEventId, uri!, AuthenticationConstants.StatusFailure, attempt, (int)response.StatusCode, BackchannelAuditEvents.DeliveryFailed);
-                            await PublishSecurityEventAsync(httpRequest, BackchannelAuditEvents.Failed, BackchannelAuditEvents.Dispatch, AuthenticationConstants.StatusFailure, $"status_{(int)response.StatusCode}", logoutEventId, uri);
+                        await PersistBackchannelDeliveryAuditAsync(logoutEventId, uri!, AuthenticationConstants.StatusFailure, attempt, (int)response.StatusCode, BackchannelAuditEvents.DeliveryFailed);
+                        await PublishSecurityEventAsync(httpRequest, BackchannelAuditEvents.Failed, BackchannelAuditEvents.Dispatch, AuthenticationConstants.StatusFailure, $"status_{(int)response.StatusCode}", logoutEventId, uri);
                         _logger.LogWarning(
                             "SecurityEvent backchannel_logout_failed event={LogoutEventId} tenant={TenantId} uri={Uri} status={StatusCode} attempt={Attempt}",
                             logoutEventId,
@@ -585,7 +585,7 @@ namespace Authentication.DomainService.Authentication
             var bc = BlocksContext.GetContext();
             var log = new AuditLogModel
             {
-                    EventType = BackchannelAuditEvents.Delivery,
+                EventType = BackchannelAuditEvents.Delivery,
                 UserId = bc?.UserId,
                 TenantId = bc?.TenantId,
                 Severity = status.StartsWith("failed", StringComparison.OrdinalIgnoreCase) ? AuthenticationConstants.SeverityWarn : AuthenticationConstants.SeverityInfo,
@@ -691,7 +691,7 @@ namespace Authentication.DomainService.Authentication
 
             AddArrayClaimIfPresent(principal, userInfo, BlocksContext.ROLES_CLAIM, BlocksContext.ROLES_CLAIM);
             AddArrayClaimIfPresent(principal, userInfo, BlocksContext.PERMISSION_CLAIM, BlocksContext.PERMISSION_CLAIM);
-           // AddArrayClaimIfPresent(principal, userInfo, BlocksContext.SERVICE_ACCESS_CLAIM, BlocksContext.SERVICE_ACCESS_CLAIM);
+            AddArrayClaimIfPresent(principal, userInfo, BlocksContext.SERVICE_ACCESS_CLAIM, BlocksContext.SERVICE_ACCESS_CLAIM);
 
             return (true, userInfo);
         }

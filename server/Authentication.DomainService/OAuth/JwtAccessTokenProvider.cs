@@ -101,10 +101,10 @@ namespace Authentication.DomainService.OAuth
                 claimsIdentity.AddClaim(new Claim(BlocksContext.ROLES_CLAIM, role));
             }
 
-            //foreach (var resource in resolvedClaims.Resources)
-            //{
-            //    claimsIdentity.AddClaim(new Claim(BlocksContext.SERVICE_ACCESS_CLAIM, resource));
-            //}
+            foreach (var resource in resolvedClaims.Resources)
+            {
+                claimsIdentity.AddClaim(new Claim(BlocksContext.SERVICE_ACCESS_CLAIM, resource));
+            }
 
             foreach (var permission in resolvedClaims.Permissions)
             {

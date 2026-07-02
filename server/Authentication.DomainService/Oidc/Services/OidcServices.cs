@@ -208,10 +208,10 @@ public sealed class TokenGenerationService : ITokenGenerationService
                 jwtClaims.Add(new Claim(BlocksContext.ROLES_CLAIM, role));
             }
 
-            //foreach (var resource in claims.Resources)
-            //{
-            //    jwtClaims.Add(new Claim(BlocksContext.SERVICE_ACCESS_CLAIM, resource));
-            //}
+            foreach (var resource in claims.Resources)
+            {
+                jwtClaims.Add(new Claim(BlocksContext.SERVICE_ACCESS_CLAIM, resource));
+            }
 
             foreach (var permission in claims.Permissions)
             {
