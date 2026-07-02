@@ -420,7 +420,7 @@ namespace Authentication.DomainService.Authentication
                 await _cacheClient.AddStringValueAsync(stateKey, stateValue, AuthenticationConstants.OidcStateCacheTtlSeconds); // 5 minute TTL
 
                 // Build authorization URL for social provider
-                // Callback should redirect to /auth/oidc/callback with provider and state
+                // Callback should redirect to /oidc/callback with provider and state
                 var scope = identityProvider.Scope ?? AuthenticationConstants.OpenIdProfileEmailScope;
                 providerRedirectUri = string.IsNullOrWhiteSpace(providerRedirectUri) ? identityProvider.RedirectUris.FirstOrDefault() : providerRedirectUri;
                 var authorizationUrl = BuildAuthorizationUrl(identityProvider, socialState, providerRedirectUri, scope);

@@ -20,7 +20,7 @@ namespace XUnitTest.Worker
             var optionsMonitor = new Mock<IOptionsMonitor<PeriodicPingConfiguration>>();
             optionsMonitor.SetupGet(m => m.CurrentValue).Returns(options);
 
-            sentRequests = new List<HttpRequestMessage>();
+            var capturedRequests = new List<HttpRequestMessage>();
             var handler = new Mock<HttpMessageHandler>();
             handler.Protected()
                 .Setup<Task<HttpResponseMessage>>(
@@ -28,12 +28,13 @@ namespace XUnitTest.Worker
                     ItExpr.IsAny<HttpRequestMessage>(),
                     ItExpr.IsAny<CancellationToken>())
                 .ReturnsAsync(new HttpResponseMessage(HttpStatusCode.OK))
-                .Callback<HttpRequestMessage, CancellationToken>((req, _) => sentRequests.Add(req));
+                .Callback<HttpRequestMessage, CancellationToken>((req, _) => capturedRequests.Add(req));
 
             var client = new HttpClient(handler.Object);
             httpFactory = new Mock<IHttpClientFactory>();
             httpFactory.Setup(f => f.CreateClient(It.IsAny<string>())).Returns(client);
 
+            sentRequests = capturedRequests;
             logMessages = new List<string>();
             var logger = new LoggerFactory().CreateLogger<PeriodicPingBackgroundService>();
 
