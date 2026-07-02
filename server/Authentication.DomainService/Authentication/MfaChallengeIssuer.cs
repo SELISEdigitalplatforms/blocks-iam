@@ -28,9 +28,9 @@ namespace Authentication.DomainService.Authentication
             return decision.Required;
         }
 
-        public async Task<OtpService> GetOtpServiceAsync(User user)
+        public Task<IOtpService> GetOtpServiceAsync(User user)
         {
-            return await _otpServiceFactory.GetOTPService(user.UserMfaType);
+            return Task.FromResult(_otpServiceFactory.GetOTPService(user.UserMfaType));
         }
 
         public Task WriteAuditAsync(MfaAuditEvent auditEvent, CancellationToken cancellationToken = default)

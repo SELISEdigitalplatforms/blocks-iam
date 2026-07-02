@@ -289,7 +289,7 @@ namespace Authentication.DomainService.Authentication
                 return new ObjectResult(new { error = "account_locked" }) { StatusCode = StatusCodes.Status423Locked };
             }
 
-            var otpService = _mfaChallengeIssuer.GetOtpServiceAsync(user.UserMfaType);
+            var otpService = await _mfaChallengeIssuer.GetOtpServiceAsync(user);
             if (otpService == null)
             {
                 return new ObjectResult(new { error = "server_error", error_description = "Mfa provider is not available" })
@@ -366,7 +366,7 @@ namespace Authentication.DomainService.Authentication
 
         private async Task<IActionResult> StartOidcMfaChallengeAsync(User user, OidcLoginRequest request, string? tenantId)
         {
-            var otpService = _mfaChallengeIssuer.GetOtpServiceAsync(user.UserMfaType);
+            var otpService = await _mfaChallengeIssuer.GetOtpServiceAsync(user);
             if (otpService == null)
             {
                 return new ObjectResult(new { error = "server_error", error_description = "Mfa provider is not available" })
@@ -420,8 +420,7 @@ namespace Authentication.DomainService.Authentication
 
         private async Task<bool> IsMfaRequiredAsync(User user)
         {
-            var decision = await _mfaChallengeIssuer.IsRequiredAsync(user, clientId: null);
-            return decision.Required;
+            return await _mfaChallengeIssuer.IsRequiredAsync(user);
         }
 
         private async Task<OidcCaptchaEvaluation> EvaluateOidcCaptchaAsync(User user, string? captchaCode)
@@ -998,12 +997,10 @@ namespace Authentication.DomainService.Authentication
             }
 
             var tenant = _tenants.GetTenantByID(effectiveTenantId!);
-            var allowedServiceAccessResources = await ResolveAllowedServiceAccessResourcesAsync(client_id);
             var resolvedClaims = await _authorizationClaimsResolver.ResolveAsync(
                 user!,
                 authCode!.OrganizationId,
                 authCode.Scope,
-                allowedServiceAccessResources,
                 requireExplicitScope: true);
 
             var tenantAudience = DomainResolver.GetAudience(tenant);
@@ -1027,7 +1024,6 @@ namespace Authentication.DomainService.Authentication
                 UserName = user.UserName,
                 Amr = authCode.Amr is { Count: > 0 } ? authCode.Amr : ["pwd"],
                 Roles = resolvedClaims.Roles,
-                Resources = resolvedClaims.Resources,
                 Permissions = resolvedClaims.Permissions
             };
 
@@ -1455,25 +1451,6 @@ namespace Authentication.DomainService.Authentication
             }
 
             return [];
-        }
-
-        private async Task<IReadOnlyCollection<string>> ResolveAllowedServiceAccessResourcesAsync(string? clientId)
-        {
-            if (string.IsNullOrWhiteSpace(clientId))
-            {
-                return [];
-            }
-
-            var tenantOidcClient = await _authenticationRepository.GetOidcClientRegistrationAsync(clientId);
-            if (tenantOidcClient == null || tenantOidcClient.AllowedServiceAccessResources.Count == 0)
-            {
-                return [];
-            }
-
-            return tenantOidcClient.AllowedServiceAccessResources
-                .Where(resource => !string.IsNullOrWhiteSpace(resource))
-                .Distinct(StringComparer.OrdinalIgnoreCase)
-                .ToList();
         }
 
         private static string BuildRedirectUri(string baseUri, Dictionary<string, string> parameters)

@@ -44,13 +44,12 @@ namespace Authentication.DomainService.OAuth
             Tenant tenant,
             User user,
             TokenRequest tokenRequest,
-            StateInfo? state = null,
-            IEnumerable<string>? clientAllowedServiceAccessResources = null)
+            StateInfo? state = null)
         {
             _key = _cryptoService.Hash(Encoding.UTF8.GetBytes($"{tenant.TenantId}::{tenant.ItemId}"));
             var certificate = await GetOrRetrieveCertAsync(tenant);
             if (certificate == null) return new JwtAccessToken();
-            var resolvedClaims = await _authorizationClaimsResolver.ResolveAsync(user, tokenRequest.OrganizationId, state?.Scope, clientAllowedServiceAccessResources);
+            var resolvedClaims = await _authorizationClaimsResolver.ResolveAsync(user, tokenRequest.OrganizationId, state?.Scope);
             return MapJwtAccessToken(authenticationConfiguration, tenant, user, certificate, resolvedClaims, tokenRequest, stateInfo: state);
         }
 
@@ -99,11 +98,6 @@ namespace Authentication.DomainService.OAuth
             foreach (var role in resolvedClaims.Roles)
             {
                 claimsIdentity.AddClaim(new Claim(BlocksContext.ROLES_CLAIM, role));
-            }
-
-            foreach (var resource in resolvedClaims.Resources)
-            {
-                claimsIdentity.AddClaim(new Claim(BlocksContext.SERVICE_ACCESS_CLAIM, resource));
             }
 
             foreach (var permission in resolvedClaims.Permissions)
