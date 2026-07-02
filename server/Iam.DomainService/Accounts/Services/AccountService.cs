@@ -1,4 +1,6 @@
 ﻿
+#pragma warning disable CA1303
+
 using Blocks.CaptchaDriver;
 using Blocks.Genesis;
 using FluentValidation;
@@ -11,13 +13,38 @@ using Iam.DomainService.Shared.Entities;
 using Iam.DomainService.Users;
 using Iam.DomainService.Users.RequestModel;
 using Iam.DomainService.Users.ResponseModel;
-using Iam.DomainService.Utilities;
 using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.Logging;
 using MongoDB.Driver;
 
 namespace Iam.DomainService.Accounts
 {
+    /// <summary>
+    /// Constants used to identify account activity event types. Centralised so the
+    /// string literals are not duplicated across the service and its consumers.
+    /// </summary>
+    internal static class AccountEvents
+    {
+        public const string ActivateAccount = "Activate_Account";
+        public const string ResetPassword = "Reset_Password";
+        public const string ChangePassword = "Change_Password";
+    }
+
+    /// <summary>
+    /// Defaults applied when an email purpose is not supplied by the caller.
+    /// </summary>
+    internal static class AccountMailPurposes
+    {
+        public const string AccountActivation = "AccountActivation";
+        public const string RecoverAccount = "RecoverAccount";
+    }
+
+    /// <summary>
+    /// Application service implementing the public account lifecycle:
+    /// signup, activation, recovery, password reset/change, reactivation,
+    /// activation-code validation, signup settings, admin unlock and
+    /// account locked/unlocked notifications.
+    /// </summary>
     public class AccountService : IAccountService
     {
         private readonly ILogger<AccountService> _logger;
@@ -47,8 +74,7 @@ namespace Iam.DomainService.Accounts
             IResourceMutationService resourceMutationService,
             ICaptchaService captchaService,
             IDbContextProvider dbContextProvider,
-            IHttpContextAccessor? httpContextAccessor = null
-        )
+            IHttpContextAccessor? httpContextAccessor = null)
         {
             _logger = logger;
             _repository = repository;
@@ -276,7 +302,7 @@ namespace Iam.DomainService.Accounts
             {
                 UserId = signupUserId,
                 Email = normalizedEmail,
-                MailPurpose = string.IsNullOrWhiteSpace(signupUserRequest.MailPurpose) ? "AccountActivation" : signupUserRequest.MailPurpose,
+                MailPurpose = string.IsNullOrWhiteSpace(signupUserRequest.MailPurpose) ? AccountMailPurposes.AccountActivation : signupUserRequest.MailPurpose,
                 UserCreationType = UserCreationType.Portal,
                 UserPassType = UserPassType.Password,
                 VerifiedType = UserVerifiedType.None,
@@ -338,7 +364,7 @@ namespace Iam.DomainService.Accounts
                 UserId = signupUserId,
                 Email = normalizedEmail,
                 Platform = signupUserRequest.Provider!,
-                MailPurpose = string.IsNullOrWhiteSpace(signupUserRequest.MailPurpose) ? "AccountActivation" : signupUserRequest.MailPurpose,
+                MailPurpose = string.IsNullOrWhiteSpace(signupUserRequest.MailPurpose) ? AccountMailPurposes.AccountActivation : signupUserRequest.MailPurpose,
                 SendWelcomeMail = true,
                 UserCreationType = UserCreationType.Social,
                 Active = true,
@@ -449,15 +475,7 @@ namespace Iam.DomainService.Accounts
 
             if (!string.IsNullOrWhiteSpace(activateUserRequest.Password))
             {
-                var bc = BlocksContext.GetContext();
-                var tenantId = bc?.TenantId;
-                var tenant = !string.IsNullOrWhiteSpace(tenantId) ? _tenants.GetTenantByID(tenantId) : null;
-                user.Password = _identityAccessManagementService.HashPassword(activateUserRequest.Password, tenant?.TenantSalt);
-                user.PasswordSetTime = DateTime.Now;
-                user.PasswordChangedAtUtc = DateTime.UtcNow;
-                user.LastCredentialRotationAtUtc = DateTime.UtcNow;
-                user.SecurityStamp = Guid.NewGuid().ToString("N");
-                user.TokenVersion += 1;
+                ApplyPasswordRotation(user, activateUserRequest.Password);
             }
 
             user.FailedLoginCount = 0;
@@ -475,12 +493,36 @@ namespace Iam.DomainService.Accounts
                     UserId = userId,
                     MailPurpose = activateUserRequest.MailPurpose,
                     PreventPostEvent = activateUserRequest.PreventPostEvent,
-                    Event = "Activate_Account"
+                    Event = AccountEvents.ActivateAccount
                 });
             }
 
 
             return result;
+        }
+
+        /// <summary>
+        /// Applies the standard password-rotation side-effects to a user record:
+        /// re-hash the password with the tenant salt, set the rotation timestamps,
+        /// rotate the security stamp, increment the token version and clear the
+        /// failed-login / lockout counters. Centralised to keep
+        /// <see cref="ProcessActivationAsync"/>, <see cref="ProcessResetPasswordAsync"/>
+        /// and <see cref="ProcessChangePasswordAsync"/> behaviourally identical.
+        /// </summary>
+        private void ApplyPasswordRotation(User user, string plainPassword)
+        {
+            var bc = BlocksContext.GetContext();
+            var tenantId = bc?.TenantId;
+            var tenant = !string.IsNullOrWhiteSpace(tenantId) ? _tenants.GetTenantByID(tenantId) : null;
+            user.Password = _identityAccessManagementService.HashPassword(plainPassword, tenant?.TenantSalt);
+            user.PasswordSetTime = DateTime.Now;
+            user.PasswordChangedAtUtc = DateTime.UtcNow;
+            user.LastCredentialRotationAtUtc = DateTime.UtcNow;
+            user.SecurityStamp = Guid.NewGuid().ToString("N");
+            user.TokenVersion += 1;
+            user.FailedLoginCount = 0;
+            user.LastFailedLoginUtc = null;
+            user.LockoutUntilUtc = null;
         }
 
         public async Task<BaseAccountResponse> RecoverAccountAsync(RecoveryUserRequest recoveryRequest)
@@ -531,7 +573,7 @@ namespace Iam.DomainService.Accounts
 
             await _cacheClient.AddStringValueAsync(key, user.ItemId, config.RecoverAccountUrlLifetimeInMinutes * 60);
 
-            emailPurpose = string.IsNullOrWhiteSpace(emailPurpose) ? "RecoverAccount" : emailPurpose;
+            emailPurpose = string.IsNullOrWhiteSpace(emailPurpose) ? AccountMailPurposes.RecoverAccount : emailPurpose;
             var result = await SendActivationToEmailAsync(user, recoverAccountUrl, emailPurpose);
 
             await _repository.InsertUserKeyMapAsync(new UserKeyMap
@@ -599,18 +641,7 @@ namespace Iam.DomainService.Accounts
                 return false;
             }
 
-            var bc = BlocksContext.GetContext();
-            var tenantId = bc?.TenantId;
-            var tenant = !string.IsNullOrWhiteSpace(tenantId) ? _tenants.GetTenantByID(tenantId) : null;
-            user.Password = _identityAccessManagementService.HashPassword(resetPasswordRequest.Password, tenant?.TenantSalt);
-            user.PasswordSetTime = DateTime.Now;
-            user.PasswordChangedAtUtc = DateTime.UtcNow;
-            user.LastCredentialRotationAtUtc = DateTime.UtcNow;
-            user.SecurityStamp = Guid.NewGuid().ToString("N");
-            user.TokenVersion += 1;
-            user.FailedLoginCount = 0;
-            user.LastFailedLoginUtc = null;
-            user.LockoutUntilUtc = null;
+            ApplyPasswordRotation(user, resetPasswordRequest.Password);
 
             var result = await _repository.UpdateUserAsync(user);
 
@@ -621,7 +652,7 @@ namespace Iam.DomainService.Accounts
                 {
                     Code = resetPasswordRequest.Code,
                     UserId = userId,
-                    Event = "Reset_Password",
+                    Event = AccountEvents.ResetPassword,
                     PreventPostEvent = !resetPasswordRequest.LogoutFromAllDevices
                 });
             }
@@ -669,15 +700,7 @@ namespace Iam.DomainService.Accounts
                 return false;
             }
 
-            user.Password = _identityAccessManagementService.HashPassword(changePasswordRequest.NewPassword, tenant?.TenantSalt);
-            user.PasswordSetTime = DateTime.Now;
-            user.PasswordChangedAtUtc = DateTime.UtcNow;
-            user.LastCredentialRotationAtUtc = DateTime.UtcNow;
-            user.SecurityStamp = Guid.NewGuid().ToString("N");
-            user.TokenVersion += 1;
-            user.FailedLoginCount = 0;
-            user.LastFailedLoginUtc = null;
-            user.LockoutUntilUtc = null;
+            ApplyPasswordRotation(user, changePasswordRequest.NewPassword);
 
             var result = await _repository.UpdateUserAsync(user);
 
@@ -687,7 +710,7 @@ namespace Iam.DomainService.Accounts
                 await _identityAccessManagementService.SendToQueueAsync(IdpConstants.IamQueue, new AccountActivityEvent
                 {
                     UserId = bc?.UserId,
-                    Event = "Change_Password",
+                    Event = AccountEvents.ChangePassword,
                     PreventPostEvent = !config.LogoutOnPasswordChange
                 });
             }
@@ -736,7 +759,7 @@ namespace Iam.DomainService.Accounts
 
             await _cacheClient.AddStringValueAsync(key, user.ItemId, config.ActivationUrlLifetimeInMinutes * 60);
 
-            var emailPurpose = string.IsNullOrWhiteSpace(user.MailPurpose) ? "AccountActivation" : user.MailPurpose;
+            var emailPurpose = string.IsNullOrWhiteSpace(user.MailPurpose) ? AccountMailPurposes.AccountActivation : user.MailPurpose;
             var result = await _identityAccessManagementService.SendActivationToEmailAsync(user, accountActivationUri, emailPurpose);
 
             await _repository.InsertUserKeyMapAsync(new UserKeyMap
@@ -893,6 +916,8 @@ namespace Iam.DomainService.Accounts
         /// </summary>
         public async Task SendAccountLockedNotificationAsync(User user, DateTime lockoutUntilUtc)
         {
+            ArgumentNullException.ThrowIfNull(user);
+
             try
             {
                 var sendMailCommand = new SendMail
@@ -928,6 +953,8 @@ namespace Iam.DomainService.Accounts
         /// </summary>
         public async Task SendAccountUnlockedNotificationAsync(User user)
         {
+            ArgumentNullException.ThrowIfNull(user);
+
             try
             {
                 var sendMailCommand = new SendMail
