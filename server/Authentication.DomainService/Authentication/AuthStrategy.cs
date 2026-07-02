@@ -3,9 +3,6 @@ using Authentication.DomainService.OAuth;
 using Authentication.DomainService.OAuth.RequestModel;
 using Authentication.DomainService.OAuth.ResponseModel;
 using Authentication.DomainService.OAuth.Services;
-using Authentication.DomainService.Oidc.Repositories;
-using Authentication.DomainService.Services;
-using Blocks.CaptchaDriver;
 using Iam.DomainService.Entities;
 
 namespace Authentication.DomainService.Authentication
