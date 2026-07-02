@@ -75,6 +75,16 @@ namespace Authentication.DomainService.Utilities
             serviceCollection.AddSingleton<IAuthorizationClaimsResolver, AuthorizationClaimsResolver>();
             serviceCollection.AddSingleton<ClientCredentialsTokenIssuer>();
 
+            // Authorization flow split: lean orchestrator delegates to focused services.
+            serviceCollection.AddSingleton<PasswordHasher>();
+            serviceCollection.AddSingleton<OidcLoginAuditWriter>();
+            serviceCollection.AddSingleton<OidcCaptchaEvaluator>();
+            serviceCollection.AddSingleton<OidcLoginOrchestrator>();
+            serviceCollection.AddSingleton<OidcAuthorizationEndpoint>();
+            serviceCollection.AddSingleton<AuthorizationCodeExchangeService>();
+            serviceCollection.AddSingleton<OidcRefreshTokenService>();
+            serviceCollection.AddSingleton<OidcTokenEndpoint>();
+
             serviceCollection.AddSingleton<ICertificateProviderFactory, CertificateProviderFactory>();
             serviceCollection.AddSingleton<ISocialLogInServiceProvider, SocialLogInServiceProvider>();
             serviceCollection.AddSingleton<IdpTokenExchangeClient>();
