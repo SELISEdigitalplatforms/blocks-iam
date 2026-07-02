@@ -1,5 +1,3 @@
-using Authentication.DomainService.OAuth.RequestModel;
-using Iam.DomainService.Dtos;
 using Iam.DomainService.Entities;
 using Iam.DomainService.Users;
 
