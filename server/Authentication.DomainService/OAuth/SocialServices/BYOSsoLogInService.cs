@@ -44,7 +44,7 @@ namespace Authentication.DomainService.OAuth
             var result = await _httpService.Get<dynamic>(identityProvider.UserInfoUrl, new Dictionary<string, string> {
                 { "Authorization", $"bearer {response.AccessToken}"  } });
 
-            if (!string.IsNullOrWhiteSpace(result.Item2))
+            if (!string.IsNullOrWhiteSpace(result.Item2) || result.Item1 == null)
             {
                 _logger.LogError("Error while getting user data: {Error}", result.Item2);
                 return new SocialCallbackResult { ExternalUserData = new BYOSsoUserData() };
