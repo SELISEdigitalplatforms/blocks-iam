@@ -153,7 +153,8 @@ namespace Iam.DomainService.Resources
 
             var tenantConfig = await _resourceRepository.GetTenantConfigurationAsync();
             var blocksContext = BlocksContext.GetContext();
-            if (blocksContext.OrganizationId == DefaultOrganizationId && tenantConfig.IsMultiOrgEnabled & command.PropagateToOtherOrg)
+
+            if (blocksContext.OrganizationId == DefaultOrganizationId && (tenantConfig?.IsMultiOrgEnabled ?? false) & command.PropagateToOtherOrg)
             {
                 await _identityAccessManagementService.SendToQueueAsync(
                     IdpConstants.IamOrgQueue,

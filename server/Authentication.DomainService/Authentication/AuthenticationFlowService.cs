@@ -97,7 +97,7 @@ namespace Authentication.DomainService.Authentication
                 return new AuthenticationFlowResult
                 {
                     StatusCode = StatusCodes.Status400BadRequest,
-                    Error = "auth_config_missing"
+                    Error = OAuthError.AuthConfigMissing
                 };
             }
 
@@ -191,7 +191,7 @@ namespace Authentication.DomainService.Authentication
                 return new AuthenticationFlowResult
                 {
                     StatusCode = StatusCodes.Status400BadRequest,
-                    Error = "auth_config_missing"
+                    Error = OAuthError.AuthConfigMissing
                 };
             }
 
@@ -452,7 +452,7 @@ namespace Authentication.DomainService.Authentication
                 return new AuthenticationFlowResult
                 {
                     StatusCode = StatusCodes.Status400BadRequest,
-                    Error = "auth_config_missing"
+                    Error = OAuthError.AuthConfigMissing
                 };
             }
 
@@ -511,7 +511,7 @@ namespace Authentication.DomainService.Authentication
                 return new AuthenticationFlowResult
                 {
                     StatusCode = StatusCodes.Status401Unauthorized,
-                    Error = "session_expired"
+                    Error = OAuthError.SessionExpired
                 };
             }
 
@@ -525,7 +525,7 @@ namespace Authentication.DomainService.Authentication
                 return new AuthenticationFlowResult
                 {
                     StatusCode = StatusCodes.Status401Unauthorized,
-                    Error = "session_expired"
+                    Error = OAuthError.SessionExpired
                 };
             }
 
@@ -535,7 +535,7 @@ namespace Authentication.DomainService.Authentication
                 return new AuthenticationFlowResult
                 {
                     StatusCode = StatusCodes.Status401Unauthorized,
-                    Error = "session_expired"
+                    Error = OAuthError.SessionExpired
                 };
             }
 
@@ -569,7 +569,7 @@ namespace Authentication.DomainService.Authentication
             var configuration = await _authenticationRepository.GetAuthenticationConfigurationAsync();
             if (configuration == null)
             {
-                return new BadRequestObjectResult(new { error = "auth_config_missing" });
+                return new BadRequestObjectResult(new { error = OAuthError.AuthConfigMissing });
             }
 
             var refreshToken = string.IsNullOrWhiteSpace(request.RefreshToken)
@@ -757,45 +757,12 @@ namespace Authentication.DomainService.Authentication
 
         private static bool AppendCookies(TokenResponse response, HttpResponse httpResponse, string domain)
         {
-            // Validate response has no error indicator
-            if (!string.IsNullOrWhiteSpace(response.Error))
-            {
-                return false;
-            }
-
-            // Validate access token is present
-            if (string.IsNullOrWhiteSpace(response.AccessToken))
-            {
-                return false;
-            }
-
-            if (string.IsNullOrWhiteSpace(domain))
-            {
-                return false;
-            }
-
-
-            var accessCookieOptions = DomainResolver.CreateCookieOptions(response.CookieDomain, response.ExpiresUtc);
-            var refreshCookieOptions = DomainResolver.CreateCookieOptions(response.CookieDomain, response.RefreshExpiresUtc);
-
-            DeleteCookie(httpResponse, domain, accessCookieOptions, refreshCookieOptions);
-
-            httpResponse.Cookies.Append(domain, response.AccessToken, accessCookieOptions);
-
-            if (!string.IsNullOrWhiteSpace(response.RefreshToken))
-            {
-                httpResponse.Cookies.Append($"{IdpConstants.RefreshTokenCookieName}_{domain}", response.RefreshToken, refreshCookieOptions);
-            }
-
-            return true;
+            return CookieHelper.AppendCookies(response, httpResponse, domain);
         }
 
         private static void DeleteCookie(HttpResponse httpResponse, string domain, CookieOptions accessCookieOptions, CookieOptions refreshCookieOptions)
         {
-
-            httpResponse.Cookies.Delete(domain, accessCookieOptions);
-            httpResponse.Cookies.Delete($"{IdpConstants.RefreshTokenCookieName}_{domain}", refreshCookieOptions);
-
+            CookieHelper.DeleteAccessAndRefreshTokenCookies(httpResponse, domain, accessCookieOptions, refreshCookieOptions);
         }
 
         public Task<IActionResult> ExecuteImpersonateAsync(ImpersonateRequest request, HttpRequest httpRequest, HttpResponse httpResponse)

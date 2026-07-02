@@ -171,7 +171,7 @@ namespace Authentication.DomainService.Authentication
                     CaptchaOutcome.Missing => LoginAuditEvents.CaptchaValidationFailure,
                     CaptchaOutcome.Invalid => LoginAuditEvents.CaptchaValidationFailure,
                     _ => LoginAuditEvents.LoginFailure
-                }, "oidc_login_captcha_invalid");
+                }, LoginAuditEvents.OidcLoginCaptchaInvalid);
                 return BuildCaptchaResult(captcha);
             }
 
@@ -197,11 +197,11 @@ namespace Authentication.DomainService.Authentication
                 var accountLocked = updatedUser?.LockoutUntilUtc.HasValue == true && updatedUser.LockoutUntilUtc.Value > DateTime.UtcNow;
                 if (accountLocked)
                 {
-                    await WriteOidcLoginAuditAsync(request, user, httpRequest, LoginAuditEvents.LoginFailureAccountLocked, "oidc_login_account_locked");
+                    await WriteOidcLoginAuditAsync(request, user, httpRequest, LoginAuditEvents.LoginFailureAccountLocked, LoginAuditEvents.OidcLoginAccountLocked);
                     return new ObjectResult(new { error = "account_locked" }) { StatusCode = StatusCodes.Status423Locked };
                 }
 
-                await WriteOidcLoginAuditAsync(request, user, httpRequest, LoginAuditEvents.LoginFailure, "oidc_login_invalid_credentials");
+                await WriteOidcLoginAuditAsync(request, user, httpRequest, LoginAuditEvents.LoginFailure, LoginAuditEvents.OidcLoginFailure);
                 return new UnauthorizedObjectResult(new { error = "invalid_credentials" });
             }
 
@@ -211,7 +211,7 @@ namespace Authentication.DomainService.Authentication
             }
 
             await ResetAuthFailureCountersAsync(user);
-            await WriteOidcLoginAuditAsync(request, user, httpRequest, LoginAuditEvents.LoginSuccess, "oidc_login_success");
+            await WriteOidcLoginAuditAsync(request, user, httpRequest, LoginAuditEvents.LoginSuccess, LoginAuditEvents.OidcLoginSuccess);
 
             return await AuthorizeAsync(
                 request.ClientId ?? string.Empty,
@@ -379,7 +379,7 @@ Status = AuthenticationConstants.StatusSuccess
             await _cacheClient.AddStringValueAsync(
                 $"oidc_mfa_login:{challengeResponse.MfaId}",
                 JsonSerializer.Serialize(mfaContext),
-                300);
+                AuthenticationConstants.OidcStateCacheTtlSeconds);
 
             return new OkObjectResult(new
             {
@@ -1122,7 +1122,7 @@ Status = AuthenticationConstants.StatusSuccess
             };
 
             var authConfiguration = await _authenticationRepository.GetAuthenticationConfigurationAsync();
-            var accessTokenLifetimeSeconds = Math.Max((authConfiguration?.AccessTokenValidForNumberMinutes ?? IdentityConfiguration.DefaultAccessTokenValidForNumberMinutes) * 60, 60);
+            var accessTokenLifetimeSeconds = Math.Max((authConfiguration?.AccessTokenValidForNumberMinutes ?? IdentityConfiguration.DefaultAccessTokenValidForNumberMinutes) * AuthenticationConstants.SecondsPerMinute, AuthenticationConstants.MinAccessTokenLifetimeSeconds);
             var absoluteRefreshTokenLifetimeMinutes = Math.Max(authConfiguration?.AbsoluteRefreshTokenValidForNumberMinutes ?? IdentityConfiguration.DefaultRememberMeRefreshTokenValidForNumberMinutes, 1);
 
             var issuer = DomainResolver.GetIssuer(tenant);
@@ -1301,7 +1301,7 @@ Status = AuthenticationConstants.StatusSuccess
             var configuration = await _authenticationRepository.GetAuthenticationConfigurationAsync();
             if (configuration == null)
             {
-                return new BadRequestObjectResult(new { error = "auth_config_missing" });
+                return new BadRequestObjectResult(new { error = OAuthError.AuthConfigMissing });
             }
 
             var cachedRefreshToken = await _cacheClient.GetStringValueAsync(refresh_token);
@@ -1630,42 +1630,17 @@ Status = AuthenticationConstants.StatusSuccess
 
         private static TimeSpan GetIdpSessionIdleTimeout()
         {
-            var configured = Environment.GetEnvironmentVariable("IDP_SESSION_IDLE_HOURS");
-            if (double.TryParse(configured, out var hours) && hours > 0 && hours <= AuthenticationConstants.MaxIdpSessionHours)
-            {
-                return TimeSpan.FromHours(hours);
-            }
-
-            return TimeSpan.FromHours(AuthenticationConstants.DefaultIdpSessionIdleHours);
+            return SessionTimeoutConfig.GetIdleTimeout();
         }
 
         private static TimeSpan GetIdpSessionAbsoluteTimeout()
         {
-            var configured = Environment.GetEnvironmentVariable("IDP_SESSION_ABSOLUTE_HOURS");
-            if (double.TryParse(configured, out var hours) && hours > 0 && hours <= AuthenticationConstants.MaxIdpSessionHours)
-            {
-                return TimeSpan.FromHours(hours);
-            }
-
-            return TimeSpan.FromHours(AuthenticationConstants.DefaultIdpSessionAbsoluteHours); // Default to 5 hours
+            return SessionTimeoutConfig.GetAbsoluteTimeoutHours();
         }
 
         private static string? ResolveEffectiveOrganizationId(User user)
         {
-            if (!string.IsNullOrWhiteSpace(user.LastUsedOrganizationId)
-                && user.OrganizationIds.Contains(user.LastUsedOrganizationId))
-            {
-                return user.LastUsedOrganizationId;
-            }
-
-            if (user.OrganizationIds.Contains("default"))
-            {
-                return "default";
-            }
-
-            return user.OrganizationIds.FirstOrDefault()
-                ?? user.Roles.Keys.FirstOrDefault()
-                ?? user.Permissions.Keys.FirstOrDefault();
+            return OrganizationAccessResolver.ResolveEffectiveOrganizationId(user);
         }
 
         private async Task PersistLastUsedOrganizationAsync(User user, string? organizationId)
@@ -1716,18 +1691,18 @@ Status = AuthenticationConstants.StatusSuccess
 
                 foreach (var token in clientTokens)
                 {
-                    await _refreshTokenRepo.RevokeByTokenIdAsync(token.TokenId, "authorization_code_reuse_detected");
+                    await _refreshTokenRepo.RevokeByTokenIdAsync(token.TokenId, LoginAuditEvents.AuthorizationCodeReuseDetected);
                 }
 
                 var auditLog = new AuditLogModel
                 {
-                    EventType = "code_reuse_attack",
+                    EventType = LoginAuditEvents.CodeReuseAttack,
                     UserId = userId,
                     ClientId = clientId,
                     TenantId = tenantId,
                     IpAddress = "unknown",
                     UserAgent = "unknown",
-                    Severity = "CRITICAL",
+                    Severity = AuthenticationConstants.SeverityCritical,
                     Status = AuthenticationConstants.StatusSuccess,
                     Timestamp = DateTime.UtcNow
                 };
@@ -1741,25 +1716,12 @@ Status = AuthenticationConstants.StatusSuccess
 
         private static bool AppendCookies(TokenResponse response, HttpResponse httpResponse, string domain)
         {
-            if (!string.IsNullOrWhiteSpace(response.Error))
-                return false;
-            if (string.IsNullOrWhiteSpace(response.AccessToken))
-                return false;
-            if (string.IsNullOrWhiteSpace(domain))
-                return false;
-            var accessCookieOptions = DomainResolver.CreateCookieOptions(response.CookieDomain, response.ExpiresUtc);
-            var refreshCookieOptions = DomainResolver.CreateCookieOptions(response.CookieDomain, response.RefreshExpiresUtc);
-            DeleteCookie(httpResponse, domain, accessCookieOptions, refreshCookieOptions);
-            httpResponse.Cookies.Append(domain, response.AccessToken, accessCookieOptions);
-            if (!string.IsNullOrWhiteSpace(response.RefreshToken))
-                httpResponse.Cookies.Append($"{IdpConstants.RefreshTokenCookieName}_{domain}", response.RefreshToken, refreshCookieOptions);
-            return true;
+            return CookieHelper.AppendCookies(response, httpResponse, domain);
         }
 
         private static void DeleteCookie(HttpResponse httpResponse, string domain, CookieOptions accessCookieOptions, CookieOptions refreshCookieOptions)
         {
-            httpResponse.Cookies.Delete(domain, accessCookieOptions);
-            httpResponse.Cookies.Delete($"{IdpConstants.RefreshTokenCookieName}_{domain}", refreshCookieOptions);
+            CookieHelper.DeleteAccessAndRefreshTokenCookies(httpResponse, domain, accessCookieOptions, refreshCookieOptions);
         }
 
         private sealed class FlowContext
