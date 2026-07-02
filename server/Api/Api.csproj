@@ -16,9 +16,10 @@
   <ItemGroup>
     <None Include="appsettings.Development.json" />
   </ItemGroup>
-  <ItemGroup>
-    <PackageReference Include="FluentValidation.AspNetCore" />
-  </ItemGroup>
+	<ItemGroup>
+		<PackageReference Include="FluentValidation.AspNetCore" />
+		<PackageReference Include="SeliseBlocks.ConfigurationDriver" />
+	</ItemGroup>
   <ItemGroup>
     <ProjectReference Include="..\Authentication.DomainService\Authentication.DomainService.csproj" />
     <ProjectReference Include="..\Captcha.Driver\Captcha.Driver.csproj" />
