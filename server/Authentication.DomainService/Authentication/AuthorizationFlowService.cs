@@ -711,7 +711,7 @@ namespace Authentication.DomainService.Authentication
 
                 var cacheKey = $"idp_flow:{state}";
                 var flowContextJson = await _cacheClient.GetStringValueAsync(cacheKey);
-                var forwardedToContext = flowContextJson !=null ?  JsonSerializer.Deserialize<FlowContext>(flowContextJson) : null;
+                var forwardedToContext = flowContextJson != null ? JsonSerializer.Deserialize<FlowContext>(flowContextJson) : null;
 
                 canRedirectToClient = true;
 
@@ -1252,8 +1252,7 @@ namespace Authentication.DomainService.Authentication
             // Delegate to unified refresh token authentication service (same as ExecuteRefreshAsync)
             var refreshRequest = new RefreshRequest
             {
-                RefreshToken = refresh_token,
-                ClientId = client_id
+                RefreshToken = refresh_token
             };
 
             var (validation, configuration, tokenCache, user) = await ValidateRefreshTokenRequestAsync(refreshRequest, refresh_token, request);
@@ -1344,13 +1343,6 @@ namespace Authentication.DomainService.Authentication
             if (string.IsNullOrWhiteSpace(tokenCache.ClientId) || !await HasOidcClientConfigurationAsync(tokenCache.ClientId))
             {
                 return (new UnauthorizedObjectResult(new { error = "invalid_client", error_description = "Client configuration not found" }), null, null, null);
-            }
-
-            // Defense-in-depth: Validate sent client_id matches the cached/bound client_id
-            if (!string.IsNullOrWhiteSpace(refreshRequest.ClientId) &&
-                !string.Equals(refreshRequest.ClientId, tokenCache.ClientId, StringComparison.OrdinalIgnoreCase))
-            {
-                return (new UnauthorizedObjectResult(new { error = "invalid_client", error_description = "Client mismatch: sent client_id does not match token binding" }), null, null, null);
             }
 
             var currentTenantId = BlocksContext.GetContext()?.TenantId;
