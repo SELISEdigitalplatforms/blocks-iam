@@ -1,18 +1,32 @@
-namespace Blocks.CaptchaDriver
+namespace Blocks.CaptchaDriver;
+
+/// <summary>
+/// <see cref="IHttpClientService"/> implementation backed by <see cref="IHttpClientFactory"/>.
+/// </summary>
+public sealed class HttpClientService : IHttpClientService
 {
-    public class HttpClientService : IHttpClientService
+    private readonly IHttpClientFactory _httpClientFactory;
+
+    public HttpClientService(IHttpClientFactory httpClientFactory)
     {
-        private readonly HttpClient _httpClient;
+        _httpClientFactory = httpClientFactory;
+    }
 
-        public HttpClientService()
+    /// <inheritdoc />
+    public async Task<HttpResponseMessage> SendAsync(HttpRequestMessage? request, string? contentType)
+    {
+        if (request is null)
         {
-            _httpClient = new HttpClient();
+            throw new ArgumentNullException(nameof(request));
         }
 
-        public async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, string contentType)
+        if (contentType is null)
         {
-            _httpClient.DefaultRequestHeaders.TryAddWithoutValidation("Content-Type", contentType);
-            return await _httpClient.SendAsync(request);
+            throw new ArgumentNullException(nameof(contentType));
         }
+
+        var client = _httpClientFactory.CreateClient(nameof(CaptchaDriver));
+        client.DefaultRequestHeaders.TryAddWithoutValidation("Content-Type", contentType);
+        return await client.SendAsync(request);
     }
 }

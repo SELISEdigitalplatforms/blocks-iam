@@ -1,6 +1,4 @@
-﻿using Blocks.Genesis;
-
-namespace Iam.DomainService.Accounts
+﻿namespace Iam.DomainService.Accounts
 {
     public class ActivateUserRequest : BaseAccountRequest
     {

@@ -23,7 +23,6 @@ namespace Authentication.DomainService.OAuth
         private readonly IAuthenticationDomainService _authenticationDomainService;
         private readonly IAuthenticationRepository _authenticationRepository;
         private readonly IOtpServiceFactory _otpServiceFactory;
-        private readonly IMfaConfigurationService _configurationService;
         private readonly IMfaPolicyService _mfaPolicyService;
         private readonly ICacheClient _cacheClient;
         private readonly ITenants _tenants;
@@ -45,7 +44,6 @@ namespace Authentication.DomainService.OAuth
             IJwtAccessTokenProvider jwtAccessTokenProvider,
             IAuthenticationDomainService authenticationDomainService,
             IAuthenticationRepository authenticationRepository,
-            IMfaConfigurationService configurationService,
             IMfaPolicyService mfaPolicyService,
             ICacheClient cacheClient,
             ITenants tenants,
@@ -56,7 +54,6 @@ namespace Authentication.DomainService.OAuth
             _jwtAccessTokenProvider = jwtAccessTokenProvider;
             _authenticationDomainService = authenticationDomainService;
             _authenticationRepository = authenticationRepository;
-            _configurationService = configurationService;
             _mfaPolicyService = mfaPolicyService;
             _cacheClient = cacheClient;
             _tenants = tenants;
@@ -85,14 +82,12 @@ namespace Authentication.DomainService.OAuth
                 };
             }
 
-            var (_, allowedServiceAccessResources) = await ResolveClientAuthorizationConfigAsync(tokenRequest.ClientId);
             var jwtAccessToken = await _jwtAccessTokenProvider.GetJwtAccessToken(
                 authenticationConfiguration,
                 tenant,
                 user,
                 tokenRequest,
-                stateInfo,
-                clientAllowedServiceAccessResources: allowedServiceAccessResources);
+                stateInfo);
 
             var accessToken = CreateJwtAccessToken(jwtAccessToken);
             var (refreshToken, refreshValidity) = await ManageRefreshTokenAsync(tokenRequest, jwtAccessToken, authenticationConfiguration, tenant, user);
@@ -110,27 +105,19 @@ namespace Authentication.DomainService.OAuth
             };
         }
 
-        private async Task<(IReadOnlyCollection<string> AllowedScopes, IReadOnlyCollection<string> AllowedServiceAccessResources)> ResolveClientAuthorizationConfigAsync(string? clientId)
+        private async Task<IReadOnlyCollection<string>> ResolveClientAllowedScopesAsync(string? clientId)
         {
             if (string.IsNullOrWhiteSpace(clientId))
             {
-                return ([], []);
+                return [];
             }
 
             var oidcClient = await _authenticationRepository.GetOidcClientRegistrationAsync(clientId);
-            var allowedScopes = oidcClient?.AllowedScopes?
+            return oidcClient?.AllowedScopes?
                 .Where(scope => !string.IsNullOrWhiteSpace(scope))
                 .Distinct(StringComparer.OrdinalIgnoreCase)
                 .ToList()
                 ?? [];
-
-            var allowedServiceAccessResources = oidcClient?.AllowedServiceAccessResources?
-                .Where(resource => !string.IsNullOrWhiteSpace(resource))
-                .Distinct(StringComparer.OrdinalIgnoreCase)
-                .ToList()
-                ?? [];
-
-            return (allowedScopes, allowedServiceAccessResources);
         }
 
         private async Task<TokenResponse?> ProcessCheckPointsAsync(TokenRequest tokenRequest, User user, string? clientId)

@@ -1,107 +1,92 @@
 ﻿using Microsoft.Extensions.Options;
+using Worker.Configuration;
 
 namespace Worker
 {
-    public class PeriodConfiguration
-    {
-        public bool Enabled { get; set; }
-        public string PingUrl { get; set; } = string.Empty;
-        public int PingIntervalSeconds { get; set; }
-    }
-
     public class PeriodicPingBackgroundService : BackgroundService
     {
+        private static readonly TimeSpan RestartDelay = TimeSpan.FromSeconds(1);
+
         private readonly IHttpClientFactory _httpClientFactory;
-        private readonly IConfiguration _configuration;
+        private readonly IOptionsMonitor<PeriodicPingConfiguration> _optionsMonitor;
         private readonly ILogger<PeriodicPingBackgroundService> _logger;
 
         private PeriodicTimer? _timer;
-        private readonly PeriodConfiguration _currentConfig;
 
         public PeriodicPingBackgroundService(
             IHttpClientFactory httpClientFactory,
-            IConfiguration configuration,
+            IOptionsMonitor<PeriodicPingConfiguration> optionsMonitor,
             ILogger<PeriodicPingBackgroundService> logger)
         {
             _httpClientFactory = httpClientFactory;
-            _configuration = configuration;
+            _optionsMonitor = optionsMonitor;
             _logger = logger;
-
-            _currentConfig = new PeriodConfiguration();
-            _currentConfig.Enabled = _configuration.GetValue<bool>("PeriodicPingConfiguration:Enabled");
-            _currentConfig.PingUrl = _configuration.GetValue<string>("PeriodicPingConfiguration:PingUrl") ?? string.Empty;
-            _currentConfig.PingIntervalSeconds = _configuration.GetValue<int>("PeriodicPingConfiguration:PingIntervalInSeconds");
         }
 
         protected override async Task ExecuteAsync(CancellationToken stoppingToken)
         {
-            if (!_currentConfig.Enabled)
+            var config = _optionsMonitor.CurrentValue;
+
+            if (!config.Enabled)
             {
                 _logger.LogInformation("Periodic ping is disabled.");
                 return;
             }
 
-            if (string.IsNullOrWhiteSpace(_currentConfig.PingUrl))
+            if (string.IsNullOrWhiteSpace(config.PingUrl))
             {
                 _logger.LogWarning("Periodic ping is enabled but PingUrl is empty. Service will not start.");
                 return;
             }
 
-            ResetTimer();
-
-            // 🔥 immediate first ping
-            if (_currentConfig.Enabled && !string.IsNullOrWhiteSpace(_currentConfig.PingUrl))
+            if (config.PingIntervalSeconds <= 0)
             {
-                await PingAsync(stoppingToken);
+                _logger.LogWarning(
+                    "Periodic ping is enabled but PingIntervalSeconds is {Value}. Service will not start.",
+                    config.PingIntervalSeconds);
+                return;
             }
 
-            while (!stoppingToken.IsCancellationRequested)
-            {
-                if (!_currentConfig.Enabled || _timer == null)
-                {
-                    await Task.Delay(1000, stoppingToken);
-                    continue;
-                }
+            _timer = new PeriodicTimer(TimeSpan.FromSeconds(config.PingIntervalSeconds));
 
-                try
+            try
+            {
+                await PingAsync(stoppingToken);
+
+                while (!stoppingToken.IsCancellationRequested)
                 {
                     await _timer.WaitForNextTickAsync(stoppingToken);
                     await PingAsync(stoppingToken);
                 }
-                catch (OperationCanceledException)
-                {
-                    break;
-                }
-                catch (Exception ex)
-                {
-                    _logger.LogError(ex, "Periodic ping failed");
-                }
+            }
+            catch (OperationCanceledException)
+            {
+                // Normal shutdown.
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Periodic ping failed");
             }
         }
 
-        private void ResetTimer()
+        public override void Dispose()
         {
             _timer?.Dispose();
-
-            if (_currentConfig.PingIntervalSeconds <= 0)
-            {
-                _timer = null;
-                return;
-            }
-
-            _timer = new PeriodicTimer(
-                TimeSpan.FromSeconds(_currentConfig.PingIntervalSeconds));
+            _timer = null;
+            base.Dispose();
+            GC.SuppressFinalize(this);
         }
 
         private async Task PingAsync(CancellationToken ct)
         {
+            var config = _optionsMonitor.CurrentValue;
             var client = _httpClientFactory.CreateClient();
 
             try
             {
-                _logger.LogInformation("Pinging {Url}", _currentConfig.PingUrl);
+                _logger.LogInformation("Pinging {Url}", config.PingUrl);
 
-                using var response = await client.GetAsync(_currentConfig.PingUrl, ct);
+                using var response = await client.GetAsync(config.PingUrl, ct);
 
                 if (response.IsSuccessStatusCode)
                 {
@@ -117,7 +102,6 @@ namespace Worker
                     return;
                 }
 
-                // 5xx – transient server issue
                 _logger.LogError(
                     "Ping failed with server error {StatusCode}. Will retry later.",
                     response.StatusCode);
