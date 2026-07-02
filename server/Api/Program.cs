@@ -1,6 +1,7 @@
-using Blocks.Genesis;
 using Authentication.DomainService.Utilities;
+using Blocks.Genesis;
 using Microsoft.AspNetCore.Http.Features;
+using SeliseBlocks.ConfigurationDriver;
 
 
 var builder = WebApplication.CreateBuilder(args);
@@ -19,7 +20,13 @@ Console.WriteLine(secret.AllowedCorsOrigins);
 var messageConfiguration = IdpConstants.GetMessageConfiguration(secret.MessageConnectionString);
 messageConfiguration.ServiceName = serviceName;
 ApplicationConfigurations.ConfigureServices(builder.Services, messageConfiguration);
-
+builder.Configuration.AddMongoDbConfiguration(options =>
+{
+    options.ConnectionString = secret.DatabaseConnectionString;
+    options.DatabaseName = secret.RootDatabaseName;
+    options.CollectionName = "Secrets";
+    options.SecretKey = "blocks-secret-iam";
+});
 builder.Services.Configure<FormOptions>(options =>
 {
     options.MultipartBodyLengthLimit = 15 * 1024 * 1024; // 15 MB
