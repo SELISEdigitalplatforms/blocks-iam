@@ -147,7 +147,7 @@ namespace Blocks.Api.Controllers
         public async Task<IActionResult> ExecutePasswordLogin([FromBody] EmbeddedLoginRequest request)
         {
             var section = _configuration.GetSection("FrontendRuntime");
-            BlocksContext.Create(
+            BlocksContext.SetContext(BlocksContext.Create(
                 section["BLOCKS_X_BLOCKS_KEY"],
                 Array.Empty<string>(),
                 string.Empty,
@@ -163,7 +163,8 @@ namespace Blocks.Api.Controllers
                 string.Empty,
                 section["BLOCKS_X_BLOCKS_KEY"],
                 string.Empty
-            );
+            ));
+
             var result = await _authenticationFlowService.ExecuteEmbeddedLoginAsync(request, Request);
             return new OkObjectResult(new
             {
