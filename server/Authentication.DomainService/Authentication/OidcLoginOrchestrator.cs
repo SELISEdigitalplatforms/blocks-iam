@@ -113,18 +113,18 @@ namespace Authentication.DomainService.Authentication
                 return inputError;
             }
 
-            var captchaResult = await _captchaEvaluator.EvaluateAsync(user!, request.CaptchaCode);
-            if (captchaResult.Required)
-            {
-                await _auditWriter.WriteAsync(request, user!, httpRequest, captchaResult.Outcome switch
-                {
-                    OidcCaptchaEvaluator.CaptchaOutcome.Missing => LoginAuditEvents.CaptchaValidationFailure,
-                    OidcCaptchaEvaluator.CaptchaOutcome.Invalid => LoginAuditEvents.CaptchaValidationFailure,
-                    _ => LoginAuditEvents.LoginFailure
-                }, LoginAuditEvents.OidcLoginCaptchaInvalid);
+            //var captchaResult = await _captchaEvaluator.EvaluateAsync(user!, request.CaptchaCode);
+            //if (captchaResult.Required)
+            //{
+            //    await _auditWriter.WriteAsync(request, user!, httpRequest, captchaResult.Outcome switch
+            //    {
+            //        OidcCaptchaEvaluator.CaptchaOutcome.Missing => LoginAuditEvents.CaptchaValidationFailure,
+            //        OidcCaptchaEvaluator.CaptchaOutcome.Invalid => LoginAuditEvents.CaptchaValidationFailure,
+            //        _ => LoginAuditEvents.LoginFailure
+            //    }, LoginAuditEvents.OidcLoginCaptchaInvalid);
 
-                return OidcCaptchaEvaluator.BuildResult(captchaResult);
-            }
+            //    return OidcCaptchaEvaluator.BuildResult(captchaResult);
+            //}
 
             if (!VerifyPassword(request, user!, tenant))
             {

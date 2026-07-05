@@ -120,15 +120,15 @@ namespace Iam.DomainService.Accounts
                 return policyValidation;
             }
 
-            var captchaValidationError = await ValidateCaptchaAsync(signupUserRequest.CaptchaCode);
-            if (captchaValidationError != null)
-            {
-                return new BaseAccountResponse
-                {
-                    IsSuccess = false,
-                    Errors = captchaValidationError
-                };
-            }
+            //var captchaValidationError = await ValidateCaptchaAsync(signupUserRequest.CaptchaCode);
+            //if (captchaValidationError != null)
+            //{
+            //    return new BaseAccountResponse
+            //    {
+            //        IsSuccess = false,
+            //        Errors = captchaValidationError
+            //    };
+            //}
 
             var normalizedEmail = signupUserRequest.Email.Trim().ToLowerInvariant();
             var existingHandlingResult = await HandleExistingSignupUserAsync(normalizedEmail);
