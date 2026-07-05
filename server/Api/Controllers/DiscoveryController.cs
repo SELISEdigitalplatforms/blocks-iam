@@ -141,7 +141,7 @@ namespace Blocks.Api.Controllers
             return JwksJson();
         }
 
-        [HttpPost("/login")]
+        [HttpPost("/auth-login")]
         [Produces("application/json")]
         [ProducesResponseType(typeof(JwksResponse), 200)]
         public async Task<IActionResult> ExecutePasswordLogin([FromBody] EmbeddedLoginRequest request)
