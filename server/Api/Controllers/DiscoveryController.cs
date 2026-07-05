@@ -1,4 +1,6 @@
-using System.Threading.Tasks;
+using Authentication.DomainService.Authentication;
+using Authentication.DomainService.OAuth.RequestModel;
+using Blocks.Genesis;
 using Idp.DomainService.Oidc.Contracts;
 using Idp.DomainService.Oidc.Services;
 using Microsoft.AspNetCore.Authorization;
@@ -20,11 +22,20 @@ namespace Blocks.Api.Controllers
     {
         private readonly IDiscoveryService _discoveryService;
         private readonly IJwksService _jwksService;
+        private readonly IAuthenticationFlowService _authenticationFlowService;
+        private readonly IConfiguration _configuration;
 
-        public DiscoveryController(IDiscoveryService discoveryService, IJwksService jwksService)
+        public DiscoveryController(
+            IDiscoveryService discoveryService, 
+            IJwksService jwksService, 
+            IAuthenticationFlowService authenticationFlowService,
+            IConfiguration configuration
+        )
         {
             _discoveryService = discoveryService;
             _jwksService = jwksService;
+            _authenticationFlowService = authenticationFlowService;
+            _configuration = configuration;
         }
 
         /// <summary>
@@ -128,6 +139,44 @@ namespace Blocks.Api.Controllers
         public Task<IActionResult> JwksJsonAlias()
         {
             return JwksJson();
+        }
+
+        [HttpPost("/login")]
+        [Produces("application/json")]
+        [ProducesResponseType(typeof(JwksResponse), 200)]
+        public async Task<IActionResult> ExecutePasswordLogin([FromBody] EmbeddedLoginRequest request)
+        {
+            var section = _configuration.GetSection("FrontendRuntime");
+            BlocksContext.SetContext(BlocksContext.Create(
+                section["BLOCKS_X_BLOCKS_KEY"],
+                Array.Empty<string>(),
+                string.Empty,
+                false,
+                string.Empty,
+                string.Empty,
+                DateTime.MinValue,
+                string.Empty,
+                Array.Empty<string>(),
+                string.Empty,
+                string.Empty,
+                string.Empty,
+                string.Empty,
+                section["BLOCKS_X_BLOCKS_KEY"],
+                string.Empty
+            ));
+
+            var result = await _authenticationFlowService.ExecuteEmbeddedLoginAsync(request, Request);
+            return new OkObjectResult(new
+            {
+                access_token = result.TokenResponse.AccessToken,
+                refresh_token = result.TokenResponse.RefreshToken,
+                token_type = result.TokenResponse.TokenType,
+                expires_in = result.TokenResponse.ExpiresIn,
+                expires_utc = result.TokenResponse.ExpiresUtc,
+                refresh_expires_utc = result.TokenResponse.RefreshExpiresUtc,
+                scope = result.TokenResponse.Scope,
+                id_token = result.TokenResponse.IdToken
+            }); ;
         }
     }
 }
