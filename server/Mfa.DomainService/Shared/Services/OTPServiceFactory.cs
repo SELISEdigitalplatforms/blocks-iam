@@ -21,7 +21,7 @@ namespace Mfa.DomainService.Services
                 UserMfaType.TOTP => _serviceProvider.GetRequiredService<TotpService>(),
                 UserMfaType.Email => _serviceProvider.GetRequiredService<EmailOtpService>(),
 
-                _ => throw new ArgumentException("Invalid MfaAuthType", authType.ToString())
+                _ => throw new ArgumentException("Invalid MfaAuthType", nameof(authType))
             };
         }
     }

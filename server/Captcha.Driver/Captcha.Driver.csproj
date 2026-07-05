@@ -23,8 +23,10 @@
 	<ItemGroup>
 		<PackageReference Include="FluentValidation" />
 		<PackageReference Include="Microsoft.Extensions.DependencyInjection.Abstractions" />
+		<PackageReference Include="Microsoft.Extensions.Http" />
+		<PackageReference Include="Microsoft.Extensions.Logging.Abstractions" />
+		<PackageReference Include="Microsoft.Extensions.Options.ConfigurationExtensions" />
 		<PackageReference Include="MongoDB.Driver" />
-		<PackageReference Include="Newtonsoft.Json" />
 		<PackageReference Include="SeliseBlocks.Genesis" />
 	</ItemGroup>
 

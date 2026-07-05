@@ -8,8 +8,6 @@ namespace Authentication.DomainService.RequestModel
         public List<string> PostLogoutRedirectUris { get; set; } = new();
         public string? Scope { get; set; }
         public List<string> AllowedScopes { get; set; } = new();
-        public string? ServiceAccessResource { get; set; }
-        public List<string> AllowedServiceAccessResources { get; set; } = new();
         public List<string> AllowedResponseTypes { get; set; } = new() { "code" };
         public bool RequirePkce { get; set; } = true;
         public bool RequireConsent { get; set; }
