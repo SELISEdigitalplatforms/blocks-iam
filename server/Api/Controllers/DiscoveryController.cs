@@ -141,7 +141,7 @@ namespace Blocks.Api.Controllers
             return JwksJson();
         }
 
-        [HttpPost("/login")]
+        [HttpPost("/auth-login")]
         [Produces("application/json")]
         [ProducesResponseType(typeof(JwksResponse), 200)]
         public async Task<IActionResult> ExecutePasswordLogin([FromBody] EmbeddedLoginRequest request)
@@ -165,7 +165,9 @@ namespace Blocks.Api.Controllers
                 string.Empty
             ));
 
+            request.ClientId = section["BLOCKS_OS_CLIENT_ID"];
             var result = await _authenticationFlowService.ExecuteEmbeddedLoginAsync(request, Request);
+
             return new OkObjectResult(new
             {
                 access_token = result.TokenResponse.AccessToken,
