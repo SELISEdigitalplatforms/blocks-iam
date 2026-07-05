@@ -8,6 +8,7 @@ import {
 import { Captcha } from "@/components/captcha";
 import { isErrorWithErrors } from "@/lib/error";
 import { getRuntimeEnv } from "@/lib/runtime-env";
+import { useOidcUiConfig } from "@blocks-idp/authentication/hooks/use-oidc-ui-config";
 import { useSignupByEmail } from "@blocks-idp/authentication/hooks/use-auth";
 import { LoginOption } from "@blocks-idp/authentication/models/auth.model";
 import { useCaptcha } from "@blocks-idp/captcha/hooks/use-captcha";
@@ -40,15 +41,20 @@ export const SignupForm = ({
     resolver: zodResolver(signupFormSchema),
   });
   const { isPending, mutateAsync } = useSignupByEmail();
+  const { data: oidcUiConfig, captchaEnabled } = useOidcUiConfig();
 
-  const googleSiteKey = getRuntimeEnv("BLOCKS_GOOGLE_SITE_KEY") || "";
+  const googleSiteKey =
+    oidcUiConfig?.captcha?.key || getRuntimeEnv("BLOCKS_GOOGLE_SITE_KEY") || "";
+  const captchaType =
+    oidcUiConfig?.captcha?.provider === "hcaptcha" ? "hCaptcha" : "reCaptcha-v2-checkbox";
   const {
     code: captchaCode,
     captcha,
     reset: resetCaptcha,
   } = useCaptcha({
-    type: "reCaptcha-v2-checkbox",
     siteKey: googleSiteKey,
+    type: captchaType,
+    generator: oidcUiConfig?.captcha?.generator,
   });
 
   const { isValid } = form.formState;
@@ -140,8 +146,8 @@ export const SignupForm = ({
               )}
             />
 
-            {/* CAPTCHA (shown when form is valid) */}
-            {isValid && (
+            {/* CAPTCHA (shown when captcha is enabled and form is valid) */}
+            {captchaEnabled && isValid && (
               <div>
                 <Captcha {...(captcha as any)} />
               </div>
@@ -194,7 +200,12 @@ export const SignupForm = ({
             {/* Submit */}
             <button
               type="submit"
-              disabled={isAuthenticating || !isValid || !captchaCode || !isChecked}
+              disabled={
+                isAuthenticating ||
+                !isValid ||
+                (captchaEnabled && !captchaCode) ||
+                !isChecked
+              }
               className="oidc-sci-fi-btn mt-1 w-full flex items-center justify-center gap-2"
             >
               {isAuthenticating ? (
