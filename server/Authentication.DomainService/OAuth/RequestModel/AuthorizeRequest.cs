@@ -34,4 +34,10 @@ namespace Authentication.DomainService.OAuth.RequestModel
         [FromQuery(Name = "tenant_id")]
         public string? TenantId { get; set; }
     }
+
+    public sealed class AuthorizeValidationResult
+    {
+        public bool IsValid { get; set; }
+        public List<string> Errors { get; set; } = new List<string>();
+    }
 }

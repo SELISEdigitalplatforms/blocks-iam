@@ -1,51 +1,58 @@
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Options;
 
-namespace Blocks.CaptchaDriver
+namespace Blocks.CaptchaDriver;
+
+/// <summary>
+/// Resolves a reCAPTCHA configuration either from the secret store (database) or, as a fallback,
+/// from local configuration. The factory never returns <c>null</c>.
+/// </summary>
+public sealed class RecaptchaConfigFactory : IRecaptchaConfigFactory
 {
-    public class RecaptchaConfigFactory : IRecaptchaConfigFactory
+    private readonly ILogger<RecaptchaConfigFactory> _logger;
+    private readonly ICaptchaConfigurationService _captchaConfigurationService;
+    private readonly CaptchaOptions _options;
+
+    public RecaptchaConfigFactory(
+        ILogger<RecaptchaConfigFactory> logger,
+        ICaptchaConfigurationService captchaConfigurationService,
+        IOptions<CaptchaOptions> options)
     {
-        private readonly ILogger<RecaptchaConfigFactory> _logger;
-        private readonly ICaptchaConfigurationService _captchaConfigurationService;
+        _logger = logger;
+        _captchaConfigurationService = captchaConfigurationService;
+        _options = options.Value;
+    }
 
-        public RecaptchaConfigFactory(ILogger<RecaptchaConfigFactory> logger,
-                                      ICaptchaConfigurationService captchaConfigurationService)
+    /// <inheritdoc />
+    public async Task<IRecaptchaConfig> GetRecaptchaConfig(string? reCaptchaVerificationUriFormat, string? token)
+    {
+        if (reCaptchaVerificationUriFormat is null || token is null)
         {
-            _logger = logger;
-            _captchaConfigurationService = captchaConfigurationService;
+            throw new ArgumentNullException(nameof(reCaptchaVerificationUriFormat));
         }
 
-        public async Task<IRecaptchaConfig> GetRecaptchaConfig(string reCaptchaVerificationUriFormat, string token)
+        try
         {
-            try
+            var config = await _captchaConfigurationService.GetCaptchaConfigurationAsync();
+
+            if (config is null || string.IsNullOrWhiteSpace(config.CaptchaSecret))
             {
-                CaptchaConfiguration config = await GetConfigFromDb();
-
-                if (config == null)
-                {
-                    _logger.LogInformation("No custom config found. Going with local config");
-
-                    return new LocalReCaptchaConfig(
-                        vertificationUri: reCaptchaVerificationUriFormat,
-                        token: token);
-                }
-
-                return new DbReCaptchaConfig(
-                    config: config,
-                    token: token);
+                _logger.LogDebug("No reCAPTCHA config in store; using local config");
+                return new LocalReCaptchaConfig(reCaptchaVerificationUriFormat, token);
             }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, "Exception occurred.");
 
-                return new LocalReCaptchaConfig(
-                    vertificationUri: reCaptchaVerificationUriFormat,
-                    token: token);
-            }
+            return new DbReCaptchaConfig(config, token);
         }
-
-        public async Task<CaptchaConfiguration> GetConfigFromDb()
+        catch (Exception ex)
         {
-            return await _captchaConfigurationService.GetCaptchaConfigurationAsync();
+            _logger.LogError(ex, "Failed to load reCAPTCHA config from store; falling back to local config");
+            return new LocalReCaptchaConfig(reCaptchaVerificationUriFormat, token);
         }
+    }
+
+    /// <inheritdoc />
+    public async Task<CaptchaConfiguration?> GetConfigFromDb()
+    {
+        return await _captchaConfigurationService.GetCaptchaConfigurationAsync();
     }
 }

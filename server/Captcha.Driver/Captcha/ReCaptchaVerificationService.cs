@@ -1,97 +1,104 @@
-using Microsoft.Extensions.Configuration;
+using System.Text.Json;
+using Blocks.Genesis;
 using Microsoft.Extensions.Logging;
-using Newtonsoft.Json;
+using Microsoft.Extensions.Options;
 
-namespace Blocks.CaptchaDriver
+namespace Blocks.CaptchaDriver;
+
+/// <summary>
+/// Verifies Google reCAPTCHA tokens against Google's siteverify endpoint.
+/// </summary>
+public sealed class ReCaptchaVerificationService : ICaptchaVerificationService
 {
-    public class ReCaptchaVerificationService : ICaptchaVerificationService
+    /// <inheritdoc />
+    public string Provider => "recaptcha";
+
+    private const string LogContentType = "application/x-www-form-urlencoded";
+
+    private readonly IHttpClientService _httpClientService;
+    private readonly ILogger<ReCaptchaVerificationService> _logger;
+    private readonly IRecaptchaConfigFactory _recaptchaConfigFactory;
+    private readonly string _recaptchaVerificationUrl;
+
+    public ReCaptchaVerificationService(
+        IHttpClientService httpClientService,
+        IOptions<CaptchaOptions> options,
+        ILogger<ReCaptchaVerificationService> logger,
+        IRecaptchaConfigFactory recaptchaConfigFactory)
     {
-        private readonly IHttpClientService _httpClientService;
-        private readonly ILogger<ReCaptchaVerificationService> _logger;
-        private readonly IRecaptchaConfigFactory _recaptchaConfigFactory;
+        _httpClientService = httpClientService;
+        _logger = logger;
+        _recaptchaConfigFactory = recaptchaConfigFactory;
+        _recaptchaVerificationUrl = options.Value.RecaptchaVerificationUrl;
+    }
 
-        private readonly string _reCaptchaVerificationUriFormat;
+    /// <inheritdoc />
+    public async Task<VerificationResult> VerifyAsync(string verificationCode)
+    {
+        _logger.LogDebug("ReCaptcha verification requested");
 
-        public ReCaptchaVerificationService(IHttpClientService httpClientService,
-                                            IConfiguration configuration,
-                                            ILogger<ReCaptchaVerificationService> logger,
-                                            IRecaptchaConfigFactory recaptchaConfigFactory)
+        var recaptchaResponse = await VerifyCaptchaAsync(verificationCode);
+
+        if (recaptchaResponse is { Success: true })
         {
-            _httpClientService = httpClientService;
-            _logger = logger;
-            _recaptchaConfigFactory = recaptchaConfigFactory;
-
-            var reCaptchaSecretKey = configuration["ReCaptchaSecretKey"];
-            _reCaptchaVerificationUriFormat = $"https://www.google.com/recaptcha/api/siteverify?secret={reCaptchaSecretKey}&response=" + "{0}";
-        }
-
-        public async Task<VerificationResult> VerifyAsync(string verificationCode)
-        {
-            _logger.LogInformation("ReCaptchaVerificationHandler: In this method");
-
-            var recaptchaResponse = await VerifyCaptchaAsync(verificationCode);
-
-            _logger.LogInformation("ReCaptchaVerificationHandler: Response - {Response}", JsonConvert.SerializeObject(recaptchaResponse));
-
-            if (recaptchaResponse != null && recaptchaResponse.Success)
-            {
-                return new VerificationResult
-                {
-                    Verified = true,
-                    HostName = recaptchaResponse.HostName
-                };
-            }
-
             return new VerificationResult
             {
-                Verified = false,
-                Errors = new Dictionary<string, string>
-                {
-                    { "VerificationCode", "Verification code incorrect" }
-                }
+                Verified = true,
+                HostName = recaptchaResponse.HostName ?? string.Empty
             };
         }
 
-        public virtual async Task<RecaptchaResponse> VerifyCaptchaAsync(string token)
+        return new VerificationResult
         {
-            try
+            Verified = false,
+            Errors = new Dictionary<string, string>
             {
-                var requestUri = await ResolveVerificationUri(token);
-                var httpRequestMessage = new HttpRequestMessage(HttpMethod.Get, requestUri);
-                var response = await _httpClientService.SendAsync(httpRequestMessage, "application/x-www-form-urlencoded");
-
-                if (response.IsSuccessStatusCode)
-                {
-                    var recaptchaResponseJson = await response.Content.ReadAsStringAsync();
-                    var recaptchaResponse = JsonConvert.DeserializeObject<RecaptchaResponse>(recaptchaResponseJson);
-
-                    return recaptchaResponse;
-                }
-                else
-                {
-                    _logger.LogError("Error in http call for {RequestUri}: Http status code: {StatusCode}", requestUri, response.StatusCode);
-                }
+                { "VerificationCode", "Verification code incorrect" }
             }
-            catch (Exception ex)
+        };
+    }
+
+    private async Task<RecaptchaResponse> VerifyCaptchaAsync(string token)
+    {
+        try
+        {
+            var requestUri = await ResolveVerificationUri(token);
+            var httpRequestMessage = new HttpRequestMessage(HttpMethod.Get, requestUri);
+            var response = await _httpClientService.SendAsync(httpRequestMessage, LogContentType);
+
+            if (!response.IsSuccessStatusCode)
             {
-                _logger.LogError(ex, "Exception occurred while processing the request.");
+                _logger.LogError(
+                    "reCAPTCHA siteverify call failed. Status: {StatusCode}",
+                    response.StatusCode);
+                return new RecaptchaResponse { Success = false };
             }
 
-            return null;
+            await using var contentStream = await response.Content.ReadAsStreamAsync();
+            var recaptchaResponse = await JsonSerializer.DeserializeAsync<RecaptchaResponse>(
+                contentStream,
+                JsonOptions.Default);
+
+            return recaptchaResponse ?? new RecaptchaResponse { Success = false };
         }
-
-        public virtual async Task<string> ResolveVerificationUri(string token)
+        catch (Exception ex)
         {
-            try
-            {
-                var config = await _recaptchaConfigFactory.GetRecaptchaConfig(_reCaptchaVerificationUriFormat, token);
-                return config.ResolveRecaptchaUri();
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, "Exception occurred.");
-                return string.Format(_reCaptchaVerificationUriFormat, token);
-            }
+            _logger.LogError(ex, "reCAPTCHA verification failed");
+            return new RecaptchaResponse { Success = false };
+        }
+    }
+
+    private async Task<string> ResolveVerificationUri(string token)
+    {
+        try
+        {
+            var config = await _recaptchaConfigFactory.GetRecaptchaConfig(_recaptchaVerificationUrl, token);
+            return config.ResolveRecaptchaUri();
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Failed to build reCAPTCHA verification URI; using default endpoint");
+            return $"{_recaptchaVerificationUrl}?response={Uri.EscapeDataString(token)}";
         }
     }
 }

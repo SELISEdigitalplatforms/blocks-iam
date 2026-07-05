@@ -1,39 +1,46 @@
-using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging;
 
-namespace Blocks.CaptchaDriver
+namespace Blocks.CaptchaDriver;
+
+/// <summary>
+/// Resolves an <see cref="ICaptchaVerificationService"/> by provider name.
+/// </summary>
+public sealed class CaptchaVerificationServiceProvider : ICaptchaVerificationServiceProvider
 {
-    public class CaptchaVerificationServiceProvider : ICaptchaVerificationServiceProvider
+    private readonly Dictionary<string, ICaptchaVerificationService> _services;
+    private readonly ILogger<CaptchaVerificationServiceProvider> _logger;
+
+    /// <summary>
+    /// Provider name used when no configuration is supplied.
+    /// </summary>
+    public const string DefaultProvider = "bcaptcha";
+
+    public CaptchaVerificationServiceProvider(
+        IEnumerable<ICaptchaVerificationService> services,
+        ILogger<CaptchaVerificationServiceProvider> logger)
     {
-        private readonly IServiceProvider _serviceProvider;
+        _logger = logger;
+        _services = services.ToDictionary(
+            s => s.Provider,
+            s => s,
+            StringComparer.OrdinalIgnoreCase);
+    }
 
-        public CaptchaVerificationServiceProvider(IServiceProvider serviceProvider)
+    /// <inheritdoc />
+    public ICaptchaVerificationService GetCaptchaVerificationService(string provider)
+    {
+        if (string.IsNullOrWhiteSpace(provider))
         {
-            _serviceProvider = serviceProvider;
+            provider = DefaultProvider;
         }
 
-        public ICaptchaVerificationService GetCaptchaVerificationService(string provider)
+        if (_services.TryGetValue(provider, out var service))
         {
-            if (string.IsNullOrWhiteSpace(provider))
-            {
-                provider = "bcaptcha";
-            }
-
-            if (provider.Equals("bcaptcha", StringComparison.InvariantCultureIgnoreCase))
-            {
-                return _serviceProvider.GetService<BlocksCaptchaVerificationService>();
-            }
-
-            if (provider.Equals("recaptcha", StringComparison.InvariantCultureIgnoreCase))
-            {
-                return _serviceProvider.GetService<ReCaptchaVerificationService>();
-            }
-
-            if (provider.Equals("hcaptcha", StringComparison.InvariantCultureIgnoreCase))
-            {
-                return _serviceProvider.GetService<HCaptchaVerificationService>();
-            }
-
-            return default;
+            return service;
         }
+
+        _logger.LogError("Unknown captcha provider requested: {Provider}", provider);
+        throw new InvalidOperationException(
+            $"No captcha verification service is registered for provider '{provider}'.");
     }
 }

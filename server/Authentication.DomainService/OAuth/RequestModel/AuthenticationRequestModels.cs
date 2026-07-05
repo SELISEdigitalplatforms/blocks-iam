@@ -5,8 +5,6 @@ namespace Authentication.DomainService.OAuth.RequestModel
 
     public sealed class EmbeddedLoginRequest
     {
-        [JsonPropertyName("client_id")]
-        public string? ClientId { get; set; }
         [JsonPropertyName("username")]
         public string Username { get; set; } = string.Empty;
         [JsonPropertyName("password")]
@@ -26,8 +24,6 @@ namespace Authentication.DomainService.OAuth.RequestModel
 
     public sealed class SocialLoginRequest
     {
-        [JsonPropertyName("client_id")]
-        public string? ClientId { get; set; }
         [JsonPropertyName("code")]
         public string Code { get; set; } = string.Empty;
         [JsonPropertyName("state")]
@@ -81,8 +77,5 @@ namespace Authentication.DomainService.OAuth.RequestModel
     {
         [JsonPropertyName("refresh_token")]
         public string? RefreshToken { get; set; }
-
-        [JsonPropertyName("client_id")]
-        public string? ClientId { get; set; }
     }
 }

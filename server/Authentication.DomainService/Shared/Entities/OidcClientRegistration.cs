@@ -12,7 +12,6 @@ namespace Authentication.DomainService.Entities
         public List<string> RedirectUris { get; set; } = new();
         public List<string> PostLogoutRedirectUris { get; set; } = new();
         public List<string> AllowedScopes { get; set; } = new();
-        public List<string> AllowedServiceAccessResources { get; set; } = new();
         public List<string> AllowedResponseTypes { get; set; } = new() { "code" };
         public string? ClientName { get; set; }
         public string? LogoUri { get; set; }
@@ -48,14 +47,6 @@ namespace Authentication.DomainService.Entities
                     .Distinct(StringComparer.OrdinalIgnoreCase)
                     .ToList();
         }
-
-        [BsonIgnore]
-        public string? ServiceAccessResource { get;set;  }
-      //  {
-            // get => AllowedServiceAccessResources.FirstOrDefault();
-            // set => AllowedServiceAccessResources = string.IsNullOrWhiteSpace(value) ? new() : new() { value };
-
-       // }
 
         [BsonIgnore]
         public string? ClientDisplayName

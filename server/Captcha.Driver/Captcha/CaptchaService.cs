@@ -1,75 +1,90 @@
 using FluentValidation;
 using Microsoft.Extensions.Logging;
 
-namespace Blocks.CaptchaDriver
-{
-    public class CaptchaService : ICaptchaService
-    {
-        private readonly IValidator<SubmitCaptchaRequest> _submitCaptchaCommandValidator;
-        private readonly ICaptchaProcessor _captchaProcessor;
-        private readonly ICaptchaConfigurationService _configurationService;
-        private readonly ILogger<CaptchaService> _logger;
+namespace Blocks.CaptchaDriver;
 
-        public CaptchaService(
-            ICaptchaProcessor captchaProcessor,
-            IValidator<SubmitCaptchaRequest> submitCaptchaCommandValidator,
-            ILogger<CaptchaService> logger,
-            ICaptchaConfigurationService configurationService)
+/// <summary>
+/// Default <see cref="ICaptchaService"/> implementation. Validates incoming requests,
+/// delegates verification to a provider-specific service, and maps results to response DTOs.
+/// </summary>
+public sealed class CaptchaService : ICaptchaService
+{
+    private readonly IValidator<SubmitCaptchaRequest> _submitCaptchaCommandValidator;
+    private readonly ICaptchaProcessor _captchaProcessor;
+    private readonly ICaptchaConfigurationService _configurationService;
+    private readonly ILogger<CaptchaService> _logger;
+
+    public CaptchaService(
+        ICaptchaProcessor captchaProcessor,
+        IValidator<SubmitCaptchaRequest> submitCaptchaCommandValidator,
+        ILogger<CaptchaService> logger,
+        ICaptchaConfigurationService configurationService)
+    {
+        _captchaProcessor = captchaProcessor;
+        _submitCaptchaCommandValidator = submitCaptchaCommandValidator;
+        _logger = logger;
+        _configurationService = configurationService;
+    }
+
+    /// <inheritdoc />
+    public async Task<SubmitCaptchaRequestResponse> SubmitCaptchaAsync(SubmitCaptchaRequest command)
+    {
+        ArgumentNullException.ThrowIfNull(command);
+
+        var validationResult = await _submitCaptchaCommandValidator.ValidateAsync(command);
+        if (!validationResult.IsValid)
         {
-            _captchaProcessor = captchaProcessor;
-            _submitCaptchaCommandValidator = submitCaptchaCommandValidator;
-            _logger = logger;
-            _configurationService = configurationService;
+            return new SubmitCaptchaRequestResponse(validationResult);
         }
 
-        public async Task<SubmitCaptchaRequestResponse> SubmitCaptchaAsync(SubmitCaptchaRequest command)
+        var verificationCode = await _captchaProcessor.SubmitAndCreateVerificationCodeAsync(
+            command.Id,
+            command.HostName);
+
+        return new SubmitCaptchaRequestResponse(validationResult)
         {
-            var validationResult = await _submitCaptchaCommandValidator.ValidateAsync(command);
-            if (!validationResult.IsValid)
-            {
-                return new SubmitCaptchaRequestResponse(validationResult);
-            }
+            VerificationCode = verificationCode,
+            IsSuccess = true
+        };
+    }
 
-            var verificationCode = await _captchaProcessor.SubmitAndCreateVerificationCodeAsync(command.Id);
+    /// <inheritdoc />
+    public async Task<VerifyCaptchaRequestResponse> VerifyCaptchaAsync(VerifyCaptchaRequest query)
+    {
+        ArgumentNullException.ThrowIfNull(query);
 
-            return new SubmitCaptchaRequestResponse(validationResult)
+        if (string.IsNullOrWhiteSpace(query.VerificationCode))
+        {
+            return new VerifyCaptchaRequestResponse
             {
-                VerificationCode = verificationCode,
-                IsSuccess = true
+                IsSuccess = false,
+                Errors = new Dictionary<string, string>
+                {
+                    { "VerificationCode", "Verification code cannot be null or empty." }
+                }
             };
         }
 
-        public async Task<VerifyCaptchaRequestResponse> VerifyCaptchaAsync(VerifyCaptchaRequest query)
+        var config = await _configurationService.GetByNameAsync(query.ConfigurationName);
+        if (config is null)
         {
-            if (string.IsNullOrWhiteSpace(query.VerificationCode))
+            _logger.LogWarning(
+                "Captcha verification requested with unknown configuration {ConfigurationName}",
+                query.ConfigurationName);
+            return new VerifyCaptchaRequestResponse
             {
-                return new VerifyCaptchaRequestResponse
+                IsSuccess = false,
+                Errors = new Dictionary<string, string>
                 {
-                    IsSuccess = false,
-                    Errors = new Dictionary<string, string>
-                    {
-                        { "VerificationCode", "Verification code cannot be null or empty." }
-                    }
-                };
-            }
-
-            var config = await _configurationService.GetByNameAsync(query.ConfigurationName);
-
-            if (config == null)
-            {
-                return new VerifyCaptchaRequestResponse
-                {
-                    IsSuccess = false,
-                    Errors = new Dictionary<string, string>
-                    {
-                        { "Configuration Provider", "Configuration Provider is not found." }
-                    }
-                };
-            }
-
-            var verificationResult = await _captchaProcessor.VerifyCaptchaAsync(config.Provider, query.VerificationCode);
-
-            return verificationResult.ToVerifyCaptchaQueryResponse();
+                    { "Configuration", $"Configuration '{query.ConfigurationName}' was not found." }
+                }
+            };
         }
+
+        var verificationResult = await _captchaProcessor.VerifyCaptchaAsync(
+            config.Provider,
+            query.VerificationCode);
+
+        return verificationResult.ToVerifyCaptchaQueryResponse();
     }
 }

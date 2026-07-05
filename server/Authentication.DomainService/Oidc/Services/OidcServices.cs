@@ -27,6 +27,7 @@ public interface ITokenGenerationService
 public interface IPkceService
 {
     Task<bool> ValidateVerifierAsync(string codeChallenge, string codeVerifier, string? codeChallengeMethod);
+    string GenerateRandomCode(int length);
 }
 
 public interface IDiscoveryService
@@ -58,39 +59,36 @@ public sealed class OidcSigningKeyMaterial
     public SigningCredentials SigningCredentials { get; }
 }
 
-public sealed class TokenGenerationService : ITokenGenerationService
-{
-    private readonly OidcSigningKeyMaterial _keyMaterial;
-    private readonly ITenants _tenants;
-    private readonly ICacheClient _cacheClient;
-    private readonly UnifiedTokenSessionService _unifiedTokenSessionService;
-    private readonly ICryptoService _cryptoService;
-    private readonly ICertificateProviderFactory _certificateProviderFactory;
-    private readonly IHttpContextAccessor _httpContextAccessor;
-    private readonly IAuthenticationRepository _authenticationRepository;
-    private readonly IRefreshTokenRepository _refreshTokenRepository;
-
-    public TokenGenerationService(
-        OidcSigningKeyMaterial keyMaterial,
-        ITenants tenants,
-        ICacheClient cacheClient,
-        ICryptoService cryptoService,
-        ICertificateProviderFactory certificateProviderFactory,
-        IHttpContextAccessor httpContextAccessor,
-        IAuthenticationRepository authenticationRepository,
-        IAuthenticationDomainService authenticationDomainService,
-        IRefreshTokenRepository refreshTokenRepository)
+    public sealed class TokenGenerationService : ITokenGenerationService
     {
-        _keyMaterial = keyMaterial;
-        _tenants = tenants;
-        _cacheClient = cacheClient;
-        _cryptoService = cryptoService;
-        _certificateProviderFactory = certificateProviderFactory;
-        _httpContextAccessor = httpContextAccessor;
-        _authenticationRepository = authenticationRepository;
-        _refreshTokenRepository = refreshTokenRepository;
-        _unifiedTokenSessionService = new UnifiedTokenSessionService(_cacheClient, authenticationDomainService, _refreshTokenRepository);
-    }
+        private readonly OidcSigningKeyMaterial _keyMaterial;
+        private readonly ITenants _tenants;
+        private readonly ICacheClient _cacheClient;
+        private readonly UnifiedTokenSessionService _unifiedTokenSessionService;
+        private readonly ICryptoService _cryptoService;
+        private readonly ICertificateProviderFactory _certificateProviderFactory;
+        private readonly IHttpContextAccessor _httpContextAccessor;
+        private readonly IAuthenticationRepository _authenticationRepository;
+
+        public TokenGenerationService(
+            OidcSigningKeyMaterial keyMaterial,
+            ITenants tenants,
+            ICacheClient cacheClient,
+            UnifiedTokenSessionService unifiedTokenSessionService,
+            ICryptoService cryptoService,
+            ICertificateProviderFactory certificateProviderFactory,
+            IHttpContextAccessor httpContextAccessor,
+            IAuthenticationRepository authenticationRepository)
+        {
+            _keyMaterial = keyMaterial;
+            _tenants = tenants;
+            _cacheClient = cacheClient;
+            _unifiedTokenSessionService = unifiedTokenSessionService;
+            _cryptoService = cryptoService;
+            _certificateProviderFactory = certificateProviderFactory;
+            _httpContextAccessor = httpContextAccessor;
+            _authenticationRepository = authenticationRepository;
+        }
 
     public Task<string> GenerateIdTokenAsync(Contracts.OidcClaims claims, string issuer, int expiresInSeconds)
     {
@@ -206,11 +204,6 @@ public sealed class TokenGenerationService : ITokenGenerationService
             foreach (var role in claims.Roles)
             {
                 jwtClaims.Add(new Claim(BlocksContext.ROLES_CLAIM, role));
-            }
-
-            foreach (var resource in claims.Resources)
-            {
-                jwtClaims.Add(new Claim(BlocksContext.SERVICE_ACCESS_CLAIM, resource));
             }
 
             foreach (var permission in claims.Permissions)
@@ -358,6 +351,13 @@ public sealed class PkceService : IPkceService
         var hash = sha256.ComputeHash(Encoding.ASCII.GetBytes(codeVerifier));
         var encoded = Base64UrlEncoder.Encode(hash);
         return Task.FromResult(string.Equals(encoded, codeChallenge, StringComparison.Ordinal));
+    }
+
+    public string GenerateRandomCode(int length)
+    {
+        byte[] buffer = new byte[length];
+        RandomNumberGenerator.Fill(buffer);
+        return Convert.ToBase64String(buffer).Replace("/", "_").Replace("+", "-").Substring(0, 43);
     }
 }
 

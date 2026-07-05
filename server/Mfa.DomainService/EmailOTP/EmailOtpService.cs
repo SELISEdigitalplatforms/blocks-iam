@@ -5,8 +5,6 @@ using Mfa.DomainService.Configuration;
 using Mfa.DomainService.Entities;
 using Mfa.DomainService.Services;
 using Mfa.DomainService.Shared;
-using System.Collections;
-using static QRCoder.PayloadGenerator;
 
 namespace Mfa.DomainService.OTP.Services
 {
@@ -14,11 +12,10 @@ namespace Mfa.DomainService.OTP.Services
     {
         private readonly ICacheClient _cacheClient;
         private readonly IMfaConfigurationService _configurationService;
-        //private readonly IMailDriverService _mailDriverService;
         private readonly IMessageClient _messageClient;
 
-        private const int _defaultLifeCycleInSecond = 300;
-        private const string _defaultMfaTemplate = "MfaViaEmail";
+        private const int DefaultLifeCycleInSecond = 300;
+        private const string DefaultMfaTemplate = "MfaViaEmail";
 
         public EmailOtpService(ICacheClient cacheClient,
                                IMfaConfigurationService configurationService,
@@ -31,10 +28,10 @@ namespace Mfa.DomainService.OTP.Services
 
         public async Task<OtpGenerationResponse> GenerateAsync(UserInfo userInfo, string? sendPhoneNumberAsEmailDomain = null)
         {
-            var context = MfaAuthenticationContext.Create(Guid.NewGuid().ToString(), userInfo.ItemId);
+            var context = MfaAuthenticationContext.Create(Guid.NewGuid().ToString(), userInfo.ItemId ?? string.Empty);
             var code = context.MfaCode;
 
-            await _cacheClient.AddStringValueAsync(context.MfaId, context.Sterilize(), _defaultLifeCycleInSecond);
+            await _cacheClient.AddStringValueAsync(context.MfaId ?? string.Empty, context.Sterilize(), DefaultLifeCycleInSecond);
             var email = userInfo.Email;
             var sendPhoneNumberAsEmail = false;
 
@@ -43,11 +40,11 @@ namespace Mfa.DomainService.OTP.Services
                 if (string.IsNullOrWhiteSpace(userInfo.PhoneNumber))
                     return new OtpGenerationResponse { IsSuccess = false, Errors = new Dictionary<string, string> { { "phonenumber_not_exist", "PhoneNumber not exist in user for mfa" } } };
 
-                email = $"{userInfo.PhoneNumber.Replace(" ", "").Replace("+", "00")}@{sendPhoneNumberAsEmailDomain}";
+                email = $"{userInfo.PhoneNumber.Replace(" ", string.Empty, StringComparison.Ordinal).Replace("+", "00", StringComparison.Ordinal)}@{sendPhoneNumberAsEmailDomain}";
                 sendPhoneNumberAsEmail = true;
             }
 
-            var result = await SendMfaCodeAsync(email, code, userInfo.Language, sendPhoneNumberAsEmail);
+            var result = await SendMfaCodeAsync(email ?? string.Empty, code ?? string.Empty, userInfo.Language ?? "en-US", sendPhoneNumberAsEmail);
 
             return new OtpGenerationResponse { MfaId = context.MfaId, IsSuccess = result };
         }
@@ -65,13 +62,11 @@ namespace Mfa.DomainService.OTP.Services
                                    { "TwoFactorCode", code }
                                 },
 
-                Purpose = !string.IsNullOrWhiteSpace(configuration?.MfaTemplate?.TemplateName) ? configuration.MfaTemplate.TemplateName : _defaultMfaTemplate,
-                Language = language ?? "en-US",
+                Purpose = !string.IsNullOrWhiteSpace(configuration?.MfaTemplate?.TemplateName) ? configuration.MfaTemplate.TemplateName : DefaultMfaTemplate,
+                Language = language,
                 To = [email],
                 SendPhoneNumberAsEmail = sendPhoneNumberAsEmail
             };
-
-            //  var response = await _mailDriverService.SendAsync(sendMailCommand);
 
             await _messageClient.SendToConsumerAsync(new ConsumerMessage<SendMail>
             {
@@ -84,19 +79,19 @@ namespace Mfa.DomainService.OTP.Services
 
         public async Task<OtpVerificationResponse> VerifyAsync(VerifyOtpRequest request)
         {
-            var isKeyExist = await _cacheClient.KeyExistsAsync(request.MfaId);
+            var isKeyExist = await _cacheClient.KeyExistsAsync(request.MfaId ?? string.Empty);
 
             if (!isKeyExist)
             {
                 return new OtpVerificationResponse { Errors = new Dictionary<string, string> { { "message", "invalid_two_factor_id" } } };
             }
 
-            var keyValue = await _cacheClient.GetStringValueAsync(request.MfaId);
+            var keyValue = await _cacheClient.GetStringValueAsync(request.MfaId ?? string.Empty);
             var mfaContext = MfaAuthenticationContext.Deserialize(keyValue);
 
             if (mfaContext.MfaCode == request.VerificationCode)
             {
-                await _cacheClient.RemoveKeyAsync(request.MfaId);
+                await _cacheClient.RemoveKeyAsync(request.MfaId ?? string.Empty);
                 return new OtpVerificationResponse { IsSuccess = true, IsValid = true, UserId = mfaContext.UserId };
             }
 
