@@ -57,6 +57,6 @@ public sealed class CaptchaProcessor : ICaptchaProcessor
         }
 
         var handler = _captchaVerificationServiceProvider.GetCaptchaVerificationService(configProvider);
-        return await handler.VerifyAsync(VerificationCodeCacheKeyPrefix + verificationCode);
+        return await handler.VerifyAsync(verificationCode);
     }
 }
