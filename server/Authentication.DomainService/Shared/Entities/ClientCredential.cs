@@ -6,9 +6,8 @@ namespace Authentication.DomainService.Entities
     {
         public string? Name { get; set; }
         public string? ClientSecret { get; set; }
-        public List<string> Roles { get; set; } = [];
-        public Dictionary<string, List<string>> PermissionsByOrg { get; set; } = new(StringComparer.OrdinalIgnoreCase);
+        public List<string> Roles { get; set; } = new List<string>();
+        public List<string> Permissions { get; set; } = new List<string>();
         public bool IsActive { get; set; }
-        public List<string> Audiences { get; set; } = [];
     }
 }

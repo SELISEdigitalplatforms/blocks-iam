@@ -3,8 +3,8 @@ namespace Authentication.DomainService.Shared.RequestModel
     public sealed class SaveClientCredentialRequest
     {
         public string? Name { get; set; }
-        public List<string> Roles { get; set; } = [];
-        public Dictionary<string, List<string>> PermissionsByOrg { get; set; } = new(StringComparer.OrdinalIgnoreCase);
+        public List<string> Roles { get; set; } = new List<string>();
+        public List<string> Permissions { get; set; } = new List<string>();
     }
 
     public sealed class DeleteClientCredentialRequest
