@@ -35,6 +35,13 @@ namespace Authentication.DomainService.OAuth.Services
 
         public async Task<TokenResponse> AuthenticateAsync(TokenRequest request, IdentityConfiguration authenticationConfiguration, User? user = null)
         {
+            if (authenticationConfiguration == null)
+                return new TokenResponse
+                {
+                    Error = "server_error",
+                    ErrorDescription = "Authentication configuration missing"
+                };
+
             var client = await _authenticationRepository.GetClientCredentialByIdAsync(request.ClientId);
             var validationResult = ValidateClient(client, request);
 
@@ -42,26 +49,37 @@ namespace Authentication.DomainService.OAuth.Services
                 return validationResult;
 
             var jwtToken = await GetJwtAccessToken(authenticationConfiguration, client!);
-            var accessToken =  OAuthJwtAccessTokenManager.CreateJwtAccessToken(jwtToken);
+            if (jwtToken == null)
+                return new TokenResponse
+                {
+                    Error = "server_error",
+                    ErrorDescription = "Unable to resolve tenant or signing certificate"
+                };
+
+            var accessToken = OAuthJwtAccessTokenManager.CreateJwtAccessToken(jwtToken);
+
+            var lifetimeMinutes = client!.AccessTokenValidForNumberMinutes > 0
+                ? client.AccessTokenValidForNumberMinutes
+                : authenticationConfiguration.AccessTokenValidForNumberMinutes;
 
             return new TokenResponse
             {
                 AccessToken = accessToken,
-                ExpiresIn = authenticationConfiguration.AccessTokenValidForNumberMinutes,
+                ExpiresIn = lifetimeMinutes,
                 ExpiresUtc = jwtToken.Expires,
                 TokenType = "Bearer",
                 StatusCode = 200
             };
         }
 
-        private async Task<JwtAccessToken> GetJwtAccessToken(
+        private async Task<JwtAccessToken?> GetJwtAccessToken(
             IdentityConfiguration authenticationConfiguration,
             ClientCredential client)
         {
             var tenant = _tenants.GetTenantByID(BlocksContext.GetContext()?.TenantId ?? "");
-            if (tenant == null) return new JwtAccessToken();
+            if (tenant == null) return null;
             var certificate = await RetrievePrivateCertAsync(tenant);
-            if (certificate == null) return new JwtAccessToken();
+            if (certificate == null || certificate.Length == 0) return null;
             return MapJwtAccessToken(authenticationConfiguration, tenant, client, certificate);
         }
 
@@ -93,13 +111,17 @@ namespace Authentication.DomainService.OAuth.Services
             ClientCredential client,
             byte[] certificate)
         {
+            var lifetimeMinutes = client.AccessTokenValidForNumberMinutes > 0
+                ? client.AccessTokenValidForNumberMinutes
+                : authenticationConfiguration.AccessTokenValidForNumberMinutes;
+
             var jwtAccessToken = new JwtAccessToken
             {
-                AccessTokenValidForNumberMinute = authenticationConfiguration.AccessTokenValidForNumberMinutes,
+                AccessTokenValidForNumberMinute = lifetimeMinutes,
                 Issuer = tenant.JwtTokenParameters.Issuer,
                 Audience = DomainResolver.GetAudience(tenant),
                 NotBefore = DateTime.UtcNow,
-                Expires = DateTime.UtcNow.AddMinutes(authenticationConfiguration.AccessTokenValidForNumberMinutes),
+                Expires = DateTime.UtcNow.AddMinutes(lifetimeMinutes),
                 SigningCredentials = JwtAccessTokenProvider.MakeSigningCredentials(certificate, tenant.JwtTokenParameters.PrivateCertificatePassword)
             };
 

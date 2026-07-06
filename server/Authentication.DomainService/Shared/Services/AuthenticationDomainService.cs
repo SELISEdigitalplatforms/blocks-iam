@@ -369,6 +369,7 @@ namespace Authentication.DomainService.Services
 
                 existing.Name = request.Name;
                 existing.IsActive = request.IsActive;
+                existing.AccessTokenValidForNumberMinutes = request.AccessTokenValidForNumberMinutes;
                 existing.LastUpdatedBy = blocksContext?.UserId;
                 existing.LastUpdatedDate = DateTime.UtcNow;
 
@@ -380,19 +381,30 @@ namespace Authentication.DomainService.Services
             var clientCredential = new ClientCredential
             {
                 ItemId = Guid.NewGuid().ToString(),
-                ClientSecret = Guid.NewGuid().ToString("n"),
+                ClientSecret = ClientSecretGenerator.Generate(),
                 Name = request.Name,
                 CreatedBy = blocksContext?.UserId,
                 LastUpdatedBy = blocksContext?.UserId,
                 CreatedDate = DateTime.UtcNow,
                 LastUpdatedDate = DateTime.UtcNow,
                 OrganizationId = organizationId,
+                AccessTokenValidForNumberMinutes = request.AccessTokenValidForNumberMinutes,
                 Roles = roles,
                 Permissions = permissions,
                 IsActive = true
             };
 
             return await _authenticationRepository.SaveClientCredentialAsync(clientCredential);
+        }
+
+        private static string GenerateClientSecret()
+        {
+            var secretBytes = new byte[32];
+            System.Security.Cryptography.RandomNumberGenerator.Fill(secretBytes);
+            return "blxsk_" + Convert.ToBase64String(secretBytes)
+                .TrimEnd('=')
+                .Replace('+', '-')
+                .Replace('/', '_');
         }
 
         public async Task<BaseResponse> DeleteClientCredentialAsync(DeleteClientCredentialRequest request)
