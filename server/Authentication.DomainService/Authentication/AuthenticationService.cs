@@ -286,7 +286,6 @@ namespace Authentication.DomainService.Authentication
 
         public async Task<IActionResult> GetLoginOptionsAsync()
         {
-            var config = await _authenticationRepository.GetAuthenticationConfigurationAsync();
             var identityProviders = await _authenticationRepository.GetIdentityProvidersAsync();
 
             // Filter to only social providers that are active
