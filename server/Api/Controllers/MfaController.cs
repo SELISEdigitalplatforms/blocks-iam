@@ -1,18 +1,14 @@
 using System.Text.Json.Serialization;
 using Authentication.DomainService.Authentication;
-using Authentication.DomainService.OAuth;
 using Authentication.DomainService.Services;
 using Blocks.Genesis;
 using Iam.DomainService.Entities;
-using Iam.DomainService.Users;
 using Mfa.DomainService.Configuration;
 using Mfa.DomainService.Services;
 using Mfa.DomainService.Shared;
 using Mfa.DomainService.TOTP;
 using Microsoft.AspNetCore.Authorization;
-using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
-using Microsoft.Extensions.Logging;
 using UserEntity = Iam.DomainService.Entities.User;
 
 namespace Api.Controllers;
@@ -28,9 +24,7 @@ public class MfaController : ControllerBase
     private readonly IMfaBackupCodeService _backupCodeService;
     private readonly IMfaAuditService _auditService;
     private readonly IAuthenticationRepository _authenticationRepository;
-    private readonly IUserRepository _userRepository;
     private readonly TotpService _totpService;
-    private readonly ILogger<MfaController> _logger;
 
     public MfaController(
         IMfaManagementService mfaManagementService,
@@ -39,9 +33,7 @@ public class MfaController : ControllerBase
         IMfaBackupCodeService backupCodeService,
         IMfaAuditService auditService,
         IAuthenticationRepository authenticationRepository,
-        IUserRepository userRepository,
-        TotpService totpService,
-        ILogger<MfaController> logger)
+        TotpService totpService)
     {
         _mfaManagementService = mfaManagementService;
         _mfaConfigurationService = mfaConfigurationService;
@@ -49,9 +41,7 @@ public class MfaController : ControllerBase
         _backupCodeService = backupCodeService;
         _auditService = auditService;
         _authenticationRepository = authenticationRepository;
-        _userRepository = userRepository;
         _totpService = totpService;
-        _logger = logger;
     }
 
     [HttpGet("config")]
