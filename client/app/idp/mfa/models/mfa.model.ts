@@ -1,8 +1,12 @@
 export interface IMFAConfiguration {
-  enableMfa: boolean;
-  mfaTemplate: { templateName: string; templateId: string };
-  projectKey: string | null;
-  userMfaType: number[];
+  enabled: boolean;
+  allowedMethods: number[];
+  requireMfaForAllUsers: boolean;
+  mfaRequiredRoles: string[];
+  mfaExemptRoles: string[];
+  allowUserOptOut: boolean;
+  allowBackupCodes: boolean;
+  backupCodesCount: number;
 }
 export interface IGetConfigurationPayload {}
 
@@ -13,7 +17,6 @@ export interface IMFAConfigurationSavePayload {
     templateName: string;
     templateId: string;
   };
-  projectKey: string;
 }
 export interface IMFAConfigurationSaveResponse {
   errors: unknown | null;
