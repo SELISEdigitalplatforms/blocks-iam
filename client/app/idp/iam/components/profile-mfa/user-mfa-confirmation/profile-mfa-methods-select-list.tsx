@@ -6,6 +6,7 @@ import { MFA_Provider_Data } from "@blocks-idp/mfa/utils/mfa-config";
 import { Button } from "@/components/ui-kits/button/button";
 import { Badge } from "@/components/ui-kits/badge/badge";
 import { cn } from "@/lib/utils";
+import { CircleOff } from "lucide-react";
 import { ProfileMFAVerify } from "./profile-mfa-veriffy";
 import { UserMFAConfirmationDisable } from "./profile-mfa-confirmation-disable";
 
@@ -95,6 +96,20 @@ export const ProfileMfaMethodSelectList = () => {
             activeType={type}
           />
         ))}
+        <MethodsOption
+          method={{
+            type: 0,
+            label: "None",
+            description: "No two-factor authentication.",
+            provider: "none",
+            status: false,
+            Icon: CircleOff,
+          }}
+          onEnableClick={() => undefined}
+          onDisableClick={() => setIsDisableModalOpen(true)}
+          isVerified={true}
+          activeType={type}
+        />
       </div>
 
       <ProfileMFAVerify />
