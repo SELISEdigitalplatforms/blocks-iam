@@ -352,7 +352,30 @@ namespace Authentication.DomainService.Services
             if (string.IsNullOrWhiteSpace(request.Name))
                 return new BaseResponse { IsSuccess = false, Errors = new Dictionary<string, string> { { "invalid_request", "Name is required." } } };
 
+            var roles = (request.Roles ?? new List<string>()).Where(r => !string.IsNullOrWhiteSpace(r)).Distinct(StringComparer.OrdinalIgnoreCase).ToList();
+            var permissions = (request.Permissions ?? new List<string>()).Where(p => !string.IsNullOrWhiteSpace(p)).Distinct(StringComparer.OrdinalIgnoreCase).ToList();
+
+            if (roles.Count == 0 && permissions.Count == 0)
+                return new BaseResponse { IsSuccess = false, Errors = new Dictionary<string, string> { { "invalid_request", "At least one role or permission is required." } } };
+
             var blocksContext = BlocksContext.GetContext();
+
+            var isUpdate = !string.IsNullOrWhiteSpace(request.ItemId);
+            if (isUpdate)
+            {
+                var existing = await _authenticationRepository.GetClientCredentialByIdAsync(request.ItemId!);
+                if (existing == null)
+                    return new BaseResponse { IsSuccess = false, Errors = new Dictionary<string, string> { { "not_found", $"Client credential '{request.ItemId}' not found." } } };
+
+                existing.Name = request.Name;
+                existing.IsActive = request.IsActive;
+                existing.LastUpdatedBy = blocksContext?.UserId;
+                existing.LastUpdatedDate = DateTime.UtcNow;
+
+                return await _authenticationRepository.SaveClientCredentialAsync(existing);
+            }
+
+            var organizationId = blocksContext?.OrganizationId ?? "default";
 
             var clientCredential = new ClientCredential
             {
@@ -362,9 +385,10 @@ namespace Authentication.DomainService.Services
                 CreatedBy = blocksContext?.UserId,
                 LastUpdatedBy = blocksContext?.UserId,
                 CreatedDate = DateTime.UtcNow,
-                OrganizationId = blocksContext?.OrganizationId ?? "default",
-                Roles = request.Roles,
-                Permissions = request.Permissions,
+                LastUpdatedDate = DateTime.UtcNow,
+                OrganizationId = organizationId,
+                Roles = roles,
+                Permissions = permissions,
                 IsActive = true
             };
 
@@ -373,6 +397,13 @@ namespace Authentication.DomainService.Services
 
         public async Task<BaseResponse> DeleteClientCredentialAsync(DeleteClientCredentialRequest request)
         {
+            if (string.IsNullOrWhiteSpace(request.ItemId))
+                return new BaseResponse { IsSuccess = false, Errors = new Dictionary<string, string> { { "invalid_request", "ItemId is required." } } };
+
+            var existing = await _authenticationRepository.GetClientCredentialByIdAsync(request.ItemId);
+            if (existing == null)
+                return new BaseResponse { IsSuccess = false, Errors = new Dictionary<string, string> { { "not_found", $"Client credential '{request.ItemId}' not found." } } };
+
             await _authenticationRepository.DeleteClientCredentialAsync(request);
             return new BaseResponse { IsSuccess = true };
         }
