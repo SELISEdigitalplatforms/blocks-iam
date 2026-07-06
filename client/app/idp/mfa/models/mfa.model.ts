@@ -28,7 +28,6 @@ export interface IConfigureUserMFAPayload {
   userId: string;
   mfaEnabled: boolean;
   userMfaType: number;
-  projectKey: string;
 }
 export interface IConfigureUserMFAResponse {
   errors: unknown | null;
