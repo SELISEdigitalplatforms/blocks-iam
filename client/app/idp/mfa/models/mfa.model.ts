@@ -28,7 +28,6 @@ export interface IConfigureUserMFAPayload {
   userId: string;
   mfaEnabled: boolean;
   userMfaType: number;
-  projectKey: string;
 }
 export interface IConfigureUserMFAResponse {
   errors: unknown | null;
@@ -42,6 +41,7 @@ export interface ISetupUserTotpResponse {
   isSuccess: boolean;
   qrImageUrl: string;
   qrCode: string;
+  secret?: string;
 }
 export interface IGenerateUserMFA_OtpPayload {
   userId: string;

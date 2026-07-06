@@ -40,8 +40,9 @@ export class MFAService {
     return serviceInstances.idpService.post(MFA_ENDPOINTS.CONFIGURE_USER_MFA, payload);
   }
   setupUserTotp(payload: ISetupUserTotpPayload): Promise<ISetupUserTotpResponse> {
-    return serviceInstances.idpService.get(
-      toIamUrl(`${MFA_ENDPOINTS.SETUP_TOTP}?UserId=${payload.id}`),
+    return serviceInstances.idpService.post(
+      toIamUrl(MFA_ENDPOINTS.SETUP_TOTP),
+      {},
       undefined,
       { absoluteUrl: true },
     );
@@ -49,6 +50,10 @@ export class MFAService {
 
   verifyOtp(payload: IVerifyMfaOtpPayload): Promise<IVerifyMfaOtpResponse> {
     return serviceInstances.idpService.post(toIamUrl(MFA_ENDPOINTS.VERIFY_OTP), payload, undefined, { absoluteUrl: true });
+  }
+
+  verifyTotpSetup(payload: { code: string; userId?: string }): Promise<{ enabled: boolean; method: string }> {
+    return serviceInstances.idpService.post(toIamUrl(MFA_ENDPOINTS.VERIFY_TOTP_SETUP), payload, undefined, { absoluteUrl: true });
   }
 
   resendOtp(payload: IResendMfaOtpPayload): Promise<IResendMfaOtpResponse> {

@@ -21,7 +21,7 @@ export const ProfileMFAConfigManage = () => {
   const { projectKey, userId, showVerifyModal } = useContext(profileMfaContext);
   const [open, setOpen] = useState<boolean>(false);
   const [type, setType] = useState(0);
-  const { isPending, mutateAsync } = useConfigureUserMFA({ id: userId, projectKey });
+  const { isPending, mutateAsync } = useConfigureUserMFA({ id: userId });
   const { data: userData, isLoading, isFetching } = useGetUserById({ id: userId, projectKey });
   useEffect(() => {
     if (userData?.data.userMfaType) {
@@ -40,11 +40,10 @@ export const ProfileMFAConfigManage = () => {
     try {
       const res = await mutateAsync({
         mfaEnabled: true,
-        projectKey,
         userId,
         userMfaType: type,
       });
-      if (!res.isSuccess) return showErrorToast({ errors: res.errors });
+      if (res?.isSuccess === false) return showErrorToast({ errors: res.errors });
       setOpen(false);
       showVerifyModal(type);
     } catch (error) {
