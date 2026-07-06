@@ -25,7 +25,7 @@ export const ProfileMfaVerifyGuideLineTotp = () => {
         </div>
         <div className="text-center">
           <p className="text-medium-emphasis">Or enter this code manually in your app:</p>
-          <p className="mt-2 font-semibold">{data?.qrCode}</p>
+          <p className="mt-2 font-semibold">{data?.secret ?? data?.qrCode}</p>
         </div>
       </div>
       <div className="flex gap-1">

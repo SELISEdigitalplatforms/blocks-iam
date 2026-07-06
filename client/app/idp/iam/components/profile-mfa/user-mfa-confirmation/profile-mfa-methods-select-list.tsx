@@ -14,7 +14,7 @@ type MethodsOptionProps = {
   method: Omit<(typeof MFA_Provider_Data)[0], "description"> & { description: ReactNode };
   onEnableClick: () => void;
   onDisableClick: () => void;
-  activeType: string;
+  isActive: boolean;
   isVerified: boolean;
 };
 
@@ -22,11 +22,9 @@ const MethodsOption = ({
   method,
   onEnableClick,
   onDisableClick,
-  activeType,
+  isActive,
   isVerified,
 }: MethodsOptionProps) => {
-  const isActive = method.type.toString() === activeType;
-
   return (
     <div className="flex gap-2 border-b p-4 py-6">
       <div className="w-full">
@@ -69,15 +67,14 @@ export const ProfileMfaMethodSelectList = () => {
   const { data } = useGetMFAConfig();
   const { data: userData } = useGetUserById({ id: userId, projectKey });
 
-  const [type, setType] = useState<string>("");
   const availableMFaMethod = useMemo(() => {
     if (!data?.allowedMethods.length) return [];
     return MFA_Provider_Data.filter((item) => data?.allowedMethods.includes(item.type));
   }, [data?.allowedMethods]);
 
-  useEffect(() => {
-    if (userData && userData.data) setType(userData.data.userMfaType.toString());
-  }, [userData, userData?.data]);
+  const userMfaType = userData?.data.userMfaType;
+  const isMfaEnabled = !!userData?.data.mfaEnabled;
+  const activeType = userMfaType !== undefined ? userMfaType.toString() : "";
 
   const enableHandler = (methodType: number) => {
     showVerifyModal(methodType);
@@ -93,7 +90,7 @@ export const ProfileMfaMethodSelectList = () => {
             onEnableClick={() => enableHandler(item.type)}
             onDisableClick={() => setIsDisableModalOpen(true)}
             isVerified={!!userData?.data.isMfaVerified}
-            activeType={type}
+            isActive={isMfaEnabled && activeType === item.type.toString()}
           />
         ))}
         <MethodsOption
@@ -108,7 +105,7 @@ export const ProfileMfaMethodSelectList = () => {
           onEnableClick={() => undefined}
           onDisableClick={() => setIsDisableModalOpen(true)}
           isVerified={true}
-          activeType={type}
+          isActive={!isMfaEnabled}
         />
       </div>
 
