@@ -792,8 +792,8 @@ namespace Iam.DomainService.Accounts
 
             var isCodeExists = await _cacheClient.KeyExistsAsync(validateActivationCodeRequest.ActivationCode);
 
-            if (isCodeExists)
-                return new ActivationCodeValidationResponse { IsSuccess = true };
+            if (!isCodeExists)
+                return new ActivationCodeValidationResponse { IsSuccess = false };
 
             var userId = await _repository.GetUserIdFromKeyMapByKeyAsync(validateActivationCodeRequest.ActivationCode);
 
