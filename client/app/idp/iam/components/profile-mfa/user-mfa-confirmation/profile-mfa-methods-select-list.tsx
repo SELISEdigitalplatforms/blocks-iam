@@ -109,7 +109,7 @@ export const ProfileMfaMethodSelectList = () => {
           onEnableClick={() => undefined}
           onDisableClick={() => setIsDisableModalOpen(true)}
           isVerified={true}
-          isActive={!isMfaEnabled}
+          isActive={isMfaEnabled}
           hideButton={!isMfaEnabled}
         />
       </div>
