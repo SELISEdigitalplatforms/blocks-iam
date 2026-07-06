@@ -83,36 +83,6 @@ public class MfaController : ControllerBase
         return Ok(current);
     }
 
-    [HttpGet("status")]
-    [Authorize]
-    public async Task<IActionResult> GetStatus()
-    {
-        var userId = GetCurrentUserId();
-        if (string.IsNullOrWhiteSpace(userId))
-        {
-            return Unauthorized();
-        }
-
-        var user = await _authenticationRepository.GetUserByIdAsync(userId);
-        if (user == null)
-        {
-            return NotFound();
-        }
-
-        var policy = await _mfaPolicyService.EvaluateAsync(user, clientId: null);
-        return Ok(new
-        {
-            enabled = user.MfaEnabled,
-            preferredMethod = user.UserMfaType.ToString(),
-            emailVerified = user.EmailVerifiedAtUtc.HasValue,
-            phoneVerified = user.PhoneVerifiedAtUtc.HasValue,
-            availableMethods = policy.AllowedMethods,
-            mfaRequiredByPolicy = policy.Required,
-            canUserDisable = policy.CanUserDisable,
-            mustEnrollFirst = policy.MustEnrollFirst
-        });
-    }
-
     [HttpPost("totp/setup")]
     [Authorize]
     public async Task<IActionResult> SetupTotp()
@@ -265,31 +235,6 @@ public class MfaController : ControllerBase
         return Ok(new { disabled = true });
     }
 
-    [HttpPost("admin/reset")]
-    [Authorize]
-    public async Task<IActionResult> AdminResetMfa([FromBody] AdminResetMfaRequest request)
-    {
-        if (request == null || string.IsNullOrWhiteSpace(request.UserId))
-        {
-            return BadRequest(new { error = "invalid_request", error_description = "userId is required" });
-        }
-
-        var actorId = GetCurrentUserId();
-        var result = await _mfaManagementService.DisableUserMfa(new DisableUserMfaRequest
-        {
-            UserId = request.UserId,
-            AdminActorUserId = actorId,
-            Reason = request.Reason
-        });
-
-        if (result.Errors != null && result.Errors.Count > 0)
-        {
-            return BadRequest(new { errors = result.Errors });
-        }
-
-        return Ok(new { reset = true });
-    }
-
     [HttpGet("backup-codes")]
     [Authorize]
     public async Task<IActionResult> GetBackupCodesStatus()
@@ -406,15 +351,6 @@ public class SetPreferredMfaMethodRequest
 {
     [JsonPropertyName("mfaType")]
     public UserMfaType MfaType { get; set; }
-}
-
-public class AdminResetMfaRequest
-{
-    [JsonPropertyName("userId")]
-    public string UserId { get; set; } = string.Empty;
-
-    [JsonPropertyName("reason")]
-    public string? Reason { get; set; }
 }
 
 public class ConsumeBackupCodeRequest
