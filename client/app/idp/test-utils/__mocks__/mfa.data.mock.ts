@@ -21,10 +21,14 @@ export const MOCK_MFA_ID = "mfa-id-e5f6-g7h8";
 // ─── MFA Configuration Mocks ────────────────────────────────────────────────
 
 export const mockMfaConfiguration: IMFAConfiguration = {
-  enableMfa: true,
-  mfaTemplate: { templateName: "Default MFA", templateId: "tpl-001" },
-  projectKey: TEST_PROJECT_KEY,
-  userMfaType: [1, 2],
+  enabled: true,
+  allowedMethods: [1, 2],
+  requireMfaForAllUsers: false,
+  mfaRequiredRoles: [],
+  mfaExemptRoles: [],
+  allowUserOptOut: true,
+  allowBackupCodes: true,
+  backupCodesCount: 10,
 };
 
 export const mockGetMfaConfigPayload: IGetConfigurationPayload = {
@@ -39,7 +43,6 @@ export const mockSaveMfaConfigPayload: IMFAConfigurationSavePayload = {
   enableMfa: true,
   userMfaType: [1],
   mfaTemplate: { templateName: "Default MFA", templateId: "tpl-001" },
-  projectKey: TEST_PROJECT_KEY,
 };
 
 // ─── MFA Operation Mocks ────────────────────────────────────────────────────
