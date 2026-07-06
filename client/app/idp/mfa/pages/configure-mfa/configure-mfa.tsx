@@ -25,7 +25,6 @@ import { Skeleton } from "@/components/ui-kits/skeleton/skeleton";
 import { MFA_Provider_Data } from "../../utils/mfa-config";
 import { Dialog } from "@/components/ui-kits/dialog/dialog";
 import ConfirmationModal from "@/components/confirmation-modal/confirmation-modal";
-import { Link } from "react-router-dom";
 import { showErrorToast, showSuccessToast } from "@/hooks/use-toast";
 
 type MethodInfo = {
@@ -88,16 +87,6 @@ export const ConfigureMFA = () => {
                 </Button>
               </DropdownMenuTrigger>
               <DropdownMenuContent align="end">
-                {row.original.type === 2 && data?.allowedMethods.includes(row.original.type) && data?.mfaTemplate?.templateId && (
-                  <DropdownMenuItem>
-                    <Link
-                      to={`/utilities/email/communications/${data.mfaTemplate.templateId}/edit`}
-                    >
-                      Update Template
-                    </Link>
-                  </DropdownMenuItem>
-                )}
-
                 <DropdownMenuItem
                   onClick={async (e) => {
                     e.stopPropagation();
@@ -117,7 +106,7 @@ export const ConfigureMFA = () => {
         ),
       },
     ],
-    [data?.mfaTemplate?.templateId, data?.allowedMethods],
+    [data?.allowedMethods],
   );
 
   const { isPending, mutateAsync } = useSaveMFAConfig();

@@ -61,9 +61,9 @@ export const ProfileMfaMethodSelectList = () => {
 
   const [type, setType] = useState<string>("");
   const availableMFaMethod = useMemo(() => {
-    if (!data?.userMfaType.length) return [];
-    return MFA_Provider_Data.filter((item) => data?.userMfaType.includes(item.type));
-  }, [data?.userMfaType]);
+    if (!data?.allowedMethods.length) return [];
+    return MFA_Provider_Data.filter((item) => data?.allowedMethods.includes(item.type));
+  }, [data?.allowedMethods]);
 
   useEffect(() => {
     if (userData && userData.data) setType(userData.data.userMfaType.toString());
