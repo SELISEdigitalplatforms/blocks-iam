@@ -149,11 +149,18 @@ namespace Authentication.DomainService.Oidc.Services
                 }
 
                 // 5. Create or update Blocks user based on provider's user info
-                var blocksUserId = await CreateOrUpdateUserFromExternalUserAsync(externalUserData, new List<string> { "user"}, new List<string>(), provider);
-                if (string.IsNullOrWhiteSpace(blocksUserId))
+                var ssoUser = await CreateOrUpdateUserFromExternalUserAsync(externalUserData, new List<string> { "user"}, new List<string>(), provider);
+
+                if (string.IsNullOrWhiteSpace(ssoUser.userId))
                 {
                     _logger.LogError("Failed to create/update user for provider {Provider}", provider);
                     return new OidcCallbackResult { IsSuccess = false, ErrorMessage = "Failed to create user account" };
+                }
+
+                if(!ssoUser.isactive)
+                {
+                    _logger.LogError($"user with id {ssoUser.userId} is not active or verified", provider);
+                    return new OidcCallbackResult { IsSuccess = false, ErrorMessage = "user is not active" };
                 }
 
                 // 6. Clean up temporary states. The actual authorization code must be created
@@ -170,7 +177,7 @@ namespace Authentication.DomainService.Oidc.Services
                     RedirectUri = context.RedirectUri,
                     OriginalState = context.State,
                     IsOidcFlow = true,
-                    BlocksUserId = blocksUserId,
+                    BlocksUserId = ssoUser.userId,
                     TenantId = string.IsNullOrWhiteSpace(context.TenantId) ? "default" : context.TenantId,
                     Scope = context.Scope,
                     Nonce = context.Nonce,
@@ -189,19 +196,19 @@ namespace Authentication.DomainService.Oidc.Services
         /// Create or update Blocks user from social provider's normalized user info
         /// Returns Blocks user ID
         /// </summary>
-        private async Task<string?> CreateOrUpdateUserFromExternalUserAsync(IExternalUserData externalUserData, List<string> roles, List<string> permissions, string provider, string orgId = "default")
+        private async Task<(string? userId, bool isactive)> CreateOrUpdateUserFromExternalUserAsync(IExternalUserData externalUserData, List<string> roles, List<string> permissions, string provider, string orgId = "default")
         {
             try
             {
                 if (string.IsNullOrWhiteSpace(externalUserData.Email))
-                    return null; // Cannot create user without email
+                    return (null, false); // Cannot create user without email
 
                 // Try to get existing user by email
                 var existingUser = await _userRepository.GetUserByEmailAsync(externalUserData.Email);
 
-                if (existingUser != null)
+                if (existingUser != null && (!existingUser.IsMfaVerified || !existingUser.Active))
                 {
-                    return existingUser.ItemId;
+                    return (existingUser.ItemId, false);
                 }
 
                 // Create new user from social provider info
@@ -215,6 +222,7 @@ namespace Authentication.DomainService.Oidc.Services
                     PhoneNumber = externalUserData.PhoneNumber,
                     Platform = provider,
                     IsVerified = true,  // Trust social provider's email
+                    Active = true,
                     Roles = new Dictionary<string, List<string>>
                     {
                         { orgId, roles }
@@ -234,12 +242,12 @@ namespace Authentication.DomainService.Oidc.Services
 
                 // Save new user
                 await _userRepository.CreateUserAsync(newUser);
-                return newUser.ItemId;
+                return (newUser.ItemId, true);
             }
             catch (Exception ex)
             {
                 _logger.LogError(ex, "Error creating/updating user from token for provider {Provider}", provider);
-                return null;
+                return (null, false);
             }
         }
     }

@@ -20,7 +20,6 @@ public class MfaController : ControllerBase
 {
     private readonly IMfaManagementService _mfaManagementService;
     private readonly IMfaConfigurationService _mfaConfigurationService;
-    private readonly IMfaPolicyService _mfaPolicyService;
     private readonly IMfaBackupCodeService _backupCodeService;
     private readonly IMfaAuditService _auditService;
     private readonly IAuthenticationRepository _authenticationRepository;
@@ -29,7 +28,6 @@ public class MfaController : ControllerBase
     public MfaController(
         IMfaManagementService mfaManagementService,
         IMfaConfigurationService mfaConfigurationService,
-        IMfaPolicyService mfaPolicyService,
         IMfaBackupCodeService backupCodeService,
         IMfaAuditService auditService,
         IAuthenticationRepository authenticationRepository,
@@ -37,7 +35,6 @@ public class MfaController : ControllerBase
     {
         _mfaManagementService = mfaManagementService;
         _mfaConfigurationService = mfaConfigurationService;
-        _mfaPolicyService = mfaPolicyService;
         _backupCodeService = backupCodeService;
         _auditService = auditService;
         _authenticationRepository = authenticationRepository;
@@ -134,9 +131,9 @@ public class MfaController : ControllerBase
         return Ok(new { enabled = true, method = "TOTP" });
     }
 
-    [HttpPost("email/enable")]
+    [HttpPost("generate")]
     [Authorize]
-    public async Task<IActionResult> EnableEmailMfa()
+    public async Task<IActionResult> GenerateOtp([FromBody] GenerateOtpRequest? request)
     {
         var userId = GetCurrentUserId();
         if (string.IsNullOrWhiteSpace(userId))
@@ -144,32 +141,70 @@ public class MfaController : ControllerBase
             return Unauthorized();
         }
 
-        var user = await _authenticationRepository.GetUserByIdAsync(userId);
-        if (user == null)
+        var result = await _mfaManagementService.GenerateOTPAsync(new OtpGenerationRequest
         {
-            return NotFound();
-        }
-
-        if (!user.EmailVerifiedAtUtc.HasValue)
-        {
-            return BadRequest(new { error = "email_not_verified", error_description = "Email must be verified before enabling Email OTP MFA" });
-        }
-
-        await _authenticationRepository.UpdatePartialAsync<UserEntity>(userId, new Dictionary<string, object>
-        {
-            { nameof(UserEntity.MfaEnabled), true },
-            { nameof(UserEntity.UserMfaType), UserMfaType.Email },
-            { nameof(UserEntity.IsMfaVerified), true },
-            { nameof(UserEntity.LastUpdatedDate), DateTime.UtcNow },
-            { nameof(UserEntity.LastUpdatedBy), userId }
+            UserId = userId,
+            MfaType = request?.MfaType,
+            SendPhoneNumberAsEmailDomain = request?.SendPhoneNumberAsEmailDomain
         });
 
-        return Ok(new { enabled = true, method = "Email" });
+        if (result.Errors != null && result.Errors.Count > 0)
+        {
+            return BadRequest(new { errors = result.Errors });
+        }
+
+        return Ok(new { mfaId = result.MfaId });
     }
 
-    [HttpPut("preferred-method")]
+    [HttpPost("resend")]
     [Authorize]
-    public async Task<IActionResult> SetPreferredMethod([FromBody] SetPreferredMfaMethodRequest request)
+    public async Task<IActionResult> ResendOtp([FromBody] ResendOtpApiRequest request)
+    {
+        if (request == null || string.IsNullOrWhiteSpace(request.MfaId))
+        {
+            return BadRequest(new { error = "invalid_request", error_description = "mfaId is required" });
+        }
+
+        var result = await _mfaManagementService.ResendOtpAsync(request.MfaId, request.SendPhoneNumberAsEmailDomain ?? string.Empty);
+
+        if (result.Errors != null && result.Errors.Count > 0)
+        {
+            return BadRequest(new { errors = result.Errors });
+        }
+
+        return Ok(new { mfaId = result.MfaId });
+    }
+
+    [HttpPost("verify")]
+    [Authorize]
+    public async Task<IActionResult> VerifyOtp([FromBody] VerifyOtpApiRequest request)
+    {
+        if (request == null
+            || string.IsNullOrWhiteSpace(request.MfaId)
+            || string.IsNullOrWhiteSpace(request.VerificationCode))
+        {
+            return BadRequest(new { error = "invalid_request", error_description = "mfaId and verificationCode are required" });
+        }
+
+        var result = await _mfaManagementService.VerifyOTPAsync(new VerifyOtpRequest
+        {
+            MfaId = request.MfaId,
+            VerificationCode = request.VerificationCode,
+            AuthType = request.AuthType,
+            IsFromTokenCall = request.IsFromTokenCall
+        });
+
+        if (!result.IsValid)
+        {
+            return BadRequest(new { valid = false, errors = result.Errors });
+        }
+
+        return Ok(new { valid = true, userId = result.UserId });
+    }
+
+    [HttpPut("method")]
+    [Authorize]
+    public async Task<IActionResult> SetMfaMethod([FromBody] SetMfaMethodRequest request)
     {
         var userId = GetCurrentUserId();
         if (string.IsNullOrWhiteSpace(userId) || request == null)
@@ -183,38 +218,69 @@ public class MfaController : ControllerBase
             return NotFound();
         }
 
-        if (request.MfaType == UserMfaType.Email && !user.EmailVerifiedAtUtc.HasValue)
-        {
-            return BadRequest(new { error = "email_not_verified" });
-        }
-
-        if (!user.MfaEnabled && request.MfaType != UserMfaType.None)
-        {
-            return BadRequest(new { error = "mfa_not_enrolled", error_description = "Enroll in MFA before changing preferred method" });
-        }
-
         var previousType = user.UserMfaType;
 
-        if (request.MfaType == UserMfaType.None)
+        if (request.MfaType == UserMfaType.Email)
         {
-            await _mfaManagementService.DisableUserMfa(new DisableUserMfaRequest { UserId = userId });
-            return Ok(new { enabled = false, method = "None" });
+            if (!user.EmailVerifiedAtUtc.HasValue)
+            {
+                return BadRequest(new { error = "email_not_verified", error_description = "Email must be verified before enabling Email OTP MFA" });
+            }
+
+            await _authenticationRepository.UpdatePartialAsync<UserEntity>(userId, new Dictionary<string, object>
+            {
+                { nameof(UserEntity.MfaEnabled), true },
+                { nameof(UserEntity.UserMfaType), UserMfaType.Email },
+                { nameof(UserEntity.IsMfaVerified), true },
+                { nameof(UserEntity.LastUpdatedDate), DateTime.UtcNow },
+                { nameof(UserEntity.LastUpdatedBy), userId }
+            });
+
+            if (previousType != UserMfaType.Email)
+            {
+                await AuditUserEventAsync(LoginAuditEvents.MfaMethodChanged, userId, UserMfaType.Email,
+                    new Dictionary<string, string> { { "previous", previousType.ToString() }, { "new", UserMfaType.Email.ToString() } });
+            }
+
+            return Ok(new { enabled = true, method = UserMfaType.Email.ToString() });
         }
 
-        await _authenticationRepository.UpdatePartialAsync<UserEntity>(userId, new Dictionary<string, object>
+        if (request.MfaType == UserMfaType.TOTP)
         {
-            { nameof(UserEntity.UserMfaType), request.MfaType },
-            { nameof(UserEntity.LastUpdatedDate), DateTime.UtcNow },
-            { nameof(UserEntity.LastUpdatedBy), userId }
-        });
+            if (!user.MfaEnabled)
+            {
+                return BadRequest(new { error = "mfa_not_enrolled", error_description = "Complete TOTP setup before choosing TOTP as preferred method" });
+            }
 
-        if (previousType != request.MfaType)
-        {
-            await AuditUserEventAsync(LoginAuditEvents.MfaMethodChanged, userId, request.MfaType,
-                new Dictionary<string, string> { { "previous", previousType.ToString() }, { "new", request.MfaType.ToString() } });
+            await _authenticationRepository.UpdatePartialAsync<UserEntity>(userId, new Dictionary<string, object>
+            {
+                { nameof(UserEntity.UserMfaType), UserMfaType.TOTP },
+                { nameof(UserEntity.LastUpdatedDate), DateTime.UtcNow },
+                { nameof(UserEntity.LastUpdatedBy), userId }
+            });
+
+            if (previousType != UserMfaType.TOTP)
+            {
+                await AuditUserEventAsync(LoginAuditEvents.MfaMethodChanged, userId, UserMfaType.TOTP,
+                    new Dictionary<string, string> { { "previous", previousType.ToString() }, { "new", UserMfaType.TOTP.ToString() } });
+            }
+
+            return Ok(new { enabled = true, method = UserMfaType.TOTP.ToString() });
         }
 
-        return Ok(new { enabled = true, method = request.MfaType.ToString() });
+        var result = await _mfaManagementService.DisableUserMfa(new DisableUserMfaRequest { UserId = userId });
+        if (result.Errors != null && result.Errors.Count > 0)
+        {
+            return BadRequest(new { errors = result.Errors });
+        }
+
+        if (previousType != UserMfaType.None)
+        {
+            await AuditUserEventAsync(LoginAuditEvents.MfaMethodChanged, userId, UserMfaType.None,
+                new Dictionary<string, string> { { "previous", previousType.ToString() }, { "new", UserMfaType.None.ToString() } });
+        }
+
+        return Ok(new { enabled = false, method = UserMfaType.None.ToString() });
     }
 
     [HttpPost("disable")]
@@ -347,7 +413,40 @@ public class VerifyTotpSetupRequest
     public string Code { get; set; } = string.Empty;
 }
 
-public class SetPreferredMfaMethodRequest
+public class GenerateOtpRequest
+{
+    [JsonPropertyName("mfaType")]
+    public UserMfaType? MfaType { get; set; }
+
+    [JsonPropertyName("sendPhoneNumberAsEmailDomain")]
+    public string? SendPhoneNumberAsEmailDomain { get; set; }
+}
+
+public class ResendOtpApiRequest
+{
+    [JsonPropertyName("mfaId")]
+    public string MfaId { get; set; } = string.Empty;
+
+    [JsonPropertyName("sendPhoneNumberAsEmailDomain")]
+    public string? SendPhoneNumberAsEmailDomain { get; set; }
+}
+
+public class VerifyOtpApiRequest
+{
+    [JsonPropertyName("mfaId")]
+    public string MfaId { get; set; } = string.Empty;
+
+    [JsonPropertyName("verificationCode")]
+    public string VerificationCode { get; set; } = string.Empty;
+
+    [JsonPropertyName("authType")]
+    public UserMfaType AuthType { get; set; }
+
+    [JsonPropertyName("isFromTokenCall")]
+    public bool IsFromTokenCall { get; set; }
+}
+
+public class SetMfaMethodRequest
 {
     [JsonPropertyName("mfaType")]
     public UserMfaType MfaType { get; set; }
