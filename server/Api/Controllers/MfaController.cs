@@ -366,8 +366,7 @@ public class MfaController : ControllerBase
     private string? GetCurrentUserId()
     {
         return BlocksContext.GetContext()?.UserId
-            ?? User?.FindFirst(BlocksContext.USER_ID_CLAIM)?.Value
-            ?? User?.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value;
+            ?? User?.FindFirst(BlocksContext.USER_ID_CLAIM)?.Value;
     }
 
     private async Task AuditPolicyAsync(string eventType, UpdateMfaPolicyRequest request)
