@@ -131,6 +131,77 @@ public class MfaController : ControllerBase
         return Ok(new { enabled = true, method = "TOTP" });
     }
 
+    [HttpPost("generate")]
+    [Authorize]
+    public async Task<IActionResult> GenerateOtp([FromBody] GenerateOtpRequest? request)
+    {
+        var userId = GetCurrentUserId();
+        if (string.IsNullOrWhiteSpace(userId))
+        {
+            return Unauthorized();
+        }
+
+        var result = await _mfaManagementService.GenerateOTPAsync(new OtpGenerationRequest
+        {
+            UserId = userId,
+            MfaType = request?.MfaType,
+            SendPhoneNumberAsEmailDomain = request?.SendPhoneNumberAsEmailDomain
+        });
+
+        if (result.Errors != null && result.Errors.Count > 0)
+        {
+            return BadRequest(new { errors = result.Errors });
+        }
+
+        return Ok(new { mfaId = result.MfaId });
+    }
+
+    [HttpPost("resend")]
+    [Authorize]
+    public async Task<IActionResult> ResendOtp([FromBody] ResendOtpApiRequest request)
+    {
+        if (request == null || string.IsNullOrWhiteSpace(request.MfaId))
+        {
+            return BadRequest(new { error = "invalid_request", error_description = "mfaId is required" });
+        }
+
+        var result = await _mfaManagementService.ResendOtpAsync(request.MfaId, request.SendPhoneNumberAsEmailDomain ?? string.Empty);
+
+        if (result.Errors != null && result.Errors.Count > 0)
+        {
+            return BadRequest(new { errors = result.Errors });
+        }
+
+        return Ok(new { mfaId = result.MfaId });
+    }
+
+    [HttpPost("verify")]
+    [Authorize]
+    public async Task<IActionResult> VerifyOtp([FromBody] VerifyOtpApiRequest request)
+    {
+        if (request == null
+            || string.IsNullOrWhiteSpace(request.MfaId)
+            || string.IsNullOrWhiteSpace(request.VerificationCode))
+        {
+            return BadRequest(new { error = "invalid_request", error_description = "mfaId and verificationCode are required" });
+        }
+
+        var result = await _mfaManagementService.VerifyOTPAsync(new VerifyOtpRequest
+        {
+            MfaId = request.MfaId,
+            VerificationCode = request.VerificationCode,
+            AuthType = request.AuthType,
+            IsFromTokenCall = request.IsFromTokenCall
+        });
+
+        if (!result.IsValid)
+        {
+            return BadRequest(new { valid = false, errors = result.Errors });
+        }
+
+        return Ok(new { valid = true, userId = result.UserId });
+    }
+
     [HttpPut("method")]
     [Authorize]
     public async Task<IActionResult> SetMfaMethod([FromBody] SetMfaMethodRequest request)
@@ -340,6 +411,39 @@ public class VerifyTotpSetupRequest
 {
     [JsonPropertyName("code")]
     public string Code { get; set; } = string.Empty;
+}
+
+public class GenerateOtpRequest
+{
+    [JsonPropertyName("mfaType")]
+    public UserMfaType? MfaType { get; set; }
+
+    [JsonPropertyName("sendPhoneNumberAsEmailDomain")]
+    public string? SendPhoneNumberAsEmailDomain { get; set; }
+}
+
+public class ResendOtpApiRequest
+{
+    [JsonPropertyName("mfaId")]
+    public string MfaId { get; set; } = string.Empty;
+
+    [JsonPropertyName("sendPhoneNumberAsEmailDomain")]
+    public string? SendPhoneNumberAsEmailDomain { get; set; }
+}
+
+public class VerifyOtpApiRequest
+{
+    [JsonPropertyName("mfaId")]
+    public string MfaId { get; set; } = string.Empty;
+
+    [JsonPropertyName("verificationCode")]
+    public string VerificationCode { get; set; } = string.Empty;
+
+    [JsonPropertyName("authType")]
+    public UserMfaType AuthType { get; set; }
+
+    [JsonPropertyName("isFromTokenCall")]
+    public bool IsFromTokenCall { get; set; }
 }
 
 public class SetMfaMethodRequest
