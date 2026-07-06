@@ -41,17 +41,7 @@ namespace Authentication.DomainService.OAuth.Services
             if (validationResult != null)
                 return validationResult;
 
-            var requestedOrgId = request.OrganizationId?.Trim();
-            if (string.IsNullOrWhiteSpace(requestedOrgId))
-            {
-                return new TokenResponse
-                {
-                    Error = "invalid_request",
-                    ErrorDescription = "organization_id (or org_id) is required for client_credentials"
-                };
-            }
-
-            var jwtToken = await GetJwtAccessToken(authenticationConfiguration, client!, requestedOrgId, []);
+            var jwtToken = await GetJwtAccessToken(authenticationConfiguration, client!);
             var accessToken =  OAuthJwtAccessTokenManager.CreateJwtAccessToken(jwtToken);
 
             return new TokenResponse
@@ -66,15 +56,13 @@ namespace Authentication.DomainService.OAuth.Services
 
         private async Task<JwtAccessToken> GetJwtAccessToken(
             IdentityConfiguration authenticationConfiguration,
-            ClientCredential client,
-            string organizationId,
-            List<string> orgPermissions)
+            ClientCredential client)
         {
             var tenant = _tenants.GetTenantByID(BlocksContext.GetContext()?.TenantId ?? "");
             if (tenant == null) return new JwtAccessToken();
             var certificate = await RetrievePrivateCertAsync(tenant);
             if (certificate == null) return new JwtAccessToken();
-            return MapJwtAccessToken(authenticationConfiguration, tenant, client, organizationId, orgPermissions, certificate);
+            return MapJwtAccessToken(authenticationConfiguration, tenant, client, certificate);
         }
 
         public async Task<byte[]?> RetrievePrivateCertAsync(Tenant tenant)
@@ -103,8 +91,6 @@ namespace Authentication.DomainService.OAuth.Services
             IdentityConfiguration authenticationConfiguration,
             Tenant tenant,
             ClientCredential client,
-            string organizationId,
-            List<string> orgPermissions,
             byte[] certificate)
         {
             var jwtAccessToken = new JwtAccessToken
@@ -118,7 +104,7 @@ namespace Authentication.DomainService.OAuth.Services
             };
 
             var claimsIdentity = new ClaimsIdentity("seliseblocks-authentication");
-            AddClaims(claimsIdentity, tenant, client, organizationId, orgPermissions);
+            AddClaims(claimsIdentity, tenant, client);
             jwtAccessToken.Claims = claimsIdentity.Claims;
 
             return jwtAccessToken;
@@ -127,14 +113,12 @@ namespace Authentication.DomainService.OAuth.Services
         public static void AddClaims(
             ClaimsIdentity claimsIdentity,
             Tenant tenant,
-            ClientCredential client,
-            string organizationId,
-            List<string> orgPermissions)
+            ClientCredential client)
         {
             claimsIdentity.AddClaim(new Claim(BlocksContext.TENANT_ID_CLAIM, tenant.TenantId));
             claimsIdentity.AddClaim(new Claim(BlocksContext.SUBJECT_CLAIM, $"blocks|{client.ItemId}"));
             claimsIdentity.AddClaim(new Claim("client_id", client.ItemId));
-            claimsIdentity.AddClaim(new Claim("org_id", organizationId));
+            claimsIdentity.AddClaim(new Claim(BlocksContext.ORGANIZATION_ID_CLAIM, client.OrganizationId));
             claimsIdentity.AddClaim(new Claim(BlocksContext.ISSUED_AT_TIME_CLAIM, EpochTime.GetIntDate(DateTime.UtcNow).ToString(), ClaimValueTypes.Integer64));
 
             foreach (var role in client.Roles)
@@ -142,44 +126,10 @@ namespace Authentication.DomainService.OAuth.Services
                 claimsIdentity.AddClaim(new Claim(BlocksContext.ROLES_CLAIM, role));
             }
 
-            foreach (var permission in orgPermissions)
+            foreach (var permission in client.Permissions)
             {
                 claimsIdentity.AddClaim(new Claim(BlocksContext.PERMISSION_CLAIM, permission));
-                claimsIdentity.AddClaim(new Claim("permissions", permission));
             }
-        }
-
-        public static void AddClaims(ClaimsIdentity claimsIdentity, Tenant tenant, ClientCredential client)
-        {
-            AddClaims(claimsIdentity, tenant, client, "default", []);
-        }
-
-        private static List<string> ResolveOrgPermissions(ClientCredential client, string organizationId)
-        {
-            if (client.PermissionsByOrg == null || client.PermissionsByOrg.Count == 0)
-            {
-                return [];
-            }
-
-            if (client.PermissionsByOrg.TryGetValue(organizationId, out var selectedOrgPermissions) && selectedOrgPermissions is not null)
-            {
-                return selectedOrgPermissions
-                    .Where(permission => !string.IsNullOrWhiteSpace(permission))
-                    .Select(permission => permission.Trim())
-                    .Distinct(StringComparer.OrdinalIgnoreCase)
-                    .ToList();
-            }
-
-            if (client.PermissionsByOrg.TryGetValue("default", out var defaultPermissions) && defaultPermissions is not null)
-            {
-                return defaultPermissions
-                    .Where(permission => !string.IsNullOrWhiteSpace(permission))
-                    .Select(permission => permission.Trim())
-                    .Distinct(StringComparer.OrdinalIgnoreCase)
-                    .ToList();
-            }
-
-            return [];
         }
 
         private static TokenResponse? ValidateClient(ClientCredential? client, TokenRequest request)
