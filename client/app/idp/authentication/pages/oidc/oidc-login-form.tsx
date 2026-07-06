@@ -12,9 +12,10 @@ import { Link, useNavigate } from "react-router-dom";
 import { z } from "zod";
 import { authService } from "@blocks-idp/authentication/services/auth.service";
 import { AUTH_ENDPOINTS } from "@blocks-idp/authentication/constants/endpoint.constant";
-import React, { useRef, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import { Captcha } from "@/components/captcha";
-import { useTheme } from "@/hooks/use-theme";
+import { useCaptcha } from "@blocks-idp/captcha/hooks/use-captcha";
+import { useOidcUiConfig } from "@blocks-idp/authentication/hooks/use-oidc-ui-config";
 import { isErrorWithErrors } from "@/lib/error";
 import {
   getCurrentOIDCParams,
@@ -22,7 +23,7 @@ import {
 } from "@blocks-idp/authentication/utils/oidc-utils";
 import { useGetLoginOptions } from "@blocks-idp/authentication/hooks/use-auth";
 import { SsoSignin } from "@blocks-idp/authentication/pages/login/sso-signin";
-import { useAuthStore } from "@/store/useAuthStore";
+import { useAuthStore } from "@seliseblocks/blocks-kit";
 import { sha256 } from "js-sha256";
 import { OidcAccountInfo, OidcAccountSelector } from "./oidc-account-selector";
 import { useOidcAuthAnimation } from "./oidc-auth-shell";
@@ -46,6 +47,17 @@ const generatePkcePair = async () => {
   const challenge = base64UrlEncode(digestBytes);
 
   return { verifier, challenge };
+};
+
+// Maps the backend's `user_mfa` channel string to the integer `mfa_type` the
+// /mfa-check form expects: 1 = authenticator (6 digits, no resend), 2 = email
+// / SMS / OTP-with-resend (5 digits). Unknown values fall back to 2.
+const mapUserMfaToType = (channel: string | undefined): number => {
+  if (!channel) return 2;
+  const c = channel.toLowerCase();
+  if (c === "authenticator" || c === "totp") return 1;
+  if (c === "email" || c === "sms") return 2;
+  return 2;
 };
 
 const oidcLoginFormSchema = z.object({
@@ -77,9 +89,9 @@ export const OidcLoginForm = ({
   tenantId,
 }: OidcLoginFormProps) => {
   const navigate = useNavigate();
-  const { theme } = useTheme();
   const animCtx = useOidcAuthAnimation();
   const { data: loginOption } = useGetLoginOptions(tenantId, true);
+  const { data: oidcUiConfig, captchaEnabled } = useOidcUiConfig(tenantId);
   const [token, setToken] = useState("");
   const [accounts, setAccounts] = useState<OidcAccountInfo[]>([]);
   const [isSelectingAccount, setIsSelectingAccount] = useState(false);
@@ -92,6 +104,7 @@ export const OidcLoginForm = ({
   const [activeCodeChallengeMethod, setActiveCodeChallengeMethod] = useState(
     codeChallengeMethod || "S256",
   );
+  const [captchaRequired, setCaptchaRequired] = useState(false);
   const formRef = useRef<HTMLFormElement>(null);
 
   const isAuthenticating =
@@ -115,12 +128,22 @@ export const OidcLoginForm = ({
   });
 
   const {
-    formState: { submitCount },
+    formState: { isValid },
   } = form;
-  const googleSiteKey = getRuntimeEnv("BLOCKS_GOOGLE_SITE_KEY") || "";
-  const isTokenNeed = submitCount >= 3;
+
+  const googleSiteKey =
+    oidcUiConfig?.captcha?.key || getRuntimeEnv("BLOCKS_GOOGLE_SITE_KEY") || "";
+  const captchaType =
+    oidcUiConfig?.captcha?.provider === "hcaptcha" ? "hCaptcha" : "reCaptcha-v2-checkbox";
+  const { captcha, code: captchaCode, reset: resetCaptcha } = useCaptcha({
+    siteKey: googleSiteKey,
+    type: captchaType,
+    generator: oidcUiConfig?.captcha?.generator,
+  });
+  const isTokenNeed = captchaRequired && captchaEnabled;
 
   const activationUrl = buildOIDCNavigationUrl("/oidc/activation");
+  const forgotPasswordUrl = buildOIDCNavigationUrl("/oidc/forgot-password");
 
   const ensurePkceState = async () => {
     // External relying party (e.g. Dependency-Track) already supplied its own
@@ -185,15 +208,15 @@ export const OidcLoginForm = ({
         code_challenge: effectiveCodeChallenge,
         code_challenge_method: effectiveCodeChallengeMethod,
         tenant_id: finalTenantId || "",
+        // binds the JSON field name "captcha_code" — not "captchaCode".
+        ...(isTokenNeed && captchaCode ? { captcha_code: captchaCode } : {}),
       };
 
-      // Use fetch with redirect: 'manual' to handle redirects explicitly
-      // The backend will redirect to the redirect_uri with the authorization code
+ 
       const response = await fetch(AUTH_ENDPOINTS.OIDC_LOGIN, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          // Include tenant_id as X-Blocks-Key header for tenant validation middleware
           "X-Blocks-Key": finalTenantId || "",
         },
         body: JSON.stringify(payload),
@@ -201,21 +224,27 @@ export const OidcLoginForm = ({
 
       if (response.ok) {
         const data = await response.json();
+        setCaptchaRequired(false);
+
+        // Backend may signal MFA required via a 200 with `error: "mfa_enabled"`
+        // (matches /api/oidc/login contract: { error, error_description, mfa_id, user_mfa }).
+        if (data?.error === "mfa_enabled" && data?.mfa_id) {
+          animCtx?.resetAnimation();
+          const mfaType = mapUserMfaToType(data.user_mfa);
+          navigate(
+            buildOIDCNavigationUrl(
+              `/oidc/mfa-check?mfa_id=${encodeURIComponent(data.mfa_id)}&mfa_type=${mfaType}`,
+            ),
+          );
+          return;
+        }
+
         await animCtx?.succeedAnimation();
         window.location.href = data.redirect_uri;
       }
 
-      // Handle 3xx redirects (302, 303, etc.)
-      // if (response.status >= 300 && response.status < 400) {
-      //   const location = response.headers.get('Location');
-      //   if (location) {
-      //     // Use window.location to navigate - this bypasses CORS and lets the browser handle the redirect
-      //     window.location.href = location;
-      //     return;
-      //   }
-      // }
+      
 
-      // Parse response as JSON
       let data;
       try {
         const contentType = response.headers.get("content-type");
@@ -240,9 +269,7 @@ export const OidcLoginForm = ({
         return;
       }
 
-      // If response is OK, check for account selection required
       if (response.ok || response.status === 200) {
-        // Check if backend requires account selection
         if (
           data?.status === "account_selection_required" &&
           data?.accounts?.length > 0
@@ -251,20 +278,20 @@ export const OidcLoginForm = ({
           setAccounts(data.accounts);
           setIsSelectingAccount(true);
           setIsLoading(false);
+          setCaptchaRequired(false);
           return;
         }
 
-        // Otherwise code is already in URL, let the SPA handle it
+        setCaptchaRequired(false);
         await animCtx?.succeedAnimation();
         return;
       }
 
-      // Handle error responses
       const errorMsg =
         data?.error_description || data?.message || "Login failed";
       const errorCode = data?.error;
 
-      shake();
+shake();
       if (errorCode === "account_locked") {
         const msg = "Your account is locked. Please contact support or reset your password.";
         setServerError(msg);
@@ -273,10 +300,20 @@ export const OidcLoginForm = ({
         animCtx?.resetAnimation();
         setLastAttemptedEmail(values.username);
         setShowActivationError(true);
-      } else if (errorCode === "invalid_credentials") {
-        const msg = "Invalid email or password. Please try again.";
+      } else if (errorCode === "captcha_enabled") {
+        const msg = "Captcha verification is required. Please complete the given captcha.";
         setServerError(msg);
         await animCtx?.failAnimation(msg);
+        setCaptchaRequired(true);
+        resetCaptcha();
+      } else if (errorCode === "invalid_credentials" || errorCode === "captcha_invalid") {
+        const msg =
+          errorCode === "captcha_invalid"
+            ? "Captcha verification failed. Please try again."
+            : "Invalid email or password. Please try again.";
+        setServerError(msg);
+        await animCtx?.failAnimation(msg);
+        resetCaptcha();
       } else {
         setServerError(errorMsg);
         await animCtx?.failAnimation(errorMsg);
@@ -337,6 +374,10 @@ export const OidcLoginForm = ({
     }
   };
 
+  useEffect(() => {
+    if (!isValid && captchaCode) resetCaptcha();
+  }, [captchaCode, isValid, resetCaptcha]);
+
   if (isSelectingAccount && accounts.length > 0) {
     return (
       <OidcAccountSelector
@@ -348,7 +389,6 @@ export const OidcLoginForm = ({
   }
 
   const showPasswordLogin = true;
-  // Show social login by default - if loginOption is available, check the config; otherwise default to true
   const showSocialLogin = !!loginOption?.ssoInfo?.length;
 
   if (showActivationError) {
@@ -436,7 +476,7 @@ export const OidcLoginForm = ({
                         Password
                       </label>
                       <Link
-                        to="/forgot-password"
+                        to={forgotPasswordUrl}
                         className="oidc-sci-fi-link"
                         style={{ fontSize: "0.75rem" }}
                       >
@@ -475,15 +515,7 @@ export const OidcLoginForm = ({
             />
 
             {/* CAPTCHA (shown after 3 failed attempts) */}
-            {isTokenNeed &&
-              React.createElement(Captcha, {
-                type: "reCaptcha-v2-checkbox",
-                siteKey: googleSiteKey,
-                theme: theme === "dark" ? "dark" : "light",
-                onVerify: (t: string) => setToken(t),
-                onExpired: () => setToken(""),
-                onError: () => setToken(""),
-              } as any)}
+            {isTokenNeed && isValid && <Captcha {...captcha} />}
 
             {/* Inline server error */}
             {serverError && (
@@ -495,7 +527,7 @@ export const OidcLoginForm = ({
             {/* Submit */}
             <button
               type="submit"
-              disabled={isAuthenticating || (isTokenNeed && !token)}
+              disabled={isAuthenticating || (isTokenNeed && !captchaCode)}
               className="oidc-sci-fi-btn mt-3 w-full flex items-center justify-center gap-2"
             >
               {isAuthenticating ? (

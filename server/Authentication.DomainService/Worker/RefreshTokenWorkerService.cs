@@ -8,7 +8,7 @@ using System.Text.Json;
 
 namespace Authentication.DomainService.Worker
 {
-    public class RefreshTokenWorkerService : IConsumer<RefreshTokenEvent>
+    public sealed class RefreshTokenWorkerService : IConsumer<RefreshTokenEvent>
     {
         private readonly ILogger<RefreshTokenWorkerService> _logger;
         private readonly IAuthenticationRepository _oAuthRepository;

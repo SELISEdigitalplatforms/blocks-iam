@@ -28,6 +28,12 @@ import { z } from "zod";
 import { useSaveOrganization, useGetOrganizationConfig } from "@blocks-idp/iam/hooks/use-organization";
 import { useProjectStore } from "@seliseblocks/blocks-kit";
 import { Plus } from "lucide-react";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui-kits/tooltip/tooltip";
 
 interface AddOrganizationProps {
   disabled?: boolean;
@@ -38,7 +44,7 @@ export const AddOrganization = ({ disabled }: AddOrganizationProps) => {
   const { mutateAsync, isPending } = useSaveOrganization();
   const tenantId = useProjectStore().selectedProject?.tenantId || "";
   const { data: orgConfig } = useGetOrganizationConfig(tenantId);
-  const isDisabled = disabled || !orgConfig?.IsMultiOrgEnabled || !orgConfig?.AllowOrgCreationFromCloud;
+  const isDisabled = disabled || !orgConfig?.isMultiOrgEnabled || !orgConfig?.allowOrgCreationFromCloud;
 
   const form = useForm({
     defaultValues: addOrganizationFormDefaultValue,
@@ -78,12 +84,29 @@ export const AddOrganization = ({ disabled }: AddOrganizationProps) => {
 
   return (
     <Dialog open={isModalOpen} onOpenChange={handleModalOpenChange}>
-      <DialogTrigger asChild>
-        <Button variant="ghost" size="sm" disabled={isDisabled} className="text-primary">
-          <Plus className="h-5 w-5 text-primary md:mr-2.5" />
-          <span className="sr-only sm:not-sr-only">Add Organization</span>
-        </Button>
-      </DialogTrigger>
+      <TooltipProvider>
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <span className="inline-flex" tabIndex={isDisabled ? 0 : undefined}>
+              <DialogTrigger asChild>
+                <Button
+                  size="sm"
+                  disabled={isDisabled}
+                  className="gap-2 disabled:cursor-not-allowed disabled:opacity-40 disabled:grayscale"
+                >
+                  <Plus className="h-4 w-4" />
+                  <span className="sr-only sm:not-sr-only">Add Organization</span>
+                </Button>
+              </DialogTrigger>
+            </span>
+          </TooltipTrigger>
+          {isDisabled && (
+            <TooltipContent side="left">
+              Organization creation from cloud is not enabled
+            </TooltipContent>
+          )}
+        </Tooltip>
+      </TooltipProvider>
       <DialogContent>
         <DialogHeader className="mb-4">
           <DialogTitle>Add Organization</DialogTitle>

@@ -17,9 +17,10 @@ namespace Iam.DomainService.Resources
         Task<BaseResponse> UpdateOrganizationAsync(string id, SaveOrganizationRequest request);
         Task<GetOrganizationsResponse> GetOrganizationsAsync(GetOrganizationsRequest request);
         Task<GetOrganizationResponse> GetOrganizationAsync(string id);
+        Task<GetMyOrganizationsResponse> GetMyOrganizationAsync();
         Task<BaseResponse> SaveOrganizationConfigAsync(SaveOrganizationConfigRequest request);
         Task<Dictionary<string, object>> GetOrganizationConfigAsync();
-        Task<BaseResponse> AssignPermissionsToOrganizationAsync(AssignPermissionsToOrganizationRequest request);
-        Task<BaseResponse> AssignRolesToOrganizationAsync(AssignRolesToOrganizationRequest request);
+        Task ExecuteOrganizationProvisioningAsync(OrganizationProvisioningEvent command);
+        Task ExecutePropagationRolePermissionUpdateAsync(PropagationRolePermissionUpdateEvent command);
     }
 }

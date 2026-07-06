@@ -4,7 +4,7 @@ using Microsoft.Extensions.Logging;
 
 namespace Authentication.DomainService.OAuth
 {
-    public class CertificateProviderFactory : ICertificateProviderFactory
+    public sealed class CertificateProviderFactory : ICertificateProviderFactory
     {
         private readonly ILogger<CertificateProviderFactory> _logger;
         private readonly IBlocksSecret _blocksSecret;

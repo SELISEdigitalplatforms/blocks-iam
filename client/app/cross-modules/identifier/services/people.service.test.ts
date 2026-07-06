@@ -7,7 +7,7 @@ import {
   mockPeopleAcceptInvitationResponse,
   mockConfirmInvitationResponse,
 } from "../test-utils/__mocks__";
-import { http } from "@/lib/http-client";
+import { serviceInstances } from "@/lib/http-client";
 import { PEOPLE_ENDPOINTS } from "@blocks-identifier/constants/endpoint.constant";
 import { PeopleService } from "./people.service";
 

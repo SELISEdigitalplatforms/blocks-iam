@@ -1,5 +1,6 @@
-import { ForgotPassword } from "@blocks-idp/authentication/pages/forgot-password";
+import { OIDCForgotPassword } from "@/idp/authentication/pages/oidc-forgot-password";
 
 export default function ForgotPasswordPage() {
-  return <ForgotPassword />;
+  // return <ForgotPassword />;
+  return <OIDCForgotPassword />;
 }

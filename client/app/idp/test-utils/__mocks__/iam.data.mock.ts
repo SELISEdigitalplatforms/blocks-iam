@@ -13,7 +13,6 @@ import type {
   IActivationCodeValidationPayload,
 } from "../../iam/models/user";
 import type {
-  IGetSignUpSettingPayload,
   ISaveSignUpSettingPayload,
   ISaveRolesAndPermissionsPayload,
   IGetSessionPayload,
@@ -45,7 +44,7 @@ import type {
   IGetOrganizationByIdParams,
   ICreateOrUpdateOrganizationPayload,
 } from "../../iam/models/organization";
-import type { IOrganizationConfigPayload } from "../../iam/models/organization-config.model";
+import type { IOrganizationConfigPayload, IOrganizationConfigResponse } from "../../iam/models/organization-config.model";
 import type {
   IIAMConfiguration,
   IIAMConfigurationSavePayload,
@@ -169,27 +168,18 @@ export const mockGetUserPermissionsPayload: IGetUserPermissionsPayload = {
 };
 
 export const mockSignUpSettingResponse = {
-  itemId: "signup-001",
-  createdDate: "2026-01-15T10:00:00Z",
-  lastUpdatedDate: "2026-01-15T10:00:00Z",
-  createdBy: "admin",
-  language: "en",
-  lastUpdatedBy: "admin",
-  organizationIds: [],
-  tags: [],
+  isSignUpEnable: true,
   isEmailPasswordSignUpEnabled: true,
   isSSoSignUpEnabled: false,
-};
-
-export const mockGetSignUpSettingPayload: IGetSignUpSettingPayload = {
-  projectKey: TEST_PROJECT_KEY,
+  defaultRolesForNewUser: ["user"],
+  defaultPermissionsForNewUser: [],
 };
 
 export const mockSaveSignUpSettingPayload: ISaveSignUpSettingPayload = {
   isEmailPasswordSignUpEnabled: true,
   isSSoSignUpEnabled: false,
-  projectKey: TEST_PROJECT_KEY,
-  itemId: "signup-001",
+  defaultRolesForNewUserOnSignUp: [],
+  defaultPermissionsForNewUserOnSignUp: [],
 };
 
 // ─── Account Mocks ───────────────────────────────────────────────────────────
@@ -373,7 +363,7 @@ export const mockResourceGroupResponse = [
 export const mockOrganization: IOrganization = {
   itemId: MOCK_ORGANIZATION_ITEM_ID,
   name: "Test Organization",
-  isEnable: true,
+  isEnabled: true,
   createdDate: "2026-01-15T10:00:00Z",
   lastUpdatedDate: "2026-01-15T10:00:00Z",
   createdBy: "admin",
@@ -410,15 +400,18 @@ export const mockSaveOrganizationPayload: ICreateOrUpdateOrganizationPayload = {
   projectKey: TEST_PROJECT_KEY,
   name: "New Organization",
   itemId: "",
-  isEnable: true,
+  isEnabled: true,
 };
 
-export const mockOrganizationConfigResponse = {
-  AllowOrgCreationFromCloud: true,
-  AllowOrgCreationFromConstruct: false,
-  IsMultiOrgEnabled: false,
-  DefaultRoleOnOrgCreation: [],
-  ItemId: "mock-config-id",
+export const mockOrganizationConfigResponse: IOrganizationConfigResponse = {
+  allowOrgCreationFromCloud: true,
+  allowOrgCreationFromConstruct: false,
+  allowOrgCreationFromSignup: false,
+  allowOrgCreationFromPortal: false,
+  isMultiOrgEnabled: false,
+  consentForMultiOrgEnable: false,
+  defaultRoleOnOrgCreation: [],
+  itemId: "mock-config-id",
 };
 
 export const mockSaveOrganizationConfigPayload: IOrganizationConfigPayload = {

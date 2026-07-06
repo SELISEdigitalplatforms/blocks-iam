@@ -1,9 +1,11 @@
 using System.Text.Json.Serialization;
+using Authentication.DomainService.OAuth;
+using Authentication.DomainService.Shared;
 using Microsoft.IdentityModel.Tokens;
 
 namespace Idp.DomainService.Oidc.Contracts;
 
-public class OidcClaims
+public sealed class OidcClaims
 {
     public string Sub { get; set; } = string.Empty;
     public string TenantId { get; set; } = string.Empty;
@@ -17,12 +19,13 @@ public class OidcClaims
     public string? Email { get; set; }
     public string? Name { get; set; }
     public string? UserName { get; set; }
+    public List<string> Amr { get; set; } = [];
     public List<string> Roles { get; set; } = [];
     public List<string> Resources { get; set; } = [];
     public List<string> Permissions { get; set; } = [];
 }
 
-public class AuthorizationCodeModel
+public sealed class AuthorizationCodeModel
 {
     public string Id { get; set; } = Guid.NewGuid().ToString("n");
     public string Code { get; set; } = string.Empty;
@@ -36,12 +39,10 @@ public class AuthorizationCodeModel
     public string? State { get; set; }
     public string CodeChallenge { get; set; } = string.Empty;
     public string CodeChallengeMethod { get; set; } = "S256";
+    public List<string> Amr { get; set; } = [];
     public DateTime ExpiresAt { get; set; }
     public DateTime CreatedAt { get; set; }
     public string? CreatedByIpAddress { get; set; }
-    public bool IsUsed { get; set; }
-    public DateTime? UsedAt { get; set; }
-    public string? UsedByIpAddress { get; set; }
     public bool IsRevoked { get; set; }
     public DateTime? RevokedAt { get; set; }
 
@@ -52,7 +53,7 @@ public class AuthorizationCodeModel
     public string? ImpersonatedUserId { get; set; } = string.Empty;
 }
 
-public class RefreshTokenModel
+public sealed class RefreshTokenModel
 {
     public string Id { get; set; } = Guid.NewGuid().ToString("n");
     public string TokenId { get; set; } = Guid.NewGuid().ToString("n");
@@ -80,7 +81,7 @@ public class RefreshTokenModel
     }
 }
 
-public class IdpSessionAccount
+public sealed class IdpSessionAccount
 {
     public string UserId { get; set; } = string.Empty;
     public string TenantId { get; set; } = string.Empty;
@@ -88,7 +89,7 @@ public class IdpSessionAccount
     public DateTime LoginAt { get; set; }
 }
 
-public class IdpSessionModel
+public sealed class IdpSessionModel
 {
     public string Id { get; set; } = Guid.NewGuid().ToString("n");
     public string SessionId { get; set; } = Guid.NewGuid().ToString("n");
@@ -108,7 +109,7 @@ public class IdpSessionModel
     }
 }
 
-public class AuditLogModel
+public sealed class AuditLogModel
 {
     public string Id { get; set; } = Guid.NewGuid().ToString("n");
     public string EventType { get; set; } = string.Empty;
@@ -117,14 +118,14 @@ public class AuditLogModel
     public string? TenantId { get; set; }
     public string? IpAddress { get; set; }
     public string? UserAgent { get; set; }
-    public string Severity { get; set; } = "INFO";
+    public string Severity { get; set; } = AuthenticationConstants.SeverityInfo;
     public string? Status { get; set; }
     public string? Details { get; set; }
     public string? Message { get; set; }
     public DateTime Timestamp { get; set; } = DateTime.UtcNow;
 }
 
-public class ConsentGrantModel
+public sealed class ConsentGrantModel
 {
     public string Id { get; set; } = Guid.NewGuid().ToString("n");
     public string UserId { get; set; } = string.Empty;
@@ -135,7 +136,7 @@ public class ConsentGrantModel
     public DateTime UpdatedAt { get; set; } = DateTime.UtcNow;
 }
 
-public class DiscoveryMetadata
+public sealed class DiscoveryMetadata
 {
     [JsonPropertyName("issuer")]
     public string Issuer { get; set; } = string.Empty;
@@ -162,7 +163,7 @@ public class DiscoveryMetadata
     public IEnumerable<string> ResponseTypesSupported { get; set; } = ["code"];
 
     [JsonPropertyName("grant_types_supported")]
-    public IEnumerable<string> GrantTypesSupported { get; set; } = ["authorization_code", "refresh_token", "client_credentials"];
+    public IEnumerable<string> GrantTypesSupported { get; set; } = [GrantTypes.AuthCode, GrantTypes.RefreshToken, GrantTypes.ClientCredential];
 
     [JsonPropertyName("subject_types_supported")]
     public IEnumerable<string> SubjectTypesSupported { get; set; } = ["public"];
@@ -174,13 +175,13 @@ public class DiscoveryMetadata
     public IEnumerable<string> TokenEndpointAuthMethodsSupported { get; set; } = ["client_secret_basic", "private_key_jwt"];
 
     [JsonPropertyName("code_challenge_methods_supported")]
-    public IEnumerable<string> CodeChallengeMethodsSupported { get; set; } = ["S256"];
+    public IEnumerable<string> CodeChallengeMethodsSupported { get; set; } = [AuthenticationConstants.PkceMethodS256];
 
     [JsonPropertyName("scopes_supported")]
     public IEnumerable<string> ScopesSupported { get; set; } = ["openid", "profile", "email", "offline_access"];
 }
 
-public class OAuthAuthorizationServerMetadata
+public sealed class OAuthAuthorizationServerMetadata
 {
     [JsonPropertyName("issuer")]
     public string Issuer { get; set; } = string.Empty;
@@ -204,22 +205,22 @@ public class OAuthAuthorizationServerMetadata
     public IEnumerable<string> ResponseTypesSupported { get; set; } = ["code"];
 
     [JsonPropertyName("grant_types_supported")]
-    public IEnumerable<string> GrantTypesSupported { get; set; } = ["authorization_code", "refresh_token", "client_credentials"];
+    public IEnumerable<string> GrantTypesSupported { get; set; } = [GrantTypes.AuthCode, GrantTypes.RefreshToken, GrantTypes.ClientCredential];
 
     [JsonPropertyName("token_endpoint_auth_methods_supported")]
     public IEnumerable<string> TokenEndpointAuthMethodsSupported { get; set; } = ["client_secret_basic", "private_key_jwt"];
 
     [JsonPropertyName("code_challenge_methods_supported")]
-    public IEnumerable<string> CodeChallengeMethodsSupported { get; set; } = ["S256"];
+    public IEnumerable<string> CodeChallengeMethodsSupported { get; set; } = [AuthenticationConstants.PkceMethodS256];
 }
 
-public class JwksResponse
+public sealed class JwksResponse
 {
     [JsonPropertyName("keys")]
     public List<JwkKey> Keys { get; set; } = [];
 }
 
-public class JwkKey
+public sealed class JwkKey
 {
     [JsonPropertyName("kty")]
     public string Kty { get; set; } = "RSA";

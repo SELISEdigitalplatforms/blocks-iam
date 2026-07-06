@@ -12,7 +12,7 @@ using Authentication.DomainService.Oidc.Repositories;
 
 namespace Authentication.DomainService.Shared
 {
-    public class UnifiedTokenSessionService
+    public sealed class UnifiedTokenSessionService
     {
         private readonly ICacheClient _cacheClient;
         private readonly IAuthenticationDomainService _authenticationDomainService;
@@ -32,7 +32,7 @@ namespace Authentication.DomainService.Shared
             string? oldRefreshToken,
             RefreshTokenCache? oldRefreshTokenCache,
             TokenRequest tokenRequest,
-            AuthenticationConfiguration authenticationConfiguration,
+            IdentityConfiguration authenticationConfiguration,
             Tenant tenant,
             User user,
             IEnumerable<string> visitorsIpAddresses,

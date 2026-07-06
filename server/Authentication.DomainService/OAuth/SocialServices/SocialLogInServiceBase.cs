@@ -1,4 +1,5 @@
 using Authentication.DomainService.Services;
+using Authentication.DomainService.Shared;
 using Blocks.Genesis;
 using Microsoft.Extensions.Logging;
 using System.IdentityModel.Tokens.Jwt;
@@ -12,8 +13,8 @@ namespace Authentication.DomainService.OAuth
         protected readonly IAuthenticationRepository _authenticationRepository;
         protected readonly ICacheClient _cacheClient;
         protected readonly IHttpService _httpService;
-        private const string googleProvider = "google";
-        private const string microsoftProvider = "microsoft";
+        private const string GoogleProvider = "google";
+        private const string MicrosoftProvider = "microsoft";
 
         protected SocialLogInServiceBase(
             ILogger logger,
@@ -42,8 +43,8 @@ namespace Authentication.DomainService.OAuth
                 { "client_id", identityProvider.ClientId ?? string.Empty },
                 { "client_secret", identityProvider.ClientSecret ?? string.Empty },
                 { "redirect_uri", stateInfo.RedirectUri ?? string.Empty },
-                { "grant_type", "authorization_code" },
-                { "scope", "openid profile email" }
+                { "grant_type", GrantTypes.AuthCode },
+                { "scope", AuthenticationConstants.OpenIdProfileEmailScope }
             };
 
             var (response, error) = await _httpService.SendFormUrlEncoded<SocialOauthAccessToken>(HttpMethod.Post, postData, identityProvider.TokenUrl);
@@ -56,14 +57,14 @@ namespace Authentication.DomainService.OAuth
 
             var externalUser = stateInfo.Provider switch
             {
-                googleProvider => await GetGoogleProfileVerification(identityProvider.UserInfoUrl, response.AccessToken),
-                microsoftProvider => await GetMicrosoftProfileVerification(identityProvider.UserInfoUrl, response.AccessToken, response.IdToken),
+                GoogleProvider => await GetGoogleProfileVerification(identityProvider.UserInfoUrl, response.AccessToken),
+                MicrosoftProvider => await GetMicrosoftProfileVerification(identityProvider.UserInfoUrl, response.AccessToken, response.IdToken),
                 _ => CreateEmptyUserData()
             };
 
             externalUser.Permissions = identityProvider.InitialPermissions;
 
-            Console.WriteLine($"IntraId Roles: {string.Join(", ", externalUser.Roles)}");
+            _logger.LogDebug("IntraId Roles: {Roles}", string.Join(", ", externalUser.Roles));
 
             if (externalUser.Roles.Count > 0)
                 externalUser.Roles.AddRange(identityProvider.InitialRoles);
@@ -94,14 +95,9 @@ namespace Authentication.DomainService.OAuth
 
             var (externalUser, error) = await _httpService.Get<GoogleUserData>(userAccessEndPoint);
 
-            if (!string.IsNullOrWhiteSpace(error))
-            {
-                _logger.LogError("Error while getting google user data: {Error}", error);
-                return new GoogleUserData();
-            }
             if (!string.IsNullOrWhiteSpace(error) || externalUser == null)
             {
-                _logger.LogError("Error while getting user data: {Error}", error);
+                _logger.LogError("Error while getting google user data: {Error}", error);
                 return CreateEmptyUserData();
             }
 
@@ -116,14 +112,9 @@ namespace Authentication.DomainService.OAuth
                 { "Authorization", $"bearer {accessToken}"  }
             });
 
-            if (!string.IsNullOrWhiteSpace(error))
-            {
-                _logger.LogError("Error while getting microsoft user data: {Error}", error);
-                return new MicrosoftUserData();
-            }
             if (!string.IsNullOrWhiteSpace(error) || externalUser == null)
             {
-                _logger.LogError("Error while getting user data: {Error}", error);
+                _logger.LogError("Error while getting microsoft user data: {Error}", error);
                 return CreateEmptyUserData();
             }
 

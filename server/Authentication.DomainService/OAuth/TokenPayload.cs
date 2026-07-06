@@ -3,7 +3,7 @@ using Microsoft.AspNetCore.Mvc;
 
 namespace Authentication.DomainService.OAuth
 {
-    public class TokenPayload
+    public sealed class TokenPayload
     {
         [FromForm(Name = "grant_type")]
         public string GrantType { get; set; }
@@ -45,7 +45,7 @@ namespace Authentication.DomainService.OAuth
         public string BiometricId { get; set; } = string.Empty;
 
         [FromForm(Name = "biometric_key")]
-        public string BiometriKey { get; set; } = string.Empty;
+        public string BiometricKey { get; set; } = string.Empty;
 
         [FromForm(Name = "client_id")]
         public string ClientId { get; set; } = string.Empty;

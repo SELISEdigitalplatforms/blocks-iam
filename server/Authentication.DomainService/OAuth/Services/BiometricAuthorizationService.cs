@@ -6,7 +6,7 @@ using Iam.DomainService.Entities;
 
 namespace Authentication.DomainService.OAuth.Services
 {
-    public class BiometricAuthorizationService : ITokenService
+    public sealed class BiometricAuthorizationService : ITokenService
     {
         private readonly IAuthenticationRepository _authenticationRepository;
         private readonly IOAuthJwtAccessTokenManager _oAuthJwtAccessTokenManager;
@@ -18,7 +18,7 @@ namespace Authentication.DomainService.OAuth.Services
             _oAuthJwtAccessTokenManager = oAuthJwtAccessTokenManager;
         }
 
-        public async Task<TokenResponse> AuthenticateAsync(TokenRequest request, AuthenticationConfiguration authenticationConfiguration, User? user = null)
+        public async Task<TokenResponse> AuthenticateAsync(TokenRequest request, IdentityConfiguration authenticationConfiguration, User? user = null)
         {
             var client = await _authenticationRepository.AuthenticateBiometricCredentialAsync(request.BiometricId, request.BiometricKey);
 

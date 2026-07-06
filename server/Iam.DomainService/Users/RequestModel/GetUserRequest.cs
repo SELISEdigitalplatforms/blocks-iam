@@ -1,5 +1,4 @@
 ﻿using Blocks.Genesis;
-using Iam.DomainService.Dtos;
 
 namespace Iam.DomainService.Users
 {
@@ -8,7 +7,7 @@ namespace Iam.DomainService.Users
         public string? Id { get; set; }
     }
 
-    public class GetUserResponse : BaseQueryResponse<GetUser>
+    public class GetUserResponse : BaseQueryResponse<Dictionary<string, object>>
     {
     }
 }

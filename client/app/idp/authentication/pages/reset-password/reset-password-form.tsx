@@ -13,14 +13,15 @@ import { useEffect, useRef, useState } from "react";
 import { useAccountResetPassword } from "@blocks-idp/iam/hooks/use-account";
 import { isErrorWithErrors } from "@/lib/error";
 import { useCaptcha } from "@blocks-idp/captcha/hooks/use-captcha";
+import { useOidcUiConfig } from "@blocks-idp/authentication/hooks/use-oidc-ui-config";
 import { PasswordStrengthChecker } from "@blocks-idp/authentication/components/password-strength-checker/password-strength-checker";
 import { Switch } from "@/components/ui-kits/switch/switch";
 import { ArrowRight, Eye, EyeOff, Loader } from "lucide-react";
 import { useOidcAuthAnimation } from "../oidc/oidc-auth-shell";
 
-type ResetPasswordFormProps = { code: string };
+type ResetPasswordFormProps = { code: string; tenantId?: string };
 
-export const ResetPasswordForm = ({ code }: ResetPasswordFormProps) => {
+export const ResetPasswordForm = ({ code, tenantId }: ResetPasswordFormProps) => {
   const navigate = useNavigate();
   const animCtx = useOidcAuthAnimation();
   const formRef = useRef<HTMLFormElement>(null);
@@ -35,10 +36,13 @@ export const ResetPasswordForm = ({ code }: ResetPasswordFormProps) => {
     resolver: zodResolver(resetPasswordFormSchema),
   });
 
-  const googleSiteKey = getRuntimeEnv("BLOCKS_GOOGLE_SITE_KEY") || "";
+  const { data: oidcUiConfig, captchaEnabled } = useOidcUiConfig(tenantId);
+  const googleSiteKey =
+    oidcUiConfig?.captcha?.key || getRuntimeEnv("BLOCKS_GOOGLE_SITE_KEY") || "";
   const { captcha, code: captchaCode, reset: resetCaptcha } = useCaptcha({
     siteKey: googleSiteKey,
-    type: "reCaptcha-v2-checkbox",
+    type: oidcUiConfig?.captcha?.provider === "hcaptcha" ? "hCaptcha" : "reCaptcha-v2-checkbox",
+    generator: oidcUiConfig?.captcha?.generator,
   });
 
   const { isPending, mutateAsync } = useAccountResetPassword();
@@ -85,6 +89,7 @@ export const ResetPasswordForm = ({ code }: ResetPasswordFormProps) => {
         captchaCode,
         logoutFromAllDevices: values.logoutFromAllDevices,
         password: values.password,
+        tenantId,
       });
       if (!res.isSuccess) {
         resetCaptcha();
@@ -194,11 +199,11 @@ export const ResetPasswordForm = ({ code }: ResetPasswordFormProps) => {
           />
         </div>
 
-        {isValid && requirementsMet && <Captcha {...captcha} />}
+        {captchaEnabled && isValid && requirementsMet && <Captcha {...captcha} />}
 
         <button
           type="submit"
-          disabled={isAuthenticating || !captchaCode || !isValid || !requirementsMet}
+          disabled={isAuthenticating || (captchaEnabled && !captchaCode) || !isValid || !requirementsMet}
           className="oidc-sci-fi-btn mt-1 w-full flex items-center justify-center gap-2"
         >
           {isAuthenticating ? (

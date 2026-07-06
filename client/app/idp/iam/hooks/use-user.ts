@@ -1,9 +1,8 @@
-import { useAuthStore } from "@/store/useAuthStore";
+ import { useAuthStore } from "@seliseblocks/blocks-kit";
 import {
   IGetUserByIdPayload,
   IGetUserRolesPayload,
   IGetUsersPayload,
-  IGetSignUpSettingPayload,
 } from "@blocks-idp/iam/models/user";
 import { userService } from "@blocks-idp/iam/services/user.service";
 import { normalizeSearchQueryText } from "@/lib/utils";
@@ -46,12 +45,12 @@ export const useGetUsers = (option: IGetUsersPayload) => {
 };
 
 export const useGetUser = (options?: { enabled?: boolean }) => {
-  const authStore = useAuthStore();
+  // const authStore = useAuthStore();
   return useQuery({
     queryKey: ["userAPiNotinuse"],
     queryFn: async () => {
       const user = await userService.getUser();
-      authStore.setUser(user.data);
+      // authStore.setUser(user.data);
       return user;
     },
     staleTime: Infinity,
@@ -60,18 +59,26 @@ export const useGetUser = (options?: { enabled?: boolean }) => {
 };
 
 export const useGetMe = (options?: { enabled?: boolean }) => {
-  const authStore = useAuthStore();
-  return useQuery({
+  // const authStore = useAuthStore();
+  const query = useQuery({
     queryKey: ["user"],
     queryFn: async () => {
       const user = await userService.me();
-      if (user.data) authStore.setUser(user.data);
+      // if (user.data) authStore.setUser(user.data);
       return user;
     },
-    initialData: authStore.user ? { data: authStore.user } : undefined,
+    // initialData: authStore.user ? { data: authStore.user } : undefined,
     staleTime: Infinity,
     ...options,
   });
+
+  const userFound =
+    query.data?.data != null && Object.keys(query.data.data).length > 0;
+
+  return {
+    ...query,
+    userFound,
+  };
 };
 
 export const useGetUserById = (
@@ -114,12 +121,9 @@ export const useUpdateUser = (options: {
   });
 };
 
-export const useGetSignUpSetting = (
-  option: IGetSignUpSettingPayload,
-  options?: { enabled?: boolean },
-) => {
+export const useGetSignUpSetting = (options?: { enabled?: boolean }) => {
   return useQuery({
-    queryKey: ["sign-up-setting", option],
+    queryKey: ["sign-up-setting"],
     queryFn: () => userService.getSignUpSetting(),
     ...options,
   });

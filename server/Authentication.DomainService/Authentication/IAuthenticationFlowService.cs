@@ -17,15 +17,17 @@ namespace Authentication.DomainService.Authentication
         Task<IActionResult> ExecuteStopImpersonationAsync(StopImpersonationRequest request, HttpRequest httpRequest, HttpResponse httpResponse);
     }
 
-    public class AuthenticationFlowResult
+    public sealed class AuthenticationFlowResult
     {
         public TokenResponse? TokenResponse { get; set; }
         public int StatusCode { get; set; } = StatusCodes.Status400BadRequest;
         public string? Error { get; set; }
         public string? ErrorDescription { get; set; }
+        public bool CaptchaRequired { get; set; }
+        public string? CaptchaSiteKey { get; set; }
     }
 
-    public class GetContextForProjectResult
+    public sealed class GetContextForProjectResult
     {
         public bool IsSuccess { get; set; }
         public string? ContextId { get; set; }
