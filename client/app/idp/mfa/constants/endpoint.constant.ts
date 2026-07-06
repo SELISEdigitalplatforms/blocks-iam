@@ -3,8 +3,8 @@
 const MFA_CONFIG_SUBPATH = "/MFA";
 
 export const MFA_CONFIG_ENDPOINTS = {
-  GET: `/api${MFA_CONFIG_SUBPATH}/Get`,
-  SAVE: `/api${MFA_CONFIG_SUBPATH}/Save`,
+  GET: `/api${MFA_CONFIG_SUBPATH}/Config`,
+  SAVE: `/api${MFA_CONFIG_SUBPATH}/Config`,
 } as const;
 
 // ─── MFA endpoints (mfa.service — IDP & MFA bases) ─────────────────────────
