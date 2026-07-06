@@ -4,8 +4,8 @@ import { profileMfaContext } from "../../profile-mfa";
 import { Skeleton } from "@/components/ui-kits/skeleton/skeleton";
 
 export const ProfileMfaVerifyGuideLineTotp = () => {
-  const { userId, projectKey } = useContext(profileMfaContext);
-  const { data } = useGetTotp({ id: userId, projectKey });
+  const { userId } = useContext(profileMfaContext);
+  const { data } = useGetTotp({ id: userId });
   return (
     <div className="flex flex-col gap-4">
       <div className="flex gap-1">
