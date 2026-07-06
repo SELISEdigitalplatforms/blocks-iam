@@ -1,18 +1,14 @@
 using System.Text.Json.Serialization;
 using Authentication.DomainService.Authentication;
-using Authentication.DomainService.OAuth;
 using Authentication.DomainService.Services;
 using Blocks.Genesis;
 using Iam.DomainService.Entities;
-using Iam.DomainService.Users;
 using Mfa.DomainService.Configuration;
 using Mfa.DomainService.Services;
 using Mfa.DomainService.Shared;
 using Mfa.DomainService.TOTP;
 using Microsoft.AspNetCore.Authorization;
-using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
-using Microsoft.Extensions.Logging;
 using UserEntity = Iam.DomainService.Entities.User;
 
 namespace Api.Controllers;
@@ -28,9 +24,7 @@ public class MfaController : ControllerBase
     private readonly IMfaBackupCodeService _backupCodeService;
     private readonly IMfaAuditService _auditService;
     private readonly IAuthenticationRepository _authenticationRepository;
-    private readonly IUserRepository _userRepository;
     private readonly TotpService _totpService;
-    private readonly ILogger<MfaController> _logger;
 
     public MfaController(
         IMfaManagementService mfaManagementService,
@@ -39,9 +33,7 @@ public class MfaController : ControllerBase
         IMfaBackupCodeService backupCodeService,
         IMfaAuditService auditService,
         IAuthenticationRepository authenticationRepository,
-        IUserRepository userRepository,
-        TotpService totpService,
-        ILogger<MfaController> logger)
+        TotpService totpService)
     {
         _mfaManagementService = mfaManagementService;
         _mfaConfigurationService = mfaConfigurationService;
@@ -49,12 +41,11 @@ public class MfaController : ControllerBase
         _backupCodeService = backupCodeService;
         _auditService = auditService;
         _authenticationRepository = authenticationRepository;
-        _userRepository = userRepository;
         _totpService = totpService;
-        _logger = logger;
     }
 
-    [HttpGet("policy")]
+    [HttpGet("config")]
+    [Authorize]
     public async Task<IActionResult> GetPolicy()
     {
         var config = await _mfaConfigurationService.GetAsync() ?? new Configuration { UserMfaType = new List<UserMfaType>() };
@@ -71,8 +62,8 @@ public class MfaController : ControllerBase
         });
     }
 
-    [HttpPut("policy")]
-    [Authorize(Roles = "admin")]
+    [HttpPost("config")]
+    [Authorize]
     public async Task<IActionResult> UpdatePolicy([FromBody] UpdateMfaPolicyRequest request, CancellationToken ct)
     {
         var current = await _mfaConfigurationService.GetAsync() ?? new Configuration { UserMfaType = new List<UserMfaType>() };
@@ -93,6 +84,7 @@ public class MfaController : ControllerBase
     }
 
     [HttpGet("status")]
+    [Authorize]
     public async Task<IActionResult> GetStatus()
     {
         var userId = GetCurrentUserId();
@@ -122,6 +114,7 @@ public class MfaController : ControllerBase
     }
 
     [HttpPost("totp/setup")]
+    [Authorize]
     public async Task<IActionResult> SetupTotp()
     {
         var userId = GetCurrentUserId();
@@ -144,6 +137,7 @@ public class MfaController : ControllerBase
     }
 
     [HttpPost("totp/verify-setup")]
+    [Authorize]
     public async Task<IActionResult> VerifyTotpSetup([FromBody] VerifyTotpSetupRequest request)
     {
         var userId = GetCurrentUserId();
@@ -171,6 +165,7 @@ public class MfaController : ControllerBase
     }
 
     [HttpPost("email/enable")]
+    [Authorize]
     public async Task<IActionResult> EnableEmailMfa()
     {
         var userId = GetCurrentUserId();
@@ -203,6 +198,7 @@ public class MfaController : ControllerBase
     }
 
     [HttpPut("preferred-method")]
+    [Authorize]
     public async Task<IActionResult> SetPreferredMethod([FromBody] SetPreferredMfaMethodRequest request)
     {
         var userId = GetCurrentUserId();
@@ -252,6 +248,7 @@ public class MfaController : ControllerBase
     }
 
     [HttpPost("disable")]
+    [Authorize]
     public async Task<IActionResult> DisableMfa()
     {
         var userId = GetCurrentUserId();
@@ -269,7 +266,7 @@ public class MfaController : ControllerBase
     }
 
     [HttpPost("admin/reset")]
-    [Authorize(Roles = "admin")]
+    [Authorize]
     public async Task<IActionResult> AdminResetMfa([FromBody] AdminResetMfaRequest request)
     {
         if (request == null || string.IsNullOrWhiteSpace(request.UserId))
@@ -294,6 +291,7 @@ public class MfaController : ControllerBase
     }
 
     [HttpGet("backup-codes")]
+    [Authorize]
     public async Task<IActionResult> GetBackupCodesStatus()
     {
         var userId = GetCurrentUserId();
@@ -307,6 +305,7 @@ public class MfaController : ControllerBase
     }
 
     [HttpPost("backup-codes/generate")]
+    [Authorize]
     public async Task<IActionResult> GenerateBackupCodes()
     {
         var userId = GetCurrentUserId();
