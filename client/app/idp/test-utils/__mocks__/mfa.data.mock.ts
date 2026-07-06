@@ -95,5 +95,4 @@ export const mockResendOtpPayload: IResendMfaOtpPayload = {
 
 export const mockDisableMfaPayload: IDisableMFAPayload = {
   userId: MOCK_MFA_USER_ID,
-  projectKey: TEST_PROJECT_KEY,
 };

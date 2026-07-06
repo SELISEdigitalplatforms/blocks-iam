@@ -1,10 +1,9 @@
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
-using System.Security.Claims;
 
 namespace Authentication.DomainService.Authentication
 {
-    public class OidcLoginRequest
+    public sealed class OidcLoginRequest
     {
         [System.Text.Json.Serialization.JsonPropertyName("username")]
         public string? Username { get; set; }
@@ -40,9 +39,18 @@ namespace Authentication.DomainService.Authentication
         public string? ProviderClientId { get; set; }
         [System.Text.Json.Serialization.JsonPropertyName("provider_redirect_uri")]
         public string? ProviderRedirectUri { get; set; }
+
+        [System.Text.Json.Serialization.JsonPropertyName("mfa_id")]
+        public string? MfaId { get; set; }
+
+        [System.Text.Json.Serialization.JsonPropertyName("mfa_code")]
+        public string? MfaCode { get; set; }
+
+        [System.Text.Json.Serialization.JsonPropertyName("captcha_code")]
+        public string? CaptchaCode { get; set; }
     }
 
-    public class OidcLoginResponse
+    public sealed class OidcLoginResponse
     {
         [System.Text.Json.Serialization.JsonPropertyName("status")]
         public string Status { get; set; } = "success"; // "success" | "account_selection_required"
@@ -57,7 +65,7 @@ namespace Authentication.DomainService.Authentication
         public string? Code { get; set; }
     }
 
-    public class OidcAccountInfo
+    public sealed class OidcAccountInfo
     {
         [System.Text.Json.Serialization.JsonPropertyName("user_id")]
         public string UserId { get; set; } = string.Empty;
@@ -93,7 +101,8 @@ namespace Authentication.DomainService.Authentication
             HttpRequest request,
             HttpResponse response,
             string? blocksUserId = null,
-            bool returnRedirectResponse = true);
+            bool returnRedirectResponse = true,
+            bool mfaCompleted = false);
 
 
         Task<IActionResult> TokenAsync(string grantType, HttpRequest request);

@@ -8,6 +8,7 @@ interface OIDCParams {
   nonce?: string;
   scope?: string;
   redirectUri?: string;
+  tenantId?: string;
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   [key: string]: string | undefined;
 }
@@ -69,13 +70,14 @@ export const extractOIDCParams = (debug = false): OIDCParams => {
 
   let projectKey = searchParams.get("x-blocks-key") || undefined;
   let userName = searchParams.get("userName") || undefined;
-  let clientId = searchParams.get("clientId") || undefined;
+  let clientId = searchParams.get("client_id") || searchParams.get("clientId") || undefined;
   let logoUrl = searchParams.get("logoUrl") || undefined;
   let themeColor = searchParams.get("brandColor") || undefined;
   let state = searchParams.get("state") || undefined;
   let nonce = searchParams.get("nonce") || undefined;
   let scope = searchParams.get("scope") || undefined;
   let redirectUri = searchParams.get("redirect_uri") || undefined;
+  let tenantId = searchParams.get("tenant_id") || searchParams.get("tenantId") || undefined;
 
 
   if (!themeColor || themeColor === "" || themeColor === "&") {
@@ -106,7 +108,7 @@ export const extractOIDCParams = (debug = false): OIDCParams => {
           projectKey = hashParams.get("x-blocks-key") || undefined;
         }
         if (!clientId) {
-          clientId = hashParams.get("clientId") || undefined;
+          clientId = hashParams.get("client_id") || hashParams.get("clientId") || undefined;
         }
         if (!userName) {
           userName = hashParams.get("userName") || undefined;
@@ -123,6 +125,9 @@ export const extractOIDCParams = (debug = false): OIDCParams => {
         if (!redirectUri) {
           redirectUri = hashParams.get("redirect_uri") || undefined;
         }
+        if (!tenantId) {
+          tenantId = hashParams.get("tenant_id") || hashParams.get("tenantId") || undefined;
+        }
       } else {
         try {
           const hashParams = new URLSearchParams(hashContent);
@@ -136,8 +141,8 @@ export const extractOIDCParams = (debug = false): OIDCParams => {
           if (!projectKey && hashParams.has("x-blocks-key")) {
             projectKey = hashParams.get("x-blocks-key") || undefined;
           }
-          if (!clientId && hashParams.has("clientId")) {
-            clientId = hashParams.get("clientId") || undefined;
+          if (!clientId && (hashParams.has("client_id") || hashParams.has("clientId"))) {
+            clientId = hashParams.get("client_id") || hashParams.get("clientId") || undefined;
           }
           if (!userName && hashParams.has("userName")) {
             userName = hashParams.get("userName") || undefined;
@@ -153,6 +158,9 @@ export const extractOIDCParams = (debug = false): OIDCParams => {
           }
           if (!redirectUri && hashParams.has("redirect_uri")) {
             redirectUri = hashParams.get("redirect_uri") || undefined;
+          }
+          if (!tenantId && (hashParams.has("tenant_id") || hashParams.has("tenantId"))) {
+            tenantId = hashParams.get("tenant_id") || hashParams.get("tenantId") || undefined;
           }
         } catch (e) {
           if (debug) console.error("Failed to parse hash as params:", e);
@@ -182,6 +190,7 @@ export const extractOIDCParams = (debug = false): OIDCParams => {
     nonce,
     scope,
     redirectUri,
+    tenantId,
   };
 
   return result;
@@ -208,6 +217,7 @@ export const buildOIDCNavigationUrl = (path: string): string => {
   if (params.nonce) searchParams.set("nonce", params.nonce);
   if (params.scope) searchParams.set("scope", params.scope);
   if (params.redirectUri) searchParams.set("redirect_uri", params.redirectUri);
+  if (params.tenantId) searchParams.set("tenant_id", params.tenantId);
 
   const queryString = searchParams.toString();
   return queryString ? `${path}?${queryString}` : path;
@@ -228,6 +238,7 @@ export const getCurrentOIDCParams = (): URLSearchParams => {
   if(params.nonce) searchParams.set("nonce", params.nonce);
   if(params.scope) searchParams.set("scope", params.scope);
   if(params.redirectUri) searchParams.set("redirect_uri", params.redirectUri);
+  if (params.tenantId) searchParams.set("tenant_id", params.tenantId);
 
   if (params.themeColor) {
     searchParams.set("brandColor", params.themeColor);

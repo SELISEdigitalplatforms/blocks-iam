@@ -42,19 +42,29 @@ const Menu = [
 export const User = ({ id }: { id: string }) => {
   const tenantId = useProjectStore().selectedProject?.tenantId || "";
   const [tabId, setTabId] = useQueryState("userDetails", { defaultValue: "details" });
-  const { data } = useGetUserById({ id, projectKey: tenantId });
+  const { data, isLoading } = useGetUserById({ id, projectKey: tenantId });
 
-  BREADCRUMB_CUSTOM_TITLES["/services/iam/user-detail"] = "Users";
-  BREADCRUMB_CUSTOM_TITLES[`/services/iam/user-detail/${data?.data?.itemId}`] =
-    data?.data?.lastName ?? null;
+  const displayName = [data?.data?.firstName, data?.data?.lastName]
+    .filter(Boolean)
+    .join(" ");
+
+  BREADCRUMB_CUSTOM_TITLES["/app/user-detail"] = "Users";
+  BREADCRUMB_CUSTOM_TITLES["/app/users"] = "Users";
+  if (displayName) {
+    BREADCRUMB_CUSTOM_TITLES[`/app/user-detail/${id}`] = displayName;
+  }
+
   return (
     <div className="px-4 pt-4 md:px-6 md:pt-6">
       <div>
-        <div className="hidden md:flex">
-          <PageBreadcrumb breadcrumbIndex={3} />
+        <div className="mb-4 hidden md:mb-6 md:flex">
+          <PageBreadcrumb
+            breadcrumbIndex={2}
+            isLoadingLastItem={isLoading && !displayName}
+          />
         </div>
         <div className="flex w-full flex-col">
-          <div className="flex items-center justify-between text-base text-high-emphasis md:mt-5">
+          <div className="flex items-center justify-between text-base text-high-emphasis">
             <h3 className="text-2xl font-bold tracking-tight">
               {data?.data?.firstName} {data?.data?.lastName}
             </h3>
@@ -101,7 +111,7 @@ export const User = ({ id }: { id: string }) => {
                 <div className="flex flex-col gap-6">
                   <UserDetails id={id} />
                   <div className="flex flex-col gap-6">
-                    <UserMemberships id={id} projectKey={tenantId} />
+                    {/* <UserMemberships id={id} projectKey={tenantId} /> */}
                     {/* <UserRoles id={id} projectKey={tenantId} />
                     <UserPermissions userId={id} projectKey={tenantId} /> */}
                   </div>

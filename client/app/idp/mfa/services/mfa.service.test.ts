@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { mockHttpClientFactory } from "@/test-utils/__mocks__";
-import { http } from "@/lib/http-client";
+import { serviceInstances } from "@/lib/http-client";
 import { MFAService } from "./mfa.service";
 import { MFA_CONFIG_ENDPOINTS, MFA_ENDPOINTS } from "../constants/endpoint.constant";
 import {
@@ -181,7 +181,12 @@ describe("MFAService", () => {
 
       const result = await service.disableMFA(mockDisableMfaPayload);
 
-      expect(http.post).toHaveBeenCalledWith(MFA_ENDPOINTS.DISABLE_MFA, mockDisableMfaPayload);
+      expect(http.post).toHaveBeenCalledWith(
+        MFA_ENDPOINTS.DISABLE_MFA,
+        mockDisableMfaPayload,
+        undefined,
+        { absoluteUrl: true },
+      );
       expect(result).toEqual(mockSuccessResponse);
     });
 

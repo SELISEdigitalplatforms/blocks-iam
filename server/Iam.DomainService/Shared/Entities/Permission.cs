@@ -6,6 +6,6 @@ namespace Iam.DomainService.Entities
     public class Permission : BuiltInPermission
     {
         public List<string> Roles { get; set; } = new List<string>();
-        public string OrganizationId { get; set; } = "default";
+       // public string OrganizationId { get; set; } = "default";
     }
 }

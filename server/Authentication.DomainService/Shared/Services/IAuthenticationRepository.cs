@@ -22,6 +22,7 @@ namespace Authentication.DomainService.Services
         Task<bool> InsertIdentityEventAsync(IdentityEvent identityEvent);
         Task<bool> InsertUserAuthenticationTimelineAsync(UserAuthenticationTimeline userAuthenticationTimeline);
         Task<User?> IncrementFailedLoginAndApplyLockoutAsync(string userId, int lockThreshold, int lockDurationInMinutes, DateTime nowUtc);
+        Task<User?> IncrementFailedMfaAndApplyLockoutAsync(string userId, int lockThreshold, int lockDurationInMinutes, DateTime nowUtc);
         Task<IEnumerable<IdentitySession>> GetActiveIdentitySessionByUserIdAsync(string userId);
         Task<IdentitySession?> GetIdentitySessionByRefreshTokenAsync(string refreshToken);
         Task<IEnumerable<IdentitySession>> GetActiveIdentitySessionBySessionIdAsync(string sessionId);
@@ -38,8 +39,8 @@ namespace Authentication.DomainService.Services
         Task<IdentityProvider> CreateIdentityProviderAsync(IdentityProvider provider);
         Task<IdentityProvider> UpdateIdentityProviderAsync(IdentityProvider provider);
         Task DeleteIdentityProviderAsync(string id);
-        Task<AuthenticationConfiguration> GetAuthenticationConfigurationAsync();
-        Task UpdateAuthenticationConfigurationAsync(AuthenticationConfiguration authenticationConfiguration);
+        Task<IdentityConfiguration> GetAuthenticationConfigurationAsync();
+        Task UpdateAuthenticationConfigurationAsync(IdentityConfiguration authenticationConfiguration);
         Task<OidcClientRegistration> GetOidcClientRegistrationAsync(string clientId);
         Task<List<OidcClientRegistration>> GetOIDCCredentialsByTenantAsync();
         Task SaveOidcClientRegistrationAsync(OidcClientRegistration credential);

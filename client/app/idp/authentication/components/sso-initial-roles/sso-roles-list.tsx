@@ -71,7 +71,7 @@ export const SSORolesList = ({ roles, onDelete }: SSORolesListProps) => {
   });
 
   const onRowClickHandler = (itemId: number | string) => {
-    navigate(`/services/iam/role-detail/${itemId}`);
+    navigate(`/app/role-detail/${itemId}`);
   };
 
   return (

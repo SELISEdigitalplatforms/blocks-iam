@@ -19,7 +19,7 @@ using Iam.DomainService.Dtos;
 
 namespace Authentication.DomainService.Services
 {
-    public class AuthenticationDomainService : IAuthenticationDomainService
+    public sealed class AuthenticationDomainService : IAuthenticationDomainService
     {
         private readonly IMessageClient _messageClient;
         private readonly IAuthenticationRepository _authenticationRepository;
@@ -27,20 +27,20 @@ namespace Authentication.DomainService.Services
         private readonly IUserRepository _userRepository;
         private readonly IValidator<SaveSsoCredentialRequest> _validator;
         private readonly ITenants _tenants;
-
-
-        private readonly static HttpClient _httpClient = new();
+        private readonly IHttpClientFactory _httpClientFactory;
 
         private const string Origin_Header_Name = "Origin";
         private const string Referer_Header_Name = "Referer";
         private const string X_Forwarded_For_Header_Name = "X-Forwarded-For";
+        private const string DiscoveryClientName = "oidc-discovery";
 
         public AuthenticationDomainService(IMessageClient messageClient,
                                            IAuthenticationRepository authenticationRepository,
                                            IConfiguration configuration,
                                            IUserRepository userRepository,
                                            IValidator<SaveSsoCredentialRequest> validator,
-                                           ITenants tenants)
+                                           ITenants tenants,
+                                           IHttpClientFactory httpClientFactory)
         {
             _messageClient = messageClient;
             _authenticationRepository = authenticationRepository;
@@ -48,6 +48,7 @@ namespace Authentication.DomainService.Services
             _userRepository = userRepository;
             _validator = validator;
             _tenants = tenants;
+            _httpClientFactory = httpClientFactory;
         }
 
         public IEnumerable<string> GetVisitorsIpAddresses(HttpContext context)
@@ -125,9 +126,10 @@ namespace Authentication.DomainService.Services
             };
         }
 
-        public static async Task<OpenIdConnectConfiguration?> GetMetadataAsync(string wellKnownUrl)
+        public async Task<OpenIdConnectConfiguration?> GetMetadataAsync(string wellKnownUrl)
         {
-            var response = await _httpClient.GetAsync(wellKnownUrl);
+            var httpClient = _httpClientFactory.CreateClient(DiscoveryClientName);
+            var response = await httpClient.GetAsync(wellKnownUrl);
             string json = await response.Content.ReadAsStringAsync();
 
             return JsonSerializer.Deserialize<OpenIdConnectConfiguration>(json);
@@ -135,15 +137,81 @@ namespace Authentication.DomainService.Services
 
         public async Task<SaveOIDCClientResponse> SaveOIDCClientAsync(SaveOIDCClientRequest request)
         {
+            var credential = await InitializeOidcClientCredentialAsync(request);
+            ApplyOidcClientScopesAndRedirects(credential, request);
+            ApplyOidcClientOptions(credential, request);
+
+            await _authenticationRepository.SaveOidcClientRegistrationAsync(credential);
+
+            // Auto-insert/update IdentityProvider for OIDC client
+            // Create provider name from client ID or client name
+            //var providerName = !string.IsNullOrWhiteSpace(request.ClientDisplayName)
+            //    ? request.ClientDisplayName.ToLower().Replace(" ", "-")
+            //    : clientId.ToLower();
+
+            //var existingProvider = await _authenticationRepository.GetIdentityProviderAsync(providerName, IdpConstants.BlocksProviderType);
+
+            //if (existingProvider == null)
+            //{
+            //    // Create new IdentityProvider for this OIDC client
+            //    var newProvider = new IdentityProvider
+            //    {
+            //        Provider = providerName,
+            //        ProviderType = IdpConstants.BlocksProviderType,
+            //        Protocol = IdpConstants.OidcProtocol,
+            //        DisplayName = request.ClientDisplayName ?? clientId,
+            //        IsActive = request.IsActive,
+            //        ClientId = credential.ClientId,
+            //        ClientSecret = credential.ClientSecret,
+            //        Issuer = request.ExternalDiscoveryEndpoint,
+            //        WellKnownUrl = request.ExternalDiscoveryEndpoint,
+            //        AuthorizationUrl = request.ExternalDiscoveryEndpoint ?? "",
+            //        TokenUrl = request.ExternalDiscoveryEndpoint ?? "",
+            //        UserInfoUrl = request.ExternalDiscoveryEndpoint ?? "",
+            //        RedirectUris = redirectUris,
+            //        Scope = credential.Scope,
+            //        ResponseType = "code",
+            //        GrantTypes = ["authorization_code", "refresh_token"],
+            //        RequirePkce = credential.RequirePkce,
+            //        TokenEndpointAuthMethod = credential.TokenEndpointAuthMethod,
+            //        InitialRoles = [],
+            //        InitialPermissions = [],
+            //        Icon = null
+            //    };
+            //    await _authenticationRepository.CreateIdentityProviderAsync(newProvider);
+            //}
+            //else
+            //{
+            //    // Update existing provider with latest OIDC client config
+            //    existingProvider.Provider = providerName;
+            //    existingProvider.ProviderType = IdpConstants.BlocksProviderType;
+            //    existingProvider.Protocol = IdpConstants.OidcProtocol;
+            //    existingProvider.ClientId = credential.ClientId;
+            //    existingProvider.ClientSecret = credential.ClientSecret;
+            //    existingProvider.DisplayName = request.ClientDisplayName ?? clientId;
+            //    existingProvider.Issuer = request.ExternalDiscoveryEndpoint;
+            //    existingProvider.WellKnownUrl = request.ExternalDiscoveryEndpoint;
+            //    existingProvider.AuthorizationUrl = request.ExternalDiscoveryEndpoint ?? "";
+            //    existingProvider.TokenUrl = request.ExternalDiscoveryEndpoint ?? "";
+            //    existingProvider.UserInfoUrl = request.ExternalDiscoveryEndpoint ?? "";
+            //    existingProvider.RedirectUris = redirectUris;
+            //    existingProvider.Scope = credential.Scope;
+            //    existingProvider.GrantTypes = ["authorization_code", "refresh_token"];
+            //    existingProvider.RequirePkce = credential.RequirePkce;
+            //    existingProvider.TokenEndpointAuthMethod = credential.TokenEndpointAuthMethod;
+            //    existingProvider.IsActive = credential.IsActive;
+            //    await _authenticationRepository.UpdateIdentityProviderAsync(existingProvider);
+            //}
+
+            return new SaveOIDCClientResponse { IsSuccess = true, ItemId = credential.ItemId };
+        }
+
+        private async Task<OidcClientRegistration> InitializeOidcClientCredentialAsync(SaveOIDCClientRequest request)
+        {
             var credential = await _authenticationRepository.GetOidcClientRegistrationAsync(request.ItemId ?? "");
-            var clientId = request.ItemId;
+            var clientId = string.IsNullOrWhiteSpace(request.ItemId) ? Guid.NewGuid().ToString() : request.ItemId;
 
-            if (string.IsNullOrWhiteSpace(clientId))
-            {
-                clientId = Guid.NewGuid().ToString();
-            }
-
-            credential = credential ?? new OidcClientRegistration
+            credential ??= new OidcClientRegistration
             {
                 ItemId = clientId,
                 ClientId = clientId,
@@ -153,11 +221,15 @@ namespace Authentication.DomainService.Services
 
             credential.ItemId = clientId;
             credential.ClientId = clientId;
-
             credential.ClientSecret = string.IsNullOrWhiteSpace(credential.ClientSecret)
                 ? Guid.NewGuid().ToString("n")
                 : credential.ClientSecret;
 
+            return credential;
+        }
+
+        private static void ApplyOidcClientScopesAndRedirects(OidcClientRegistration credential, SaveOIDCClientRequest request)
+        {
             var allowedScopes = request.AllowedScopes.Where(x => !string.IsNullOrWhiteSpace(x)).Distinct(StringComparer.OrdinalIgnoreCase).ToList();
             if (allowedScopes.Count == 0 && !string.IsNullOrWhiteSpace(request.Scope))
             {
@@ -166,28 +238,21 @@ namespace Authentication.DomainService.Services
 
             var redirectUris = request.RedirectUris.Where(x => !string.IsNullOrWhiteSpace(x)).Distinct(StringComparer.OrdinalIgnoreCase).ToList();
 
-            var allowedServiceAccessResources = request.AllowedServiceAccessResources.Where(x => !string.IsNullOrWhiteSpace(x)).Distinct(StringComparer.OrdinalIgnoreCase).ToList();
-            if (allowedServiceAccessResources.Count == 0 && !string.IsNullOrWhiteSpace(request.ServiceAccessResource))
-            {
-                allowedServiceAccessResources = [request.ServiceAccessResource];
-            }
-
             credential.AllowedScopes = allowedScopes;
             credential.Scope = string.Join(' ', allowedScopes);
 
             credential.RedirectUris = redirectUris;
             credential.RedirectUri = redirectUris.FirstOrDefault();
 
-            credential.AllowedServiceAccessResources = allowedServiceAccessResources;
-            credential.ServiceAccessResource = allowedServiceAccessResources.FirstOrDefault();
-
-            credential.AllowedGrantTypes = request.AllowedGrantTypes.Where(x => !string.IsNullOrWhiteSpace(x)).Distinct(StringComparer.OrdinalIgnoreCase).ToList();
             credential.AllowedResponseTypes = request.AllowedResponseTypes.Where(x => !string.IsNullOrWhiteSpace(x)).Distinct(StringComparer.OrdinalIgnoreCase).ToList();
             if (credential.AllowedResponseTypes.Count == 0)
             {
                 credential.AllowedResponseTypes = ["code"];
             }
+        }
 
+        private static void ApplyOidcClientOptions(OidcClientRegistration credential, SaveOIDCClientRequest request)
+        {
             credential.PostLogoutRedirectUris = request.PostLogoutRedirectUris.Where(x => !string.IsNullOrWhiteSpace(x)).Distinct(StringComparer.OrdinalIgnoreCase).ToList();
             credential.ExternalDiscoveryEndpoint = request.ExternalDiscoveryEndpoint;
             credential.LoginMode = request.LoginMode;
@@ -202,74 +267,13 @@ namespace Authentication.DomainService.Services
             credential.IsActive = request.IsActive;
             credential.IsAutoRedirect = request.IsAutoRedirect;
             credential.UseTokensCookie = request.UseTokensCookie;
+            credential.RequireMfa = request.RequireMfa;
+            credential.AllowedMfaMethods = request.AllowedMfaMethods;
             credential.LastUpdatedBy = BlocksContext.GetContext()?.UserId;
             credential.LastUpdatedDate = DateTime.UtcNow;
             credential.LogoUri = request.ClientLogoUrl;
             credential.ClientName = request.ClientDisplayName;
             credential.UiBrandColor = request.ClientBrandColor;
-            await _authenticationRepository.SaveOidcClientRegistrationAsync(credential);
-            
-            // Auto-insert/update IdentityProvider for OIDC client
-            // Create provider name from client ID or client name
-            var providerName = !string.IsNullOrWhiteSpace(request.ClientDisplayName) 
-                ? request.ClientDisplayName.ToLower().Replace(" ", "-") 
-                : clientId.ToLower();
-            
-            var existingProvider = await _authenticationRepository.GetIdentityProviderAsync(providerName, IdpConstants.BlocksProviderType);
-            
-            if (existingProvider == null)
-            {
-                // Create new IdentityProvider for this OIDC client
-                var newProvider = new IdentityProvider
-                {
-                    Provider = providerName,
-                    ProviderType = IdpConstants.BlocksProviderType,
-                    Protocol = IdpConstants.OidcProtocol,
-                    DisplayName = request.ClientDisplayName ?? clientId,
-                    IsActive = request.IsActive,
-                    ClientId = credential.ClientId,
-                    ClientSecret = credential.ClientSecret,
-                    Issuer = request.ExternalDiscoveryEndpoint,
-                    WellKnownUrl = request.ExternalDiscoveryEndpoint,
-                    AuthorizationUrl = request.ExternalDiscoveryEndpoint ?? "",
-                    TokenUrl = request.ExternalDiscoveryEndpoint ?? "",
-                    UserInfoUrl = request.ExternalDiscoveryEndpoint ?? "",
-                    RedirectUris = redirectUris,
-                    Scope = credential.Scope,
-                    ResponseType = "code",
-                    GrantTypes = credential.AllowedGrantTypes ?? ["authorization_code", "refresh_token"],
-                    RequirePkce = credential.RequirePkce,
-                    TokenEndpointAuthMethod = credential.TokenEndpointAuthMethod,
-                    InitialRoles = [],
-                    InitialPermissions = [],
-                    Icon = null
-                };
-                await _authenticationRepository.CreateIdentityProviderAsync(newProvider);
-            }
-            else
-            {
-                // Update existing provider with latest OIDC client config
-                existingProvider.Provider = providerName;
-                existingProvider.ProviderType = IdpConstants.BlocksProviderType;
-                existingProvider.Protocol = IdpConstants.OidcProtocol;
-                existingProvider.ClientId = credential.ClientId;
-                existingProvider.ClientSecret = credential.ClientSecret;
-                existingProvider.DisplayName = request.ClientDisplayName ?? clientId;
-                existingProvider.Issuer = request.ExternalDiscoveryEndpoint;
-                existingProvider.WellKnownUrl = request.ExternalDiscoveryEndpoint;
-                existingProvider.AuthorizationUrl = request.ExternalDiscoveryEndpoint ?? "";
-                existingProvider.TokenUrl = request.ExternalDiscoveryEndpoint ?? "";
-                existingProvider.UserInfoUrl = request.ExternalDiscoveryEndpoint ?? "";
-                existingProvider.RedirectUris = redirectUris;
-                existingProvider.Scope = credential.Scope;
-                existingProvider.GrantTypes = credential.AllowedGrantTypes ?? ["authorization_code", "refresh_token"];
-                existingProvider.RequirePkce = credential.RequirePkce;
-                existingProvider.TokenEndpointAuthMethod = credential.TokenEndpointAuthMethod;
-                existingProvider.IsActive = credential.IsActive;
-                await _authenticationRepository.UpdateIdentityProviderAsync(existingProvider);
-            }
-            
-            return new SaveOIDCClientResponse { IsSuccess = true, ItemId = credential.ItemId };
         }
 
         public async Task<GetOIDCClientResponse> GetOidcClientAsync(string tenantId)

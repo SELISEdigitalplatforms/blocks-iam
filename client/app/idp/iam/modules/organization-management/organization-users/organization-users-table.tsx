@@ -143,7 +143,7 @@ export const OrganizationUsersTable = ({ users, isLoading }: OrganizationUsersTa
   );
 
   const handleRowClick = (itemId: string) => {
-    navigate(`/services/iam/user-detail/${itemId}`);
+    navigate(`/app/user-detail/${itemId}`);
   };
   const table = useReactTable({
     data: users,

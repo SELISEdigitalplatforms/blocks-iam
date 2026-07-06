@@ -6,12 +6,13 @@ using Authentication.DomainService.Services;
 using Iam.DomainService.Entities;
 using Microsoft.IdentityModel.Tokens;
 using System.Security.Claims;
+using System.Security.Cryptography;
 using System.Text;
 using Authentication.DomainService.Utilities;
 
 namespace Authentication.DomainService.OAuth.Services
 {
-    public class ClientCredentialAuthorizationService : ITokenService
+    public sealed class ClientCredentialAuthorizationService : ITokenService
     {
         private readonly IAuthenticationRepository _authenticationRepository;
         private readonly ICertificateProviderFactory _certificateProviderFactory;
@@ -32,7 +33,7 @@ namespace Authentication.DomainService.OAuth.Services
             _tenants = tenants;    
         }
 
-        public async Task<TokenResponse> AuthenticateAsync(TokenRequest request, AuthenticationConfiguration authenticationConfiguration, User? user = null)
+        public async Task<TokenResponse> AuthenticateAsync(TokenRequest request, IdentityConfiguration authenticationConfiguration, User? user = null)
         {
             var client = await _authenticationRepository.GetClientCredentialByIdAsync(request.ClientId);
             var validationResult = ValidateClient(client, request);
@@ -50,25 +51,6 @@ namespace Authentication.DomainService.OAuth.Services
                 };
             }
 
-            //var orgPermissions = ResolveOrgPermissions(client!, requestedOrgId);
-            //if (orgPermissions.Count == 0)
-            //{
-            //    return new TokenResponse
-            //    {
-            //        Error = "invalid_scope",
-            //        ErrorDescription = "No permissions configured for the requested organization"
-            //    };
-            //}
-
-            //if (orgPermissions.Count > 10)
-            //{
-            //    return new TokenResponse
-            //    {
-            //        Error = "invalid_scope",
-            //        ErrorDescription = "A maximum of 10 permissions is allowed per organization"
-            //    };
-            //}
-
             var jwtToken = await GetJwtAccessToken(authenticationConfiguration, client!, requestedOrgId, []);
             var accessToken =  OAuthJwtAccessTokenManager.CreateJwtAccessToken(jwtToken);
 
@@ -83,7 +65,7 @@ namespace Authentication.DomainService.OAuth.Services
         }
 
         private async Task<JwtAccessToken> GetJwtAccessToken(
-            AuthenticationConfiguration authenticationConfiguration,
+            IdentityConfiguration authenticationConfiguration,
             ClientCredential client,
             string organizationId,
             List<string> orgPermissions)
@@ -118,7 +100,7 @@ namespace Authentication.DomainService.OAuth.Services
         }
 
         private static JwtAccessToken MapJwtAccessToken(
-            AuthenticationConfiguration authenticationConfiguration,
+            IdentityConfiguration authenticationConfiguration,
             Tenant tenant,
             ClientCredential client,
             string organizationId,
@@ -210,7 +192,7 @@ namespace Authentication.DomainService.OAuth.Services
                     ErrorDescription = "No client found"
                 },
 
-                _ when request.ClientSecret != client.ClientSecret => new TokenResponse
+                _ when !SecretsMatch(request.ClientSecret, client.ClientSecret) => new TokenResponse
                 {
                     Error = "invalid_client",
                     ErrorDescription = "Client secret not match"
@@ -222,8 +204,20 @@ namespace Authentication.DomainService.OAuth.Services
                     ErrorDescription = "Client is not active"
                 },
 
-                _ => null 
+                _ => null
             };
+        }
+
+        private static bool SecretsMatch(string? requestSecret, string? clientSecret)
+        {
+            if (string.IsNullOrEmpty(requestSecret) || string.IsNullOrEmpty(clientSecret))
+            {
+                return false;
+            }
+
+            var requestBytes = Encoding.UTF8.GetBytes(requestSecret);
+            var clientBytes = Encoding.UTF8.GetBytes(clientSecret);
+            return CryptographicOperations.FixedTimeEquals(requestBytes, clientBytes);
         }
 
     }

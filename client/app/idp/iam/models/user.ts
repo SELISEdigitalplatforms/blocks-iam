@@ -286,6 +286,7 @@ export interface IAccountActivationPayload {
   captchaCode?: string;
   mailPurpose?: string;
   preventPostEvent: boolean;
+  tenantId?: string;
 }
 
 export interface IAccountActivationResponse {
@@ -295,6 +296,7 @@ export interface IAccountActivationResponse {
 
 export interface IAccountResendActivationPayload {
   userId: string;
+  tenantId?: string;
 }
 export interface IAccountResendActivationResponse {
   errors: unknown | null;
@@ -304,6 +306,7 @@ export interface IAccountRecoverPayload {
   email: string;
   captchaCode?: string;
   mailPurpose?: string;
+  tenantId?: string;
 }
 export interface IAccountRecoverResponse {
   errors: unknown | null;
@@ -314,6 +317,7 @@ export interface IAccountResetPasswordPayload {
   password: string;
   captchaCode?: string;
   logoutFromAllDevices?: boolean;
+  tenantId?: string;
 }
 export interface IAccountResetPasswordResponse {
   errors: unknown | null;
@@ -332,6 +336,7 @@ export interface IChangePasswordResponse {
 
 export interface IActivationCodeValidationPayload {
   activationCode: string;
+  tenantId?: string;
 }
 
 export interface IActivationCodeExpirationResponse {
@@ -343,8 +348,8 @@ export interface IActivationCodeExpirationResponse {
 export interface ISaveSignUpSettingPayload {
   isEmailPasswordSignUpEnabled: boolean;
   isSSoSignUpEnabled: boolean;
-  projectKey: string;
-  itemId: string;
+  defaultRolesForNewUserOnSignUp: string[];
+  defaultPermissionsForNewUserOnSignUp: string[];
 }
 
 export interface ISaveSignUpSettingResponse {
@@ -353,20 +358,10 @@ export interface ISaveSignUpSettingResponse {
   itemId: string;
 }
 
-export interface IGetSignUpSettingPayload {
-  projectKey: string;
-  // itemId: string;
-}
-
 export interface IGetSignUpSettingResponse {
-  itemId: string;
-  createdDate: string;
-  lastUpdatedDate: string;
-  createdBy: string;
-  language: string;
-  lastUpdatedBy: string;
-  organizationIds: string[];
-  tags: string[];
-  IsEmailPasswordSignUpEnabled: boolean;
-  IsSSoSignUpEnabled: boolean;
+  isSignUpEnable: boolean;
+  isEmailPasswordSignUpEnabled: boolean;
+  isSSoSignUpEnabled: boolean;
+  defaultRolesForNewUser: string[];
+  defaultPermissionsForNewUser: string[];
 }

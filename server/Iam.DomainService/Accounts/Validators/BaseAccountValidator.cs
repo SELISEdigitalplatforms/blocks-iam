@@ -1,6 +1,5 @@
-﻿using Blocks.Genesis;
-using Captcha.DomainService.Captcha;
-using Captcha.DomainService.Configuration;
+﻿using Blocks.CaptchaDriver;
+using Blocks.Genesis;
 using FluentValidation;
 using Iam.DomainService.Configurations;
 using Iam.DomainService.Services;
@@ -59,11 +58,14 @@ namespace Iam.DomainService.Accounts
             return await _cacheClient.KeyExistsAsync(accountActivationCode);
         }
 
-        private async Task<CaptchaConfiguration> GetCaptchaConfig()
+        private async Task<CaptchaConfiguration?> GetCaptchaConfig()
         {
-            var captchaConfiguration = _dbContextProvider.GetCollection<CaptchaConfiguration>("CaptchaConfigurations");
-            var configuration = await (await captchaConfiguration.FindAsync(Builders<CaptchaConfiguration>.Filter.Eq(mc => mc.IsEnable, true))).FirstOrDefaultAsync();
-            return configuration;
+            var collection = _dbContextProvider.GetCollection<Secret>("Secrets");
+            var filter = Builders<Secret>.Filter.Eq(s => s.SecretKey, CaptchaSecretKeys.SecretKey);
+
+            var secrets = await (await collection.FindAsync(filter)).ToListAsync();
+
+            return secrets.Select(CaptchaConfigurationMapping.MapToCaptchaConfiguration).FirstOrDefault(configuration => configuration is { IsEnable: true });
         }
     }
 }

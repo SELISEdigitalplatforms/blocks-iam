@@ -95,7 +95,17 @@
             RFC 6749: OAuth 2.0 Framework | RFC 7636: PKCE
             </summary>
         </member>
-        <!-- Badly formed XML comment ignored for member "M:Api.Controllers.AuthenticationController.HandleSocialCallback(System.String,System.String,System.String,Authentication.DomainService.OAuth.RequestModel.SocialLoginRequest)" -->
+        <member name="M:Api.Controllers.AuthenticationController.HandleSocialCallback(Authentication.DomainService.OAuth.RequestModel.SocialLoginRequest)">
+            <summary>
+            Social provider callback handler (API Pattern)
+            Receives authorization code from social provider via POST body
+            Exchanges code for tokens, validates JWT, creates/updates user
+            Sets secure HTTP-only cookie with tokens
+            Endpoint:
+            - POST /social/callback with request body
+            RFC 6749: OAuth 2.0 | RFC 3986: OpenID Connect | RFC 7519: JWT
+            </summary>
+        </member>
         <member name="M:Api.Controllers.AuthenticationController.RefreshAccessToken(Authentication.DomainService.OAuth.RequestModel.RefreshRequest)">
             <summary>
             Refresh access token using refresh token
@@ -249,38 +259,6 @@
             <response code="400">client_id is required or validation failure</response>
             <response code="401">Authentication required</response>
             <response code="404">Client not found</response>
-        </member>
-        <member name="T:Api.Controllers.ProjectController">
-            <summary>
-            Project Management Controller
-            Manages project creation, configuration, and discovery
-            Provides project metadata and organizational structure
-            </summary>
-        </member>
-        <member name="M:Api.Controllers.ProjectController.GetAll(Identifier.DomainService.Projects.GetProjectsRequest)">
-            <summary>
-            Retrieve all projects grouped by hierarchy
-            Returns projects with nested organization structure
-            User must have project access permissions
-            </summary>
-            <param name="request">Query filters and pagination options</param>
-            <returns>Grouped projects by organization</returns>
-            <response code="200">Successfully retrieved projects</response>
-            <response code="400">Invalid query parameters</response>
-            <response code="401">Authentication required</response>
-        </member>
-        <member name="M:Api.Controllers.ProjectController.Get(System.String)">
-            <summary>
-            Retrieve detailed project information
-            Returns complete project configuration and metadata
-            User must have project access permissions
-            </summary>
-            <param name="projectId">Unique identifier of project to retrieve</param>
-            <returns>Detailed project information with configuration</returns>
-            <response code="200">Successfully retrieved project details</response>
-            <response code="400">projectId parameter is required</response>
-            <response code="401">Authentication required</response>
-            <response code="404">Project not found</response>
         </member>
         <member name="M:Blocks.Api.Controllers.AuthorizationController.OidcLogin(Authentication.DomainService.Authentication.OidcLoginRequest)">
             <summary>

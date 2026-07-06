@@ -1,4 +1,4 @@
-import { http, serviceClientInstances } from "@/lib/http-client";
+import { serviceInstances } from "@/lib/http-client";
 import {
   ICreateProjectPayload,
   IDisableProjectPayload,
@@ -37,10 +37,10 @@ import {
 } from "@blocks-identifier/constants/endpoint.constant";
 
 export class ProjectService {
-  private readonly logicClient = serviceClientInstances.logicClient;
+  private readonly logicClient = serviceInstances.logicService;
   getProjects(page: number, pageSize: number, tenantGroupId: string): Promise<IProjectGroup[]> {
     const url = `${PROJECT_ENDPOINTS.GETS}?page=${page}&pageSize=${pageSize}&tenantGroupId=${tenantGroupId}`;
-    return http.get(url, undefined, { absoluteUrl: true });
+    return serviceInstances.idpService.get(url, undefined, { absoluteUrl: true });
   }
 
   getAssets(tenantGroupId: string): Promise<{
@@ -55,14 +55,14 @@ export class ProjectService {
     isSuccess: boolean;
   }> {
     const url = `${PROJECT_ENDPOINTS.GET_ASSET}?TenantGroupId=${tenantGroupId}`;
-    return http.get(url, undefined, { absoluteUrl: true });
+    return serviceInstances.idpService.get(url, undefined, { absoluteUrl: true });
   }
 
   addAssets(payload: { tenantGroupId: string; resource: IResource }): Promise<{
     errors: unknown | null;
     isSuccess: boolean;
   }> {
-    return http.post(PROJECT_ENDPOINTS.ADD_ASSET, payload, undefined, { absoluteUrl: true });
+    return serviceInstances.idpService.post(PROJECT_ENDPOINTS.ADD_ASSET, payload, undefined, { absoluteUrl: true });
   }
 
   getEnvRepositories(projectKey: string): Promise<{
@@ -86,12 +86,12 @@ export class ProjectService {
     errors: unknown | null;
     isSuccess: boolean;
   }> {
-    return http.post(CLOUD_BUILD_ENDPOINTS.REPO_UPDATE, payload);
+    return serviceInstances.idpService.post(CLOUD_BUILD_ENDPOINTS.REPO_UPDATE, payload);
   }
 
   getProject(payload: IGetProjectPayload): Promise<IGetProjectResponse> {
     const url = `${PROJECT_ENDPOINTS.GET}?projectId=${payload.projectId}`;
-    return http.get(url, undefined, { absoluteUrl: true });
+    return serviceInstances.idpService.get(url, undefined, { absoluteUrl: true });
   }
 
   createProject(payload: ICreateProjectPayload): Promise<{
@@ -99,55 +99,55 @@ export class ProjectService {
     errors: Record<string, string | string[]>;
     tenantGroupId: string;
   }> {
-    return http.post(PROJECT_ENDPOINTS.CREATE, payload, undefined, { absoluteUrl: true });
+    return serviceInstances.idpService.post(PROJECT_ENDPOINTS.CREATE, payload, undefined, { absoluteUrl: true });
   }
 
   validateCNameProject(
     payload: IValidateCNameProjectPayload,
   ): Promise<IValidateCNameProjectResponse> {
-    return http.post(DOMAIN_ENDPOINTS.CONFIGURE, payload);
+    return serviceInstances.idpService.post(DOMAIN_ENDPOINTS.CONFIGURE, payload);
   }
 
   updateProject(payload: IUpdateProjectPayload): Promise<IUpdateProjectResponse> {
-    return http.post(PROJECT_ENDPOINTS.UPDATE, payload, undefined, { absoluteUrl: true });
+    return serviceInstances.idpService.post(PROJECT_ENDPOINTS.UPDATE, payload, undefined, { absoluteUrl: true });
   }
 
   updateTenantGroup(payload: IUpdateTenantGroupPayload): Promise<IUpdateProjectResponse> {
-    return http.post(PROJECT_ENDPOINTS.UPDATE_TENANT_GROUP, payload, undefined, { absoluteUrl: true });
+    return serviceInstances.idpService.post(PROJECT_ENDPOINTS.UPDATE_TENANT_GROUP, payload, undefined, { absoluteUrl: true });
   }
 
   disableProject(payload: IDisableProjectPayload): Promise<IDisableProjectResponse> {
-    return http.post(PROJECT_ENDPOINTS.DISABLE, payload, undefined, { absoluteUrl: true });
+    return serviceInstances.idpService.post(PROJECT_ENDPOINTS.DISABLE, payload, undefined, { absoluteUrl: true });
   }
 
   getProjectLoginOption(): Promise<IGetProjectLoginOptionResponse> {
-    return http.get(PROJECT_ENDPOINTS.GET_LOGIN_OPTIONS, undefined, { absoluteUrl: true });
+    return serviceInstances.idpService.get(PROJECT_ENDPOINTS.GET_LOGIN_OPTIONS, undefined, { absoluteUrl: true });
   }
 
   // Data Migration Methods
   initiateMigration(payload: IMigrationRequest): Promise<IMigrationInitiateResponse> {
-    return http.post(MIGRATION_ENDPOINTS.MIGRATE, payload);
+    return serviceInstances.idpService.post(MIGRATION_ENDPOINTS.MIGRATE, payload);
   }
 
   verifyMigration(payload: IVerifyMigrationRequest): Promise<IMigrationVerificationResponse> {
-    return http.post(MIGRATION_ENDPOINTS.VERIFY, payload);
+    return serviceInstances.idpService.post(MIGRATION_ENDPOINTS.VERIFY, payload);
   }
 
   getMigrationStatus(_tenantGroupId: string): Promise<IMigrationStatusResponse> {
     // const url = `${MIGRATION_ENDPOINTS.GET_STATUS}?tenantGroupId=${_tenantGroupId}`;
-    // return http.get(url);
+    // return serviceInstances.idpService.get(url);
     return Promise.resolve([]);
   }
 
   savePublicCertificate(payload: ISavePublicCertificatePayload): Promise<IUpdateProjectResponse> {
-    return http.post(PROJECT_ENDPOINTS.UPDATE_TOKEN_VALIDATION, payload, undefined, { absoluteUrl: true });
+    return serviceInstances.idpService.post(PROJECT_ENDPOINTS.UPDATE_TOKEN_VALIDATION, payload, undefined, { absoluteUrl: true });
   }
 
   getPublicCertificateInformation(
     projectKey: string,
   ): Promise<IGetPublicCertificateResponse | null> {
     const url = `${PROJECT_ENDPOINTS.GET_TOKEN_VALIDATION}?ProjectKey=${projectKey}`;
-    return http.get<IGetPublicCertificateResponse | null>(url, undefined, { absoluteUrl: true });
+    return serviceInstances.idpService.get<IGetPublicCertificateResponse | null>(url, undefined, { absoluteUrl: true });
   }
 
   async validateJwksUrl(url: string): Promise<{
@@ -206,18 +206,18 @@ export class ProjectService {
 
   getJwtClaim(payload: GetJwtClaimPayload): Promise<JwtClaimResponse> {
     const url = `${PROJECT_ENDPOINTS.GET_JWT_CLAIMS}?ProjectKey=${payload.projectKey}&ItemId=${payload.itemId}`;
-    return http.get(url, undefined, { absoluteUrl: true });
+    return serviceInstances.idpService.get(url, undefined, { absoluteUrl: true });
   }
 
   addJwtClaim(payload: JwtClaimPayload): Promise<{
     errors: unknown | null;
     isSuccess: boolean;
   }> {
-    return http.post(PROJECT_ENDPOINTS.SAVE_JWT_CLAIMS, payload, undefined, { absoluteUrl: true });
+    return serviceInstances.idpService.post(PROJECT_ENDPOINTS.SAVE_JWT_CLAIMS, payload, undefined, { absoluteUrl: true });
   }
 
   getSubscriptionUsage(projectKey: string): Promise<IGetSubscriptionUsageResponse> {
-    return http.get(`${SUBSCRIPTION_ENDPOINTS.GETS}?projectKey=${projectKey}`);
+    return serviceInstances.idpService.get(`${SUBSCRIPTION_ENDPOINTS.GETS}?projectKey=${projectKey}`);
   }
 }
 

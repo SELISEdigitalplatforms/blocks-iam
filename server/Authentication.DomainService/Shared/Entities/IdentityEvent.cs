@@ -5,7 +5,7 @@ using MongoDB.Bson.Serialization.Attributes;
 namespace Authentication.DomainService.Entities
 {
     [BsonIgnoreExtraElements]
-    public class IdentityEvent
+    public sealed class IdentityEvent
     {
         [BsonId]
         [BsonRepresentation(BsonType.ObjectId)]

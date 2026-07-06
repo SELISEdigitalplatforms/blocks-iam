@@ -3,20 +3,24 @@ using Authentication.DomainService.Entities;
 using Authentication.DomainService.RequestModel;
 using Authentication.DomainService.Shared.RequestModel;
 using Authentication.DomainService.Shared.ResponseModel;
+using Authentication.DomainService.Shared.Services;
 using Iam.DomainService.Entities;
+using Microsoft.IdentityModel.Protocols.OpenIdConnect;
 using MongoDB.Driver;
 
 namespace Authentication.DomainService.Services
 {
-    public class AuthenticationRepository : IAuthenticationRepository
+    public sealed class AuthenticationRepository : IAuthenticationRepository
     {
         private const string OidcClientRegistrationsCollectionName = "OidcClientRegistrations";
 
         private readonly IDbContextProvider _dbContextProvider;
+        private readonly OidcDiscoveryClient _oidcDiscoveryClient;
 
-        public AuthenticationRepository(IDbContextProvider dbContextProvider)
+        public AuthenticationRepository(IDbContextProvider dbContextProvider, OidcDiscoveryClient oidcDiscoveryClient)
         {
             _dbContextProvider = dbContextProvider;
+            _oidcDiscoveryClient = oidcDiscoveryClient;
         }
 
         public IMongoCollection<T> GetCollection<T>()
@@ -139,7 +143,7 @@ namespace Authentication.DomainService.Services
         }
         public async Task<bool> RevokeIdentitySessionsBySessionIdsAsync(IEnumerable<string> sessionIds)
         {
-             var collection = GetCollection<IdentitySession>();
+            var collection = GetCollection<IdentitySession>();
             var update = Builders<IdentitySession>.Update.Set(x => x.IsActive, false)
                 .Set(x => x.ExpiresUtc, DateTime.UtcNow)
                 .Set(x => x.UpdatedAt, DateTime.UtcNow);
@@ -229,6 +233,69 @@ namespace Authentication.DomainService.Services
             return userAfterLock ?? userAfterIncrement;
         }
 
+        public async Task<User?> IncrementFailedMfaAndApplyLockoutAsync(string userId, int lockThreshold, int lockDurationInMinutes, DateTime nowUtc)
+        {
+            var collection = GetCollection<User>();
+
+            var incrementFilter = Builders<User>.Filter.Eq(x => x.ItemId, userId);
+            var incrementUpdate = Builders<User>.Update
+                .Inc(x => x.FailedMfaCount, 1)
+                .Set(x => x.LastFailedMfaUtc, nowUtc)
+                .Set(x => x.LastUpdatedDate, nowUtc)
+                .Set(x => x.LastUpdatedBy, userId);
+
+            var userAfterIncrement = await collection.FindOneAndUpdateAsync(
+                incrementFilter,
+                incrementUpdate,
+                new FindOneAndUpdateOptions<User>
+                {
+                    ReturnDocument = ReturnDocument.After
+                });
+
+            if (userAfterIncrement == null)
+            {
+                return null;
+            }
+
+            if (userAfterIncrement.FailedMfaCount < lockThreshold)
+            {
+                return userAfterIncrement;
+            }
+
+            if (userAfterIncrement.LockoutUntilUtc.HasValue && userAfterIncrement.LockoutUntilUtc.Value > nowUtc)
+            {
+                return userAfterIncrement;
+            }
+
+            var actualLockoutDurationInMinutes = CalculateExponentialBackoffLockoutDuration(
+                userAfterIncrement.LockoutCount,
+                userAfterIncrement.LastLockoutUtc,
+                lockDurationInMinutes,
+                7);
+
+            var lockoutUntilUtc = nowUtc.AddMinutes(actualLockoutDurationInMinutes);
+            var lockFilter = Builders<User>.Filter.And(
+                Builders<User>.Filter.Eq(x => x.ItemId, userId),
+                Builders<User>.Filter.Eq(x => x.FailedMfaCount, userAfterIncrement.FailedMfaCount));
+
+            var lockUpdate = Builders<User>.Update
+                .Set(x => x.LockoutUntilUtc, lockoutUntilUtc)
+                .Inc(x => x.LockoutCount, 1)
+                .Set(x => x.LastLockoutUtc, nowUtc)
+                .Set(x => x.LastUpdatedDate, nowUtc)
+                .Set(x => x.LastUpdatedBy, userId);
+
+            var userAfterLock = await collection.FindOneAndUpdateAsync(
+                lockFilter,
+                lockUpdate,
+                new FindOneAndUpdateOptions<User>
+                {
+                    ReturnDocument = ReturnDocument.After
+                });
+
+            return userAfterLock ?? userAfterIncrement;
+        }
+
         /// <summary>
         /// Calculates exponential backoff lockout duration.
         /// - 1st lockout: baseDuration (5 min)
@@ -244,7 +311,7 @@ namespace Authentication.DomainService.Services
             int resetWindowDays)
         {
             var now = DateTime.UtcNow;
-            
+
             // Reset counter if last lockout was too long ago
             if (lastLockoutUtc.HasValue && (now - lastLockoutUtc.Value).TotalDays >= resetWindowDays)
             {
@@ -325,20 +392,83 @@ namespace Authentication.DomainService.Services
 
         public async Task<IdentityProvider> CreateIdentityProviderAsync(IdentityProvider provider)
         {
+            await PopulateProviderEndpointsFromWellKnownAsync(provider);
+
             provider.ItemId = Guid.NewGuid().ToString();
             provider.CreatedDate = DateTime.UtcNow;
             provider.CreatedBy = BlocksContext.GetContext()?.UserId ?? "system";
-            
+            provider.LastUpdatedDate = DateTime.UtcNow;
+            provider.LastUpdatedBy = BlocksContext.GetContext()?.UserId ?? "system";
+
             var collection = GetCollection<IdentityProvider>();
             await collection.InsertOneAsync(provider);
             return provider;
         }
 
+        private async Task PopulateProviderEndpointsFromWellKnownAsync(IdentityProvider provider)
+        {
+            if (provider == null)
+            {
+                return;
+            }
+
+            OpenIdConnectConfiguration? metadata = null;
+
+            if (!string.IsNullOrWhiteSpace(provider.WellKnownUrl))
+            {
+                metadata = await _oidcDiscoveryClient.GetMetadataAsync(provider.WellKnownUrl);
+                provider.AuthorizationUrl = metadata?.AuthorizationEndpoint;
+                provider.TokenUrl = metadata?.TokenEndpoint;
+                provider.UserInfoUrl = metadata?.UserInfoEndpoint;
+                provider.JwksUri = metadata?.JwksUri;
+                provider.Issuer = metadata?.Issuer;
+            }
+
+            else
+            {
+                var socialMetadata = GetSocialMetadata(provider.Provider);
+
+                provider.WellKnownUrl ??= socialMetadata?.WellKnownUrl;
+                provider.AuthorizationUrl ??= socialMetadata?.AuthorizationUrl;
+                provider.TokenUrl ??= socialMetadata?.TokenUrl;
+            }
+        }
+
+        private static string? GetDefaultWellKnownUrl(string? providerName)
+        {
+            return GetSocialMetadata(providerName)?.WellKnownUrl;
+        }
+
+        private static SocialMetadata? GetSocialMetadata(string? providerName)
+        {
+            if (string.IsNullOrWhiteSpace(providerName))
+            {
+                return null;
+            }
+
+            var normalizedProviderName = providerName.Trim().ToLowerInvariant();
+
+            return normalizedProviderName switch
+            {
+                var value when value.Contains("google") => new SocialMetadata(
+                    "https://accounts.google.com/.well-known/openid-configuration",
+                    "https://accounts.google.com/o/oauth2/v2/auth",
+                    "https://oauth2.googleapis.com/token"),
+                var value when value.Contains("microsoft") => new SocialMetadata(
+                    "https://login.microsoftonline.com/common/v2.0/.well-known/openid-configuration",
+                    "https://login.microsoftonline.com/common/oauth2/v2.0/authorize",
+                    "https://login.microsoftonline.com/common/oauth2/v2.0/token"),
+                _ => null
+            };
+        }
+
+        private sealed record SocialMetadata(string WellKnownUrl, string AuthorizationUrl, string TokenUrl);
+
         public async Task<IdentityProvider> UpdateIdentityProviderAsync(IdentityProvider provider)
         {
             provider.LastUpdatedDate = DateTime.UtcNow;
             provider.LastUpdatedBy = BlocksContext.GetContext()?.UserId ?? "system";
-            
+
             var collection = GetCollection<IdentityProvider>();
             var filter = Builders<IdentityProvider>.Filter.Eq(x => x.ItemId, provider.ItemId);
             var options = new ReplaceOptions { IsUpsert = false };
@@ -369,17 +499,17 @@ namespace Authentication.DomainService.Services
             await collection.UpdateOneAsync(filter, combinedUpdate);
         }
 
-        public async Task<AuthenticationConfiguration> GetAuthenticationConfigurationAsync()
+        public async Task<IdentityConfiguration> GetAuthenticationConfigurationAsync()
         {
-            var collection = GetCollection<AuthenticationConfiguration>();
-            var filter = Builders<AuthenticationConfiguration>.Filter.Where(_ => true);
+            var collection = GetCollection<IdentityConfiguration>();
+            var filter = Builders<IdentityConfiguration>.Filter.Where(_ => true);
             return await (await collection.FindAsync(filter)).FirstOrDefaultAsync();
         }
 
-        public async Task UpdateAuthenticationConfigurationAsync(AuthenticationConfiguration authenticationConfiguration)
+        public async Task UpdateAuthenticationConfigurationAsync(IdentityConfiguration authenticationConfiguration)
         {
-            var collection = GetCollection<AuthenticationConfiguration>();
-            var filter = Builders<AuthenticationConfiguration>.Filter.Eq("_id", authenticationConfiguration.ItemId);
+            var collection = GetCollection<IdentityConfiguration>();
+            var filter = Builders<IdentityConfiguration>.Filter.Eq("_id", authenticationConfiguration.ItemId);
             await collection.ReplaceOneAsync(filter, authenticationConfiguration);
         }
 
@@ -427,7 +557,7 @@ namespace Authentication.DomainService.Services
         public async Task<BiometricCredential> AuthenticateBiometricCredentialAsync(string biometricId, string biometricKey)
         {
             var collection = GetCollection<BiometricCredential>();
-            var filter = Builders<BiometricCredential>.Filter.Where(it => it.BiometricId == biometricId && it.BiometriKey == biometricId);
+            var filter = Builders<BiometricCredential>.Filter.Where(it => it.BiometricId == biometricId && it.BiometricKey == biometricKey);
             return await (await collection.FindAsync(filter)).FirstOrDefaultAsync();
         }
 

@@ -1,9 +1,5 @@
 using Authentication.DomainService.Utilities;
 using Blocks.Genesis;
-using CloudConfiguration.DomainService.Authentication.RequestModel;
-using CloudConfiguration.DomainService.IAM.RequestModel;
-using CloudConfiguration.DomainService.IAM.ResponseModel;
-using CloudConfiguration.DomainService.Shared.Services;
 using Iam.DomainService.Accounts;
 using Iam.DomainService.Activities;
 using Iam.DomainService.Entities;
@@ -29,14 +25,13 @@ namespace Api.Controllers
         private readonly IUserManagementMutationService _userManagementMutationService;
         private readonly IResourceMutationService _resourceMutationService;
         private readonly IResourceQueryService _resourceQueryService;
-        private readonly IConfigurationService _configurationService;
 
         public IamController(IAccountService accountService,
                              IUserActivityService userActivityService,
                              IResourceMutationService resourceMutationService,
                              IResourceQueryService resourceQueryService,
                              IUserManagementQueryService userManagementQueryService,
-                             IUserManagementMutationService userManagementMutationService, IConfigurationService configurationService)
+                             IUserManagementMutationService userManagementMutationService)
         {
             _userActivityService = userActivityService;
             _resourceMutationService = resourceMutationService;
@@ -44,7 +39,6 @@ namespace Api.Controllers
             _userManagementQueryService = userManagementQueryService;
             _userManagementMutationService = userManagementMutationService;
             _accountService = accountService;
-            _configurationService = configurationService;
         }
 
 
@@ -156,21 +150,12 @@ namespace Api.Controllers
             return result.Success ? Ok(result) : BadRequest(result);
         }
 
-        [HttpPost("permissions/assign-org")]
-        //[ProtectedEndPoint("blocks-idp::assign-permissions-to-organization")]
-        public async Task<IActionResult> AssignPermissionsToOrganization([FromBody] AssignPermissionsToOrganizationRequest command)
-        {
-            var result = await _resourceMutationService.AssignPermissionsToOrganizationAsync(command);
-            return result.IsSuccess ? Ok(result) : BadRequest(result);
-        }
-
-        [HttpPost("roles/assign-org")]
-        //[ProtectedEndPoint("blocks-idp::assign-roles-to-organization")]
+        [HttpGet("roles/assignable")]
+        //[ProtectedEndPoint("blocks-idp::get-assignable-roles")]
         [Authorize]
-        public async Task<IActionResult> AssignRolesToOrganization([FromBody] AssignRolesToOrganizationRequest command)
+        public async Task<GetAssignableRolesResponse> GetAssignableRoles()
         {
-            var result = await _resourceMutationService.AssignRolesToOrganizationAsync(command);
-            return result.IsSuccess ? Ok(result) : BadRequest(result);
+            return await _resourceQueryService.GetAssignableRolesAsync();
         }
 
         [HttpGet("resource-groups")]
@@ -179,6 +164,13 @@ namespace Api.Controllers
         public async Task<List<GetResourceGroupResponse>> GetResourceGroups([FromQuery] GetResourceGroupRequest request)
         {
             return await _resourceQueryService.GetResourceGroupsAsync();
+        }
+
+        [HttpGet("resource/features")]
+        [Authorize]
+        public async Task<List<GetFeResourceFeatureResponse>> GetFeResourceFeatures([FromQuery] GetFeResourceFeatureRequest request)
+        {
+            return await _resourceQueryService.GetFeResourceFeaturesAsync(request);
         }
 
         #endregion
@@ -212,10 +204,10 @@ namespace Api.Controllers
             return result.IsSuccess ? Ok(result) : BadRequest(result);
         }
 
-        [HttpGet("users")]
+        [HttpPost("users")]
         //[ProtectedEndPoint("blocks-idp::get-users")]
         [Authorize]
-        public async Task<GetUsersResponse> GetUsers([FromQuery] GetUsersRequest query)
+        public async Task<GetUsersResponse> GetUsers([FromBody] GetUsersRequest query)
         {
             return await _userManagementQueryService.GetUsersAsync(query);
         }
@@ -223,15 +215,15 @@ namespace Api.Controllers
         [HttpGet("users/{id}")]
         //[ProtectedEndPoint("blocks-idp::get-user")]
         [Authorize]
-        public async Task<GetUserResponse> GetUser([FromRoute] string id)
+        public async Task<GetUserResponse> GetUser([FromRoute] string id, [FromQuery] string? organizationId)
         {
-            return await _userManagementQueryService.GetUserAsync(id);
+            return await _userManagementQueryService.GetUserAsync(id, organizationId);
         }
 
         [HttpGet("me")]
         //[ProtectedEndPoint("blocks-idp::get-my-account")]
         [Authorize]
-        public async Task<GetAccountResponse> GetMyAccount()
+        public async Task<GetUserResponse> GetMyAccount()
         {
             DomainResolver.ResetToOriginalBlocksContextForImpersonation();
             return await _userManagementQueryService.GetAccountAsync();
@@ -317,6 +309,16 @@ namespace Api.Controllers
             return await _resourceMutationService.GetOrganizationAsync(id);
         }
 
+        [HttpGet("organizations/my")]
+        [Authorize]
+        public async Task<GetMyOrganizationsResponse> GetMyOrganization()
+        {
+            return await _resourceMutationService.GetMyOrganizationAsync();
+        }
+        #endregion
+        
+        #region Config
+
         [HttpPost("organizations/config")]
         [Authorize]
         public async Task<BaseResponse> SaveOrganizationConfig([FromBody] SaveOrganizationConfigRequest request)
@@ -332,38 +334,18 @@ namespace Api.Controllers
         }
 
         [HttpPost("signup-settings")]
-        //[ProtectedEndPoint("blocks-idp::save-signup-setting")]
-        [Authorize]
+        // [Authorize]
         public async Task<SaveSignUpSettingResponse> SaveSignUpSetting([FromBody] SaveSignUpSettingRequest request)
         {
             return await _accountService.SaveSignUpSettingAsync(request);
         }
 
         [HttpGet("signup-settings")]
-        
         public async Task<Dictionary<string, object>> GetSignUpSetting()
         {
             return await _accountService.GetSignUpSettingAsync();
         }
 
-        #endregion
-        #region Cloud configuration
-        [HttpPost("config")]
-        //[ProtectedEndPoint("blocks-idp::save-iam-configuration")]
-        [Authorize]
-        public async Task<IActionResult> Save([FromBody] SaveIamConfigurationRequest request)
-        {
-            var result = await _configurationService.SaveIamConfigurationAsync(request);
-            return result.IsSuccess ? Ok(result) : BadRequest(result);
-        }
-
-        [HttpGet("config")]
-        //[ProtectedEndPoint("blocks-idp::get-iam-configuration")]
-        [Authorize]
-        public async Task<GetConfigurationResponse> Get([FromQuery] GetAuthenticationConfigurationRequest request)
-        {
-            return await _configurationService.GetIamConfigurationAsync();
-        }
         #endregion
     }
 }

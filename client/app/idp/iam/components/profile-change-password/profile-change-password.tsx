@@ -179,7 +179,7 @@ export const ProfileChangePassword = () => {
 
   return (
     <Card>
-      <CardHeader>
+      <CardHeader className="mb-3">
         <div className="flex items-center justify-between">
           <CardTitle>Change Password</CardTitle>
           <Button size="sm" variant="outline" onClick={() => setOpen(true)}>
@@ -187,10 +187,10 @@ export const ProfileChangePassword = () => {
           </Button>
         </div>
       </CardHeader>
-      <CardContent className="!pt-0">
-        <div className="space-y-2 text-base font-normal text-high-emphasis">
-          <p>Update your password regularly to keep your account secure.</p>
-        </div>
+      <CardContent>
+        <p className="text-sm text-muted-foreground">
+          Update your password regularly to keep your account secure.
+        </p>
       </CardContent>
       <ChangePasswordDialog open={open} onOpenChange={setOpen} />
     </Card>

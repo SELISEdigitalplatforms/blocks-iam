@@ -42,6 +42,7 @@ export const SSOSigninCard = ({
 
       // OIDC social login flow
       if (mode === "oidc" && oidcContext) {
+        // TEMP: hardcoded provider values for local debugging
         const res = await authService.signinByOidcEmail({
           provider: providerConfig.provider,
           clientId: oidcContext.clientId || "",

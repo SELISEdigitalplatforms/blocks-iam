@@ -6,7 +6,7 @@ using Microsoft.Extensions.Logging;
 
 namespace Authentication.DomainService.Worker
 {
-    public class UserAuthenticationTimelineWorkerService : IConsumer<UserAuthenticationTimelineEvent>
+    public sealed class UserAuthenticationTimelineWorkerService : IConsumer<UserAuthenticationTimelineEvent>
     {
         private readonly ILogger<UserAuthenticationTimelineWorkerService> _logger;
         private readonly IAuthenticationRepository _authenticationRepository;
