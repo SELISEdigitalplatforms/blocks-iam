@@ -16,6 +16,7 @@ type MethodsOptionProps = {
   onDisableClick: () => void;
   isActive: boolean;
   isVerified: boolean;
+  hideButton?: boolean;
 };
 
 const MethodsOption = ({
@@ -24,6 +25,7 @@ const MethodsOption = ({
   onDisableClick,
   isActive,
   isVerified,
+  hideButton,
 }: MethodsOptionProps) => {
   return (
     <div className="flex gap-2 border-b p-4 py-6">
@@ -44,17 +46,19 @@ const MethodsOption = ({
             </div>
             <p className="text-low-emphasis">{method.description}</p>
           </div>
-          <div>
-            {isActive ? (
-              <Button size="xs" onClick={onDisableClick} variant="outline">
-                Disable
-              </Button>
-            ) : (
-              <Button size="xs" onClick={onEnableClick} variant="outline">
-                Enable
-              </Button>
-            )}
-          </div>
+          {!hideButton && (
+            <div>
+              {isActive ? (
+                <Button size="xs" onClick={onDisableClick} variant="outline">
+                  Disable
+                </Button>
+              ) : (
+                <Button size="xs" onClick={onEnableClick} variant="outline">
+                  Enable
+                </Button>
+              )}
+            </div>
+          )}
         </div>
       </div>
     </div>
@@ -106,6 +110,7 @@ export const ProfileMfaMethodSelectList = () => {
           onDisableClick={() => setIsDisableModalOpen(true)}
           isVerified={true}
           isActive={!isMfaEnabled}
+          hideButton={!isMfaEnabled}
         />
       </div>
 
