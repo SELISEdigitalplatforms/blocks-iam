@@ -41,6 +41,7 @@ export interface ISetupUserTotpResponse {
   isSuccess: boolean;
   qrImageUrl: string;
   qrCode: string;
+  secret?: string;
 }
 export interface IGenerateUserMFA_OtpPayload {
   userId: string;
