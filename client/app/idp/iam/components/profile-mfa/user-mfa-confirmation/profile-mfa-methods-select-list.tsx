@@ -6,19 +6,24 @@ import { MFA_Provider_Data } from "@blocks-idp/mfa/utils/mfa-config";
 import { Button } from "@/components/ui-kits/button/button";
 import { Badge } from "@/components/ui-kits/badge/badge";
 import { cn } from "@/lib/utils";
-import { CircleOff } from "lucide-react";
 import { ProfileMFAVerify } from "./profile-mfa-veriffy";
 import { UserMFAConfirmationDisable } from "./profile-mfa-confirmation-disable";
 
 type MethodsOptionProps = {
   method: Omit<(typeof MFA_Provider_Data)[0], "description"> & { description: ReactNode };
-  selected: string;
-  onSaveClick: () => void;
+  onEnableClick: () => void;
+  onDisableClick: () => void;
   activeType: string;
   isVerified: boolean;
 };
 
-const MethodsOption = ({ method, onSaveClick, activeType, isVerified }: MethodsOptionProps) => {
+const MethodsOption = ({
+  method,
+  onEnableClick,
+  onDisableClick,
+  activeType,
+  isVerified,
+}: MethodsOptionProps) => {
   const isActive = method.type.toString() === activeType;
 
   return (
@@ -28,7 +33,7 @@ const MethodsOption = ({ method, onSaveClick, activeType, isVerified }: MethodsO
           <div>
             <div className="flex items-center gap-2 text-medium-emphasis">
               <method.Icon className="aspect-square w-4" />
-              {method.label} {/* check it again */}
+              {method.label}
               {isActive && isVerified && (
                 <Badge
                   variant="outline"
@@ -41,9 +46,13 @@ const MethodsOption = ({ method, onSaveClick, activeType, isVerified }: MethodsO
             <p className="text-low-emphasis">{method.description}</p>
           </div>
           <div>
-            {!isActive && (
-              <Button size="xs" onClick={onSaveClick} variant="outline">
-                {method.type === 0 ? "Disable" : "Enable"}
+            {isActive ? (
+              <Button size="xs" onClick={onDisableClick} variant="outline">
+                Disable
+              </Button>
+            ) : (
+              <Button size="xs" onClick={onEnableClick} variant="outline">
+                Enable
               </Button>
             )}
           </div>
@@ -69,36 +78,21 @@ export const ProfileMfaMethodSelectList = () => {
     if (userData && userData.data) setType(userData.data.userMfaType.toString());
   }, [userData, userData?.data]);
 
-  const saveHandler = (type: number) => {
-    showVerifyModal(type);
+  const enableHandler = (methodType: number) => {
+    showVerifyModal(methodType);
   };
 
   return (
     <>
       <div className="rounded-sm border">
-        <MethodsOption
-          method={{
-            type: 0,
-            label: "None",
-            description: "No two-factor authentication.",
-            provider: "none",
-            status: false,
-            Icon: CircleOff,
-          }}
-          selected={type}
-          onSaveClick={() => setIsDisableModalOpen(true)}
-          // backend gives false even if active type is 0
-          isVerified={true}
-          activeType={userData?.data.userMfaType.toString() || ""}
-        />
         {availableMFaMethod.map((item) => (
           <MethodsOption
             key={item.type}
             method={item}
-            selected={type}
-            onSaveClick={() => saveHandler(item.type)}
+            onEnableClick={() => enableHandler(item.type)}
+            onDisableClick={() => setIsDisableModalOpen(true)}
             isVerified={!!userData?.data.isMfaVerified}
-            activeType={userData?.data.userMfaType.toString() || ""}
+            activeType={type}
           />
         ))}
       </div>
