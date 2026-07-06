@@ -21,7 +21,6 @@ import {
 } from "@/components/ui-kits/dropdown-menu/dropdown-menu";
 import { Badge } from "@/components/ui-kits/badge/badge";
 import { useGetMFAConfig, useSaveMFAConfig } from "../../hooks/use-mfa-config";
-import { useProjectStore } from "@seliseblocks/blocks-kit";
 import { Skeleton } from "@/components/ui-kits/skeleton/skeleton";
 import { MFA_Provider_Data } from "../../utils/mfa-config";
 import { Dialog } from "@/components/ui-kits/dialog/dialog";
@@ -46,7 +45,6 @@ const LoadingSkelton = () => {
 };
 
 export const ConfigureMFA = () => {
-  const tenantId = useProjectStore().selectedProject?.tenantId || "";
   const { isLoading, isFetching, data } = useGetMFAConfig();
   const [openEnableDisableModal, setOpenEnableDisableModal] = useState<boolean>(false);
 
@@ -73,8 +71,8 @@ export const ConfigureMFA = () => {
         header: "Status",
         cell: ({ row }) => (
           <div className="flex max-w-[200px]">
-            <Badge variant={data?.userMfaType.includes(row.original.type) ? "success" : "error"}>
-              {data?.userMfaType.includes(row.original.type) ? "Enabled" : "Disabled"}
+            <Badge variant={data?.allowedMethods.includes(row.original.type) ? "success" : "error"}>
+              {data?.allowedMethods.includes(row.original.type) ? "Enabled" : "Disabled"}
             </Badge>
           </div>
         ),
@@ -90,7 +88,7 @@ export const ConfigureMFA = () => {
                 </Button>
               </DropdownMenuTrigger>
               <DropdownMenuContent align="end">
-                {row.original.type === 2 && data?.userMfaType.includes(row.original.type) && (
+                {row.original.type === 2 && data?.allowedMethods.includes(row.original.type) && data?.mfaTemplate?.templateId && (
                   <DropdownMenuItem>
                     <Link
                       to={`/utilities/email/communications/${data.mfaTemplate.templateId}/edit`}
@@ -105,13 +103,13 @@ export const ConfigureMFA = () => {
                     e.stopPropagation();
                     setOpenEnableDisableModal(true);
                     setMethodInfo(() => ({
-                      enable: !data?.userMfaType.includes(row.original.type),
+                      enable: !data?.allowedMethods.includes(row.original.type),
                       name: row.original.label,
                       type: row.original.type,
                     }));
                   }}
                 >
-                  {data?.userMfaType.includes(row.original.type) ? "Disable" : "Enable"}
+                  {data?.allowedMethods.includes(row.original.type) ? "Disable" : "Enable"}
                 </DropdownMenuItem>
               </DropdownMenuContent>
             </DropdownMenu>
@@ -119,13 +117,13 @@ export const ConfigureMFA = () => {
         ),
       },
     ],
-    [data?.mfaTemplate.templateId, data?.userMfaType],
+    [data?.mfaTemplate?.templateId, data?.allowedMethods],
   );
 
   const { isPending, mutateAsync } = useSaveMFAConfig();
 
   const onSaveHandler = async (methodInfo: MethodInfo) => {
-    const userMfaTypes = new Set(data?.userMfaType || []);
+    const userMfaTypes = new Set(data?.allowedMethods || []);
     const { type, enable } = methodInfo;
 
     if (!type) return;
@@ -139,7 +137,6 @@ export const ConfigureMFA = () => {
     }
 
     const payload = {
-      projectKey: tenantId,
       enableMfa: !!userMfaTypes.size,
       userMfaType: Array.from(userMfaTypes),
     };
