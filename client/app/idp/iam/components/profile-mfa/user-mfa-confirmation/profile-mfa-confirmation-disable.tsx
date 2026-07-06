@@ -23,7 +23,7 @@ export const UserMFAConfirmationDisable = () => {
       const res = await mutateAsync({
         userId,
       });
-      if (!res.isSuccess) return showErrorToast({ errors: res.errors });
+      if (res?.isSuccess === false) return showErrorToast({ errors: res.errors });
       showSuccessToast({ description: "MFA disabled successfully" });
       setIsDisableModalOpen(false);
     } catch (error) {
