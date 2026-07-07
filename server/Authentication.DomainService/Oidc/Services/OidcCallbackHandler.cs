@@ -221,8 +221,8 @@ namespace Authentication.DomainService.Oidc.Services
                     ProfileImageUrl = externalUserData.ProfileImageUrl,
                     PhoneNumber = externalUserData.PhoneNumber,
                     Platform = provider,
-                    IsVerified = true,  // Trust social provider's email
                     Active = true,
+
                     Roles = new Dictionary<string, List<string>>
                     {
                         { orgId, roles }
@@ -231,6 +231,7 @@ namespace Authentication.DomainService.Oidc.Services
                     {
                         { orgId, permissions }
                     },
+
                     OrganizationIds = new List<string> { orgId },
                     Attributes = provider == "microsoft" ? new Dictionary<string, object>
                     {
