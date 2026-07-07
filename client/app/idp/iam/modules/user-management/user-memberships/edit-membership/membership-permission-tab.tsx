@@ -1,4 +1,5 @@
 import { Button } from "@/components/ui-kits/button/button";
+import { Checkbox } from "@/components/ui-kits/checkbox/checkbox";
 import { Input } from "@/components/ui-kits/input/input";
 import { Skeleton } from "@/components/ui-kits/skeleton/skeleton";
 import {
@@ -9,16 +10,15 @@ import {
   TableCell,
   Table,
 } from "@/components/ui-kits/table/table";
-import { RESOURCE_TYPE, ResourceType } from "@blocks-idp/iam/models/permission";
-import { Checkbox } from "@radix-ui/react-checkbox";
 import {
   Select,
   SelectTrigger,
   SelectValue,
   SelectContent,
   SelectItem,
-} from "@radix-ui/react-select";
-import { TabsContent } from "@radix-ui/react-tabs";
+} from "@/components/ui-kits/select/select";
+import { TabsContent } from "@/components/ui-kits/tabs/tabs";
+import { RESOURCE_TYPE, ResourceType } from "@blocks-idp/iam/models/permission";
 import { ChevronLeft, ChevronRight } from "lucide-react";
 
 type MembershipPermissionsTabProps = {
@@ -107,6 +107,7 @@ export const MembershipPermissionsTab = ({
                         <Checkbox
                           checked={selectedPermissions.includes(permission.name)}
                           onCheckedChange={() => onPermissionToggle(permission.name)}
+                          aria-label={`Select permission ${permission.name}`}
                         />
                       </TableCell>
                       <TableCell className="max-w-[150px] truncate">{permission.name}</TableCell>

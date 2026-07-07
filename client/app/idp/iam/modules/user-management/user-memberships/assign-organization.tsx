@@ -18,107 +18,128 @@ import {
   SelectValue,
 } from "@/components/ui-kits/select/select";
 import { showErrorToast, showSuccessToast } from "@/hooks/use-toast";
-import { useGetOrganizations } from "@blocks-idp/iam/hooks/use-organization";
+import { IOrganization } from "@blocks-idp/iam/models/organization";
 import { useGetRoles } from "@blocks-idp/iam/hooks/use-roles";
 import { useUpdateUser, useGetUserById } from "@blocks-idp/iam/hooks/use-user";
-import { ChevronsUpDown, Check, Plus } from "lucide-react";
-import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui-kits/popover/popover";
-import {
-  Command,
-  CommandEmpty,
-  CommandGroup,
-  CommandInput,
-  CommandItem,
-  CommandList,
-} from "@/components/ui-kits/command/command";
-import { cn } from "@/lib/utils";
-import { Badge } from "@/components/ui-kits/badge/badge";
+import { IUpdateUserPayload } from "@blocks-idp/iam/models/user";
+import { useProjectStore } from "@seliseblocks/blocks-kit";
+import { Plus } from "lucide-react";
+import { Input } from "@/components/ui-kits/input/input";
+import { Checkbox } from "@/components/ui-kits/checkbox/checkbox";
+import { Skeleton } from "@/components/ui-kits/skeleton/skeleton";
+import { RoleBadges } from "./role-badges";
 
 type AssignOrganizationProps = {
   userId: string;
-  projectKey: string;
+  organizations: IOrganization[];
+  isOrgsLoading?: boolean;
 };
 
-export const AssignOrganization = ({ userId, projectKey }: AssignOrganizationProps) => {
+const toRolesRecord = (
+  roles: Record<string, string[]> | string[] | undefined,
+  organizationIds: string[],
+): Record<string, string[]> => {
+  if (!roles) return {};
+  if (Array.isArray(roles)) {
+    if (organizationIds.length === 0) return {};
+    return { [organizationIds[0]]: roles };
+  }
+  return { ...roles };
+};
+
+const toPermissionsRecord = (
+  permissions: Record<string, string[]> | string[] | undefined,
+  organizationIds: string[],
+): Record<string, string[]> => {
+  if (!permissions) return {};
+  if (Array.isArray(permissions)) {
+    if (organizationIds.length === 0) return {};
+    return { [organizationIds[0]]: permissions };
+  }
+  return { ...permissions };
+};
+
+export const AssignOrganization = ({
+  userId,
+  organizations,
+  isOrgsLoading = false,
+}: AssignOrganizationProps) => {
+  const tenantId = useProjectStore().selectedProject?.tenantId || "";
   const [open, setOpen] = useState(false);
-  const [rolesPopoverOpen, setRolesPopoverOpen] = useState(false);
+  const [rolesSearch, setRolesSearch] = useState("");
   const [selectedOrgId, setSelectedOrgId] = useState<string>("");
   const [selectedRoles, setSelectedRoles] = useState<string[]>([]);
 
-  const { data: userData } = useGetUserById({ id: userId, projectKey });
-  const { data: orgsData, isLoading: isOrgsLoading } = useGetOrganizations({
-    projectKey,
-    page: 0,
-    pageSize: 1000,
-  });
+  const { data: userData } = useGetUserById({ id: userId, projectKey: tenantId });
   const { data: rolesData, isLoading: isRolesLoading } = useGetRoles({
-    projectKey,
     page: 0,
     pageSize: 1000,
     sort: { property: "Name", isDescending: false },
     filter: { search: "" },
+    projectKey: tenantId,
   });
 
-  const { mutateAsync, isPending } = useUpdateUser({ id: userId, projectKey });
+  const { mutateAsync, isPending } = useUpdateUser({ id: userId, projectKey: tenantId });
 
   const existingOrgIds = userData?.data?.organizationIds || [];
-  const organizations = orgsData?.organizations || [];
   const roles = rolesData?.data || [];
 
-  // Show all enabled organizations (including already-assigned ones)
-  const orgOptions = organizations.filter((org) => org.isEnabled);
+  const orgOptions = organizations.filter(
+    (org) => org.isEnabled && !existingOrgIds.includes(org.itemId),
+  );
 
-  // Convert roles to options format for MultiSelect
-  const roleOptions = roles.map((role) => ({
-    label: role.name,
-    value: role.slug,
-  }));
+  const filteredRoles = roles.filter((role) =>
+    role.name.toLowerCase().includes(rolesSearch.toLowerCase()),
+  );
 
-  // When dialog opens, pre-select the org and its existing roles if there is exactly one assigned org
   useEffect(() => {
     if (!open) return;
-    if (existingOrgIds.length === 1) {
-      const orgId = existingOrgIds[0];
-      setSelectedOrgId(orgId);
-      setSelectedRoles(userData?.data?.roles?.[orgId] || []);
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    setSelectedOrgId("");
+    setSelectedRoles([]);
+    setRolesSearch("");
   }, [open]);
 
   const handleOrgChange = (orgId: string) => {
     setSelectedOrgId(orgId);
-    // Pre-populate existing roles when switching to an already-assigned org
-    setSelectedRoles(existingOrgIds.includes(orgId) ? userData?.data?.roles?.[orgId] || [] : []);
+    setSelectedRoles([]);
   };
 
+  const handleRoleToggle = (roleSlug: string) => {
+    setSelectedRoles((prev) =>
+      prev.includes(roleSlug) ? prev.filter((slug) => slug !== roleSlug) : [...prev, roleSlug],
+    );
+  };
+
+  const getRoleDisplayName = (roleSlug: string) =>
+    roles.find((role) => role.slug === roleSlug)?.name ?? roleSlug;
+
   const onConfirm = async () => {
-    if (!selectedOrgId || selectedRoles.length === 0) {
+    if (!selectedOrgId || selectedRoles.length === 0 || !userData?.data) {
       showErrorToast({ errors: "Please select an organization and at least one role" });
       return;
     }
 
     try {
-      const isExistingOrg = existingOrgIds.includes(selectedOrgId);
-      const updatedOrganizationIds = isExistingOrg
-        ? existingOrgIds
-        : [...existingOrgIds, selectedOrgId];
+      const updatedOrganizationIds = [...existingOrgIds, selectedOrgId];
+      const rolesRecord = toRolesRecord(userData.data.roles, existingOrgIds);
+      const permissionsRecord = toPermissionsRecord(
+        userData.data.permissions,
+        existingOrgIds,
+      );
 
-      // Keep other orgs' roles intact; replace roles for the selected org
-      const otherOrgRoles = Object.values(
-        Object.fromEntries(
-          Object.entries(userData?.data?.roles || {}).filter(([orgId]) => orgId !== selectedOrgId),
-        ),
-      ).flat();
-      const updatedRoles = [...new Set([...otherOrgRoles, ...selectedRoles])];
+      rolesRecord[selectedOrgId] = selectedRoles;
+      if (!permissionsRecord[selectedOrgId]) {
+        permissionsRecord[selectedOrgId] = [];
+      }
 
       const res = await mutateAsync({
-        ...userData?.data,
+        ...userData.data,
         itemId: userId,
         organizationIds: updatedOrganizationIds,
         organizations: updatedOrganizationIds,
-        roles: updatedRoles,
-        permissions: Object.values(userData?.data?.permissions || {}).flat(),
-      });
+        roles: rolesRecord,
+        permissions: permissionsRecord,
+      } as unknown as IUpdateUserPayload);
 
       if (!res.isSuccess) {
         showErrorToast({ errors: res.errors });
@@ -126,9 +147,7 @@ export const AssignOrganization = ({ userId, projectKey }: AssignOrganizationPro
       }
 
       showSuccessToast({
-        description: isExistingOrg
-          ? "Organization roles updated successfully"
-          : "Organization assigned successfully",
+        description: "Organization assigned successfully",
       });
       reset();
       setOpen(false);
@@ -145,7 +164,7 @@ export const AssignOrganization = ({ userId, projectKey }: AssignOrganizationPro
   const reset = () => {
     setSelectedOrgId("");
     setSelectedRoles([]);
-    setRolesPopoverOpen(false);
+    setRolesSearch("");
   };
 
   return (
@@ -162,18 +181,22 @@ export const AssignOrganization = ({ userId, projectKey }: AssignOrganizationPro
           <span className="sr-only sm:not-sr-only">Assign</span>
         </Button>
       </DialogTrigger>
-      <DialogContent className="sm:max-w-[425px]">
+      <DialogContent className="sm:max-w-[480px]">
         <DialogHeader>
           <DialogTitle>Assign organization</DialogTitle>
-          <DialogDescription></DialogDescription>
+          <DialogDescription>
+            Choose an organization and the roles this user should have in it.
+          </DialogDescription>
         </DialogHeader>
 
-        <div className="space-y-4 py-4">
+        <div className="space-y-5 py-2">
           <div className="space-y-2">
-            <label className="text-sm font-medium">Organization name</label>
+            <label htmlFor="assign-org-select" className="text-sm font-medium">
+              Organization
+            </label>
             <Select value={selectedOrgId} onValueChange={handleOrgChange}>
-              <SelectTrigger>
-                <SelectValue placeholder="Organization name" />
+              <SelectTrigger id="assign-org-select">
+                <SelectValue placeholder="Select organization" />
               </SelectTrigger>
               <SelectContent>
                 {isOrgsLoading ? (
@@ -196,70 +219,66 @@ export const AssignOrganization = ({ userId, projectKey }: AssignOrganizationPro
           </div>
 
           <div className="space-y-2">
-            <label className="text-sm font-medium">Select at least one role to assign</label>
-            {isRolesLoading ? (
-              <div className="p-2 text-sm text-muted-foreground">Loading roles...</div>
+            <label htmlFor="assign-roles-search" className="text-sm font-medium">
+              Roles
+            </label>
+            <p className="text-sm text-muted-foreground">Select at least one role to assign.</p>
+            {!selectedOrgId ? (
+              <p className="rounded-md border border-dashed p-4 text-sm text-muted-foreground">
+                Select an organization first to choose roles.
+              </p>
+            ) : isRolesLoading ? (
+              <div className="space-y-2">
+                {Array.from({ length: 4 }).map((_, index) => (
+                  <Skeleton key={index} className="h-10 w-full" />
+                ))}
+              </div>
             ) : roles.length === 0 ? (
-              <div className="p-2 text-sm text-muted-foreground">No roles available</div>
+              <p className="rounded-md border p-4 text-sm text-muted-foreground">
+                No roles available
+              </p>
             ) : (
-              <Popover open={rolesPopoverOpen} onOpenChange={setRolesPopoverOpen}>
-                <PopoverTrigger asChild>
-                  <Button variant="outline" role="combobox" className="w-full justify-between">
-                    {selectedRoles.length > 0 ? (
-                      <div className="flex flex-wrap gap-1">
-                        {selectedRoles.length > 2 ? (
-                          <Badge variant="secondary">{selectedRoles.length} selected</Badge>
-                        ) : (
-                          selectedRoles.map((slug) => {
-                            const role = roles.find((r) => r.slug === slug);
-                            return (
-                              <Badge key={slug} variant="secondary">
-                                {role?.name || slug}
-                              </Badge>
-                            );
-                          })
-                        )}
-                      </div>
-                    ) : (
-                      "Select Roles"
-                    )}
-                    <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
-                  </Button>
-                </PopoverTrigger>
-                <PopoverContent className="w-full p-0" align="start">
-                  <Command>
-                    <CommandInput placeholder="Search roles..." />
-                    <CommandList>
-                      <CommandEmpty>No roles found.</CommandEmpty>
-                      <CommandGroup>
-                        {roleOptions.map((option) => {
-                          const isSelected = selectedRoles.includes(option.value);
-                          return (
-                            <CommandItem
-                              key={option.value}
-                              value={option.value}
-                              onSelect={() => {
-                                const newSelected = isSelected
-                                  ? selectedRoles.filter((v) => v !== option.value)
-                                  : [...selectedRoles, option.value];
-                                setSelectedRoles(newSelected);
-                              }}
-                            >
-                              <Check
-                                className={cn(
-                                  "mr-2 h-4 w-4",
-                                  isSelected ? "opacity-100" : "opacity-0",
-                                )}
-                              />
-                              {option.label}
-                            </CommandItem>
-                          );
-                        })}
-                      </CommandGroup>
-                    </CommandList>
-                  </Command>
-                </PopoverContent>
-              </Popover>
+              <div className="flex flex-col gap-3">
+                <Input
+                  id="assign-roles-search"
+                  placeholder="Search roles"
+                  value={rolesSearch}
+                  onChange={(e) => setRolesSearch(e.target.value)}
+                  className="focus-visible:ring-inset focus-visible:ring-offset-0"
+                />
+                <div className="max-h-[220px] overflow-y-auto rounded-md border">
+                  {filteredRoles.map((role) => (
+                    <div
+                      key={role.slug}
+                      className="flex cursor-pointer items-center gap-3 border-b p-3 last:border-b-0 hover:bg-muted/30"
+                      onClick={() => handleRoleToggle(role.slug)}
+                    >
+                      <Checkbox
+                        checked={selectedRoles.includes(role.slug)}
+                        onCheckedChange={() => handleRoleToggle(role.slug)}
+                        onClick={(e) => e.stopPropagation()}
+                        aria-label={`Assign role ${role.name}`}
+                      />
+                      <span className="text-sm">{role.name}</span>
+                    </div>
+                  ))}
+                  {filteredRoles.length === 0 && (
+                    <p className="p-4 text-center text-sm text-muted-foreground">No roles found</p>
+                  )}
+                </div>
+                {selectedRoles.length > 0 && (
+                  <div className="rounded-md border bg-muted/20 p-3">
+                    <p className="mb-2 text-xs font-medium text-muted-foreground">
+                      {selectedRoles.length} role{selectedRoles.length === 1 ? "" : "s"} selected
+                    </p>
+                    <RoleBadges
+                      roles={selectedRoles}
+                      getLabel={getRoleDisplayName}
+                      maxVisible={3}
+                    />
+                  </div>
+                )}
+              </div>
             )}
           </div>
         </div>

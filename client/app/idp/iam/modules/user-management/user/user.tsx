@@ -110,11 +110,7 @@ export const User = ({ id }: { id: string }) => {
               (
                 <div className="flex flex-col gap-6">
                   <UserDetails id={id} />
-                  <div className="flex flex-col gap-6">
-                    {/* <UserMemberships id={id} projectKey={tenantId} /> */}
-                    {/* <UserRoles id={id} projectKey={tenantId} />
-                    <UserPermissions userId={id} projectKey={tenantId} /> */}
-                  </div>
+                  <UserMemberships id={id} projectKey={tenantId} />
                 </div>
               )
               : null}
