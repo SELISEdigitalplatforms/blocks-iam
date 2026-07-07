@@ -21,6 +21,9 @@ import ConfirmationModal from "@/components/confirmation-modal/confirmation-moda
 import { useProjectStore } from "@seliseblocks/blocks-kit";
 import { EditDomainForm } from "@/components/edit-domain-form/edit-domain-form";
 
+const isApplicationDomain = (project: IProject | undefined, domain: string) =>
+  project?.applications?.some((application) => application.domain === domain) ?? false;
+
 export const ProjectRepoList = ({
   project,
   isLoading,
@@ -42,7 +45,7 @@ export const ProjectRepoList = ({
   const [isSetApplicationDomainModalOpen, setIsSetApplicationDomainModalOpen] =
     useState<boolean>(false);
   const [applicationDomain, setApplicationDomain] = useState<string>(
-    project?.applicationDomain || "",
+    project?.applications?.[0]?.domain || "",
   );
   const [customDomain, setCustomDomain] = useState<string>("");
 
@@ -159,7 +162,7 @@ export const ProjectRepoList = ({
                             ? repo.customDeploymentUrl
                             : repo.defaultDeploymentUrl;
                           const cd = hasCustomUrl ? repo.customDeploymentUrl : "";
-                          return activeDomain !== project?.applicationDomain ? (
+                          return !isApplicationDomain(project, activeDomain) ? (
                             <Button
                               variant="outline"
                               size="xxs"
@@ -225,7 +228,7 @@ export const ProjectRepoList = ({
                           ? repo.customDeploymentUrl
                           : repo.defaultDeploymentUrl;
                         const cd = hasCustomUrl ? repo.customDeploymentUrl : "";
-                        return activeDomain !== project?.applicationDomain ? (
+                        return !isApplicationDomain(project, activeDomain) ? (
                           <Button
                             variant="outline"
                             size="xxs"
