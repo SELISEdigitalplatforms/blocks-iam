@@ -8,7 +8,7 @@ import {
   mockAccountRecoverPayload,
   mockAccountResetPasswordPayload,
   mockActivationCodeValidationPayload,
-  mockActivationCodeExpirationResponse,
+  mockActivationCodeValidationResponse,
 } from "../../test-utils/__mocks__";
 import { userService } from "@blocks-idp/iam/services/user.service";
 import {
@@ -107,7 +107,7 @@ describe("use-account hooks", () => {
   describe("useAccountActivationCodeExpiration", () => {
     it("should check activation code expiration successfully", async () => {
       vi.mocked(userService.account.checkActivationCodeExpiration).mockResolvedValue(
-        mockActivationCodeExpirationResponse,
+        mockActivationCodeValidationResponse,
       );
 
       const { result } = renderHook(() => useAccountActivationCodeExpiration(), {
