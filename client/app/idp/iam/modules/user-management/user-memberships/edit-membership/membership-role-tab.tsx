@@ -1,7 +1,8 @@
 import { Input } from "@/components/ui-kits/input/input";
 import { Skeleton } from "@/components/ui-kits/skeleton/skeleton";
 import { Checkbox } from "@/components/ui-kits/checkbox/checkbox";
-import { TabsContent } from "@radix-ui/react-tabs";
+import { TabsContent } from "@/components/ui-kits/tabs/tabs";
+import { RoleBadges } from "../role-badges";
 
 type MembershipRolesTabProps = {
   isEditing: boolean;
@@ -66,26 +67,29 @@ export const MembershipRolesTab = ({
                 <div className="p-4 text-center text-muted-foreground">No roles found</div>
               )}
             </div>
+            {selectedRoles.length > 0 && (
+              <div className="border-t bg-muted/20 p-3">
+                <p className="mb-2 text-xs font-medium text-muted-foreground">
+                  {selectedRoles.length} role{selectedRoles.length === 1 ? "" : "s"} selected
+                </p>
+                <RoleBadges
+                  roles={selectedRoles}
+                  getLabel={getRoleDisplayName}
+                  maxVisible={3}
+                />
+              </div>
+            )}
           </div>
         )}
       </div>
     ) : (
       <div className="flex flex-col gap-4">
         <p className="text-sm font-medium">Assigned roles</p>
-        <div className="space-y-2">
-          {selectedRoles.length === 0 ? (
-            <p className="text-sm text-muted-foreground">No roles assigned</p>
-          ) : (
-            selectedRoles.map((role, index) => (
-              <div
-                key={role}
-                className={`p-3 ${index !== selectedRoles.length - 1 ? "border-b" : ""}`}
-              >
-                {getRoleDisplayName(role)}
-              </div>
-            ))
-          )}
-        </div>
+        {selectedRoles.length === 0 ? (
+          <p className="text-sm text-muted-foreground">No roles assigned</p>
+        ) : (
+          <RoleBadges roles={selectedRoles} getLabel={getRoleDisplayName} maxVisible={4} />
+        )}
       </div>
     )}
   </TabsContent>

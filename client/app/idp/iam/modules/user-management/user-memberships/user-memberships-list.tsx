@@ -28,6 +28,7 @@ import { Button } from "@/components/ui-kits/button/button";
 import { EllipsisVertical, Settings, XCircle } from "lucide-react";
 import { RemoveMembership } from "./remove-membership";
 import { EditMembership } from "./edit-membership";
+import { RoleBadges } from "./role-badges";
 
 type UserMembershipsListProps = {
   memberships: IMembership[];
@@ -131,8 +132,8 @@ export const UserMembershipsList = ({
         cell: ({ row }) => {
           const roles = Array.isArray(row.original.roles) ? row.original.roles : [];
           return (
-            <div className="w-[150px]">
-              {roles.length > 0 ? roles.join(", ") : "-"}
+            <div className="min-w-[120px]">
+              <RoleBadges roles={roles} maxVisible={4} />
             </div>
           );
         },
