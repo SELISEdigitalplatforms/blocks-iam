@@ -10,7 +10,7 @@ using Authentication.DomainService.Utilities;
 
 namespace Authentication.DomainService.OAuth
 {
-    public class RefreshTokenAuthenticationService : ITokenService
+    public sealed class RefreshTokenAuthenticationService : ITokenService
     {
         private readonly ILogger<RefreshTokenAuthenticationService> _logger;
         private readonly IJwtAccessTokenProvider _jwtAccessTokenProvider;
@@ -39,18 +39,16 @@ namespace Authentication.DomainService.OAuth
             var tenant = _tenants.GetTenantByID(bc?.TenantId ?? string.Empty);
             if (tenant == null) return new TokenResponse { Error = "server_error", ErrorDescription = "Tenant not found", StatusCode = 500 };
             
-            // Get client registration to extract AllowedScopes and AllowedServiceAccessResources
+            // Get client registration to extract AllowedScopes
             var clientRegistration = await _authenticationRepository.GetOidcClientRegistrationAsync(request.ClientId);
             var clientAllowedScopes = clientRegistration?.AllowedScopes;
-            var clientAllowedServiceAccessResources = clientRegistration?.AllowedServiceAccessResources;
-            
+
             var jwtAccessToken = await _jwtAccessTokenProvider.GetJwtAccessToken(
                 authenticationConfiguration,
                 tenant,
                 user,
                 request,
-                null, // state is not applicable for refresh token flow
-                clientAllowedServiceAccessResources: clientAllowedServiceAccessResources);
+                null); // state is not applicable for refresh token flow
             var jwtToken = new JwtSecurityToken(
                 jwtAccessToken.Issuer,
                 jwtAccessToken.Audience,

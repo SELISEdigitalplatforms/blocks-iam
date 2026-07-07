@@ -1,7 +1,8 @@
 namespace Authentication.DomainService.Shared.RequestModel
 {
-    public class GetAllClientCredentialsRequest
+    public sealed class GetAllClientCredentialsRequest
     {
-
+        public string? ItemId { get; set; }
+        public string? Name { get; set; }
     }
 }

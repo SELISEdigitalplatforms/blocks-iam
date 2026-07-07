@@ -8,7 +8,7 @@ using Microsoft.Extensions.Logging;
 
 namespace Authentication.DomainService.Authentication
 {
-    public class MfaPolicyService : IMfaPolicyService
+    public sealed class MfaPolicyService : IMfaPolicyService
     {
         private readonly IMfaConfigurationService _mfaConfigurationService;
         private readonly IAuthenticationRepository _authenticationRepository;
@@ -28,14 +28,14 @@ namespace Authentication.DomainService.Authentication
         {
             if (user == null)
             {
-                return new MfaPolicyDecision { Required = false, Reason = "no_user" };
+                return new MfaPolicyDecision { Required = false, Reason = MfaPolicyReasons.NoUser };
             }
 
             var config = await _mfaConfigurationService.GetAsync() ?? new Configuration { UserMfaType = new List<UserMfaType>() };
 
             if (!config.EnableMfa)
             {
-                return new MfaPolicyDecision { Required = false, Reason = "mfa_disabled_globally" };
+                return new MfaPolicyDecision { Required = false, Reason = MfaPolicyReasons.MfaDisabledGlobally };
             }
 
             var allowedMethods = config.UserMfaType ?? new List<UserMfaType>();
@@ -45,7 +45,7 @@ namespace Authentication.DomainService.Authentication
                 && config.MfaExemptRoles.Count > 0
                 && userRoles.Any(r => config.MfaExemptRoles.Any(er => string.Equals(er, r, StringComparison.OrdinalIgnoreCase))))
             {
-                return new MfaPolicyDecision { Required = false, Reason = "role_exempt" };
+                return new MfaPolicyDecision { Required = false, Reason = MfaPolicyReasons.RoleExempt };
             }
 
             var clientRequireMfa = false;
@@ -81,7 +81,7 @@ namespace Authentication.DomainService.Authentication
                 return new MfaPolicyDecision
                 {
                     Required = false,
-                    Reason = "no_policy_match",
+                    Reason = MfaPolicyReasons.NoPolicyMatch,
                     AllowedMethods = applicableMethods,
                     PreferredMethod = user.UserMfaType
                 };
@@ -99,10 +99,10 @@ namespace Authentication.DomainService.Authentication
                     : applicableMethods.FirstOrDefault(),
                 CanUserDisable = config.AllowUserOptOut && !config.RequireMfaForAllUsers && !roleRequiresMfa,
                 MustEnrollFirst = mustEnrollFirst,
-                Reason = config.RequireMfaForAllUsers ? "global_policy"
-                    : roleRequiresMfa ? "role_policy"
-                    : clientRequireMfa ? "client_policy"
-                    : "user_enrolled"
+                Reason = config.RequireMfaForAllUsers ? MfaPolicyReasons.GlobalPolicy
+                    : roleRequiresMfa ? MfaPolicyReasons.RolePolicy
+                    : clientRequireMfa ? MfaPolicyReasons.ClientPolicy
+                    : MfaPolicyReasons.UserEnrolled
             };
         }
     }

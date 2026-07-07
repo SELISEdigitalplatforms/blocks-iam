@@ -103,7 +103,7 @@ export const router = createBrowserRouter([
           { path: "recover/:tenantId", element: <ResetPasswordPage /> },
           { path: "activate/:tenantId", element: <ActivatePage /> },
           { path: "mfa-check", element: <MfaCheckPage /> },
-
+          { path: ":provider/callback/:tenantId", element: <SSOCallbackPage  /> },
         ],
       },
       {
@@ -113,7 +113,7 @@ export const router = createBrowserRouter([
             path: "/login/callback",
             element: <CallbackPage defaultRedirectUrl="/app/console" />,
           },
-          { path: "/sso/:provider/callback", element: <SSOCallbackPage /> },
+          // { path: "/sso/:provider/callback", element: <SSOCallbackPage /> },
         ],
       },
 
@@ -186,9 +186,11 @@ export const router = createBrowserRouter([
               // ── Console group (no impersonation allowed) ──
               {
                 element: (
-                  <ConsoleLayout>
-                    <Outlet />
-                  </ConsoleLayout>
+                  <TooltipProvider delayDuration={0}>
+                    <ConsoleLayout>
+                      <Outlet />
+                    </ConsoleLayout>
+                  </TooltipProvider>
                 ),
                 children: [
                   { path: "console", element: <ConsolePage /> },
@@ -202,12 +204,14 @@ export const router = createBrowserRouter([
               {
                 path: "project-overview",
                 element: (
-                  <ProjectOverviewLayout
-                    redirectPaths={redirectPaths}
-                    navigationMenus={navigationMenus}
-                  >
-                    <Outlet />
-                  </ProjectOverviewLayout>
+                  <TooltipProvider delayDuration={0}>
+                    <ProjectOverviewLayout
+                      redirectPaths={redirectPaths}
+                      navigationMenus={navigationMenus}
+                    >
+                      <Outlet />
+                    </ProjectOverviewLayout>
+                  </TooltipProvider>
                 ),
                 children: [
                   {
@@ -219,14 +223,14 @@ export const router = createBrowserRouter([
               // ── Dashboard group (impersonation synchronized) ──
               {
                 element: (
-                  <DashboardLayout
-                    redirectPaths={redirectPaths}
-                    navigationMenus={navigationMenus}
-                  >
-                    <TooltipProvider delayDuration={0}>
+                  <TooltipProvider delayDuration={0}>
+                    <DashboardLayout
+                      redirectPaths={redirectPaths}
+                      navigationMenus={navigationMenus}
+                    >
                       <Outlet />
-                    </TooltipProvider>
-                  </DashboardLayout>
+                    </DashboardLayout>
+                  </TooltipProvider>
                 ),
 
                 children: [

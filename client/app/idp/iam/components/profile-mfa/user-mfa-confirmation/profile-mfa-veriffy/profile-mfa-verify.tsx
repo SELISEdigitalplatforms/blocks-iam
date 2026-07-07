@@ -25,14 +25,16 @@ export const ProfileMFAVerify = () => {
   const generateOtp = useCallback(async () => {
     try {
       const res = await mutateAsync({ userId, mfaType: mfaMethodType });
-      if (!res.isSuccess) {
+      queryClient.invalidateQueries({ queryKey: ["user-by-id", { id: userId, projectKey }] });
+      if (res?.mfaId) {
+        setMfaId(res.mfaId);
+      } else if (res?.isSuccess === false) {
         isFirstMount.current = true;
         setIsVerifyModalOpen(false);
       }
-      queryClient.invalidateQueries({ queryKey: ["user-by-id", { id: userId, projectKey }] });
-      setMfaId(res.mfaId);
-    } catch (_error) {
-      //
+    } catch {
+      isFirstMount.current = true;
+      setIsVerifyModalOpen(false);
     }
   }, [mfaMethodType, mutateAsync, projectKey, setIsVerifyModalOpen, userId]);
 

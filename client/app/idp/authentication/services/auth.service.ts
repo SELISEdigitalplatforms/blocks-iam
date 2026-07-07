@@ -113,7 +113,14 @@ export class AuthService {
     const url = tenantId
       ? `${AUTH_ENDPOINTS.GET_LOGIN_OPTIONS}?tenantId=${encodeURIComponent(tenantId)}`
       : AUTH_ENDPOINTS.GET_LOGIN_OPTIONS;
-    return serviceInstances.idpService.get(url);
+    const headers: Record<string, string> = tenantId
+      ? { "X-Blocks-Key": tenantId }
+      : {};
+    return serviceInstances.idpService.get(
+      url,
+      headers,
+      tenantId ? { skipBlocksKey: true } : undefined,
+    );
   }
 
   logout() {
@@ -149,6 +156,10 @@ export class AuthService {
     provider_client_id: string;
     provider_redirect_uri: string;
   }): Promise<any> {
+    const tenantId = payload.tenantId?.trim();
+    const headers: Record<string, string> = tenantId
+      ? { "X-Blocks-Key": tenantId }
+      : {};
     return serviceInstances.idpService.post(
       AUTH_ENDPOINTS.OIDC_LOGIN,
       {
@@ -160,14 +171,15 @@ export class AuthService {
         nonce: payload.nonce,
         code_challenge: payload.code_challenge,
         code_challenge_method: payload.code_challenge_method,
-        tenant_id: payload.tenantId,
+        tenant_id: tenantId,
         provider_client_id: payload.provider_client_id,
         provider_redirect_uri: payload.provider_redirect_uri,
       },
-      undefined,
+      headers,
       {
         absoluteUrl: true,
         skipTokenRotation: true,
+        skipBlocksKey: true,
       },
     );
   }
@@ -183,6 +195,9 @@ export class AuthService {
     code_challenge?: string;
     code_challenge_method?: string;
   }): Promise<any> {
+    const headers: Record<string, string> = payload.tenantId
+      ? { "X-Blocks-Key": payload.tenantId }
+      : {};
     return serviceInstances.idpService.post(
       AUTH_ENDPOINTS.OIDC_LOGIN_SELECT_ACCOUNT,
       {
@@ -196,9 +211,10 @@ export class AuthService {
         code_challenge: payload.code_challenge,
         code_challenge_method: payload.code_challenge_method,
       },
-      undefined,
+      headers,
       {
         skipTokenRotation: true,
+        skipBlocksKey: true,
       },
     );
   }

@@ -3,6 +3,7 @@ using System.Text.Json;
 using Authentication.DomainService.Entities;
 using Authentication.DomainService.OAuth;
 using Authentication.DomainService.Services;
+using Authentication.DomainService.Shared.Dtos;
 using Blocks.Genesis;
 using Iam.DomainService.Users;
 using Microsoft.Extensions.Logging;
@@ -14,7 +15,7 @@ namespace Authentication.DomainService.Oidc.Services
         Task<OidcCallbackResult> HandleCallbackAsync(string code, string state);
     }
 
-    public class OidcCallbackResult
+    public sealed class OidcCallbackResult
     {
         public bool IsSuccess { get; set; }
         public string? AccessToken { get; set; }
@@ -39,7 +40,7 @@ namespace Authentication.DomainService.Oidc.Services
         public string? TenantId { get; set; }
     }
 
-    public class OidcCallbackHandler : IOidcCallbackHandler
+    public sealed class OidcCallbackHandler : IOidcCallbackHandler
     {
         private readonly ILogger<OidcCallbackHandler> _logger;
         private readonly IAuthenticationRepository _authenticationRepository;
@@ -95,21 +96,21 @@ namespace Authentication.DomainService.Oidc.Services
             try
             {
                 // Parse OIDC social state to get context
-                var oidcSocialState = JsonDocument.Parse(oidcSocialStateJson).RootElement;
-                var oidcState = oidcSocialState.GetProperty("oidcState").GetString();
-                var provider = oidcSocialState.GetProperty("provider").GetString();
-
-                if (string.IsNullOrWhiteSpace(oidcState))
+                var oidcSocialState = JsonSerializer.Deserialize<OidcSocialStateContext>(oidcSocialStateJson);
+                if (oidcSocialState == null || string.IsNullOrWhiteSpace(oidcSocialState.OidcState))
                 {
                     _logger.LogWarning("Invalid OIDC state in social callback");
                     return new OidcCallbackResult { IsSuccess = false, ErrorMessage = "Invalid OIDC context" };
                 }
 
-                if (string.IsNullOrWhiteSpace(provider))
+                if (string.IsNullOrWhiteSpace(oidcSocialState.Provider))
                 {
                     _logger.LogWarning("Provider not found in OIDC social state");
                     return new OidcCallbackResult { IsSuccess = false, ErrorMessage = "Provider not found in OIDC state" };
                 }
+
+                var oidcState = oidcSocialState.OidcState;
+                var provider = oidcSocialState.Provider;
 
                 // 1. Get OIDC context (original client request)
                 var contextKey = $"oidc_context:{oidcState}";
@@ -120,21 +121,21 @@ namespace Authentication.DomainService.Oidc.Services
                     return new OidcCallbackResult { IsSuccess = false, ErrorMessage = "OIDC flow expired" };
                 }
 
-                var context = JsonDocument.Parse(contextJson).RootElement;
-                var clientId = context.GetProperty("clientId").GetString();
-                var originalState = context.GetProperty("state").GetString();
-                var redirectUri = context.GetProperty("redirectUri").GetString();
-                var providerClientId = context.GetProperty("providerClientId").GetString();
-                var providerRedirectUri = context.GetProperty("providerRedirectUri").GetString();
+                var context = JsonSerializer.Deserialize<OidcContext>(contextJson);
+                if (context == null)
+                {
+                    _logger.LogWarning("Failed to deserialize OIDC context for state {OidcState}", oidcState);
+                    return new OidcCallbackResult { IsSuccess = false, ErrorMessage = "OIDC flow expired" };
+                }
 
                 // 3. Reuse social folder callback handling for provider token exchange + user extraction
                 var stateInfo = new StateInfo
                 {
-                    ClientId = providerClientId,
+                    ClientId = context.ProviderClientId,
                     Provider = provider,
                     Code = code,
-                    Audience = providerClientId,
-                    RedirectUri = providerRedirectUri,
+                    Audience = context.ProviderClientId,
+                    RedirectUri = context.ProviderRedirectUri,
                     FlowType = SocialFlowType.Oidc
                 };
 
@@ -148,11 +149,18 @@ namespace Authentication.DomainService.Oidc.Services
                 }
 
                 // 5. Create or update Blocks user based on provider's user info
-                var blocksUserId = await CreateOrUpdateUserFromExternalUserAsync(externalUserData, new List<string> { "user"}, new List<string>(), provider);
-                if (string.IsNullOrWhiteSpace(blocksUserId))
+                var ssoUser = await CreateOrUpdateUserFromExternalUserAsync(externalUserData, new List<string> { "user"}, new List<string>(), provider);
+
+                if (string.IsNullOrWhiteSpace(ssoUser.userId))
                 {
                     _logger.LogError("Failed to create/update user for provider {Provider}", provider);
                     return new OidcCallbackResult { IsSuccess = false, ErrorMessage = "Failed to create user account" };
+                }
+
+                if(!ssoUser.isactive)
+                {
+                    _logger.LogError($"user with id {ssoUser.userId} is not active or verified", provider);
+                    return new OidcCallbackResult { IsSuccess = false, ErrorMessage = "user is not active" };
                 }
 
                 // 6. Clean up temporary states. The actual authorization code must be created
@@ -165,16 +173,16 @@ namespace Authentication.DomainService.Oidc.Services
                 return new OidcCallbackResult
                 {
                     IsSuccess = true,
-                    ClientId = clientId,
-                    RedirectUri = redirectUri,
-                    OriginalState = originalState,
+                    ClientId = context.ClientId,
+                    RedirectUri = context.RedirectUri,
+                    OriginalState = context.State,
                     IsOidcFlow = true,
-                    BlocksUserId = blocksUserId,
-                    TenantId = context.GetProperty("tenantId").GetString() ?? "default",
-                    Scope = context.GetProperty("scope").GetString(),
-                    Nonce = context.GetProperty("nonce").GetString(),
-                    CodeChallenge = context.GetProperty("codeChallenge").GetString(),
-                    CodeChallengeMethod = context.GetProperty("codeChallengeMethod").GetString()
+                    BlocksUserId = ssoUser.userId,
+                    TenantId = string.IsNullOrWhiteSpace(context.TenantId) ? "default" : context.TenantId,
+                    Scope = context.Scope,
+                    Nonce = context.Nonce,
+                    CodeChallenge = context.CodeChallenge,
+                    CodeChallengeMethod = context.CodeChallengeMethod
                 };
             }
             catch (Exception ex)
@@ -188,19 +196,19 @@ namespace Authentication.DomainService.Oidc.Services
         /// Create or update Blocks user from social provider's normalized user info
         /// Returns Blocks user ID
         /// </summary>
-        private async Task<string?> CreateOrUpdateUserFromExternalUserAsync(IExternalUserData externalUserData, List<string> roles, List<string> permissions, string provider, string orgId = "default")
+        private async Task<(string? userId, bool isactive)> CreateOrUpdateUserFromExternalUserAsync(IExternalUserData externalUserData, List<string> roles, List<string> permissions, string provider, string orgId = "default")
         {
             try
             {
                 if (string.IsNullOrWhiteSpace(externalUserData.Email))
-                    return null; // Cannot create user without email
+                    return (null, false); // Cannot create user without email
 
                 // Try to get existing user by email
                 var existingUser = await _userRepository.GetUserByEmailAsync(externalUserData.Email);
 
-                if (existingUser != null)
+                if (existingUser != null && (!existingUser.IsVerified || !existingUser.Active))
                 {
-                    return existingUser.ItemId;
+                    return (existingUser.ItemId, false);
                 }
 
                 // Create new user from social provider info
@@ -214,6 +222,7 @@ namespace Authentication.DomainService.Oidc.Services
                     PhoneNumber = externalUserData.PhoneNumber,
                     Platform = provider,
                     IsVerified = true,  // Trust social provider's email
+                    Active = true,
                     Roles = new Dictionary<string, List<string>>
                     {
                         { orgId, roles }
@@ -233,12 +242,12 @@ namespace Authentication.DomainService.Oidc.Services
 
                 // Save new user
                 await _userRepository.CreateUserAsync(newUser);
-                return newUser.ItemId;
+                return (newUser.ItemId, true);
             }
             catch (Exception ex)
             {
                 _logger.LogError(ex, "Error creating/updating user from token for provider {Provider}", provider);
-                return null;
+                return (null, false);
             }
         }
     }
