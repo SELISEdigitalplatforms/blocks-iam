@@ -38,10 +38,11 @@ export const UserMemberships = ({ id, projectKey }: UserMembershipsProps) => {
             permissions: Array.isArray(permissions) ? permissions : permissions?.[orgId] ?? [],
         }));
     }, [userData?.data]);
-    const organizationIds =
-        userData?.data?.organizationIds?.length > 0
-            ? userData.data.organizationIds
-            : (userData?.data as { OrganizationIds?: string[] } | undefined)?.OrganizationIds ?? [];
+    const user = userData?.data;
+const organizationIds =
+        user?.organizationIds?.length
+            ? user.organizationIds
+            : (user as { OrganizationIds?: string[] } | undefined)?.OrganizationIds ?? [];
 
     // Create a map of organizationId to organizationName
     const orgNameMap = useMemo(() => {
