@@ -206,7 +206,7 @@ namespace Authentication.DomainService.Oidc.Services
                 // Try to get existing user by email
                 var existingUser = await _userRepository.GetUserByEmailAsync(externalUserData.Email);
 
-                if (existingUser != null && (!existingUser.IsVerified || !existingUser.Active))
+                if (existingUser != null && (!existingUser.Active))
                 {
                     return (existingUser.ItemId, false);
                 }
