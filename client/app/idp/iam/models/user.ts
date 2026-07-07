@@ -339,10 +339,10 @@ export interface IActivationCodeValidationPayload {
   tenantId?: string;
 }
 
-export interface IActivationCodeExpirationResponse {
+export interface IActivationCodeValidationResponse {
   errors: unknown | null;
   isSuccess: boolean;
-  userId: string;
+  userId: string | null;
 }
 
 export interface ISaveSignUpSettingPayload {

@@ -12,7 +12,7 @@ import {
   mockOrganizationConfigResponse,
   mockGetIamConfigResponse,
   mockSignUpSettingResponse,
-  mockActivationCodeExpirationResponse,
+mockActivationCodeValidationResponse,
 } from "../__mocks__/iam.data.mock";
 import { mockSuccessResponse, mockSuccessResponseWithItemId } from "@/test-utils/__mocks__";
 import {
@@ -117,7 +117,7 @@ export const iamHandlers = [
   http.post(RECOVER_PATTERN, () => HttpResponse.json(mockSuccessResponse)),
   http.post(RESET_PASSWORD_PATTERN, () => HttpResponse.json(mockSuccessResponse)),
   http.post(VALIDATE_ACTIVATION_CODE_PATTERN, () =>
-    HttpResponse.json(mockActivationCodeExpirationResponse),
+    HttpResponse.json(mockActivationCodeValidationResponse),
   ),
 
   // Role
@@ -205,7 +205,7 @@ export const resetPasswordHandler = (response: JsonBodyType = mockSuccessRespons
   http.post(RESET_PASSWORD_PATTERN, () => HttpResponse.json(response));
 
 export const validateActivationCodeHandler = (
-  response: JsonBodyType = mockActivationCodeExpirationResponse,
+  response: JsonBodyType = mockActivationCodeValidationResponse,
 ) => http.post(VALIDATE_ACTIVATION_CODE_PATTERN, () => HttpResponse.json(response));
 
 // Role

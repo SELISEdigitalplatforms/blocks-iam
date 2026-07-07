@@ -215,7 +215,7 @@ export const mockActivationCodeValidationPayload: IActivationCodeValidationPaylo
   projectKey: TEST_PROJECT_KEY,
 };
 
-export const mockActivationCodeExpirationResponse = {
+export const mockActivationCodeValidationResponse = {
   errors: null,
   isSuccess: true,
   userId: MOCK_USER_ITEM_ID,
