@@ -3,21 +3,24 @@ using Authentication.DomainService.Entities;
 using Authentication.DomainService.RequestModel;
 using Authentication.DomainService.Shared.RequestModel;
 using Authentication.DomainService.Shared.ResponseModel;
+using Authentication.DomainService.Shared.Services;
 using Iam.DomainService.Entities;
 using Microsoft.IdentityModel.Protocols.OpenIdConnect;
 using MongoDB.Driver;
 
 namespace Authentication.DomainService.Services
 {
-    public class AuthenticationRepository : IAuthenticationRepository
+    public sealed class AuthenticationRepository : IAuthenticationRepository
     {
         private const string OidcClientRegistrationsCollectionName = "OidcClientRegistrations";
 
         private readonly IDbContextProvider _dbContextProvider;
+        private readonly OidcDiscoveryClient _oidcDiscoveryClient;
 
-        public AuthenticationRepository(IDbContextProvider dbContextProvider)
+        public AuthenticationRepository(IDbContextProvider dbContextProvider, OidcDiscoveryClient oidcDiscoveryClient)
         {
             _dbContextProvider = dbContextProvider;
+            _oidcDiscoveryClient = oidcDiscoveryClient;
         }
 
         public IMongoCollection<T> GetCollection<T>()
@@ -402,7 +405,7 @@ namespace Authentication.DomainService.Services
             return provider;
         }
 
-        private static async Task PopulateProviderEndpointsFromWellKnownAsync(IdentityProvider provider)
+        private async Task PopulateProviderEndpointsFromWellKnownAsync(IdentityProvider provider)
         {
             if (provider == null)
             {
@@ -413,7 +416,7 @@ namespace Authentication.DomainService.Services
 
             if (!string.IsNullOrWhiteSpace(provider.WellKnownUrl))
             {
-                metadata = await AuthenticationDomainService.GetMetadataAsync(provider.WellKnownUrl);
+                metadata = await _oidcDiscoveryClient.GetMetadataAsync(provider.WellKnownUrl);
                 provider.AuthorizationUrl = metadata?.AuthorizationEndpoint;
                 provider.TokenUrl = metadata?.TokenEndpoint;
                 provider.UserInfoUrl = metadata?.UserInfoEndpoint;
@@ -554,7 +557,7 @@ namespace Authentication.DomainService.Services
         public async Task<BiometricCredential> AuthenticateBiometricCredentialAsync(string biometricId, string biometricKey)
         {
             var collection = GetCollection<BiometricCredential>();
-            var filter = Builders<BiometricCredential>.Filter.Where(it => it.BiometricId == biometricId && it.BiometriKey == biometricId);
+            var filter = Builders<BiometricCredential>.Filter.Where(it => it.BiometricId == biometricId && it.BiometricKey == biometricKey);
             return await (await collection.FindAsync(filter)).FirstOrDefaultAsync();
         }
 

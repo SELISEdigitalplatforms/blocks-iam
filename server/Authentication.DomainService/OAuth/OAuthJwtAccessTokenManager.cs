@@ -17,23 +17,33 @@ using Authentication.DomainService.Shared;
 
 namespace Authentication.DomainService.OAuth
 {
-    public class OAuthJwtAccessTokenManager : IOAuthJwtAccessTokenManager
+    public sealed class OAuthJwtAccessTokenManager : IOAuthJwtAccessTokenManager
     {
         private readonly IJwtAccessTokenProvider _jwtAccessTokenProvider;
         private readonly IAuthenticationDomainService _authenticationDomainService;
         private readonly IAuthenticationRepository _authenticationRepository;
         private readonly IOtpServiceFactory _otpServiceFactory;
-        private readonly IMfaConfigurationService _configurationService;
         private readonly IMfaPolicyService _mfaPolicyService;
         private readonly ICacheClient _cacheClient;
         private readonly ITenants _tenants;
         private readonly UnifiedTokenSessionService _unifiedTokenSessionService;
 
+        private static readonly HashSet<string> MfaCheckpointExemptGrantTypes = new(StringComparer.OrdinalIgnoreCase)
+        {
+            GrantTypes.MfaCode,
+            GrantTypes.ClientCredential,
+            GrantTypes.RefreshToken,
+            GrantTypes.SwitchOrganization,
+            GrantTypes.ImpersonationCloud
+        };
+
+        private static bool IsMfaCheckpointExempt(string? grantType) =>
+            !string.IsNullOrWhiteSpace(grantType) && MfaCheckpointExemptGrantTypes.Contains(grantType);
+
         public OAuthJwtAccessTokenManager(
             IJwtAccessTokenProvider jwtAccessTokenProvider,
             IAuthenticationDomainService authenticationDomainService,
             IAuthenticationRepository authenticationRepository,
-            IMfaConfigurationService configurationService,
             IMfaPolicyService mfaPolicyService,
             ICacheClient cacheClient,
             ITenants tenants,
@@ -44,7 +54,6 @@ namespace Authentication.DomainService.OAuth
             _jwtAccessTokenProvider = jwtAccessTokenProvider;
             _authenticationDomainService = authenticationDomainService;
             _authenticationRepository = authenticationRepository;
-            _configurationService = configurationService;
             _mfaPolicyService = mfaPolicyService;
             _cacheClient = cacheClient;
             _tenants = tenants;
@@ -73,14 +82,12 @@ namespace Authentication.DomainService.OAuth
                 };
             }
 
-            var (_, allowedServiceAccessResources) = await ResolveClientAuthorizationConfigAsync(tokenRequest.ClientId);
             var jwtAccessToken = await _jwtAccessTokenProvider.GetJwtAccessToken(
                 authenticationConfiguration,
                 tenant,
                 user,
                 tokenRequest,
-                stateInfo,
-                clientAllowedServiceAccessResources: allowedServiceAccessResources);
+                stateInfo);
 
             var accessToken = CreateJwtAccessToken(jwtAccessToken);
             var (refreshToken, refreshValidity) = await ManageRefreshTokenAsync(tokenRequest, jwtAccessToken, authenticationConfiguration, tenant, user);
@@ -98,35 +105,24 @@ namespace Authentication.DomainService.OAuth
             };
         }
 
-        private async Task<(IReadOnlyCollection<string> AllowedScopes, IReadOnlyCollection<string> AllowedServiceAccessResources)> ResolveClientAuthorizationConfigAsync(string? clientId)
+        private async Task<IReadOnlyCollection<string>> ResolveClientAllowedScopesAsync(string? clientId)
         {
             if (string.IsNullOrWhiteSpace(clientId))
             {
-                return ([], []);
+                return [];
             }
 
             var oidcClient = await _authenticationRepository.GetOidcClientRegistrationAsync(clientId);
-            var allowedScopes = oidcClient?.AllowedScopes?
+            return oidcClient?.AllowedScopes?
                 .Where(scope => !string.IsNullOrWhiteSpace(scope))
                 .Distinct(StringComparer.OrdinalIgnoreCase)
                 .ToList()
                 ?? [];
-
-            var allowedServiceAccessResources = oidcClient?.AllowedServiceAccessResources?
-                .Where(resource => !string.IsNullOrWhiteSpace(resource))
-                .Distinct(StringComparer.OrdinalIgnoreCase)
-                .ToList()
-                ?? [];
-
-            return (allowedScopes, allowedServiceAccessResources);
         }
 
         private async Task<TokenResponse?> ProcessCheckPointsAsync(TokenRequest tokenRequest, User user, string? clientId)
         {
-            if (tokenRequest.GrantType == GrantTypes.MfaCode
-                || tokenRequest.GrantType == GrantTypes.ClientCredential
-                || tokenRequest.GrantType == GrantTypes.RefreshToken
-                || tokenRequest.GrantType == GrantTypes.SwitchOrganization)
+            if (IsMfaCheckpointExempt(tokenRequest.GrantType))
             {
                 return null;
             }

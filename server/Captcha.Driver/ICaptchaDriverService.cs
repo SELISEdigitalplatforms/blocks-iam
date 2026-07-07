@@ -1,29 +1,23 @@
-﻿using Captcha.DomainService.Captcha;
+﻿namespace Blocks.CaptchaDriver;
 
-namespace Blocks.CaptchaDriver
+/// <summary>
+/// Public entry point for the Captcha driver. Consumers should depend on this
+/// interface rather than on <see cref="ICaptchaService"/> directly so that the
+/// driver can evolve its internal layering without breaking callers.
+/// </summary>
+public interface ICaptchaDriverService
 {
     /// <summary>
-    /// Service for handling CAPTCHA operations including creation, submission, and verification.
+    /// Submits a captcha and generates a one-time verification code.
     /// </summary>
-    public interface ICaptchaDriverService
-    {
-        /// <summary>
-        /// Creates a new CAPTCHA based on the provided request.
-        /// </summary>
-        /// <param name="command">The request containing the ConfigurationName for the CAPTCHA.</param>
-        /// <returns>A response containing the Captcha Id, Captcha and IsValid status.</returns>
-        CreateCaptchaRequestResponse Create(CreateCaptchaRequest command);
-        /// <summary>
-        /// Submits a CAPTCHA and generates a verification code.
-        /// </summary>
-        /// <param name="command">The request containing the CAPTCHA Id and Value to be submitted.</param>
-        /// <returns>A task that represents the asynchronous operation. The task result contains the response with the VerificationCode and IsValid status.</returns>
-        Task<SubmitCaptchaRequestResponse> Submit(SubmitCaptchaRequest command);
-        /// <summary>
-        /// Verifies a CAPTCHA using the provided verification code and configuration name.
-        /// </summary>
-        /// <param name="query">The request containing the VerificationCode and ConfigurationName.</param>
-        /// <returns>A task that represents the asynchronous operation. The task result contains the response with the VerificationResult and IsValid status.</returns>
-        Task<VerifyCaptchaRequestResponse> Verify(VerifyCaptchaRequest query);
-    }
+    /// <param name="command">The submit request containing the captcha identifier, value, and host name.</param>
+    /// <returns>Response with the verification code on success or validation errors.</returns>
+    Task<SubmitCaptchaRequestResponse> Submit(SubmitCaptchaRequest command);
+
+    /// <summary>
+    /// Verifies a previously issued verification code.
+    /// </summary>
+    /// <param name="query">The verify request containing the verification code and configuration name.</param>
+    /// <returns>Response with the verification outcome and host name on success.</returns>
+    Task<VerifyCaptchaRequestResponse> Verify(VerifyCaptchaRequest query);
 }

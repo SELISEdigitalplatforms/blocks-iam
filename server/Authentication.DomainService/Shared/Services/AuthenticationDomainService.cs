@@ -19,7 +19,7 @@ using Iam.DomainService.Dtos;
 
 namespace Authentication.DomainService.Services
 {
-    public class AuthenticationDomainService : IAuthenticationDomainService
+    public sealed class AuthenticationDomainService : IAuthenticationDomainService
     {
         private readonly IMessageClient _messageClient;
         private readonly IAuthenticationRepository _authenticationRepository;
@@ -27,20 +27,20 @@ namespace Authentication.DomainService.Services
         private readonly IUserRepository _userRepository;
         private readonly IValidator<SaveSsoCredentialRequest> _validator;
         private readonly ITenants _tenants;
-
-
-        private readonly static HttpClient _httpClient = new();
+        private readonly IHttpClientFactory _httpClientFactory;
 
         private const string Origin_Header_Name = "Origin";
         private const string Referer_Header_Name = "Referer";
         private const string X_Forwarded_For_Header_Name = "X-Forwarded-For";
+        private const string DiscoveryClientName = "oidc-discovery";
 
         public AuthenticationDomainService(IMessageClient messageClient,
                                            IAuthenticationRepository authenticationRepository,
                                            IConfiguration configuration,
                                            IUserRepository userRepository,
                                            IValidator<SaveSsoCredentialRequest> validator,
-                                           ITenants tenants)
+                                           ITenants tenants,
+                                           IHttpClientFactory httpClientFactory)
         {
             _messageClient = messageClient;
             _authenticationRepository = authenticationRepository;
@@ -48,6 +48,7 @@ namespace Authentication.DomainService.Services
             _userRepository = userRepository;
             _validator = validator;
             _tenants = tenants;
+            _httpClientFactory = httpClientFactory;
         }
 
         public IEnumerable<string> GetVisitorsIpAddresses(HttpContext context)
@@ -125,9 +126,10 @@ namespace Authentication.DomainService.Services
             };
         }
 
-        public static async Task<OpenIdConnectConfiguration?> GetMetadataAsync(string wellKnownUrl)
+        public async Task<OpenIdConnectConfiguration?> GetMetadataAsync(string wellKnownUrl)
         {
-            var response = await _httpClient.GetAsync(wellKnownUrl);
+            var httpClient = _httpClientFactory.CreateClient(DiscoveryClientName);
+            var response = await httpClient.GetAsync(wellKnownUrl);
             string json = await response.Content.ReadAsStringAsync();
 
             return JsonSerializer.Deserialize<OpenIdConnectConfiguration>(json);
@@ -135,89 +137,20 @@ namespace Authentication.DomainService.Services
 
         public async Task<SaveOIDCClientResponse> SaveOIDCClientAsync(SaveOIDCClientRequest request)
         {
-            var credential = await _authenticationRepository.GetOidcClientRegistrationAsync(request.ItemId ?? "");
-            var clientId = request.ItemId;
+            var credential = await InitializeOidcClientCredentialAsync(request);
+            ApplyOidcClientScopesAndRedirects(credential, request);
+            ApplyOidcClientOptions(credential, request);
 
-            if (string.IsNullOrWhiteSpace(clientId))
-            {
-                clientId = Guid.NewGuid().ToString();
-            }
-
-            credential = credential ?? new OidcClientRegistration
-            {
-                ItemId = clientId,
-                ClientId = clientId,
-                CreatedBy = BlocksContext.GetContext()?.UserId,
-                CreatedDate = DateTime.UtcNow,
-            };
-
-            credential.ItemId = clientId;
-            credential.ClientId = clientId;
-
-            credential.ClientSecret = string.IsNullOrWhiteSpace(credential.ClientSecret)
-                ? Guid.NewGuid().ToString("n")
-                : credential.ClientSecret;
-
-            var allowedScopes = request.AllowedScopes.Where(x => !string.IsNullOrWhiteSpace(x)).Distinct(StringComparer.OrdinalIgnoreCase).ToList();
-            if (allowedScopes.Count == 0 && !string.IsNullOrWhiteSpace(request.Scope))
-            {
-                allowedScopes = request.Scope.Split(' ', StringSplitOptions.RemoveEmptyEntries).Distinct(StringComparer.OrdinalIgnoreCase).ToList();
-            }
-
-            var redirectUris = request.RedirectUris.Where(x => !string.IsNullOrWhiteSpace(x)).Distinct(StringComparer.OrdinalIgnoreCase).ToList();
-
-            var allowedServiceAccessResources = request.AllowedServiceAccessResources.Where(x => !string.IsNullOrWhiteSpace(x)).Distinct(StringComparer.OrdinalIgnoreCase).ToList();
-            if (allowedServiceAccessResources.Count == 0 && !string.IsNullOrWhiteSpace(request.ServiceAccessResource))
-            {
-                allowedServiceAccessResources = [request.ServiceAccessResource];
-            }
-
-            credential.AllowedScopes = allowedScopes;
-            credential.Scope = string.Join(' ', allowedScopes);
-
-            credential.RedirectUris = redirectUris;
-            credential.RedirectUri = redirectUris.FirstOrDefault();
-
-            credential.AllowedServiceAccessResources = allowedServiceAccessResources;
-            credential.ServiceAccessResource = allowedServiceAccessResources.FirstOrDefault();
-
-            credential.AllowedResponseTypes = request.AllowedResponseTypes.Where(x => !string.IsNullOrWhiteSpace(x)).Distinct(StringComparer.OrdinalIgnoreCase).ToList();
-            if (credential.AllowedResponseTypes.Count == 0)
-            {
-                credential.AllowedResponseTypes = ["code"];
-            }
-
-            credential.PostLogoutRedirectUris = request.PostLogoutRedirectUris.Where(x => !string.IsNullOrWhiteSpace(x)).Distinct(StringComparer.OrdinalIgnoreCase).ToList();
-            credential.ExternalDiscoveryEndpoint = request.ExternalDiscoveryEndpoint;
-            credential.LoginMode = request.LoginMode;
-            credential.ClientType = request.ClientType;
-            credential.TokenEndpointAuthMethod = string.Equals(request.ClientType, "public", StringComparison.OrdinalIgnoreCase)
-                ? "none"
-                : "client_secret_post";
-            credential.RequirePkce = request.RequirePkce;
-            credential.RequireConsent = request.RequireConsent;
-            credential.FrontChannelLogoutUri = request.FrontChannelLogoutUri;
-            credential.BackChannelLogoutUri = request.BackChannelLogoutUri;
-            credential.IsActive = request.IsActive;
-            credential.IsAutoRedirect = request.IsAutoRedirect;
-            credential.UseTokensCookie = request.UseTokensCookie;
-            credential.RequireMfa = request.RequireMfa;
-            credential.AllowedMfaMethods = request.AllowedMfaMethods;
-            credential.LastUpdatedBy = BlocksContext.GetContext()?.UserId;
-            credential.LastUpdatedDate = DateTime.UtcNow;
-            credential.LogoUri = request.ClientLogoUrl;
-            credential.ClientName = request.ClientDisplayName;
-            credential.UiBrandColor = request.ClientBrandColor;
             await _authenticationRepository.SaveOidcClientRegistrationAsync(credential);
-            
+
             // Auto-insert/update IdentityProvider for OIDC client
             // Create provider name from client ID or client name
-            //var providerName = !string.IsNullOrWhiteSpace(request.ClientDisplayName) 
-            //    ? request.ClientDisplayName.ToLower().Replace(" ", "-") 
+            //var providerName = !string.IsNullOrWhiteSpace(request.ClientDisplayName)
+            //    ? request.ClientDisplayName.ToLower().Replace(" ", "-")
             //    : clientId.ToLower();
-            
+
             //var existingProvider = await _authenticationRepository.GetIdentityProviderAsync(providerName, IdpConstants.BlocksProviderType);
-            
+
             //if (existingProvider == null)
             //{
             //    // Create new IdentityProvider for this OIDC client
@@ -269,8 +202,78 @@ namespace Authentication.DomainService.Services
             //    existingProvider.IsActive = credential.IsActive;
             //    await _authenticationRepository.UpdateIdentityProviderAsync(existingProvider);
             //}
-            
+
             return new SaveOIDCClientResponse { IsSuccess = true, ItemId = credential.ItemId };
+        }
+
+        private async Task<OidcClientRegistration> InitializeOidcClientCredentialAsync(SaveOIDCClientRequest request)
+        {
+            var credential = await _authenticationRepository.GetOidcClientRegistrationAsync(request.ItemId ?? "");
+            var clientId = string.IsNullOrWhiteSpace(request.ItemId) ? Guid.NewGuid().ToString() : request.ItemId;
+
+            credential ??= new OidcClientRegistration
+            {
+                ItemId = clientId,
+                ClientId = clientId,
+                CreatedBy = BlocksContext.GetContext()?.UserId,
+                CreatedDate = DateTime.UtcNow,
+            };
+
+            credential.ItemId = clientId;
+            credential.ClientId = clientId;
+            credential.ClientSecret = string.IsNullOrWhiteSpace(credential.ClientSecret)
+                ? Guid.NewGuid().ToString("n")
+                : credential.ClientSecret;
+
+            return credential;
+        }
+
+        private static void ApplyOidcClientScopesAndRedirects(OidcClientRegistration credential, SaveOIDCClientRequest request)
+        {
+            var allowedScopes = request.AllowedScopes.Where(x => !string.IsNullOrWhiteSpace(x)).Distinct(StringComparer.OrdinalIgnoreCase).ToList();
+            if (allowedScopes.Count == 0 && !string.IsNullOrWhiteSpace(request.Scope))
+            {
+                allowedScopes = request.Scope.Split(' ', StringSplitOptions.RemoveEmptyEntries).Distinct(StringComparer.OrdinalIgnoreCase).ToList();
+            }
+
+            var redirectUris = request.RedirectUris.Where(x => !string.IsNullOrWhiteSpace(x)).Distinct(StringComparer.OrdinalIgnoreCase).ToList();
+
+            credential.AllowedScopes = allowedScopes;
+            credential.Scope = string.Join(' ', allowedScopes);
+
+            credential.RedirectUris = redirectUris;
+            credential.RedirectUri = redirectUris.FirstOrDefault();
+
+            credential.AllowedResponseTypes = request.AllowedResponseTypes.Where(x => !string.IsNullOrWhiteSpace(x)).Distinct(StringComparer.OrdinalIgnoreCase).ToList();
+            if (credential.AllowedResponseTypes.Count == 0)
+            {
+                credential.AllowedResponseTypes = ["code"];
+            }
+        }
+
+        private static void ApplyOidcClientOptions(OidcClientRegistration credential, SaveOIDCClientRequest request)
+        {
+            credential.PostLogoutRedirectUris = request.PostLogoutRedirectUris.Where(x => !string.IsNullOrWhiteSpace(x)).Distinct(StringComparer.OrdinalIgnoreCase).ToList();
+            credential.ExternalDiscoveryEndpoint = request.ExternalDiscoveryEndpoint;
+            credential.LoginMode = request.LoginMode;
+            credential.ClientType = request.ClientType;
+            credential.TokenEndpointAuthMethod = string.Equals(request.ClientType, "public", StringComparison.OrdinalIgnoreCase)
+                ? "none"
+                : "client_secret_post";
+            credential.RequirePkce = request.RequirePkce;
+            credential.RequireConsent = request.RequireConsent;
+            credential.FrontChannelLogoutUri = request.FrontChannelLogoutUri;
+            credential.BackChannelLogoutUri = request.BackChannelLogoutUri;
+            credential.IsActive = request.IsActive;
+            credential.IsAutoRedirect = request.IsAutoRedirect;
+            credential.UseTokensCookie = request.UseTokensCookie;
+            credential.RequireMfa = request.RequireMfa;
+            credential.AllowedMfaMethods = request.AllowedMfaMethods;
+            credential.LastUpdatedBy = BlocksContext.GetContext()?.UserId;
+            credential.LastUpdatedDate = DateTime.UtcNow;
+            credential.LogoUri = request.ClientLogoUrl;
+            credential.ClientName = request.ClientDisplayName;
+            credential.UiBrandColor = request.ClientBrandColor;
         }
 
         public async Task<GetOIDCClientResponse> GetOidcClientAsync(string tenantId)
@@ -349,62 +352,70 @@ namespace Authentication.DomainService.Services
             if (string.IsNullOrWhiteSpace(request.Name))
                 return new BaseResponse { IsSuccess = false, Errors = new Dictionary<string, string> { { "invalid_request", "Name is required." } } };
 
-            var normalizedPermissionsByOrg = new Dictionary<string, List<string>>(StringComparer.OrdinalIgnoreCase);
-            if (request.PermissionsByOrg != null)
+            var roles = (request.Roles ?? new List<string>()).Where(r => !string.IsNullOrWhiteSpace(r)).Distinct(StringComparer.OrdinalIgnoreCase).ToList();
+            var permissions = (request.Permissions ?? new List<string>()).Where(p => !string.IsNullOrWhiteSpace(p)).Distinct(StringComparer.OrdinalIgnoreCase).ToList();
+
+            if (roles.Count == 0 && permissions.Count == 0)
+                return new BaseResponse { IsSuccess = false, Errors = new Dictionary<string, string> { { "invalid_request", "At least one role or permission is required." } } };
+
+            var blocksContext = BlocksContext.GetContext();
+
+            var isUpdate = !string.IsNullOrWhiteSpace(request.ItemId);
+            if (isUpdate)
             {
-                foreach (var kvp in request.PermissionsByOrg)
-                {
-                    var orgId = kvp.Key?.Trim();
-                    if (string.IsNullOrWhiteSpace(orgId))
-                    {
-                        return new BaseResponse
-                        {
-                            IsSuccess = false,
-                            Errors = new Dictionary<string, string> { { "invalid_request", "permissions_by_org contains an empty org id." } }
-                        };
-                    }
+                var existing = await _authenticationRepository.GetClientCredentialByIdAsync(request.ItemId!);
+                if (existing == null)
+                    return new BaseResponse { IsSuccess = false, Errors = new Dictionary<string, string> { { "not_found", $"Client credential '{request.ItemId}' not found." } } };
 
-                    var normalizedPermissions = (kvp.Value ?? [])
-                        .Where(permission => !string.IsNullOrWhiteSpace(permission))
-                        .Select(permission => permission.Trim())
-                        .Distinct(StringComparer.OrdinalIgnoreCase)
-                        .ToList();
+                existing.Name = request.Name;
+                existing.IsActive = request.IsActive;
+                existing.AccessTokenValidForNumberMinutes = request.AccessTokenValidForNumberMinutes;
+                existing.LastUpdatedBy = blocksContext?.UserId;
+                existing.LastUpdatedDate = DateTime.UtcNow;
 
-                    if (normalizedPermissions.Count > 10)
-                    {
-                        return new BaseResponse
-                        {
-                            IsSuccess = false,
-                            Errors = new Dictionary<string, string>
-                            {
-                                { "invalid_request", $"A maximum of 10 permissions is allowed per org. Org '{orgId}' has {normalizedPermissions.Count}." }
-                            }
-                        };
-                    }
-
-                    normalizedPermissionsByOrg[orgId] = normalizedPermissions;
-                }
+                return await _authenticationRepository.SaveClientCredentialAsync(existing);
             }
+
+            var organizationId = blocksContext?.OrganizationId ?? "default";
 
             var clientCredential = new ClientCredential
             {
                 ItemId = Guid.NewGuid().ToString(),
-                ClientSecret = Guid.NewGuid().ToString("n"),
+                ClientSecret = ClientSecretGenerator.Generate(),
                 Name = request.Name,
-                CreatedBy = BlocksContext.GetContext()?.UserId,
-                LastUpdatedBy = BlocksContext.GetContext()?.UserId,
+                CreatedBy = blocksContext?.UserId,
+                LastUpdatedBy = blocksContext?.UserId,
                 CreatedDate = DateTime.UtcNow,
-                Roles = request.Roles,
-                PermissionsByOrg = normalizedPermissionsByOrg,
-                IsActive = true,
-                Audiences = _tenants.GetTenantByID(BlocksContext.GetContext()?.TenantId ?? "")?.JwtTokenParameters?.Audiences ?? []
+                LastUpdatedDate = DateTime.UtcNow,
+                OrganizationId = organizationId,
+                AccessTokenValidForNumberMinutes = request.AccessTokenValidForNumberMinutes,
+                Roles = roles,
+                Permissions = permissions,
+                IsActive = true
             };
 
             return await _authenticationRepository.SaveClientCredentialAsync(clientCredential);
         }
 
+        private static string GenerateClientSecret()
+        {
+            var secretBytes = new byte[32];
+            System.Security.Cryptography.RandomNumberGenerator.Fill(secretBytes);
+            return "blxsk_" + Convert.ToBase64String(secretBytes)
+                .TrimEnd('=')
+                .Replace('+', '-')
+                .Replace('/', '_');
+        }
+
         public async Task<BaseResponse> DeleteClientCredentialAsync(DeleteClientCredentialRequest request)
         {
+            if (string.IsNullOrWhiteSpace(request.ItemId))
+                return new BaseResponse { IsSuccess = false, Errors = new Dictionary<string, string> { { "invalid_request", "ItemId is required." } } };
+
+            var existing = await _authenticationRepository.GetClientCredentialByIdAsync(request.ItemId);
+            if (existing == null)
+                return new BaseResponse { IsSuccess = false, Errors = new Dictionary<string, string> { { "not_found", $"Client credential '{request.ItemId}' not found." } } };
+
             await _authenticationRepository.DeleteClientCredentialAsync(request);
             return new BaseResponse { IsSuccess = true };
         }

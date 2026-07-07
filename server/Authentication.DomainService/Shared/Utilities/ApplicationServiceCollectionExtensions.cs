@@ -1,13 +1,9 @@
 using Authentication.DomainService.OAuth.SocialServices;
 using Blocks.Extension.DependencyInjection;
 using Idp.DomainService.Oidc.Services;
-using Captcha.DomainService.Captcha;
-using Captcha.DomainService.Configuration;
-using Captcha.DomainService.Utilities;
 using Authentication.DomainService.Authentication;
 using Authentication.DomainService.Oidc.Repositories;
 using Authentication.DomainService.Oidc.Services;
-using Authentication.DomainService.Oidc.Validation;
 using Authentication.DomainService.OAuth;
 using Authentication.DomainService.OAuth.Services;
 using Authentication.DomainService.Services;
@@ -36,6 +32,8 @@ namespace Authentication.DomainService.Utilities
         {
             
             #region Authentication
+            serviceCollection.AddHttpClient(OidcDiscoveryClient.HttpClientName);
+            serviceCollection.AddSingleton<OidcDiscoveryClient>();
             serviceCollection.AddSingleton<IAuthenticationDomainService, AuthenticationDomainService>();
             serviceCollection.AddSingleton<IAuthenticationRepository, AuthenticationRepository>();
 
@@ -43,10 +41,10 @@ namespace Authentication.DomainService.Utilities
             serviceCollection.AddSingleton<IJwtAccessTokenProvider, JwtAccessTokenProvider>();
 
             serviceCollection.AddSingleton<IAuthenticationService, AuthenticationService>();
+            serviceCollection.AddSingleton<IAuthenticationConfigurationService, AuthenticationConfigurationService>();
             serviceCollection.AddSingleton<IAuthenticationFlowService, AuthenticationFlowService>();
             serviceCollection.AddSingleton<IAuthorizationFlowService, AuthorizationFlowService>();
             serviceCollection.AddSingleton<IIdpService, IdpService>();
-            serviceCollection.AddSingleton<AuthorizeRequestValidator>();
 
             serviceCollection.AddSingleton<OidcSigningKeyMaterial>();
             serviceCollection.AddSingleton<ITokenGenerationService, TokenGenerationService>();
@@ -75,9 +73,26 @@ namespace Authentication.DomainService.Utilities
             serviceCollection.AddSingleton<ClientUserCodeAuthorizationService>();
             serviceCollection.AddSingleton<SSOConsentAuthenticationService>();
             serviceCollection.AddSingleton<IAuthorizationClaimsResolver, AuthorizationClaimsResolver>();
+            serviceCollection.AddSingleton<ClientCredentialsTokenIssuer>();
+
+            // Authorization flow split: lean orchestrator delegates to focused services.
+            serviceCollection.AddSingleton<PasswordHasher>();
+            serviceCollection.AddSingleton<OidcLoginAuditWriter>();
+            serviceCollection.AddSingleton<OidcCaptchaEvaluator>();
+            serviceCollection.AddSingleton<OidcLoginOrchestrator>();
+            serviceCollection.AddSingleton<OidcAuthorizationEndpoint>();
+            serviceCollection.AddSingleton<AuthorizationCodeExchangeService>();
+            serviceCollection.AddSingleton<OidcRefreshTokenService>();
+            serviceCollection.AddSingleton<OidcTokenEndpoint>();
 
             serviceCollection.AddSingleton<ICertificateProviderFactory, CertificateProviderFactory>();
             serviceCollection.AddSingleton<ISocialLogInServiceProvider, SocialLogInServiceProvider>();
+            serviceCollection.AddSingleton<IdpTokenExchangeClient>();
+            serviceCollection.AddSingleton<IAuthSessionFacade, AuthSessionFacade>();
+            serviceCollection.AddSingleton<IAuthStrategy, AuthStrategy>();
+            serviceCollection.AddSingleton<ICaptchaEvaluator, CaptchaEvaluator>();
+            serviceCollection.AddSingleton<ITokenRefresher, TokenRefresher>();
+            serviceCollection.AddSingleton<IMfaChallengeIssuer, MfaChallengeIssuer>();
 
             serviceCollection.AddSingleton<GoogleLogInService>();
             serviceCollection.AddSingleton<MicrosoftLogInService>();
@@ -87,6 +102,19 @@ namespace Authentication.DomainService.Utilities
             serviceCollection.AddSingleton<TwitterLogInService>();
             serviceCollection.AddSingleton<AppleLogInService>();
             serviceCollection.AddSingleton<FaceBookLogInService>();
+
+            // BYOSso external-user mappers (strategy pattern)
+            serviceCollection.AddSingleton<IExternalUserMapper, MicrosoftExternalUserMapper>();
+            serviceCollection.AddSingleton<IExternalUserMapper, OktaExternalUserMapper>();
+            serviceCollection.AddSingleton<IExternalUserMapper, GoogleExternalUserMapper>();
+            serviceCollection.AddSingleton<IExternalUserMapper, GithubExternalUserMapper>();
+            serviceCollection.AddSingleton<IExternalUserMapper, FacebookExternalUserMapper>();
+            serviceCollection.AddSingleton<IExternalUserMapper, LinkedInExternalUserMapper>();
+            serviceCollection.AddSingleton<IExternalUserMapper, KeycloakExternalUserMapper>();
+            serviceCollection.AddSingleton<IExternalUserMapper, PingExternalUserMapper>();
+            serviceCollection.AddSingleton<IExternalUserMapper, AdfsExternalUserMapper>();
+            serviceCollection.AddSingleton<IExternalUserMapper, GenericOidcExternalUserMapper>();
+            serviceCollection.AddSingleton<IExternalUserMapperRegistry, ExternalUserMapperRegistry>();
 
             serviceCollection.AddSingleton<IIamConfigurationRepository, IamConfigurationRepository>();
             serviceCollection.AddTransient<IValidator<SaveSsoCredentialRequest>, SaveSsoCredentialRequestValidator>();
@@ -128,6 +156,7 @@ namespace Authentication.DomainService.Utilities
             serviceCollection.AddSingleton<IOtpServiceFactory, OtpServiceFactory>();
             serviceCollection.AddSingleton<IMfaManagementRepository, MfaManagementRepository>();
             serviceCollection.AddSingleton<IMfaConfigurationService, MfaConfigurationService>();
+            serviceCollection.AddSingleton<IMfaBackupCodeService, MfaBackupCodeService>();
             serviceCollection.AddSingleton<TotpService>();
             serviceCollection.AddSingleton<EmailOtpService>();
             serviceCollection.AddHttpContextAccessor();
@@ -142,29 +171,7 @@ namespace Authentication.DomainService.Utilities
 
             #endregion
 
-            #region Captcha
-
-            // Verification handlers
-            serviceCollection.AddSingleton<ReCaptchaVerificationService>();
-            serviceCollection.AddSingleton<HCaptchaVerificationService>();
-            serviceCollection.AddSingleton<BlocksCaptchaVerificationService>();
-
-            // Register services
-            serviceCollection.AddSingleton<ICaptchaService, CaptchaService>();
-            serviceCollection.AddSingleton<ICaptchaConfigurationService, CaptchaConfigurationService>();
-            serviceCollection.AddSingleton<ICaptchaConfigurationRepository, CaptchaConfigurationRepository>();
-            serviceCollection.AddSingleton<ICaptchaGeneratorProvider, CaptchaGeneratorProvider>();
-            serviceCollection.AddSingleton<IContextCaptchaIdGeneratorService, ContextCaptchaIdGeneratorService>();
-            serviceCollection.AddSingleton<ICaptchaVerificationServiceProvider, CaptchaVerificationServiceProvider>();
-            serviceCollection.AddSingleton<IHttpClientService, HttpClientService>();
-            serviceCollection.AddSingleton<IRecaptchaConfigFactory, RecaptchaConfigFactory>();
-            serviceCollection.AddSingleton<ICaptchaProcessor, CaptchaProcessor>();
-
-            // Register validator
-            serviceCollection.AddTransient<IValidator<CreateCaptchaRequest>, CreateCaptchaCommandValidator>();
-            serviceCollection.AddTransient<IValidator<SubmitCaptchaRequest>, SubmitCaptchaCommandValidator>();
-
-            #endregion
+            serviceCollection.RegisterBlocksCaptchaService();
 
             serviceCollection.AddSingleton<UnifiedTokenSessionService, UnifiedTokenSessionService>();
             serviceCollection.AddSingleton<IImpersonationFlowHelper, ImpersonationFlowHelper>();

@@ -17,6 +17,17 @@ namespace Authentication.DomainService.OAuth
         public const string UserInActiveOrNotVerified = "user_inactive_or_not_verified";
         public const string RefreshTokenCookieNotFound = "refresh_token_not_found_in_cookie";
         public const string InvalidRefreshToken = "invalid_refresh_token";
+        public const string AuthConfigMissing = "auth_config_missing";
+        public const string SessionExpired = "session_expired";
+        public const string OidcStateRequired = "oidc_state_required";
+        public const string SessionCreationFailed = "session_creation_failed";
+        public const string ImpersonationFailed = "impersonation_failed";
+        public const string NotSharedWithUser = "not_shared_with_user";
+        public const string SessionNotFound = "session_not_found";
+        public const string RootUserNotFound = "root_user_not_found";
+        public const string InvalidImpersonationRequest = "invalid_impersonation_request";
+        public const string InvalidRequestBody = "invalid_request_body";
+        public const string InvalidGrantType = "invalid_grant_type";
 
         public static IActionResult InvalidRequest(string description = "The request is missing a required parameter.", string state = "")
         {
@@ -78,27 +89,34 @@ namespace Authentication.DomainService.OAuth
                 },
                 GrantTypes.MfaCode => new TokenResponse
                 {
-                    Error = "invalid_request_body",
+                    Error = InvalidRequestBody,
                     ErrorDescription = "Code, two_factor_id and mfa_type should not be empty",
                     StatusCode = 400
                 },
                 GrantTypes.AuthCode => new TokenResponse
                 {
-                    Error = "invalid_request_body",
+                    Error = InvalidRequestBody,
                     ErrorDescription = "code and secret is required",
                     StatusCode = 400
                 },
 
                 GrantTypes.SsoConsentCode => new TokenResponse
                 {
-                    Error = "invalid_request_body",
+                    Error = InvalidRequestBody,
                     ErrorDescription = "Code, sso consent code required",
+                    StatusCode = 400
+                },
+
+                GrantTypes.ImpersonationCloud => new TokenResponse
+                {
+                    Error = InvalidImpersonationRequest,
+                    ErrorDescription = "Impersonation request is missing required context",
                     StatusCode = 400
                 },
 
                 _ => new TokenResponse
                 {
-                    Error = "invalid_grant_type",
+                    Error = InvalidGrantType,
                     ErrorDescription = "Unsupported grant type provided",
                     StatusCode = 400
                 }
@@ -121,7 +139,7 @@ namespace Authentication.DomainService.OAuth
             return new TokenResponse
             {
                 Error = UserInActiveOrNotVerified,
-                ErrorDescription = $"User is not exist within {organization} organization",
+                ErrorDescription = $"User does not exist within {organization} organization",
                 StatusCode = 400
             };
         }

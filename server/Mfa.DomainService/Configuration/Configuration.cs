@@ -17,7 +17,7 @@ namespace Mfa.DomainService.Configuration
 
     public class MfaTemplate
     {
-        public string TemplateName { get; set; }
-        public string TemplateId { get; set; }
+        public string? TemplateName { get; set; }
+        public string? TemplateId { get; set; }
     }
 }

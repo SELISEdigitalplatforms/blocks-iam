@@ -1,9 +1,11 @@
-import { useEffect, useRef } from "react";
-import { useSearchParams } from "react-router-dom";
+import { useEffect, useMemo, useRef } from "react";
+import { useParams, useSearchParams } from "react-router-dom";
 import { useAuthStore } from "@seliseblocks/blocks-kit";
 import { getRuntimeEnv } from "@/lib/runtime-env";
+import { getCurrentOIDCParams } from "@blocks-idp/authentication/utils/oidc-utils";
 
 export default function SSOCallbackPage() {
+  const { tenantId } = useParams<{ tenantId: string }>();
   const [searchParams] = useSearchParams();
   const hasProcessed = useRef(false);
   const { setAuthenticated } = useAuthStore();
@@ -11,7 +13,16 @@ export default function SSOCallbackPage() {
   const code = searchParams.get("code");
   const state = searchParams.get("state");
   const error = searchParams.get("error");
-  const tenantId = searchParams.get("tenant_id");
+  // const queryTenantId = searchParams.get("tenant_id");
+
+  // Resolve tenant the same way as login-options / oidc flow:
+  // query param → x-blocks-key query → hash param → runtime env fallback
+  // const oidcParams = useMemo(() => getCurrentOIDCParams(), []);
+  // const tenantId =
+  //   queryTenantId ||
+  //   oidcParams.get("x-blocks-key") ||
+  //   getRuntimeEnv("BLOCKS_X_BLOCKS_KEY") ||
+  //   "";
 
   useEffect(() => {
     if (hasProcessed.current) return;
@@ -24,11 +35,7 @@ export default function SSOCallbackPage() {
     );
     if (code) callbackUrl.searchParams.set("code", code);
     if (state) callbackUrl.searchParams.set("state", state);
-
-    callbackUrl.searchParams.set(
-      "tenant_id",
-      getRuntimeEnv("BLOCKS_X_BLOCKS_KEY"),
-    );
+    if (tenantId) callbackUrl.searchParams.set("tenant_id", tenantId);
     window.location.href = callbackUrl.toString();
   }, [code, state, error, tenantId, setAuthenticated]);
 

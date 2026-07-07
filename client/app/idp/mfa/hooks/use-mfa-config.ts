@@ -20,7 +20,7 @@ export const useSaveMFAConfig = () => {
   });
 };
 
-export const useConfigureUserMFA = (option: { id: string; projectKey: string }) => {
+export const useConfigureUserMFA = (option: { id: string }) => {
   const queryClient = useQueryClient();
   return useMutation({
     mutationKey: ["mfa-config", "configure"],
@@ -32,7 +32,7 @@ export const useConfigureUserMFA = (option: { id: string; projectKey: string }) 
   });
 };
 
-export const useGetTotp = (option: { id: string; projectKey: string }) => {
+export const useGetTotp = (option: { id: string }) => {
   return useQuery({
     queryKey: ["mfa-config", "setup-totp", option],
     queryFn: () => mfaService.setupUserTotp(option),
@@ -46,7 +46,7 @@ export const useGenerateUserMfaOTP = () => {
   });
 };
 
-export const useVerifyMfaOTP = (option: IGetUserByIdPayload & { own?: boolean }) => {
+export const useVerifyMfaOTP = (option: { id: string; projectKey?: string; own?: boolean }) => {
   const queryClient = useQueryClient();
   const { own = false, ...rest } = option;
   return useMutation({
@@ -70,6 +70,19 @@ export const useDisableMfa = (option: { id: string }) => {
   return useMutation({
     mutationKey: ["mfa-config", "disable"],
     mutationFn: mfaService.disableMFA,
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["user-by-id", option] });
+      queryClient.invalidateQueries({ queryKey: ["user"] });
+    },
+  });
+};
+
+export const useVerifyTotpSetup = (option: { id: string }) => {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationKey: ["mfa-config", "verify-totp-setup"],
+    mutationFn: ({ code }: { code: string }) =>
+      mfaService.verifyTotpSetup({ code, userId: option.id }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["user-by-id", option] });
       queryClient.invalidateQueries({ queryKey: ["user"] });

@@ -91,7 +91,7 @@ export const OidcLoginForm = ({
   const navigate = useNavigate();
   const animCtx = useOidcAuthAnimation();
   const { data: loginOption } = useGetLoginOptions(tenantId, true);
-  const { data: oidcUiConfig } = useOidcUiConfig(tenantId);
+  const { data: oidcUiConfig, captchaEnabled } = useOidcUiConfig(tenantId);
   const [token, setToken] = useState("");
   const [accounts, setAccounts] = useState<OidcAccountInfo[]>([]);
   const [isSelectingAccount, setIsSelectingAccount] = useState(false);
@@ -140,7 +140,7 @@ export const OidcLoginForm = ({
     type: captchaType,
     generator: oidcUiConfig?.captcha?.generator,
   });
-  const isTokenNeed = captchaRequired;
+  const isTokenNeed = captchaRequired && captchaEnabled;
 
   const activationUrl = buildOIDCNavigationUrl("/oidc/activation");
   const forgotPasswordUrl = buildOIDCNavigationUrl("/oidc/forgot-password");
