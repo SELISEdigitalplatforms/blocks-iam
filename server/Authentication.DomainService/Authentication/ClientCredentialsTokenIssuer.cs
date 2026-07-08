@@ -71,11 +71,12 @@ namespace Authentication.DomainService.Authentication
                 { StatusCode = statusCode };
             }
 
-            return new OkObjectResult(new TokenResponse
+            return new OkObjectResult(new 
             {
                 AccessToken = result.AccessToken,
                 TokenType = "Bearer",
-                ExpiresIn = result.ExpiresIn
+                ExpiresIn = result.ExpiresIn,
+                ExpiresUtc= result.ExpiresUtc
             });
         }
 
