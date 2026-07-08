@@ -89,13 +89,13 @@ export const InviteOrganizationUser = ({ organizationId }: InviteOrganizationUse
   return (
     <Dialog open={open} onOpenChange={setOpen}>
       <DialogTrigger asChild>
-        <PrimaryButton label="Invite User" />
+        <PrimaryButton label="Invite Member" />
       </DialogTrigger>
       <DialogContent>
         <DialogHeader className="mb-4">
-          <DialogTitle>Invite User</DialogTitle>
+          <DialogTitle>Invite Member</DialogTitle>
           <DialogDescription className="!mt-2 text-sm text-medium-emphasis">
-            Invite a new user to the organization
+            Invite a new member to the organization
           </DialogDescription>
         </DialogHeader>
         <Form {...form}>
