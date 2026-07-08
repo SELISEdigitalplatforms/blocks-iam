@@ -77,6 +77,21 @@ export const OrganizationDetail = ({ id }: { id: string }) => {
         <PageBreadcrumb breadcrumbIndex={2} />
       </div>
 
+      <div className="mb-4 flex flex-wrap items-center gap-3 md:mb-6">
+        {isLoading ? (
+          <Skeleton className="h-8 w-48" />
+        ) : (
+          <h3 className="text-2xl font-bold tracking-tight text-high-emphasis">
+            {org?.name ?? "Organization"}
+          </h3>
+        )}
+        {org && (
+          <Badge variant={org.isEnabled ? "success" : "secondary"}>
+            {org.isEnabled ? "Active" : "Disabled"}
+          </Badge>
+        )}
+      </div>
+
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-10">
         <aside className="lg:col-span-3">
           <Card className="sticky top-4 border-none shadow-sm">
@@ -91,24 +106,14 @@ export const OrganizationDetail = ({ id }: { id: string }) => {
                 )}
               </div>
               <div className="min-w-0 flex-1">
-                {isLoading ? (
-                  <Skeleton className="h-5 w-32" />
-                ) : (
-                  <h1 className="truncate text-base font-semibold text-high-emphasis">
-                    {org?.name ?? "Organization"}
-                  </h1>
-                )}
-                {org?.shortCode && (
-                  <p className="mt-0.5 flex items-center gap-1 text-xs text-muted-foreground">
+                {org?.shortCode ? (
+                  <p className="flex items-center gap-1 text-xs text-muted-foreground">
                     <Tag className="h-3 w-3" />@{org.shortCode}
                   </p>
+                ) : (
+                  <p className="text-xs text-muted-foreground">Organization details</p>
                 )}
               </div>
-              {org && (
-                <Badge variant={org.isEnabled ? "success" : "secondary"} className="shrink-0">
-                  {org.isEnabled ? "Active" : "Disabled"}
-                </Badge>
-              )}
             </div>
 
             {org?.description && (
@@ -157,17 +162,12 @@ export const OrganizationDetail = ({ id }: { id: string }) => {
         </aside>
 
         <section className="lg:col-span-7">
-          <div className="mb-4 flex flex-wrap items-start justify-between gap-3">
-            <div>
-              <h2 className="text-lg font-semibold text-high-emphasis md:text-xl">Members</h2>
-              <p className="mt-0.5 text-sm text-muted-foreground">
-                People with access to this organization.
-              </p>
-            </div>
-            <InviteOrganizationUser organizationId={id} />
-          </div>
-
-          <OrganizationUsers organizationId={id} />
+          <OrganizationUsers
+            organizationId={id}
+            title="Members"
+            description="People with access to this organization."
+            action={<InviteOrganizationUser organizationId={id} />}
+          />
         </section>
       </div>
     </div>
