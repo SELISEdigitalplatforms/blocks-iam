@@ -437,7 +437,7 @@ namespace Iam.DomainService.Users
                 ? blocksContext?.OrganizationId
                 : command.OrganizationId;
 
-            if (!string.Equals(organizationId, DefaultOrganizationId, StringComparison.Ordinal)
+            if (!string.Equals(blocksContext?.OrganizationId, DefaultOrganizationId, StringComparison.Ordinal)
                 && !string.Equals(blocksContext?.OrganizationId, organizationId, StringComparison.Ordinal))
             {
                 _logger.LogInformation("Update User Access Control end -- Validation Error");
@@ -569,7 +569,7 @@ namespace Iam.DomainService.Users
                 };
             }
 
-            if (!string.Equals(organizationId, DefaultOrganizationId, StringComparison.Ordinal)
+            if (!string.Equals(blocksContext?.OrganizationId, DefaultOrganizationId, StringComparison.Ordinal)
                 && !string.Equals(blocksContext?.OrganizationId, organizationId, StringComparison.Ordinal))
             {
                 _logger.LogInformation("Revoke User Access Control end -- Validation Error");
