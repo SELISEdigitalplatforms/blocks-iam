@@ -22,7 +22,7 @@ import { useProjectStore } from "@seliseblocks/blocks-kit";
 import { EditDomainForm } from "@/components/edit-domain-form/edit-domain-form";
 
 const isApplicationDomain = (project: IProject | undefined, domain: string) =>
-  project?.applications?.some((application) => application.domain === domain) ?? false;
+  project?.applications?.some((application: { domain: string }) => application.domain === domain) ?? false;
 
 export const ProjectRepoList = ({
   project,
