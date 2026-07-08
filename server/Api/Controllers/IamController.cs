@@ -2,7 +2,6 @@ using Authentication.DomainService.Authentication;
 using Authentication.DomainService.Utilities;
 using Blocks.Genesis;
 using Iam.DomainService.Accounts;
-using Iam.DomainService.Activities;
 using Iam.DomainService.Entities;
 using Iam.DomainService.Resources;
 using Iam.DomainService.Resources.RequestModel;
@@ -21,7 +20,6 @@ namespace Api.Controllers
     public class IamController : ControllerBase
     {
         private readonly IAccountService _accountService;
-        private readonly IUserActivityService _userActivityService;
         private readonly IUserManagementQueryService _userManagementQueryService;
         private readonly IUserManagementMutationService _userManagementMutationService;
         private readonly IResourceMutationService _resourceMutationService;
@@ -29,14 +27,12 @@ namespace Api.Controllers
         private readonly IAuthenticationService _authenticationService;
 
         public IamController(IAccountService accountService,
-                             IUserActivityService userActivityService,
                              IResourceMutationService resourceMutationService,
                              IResourceQueryService resourceQueryService,
                              IUserManagementQueryService userManagementQueryService,
                              IUserManagementMutationService userManagementMutationService,
                              IAuthenticationService authenticationService)
         {
-            _userActivityService = userActivityService;
             _resourceMutationService = resourceMutationService;
             _resourceQueryService = resourceQueryService;
             _userManagementQueryService = userManagementQueryService;
@@ -46,26 +42,6 @@ namespace Api.Controllers
         }
 
 
-
-        #region Activity
-
-        [HttpGet("sessions")]
-        //[ProtectedEndPoint("blocks-idp::get-sessions")]
-        [Authorize]
-        public async Task<GetSessionsResponse> GetSessions([FromQuery] BaseActivityRequest query)
-        {
-            return await _userActivityService.GetSessionsAsync(query);
-        }
-
-        [HttpGet("history")]
-        //[ProtectedEndPoint("blocks-idp::get-histories")]
-        [Authorize]
-        public async Task<GetHistorysResponse> GetHistories([FromQuery] BaseActivityRequest query)
-        {
-            return await _userActivityService.GetHistoriesAsync(query);
-        }
-
-        #endregion
 
         #region Resource
 
