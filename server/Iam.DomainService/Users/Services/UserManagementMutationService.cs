@@ -509,14 +509,28 @@ namespace Iam.DomainService.Users
 
         public async Task<BaseMutationResponse> RevokeUserAccessControlAsync(RevokeUserAccessControlRequest command)
         {
-            _logger.LogInformation("Update User Access Control start");
+            _logger.LogInformation("Revoke User Access Control start");
+
+            if (string.IsNullOrWhiteSpace(command.UserId))
+            {
+                _logger.LogInformation("Revoke User Access Control end -- Validation Error");
+                return new BaseMutationResponse
+                {
+                    IsSuccess = false,
+                    Errors = new Dictionary<string, string>
+                    {
+                        { nameof(command.UserId), "UserId is required" }
+                    }
+                };
+            }
 
             var user = await _userRepository.GetUserByIdAsync(command.UserId);
             if (user == null)
             {
-                _logger.LogInformation("Update User Access Control end -- Validation Error");
+                _logger.LogInformation("Revoke User Access Control end -- Validation Error");
                 return new BaseMutationResponse
                 {
+                    IsSuccess = false,
                     Errors = new Dictionary<string, string>
                     {
                         { nameof(command.UserId), "Not found" }
@@ -529,15 +543,42 @@ namespace Iam.DomainService.Users
                 ? blocksContext?.OrganizationId
                 : command.OrganizationId;
 
+            if (string.IsNullOrWhiteSpace(organizationId))
+            {
+                _logger.LogInformation("Revoke User Access Control end -- Validation Error");
+                return new BaseMutationResponse
+                {
+                    IsSuccess = false,
+                    Errors = new Dictionary<string, string>
+                    {
+                        { nameof(command.OrganizationId), "OrganizationId is required" }
+                    }
+                };
+            }
+
+            if (string.Equals(command.UserId, blocksContext?.UserId, StringComparison.Ordinal))
+            {
+                _logger.LogInformation("Revoke User Access Control end -- Validation Error");
+                return new BaseMutationResponse
+                {
+                    IsSuccess = false,
+                    Errors = new Dictionary<string, string>
+                    {
+                        { nameof(command.UserId), "You cannot revoke your own access" }
+                    }
+                };
+            }
+
             if (!string.Equals(organizationId, DefaultOrganizationId, StringComparison.Ordinal)
                 && !string.Equals(blocksContext?.OrganizationId, organizationId, StringComparison.Ordinal))
             {
-                _logger.LogInformation("Update User Access Control end -- Validation Error");
+                _logger.LogInformation("Revoke User Access Control end -- Validation Error");
                 return new BaseMutationResponse
                 {
+                    IsSuccess = false,
                     Errors = new Dictionary<string, string>
                     {
-                        { nameof(command.OrganizationId), "Other org user can not add/update" }
+                        { nameof(command.OrganizationId), "Other org user can not revoke" }
                     }
                 };
             }
@@ -547,9 +588,10 @@ namespace Iam.DomainService.Users
                 var organization = await _resourceRepository.GetOrganizationById(organizationId);
                 if (organization == null)
                 {
-                    _logger.LogInformation("Update User Access Control end -- Validation Error");
+                    _logger.LogInformation("Revoke User Access Control end -- Validation Error");
                     return new BaseMutationResponse
                     {
+                        IsSuccess = false,
                         Errors = new Dictionary<string, string>
                         {
                             { nameof(command.OrganizationId), "Organization not found" }
@@ -568,13 +610,20 @@ namespace Iam.DomainService.Users
             var result = await _userRepository.UpdateUserAsync(user);
             if (!result)
             {
-                _logger.LogError("Update User Access Control end -- Repository Error for UserId {UserId}", command.UserId);
-                return new BaseMutationResponse();
+                _logger.LogError("Revoke User Access Control end -- Repository Error for UserId {UserId}", command.UserId);
+                return new BaseMutationResponse
+                {
+                    IsSuccess = false,
+                    Errors = new Dictionary<string, string>
+                    {
+                        { "Repository", "Failed to update user" }
+                    }
+                };
             }
 
             await SendEvent(user.ItemId, MutationEventType.Update);
 
-            _logger.LogInformation("Update User Access Control end -- Success");
+            _logger.LogInformation("Revoke User Access Control end -- Success");
             return new BaseMutationResponse
             {
                 IsSuccess = true,
