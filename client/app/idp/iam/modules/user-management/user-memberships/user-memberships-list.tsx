@@ -11,6 +11,7 @@ import {
 import { ColumnDef, flexRender, getCoreRowModel, useReactTable } from "@tanstack/react-table";
 import { useMemo, useState } from "react";
 import { IMembership } from "@blocks-idp/iam/models/user";
+import { IOrganization } from "@blocks-idp/iam/models/organization";
 import { Badge } from "@/components/ui-kits/badge/badge";
 import {
   Tooltip,
@@ -27,7 +28,7 @@ import {
 import { Button } from "@/components/ui-kits/button/button";
 import { EllipsisVertical, Settings, XCircle } from "lucide-react";
 import { RemoveMembership } from "./remove-membership";
-import { EditMembership } from "./edit-membership";
+import { ManageOrganizationDialog } from "./manage-organization-dialog";
 import { RoleBadges } from "./role-badges";
 
 type UserMembershipsListProps = {
@@ -35,6 +36,8 @@ type UserMembershipsListProps = {
   organizationIds: string[];
   orgNameMap: Map<string, string>;
   permissionGroupMap: Map<string, string>;
+  organizations: IOrganization[];
+  isOrgsLoading?: boolean;
   isLoading: boolean;
   userId: string;
   projectKey: string;
@@ -123,6 +126,8 @@ export const UserMembershipsList = ({
   organizationIds,
   orgNameMap,
   permissionGroupMap,
+  organizations,
+  isOrgsLoading,
   isLoading,
   userId,
   projectKey,
@@ -297,15 +302,13 @@ export const UserMembershipsList = ({
       )}
 
       {selectedMembership && (
-        <EditMembership
+        <ManageOrganizationDialog
           open={editDrawerOpen}
           onOpenChange={setEditDrawerOpen}
-          membership={selectedMembership}
-          organizationName={
-            orgNameMap.get(selectedMembership.organizationId) || selectedMembership.organizationId
-          }
           userId={userId}
-          projectKey={projectKey}
+          organizations={organizations}
+          isOrgsLoading={isOrgsLoading}
+          initialOrganizationId={selectedMembership.organizationId}
         />
       )}
     </>

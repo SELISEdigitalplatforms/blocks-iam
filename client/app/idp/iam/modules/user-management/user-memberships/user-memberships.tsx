@@ -95,6 +95,8 @@ export const UserMemberships = ({ id, projectKey }: UserMembershipsProps) => {
                     organizationIds={organizationIds}
                     orgNameMap={orgNameMap}
                     permissionGroupMap={permissionGroupMap}
+                    organizations={orgsData?.organizations ?? []}
+                    isOrgsLoading={isOrgsLoading}
                     isLoading={isLoading}
                     userId={id}
                     projectKey={projectKey}
