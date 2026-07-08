@@ -14,7 +14,7 @@ export const USER_ENDPOINTS = {
   UPDATE: `/api${IAM_SUBPATH}/users/update`,
   DEACTIVATE: `/api${IAM_SUBPATH}/users/deactivate`,
   UPDATE_ACCOUNT: `/api${IAM_SUBPATH}/account/update`,
-  ACCESS_CONTROL: `/api${IAM_SUBPATH}/users/access-control`,
+  ACCESS_CONTROL: `/api${IAM_SUBPATH}/users/access`,
   GET_ACCOUNTS: `/api${IAM_SUBPATH}/accounts`,
   GET_ACCOUNT: `/api${IAM_SUBPATH}/account`,
   GET_ACCOUNT_ROLES: `/api${IAM_SUBPATH}/account/roles`,
