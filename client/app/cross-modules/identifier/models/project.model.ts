@@ -11,7 +11,7 @@ export type {
   IProjectGroup,
   IUpdateProjectResponse,
   IUpdateTenantGroupPayload,
-} from "@seliseblocks/blocks-kit/models";
+} from "@/models/project.model";
 
 export interface IResource {
   name: string;
