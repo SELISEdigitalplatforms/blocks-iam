@@ -1,4 +1,4 @@
-import { Card, CardContent, CardHeader } from "@/components/ui-kits/card/card";
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui-kits/card/card";
 import { OrganizationUsersTable } from "./organization-users-table";
 import { Pagination } from "@/components/ui-kits/pagination/pagination";
 import { useGetUsers } from "@blocks-idp/iam/hooks/use-user";
@@ -11,9 +11,17 @@ import {
 
 interface OrganizationUsersProps {
   organizationId: string;
+  title?: string;
+  description?: string;
+  action?: React.ReactNode;
 }
 
-export const OrganizationUsers = ({ organizationId }: OrganizationUsersProps) => {
+export const OrganizationUsers = ({
+  organizationId,
+  title,
+  description,
+  action,
+}: OrganizationUsersProps) => {
   const { queryParams, setQueryParams } = useOrganizationUsersFilterQueryParams();
   const { sortQueryParams } = useOrganizationUsersSortQueryParams();
   const tenantId = useProjectStore().selectedProject?.tenantId || "";
@@ -38,7 +46,18 @@ export const OrganizationUsers = ({ organizationId }: OrganizationUsersProps) =>
 
   return (
     <Card>
-      <CardHeader>
+      <CardHeader className="gap-4">
+        {(title || action) && (
+          <div className="flex flex-wrap items-start justify-between gap-3">
+            {title && (
+              <div>
+                <CardTitle>{title}</CardTitle>
+                {description && <CardDescription className="mt-1">{description}</CardDescription>}
+              </div>
+            )}
+            {action}
+          </div>
+        )}
         <OrganizationUsersFilterToolbar />
       </CardHeader>
 
