@@ -328,21 +328,21 @@ namespace Iam.DomainService.Accounts
                 };
             }
 
-            var createdUser = await _repository.GetUserByIdAsync(result.ItemId);
-            var activationSent = createdUser != null && await SendReActivationAsync(createdUser);
+            //var createdUser = await _repository.GetUserByIdAsync(result.ItemId);
+            //var activationSent = createdUser != null && await SendReActivationAsync(createdUser);
 
-            if (!activationSent)
-            {
-                return new BaseAccountResponse
-                {
-                    IsSuccess = false,
-                    ItemId = result.ItemId,
-                    Errors = new Dictionary<string, string>
-                    {
-                        { "activation_email_failed", "User created but activation email could not be sent." }
-                    }
-                };
-            }
+            //if (!activationSent)
+            //{
+            //    return new BaseAccountResponse
+            //    {
+            //        IsSuccess = false,
+            //        ItemId = result.ItemId,
+            //        Errors = new Dictionary<string, string>
+            //        {
+            //            { "activation_email_failed", "User created but activation email could not be sent." }
+            //        }
+            //    };
+            //}
 
             return new BaseAccountResponse
             {
