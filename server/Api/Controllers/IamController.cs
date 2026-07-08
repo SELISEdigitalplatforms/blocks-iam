@@ -1,4 +1,6 @@
+using Authentication.DomainService.Authentication;
 using Authentication.DomainService.Utilities;
+using Azure.Core;
 using Blocks.Genesis;
 using Iam.DomainService.Accounts;
 using Iam.DomainService.Activities;
@@ -25,13 +27,15 @@ namespace Api.Controllers
         private readonly IUserManagementMutationService _userManagementMutationService;
         private readonly IResourceMutationService _resourceMutationService;
         private readonly IResourceQueryService _resourceQueryService;
+        private readonly IAuthenticationService _authenticationService;
 
         public IamController(IAccountService accountService,
                              IUserActivityService userActivityService,
                              IResourceMutationService resourceMutationService,
                              IResourceQueryService resourceQueryService,
                              IUserManagementQueryService userManagementQueryService,
-                             IUserManagementMutationService userManagementMutationService)
+                             IUserManagementMutationService userManagementMutationService,
+                             IAuthenticationService authenticationService)
         {
             _userActivityService = userActivityService;
             _resourceMutationService = resourceMutationService;
@@ -39,6 +43,7 @@ namespace Api.Controllers
             _userManagementQueryService = userManagementQueryService;
             _userManagementMutationService = userManagementMutationService;
             _accountService = accountService;
+            _authenticationService = authenticationService;
         }
 
 
@@ -96,7 +101,7 @@ namespace Api.Controllers
         [HttpPost("roles/update")]
         //[ProtectedEndPoint("blocks-idp::update-role")]
         [Authorize]
-        public async Task<IActionResult> UpdateRole( [FromBody] UpdateRoleRequest command)
+        public async Task<IActionResult> UpdateRole([FromBody] UpdateRoleRequest command)
         {
             var result = await _resourceMutationService.UpdateRoleAsync(command);
             return result.IsSuccess ? Ok(result) : BadRequest(result);
@@ -252,7 +257,7 @@ namespace Api.Controllers
 
         [HttpPost("users/org-update")]
         //[ProtectedEndPoint("blocks-idp::update-organization-user")]
-        [Authorize] 
+        [Authorize]
         public async Task<IActionResult> UpdateOrganizationUser(UpdateOrganizationUserRequest command)
         {
             var result = await _userManagementMutationService.UpdateOrganizationUserAsync(command);
@@ -290,7 +295,7 @@ namespace Api.Controllers
 
         [HttpPost("organizations/{id}")]
         [Authorize]
-        public async Task<BaseResponse> UpdateOrganization([FromRoute] string id, [FromBody]  SaveOrganizationRequest request)
+        public async Task<BaseResponse> UpdateOrganization([FromRoute] string id, [FromBody] SaveOrganizationRequest request)
         {
             return await _resourceMutationService.UpdateOrganizationAsync(id, request);
         }
@@ -304,7 +309,7 @@ namespace Api.Controllers
 
         [HttpGet("organizations/{id}")]
         [Authorize]
-        public async Task<GetOrganizationResponse> GetOrganization([FromRoute]  string id)
+        public async Task<GetOrganizationResponse> GetOrganization([FromRoute] string id)
         {
             return await _resourceMutationService.GetOrganizationAsync(id);
         }
@@ -316,7 +321,7 @@ namespace Api.Controllers
             return await _resourceMutationService.GetMyOrganizationAsync();
         }
         #endregion
-        
+
         #region Config
 
         [HttpPost("organizations/config")]
@@ -334,7 +339,7 @@ namespace Api.Controllers
         }
 
         [HttpPost("signup-settings")]
-        // [Authorize]
+        [Authorize]
         public async Task<SaveSignUpSettingResponse> SaveSignUpSetting([FromBody] SaveSignUpSettingRequest request)
         {
             return await _accountService.SaveSignUpSettingAsync(request);
@@ -343,6 +348,19 @@ namespace Api.Controllers
         [HttpGet("signup-settings")]
         public async Task<Dictionary<string, object>> GetSignUpSetting()
         {
+            var userPrincipal = await _authenticationService.GetPrincipalFromTokenAsync(Request, BlocksContext.GetContext()?.TenantId ?? "", IsUserInfoGetRequest: false);
+
+            if (userPrincipal != null)
+            {
+                bool.TryParse(userPrincipal?.FindFirst("impersonated")?.Value, out bool impersonated);
+
+                if(impersonated)
+                {
+                    var claimUserId = userPrincipal?.FindFirst("user_id")?.Value;
+                    var claimTenantId = userPrincipal?.FindFirst("tenant_id")?.Value;
+                    BlocksContext.SetContext(BlocksContext.Create(claimTenantId, [], claimUserId, true, string.Empty, string.Empty, DateTime.MinValue, string.Empty, [], string.Empty, string.Empty, string.Empty, string.Empty, string.Empty));
+                }
+            }
             return await _accountService.GetSignUpSettingAsync();
         }
 

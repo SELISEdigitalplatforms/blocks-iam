@@ -9,7 +9,7 @@ import {
   mockAccountRecoverPayload,
   mockAccountResetPasswordPayload,
   mockActivationCodeValidationPayload,
-  mockActivationCodeExpirationResponse,
+  mockActivationCodeValidationResponse,
   mockSuccessResponse,
 } from "../../test-utils/__mocks__";
 
@@ -170,7 +170,7 @@ describe("UserAccountService", () => {
   // ─── checkActivationCodeExpiration ────────────────────────────────────────
   describe("checkActivationCodeExpiration", () => {
     it("should POST to the correct endpoint with payload", async () => {
-      vi.mocked(http.post).mockResolvedValue(mockActivationCodeExpirationResponse);
+      vi.mocked(http.post).mockResolvedValue(mockActivationCodeValidationResponse);
 
       const result = await service.checkActivationCodeExpiration(
         mockActivationCodeValidationPayload,
@@ -181,11 +181,11 @@ describe("UserAccountService", () => {
         mockActivationCodeValidationPayload,
         {},
       );
-      expect(result).toEqual(mockActivationCodeExpirationResponse);
+      expect(result).toEqual(mockActivationCodeValidationResponse);
     });
 
     it("should set X-Blocks-Key header when tenantId is provided", async () => {
-      vi.mocked(http.post).mockResolvedValue(mockActivationCodeExpirationResponse);
+      vi.mocked(http.post).mockResolvedValue(mockActivationCodeValidationResponse);
 
       await service.checkActivationCodeExpiration({
         ...mockActivationCodeValidationPayload,

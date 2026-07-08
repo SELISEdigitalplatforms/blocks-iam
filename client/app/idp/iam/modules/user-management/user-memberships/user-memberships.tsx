@@ -20,16 +20,34 @@ export const UserMemberships = ({ id, projectKey }: UserMembershipsProps) => {
     });
 
     const memberships = useMemo(() => {
-        const orgs = userData?.data?.organizations;
-        if (orgs && orgs.length > 0) return orgs;
-        // Derive IMembership[] from organizationIds + per-org roles/permissions Record
-        return (userData?.data?.organizationIds || []).map((orgId) => ({
+        const user = userData?.data;
+        if (!user) return [];
+
+        if (user.organizations?.length > 0) return user.organizations;
+
+        const orgIds =
+            user.organizationIds?.length > 0
+                ? user.organizationIds
+                : (user as { OrganizationIds?: string[] }).OrganizationIds ?? [];
+
+        const { roles, permissions } = user;
+
+        return orgIds.map((orgId) => ({
             organizationId: orgId,
-            roles: userData?.data?.roles?.[orgId] || [],
-            permissions: userData?.data?.permissions?.[orgId] || [],
+            roles: Array.isArray(roles) ? roles : roles?.[orgId] ?? [],
+            permissions: Array.isArray(permissions) ? permissions : permissions?.[orgId] ?? [],
         }));
-    }, [userData?.data?.organizations, userData?.data?.organizationIds, userData?.data?.roles, userData?.data?.permissions]);
-    const organizationIds = userData?.data?.organizationIds || [];
+    }, [userData?.data]);
+    const organizationIds = useMemo(() => {
+        const user = userData?.data;
+        if (!user) return [];
+
+        if (user.organizationIds && user.organizationIds.length > 0) {
+            return user.organizationIds;
+        }
+
+        return (user as { OrganizationIds?: string[] }).OrganizationIds ?? [];
+    }, [userData?.data]);
 
     // Create a map of organizationId to organizationName
     const orgNameMap = useMemo(() => {
@@ -47,7 +65,11 @@ export const UserMemberships = ({ id, projectKey }: UserMembershipsProps) => {
         <Card>
             <CardHeader className="flex flex-row items-center justify-between">
                 <CardTitle>Organization</CardTitle>
-                <AssignOrganization userId={id} projectKey={projectKey} />
+                <AssignOrganization
+                    userId={id}
+                    organizations={orgsData?.organizations ?? []}
+                    isOrgsLoading={isOrgsLoading}
+                />
             </CardHeader>
             <CardContent>
                 <UserMembershipsList
