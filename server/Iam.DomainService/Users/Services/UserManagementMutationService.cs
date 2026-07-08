@@ -507,6 +507,130 @@ namespace Iam.DomainService.Users
             };
         }
 
+        public async Task<BaseMutationResponse> RevokeUserAccessControlAsync(RevokeUserAccessControlRequest command)
+        {
+            _logger.LogInformation("Revoke User Access Control start");
+
+            if (string.IsNullOrWhiteSpace(command.UserId))
+            {
+                _logger.LogInformation("Revoke User Access Control end -- Validation Error");
+                return new BaseMutationResponse
+                {
+                    IsSuccess = false,
+                    Errors = new Dictionary<string, string>
+                    {
+                        { nameof(command.UserId), "UserId is required" }
+                    }
+                };
+            }
+
+            var user = await _userRepository.GetUserByIdAsync(command.UserId);
+            if (user == null)
+            {
+                _logger.LogInformation("Revoke User Access Control end -- Validation Error");
+                return new BaseMutationResponse
+                {
+                    IsSuccess = false,
+                    Errors = new Dictionary<string, string>
+                    {
+                        { nameof(command.UserId), "Not found" }
+                    }
+                };
+            }
+
+            var blocksContext = BlocksContext.GetContext();
+            var organizationId = string.IsNullOrWhiteSpace(command.OrganizationId)
+                ? blocksContext?.OrganizationId
+                : command.OrganizationId;
+
+            if (string.IsNullOrWhiteSpace(organizationId))
+            {
+                _logger.LogInformation("Revoke User Access Control end -- Validation Error");
+                return new BaseMutationResponse
+                {
+                    IsSuccess = false,
+                    Errors = new Dictionary<string, string>
+                    {
+                        { nameof(command.OrganizationId), "OrganizationId is required" }
+                    }
+                };
+            }
+
+            if (string.Equals(command.UserId, blocksContext?.UserId, StringComparison.Ordinal))
+            {
+                _logger.LogInformation("Revoke User Access Control end -- Validation Error");
+                return new BaseMutationResponse
+                {
+                    IsSuccess = false,
+                    Errors = new Dictionary<string, string>
+                    {
+                        { nameof(command.UserId), "You cannot revoke your own access" }
+                    }
+                };
+            }
+
+            if (!string.Equals(organizationId, DefaultOrganizationId, StringComparison.Ordinal)
+                && !string.Equals(blocksContext?.OrganizationId, organizationId, StringComparison.Ordinal))
+            {
+                _logger.LogInformation("Revoke User Access Control end -- Validation Error");
+                return new BaseMutationResponse
+                {
+                    IsSuccess = false,
+                    Errors = new Dictionary<string, string>
+                    {
+                        { nameof(command.OrganizationId), "Other org user can not revoke" }
+                    }
+                };
+            }
+
+            if (!string.Equals(organizationId, DefaultOrganizationId, StringComparison.Ordinal))
+            {
+                var organization = await _resourceRepository.GetOrganizationById(organizationId);
+                if (organization == null)
+                {
+                    _logger.LogInformation("Revoke User Access Control end -- Validation Error");
+                    return new BaseMutationResponse
+                    {
+                        IsSuccess = false,
+                        Errors = new Dictionary<string, string>
+                        {
+                            { nameof(command.OrganizationId), "Organization not found" }
+                        }
+                    };
+                }
+            }
+
+            user.OrganizationIds.Remove(organizationId);
+            user.Roles.Remove(organizationId);
+            user.Permissions.Remove(organizationId);
+
+            user.LastUpdatedDate = DateTime.UtcNow;
+            user.LastUpdatedBy = blocksContext?.UserId ?? user.ItemId;
+
+            var result = await _userRepository.UpdateUserAsync(user);
+            if (!result)
+            {
+                _logger.LogError("Revoke User Access Control end -- Repository Error for UserId {UserId}", command.UserId);
+                return new BaseMutationResponse
+                {
+                    IsSuccess = false,
+                    Errors = new Dictionary<string, string>
+                    {
+                        { "Repository", "Failed to update user" }
+                    }
+                };
+            }
+
+            await SendEvent(user.ItemId, MutationEventType.Update);
+
+            _logger.LogInformation("Revoke User Access Control end -- Success");
+            return new BaseMutationResponse
+            {
+                IsSuccess = true,
+                ItemId = user.ItemId
+            };
+        }
+
         public async Task<bool> CreateUserByEmailAsync(CreateUserByEmailEvent @event)
         {
             _logger.LogInformation("User creation start from CreateUserByEmail");
