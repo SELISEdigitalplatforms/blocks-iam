@@ -14,14 +14,14 @@ namespace Worker.Consumers
         }
         public async Task Consume(UpdateOrganizationUserEvent context)
         {
-            var request = new UpdateOrganizationUserRequest
+            var request = new UpdateUserAccessControlRequest
             {
                 OrganizationId = context.OrganizationId,
                 UserId = context.UserId,
                 Roles = context.Roles,
                 Permissions = context.Permissions
             };
-            await _userManagementMutationService.UpdateOrganizationUserAsync(request);
+            await _userManagementMutationService.UpdateUserAccessControlAsync(request);
         }
     }
 }
