@@ -90,8 +90,13 @@ export const InviteOrganizationUser = ({ organizationId }: InviteOrganizationUse
     mutationFn: (payload: IUpdateUserAccessControlPayload) =>
       userService.updateUserAccessControl(payload),
     onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["users"] });
       queryClient.invalidateQueries({ queryKey: ["user-by-id"] });
       queryClient.invalidateQueries({ queryKey: ["user"] });
+      queryClient.invalidateQueries({ queryKey: ["user-roles"] });
+      queryClient.invalidateQueries({ queryKey: ["user-permissions"] });
+      queryClient.invalidateQueries({ queryKey: ["organizations"] });
+      queryClient.invalidateQueries({ queryKey: ["organization"] });
     },
   });
   const isPending = isCreatePending || isAccessPending;
