@@ -87,6 +87,7 @@ export interface ICreateUserPayload {
   platform: string;
   projectKey: string;
   organizationId?: string;
+  organizationIds?: string[];
 }
 export interface ICreateUserResponse {
   errors: unknown;
