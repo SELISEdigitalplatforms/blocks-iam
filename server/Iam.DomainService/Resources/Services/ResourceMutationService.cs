@@ -492,6 +492,7 @@ namespace Iam.DomainService.Resources
                     }
                 };
             }
+            var currentOrganizationId = ResolveOrganizationId(command?.OragnizationId ?? "");
 
             if (command.AddPermissions.Any())
             {
@@ -500,10 +501,9 @@ namespace Iam.DomainService.Resources
 
             if (command.RemovePermissions.Any())
             {
-                await _resourceRepository.RemoveRolePermissionByIdsAsync(command.Slug, command.RemovePermissions);
+                await _resourceRepository.RemoveRolePermissionByIdsAsync(command.Slug, command.RemovePermissions, currentOrganizationId);
             }
-
-            var currentOrganizationId = ResolveOrganizationId(BlocksContext.GetContext()?.OrganizationId);
+            
             var tenantConfig = await _resourceRepository.GetTenantConfigurationAsync();
 
             await SendResourceSetToPermissionMutationEventAsync(
