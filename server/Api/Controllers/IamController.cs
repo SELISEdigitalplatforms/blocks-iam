@@ -246,12 +246,21 @@ namespace Api.Controllers
             return result.IsSuccess ? Ok(result) : BadRequest(result);
         }
 
-        [HttpPost("users/access-control")]
+        [HttpPost("users/access")]
         //[ProtectedEndPoint("blocks-idp::update-organization-user")]
         [Authorize]
         public async Task<IActionResult> UpdateUserAccessControl(UpdateUserAccessControlRequest command)
         {
             var result = await _userManagementMutationService.UpdateUserAccessControlAsync(command);
+            return result.IsSuccess ? Ok(result) : BadRequest(result);
+        }
+
+        [HttpPost("users/revoke-access")]
+        //[ProtectedEndPoint("blocks-idp::update-organization-user")]
+        [Authorize]
+        public async Task<IActionResult> RevokeUserAccessControl(RevokeUserAccessControlRequest command)
+        {
+            var result = await _userManagementMutationService.RevokeUserAccessControlAsync(command);
             return result.IsSuccess ? Ok(result) : BadRequest(result);
         }
 
