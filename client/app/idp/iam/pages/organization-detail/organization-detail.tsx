@@ -6,7 +6,7 @@ import {
 import { useGetOrganizationById } from "@blocks-idp/iam/hooks/use-organization";
 import { useGetUserById } from "@blocks-idp/iam/hooks/use-user";
 import { useProjectStore } from "@seliseblocks/blocks-kit";
-import { Card } from "@/components/ui-kits/card/card";
+import { Card, CardTitle } from "@/components/ui-kits/card/card";
 import { Badge } from "@/components/ui-kits/badge/badge";
 import { Separator } from "@/components/ui-kits/separator/separator";
 import { Skeleton } from "@/components/ui-kits/skeleton/skeleton";
@@ -106,12 +106,10 @@ export const OrganizationDetail = ({ id }: { id: string }) => {
                 )}
               </div>
               <div className="min-w-0 flex-1">
-                {org?.shortCode ? (
+                {org?.shortCode && (
                   <p className="flex items-center gap-1 text-xs text-muted-foreground">
                     <Tag className="h-3 w-3" />@{org.shortCode}
                   </p>
-                ) : (
-                  <p className="text-xs text-muted-foreground">Organization details</p>
                 )}
               </div>
             </div>
@@ -123,6 +121,8 @@ export const OrganizationDetail = ({ id }: { id: string }) => {
             )}
 
             <Separator className="my-4" />
+
+            <CardTitle className="mb-2">Details</CardTitle>
 
             <div className="divide-y divide-border">
               <InfoRow icon={<Mail className="h-3.5 w-3.5" />} label="Email" value={org?.email} />
