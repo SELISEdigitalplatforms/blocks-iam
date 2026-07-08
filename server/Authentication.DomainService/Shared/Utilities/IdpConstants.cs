@@ -22,10 +22,6 @@ namespace Authentication.DomainService.Utilities
         private const string RabbitMqProvider = "rabbitmq";
 
         #region Identifier Service Constants
-        public const string DataCleanupQueue = "blocks_idp_data_cleanup_listener";
-        public const string LanguageDataMigrationQueue = "blocks_idp_uilm_environment_data_migration_listener";
-        public const string GenericMigrationQueue = "blocks_idp_generic_migration_listener";
-        public const string MigrationCompletionTopic = "blocks_idp_migration_topic";
         public const string ProjectPeopleInvitationMailPurpose = "blocks_idp_project_invitation";
         public const string BlocsDomain = "seliseblocks.com";
         #endregion
@@ -61,9 +57,6 @@ namespace Authentication.DomainService.Utilities
                     ConsumerSubscriptions = [ConsumerSubscription.BindToQueue(AuthenticationQueue),
                                              ConsumerSubscription.BindToQueue(IamQueue),
                                              ConsumerSubscription.BindToQueue(MfaQueueName),
-                                             ConsumerSubscription.BindToQueue(DataCleanupQueue),
-                                             ConsumerSubscription.BindToQueue(LanguageDataMigrationQueue),
-                                             ConsumerSubscription.BindToQueue(GenericMigrationQueue),
                                              ConsumerSubscription.BindToQueue(IamOrgQueue)],
                 }
             };
@@ -75,8 +68,8 @@ namespace Authentication.DomainService.Utilities
             {
                 AzureServiceBusConfiguration = new AzureServiceBusConfiguration
                 {
-                    Queues = [AuthenticationQueue, IamQueue, MfaQueueName, DataCleanupQueue, LanguageDataMigrationQueue, GenericMigrationQueue, IamOrgQueue],
-                    Topics = [MigrationCompletionTopic]
+                    Queues = [AuthenticationQueue, IamQueue, MfaQueueName, IamOrgQueue],
+                    Topics = []
                 }
             };
         }

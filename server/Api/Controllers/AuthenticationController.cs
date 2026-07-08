@@ -515,10 +515,13 @@ public class AuthenticationController : ControllerBase
     }
 
     [Authorize]
-    [HttpPost("client-credentials/delete")]
-    public async Task<BaseResponse> DeleteClientCredential([FromBody] DeleteClientCredentialRequest request)
+    [HttpDelete("client-credentials/{id}")]
+    public async Task<BaseResponse> DeleteClientCredential([FromRoute] string id)
     {
-        return await _authenticationDomainService.DeleteClientCredentialAsync(request);
+        return await _authenticationDomainService.DeleteClientCredentialAsync(new DeleteClientCredentialRequest
+        {
+            ItemId = id
+        });
     }
 
     [Authorize]

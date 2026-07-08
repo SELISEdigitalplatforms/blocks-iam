@@ -48,24 +48,24 @@ export const Activation = ({ code, tenantId }: ActivationProps) => {
           tenantId,
         });
 
-        if (res.errors != null) {
-          setActivationError("invalid");
-          setActivationUserId(null);
-          setResendMessage(null);
-          setResendSuccess(false);
-        } else if (res.userId != null) {
-          setActivationError("expired");
-          setActivationUserId(res.userId);
-          setResendMessage(null);
-          setResendSuccess(false);
-        } else {
+        if (res.isSuccess && res.userId) {
           setActivationError(null);
           setActivationUserId(null);
           setResendMessage(null);
           setResendSuccess(false);
+        } else if (res.errors) {
+          setActivationError("invalid");
+          setActivationUserId(null);
+          setResendMessage(null);
+          setResendSuccess(false);
+        } else {
+          setActivationError("expired");
+          setActivationUserId(res.userId);
+          setResendMessage(null);
+          setResendSuccess(false);
         }
 
-        setIsValidCode(res.isSuccess);
+        setIsValidCode(!!res.isSuccess);
       } catch {
         setActivationError("invalid");
         setActivationUserId(null);

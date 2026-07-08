@@ -231,15 +231,14 @@ namespace Iam.DomainService.Users
             }
 
             var blocksContext = BlocksContext.GetContext();
-
-            var organizationId = user.OrganizationIds.FirstOrDefault(x => x == blocksContext?.OrganizationId);
+            var organizationId = !string.IsNullOrWhiteSpace(command.OrganizationId) ? command.OrganizationId: blocksContext.OrganizationId;
 
             if (organizationId == null && (blocksContext?.OrganizationId == null || blocksContext?.OrganizationId == DefaultOrganizationId))
             {
                 organizationId = DefaultOrganizationId;
             }
 
-            if(organizationId == null)
+            if (organizationId == null)
             {
                 _logger.LogInformation("User update end -- Validation Error");
                 return new BaseMutationResponse
@@ -270,6 +269,10 @@ namespace Iam.DomainService.Users
                 user.UserMfaType = command.UserMfaType;
             }
 
+            if (!user.OrganizationIds.Contains(organizationId))
+            {
+                user.OrganizationIds.Add(organizationId);
+            }
 
             var result = await _userRepository.UpdateUserAsync(user);
 
@@ -280,8 +283,8 @@ namespace Iam.DomainService.Users
             }
 
             await SendEvent(user.ItemId, MutationEventType.Update);
-
             _logger.LogInformation("User update end -- Success");
+
             return new BaseMutationResponse
             {
                 IsSuccess = true,

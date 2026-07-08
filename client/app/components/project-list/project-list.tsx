@@ -10,7 +10,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui-kits/dropdown-menu/dropdown-menu";
 import { useGetProject, useGetProjects } from "@/hooks/use-project";
-import { IProject } from "@/models/project.model";
+import { IProject } from "@blocks-identifier/models/project.model";
 import { useProjectStore } from "@seliseblocks/blocks-kit";
 const redirectPaths: Record<string, string> = {
   "/app/user-detail/*": "/app/iam",

@@ -206,9 +206,9 @@ namespace Authentication.DomainService.Oidc.Services
                 // Try to get existing user by email
                 var existingUser = await _userRepository.GetUserByEmailAsync(externalUserData.Email);
 
-                if (existingUser != null && (!existingUser.IsMfaVerified || !existingUser.Active))
+                if (existingUser != null)
                 {
-                    return (existingUser.ItemId, false);
+                    return (existingUser.ItemId, existingUser.Active);
                 }
 
                 // Create new user from social provider info
@@ -221,8 +221,8 @@ namespace Authentication.DomainService.Oidc.Services
                     ProfileImageUrl = externalUserData.ProfileImageUrl,
                     PhoneNumber = externalUserData.PhoneNumber,
                     Platform = provider,
-                    IsVerified = true,  // Trust social provider's email
                     Active = true,
+
                     Roles = new Dictionary<string, List<string>>
                     {
                         { orgId, roles }
@@ -231,6 +231,7 @@ namespace Authentication.DomainService.Oidc.Services
                     {
                         { orgId, permissions }
                     },
+
                     OrganizationIds = new List<string> { orgId },
                     Attributes = provider == "microsoft" ? new Dictionary<string, object>
                     {
