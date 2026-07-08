@@ -1,13 +1,33 @@
 export interface IOrganization {
   itemId: string;
   name: string;
+  description: string | null;
+  parentOrganizationId: string | null;
+  shortCode: string | null;
   isEnabled: boolean;
+  defaultRoleForMembers: string[];
+  defaultPermissionsForMembers: string[];
+  email: string | null;
+  phoneNumber: string | null;
+  websiteUrl: string | null;
+  addresses: unknown[];
+  theme: string | null;
+  logoUrl: string | null;
+  logoId: string | null;
+  industry: string | null;
+  timeZone: string;
+  currency: string | null;
+  dateFormat: string;
+  timeFormat: string;
+  locale: string;
+  attributes: Record<string, unknown>;
   createdDate: string;
   lastUpdatedDate: string;
   createdBy: string;
-  lastUpdatedBy: string;
   language: string | null;
-  organizationIds: string[];
+  lastUpdatedBy: string;
+  organizationId: string;
+  organizationIds?: string[];
   tags: string[];
 }
 
