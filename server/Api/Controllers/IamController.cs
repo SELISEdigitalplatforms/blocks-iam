@@ -265,6 +265,17 @@ namespace Api.Controllers
             });
         }
 
+        [HttpGet("users/exists")]
+        [Authorize]
+        public async Task<IActionResult> IsUserExist([FromQuery] string? email)
+        {
+            if (string.IsNullOrWhiteSpace(email))
+                return BadRequest(new { error = "email is required" });
+
+            var result = await _userManagementQueryService.IsUserExistAsync(email);
+            return Ok(result);
+        }
+
         [HttpGet("users/timeline")]
         //[ProtectedEndPoint("blocks-idp::users-timeline")]
         [Authorize]
