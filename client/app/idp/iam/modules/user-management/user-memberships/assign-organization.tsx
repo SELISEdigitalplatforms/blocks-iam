@@ -147,7 +147,7 @@ export const AssignOrganization = ({
       }
 
       showSuccessToast({
-        description: "Organization assigned successfully",
+        description: "Organization managed successfully",
       });
       reset();
       setOpen(false);
@@ -297,7 +297,7 @@ export const AssignOrganization = ({
             onClick={onConfirm}
             disabled={isPending || !selectedOrgId || selectedRoles.length === 0}
           >
-            {isPending ? "Assigning..." : "Confirm"}
+            {isPending ? "Saving..." : "Confirm"}
           </Button>
         </DialogFooter>
       </DialogContent>

@@ -34,6 +34,7 @@ type UserMembershipsListProps = {
   memberships: IMembership[];
   organizationIds: string[];
   orgNameMap: Map<string, string>;
+  permissionGroupMap: Map<string, string>;
   isLoading: boolean;
   userId: string;
   projectKey: string;
@@ -47,38 +48,72 @@ const LoadingSkeleton = () => (
   </div>
 );
 
-const PermissionsBadges = ({ permissions }: { permissions: string[] }) => {
+const MAX_VISIBLE_PER_CATEGORY = 3;
+
+const CategorizedPermissions = ({
+  permissions,
+  permissionGroupMap,
+}: {
+  permissions: string[];
+  permissionGroupMap: Map<string, string>;
+}) => {
   if (!permissions || permissions.length === 0)
     return <span className="text-medium-emphasis">-</span>;
 
-  const visiblePermissions = permissions.slice(0, 4);
-  const remainingCount = permissions.length - 4;
+  const groups = useMemo(() => {
+    const byCategory = new Map<string, string[]>();
+    permissions.forEach((permission) => {
+      const category = permissionGroupMap.get(permission) || "Other";
+      if (!byCategory.has(category)) byCategory.set(category, []);
+      byCategory.get(category)!.push(permission);
+    });
+    return Array.from(byCategory.entries())
+      .map(([name, items]) => ({ name, items }))
+      .sort((a, b) => a.name.localeCompare(b.name));
+  }, [permissions, permissionGroupMap]);
 
   return (
-    <div className="flex flex-wrap gap-1">
-      {visiblePermissions.map((permission, index) => (
-        <Badge key={index} variant="secondary" className="text-xs">
-          {permission}
-        </Badge>
-      ))}
-      {remainingCount > 0 && (
-        <TooltipProvider>
-          <Tooltip>
-            <TooltipTrigger>
-              <Badge variant="outline" className="text-xs">
-                +{remainingCount}
-              </Badge>
-            </TooltipTrigger>
-            <TooltipContent className="flex max-w-[300px] flex-wrap gap-1 p-2">
-              {permissions.slice(4).map((permission, index) => (
+    <div className="flex flex-col gap-1.5">
+      {groups.map((group) => {
+        const visible = group.items.slice(0, MAX_VISIBLE_PER_CATEGORY);
+        const overflow = group.items.slice(MAX_VISIBLE_PER_CATEGORY);
+
+        return (
+          <div key={group.name} className="flex items-start gap-2">
+            <span
+              className="mt-0.5 w-20 shrink-0 truncate text-[11px] font-semibold uppercase tracking-wide text-muted-foreground"
+              title={group.name}
+            >
+              {group.name}
+            </span>
+            <div className="flex flex-1 flex-wrap gap-1">
+              {visible.map((permission, index) => (
                 <Badge key={index} variant="secondary" className="text-xs">
                   {permission}
                 </Badge>
               ))}
-            </TooltipContent>
-          </Tooltip>
-        </TooltipProvider>
-      )}
+              {overflow.length > 0 && (
+                <TooltipProvider>
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <Badge variant="outline" className="cursor-default text-xs">
+                        +{overflow.length}
+                      </Badge>
+                    </TooltipTrigger>
+                    <TooltipContent className="flex max-w-[300px] flex-wrap gap-1 p-2">
+                      {overflow.map((permission, index) => (
+                        <Badge key={index} variant="secondary" className="text-xs">
+                          {permission}
+                        </Badge>
+                      ))}
+                    </TooltipContent>
+                  </Tooltip>
+                </TooltipProvider>
+              )}
+            </div>
+          </div>
+        );
+      })}
     </div>
   );
 };
@@ -87,6 +122,7 @@ export const UserMembershipsList = ({
   memberships,
   organizationIds,
   orgNameMap,
+  permissionGroupMap,
   isLoading,
   userId,
   projectKey,
@@ -147,10 +183,11 @@ export const UserMembershipsList = ({
         ),
         cell: ({ row }) => (
           <div className="min-w-[300px]">
-            <PermissionsBadges
+            <CategorizedPermissions
               permissions={
                 Array.isArray(row.original.permissions) ? row.original.permissions : []
               }
+              permissionGroupMap={permissionGroupMap}
             />
           </div>
         ),
@@ -185,7 +222,7 @@ export const UserMembershipsList = ({
         ),
       },
     ],
-    [orgNameMap],
+    [orgNameMap, permissionGroupMap],
   );
 
   const table = useReactTable({
