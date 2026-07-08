@@ -26,7 +26,7 @@ import { z } from "zod";
 import { useProjectStore } from "@seliseblocks/blocks-kit";
 import { useState } from "react";
 import { isErrorWithErrors } from "@/lib/error";
-import { PrimaryButton } from "@/components/action-buttons/primary-button";
+import { Plus } from "lucide-react";
 
 const inviteOrganizationUserFormDefaultValue = {
   email: "",
@@ -89,7 +89,10 @@ export const InviteOrganizationUser = ({ organizationId }: InviteOrganizationUse
   return (
     <Dialog open={open} onOpenChange={setOpen}>
       <DialogTrigger asChild>
-        <PrimaryButton label="Invite Member" />
+        <Button size="sm" variant="ghost" className="h-10 text-sm text-primary">
+          <Plus className="h-5 w-5 md:mr-2.5" />
+          <span className="sr-only sm:not-sr-only">Invite Member</span>
+        </Button>
       </DialogTrigger>
       <DialogContent>
         <DialogHeader className="mb-4">
