@@ -39,22 +39,13 @@ export const UserMemberships = ({ id, projectKey }: UserMembershipsProps) => {
                 ? user.organizationIds
                 : (user as { OrganizationIds?: string[] }).OrganizationIds ?? [];
 
-        const { roles, permissions } = user;
-
-        // Flat legacy roles/permissions arrays aren't attributable to a specific
-        // organization once the user belongs to more than one, so only apply them
-        // when there's a single org to avoid showing every org as if it had the
-        // full combined set.
-        const isSingleOrg = orgIds.length === 1;
+        const orgRoles = user.OrganizationsRoles ?? {};
+        const orgPermissions = user.OrganizationsPermissions ?? {};
 
         return orgIds.map((orgId) => ({
             organizationId: orgId,
-            roles: Array.isArray(roles) ? (isSingleOrg ? roles : []) : (roles?.[orgId] ?? []),
-            permissions: Array.isArray(permissions)
-                ? isSingleOrg
-                    ? permissions
-                    : []
-                : (permissions?.[orgId] ?? []),
+            roles: orgRoles[orgId] ?? [],
+            permissions: orgPermissions[orgId] ?? [],
         }));
     }, [userData?.data]);
 

@@ -40,6 +40,8 @@ export interface User {
   employeeId: string | null;
   isMultiOrgEnabled: boolean;
   organizations: IMembership[];
+  OrganizationsRoles?: Record<string, string[]>;
+  OrganizationsPermissions?: Record<string, string[]>;
 }
 
 export interface IMembership {
@@ -133,6 +135,16 @@ export interface ISaveRolesAndPermissionsResponse {
   errors: unknown | null;
   isSuccess: boolean;
   itemId: string;
+}
+export interface IUpdateUserAccessControlPayload {
+  userId: string;
+  roles: string[];
+  permissions: string[];
+  organizationId: string;
+}
+export interface IUpdateUserAccessControlResponse {
+  errors: unknown | null;
+  isSuccess: boolean;
 }
 export interface IGetSessionPayload {
   page: number;

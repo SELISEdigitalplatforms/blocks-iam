@@ -8,6 +8,7 @@ import { userService } from "@blocks-idp/iam/services/user.service";
 import { normalizeSearchQueryText } from "@/lib/utils";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useCallback, useMemo } from "react";
+import type { IUpdateUserAccessControlPayload } from "@blocks-idp/iam/models/user";
 
 export const useGetUsers = (option: IGetUsersPayload) => {
   const { page, pageSize, projectKey, filter, sort } = option;
@@ -167,6 +168,19 @@ export const useGetUserPermissions = (option: IGetUserRolesPayload) => {
   return useQuery({
     queryKey: ["user-permissions", option],
     queryFn: () => userService.getUserPermissions(option),
+  });
+};
+
+export const useUpdateUserAccessControl = (option: { id: string; projectKey: string }) => {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationKey: ["user", "access-control", option],
+    mutationFn: (payload: Omit<IUpdateUserAccessControlPayload, "userId">) =>
+      userService.updateUserAccessControl({ ...payload, userId: option.id }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["user-by-id", { id: option.id, projectKey: option.projectKey }] });
+      queryClient.invalidateQueries({ queryKey: ["user", option] });
+    },
   });
 };
 
