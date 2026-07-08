@@ -30,6 +30,17 @@ namespace Iam.DomainService.Users
             return user == null;
         }
 
+        public async Task<IsUserExistResponse> IsUserExistAsync(string email)
+        {
+            var user = await _userRepository.GetUserByEmailAsync(email.ToLower());
+
+            return new IsUserExistResponse
+            {
+                Exists = user != null,
+                OrganizationIds = user?.OrganizationIds ?? new List<string>()
+            };
+        }
+
         public async Task<GetUsersResponse> GetUsersAsync(GetUsersRequest query)
         {
             _logger.LogInformation("User get start");
@@ -186,7 +197,7 @@ namespace Iam.DomainService.Users
                 ["logInCount"] = user.LogInCount,
                 ["lastLoggedInTime"] = user.LastLoggedInTime,
                 ["lastLoggedInDeviceInfo"] = user.LastLoggedInDeviceInfo ?? string.Empty,
-                ["OrganizationIds"] = user.OrganizationIds
+                ["organizationIds"] = user.OrganizationIds
             };
         }
     }
