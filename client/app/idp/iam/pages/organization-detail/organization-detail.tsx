@@ -5,8 +5,9 @@ import {
 } from "@/constants/breadcrumb-custom-title";
 import { useGetOrganizationById } from "@blocks-idp/iam/hooks/use-organization";
 import { useProjectStore } from "@seliseblocks/blocks-kit";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui-kits/card/card";
+import { Card, CardContent, CardHeader } from "@/components/ui-kits/card/card";
 import { Badge } from "@/components/ui-kits/badge/badge";
+import { Separator } from "@/components/ui-kits/separator/separator";
 import { Skeleton } from "@/components/ui-kits/skeleton/skeleton";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui-kits/tabs/tabs";
 import {
@@ -20,6 +21,7 @@ import {
   MapPin,
   Phone,
   Tag,
+  Users,
 } from "lucide-react";
 import {
   OrganizationUsers,
@@ -54,6 +56,13 @@ const formatDate = (value?: string) => {
   }
 };
 
+const getInitials = (name?: string) => {
+  if (!name) return "";
+  const parts = name.trim().split(/\s+/);
+  const initials = parts.length > 1 ? `${parts[0][0]}${parts[1][0]}` : name.slice(0, 2);
+  return initials.toUpperCase();
+};
+
 export const OrganizationDetail = ({ id }: { id: string }) => {
   const tenantId = useProjectStore().selectedProject?.tenantId || "";
   const { data, isLoading } = useGetOrganizationById({ itemId: id, projectKey: tenantId });
@@ -73,48 +82,58 @@ export const OrganizationDetail = ({ id }: { id: string }) => {
 
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-10">
         <aside className="lg:col-span-3">
-          <Card className="sticky top-4 overflow-hidden border-none shadow-sm">
-            <div className="relative h-24 bg-gradient-to-br from-primary/10 via-primary/5 to-transparent" />
+          <Card className="sticky top-4 overflow-hidden border-none p-0 shadow-sm">
+            <div className="relative h-20 bg-gradient-to-br from-primary/15 via-primary/5 to-transparent" />
             <div className="px-6">
-              <div className="-mt-10 flex h-20 w-20 items-center justify-center rounded-xl border-4 border-background bg-primary/10 text-primary">
+              <div className="-mt-10 flex h-20 w-20 items-center justify-center overflow-hidden rounded-2xl border-4 border-background bg-primary/10 text-primary shadow-sm">
                 {org?.logoUrl ? (
-                  <img
-                    src={org.logoUrl}
-                    alt={org.name}
-                    className="h-full w-full rounded-lg object-cover"
-                  />
+                  <img src={org.logoUrl} alt={org.name} className="h-full w-full object-cover" />
+                ) : org?.name ? (
+                  <span className="text-xl font-semibold">{getInitials(org.name)}</span>
                 ) : (
                   <Building2 className="h-8 w-8" />
                 )}
               </div>
             </div>
 
-            <CardHeader className="px-6 pb-2 pt-3">
-              <div className="flex items-start justify-between gap-2">
-                <div className="min-w-0">
-                  {isLoading ? (
-                    <Skeleton className="h-6 w-32" />
-                  ) : (
-                    <CardTitle className="truncate text-lg">{org?.name}</CardTitle>
-                  )}
+            <CardHeader className="px-6 pb-4 pt-3">
+              {isLoading ? (
+                <div className="space-y-2">
+                  <Skeleton className="h-6 w-36" />
+                  <Skeleton className="h-4 w-24" />
+                </div>
+              ) : (
+                <>
+                  <div className="flex items-center gap-2">
+                    <h1 className="truncate text-lg font-semibold text-high-emphasis">
+                      {org?.name ?? "Organization"}
+                    </h1>
+                    {org && (
+                      <Badge
+                        variant={org.isEnabled ? "success" : "secondary"}
+                        className="shrink-0"
+                      >
+                        {org.isEnabled ? "Active" : "Disabled"}
+                      </Badge>
+                    )}
+                  </div>
                   {org?.shortCode && (
-                    <p className="mt-0.5 flex items-center gap-1 text-xs text-muted-foreground">
+                    <p className="mt-1 flex items-center gap-1 text-xs text-muted-foreground">
                       <Tag className="h-3 w-3" />@{org.shortCode}
                     </p>
                   )}
-                </div>
-                {org && (
-                  <Badge variant={org.isEnabled ? "success" : "secondary"}>
-                    {org.isEnabled ? "Active" : "Disabled"}
-                  </Badge>
-                )}
-              </div>
-              {org?.description && (
-                <p className="mt-2 text-sm text-muted-foreground">{org.description}</p>
+                  {org?.description && (
+                    <p className="mt-2 line-clamp-3 text-sm text-muted-foreground">
+                      {org.description}
+                    </p>
+                  )}
+                </>
               )}
             </CardHeader>
 
-            <CardContent className="px-2">
+            <Separator />
+
+            <CardContent className="px-2 pb-2 pt-2">
               <Tabs defaultValue="overview" className="w-full">
                 <TabsList className="mx-4 grid w-[calc(100%-2rem)] grid-cols-2">
                   <TabsTrigger value="overview">Overview</TabsTrigger>
@@ -218,13 +237,16 @@ export const OrganizationDetail = ({ id }: { id: string }) => {
 
         <section className="lg:col-span-7">
           <div className="mb-4 flex flex-wrap items-start justify-between gap-3">
-            <div>
-              <h1 className="text-lg font-semibold md:text-2xl">
-                {isLoading ? <Skeleton className="h-7 w-48" /> : org?.name ?? "Organization"}
-              </h1>
-              <p className="mt-1 text-sm text-muted-foreground">
-                Members belonging to this organization.
-              </p>
+            <div className="flex items-start gap-3">
+              <div className="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-md bg-muted text-muted-foreground">
+                <Users className="h-4 w-4" />
+              </div>
+              <div>
+                <h2 className="text-lg font-semibold text-high-emphasis md:text-xl">Members</h2>
+                <p className="mt-0.5 text-sm text-muted-foreground">
+                  People with access to this organization.
+                </p>
+              </div>
             </div>
             <InviteOrganizationUser organizationId={id} />
           </div>
