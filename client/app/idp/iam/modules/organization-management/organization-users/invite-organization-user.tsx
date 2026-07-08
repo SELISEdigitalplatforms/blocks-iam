@@ -222,8 +222,8 @@ export const InviteOrganizationUser = ({ organizationId }: InviteOrganizationUse
           <span className="sr-only sm:not-sr-only">Invite Member</span>
         </Button>
       </DialogTrigger>
-      <DialogContent className="sm:max-w-[480px]">
-        <DialogHeader className="mb-4">
+      <DialogContent className="flex max-h-[90vh] flex-col sm:max-w-[640px]">
+        <DialogHeader className="shrink-0">
           <DialogTitle>Invite Member</DialogTitle>
           <DialogDescription className="!mt-2 text-sm text-medium-emphasis">
             Add a member to this organization. We'll create a new account or grant access if
@@ -231,8 +231,11 @@ export const InviteOrganizationUser = ({ organizationId }: InviteOrganizationUse
           </DialogDescription>
         </DialogHeader>
         <Form {...form}>
-          <form onSubmit={form.handleSubmit(onSubmitHandler)}>
-            <div className="flex flex-col gap-4">
+          <form
+            onSubmit={form.handleSubmit(onSubmitHandler)}
+            className="flex min-h-0 flex-1 flex-col"
+          >
+            <div className="-mx-1 flex-1 space-y-4 overflow-y-auto px-1 py-2">
               <FormField
                 control={form.control}
                 name="email"
@@ -298,7 +301,7 @@ export const InviteOrganizationUser = ({ organizationId }: InviteOrganizationUse
                 </div>
               )}
             </div>
-            <DialogFooter className="mt-6">
+            <DialogFooter className="shrink-0 border-t pt-4">
               <Button
                 type="button"
                 variant="secondary"
