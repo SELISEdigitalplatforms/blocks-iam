@@ -95,7 +95,7 @@ export const OrganizationDetail = ({ id }: { id: string }) => {
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-10">
         <aside className="lg:col-span-3">
           <Card className="sticky top-4 border-none shadow-sm">
-            <div className="flex items-center gap-3">
+            {/* <div className="flex items-center gap-3"> */}
               {/* <div className="flex h-11 w-11 shrink-0 items-center justify-center overflow-hidden rounded-lg bg-primary/10 text-sm font-semibold text-primary">
                 {org?.logoUrl ? (
                   <img src={org.logoUrl} alt={org.name} className="h-full w-full object-cover" />
@@ -105,21 +105,21 @@ export const OrganizationDetail = ({ id }: { id: string }) => {
                   <Building2 className="h-5 w-5" />
                 )}
               </div> */}
-              <div className="min-w-0 flex-1">
+              {/* <div className="min-w-0 flex-1">
                 <CardTitle>Details</CardTitle>
                 <CardDescription className="mt-0.5">
                   General information about this organization.
                 </CardDescription>
-              </div>
-            </div>
+              </div> */}
+            {/* </div> */}
 
-            {org?.description && (
+            {/* {org?.description && (
               <p className="mt-3 line-clamp-2 text-sm text-muted-foreground">
                 {org.description}
               </p>
-            )}
+            )} */}
 
-            <Separator className="my-4" />
+            {/* <Separator className="my-4" /> */}
 
             <div className="divide-y divide-border">
               <InfoRow icon={<Mail className="h-3.5 w-3.5" />} label="Email" value={org?.email} />
