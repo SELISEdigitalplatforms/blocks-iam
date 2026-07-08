@@ -5,20 +5,50 @@ import {
 } from "@/constants/breadcrumb-custom-title";
 import { useGetOrganizationById } from "@blocks-idp/iam/hooks/use-organization";
 import { useProjectStore } from "@seliseblocks/blocks-kit";
-import { Card } from "@/components/ui-kits/card/card";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui-kits/card/card";
 import { Badge } from "@/components/ui-kits/badge/badge";
 import { Skeleton } from "@/components/ui-kits/skeleton/skeleton";
-import { Building2, Globe, Mail, Phone, Calendar } from "lucide-react";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui-kits/tabs/tabs";
+import {
+  Building2,
+  Calendar,
+  Clock,
+  Globe,
+  Hash,
+  Languages,
+  Mail,
+  MapPin,
+  Phone,
+  Tag,
+} from "lucide-react";
 import {
   OrganizationUsers,
   InviteOrganizationUser,
 } from "@blocks-idp/iam/modules/organization-management/organization-users";
 import type { IOrganization } from "@blocks-idp/iam/models/organization";
 
+type InfoRowProps = {
+  icon: React.ReactNode;
+  label: string;
+  value: React.ReactNode;
+};
+
+const InfoRow = ({ icon, label, value }: InfoRowProps) => (
+  <div className="flex items-start gap-3 py-3">
+    <div className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-md bg-muted text-muted-foreground">
+      {icon}
+    </div>
+    <div className="min-w-0 flex-1">
+      <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">{label}</p>
+      <div className="mt-0.5 break-words text-sm text-high-emphasis">{value ?? "—"}</div>
+    </div>
+  </div>
+);
+
 const formatDate = (value?: string) => {
   if (!value) return undefined;
   try {
-    return new Date(value).toLocaleDateString();
+    return new Date(value).toLocaleString();
   } catch {
     return value;
   }
@@ -35,83 +65,172 @@ export const OrganizationDetail = ({ id }: { id: string }) => {
   BREADCRUMB_LINK_OVERRIDES["/app/organization-detail"] = "/app/organizations";
   BREADCRUMB_CUSTOM_TITLES[`/app/organization-detail/${id}`] = org?.name ?? null;
 
-  type MetaItem = { icon: React.ReactNode; value: string };
-
-  const rawMetaItems: (MetaItem | null)[] = [
-    org?.email ? { icon: <Mail className="h-3.5 w-3.5" />, value: org.email } : null,
-    org?.phoneNumber ? { icon: <Phone className="h-3.5 w-3.5" />, value: org.phoneNumber } : null,
-    org?.websiteUrl ? { icon: <Globe className="h-3.5 w-3.5" />, value: org.websiteUrl } : null,
-    org?.createdDate
-      ? {
-          icon: <Calendar className="h-3.5 w-3.5" />,
-          value: `Created ${formatDate(org.createdDate)}`,
-        }
-      : null,
-  ];
-  const metaItems = rawMetaItems.filter((item): item is MetaItem => item !== null);
-
   return (
-    <div className="space-y-6">
-      <PageBreadcrumb breadcrumbIndex={2} />
+    <div>
+      <div className="mb-4 md:mb-6">
+        <PageBreadcrumb breadcrumbIndex={2} />
+      </div>
 
-      <Card className="border-none shadow-sm">
-        <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
-          <div className="flex min-w-0 items-center gap-4">
-            <div className="flex h-14 w-14 shrink-0 items-center justify-center overflow-hidden rounded-xl bg-primary/10 text-primary">
-              {org?.logoUrl ? (
-                <img src={org.logoUrl} alt={org.name} className="h-full w-full object-cover" />
-              ) : (
-                <Building2 className="h-6 w-6" />
-              )}
+      <div className="grid grid-cols-1 gap-6 lg:grid-cols-10">
+        <aside className="lg:col-span-3">
+          <Card className="sticky top-4 overflow-hidden border-none shadow-sm">
+            <div className="relative h-24 bg-gradient-to-br from-primary/10 via-primary/5 to-transparent" />
+            <div className="px-6">
+              <div className="-mt-10 flex h-20 w-20 items-center justify-center rounded-xl border-4 border-background bg-primary/10 text-primary">
+                {org?.logoUrl ? (
+                  <img
+                    src={org.logoUrl}
+                    alt={org.name}
+                    className="h-full w-full rounded-lg object-cover"
+                  />
+                ) : (
+                  <Building2 className="h-8 w-8" />
+                )}
+              </div>
             </div>
 
-            <div className="min-w-0">
-              <div className="flex flex-wrap items-center gap-2">
-                {isLoading ? (
-                  <Skeleton className="h-6 w-40" />
-                ) : (
-                  <h1 className="truncate text-lg font-semibold text-high-emphasis md:text-xl">
-                    {org?.name ?? "Organization"}
-                  </h1>
-                )}
+            <CardHeader className="px-6 pb-2 pt-3">
+              <div className="flex items-start justify-between gap-2">
+                <div className="min-w-0">
+                  {isLoading ? (
+                    <Skeleton className="h-6 w-32" />
+                  ) : (
+                    <CardTitle className="truncate text-lg">{org?.name}</CardTitle>
+                  )}
+                  {org?.shortCode && (
+                    <p className="mt-0.5 flex items-center gap-1 text-xs text-muted-foreground">
+                      <Tag className="h-3 w-3" />@{org.shortCode}
+                    </p>
+                  )}
+                </div>
                 {org && (
                   <Badge variant={org.isEnabled ? "success" : "secondary"}>
                     {org.isEnabled ? "Active" : "Disabled"}
                   </Badge>
                 )}
               </div>
-              {org?.shortCode && <p className="text-sm text-muted-foreground">@{org.shortCode}</p>}
+              {org?.description && (
+                <p className="mt-2 text-sm text-muted-foreground">{org.description}</p>
+              )}
+            </CardHeader>
+
+            <CardContent className="px-2">
+              <Tabs defaultValue="overview" className="w-full">
+                <TabsList className="mx-4 grid w-[calc(100%-2rem)] grid-cols-2">
+                  <TabsTrigger value="overview">Overview</TabsTrigger>
+                  <TabsTrigger value="regional">Regional</TabsTrigger>
+                </TabsList>
+
+                <TabsContent
+                  value="overview"
+                  className="mt-2 space-y-0 divide-y divide-border px-4"
+                >
+                  <InfoRow
+                    icon={<Hash className="h-4 w-4" />}
+                    label="Organization ID"
+                    value={org?.itemId}
+                  />
+                  <InfoRow
+                    icon={<Hash className="h-4 w-4" />}
+                    label="Short Code"
+                    value={org?.shortCode}
+                  />
+                  <InfoRow
+                    icon={<Mail className="h-4 w-4" />}
+                    label="Email"
+                    value={org?.email}
+                  />
+                  <InfoRow
+                    icon={<Phone className="h-4 w-4" />}
+                    label="Phone"
+                    value={org?.phoneNumber}
+                  />
+                  <InfoRow
+                    icon={<Globe className="h-4 w-4" />}
+                    label="Website"
+                    value={org?.websiteUrl}
+                  />
+                  <InfoRow
+                    icon={<Calendar className="h-4 w-4" />}
+                    label="Created"
+                    value={formatDate(org?.createdDate)}
+                  />
+                  <InfoRow
+                    icon={<Calendar className="h-4 w-4" />}
+                    label="Updated"
+                    value={formatDate(org?.lastUpdatedDate)}
+                  />
+                </TabsContent>
+
+                <TabsContent
+                  value="regional"
+                  className="mt-2 space-y-0 divide-y divide-border px-4"
+                >
+                  <InfoRow
+                    icon={<Clock className="h-4 w-4" />}
+                    label="Time Zone"
+                    value={org?.timeZone}
+                  />
+                  <InfoRow
+                    icon={<Languages className="h-4 w-4" />}
+                    label="Language"
+                    value={org?.language}
+                  />
+                  <InfoRow
+                    icon={<Languages className="h-4 w-4" />}
+                    label="Locale"
+                    value={org?.locale}
+                  />
+                  <InfoRow
+                    icon={<Hash className="h-4 w-4" />}
+                    label="Date Format"
+                    value={org?.dateFormat}
+                  />
+                  <InfoRow
+                    icon={<Hash className="h-4 w-4" />}
+                    label="Time Format"
+                    value={org?.timeFormat}
+                  />
+                  <InfoRow
+                    icon={<Hash className="h-4 w-4" />}
+                    label="Currency"
+                    value={org?.currency}
+                  />
+                  <InfoRow
+                    icon={<Hash className="h-4 w-4" />}
+                    label="Industry"
+                    value={org?.industry}
+                  />
+                  <InfoRow
+                    icon={<MapPin className="h-4 w-4" />}
+                    label="Addresses"
+                    value={
+                      Array.isArray(org?.addresses) && org!.addresses.length > 0
+                        ? `${org!.addresses.length} configured`
+                        : "None"
+                    }
+                  />
+                </TabsContent>
+              </Tabs>
+            </CardContent>
+          </Card>
+        </aside>
+
+        <section className="lg:col-span-7">
+          <div className="mb-4 flex flex-wrap items-start justify-between gap-3">
+            <div>
+              <h1 className="text-lg font-semibold md:text-2xl">
+                {isLoading ? <Skeleton className="h-7 w-48" /> : org?.name ?? "Organization"}
+              </h1>
+              <p className="mt-1 text-sm text-muted-foreground">
+                Members belonging to this organization.
+              </p>
             </div>
+            <InviteOrganizationUser organizationId={id} />
           </div>
 
-          <InviteOrganizationUser organizationId={id} />
-        </div>
-
-        {org?.description && (
-          <p className="mt-4 max-w-3xl text-sm text-muted-foreground">{org.description}</p>
-        )}
-
-        {metaItems.length > 0 && (
-          <div className="mt-4 flex flex-wrap items-center gap-x-5 gap-y-1.5 border-t border-border pt-4">
-            {metaItems.map((item, index) => (
-              <span
-                key={index}
-                className="inline-flex items-center gap-1.5 text-sm text-muted-foreground"
-              >
-                {item.icon}
-                {item.value}
-              </span>
-            ))}
-          </div>
-        )}
-      </Card>
-
-      <div>
-        <div className="mb-4">
-          <h2 className="text-base font-semibold text-high-emphasis">Members</h2>
-          <p className="text-sm text-muted-foreground">People with access to this organization.</p>
-        </div>
-        <OrganizationUsers organizationId={id} />
+          <OrganizationUsers organizationId={id} />
+        </section>
       </div>
     </div>
   );
