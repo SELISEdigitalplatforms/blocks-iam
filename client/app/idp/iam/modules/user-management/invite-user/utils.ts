@@ -5,6 +5,8 @@ export const inviteUserFormDefaultValue = {
   firstName: "",
   lastName: "",
   organizationIds: ["default"] as string[],
+  roles: [] as { slug: string }[],
+  permissions: [] as { resource: string }[],
 };
 
 export const inviteUserFormSchema = z.object({
@@ -18,4 +20,6 @@ export const inviteUserFormSchema = z.object({
   organizationIds: z
     .array(z.string().min(1))
     .min(1, "Please select at least one organization"),
+  roles: z.array(z.object({ slug: z.string() })),
+  permissions: z.array(z.object({ resource: z.string() })),
 });

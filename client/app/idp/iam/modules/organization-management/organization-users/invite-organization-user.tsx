@@ -35,6 +35,12 @@ import { cn } from "@/lib/utils";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { userService } from "@blocks-idp/iam/services/user.service";
 import type { IUpdateUserAccessControlPayload } from "@blocks-idp/iam/models/user";
+import type { IRole } from "@blocks-idp/iam/models/role";
+import type { IPermission } from "@blocks-idp/iam/models/permission";
+import { useGetRoles } from "@blocks-idp/iam/hooks/use-roles";
+import { useGetPermissions } from "@blocks-idp/iam/hooks/use-permission";
+import { OrganizationRolesField } from "@blocks-idp/iam/modules/user-management/user-memberships/organization-roles-field/organization-roles-field";
+import { OrganizationPermissionsField } from "@blocks-idp/iam/modules/user-management/user-memberships/organization-permissions-field/organization-permissions-field";
 
 const inviteOrganizationUserFormDefaultValue = {
   email: "",
@@ -92,6 +98,24 @@ export const InviteOrganizationUser = ({ organizationId }: InviteOrganizationUse
 
   const tenantId = useProjectStore().selectedProject?.tenantId || "";
   const [open, setOpen] = useState(false);
+  const [selectedRoles, setSelectedRoles] = useState<IRole[]>([]);
+  const [selectedPermissions, setSelectedPermissions] = useState<IPermission[]>([]);
+
+  const { data: rolesData } = useGetRoles({
+    page: 0,
+    pageSize: 1000,
+    sort: { property: "Name", isDescending: false },
+    filter: { search: "" },
+    projectKey: tenantId,
+  });
+  const { data: permissionsData } = useGetPermissions({
+    projectKey: tenantId,
+    page: 0,
+    pageSize: 1000,
+    search: "",
+    isBuiltIn: "",
+    roles: [],
+  });
 
   const form = useForm<InviteFormValues>({
     defaultValues: inviteOrganizationUserFormDefaultValue,
@@ -127,12 +151,16 @@ export const InviteOrganizationUser = ({ organizationId }: InviteOrganizationUse
   useEffect(() => {
     if (!open) {
       form.reset();
+      setSelectedRoles([]);
+      setSelectedPermissions([]);
     }
   }, [open, form]);
 
   const isFormInvalid = !isValidEmailFormat
     ? true
-    : !exists && (!form.watch("firstName")?.trim() || !form.watch("lastName")?.trim());
+    : !exists
+      ? !form.watch("firstName")?.trim() || !form.watch("lastName")?.trim()
+      : selectedRoles.length === 0;
 
   const onSubmitHandler = async (values: InviteFormValues) => {
     try {
@@ -145,8 +173,8 @@ export const InviteOrganizationUser = ({ organizationId }: InviteOrganizationUse
         }
         const res = await updateAccess({
           userId: existingUserId,
-          roles: [],
-          permissions: [],
+          roles: selectedRoles.map((role) => role.slug),
+          permissions: selectedPermissions.map((permission) => permission.name),
           organizationId,
         });
         if (!res?.isSuccess) {
@@ -258,6 +286,16 @@ export const InviteOrganizationUser = ({ organizationId }: InviteOrganizationUse
                     )}
                   />
                 </>
+              )}
+
+              {exists && isValidEmailFormat && (
+                <div className="flex flex-col gap-5 rounded-lg border bg-muted/10 p-4">
+                  <OrganizationRolesField roles={selectedRoles} onChange={setSelectedRoles} />
+                  <OrganizationPermissionsField
+                    permissions={selectedPermissions}
+                    onChange={setSelectedPermissions}
+                  />
+                </div>
               )}
             </div>
             <DialogFooter className="mt-6">
