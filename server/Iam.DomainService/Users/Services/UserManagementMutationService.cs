@@ -507,6 +507,81 @@ namespace Iam.DomainService.Users
             };
         }
 
+        public async Task<BaseMutationResponse> RevokeUserAccessControlAsync(RevokeUserAccessControlRequest command)
+        {
+            _logger.LogInformation("Update User Access Control start");
+
+            var user = await _userRepository.GetUserByIdAsync(command.UserId);
+            if (user == null)
+            {
+                _logger.LogInformation("Update User Access Control end -- Validation Error");
+                return new BaseMutationResponse
+                {
+                    Errors = new Dictionary<string, string>
+                    {
+                        { nameof(command.UserId), "Not found" }
+                    }
+                };
+            }
+
+            var blocksContext = BlocksContext.GetContext();
+            var organizationId = string.IsNullOrWhiteSpace(command.OrganizationId)
+                ? blocksContext?.OrganizationId
+                : command.OrganizationId;
+
+            if (!string.Equals(organizationId, DefaultOrganizationId, StringComparison.Ordinal)
+                && !string.Equals(blocksContext?.OrganizationId, organizationId, StringComparison.Ordinal))
+            {
+                _logger.LogInformation("Update User Access Control end -- Validation Error");
+                return new BaseMutationResponse
+                {
+                    Errors = new Dictionary<string, string>
+                    {
+                        { nameof(command.OrganizationId), "Other org user can not add/update" }
+                    }
+                };
+            }
+
+            if (!string.Equals(organizationId, DefaultOrganizationId, StringComparison.Ordinal))
+            {
+                var organization = await _resourceRepository.GetOrganizationById(organizationId);
+                if (organization == null)
+                {
+                    _logger.LogInformation("Update User Access Control end -- Validation Error");
+                    return new BaseMutationResponse
+                    {
+                        Errors = new Dictionary<string, string>
+                        {
+                            { nameof(command.OrganizationId), "Organization not found" }
+                        }
+                    };
+                }
+            }
+
+            user.OrganizationIds.Remove(organizationId);
+            user.Roles.Remove(organizationId);
+            user.Permissions.Remove(organizationId);
+
+            user.LastUpdatedDate = DateTime.UtcNow;
+            user.LastUpdatedBy = blocksContext?.UserId ?? user.ItemId;
+
+            var result = await _userRepository.UpdateUserAsync(user);
+            if (!result)
+            {
+                _logger.LogError("Update User Access Control end -- Repository Error for UserId {UserId}", command.UserId);
+                return new BaseMutationResponse();
+            }
+
+            await SendEvent(user.ItemId, MutationEventType.Update);
+
+            _logger.LogInformation("Update User Access Control end -- Success");
+            return new BaseMutationResponse
+            {
+                IsSuccess = true,
+                ItemId = user.ItemId
+            };
+        }
+
         public async Task<bool> CreateUserByEmailAsync(CreateUserByEmailEvent @event)
         {
             _logger.LogInformation("User creation start from CreateUserByEmail");

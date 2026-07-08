@@ -9,4 +9,10 @@
 
     }
 
+    public class RevokeUserAccessControlRequest
+    {
+        public required string UserId { get; set; }
+        public string? OrganizationId { get; set; }
+    }
+
 }

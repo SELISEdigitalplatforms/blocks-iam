@@ -17,6 +17,7 @@ namespace Iam.DomainService.Users
         Task<bool> ProcessCreateUserByEmailAfterActionAsync(CreateUserByEmailEvent @event, string userId);
         Task<BaseResponse> DeactivateUserAsync(DeactivateUserRequest request);
         Task<BaseMutationResponse> UpdateUserAccessControlAsync(UpdateUserAccessControlRequest command);
+        Task<BaseMutationResponse> RevokeUserAccessControlAsync(RevokeUserAccessControlRequest command);
         Task<TenantConfiguration> GetTenantConfigurationAsync();
     }
 }
