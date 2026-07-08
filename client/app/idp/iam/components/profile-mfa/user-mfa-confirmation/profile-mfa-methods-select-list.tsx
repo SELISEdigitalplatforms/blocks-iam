@@ -68,13 +68,16 @@ const MethodsOption = ({
 export const ProfileMfaMethodSelectList = () => {
   const { userId, projectKey, showVerifyModal, setIsDisableModalOpen } =
     useContext(profileMfaContext);
-  const { data } = useGetMFAConfig();
+  const { data: projectConfig } = useGetMFAConfig();
   const { data: userData } = useGetUserById({ id: userId, projectKey });
 
+  const projectEnabled = !!projectConfig?.enabled;
+  const projectAllowedMethods = projectConfig?.allowedMethods ?? [];
+
   const availableMFaMethod = useMemo(() => {
-    if (!data?.allowedMethods.length) return [];
-    return MFA_Provider_Data.filter((item) => data?.allowedMethods.includes(item.type));
-  }, [data?.allowedMethods]);
+    if (!projectAllowedMethods.length) return [];
+    return MFA_Provider_Data.filter((item) => projectAllowedMethods.includes(item.type));
+  }, [projectAllowedMethods]);
 
   const userMfaType = userData?.data.userMfaType;
   const isMfaEnabled = !!userData?.data.mfaEnabled;
@@ -86,33 +89,40 @@ export const ProfileMfaMethodSelectList = () => {
 
   return (
     <>
-      <div className="rounded-sm border">
-        {availableMFaMethod.map((item) => (
+      {!projectEnabled ? (
+        <div className="rounded-sm border p-4 py-6 text-sm text-muted-foreground">
+          Multi-factor Authentication is disabled for your project. Contact your project admin to
+          activate it.
+        </div>
+      ) : (
+        <div className="rounded-sm border">
+          {availableMFaMethod.map((item) => (
+            <MethodsOption
+              key={item.type}
+              method={item}
+              onEnableClick={() => enableHandler(item.type)}
+              onDisableClick={() => setIsDisableModalOpen(true)}
+              isVerified={!!userData?.data.isMfaVerified}
+              isActive={isMfaEnabled && activeType === item.type.toString()}
+            />
+          ))}
           <MethodsOption
-            key={item.type}
-            method={item}
-            onEnableClick={() => enableHandler(item.type)}
+            method={{
+              type: 0,
+              label: "None",
+              description: "No two-factor authentication.",
+              provider: "none",
+              status: false,
+              Icon: CircleOff,
+            }}
+            onEnableClick={() => undefined}
             onDisableClick={() => setIsDisableModalOpen(true)}
-            isVerified={!!userData?.data.isMfaVerified}
-            isActive={isMfaEnabled && activeType === item.type.toString()}
+            isVerified={true}
+            isActive={isMfaEnabled}
+            hideButton={!isMfaEnabled}
           />
-        ))}
-        <MethodsOption
-          method={{
-            type: 0,
-            label: "None",
-            description: "No two-factor authentication.",
-            provider: "none",
-            status: false,
-            Icon: CircleOff,
-          }}
-          onEnableClick={() => undefined}
-          onDisableClick={() => setIsDisableModalOpen(true)}
-          isVerified={true}
-          isActive={isMfaEnabled}
-          hideButton={!isMfaEnabled}
-        />
-      </div>
+        </div>
+      )}
 
       <ProfileMFAVerify />
       <UserMFAConfirmationDisable />
