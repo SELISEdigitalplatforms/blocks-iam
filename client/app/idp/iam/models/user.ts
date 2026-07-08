@@ -317,7 +317,6 @@ export interface IAccountResendActivationResponse {
 export interface IAccountRecoverPayload {
   email: string;
   captchaCode?: string;
-  mailPurpose?: string;
   tenantId?: string;
 }
 export interface IAccountRecoverResponse {
