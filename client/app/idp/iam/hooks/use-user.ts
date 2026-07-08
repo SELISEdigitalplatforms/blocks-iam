@@ -84,12 +84,13 @@ export const useGetMe = (options?: { enabled?: boolean }) => {
 
 export const useGetUserById = (
   options: IGetUserByIdPayload,
-  queryOptions?: { enabled?: boolean },
+  queryOptions?: { enabled?: boolean; retry?: boolean },
 ) => {
   return useQuery({
     queryKey: ["user-by-id", options],
     queryFn: () => userService.getUserById(options),
-    ...queryOptions,
+    retry: queryOptions?.retry ?? false,
+    enabled: queryOptions?.enabled,
   });
 };
 
@@ -115,7 +116,13 @@ export const useAddUser = () => {
     mutationFn: userService.addUser,
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["users"] });
+      queryClient.invalidateQueries({ queryKey: ["organizations"] });
+      queryClient.invalidateQueries({ queryKey: ["user-by-id"] });
+      queryClient.invalidateQueries({ queryKey: ["user"] });
+      queryClient.invalidateQueries({ queryKey: ["user-roles"] });
+      queryClient.invalidateQueries({ queryKey: ["user-permissions"] });
       queryClient.invalidateQueries({ queryKey: ["subscription-usage"] });
+      queryClient.invalidateQueries({ queryKey: ["organization"] });
     },
   });
 };
@@ -193,8 +200,13 @@ export const useUpdateUserAccessControl = (option: { id: string; projectKey: str
     mutationFn: (payload: Omit<IUpdateUserAccessControlPayload, "userId">) =>
       userService.updateUserAccessControl({ ...payload, userId: option.id }),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["user-by-id", { id: option.id, projectKey: option.projectKey }] });
-      queryClient.invalidateQueries({ queryKey: ["user", option] });
+      queryClient.invalidateQueries({ queryKey: ["users"] });
+      queryClient.invalidateQueries({ queryKey: ["user-by-id"] });
+      queryClient.invalidateQueries({ queryKey: ["user"] });
+      queryClient.invalidateQueries({ queryKey: ["user-roles"] });
+      queryClient.invalidateQueries({ queryKey: ["user-permissions"] });
+      queryClient.invalidateQueries({ queryKey: ["organizations"] });
+      queryClient.invalidateQueries({ queryKey: ["organization"] });
     },
   });
 };
