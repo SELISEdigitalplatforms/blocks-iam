@@ -1,5 +1,4 @@
-
-import { useState, useEffect } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Button } from "@/components/ui-kits/button/button";
 import {
   Dialog,
@@ -18,45 +17,25 @@ import {
   SelectValue,
 } from "@/components/ui-kits/select/select";
 import { showErrorToast, showSuccessToast } from "@/hooks/use-toast";
+import { cn } from "@/lib/utils";
 import { IOrganization } from "@blocks-idp/iam/models/organization";
+import { IRole } from "@blocks-idp/iam/models/role";
+import { IPermission } from "@blocks-idp/iam/models/permission";
 import { useGetRoles } from "@blocks-idp/iam/hooks/use-roles";
-import { useUpdateUser, useGetUserById } from "@blocks-idp/iam/hooks/use-user";
-import { IUpdateUserPayload } from "@blocks-idp/iam/models/user";
+import { useGetPermissions } from "@blocks-idp/iam/hooks/use-permission";
+import { useGetUserById, useUpdateUserAccessControl } from "@blocks-idp/iam/hooks/use-user";
+import { useGetMyOrganizations } from "@blocks-idp/iam/hooks/use-organization";
 import { useProjectStore } from "@seliseblocks/blocks-kit";
 import { Plus } from "lucide-react";
-import { Input } from "@/components/ui-kits/input/input";
-import { Checkbox } from "@/components/ui-kits/checkbox/checkbox";
-import { Skeleton } from "@/components/ui-kits/skeleton/skeleton";
-import { RoleBadges } from "./role-badges";
+import { OrganizationRolesField } from "./organization-roles-field";
+import { OrganizationPermissionsField } from "./organization-permissions-field";
+
+const DEFAULT_ORGANIZATION_ID = "default";
 
 type AssignOrganizationProps = {
   userId: string;
   organizations: IOrganization[];
   isOrgsLoading?: boolean;
-};
-
-const toRolesRecord = (
-  roles: Record<string, string[]> | string[] | undefined,
-  organizationIds: string[],
-): Record<string, string[]> => {
-  if (!roles) return {};
-  if (Array.isArray(roles)) {
-    if (organizationIds.length === 0) return {};
-    return { [organizationIds[0]]: roles };
-  }
-  return { ...roles };
-};
-
-const toPermissionsRecord = (
-  permissions: Record<string, string[]> | string[] | undefined,
-  organizationIds: string[],
-): Record<string, string[]> => {
-  if (!permissions) return {};
-  if (Array.isArray(permissions)) {
-    if (organizationIds.length === 0) return {};
-    return { [organizationIds[0]]: permissions };
-  }
-  return { ...permissions };
 };
 
 export const AssignOrganization = ({
@@ -66,83 +45,114 @@ export const AssignOrganization = ({
 }: AssignOrganizationProps) => {
   const tenantId = useProjectStore().selectedProject?.tenantId || "";
   const [open, setOpen] = useState(false);
-  const [rolesSearch, setRolesSearch] = useState("");
   const [selectedOrgId, setSelectedOrgId] = useState<string>("");
-  const [selectedRoles, setSelectedRoles] = useState<string[]>([]);
+  const [selectedRoles, setSelectedRoles] = useState<IRole[]>([]);
+  const [selectedPermissions, setSelectedPermissions] = useState<IPermission[]>([]);
 
   const { data: userData } = useGetUserById({ id: userId, projectKey: tenantId });
-  const { data: rolesData, isLoading: isRolesLoading } = useGetRoles({
+  const { data: rolesData } = useGetRoles({
     page: 0,
     pageSize: 1000,
     sort: { property: "Name", isDescending: false },
     filter: { search: "" },
     projectKey: tenantId,
   });
+  const { data: permissionsData } = useGetPermissions({
+    projectKey: tenantId,
+    page: 0,
+    pageSize: 1000,
+    search: "",
+    isBuiltIn: "",
+    roles: [],
+  });
 
-  const { mutateAsync, isPending } = useUpdateUser({ id: userId, projectKey: tenantId });
+  const { mutateAsync, isPending } = useUpdateUserAccessControl({
+    id: userId,
+    projectKey: tenantId,
+  });
+  const { data: myOrgsData } = useGetMyOrganizations();
 
-  const existingOrgIds = userData?.data?.organizationIds || [];
-  const roles = rolesData?.data || [];
+  // The access-control endpoint only allows managing memberships within the
+  // calling admin's own organization. Restrict the org dropdown to the
+  // admin's own orgs to avoid "Other org user can not add/update" errors.
+  const adminOrgIds = useMemo(
+    () => new Set((myOrgsData?.organizations ?? []).map((org) => org.itemId)),
+    [myOrgsData?.organizations],
+  );
 
   const orgOptions = organizations.filter(
-    (org) => org.isEnabled && !existingOrgIds.includes(org.itemId),
+    (org) => org.isEnabled && adminOrgIds.has(org.itemId),
   );
 
-  const filteredRoles = roles.filter((role) =>
-    role.name.toLowerCase().includes(rolesSearch.toLowerCase()),
+  const roleBySlug = useMemo(
+    () => new Map((rolesData?.data || []).map((role) => [role.slug, role])),
+    [rolesData?.data],
+  );
+  const permissionByName = useMemo(
+    () => new Map((permissionsData?.data || []).map((permission) => [permission.name, permission])),
+    [permissionsData?.data],
   );
 
-  useEffect(() => {
-    if (!open) return;
-    setSelectedOrgId("");
-    setSelectedRoles([]);
-    setRolesSearch("");
-  }, [open]);
+  const getExistingSelection = (orgId: string) => {
+    const user = userData?.data;
+    if (!user || !orgId) return { roleSlugs: [], permissionNames: [] };
+
+    const membership = user.organizations?.find((item) => item.organizationId === orgId);
+    if (membership) {
+      return { roleSlugs: membership.roles ?? [], permissionNames: membership.permissions ?? [] };
+    }
+
+    return {
+      roleSlugs: user.OrganizationsRoles?.[orgId] ?? [],
+      permissionNames: user.OrganizationsPermissions?.[orgId] ?? [],
+    };
+  };
 
   const handleOrgChange = (orgId: string) => {
     setSelectedOrgId(orgId);
-    setSelectedRoles([]);
-  };
 
-  const handleRoleToggle = (roleSlug: string) => {
-    setSelectedRoles((prev) =>
-      prev.includes(roleSlug) ? prev.filter((slug) => slug !== roleSlug) : [...prev, roleSlug],
+    const { roleSlugs, permissionNames } = getExistingSelection(orgId);
+    setSelectedRoles(
+      roleSlugs.map(
+        (slug) => roleBySlug.get(slug) ?? { itemId: slug, name: slug, slug, description: "" },
+      ),
+    );
+    setSelectedPermissions(
+      permissionNames.map(
+        (name) =>
+          permissionByName.get(name) ??
+          ({ itemId: name, name, resource: name, resourceGroup: "Other" } as IPermission),
+      ),
     );
   };
 
-  const getRoleDisplayName = (roleSlug: string) =>
-    roles.find((role) => role.slug === roleSlug)?.name ?? roleSlug;
+  useEffect(() => {
+    if (!open) return;
+    const preselectedOrgId = orgOptions.some((org) => org.itemId === DEFAULT_ORGANIZATION_ID)
+      ? DEFAULT_ORGANIZATION_ID
+      : "";
+    handleOrgChange(preselectedOrgId);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open]);
 
   const onConfirm = async () => {
-    if (!selectedOrgId || selectedRoles.length === 0 || !userData?.data) {
+    if (!selectedOrgId || selectedRoles.length === 0) {
       showErrorToast({ errors: "Please select an organization and at least one role" });
       return;
     }
 
     try {
-      const updatedOrganizationIds = [...existingOrgIds, selectedOrgId];
-      const rolesRecord = toRolesRecord(userData.data.roles, existingOrgIds);
-      const permissionsRecord = toPermissionsRecord(
-        userData.data.permissions,
-        existingOrgIds,
-      );
-
-      rolesRecord[selectedOrgId] = selectedRoles;
-      if (!permissionsRecord[selectedOrgId]) {
-        permissionsRecord[selectedOrgId] = [];
-      }
-
       const res = await mutateAsync({
-        ...userData.data,
-        itemId: userId,
-        organizationIds: updatedOrganizationIds,
-        organizations: updatedOrganizationIds,
-        roles: rolesRecord,
-        permissions: permissionsRecord,
-      } as unknown as IUpdateUserPayload);
-
+        roles: selectedRoles.map((role) => role.slug),
+        permissions: selectedPermissions.map((permission) => permission.name),
+        organizationId: selectedOrgId,
+      });
       if (!res.isSuccess) {
-        showErrorToast({ errors: res.errors });
+        const errorMsg =
+          res.errors && typeof res.errors === "object"
+            ? Object.values(res.errors as Record<string, string>)[0] ?? "Failed to update organization"
+            : (res.errors as string) || "Failed to update organization";
+        showErrorToast({ errors: errorMsg });
         return;
       }
 
@@ -164,7 +174,7 @@ export const AssignOrganization = ({
   const reset = () => {
     setSelectedOrgId("");
     setSelectedRoles([]);
-    setRolesSearch("");
+    setSelectedPermissions([]);
   };
 
   return (
@@ -181,11 +191,11 @@ export const AssignOrganization = ({
           <span className="sr-only sm:not-sr-only">Manage</span>
         </Button>
       </DialogTrigger>
-      <DialogContent className="sm:max-w-[480px]">
+      <DialogContent className="sm:max-w-[560px]">
         <DialogHeader>
           <DialogTitle>Manage organization</DialogTitle>
           <DialogDescription>
-            Choose an organization and the roles this user should have in it.
+            Choose an organization and the roles and permissions this user should have in it.
           </DialogDescription>
         </DialogHeader>
 
@@ -218,68 +228,27 @@ export const AssignOrganization = ({
             </Select>
           </div>
 
-          <div className="space-y-2">
-            <label htmlFor="assign-roles-search" className="text-sm font-medium">
-              Roles
-            </label>
-            <p className="text-sm text-muted-foreground">Select at least one role to assign.</p>
-            {!selectedOrgId ? (
-              <p className="rounded-md border border-dashed p-4 text-sm text-muted-foreground">
-                Select an organization first to choose roles.
-              </p>
-            ) : isRolesLoading ? (
-              <div className="space-y-2">
-                {Array.from({ length: 4 }).map((_, index) => (
-                  <Skeleton key={index} className="h-10 w-full" />
-                ))}
-              </div>
-            ) : roles.length === 0 ? (
-              <p className="rounded-md border p-4 text-sm text-muted-foreground">
-                No roles available
-              </p>
-            ) : (
-              <div className="flex flex-col gap-3">
-                <Input
-                  id="assign-roles-search"
-                  placeholder="Search roles"
-                  value={rolesSearch}
-                  onChange={(e) => setRolesSearch(e.target.value)}
-                  className="focus-visible:ring-inset focus-visible:ring-offset-0"
-                />
-                <div className="max-h-[220px] overflow-y-auto rounded-md border">
-                  {filteredRoles.map((role) => (
-                    <div
-                      key={role.slug}
-                      className="flex cursor-pointer items-center gap-3 border-b p-3 last:border-b-0 hover:bg-muted/30"
-                      onClick={() => handleRoleToggle(role.slug)}
-                    >
-                      <Checkbox
-                        checked={selectedRoles.includes(role.slug)}
-                        onCheckedChange={() => handleRoleToggle(role.slug)}
-                        onClick={(e) => e.stopPropagation()}
-                        aria-label={`Assign role ${role.name}`}
-                      />
-                      <span className="text-sm">{role.name}</span>
-                    </div>
-                  ))}
-                  {filteredRoles.length === 0 && (
-                    <p className="p-4 text-center text-sm text-muted-foreground">No roles found</p>
-                  )}
-                </div>
-                {selectedRoles.length > 0 && (
-                  <div className="rounded-md border bg-muted/20 p-3">
-                    <p className="mb-2 text-xs font-medium text-muted-foreground">
-                      {selectedRoles.length} role{selectedRoles.length === 1 ? "" : "s"} selected
-                    </p>
-                    <RoleBadges
-                      roles={selectedRoles}
-                      getLabel={getRoleDisplayName}
-                      maxVisible={3}
-                    />
-                  </div>
-                )}
-              </div>
+          <div
+            className={cn(
+              "grid transition-[grid-template-rows] duration-300 ease-in-out",
+              selectedOrgId ? "grid-rows-[1fr]" : "grid-rows-[0fr]",
             )}
+          >
+            <div className="overflow-hidden">
+              {!selectedOrgId ? (
+                <p className="rounded-md border border-dashed p-4 text-sm text-muted-foreground">
+                  Select an organization first to choose roles and permissions.
+                </p>
+              ) : (
+                <div className="animate-in fade-in-0 slide-in-from-top-1 flex flex-col gap-5 pt-0.5 duration-300">
+                  <OrganizationRolesField roles={selectedRoles} onChange={setSelectedRoles} />
+                  <OrganizationPermissionsField
+                    permissions={selectedPermissions}
+                    onChange={setSelectedPermissions}
+                  />
+                </div>
+              )}
+            </div>
           </div>
         </div>
 

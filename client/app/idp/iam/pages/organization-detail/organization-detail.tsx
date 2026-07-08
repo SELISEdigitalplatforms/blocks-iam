@@ -6,11 +6,11 @@ import {
 import { useGetOrganizationById } from "@blocks-idp/iam/hooks/use-organization";
 import { useGetUserById } from "@blocks-idp/iam/hooks/use-user";
 import { useProjectStore } from "@seliseblocks/blocks-kit";
-import { Card } from "@/components/ui-kits/card/card";
+import { Card, CardTitle, CardDescription } from "@/components/ui-kits/card/card";
 import { Badge } from "@/components/ui-kits/badge/badge";
 import { Separator } from "@/components/ui-kits/separator/separator";
 import { Skeleton } from "@/components/ui-kits/skeleton/skeleton";
-import { Building2, Calendar, Globe, History, Mail, Phone, Tag } from "lucide-react";
+import { Building2, Calendar, Globe, History, Mail, Phone } from "lucide-react";
 import {
   OrganizationUsers,
   InviteOrganizationUser,
@@ -106,13 +106,10 @@ export const OrganizationDetail = ({ id }: { id: string }) => {
                 )}
               </div>
               <div className="min-w-0 flex-1">
-                {org?.shortCode ? (
-                  <p className="flex items-center gap-1 text-xs text-muted-foreground">
-                    <Tag className="h-3 w-3" />@{org.shortCode}
-                  </p>
-                ) : (
-                  <p className="text-xs text-muted-foreground">Organization details</p>
-                )}
+                <CardTitle>Details</CardTitle>
+                <CardDescription className="mt-0.5">
+                  General information about this organization.
+                </CardDescription>
               </div>
             </div>
 
