@@ -39,7 +39,7 @@ export const OrganizationRolesField = ({ roles, onChange }: OrganizationRolesFie
         </div>
       </div>
       {roles.length === 0 ? (
-        <div className="flex flex-col items-center justify-center rounded-lg border border-dashed bg-muted/20 py-8 text-center">
+        <div className="animate-in fade-in-0 flex flex-col items-center justify-center rounded-lg border border-dashed bg-muted/20 py-8 text-center duration-300">
           <div className="mx-auto flex h-10 w-10 items-center justify-center rounded-full bg-primary/10">
             <ShieldCheck className="h-5 w-5 text-primary" />
           </div>
@@ -49,7 +49,7 @@ export const OrganizationRolesField = ({ roles, onChange }: OrganizationRolesFie
           </p>
         </div>
       ) : (
-        <div className="overflow-hidden rounded-lg border">
+        <div className="animate-in fade-in-0 overflow-hidden rounded-lg border duration-300">
           <OrganizationRolesList roles={roles} onDelete={onRemoveHandler} />
         </div>
       )}

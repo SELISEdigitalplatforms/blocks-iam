@@ -25,7 +25,7 @@ import {
 import { useProjectStore } from "@seliseblocks/blocks-kit";
 import { useGetPermissions } from "@blocks-idp/iam/hooks/use-permission";
 import { IPermission, RESOURCE_TYPE } from "@blocks-idp/iam/models/permission";
-import { CirclePlus } from "lucide-react";
+import { Plus } from "lucide-react";
 import { useMemo, useState } from "react";
 
 type AddOrganizationPermissionProps = {
@@ -88,11 +88,11 @@ export const AddOrganizationPermission = ({
         <Button
           size="sm"
           variant="default"
-          className="h-10 bg-primary text-sm"
+          className="bg-primary text-sm"
           type="button"
           onClick={(e) => e.stopPropagation()}
         >
-          <CirclePlus className="h-5 w-5 md:mr-2.5" />
+          <Plus className="h-4 w-4 md:mr-1.5" />
           <span className="sr-only sm:not-sr-only">Add Permission</span>
         </Button>
       </DialogTrigger>
