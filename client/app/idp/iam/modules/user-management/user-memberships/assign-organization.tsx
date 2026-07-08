@@ -178,12 +178,12 @@ export const AssignOrganization = ({
       <DialogTrigger asChild>
         <Button size="sm" variant="ghost" className="h-10 text-sm text-primary">
           <Plus className="h-5 w-5 text-primary md:mr-2.5" />
-          <span className="sr-only sm:not-sr-only">Assign</span>
+          <span className="sr-only sm:not-sr-only">Manage</span>
         </Button>
       </DialogTrigger>
       <DialogContent className="sm:max-w-[480px]">
         <DialogHeader>
-          <DialogTitle>Assign organization</DialogTitle>
+          <DialogTitle>Manage organization</DialogTitle>
           <DialogDescription>
             Choose an organization and the roles this user should have in it.
           </DialogDescription>

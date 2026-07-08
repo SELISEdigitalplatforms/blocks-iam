@@ -4,12 +4,13 @@ import {
   BREADCRUMB_LINK_OVERRIDES,
 } from "@/constants/breadcrumb-custom-title";
 import { useGetOrganizationById } from "@blocks-idp/iam/hooks/use-organization";
+import { useGetUserById } from "@blocks-idp/iam/hooks/use-user";
 import { useProjectStore } from "@seliseblocks/blocks-kit";
 import { Card } from "@/components/ui-kits/card/card";
 import { Badge } from "@/components/ui-kits/badge/badge";
 import { Separator } from "@/components/ui-kits/separator/separator";
 import { Skeleton } from "@/components/ui-kits/skeleton/skeleton";
-import { Building2, Calendar, Globe, Mail, Phone, Tag } from "lucide-react";
+import { Building2, Calendar, Globe, History, Mail, Phone, Tag } from "lucide-react";
 import {
   OrganizationUsers,
   InviteOrganizationUser,
@@ -28,7 +29,9 @@ const InfoRow = ({ icon, label, value }: InfoRowProps) => (
       {icon}
       {label}
     </span>
-    <span className="truncate text-right font-medium text-high-emphasis">{value ?? "—"}</span>
+    <div className="min-w-0 truncate text-right font-medium text-high-emphasis">
+      {value ?? "—"}
+    </div>
   </div>
 );
 
@@ -53,6 +56,15 @@ export const OrganizationDetail = ({ id }: { id: string }) => {
   const { data, isLoading } = useGetOrganizationById({ itemId: id, projectKey: tenantId });
 
   const org: IOrganization | undefined = data?.organization;
+
+  const { data: updaterData } = useGetUserById(
+    { id: org?.lastUpdatedBy ?? "", projectKey: tenantId },
+    { enabled: !!org?.lastUpdatedBy && !!tenantId },
+  );
+  const updater = updaterData?.data;
+  const updaterName = updater
+    ? `${updater.firstName ?? ""} ${updater.lastName ?? ""}`.trim() || updater.email
+    : undefined;
 
   BREADCRUMB_CUSTOM_TITLES["/app/organization-detail"] = "Organizations";
   BREADCRUMB_CUSTOM_TITLES["/app/organizations"] = "Organizations";
@@ -123,6 +135,22 @@ export const OrganizationDetail = ({ id }: { id: string }) => {
                 icon={<Calendar className="h-3.5 w-3.5" />}
                 label="Created"
                 value={formatDate(org?.createdDate)}
+              />
+              <InfoRow
+                icon={<History className="h-3.5 w-3.5" />}
+                label="Updated"
+                value={
+                  org?.lastUpdatedDate && (
+                    <>
+                      <div>{formatDate(org.lastUpdatedDate)}</div>
+                      {updaterName && (
+                        <div className="text-xs font-normal text-muted-foreground">
+                          by {updaterName}
+                        </div>
+                      )}
+                    </>
+                  )
+                }
               />
             </div>
           </Card>
