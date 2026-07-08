@@ -24,7 +24,6 @@ import { IPermission } from "@blocks-idp/iam/models/permission";
 import { useGetRoles } from "@blocks-idp/iam/hooks/use-roles";
 import { useGetPermissions } from "@blocks-idp/iam/hooks/use-permission";
 import { useGetUserById, useUpdateUserAccessControl } from "@blocks-idp/iam/hooks/use-user";
-import { useGetMyOrganizations } from "@blocks-idp/iam/hooks/use-organization";
 import { useProjectStore } from "@seliseblocks/blocks-kit";
 import { Plus } from "lucide-react";
 import { OrganizationRolesField } from "./organization-roles-field";
@@ -70,19 +69,22 @@ export const AssignOrganization = ({
     id: userId,
     projectKey: tenantId,
   });
-  const { data: myOrgsData } = useGetMyOrganizations();
 
-  // The access-control endpoint only allows managing memberships within the
-  // calling admin's own organization. Restrict the org dropdown to the
-  // admin's own orgs to avoid "Other org user can not add/update" errors.
-  const adminOrgIds = useMemo(
-    () => new Set((myOrgsData?.organizations ?? []).map((org) => org.itemId)),
-    [myOrgsData?.organizations],
-  );
-
-  const orgOptions = organizations.filter(
-    (org) => org.isEnabled && adminOrgIds.has(org.itemId),
-  );
+  // "default" is an implicit organization every account belongs to — it is
+  // never returned by the tenant organizations list, so it has to be added
+  // in manually or it can never be selected (or pre-selected). The backend
+  // is the source of truth for whether a given org can actually be managed
+  // by the caller; a rejected submit surfaces via the error toast below.
+  const orgOptions = useMemo(() => {
+    const filtered = organizations.filter((org) => org.isEnabled);
+    if (filtered.some((org) => org.itemId === DEFAULT_ORGANIZATION_ID)) {
+      return filtered;
+    }
+    return [
+      { itemId: DEFAULT_ORGANIZATION_ID, name: "Default", isEnabled: true } as IOrganization,
+      ...filtered,
+    ];
+  }, [organizations]);
 
   const roleBySlug = useMemo(
     () => new Map((rolesData?.data || []).map((role) => [role.slug, role])),

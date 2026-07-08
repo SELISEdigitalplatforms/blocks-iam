@@ -96,7 +96,7 @@ export const OrganizationDetail = ({ id }: { id: string }) => {
         <aside className="lg:col-span-3">
           <Card className="sticky top-4 border-none shadow-sm">
             <div className="flex items-center gap-3">
-              <div className="flex h-11 w-11 shrink-0 items-center justify-center overflow-hidden rounded-lg bg-primary/10 text-sm font-semibold text-primary">
+              {/* <div className="flex h-11 w-11 shrink-0 items-center justify-center overflow-hidden rounded-lg bg-primary/10 text-sm font-semibold text-primary">
                 {org?.logoUrl ? (
                   <img src={org.logoUrl} alt={org.name} className="h-full w-full object-cover" />
                 ) : org?.name ? (
@@ -104,7 +104,7 @@ export const OrganizationDetail = ({ id }: { id: string }) => {
                 ) : (
                   <Building2 className="h-5 w-5" />
                 )}
-              </div>
+              </div> */}
               <div className="min-w-0 flex-1">
                 <CardTitle>Details</CardTitle>
                 <CardDescription className="mt-0.5">
