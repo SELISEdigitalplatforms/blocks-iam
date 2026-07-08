@@ -1,6 +1,6 @@
 ﻿namespace Iam.DomainService.Users
 {
-    public class UpdateOrganizationUserRequest
+    public class UpdateUserAccessControlRequest
     {
         public required string UserId { get; set; }
         public List<string> Roles { get; set; } = new();
