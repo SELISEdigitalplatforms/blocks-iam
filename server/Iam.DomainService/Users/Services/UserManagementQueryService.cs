@@ -79,6 +79,12 @@ namespace Iam.DomainService.Users
 
             var data = user == null ? null : MapToSingleUserFields(user, contextOrgId);
 
+            if(contextOrgId == "default")
+            {
+                data.Add("OrganizationsRoles", user.Roles);
+                data.Add("OrganizationsPermissions", user.Permissions);
+            }
+
             _logger.LogInformation("User get end");
 
             return new GetUserResponse
@@ -150,7 +156,7 @@ namespace Iam.DomainService.Users
 
         private static Dictionary<string, object> MapToSingleUserFields(GetAccounts user, string contextOrgId)
         {
-            if (!user.OrganizationIds.Contains(contextOrgId))
+            if (!user.OrganizationIds.Contains(contextOrgId) && contextOrgId != "default")
             {
                 return new Dictionary<string, object>();
             }
