@@ -1,30 +1,16 @@
 import { useEffect, useState } from "react";
-import { useAccountActivationCodeExpiration, useAccountResendActivation } from "@blocks-idp/iam/hooks/use-account";
+import { Link } from "react-router-dom";
 import { AlertTriangle, CheckCircle2, Loader } from "lucide-react";
 import { ActivationForm } from "./activation-form";
-import { ModeToggle } from "@/components/mode-toggle/mode-toggle";
-import { SciFiBackgroundOidc } from "../oidc/sci-fi-background-oidc";
-import { Separator } from "@/components/ui-kits/separator/separator";
-import "../oidc/sci-fi-oidc.css";
+import { OidcAuthShell } from "../oidc/oidc-auth-shell";
+import { ACTIVATE_PANEL } from "../oidc/oidc-panel-config";
+import { useAccountActivationCodeExpiration, useAccountResendActivation } from "@blocks-idp/iam/hooks/use-account";
 
 type ActivationProps = {
   code?: string;
   lang?: string;
   tenantId?: string;
 };
-
-function BlocksLogo() {
-  return (
-    <svg className="h-7 w-auto" viewBox="0 0 246 360" xmlns="http://www.w3.org/2000/svg" fill="var(--accent)" aria-hidden>
-      <path d="M245.455 68.162V129.87L168.982 156.65V93.9637L245.455 68.162Z" />
-      <path d="M240.389 62.3805L165.49 87.6573L5.30945 24.2563L85.3315 0L240.389 62.3805Z" />
-      <path d="M161.797 93.8295V156.43L81.1141 122.607V188.07L0 152.738V29.6846L161.797 93.8295Z" />
-      <path d="M76.4728 266.036L0 291.837V230.123L76.4728 203.329V266.036Z" />
-      <path d="M160.122 360L5.07166 297.619L79.9639 272.343L240.144 335.742L160.122 360Z" />
-      <path d="M245.454 330.315L83.6569 266.175V203.57L164.34 237.395V171.93L245.454 207.262V330.315Z" />
-    </svg>
-  );
-}
 
 export const Activation = ({ code, tenantId }: ActivationProps) => {
   const {
@@ -39,20 +25,6 @@ export const Activation = ({ code, tenantId }: ActivationProps) => {
   const [activationUserId, setActivationUserId] = useState<string | null>(null);
   const [resendMessage, setResendMessage] = useState<string | null>(null);
   const [resendSuccess, setResendSuccess] = useState(false);
-
-  const [htmlTheme, setHtmlTheme] = useState<"dark" | "light">(() =>
-    typeof document !== "undefined" && document.documentElement.classList.contains("dark")
-      ? "dark"
-      : "light"
-  );
-
-  useEffect(() => {
-    const observer = new MutationObserver(() => {
-      setHtmlTheme(document.documentElement.classList.contains("dark") ? "dark" : "light");
-    });
-    observer.observe(document.documentElement, { attributes: true, attributeFilter: ["class"] });
-    return () => observer.disconnect();
-  }, []);
 
   useEffect(() => {
     if (!code) {
@@ -128,95 +100,87 @@ export const Activation = ({ code, tenantId }: ActivationProps) => {
     }
   };
 
-  const headerBadge =
+  const heading =
     activationError === "invalid"
-      ? "Invalid Link"
+      ? "Invalid Activation Link"
       : activationError === "expired"
         ? "Link Expired"
-        : "Account Activation";
+        : "Activate Your Account";
 
-  const headerSubtitle =
-    activationError === "invalid"
-      ? "This activation link is not valid"
-      : activationError === "expired"
-        ? "This activation link has expired"
-        : "Complete your account setup";
+  const headingDimFirst = activationError ? 2 : 2;
 
   return (
-    <div
-      className="oidc-scifi-root min-h-screen overflow-hidden relative bg-[var(--bg)]"
-      data-theme={htmlTheme}
+    <OidcAuthShell
+      panelConfig={ACTIVATE_PANEL}
+      heading={heading}
+      headingDimFirst={headingDimFirst}
+      successTitle="Account Activated"
+      successSubtitle="Your account is ready. Redirecting to login…"
+      showCorners={false}
     >
-      <SciFiBackgroundOidc showCorners={false} />
-      <main className="relative z-10 min-h-screen flex flex-col items-center justify-center px-4 gap-6">
-        <div className="w-full max-w-lg rounded-2xl border border-[var(--border)] bg-[var(--node-bg)] p-10 backdrop-blur-[16px]">
-          <div className="flex items-center gap-3 mb-8">
-            <BlocksLogo />
-            <Separator orientation="vertical" className="h-4 bg-[var(--border)]" />
-            <span className="font-sans text-xs font-semibold tracking-[.18em] uppercase text-[var(--muted)]">
-              {headerBadge}
-            </span>
+      {isActivationPending || isValidCode === null ? (
+        <div className="flex items-center justify-center py-8">
+          <Loader size={28} className="animate-spin" style={{ color: "var(--accent)" }} />
+        </div>
+      ) : activationError === null ? (
+        <ActivationForm code={code ?? ""} tenantId={tenantId} />
+      ) : activationError === "invalid" ? (
+        <div className="flex flex-col items-center gap-3 py-2 text-center">
+          <div
+            className="w-12 h-12 rounded-full flex items-center justify-center"
+            style={{ background: "rgba(234,179,8,.1)", border: "1px solid rgba(234,179,8,.25)" }}
+          >
+            <AlertTriangle size={22} style={{ color: "var(--warn)" }} />
           </div>
-
-          <h2 className="text-xl font-semibold mb-2 font-sans text-[var(--fg)]">
-            Activate your account
-          </h2>
-          <p className="text-sm font-sans text-[var(--muted)] mb-6">
-            {headerSubtitle}
+          <p className="text-sm" style={{ color: "var(--muted)", fontFamily: "system-ui, sans-serif" }}>
+            The activation code is invalid. Please check the link or request a
+            new activation email from your administrator.
           </p>
-
-          {isActivationPending || isValidCode === null ? (
-            <div className="flex items-center justify-center py-8">
-              <Loader className="h-8 w-8 animate-spin text-[var(--accent)]" />
-            </div>
-          ) : activationError === null ? (
-            <ActivationForm code={code ?? ""} tenantId={tenantId} />
-          ) : activationError === "invalid" ? (
-            <div className="flex flex-col items-center gap-3 py-4 text-center">
-              <AlertTriangle className="h-10 w-10 text-amber-500" />
-              <p className="text-sm text-[var(--muted)]">
-                The activation code is invalid. Please check the link or request a
-                new activation email from your administrator.
-              </p>
-              <a
-                href="/login"
-                className="oidc-sci-fi-link mt-2 text-sm font-medium"
-              >
-                Back to login
-              </a>
-            </div>
-          ) : (
-            <div className="flex flex-col items-center gap-3 py-4 text-center">
-              <AlertTriangle className="h-10 w-10 text-amber-500" />
-              <p className="text-sm text-[var(--muted)]">
-                This activation link has expired and can&apos;t be used anymore.
-                Please request a new link to complete your account activation.
-              </p>
-              <button
-                type="button"
-                onClick={handleResendActivation}
-                disabled={!activationUserId || isResendPending || resendSuccess}
-                className="oidc-sci-fi-btn mt-2 w-full flex items-center justify-center gap-2"
-              >
-                <span>{isResendPending ? "Sending..." : "Resend activation link"}</span>
-              </button>
-              {resendMessage && (
-                <div className="flex items-center gap-2 text-sm">
-                  {resendSuccess ? (
-                    <CheckCircle2 className="h-4 w-4 text-success" />
-                  ) : (
-                    <AlertTriangle className="h-4 w-4 text-[var(--danger)]" />
-                  )}
-                  <span className={resendSuccess ? "text-success" : "text-[var(--danger)]"}>
-                    {resendMessage}
-                  </span>
-                </div>
+          <Link
+            to="/login"
+            className="oidc-sci-fi-btn"
+            style={{ textDecoration: "none", display: "inline-block", textAlign: "center", padding: "10px 20px" }}
+          >
+            Back to login
+          </Link>
+        </div>
+      ) : (
+        <div className="flex flex-col items-center gap-3 py-2 text-center">
+          <div
+            className="w-12 h-12 rounded-full flex items-center justify-center"
+            style={{ background: "rgba(234,179,8,.1)", border: "1px solid rgba(234,179,8,.25)" }}
+          >
+            <AlertTriangle size={22} style={{ color: "var(--warn)" }} />
+          </div>
+          <p className="text-sm" style={{ color: "var(--muted)", fontFamily: "system-ui, sans-serif" }}>
+            This activation link has expired and can&apos;t be used anymore.
+            Please request a new link to complete your account activation.
+          </p>
+          <button
+            type="button"
+            onClick={handleResendActivation}
+            disabled={!activationUserId || isResendPending || resendSuccess}
+            className="oidc-sci-fi-btn w-full flex items-center justify-center gap-2"
+          >
+            {isResendPending ? "Sending..." : "Resend activation link"}
+          </button>
+          {resendMessage && (
+            <div className="flex items-center gap-2 text-sm">
+              {resendSuccess ? (
+                <CheckCircle2 className="h-4 w-4 text-[var(--success)]" />
+              ) : (
+                <AlertTriangle className="h-4 w-4 text-[var(--danger)]" />
               )}
+              <span
+                className={resendSuccess ? "text-[var(--success)]" : "text-[var(--danger)]"}
+                style={{ fontFamily: "system-ui, sans-serif" }}
+              >
+                {resendMessage}
+              </span>
             </div>
           )}
         </div>
-        <ModeToggle />
-      </main>
-    </div>
+      )}
+    </OidcAuthShell>
   );
 };
