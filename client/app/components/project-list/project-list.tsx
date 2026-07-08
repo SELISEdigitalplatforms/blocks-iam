@@ -99,10 +99,7 @@ export function ProjectList({ collapsed = false }: { collapsed?: boolean }) {
             .filter((project) => project.itemId !== selectedProject?.itemId)
             .slice(0, 5)
             .map((project) => (
-              <DropdownMenuItem
-                key={project.itemId}
-                onSelect={() => handleProjectSelect({ ...project, applications: [] } as IProject)}
-              >
+             <DropdownMenuItem key={project.itemId} onSelect={() => handleProjectSelect(project)}>
                 <span>{project.name}</span>
               </DropdownMenuItem>
             ))
