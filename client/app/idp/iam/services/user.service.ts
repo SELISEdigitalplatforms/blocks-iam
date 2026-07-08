@@ -23,6 +23,8 @@ import {
   ISaveRolesAndPermissionsResponse,
   IUpdateUserPayload,
   IUpdateUserResponse,
+  IUpdateUserAccessControlPayload,
+  IUpdateUserAccessControlResponse,
   IGetSignUpSettingResponse,
   ISaveSignUpSettingPayload,
   ISaveSignUpSettingResponse,
@@ -152,6 +154,12 @@ export class UserService {
     payload: ISaveRolesAndPermissionsPayload,
   ): Promise<ISaveRolesAndPermissionsResponse> {
     return serviceInstances.idpService.post(USER_ENDPOINTS.SAVE_ROLES_AND_PERMISSIONS, payload);
+  }
+
+  updateUserAccessControl(
+    payload: IUpdateUserAccessControlPayload,
+  ): Promise<IUpdateUserAccessControlResponse> {
+    return serviceInstances.idpService.post(USER_ENDPOINTS.ACCESS_CONTROL, payload);
   }
 
   async getSessions(
