@@ -25,7 +25,7 @@ export interface IProject {
   environment: string;
   tenantGroupId: string;
   tenantSlug: string;
-  applications?: IDomain[];
+  applications: IDomain[];
 }
 
 export interface IGetProjectPayload {
