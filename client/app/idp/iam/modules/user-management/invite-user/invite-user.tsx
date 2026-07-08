@@ -116,9 +116,39 @@ export const InviteUser = () => {
 
   const orgOptionsForExistingUser = useMemo(() => {
     if (!exists) return orgOptions;
-    const set = new Set(existsOrgIds);
+    const set = new Set([...existsOrgIds, DEFAULT_ORGANIZATION_ID]);
     return orgOptions.filter((o) => set.has(o.itemId));
   }, [orgOptions, exists, existsOrgIds]);
+
+  /* Ensure the org dropdown always offers "Default" (id "default") and stays
+     preselected to it — even when the API doesn't list it among the admin's
+     enabled orgs or when the existing user isn't yet in "default". */
+  const dropdownOptions = useMemo(() => {
+    const base = exists ? orgOptionsForExistingUser : orgOptions;
+    if (base.some((o) => o.itemId === DEFAULT_ORGANIZATION_ID)) return base;
+    return [
+      ...base,
+      {
+        itemId: DEFAULT_ORGANIZATION_ID,
+        name: "Default",
+      } as (typeof base)[number],
+    ];
+  }, [exists, orgOptions, orgOptionsForExistingUser]);
+
+  useEffect(() => {
+    const currentValue = form.getValues("organizationId");
+    if (!currentValue) {
+      form.setValue("organizationId", DEFAULT_ORGANIZATION_ID);
+      return;
+    }
+    const availableIds = new Set(dropdownOptions.map((o) => o.itemId));
+    if (!availableIds.has(currentValue)) {
+      form.setValue(
+        "organizationId",
+        availableIds.has(DEFAULT_ORGANIZATION_ID) ? DEFAULT_ORGANIZATION_ID : "",
+      );
+    }
+  }, [dropdownOptions, form]);
 
   const onSubmitHandler = async (
     values: z.infer<typeof inviteUserFormSchema>,
@@ -178,7 +208,9 @@ export const InviteUser = () => {
     }
   };
 
-  const isFormInvalid = !isValidEmailFormat || !existsOrgIds ? false : !exists && (!form.watch("firstName") || !form.watch("lastName"));
+const isFormInvalid = !isValidEmailFormat
+    ? true
+    : !exists && (!form.watch("firstName")?.trim() || !form.watch("lastName")?.trim());
 
   return (
     <Dialog open={open} onOpenChange={setOpen}>
@@ -233,7 +265,7 @@ export const InviteUser = () => {
                         <SelectValue placeholder="Select organization" />
                       </SelectTrigger>
                       <SelectContent>
-                        {(exists ? orgOptionsForExistingUser : orgOptions).map((org) => (
+                        {dropdownOptions.map((org) => (
                           <SelectItem key={org.itemId} value={org.itemId}>
                             {org.name}
                           </SelectItem>
@@ -290,7 +322,7 @@ export const InviteUser = () => {
               </Button>
               <Button
                 type="submit"
-                disabled={isPending || isFormInvalid || isCheckingExists || !existingUserId}
+                disabled={isPending || isFormInvalid || isCheckingExists || (exists && !existingUserId)}
               >
                 {isPending ? (
                   <>
