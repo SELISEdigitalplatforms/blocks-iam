@@ -1,6 +1,5 @@
 using Authentication.DomainService.Authentication;
 using Authentication.DomainService.Utilities;
-using Azure.Core;
 using Blocks.Genesis;
 using Iam.DomainService.Accounts;
 using Iam.DomainService.Activities;
