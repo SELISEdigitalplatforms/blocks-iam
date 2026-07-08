@@ -84,6 +84,23 @@ export const OrganizationUsersTable = ({ users, isLoading }: OrganizationUsersTa
         ),
       },
       {
+        id: "status",
+        accessorFn: (row) => row.active,
+        header: () => (
+          <FilterControls.SortHeader
+            id="Active"
+            label="Status"
+            value={sortQueryParams}
+            onChange={setSortQueryParams}
+          />
+        ),
+        cell: (info) => (
+          <Badge variant={info.row.original.active ? "success" : "error"} className="w-fit">
+            {info.row.original.active ? "Active" : "Inactive"}
+          </Badge>
+        ),
+      },
+      {
         accessorKey: "logInCount",
         header: () => (
           <FilterControls.SortHeader
@@ -120,23 +137,6 @@ export const OrganizationUsersTable = ({ users, isLoading }: OrganizationUsersTa
             </div>
           );
         },
-      },
-      {
-        id: "status",
-        accessorFn: (row) => row.active,
-        header: () => (
-          <FilterControls.SortHeader
-            id="Active"
-            label="Status"
-            value={sortQueryParams}
-            onChange={setSortQueryParams}
-          />
-        ),
-        cell: (info) => (
-          <Badge variant={info.row.original.active ? "success" : "error"} className="w-fit">
-            {info.row.original.active ? "Active" : "Inactive"}
-          </Badge>
-        ),
       },
     ],
     [setSortQueryParams, sortQueryParams],
