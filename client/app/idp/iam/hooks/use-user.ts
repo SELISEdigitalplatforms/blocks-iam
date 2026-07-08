@@ -93,6 +93,21 @@ export const useGetUserById = (
   });
 };
 
+export const useCheckUserExists = (
+  email: string,
+  queryOptions?: { enabled?: boolean },
+) => {
+  const trimmed = email?.trim() ?? "";
+  const isValidEmail = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(trimmed);
+  return useQuery({
+    queryKey: ["user-exists", trimmed.toLowerCase()],
+    queryFn: () => userService.isUserExist(trimmed),
+    enabled: isValidEmail && (queryOptions?.enabled ?? true),
+    retry: false,
+    staleTime: 30_000,
+  });
+};
+
 export const useAddUser = () => {
   const queryClient = useQueryClient();
   return useMutation({

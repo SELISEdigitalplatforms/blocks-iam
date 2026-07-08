@@ -107,6 +107,10 @@ export class UserService {
     return serviceInstances.idpService.post(USER_ENDPOINTS.CREATE, createPayload);
   }
 
+  isUserExist(email: string): Promise<{ isSuccess: boolean; exists: boolean }> {
+    return serviceInstances.idpService.get(`${USER_ENDPOINTS.EXISTS}?email=${encodeURIComponent(email)}`);
+  }
+
   updateUser(payload: IUpdateUserPayload): Promise<IUpdateUserResponse> {
     const flattenRecord = (value: unknown): string[] => {
       if (!value) return [];
