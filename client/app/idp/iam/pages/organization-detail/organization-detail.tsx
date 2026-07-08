@@ -5,24 +5,11 @@ import {
 } from "@/constants/breadcrumb-custom-title";
 import { useGetOrganizationById } from "@blocks-idp/iam/hooks/use-organization";
 import { useProjectStore } from "@seliseblocks/blocks-kit";
-import { Card, CardContent, CardHeader } from "@/components/ui-kits/card/card";
+import { Card } from "@/components/ui-kits/card/card";
 import { Badge } from "@/components/ui-kits/badge/badge";
 import { Separator } from "@/components/ui-kits/separator/separator";
 import { Skeleton } from "@/components/ui-kits/skeleton/skeleton";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui-kits/tabs/tabs";
-import {
-  Building2,
-  Calendar,
-  Clock,
-  Globe,
-  Hash,
-  Languages,
-  Mail,
-  MapPin,
-  Phone,
-  Tag,
-  Users,
-} from "lucide-react";
+import { Building2, Calendar, Globe, Mail, Phone, Tag } from "lucide-react";
 import {
   OrganizationUsers,
   InviteOrganizationUser,
@@ -36,14 +23,12 @@ type InfoRowProps = {
 };
 
 const InfoRow = ({ icon, label, value }: InfoRowProps) => (
-  <div className="flex items-start gap-3 py-3">
-    <div className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-md bg-muted text-muted-foreground">
+  <div className="flex items-center justify-between gap-3 py-2 text-sm">
+    <span className="flex shrink-0 items-center gap-2 text-muted-foreground">
       {icon}
-    </div>
-    <div className="min-w-0 flex-1">
-      <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">{label}</p>
-      <div className="mt-0.5 break-words text-sm text-high-emphasis">{value ?? "—"}</div>
-    </div>
+      {label}
+    </span>
+    <span className="truncate text-right font-medium text-high-emphasis">{value ?? "—"}</span>
   </div>
 );
 
@@ -82,171 +67,74 @@ export const OrganizationDetail = ({ id }: { id: string }) => {
 
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-10">
         <aside className="lg:col-span-3">
-          <Card className="sticky top-4 overflow-hidden border-none p-0 shadow-sm">
-            <div className="relative h-20 bg-gradient-to-br from-primary/15 via-primary/5 to-transparent" />
-            <div className="px-6">
-              <div className="-mt-10 flex h-20 w-20 items-center justify-center overflow-hidden rounded-2xl border-4 border-background bg-primary/10 text-primary shadow-sm">
+          <Card className="sticky top-4 border-none shadow-sm">
+            <div className="flex items-center gap-3">
+              <div className="flex h-11 w-11 shrink-0 items-center justify-center overflow-hidden rounded-lg bg-primary/10 text-sm font-semibold text-primary">
                 {org?.logoUrl ? (
                   <img src={org.logoUrl} alt={org.name} className="h-full w-full object-cover" />
                 ) : org?.name ? (
-                  <span className="text-xl font-semibold">{getInitials(org.name)}</span>
+                  getInitials(org.name)
                 ) : (
-                  <Building2 className="h-8 w-8" />
+                  <Building2 className="h-5 w-5" />
                 )}
               </div>
+              <div className="min-w-0 flex-1">
+                {isLoading ? (
+                  <Skeleton className="h-5 w-32" />
+                ) : (
+                  <h1 className="truncate text-base font-semibold text-high-emphasis">
+                    {org?.name ?? "Organization"}
+                  </h1>
+                )}
+                {org?.shortCode && (
+                  <p className="mt-0.5 flex items-center gap-1 text-xs text-muted-foreground">
+                    <Tag className="h-3 w-3" />@{org.shortCode}
+                  </p>
+                )}
+              </div>
+              {org && (
+                <Badge variant={org.isEnabled ? "success" : "secondary"} className="shrink-0">
+                  {org.isEnabled ? "Active" : "Disabled"}
+                </Badge>
+              )}
             </div>
 
-            <CardHeader className="px-6 pb-4 pt-3">
-              {isLoading ? (
-                <div className="space-y-2">
-                  <Skeleton className="h-6 w-36" />
-                  <Skeleton className="h-4 w-24" />
-                </div>
-              ) : (
-                <>
-                  <div className="flex items-center gap-2">
-                    <h1 className="truncate text-lg font-semibold text-high-emphasis">
-                      {org?.name ?? "Organization"}
-                    </h1>
-                    {org && (
-                      <Badge
-                        variant={org.isEnabled ? "success" : "secondary"}
-                        className="shrink-0"
-                      >
-                        {org.isEnabled ? "Active" : "Disabled"}
-                      </Badge>
-                    )}
-                  </div>
-                  {org?.shortCode && (
-                    <p className="mt-1 flex items-center gap-1 text-xs text-muted-foreground">
-                      <Tag className="h-3 w-3" />@{org.shortCode}
-                    </p>
-                  )}
-                  {org?.description && (
-                    <p className="mt-2 line-clamp-3 text-sm text-muted-foreground">
-                      {org.description}
-                    </p>
-                  )}
-                </>
-              )}
-            </CardHeader>
+            {org?.description && (
+              <p className="mt-3 line-clamp-2 text-sm text-muted-foreground">
+                {org.description}
+              </p>
+            )}
 
-            <Separator />
+            <Separator className="my-4" />
 
-            <CardContent className="px-2 pb-2 pt-2">
-              <Tabs defaultValue="overview" className="w-full">
-                <TabsList className="mx-4 grid w-[calc(100%-2rem)] grid-cols-2">
-                  <TabsTrigger value="overview">Overview</TabsTrigger>
-                  <TabsTrigger value="regional">Regional</TabsTrigger>
-                </TabsList>
-
-                <TabsContent
-                  value="overview"
-                  className="mt-2 space-y-0 divide-y divide-border px-4"
-                >
-                  <InfoRow
-                    icon={<Hash className="h-4 w-4" />}
-                    label="Organization ID"
-                    value={org?.itemId}
-                  />
-                  <InfoRow
-                    icon={<Hash className="h-4 w-4" />}
-                    label="Short Code"
-                    value={org?.shortCode}
-                  />
-                  <InfoRow
-                    icon={<Mail className="h-4 w-4" />}
-                    label="Email"
-                    value={org?.email}
-                  />
-                  <InfoRow
-                    icon={<Phone className="h-4 w-4" />}
-                    label="Phone"
-                    value={org?.phoneNumber}
-                  />
-                  <InfoRow
-                    icon={<Globe className="h-4 w-4" />}
-                    label="Website"
-                    value={org?.websiteUrl}
-                  />
-                  <InfoRow
-                    icon={<Calendar className="h-4 w-4" />}
-                    label="Created"
-                    value={formatDate(org?.createdDate)}
-                  />
-                  <InfoRow
-                    icon={<Calendar className="h-4 w-4" />}
-                    label="Updated"
-                    value={formatDate(org?.lastUpdatedDate)}
-                  />
-                </TabsContent>
-
-                <TabsContent
-                  value="regional"
-                  className="mt-2 space-y-0 divide-y divide-border px-4"
-                >
-                  <InfoRow
-                    icon={<Clock className="h-4 w-4" />}
-                    label="Time Zone"
-                    value={org?.timeZone}
-                  />
-                  <InfoRow
-                    icon={<Languages className="h-4 w-4" />}
-                    label="Language"
-                    value={org?.language}
-                  />
-                  <InfoRow
-                    icon={<Languages className="h-4 w-4" />}
-                    label="Locale"
-                    value={org?.locale}
-                  />
-                  <InfoRow
-                    icon={<Hash className="h-4 w-4" />}
-                    label="Date Format"
-                    value={org?.dateFormat}
-                  />
-                  <InfoRow
-                    icon={<Hash className="h-4 w-4" />}
-                    label="Time Format"
-                    value={org?.timeFormat}
-                  />
-                  <InfoRow
-                    icon={<Hash className="h-4 w-4" />}
-                    label="Currency"
-                    value={org?.currency}
-                  />
-                  <InfoRow
-                    icon={<Hash className="h-4 w-4" />}
-                    label="Industry"
-                    value={org?.industry}
-                  />
-                  <InfoRow
-                    icon={<MapPin className="h-4 w-4" />}
-                    label="Addresses"
-                    value={
-                      Array.isArray(org?.addresses) && org!.addresses.length > 0
-                        ? `${org!.addresses.length} configured`
-                        : "None"
-                    }
-                  />
-                </TabsContent>
-              </Tabs>
-            </CardContent>
+            <div className="divide-y divide-border">
+              <InfoRow icon={<Mail className="h-3.5 w-3.5" />} label="Email" value={org?.email} />
+              <InfoRow
+                icon={<Phone className="h-3.5 w-3.5" />}
+                label="Phone"
+                value={org?.phoneNumber}
+              />
+              <InfoRow
+                icon={<Globe className="h-3.5 w-3.5" />}
+                label="Website"
+                value={org?.websiteUrl}
+              />
+              <InfoRow
+                icon={<Calendar className="h-3.5 w-3.5" />}
+                label="Created"
+                value={formatDate(org?.createdDate)}
+              />
+            </div>
           </Card>
         </aside>
 
         <section className="lg:col-span-7">
           <div className="mb-4 flex flex-wrap items-start justify-between gap-3">
-            <div className="flex items-start gap-3">
-              <div className="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-md bg-muted text-muted-foreground">
-                <Users className="h-4 w-4" />
-              </div>
-              <div>
-                <h2 className="text-lg font-semibold text-high-emphasis md:text-xl">Members</h2>
-                <p className="mt-0.5 text-sm text-muted-foreground">
-                  People with access to this organization.
-                </p>
-              </div>
+            <div>
+              <h2 className="text-lg font-semibold text-high-emphasis md:text-xl">Members</h2>
+              <p className="mt-0.5 text-sm text-muted-foreground">
+                People with access to this organization.
+              </p>
             </div>
             <InviteOrganizationUser organizationId={id} />
           </div>
