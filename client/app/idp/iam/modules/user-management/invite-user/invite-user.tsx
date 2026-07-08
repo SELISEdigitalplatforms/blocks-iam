@@ -34,9 +34,13 @@ import { isErrorWithErrors } from "@/lib/error";
 import { PrimaryButton } from "@/components/action-buttons/primary-button";
 import { cn } from "@/lib/utils";
 import { useGetOrganizations } from "@blocks-idp/iam/hooks/use-organization";
+import { useGetRoles } from "@blocks-idp/iam/hooks/use-roles";
+import { useGetPermissions } from "@blocks-idp/iam/hooks/use-permission";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { userService } from "@blocks-idp/iam/services/user.service";
 import type { IUpdateUserAccessControlPayload } from "@blocks-idp/iam/models/user";
+import type { IRole } from "@blocks-idp/iam/models/role";
+import type { IPermission } from "@blocks-idp/iam/models/permission";
 import {
   Popover,
   PopoverContent,
@@ -44,6 +48,8 @@ import {
 } from "@/components/ui-kits/popover/popover";
 import { Checkbox } from "@/components/ui-kits/checkbox/checkbox";
 import { Badge } from "@/components/ui-kits/badge/badge";
+import { OrganizationRolesField } from "../user-memberships/organization-roles-field/organization-roles-field";
+import { OrganizationPermissionsField } from "../user-memberships/organization-permissions-field/organization-permissions-field";
 
 const DEFAULT_ORGANIZATION_ID = "default";
 
@@ -56,8 +62,13 @@ export const InviteUser = () => {
     mutationFn: (payload: IUpdateUserAccessControlPayload) =>
       userService.updateUserAccessControl(payload),
     onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["users"] });
       queryClient.invalidateQueries({ queryKey: ["user-by-id"] });
       queryClient.invalidateQueries({ queryKey: ["user"] });
+      queryClient.invalidateQueries({ queryKey: ["user-roles"] });
+      queryClient.invalidateQueries({ queryKey: ["user-permissions"] });
+      queryClient.invalidateQueries({ queryKey: ["organizations"] });
+      queryClient.invalidateQueries({ queryKey: ["organization"] });
     },
   });
   const isPending = isCreatePending || isAccessPending;
@@ -71,6 +82,21 @@ export const InviteUser = () => {
     page: 0,
     pageSize: 1000,
   });
+  const { data: rolesData } = useGetRoles({
+    page: 0,
+    pageSize: 1000,
+    sort: { property: "Name", isDescending: false },
+    filter: { search: "" },
+    projectKey: tenantId,
+  });
+  const { data: permissionsData } = useGetPermissions({
+    projectKey: tenantId,
+    page: 0,
+    pageSize: 1000,
+    search: "",
+    isBuiltIn: "",
+    roles: [],
+  });
 
   const form = useForm<InviteFormValues>({
     defaultValues: inviteUserFormDefaultValue,
@@ -81,6 +107,9 @@ export const InviteUser = () => {
   const emailValue = form.watch("email") ?? "";
   const selectedOrgIds = form.watch("organizationIds") ?? [];
   const isValidEmailFormat = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(emailValue.trim());
+
+  const [selectedRoles, setSelectedRoles] = useState<IRole[]>([]);
+  const [selectedPermissions, setSelectedPermissions] = useState<IPermission[]>([]);
 
   const { data: existsData, isFetching: isCheckingExists } = useCheckUserExists(
     emailValue,
@@ -201,8 +230,8 @@ export const InviteUser = () => {
           orgIds.map((organizationId) =>
             updateAccess({
               userId: existingUserId,
-              roles: [],
-              permissions: [],
+              roles: selectedRoles.map((role) => role.slug),
+              permissions: selectedPermissions.map((permission) => permission.name),
               organizationId,
             }).catch((err: unknown) => ({
               isSuccess: false as const,
@@ -261,7 +290,9 @@ export const InviteUser = () => {
 
   const isFormInvalid = !isValidEmailFormat
     ? true
-    : !exists && (!form.watch("firstName")?.trim() || !form.watch("lastName")?.trim());
+    : !exists
+      ? !form.watch("firstName")?.trim() || !form.watch("lastName")?.trim()
+      : selectedRoles.length === 0;
 
   return (
     <Dialog open={open} onOpenChange={setOpen}>
@@ -425,6 +456,16 @@ export const InviteUser = () => {
                     )}
                   />
                 </>
+              )}
+
+              {exists && isValidEmailFormat && (
+                <div className="flex flex-col gap-5 rounded-lg border bg-muted/10 p-4">
+                  <OrganizationRolesField roles={selectedRoles} onChange={setSelectedRoles} />
+                  <OrganizationPermissionsField
+                    permissions={selectedPermissions}
+                    onChange={setSelectedPermissions}
+                  />
+                </div>
               )}
             </div>
             <DialogFooter className="mt-6">

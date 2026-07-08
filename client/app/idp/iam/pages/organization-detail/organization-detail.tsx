@@ -4,13 +4,12 @@ import {
   BREADCRUMB_LINK_OVERRIDES,
 } from "@/constants/breadcrumb-custom-title";
 import { useGetOrganizationById } from "@blocks-idp/iam/hooks/use-organization";
-import { useGetUserById } from "@blocks-idp/iam/hooks/use-user";
 import { useProjectStore } from "@seliseblocks/blocks-kit";
 import { Card, CardTitle, CardDescription } from "@/components/ui-kits/card/card";
 import { Badge } from "@/components/ui-kits/badge/badge";
 import { Separator } from "@/components/ui-kits/separator/separator";
 import { Skeleton } from "@/components/ui-kits/skeleton/skeleton";
-import { Building2, Calendar, Globe, History, Mail, Phone } from "lucide-react";
+import { Building2, Calendar, Globe, History, Languages, Mail, MapPin, Phone } from "lucide-react";
 import {
   OrganizationUsers,
   InviteOrganizationUser,
@@ -56,15 +55,6 @@ export const OrganizationDetail = ({ id }: { id: string }) => {
   const { data, isLoading } = useGetOrganizationById({ itemId: id, projectKey: tenantId });
 
   const org: IOrganization | undefined = data?.organization;
-
-  const { data: updaterData } = useGetUserById(
-    { id: org?.lastUpdatedBy ?? "", projectKey: tenantId },
-    { enabled: !!org?.lastUpdatedBy && !!tenantId },
-  );
-  const updater = updaterData?.data;
-  const updaterName = updater
-    ? `${updater.firstName ?? ""} ${updater.lastName ?? ""}`.trim() || updater.email
-    : undefined;
 
   BREADCRUMB_CUSTOM_TITLES["/app/organization-detail"] = "Organizations";
   BREADCRUMB_CUSTOM_TITLES["/app/organizations"] = "Organizations";
@@ -134,6 +124,20 @@ export const OrganizationDetail = ({ id }: { id: string }) => {
                 value={org?.websiteUrl}
               />
               <InfoRow
+                icon={<Languages className="h-3.5 w-3.5" />}
+                label="Language"
+                value={org?.language}
+              />
+              <InfoRow
+                icon={<MapPin className="h-3.5 w-3.5" />}
+                label="Addresses"
+                value={
+                  Array.isArray(org?.addresses) && org!.addresses.length > 0
+                    ? `${org!.addresses.length} configured`
+                    : "None"
+                }
+              />
+              <InfoRow
                 icon={<Calendar className="h-3.5 w-3.5" />}
                 label="Created"
                 value={formatDate(org?.createdDate)}
@@ -141,18 +145,7 @@ export const OrganizationDetail = ({ id }: { id: string }) => {
               <InfoRow
                 icon={<History className="h-3.5 w-3.5" />}
                 label="Updated"
-                value={
-                  org?.lastUpdatedDate && (
-                    <>
-                      <div>{formatDate(org.lastUpdatedDate)}</div>
-                      {updaterName && (
-                        <div className="text-xs font-normal text-muted-foreground">
-                          by {updaterName}
-                        </div>
-                      )}
-                    </>
-                  )
-                }
+                value={formatDate(org?.lastUpdatedDate)}
               />
             </div>
           </Card>
