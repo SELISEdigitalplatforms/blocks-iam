@@ -1220,7 +1220,7 @@ namespace Iam.DomainService.Resources
             ApplyProperty(request.Currency, value => organization.Currency = value, v => !string.IsNullOrWhiteSpace(v));
             ApplyProperty(request.TimeZone, value => organization.TimeZone = value, v => !string.IsNullOrWhiteSpace(v));
             ApplyProperty(request.Industry, value => organization.Industry = value, v => !string.IsNullOrWhiteSpace(v));
-            ApplyProperty(request.IsEnable, value => organization.IsEnabled = value ?? false, v => v.HasValue);
+            ApplyProperty(request.IsEnable, value => organization.IsDisabled = !(value ?? false), v => v.HasValue);
 
             await _resourceRepository.SaveOrganizationAsync(organization);
             return new BaseResponse { IsSuccess = true };
