@@ -139,8 +139,9 @@ namespace Authentication.DomainService.Utilities
 
             serviceCollection.AddSingleton<TenantConnectionFactory>();
             serviceCollection.AddSingleton<ITenantPermissionPropagator, TenantPermissionPropagator>();
-            // ITenantEnumeration / IMongoDatabase (root) are registered in Worker/Program.cs
-            // only. The worker owns tenant enumeration + caching; the publisher is fire-and-forget.
+            // ITenantEnumeration / IMongoDatabase (root) must be registered by every host that
+            // calls RegisterAllServices — TenantPermissionPropagator depends on both. See
+            // Api/Program.cs and Worker/Program.cs for the per-host registrations.
 
             serviceCollection.AddSingleton<IUserManagementQueryService, UserManagementQueryService>();
             serviceCollection.AddSingleton<IResourceQueryService, ResourceQueryService>();
