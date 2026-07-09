@@ -61,7 +61,7 @@ export const RolesPermissionsPillEditor = ({
   onSave,
 }: RolesPermissionsPillEditorProps) => {
   return (
-    <div className="space-y-6">
+    <div className="flex min-h-0 flex-1 flex-col gap-6 overflow-y-auto pr-1">
       <div>
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div>
@@ -74,7 +74,7 @@ export const RolesPermissionsPillEditor = ({
             onSave={onSave}
           />
         </div>
-        <div className="mt-3 flex flex-wrap items-center gap-2">
+        <div className="mt-3 flex max-h-[280px] flex-wrap items-start gap-2 overflow-y-auto pr-1">
           {roles.length === 0 ? (
             <div className="flex w-full flex-col items-center justify-center rounded-lg border border-dashed bg-muted/20 py-8 text-center">
               <div className="mx-auto flex h-10 w-10 items-center justify-center rounded-full bg-primary/10">
@@ -111,7 +111,7 @@ export const RolesPermissionsPillEditor = ({
             onSave={onSave}
           />
         </div>
-        <div className="mt-3 flex flex-wrap items-center gap-2">
+        <div className="mt-3 flex max-h-[280px] flex-wrap items-start gap-2 overflow-y-auto pr-1">
           {permissions.length === 0 ? (
             <div className="flex w-full flex-col items-center justify-center rounded-lg border border-dashed bg-muted/20 py-8 text-center">
               <div className="mx-auto flex h-10 w-10 items-center justify-center rounded-full bg-primary/10">
