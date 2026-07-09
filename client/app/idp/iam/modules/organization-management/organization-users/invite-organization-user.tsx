@@ -98,10 +98,10 @@ export const InviteOrganizationUser = ({ organizationId }: InviteOrganizationUse
     pageSize: 1000,
   });
 
-  // Treat a missing/undefined isEnabled as enabled — only explicitly disabled
-  // orgs (isEnabled === false) should be excluded from the picker.
+  // Treat a missing/undefined isDisabled as enabled — only explicitly disabled
+  // orgs (isDisabled === true) should be excluded from the picker.
   const enabledOrgs = useMemo(
-    () => (orgsData?.organizations ?? []).filter((org) => org.isEnabled !== false),
+    () => (orgsData?.organizations ?? []).filter((org) => org.isDisabled !== true),
     [orgsData?.organizations],
   );
 
@@ -156,7 +156,7 @@ const orgOptions = useMemo(() => {
   );
   return hideDefault
     ? list
-    : [{ itemId: DEFAULT_ORGANIZATION_ID, name: "Default", isEnabled: true }, ...list];
+    : [{ itemId: DEFAULT_ORGANIZATION_ID, name: "Default", isDisabled: false }, ...list];
 }, [enabledOrgs, existingUserOrgIds]);
 
   const orgIdToName = useMemo(() => {

@@ -88,7 +88,7 @@ export const MultiOrgAccess = ({ userId, projectKey }: MultiOrgAccessProps) => {
       return {
         organizationId: orgId,
         name: org?.name || orgId,
-        isEnabled: org?.isEnabled ?? true,
+        isEnabled: org ? !org.isDisabled : true,
         roleCount: roleSlugs.length,
         permissionCount: permissionNames.length,
       };

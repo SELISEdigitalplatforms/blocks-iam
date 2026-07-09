@@ -28,6 +28,8 @@ import {
   IUpdateUserResponse,
   IUpdateUserAccessControlPayload,
   IUpdateUserAccessControlResponse,
+  IRevokeAccessPayload,
+  IRevokeAccessResponse,
   IGetSignUpSettingResponse,
   ISaveSignUpSettingPayload,
   ISaveSignUpSettingResponse,
@@ -169,6 +171,10 @@ export class UserService {
     payload: IUpdateUserAccessControlPayload,
   ): Promise<IUpdateUserAccessControlResponse> {
     return serviceInstances.idpService.post(USER_ENDPOINTS.ACCESS_CONTROL, payload);
+  }
+
+  revokeAccess(payload: IRevokeAccessPayload): Promise<IRevokeAccessResponse> {
+    return serviceInstances.idpService.post(USER_ENDPOINTS.REVOKE_ACCESS, payload);
   }
 
 async getSessions(
