@@ -372,6 +372,8 @@ namespace Authentication.DomainService.Services
                 existing.AccessTokenValidForNumberMinutes = request.AccessTokenValidForNumberMinutes;
                 existing.LastUpdatedBy = blocksContext?.UserId;
                 existing.LastUpdatedDate = DateTime.UtcNow;
+                existing.Roles = request.Roles;
+                existing.Permissions = request.Permissions;
 
                 return await _authenticationRepository.SaveClientCredentialAsync(existing);
             }
