@@ -4,6 +4,7 @@ import { Button } from "@/components/ui-kits/button/button";
 import { showErrorToast } from "@/hooks/use-toast";
 import { Settings2 } from "lucide-react";
 import { OS_APP, initiateAppLogin } from "@/components/blocks-app-launcher/blocks-app-launcher";
+import { useProjectStore } from "@seliseblocks/blocks-kit";
 
 interface OrganizationConfigProps {
   trigger?: ReactNode;
@@ -12,14 +13,16 @@ interface OrganizationConfigProps {
 
 export const OrganizationConfig = ({ trigger }: OrganizationConfigProps) => {
   const [isRedirecting, setIsRedirecting] = useState(false);
+  const { tenantId } = useProjectStore().selectedProject || { tenantId: "" };
 
   const handleRedirectToOs = async () => {
     if (isRedirecting) return;
     try {
       setIsRedirecting(true);
+      const projectSegment = tenantId ? `/${tenantId}` : "";
       await initiateAppLogin(
         OS_APP,
-        "/app/idp/settings?settingsTab=organization-config",
+        `/app${projectSegment}/idp/settings?settingsTab=organization-config`,
       );
     } catch (error) {
       console.error("OS app login initiation error:", error);

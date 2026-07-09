@@ -1,11 +1,7 @@
 import { useGetUserById } from "@blocks-idp/iam/hooks/use-user";
-import { Badge } from "@/components/ui-kits/badge/badge";
 import { Card, CardContent } from "@/components/ui-kits/card/card";
-import { Skeleton } from "@/components/ui-kits/skeleton/skeleton";
-import { CopyToClipboardButton } from "@/components/copy-to-clipboard-button";
 import { ProfileImageUploader } from "@blocks-idp/iam/components/profile-image-uploader";
-// import { UpdateUser } from "@blocks-idp/iam/modules/user-management/update-user";
-import { Activity, Calendar, ShieldCheck } from "lucide-react";
+import { Activity, Calendar, Shield } from "lucide-react";
 
 type UserProfileSidebarProps = {
   id: string;
@@ -19,13 +15,13 @@ type InfoRowProps = {
 };
 
 const InfoRow = ({ icon, label, value }: InfoRowProps) => (
-  <div className="flex items-center gap-3 border-b px-4 py-2.5 text-sm last:border-0">
-    <span className="flex shrink-0 items-center gap-2 text-muted-foreground">
+  <div className="flex items-start gap-3 py-2.5">
+    <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-muted/60">
       {icon}
-      {label}
-    </span>
-    <div className="ml-auto min-w-0 truncate text-right font-medium text-high-emphasis">
-      {value ?? "—"}
+    </div>
+    <div className="min-w-0 flex-1">
+      <p className="text-xs font-medium uppercase tracking-wider text-muted-foreground/70">{label}</p>
+      <div className="mt-0.5 text-sm font-medium text-foreground">{value ?? "—"}</div>
     </div>
   </div>
 );
@@ -44,72 +40,57 @@ const formatLastLogin = (value?: string) => {
 };
 
 export const UserProfileSidebar = ({ id, projectKey }: UserProfileSidebarProps) => {
-  const { data, isLoading } = useGetUserById({ id, projectKey });
+  const { data } = useGetUserById({ id, projectKey });
   const user = data?.data;
 
   return (
-    <div className="space-y-5">
-      <div className="flex items-center gap-3">
+    <Card className="overflow-hidden border-0 bg-transparent shadow-none">
+      {/* Avatar */}
+      <div className="relative mx-auto w-full max-w-[280px]" style={{ aspectRatio: "1 / 1" }}>
         <ProfileImageUploader
           id={id}
           projectKey={projectKey}
-          className="h-24 w-24 rounded-full"
-          containerClassName="w-auto shrink-0"
+          containerClassName="h-full w-full"
+          className="h-full w-full max-w-none rounded-full bg-transparent shadow-none dark:bg-transparent"
         />
-        <div className="min-w-0 flex-1">
-          <div className="flex items-center gap-1">
-            {isLoading ? (
-              <Skeleton className="h-6 w-32" />
-            ) : (
-              <h3 className="truncate text-xl font-bold tracking-tight text-high-emphasis">
-                {user?.firstName} {user?.lastName}
-              </h3>
-            )}
-            {/* <UpdateUser id={id} projectKey={projectKey} iconOnly /> */}
-          </div>
-
-          {isLoading ? (
-            <Skeleton className="mt-1 h-4 w-36" />
-          ) : (
-            user?.email && (
-              <CopyToClipboardButton textToCopy={user.email} isHoverable>
-                <span className="truncate text-sm text-muted-foreground">{user.email}</span>
-              </CopyToClipboardButton>
-            )
-          )}
-        </div>
       </div>
 
-      <Card className="p-0">
-        <CardContent className="p-0">
-          <p className="px-4 pt-4 text-base font-semibold text-high-emphasis">
-            Account Details
-          </p>
-          <div className="mt-1">
-            <InfoRow
-              icon={<ShieldCheck className="h-3.5 w-3.5" />}
-              label="Status"
-              value={
-                user && (
-                  <Badge variant={user.active ? "success" : "secondary"}>
-                    {user.active ? "Active" : "Inactive"}
-                  </Badge>
-                )
-              }
-            />
-            <InfoRow
-              icon={<Activity className="h-3.5 w-3.5" />}
-              label="Total logins"
-              value={user?.logInCount ?? 0}
-            />
-            <InfoRow
-              icon={<Calendar className="h-3.5 w-3.5" />}
-              label="Last login"
-              value={formatLastLogin(user?.lastLoggedInTime)}
-            />
-          </div>
-        </CardContent>
-      </Card>
-    </div>
+      {/* Account details */}
+      <CardContent className="mt-4 w-full rounded-sm border bg-card p-5 shadow-sm">
+        <p className="mb-3 text-[10px] font-semibold uppercase tracking-widest text-muted-foreground/60">
+          Account details
+        </p>
+        <InfoRow
+          icon={<Shield className="h-4 w-4 text-muted-foreground" />}
+          label="Status"
+          value={
+            <span
+              className={`mt-0.5 inline-flex w-fit items-center gap-1.5 rounded-full px-2.5 py-1 text-[11px] font-semibold ${
+                user?.active
+                  ? "bg-emerald-500/15 text-emerald-600 dark:text-emerald-400"
+                  : "bg-red-500/15 text-red-600 dark:text-red-400"
+              }`}
+            >
+              <span
+                className={`h-1.5 w-1.5 rounded-full ${
+                  user?.active ? "bg-emerald-500" : "bg-red-500"
+                }`}
+              />
+              {user?.active ? "Active" : "Inactive"}
+            </span>
+          }
+        />
+        <InfoRow
+          icon={<Activity className="h-4 w-4 text-muted-foreground" />}
+          label="Total logins"
+          value={user?.logInCount ?? 0}
+        />
+        <InfoRow
+          icon={<Calendar className="h-4 w-4 text-muted-foreground" />}
+          label="Last login"
+          value={formatLastLogin(user?.lastLoggedInTime)}
+        />
+      </CardContent>
+    </Card>
   );
 };
