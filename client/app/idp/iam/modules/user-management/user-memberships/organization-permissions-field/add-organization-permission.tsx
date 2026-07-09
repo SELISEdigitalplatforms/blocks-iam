@@ -98,7 +98,7 @@ export const AddOrganizationPermission = ({
           <span className="sr-only sm:not-sr-only">Add Permission</span>
         </Button>
       </DialogTrigger>
-      <DialogContent className="max-h-[420px] flex flex-col gap-3 overflow-hidden">
+      <DialogContent className="flex max-h-[560px] flex-col gap-3 overflow-hidden">
         <DialogHeader>
           <DialogTitle className="text-left">Add permissions</DialogTitle>
           <DialogDescription></DialogDescription>
