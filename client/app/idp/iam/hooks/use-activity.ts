@@ -10,6 +10,44 @@ export const useGetSessions = (option: IGetSessionPayload) => {
   });
 };
 
+export const useGetSessionById = (sessionId: string, options?: { enabled?: boolean }) => {
+  return useQuery({
+    queryKey: ["session", sessionId],
+    queryFn: () => userService.getSessionById(sessionId),
+    enabled: (options?.enabled ?? true) && !!sessionId,
+  });
+};
+
+export const useGetSessionTimeline = (sessionId: string, options?: { enabled?: boolean }) => {
+  return useQuery({
+    queryKey: ["session-timeline", sessionId],
+    queryFn: () => userService.getSessionTimeline(sessionId),
+    enabled: (options?.enabled ?? true) && !!sessionId,
+  });
+};
+
+export const useRevokeSession = () => {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (sessionId: string) => userService.revokeSession(sessionId),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["sessions"] });
+      queryClient.invalidateQueries({ queryKey: ["session"] });
+      queryClient.invalidateQueries({ queryKey: ["session-timeline"] });
+    },
+  });
+};
+
+export const useRevokeAllSessions = () => {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (userId: string) => userService.revokeAllSessions(userId),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["sessions"] });
+    },
+  });
+};
+
 export const useGetHistories = (option: IGetHistoriesPayload) => {
   return useQuery({
     queryKey: ["histories", option],

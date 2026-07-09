@@ -156,8 +156,19 @@ export interface IGetSessionPayload {
 export interface IGetHistoriesPayload {
   page: number;
   pageSize: number;
-  filter: { UserId: string };
+  filter: {
+    UserId: string;
+    FromDate?: string;
+    ToDate?: string;
+    Event?: string;
+    IpAddress?: string;
+  };
   projectKey: string;
+}
+
+export interface IRevokeSessionResponse {
+  isSuccess: boolean;
+  errors?: unknown;
 }
 
 export interface IGeneratePATPayload {
@@ -263,6 +274,29 @@ export interface IDeviceSessionResponse {
   totalCount: number;
   data: IDeviceSession[];
   errors: unknown;
+}
+
+export interface IRefreshTokenStatus {
+  tokenId: string;
+  isRevoked: boolean;
+  issuedAt: string;
+  absoluteExpiry: string;
+  revokedAt: string | null;
+  revokeReason: string | null;
+}
+
+export interface IRevokedAccessToken {
+  jti: string;
+  revokedAt: string;
+  reason: string;
+}
+
+export interface ISessionTimeline {
+  sessionId: string;
+  session: IDeviceSession;
+  refreshTokenStatus: IRefreshTokenStatus;
+  revokedAccessTokens: IRevokedAccessToken[];
+  lifecycle: IHistories[];
 }
 
 export interface IPATResponse {
