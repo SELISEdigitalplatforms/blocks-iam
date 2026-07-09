@@ -13,10 +13,6 @@ export const OrganizationPermissionsField = ({
   permissions,
   onChange,
 }: OrganizationPermissionsFieldProps) => {
-  const onAddHandler = (newPermissions: IPermission[]) => {
-    onChange([...permissions, ...newPermissions]);
-  };
-
   const onRemoveHandler = (permission: IPermission) => {
     onChange(permissions.filter((item) => item.resource !== permission.resource));
   };
@@ -38,7 +34,7 @@ export const OrganizationPermissionsField = ({
           </p>
         </div>
         <div className="shrink-0">
-          <AddOrganizationPermission onAdd={onAddHandler} permissions={permissions} />
+          <AddOrganizationPermission onChange={onChange} permissions={permissions} />
         </div>
       </div>
       {permissions.length === 0 ? (
