@@ -170,9 +170,18 @@ const orgOptions = useMemo(() => {
     }
   }, [open, form, organizationId]);
 
+  // If the current selected org becomes hidden (because the existing user is
+  // already a member of it), drop the selection so the trigger label and the
+  // submit-time org id stay in sync with the filtered dropdown.
+  useEffect(() => {
+    if (!open) return;
+    if (selectedOrgId && existingUserOrgIds.has(selectedOrgId)) {
+      setSelectedOrgId("");
+    }
+  }, [open, existingUserOrgIds, selectedOrgId]);
+
   const isFormInvalid =
     !isValidEmailFormat ||
-    !selectedOrgId ||
     (exists && (isFetchingExistingUser || !existingUserId)) ||
     (!exists && (!form.watch("firstName")?.trim() || !form.watch("lastName")?.trim()));
 
@@ -327,6 +336,13 @@ const orgOptions = useMemo(() => {
                     </PopoverTrigger>
                     <PopoverContent className="w-[--radix-popover-trigger-width] p-0" align="start">
                       <div className="max-h-[260px] overflow-y-auto p-1">
+                        {orgOptions.length === 0 && !isOrgsLoading && (
+                          <div className="px-2 py-1.5 text-sm text-muted-foreground">
+                            {exists
+                              ? "This user is already a member of all organizations"
+                              : "No organizations available"}
+                          </div>
+                        )}
                         {orgOptions.map((org) => {
                           const isSelected = selectedOrgId === org.itemId;
                           return (

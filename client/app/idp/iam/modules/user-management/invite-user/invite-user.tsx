@@ -114,6 +114,16 @@ export const InviteUser = () => {
     }
   }, [open, isConfigLoading, isMultiOrgEnabled, form]);
 
+  // If the form's currently selected org becomes hidden because the existing
+  // user is already a member of it, clear it so the trigger label and submit
+  // payload stay in sync with the filtered dropdown.
+  useEffect(() => {
+    if (!open) return;
+    if (selectedOrgId && existingUserOrgIds.has(selectedOrgId)) {
+      form.setValue("organizationIds", [], { shouldValidate: true });
+    }
+  }, [open, existingUserOrgIds, selectedOrgId, form]);
+
   // Treat a missing/undefined isDisabled as enabled — only explicitly disabled
   // orgs (isDisabled === true) should be excluded from the picker.
   const enabledOrgs = useMemo(
@@ -207,7 +217,6 @@ const orgOptions = useMemo(() => {
 
   const isFormInvalid =
     !isValidEmailFormat ||
-    !selectedOrgId ||
     isConfigLoading ||
     (exists && (isFetchingExistingUser || !existingUserId)) ||
     (!exists && (!form.watch("firstName")?.trim() || !form.watch("lastName")?.trim()));
@@ -306,6 +315,13 @@ const orgOptions = useMemo(() => {
                           align="start"
                         >
                           <div className="max-h-[260px] overflow-y-auto p-1">
+                            {orgOptions.length === 0 && !isOrgsLoading && (
+                              <div className="px-2 py-1.5 text-sm text-muted-foreground">
+                                {exists
+                                  ? "This user is already a member of all organizations"
+                                  : "No organizations available"}
+                              </div>
+                            )}
                             {orgOptions.map((org) => {
                               const isSelected = selectedOrgId === org.itemId;
                               return (
