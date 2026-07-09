@@ -178,20 +178,20 @@ export const UserProfile = ({ id }: { id: string }) => {
 
           {/* TabsList — col 2, row 1, bottom-aligned so its bottom meets the email line */}
           <div className="hidden md:col-start-2 md:row-start-1 md:flex md:items-end">
-            <TabsList className="h-8 w-fit p-0.5">
-              <TabsTrigger onClick={() => setTabId("security")} value="security" className="h-7 gap-1 px-2.5 text-xs">
+            <TabsList className="h-9 w-fit p-1">
+              <TabsTrigger onClick={() => setTabId("security")} value="security" className="h-7 gap-1.5 px-3 text-sm">
                 <Shield className="h-3.5 w-3.5" />
                 <span>Security</span>
               </TabsTrigger>
-              <TabsTrigger onClick={() => setTabId("devices")} value="devices" className="h-7 gap-1 px-2.5 text-xs">
+              <TabsTrigger onClick={() => setTabId("devices")} value="devices" className="h-7 gap-1.5 px-3 text-sm">
                 <Smartphone className="h-3.5 w-3.5" />
                 <span>Devices</span>
               </TabsTrigger>
-              <TabsTrigger onClick={() => setTabId("history")} value="history" className="h-7 gap-1 px-2.5 text-xs">
+              <TabsTrigger onClick={() => setTabId("history")} value="history" className="h-7 gap-1.5 px-3 text-sm">
                 <Clock className="h-3.5 w-3.5" />
                 <span>History</span>
               </TabsTrigger>
-              <TabsTrigger onClick={() => setTabId("personalAccessTokens")} value="personalAccessTokens" className="h-7 gap-1 px-2.5 text-xs">
+              <TabsTrigger onClick={() => setTabId("personalAccessTokens")} value="personalAccessTokens" className="h-7 gap-1.5 px-3 text-sm">
                 <Key className="h-3.5 w-3.5" />
                 <span>PATs</span>
               </TabsTrigger>
