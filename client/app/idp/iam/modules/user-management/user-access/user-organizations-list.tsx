@@ -114,10 +114,10 @@ export const UserOrganizationsList = ({
         )}
       </div>
 
-      <Button variant="outline" className="w-full gap-2" onClick={onManageClick}>
+      {/* <Button variant="outline" className="w-full gap-2" onClick={onManageClick}>
         <Plus className="h-4 w-4" />
         Manage Organizations
-      </Button>
+      </Button> */}
 
       {removeTarget && (
         <RemoveMembership
