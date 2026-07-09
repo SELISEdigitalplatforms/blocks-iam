@@ -169,16 +169,11 @@ export class UserService {
     return serviceInstances.idpService.post(USER_ENDPOINTS.ACCESS_CONTROL, payload);
   }
 
-  async getSessions(
+async getSessions(
     payload: IGetSessionPayload,
   ): Promise<IDeviceSessionResponse> {
-    const query = new URLSearchParams();
-    query.set("page", String(payload.page));
-    query.set("pageSize", String(payload.pageSize));
-    query.set("projectkey", payload.projectKey);
-    query.set("filter.userId", payload.filter.UserId);
     const res = await serviceInstances.idpService.get<IDeviceSessionResponse>(
-      `${USER_ENDPOINTS.GET_SESSIONS}?${query.toString()}`,
+      `${USER_ENDPOINTS.GET_SESSIONS}?page=${payload.page}&pageSize=${payload.pageSize}&userId=${payload.userId}`,
     );
     return res;
   }
@@ -202,16 +197,11 @@ export class UserService {
     );
   }
 
-  async getHistories(
+async getHistories(
     payload: IGetHistoriesPayload,
   ): Promise<IHistoriesResponse> {
-    const query = new URLSearchParams();
-    query.set("page", String(payload.page));
-    query.set("pageSize", String(payload.pageSize));
-    query.set("projectkey", payload.projectKey);
-    query.set("filter.userId", payload.filter.UserId);
     const res = await serviceInstances.idpService.get<IHistoriesResponse>(
-      `${USER_ENDPOINTS.GET_HISTORIES}?${query.toString()}`,
+      `${USER_ENDPOINTS.GET_HISTORIES}?page=${payload.page}&pageSize=${payload.pageSize}&userId=${payload.userId}`,
     );
     return res;
   }

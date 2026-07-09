@@ -150,14 +150,14 @@ export interface IUpdateUserAccessControlResponse {
 export interface IGetSessionPayload {
   page: number;
   pageSize: number;
-  filter: { UserId: string };
-  projectKey: string;
+  userId: string;
+  projectKey?: string;
 }
 export interface IGetHistoriesPayload {
   page: number;
   pageSize: number;
-  filter: { UserId: string };
-  projectKey: string;
+  userId: string;
+  projectKey?: string;
 }
 
 export interface IRevokeSessionResponse {

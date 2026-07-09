@@ -235,7 +235,7 @@ describe("UserService", () => {
       const result = await service.getSessions(mockGetSessionsPayload);
 
       expect(http.get).toHaveBeenCalledWith(
-        `${USER_ENDPOINTS.GET_SESSIONS}?page=${mockGetSessionsPayload.page}&pageSize=${mockGetSessionsPayload.pageSize}&projectkey=${mockGetSessionsPayload.projectKey}&filter.userId=${mockGetSessionsPayload.filter.UserId}`,
+        `${USER_ENDPOINTS.GET_SESSIONS}?page=${mockGetSessionsPayload.page}&pageSize=${mockGetSessionsPayload.pageSize}&userId=${mockGetSessionsPayload.userId}`,
       );
       expect(result.totalCount).toBe(1);
       expect(result.data[0].sessionId).toBe("s1");
@@ -278,7 +278,7 @@ describe("UserService", () => {
       const result = await service.getHistories(mockGetHistoriesPayload);
 
       expect(http.get).toHaveBeenCalledWith(
-        `${USER_ENDPOINTS.GET_HISTORIES}?page=${mockGetHistoriesPayload.page}&pageSize=${mockGetHistoriesPayload.pageSize}&projectkey=${mockGetHistoriesPayload.projectKey}&filter.userId=${mockGetHistoriesPayload.filter.UserId}`,
+        `${USER_ENDPOINTS.GET_HISTORIES}?page=${mockGetHistoriesPayload.page}&pageSize=${mockGetHistoriesPayload.pageSize}&userId=${mockGetHistoriesPayload.userId}`,
       );
       expect(result.totalCount).toBe(1);
       expect(result.data[0].event).toBe("login_via_password");

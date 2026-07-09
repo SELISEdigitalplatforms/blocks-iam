@@ -9,18 +9,17 @@ type DevicesProps = {
   projectKey: string;
 };
 
-export const UserDevices = ({ id, projectKey }: DevicesProps) => {
-  const [filter, setFilter] = useState({ page: 0, pageSize: 10, filter: { UserId: id } });
+export const UserDevices = ({ id }: DevicesProps) => {
+  const [filter, setFilter] = useState({ page: 0, pageSize: 10, userId: id });
   const { isLoading, isFetching, data, refetch } = useGetSessions({
     ...filter,
-    projectKey,
   });
   const loading = isLoading || isFetching;
 
   return (
     <Card>
       <CardHeader>
-        <h3 className="text-base font-semibold text-high-emphasis">Active Sessions</h3>
+        <h3 className="text-base font-semibold text-high-emphasis">Sessions</h3>
         <p className="mt-0.5 text-sm text-muted-foreground">
           These are the places where you&apos;re currently signed in.
         </p>
