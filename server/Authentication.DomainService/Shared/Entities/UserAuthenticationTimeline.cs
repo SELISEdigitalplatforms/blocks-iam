@@ -14,7 +14,5 @@ namespace Authentication.DomainService.Entities
         public string? IpAddresses { get; set; }
         public string? Event { get; set; }
         public string? ActionBy { get; set; }
-        public DateTime CreatedDate { get; set; }
-        public DateTime LastUpdatedDate { get; set; }
     }
 }

@@ -4,6 +4,7 @@ using Iam.DomainService.Dtos;
 using Iam.DomainService.Entities;
 using Iam.DomainService.Enums;
 using Iam.DomainService.Resources.ResponseModel;
+using Iam.DomainService.Resources.TenantPropagation;
 using Iam.DomainService.Services;
 using Iam.DomainService.Shared.Entities;
 using Iam.DomainService.Utilities;
@@ -20,6 +21,7 @@ namespace Iam.DomainService.Resources
         private readonly IValidator<CreatePermissionRequest> _permissionValidator;
         private readonly IValidator<UpdatePermissionRequest> _updatepPermissionValidator;
         private readonly IValidator<CreateRoleRequest> _roleValidator;
+        private readonly ITenantPermissionPropagator _tenantPermissionPropagator;
 
         public ResourceMutationService(
             ILogger<ResourceMutationService> logger,
@@ -27,7 +29,8 @@ namespace Iam.DomainService.Resources
             IIdentityAccessManagementService identityAccessManagementService,
             IValidator<CreatePermissionRequest> permissionValidator,
             IValidator<UpdatePermissionRequest> updatepPermissionValidator,
-            IValidator<CreateRoleRequest> roleValidator
+            IValidator<CreateRoleRequest> roleValidator,
+            ITenantPermissionPropagator tenantPermissionPropagator
         )
         {
             _logger = logger;
@@ -36,6 +39,7 @@ namespace Iam.DomainService.Resources
             _permissionValidator = permissionValidator;
             _updatepPermissionValidator = updatepPermissionValidator;
             _roleValidator = roleValidator;
+            _tenantPermissionPropagator = tenantPermissionPropagator;
         }
 
         public async Task<BaseMutationResponse> CreatePermissionAsync(CreatePermissionRequest command)
@@ -76,8 +80,9 @@ namespace Iam.DomainService.Resources
                 }
             );
 
+
             var tenantConfig = await _resourceRepository.GetTenantConfigurationAsync();
-            if (tenantConfig.IsMultiOrgEnabled && command.PropagateToOtherOrg)
+            if (tenantConfig.IsMultiOrgEnabled && blocksContext.OrganizationId == "default")
             {
                 await _identityAccessManagementService.SendToQueueAsync(
                     IdpConstants.IamOrgQueue,
@@ -290,17 +295,21 @@ namespace Iam.DomainService.Resources
 
             await _resourceRepository.UpdateAllSamePermissionAsync(permission);
 
+            var mutationAction = command.IsArchived
+                ? MutationEventType.Delete
+                : MutationEventType.Update;
+
             await SendResourceMutationEventAsync(
                 new ResourceMutationEvent
                 {
-                    Action = MutationEventType.Update,
+                    Action = mutationAction,
                     ItemId = permission.ItemId,
                     Entity = ResourceEntity.Permission
                 }
             );
 
             var tenantConfig = await _resourceRepository.GetTenantConfigurationAsync();
-            if (tenantConfig.IsMultiOrgEnabled & command.PropagateToOtherOrg)
+            if (tenantConfig.IsMultiOrgEnabled && blocksContext.OrganizationId == "default")
             {
                 await _identityAccessManagementService.SendToQueueAsync(
                     IdpConstants.IamOrgQueue,
@@ -492,6 +501,7 @@ namespace Iam.DomainService.Resources
                     }
                 };
             }
+            var currentOrganizationId = ResolveOrganizationId(command?.OragnizationId ?? "");
 
             if (command.AddPermissions.Any())
             {
@@ -500,10 +510,9 @@ namespace Iam.DomainService.Resources
 
             if (command.RemovePermissions.Any())
             {
-                await _resourceRepository.RemoveRolePermissionByIdsAsync(command.Slug, command.RemovePermissions);
+                await _resourceRepository.RemoveRolePermissionByIdsAsync(command.Slug, command.RemovePermissions, currentOrganizationId);
             }
-
-            var currentOrganizationId = ResolveOrganizationId(BlocksContext.GetContext()?.OrganizationId);
+            
             var tenantConfig = await _resourceRepository.GetTenantConfigurationAsync();
 
             await SendResourceSetToPermissionMutationEventAsync(
@@ -837,6 +846,18 @@ namespace Iam.DomainService.Resources
 
             var result = await _resourceRepository.SaveResourceTimelineAsync(timeline);
 
+            if(permission.IsBuiltIn)
+            {
+                await _identityAccessManagementService.SendToQueueAsync(
+                    IdpConstants.IamPermissionQueue,
+                    new PermissionMutationForTenantsEvent
+                    {
+                        Action = context.Action,
+                        ItemId = context.ItemId
+                    }
+                );
+            }
+
             return result;
         }
 
@@ -861,6 +882,19 @@ namespace Iam.DomainService.Resources
             await _resourceRepository.UpdateRolesCountAsync(role.Slug);
 
             return result;
+        }
+
+        public async Task ExecutePermissionMutationForTenantsAsync(PermissionMutationForTenantsEvent context)
+        {
+            _logger.LogInformation(
+                "Tenant permission propagation start. ItemId={ItemId} Action={Action}",
+                context.ItemId, context.Action);
+
+            var summary = await _tenantPermissionPropagator.PropagateAsync(context);
+
+            _logger.LogInformation(
+                "Tenant permission propagation done. ItemId={ItemId} Action={Action} Attempted={Attempted} Succeeded={Succeeded} Failed={Failed}",
+                context.ItemId, context.Action, summary.TenantsAttempted, summary.TenantsSucceeded, summary.TenantsFailed);
         }
 
         public async Task<bool> ProcessPermissionAsync(ResourceSetToPermissionMutationEvent command)
@@ -1220,7 +1254,7 @@ namespace Iam.DomainService.Resources
             ApplyProperty(request.Currency, value => organization.Currency = value, v => !string.IsNullOrWhiteSpace(v));
             ApplyProperty(request.TimeZone, value => organization.TimeZone = value, v => !string.IsNullOrWhiteSpace(v));
             ApplyProperty(request.Industry, value => organization.Industry = value, v => !string.IsNullOrWhiteSpace(v));
-            ApplyProperty(request.IsEnable, value => organization.IsEnabled = value ?? false, v => v.HasValue);
+            ApplyProperty(request.IsEnable, value => organization.IsDisabled = !(value ?? false), v => v.HasValue);
 
             await _resourceRepository.SaveOrganizationAsync(organization);
             return new BaseResponse { IsSuccess = true };

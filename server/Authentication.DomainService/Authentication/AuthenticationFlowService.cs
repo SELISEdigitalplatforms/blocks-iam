@@ -1,15 +1,14 @@
 using Authentication.DomainService.Dtos;
+using Authentication.DomainService.Utilities;
 using Authentication.DomainService.Entities;
 using Authentication.DomainService.OAuth;
 using Authentication.DomainService.OAuth.RequestModel;
 using Authentication.DomainService.OAuth.ResponseModel;
-using Authentication.DomainService.OAuth.Services;
 using Authentication.DomainService.Oidc.Repositories;
 using Authentication.DomainService.Services;
 using Authentication.DomainService.Shared;
 using Authentication.DomainService.Shared.RequestModel;
-using Authentication.DomainService.Utilities;
-using Blocks.CaptchaDriver;
+using Iam.DomainService.Utilities;
 using Blocks.Genesis;
 using Iam.DomainService.Entities;
 using Idp.DomainService.Oidc.Contracts;
@@ -25,72 +24,33 @@ namespace Authentication.DomainService.Authentication
     public sealed class AuthenticationFlowService : IAuthenticationFlowService
     {
         private readonly IAuthenticationRepository _authenticationRepository;
-        private readonly ITenants _tenants;
-        private readonly PasswordAuthenticationService _passwordAuthenticationService;
-        private readonly MfaAuthorizationService _mfaAuthorizationService;
-        private readonly SocialAuthorizationService _socialAuthorizationService;
-        private readonly RefreshTokenAuthenticationService _refreshTokenAuthenticationService;
-        private readonly IOAuthJwtAccessTokenManager _oAuthJwtAccessTokenManager;
+        private readonly IAuthStrategy _authStrategy;
+        private readonly ITokenRefresher _tokenRefresher;
         private readonly IAuthenticationService _authenticationService;
-        private readonly ICacheClient _cacheClient;
-        private readonly ICaptchaService _captchaService;
-        private readonly ICaptchaConfigurationService _captchaConfigurationService;
+        private readonly ICaptchaEvaluator _captchaEvaluator;
         private readonly IAuditLogRepository _auditLogRepo;
         private readonly ILogger<AuthenticationFlowService> _logger;
 
         public AuthenticationFlowService(
             IAuthenticationRepository authenticationRepository,
-            ITenants tenants,
-            PasswordAuthenticationService passwordAuthenticationService,
-            MfaAuthorizationService mfaAuthorizationService,
-            SocialAuthorizationService socialAuthorizationService,
-            RefreshTokenAuthenticationService refreshTokenAuthenticationService,
-            IOAuthJwtAccessTokenManager oAuthJwtAccessTokenManager,
+            IAuthStrategy authStrategy,
+            ITokenRefresher tokenRefresher,
             IAuthenticationService authenticationService,
-            ICacheClient cacheClient,
-            ICaptchaService captchaService,
-            ICaptchaConfigurationService captchaConfigurationService,
+            ICaptchaEvaluator captchaEvaluator,
             IAuditLogRepository auditLogRepo,
             ILogger<AuthenticationFlowService> logger)
         {
             _authenticationRepository = authenticationRepository;
-            _tenants = tenants;
-            _passwordAuthenticationService = passwordAuthenticationService;
-            _mfaAuthorizationService = mfaAuthorizationService;
-            _socialAuthorizationService = socialAuthorizationService;
-            _refreshTokenAuthenticationService = refreshTokenAuthenticationService;
-            _oAuthJwtAccessTokenManager = oAuthJwtAccessTokenManager;
+            _authStrategy = authStrategy;
+            _tokenRefresher = tokenRefresher;
             _authenticationService = authenticationService;
-            _cacheClient = cacheClient;
-            _captchaService = captchaService;
-            _captchaConfigurationService = captchaConfigurationService;
+            _captchaEvaluator = captchaEvaluator;
             _auditLogRepo = auditLogRepo;
             _logger = logger;
         }
 
         public async Task<AuthenticationFlowResult> ExecuteEmbeddedLoginAsync(EmbeddedLoginRequest request, HttpRequest httpRequest)
         {
-            var clientId = ResolveClientId(httpRequest, request.ClientId);
-            if (string.IsNullOrWhiteSpace(clientId))
-            {
-                return new AuthenticationFlowResult
-                {
-                    StatusCode = StatusCodes.Status400BadRequest,
-                    Error = "invalid_client",
-                    ErrorDescription = "client_id is required"
-                };
-            }
-
-            if (!await HasOidcClientConfigurationAsync(clientId))
-            {
-                return new AuthenticationFlowResult
-                {
-                    StatusCode = StatusCodes.Status401Unauthorized,
-                    Error = "invalid_client",
-                    ErrorDescription = "Client configuration not found"
-                };
-            }
-
             var configuration = await _authenticationRepository.GetAuthenticationConfigurationAsync();
             if (configuration == null)
             {
@@ -107,7 +67,7 @@ namespace Authentication.DomainService.Authentication
                 && user.LockoutUntilUtc.HasValue
                 && user.LockoutUntilUtc.Value > DateTime.UtcNow)
             {
-                await WriteLoginAuditAsync(user, clientId, httpRequest, LoginAuditEvents.LoginFailureAccountLocked, "embedded_login_account_locked");
+                await WriteLoginAuditAsync(user, httpRequest, LoginAuditEvents.LoginFailureAccountLocked, "embedded_login_account_locked");
                 return new AuthenticationFlowResult
                 {
                     StatusCode = StatusCodes.Status423Locked,
@@ -118,7 +78,7 @@ namespace Authentication.DomainService.Authentication
 
             if (IsEmbeddedMfaVerificationRequest(request))
             {
-                return await ExecuteEmbeddedMfaVerificationAsync(request, httpRequest, clientId, configuration, user);
+                return await ExecuteEmbeddedMfaVerificationAsync(request, httpRequest, configuration, user);
             }
 
             var captchaValidationResult = await ValidateCaptchaIfRequiredAsync(user, request.CaptchaCode);
@@ -127,7 +87,7 @@ namespace Authentication.DomainService.Authentication
                 if (user != null
                     && string.Equals(captchaValidationResult.Error, OAuthError.CaptchaInvalid, StringComparison.OrdinalIgnoreCase))
                 {
-                    await WriteLoginAuditAsync(user, clientId, httpRequest, LoginAuditEvents.CaptchaValidationFailure, captchaValidationResult.ErrorDescription);
+                    await WriteLoginAuditAsync(user, httpRequest, LoginAuditEvents.CaptchaValidationFailure, captchaValidationResult.ErrorDescription);
                 }
                 return captchaValidationResult;
             }
@@ -137,23 +97,22 @@ namespace Authentication.DomainService.Authentication
             var tokenRequest = new TokenRequest
             {
                 GrantType = GrantTypes.Password,
-                ClientId = clientId,
                 Username = request.Username,
                 Password = request.Password,
                 OrganizationId = resolvedOrganizationId,
                 Request = httpRequest
             };
 
-            var tokenResponse = await _passwordAuthenticationService.AuthenticateAsync(tokenRequest, configuration);
+            var tokenResponse = await _authStrategy.AuthenticatePasswordAsync(tokenRequest, configuration);
 
             if (user != null && !string.IsNullOrWhiteSpace(tokenResponse.Error)
                 && string.Equals(tokenResponse.Error, OAuthError.InValidUseNamePassword, StringComparison.OrdinalIgnoreCase))
             {
-                await WriteLoginAuditAsync(user, clientId, httpRequest, LoginAuditEvents.LoginFailure, tokenResponse.ErrorDescription);
+                await WriteLoginAuditAsync(user, httpRequest, LoginAuditEvents.LoginFailure, tokenResponse.ErrorDescription);
             }
             else if (user != null && string.IsNullOrWhiteSpace(tokenResponse.Error))
             {
-                await WriteLoginAuditAsync(user, clientId, httpRequest, LoginAuditEvents.LoginSuccess, tokenResponse.ErrorDescription);
+                await WriteLoginAuditAsync(user, httpRequest, LoginAuditEvents.LoginSuccess, tokenResponse.ErrorDescription);
             }
 
             return new AuthenticationFlowResult
@@ -164,27 +123,6 @@ namespace Authentication.DomainService.Authentication
 
         public async Task<AuthenticationFlowResult> ExecuteSocialLoginAsync(SocialLoginRequest request, HttpRequest httpRequest)
         {
-            var clientId = ResolveClientId(httpRequest, request.ClientId);
-            if (string.IsNullOrWhiteSpace(clientId))
-            {
-                return new AuthenticationFlowResult
-                {
-                    StatusCode = StatusCodes.Status400BadRequest,
-                    Error = "invalid_client",
-                    ErrorDescription = "client_id is required"
-                };
-            }
-
-            if (!await HasOidcClientConfigurationAsync(clientId))
-            {
-                return new AuthenticationFlowResult
-                {
-                    StatusCode = StatusCodes.Status401Unauthorized,
-                    Error = "invalid_client",
-                    ErrorDescription = "Client configuration not found"
-                };
-            }
-
             var configuration = await _authenticationRepository.GetAuthenticationConfigurationAsync();
             if (configuration == null)
             {
@@ -202,7 +140,6 @@ namespace Authentication.DomainService.Authentication
                     request.MfaCode,
                     request.MfaType,
                     httpRequest,
-                    clientId,
                     configuration);
             }
 
@@ -239,7 +176,6 @@ namespace Authentication.DomainService.Authentication
             var tokenRequest = new TokenRequest
             {
                 GrantType = GrantTypes.Social,
-                ClientId = clientId,
                 Code = request.Code,
                 State = request.State,
                 Request = httpRequest
@@ -247,7 +183,7 @@ namespace Authentication.DomainService.Authentication
 
             return new AuthenticationFlowResult
             {
-                TokenResponse = await _socialAuthorizationService.AuthenticateAsync(tokenRequest, configuration)
+                TokenResponse = await _authStrategy.AuthenticateSocialAsync(tokenRequest, configuration)
             };
         }
 
@@ -268,7 +204,6 @@ namespace Authentication.DomainService.Authentication
         private async Task<AuthenticationFlowResult> ExecuteEmbeddedMfaVerificationAsync(
             EmbeddedLoginRequest request,
             HttpRequest httpRequest,
-            string clientId,
             IdentityConfiguration configuration,
             User? user)
         {
@@ -277,7 +212,6 @@ namespace Authentication.DomainService.Authentication
                 request.MfaCode,
                 request.MfaType,
                 httpRequest,
-                clientId,
                 configuration,
                 user);
         }
@@ -287,7 +221,6 @@ namespace Authentication.DomainService.Authentication
             string? mfaCode,
             UserMfaType? mfaType,
             HttpRequest httpRequest,
-            string clientId,
             IdentityConfiguration configuration,
             User? user = null)
         {
@@ -307,7 +240,6 @@ namespace Authentication.DomainService.Authentication
             var tokenRequest = new TokenRequest
             {
                 GrantType = GrantTypes.MfaCode,
-                ClientId = clientId,
                 MfaId = mfaId,
                 Code = mfaCode,
                 MfaType = mfaType.Value,
@@ -316,7 +248,7 @@ namespace Authentication.DomainService.Authentication
 
             return new AuthenticationFlowResult
             {
-                TokenResponse = await _mfaAuthorizationService.AuthenticateAsync(tokenRequest, configuration, user)
+                TokenResponse = await _authStrategy.AuthenticateMfaAsync(tokenRequest, configuration, user)
             };
         }
 
@@ -327,7 +259,7 @@ namespace Authentication.DomainService.Authentication
                 return null;
             }
 
-            var captchaConfiguration = await _captchaConfigurationService.GetCaptchaConfigurationAsync();
+            var captchaConfiguration = await _captchaEvaluator.GetConfigurationAsync();
             if (captchaConfiguration == null || !captchaConfiguration.IsEnable)
             {
                 return null;
@@ -338,13 +270,9 @@ namespace Authentication.DomainService.Authentication
                 return BuildCaptchaRequiredResult(captchaConfiguration.CaptchaKey);
             }
 
-            var verifyCaptchaResponse = await _captchaService.VerifyCaptchaAsync(new VerifyCaptchaRequest
-            {
-                VerificationCode = captchaCode,
-                ConfigurationName = captchaConfiguration.Provider
-            });
+            var verifyCaptchaResponse = await _captchaEvaluator.VerifyAsync(captchaCode);
 
-            return verifyCaptchaResponse.Verified
+            return (bool)verifyCaptchaResponse.GetType().GetProperty("Verified")!.GetValue(verifyCaptchaResponse)!
                 ? null
                 : BuildCaptchaInvalidResult(captchaConfiguration.CaptchaKey);
         }
@@ -373,7 +301,7 @@ namespace Authentication.DomainService.Authentication
             };
         }
 
-        private async Task WriteLoginAuditAsync(User user, string clientId, HttpRequest httpRequest, string eventType, string? details)
+        private async Task WriteLoginAuditAsync(User user, HttpRequest httpRequest, string eventType, string? details)
         {
             try
             {
@@ -385,12 +313,12 @@ namespace Authentication.DomainService.Authentication
                 {
                     EventType = eventType,
                     UserId = user.ItemId,
-                    ClientId = clientId,
+                    ClientId = string.Empty,
                     TenantId = BlocksContext.GetContext()?.TenantId,
                     IpAddress = GetClientIpAddress(httpRequest),
                     UserAgent = httpRequest.Headers.UserAgent.ToString(),
-                    Severity = isFailure ? AuthenticationConstants.SeverityWarn : AuthenticationConstants.SeverityInfo,
-                    Status = isSuccess ? AuthenticationConstants.StatusSuccess : AuthenticationConstants.StatusFailure,
+                    Severity = isFailure ? IdpConstants.SeverityWarn : IdpConstants.SeverityInfo,
+                    Status = isSuccess ? IdpConstants.StatusSuccess : IdpConstants.StatusFailure,
                     Details = details ?? eventType
                 });
             }
@@ -515,7 +443,7 @@ namespace Authentication.DomainService.Authentication
                 };
             }
 
-            var refreshCacheRaw = await _cacheClient.GetStringValueAsync(refreshToken);
+            var refreshCacheRaw = await _tokenRefresher.GetCacheValueAsync(refreshToken);
             var refreshCache = string.IsNullOrWhiteSpace(refreshCacheRaw)
                 ? null
                 : JsonSerializer.Deserialize<RefreshTokenCache>(refreshCacheRaw);
@@ -542,25 +470,14 @@ namespace Authentication.DomainService.Authentication
             var tokenRequest = new TokenRequest
             {
                 GrantType = GrantTypes.SwitchOrganization,
-                ClientId = refreshCache.ClientId,
                 OrganizationId = request.OrganizationId,
                 RefreshToken = refreshToken,
                 Request = httpRequest
             };
 
-            if (string.IsNullOrWhiteSpace(tokenRequest.ClientId) || !await HasOidcClientConfigurationAsync(tokenRequest.ClientId))
-            {
-                return new AuthenticationFlowResult
-                {
-                    StatusCode = StatusCodes.Status401Unauthorized,
-                    Error = "invalid_client",
-                    ErrorDescription = "Client configuration not found"
-                };
-            }
-
             return new AuthenticationFlowResult
             {
-                TokenResponse = await _oAuthJwtAccessTokenManager.ManageTokenAsync(tokenRequest, configuration, user!)
+                TokenResponse = await _tokenRefresher.AuthenticateAsync(tokenRequest, configuration, user!)
             };
         }
 
@@ -581,7 +498,7 @@ namespace Authentication.DomainService.Authentication
                 return new BadRequestObjectResult(new { error = OAuthError.InvalidRefreshToken, error_description = "Refresh token is required" });
             }
 
-            var cachedRefreshToken = await _cacheClient.GetStringValueAsync(refreshToken);
+            var cachedRefreshToken = await _tokenRefresher.GetCacheValueAsync(refreshToken);
             if (string.IsNullOrWhiteSpace(cachedRefreshToken))
             {
                 await HandlePotentialRefreshTokenReuseAsync(refreshToken);
@@ -592,18 +509,6 @@ namespace Authentication.DomainService.Authentication
             if (tokenCache == null || string.IsNullOrWhiteSpace(tokenCache.UserId))
             {
                 return new BadRequestObjectResult(new { error = OAuthError.InvalidRefreshToken, error_description = "Refresh token is invalid or expired" });
-            }
-
-            if (string.IsNullOrWhiteSpace(tokenCache.ClientId) || !await HasOidcClientConfigurationAsync(tokenCache.ClientId))
-            {
-                return new UnauthorizedObjectResult(new { error = "invalid_client", error_description = "Client configuration not found" });
-            }
-
-            // Defense-in-depth: Validate sent client_id matches the cached/bound client_id
-            if (!string.IsNullOrWhiteSpace(request.ClientId) &&
-                !string.Equals(request.ClientId, tokenCache.ClientId, StringComparison.OrdinalIgnoreCase))
-            {
-                return new UnauthorizedObjectResult(new { error = "invalid_client", error_description = "Client mismatch: sent client_id does not match token binding" });
             }
 
             var currentTenantId = BlocksContext.GetContext()?.TenantId;
@@ -635,12 +540,11 @@ namespace Authentication.DomainService.Authentication
             {
                 GrantType = GrantTypes.RefreshToken,
                 OrganizationId = string.IsNullOrWhiteSpace(tokenCache.OrganizationId) ? "default" : tokenCache.OrganizationId,
-                ClientId = tokenCache.ClientId,
                 RefreshToken = refreshToken,
                 Request = httpRequest
             };
 
-            var response = await _refreshTokenAuthenticationService.AuthenticateAsync(tokenRequest, configuration, user);
+            var response = await _tokenRefresher.AuthenticateAsync(tokenRequest, configuration, user);
 
             if (!string.IsNullOrWhiteSpace(response.Error))
             {
@@ -656,26 +560,10 @@ namespace Authentication.DomainService.Authentication
                 };
             }
 
-            var useTokensCookie = await ResolveUseTokensCookieAsync(request.ClientId);
-
-            if (useTokensCookie)
-            {
-                var tenantId = BlocksContext.GetContext()?.TenantId ?? "default";
-                var tenant = _tenants.GetTenantByID(tenantId);
-                var (domain, _, _) = DomainResolver.ResolveDomain(tenant, httpRequest);
-                var cookiesSet = AppendCookies(response, httpResponse, domain);
-                if (cookiesSet)
-                {
-                    return new OkObjectResult(new
-                    {
-                        token_type = response.TokenType,
-                        expires_in = response.ExpiresIn,
-                        scope = response.Scope,
-                        client_id = request.ClientId,
-                        cookie_set = true
-                    });
-                }
-            }
+            var tenantId = BlocksContext.GetContext()?.TenantId ?? "default";
+            var tenant = await _tokenRefresher.GetTenantByIDAsync(tenantId);
+            var (domain, _, _) = DomainResolver.ResolveDomain(tenant, httpRequest);
+            AppendCookies(response, httpResponse, domain);
 
             return new OkObjectResult(new
             {
@@ -685,8 +573,7 @@ namespace Authentication.DomainService.Authentication
                 expires_in = response.ExpiresIn,
                 scope = response.Scope,
                 id_token = response.IdToken,
-                client_id = request.ClientId,
-                cookie_set = false
+                cookie_set = true
             });
         }
 
@@ -694,7 +581,7 @@ namespace Authentication.DomainService.Authentication
         {
             await _authenticationRepository.RevokeIdentitySessionsByRefreshTokensAsync(new List<string> { refreshToken });
 
-            await _cacheClient.RemoveKeyAsync(refreshToken);
+            await _tokenRefresher.RemoveKeyAsync(refreshToken);
             var tokenFingerprint = TruncateToken(refreshToken);
             _logger.LogWarning("Potential refresh token reuse detected for token {TokenFingerprint}. Existing session revoked.", tokenFingerprint);
         }
@@ -705,64 +592,9 @@ namespace Authentication.DomainService.Authentication
             return token.Length <= visibleLength ? token : string.Concat(token.AsSpan(0, visibleLength), "...");
         }
 
-        private static string? ResolveClientId(HttpRequest request, string? modelClientId = null)
-        {
-            if (!string.IsNullOrWhiteSpace(modelClientId))
-            {
-                return modelClientId;
-            }
-
-            if (request == null)
-            {
-                return null;
-            }
-
-            var queryClientId = request.Query["client_id"].ToString();
-            if (!string.IsNullOrWhiteSpace(queryClientId))
-            {
-                return queryClientId;
-            }
-
-            var formClientId = request.HasFormContentType ? request.Form["client_id"].ToString() : string.Empty;
-            if (!string.IsNullOrWhiteSpace(formClientId))
-            {
-                return formClientId;
-            }
-
-            var headerClientId = request.Headers["X-Client-Id"].ToString();
-            return string.IsNullOrWhiteSpace(headerClientId) ? null : headerClientId;
-        }
-
-        private async Task<bool> HasOidcClientConfigurationAsync(string clientId)
-        {
-            if (string.IsNullOrWhiteSpace(clientId))
-            {
-                return false;
-            }
-
-            var oidcClient = await _authenticationRepository.GetOidcClientRegistrationAsync(clientId);
-            return oidcClient != null;
-        }
-
-        private async Task<bool> ResolveUseTokensCookieAsync(string? clientId)
-        {
-            if (string.IsNullOrWhiteSpace(clientId))
-            {
-                return true;
-            }
-
-            var registration = await _authenticationRepository.GetOidcClientRegistrationAsync(clientId);
-            return registration?.UseTokensCookie ?? true;
-        }
-
         private static bool AppendCookies(TokenResponse response, HttpResponse httpResponse, string domain)
         {
             return CookieHelper.AppendCookies(response, httpResponse, domain);
-        }
-
-        private static void DeleteCookie(HttpResponse httpResponse, string domain, CookieOptions accessCookieOptions, CookieOptions refreshCookieOptions)
-        {
-            CookieHelper.DeleteAccessAndRefreshTokenCookies(httpResponse, domain, accessCookieOptions, refreshCookieOptions);
         }
 
         public Task<IActionResult> ExecuteImpersonateAsync(ImpersonateRequest request, HttpRequest httpRequest, HttpResponse httpResponse)

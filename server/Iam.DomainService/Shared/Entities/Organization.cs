@@ -10,7 +10,7 @@ namespace Iam.DomainService.Shared.Entities
         public string? Description { get; set; }
         public string? ParentOrganizationId { get; set; }
         public string? ShortCode { get; set; }
-        public bool IsEnabled { get; set; } = true;
+        public bool IsDisabled { get; set; }
         public List<string> DefaultRoleForMembers { get; set; } = new List<string>();
         public List<string> DefaultPermissionsForMembers { get; set; } = new List<string>();
 

@@ -10,7 +10,7 @@ import { userMfaContext } from "../user-mfa";
 export const UserMFAConfigManage = () => {
   const { projectKey, userId } = useContext(userMfaContext);
   const [type, setType] = useState(0);
-  const { isPending, mutateAsync } = useConfigureUserMFA({ id: userId, projectKey });
+  const { isPending, mutateAsync } = useConfigureUserMFA({ id: userId });
   const { data: userData, isLoading, isFetching } = useGetUserById({ id: userId, projectKey });
 
   useEffect(() => {
@@ -23,11 +23,10 @@ export const UserMFAConfigManage = () => {
     try {
       const res = await mutateAsync({
         mfaEnabled: true,
-        projectKey,
         userId,
         userMfaType: type,
       });
-      if (!res.isSuccess) return showErrorToast({ errors: res.errors });
+      if (res?.isSuccess === false) return showErrorToast({ errors: res.errors });
       showSuccessToast({ description: "Mfa is configured " });
     } catch (error) {
       if (isErrorWithErrors(error)) showErrorToast({ errors: error.errors });

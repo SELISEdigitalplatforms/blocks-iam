@@ -94,10 +94,9 @@ export const SettingsPage = () => {
   }, [project?.name, form]);
 
   useEffect(() => {
-    if (project && selectedProject?.itemId === project.itemId) {
-      if (selectedProject.name !== project.name) {
-        setSelectedProject(project);
-      }
+    if (!project || !selectedProject) return;
+    if (selectedProject.itemId === project.itemId && selectedProject.name !== project.name) {
+      setSelectedProject(project);
     }
   }, [project, selectedProject, setSelectedProject]);
 

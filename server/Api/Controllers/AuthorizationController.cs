@@ -1,10 +1,8 @@
 using Authentication.DomainService.Authentication;
 using Authentication.DomainService.OAuth.RequestModel;
 using Authentication.DomainService.Oidc.Services;
-using Blocks.Genesis;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
-using System.Security.Claims;
 using System.Text.Json.Serialization;
 
 namespace Blocks.Api.Controllers

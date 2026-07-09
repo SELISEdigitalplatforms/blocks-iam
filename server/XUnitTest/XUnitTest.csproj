@@ -16,6 +16,8 @@
   <ItemGroup>
 	<ProjectReference Include="..\Api\Api.csproj" />
 	<ProjectReference Include="..\Authentication.DomainService\Authentication.DomainService.csproj" />
+	<ProjectReference Include="..\Captcha.Driver\Captcha.Driver.csproj" />
+	<ProjectReference Include="..\Iam.DomainService\Iam.DomainService.csproj" />
 	<ProjectReference Include="..\Mfa.DomainService\Mfa.DomainService.csproj" />
 	<ProjectReference Include="..\Worker\Worker.csproj" />
   </ItemGroup>

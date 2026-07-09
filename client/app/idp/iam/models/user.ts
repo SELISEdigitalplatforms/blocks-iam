@@ -40,6 +40,8 @@ export interface User {
   employeeId: string | null;
   isMultiOrgEnabled: boolean;
   organizations: IMembership[];
+  OrganizationsRoles?: Record<string, string[]>;
+  OrganizationsPermissions?: Record<string, string[]>;
 }
 
 export interface IMembership {
@@ -85,6 +87,7 @@ export interface ICreateUserPayload {
   platform: string;
   projectKey: string;
   organizationId?: string;
+  organizationIds?: string[];
 }
 export interface ICreateUserResponse {
   errors: unknown;
@@ -134,17 +137,44 @@ export interface ISaveRolesAndPermissionsResponse {
   isSuccess: boolean;
   itemId: string;
 }
+export interface IUpdateUserAccessControlPayload {
+  userId: string;
+  roles: string[];
+  permissions: string[];
+  organizationId: string;
+}
+export interface IUpdateUserAccessControlResponse {
+  errors: unknown | null;
+  isSuccess: boolean;
+}
+export interface IRevokeAccessPayload {
+  userId: string;
+  organizationId: string;
+}
+export interface IRevokeAccessResponse {
+  errors: unknown | null;
+  isSuccess: boolean;
+}
 export interface IGetSessionPayload {
   page: number;
   pageSize: number;
-  filter: { UserId: string };
-  projectKey: string;
+  userId: string;
+  projectKey?: string;
 }
 export interface IGetHistoriesPayload {
   page: number;
   pageSize: number;
-  filter: { UserId: string };
-  projectKey: string;
+  userId: string;
+  projectKey?: string;
+}
+
+export interface IRevokeSessionResponse {
+  sessionId: string;
+  alreadyRevoked: boolean;
+  revokedAt: string;
+  reason: string | null;
+  revokedRefreshTokens: number;
+  warnings: string[];
 }
 
 export interface IGeneratePATPayload {
@@ -201,25 +231,22 @@ export interface EditUserData {
 }
 
 interface DeviceInformation {
-  Browser: string;
-  OS: string;
-  Device: string;
-  Brand: string;
-  Model: string;
+  browser: string;
+  os: string;
+  device: string;
+  brand: string;
+  model: string;
 }
 
 export interface IHistories {
-  _id: string;
-  CreatedDate: string;
-  LastUpdatedDate: string;
-  CreatedBy: string;
-  LastUpdatedBy: string;
-  OrganizationIds: string[];
-  Tags: string[];
-  Event: string;
-  ActionBy: string;
-  IpAddresses: string;
-  DeviceInformation: DeviceInformation;
+  event: string;
+  actionBy: string;
+  deviceName: string;
+  deviceType: string;
+  deviceInformation: DeviceInformation;
+  ipAddresses: string;
+  sessionId: string;
+  createdDate: string;
 }
 
 export interface IHistoriesResponse {
@@ -229,23 +256,53 @@ export interface IHistoriesResponse {
 }
 
 export interface IDeviceSession {
-  RefreshToken: string;
-  TenantId: string;
-  IssuedUtc: Date;
-  ExpiresUtc: Date;
-  UserId: string;
-  IpAddresses: string;
-  DeviceInformation: DeviceInformation;
-  CreateDate: Date;
-  UpdateDate: Date;
-  IsActive: boolean;
-  _id: string;
+  sessionId: string;
+  userId: string;
+  tenantId: string;
+  organizationId: string;
+  clientId: string;
+  clientName: string;
+  deviceName: string;
+  deviceType: string;
+  operatingSystem: string;
+  browser: string;
+  ipAddresses: string;
+  grantType: string;
+  issuedUtc: string;
+  expiresUtc: string;
+  lastActivityAt: string;
+  isActive: boolean;
+  isCurrent: boolean;
+  isImpersonated: boolean;
 }
 
 export interface IDeviceSessionResponse {
   totalCount: number;
   data: IDeviceSession[];
   errors: unknown;
+}
+
+export interface IRefreshTokenStatus {
+  tokenId: string;
+  isRevoked: boolean;
+  issuedAt: string;
+  absoluteExpiry: string;
+  revokedAt: string | null;
+  revokeReason: string | null;
+}
+
+export interface IRevokedAccessToken {
+  jti: string;
+  revokedAt: string;
+  reason: string;
+}
+
+export interface ISessionTimeline {
+  sessionId: string;
+  session: IDeviceSession;
+  refreshTokenStatus: IRefreshTokenStatus;
+  revokedAccessTokens: IRevokedAccessToken[];
+  lifecycle: IHistories[];
 }
 
 export interface IPATResponse {
@@ -280,9 +337,9 @@ export const status = [
 
 export interface IAccountActivationPayload {
   code: string;
-  firstname: string;
-  lastname: string;
   password: string;
+  firstname?: string;
+  lastname?: string;
   captchaCode?: string;
   mailPurpose?: string;
   preventPostEvent: boolean;
@@ -305,7 +362,6 @@ export interface IAccountResendActivationResponse {
 export interface IAccountRecoverPayload {
   email: string;
   captchaCode?: string;
-  mailPurpose?: string;
   tenantId?: string;
 }
 export interface IAccountRecoverResponse {
@@ -339,10 +395,10 @@ export interface IActivationCodeValidationPayload {
   tenantId?: string;
 }
 
-export interface IActivationCodeExpirationResponse {
+export interface IActivationCodeValidationResponse {
   errors: unknown | null;
   isSuccess: boolean;
-  userId: string;
+  userId: string | null;
 }
 
 export interface ISaveSignUpSettingPayload {

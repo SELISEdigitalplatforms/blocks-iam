@@ -3,8 +3,8 @@ import { useContext } from "react";
 import { userMfaContext } from "../../user-mfa";
 
 export const UserMfaVerifyGuideLineTotp = () => {
-  const { userId, projectKey } = useContext(userMfaContext);
-  const { data } = useGetTotp({ id: userId, projectKey });
+  const { userId } = useContext(userMfaContext);
+  const { data } = useGetTotp({ id: userId });
   return (
     <div className="flex flex-col gap-4">
       <div className="flex gap-1">

@@ -1,5 +1,4 @@
 ﻿using Iam.DomainService.Accounts;
-using Iam.DomainService.Activities;
 using Iam.DomainService.Configurations;
 using Iam.DomainService.Resources;
 using Iam.DomainService.Services;
@@ -27,8 +26,6 @@ namespace Iam.DomainService.Utilities
             services.AddSingleton<IUserManagementQueryService, UserManagementQueryService>();
             services.AddSingleton<IResourceQueryService, ResourceQueryService>();
 
-            services.AddSingleton<IUserActivityRepository, UserActivityRepository>();
-            services.AddSingleton<IUserActivityService, UserActivityService>();
             services.AddSingleton<IAccountService, AccountService>();
             services.AddSingleton<IIamConfigurationRepository, IamConfigurationRepository>();
             services.AddHttpContextAccessor();

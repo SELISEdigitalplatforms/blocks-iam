@@ -52,4 +52,18 @@ const TabsContent = React.forwardRef<
 ));
 TabsContent.displayName = TabsPrimitive.Content.displayName;
 
-export { Tabs, TabsList, TabsTrigger, TabsContent };
+// Underline tab styling variant — pass as `className` to `TabsList`/`TabsTrigger`
+// for a border-bottom active indicator instead of the default segmented-pill look.
+const underlineTabsListClass =
+  "h-auto w-full justify-start gap-6 rounded-none border-b bg-transparent p-0";
+const underlineTabTriggerClass =
+  "h-auto flex-none rounded-none border-b-2 border-transparent px-1 pb-3 pt-0 text-muted-foreground shadow-none data-[state=active]:border-primary data-[state=active]:bg-transparent data-[state=active]:text-primary data-[state=active]:shadow-none";
+
+export {
+  Tabs,
+  TabsList,
+  TabsTrigger,
+  TabsContent,
+  underlineTabsListClass,
+  underlineTabTriggerClass,
+};

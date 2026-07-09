@@ -9,12 +9,12 @@ namespace Iam.DomainService.Resources
         Task<Permission> GetPermissionByResourceAsync(string resource, string? organizationId = "default");
         Task<List<Permission>> GetPermissionsByResourcesAsync(List<string> resources, string? organizationId = "default");
         Task<Permission> GetPermissionByIdAsync(string id);
-        Task<(IQueryable<Permission>, long)> GetPermissionsAsync(GetPermissionsRequest query);
+        Task<(IQueryable<Permission>, long)> GetPermissionsAsync(GetPermissionsRequest query, string? orgainzationId = null);
         Task<bool> InsertPermissionAsync(Permission permission);
         Task<bool> UpdatePermissionAsync(Permission permission);
         Task<Role> GetRoleByIdAsync(string id);
-        Task<(IQueryable<Role>, long)> GetRolesAsync(GetRolesRequest query);
-        Task<Role> GetRoleBySlugAsync(string slug);
+        Task<(IQueryable<Role>, long)> GetRolesAsync(GetRolesRequest query, string? orgainzationId = null);
+        Task<Role> GetRoleBySlugAsync(string slug, string? orgainzationId = null);
         
         /// <summary>
         /// Get role by slug and organization. Enforces org-scoped lookup.
@@ -31,10 +31,10 @@ namespace Iam.DomainService.Resources
         Task<ResourceTimeline<T>> GetResourceTimelineAsync<T>(string itemId);
         Task<bool> SaveResourceTimelineAsync<T>(ResourceTimeline<T> timeline);
         Task<bool> SaveResourceTimelinesAsync<T>(List<ResourceTimeline<T>> timelines);
-        Task<bool> UpdateRolePermissionByIdsAsync(string slug, List<string> permissions);
-        Task<bool> RemoveRolePermissionByIdsAsync(string slug, List<string> permissions);
-        Task<bool> UpdateRolesCountAsync(string slug);
-        Task<List<GetResourceGroupResponse>> GetResourceGroupsAsync();
+        Task<bool> UpdateRolePermissionByIdsAsync(string slug, List<string> permissions, string? orgainzationId = null);
+        Task<bool> RemoveRolePermissionByIdsAsync(string slug, List<string> permissions, string? orgainzationId = null);
+        Task<bool> UpdateRolesCountAsync(string slug, string? orgainzationId = null);
+        Task<List<GetResourceGroupResponse>> GetResourceGroupsAsync(string? orgainzationId = null);
         Task<Organization> GetOrganizationById(string id);
         Task<Organization> GetOrganizationByNameAsync(string name);
         Task<List<string>> GetOrganizationIdsByUserIdAsync(string userId);
@@ -42,7 +42,7 @@ namespace Iam.DomainService.Resources
         Task SaveOrganizationAsync(Organization organization);
         Task<GetOrganizationsResponse> GetOrganizationsAsync(GetOrganizationsRequest request);
         Task SaveOrganizationConfig(TenantConfiguration tenantConfiguration);
-        Task<List<PermissionGroupBySeverityResponse>> GetPermissionsGroupBySeverityAsync();
+        Task<List<PermissionGroupBySeverityResponse>> GetPermissionsGroupBySeverityAsync(string? orgainzationId = null);
         Task<TenantConfiguration> GetTenantConfigurationAsync();
         Task<List<Role>> GetRolesBySlugAndOrgAsync(List<string> slugs, string organizationId);
         Task<bool> InsertRolesAsync(List<Role> roles);
@@ -55,7 +55,7 @@ namespace Iam.DomainService.Resources
         Task<List<Permission>> GetPermissionsByGroupsAsync(List<string> groups, string organizationId, int pageNumber = 1, int pageSize = 10);
         Task<List<Permission>> GetPermissionsByIdsAsync(List<string> ids);
         Task<bool> InsertPermissionsAsync(List<Permission> permissions);
-        Task<List<Permission>> GetFeResourceFeaturesAsync(List<string> roleSlugs, List<string> permissionKeys, string? search = null, bool? isBuiltIn = null);
+        Task<List<Permission>> GetFeResourceFeaturesAsync(List<string> roleSlugs, List<string> permissionKeys, string? search = null, bool? isBuiltIn = null, string? orgainzationId = null);
         Task<List<Permission>> GetPermissionsByResourceAsync(string resource);
         Task<List<Role>> GetRolesBySlugAsync(string slug);
         Task<bool> UpdatePermissionsAsync(List<Permission> permissions);

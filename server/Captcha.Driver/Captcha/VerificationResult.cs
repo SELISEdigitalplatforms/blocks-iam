@@ -1,25 +1,39 @@
-namespace Blocks.CaptchaDriver
-{
-    public class VerificationResult
-    {
-        public VerificationResult()
-        {
-            Verified = false;
-            HostName = "";
-        }
-        public bool Verified { get; set; }
-        public string HostName { get; set; }
-        public IDictionary<string, string>? Errors { get; set; }
+namespace Blocks.CaptchaDriver;
 
-        public VerifyCaptchaRequestResponse ToVerifyCaptchaQueryResponse()
+/// <summary>
+/// Outcome of a captcha verification request.
+/// </summary>
+public class VerificationResult
+{
+    /// <summary>
+    /// Creates a new unverified result with an empty host name.
+    /// </summary>
+    public VerificationResult()
+    {
+        Verified = false;
+        HostName = string.Empty;
+    }
+
+    /// <summary>Whether the captcha was verified.</summary>
+    public bool Verified { get; set; }
+
+    /// <summary>Originating host name (when applicable).</summary>
+    public string HostName { get; set; }
+
+    /// <summary>Field-level errors when verification fails.</summary>
+    public IDictionary<string, string>? Errors { get; set; }
+
+    /// <summary>
+    /// Projects this result onto a <see cref="VerifyCaptchaRequestResponse"/>.
+    /// </summary>
+    public VerifyCaptchaRequestResponse ToVerifyCaptchaQueryResponse()
+    {
+        return new VerifyCaptchaRequestResponse
         {
-            return new VerifyCaptchaRequestResponse
-            {
-                Errors = Errors,
-                HostName = HostName,
-                Verified = Verified,
-                IsSuccess = true
-            };
-        }
+            Errors = Errors,
+            HostName = HostName,
+            Verified = Verified,
+            IsSuccess = true
+        };
     }
 }
