@@ -14,7 +14,6 @@ export const useGetOrganizations = (options: IOrganizationFilter) => {
         search: options.search,
         sort: options.sort,
       }),
-    enabled: !!options.projectKey,
     placeholderData: keepPreviousData,
   });
 };

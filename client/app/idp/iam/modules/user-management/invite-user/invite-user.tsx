@@ -47,8 +47,7 @@ export const InviteUser = () => {
   const [open, setOpen] = useState(false);
   const [orgPopoverOpen, setOrgPopoverOpen] = useState(false);
 
-  const { data: orgsData } = useGetOrganizations({
-    projectKey: tenantId,
+  const { data: orgsData, isLoading: isOrgsLoading } = useGetOrganizations({
     page: 0,
     pageSize: 1000,
   });
@@ -88,8 +87,10 @@ export const InviteUser = () => {
     }
   }, [open, isConfigLoading, isMultiOrgEnabled, form]);
 
+  // Treat a missing/undefined isEnabled as enabled — only explicitly disabled
+  // orgs (isEnabled === false) should be excluded from the picker.
   const enabledOrgs = useMemo(
-    () => (orgsData?.organizations ?? []).filter((org) => org.isEnabled),
+    () => (orgsData?.organizations ?? []).filter((org) => org.isEnabled !== false),
     [orgsData?.organizations],
   );
 
@@ -268,6 +269,12 @@ export const InviteUser = () => {
                                 </button>
                               );
                             })}
+                            {isOrgsLoading && (
+                              <div className="flex items-center gap-2 px-2 py-1.5 text-sm text-muted-foreground">
+                                <Loader className="h-3.5 w-3.5 animate-spin" />
+                                Loading organizations...
+                              </div>
+                            )}
                           </div>
                         </PopoverContent>
                       </Popover>

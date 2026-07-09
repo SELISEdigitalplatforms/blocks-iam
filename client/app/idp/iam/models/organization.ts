@@ -32,7 +32,7 @@ export interface IOrganization {
 }
 
 export interface IOrganizationFilter {
-  projectKey: string;
+  projectKey?: string;
   page: number;
   pageSize: number;
   search?: string;
