@@ -31,18 +31,20 @@ import { useMemo, useState } from "react";
 type AddOrganizationPermissionProps = {
   permissions: IPermission[];
   onAdd: (data: IPermission[]) => void;
+  onSave?: () => void;
 };
 
 export const AddOrganizationPermission = ({
   onAdd,
   permissions,
+  onSave,
 }: AddOrganizationPermissionProps) => {
   const tenantId = useProjectStore().selectedProject?.tenantId || "";
   const [open, setOpen] = useState<boolean>(false);
   const [selectedPermissions, setSelectedPermissions] = useState<IPermission[]>([]);
   const [filter, setFilter] = useState({
     page: 0,
-    pageSize: 10,
+    pageSize: 5,
     isBuiltIn: "",
     roles: [],
     search: "",
@@ -64,7 +66,7 @@ export const AddOrganizationPermission = ({
 
   const reset = () => {
     setSelectedPermissions([]);
-    setFilter({ page: 0, pageSize: 10, isBuiltIn: "", roles: [], search: "" });
+    setFilter({ page: 0, pageSize: 5, isBuiltIn: "", roles: [], search: "" });
   };
 
   const permissionsResource = useMemo(
@@ -87,8 +89,8 @@ export const AddOrganizationPermission = ({
       <DialogTrigger asChild>
         <Button
           size="sm"
-          variant="default"
-          className="bg-primary text-sm"
+          variant="ghost"
+          className="text-primary"
           type="button"
           onClick={(e) => e.stopPropagation()}
         >
@@ -96,7 +98,7 @@ export const AddOrganizationPermission = ({
           <span className="sr-only sm:not-sr-only">Add Permission</span>
         </Button>
       </DialogTrigger>
-      <DialogContent>
+      <DialogContent className="flex max-h-[560px] flex-col gap-3 overflow-hidden">
         <DialogHeader>
           <DialogTitle className="text-left">Add permissions</DialogTitle>
           <DialogDescription></DialogDescription>
@@ -109,7 +111,7 @@ export const AddOrganizationPermission = ({
             className="h-fit w-full py-3"
           />
         </div>
-        <Card>
+        <Card className="min-h-0 flex-1 overflow-y-auto">
           <CardContent>
             <Table>
               <TableHeader>
@@ -188,6 +190,7 @@ export const AddOrganizationPermission = ({
               onAdd(selectedPermissions);
               reset();
               setOpen(false);
+              onSave?.();
             }}
             disabled={selectedPermissions.length === 0}
           >
