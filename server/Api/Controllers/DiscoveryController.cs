@@ -165,7 +165,7 @@ namespace Blocks.Api.Controllers
                 string.Empty
             ));
 
-            request.ClientId = section["BLOCKS_OS_CLIENT_ID"];
+           // request.ClientId = section["BLOCKS_OS_CLIENT_ID"];
             var result = await _authenticationFlowService.ExecuteEmbeddedLoginAsync(request, Request);
 
             return new OkObjectResult(new
