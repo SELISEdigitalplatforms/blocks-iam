@@ -1,5 +1,4 @@
 import { IOrganization } from "@blocks-idp/iam/models/organization";
-import { useGetUserById } from "@blocks-idp/iam/hooks/use-user";
 import { useGetRoles } from "@blocks-idp/iam/hooks/use-roles";
 import { useProjectStore } from "@seliseblocks/blocks-kit";
 import { Card, CardContent } from "@/components/ui-kits/card/card";
@@ -47,21 +46,13 @@ const formatDateTime = (value?: string) => {
   }
 };
 
-const useDisplayName = (userId?: string) => {
-  const tenantId = useProjectStore().selectedProject?.tenantId || "";
-  const { data } = useGetUserById(
-    { id: userId ?? "", projectKey: tenantId },
-    { enabled: !!userId && !!tenantId },
-  );
-  const user = data?.data;
-  if (!user) return undefined;
-  return `${user.firstName ?? ""} ${user.lastName ?? ""}`.trim() || user.email || userId;
+const useDisplayName = (_userId?: string) => {
+  // /api/iam/users/{id} lookups have been intentionally removed from this page.
+  return undefined;
 };
 
 export const OrganizationDetailsTab = ({ organization }: { organization: IOrganization }) => {
   const tenantId = useProjectStore().selectedProject?.tenantId || "";
-  const createdByName = useDisplayName(organization.createdBy);
-  const updatedByName = useDisplayName(organization.lastUpdatedBy);
 
   const { data: rolesData } = useGetRoles({
     page: 0,
@@ -107,13 +98,13 @@ export const OrganizationDetailsTab = ({ organization }: { organization: IOrgani
           label="Created"
           value={formatDateTime(organization.createdDate)}
         />
-        <DetailRow icon={<User className="h-4 w-4" />} label="Created by" value={createdByName} />
+        {/* <DetailRow icon={<User className="h-4 w-4" />} label="Created by" value={createdByName} /> */}
         <DetailRow
           icon={<Clock className="h-4 w-4" />}
           label="Last updated"
           value={formatDateTime(organization.lastUpdatedDate)}
         />
-        <DetailRow icon={<User className="h-4 w-4" />} label="Last updated by" value={updatedByName} />
+        {/* <DetailRow icon={<User className="h-4 w-4" />} label="Last updated by" value={updatedByName} /> */}
         <DetailRow
           icon={<UserCog className="h-4 w-4" />}
           label="Default role for new members"
