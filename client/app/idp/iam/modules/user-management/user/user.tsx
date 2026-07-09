@@ -1,5 +1,3 @@
-
-
 import { useQueryState } from "nuqs";
 import { BREADCRUMB_CUSTOM_TITLES } from "@/constants/breadcrumb-custom-title";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui-kits/tabs/tabs";
@@ -13,27 +11,25 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui-kits/select/select";
-import { UserDetails } from "../../../components/user-details";
+import { UserProfileSidebar } from "@blocks-idp/iam/components/user-profile-sidebar";
 import { UserActionMenu } from "./user-action-menu";
 import { UserDevices } from "../user-devices";
 import { UserHistories } from "../user-histories";
-import { UserMemberships } from "../user-memberships";
-// import { UserRoles } from "../user-roles";
-// import { UserPermissions } from "../user-permssions";
+import { UserAccessTab } from "../user-access";
 
 const Menu = [
   {
     id: 1,
-    label: "Details",
-    value: "details",
+    label: "Access",
+    value: "access",
   },
   {
-    id: 3,
+    id: 2,
     label: "Devices",
     value: "devices",
   },
   {
-    id: 4,
+    id: 3,
     label: "History",
     value: "history",
   },
@@ -41,7 +37,7 @@ const Menu = [
 
 export const User = ({ id }: { id: string }) => {
   const tenantId = useProjectStore().selectedProject?.tenantId || "";
-  const [tabId, setTabId] = useQueryState("userDetails", { defaultValue: "details" });
+  const [tabId, setTabId] = useQueryState("userDetails", { defaultValue: "access" });
   const { data, isLoading } = useGetUserById({ id, projectKey: tenantId });
 
   const displayName = [data?.data?.firstName, data?.data?.lastName]
@@ -56,23 +52,17 @@ export const User = ({ id }: { id: string }) => {
 
   return (
     <div className="px-4 pt-4 md:px-6 md:pt-6">
-      <div>
-        <div className="mb-4 hidden md:mb-6 md:flex">
-          <PageBreadcrumb
-            breadcrumbIndex={2}
-            isLoadingLastItem={isLoading && !displayName}
-          />
-        </div>
-        <div className="flex w-full flex-col">
-          <div className="flex items-center justify-between text-base text-high-emphasis">
-            <h3 className="text-2xl font-bold tracking-tight">
-              {data?.data?.firstName} {data?.data?.lastName}
-            </h3>
-          </div>
+      <div className="mb-4 hidden md:mb-6 md:flex">
+        <PageBreadcrumb breadcrumbIndex={2} isLoadingLastItem={isLoading && !displayName} />
+      </div>
 
+      <div className="grid grid-cols-1 gap-6 lg:grid-cols-[300px_1fr]">
+        <UserProfileSidebar id={id} projectKey={tenantId} />
+
+        <section className="min-w-0">
           {/* mobile view */}
           <div className="md:hidden">
-            <div className="mb-5 mt-6 flex items-center justify-between rounded text-base">
+            <div className="mb-5 flex items-center justify-between rounded text-base">
               <Select value={tabId} onValueChange={setTabId}>
                 <SelectTrigger className="w-[180px]">
                   <SelectValue placeholder="Theme" />
@@ -85,14 +75,14 @@ export const User = ({ id }: { id: string }) => {
                   ))}
                 </SelectContent>
               </Select>
-              {tabId === "details" ? <UserActionMenu id={id} projectKey={tenantId} /> : null}
+              <UserActionMenu id={id} projectKey={tenantId} />
             </div>
           </div>
 
           {/* desktop view */}
           <div className="hidden md:block">
             <Tabs value={tabId} onValueChange={setTabId}>
-              <div className="mb-5 mt-6 flex items-center justify-between rounded text-base">
+              <div className="mb-5 flex items-center justify-between rounded text-base">
                 <TabsList>
                   {Menu.map((item) => (
                     <TabsTrigger key={item.id} value={item.value}>
@@ -100,30 +90,15 @@ export const User = ({ id }: { id: string }) => {
                     </TabsTrigger>
                   ))}
                 </TabsList>
-                {tabId === "details" ? <UserActionMenu id={id} projectKey={tenantId} /> : null}
+                <UserActionMenu id={id} projectKey={tenantId} />
               </div>
             </Tabs>
           </div>
 
-          <>
-            {tabId === "details" ?
-              (
-                <div className="flex flex-col gap-6">
-                  <UserDetails id={id} />
-                  <UserMemberships id={id} projectKey={tenantId} />
-                </div>
-              )
-              : null}
-            {/* {tabId === "rolesAndPermissions" && (
-              <div className="flex flex-col gap-6">
-                <UserRoles id={id} projectKey={tenantId} />
-                <UserPermissions userId={id} projectKey={tenantId} />
-              </div>
-            )} */}
-            {tabId === "devices" && <UserDevices id={id} projectKey={tenantId} />}
-            {tabId === "history" && <UserHistories id={id} projectKey={tenantId} />}
-          </>
-        </div>
+          {tabId === "access" && <UserAccessTab userId={id} projectKey={tenantId} />}
+          {tabId === "devices" && <UserDevices id={id} projectKey={tenantId} />}
+          {tabId === "history" && <UserHistories id={id} projectKey={tenantId} />}
+        </section>
       </div>
     </div>
   );

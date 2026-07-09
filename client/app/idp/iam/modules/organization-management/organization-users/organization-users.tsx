@@ -1,5 +1,4 @@
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui-kits/card/card";
-import { Separator } from "@/components/ui-kits/separator/separator";
+import { Card, CardContent, CardHeader } from "@/components/ui-kits/card/card";
 import { OrganizationUsersTable } from "./organization-users-table";
 import { Pagination } from "@/components/ui-kits/pagination/pagination";
 import { useGetUsers } from "@blocks-idp/iam/hooks/use-user";
@@ -12,15 +11,11 @@ import {
 
 interface OrganizationUsersProps {
   organizationId: string;
-  title?: string;
-  description?: string;
   action?: React.ReactNode;
 }
 
 export const OrganizationUsers = ({
   organizationId,
-  title,
-  description,
   action,
 }: OrganizationUsersProps) => {
   const { queryParams, setQueryParams } = useOrganizationUsersFilterQueryParams();
@@ -47,24 +42,9 @@ export const OrganizationUsers = ({
 
   return (
     <Card>
-      <CardHeader className="gap-4">
-        {(title || action) && (
-          <>
-            <div className="flex flex-wrap items-start justify-between gap-3">
-              {title && (
-                <div>
-                  <CardTitle>{title}</CardTitle>
-                  {description && (
-                    <CardDescription className="mt-1">{description}</CardDescription>
-                  )}
-                </div>
-              )}
-              {action}
-            </div>
-            <Separator />
-          </>
-        )}
-        <div className="mt-1">
+      <CardHeader className="flex-row flex-wrap items-center justify-between gap-3">
+        {action}
+        <div className="ml-auto">
           <OrganizationUsersFilterToolbar />
         </div>
       </CardHeader>

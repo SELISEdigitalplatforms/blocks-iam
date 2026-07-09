@@ -83,24 +83,22 @@ export const UpdateUser = ({ id, projectKey, own = false, iconOnly = false }: Up
       }}
     >
       <DialogTrigger asChild>
-        {own ? (
-          iconOnly ? (
-            <Button
-              variant="ghost"
-              size="icon"
-              aria-label="Edit profile"
-              className="h-9 w-9 rounded-full text-muted-foreground hover:bg-muted hover:text-foreground"
-            >
-              <Pen className="h-4 w-4" />
-            </Button>
-          ) : (
-            <Button
-              className="w-full gap-2 rounded-lg border border-border/70 bg-background font-medium text-foreground shadow-sm transition-all hover:bg-muted"
-            >
-              <Pen className="h-4 w-4" />
-              Edit Profile
-            </Button>
-          )
+        {iconOnly ? (
+          <Button
+            variant="ghost"
+            size="icon"
+            aria-label={own ? "Edit profile" : "Edit user"}
+            className="h-9 w-9 rounded-full text-muted-foreground hover:bg-muted hover:text-foreground"
+          >
+            <Pen className="h-4 w-4" />
+          </Button>
+        ) : own ? (
+          <Button
+            className="w-full gap-2 rounded-lg border border-border/70 bg-background font-medium text-foreground shadow-sm transition-all hover:bg-muted"
+          >
+            <Pen className="h-4 w-4" />
+            Edit Profile
+          </Button>
         ) : (
           <Button variant="outline" size="sm" className="gap-2">
             <Pen className="h-4 w-4" />
