@@ -1,20 +1,22 @@
-using Authentication.DomainService.OAuth.SocialServices;
-using Blocks.Extension.DependencyInjection;
-using Idp.DomainService.Oidc.Services;
 using Authentication.DomainService.Authentication;
-using Authentication.DomainService.Oidc.Repositories;
-using Authentication.DomainService.Oidc.Services;
 using Authentication.DomainService.OAuth;
 using Authentication.DomainService.OAuth.Services;
+using Authentication.DomainService.OAuth.SocialServices;
+using Authentication.DomainService.Oidc.Repositories;
+using Authentication.DomainService.Oidc.Services;
 using Authentication.DomainService.Security.Utilities;
 using Authentication.DomainService.Services;
 using Authentication.DomainService.Shared;
+using Authentication.DomainService.Shared.Services;
+using Blocks.Extension.DependencyInjection;
+using DomainService.Storage;
 using FluentValidation;
 using Iam.DomainService.Accounts;
 using Iam.DomainService.Configurations;
 using Iam.DomainService.Resources;
 using Iam.DomainService.Services;
 using Iam.DomainService.Users;
+using Idp.DomainService.Oidc.Services;
 using Mfa.DomainService.Configuration;
 using Mfa.DomainService.OTP.Services;
 using Mfa.DomainService.Services;
@@ -22,7 +24,9 @@ using Mfa.DomainService.Shared;
 using Mfa.DomainService.TOTP;
 using Mfa.DomainService.Validators;
 using Microsoft.Extensions.DependencyInjection;
-using Authentication.DomainService.Shared.Services;
+using Storage.DomainService.Shared.Services;
+using Storage.DomainService.Storage;
+using Storage.DomainService.Storage.Validators;
 
 namespace Authentication.DomainService.Utilities
 {
@@ -175,6 +179,15 @@ namespace Authentication.DomainService.Utilities
 
             serviceCollection.AddSingleton<UnifiedTokenSessionService, UnifiedTokenSessionService>();
             serviceCollection.AddSingleton<IImpersonationFlowHelper, ImpersonationFlowHelper>();
+
+            // Drivers
+            serviceCollection.AddSingleton<DmsArtifactBuilderFactory>();
+            serviceCollection.AddTransient<IValidator<UpdateFileRequest>, UpdateFileRequestValidator>();
+            serviceCollection.AddTransient<AwsS3CompatibleStorageService>();
+            serviceCollection.AddSingleton<FileArtifactBuilder>();
+            serviceCollection.AddSingleton<FolderArtifactBuilder>();
+
+            serviceCollection.RegisterBlocksStorageServices();
         }
     }
 }
