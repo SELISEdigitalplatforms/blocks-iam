@@ -43,10 +43,8 @@ export const OrganizationUsers = ({
   return (
     <Card>
       <CardHeader className="flex-row flex-wrap items-center justify-between gap-3">
-        {action}
-        <div className="ml-auto">
-          <OrganizationUsersFilterToolbar />
-        </div>
+        <OrganizationUsersFilterToolbar />
+        <div className="ml-auto">{action}</div>
       </CardHeader>
 
       <CardContent>

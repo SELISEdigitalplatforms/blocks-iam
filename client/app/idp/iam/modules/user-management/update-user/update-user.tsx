@@ -88,9 +88,9 @@ export const UpdateUser = ({ id, projectKey, own = false, iconOnly = false }: Up
             variant="ghost"
             size="icon"
             aria-label={own ? "Edit profile" : "Edit user"}
-            className="h-9 w-9 rounded-full text-muted-foreground hover:bg-muted hover:text-foreground"
+            className="h-7 w-7 shrink-0 rounded-full text-muted-foreground hover:bg-muted hover:text-foreground"
           >
-            <Pen className="h-4 w-4" />
+            <Pen className="h-3.5 w-3.5" />
           </Button>
         ) : own ? (
           <Button
