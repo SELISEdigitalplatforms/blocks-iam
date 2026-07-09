@@ -124,17 +124,17 @@ export const InviteUser = () => {
   );
 
   // Dropdown list: enabled orgs with a synthetic "Default" entry pinned at the top.
-  // When the email maps to an existing user, hide orgs they're already in.
-  const orgOptions = useMemo(() => {
-    const list = enabledOrgs.filter(
-      (org) =>
-        org.itemId !== DEFAULT_ORGANIZATION_ID && !existingUserOrgIds.has(org.itemId),
-    );
-    return [
-      { itemId: DEFAULT_ORGANIZATION_ID, name: "Default", isEnabled: true },
-      ...list,
-    ];
-  }, [enabledOrgs, existingUserOrgIds]);
+// When the email maps to an existing user, hide orgs (including Default) they're already in.
+const orgOptions = useMemo(() => {
+  const hideDefault = existingUserOrgIds.has(DEFAULT_ORGANIZATION_ID);
+  const list = enabledOrgs.filter(
+    (org) =>
+      org.itemId !== DEFAULT_ORGANIZATION_ID && !existingUserOrgIds.has(org.itemId),
+  );
+  return hideDefault
+    ? list
+    : [{ itemId: DEFAULT_ORGANIZATION_ID, name: "Default", isEnabled: true }, ...list];
+}, [enabledOrgs, existingUserOrgIds]);
 
   const orgIdToName = useMemo(() => {
     const map = new Map<string, string>();

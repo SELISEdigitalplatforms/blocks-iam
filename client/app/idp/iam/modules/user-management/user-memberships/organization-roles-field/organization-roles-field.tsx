@@ -10,10 +10,6 @@ type OrganizationRolesFieldProps = {
 };
 
 export const OrganizationRolesField = ({ roles, onChange }: OrganizationRolesFieldProps) => {
-  const onAddHandler = (newRoles: IRole[]) => {
-    onChange([...roles, ...newRoles]);
-  };
-
   const onRemoveHandler = (role: IRole) => {
     onChange(roles.filter((item) => item.slug !== role.slug));
   };
@@ -35,7 +31,7 @@ export const OrganizationRolesField = ({ roles, onChange }: OrganizationRolesFie
           </p>
         </div>
         <div className="shrink-0">
-          <AddOrganizationRole onAdd={onAddHandler} roles={roles} />
+          <AddOrganizationRole onChange={onChange} roles={roles} />
         </div>
       </div>
       {roles.length === 0 ? (

@@ -17,15 +17,16 @@ import { useProjectStore } from "@seliseblocks/blocks-kit";
 import { useGetRoles } from "@blocks-idp/iam/hooks/use-roles";
 import { IRole } from "@blocks-idp/iam/models/role";
 import { Plus } from "lucide-react";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 
 type AddOrganizationRoleProps = {
   roles: IRole[];
-  onAdd: (data: IRole[]) => void;
+  /** Called with the full reconciled selection on confirm. */
+  onChange: (data: IRole[]) => void;
   onSave?: () => void;
 };
 
-export const AddOrganizationRole = ({ onAdd, roles, onSave }: AddOrganizationRoleProps) => {
+export const AddOrganizationRole = ({ onChange, roles, onSave }: AddOrganizationRoleProps) => {
   const tenantId = useProjectStore().selectedProject?.tenantId || "";
   const [open, setOpen] = useState<boolean>(false);
   const [selectedRoles, setSelectedRoles] = useState<IRole[]>([]);
@@ -41,9 +42,19 @@ export const AddOrganizationRole = ({ onAdd, roles, onSave }: AddOrganizationRol
     },
   });
 
+  // Seed the modal with the parent's currently-assigned roles so the user can
+  // toggle them on/off. Reset on close.
+  useEffect(() => {
+    if (open) {
+      setSelectedRoles(roles);
+    }
+  }, [open, roles]);
+
   const onCheckedChangeHandler = (checked: boolean, role: IRole) => {
     if (checked) {
-      return setSelectedRoles((prev) => [...prev, role]);
+      return setSelectedRoles((prev) =>
+        prev.some((item) => item.slug === role.slug) ? prev : [...prev, role],
+      );
     }
     setSelectedRoles((prev) => prev.filter((item) => item.slug !== role.slug));
   };
@@ -55,7 +66,6 @@ export const AddOrganizationRole = ({ onAdd, roles, onSave }: AddOrganizationRol
     setFilter({ page: 0, pageSize: 5, search: "" });
   };
 
-  const rolesSlug = useMemo(() => roles.map((item) => item.slug) || [], [roles]);
   const selectedRolesSlug = useMemo(
     () => selectedRoles.map((item) => item.slug) || [],
     [selectedRoles],
@@ -72,12 +82,12 @@ export const AddOrganizationRole = ({ onAdd, roles, onSave }: AddOrganizationRol
       <DialogTrigger asChild>
         <Button size="sm" variant="ghost" className="text-primary" type="button">
           <Plus className="h-4 w-4 md:mr-1.5" />
-          <span className="sr-only sm:not-sr-only">Add Role</span>
+          <span className="sr-only sm:not-sr-only">Manage Roles</span>
         </Button>
       </DialogTrigger>
       <DialogContent>
         <DialogHeader>
-          <DialogTitle className="text-left">Add roles</DialogTitle>
+          <DialogTitle className="text-left">Manage roles</DialogTitle>
           <DialogDescription></DialogDescription>
         </DialogHeader>
         <div>
@@ -103,10 +113,7 @@ export const AddOrganizationRole = ({ onAdd, roles, onSave }: AddOrganizationRol
                 data.data.map((item) => (
                   <div key={item.itemId} className="col-span-1 flex items-center py-2">
                     <Checkbox
-                      checked={
-                        rolesSlug.includes(item.slug) || selectedRolesSlug.includes(item.slug)
-                      }
-                      disabled={rolesSlug.includes(item.slug)}
+                      checked={selectedRolesSlug.includes(item.slug)}
                       onCheckedChange={(value) => onCheckedChangeHandler(!!value, item)}
                     />
                     <div className="ml-2 flex flex-col">
@@ -150,7 +157,7 @@ export const AddOrganizationRole = ({ onAdd, roles, onSave }: AddOrganizationRol
             type="button"
             size="default"
             onClick={() => {
-              onAdd(selectedRoles);
+              onChange(selectedRoles);
               reset();
               setOpen(false);
               // Defer save so the parent React tree has time to commit the
@@ -160,7 +167,7 @@ export const AddOrganizationRole = ({ onAdd, roles, onSave }: AddOrganizationRol
             }}
             disabled={selectedRoles.length === 0}
           >
-            Add
+            Save
           </Button>
         </DialogFooter>
       </DialogContent>

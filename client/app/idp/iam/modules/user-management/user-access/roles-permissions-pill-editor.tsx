@@ -48,7 +48,7 @@ export const RolesPermissionsPillEditor = ({
           </div>
           <AddOrganizationRole
             roles={roles}
-            onAdd={(newRoles) => onRolesChange([...roles, ...newRoles])}
+            onChange={onRolesChange}
             onSave={onSave}
           />
         </div>
@@ -81,7 +81,7 @@ export const RolesPermissionsPillEditor = ({
           </div>
           <AddOrganizationPermission
             permissions={permissions}
-            onAdd={(newPermissions) => onPermissionsChange([...permissions, ...newPermissions])}
+            onChange={onPermissionsChange}
             onSave={onSave}
           />
         </div>

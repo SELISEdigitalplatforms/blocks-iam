@@ -26,16 +26,17 @@ import { useProjectStore } from "@seliseblocks/blocks-kit";
 import { useGetPermissions } from "@blocks-idp/iam/hooks/use-permission";
 import { IPermission, RESOURCE_TYPE } from "@blocks-idp/iam/models/permission";
 import { Plus } from "lucide-react";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 
 type AddOrganizationPermissionProps = {
   permissions: IPermission[];
-  onAdd: (data: IPermission[]) => void;
+  /** Called with the full reconciled selection on confirm. */
+  onChange: (data: IPermission[]) => void;
   onSave?: () => void;
 };
 
 export const AddOrganizationPermission = ({
-  onAdd,
+  onChange,
   permissions,
   onSave,
 }: AddOrganizationPermissionProps) => {
@@ -55,9 +56,21 @@ export const AddOrganizationPermission = ({
     projectKey: tenantId,
   });
 
+  // Seed the modal with the parent's currently-assigned permissions so the
+  // user can toggle them on/off. Reset on close.
+  useEffect(() => {
+    if (open) {
+      setSelectedPermissions(permissions);
+    }
+  }, [open, permissions]);
+
   const onCheckedChangeHandler = (checked: boolean, permission: IPermission) => {
     if (checked) {
-      return setSelectedPermissions((prev) => [...prev, permission]);
+      return setSelectedPermissions((prev) =>
+        prev.some((item) => item.resource === permission.resource)
+          ? prev
+          : [...prev, permission],
+      );
     }
     setSelectedPermissions((prev) =>
       prev.filter((item) => item.resource !== permission.resource),
@@ -69,10 +82,6 @@ export const AddOrganizationPermission = ({
     setFilter({ page: 0, pageSize: 5, isBuiltIn: "", roles: [], search: "" });
   };
 
-  const permissionsResource = useMemo(
-    () => permissions.map((item) => item.resource) || [],
-    [permissions],
-  );
   const selectedPermissionsResource = useMemo(
     () => selectedPermissions.map((item) => item.resource) || [],
     [selectedPermissions],
@@ -95,12 +104,12 @@ export const AddOrganizationPermission = ({
           onClick={(e) => e.stopPropagation()}
         >
           <Plus className="h-4 w-4 md:mr-1.5" />
-          <span className="sr-only sm:not-sr-only">Add Permission</span>
+          <span className="sr-only sm:not-sr-only">Manage Permissions</span>
         </Button>
       </DialogTrigger>
       <DialogContent className="flex max-h-[560px] flex-col gap-3 overflow-hidden">
         <DialogHeader>
-          <DialogTitle className="text-left">Add permissions</DialogTitle>
+          <DialogTitle className="text-left">Manage permissions</DialogTitle>
           <DialogDescription></DialogDescription>
         </DialogHeader>
         <div>
@@ -133,11 +142,7 @@ export const AddOrganizationPermission = ({
                     <TableRow key={item.itemId}>
                       <TableCell>
                         <Checkbox
-                          checked={
-                            permissionsResource.includes(item.resource) ||
-                            selectedPermissionsResource.includes(item.resource)
-                          }
-                          disabled={permissionsResource.includes(item.resource)}
+                          checked={selectedPermissionsResource.includes(item.resource)}
                           onCheckedChange={(checked) =>
                             onCheckedChangeHandler(!!checked, item)
                           }
@@ -187,7 +192,7 @@ export const AddOrganizationPermission = ({
           <Button
             size="default"
             onClick={() => {
-              onAdd(selectedPermissions);
+              onChange(selectedPermissions);
               reset();
               setOpen(false);
               // Defer save so the parent React tree has time to commit the
@@ -197,7 +202,7 @@ export const AddOrganizationPermission = ({
             }}
             disabled={selectedPermissions.length === 0}
           >
-            Add
+            Save
           </Button>
         </DialogFooter>
       </DialogContent>

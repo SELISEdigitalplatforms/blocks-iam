@@ -1,4 +1,5 @@
 import { useGetOrganizationConfig } from "@blocks-idp/iam/hooks/use-organization";
+import { Card, CardContent } from "@/components/ui-kits/card/card";
 import { Skeleton } from "@/components/ui-kits/skeleton/skeleton";
 import { SingleOrgAccess } from "./single-org-access";
 import { MultiOrgAccess } from "./multi-org-access";
@@ -14,11 +15,13 @@ export const UserAccessTab = ({ userId, projectKey }: UserAccessTabProps) => {
 
   if (isConfigLoading) {
     return (
-      <div className="space-y-4 rounded-lg border bg-card p-4">
-        <Skeleton className="h-6 w-32" />
-        <Skeleton className="h-9 w-full" />
-        <Skeleton className="h-9 w-full" />
-      </div>
+      <Card className="flex h-full min-h-[420px] flex-col">
+        <CardContent className="space-y-4 pt-6">
+          <Skeleton className="h-6 w-32" />
+          <Skeleton className="h-9 w-full" />
+          <Skeleton className="h-9 w-full" />
+        </CardContent>
+      </Card>
     );
   }
 
@@ -27,8 +30,10 @@ export const UserAccessTab = ({ userId, projectKey }: UserAccessTabProps) => {
   }
 
   return (
-    <div className="flex h-full min-h-[420px] flex-col rounded-lg border bg-card p-4">
-      <SingleOrgAccess userId={userId} projectKey={projectKey} />
-    </div>
+    <Card className="flex h-full min-h-[420px] flex-col">
+      <CardContent className="flex-1 pt-6">
+        <SingleOrgAccess userId={userId} projectKey={projectKey} />
+      </CardContent>
+    </Card>
   );
 };
