@@ -27,6 +27,7 @@ import { useProjectStore } from "@seliseblocks/blocks-kit";
 import { useEffect } from "react";
 import { Loader, Plus } from "lucide-react";
 import { isErrorWithErrors } from "@/lib/error";
+import { cn } from "@/lib/utils";
 import { useQueryClient } from "@tanstack/react-query";
 
 const inviteOrganizationUserFormDefaultValue = {
@@ -88,7 +89,7 @@ export const InviteOrganizationUser = ({ organizationId }: InviteOrganizationUse
 
   // Silently check whether the email already maps to a user — drives whether
   // the first/last name fields appear. The user is never notified either way.
-  const { data: existsData } = useCheckUserExists(emailValue, {
+  const { data: existsData, isFetching: isCheckingEmail } = useCheckUserExists(emailValue, {
     enabled: isValidEmailFormat,
   });
   const exists = existsData?.exists === true;
@@ -163,12 +164,18 @@ export const InviteOrganizationUser = ({ organizationId }: InviteOrganizationUse
                   <FormItem>
                     <FormLabel>Email</FormLabel>
                     <FormControl>
-                      <Input
-                        type="email"
-                        placeholder="name@company.com"
-                        autoComplete="off"
-                        {...field}
-                      />
+                      <div className="relative">
+                        <Input
+                          type="email"
+                          placeholder="name@company.com"
+                          autoComplete="off"
+                          className={cn(isCheckingEmail && "pr-9")}
+                          {...field}
+                        />
+                        {isCheckingEmail && (
+                          <Loader className="absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 animate-spin text-muted-foreground" />
+                        )}
+                      </div>
                     </FormControl>
                     <FormMessage />
                   </FormItem>
