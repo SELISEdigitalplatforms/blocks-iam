@@ -184,7 +184,7 @@ export const OrganizationsSidebarList = ({
                   type="button"
                   onClick={() => onSelect(org)}
                   className={cn(
-                    "flex w-full items-center gap-3 rounded-md border-l-2 border-transparent px-2.5 py-2.5 text-left transition-colors",
+                    "flex w-full items-center gap-3 rounded-r-md border-l-2 border-transparent px-2.5 py-2.5 text-left transition-colors",
                     isSelected
                       ? "border-l-primary bg-primary/5"
                       : "hover:bg-muted/60",
