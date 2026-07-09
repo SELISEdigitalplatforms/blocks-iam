@@ -19,8 +19,8 @@ type RolesPermissionsPillEditorProps = {
 };
 
 const RolePill = ({ role, onRemove }: { role: IRole; onRemove: () => void }) => (
-  <span className="inline-flex items-center gap-1.5 rounded-full border border-blue-500/20 bg-blue-500/10 px-3 py-1.5 text-sm text-blue-700 dark:text-blue-400">
-    <Shield className="h-3.5 w-3.5" />
+  <span className="inline-flex items-center gap-1.5 rounded-full border border-blue-500/20 bg-blue-500/10 px-2.5 py-1 text-sm text-blue-700 dark:text-blue-400">
+    <Shield className="h-3 w-3" />
     {role.name}
     <button
       type="button"
@@ -40,8 +40,8 @@ const PermissionPill = ({
   permission: IPermission;
   onRemove: () => void;
 }) => (
-  <span className="inline-flex items-center gap-1.5 rounded-full border border-emerald-500/20 bg-emerald-500/10 px-3 py-1.5 text-sm text-emerald-700 dark:text-emerald-400">
-    <KeyRound className="h-3.5 w-3.5" />
+  <span className="inline-flex items-center gap-1.5 rounded-full border border-emerald-500/20 bg-emerald-500/10 px-2.5 py-1 text-sm text-emerald-700 dark:text-emerald-400">
+    <KeyRound className="h-3 w-3" />
     {permission.name}
     <button
       type="button"
@@ -125,9 +125,9 @@ export const RolesPermissionsPillEditor = ({
         </div>
       </div>
 
-      <div className="flex justify-end">
-        <Button onClick={onSave} disabled={isSaving || !isDirty}>
-          {isSaving ? "Saving..." : "Save Roles & Permissions"}
+      <div className="flex justify-end border-t pt-4">
+        <Button size="sm" onClick={onSave} disabled={isSaving || !isDirty}>
+          {isSaving ? "Saving..." : "Save Changes"}
         </Button>
       </div>
     </div>

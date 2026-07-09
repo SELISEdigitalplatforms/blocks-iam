@@ -3,7 +3,14 @@ import { useGetOrganizationById } from "@blocks-idp/iam/hooks/use-organization";
 import { useProjectStore } from "@seliseblocks/blocks-kit";
 import { Badge } from "@/components/ui-kits/badge/badge";
 import { Skeleton } from "@/components/ui-kits/skeleton/skeleton";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui-kits/tabs/tabs";
+import {
+  Tabs,
+  TabsContent,
+  TabsList,
+  TabsTrigger,
+  underlineTabsListClass,
+  underlineTabTriggerClass,
+} from "@/components/ui-kits/tabs/tabs";
 import { CopyToClipboardButton } from "@/components/copy-to-clipboard-button/copy-to-clipboard-button";
 import { Building2 } from "lucide-react";
 import {
@@ -13,10 +20,6 @@ import {
 import { OrganizationActions } from "./organization-actions-menu";
 import { OrganizationDetailsTab } from "./organization-details-tab";
 import { useOrganizationMemberCount } from "./organization-member-count";
-
-const underlineTabsListClass = "h-auto w-full justify-start gap-6 rounded-none border-b bg-transparent p-0";
-const underlineTabTriggerClass =
-  "h-auto rounded-none border-b-2 border-transparent px-0 pb-3 text-muted-foreground shadow-none data-[state=active]:border-primary data-[state=active]:bg-transparent data-[state=active]:text-primary data-[state=active]:shadow-none";
 
 type OrganizationWorkspacePanelProps = {
   organizationId: string;
