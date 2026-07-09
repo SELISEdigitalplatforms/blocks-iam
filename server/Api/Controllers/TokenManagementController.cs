@@ -1,7 +1,7 @@
 using Authentication.DomainService.Oidc.Repositories;
 using Authentication.DomainService.Dtos;
 using Authentication.DomainService.Services;
-using Authentication.DomainService.Utilities;
+using Iam.DomainService.Utilities;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using System.Text;
@@ -267,7 +267,7 @@ namespace Blocks.Api.Controllers
                 DeviceInformation = _authenticationDomainService.GetDeviceInfo(Request?.Headers?.UserAgent.ToString() ?? string.Empty),
                 IpAddresses = string.Join(",", _authenticationDomainService.GetVisitorsIpAddresses(Request.HttpContext)),
                 TenantId = User.FindFirst("tenant_id")?.Value,
-                SessionId = Request.Cookies["idp_session_id"],
+                SessionId = Request.Cookies[IdpConstants.BuildIdpSessionCookieKey(User.FindFirst("tenant_id")?.Value)],
                 CorrelationId = HttpContext.TraceIdentifier,
                 Outcome = outcome,
                 ReasonCode = reasonCode,

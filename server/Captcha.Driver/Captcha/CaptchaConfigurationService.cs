@@ -1,22 +1,30 @@
-namespace Blocks.CaptchaDriver
+namespace Blocks.CaptchaDriver;
+
+/// <summary>
+/// Default <see cref="ICaptchaConfigurationService"/> implementation that delegates to a repository.
+/// </summary>
+public sealed class CaptchaConfigurationService : ICaptchaConfigurationService
 {
-    public class CaptchaConfigurationService : ICaptchaConfigurationService
+    private readonly ICaptchaConfigurationRepository _repository;
+
+    public CaptchaConfigurationService(ICaptchaConfigurationRepository repository)
     {
-        private readonly ICaptchaConfigurationRepository _repository;
+        _repository = repository;
+    }
 
-        public CaptchaConfigurationService(ICaptchaConfigurationRepository repository)
+    /// <inheritdoc />
+    public async Task<CaptchaConfiguration?> GetByNameAsync(string? configurationName)
+    {
+        if (configurationName is null)
         {
-            _repository = repository;
+            throw new ArgumentNullException(nameof(configurationName));
         }
+        return await _repository.GetByProviderAsync(configurationName);
+    }
 
-        public async Task<CaptchaConfiguration> GetByNameAsync(string configurationName)
-        {
-            return await _repository.GetByProviderAsync(configurationName);
-        }
-
-        public async Task<CaptchaConfiguration> GetCaptchaConfigurationAsync()
-        {
-            return await _repository.GetCaptchaConfigurationAsync();
-        }
+    /// <inheritdoc />
+    public async Task<CaptchaConfiguration?> GetCaptchaConfigurationAsync()
+    {
+        return await _repository.GetCaptchaConfigurationAsync();
     }
 }

@@ -1,4 +1,6 @@
 using Authentication.DomainService.Shared;
+using Authentication.DomainService.Utilities;
+using Iam.DomainService.Utilities;
 using Iam.DomainService.Entities;
 
 namespace Authentication.DomainService.Utilities
@@ -22,9 +24,9 @@ namespace Authentication.DomainService.Utilities
                 return user.LastUsedOrganizationId;
             }
 
-            if (user.OrganizationIds.Contains(AuthenticationConstants.DefaultOrganizationId))
+            if (user.OrganizationIds.Contains(IdpConstants.DefaultOrganizationId))
             {
-                return AuthenticationConstants.DefaultOrganizationId;
+                return IdpConstants.DefaultOrganizationId;
             }
 
             return user.OrganizationIds.FirstOrDefault()

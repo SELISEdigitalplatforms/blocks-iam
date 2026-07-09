@@ -1,4 +1,5 @@
 using Authentication.DomainService.Services;
+using Iam.DomainService.Utilities;
 using Authentication.DomainService.Shared;
 using Blocks.Genesis;
 using Microsoft.Extensions.Logging;
@@ -67,7 +68,7 @@ namespace Authentication.DomainService.OAuth
             if (string.IsNullOrEmpty(userResponse.Email))
             {
                 // GitHub email endpoint (hardcoded as it's provider-specific)
-                var githubEmailUrl = AuthenticationConstants.GithubUserEmailsUrl;
+                var githubEmailUrl = IdpConstants.GithubUserEmailsUrl;
                 var (emailResponse, emailError) = await _httpService.Get<List<GithubEmail>>(
                 githubEmailUrl,
                 headers: new Dictionary<string, string> { { "Authorization", $"Bearer {tokenResponse.AccessToken}" },

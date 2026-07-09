@@ -4,6 +4,9 @@ namespace Mfa.DomainService.Configuration
 {
     public class MfaConfigurationService : IMfaConfigurationService
     {
+        private const string DefaultConfigName = "Default";
+        private const int DefaultBackupCodesCount = 10;
+
         private readonly IMfaManagementRepository _repository;
 
         public MfaConfigurationService(IMfaManagementRepository repository)
@@ -13,7 +16,7 @@ namespace Mfa.DomainService.Configuration
 
         public async Task<Configuration?> GetAsync()
         {
-            var repoConfiguration = await _repository.GetItemAsync<MfaConfiguration>(m => m.Name == "Default");
+            var repoConfiguration = await _repository.GetItemAsync<MfaConfiguration>(m => m.Name == DefaultConfigName);
 
             if (repoConfiguration == null)
             {
@@ -35,20 +38,20 @@ namespace Mfa.DomainService.Configuration
                 MfaExemptRoles = repoConfiguration.MfaExemptRoles ?? [],
                 AllowUserOptOut = repoConfiguration.AllowUserOptOut,
                 AllowBackupCodes = repoConfiguration.AllowBackupCodes,
-                BackupCodesCount = repoConfiguration.BackupCodesCount > 0 ? repoConfiguration.BackupCodesCount : 10
+                BackupCodesCount = repoConfiguration.BackupCodesCount > 0 ? repoConfiguration.BackupCodesCount : DefaultBackupCodesCount
             };
         }
 
         public async Task SaveAsync(Configuration configuration)
         {
-            var existing = await _repository.GetItemAsync<MfaConfiguration>(m => m.Name == "Default");
+            var existing = await _repository.GetItemAsync<MfaConfiguration>(m => m.Name == DefaultConfigName);
 
             if (existing == null)
             {
                 existing = new MfaConfiguration
                 {
                     ItemId = Guid.NewGuid().ToString("n"),
-                    Name = "Default",
+                    Name = DefaultConfigName,
                     CreatedDate = DateTime.UtcNow,
                     LastUpdatedDate = DateTime.UtcNow
                 };
@@ -65,7 +68,7 @@ namespace Mfa.DomainService.Configuration
             existing.BackupCodesCount = configuration.BackupCodesCount;
             existing.LastUpdatedDate = DateTime.UtcNow;
 
-            await _repository.UpsertAsync(existing, m => m.Name == "Default");
+            await _repository.UpsertAsync(existing, m => m.Name == DefaultConfigName);
         }
     }
 }

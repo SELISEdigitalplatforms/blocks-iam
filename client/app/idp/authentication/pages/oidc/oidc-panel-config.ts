@@ -204,3 +204,62 @@ export const RESET_PASSWORD_PANEL: OidcPanelConfig = {
     { text: "  > content-type: application/json", color: "var(--muted)"  },
   ],
 };
+
+export const ACTIVATE_PANEL: OidcPanelConfig = {
+  heading: "Account Activation Pipeline",
+  subtext:
+    "Your activation code is validated by the Blocks IAM service. A new password is set and the account becomes ready to use.",
+
+  idleBadge:       "Awaiting Input",
+  submittingBadge: "Activating",
+  successBadge:    "Activated",
+  failedBadge:     "Activation Failed",
+
+  idleNode: {
+    icon:        "cursor",
+    title:       "Awaiting User Input",
+    description: "Set a password to begin the activation flow.",
+  },
+
+  validatingNode: {
+    icon:         "key",
+    service:      "IAM Service",
+    title:        "Validating Activation Code",
+    activeLabel:  "POST /api/account/activate …",
+    successLabel: "Activation code verified",
+    failLabel:    "Activation code rejected by IAM",
+  },
+
+  successNodes: [
+    {
+      icon:         "shield-check",
+      service:      "IAM Service",
+      title:        "Setting Password",
+      activeLabel:  "Applying password hash to user record…",
+      successLabel: "Password set successfully",
+    },
+    {
+      icon:         "user-check",
+      service:      "IAM Service",
+      title:        "Activating Account",
+      activeLabel:  "Marking account as active…",
+      successLabel: "Account activated",
+    },
+  ],
+
+  terminalMessages: [
+    { text: "$ POST /api/account/activate",        color: "var(--accent2)" },
+    { text: "  > content-type: application/json",  color: "var(--muted)"   },
+    { text: "200 OK — activation code verified",   color: "var(--success)" },
+    { text: "$ iam.updatePassword(user_id)",       color: "var(--fg)"      },
+    { text: "  > password_hash updated",           color: "var(--muted)"   },
+    { text: "$ iam.activateAccount(user_id)",      color: "var(--fg)"      },
+    { text: "  > is_active = true",                color: "var(--muted)"   },
+    { text: "account activation complete",         color: "var(--success)" },
+  ],
+
+  errorTerminalPrefix: [
+    { text: "$ POST /api/account/activate",        color: "var(--accent2)" },
+    { text: "  > content-type: application/json",  color: "var(--muted)"   },
+  ],
+};

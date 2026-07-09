@@ -1,18 +1,38 @@
 export interface IOrganization {
   itemId: string;
   name: string;
-  isEnabled: boolean;
+  description: string | null;
+  parentOrganizationId: string | null;
+  shortCode: string | null;
+  isDisabled: boolean;
+  defaultRoleForMembers: string[];
+  defaultPermissionsForMembers: string[];
+  email: string | null;
+  phoneNumber: string | null;
+  websiteUrl: string | null;
+  addresses: unknown[];
+  theme: string | null;
+  logoUrl: string | null;
+  logoId: string | null;
+  industry: string | null;
+  timeZone: string;
+  currency: string | null;
+  dateFormat: string;
+  timeFormat: string;
+  locale: string;
+  attributes: Record<string, unknown>;
   createdDate: string;
   lastUpdatedDate: string;
   createdBy: string;
-  lastUpdatedBy: string;
   language: string | null;
-  organizationIds: string[];
+  lastUpdatedBy: string;
+  organizationId: string;
+  organizationIds?: string[];
   tags: string[];
 }
 
 export interface IOrganizationFilter {
-  projectKey: string;
+  projectKey?: string;
   page: number;
   pageSize: number;
   search?: string;
@@ -25,7 +45,13 @@ export interface IOrganizationFilter {
 export interface IGetOrganizationsParams {
   page: number;
   pageSize: number;
-  searchText?: string;
+  search?: string;
+  isDisabled?: boolean;
+  parentOrganizationId?: string;
+  sort?: {
+    property: string;
+    isDescending: boolean;
+  };
 }
 
 export interface IGetOrganizationsResponse {

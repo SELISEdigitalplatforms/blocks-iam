@@ -1,9 +1,8 @@
 import { createBrowserRouter, Navigate, Outlet } from "react-router-dom";
 
 import { AuthLayout } from "./layouts/auth-layout";
-import { PublicLayout } from "./layouts/public-layout";
 import { OidcLayout } from "./layouts/oidc-layout";
-// import { DashboardLayout } from "./layouts/dashboard-layout";
+import { PublicLayout } from "./layouts/public-layout";
 
 // Auth routes (public, with auth layout)
 import SignupPage from "./routes/auth/signup";
@@ -12,60 +11,55 @@ import SSOCallbackPage from "./routes/auth/sso-callback";
 
 // Public routes
 import ActivatePage from "./routes/auth/activate";
-import ForgotPasswordPage from "./routes/auth/forgot-password";
-import ResetPasswordPage from "./routes/auth/resetpassword";
 import ActivateSuccessPage from "./routes/auth/activate-success";
 import ForgotEmailSentPage from "./routes/auth/forgot-email-sent";
-import SignupEmailSentPage from "./routes/auth/signup-email-sent";
+import ForgotPasswordPage from "./routes/auth/forgot-password";
 import MfaCheckPage from "./routes/auth/mfa-check";
 import ResetPasswordSuccessPage from "./routes/auth/reset-password-success";
+import ResetPasswordPage from "./routes/auth/resetpassword";
+import SignupEmailSentPage from "./routes/auth/signup-email-sent";
 
 // OIDC routes (un-guarded)
+import OidcErrorPage from "./routes/oidc/error";
 import OidcIndexPage from "./routes/oidc/index";
 import OidcLoginPage from "./routes/oidc/login";
 import OidcPermissionPage from "./routes/oidc/permission";
-import OidcErrorPage from "./routes/oidc/error";
-import OidcEmailSentConfirmationPage from "./routes/oidc/email-sent-confirmation";
 
 // Dashboard routes (protected)
-import IamPage from "./routes/dashboard/iam";
-import IamUserDetailPage from "./routes/dashboard/iam-user-detail";
-import IamRoleDetailPage from "./routes/dashboard/iam-role-detail";
-import IamPermissionDetailPage from "./routes/dashboard/iam-permission-detail";
-import IamAddPermissionPage from "./routes/dashboard/iam-add-permission";
-import IamOrgDetailPage from "./routes/dashboard/iam-org-detail";
-import IamLogsPage from "./routes/dashboard/iam-logs";
-import IamConfigurePage from "./routes/dashboard/iam-configure";
-import AuthenticationConfigPage from "./routes/dashboard/authentication-config";
-import SsoConfigurationPage from "./routes/dashboard/sso-configuration";
 import AuthLogsPage from "./routes/dashboard/auth-logs";
-import MfaLogsPage from "./routes/dashboard/mfa-logs";
+import AuthenticationConfigPage from "./routes/dashboard/authentication-config";
 import CaptchaLogsPage from "./routes/dashboard/captcha-logs";
-import RateLimiterPage from "./routes/dashboard/rate-limiter";
+import IamPage from "./routes/dashboard/iam";
+import IamAddPermissionPage from "./routes/dashboard/iam-add-permission";
+import IamConfigurePage from "./routes/dashboard/iam-configure";
+import IamLogsPage from "./routes/dashboard/iam-logs";
+import IamOrgDetailPage from "./routes/dashboard/iam-org-detail";
+import IamPermissionDetailPage from "./routes/dashboard/iam-permission-detail";
+import IamRoleDetailPage from "./routes/dashboard/iam-role-detail";
+import IamUserDetailPage from "./routes/dashboard/iam-user-detail";
 import ManagedServicesPage from "./routes/dashboard/managed-services";
+import MfaLogsPage from "./routes/dashboard/mfa-logs";
 import ProfilePage from "./routes/dashboard/profile";
+import RateLimiterPage from "./routes/dashboard/rate-limiter";
+import SsoConfigurationPage from "./routes/dashboard/sso-configuration";
 
-// Console pages
-// import { EnvironmentsPage } from "./pages/environments/environments";
 import { CreateProjectWrapper } from "./pages/create-project/create-project";
-// import LoginSimplePage from "./routes/auth/login-simple";
 
 import {
   AuthResolver,
-  PublicGuard,
-  ProtectedGuard,
+  CallbackPage,
   ConsoleLayout,
   ConsolePage,
-  CallbackPage,
-  LoginPage,
   DashboardOverview,
-  ProjectOverviewLayout,
-  DashboardLayout,
+  DashboardRoute,
   EnvironmentsPage,
+  LoginPage,
+  ProjectOverviewRoute,
+  ProtectedGuard,
+  PublicGuard,
   TooltipProvider,
 } from "@seliseblocks/blocks-kit";
 import { navigationMenus } from "./constants/navigation-menus";
-// import { ProjectOverviewLayout } from "./layouts/project-overview-layout";
 
 const redirectPaths: Record<string, string> = {
   "/app/user-detail/*": "/app/iam",
@@ -103,7 +97,7 @@ export const router = createBrowserRouter([
           { path: "recover/:tenantId", element: <ResetPasswordPage /> },
           { path: "activate/:tenantId", element: <ActivatePage /> },
           { path: "mfa-check", element: <MfaCheckPage /> },
-
+          { path: ":provider/callback/:tenantId", element: <SSOCallbackPage  /> },
         ],
       },
       {
@@ -113,7 +107,7 @@ export const router = createBrowserRouter([
             path: "/login/callback",
             element: <CallbackPage defaultRedirectUrl="/app/console" />,
           },
-          { path: "/sso/:provider/callback", element: <SSOCallbackPage /> },
+          // { path: "/sso/:provider/callback", element: <SSOCallbackPage /> },
         ],
       },
 
@@ -183,6 +177,7 @@ export const router = createBrowserRouter([
               </ProtectedGuard>
             ),
             children: [
+              { index: true, element: <Navigate to="console" replace /> },
               // ── Console group (no impersonation allowed) ──
               {
                 element: (
@@ -201,19 +196,17 @@ export const router = createBrowserRouter([
                   { path: "profile", element: <ProfilePage /> },
                 ],
               },
+              // ── Project overview group (impersonation terminated) ──
               {
-                path: "project-overview",
+                path: "project/:tenantGroupId",
                 element: (
-                  <TooltipProvider delayDuration={0}>
-                    <ProjectOverviewLayout
-                      redirectPaths={redirectPaths}
-                      navigationMenus={navigationMenus}
-                    >
-                      <Outlet />
-                    </ProjectOverviewLayout>
-                  </TooltipProvider>
+                  <ProjectOverviewRoute
+                    redirectPaths={redirectPaths}
+                    navigationMenus={navigationMenus}
+                  />
                 ),
                 children: [
+                  { index: true, element: <Navigate to="environments" replace /> },
                   {
                     path: "environments",
                     element: <EnvironmentsPage />,
@@ -222,18 +215,16 @@ export const router = createBrowserRouter([
               },
               // ── Dashboard group (impersonation synchronized) ──
               {
+                path: ":itemId",
                 element: (
-                  <TooltipProvider delayDuration={0}>
-                    <DashboardLayout
-                      redirectPaths={redirectPaths}
-                      navigationMenus={navigationMenus}
-                    >
-                      <Outlet />
-                    </DashboardLayout>
-                  </TooltipProvider>
+                  <DashboardRoute
+                    redirectPaths={redirectPaths}
+                    navigationMenus={navigationMenus}
+                  />
                 ),
 
                 children: [
+                  { index: true, element: <Navigate to="dashboard" replace /> },
                   { path: "iam", element: <IamPage /> },
                   {
                     path: "user-detail/:id",
@@ -252,7 +243,7 @@ export const router = createBrowserRouter([
                     element: <IamPermissionDetailPage />,
                   },
                   {
-                    path: "organization-detail/:itemId",
+                    path: "organization-detail/:orgId",
                     element: <IamOrgDetailPage />,
                   },
                   { path: "iam/logs", element: <IamLogsPage /> },
@@ -305,8 +296,7 @@ export const router = createBrowserRouter([
                     element: <CaptchaLogsPage />,
                   },
                   { path: "dashboard", element: <DashboardOverview /> },
-                  // { path: "project-overview", element: <Navigate to="project-overview/environments" replace /> },
-                  // { path: "project-overview/environments", element: <EnvironmentsPage /> },
+                 
                 ],
               },
             ],

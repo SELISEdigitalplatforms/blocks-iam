@@ -4,6 +4,7 @@
     <PackageReference Include="BCrypt.Net-Next" />
     <PackageReference Include="DeviceDetector.NET" />
     <PackageReference Include="Handlebars.Net" />
+    <PackageReference Include="Newtonsoft.Json" />
     <PackageReference Include="SixLabors.ImageSharp" />
     <PackageReference Include="System.IdentityModel.Tokens.Jwt" />
   </ItemGroup>
