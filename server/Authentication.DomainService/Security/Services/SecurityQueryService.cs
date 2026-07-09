@@ -23,11 +23,9 @@ namespace Authentication.DomainService.Security.Services
             _httpContextAccessor = httpContextAccessor;
         }
 
-        public async Task<BaseQueryListResponse<IQueryable<SessionDto>>> GetSessionsAsync(GetSessionsRequest req, CancellationToken ct)
+        public async Task<BaseQueryListResponse<IQueryable<SessionDto>>> GetSessionsAsync(string targetUserId, GetSessionsRequest req, CancellationToken ct)
         {
-            var userId = ResolveUserId();
-            var tenantId = ResolveTenantId();
-            if (string.IsNullOrWhiteSpace(userId))
+            if (string.IsNullOrWhiteSpace(targetUserId))
             {
                 return new BaseQueryListResponse<IQueryable<SessionDto>>
                 {
@@ -36,9 +34,10 @@ namespace Authentication.DomainService.Security.Services
                 };
             }
 
-            var currentSessionId = await ResolveCurrentSessionIdAsync(userId, tenantId, ct);
+            var tenantId = ResolveTenantId();
+            var currentSessionId = await ResolveCurrentSessionIdAsync(targetUserId, tenantId, ct);
 
-            var items = (await _securityRepository.GetSessionsAsync(userId, tenantId, req, ct)).ToList();
+            var items = (await _securityRepository.GetSessionsAsync(targetUserId, tenantId, req, ct)).ToList();
             foreach (var item in items)
             {
                 item.IsCurrent = !string.IsNullOrEmpty(currentSessionId) && currentSessionId == item.SessionId;
@@ -51,28 +50,35 @@ namespace Authentication.DomainService.Security.Services
             };
         }
 
-        public async Task<SessionDto?> GetSessionAsync(string sessionId, CancellationToken ct)
+        public async Task<SessionDto?> GetSessionAsync(string targetUserId, string sessionId, CancellationToken ct)
         {
-            var userId = ResolveUserId();
-            var tenantId = ResolveTenantId();
-            if (string.IsNullOrWhiteSpace(userId))
+            if (string.IsNullOrWhiteSpace(targetUserId))
             {
                 return null;
             }
 
-            var dto = await _securityRepository.GetSessionAsync(userId, tenantId, sessionId, ct);
+            var tenantId = ResolveTenantId();
+            var dto = await _securityRepository.GetSessionAsync(targetUserId, tenantId, sessionId, ct);
             if (dto != null)
             {
-                var currentSessionId = await ResolveCurrentSessionIdAsync(userId, tenantId, ct);
+                var currentSessionId = await ResolveCurrentSessionIdAsync(targetUserId, tenantId, ct);
                 dto.IsCurrent = !string.IsNullOrEmpty(currentSessionId) && currentSessionId == dto.SessionId;
             }
             return dto;
         }
 
-        public async Task<BaseQueryListResponse<IQueryable<AuthHistoryDto>>> GetHistoryAsync(GetHistoryRequest req, CancellationToken ct)
+        public async Task<SessionDto?> GetSessionByIdAsync(string sessionId, CancellationToken ct)
         {
-            var userId = ResolveUserId();
-            if (string.IsNullOrWhiteSpace(userId))
+            if (string.IsNullOrWhiteSpace(sessionId))
+            {
+                return null;
+            }
+            return await _securityRepository.GetSessionByIdAsync(sessionId, ct);
+        }
+
+        public async Task<BaseQueryListResponse<IQueryable<AuthHistoryDto>>> GetHistoryAsync(string targetUserId, GetHistoryRequest req, CancellationToken ct)
+        {
+            if (string.IsNullOrWhiteSpace(targetUserId))
             {
                 return new BaseQueryListResponse<IQueryable<AuthHistoryDto>>
                 {
@@ -81,7 +87,7 @@ namespace Authentication.DomainService.Security.Services
                 };
             }
 
-            var items = (await _securityRepository.GetHistoryAsync(userId, req, ct)).ToList();
+            var items = (await _securityRepository.GetHistoryAsync(targetUserId, req, ct)).ToList();
             return new BaseQueryListResponse<IQueryable<AuthHistoryDto>>
             {
                 Data = items.AsQueryable(),
@@ -89,27 +95,26 @@ namespace Authentication.DomainService.Security.Services
             };
         }
 
-        public async Task<SessionTimelineDto?> GetSessionTimelineAsync(string sessionId, CancellationToken ct)
+        public async Task<SessionTimelineDto?> GetSessionTimelineAsync(string targetUserId, string sessionId, CancellationToken ct)
         {
-            var userId = ResolveUserId();
-            var tenantId = ResolveTenantId();
-            if (string.IsNullOrWhiteSpace(userId) || string.IsNullOrWhiteSpace(sessionId))
+            if (string.IsNullOrWhiteSpace(targetUserId) || string.IsNullOrWhiteSpace(sessionId))
             {
                 return null;
             }
 
-            var session = await _securityRepository.GetSessionAsync(userId, tenantId, sessionId, ct);
+            var tenantId = ResolveTenantId();
+            var session = await _securityRepository.GetSessionAsync(targetUserId, tenantId, sessionId, ct);
             if (session == null)
             {
                 return null;
             }
 
-            var currentSessionId = await ResolveCurrentSessionIdAsync(userId, tenantId, ct);
+            var currentSessionId = await ResolveCurrentSessionIdAsync(targetUserId, tenantId, ct);
             session.IsCurrent = !string.IsNullOrEmpty(currentSessionId) && currentSessionId == session.SessionId;
 
             var refreshStatus = await _securityRepository.GetRefreshTokenStatusAsync(sessionId, ct);
-            var revokedAccess = await _securityRepository.GetRevokedAccessTokensAsync(userId, ct);
-            var lifecycle = await _securityRepository.GetSessionLifecycleAsync(userId, sessionId, ct);
+            var revokedAccess = await _securityRepository.GetRevokedAccessTokensAsync(targetUserId, ct);
+            var lifecycle = await _securityRepository.GetSessionLifecycleAsync(targetUserId, sessionId, ct);
 
             return new SessionTimelineDto
             {
@@ -121,29 +126,26 @@ namespace Authentication.DomainService.Security.Services
             };
         }
 
-        public async Task<IdpSessionSummaryDto?> GetIdpSessionAsync(CancellationToken ct)
+        public async Task<IdpSessionSummaryDto?> GetIdpSessionAsync(string targetUserId, CancellationToken ct)
         {
-            var userId = ResolveUserId();
-            var tenantId = ResolveTenantId();
-            if (string.IsNullOrWhiteSpace(userId))
+            if (string.IsNullOrWhiteSpace(targetUserId))
             {
                 return null;
             }
-            return await _securityRepository.GetIdpSessionAsync(userId, tenantId, ct);
+            var tenantId = ResolveTenantId();
+            return await _securityRepository.GetIdpSessionAsync(targetUserId, tenantId, ct);
         }
 
-        public async Task<List<ImpersonationSummaryDto>> GetImpersonationsAsync(CancellationToken ct)
+        public async Task<List<ImpersonationSummaryDto>> GetImpersonationsAsync(string targetUserId, CancellationToken ct)
         {
-            var userId = ResolveUserId();
-            if (string.IsNullOrWhiteSpace(userId))
+            if (string.IsNullOrWhiteSpace(targetUserId))
             {
                 return new List<ImpersonationSummaryDto>();
             }
-            var items = await _securityRepository.GetImpersonationsAsync(userId, ct);
+            var items = await _securityRepository.GetImpersonationsAsync(targetUserId, ct);
             return items.ToList();
         }
 
-        private static string? ResolveUserId() => BlocksContext.GetContext()?.UserId;
         private static string? ResolveTenantId() => BlocksContext.GetContext()?.TenantId;
 
         private async Task<string?> ResolveCurrentSessionIdAsync(string userId, string? tenantId, CancellationToken ct)
