@@ -1,4 +1,5 @@
 using Authentication.DomainService.Services;
+using Iam.DomainService.Utilities;
 using Authentication.DomainService.Shared;
 using Blocks.Genesis;
 using Microsoft.Extensions.Logging;
@@ -44,7 +45,7 @@ namespace Authentication.DomainService.OAuth
                 { "client_secret", identityProvider.ClientSecret ?? string.Empty },
                 { "redirect_uri", stateInfo.RedirectUri ?? string.Empty },
                 { "grant_type", GrantTypes.AuthCode },
-                { "scope", AuthenticationConstants.OpenIdProfileEmailScope }
+                { "scope", IdpConstants.OpenIdProfileEmailScope }
             };
 
             var (response, error) = await _httpService.SendFormUrlEncoded<SocialOauthAccessToken>(HttpMethod.Post, postData, identityProvider.TokenUrl);

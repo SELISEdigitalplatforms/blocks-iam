@@ -1,5 +1,7 @@
 using Authentication.DomainService.Shared;
 
+using Authentication.DomainService.Utilities;
+using Iam.DomainService.Utilities;
 namespace Authentication.DomainService.Utilities
 {
     /// <summary>
@@ -15,23 +17,23 @@ namespace Authentication.DomainService.Utilities
         public static TimeSpan GetIdleTimeout()
         {
             var configured = Environment.GetEnvironmentVariable("IDP_SESSION_IDLE_HOURS");
-            if (double.TryParse(configured, out var hours) && hours > 0 && hours <= AuthenticationConstants.MaxIdpSessionHours)
+            if (double.TryParse(configured, out var hours) && hours > 0 && hours <= IdpConstants.MaxIdpSessionHours)
             {
                 return TimeSpan.FromHours(hours);
             }
 
-            return TimeSpan.FromHours(AuthenticationConstants.DefaultIdpSessionIdleHours);
+            return TimeSpan.FromHours(IdpConstants.DefaultIdpSessionIdleHours);
         }
 
         public static TimeSpan GetAbsoluteTimeoutHours()
         {
             var configured = Environment.GetEnvironmentVariable("IDP_SESSION_ABSOLUTE_HOURS");
-            if (double.TryParse(configured, out var hours) && hours > 0 && hours <= AuthenticationConstants.MaxIdpSessionHours)
+            if (double.TryParse(configured, out var hours) && hours > 0 && hours <= IdpConstants.MaxIdpSessionHours)
             {
                 return TimeSpan.FromHours(hours);
             }
 
-            return TimeSpan.FromHours(AuthenticationConstants.DefaultIdpSessionAbsoluteHours);
+            return TimeSpan.FromHours(IdpConstants.DefaultIdpSessionAbsoluteHours);
         }
 
         public static TimeSpan GetAbsoluteTimeoutDays()

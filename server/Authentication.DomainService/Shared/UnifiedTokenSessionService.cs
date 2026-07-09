@@ -2,7 +2,7 @@ using System.Text.Json;
 using Authentication.DomainService.Services;
 using Authentication.DomainService.OAuth.RequestModel;
 using Authentication.DomainService.Entities;
-using Authentication.DomainService.Utilities;
+using Iam.DomainService.Utilities;
 using Blocks.Genesis;
 using Authentication.DomainService.Dtos;
 
@@ -52,7 +52,7 @@ namespace Authentication.DomainService.Shared
                 TenantId = tenant.TenantId,
                 OrganizationId = tokenRequest.OrganizationId,
                 ClientId = tokenRequest.ClientId,
-                SessionId = tokenRequest.Request?.Cookies["idp_session_id"],
+                SessionId = tokenRequest.Request?.Cookies[IdpConstants.BuildIdpSessionCookieKey(tenant?.TenantId)],
                 IssuedUtc = now,
                 ExpiresUtc = refreshTokenExpireOn,
                 AbsoluteExpiresUtc = absoluteRefreshTokenExpireOn,

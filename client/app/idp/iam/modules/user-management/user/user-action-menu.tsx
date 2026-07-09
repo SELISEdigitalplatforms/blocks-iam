@@ -68,7 +68,7 @@ export const UserActionMenu = ({ id, projectKey }: UserActionMenuProps) => {
             </DropdownMenuItem>
           </DropdownMenuContent>
         </DropdownMenu>
-        <UpdateUser id={id} projectKey={projectKey} />
+        {/* <UpdateUser id={id} projectKey={projectKey} /> */}
       </div>
       <UserResendActivationMail
         open={isResendActivationModalOpen}

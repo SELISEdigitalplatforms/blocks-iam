@@ -90,6 +90,11 @@ namespace Authentication.DomainService.Oidc.Repositories
             var filter = Builders<TokenRevocationModel>.Filter.Eq(t => t.UserId, userId);
             return await collection.Find(filter).SortByDescending(t => t.RevokedAt).ToListAsync();
         }
+
+        public async Task<IEnumerable<TokenRevocationModel>> GetByUserAsync(string userId)
+        {
+            return await GetRevokedTokensByUserAsync(userId);
+        }
     }
 
     public sealed class TokenRevocationModel

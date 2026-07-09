@@ -140,14 +140,14 @@ export const mockSaveRolesAndPermissionsPayload: ISaveRolesAndPermissionsPayload
 export const mockGetSessionsPayload: IGetSessionPayload = {
   page: 1,
   pageSize: 10,
-  filter: { UserId: MOCK_USER_ITEM_ID },
+  userId: MOCK_USER_ITEM_ID,
   projectKey: TEST_PROJECT_KEY,
 };
 
 export const mockGetHistoriesPayload: IGetHistoriesPayload = {
   page: 1,
   pageSize: 10,
-  filter: { UserId: MOCK_USER_ITEM_ID },
+  userId: MOCK_USER_ITEM_ID,
   projectKey: TEST_PROJECT_KEY,
 };
 
@@ -215,7 +215,7 @@ export const mockActivationCodeValidationPayload: IActivationCodeValidationPaylo
   projectKey: TEST_PROJECT_KEY,
 };
 
-export const mockActivationCodeExpirationResponse = {
+export const mockActivationCodeValidationResponse = {
   errors: null,
   isSuccess: true,
   userId: MOCK_USER_ITEM_ID,

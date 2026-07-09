@@ -76,8 +76,9 @@ namespace Iam.DomainService.Resources
                 }
             );
 
+
             var tenantConfig = await _resourceRepository.GetTenantConfigurationAsync();
-            if (tenantConfig.IsMultiOrgEnabled && command.PropagateToOtherOrg)
+            if (tenantConfig.IsMultiOrgEnabled && blocksContext.OrganizationId == "default")
             {
                 await _identityAccessManagementService.SendToQueueAsync(
                     IdpConstants.IamOrgQueue,
@@ -300,7 +301,7 @@ namespace Iam.DomainService.Resources
             );
 
             var tenantConfig = await _resourceRepository.GetTenantConfigurationAsync();
-            if (tenantConfig.IsMultiOrgEnabled & command.PropagateToOtherOrg)
+            if (tenantConfig.IsMultiOrgEnabled && blocksContext.OrganizationId == "default")
             {
                 await _identityAccessManagementService.SendToQueueAsync(
                     IdpConstants.IamOrgQueue,
@@ -492,6 +493,7 @@ namespace Iam.DomainService.Resources
                     }
                 };
             }
+            var currentOrganizationId = ResolveOrganizationId(command?.OragnizationId ?? "");
 
             if (command.AddPermissions.Any())
             {
@@ -500,10 +502,9 @@ namespace Iam.DomainService.Resources
 
             if (command.RemovePermissions.Any())
             {
-                await _resourceRepository.RemoveRolePermissionByIdsAsync(command.Slug, command.RemovePermissions);
+                await _resourceRepository.RemoveRolePermissionByIdsAsync(command.Slug, command.RemovePermissions, currentOrganizationId);
             }
-
-            var currentOrganizationId = ResolveOrganizationId(BlocksContext.GetContext()?.OrganizationId);
+            
             var tenantConfig = await _resourceRepository.GetTenantConfigurationAsync();
 
             await SendResourceSetToPermissionMutationEventAsync(
@@ -836,6 +837,18 @@ namespace Iam.DomainService.Resources
             };
 
             var result = await _resourceRepository.SaveResourceTimelineAsync(timeline);
+
+            if(permission.IsBuiltIn)
+            {
+                await _identityAccessManagementService.SendToQueueAsync(
+                    IdpConstants.IamPermissionQueue,
+                    new PermissionMutationForTenantsEvent
+                    {
+                        Action = context.Action,
+                        ItemId = context.ItemId
+                    }
+                );
+            }
 
             return result;
         }
@@ -1220,7 +1233,7 @@ namespace Iam.DomainService.Resources
             ApplyProperty(request.Currency, value => organization.Currency = value, v => !string.IsNullOrWhiteSpace(v));
             ApplyProperty(request.TimeZone, value => organization.TimeZone = value, v => !string.IsNullOrWhiteSpace(v));
             ApplyProperty(request.Industry, value => organization.Industry = value, v => !string.IsNullOrWhiteSpace(v));
-            ApplyProperty(request.IsEnable, value => organization.IsEnabled = value ?? false, v => v.HasValue);
+            ApplyProperty(request.IsEnable, value => organization.IsDisabled = !(value ?? false), v => v.HasValue);
 
             await _resourceRepository.SaveOrganizationAsync(organization);
             return new BaseResponse { IsSuccess = true };

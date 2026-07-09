@@ -1,26 +1,25 @@
 using FluentValidation;
 
-namespace Blocks.CaptchaDriver
+namespace Blocks.CaptchaDriver;
+
+/// <summary>
+/// Validates a <see cref="SubmitCaptchaRequest"/>.
+/// </summary>
+public class SubmitCaptchaCommandValidator : AbstractValidator<SubmitCaptchaRequest>
 {
-    public class SubmitCaptchaCommandValidator : AbstractValidator<SubmitCaptchaRequest>,
-        ISubmitCaptchaCommandValidator
+    /// <summary>
+    /// Builds the default validation rules for <see cref="SubmitCaptchaRequest"/>.
+    /// </summary>
+    public SubmitCaptchaCommandValidator()
     {
-        public SubmitCaptchaCommandValidator()
-        {
-            RuleFor(c => c.Id)
-                .Cascade(CascadeMode.Stop)
-                .NotNull()
-                .NotEmpty();
-        }
+        RuleFor(c => c.Id)
+            .Cascade(CascadeMode.Stop)
+            .NotNull()
+            .NotEmpty();
 
-        public virtual Task<FluentValidation.Results.ValidationResult> ValidateAsync(SubmitCaptchaRequest command)
-        {
-            return base.ValidateAsync(command);
-        }
-    }
-
-    public interface ISubmitCaptchaCommandValidator
-    {
-        Task<FluentValidation.Results.ValidationResult> ValidateAsync(SubmitCaptchaRequest command);
+        RuleFor(c => c.HostName)
+            .Cascade(CascadeMode.Stop)
+            .NotNull()
+            .NotEmpty();
     }
 }
