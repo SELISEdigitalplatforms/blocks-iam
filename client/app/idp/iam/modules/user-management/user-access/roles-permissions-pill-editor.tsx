@@ -1,8 +1,7 @@
 import { IRole } from "@blocks-idp/iam/models/role";
 import { IPermission } from "@blocks-idp/iam/models/permission";
-import { Button } from "@/components/ui-kits/button/button";
 import { Separator } from "@/components/ui-kits/separator/separator";
-import { KeyRound, Shield, X } from "lucide-react";
+import { KeyRound, Shield, ShieldCheck, X } from "lucide-react";
 import { AddOrganizationRole } from "../user-memberships/organization-roles-field/add-organization-role";
 import { AddOrganizationPermission } from "../user-memberships/organization-permissions-field/add-organization-permission";
 
@@ -14,8 +13,6 @@ type RolesPermissionsPillEditorProps = {
   rolesDescription: string;
   permissionsDescription: string;
   onSave: () => void;
-  isSaving: boolean;
-  isDirty: boolean;
 };
 
 const RolePill = ({ role, onRemove }: { role: IRole; onRemove: () => void }) => (
@@ -62,8 +59,6 @@ export const RolesPermissionsPillEditor = ({
   rolesDescription,
   permissionsDescription,
   onSave,
-  isSaving,
-  isDirty,
 }: RolesPermissionsPillEditorProps) => {
   return (
     <div className="space-y-6">
@@ -76,11 +71,20 @@ export const RolesPermissionsPillEditor = ({
           <AddOrganizationRole
             roles={roles}
             onAdd={(newRoles) => onRolesChange([...roles, ...newRoles])}
+            onSave={onSave}
           />
         </div>
         <div className="mt-3 flex flex-wrap items-center gap-2">
           {roles.length === 0 ? (
-            <span className="text-sm text-muted-foreground">No roles assigned</span>
+            <div className="flex w-full flex-col items-center justify-center rounded-lg border border-dashed bg-muted/20 py-8 text-center">
+              <div className="mx-auto flex h-10 w-10 items-center justify-center rounded-full bg-primary/10">
+                <ShieldCheck className="h-5 w-5 text-primary" />
+              </div>
+              <p className="mt-3 text-sm font-medium text-foreground">No roles added</p>
+              <p className="mt-1 text-xs text-muted-foreground">
+                Add at least one role for this organization
+              </p>
+            </div>
           ) : (
             roles.map((role) => (
               <RolePill
@@ -104,11 +108,20 @@ export const RolesPermissionsPillEditor = ({
           <AddOrganizationPermission
             permissions={permissions}
             onAdd={(newPermissions) => onPermissionsChange([...permissions, ...newPermissions])}
+            onSave={onSave}
           />
         </div>
         <div className="mt-3 flex flex-wrap items-center gap-2">
           {permissions.length === 0 ? (
-            <span className="text-sm text-muted-foreground">No permissions assigned</span>
+            <div className="flex w-full flex-col items-center justify-center rounded-lg border border-dashed bg-muted/20 py-8 text-center">
+              <div className="mx-auto flex h-10 w-10 items-center justify-center rounded-full bg-primary/10">
+                <KeyRound className="h-5 w-5 text-primary" />
+              </div>
+              <p className="mt-3 text-sm font-medium text-foreground">No permissions added</p>
+              <p className="mt-1 text-xs text-muted-foreground">
+                Optional — add if needed
+              </p>
+            </div>
           ) : (
             permissions.map((permission) => (
               <PermissionPill
@@ -123,12 +136,6 @@ export const RolesPermissionsPillEditor = ({
             ))
           )}
         </div>
-      </div>
-
-      <div className="flex justify-end border-t pt-4">
-        <Button size="sm" onClick={onSave} disabled={isSaving || !isDirty}>
-          {isSaving ? "Saving..." : "Save Changes"}
-        </Button>
       </div>
     </div>
   );
