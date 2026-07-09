@@ -27,7 +27,7 @@ export const UserAccessTab = ({ userId, projectKey }: UserAccessTabProps) => {
   }
 
   return (
-    <div className="flex h-[calc(100vh-260px)] min-h-[520px] flex-col rounded-lg border bg-card p-4">
+    <div className="flex h-full min-h-[420px] flex-col rounded-lg border bg-card p-4">
       <SingleOrgAccess userId={userId} projectKey={projectKey} />
     </div>
   );

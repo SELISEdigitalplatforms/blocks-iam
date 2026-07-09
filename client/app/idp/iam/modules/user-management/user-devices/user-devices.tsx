@@ -17,14 +17,14 @@ export const UserDevices = ({ id }: DevicesProps) => {
   const loading = isLoading || isFetching;
 
   return (
-    <Card>
+    <Card className="flex h-full min-h-[420px] flex-col">
       <CardHeader>
         <h3 className="text-base font-semibold text-high-emphasis">Sessions</h3>
         <p className="mt-0.5 text-sm text-muted-foreground">
           These are the places where you&apos;re currently signed in.
         </p>
       </CardHeader>
-      <CardContent>
+      <CardContent className="flex-1 overflow-y-auto">
         <UserDevicesList
           isLoading={loading}
           data={data?.data || []}
