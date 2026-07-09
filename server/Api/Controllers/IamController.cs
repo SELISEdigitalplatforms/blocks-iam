@@ -1,5 +1,6 @@
 using Authentication.DomainService.Authentication;
 using Authentication.DomainService.Utilities;
+using Iam.DomainService.Utilities;
 using Blocks.Genesis;
 using Iam.DomainService.Accounts;
 using Iam.DomainService.Entities;

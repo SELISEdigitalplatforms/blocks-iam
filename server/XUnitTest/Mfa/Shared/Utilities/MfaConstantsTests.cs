@@ -1,41 +1,18 @@
 using FluentAssertions;
-using Mfa.DomainService.Utilities;
+using Iam.DomainService.Utilities;
 
 namespace XUnitTest.Mfa.Shared.Utilities
 {
-    public class MfaConstantsTests
+    public class IdpConstantsTests
     {
         [Fact]
-        public void GetMessageConfiguration_ContainsMfaQueueName()
+        public void MfaConstants_HaveExpectedValues()
         {
-            var config = MfaConstants.GetMessageConfiguration();
-
-            config.Should().NotBeNull();
-            config.AzureServiceBusConfiguration.Should().NotBeNull();
-            config.AzureServiceBusConfiguration.Queues.Should().Contain(MfaConstants.MfaQueueName);
-        }
-
-        [Fact]
-        public void GetMessageConfiguration_Topics_IsEmpty()
-        {
-            var config = MfaConstants.GetMessageConfiguration();
-
-            config.AzureServiceBusConfiguration.Topics.Should().BeEmpty();
-        }
-
-        [Theory]
-        [InlineData("ApiServiceName")]
-        [InlineData("WorkerServiceName")]
-        [InlineData("DefaultMfaTemplateName")]
-        [InlineData("DefaultMfaTemplateId")]
-        [InlineData("MfaQueueName")]
-        [InlineData("AuthenticationQueue")]
-        public void PublicConstants_AreNotNullOrEmpty(string fieldName)
-        {
-            var field = typeof(MfaConstants).GetField(fieldName, System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Static);
-            field.Should().NotBeNull();
-            var value = field!.GetRawConstantValue() as string;
-            value.Should().NotBeNullOrEmpty();
+            IdpConstants.MfaApiServiceName.Should().Be("blocks-mfa-api");
+            IdpConstants.MfaWorkerServiceName.Should().Be("blocks-mfa-worker");
+            IdpConstants.DefaultMfaTemplateName.Should().Be("MfaViaEmail");
+            IdpConstants.DefaultMfaTemplateId.Should().Be("0b121378-3c3d-44f3-a855-9da08cbef48c");
+            IdpConstants.MfaQueueName.Should().Be("blocks_mfa_listener");
         }
     }
 }

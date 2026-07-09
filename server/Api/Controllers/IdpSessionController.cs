@@ -1,5 +1,6 @@
 using Authentication.DomainService.Oidc.Services;
 using Authentication.DomainService.Utilities;
+using Iam.DomainService.Utilities;
 using Blocks.Genesis;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;

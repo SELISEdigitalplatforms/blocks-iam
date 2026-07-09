@@ -1,4 +1,5 @@
 using Authentication.DomainService.Authentication;
+using Iam.DomainService.Utilities;
 using global::Authentication.DomainService.Entities;
 using global::Authentication.DomainService.OAuth;
 using global::Authentication.DomainService.Oidc.Repositories;
@@ -63,8 +64,8 @@ namespace XUnitTest.Auth
             await writer.WriteAsync(BuildRequest(), BuildUser(), BuildRequestWithIp(), "login_success", "details");
 
             repo.Verify(r => r.CreateAsync(It.Is<AuditLogModel>(m =>
-                m.Severity == AuthenticationConstants.SeverityInfo &&
-                m.Status == AuthenticationConstants.StatusSuccess
+                m.Severity == IdpConstants.SeverityInfo &&
+                m.Status == IdpConstants.StatusSuccess
             )), Times.Once);
         }
 
@@ -75,8 +76,8 @@ namespace XUnitTest.Auth
             await writer.WriteAsync(BuildRequest(), BuildUser(), BuildRequestWithIp(), "login_failure", "details");
 
             repo.Verify(r => r.CreateAsync(It.Is<AuditLogModel>(m =>
-                m.Severity == AuthenticationConstants.SeverityWarn &&
-                m.Status == AuthenticationConstants.StatusFailure
+                m.Severity == IdpConstants.SeverityWarn &&
+                m.Status == IdpConstants.StatusFailure
             )), Times.Once);
         }
 
@@ -87,7 +88,7 @@ namespace XUnitTest.Auth
             await writer.WriteAsync(BuildRequest(), BuildUser(), BuildRequestWithIp(), "login_locked", "details");
 
             repo.Verify(r => r.CreateAsync(It.Is<AuditLogModel>(m =>
-                m.Severity == AuthenticationConstants.SeverityWarn
+                m.Severity == IdpConstants.SeverityWarn
             )), Times.Once);
         }
 

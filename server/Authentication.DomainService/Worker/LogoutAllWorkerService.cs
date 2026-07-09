@@ -2,7 +2,7 @@ using Blocks.Genesis;
 using Authentication.DomainService.Dtos;
 using Authentication.DomainService.OAuth;
 using Authentication.DomainService.Services;
-using Authentication.DomainService.Utilities;
+using Iam.DomainService.Utilities;
 using Iam.DomainService.Dtos;
 using Microsoft.Extensions.Logging;
 using Authentication.DomainService.Oidc.Repositories;

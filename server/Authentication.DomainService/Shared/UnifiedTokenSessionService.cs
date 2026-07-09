@@ -2,7 +2,7 @@ using System.Text.Json;
 using Authentication.DomainService.Services;
 using Authentication.DomainService.OAuth.RequestModel;
 using Authentication.DomainService.Entities;
-using Authentication.DomainService.Utilities;
+using Iam.DomainService.Utilities;
 using Blocks.Genesis;
 using Authentication.DomainService.Dtos;
 

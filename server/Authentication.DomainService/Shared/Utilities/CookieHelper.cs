@@ -1,4 +1,6 @@
 using Authentication.DomainService.OAuth.ResponseModel;
+using Authentication.DomainService.Utilities;
+using Iam.DomainService.Utilities;
 using Microsoft.AspNetCore.Http;
 
 namespace Authentication.DomainService.Utilities

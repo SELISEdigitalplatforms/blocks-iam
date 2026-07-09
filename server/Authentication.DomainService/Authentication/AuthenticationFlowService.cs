@@ -1,4 +1,5 @@
 using Authentication.DomainService.Dtos;
+using Authentication.DomainService.Utilities;
 using Authentication.DomainService.Entities;
 using Authentication.DomainService.OAuth;
 using Authentication.DomainService.OAuth.RequestModel;
@@ -7,7 +8,7 @@ using Authentication.DomainService.Oidc.Repositories;
 using Authentication.DomainService.Services;
 using Authentication.DomainService.Shared;
 using Authentication.DomainService.Shared.RequestModel;
-using Authentication.DomainService.Utilities;
+using Iam.DomainService.Utilities;
 using Blocks.Genesis;
 using Iam.DomainService.Entities;
 using Idp.DomainService.Oidc.Contracts;
@@ -316,8 +317,8 @@ namespace Authentication.DomainService.Authentication
                     TenantId = BlocksContext.GetContext()?.TenantId,
                     IpAddress = GetClientIpAddress(httpRequest),
                     UserAgent = httpRequest.Headers.UserAgent.ToString(),
-                    Severity = isFailure ? AuthenticationConstants.SeverityWarn : AuthenticationConstants.SeverityInfo,
-                    Status = isSuccess ? AuthenticationConstants.StatusSuccess : AuthenticationConstants.StatusFailure,
+                    Severity = isFailure ? IdpConstants.SeverityWarn : IdpConstants.SeverityInfo,
+                    Status = isSuccess ? IdpConstants.StatusSuccess : IdpConstants.StatusFailure,
                     Details = details ?? eventType
                 });
             }
