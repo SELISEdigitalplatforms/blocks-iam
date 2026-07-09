@@ -1,20 +1,11 @@
-import { useGetUsers } from "@blocks-idp/iam/hooks/use-user";
-import { useProjectStore } from "@seliseblocks/blocks-kit";
-
-export const useOrganizationMemberCount = (organizationId: string) => {
-  const tenantId = useProjectStore().selectedProject?.tenantId || "";
-  const { data, isLoading } = useGetUsers({
-    page: 0,
-    pageSize: 1,
-    projectKey: tenantId,
-    filter: { email: "", name: "", organizationId },
-  });
-
-  return { count: data?.totalCount ?? 0, isLoading: isLoading || !data };
+export const useOrganizationMemberCount = (_organizationId: string) => {
+  // The /api/iam/users?filter.organizationId=... call has been removed intentionally.
+  // Returning a static 0 keeps existing call sites working without an extra request.
+  return { count: 0, isLoading: false };
 };
 
-export const OrganizationMemberCount = ({ organizationId }: { organizationId: string }) => {
-  const { count, isLoading } = useOrganizationMemberCount(organizationId);
+export const OrganizationMemberCount = ({ organizationId: _organizationId }: { organizationId: string }) => {
+  const { count, isLoading } = useOrganizationMemberCount(_organizationId);
 
   if (isLoading) return <span className="inline-block h-3 w-14 animate-pulse rounded bg-muted" />;
 

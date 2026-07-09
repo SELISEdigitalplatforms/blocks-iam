@@ -5,7 +5,10 @@ import {
   IAccountResendActivationResponse,
   ICreateUserPayload,
   ICreateUserResponse,
+  IDeviceSession,
   IDeviceSessionResponse,
+  IRevokeSessionResponse,
+  ISessionTimeline,
   IGeneratePATPayload,
   IGetHistoriesPayload,
   IGetSessionPayload,
@@ -166,20 +169,39 @@ export class UserService {
     return serviceInstances.idpService.post(USER_ENDPOINTS.ACCESS_CONTROL, payload);
   }
 
-  async getSessions(
+async getSessions(
     payload: IGetSessionPayload,
   ): Promise<IDeviceSessionResponse> {
     const res = await serviceInstances.idpService.get<IDeviceSessionResponse>(
-      `${USER_ENDPOINTS.GET_SESSIONS}?page=${payload.page}&pageSize=${payload.pageSize}&projectkey=${payload.projectKey}&filter.userId=${payload.filter.UserId}`,
+      `${USER_ENDPOINTS.GET_SESSIONS}?page=${payload.page}&pageSize=${payload.pageSize}&userId=${payload.userId}`,
     );
     return res;
   }
 
-  async getHistories(
+  async getSessionById(sessionId: string): Promise<IDeviceSession> {
+    return serviceInstances.idpService.get<IDeviceSession>(
+      `${USER_ENDPOINTS.GET_SESSIONS}/${sessionId}`,
+    );
+  }
+
+  async getSessionTimeline(sessionId: string): Promise<ISessionTimeline> {
+    return serviceInstances.idpService.get<ISessionTimeline>(
+      `${USER_ENDPOINTS.GET_SESSIONS}/${sessionId}/timeline`,
+    );
+  }
+
+  async revokeSession(sessionId: string, reason?: string): Promise<IRevokeSessionResponse> {
+    return serviceInstances.idpService.post(
+      `${USER_ENDPOINTS.REVOKE_SESSION}/${sessionId}/revoke`,
+      reason ? { reason } : {},
+    );
+  }
+
+async getHistories(
     payload: IGetHistoriesPayload,
   ): Promise<IHistoriesResponse> {
     const res = await serviceInstances.idpService.get<IHistoriesResponse>(
-      `${USER_ENDPOINTS.GET_HISTORIES}?page=${payload.page}&pageSize=${payload.pageSize}&projectkey=${payload.projectKey}&filter.userId=${payload.filter.UserId}`,
+      `${USER_ENDPOINTS.GET_HISTORIES}?page=${payload.page}&pageSize=${payload.pageSize}&userId=${payload.userId}`,
     );
     return res;
   }

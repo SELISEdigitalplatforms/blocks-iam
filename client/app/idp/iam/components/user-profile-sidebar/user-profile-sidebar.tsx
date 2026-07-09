@@ -61,7 +61,7 @@ export const UserProfileSidebar = ({ id, projectKey }: UserProfileSidebarProps) 
             {isLoading ? (
               <Skeleton className="h-6 w-32" />
             ) : (
-              <h3 className="truncate text-lg font-bold tracking-tight text-high-emphasis">
+              <h3 className="truncate text-xl font-bold tracking-tight text-high-emphasis">
                 {user?.firstName} {user?.lastName}
               </h3>
             )}
@@ -82,7 +82,7 @@ export const UserProfileSidebar = ({ id, projectKey }: UserProfileSidebarProps) 
 
       <Card className="p-0">
         <CardContent className="p-0">
-          <p className="px-4 pt-4 text-sm font-semibold text-muted-foreground">
+          <p className="px-4 pt-4 text-base font-semibold text-high-emphasis">
             Account Details
           </p>
           <div className="mt-1">

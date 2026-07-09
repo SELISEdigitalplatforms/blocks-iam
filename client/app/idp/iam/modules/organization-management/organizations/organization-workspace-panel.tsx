@@ -67,8 +67,8 @@ export const OrganizationWorkspacePanel = ({ organizationId }: OrganizationWorks
               <Building2 className="h-5 w-5" />
             )}
           </div>
-          <div className="min-w-0">
-            <div className="flex items-center gap-2">
+          <div className="min-w-0 flex-1">
+            <div className="flex flex-wrap items-center gap-2">
               <h2 className="truncate text-lg font-semibold text-high-emphasis">
                 {organization.name}
               </h2>
@@ -77,7 +77,7 @@ export const OrganizationWorkspacePanel = ({ organizationId }: OrganizationWorks
               </Badge>
             </div>
             <CopyToClipboardButton textToCopy={organization.itemId}>
-              <p className="truncate text-xs text-muted-foreground">
+              <p className="break-all text-xs text-muted-foreground">
                 Organization ID: {organization.itemId}
               </p>
             </CopyToClipboardButton>

@@ -1,7 +1,15 @@
 import { ElementType, ReactNode } from "react";
 import { useGetMe } from "@blocks-idp/iam/hooks/use-user";
 import { useQueryState } from "nuqs";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui-kits/tabs/tabs";
+import {
+  Tabs,
+  TabsContent,
+  TabsList,
+  TabsTrigger,
+  underlineTabsListClass,
+  underlineTabTriggerClass,
+} from "@/components/ui-kits/tabs/tabs";
+import { cn } from "@/lib/utils";
 import { getRuntimeEnv } from "@/lib/runtime-env";
 import { ProfileDetails } from "@blocks-idp/iam/components/profile-details";
 import { ProfileImageUploader } from "@blocks-idp/iam/components/profile-image-uploader";
@@ -178,20 +186,20 @@ export const UserProfile = ({ id }: { id: string }) => {
 
           {/* TabsList — col 2, row 1, bottom-aligned so its bottom meets the email line */}
           <div className="hidden md:col-start-2 md:row-start-1 md:flex md:items-end">
-            <TabsList className="h-9 w-fit p-1">
-              <TabsTrigger onClick={() => setTabId("security")} value="security" className="h-7 gap-1.5 px-3 text-sm">
+            <TabsList className={cn(underlineTabsListClass, "w-fit")}>
+              <TabsTrigger onClick={() => setTabId("security")} value="security" className={cn(underlineTabTriggerClass, "gap-1.5")}>
                 <Shield className="h-3.5 w-3.5" />
                 <span>Security</span>
               </TabsTrigger>
-              <TabsTrigger onClick={() => setTabId("devices")} value="devices" className="h-7 gap-1.5 px-3 text-sm">
+              <TabsTrigger onClick={() => setTabId("devices")} value="devices" className={cn(underlineTabTriggerClass, "gap-1.5")}>
                 <Smartphone className="h-3.5 w-3.5" />
                 <span>Devices</span>
               </TabsTrigger>
-              <TabsTrigger onClick={() => setTabId("history")} value="history" className="h-7 gap-1.5 px-3 text-sm">
+              <TabsTrigger onClick={() => setTabId("history")} value="history" className={cn(underlineTabTriggerClass, "gap-1.5")}>
                 <Clock className="h-3.5 w-3.5" />
                 <span>History</span>
               </TabsTrigger>
-              <TabsTrigger onClick={() => setTabId("personalAccessTokens")} value="personalAccessTokens" className="h-7 gap-1.5 px-3 text-sm">
+              <TabsTrigger onClick={() => setTabId("personalAccessTokens")} value="personalAccessTokens" className={cn(underlineTabTriggerClass, "gap-1.5")}>
                 <Key className="h-3.5 w-3.5" />
                 <span>PATs</span>
               </TabsTrigger>

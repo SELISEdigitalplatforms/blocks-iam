@@ -23,6 +23,7 @@ UPDATE_ACCOUNT: `/api${IAM_SUBPATH}/account/update`,
   GET_ACCOUNT_PERMISSIONS: `/api${IAM_SUBPATH}/account/permissions`,
   SAVE_ROLES_AND_PERMISSIONS: `/api${IAM_SUBPATH}/roles-permissions`,
   GET_SESSIONS: `/api/security/sessions`,
+  REVOKE_SESSION: `/api/security/sessions`, // POST {base}/{sessionId}/revoke
   GET_HISTORIES: `/api/security/history`,
   GET_USER_CODES: `/api${AUTH_SUBPATH}/GetUserCodes`,
   GENERATE_USER_CODE: `/api${AUTH_SUBPATH}/GenerateUserCode`,

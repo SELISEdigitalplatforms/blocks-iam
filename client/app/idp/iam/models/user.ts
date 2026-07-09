@@ -150,14 +150,23 @@ export interface IUpdateUserAccessControlResponse {
 export interface IGetSessionPayload {
   page: number;
   pageSize: number;
-  filter: { UserId: string };
-  projectKey: string;
+  userId: string;
+  projectKey?: string;
 }
 export interface IGetHistoriesPayload {
   page: number;
   pageSize: number;
-  filter: { UserId: string };
-  projectKey: string;
+  userId: string;
+  projectKey?: string;
+}
+
+export interface IRevokeSessionResponse {
+  sessionId: string;
+  alreadyRevoked: boolean;
+  revokedAt: string;
+  reason: string | null;
+  revokedRefreshTokens: number;
+  warnings: string[];
 }
 
 export interface IGeneratePATPayload {
@@ -263,6 +272,29 @@ export interface IDeviceSessionResponse {
   totalCount: number;
   data: IDeviceSession[];
   errors: unknown;
+}
+
+export interface IRefreshTokenStatus {
+  tokenId: string;
+  isRevoked: boolean;
+  issuedAt: string;
+  absoluteExpiry: string;
+  revokedAt: string | null;
+  revokeReason: string | null;
+}
+
+export interface IRevokedAccessToken {
+  jti: string;
+  revokedAt: string;
+  reason: string;
+}
+
+export interface ISessionTimeline {
+  sessionId: string;
+  session: IDeviceSession;
+  refreshTokenStatus: IRefreshTokenStatus;
+  revokedAccessTokens: IRevokedAccessToken[];
+  lifecycle: IHistories[];
 }
 
 export interface IPATResponse {
