@@ -9,9 +9,11 @@ import { permissionFormSchemaType } from "../permission-form/utils";
 import { showErrorToast, showSuccessToast } from "@/hooks/use-toast";
 import { isErrorWithErrors } from "@/lib/error";
 import { useNavigate } from "react-router-dom";
+import { useScopedPath } from "@/hooks/use-scoped-path";
 
 export const AddPermission = () => {
   const navigate = useNavigate();
+  const scoped = useScopedPath();
   const selectedTenantId = useProjectStore().selectedProject?.tenantId || "";
 
   const { isPending, mutateAsync } = useAddPermission();
@@ -28,7 +30,7 @@ export const AddPermission = () => {
       const res = await mutateAsync(newPermission);
       if (!res.isSuccess) return showErrorToast({ errors: res.errors });
       showSuccessToast({ description: "Permission created successfully" });
-      navigate(`/app/iam?tab=permissions`);
+      navigate(scoped("iam?tab=permissions"));
     } catch (error) {
       if (isErrorWithErrors(error)) return showErrorToast({ errors: error.errors });
       showErrorToast({ errors: "Something went wrong" });
