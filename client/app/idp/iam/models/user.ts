@@ -40,6 +40,8 @@ export interface User {
   employeeId: string | null;
   isMultiOrgEnabled: boolean;
   organizations: IMembership[];
+  OrganizationsRoles?: Record<string, string[]>;
+  OrganizationsPermissions?: Record<string, string[]>;
 }
 
 export interface IMembership {
@@ -85,6 +87,7 @@ export interface ICreateUserPayload {
   platform: string;
   projectKey: string;
   organizationId?: string;
+  organizationIds?: string[];
 }
 export interface ICreateUserResponse {
   errors: unknown;
@@ -133,6 +136,16 @@ export interface ISaveRolesAndPermissionsResponse {
   errors: unknown | null;
   isSuccess: boolean;
   itemId: string;
+}
+export interface IUpdateUserAccessControlPayload {
+  userId: string;
+  roles: string[];
+  permissions: string[];
+  organizationId: string;
+}
+export interface IUpdateUserAccessControlResponse {
+  errors: unknown | null;
+  isSuccess: boolean;
 }
 export interface IGetSessionPayload {
   page: number;
@@ -280,9 +293,9 @@ export const status = [
 
 export interface IAccountActivationPayload {
   code: string;
-  firstname: string;
-  lastname: string;
   password: string;
+  firstname?: string;
+  lastname?: string;
   captchaCode?: string;
   mailPurpose?: string;
   preventPostEvent: boolean;
@@ -305,7 +318,6 @@ export interface IAccountResendActivationResponse {
 export interface IAccountRecoverPayload {
   email: string;
   captchaCode?: string;
-  mailPurpose?: string;
   tenantId?: string;
 }
 export interface IAccountRecoverResponse {
@@ -339,10 +351,10 @@ export interface IActivationCodeValidationPayload {
   tenantId?: string;
 }
 
-export interface IActivationCodeExpirationResponse {
+export interface IActivationCodeValidationResponse {
   errors: unknown | null;
   isSuccess: boolean;
-  userId: string;
+  userId: string | null;
 }
 
 export interface ISaveSignUpSettingPayload {

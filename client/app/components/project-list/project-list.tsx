@@ -10,7 +10,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui-kits/dropdown-menu/dropdown-menu";
 import { useGetProject, useGetProjects } from "@/hooks/use-project";
-import { IProject } from "@/models/project.model";
+import { IProject } from "@blocks-identifier/models/project.model";
 import { useProjectStore } from "@seliseblocks/blocks-kit";
 const redirectPaths: Record<string, string> = {
   "/app/user-detail/*": "/app/iam",
@@ -99,7 +99,7 @@ export function ProjectList({ collapsed = false }: { collapsed?: boolean }) {
             .filter((project) => project.itemId !== selectedProject?.itemId)
             .slice(0, 5)
             .map((project) => (
-              <DropdownMenuItem key={project.itemId} onSelect={() => handleProjectSelect(project)}>
+             <DropdownMenuItem key={project.itemId} onSelect={() => handleProjectSelect(project)}>
                 <span>{project.name}</span>
               </DropdownMenuItem>
             ))

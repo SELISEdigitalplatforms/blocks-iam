@@ -1,43 +1,85 @@
-import { Card, CardContent, CardHeader } from "@/components/ui-kits/card/card";
+import { useEffect, useState } from "react";
+import { useQueryState } from "nuqs";
+import { Card, CardContent } from "@/components/ui-kits/card/card";
 import { Button } from "@/components/ui-kits/button/button";
-import { Pagination } from "@/components/ui-kits/pagination/pagination";
 import { normalizeSearchQueryText } from "@/lib/utils";
 import { useGetOrganizationConfig, useGetOrganizations } from "@blocks-idp/iam/hooks/use-organization";
+import { IOrganization } from "@blocks-idp/iam/models/organization";
 import { useProjectStore } from "@seliseblocks/blocks-kit";
-import { OrganizationsList } from "./organizations-list";
-import { OrganizationConfig } from "../organization-config/organization-config";
-import {
-  OrganizationsFilterToolbar,
-  useOrganizationsFilterQueryParams,
-  useOrganizationsSortQueryParams,
-} from "./organizations-filter-toolbar";
+import { useOrganizationsSortQueryParams } from "./organizations-filter-toolbar";
+import { OrganizationConfig } from "../organization-config";
+import { OrganizationsSidebarList } from "./organizations-sidebar-list";
+import { OrganizationWorkspacePanel } from "./organization-workspace-panel";
 import { Building2, Settings2 } from "lucide-react";
+
+const PAGE_SIZE = 20;
 
 export function Organizations() {
   const { tenantId } = useProjectStore().selectedProject || { tenantId: "" };
-  const { queryParams, setQueryParams } = useOrganizationsFilterQueryParams();
   const { sortQueryParams } = useOrganizationsSortQueryParams();
-  const effectiveSearch = normalizeSearchQueryText(queryParams.search);
-  const { isLoading, isFetching, data } = useGetOrganizations({
-    ...queryParams,
+
+  const [search, setSearch] = useQueryState("search", { defaultValue: "" });
+  const [selectedOrgId, setSelectedOrgId] = useQueryState("orgId", { defaultValue: "" });
+  const [page, setPage] = useState(0);
+  const [loadedOrgs, setLoadedOrgs] = useState<IOrganization[]>([]);
+
+  const effectiveSearch = normalizeSearchQueryText(search);
+
+  const { data, isLoading, isFetching } = useGetOrganizations({
+    page,
+    pageSize: PAGE_SIZE,
     search: effectiveSearch,
     sort: sortQueryParams,
     projectKey: tenantId,
   });
   const { data: configData, isLoading: isConfigLoading } = useGetOrganizationConfig(tenantId);
-  const onPageChangeHandler = (page: number) => {
-    setQueryParams((prev) => ({
-      ...prev,
-      page,
-    }));
-  };
+  // The organizations list endpoint is the authoritative signal: it reports this
+  // error directly when multi-org is disabled, regardless of what the (separate,
+  // sometimes unreliable) org config endpoint says.
+  const isMultiOrgDisabledError =
+    !!data &&
+    !data.isSuccess &&
+    !!data.errors &&
+    typeof data.errors === "object" &&
+    "multi_org_disabled" in data.errors;
+  const isMultiOrgEnabledFromConfig = configData?.isMultiOrgEnabled ?? true;
+  const showMultiOrgDisabledCard =
+    isMultiOrgDisabledError || (!isConfigLoading && !isMultiOrgEnabledFromConfig);
 
-  const loading = isLoading || isFetching;
-  const organizationsList = data?.organizations || [];
+  // Reset the accumulated list whenever the search term changes.
+  useEffect(() => {
+    setPage(0);
+    setLoadedOrgs([]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [effectiveSearch]);
+
+  // Accumulate pages as they load: replace on the first page, append after.
+  useEffect(() => {
+    if (!data) return;
+    const organizations = data.organizations ?? [];
+    setLoadedOrgs((prev) => {
+      if (page === 0) return organizations;
+      const existingIds = new Set(prev.map((org) => org.itemId));
+      const newOnes = organizations.filter((org) => !existingIds.has(org.itemId));
+      return [...prev, ...newOnes];
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [data]);
+
+  // Default to the first organization once the list has loaded.
+  useEffect(() => {
+    if (!selectedOrgId && loadedOrgs.length > 0) {
+      setSelectedOrgId(loadedOrgs[0].itemId);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [loadedOrgs]);
+
   const totalCount = data?.totalCount || 0;
-  const isMultiOrgEnabled = configData?.isMultiOrgEnabled ?? true;
+  const isInitialLoading = isLoading && loadedOrgs.length === 0;
+  const isLoadingMore = isFetching && page > 0;
+  const hasMore = loadedOrgs.length < totalCount;
 
-  if (!isConfigLoading && !isMultiOrgEnabled) {
+  if (showMultiOrgDisabledCard) {
     return (
       <Card>
         <CardContent className="flex items-center justify-center py-16">
@@ -46,9 +88,12 @@ export function Organizations() {
               <Building2 className="h-8 w-8 text-muted-foreground" />
             </div>
             <div className="flex flex-col gap-2">
-              <h3 className="text-base font-semibold text-foreground">Multiple Organizations not enabled</h3>
-              <p className="text-sm text-muted-foreground leading-relaxed">
-                To view and manage organizations, you first need to enable the Multiple Organization feature from organization configuration.
+              <h3 className="text-base font-semibold text-foreground">
+                Multiple Organizations not enabled
+              </h3>
+              <p className="text-sm leading-relaxed text-muted-foreground">
+                To view and manage organizations, you first need to enable the Multiple
+                Organization feature from organization configuration.
               </p>
             </div>
             <OrganizationConfig
@@ -66,28 +111,28 @@ export function Organizations() {
   }
 
   return (
-    <div>
-      <div className="flex w-full flex-col">
-        <Card>
-          <CardHeader>
-            <OrganizationsFilterToolbar />
-          </CardHeader>
-          <CardContent>
-            <OrganizationsList organizations={organizationsList} isLoading={loading} />
-            {!loading && totalCount > queryParams.pageSize && (
-              <div className="mt-4 flex items-center md:justify-end">
-                <Pagination
-                  page={queryParams.page}
-                  onChange={onPageChangeHandler}
-                  totalCount={totalCount}
-                  pageSizeOptions={[queryParams.pageSize]}
-                  pageSize={queryParams.pageSize}
-                />
-              </div>
-            )}
-          </CardContent>
-        </Card>
-      </div>
+    <div className="grid h-[calc(100vh-220px)] min-h-[520px] grid-cols-1 gap-4 lg:grid-cols-[380px_1fr]">
+      <OrganizationsSidebarList
+        organizations={loadedOrgs}
+        totalCount={totalCount}
+        selectedOrgId={selectedOrgId || null}
+        onSelect={(org) => setSelectedOrgId(org.itemId)}
+        search={search}
+        onSearchChange={setSearch}
+        isLoading={isInitialLoading}
+        isLoadingMore={isLoadingMore}
+        hasMore={hasMore}
+        onLoadMore={() => setPage((prev) => prev + 1)}
+      />
+
+      {selectedOrgId ? (
+        <OrganizationWorkspacePanel organizationId={selectedOrgId} />
+      ) : (
+        <div className="flex h-full min-w-0 flex-col items-center justify-center gap-2 rounded-lg border bg-card text-center text-sm text-muted-foreground">
+          <Building2 className="h-6 w-6" />
+          Select an organization to view its details.
+        </div>
+      )}
     </div>
   );
 }

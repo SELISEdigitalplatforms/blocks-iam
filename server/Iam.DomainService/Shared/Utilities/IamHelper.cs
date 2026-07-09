@@ -17,8 +17,8 @@ namespace Iam.DomainService.Utilities
             {
                 return string.Empty;
             }
-            
-            return $"{request.Scheme}://{request.Host}".TrimEnd('/');
+
+            return $"https://{request.Host}".TrimEnd('/');
         }
 
         public static string GetOriginOrRefererBaseUrl(IHttpContextAccessor? httpContextAccessor)
@@ -74,6 +74,11 @@ namespace Iam.DomainService.Utilities
             IHttpContextAccessor? httpContextAccessor,
             ILogger? logger)
         {
+            if (config.UseAccountActionBaseUrlAsDefault && !string.IsNullOrWhiteSpace(config.AccountActionBaseUrl))
+            {
+                return config.AccountActionBaseUrl;
+            }
+
             if (config.IsOidcEnabled)
             {
                 var requestBaseUrl = GetOidcRequestBaseUrl(httpContextAccessor);
@@ -84,11 +89,6 @@ namespace Iam.DomainService.Utilities
                 }
 
                 logger?.LogWarning("OIDC is enabled but request base URL could not be determined. Falling back to AccountActionBaseUrl.");
-            }
-
-            if (config.UseAccountActionBaseUrlAsDefault && !string.IsNullOrWhiteSpace(config.AccountActionBaseUrl))
-            {
-                return config.AccountActionBaseUrl;
             }
 
             var originOrRefererBaseUrl = GetOriginOrRefererBaseUrl(httpContextAccessor);

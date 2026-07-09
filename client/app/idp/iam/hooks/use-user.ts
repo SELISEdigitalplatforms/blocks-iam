@@ -8,6 +8,7 @@ import { userService } from "@blocks-idp/iam/services/user.service";
 import { normalizeSearchQueryText } from "@/lib/utils";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useCallback, useMemo } from "react";
+import type { IUpdateUserAccessControlPayload } from "@blocks-idp/iam/models/user";
 
 export const useGetUsers = (option: IGetUsersPayload) => {
   const { page, pageSize, projectKey, filter, sort } = option;
@@ -83,12 +84,28 @@ export const useGetMe = (options?: { enabled?: boolean }) => {
 
 export const useGetUserById = (
   options: IGetUserByIdPayload,
-  queryOptions?: { enabled?: boolean },
+  queryOptions?: { enabled?: boolean; retry?: boolean },
 ) => {
   return useQuery({
     queryKey: ["user-by-id", options],
     queryFn: () => userService.getUserById(options),
-    ...queryOptions,
+    retry: queryOptions?.retry ?? false,
+    enabled: queryOptions?.enabled,
+  });
+};
+
+export const useCheckUserExists = (
+  email: string,
+  queryOptions?: { enabled?: boolean },
+) => {
+  const trimmed = email?.trim() ?? "";
+  const isValidEmail = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(trimmed);
+  return useQuery({
+    queryKey: ["user-exists", trimmed.toLowerCase()],
+    queryFn: () => userService.isUserExist(trimmed),
+    enabled: isValidEmail && (queryOptions?.enabled ?? true),
+    retry: false,
+    staleTime: 30_000,
   });
 };
 
@@ -99,7 +116,13 @@ export const useAddUser = () => {
     mutationFn: userService.addUser,
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["users"] });
+      queryClient.invalidateQueries({ queryKey: ["organizations"] });
+      queryClient.invalidateQueries({ queryKey: ["user-by-id"] });
+      queryClient.invalidateQueries({ queryKey: ["user"] });
+      queryClient.invalidateQueries({ queryKey: ["user-roles"] });
+      queryClient.invalidateQueries({ queryKey: ["user-permissions"] });
       queryClient.invalidateQueries({ queryKey: ["subscription-usage"] });
+      queryClient.invalidateQueries({ queryKey: ["organization"] });
     },
   });
 };
@@ -167,6 +190,24 @@ export const useGetUserPermissions = (option: IGetUserRolesPayload) => {
   return useQuery({
     queryKey: ["user-permissions", option],
     queryFn: () => userService.getUserPermissions(option),
+  });
+};
+
+export const useUpdateUserAccessControl = (option: { id: string; projectKey: string }) => {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationKey: ["user", "access-control", option],
+    mutationFn: (payload: Omit<IUpdateUserAccessControlPayload, "userId">) =>
+      userService.updateUserAccessControl({ ...payload, userId: option.id }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["users"] });
+      queryClient.invalidateQueries({ queryKey: ["user-by-id"] });
+      queryClient.invalidateQueries({ queryKey: ["user"] });
+      queryClient.invalidateQueries({ queryKey: ["user-roles"] });
+      queryClient.invalidateQueries({ queryKey: ["user-permissions"] });
+      queryClient.invalidateQueries({ queryKey: ["organizations"] });
+      queryClient.invalidateQueries({ queryKey: ["organization"] });
+    },
   });
 };
 

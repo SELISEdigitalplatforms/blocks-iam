@@ -328,21 +328,21 @@ namespace Iam.DomainService.Accounts
                 };
             }
 
-            var createdUser = await _repository.GetUserByIdAsync(result.ItemId);
-            var activationSent = createdUser != null && await SendReActivationAsync(createdUser);
+            //var createdUser = await _repository.GetUserByIdAsync(result.ItemId);
+            //var activationSent = createdUser != null && await SendReActivationAsync(createdUser);
 
-            if (!activationSent)
-            {
-                return new BaseAccountResponse
-                {
-                    IsSuccess = false,
-                    ItemId = result.ItemId,
-                    Errors = new Dictionary<string, string>
-                    {
-                        { "activation_email_failed", "User created but activation email could not be sent." }
-                    }
-                };
-            }
+            //if (!activationSent)
+            //{
+            //    return new BaseAccountResponse
+            //    {
+            //        IsSuccess = false,
+            //        ItemId = result.ItemId,
+            //        Errors = new Dictionary<string, string>
+            //        {
+            //            { "activation_email_failed", "User created but activation email could not be sent." }
+            //        }
+            //    };
+            //}
 
             return new BaseAccountResponse
             {
@@ -542,21 +542,32 @@ namespace Iam.DomainService.Accounts
 
             if (user == null)
             {
+                _logger.LogInformation("Forgot password requested for unknown email {Email}", recoveryRequest.Email);
                 return new BaseAccountResponse
                 {
-                    Errors = new Dictionary<string, string>
-                    {
-                        {"Email", "Not_Allowed" }
-                    }
+                    IsSuccess = true
                 };
             }
 
-            var result = await ProcessRecoverAccountAsync(user, recoveryRequest.MailPurpose);
+            if (user.Active)
+            {
+                await ProcessRecoverAccountAsync(user, AccountMailPurposes.RecoverAccount);
+            }
+            else
+            {
+                _logger.LogInformation("Forgot-password routed to activation for inactive user {UserId}", user.ItemId);
+                await ProcessInactiveAccountRecoveryAsync(user);
+            }
 
             return new BaseAccountResponse
             {
-                IsSuccess = result,
+                IsSuccess = true
             };
+        }
+
+        private async Task ProcessInactiveAccountRecoveryAsync(User user)
+        {
+            await SendReActivationAsync(user);
         }
 
         public async Task<bool> ProcessRecoverAccountAsync(User user, string emailPurpose)
