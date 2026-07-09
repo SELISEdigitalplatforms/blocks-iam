@@ -3,6 +3,7 @@
   <ItemGroup>
 	  <PackageReference Include="Grpc.AspNetCore" />
 	  <PackageReference Include="BCrypt.Net-Next" />
+	  <PackageReference Include="Microsoft.Extensions.Caching.Memory" />
   </ItemGroup>
 
   <ItemGroup>

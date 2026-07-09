@@ -5,7 +5,9 @@ using Authentication.DomainService.Worker;
 using Blocks.Genesis;
 using Iam.DomainService.Accounts;
 using Iam.DomainService.Dtos;
+using Iam.DomainService.Resources.TenantPropagation;
 using Iam.DomainService.Users;
+using MongoDB.Driver;
 using SeliseBlocks.ConfigurationDriver;
 using Worker;
 using Worker.Configuration;
@@ -57,8 +59,14 @@ IHostBuilder CreateHostBuilder(string[] args) =>
         services.AddSingleton<IConsumer<CreateUserViaSsoEvent>, CreateUserViaSsoConsumer>();
         services.AddSingleton<IConsumer<OrganizationProvisioningEvent>, OrganizationProvisioningConsumer>();
         services.AddSingleton<IConsumer<UpdateOrganizationUserEvent>, UpdateOrganizationUserConsumer>();
+        services.AddSingleton<IConsumer<PermissionMutationForTenantsEvent>, PermissionMutationForTenantsConsumer>();
 
         services.AddHostedService<PeriodicPingBackgroundService>();
+
+        services.AddMemoryCache();
+        services.AddSingleton<IMongoDatabase>(_ =>
+            new MongoClient(secret.DatabaseConnectionString).GetDatabase(secret.RootDatabaseName));
+        services.AddSingleton<ITenantEnumeration, TenantEnumeration>();
 
         services.RegisterAllServices();
 
