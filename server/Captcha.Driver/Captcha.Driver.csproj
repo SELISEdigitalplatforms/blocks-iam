@@ -28,6 +28,7 @@
 		<PackageReference Include="Microsoft.Extensions.Options.ConfigurationExtensions" />
 		<PackageReference Include="MongoDB.Driver" />
 		<PackageReference Include="SeliseBlocks.Genesis" />
+		<PackageReference Include="SeliseBlocks.StorageDriver" />
 	</ItemGroup>
 
 </Project>

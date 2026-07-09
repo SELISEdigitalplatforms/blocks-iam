@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 import { IRole } from "@blocks-idp/iam/models/role";
 import { IPermission } from "@blocks-idp/iam/models/permission";
 import {
@@ -22,7 +22,7 @@ export const SingleOrgAccess = ({ userId, projectKey }: SingleOrgAccessProps) =>
   const { data: permissionsData, isLoading: isPermissionsLoading } = useGetUserPermissions({
     userId,
   });
-  const { mutateAsync, isPending } = useUpdateUser({ id: userId, projectKey });
+  const { mutateAsync } = useUpdateUser({ id: userId, projectKey });
 
   const [selectedRoles, setSelectedRoles] = useState<IRole[]>([]);
   const [selectedPermissions, setSelectedPermissions] = useState<IPermission[]>([]);
@@ -40,18 +40,6 @@ export const SingleOrgAccess = ({ userId, projectKey }: SingleOrgAccessProps) =>
     setInitialPermissionResources(permissions.map((permission) => permission.resource));
     setIsInitialized(true);
   }, [rolesData, permissionsData, isInitialized]);
-
-  const isDirty = useMemo(() => {
-    const currentRoleSlugs = selectedRoles.map((role) => role.slug).sort();
-    const currentPermissionResources = selectedPermissions
-      .map((permission) => permission.resource)
-      .sort();
-    return (
-      JSON.stringify(currentRoleSlugs) !== JSON.stringify([...initialRoleSlugs].sort()) ||
-      JSON.stringify(currentPermissionResources) !==
-        JSON.stringify([...initialPermissionResources].sort())
-    );
-  }, [selectedRoles, selectedPermissions, initialRoleSlugs, initialPermissionResources]);
 
   const onSave = async () => {
     try {
@@ -99,8 +87,6 @@ export const SingleOrgAccess = ({ userId, projectKey }: SingleOrgAccessProps) =>
       rolesDescription="Roles assigned to you."
       permissionsDescription="Permissions assigned to you."
       onSave={onSave}
-      isSaving={isPending}
-      isDirty={isDirty}
     />
   );
 };

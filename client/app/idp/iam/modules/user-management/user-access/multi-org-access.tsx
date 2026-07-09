@@ -40,7 +40,7 @@ export const MultiOrgAccess = ({ userId, projectKey }: MultiOrgAccessProps) => {
     isBuiltIn: "",
     roles: [],
   });
-  const { mutateAsync, isPending } = useUpdateUserAccessControl({ id: userId, projectKey });
+  const { mutateAsync } = useUpdateUserAccessControl({ id: userId, projectKey });
 
   const [selectedOrgId, setSelectedOrgId] = useState("");
   const [selectedRoles, setSelectedRoles] = useState<IRole[]>([]);
@@ -120,15 +120,6 @@ export const MultiOrgAccess = ({ userId, projectKey }: MultiOrgAccessProps) => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [organizationRows]);
 
-  const isDirty = useMemo(() => {
-    const currentRoleSlugs = selectedRoles.map((role) => role.slug).sort();
-    const currentPermissionNames = selectedPermissions.map((permission) => permission.name).sort();
-    return (
-      JSON.stringify(currentRoleSlugs) !== JSON.stringify([...initialRoleSlugs].sort()) ||
-      JSON.stringify(currentPermissionNames) !== JSON.stringify([...initialPermissionNames].sort())
-    );
-  }, [selectedRoles, selectedPermissions, initialRoleSlugs, initialPermissionNames]);
-
   const onSave = async () => {
     try {
       const res = await mutateAsync({
@@ -199,8 +190,6 @@ export const MultiOrgAccess = ({ userId, projectKey }: MultiOrgAccessProps) => {
               rolesDescription="Roles assigned in this organization."
               permissionsDescription="Permissions assigned in this organization."
               onSave={onSave}
-              isSaving={isPending}
-              isDirty={isDirty}
             />
           </div>
         )}
