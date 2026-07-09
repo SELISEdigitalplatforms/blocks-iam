@@ -200,7 +200,6 @@ export const AddOrganizationPermission = ({
               // (and its refs) before `onSave` reads the latest values.
               setTimeout(() => onSave?.(), 0);
             }}
-            disabled={selectedPermissions.length === 0}
           >
             Save
           </Button>

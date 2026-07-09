@@ -32,8 +32,6 @@ import { z } from "zod";
 import { useProjectStore } from "@seliseblocks/blocks-kit";
 import { ChevronsUpDown, Check, Loader, Plus } from "lucide-react";
 import { isErrorWithErrors } from "@/lib/error";
-import { cn } from "@/lib/utils";
-import { useMinDurationFlag } from "@/hooks/use-min-duration-flag";
 import { useQueryClient } from "@tanstack/react-query";
 import {
   Popover,
@@ -117,10 +115,9 @@ export const InviteOrganizationUser = ({ organizationId }: InviteOrganizationUse
   // Silently check whether the email already maps to a user — drives whether
   // the first/last name fields appear and which orgs to hide from the picker.
   // The user is never notified either way.
-  const { data: existsData, isFetching: isFetchingExists } = useCheckUserExists(emailValue, {
+  const { data: existsData } = useCheckUserExists(emailValue, {
     enabled: isValidEmailFormat,
   });
-  const isCheckingEmail = useMinDurationFlag(isFetchingExists);
   const exists = existsData?.exists === true;
   const existingUserOrgIds = useMemo(
     () => new Set(existsData?.organizationIds ?? []),
@@ -265,18 +262,12 @@ const orgOptions = useMemo(() => {
                   <FormItem>
                     <FormLabel>Email</FormLabel>
                     <FormControl>
-                      <div className="relative">
-                        <Input
-                          type="email"
-                          placeholder="name@company.com"
-                          autoComplete="off"
-                          className={cn(isCheckingEmail && "pr-9")}
-                          {...field}
-                        />
-                        {isCheckingEmail && (
-                          <Loader className="absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 animate-spin text-muted-foreground" />
-                        )}
-                      </div>
+                      <Input
+                        type="email"
+                        placeholder="name@company.com"
+                        autoComplete="off"
+                        {...field}
+                      />
                     </FormControl>
                     <FormMessage />
                   </FormItem>

@@ -165,7 +165,6 @@ export const AddOrganizationRole = ({ onChange, roles, onSave }: AddOrganization
               // (and its refs) before `onSave` reads the latest values.
               setTimeout(() => onSave?.(), 0);
             }}
-            disabled={selectedRoles.length === 0}
           >
             Save
           </Button>
