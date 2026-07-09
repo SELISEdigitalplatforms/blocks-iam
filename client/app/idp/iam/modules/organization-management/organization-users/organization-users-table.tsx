@@ -26,6 +26,7 @@ import { useMemo } from "react";
 import { useOrganizationUsersSortQueryParams } from "./organization-users-filter-toolbar";
 import { FilterControls } from "@/components/filter-toolbar";
 import { useNavigate } from "react-router-dom";
+import { useScopedPath } from "@/hooks/use-scoped-path";
 
 type OrganizationUsersTableProps = {
   users: User[];
@@ -42,6 +43,7 @@ const LoadingSkelton = () => (
 
 export const OrganizationUsersTable = ({ users, isLoading }: OrganizationUsersTableProps) => {
   const navigate = useNavigate();
+  const scoped = useScopedPath();
   const { sortQueryParams, setSortQueryParams } = useOrganizationUsersSortQueryParams();
 
   const columns = useMemo<ColumnDef<User>[]>(
@@ -143,7 +145,7 @@ export const OrganizationUsersTable = ({ users, isLoading }: OrganizationUsersTa
   );
 
   const handleRowClick = (itemId: string) => {
-    navigate(`/app/user-detail/${itemId}`);
+    navigate(scoped(`user-detail/${itemId}`));
   };
   const table = useReactTable({
     data: users,
