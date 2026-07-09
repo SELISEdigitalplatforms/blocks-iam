@@ -569,7 +569,7 @@ namespace Authentication.DomainService.Authentication
             var bc = BlocksContext.GetContext();
             var log = new AuditLogModel
             {
-                    EventType = BackchannelAuditEvents.Delivery,
+                EventType = BackchannelAuditEvents.Delivery,
                 UserId = bc?.UserId,
                 TenantId = bc?.TenantId,
                 Severity = status.StartsWith("failed", StringComparison.OrdinalIgnoreCase) ? IdpConstants.SeverityWarn : IdpConstants.SeverityInfo,
