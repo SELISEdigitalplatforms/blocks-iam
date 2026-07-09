@@ -154,8 +154,6 @@ export const OrganizationDetail = ({ id }: { id: string }) => {
         <section className="lg:col-span-7">
           <OrganizationUsers
             organizationId={id}
-            title="Members"
-            description="People with access to this organization."
             action={<InviteOrganizationUser organizationId={id} />}
           />
         </section>
