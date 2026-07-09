@@ -6,7 +6,6 @@ using Authentication.DomainService.Utilities;
 using Blocks.Genesis;
 using Authentication.DomainService.Security.Models;
 using Authentication.DomainService.Security.Repositories;
-using Idp.DomainService.Oidc.Contracts;
 using Microsoft.Extensions.Logging;
 
 namespace Authentication.DomainService.Security.Services
@@ -36,7 +35,7 @@ namespace Authentication.DomainService.Security.Services
             _authenticationDomainService = authenticationDomainService;
         }
 
-        public async Task<RevokeSessionResponse> RevokeSessionAsync(string sessionId, string actorUserId, string currentSessionId, string? reason, CancellationToken ct)
+        public async Task<RevokeSessionResponse> RevokeSessionAsync(string sessionId, string actorUserId, string currentSessionId, string? targetUserId, string? reason, CancellationToken ct)
         {
             var response = new RevokeSessionResponse
             {
@@ -50,7 +49,8 @@ namespace Authentication.DomainService.Security.Services
             }
 
             var tenantId = BlocksContext.GetContext()?.TenantId;
-            var session = await _securityRepository.GetSessionAsync(actorUserId, tenantId, sessionId, ct);
+            var effectiveUserId = string.IsNullOrWhiteSpace(targetUserId) ? actorUserId : targetUserId!;
+            var session = await _securityRepository.GetSessionAsync(effectiveUserId, tenantId, sessionId, ct);
 
             if (session == null)
             {
