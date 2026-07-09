@@ -396,17 +396,53 @@ namespace Iam.DomainService.Resources
         {
             var collection = _identityAccessManagementRepository.GetCollection<Organization>();
             var filter = Builders<Organization>.Filter.Empty;
-            
+
+            SortDefinition<Organization>? sort = null;
+
+            if (request.Filter is not null)
+            {
+                if (!string.IsNullOrWhiteSpace(request.Filter.Search))
+                {
+                    var regex = new BsonRegularExpression(Regex.Escape(request.Filter.Search.Trim()), "i");
+                    filter &= Builders<Organization>.Filter.Regex(x => x.Name, regex)
+                        | Builders<Organization>.Filter.Regex(x => x.ShortCode, regex)
+                        | Builders<Organization>.Filter.Regex(x => x.Description, regex);
+                }
+
+                if (request.Filter.Ids is { Count: > 0 })
+                {
+                    filter &= Builders<Organization>.Filter.In(x => x.ItemId, request.Filter.Ids);
+                }
+
+                if (request.Filter.IsDisabled.HasValue)
+                {
+                    filter &= Builders<Organization>.Filter.Eq(x => x.IsDisabled, request.Filter.IsDisabled.Value);
+                }
+
+                if (!string.IsNullOrWhiteSpace(request.Filter.ParentOrganizationId))
+                {
+                    filter &= Builders<Organization>.Filter.Eq(x => x.ParentOrganizationId, request.Filter.ParentOrganizationId);
+                }
+            }
+
+            if (request.Sort is not null)
+            {
+                sort = request.Sort.IsDescending
+                    ? Builders<Organization>.Sort.Descending(request.Sort.Property)
+                    : Builders<Organization>.Sort.Ascending(request.Sort.Property);
+            }
+            else
+            {
+                sort = Builders<Organization>.Sort.Ascending(x => x.Name);
+            }
 
             var totalCount = await collection.CountDocumentsAsync(filter);
 
-            var options = new FindOptions<Organization>
-            {
-                Skip = request.PageSize * request.Page,
-                Limit = request.PageSize
-            };
-
-            var organizations = await (await collection.FindAsync(filter, options)).ToListAsync();
+            var organizations = await collection.Find(filter)
+                .Sort(sort)
+                .Skip(request.PageSize * request.Page)
+                .Limit(request.PageSize)
+                .ToListAsync();
 
             return new GetOrganizationsResponse { IsSuccess = true, Organizations = organizations, TotalCount = totalCount };
         }

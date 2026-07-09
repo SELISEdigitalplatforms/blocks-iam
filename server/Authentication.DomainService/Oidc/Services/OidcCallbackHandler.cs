@@ -239,6 +239,9 @@ namespace Authentication.DomainService.Oidc.Services
                         { "EmployeeId", externalUserData.EmployeeId },
                         { "ExternalProviderUserId", externalUserData.ExternalProviderUserId }
                     } : new Dictionary<string, object>(),
+
+                    CreatedDate = DateTime.UtcNow,
+                    LastUpdatedDate = DateTime.UtcNow
                 };
 
                 // Save new user
