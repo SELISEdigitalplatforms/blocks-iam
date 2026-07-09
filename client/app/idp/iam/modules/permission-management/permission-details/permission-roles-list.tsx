@@ -9,6 +9,7 @@ import { useProjectStore } from "@seliseblocks/blocks-kit";
 import { useGetRoles } from "@blocks-idp/iam/hooks/use-roles";
 import { parseAsInteger, useQueryStates } from "nuqs";
 import { Pagination } from "@/components/ui-kits/pagination/pagination";
+import { useScopedPath } from "@/hooks/use-scoped-path";
 
 type RolesTableProps = {
   slugs: string[];
@@ -25,6 +26,7 @@ const LoadingSkeleton = () => (
 export const PermissionRolesList = ({ slugs }: RolesTableProps) => {
   const tenantId = useProjectStore().selectedProject?.tenantId || "";
   const navigate = useNavigate();
+  const scoped = useScopedPath();
   const [queryParams, setQueryParams] = useQueryStates({
     page: parseAsInteger.withDefault(0),
     pageSize: parseAsInteger.withDefault(10),
@@ -87,7 +89,7 @@ export const PermissionRolesList = ({ slugs }: RolesTableProps) => {
   });
 
   const onRowClickHandler = (itemId: number | string) => {
-    navigate(`/app/role-detail/${itemId}`);
+    navigate(scoped(`role-detail/${itemId}`));
   };
   const onPageChangeHandler = (page: number) => {
     setQueryParams((params) => ({ ...params, page }));

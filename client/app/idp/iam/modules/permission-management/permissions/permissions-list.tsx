@@ -19,6 +19,7 @@ import { Link } from "react-router-dom";
 import { useNavigate } from "react-router-dom";
 import { cn } from "@/lib/utils";
 import { ScrollArea, ScrollBar } from "@/components/ui-kits/scroll-area/scroll-area";
+import { useScopedPath } from "@/hooks/use-scoped-path";
 
 type PermissionTableProps = {
   permissions: IPermission[];
@@ -46,6 +47,7 @@ export const PermissionSeverityBadge = ({ severity }: { severity: PermissionSeve
 export const PermissionsList = ({ permissions, isLoading }: PermissionTableProps) => {
   const { sortQueryParams, setSortQueryParams } = usePermissionsSortQuaryParams();
   const navigate = useNavigate();
+  const permissionDetailPath = useScopedPath()("permission-detail");
 
   const columns = useMemo<ColumnDef<IPermission>[]>(
     () => [
@@ -211,7 +213,7 @@ export const PermissionsList = ({ permissions, isLoading }: PermissionTableProps
         cell: ({ row }) => (
           <div className="flex">
             {!row.original.isBuiltIn && (
-              <Link to={`/app/permission-detail/${row.original.itemId}`}>
+              <Link to={`${permissionDetailPath}/${row.original.itemId}`}>
                 <Button size="icon" className="rounded-full" variant="ghost">
                   <Pencil className="h-4 w-4" />
                 </Button>
@@ -221,7 +223,7 @@ export const PermissionsList = ({ permissions, isLoading }: PermissionTableProps
         ),
       },
     ],
-    [setSortQueryParams, sortQueryParams]
+    [setSortQueryParams, sortQueryParams, permissionDetailPath]
   );
 
   const table = useReactTable({
@@ -253,7 +255,7 @@ export const PermissionsList = ({ permissions, isLoading }: PermissionTableProps
                 key={row.id}
                 data-state={row.getIsSelected() && "selected"}
                 onClick={() => {
-                  navigate(`/app/permission-detail/${row.original.itemId}`);
+                  navigate(`${permissionDetailPath}/${row.original.itemId}`);
                 }}
                 isHoverable
               >

@@ -50,11 +50,11 @@ import {
   CallbackPage,
   ConsoleLayout,
   ConsolePage,
-  DashboardLayout,
   DashboardOverview,
+  DashboardRoute,
   EnvironmentsPage,
   LoginPage,
-  ProjectOverviewLayout,
+  ProjectOverviewRoute,
   ProtectedGuard,
   PublicGuard,
   TooltipProvider,
@@ -177,6 +177,7 @@ export const router = createBrowserRouter([
               </ProtectedGuard>
             ),
             children: [
+              { index: true, element: <Navigate to="console" replace /> },
               // ── Console group (no impersonation allowed) ──
               {
                 element: (
@@ -195,18 +196,17 @@ export const router = createBrowserRouter([
                   { path: "profile", element: <ProfilePage /> },
                 ],
               },
+              // ── Project overview group (impersonation terminated) ──
               {
-                path: "project-overview",
+                path: "project/:tenantGroupId",
                 element: (
-                  
-                    <ProjectOverviewLayout
-                      redirectPaths={redirectPaths}
-                      navigationMenus={navigationMenus}
-                    >
-                      <Outlet />
-                    </ProjectOverviewLayout>
+                  <ProjectOverviewRoute
+                    redirectPaths={redirectPaths}
+                    navigationMenus={navigationMenus}
+                  />
                 ),
                 children: [
+                  { index: true, element: <Navigate to="environments" replace /> },
                   {
                     path: "environments",
                     element: <EnvironmentsPage />,
@@ -215,17 +215,16 @@ export const router = createBrowserRouter([
               },
               // ── Dashboard group (impersonation synchronized) ──
               {
+                path: ":itemId",
                 element: (
-                  
-                    <DashboardLayout
-                      redirectPaths={redirectPaths}
-                      navigationMenus={navigationMenus}
-                    >
-                      <Outlet />
-                    </DashboardLayout>
+                  <DashboardRoute
+                    redirectPaths={redirectPaths}
+                    navigationMenus={navigationMenus}
+                  />
                 ),
 
                 children: [
+                  { index: true, element: <Navigate to="dashboard" replace /> },
                   { path: "iam", element: <IamPage /> },
                   {
                     path: "user-detail/:id",
@@ -244,7 +243,7 @@ export const router = createBrowserRouter([
                     element: <IamPermissionDetailPage />,
                   },
                   {
-                    path: "organization-detail/:itemId",
+                    path: "organization-detail/:orgId",
                     element: <IamOrgDetailPage />,
                   },
                   { path: "iam/logs", element: <IamLogsPage /> },
