@@ -4,6 +4,7 @@ using Iam.DomainService.Dtos;
 using Iam.DomainService.Entities;
 using Iam.DomainService.Enums;
 using Iam.DomainService.Resources.ResponseModel;
+using Iam.DomainService.Resources.TenantPropagation;
 using Iam.DomainService.Services;
 using Iam.DomainService.Shared.Entities;
 using Iam.DomainService.Utilities;
@@ -20,6 +21,7 @@ namespace Iam.DomainService.Resources
         private readonly IValidator<CreatePermissionRequest> _permissionValidator;
         private readonly IValidator<UpdatePermissionRequest> _updatepPermissionValidator;
         private readonly IValidator<CreateRoleRequest> _roleValidator;
+        private readonly ITenantPermissionPropagator _tenantPermissionPropagator;
 
         public ResourceMutationService(
             ILogger<ResourceMutationService> logger,
@@ -27,7 +29,8 @@ namespace Iam.DomainService.Resources
             IIdentityAccessManagementService identityAccessManagementService,
             IValidator<CreatePermissionRequest> permissionValidator,
             IValidator<UpdatePermissionRequest> updatepPermissionValidator,
-            IValidator<CreateRoleRequest> roleValidator
+            IValidator<CreateRoleRequest> roleValidator,
+            ITenantPermissionPropagator tenantPermissionPropagator
         )
         {
             _logger = logger;
@@ -36,6 +39,7 @@ namespace Iam.DomainService.Resources
             _permissionValidator = permissionValidator;
             _updatepPermissionValidator = updatepPermissionValidator;
             _roleValidator = roleValidator;
+            _tenantPermissionPropagator = tenantPermissionPropagator;
         }
 
         public async Task<BaseMutationResponse> CreatePermissionAsync(CreatePermissionRequest command)
@@ -291,10 +295,14 @@ namespace Iam.DomainService.Resources
 
             await _resourceRepository.UpdateAllSamePermissionAsync(permission);
 
+            var mutationAction = command.IsArchived
+                ? MutationEventType.Delete
+                : MutationEventType.Update;
+
             await SendResourceMutationEventAsync(
                 new ResourceMutationEvent
                 {
-                    Action = MutationEventType.Update,
+                    Action = mutationAction,
                     ItemId = permission.ItemId,
                     Entity = ResourceEntity.Permission
                 }
@@ -874,6 +882,19 @@ namespace Iam.DomainService.Resources
             await _resourceRepository.UpdateRolesCountAsync(role.Slug);
 
             return result;
+        }
+
+        public async Task ExecutePermissionMutationForTenantsAsync(PermissionMutationForTenantsEvent context)
+        {
+            _logger.LogInformation(
+                "Tenant permission propagation start. ItemId={ItemId} Action={Action}",
+                context.ItemId, context.Action);
+
+            var summary = await _tenantPermissionPropagator.PropagateAsync(context);
+
+            _logger.LogInformation(
+                "Tenant permission propagation done. ItemId={ItemId} Action={Action} Attempted={Attempted} Succeeded={Succeeded} Failed={Failed}",
+                context.ItemId, context.Action, summary.TenantsAttempted, summary.TenantsSucceeded, summary.TenantsFailed);
         }
 
         public async Task<bool> ProcessPermissionAsync(ResourceSetToPermissionMutationEvent command)
