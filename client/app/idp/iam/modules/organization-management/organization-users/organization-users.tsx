@@ -11,11 +11,15 @@ import {
 
 interface OrganizationUsersProps {
   organizationId: string;
+  title?: string;
+  description?: string;
   action?: React.ReactNode;
 }
 
 export const OrganizationUsers = ({
   organizationId,
+  title,
+  description,
   action,
 }: OrganizationUsersProps) => {
   const { queryParams, setQueryParams } = useOrganizationUsersFilterQueryParams();
@@ -42,9 +46,17 @@ export const OrganizationUsers = ({
 
   return (
     <Card>
-      <CardHeader className="flex-row flex-wrap items-center justify-between gap-3">
-        <OrganizationUsersFilterToolbar />
-        <div className="ml-auto">{action}</div>
+      <CardHeader className="flex-row flex-wrap items-start justify-between gap-3">
+        <div className="flex flex-col gap-1">
+          {title && <h3 className="text-base font-semibold leading-none">{title}</h3>}
+          {description && (
+            <p className="text-sm text-muted-foreground">{description}</p>
+          )}
+        </div>
+        <div className="ml-auto flex flex-row flex-wrap items-center gap-3">
+          {action}
+          <OrganizationUsersFilterToolbar />
+        </div>
       </CardHeader>
 
       <CardContent>
