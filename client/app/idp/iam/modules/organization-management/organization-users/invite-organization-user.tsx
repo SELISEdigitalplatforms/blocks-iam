@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Button } from "@/components/ui-kits/button/button";
 import {
   Dialog,
@@ -22,14 +22,21 @@ import {
   FormMessage,
 } from "@/components/ui-kits/form/form";
 import { useAddUser, useCheckUserExists } from "@blocks-idp/iam/hooks/use-user";
+import { useGetOrganizationConfig, useGetOrganizations } from "@blocks-idp/iam/hooks/use-organization";
 import { z } from "zod";
 import { useProjectStore } from "@seliseblocks/blocks-kit";
-import { useEffect } from "react";
-import { Loader, Plus } from "lucide-react";
+import { ChevronsUpDown, Check, Loader, Plus } from "lucide-react";
 import { isErrorWithErrors } from "@/lib/error";
 import { cn } from "@/lib/utils";
 import { useMinDurationFlag } from "@/hooks/use-min-duration-flag";
 import { useQueryClient } from "@tanstack/react-query";
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@/components/ui-kits/popover/popover";
+
+const DEFAULT_ORGANIZATION_ID = "default";
 
 const inviteOrganizationUserFormDefaultValue = {
   email: "",
@@ -78,6 +85,34 @@ export const InviteOrganizationUser = ({ organizationId }: InviteOrganizationUse
 
   const tenantId = useProjectStore().selectedProject?.tenantId || "";
   const [open, setOpen] = useState(false);
+  const [orgPopoverOpen, setOrgPopoverOpen] = useState(false);
+  const [selectedOrgId, setSelectedOrgId] = useState(organizationId);
+
+  const { data: orgsData, isLoading: isOrgsLoading } = useGetOrganizations({
+    page: 0,
+    pageSize: 1000,
+  });
+  const { data: configData, isLoading: isConfigLoading } = useGetOrganizationConfig(tenantId);
+  const isMultiOrgEnabled = configData?.isMultiOrgEnabled ?? true;
+
+  // Treat a missing/undefined isEnabled as enabled — only explicitly disabled
+  // orgs (isEnabled === false) should be excluded from the picker.
+  const enabledOrgs = useMemo(
+    () => (orgsData?.organizations ?? []).filter((org) => org.isEnabled !== false),
+    [orgsData?.organizations],
+  );
+
+  // Dropdown list: enabled orgs with a synthetic "Default" entry pinned at the top.
+  const orgOptions = useMemo(() => {
+    const list = enabledOrgs.filter((org) => org.itemId !== DEFAULT_ORGANIZATION_ID);
+    return [{ itemId: DEFAULT_ORGANIZATION_ID, name: "Default", isEnabled: true }, ...list];
+  }, [enabledOrgs]);
+
+  const orgIdToName = useMemo(() => {
+    const map = new Map<string, string>();
+    orgOptions.forEach((o) => map.set(o.itemId, o.name));
+    return map;
+  }, [orgOptions]);
 
   const form = useForm<InviteFormValues>({
     defaultValues: inviteOrganizationUserFormDefaultValue,
@@ -99,11 +134,14 @@ export const InviteOrganizationUser = ({ organizationId }: InviteOrganizationUse
   useEffect(() => {
     if (!open) {
       form.reset();
+      setOrgPopoverOpen(false);
+      setSelectedOrgId(organizationId);
     }
-  }, [open, form]);
+  }, [open, form, organizationId]);
 
   const isFormInvalid =
     !isValidEmailFormat ||
+    !selectedOrgId ||
     (!exists && (!form.watch("firstName")?.trim() || !form.watch("lastName")?.trim()));
 
   const onSubmitHandler = async (values: InviteFormValues) => {
@@ -116,7 +154,7 @@ export const InviteOrganizationUser = ({ organizationId }: InviteOrganizationUse
         userCreationType: 1,
         platform: "blocks_portal",
         projectKey: tenantId,
-        organizationId,
+        organizationId: selectedOrgId,
       });
       if (!res.isSuccess) {
         showErrorToast({
@@ -213,6 +251,57 @@ export const InviteOrganizationUser = ({ organizationId }: InviteOrganizationUse
                     )}
                   />
                 </>
+              )}
+
+              {isValidEmailFormat && !isConfigLoading && isMultiOrgEnabled && (
+                <div className="space-y-2">
+                  <label className="text-sm font-medium">Organization</label>
+                  <Popover open={orgPopoverOpen} onOpenChange={setOrgPopoverOpen}>
+                    <PopoverTrigger asChild>
+                      <Button
+                        type="button"
+                        variant="outline"
+                        role="combobox"
+                        aria-expanded={orgPopoverOpen}
+                        className="w-full justify-between"
+                      >
+                        <span className="truncate text-sm font-normal">
+                          {selectedOrgId
+                            ? orgIdToName.get(selectedOrgId) ?? selectedOrgId
+                            : "Select organization"}
+                        </span>
+                        <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+                      </Button>
+                    </PopoverTrigger>
+                    <PopoverContent className="w-[--radix-popover-trigger-width] p-0" align="start">
+                      <div className="max-h-[260px] overflow-y-auto p-1">
+                        {orgOptions.map((org) => {
+                          const isSelected = selectedOrgId === org.itemId;
+                          return (
+                            <button
+                              key={org.itemId}
+                              type="button"
+                              onClick={() => {
+                                setSelectedOrgId(org.itemId);
+                                setOrgPopoverOpen(false);
+                              }}
+                              className="flex w-full cursor-pointer items-center gap-2 rounded-sm px-2 py-1.5 text-left text-sm hover:bg-muted/50"
+                            >
+                              <span className="flex-1 truncate">{org.name}</span>
+                              {isSelected && <Check className="h-4 w-4 text-primary" />}
+                            </button>
+                          );
+                        })}
+                        {isOrgsLoading && (
+                          <div className="flex items-center gap-2 px-2 py-1.5 text-sm text-muted-foreground">
+                            <Loader className="h-3.5 w-3.5 animate-spin" />
+                            Loading organizations...
+                          </div>
+                        )}
+                      </div>
+                    </PopoverContent>
+                  </Popover>
+                </div>
               )}
             </div>
             <DialogFooter className="shrink-0 border-t pt-4">
