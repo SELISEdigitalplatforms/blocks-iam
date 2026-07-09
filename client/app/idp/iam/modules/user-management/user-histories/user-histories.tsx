@@ -9,11 +9,10 @@ type HistoriesProps = {
   projectKey: string;
 };
 
-export const UserHistories = ({ id, projectKey }: HistoriesProps) => {
-  const [filter, setFilter] = useState({ page: 0, pageSize: 10, filter: { UserId: id } });
+export const UserHistories = ({ id }: HistoriesProps) => {
+  const [filter, setFilter] = useState({ page: 0, pageSize: 10, userId: id });
   const { isLoading, isFetching, data } = useGetHistories({
     ...filter,
-    projectKey,
   });
   const loading = isLoading || isFetching;
 

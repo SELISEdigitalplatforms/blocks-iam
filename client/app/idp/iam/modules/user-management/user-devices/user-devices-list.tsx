@@ -49,7 +49,7 @@ const EmptyState = () => (
       <Laptop className="h-7 w-7 text-muted-foreground" />
     </div>
     <div>
-      <p className="text-base font-semibold text-foreground">No active sessions</p>
+      <p className="text-base font-semibold text-foreground">No sessions</p>
       <p className="mt-1 text-sm text-muted-foreground">
         You&apos;re not signed in on any other devices.
       </p>
