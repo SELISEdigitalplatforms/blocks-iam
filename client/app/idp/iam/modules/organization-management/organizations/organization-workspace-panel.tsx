@@ -100,8 +100,6 @@ export const OrganizationWorkspacePanel = ({ organizationId }: OrganizationWorks
           <TabsContent value="members" className="mt-0">
             <OrganizationUsers
               organizationId={organization.itemId}
-              title="Members"
-              description="People with access to this organization."
               action={<InviteOrganizationUser organizationId={organization.itemId} />}
             />
           </TabsContent>

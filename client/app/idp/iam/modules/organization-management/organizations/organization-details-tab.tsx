@@ -2,7 +2,7 @@ import { IOrganization } from "@blocks-idp/iam/models/organization";
 import { useGetUserById } from "@blocks-idp/iam/hooks/use-user";
 import { useGetRoles } from "@blocks-idp/iam/hooks/use-roles";
 import { useProjectStore } from "@seliseblocks/blocks-kit";
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui-kits/card/card";
+import { Card, CardContent } from "@/components/ui-kits/card/card";
 import {
   Calendar,
   Clock,
@@ -22,7 +22,7 @@ type DetailRowProps = {
 };
 
 const DetailRow = ({ icon, label, value }: DetailRowProps) => (
-  <div className="flex items-center gap-4 border-b py-4 text-sm last:border-0">
+  <div className="flex items-center gap-4 py-3 text-sm">
     <span className="flex w-52 shrink-0 items-center gap-2 text-muted-foreground">
       {icon}
       {label}
@@ -77,15 +77,7 @@ export const OrganizationDetailsTab = ({ organization }: { organization: IOrgani
 
   return (
     <Card>
-      <CardHeader className="gap-4">
-        <div>
-          <CardTitle>Details</CardTitle>
-          <CardDescription className="mt-1">
-            Organization information and configuration.
-          </CardDescription>
-        </div>
-      </CardHeader>
-      <CardContent>
+      <CardContent className="pt-6">
         <DetailRow
           icon={<SquarePen className="h-4 w-4" />}
           label="Description"
