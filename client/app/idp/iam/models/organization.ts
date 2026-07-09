@@ -45,7 +45,9 @@ export interface IOrganizationFilter {
 export interface IGetOrganizationsParams {
   page: number;
   pageSize: number;
-  searchText?: string;
+  search?: string;
+  isDisabled?: boolean;
+  parentOrganizationId?: string;
   sort?: {
     property: string;
     isDescending: boolean;
