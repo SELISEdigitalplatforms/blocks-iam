@@ -1,7 +1,7 @@
 import { IRole } from "@blocks-idp/iam/models/role";
 import { IPermission } from "@blocks-idp/iam/models/permission";
 import { Separator } from "@/components/ui-kits/separator/separator";
-import { KeyRound, Shield, ShieldCheck, X } from "lucide-react";
+import { KeyRound, Shield, ShieldCheck } from "lucide-react";
 import { AddOrganizationRole } from "../user-memberships/organization-roles-field/add-organization-role";
 import { AddOrganizationPermission } from "../user-memberships/organization-permissions-field/add-organization-permission";
 
@@ -15,39 +15,17 @@ type RolesPermissionsPillEditorProps = {
   onSave: () => void;
 };
 
-const RolePill = ({ role, onRemove }: { role: IRole; onRemove: () => void }) => (
+const RolePill = ({ role }: { role: IRole }) => (
   <span className="inline-flex items-center gap-1.5 rounded-full border border-blue-500/20 bg-blue-500/10 px-2.5 py-1 text-sm text-blue-700 dark:text-blue-400">
     <Shield className="h-3 w-3" />
     {role.name}
-    <button
-      type="button"
-      onClick={onRemove}
-      aria-label={`Remove ${role.name} role`}
-      className="ml-0.5 text-blue-700/60 hover:text-blue-700 dark:text-blue-400/60 dark:hover:text-blue-400"
-    >
-      <X className="h-3.5 w-3.5" />
-    </button>
   </span>
 );
 
-const PermissionPill = ({
-  permission,
-  onRemove,
-}: {
-  permission: IPermission;
-  onRemove: () => void;
-}) => (
+const PermissionPill = ({ permission }: { permission: IPermission }) => (
   <span className="inline-flex items-center gap-1.5 rounded-full border border-emerald-500/20 bg-emerald-500/10 px-2.5 py-1 text-sm text-emerald-700 dark:text-emerald-400">
     <KeyRound className="h-3 w-3" />
     {permission.name}
-    <button
-      type="button"
-      onClick={onRemove}
-      aria-label={`Remove ${permission.name} permission`}
-      className="ml-0.5 text-emerald-700/60 hover:text-emerald-700 dark:text-emerald-400/60 dark:hover:text-emerald-400"
-    >
-      <X className="h-3.5 w-3.5" />
-    </button>
   </span>
 );
 
@@ -87,11 +65,7 @@ export const RolesPermissionsPillEditor = ({
             </div>
           ) : (
             roles.map((role) => (
-              <RolePill
-                key={role.slug}
-                role={role}
-                onRemove={() => onRolesChange(roles.filter((item) => item.slug !== role.slug))}
-              />
+              <RolePill key={role.slug} role={role} />
             ))
           )}
         </div>
@@ -124,15 +98,7 @@ export const RolesPermissionsPillEditor = ({
             </div>
           ) : (
             permissions.map((permission) => (
-              <PermissionPill
-                key={permission.resource}
-                permission={permission}
-                onRemove={() =>
-                  onPermissionsChange(
-                    permissions.filter((item) => item.resource !== permission.resource),
-                  )
-                }
-              />
+              <PermissionPill key={permission.resource} permission={permission} />
             ))
           )}
         </div>

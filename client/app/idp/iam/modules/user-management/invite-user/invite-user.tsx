@@ -21,7 +21,12 @@ import {
   FormLabel,
   FormMessage,
 } from "@/components/ui-kits/form/form";
-import { useAddUser, useCheckUserExists } from "@blocks-idp/iam/hooks/use-user";
+import {
+  useAddUser,
+  useCheckUserExists,
+  useGetUsers,
+  useUpdateUserAccessControl,
+} from "@blocks-idp/iam/hooks/use-user";
 import { z } from "zod";
 import { useProjectStore } from "@seliseblocks/blocks-kit";
 import { useEffect, useMemo, useState } from "react";
@@ -42,7 +47,7 @@ type InviteFormValues = z.infer<typeof inviteUserFormSchema>;
 const DEFAULT_ORGANIZATION_ID = "default";
 
 export const InviteUser = () => {
-  const { isPending, mutateAsync: createUser } = useAddUser();
+  const { isPending: isCreatingUser, mutateAsync: createUser } = useAddUser();
   const tenantId = useProjectStore().selectedProject?.tenantId || "";
   const [open, setOpen] = useState(false);
   const [orgPopoverOpen, setOrgPopoverOpen] = useState(false);
@@ -76,6 +81,25 @@ export const InviteUser = () => {
     () => new Set(existsData?.organizationIds ?? []),
     [existsData?.organizationIds],
   );
+
+  // When the email maps to an existing user, resolve their userId so we can
+  // grant them access to the selected org instead of creating a new account.
+  // NOTE: this lookup is scoped to the current organization context server-side,
+  // so it may fail to find a user who isn't already a member of this org.
+  const { data: existingUsersData, isFetching: isFetchingExistingUser } = useGetUsers(
+    {
+      page: 0,
+      pageSize: 1,
+      projectKey: tenantId,
+      filter: { email: emailValue.trim(), name: "" },
+    },
+    { enabled: exists },
+  );
+  const existingUserId = existingUsersData?.data?.[0]?.itemId;
+  const { mutateAsync: updateUserAccess, isPending: isGrantingAccess } =
+    useUpdateUserAccessControl({ id: existingUserId ?? "", projectKey: tenantId });
+
+  const isPending = isCreatingUser || isGrantingAccess;
 
   useEffect(() => {
     if (!open) {
@@ -125,6 +149,33 @@ export const InviteUser = () => {
 
   const onSubmitHandler = async (values: InviteFormValues) => {
     try {
+      if (exists) {
+        if (!existingUserId) {
+          showErrorToast({
+            errors: "Could not find this user's account. Please try again.",
+          });
+          return;
+        }
+        const res = await updateUserAccess({
+          organizationId: selectedOrgId,
+          roles: [],
+          permissions: [],
+        });
+        if (!res.isSuccess) {
+          const msg =
+            res.errors && typeof res.errors === "object"
+              ? Object.values(res.errors as Record<string, string>)[0] ??
+                "Failed to grant access"
+              : (res.errors as string) || "Failed to grant access";
+          showErrorToast({ errors: msg });
+          return;
+        }
+        showSuccessToast({ description: "User granted access to the organization" });
+        form.reset();
+        setOpen(false);
+        return;
+      }
+
       const res = await createUser({
         ...values,
         firstName: values.firstName ?? "",
@@ -160,6 +211,7 @@ export const InviteUser = () => {
     !isValidEmailFormat ||
     !selectedOrgId ||
     isConfigLoading ||
+    (exists && (isFetchingExistingUser || !existingUserId)) ||
     (!exists && (!form.watch("firstName")?.trim() || !form.watch("lastName")?.trim()));
 
   return (
@@ -309,8 +361,10 @@ export const InviteUser = () => {
                 {isPending ? (
                   <>
                     <Loader className="mr-2 h-4 w-4 animate-spin" />
-                    Sending...
+                    {exists ? "Granting access..." : "Sending..."}
                   </>
+                ) : exists ? (
+                  "Grant access"
                 ) : (
                   "Send invite"
                 )}

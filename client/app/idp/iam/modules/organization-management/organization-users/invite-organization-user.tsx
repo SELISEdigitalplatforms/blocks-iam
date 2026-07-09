@@ -21,7 +21,12 @@ import {
   FormLabel,
   FormMessage,
 } from "@/components/ui-kits/form/form";
-import { useAddUser, useCheckUserExists } from "@blocks-idp/iam/hooks/use-user";
+import {
+  useAddUser,
+  useCheckUserExists,
+  useGetUsers,
+  useUpdateUserAccessControl,
+} from "@blocks-idp/iam/hooks/use-user";
 import { useGetOrganizations } from "@blocks-idp/iam/hooks/use-organization";
 import { z } from "zod";
 import { useProjectStore } from "@seliseblocks/blocks-kit";
@@ -80,7 +85,7 @@ const extractFirstErrorMessage = (errors: unknown, fallback: string): string => 
 };
 
 export const InviteOrganizationUser = ({ organizationId }: InviteOrganizationUserProps) => {
-  const { isPending, mutateAsync: createUser } = useAddUser();
+  const { isPending: isCreatingUser, mutateAsync: createUser } = useAddUser();
   const queryClient = useQueryClient();
 
   const tenantId = useProjectStore().selectedProject?.tenantId || "";
@@ -122,6 +127,25 @@ export const InviteOrganizationUser = ({ organizationId }: InviteOrganizationUse
     [existsData?.organizationIds],
   );
 
+  // When the email maps to an existing user, resolve their userId so we can
+  // grant them access to the selected org instead of creating a new account.
+  // NOTE: this lookup is scoped to the current organization context server-side,
+  // so it may fail to find a user who isn't already a member of this org.
+  const { data: existingUsersData, isFetching: isFetchingExistingUser } = useGetUsers(
+    {
+      page: 0,
+      pageSize: 1,
+      projectKey: tenantId,
+      filter: { email: emailValue.trim(), name: "" },
+    },
+    { enabled: exists },
+  );
+  const existingUserId = existingUsersData?.data?.[0]?.itemId;
+  const { mutateAsync: updateUserAccess, isPending: isGrantingAccess } =
+    useUpdateUserAccessControl({ id: existingUserId ?? "", projectKey: tenantId });
+
+  const isPending = isCreatingUser || isGrantingAccess;
+
   // Dropdown list: enabled orgs with a synthetic "Default" entry pinned at the top.
   // When the email maps to an existing user, hide orgs they're already in.
   const orgOptions = useMemo(() => {
@@ -149,10 +173,37 @@ export const InviteOrganizationUser = ({ organizationId }: InviteOrganizationUse
   const isFormInvalid =
     !isValidEmailFormat ||
     !selectedOrgId ||
+    (exists && (isFetchingExistingUser || !existingUserId)) ||
     (!exists && (!form.watch("firstName")?.trim() || !form.watch("lastName")?.trim()));
 
   const onSubmitHandler = async (values: InviteFormValues) => {
     try {
+      if (exists) {
+        if (!existingUserId) {
+          showErrorToast({
+            errors: "Could not find this user's account. Please try again.",
+          });
+          return;
+        }
+        const res = await updateUserAccess({
+          organizationId: selectedOrgId,
+          roles: [],
+          permissions: [],
+        });
+        if (!res.isSuccess) {
+          showErrorToast({
+            errors: extractFirstErrorMessage(res.errors, "Failed to grant access"),
+          });
+          return;
+        }
+        showSuccessToast({ description: "User granted access to the organization" });
+        queryClient.invalidateQueries({ queryKey: ["organizations"] });
+        queryClient.invalidateQueries({ queryKey: ["organization"] });
+        form.reset();
+        setOpen(false);
+        return;
+      }
+
       const res = await createUser({
         ...values,
         firstName: values.firstName ?? "",
@@ -327,8 +378,10 @@ export const InviteOrganizationUser = ({ organizationId }: InviteOrganizationUse
                 {isPending ? (
                   <>
                     <Loader className="mr-2 h-4 w-4 animate-spin" />
-                    Sending...
+                    {exists ? "Granting access..." : "Sending..."}
                   </>
+                ) : exists ? (
+                  "Grant access"
                 ) : (
                   "Send invite"
                 )}
