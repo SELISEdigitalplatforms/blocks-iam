@@ -14,6 +14,7 @@ using FluentValidation;
 using Iam.DomainService.Accounts;
 using Iam.DomainService.Configurations;
 using Iam.DomainService.Resources;
+using Iam.DomainService.Resources.TenantPropagation;
 using Iam.DomainService.Services;
 using Iam.DomainService.Users;
 using Idp.DomainService.Oidc.Services;
@@ -27,6 +28,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Storage.DomainService.Shared.Services;
 using Storage.DomainService.Storage;
 using Storage.DomainService.Storage.Validators;
+
 
 namespace Authentication.DomainService.Utilities
 {
@@ -134,6 +136,12 @@ namespace Authentication.DomainService.Utilities
 
             serviceCollection.AddSingleton<IResourceMutationService, ResourceMutationService>();
             serviceCollection.AddSingleton<IResourceRepository, ResourceRepository>();
+
+            serviceCollection.AddSingleton<TenantConnectionFactory>();
+            serviceCollection.AddSingleton<ITenantPermissionPropagator, TenantPermissionPropagator>();
+            // ITenantEnumeration / IMongoDatabase (root) must be registered by every host that
+            // calls RegisterAllServices — TenantPermissionPropagator depends on both. See
+            // Api/Program.cs and Worker/Program.cs for the per-host registrations.
 
             serviceCollection.AddSingleton<IUserManagementQueryService, UserManagementQueryService>();
             serviceCollection.AddSingleton<IResourceQueryService, ResourceQueryService>();
