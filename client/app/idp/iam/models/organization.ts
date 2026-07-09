@@ -46,6 +46,10 @@ export interface IGetOrganizationsParams {
   page: number;
   pageSize: number;
   searchText?: string;
+  sort?: {
+    property: string;
+    isDescending: boolean;
+  };
 }
 
 export interface IGetOrganizationsResponse {
