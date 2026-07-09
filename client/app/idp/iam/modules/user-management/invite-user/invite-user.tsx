@@ -29,7 +29,7 @@ import { ChevronsUpDown, Check, Loader } from "lucide-react";
 import { isErrorWithErrors } from "@/lib/error";
 import { PrimaryButton } from "@/components/action-buttons/primary-button";
 import { cn } from "@/lib/utils";
-import { useGetOrganizations } from "@blocks-idp/iam/hooks/use-organization";
+import { useGetOrganizationConfig, useGetOrganizations } from "@blocks-idp/iam/hooks/use-organization";
 import {
   Popover,
   PopoverContent,
@@ -51,6 +51,8 @@ export const InviteUser = () => {
     page: 0,
     pageSize: 1000,
   });
+  const { data: configData, isLoading: isConfigLoading } = useGetOrganizationConfig(tenantId);
+  const isMultiOrgEnabled = configData?.isMultiOrgEnabled ?? true;
 
   const form = useForm<InviteFormValues>({
     defaultValues: inviteUserFormDefaultValue,
@@ -75,6 +77,14 @@ export const InviteUser = () => {
       setOrgPopoverOpen(false);
     }
   }, [open, form]);
+
+  // When multi-org is disabled there's nowhere to pick an org from — default
+  // straight to "default" so the form is still submittable without that field.
+  useEffect(() => {
+    if (open && !isConfigLoading && !isMultiOrgEnabled) {
+      form.setValue("organizationIds", [DEFAULT_ORGANIZATION_ID], { shouldValidate: true });
+    }
+  }, [open, isConfigLoading, isMultiOrgEnabled, form]);
 
   const enabledOrgs = useMemo(
     () => (orgsData?.organizations ?? []).filter((org) => org.isEnabled),
@@ -137,6 +147,7 @@ export const InviteUser = () => {
   const isFormInvalid =
     !isValidEmailFormat ||
     !selectedOrgId ||
+    isConfigLoading ||
     (!exists && (!form.watch("firstName")?.trim() || !form.watch("lastName")?.trim()));
 
   return (
@@ -173,58 +184,6 @@ export const InviteUser = () => {
                 )}
               />
 
-              <FormField
-                control={form.control}
-                name="organizationIds"
-                render={() => (
-                  <FormItem>
-                    <FormLabel>Organization</FormLabel>
-                    <Popover open={orgPopoverOpen} onOpenChange={setOrgPopoverOpen}>
-                      <PopoverTrigger asChild>
-                        <Button
-                          type="button"
-                          variant="outline"
-                          role="combobox"
-                          aria-expanded={orgPopoverOpen}
-                          className="w-full justify-between"
-                        >
-                          <span className="truncate text-sm font-normal">
-                            {selectedOrgId
-                              ? orgIdToName.get(selectedOrgId) ?? selectedOrgId
-                              : "Select organization"}
-                          </span>
-                          <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
-                        </Button>
-                      </PopoverTrigger>
-                      <PopoverContent
-                        className="w-[--radix-popover-trigger-width] p-0"
-                        align="start"
-                      >
-                        <div className="max-h-[260px] overflow-y-auto p-1">
-                          {orgOptions.map((org) => {
-                            const isSelected = selectedOrgId === org.itemId;
-                            return (
-                              <button
-                                key={org.itemId}
-                                type="button"
-                                onClick={() => selectOrg(org.itemId)}
-                                className={cn(
-                                  "flex w-full cursor-pointer items-center gap-2 rounded-sm px-2 py-1.5 text-left text-sm hover:bg-muted/50",
-                                )}
-                              >
-                                <span className="flex-1 truncate">{org.name}</span>
-                                {isSelected && <Check className="h-4 w-4 text-primary" />}
-                              </button>
-                            );
-                          })}
-                        </div>
-                      </PopoverContent>
-                    </Popover>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-
               {!exists && isValidEmailFormat && (
                 <>
                   <FormField
@@ -254,6 +213,60 @@ export const InviteUser = () => {
                     )}
                   />
                 </>
+              )}
+
+              {isValidEmailFormat && !isConfigLoading && isMultiOrgEnabled && (
+                <FormField
+                  control={form.control}
+                  name="organizationIds"
+                  render={() => (
+                    <FormItem>
+                      <FormLabel>Organization</FormLabel>
+                      <Popover open={orgPopoverOpen} onOpenChange={setOrgPopoverOpen}>
+                        <PopoverTrigger asChild>
+                          <Button
+                            type="button"
+                            variant="outline"
+                            role="combobox"
+                            aria-expanded={orgPopoverOpen}
+                            className="w-full justify-between"
+                          >
+                            <span className="truncate text-sm font-normal">
+                              {selectedOrgId
+                                ? orgIdToName.get(selectedOrgId) ?? selectedOrgId
+                                : "Select organization"}
+                            </span>
+                            <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+                          </Button>
+                        </PopoverTrigger>
+                        <PopoverContent
+                          className="w-[--radix-popover-trigger-width] p-0"
+                          align="start"
+                        >
+                          <div className="max-h-[260px] overflow-y-auto p-1">
+                            {orgOptions.map((org) => {
+                              const isSelected = selectedOrgId === org.itemId;
+                              return (
+                                <button
+                                  key={org.itemId}
+                                  type="button"
+                                  onClick={() => selectOrg(org.itemId)}
+                                  className={cn(
+                                    "flex w-full cursor-pointer items-center gap-2 rounded-sm px-2 py-1.5 text-left text-sm hover:bg-muted/50",
+                                  )}
+                                >
+                                  <span className="flex-1 truncate">{org.name}</span>
+                                  {isSelected && <Check className="h-4 w-4 text-primary" />}
+                                </button>
+                              );
+                            })}
+                          </div>
+                        </PopoverContent>
+                      </Popover>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
               )}
             </div>
             <DialogFooter className="mt-6">

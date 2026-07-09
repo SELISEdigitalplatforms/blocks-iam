@@ -1,6 +1,5 @@
 import { useGetUserById } from "@blocks-idp/iam/hooks/use-user";
 import { Card, CardContent } from "@/components/ui-kits/card/card";
-import { CopyToClipboardButton } from "@/components/copy-to-clipboard-button";
 import { ProfileImageUploader } from "@blocks-idp/iam/components/profile-image-uploader";
 import { Activity, Calendar, Shield } from "lucide-react";
 
@@ -45,7 +44,7 @@ export const UserProfileSidebar = ({ id, projectKey }: UserProfileSidebarProps) 
   const user = data?.data;
 
   return (
-    <Card className="overflow-hidden border-0 bg-transparent shadow-none md:grid md:h-full md:grid-rows-[auto_1fr] md:gap-4">
+    <Card className="overflow-hidden border-0 bg-transparent shadow-none">
       {/* Avatar */}
       <div className="relative mx-auto w-full max-w-[280px]" style={{ aspectRatio: "1 / 1" }}>
         <ProfileImageUploader
@@ -54,18 +53,6 @@ export const UserProfileSidebar = ({ id, projectKey }: UserProfileSidebarProps) 
           containerClassName="h-full w-full"
           className="h-full w-full max-w-none rounded-full bg-transparent shadow-none dark:bg-transparent"
         />
-      </div>
-
-      {/* Name + email */}
-      <div className="mt-3 flex flex-col items-center gap-1 text-center md:items-start md:text-left">
-        <h3 className="truncate text-xl font-bold tracking-tight text-high-emphasis">
-          {user?.firstName} {user?.lastName}
-        </h3>
-        {user?.email && (
-          <CopyToClipboardButton textToCopy={user.email} isHoverable>
-            <span className="truncate text-sm text-muted-foreground">{user.email}</span>
-          </CopyToClipboardButton>
-        )}
       </div>
 
       {/* Account details */}
