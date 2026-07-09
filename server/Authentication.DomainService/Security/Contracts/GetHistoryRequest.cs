@@ -13,5 +13,6 @@ namespace Authentication.DomainService.Security.Contracts
 
     public sealed class GetHistoryRequest : BaseGetsRequest<AuthHistoryFilter>
     {
+        public string? UserId { get; set; }
     }
 }

@@ -93,6 +93,17 @@ namespace Authentication.DomainService.Security.Repositories
             return session == null ? null : MapSession(session);
         }
 
+        public async Task<SessionDto?> GetSessionByIdAsync(string sessionId, CancellationToken ct)
+        {
+            if (string.IsNullOrWhiteSpace(sessionId))
+            {
+                return null;
+            }
+            var filter = Builders<IdentitySession>.Filter.Eq(x => x.SessionId, sessionId);
+            var session = await IdentitySessions().Find(filter).FirstOrDefaultAsync(ct);
+            return session == null ? null : MapSession(session);
+        }
+
         public async Task<SessionDto?> GetSessionByRefreshTokenAsync(string userId, string? tenantId, string refreshToken, CancellationToken ct)
         {
             if (string.IsNullOrWhiteSpace(refreshToken))
