@@ -38,16 +38,6 @@ export const useRevokeSession = () => {
   });
 };
 
-export const useRevokeAllSessions = () => {
-  const queryClient = useQueryClient();
-  return useMutation({
-    mutationFn: (userId: string) => userService.revokeAllSessions(userId),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["sessions"] });
-    },
-  });
-};
-
 export const useGetHistories = (option: IGetHistoriesPayload) => {
   return useQuery({
     queryKey: ["histories", option],

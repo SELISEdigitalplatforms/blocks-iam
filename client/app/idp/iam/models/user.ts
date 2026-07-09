@@ -156,19 +156,17 @@ export interface IGetSessionPayload {
 export interface IGetHistoriesPayload {
   page: number;
   pageSize: number;
-  filter: {
-    UserId: string;
-    FromDate?: string;
-    ToDate?: string;
-    Event?: string;
-    IpAddress?: string;
-  };
+  filter: { UserId: string };
   projectKey: string;
 }
 
 export interface IRevokeSessionResponse {
-  isSuccess: boolean;
-  errors?: unknown;
+  sessionId: string;
+  alreadyRevoked: boolean;
+  revokedAt: string;
+  reason: string | null;
+  revokedRefreshTokens: number;
+  warnings: string[];
 }
 
 export interface IGeneratePATPayload {
