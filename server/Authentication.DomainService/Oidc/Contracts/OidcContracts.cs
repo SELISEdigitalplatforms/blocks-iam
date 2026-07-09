@@ -1,4 +1,5 @@
 using System.Text.Json.Serialization;
+using Iam.DomainService.Utilities;
 using Authentication.DomainService.OAuth;
 using Authentication.DomainService.Shared;
 using Microsoft.IdentityModel.Tokens;
@@ -118,7 +119,7 @@ public sealed class AuditLogModel
     public string? TenantId { get; set; }
     public string? IpAddress { get; set; }
     public string? UserAgent { get; set; }
-    public string Severity { get; set; } = AuthenticationConstants.SeverityInfo;
+    public string Severity { get; set; } = IdpConstants.SeverityInfo;
     public string? Status { get; set; }
     public string? Details { get; set; }
     public string? Message { get; set; }
@@ -175,7 +176,7 @@ public sealed class DiscoveryMetadata
     public IEnumerable<string> TokenEndpointAuthMethodsSupported { get; set; } = ["client_secret_basic", "private_key_jwt"];
 
     [JsonPropertyName("code_challenge_methods_supported")]
-    public IEnumerable<string> CodeChallengeMethodsSupported { get; set; } = [AuthenticationConstants.PkceMethodS256];
+    public IEnumerable<string> CodeChallengeMethodsSupported { get; set; } = [IdpConstants.PkceMethodS256];
 
     [JsonPropertyName("scopes_supported")]
     public IEnumerable<string> ScopesSupported { get; set; } = ["openid", "profile", "email", "offline_access"];
@@ -211,7 +212,7 @@ public sealed class OAuthAuthorizationServerMetadata
     public IEnumerable<string> TokenEndpointAuthMethodsSupported { get; set; } = ["client_secret_basic", "private_key_jwt"];
 
     [JsonPropertyName("code_challenge_methods_supported")]
-    public IEnumerable<string> CodeChallengeMethodsSupported { get; set; } = [AuthenticationConstants.PkceMethodS256];
+    public IEnumerable<string> CodeChallengeMethodsSupported { get; set; } = [IdpConstants.PkceMethodS256];
 }
 
 public sealed class JwksResponse

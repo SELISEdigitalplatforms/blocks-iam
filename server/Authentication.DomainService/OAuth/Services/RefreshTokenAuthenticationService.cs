@@ -1,4 +1,5 @@
 using Blocks.Genesis;
+using Authentication.DomainService.Utilities;
 using Authentication.DomainService.Entities;
 using Authentication.DomainService.OAuth.RequestModel;
 using Authentication.DomainService.OAuth.ResponseModel;
@@ -6,7 +7,7 @@ using Iam.DomainService.Entities;
 using Microsoft.Extensions.Logging;
 using System.IdentityModel.Tokens.Jwt;
 using Authentication.DomainService.Services;
-using Authentication.DomainService.Utilities;
+using Iam.DomainService.Utilities;
 
 namespace Authentication.DomainService.OAuth
 {
@@ -39,18 +40,16 @@ namespace Authentication.DomainService.OAuth
             var tenant = _tenants.GetTenantByID(bc?.TenantId ?? string.Empty);
             if (tenant == null) return new TokenResponse { Error = "server_error", ErrorDescription = "Tenant not found", StatusCode = 500 };
             
-            // Get client registration to extract AllowedScopes and AllowedServiceAccessResources
+            // Get client registration to extract AllowedScopes
             var clientRegistration = await _authenticationRepository.GetOidcClientRegistrationAsync(request.ClientId);
             var clientAllowedScopes = clientRegistration?.AllowedScopes;
-            var clientAllowedServiceAccessResources = clientRegistration?.AllowedServiceAccessResources;
-            
+
             var jwtAccessToken = await _jwtAccessTokenProvider.GetJwtAccessToken(
                 authenticationConfiguration,
                 tenant,
                 user,
                 request,
-                null, // state is not applicable for refresh token flow
-                clientAllowedServiceAccessResources: clientAllowedServiceAccessResources);
+                null); // state is not applicable for refresh token flow
             var jwtToken = new JwtSecurityToken(
                 jwtAccessToken.Issuer,
                 jwtAccessToken.Audience,

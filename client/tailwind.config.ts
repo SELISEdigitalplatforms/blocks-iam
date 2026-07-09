@@ -1,8 +1,11 @@
 import type { Config } from "tailwindcss";
 import { fontFamily } from "tailwindcss/defaultTheme";
+import tailwindcssAnimate from "tailwindcss-animate";
+
 
 const config = {
   darkMode: ["class"],
+  blocklist: ["[-:=]"],
   content: [
     "./app/**/*.{ts,tsx}",
     "./index.html",
@@ -143,7 +146,7 @@ const config = {
       },
     },
   },
-  plugins: [require("tailwindcss-animate")],
+  plugins: [tailwindcssAnimate],
 } satisfies Config;
 
 export default config;

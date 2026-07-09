@@ -1,12 +1,15 @@
-using Newtonsoft.Json;
+using System.Text.Json.Serialization;
 
-namespace Blocks.CaptchaDriver
+namespace Blocks.CaptchaDriver;
+
+/// <summary>
+/// Subset of the Google reCAPTCHA / hCaptcha siteverify response used by this driver.
+/// </summary>
+public class RecaptchaResponse
 {
-    public class RecaptchaResponse
-    {
-        [JsonProperty("success")]
-        public bool Success { get; set; }
-        [JsonProperty("hostname")]
-        public string HostName { get; set; }
-    }
+    [JsonPropertyName("success")]
+    public bool Success { get; set; }
+
+    [JsonPropertyName("hostname")]
+    public string? HostName { get; set; }
 }

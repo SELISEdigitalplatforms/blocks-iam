@@ -1,33 +1,62 @@
 using Blocks.Genesis;
+using Microsoft.Extensions.Options;
 
-namespace Blocks.CaptchaDriver
+namespace Blocks.CaptchaDriver;
+
+/// <summary>
+/// Creates short-lived captcha verification codes backed by a cache and forwards
+/// verification requests to the correct provider-specific service.
+/// </summary>
+public sealed class CaptchaProcessor : ICaptchaProcessor
 {
-    public class CaptchaProcessor : ICaptchaProcessor
+    private const string VerificationCodeCacheKeyPrefix = "captcha:vc:";
+
+    private readonly ICacheClient _cache;
+    private readonly ICaptchaVerificationServiceProvider _captchaVerificationServiceProvider;
+    private readonly CaptchaOptions _options;
+
+    public CaptchaProcessor(
+        ICacheClient cache,
+        ICaptchaVerificationServiceProvider captchaVerificationServiceProvider,
+        IOptions<CaptchaOptions> options)
     {
-        private readonly ICacheClient _cache;
-        private readonly ICaptchaVerificationServiceProvider _captchaVerificationServiceProvider;
+        _cache = cache;
+        _captchaVerificationServiceProvider = captchaVerificationServiceProvider;
+        _options = options.Value;
+    }
 
-        public CaptchaProcessor(ICacheClient cache,
-                ICaptchaVerificationServiceProvider captchaVerificationServiceProvider)
+    /// <inheritdoc />
+    public async Task<string> SubmitAndCreateVerificationCodeAsync(string? captchaId, string? hostName)
+    {
+        if (captchaId is null)
         {
-            _cache = cache;
-            _captchaVerificationServiceProvider = captchaVerificationServiceProvider;
+            throw new ArgumentNullException(nameof(captchaId));
         }
 
-        public async Task<string> SubmitAndCreateVerificationCodeAsync(string captchaId)
+        if (hostName is null)
         {
-            var verificationCode = Guid.NewGuid().ToString("n");
-            var hostName = "abc.com";
-            await _cache.AddStringValueAsync(verificationCode, hostName, 10 * 60);
-            await _cache.RemoveKeyAsync(captchaId);
-
-            return verificationCode;
+            throw new ArgumentNullException(nameof(hostName));
         }
 
-        public async Task<VerificationResult> VerifyCaptchaAsync(string configProvider, string verificationCode)
+        var verificationCode = Guid.NewGuid().ToString("n");
+        var cacheKey = VerificationCodeCacheKeyPrefix + verificationCode;
+        var ttl = Math.Max(1L, _options.VerificationCodeTtlSeconds);
+
+        await _cache.AddStringValueAsync(cacheKey, hostName, ttl);
+        await _cache.RemoveKeyAsync(captchaId);
+
+        return verificationCode;
+    }
+
+    /// <inheritdoc />
+    public async Task<VerificationResult> VerifyCaptchaAsync(string? configProvider, string? verificationCode)
+    {
+        if (verificationCode is null)
         {
-            var captchaVerificationHandler = _captchaVerificationServiceProvider.GetCaptchaVerificationService(configProvider);
-            return await captchaVerificationHandler.VerifyAsync(verificationCode);
+            throw new ArgumentNullException(nameof(verificationCode));
         }
+
+        var handler = _captchaVerificationServiceProvider.GetCaptchaVerificationService(configProvider);
+        return await handler.VerifyAsync(verificationCode);
     }
 }

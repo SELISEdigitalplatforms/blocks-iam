@@ -106,7 +106,7 @@ export const UserMFA = (props: UserMFAProps) => {
   const [mfaMethodType, setMfaMethodType] = useState<number>(0);
   const { isLoading, data } = useGetMFAConfig();
   if (isLoading) return <LoadingSkelton />;
-  if (!data?.enableMfa) return <ProjectMFA />;
+  if (!data?.enabled) return <ProjectMFA />;
 
   const showTotpModal = (type: number) => {
     setMfaMethodType(type);

@@ -1,6 +1,9 @@
+using Iam.DomainService.Utilities;
 using Authentication.DomainService.Utilities;
 using Blocks.Genesis;
+using Iam.DomainService.Resources.TenantPropagation;
 using Microsoft.AspNetCore.Http.Features;
+using MongoDB.Driver;
 using SeliseBlocks.ConfigurationDriver;
 
 
@@ -46,6 +49,11 @@ var wwwrootPath = Path.Combine(builder.Environment.ContentRootPath, "wwwroot");
 Directory.CreateDirectory(wwwrootPath);
 
 ApplyFrontendRuntimeSettings(builder.Configuration, wwwrootPath);
+
+services.AddMemoryCache();
+services.AddSingleton<IMongoDatabase>(_ =>
+    new MongoClient(secret.DatabaseConnectionString).GetDatabase(secret.RootDatabaseName));
+services.AddSingleton<ITenantEnumeration, TenantEnumeration>();
 
 services.RegisterAllServices();
 

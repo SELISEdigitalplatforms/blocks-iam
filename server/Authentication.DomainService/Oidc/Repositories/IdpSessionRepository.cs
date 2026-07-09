@@ -1,6 +1,7 @@
 using MongoDB.Driver;
-using Authentication.DomainService.Shared;
 using Authentication.DomainService.Utilities;
+using Authentication.DomainService.Shared;
+using Iam.DomainService.Utilities;
 using Blocks.Genesis;
 using Idp.DomainService.Oidc.Contracts;
 using Microsoft.Extensions.Logging;

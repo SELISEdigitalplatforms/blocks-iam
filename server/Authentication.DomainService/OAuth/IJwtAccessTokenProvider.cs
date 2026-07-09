@@ -12,7 +12,6 @@ namespace Authentication.DomainService.OAuth
             Tenant tenant,
             User user,
             TokenRequest tokenRequest,
-            StateInfo? state = null,
-            IEnumerable<string>? clientAllowedServiceAccessResources = null);
+            StateInfo? state = null);
     }
 }

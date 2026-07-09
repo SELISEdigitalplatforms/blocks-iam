@@ -25,6 +25,7 @@ namespace Authentication.DomainService.Oidc.Repositories
     {
         Task<string> CreateAsync(RefreshTokenModel token);
         Task<RefreshTokenModel> GetByTokenIdAsync(string tokenId);
+        Task<IEnumerable<RefreshTokenModel>> GetBySessionIdAsync(string sessionId);
         Task<IEnumerable<RefreshTokenModel>> GetByUserAsync(string userId, string tenantId);
         Task<bool> RevokeByTokenIdAsync(string tokenId, string reason);
         Task<bool> UpdateSlidingExpiryAsync(string tokenId);
@@ -71,6 +72,7 @@ namespace Authentication.DomainService.Oidc.Repositories
         Task<bool> IsRevokedAsync(string jti);
         Task<TokenRevocationModel> GetRevocationDetailsAsync(string jti);
         Task<IEnumerable<TokenRevocationModel>> GetRevokedTokensByUserAsync(string userId);
+        Task<IEnumerable<TokenRevocationModel>> GetByUserAsync(string userId);
         Task<bool> DeleteAsync(string jti);
     }
 

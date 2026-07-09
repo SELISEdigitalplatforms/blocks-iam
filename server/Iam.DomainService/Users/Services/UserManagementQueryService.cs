@@ -30,6 +30,17 @@ namespace Iam.DomainService.Users
             return user == null;
         }
 
+        public async Task<IsUserExistResponse> IsUserExistAsync(string email)
+        {
+            var user = await _userRepository.GetUserByEmailAsync(email.ToLower());
+
+            return new IsUserExistResponse
+            {
+                Exists = user != null,
+                OrganizationIds = user?.OrganizationIds ?? new List<string>()
+            };
+        }
+
         public async Task<GetUsersResponse> GetUsersAsync(GetUsersRequest query)
         {
             _logger.LogInformation("User get start");
@@ -78,6 +89,12 @@ namespace Iam.DomainService.Users
             var contextOrgId = string.IsNullOrWhiteSpace(organizationId) ? (bc?.OrganizationId ?? "default") : organizationId;
 
             var data = user == null ? null : MapToSingleUserFields(user, contextOrgId);
+
+            if(contextOrgId == "default")
+            {
+                data.Add("OrganizationsRoles", user.Roles);
+                data.Add("OrganizationsPermissions", user.Permissions);
+            }
 
             _logger.LogInformation("User get end");
 
@@ -150,7 +167,7 @@ namespace Iam.DomainService.Users
 
         private static Dictionary<string, object> MapToSingleUserFields(GetAccounts user, string contextOrgId)
         {
-            if (!user.OrganizationIds.Contains(contextOrgId))
+            if (!user.OrganizationIds.Contains(contextOrgId) && contextOrgId != "default")
             {
                 return new Dictionary<string, object>();
             }
@@ -180,7 +197,7 @@ namespace Iam.DomainService.Users
                 ["logInCount"] = user.LogInCount,
                 ["lastLoggedInTime"] = user.LastLoggedInTime,
                 ["lastLoggedInDeviceInfo"] = user.LastLoggedInDeviceInfo ?? string.Empty,
-                ["OrganizationIds"] = user.OrganizationIds
+                ["organizationIds"] = user.OrganizationIds
             };
         }
     }

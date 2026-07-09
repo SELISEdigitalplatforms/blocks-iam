@@ -5,7 +5,10 @@ import {
   IAccountResendActivationResponse,
   ICreateUserPayload,
   ICreateUserResponse,
+  IDeviceSession,
   IDeviceSessionResponse,
+  IRevokeSessionResponse,
+  ISessionTimeline,
   IGeneratePATPayload,
   IGetHistoriesPayload,
   IGetSessionPayload,
@@ -23,6 +26,10 @@ import {
   ISaveRolesAndPermissionsResponse,
   IUpdateUserPayload,
   IUpdateUserResponse,
+  IUpdateUserAccessControlPayload,
+  IUpdateUserAccessControlResponse,
+  IRevokeAccessPayload,
+  IRevokeAccessResponse,
   IGetSignUpSettingResponse,
   ISaveSignUpSettingPayload,
   ISaveSignUpSettingResponse,
@@ -34,6 +41,36 @@ import {
   ORGANIZATION_ENDPOINTS,
 } from "../constants/endpoint.constant";
 import { AUTH_ENDPOINTS } from "@/idp/authentication/constants/endpoint.constant";
+
+type ApiUser = User & { OrganizationIds?: string[] };
+
+const toScopedRecord = (
+  organizationIds: string[],
+  value: Record<string, string[]> | string[] | undefined,
+): Record<string, string[]> => {
+  if (!value) return {};
+  if (!Array.isArray(value)) return { ...value };
+  if (organizationIds.length === 0) return {};
+  return Object.fromEntries(organizationIds.map((orgId) => [orgId, [...value]]));
+};
+
+const normalizeUserFromApi = (raw: ApiUser): User => {
+  const organizationIds =
+    raw.organizationIds?.length > 0 ? raw.organizationIds : raw.OrganizationIds ?? [];
+
+  return {
+    ...raw,
+    organizationIds,
+    roles: toScopedRecord(
+      organizationIds,
+      raw.roles as Record<string, string[]> | string[] | undefined,
+    ),
+    permissions: toScopedRecord(
+      organizationIds,
+      raw.permissions as Record<string, string[]> | string[] | undefined,
+    ),
+  };
+};
 
 export class UserService {
   constructor(public account: UserAccountService) {}
@@ -63,11 +100,22 @@ export class UserService {
   }
 
   getUserById(payload: IGetUserByIdPayload): Promise<IGetUserByIdResponse> {
-    return serviceInstances.idpService.get(`${USER_ENDPOINTS.GET_USER}/${payload.id}`);
+    return serviceInstances.idpService
+      .get<IGetUserByIdResponse>(`${USER_ENDPOINTS.GET_USER}/${payload.id}`)
+      .then((response) => ({
+        ...response,
+        data: normalizeUserFromApi(response.data as ApiUser),
+      }));
   }
 
   addUser(createPayload: ICreateUserPayload): Promise<ICreateUserResponse> {
     return serviceInstances.idpService.post(USER_ENDPOINTS.CREATE, createPayload);
+  }
+
+  isUserExist(
+    email: string,
+  ): Promise<{ isSuccess: boolean; exists: boolean; organizationIds?: string[] }> {
+    return serviceInstances.idpService.get(`${USER_ENDPOINTS.EXISTS}?email=${encodeURIComponent(email)}`);
   }
 
   updateUser(payload: IUpdateUserPayload): Promise<IUpdateUserResponse> {
@@ -119,38 +167,51 @@ export class UserService {
     return serviceInstances.idpService.post(USER_ENDPOINTS.SAVE_ROLES_AND_PERMISSIONS, payload);
   }
 
-  async getSessions(
-    payload: IGetSessionPayload,
-  ): Promise<IDeviceSessionResponse> {
-    const res = await serviceInstances.idpService.get<{
-      data: string[];
-      errors: unknown;
-      totalCount: number;
-    }>(
-      `${USER_ENDPOINTS.GET_SESSIONS}?page=${payload.page}&pageSize=${payload.pageSize}&projectkey=${payload.projectKey}&filter.userId=${payload.filter.UserId}`,
-    );
-    return {
-      data: res.data.map((item) => JSON.parse(parseMongoDBString(item))),
-      totalCount: res.totalCount,
-      errors: res.errors,
-    };
+  updateUserAccessControl(
+    payload: IUpdateUserAccessControlPayload,
+  ): Promise<IUpdateUserAccessControlResponse> {
+    return serviceInstances.idpService.post(USER_ENDPOINTS.ACCESS_CONTROL, payload);
   }
 
-  async getHistories(
+  revokeAccess(payload: IRevokeAccessPayload): Promise<IRevokeAccessResponse> {
+    return serviceInstances.idpService.post(USER_ENDPOINTS.REVOKE_ACCESS, payload);
+  }
+
+async getSessions(
+    payload: IGetSessionPayload,
+  ): Promise<IDeviceSessionResponse> {
+    const res = await serviceInstances.idpService.get<IDeviceSessionResponse>(
+      `${USER_ENDPOINTS.GET_SESSIONS}?page=${payload.page}&pageSize=${payload.pageSize}&userId=${payload.userId}`,
+    );
+    return res;
+  }
+
+  async getSessionById(sessionId: string): Promise<IDeviceSession> {
+    return serviceInstances.idpService.get<IDeviceSession>(
+      `${USER_ENDPOINTS.GET_SESSIONS}/${sessionId}`,
+    );
+  }
+
+  async getSessionTimeline(sessionId: string): Promise<ISessionTimeline> {
+    return serviceInstances.idpService.get<ISessionTimeline>(
+      `${USER_ENDPOINTS.GET_SESSIONS}/${sessionId}/timeline`,
+    );
+  }
+
+  async revokeSession(sessionId: string, reason?: string): Promise<IRevokeSessionResponse> {
+    return serviceInstances.idpService.post(
+      `${USER_ENDPOINTS.REVOKE_SESSION}/${sessionId}/revoke`,
+      reason ? { reason } : {},
+    );
+  }
+
+async getHistories(
     payload: IGetHistoriesPayload,
   ): Promise<IHistoriesResponse> {
-    const res = await serviceInstances.idpService.get<{
-      data: string[];
-      errors: unknown;
-      totalCount: number;
-    }>(
-      `${USER_ENDPOINTS.GET_HISTORIES}?page=${payload.page}&pageSize=${payload.pageSize}&projectkey=${payload.projectKey}&filter.userId=${payload.filter.UserId}`,
+    const res = await serviceInstances.idpService.get<IHistoriesResponse>(
+      `${USER_ENDPOINTS.GET_HISTORIES}?page=${payload.page}&pageSize=${payload.pageSize}&userId=${payload.userId}`,
     );
-    return {
-      data: res.data.map((item) => JSON.parse(parseMongoDBString(item))),
-      totalCount: res.totalCount,
-      errors: res.errors,
-    };
+    return res;
   }
 
   async getPats(): Promise<IPATResponse> {

@@ -1,11 +1,12 @@
 using Authentication.DomainService.Authentication;
+using Authentication.DomainService.Utilities;
 using Authentication.DomainService.Authentication.RequestModel;
 using Authentication.DomainService.Entities;
 using Authentication.DomainService.OAuth.RequestModel;
 using Authentication.DomainService.Services;
 using Authentication.DomainService.Shared.RequestModel;
 using Authentication.DomainService.Shared.ResponseModel;
-using Authentication.DomainService.Utilities;
+using Iam.DomainService.Utilities;
 using Blocks.Genesis;
 using Iam.DomainService.Accounts;
 using Microsoft.AspNetCore.Authorization;
@@ -90,8 +91,13 @@ public class AuthenticationController : ControllerBase
     }
 
     /// <summary>
-    /// Initiate account recovery (password reset flow)
-    /// Sends recovery link to registered email address
+    /// Initiate account recovery (password reset flow).
+    /// INVARIANT: This endpoint always returns <c>200 OK</c> with <c>IsSuccess = true</c>
+    /// for any well-formed request, regardless of whether the account exists, is active,
+    /// or has ever been registered. The actual reason (unknown email / inactive user /
+    /// send failure) is audited server-side only and never exposed in the response.
+    /// For unknown or inactive users, the service silently routes the request to an
+    /// activation email instead of a reset email to prevent account enumeration.
     /// </summary>
     [HttpPost("recover")]
 
@@ -515,10 +521,13 @@ public class AuthenticationController : ControllerBase
     }
 
     [Authorize]
-    [HttpPost("client-credentials/delete")]
-    public async Task<BaseResponse> DeleteClientCredential([FromBody] DeleteClientCredentialRequest request)
+    [HttpDelete("client-credentials/{id}")]
+    public async Task<BaseResponse> DeleteClientCredential([FromRoute] string id)
     {
-        return await _authenticationDomainService.DeleteClientCredentialAsync(request);
+        return await _authenticationDomainService.DeleteClientCredentialAsync(new DeleteClientCredentialRequest
+        {
+            ItemId = id
+        });
     }
 
     [Authorize]

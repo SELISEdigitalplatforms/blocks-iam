@@ -4,7 +4,7 @@ using Authentication.DomainService.Entities;
 using Authentication.DomainService.OAuth.RequestModel;
 using Authentication.DomainService.OAuth.ResponseModel;
 using Authentication.DomainService.Services;
-using Authentication.DomainService.Utilities;
+using Iam.DomainService.Utilities;
 using Iam.DomainService.Accounts;
 using Iam.DomainService.Entities;
 using Microsoft.Extensions.Logging;
@@ -44,6 +44,11 @@ namespace Authentication.DomainService.OAuth
         {
             _logger.LogInformation("Password Authentication start");
 
+            // INVARIANT: All login failure modes (user not found, inactive, not verified)
+            // MUST return the generic `OAuthError.InValidResponse(request)` shape. The client
+            // only ever sees `invalid_username_password` / 401. Do not leak discriminators
+            // such as "user is not active" or "user not verified" — see
+            // PasswordAuthenticationServiceInvariantTests for regression coverage.
             user ??= await _oAuthRepository.GetUserByUsernameAsync(request.Username, request.OrganizationId);
             if (!IsValidUser(user) || !IsUserActiveAndVerified(user!)) return OAuthError.InValidResponse(request);
 
@@ -143,6 +148,12 @@ namespace Authentication.DomainService.OAuth
 
         }
 
+        // INVARIANT: Both `IsValidUser` and `IsUserActiveAndVerified` are combined in
+        // `AuthenticateAsync` to collapse "user not found", "inactive", and "not verified"
+        // into the same generic `OAuthError.InValidResponse`. Returning a different error
+        // for any of these branches leaks an account-state discriminator. The lockout path
+        // (returning 423) is an intentional, separate response and not a security leak
+        // because the user already knows whether their own account is locked.
         private static bool IsValidUser(User? user) =>
             user != null;
 
