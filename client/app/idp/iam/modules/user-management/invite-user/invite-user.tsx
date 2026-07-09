@@ -29,6 +29,7 @@ import { ChevronsUpDown, Check, Loader } from "lucide-react";
 import { isErrorWithErrors } from "@/lib/error";
 import { PrimaryButton } from "@/components/action-buttons/primary-button";
 import { cn } from "@/lib/utils";
+import { useMinDurationFlag } from "@/hooks/use-min-duration-flag";
 import { useGetOrganizationConfig, useGetOrganizations } from "@blocks-idp/iam/hooks/use-organization";
 import {
   Popover,
@@ -66,9 +67,10 @@ export const InviteUser = () => {
 
   // Silently check whether the email already maps to a user — drives whether
   // the first/last name fields appear. The user is never notified either way.
-  const { data: existsData, isFetching: isCheckingEmail } = useCheckUserExists(emailValue, {
+  const { data: existsData, isFetching: isFetchingExists } = useCheckUserExists(emailValue, {
     enabled: isValidEmailFormat,
   });
+  const isCheckingEmail = useMinDurationFlag(isFetchingExists);
   const exists = existsData?.exists === true;
 
   useEffect(() => {
