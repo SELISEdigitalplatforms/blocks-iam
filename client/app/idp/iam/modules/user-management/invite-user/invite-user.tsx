@@ -458,7 +458,7 @@ export const InviteUser = () => {
                 </>
               )}
 
-              {exists && isValidEmailFormat && (
+              {/* {exists && isValidEmailFormat && (
                 <div className="flex flex-col gap-5 rounded-lg border bg-muted/10 p-4">
                   <OrganizationRolesField roles={selectedRoles} onChange={setSelectedRoles} />
                   <OrganizationPermissionsField
@@ -466,7 +466,7 @@ export const InviteUser = () => {
                     onChange={setSelectedPermissions}
                   />
                 </div>
-              )}
+              )} */}
             </div>
             <DialogFooter className="mt-6">
               <Button

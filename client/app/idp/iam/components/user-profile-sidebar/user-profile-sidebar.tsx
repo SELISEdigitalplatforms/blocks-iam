@@ -53,7 +53,7 @@ export const UserProfileSidebar = ({ id, projectKey }: UserProfileSidebarProps) 
         <ProfileImageUploader
           id={id}
           projectKey={projectKey}
-          className="h-16 w-16 rounded-full"
+          className="h-24 w-24 rounded-full"
           containerClassName="w-auto shrink-0"
         />
         <div className="min-w-0 flex-1">

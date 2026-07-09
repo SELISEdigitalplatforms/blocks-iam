@@ -1,4 +1,3 @@
-import { ElementType, ReactNode } from "react";
 import { useGetMe } from "@blocks-idp/iam/hooks/use-user";
 import { useQueryState } from "nuqs";
 import {
@@ -12,19 +11,15 @@ import {
 import { cn } from "@/lib/utils";
 import { getRuntimeEnv } from "@/lib/runtime-env";
 import { ProfileDetails } from "@blocks-idp/iam/components/profile-details";
-import { ProfileImageUploader } from "@blocks-idp/iam/components/profile-image-uploader";
+import { UserProfileSidebar } from "@blocks-idp/iam/components/user-profile-sidebar/user-profile-sidebar";
 import { UpdateUser } from "../update-user";
 import { UserDevices } from "../user-devices";
 import { UserHistories } from "../user-histories";
 import { UserPats } from "../user-pat";
-import { Card, CardContent } from "@/components/ui-kits/card/card";
-import { Badge } from "@/components/ui-kits/badge/badge";
 import { CopyToClipboardButton } from "@/components/copy-to-clipboard-button";
-import { Shield, Smartphone, Clock, Key, Calendar, Activity, Sparkles } from "lucide-react";
+import { Shield, Smartphone, Clock, Key } from "lucide-react";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui-kits/select/select";
-import { checkValidDate, formatFullDate } from "@/lib/utils";
 import { Skeleton } from "@/components/ui-kits/skeleton/skeleton";
-import { UserCreationType } from "@blocks-idp/authentication/constants/authentication.constant";
 
 const x_blocks_key = getRuntimeEnv("BLOCKS_X_BLOCKS_KEY") || "";
 
@@ -46,108 +41,6 @@ export const Profile = () => {
 };
 
 // Info row component for the sidebar
-const InfoRow = ({ icon: Icon, label, value, copyable = false }: {
-  icon: ElementType;
-  label: string;
-  value: ReactNode;
-  copyable?: boolean;
-}) => (
-  <div className="flex items-start gap-3 py-2.5">
-    <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-muted/60">
-      <Icon className="h-4 w-4 text-muted-foreground" />
-    </div>
-    <div className="min-w-0 flex-1">
-      <p className="text-xs font-medium uppercase tracking-wider text-muted-foreground/70">{label}</p>
-      <div className="mt-0.5 text-sm font-medium text-foreground">
-        {copyable && typeof value === "string" ? (
-          <CopyToClipboardButton textToCopy={value}>
-            <span className="break-all">{value}</span>
-          </CopyToClipboardButton>
-        ) : (
-          value
-        )}
-      </div>
-    </div>
-  </div>
-);
-
-type ProfileSidebarUser = {
-  firstName?: string;
-  lastName?: string;
-  email?: string;
-  active?: boolean;
-  logInCount?: number;
-  lastLoggedInTime?: string;
-  userCreationType?: number;
-};
-
-type ProfileSidebarProps = {
-  id: string;
-  projectKey: string;
-  user?: ProfileSidebarUser;
-};
-
-const ProfileSidebarDetails = ({ user }: { user?: ProfileSidebarUser }) => (
-  <div>
-    <InfoRow
-      icon={Shield}
-      label="Status"
-      value={
-        <span className={`mt-0.5 inline-flex w-fit items-center gap-1.5 rounded-full px-2.5 py-1 text-[11px] font-semibold ${user?.active ? 'bg-emerald-500/15 text-emerald-600 dark:text-emerald-400' : 'bg-red-500/15 text-red-600 dark:text-red-400'}`}>
-          <span className={`h-1.5 w-1.5 rounded-full ${user?.active ? 'bg-emerald-500' : 'bg-red-500'}`} />
-          {user?.active ? "Active" : "Inactive"}
-        </span>
-      }
-    />
-
-    <InfoRow icon={Activity} label="Total logins" value={user?.logInCount ?? 0} />
-
-    {user?.lastLoggedInTime && checkValidDate(user.lastLoggedInTime) && (
-      <InfoRow
-        icon={Calendar}
-        label="Last login"
-        value={formatFullDate(new Date(user.lastLoggedInTime))}
-      />
-    )}
-
-    {user?.userCreationType && UserCreationType[user.userCreationType] && (
-      <InfoRow
-        icon={Sparkles}
-        label="Signed up via"
-        value={
-          <Badge variant="info" className="mt-0.5 w-fit rounded px-2 py-0.5 text-[11px]">
-            {UserCreationType[user.userCreationType]}
-          </Badge>
-        }
-      />
-    )}
-  </div>
-);
-
-export const ProfileSidebar = ({ id, projectKey, user }: ProfileSidebarProps) => {
-  return (
-    <Card className="overflow-hidden border-0 bg-transparent shadow-none md:grid md:h-full md:grid-rows-[auto_1fr] md:gap-4">
-      {/* Avatar */}
-      <div className="relative mx-auto w-full max-w-[280px]" style={{ aspectRatio: "1 / 1" }}>
-        <ProfileImageUploader
-          id={id}
-          projectKey={projectKey}
-          containerClassName="h-full w-full"
-          className="h-full w-full max-w-none rounded-full bg-transparent shadow-none dark:bg-transparent"
-        />
-      </div>
-
-      {/* Account details */}
-      <CardContent className="hidden w-full rounded-sm border bg-card p-5 shadow-sm md:block">
-        <p className="mb-3 text-[10px] font-semibold uppercase tracking-widest text-muted-foreground/60">
-          Account details
-        </p>
-
-        <ProfileSidebarDetails user={user} />
-      </CardContent>
-    </Card>
-  );
-};
 
 export const UserProfile = ({ id }: { id: string }) => {
   const [tabId, setTabId] = useQueryState("userDetails", { defaultValue: "security" });
@@ -208,7 +101,7 @@ export const UserProfile = ({ id }: { id: string }) => {
 
           {/* Sidebar — col 1, row 2 */}
           <div className="mx-auto w-full max-w-[460px] md:col-start-1 md:mx-0 md:max-w-none md:row-start-2">
-            <ProfileSidebar id={id} projectKey={x_blocks_key} user={user} />
+            <UserProfileSidebar id={id} projectKey={x_blocks_key} />
           </div>
 
           {/* Right column — col 2, row 2: starts level with the avatar */}
@@ -248,12 +141,7 @@ export const UserProfile = ({ id }: { id: string }) => {
 
             {/* Tab content */}
             <TabsContent value="info" className="mt-0 md:hidden">
-              <CardContent className="rounded-xl bg-card p-5 shadow-sm ring-1 ring-border/50">
-                <p className="mb-3 text-[10px] font-semibold uppercase tracking-widest text-muted-foreground/60">
-                  Account details
-                </p>
-                <ProfileSidebarDetails user={user} />
-              </CardContent>
+              <UserProfileSidebar id={id} projectKey={x_blocks_key} />
             </TabsContent>
 
             <TabsContent value="security" className="mt-0 space-y-6">
