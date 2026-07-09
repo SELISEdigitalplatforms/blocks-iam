@@ -57,7 +57,7 @@ TabsContent.displayName = TabsPrimitive.Content.displayName;
 const underlineTabsListClass =
   "h-auto w-full justify-start gap-6 rounded-none border-b bg-transparent p-0";
 const underlineTabTriggerClass =
-  "h-auto rounded-none border-b-2 border-transparent px-0 pb-3 text-muted-foreground shadow-none data-[state=active]:border-primary data-[state=active]:bg-transparent data-[state=active]:text-primary data-[state=active]:shadow-none";
+  "h-auto rounded-none border-b-2 border-transparent px-0 pb-3 text-muted-foreground shadow-none data-[state=active]:border-primary data-[state=active]:bg-background data-[state=active]:text-primary data-[state=active]:shadow-none";
 
 export {
   Tabs,

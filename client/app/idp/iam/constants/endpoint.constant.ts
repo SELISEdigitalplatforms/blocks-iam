@@ -23,6 +23,11 @@ UPDATE_ACCOUNT: `/api${IAM_SUBPATH}/account/update`,
   GET_ACCOUNT_PERMISSIONS: `/api${IAM_SUBPATH}/account/permissions`,
   SAVE_ROLES_AND_PERMISSIONS: `/api${IAM_SUBPATH}/roles-permissions`,
   GET_SESSIONS: `/api/security/sessions`,
+  // NOTE: revoke endpoints are a best-guess following this same /api/security/sessions
+  // convention — not yet confirmed against a real backend route. Adjust here if the
+  // actual paths differ.
+  REVOKE_SESSION: `/api/security/sessions`, // POST {base}/{sessionId}/revoke
+  REVOKE_ALL_SESSIONS: `/api/security/sessions/revoke-all`, // POST
   GET_HISTORIES: `/api/security/history`,
   GET_USER_CODES: `/api${AUTH_SUBPATH}/GetUserCodes`,
   GENERATE_USER_CODE: `/api${AUTH_SUBPATH}/GenerateUserCode`,

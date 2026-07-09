@@ -5,7 +5,10 @@ import {
   IAccountResendActivationResponse,
   ICreateUserPayload,
   ICreateUserResponse,
+  IDeviceSession,
   IDeviceSessionResponse,
+  IRevokeSessionResponse,
+  ISessionTimeline,
   IGeneratePATPayload,
   IGetHistoriesPayload,
   IGetSessionPayload,
@@ -169,17 +172,54 @@ export class UserService {
   async getSessions(
     payload: IGetSessionPayload,
   ): Promise<IDeviceSessionResponse> {
+    const query = new URLSearchParams();
+    query.set("page", String(payload.page));
+    query.set("pageSize", String(payload.pageSize));
+    query.set("projectkey", payload.projectKey);
+    query.set("filter.userId", payload.filter.UserId);
     const res = await serviceInstances.idpService.get<IDeviceSessionResponse>(
-      `${USER_ENDPOINTS.GET_SESSIONS}?page=${payload.page}&pageSize=${payload.pageSize}&projectkey=${payload.projectKey}&filter.userId=${payload.filter.UserId}`,
+      `${USER_ENDPOINTS.GET_SESSIONS}?${query.toString()}`,
     );
     return res;
+  }
+
+  async getSessionById(sessionId: string): Promise<IDeviceSession> {
+    return serviceInstances.idpService.get<IDeviceSession>(
+      `${USER_ENDPOINTS.GET_SESSIONS}/${sessionId}`,
+    );
+  }
+
+  async getSessionTimeline(sessionId: string): Promise<ISessionTimeline> {
+    return serviceInstances.idpService.get<ISessionTimeline>(
+      `${USER_ENDPOINTS.GET_SESSIONS}/${sessionId}/timeline`,
+    );
+  }
+
+  async revokeSession(sessionId: string): Promise<IRevokeSessionResponse> {
+    return serviceInstances.idpService.post(
+      `${USER_ENDPOINTS.REVOKE_SESSION}/${sessionId}/revoke`,
+      {},
+    );
+  }
+
+  async revokeAllSessions(userId: string): Promise<IRevokeSessionResponse> {
+    return serviceInstances.idpService.post(USER_ENDPOINTS.REVOKE_ALL_SESSIONS, { userId });
   }
 
   async getHistories(
     payload: IGetHistoriesPayload,
   ): Promise<IHistoriesResponse> {
+    const query = new URLSearchParams();
+    query.set("page", String(payload.page));
+    query.set("pageSize", String(payload.pageSize));
+    query.set("projectkey", payload.projectKey);
+    query.set("filter.userId", payload.filter.UserId);
+    if (payload.filter.FromDate) query.set("filter.fromDate", payload.filter.FromDate);
+    if (payload.filter.ToDate) query.set("filter.toDate", payload.filter.ToDate);
+    if (payload.filter.Event) query.set("filter.event", payload.filter.Event);
+    if (payload.filter.IpAddress) query.set("filter.ipAddress", payload.filter.IpAddress);
     const res = await serviceInstances.idpService.get<IHistoriesResponse>(
-      `${USER_ENDPOINTS.GET_HISTORIES}?page=${payload.page}&pageSize=${payload.pageSize}&projectkey=${payload.projectKey}&filter.userId=${payload.filter.UserId}`,
+      `${USER_ENDPOINTS.GET_HISTORIES}?${query.toString()}`,
     );
     return res;
   }
