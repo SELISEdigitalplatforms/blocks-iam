@@ -153,7 +153,10 @@ export const AddOrganizationRole = ({ onAdd, roles, onSave }: AddOrganizationRol
               onAdd(selectedRoles);
               reset();
               setOpen(false);
-              onSave?.();
+              // Defer save so the parent React tree has time to commit the
+              // queued `setSelectedRoles`/`setSelectedPermissions` updates
+              // (and its refs) before `onSave` reads the latest values.
+              setTimeout(() => onSave?.(), 0);
             }}
             disabled={selectedRoles.length === 0}
           >

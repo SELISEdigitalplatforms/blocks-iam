@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { IRole } from "@blocks-idp/iam/models/role";
 import { IPermission } from "@blocks-idp/iam/models/permission";
 import { useGetRoles } from "@blocks-idp/iam/hooks/use-roles";
@@ -120,11 +120,23 @@ export const MultiOrgAccess = ({ userId, projectKey }: MultiOrgAccessProps) => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [organizationRows]);
 
+  // Refs so the deferred `onSave` callback always reads the latest selection
+  // — `setSelectedRoles`/`setSelectedPermissions` from the add modal are queued
+  // and the closure passed to `onSave` would otherwise capture stale state.
+  const selectedRolesRef = useRef<IRole[]>(selectedRoles);
+  const selectedPermissionsRef = useRef<IPermission[]>(selectedPermissions);
+  useEffect(() => {
+    selectedRolesRef.current = selectedRoles;
+  }, [selectedRoles]);
+  useEffect(() => {
+    selectedPermissionsRef.current = selectedPermissions;
+  }, [selectedPermissions]);
+
   const onSave = async () => {
     try {
       const res = await mutateAsync({
-        roles: selectedRoles.map((role) => role.slug),
-        permissions: selectedPermissions.map((permission) => permission.name),
+        roles: selectedRolesRef.current.map((role) => role.slug),
+        permissions: selectedPermissionsRef.current.map((permission) => permission.name),
         organizationId: selectedOrgId,
       });
       if (!res.isSuccess) {
@@ -135,8 +147,8 @@ export const MultiOrgAccess = ({ userId, projectKey }: MultiOrgAccessProps) => {
         showErrorToast({ errors: errorMsg });
         return;
       }
-      setInitialRoleSlugs(selectedRoles.map((role) => role.slug));
-      setInitialPermissionNames(selectedPermissions.map((permission) => permission.name));
+      setInitialRoleSlugs(selectedRolesRef.current.map((role) => role.slug));
+      setInitialPermissionNames(selectedPermissionsRef.current.map((permission) => permission.name));
       showSuccessToast({ description: "Roles and permissions updated successfully" });
     } catch (error) {
       showErrorToast({

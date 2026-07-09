@@ -1,9 +1,12 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { IRole } from "@blocks-idp/iam/models/role";
 import { IPermission } from "@blocks-idp/iam/models/permission";
 import { useGetRoles } from "@blocks-idp/iam/hooks/use-roles";
 import { useGetPermissions } from "@blocks-idp/iam/hooks/use-permission";
-import { useGetUserById, useUpdateUser } from "@blocks-idp/iam/hooks/use-user";
+import {
+  useGetUserById,
+  useUpdateUserAccessControl,
+} from "@blocks-idp/iam/hooks/use-user";
 import { showErrorToast, showSuccessToast } from "@/hooks/use-toast";
 import { Skeleton } from "@/components/ui-kits/skeleton/skeleton";
 import { RolesPermissionsPillEditor } from "./roles-permissions-pill-editor";
@@ -32,7 +35,7 @@ export const SingleOrgAccess = ({ userId, projectKey }: SingleOrgAccessProps) =>
     isBuiltIn: "",
     roles: [],
   });
-  const { mutateAsync } = useUpdateUser({ id: userId, projectKey });
+  const { mutateAsync } = useUpdateUserAccessControl({ id: userId, projectKey });
 
   const roleBySlug = useMemo(
     () => new Map((rolesData?.data || []).map((role) => [role.slug, role])),
@@ -94,6 +97,18 @@ export const SingleOrgAccess = ({ userId, projectKey }: SingleOrgAccessProps) =>
   const [selectedPermissions, setSelectedPermissions] = useState<IPermission[]>(initialPermissions);
   const [isInitialized, setIsInitialized] = useState(false);
 
+  // Refs so the deferred `onSave` callback always reads the latest selection
+  // — `setSelectedRoles`/`setSelectedPermissions` from the add modal are queued
+  // and the closure passed to `onSave` would otherwise capture stale state.
+  const selectedRolesRef = useRef<IRole[]>(selectedRoles);
+  const selectedPermissionsRef = useRef<IPermission[]>(selectedPermissions);
+  useEffect(() => {
+    selectedRolesRef.current = selectedRoles;
+  }, [selectedRoles]);
+  useEffect(() => {
+    selectedPermissionsRef.current = selectedPermissions;
+  }, [selectedPermissions]);
+
   useEffect(() => {
     if (isInitialized && user) return;
     setSelectedRoles(initialRoles);
@@ -105,11 +120,9 @@ export const SingleOrgAccess = ({ userId, projectKey }: SingleOrgAccessProps) =>
   const onSave = async () => {
     try {
       const res = await mutateAsync({
-        ...userData?.data,
-        itemId: userId,
-        organizations: userData?.data?.organizationIds || [],
-        roles: selectedRoles.map((role) => role.slug),
-        permissions: selectedPermissions.map((permission) => permission.resource),
+        roles: selectedRolesRef.current.map((role) => role.slug),
+        permissions: selectedPermissionsRef.current.map((permission) => permission.resource),
+        organizationId: DEFAULT_ORG_ID,
       });
       if (!res.isSuccess) {
         showErrorToast({ errors: res.errors });
