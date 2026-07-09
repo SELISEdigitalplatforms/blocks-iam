@@ -4,7 +4,7 @@ export const inviteUserFormDefaultValue = {
   email: "",
   firstName: "",
   lastName: "",
-  organizationIds: ["default"] as string[],
+  organizationIds: [] as string[],
   roles: [] as { slug: string }[],
   permissions: [] as { resource: string }[],
 };
@@ -19,7 +19,7 @@ export const inviteUserFormSchema = z.object({
   lastName: z.string().trim().max(150, "Last name must be at most 150 characters").optional(),
   organizationIds: z
     .array(z.string().min(1))
-    .min(1, "Please select at least one organization"),
+    .min(1, "Please select an organization"),
   roles: z.array(z.object({ slug: z.string() })),
   permissions: z.array(z.object({ resource: z.string() })),
 });
