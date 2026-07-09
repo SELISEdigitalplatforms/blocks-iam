@@ -37,27 +37,27 @@ export const UserDevicesList = ({ isLoading, data }: DeviceListProps) => {
           </div>
         ),
         cell: ({ row }) => {
-          const deviceInfo = row.original.DeviceInformation;
+          const session = row.original;
           return (
             <div className="flex w-[200px] flex-col">
               <div className="mb-2 flex items-center">
                 <span>IP:</span>
                 <div className="ml-2 rounded-[4px] bg-blocks-primary-shades-300 px-2 py-1">
-                  <span>{row.original.IpAddresses}</span>
+                  <span>{session.ipAddresses}</span>
                 </div>
               </div>
               <div className="flex flex-col">
                 <span>
-                  {deviceInfo.Device
-                    ? `${deviceInfo.Device.charAt(0).toUpperCase() + deviceInfo.Device.slice(1)}`
+                  {session.deviceName
+                    ? `${session.deviceName.charAt(0).toUpperCase() + session.deviceName.slice(1)}`
                     : "Unknown Device"}{" "}
-                  {deviceInfo.Model
-                    ? `${deviceInfo.Model.charAt(0).toUpperCase() + deviceInfo.Model.slice(1)}`
+                  {session.deviceType
+                    ? `${session.deviceType.charAt(0).toUpperCase() + session.deviceType.slice(1)}`
                     : ""}
                 </span>
                 <span>
-                  {deviceInfo.Browser ? `${deviceInfo.Browser}` : "Unknown Browser"}{" "}
-                  {deviceInfo.OS ? `on ${deviceInfo.OS}` : " "}
+                  {session.browser ? `${session.browser}` : "Unknown Browser"}{" "}
+                  {session.operatingSystem ? `on ${session.operatingSystem}` : " "}
                 </span>
               </div>
             </div>
@@ -65,7 +65,7 @@ export const UserDevicesList = ({ isLoading, data }: DeviceListProps) => {
         },
       },
       {
-        accessorKey: "IssuedUtc",
+        accessorKey: "lastActivityAt",
         header: () => (
           <div className="flex items-center">
             <span className="font-bold text-medium-emphasis">Last Accessed</span>
@@ -73,7 +73,7 @@ export const UserDevicesList = ({ isLoading, data }: DeviceListProps) => {
         ),
         cell: ({ row }) => (
           <div className="flex w-[180px] items-center">
-            {formatDistanceToNow(new Date(row.original.IssuedUtc), { addSuffix: true })}
+            {formatDistanceToNow(new Date(row.original.lastActivityAt), { addSuffix: true })}
           </div>
         ),
       },
@@ -86,7 +86,7 @@ export const UserDevicesList = ({ isLoading, data }: DeviceListProps) => {
         ),
         cell: ({ row }) => (
           <div className="flex w-[180px] items-center">
-            {new Date(row.original.ExpiresUtc).getTime() - new Date().getTime() > 0 ? (
+            {new Date(row.original.expiresUtc).getTime() - new Date().getTime() > 0 ? (
               <Badge variant="success">active</Badge>
             ) : (
               <Badge variant="error">expired</Badge>

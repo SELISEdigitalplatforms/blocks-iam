@@ -169,35 +169,19 @@ export class UserService {
   async getSessions(
     payload: IGetSessionPayload,
   ): Promise<IDeviceSessionResponse> {
-    const res = await serviceInstances.idpService.get<{
-      data: string[];
-      errors: unknown;
-      totalCount: number;
-    }>(
+    const res = await serviceInstances.idpService.get<IDeviceSessionResponse>(
       `${USER_ENDPOINTS.GET_SESSIONS}?page=${payload.page}&pageSize=${payload.pageSize}&projectkey=${payload.projectKey}&filter.userId=${payload.filter.UserId}`,
     );
-    return {
-      data: res.data.map((item) => JSON.parse(parseMongoDBString(item))),
-      totalCount: res.totalCount,
-      errors: res.errors,
-    };
+    return res;
   }
 
   async getHistories(
     payload: IGetHistoriesPayload,
   ): Promise<IHistoriesResponse> {
-    const res = await serviceInstances.idpService.get<{
-      data: string[];
-      errors: unknown;
-      totalCount: number;
-    }>(
+    const res = await serviceInstances.idpService.get<IHistoriesResponse>(
       `${USER_ENDPOINTS.GET_HISTORIES}?page=${payload.page}&pageSize=${payload.pageSize}&projectkey=${payload.projectKey}&filter.userId=${payload.filter.UserId}`,
     );
-    return {
-      data: res.data.map((item) => JSON.parse(parseMongoDBString(item))),
-      totalCount: res.totalCount,
-      errors: res.errors,
-    };
+    return res;
   }
 
   async getPats(): Promise<IPATResponse> {

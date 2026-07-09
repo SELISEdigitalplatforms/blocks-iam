@@ -203,10 +203,31 @@ describe("UserService", () => {
 
   // ─── getSessions ──────────────────────────────────────────────────────────
   describe("getSessions", () => {
-    it("should GET with correct query params and parse response", async () => {
+    it("should GET with correct query params and return response as-is", async () => {
       const rawResponse = {
-        data: ['{"device":"Chrome"}', '{"device":"Firefox"}'],
-        totalCount: 2,
+        data: [
+          {
+            sessionId: "s1",
+            userId: "u1",
+            tenantId: "t1",
+            organizationId: "o1",
+            clientId: "c1",
+            clientName: "Test Client",
+            deviceName: "Chrome",
+            deviceType: "Desktop",
+            operatingSystem: "macOS",
+            browser: "Chrome",
+            ipAddresses: "127.0.0.1",
+            grantType: "password",
+            issuedUtc: "2026-07-09T08:54:45.816Z",
+            expiresUtc: "2026-07-09T08:54:45.816Z",
+            lastActivityAt: "2026-07-09T08:54:45.816Z",
+            isActive: true,
+            isCurrent: true,
+            isImpersonated: false,
+          },
+        ],
+        totalCount: 1,
         errors: null,
       };
       vi.mocked(http.get).mockResolvedValue(rawResponse);
@@ -216,7 +237,8 @@ describe("UserService", () => {
       expect(http.get).toHaveBeenCalledWith(
         `${USER_ENDPOINTS.GET_SESSIONS}?page=${mockGetSessionsPayload.page}&pageSize=${mockGetSessionsPayload.pageSize}&projectkey=${mockGetSessionsPayload.projectKey}&filter.userId=${mockGetSessionsPayload.filter.UserId}`,
       );
-      expect(result.totalCount).toBe(2);
+      expect(result.totalCount).toBe(1);
+      expect(result.data[0].sessionId).toBe("s1");
     });
 
     it("should throw when the API call fails", async () => {
@@ -228,9 +250,26 @@ describe("UserService", () => {
 
   // ─── getHistories ─────────────────────────────────────────────────────────
   describe("getHistories", () => {
-    it("should GET with correct query params and parse response", async () => {
+    it("should GET with correct query params and return response as-is", async () => {
       const rawResponse = {
-        data: ['{"action":"login"}'],
+        data: [
+          {
+            event: "login_via_password",
+            actionBy: "u1",
+            deviceName: "Chrome",
+            deviceType: "Desktop",
+            deviceInformation: {
+              browser: "Chrome",
+              os: "macOS",
+              device: "Macbook",
+              brand: "Apple",
+              model: "Pro",
+            },
+            ipAddresses: "127.0.0.1",
+            sessionId: "s1",
+            createdDate: "2026-07-09T08:56:18.707Z",
+          },
+        ],
         totalCount: 1,
         errors: null,
       };
@@ -242,6 +281,7 @@ describe("UserService", () => {
         `${USER_ENDPOINTS.GET_HISTORIES}?page=${mockGetHistoriesPayload.page}&pageSize=${mockGetHistoriesPayload.pageSize}&projectkey=${mockGetHistoriesPayload.projectKey}&filter.userId=${mockGetHistoriesPayload.filter.UserId}`,
       );
       expect(result.totalCount).toBe(1);
+      expect(result.data[0].event).toBe("login_via_password");
     });
 
     it("should throw when the API call fails", async () => {
