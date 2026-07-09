@@ -33,7 +33,18 @@ export function Organizations() {
     projectKey: tenantId,
   });
   const { data: configData, isLoading: isConfigLoading } = useGetOrganizationConfig(tenantId);
-  const isMultiOrgEnabled = configData?.isMultiOrgEnabled ?? true;
+  // The organizations list endpoint is the authoritative signal: it reports this
+  // error directly when multi-org is disabled, regardless of what the (separate,
+  // sometimes unreliable) org config endpoint says.
+  const isMultiOrgDisabledError =
+    !!data &&
+    !data.isSuccess &&
+    !!data.errors &&
+    typeof data.errors === "object" &&
+    "multi_org_disabled" in data.errors;
+  const isMultiOrgEnabledFromConfig = configData?.isMultiOrgEnabled ?? true;
+  const showMultiOrgDisabledCard =
+    isMultiOrgDisabledError || (!isConfigLoading && !isMultiOrgEnabledFromConfig);
 
   // Reset the accumulated list whenever the search term changes.
   useEffect(() => {
@@ -45,10 +56,11 @@ export function Organizations() {
   // Accumulate pages as they load: replace on the first page, append after.
   useEffect(() => {
     if (!data) return;
+    const organizations = data.organizations ?? [];
     setLoadedOrgs((prev) => {
-      if (page === 0) return data.organizations;
+      if (page === 0) return organizations;
       const existingIds = new Set(prev.map((org) => org.itemId));
-      const newOnes = data.organizations.filter((org) => !existingIds.has(org.itemId));
+      const newOnes = organizations.filter((org) => !existingIds.has(org.itemId));
       return [...prev, ...newOnes];
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -67,7 +79,7 @@ export function Organizations() {
   const isLoadingMore = isFetching && page > 0;
   const hasMore = loadedOrgs.length < totalCount;
 
-  if (!isConfigLoading && !isMultiOrgEnabled) {
+  if (showMultiOrgDisabledCard) {
     return (
       <Card>
         <CardContent className="flex items-center justify-center py-16">
