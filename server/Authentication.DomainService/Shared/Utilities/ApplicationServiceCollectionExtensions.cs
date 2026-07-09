@@ -6,11 +6,11 @@ using Authentication.DomainService.Oidc.Repositories;
 using Authentication.DomainService.Oidc.Services;
 using Authentication.DomainService.OAuth;
 using Authentication.DomainService.OAuth.Services;
+using Authentication.DomainService.Security.Utilities;
 using Authentication.DomainService.Services;
 using Authentication.DomainService.Shared;
 using FluentValidation;
 using Iam.DomainService.Accounts;
-using Iam.DomainService.Activities;
 using Iam.DomainService.Configurations;
 using Iam.DomainService.Resources;
 using Iam.DomainService.Services;
@@ -134,10 +134,10 @@ namespace Authentication.DomainService.Utilities
             serviceCollection.AddSingleton<IUserManagementQueryService, UserManagementQueryService>();
             serviceCollection.AddSingleton<IResourceQueryService, ResourceQueryService>();
 
-            serviceCollection.AddSingleton<IUserActivityRepository, UserActivityRepository>();
-            serviceCollection.AddSingleton<IUserActivityService, UserActivityService>();
             serviceCollection.AddSingleton<IAccountService, AccountService>();
             serviceCollection.AddSingleton<IIamConfigurationRepository, IamConfigurationRepository>();
+
+            serviceCollection.RegisterSecurityServices();
 
             //Validators
             serviceCollection.AddSingleton<IValidator<BaseAccountRequest>, BaseAccountValidator>();
