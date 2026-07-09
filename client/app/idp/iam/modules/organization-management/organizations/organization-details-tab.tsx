@@ -2,16 +2,13 @@ import { IOrganization } from "@blocks-idp/iam/models/organization";
 import { useGetUserById } from "@blocks-idp/iam/hooks/use-user";
 import { useGetRoles } from "@blocks-idp/iam/hooks/use-roles";
 import { useProjectStore } from "@seliseblocks/blocks-kit";
-import { Badge } from "@/components/ui-kits/badge/badge";
 import {
   Calendar,
   Clock,
   ExternalLink,
   Globe,
-  Languages,
   Mail,
   Phone,
-  ShieldCheck,
   SquarePen,
   User,
   UserCog,
@@ -104,11 +101,6 @@ export const OrganizationDetailsTab = ({ organization }: { organization: IOrgani
       <DetailRow icon={<Mail className="h-4 w-4" />} label="Email" value={organization.email} />
       <DetailRow icon={<Phone className="h-4 w-4" />} label="Phone" value={organization.phoneNumber} />
       <DetailRow
-        icon={<Languages className="h-4 w-4" />}
-        label="Language"
-        value={organization.language}
-      />
-      <DetailRow
         icon={<Calendar className="h-4 w-4" />}
         label="Created"
         value={formatDateTime(organization.createdDate)}
@@ -120,15 +112,6 @@ export const OrganizationDetailsTab = ({ organization }: { organization: IOrgani
         value={formatDateTime(organization.lastUpdatedDate)}
       />
       <DetailRow icon={<User className="h-4 w-4" />} label="Last updated by" value={updatedByName} />
-      <DetailRow
-        icon={<ShieldCheck className="h-4 w-4" />}
-        label="Status"
-        value={
-          <Badge variant={organization.isEnabled ? "success" : "secondary"}>
-            {organization.isEnabled ? "Active" : "Disabled"}
-          </Badge>
-        }
-      />
       <DetailRow
         icon={<UserCog className="h-4 w-4" />}
         label="Default role for new members"
