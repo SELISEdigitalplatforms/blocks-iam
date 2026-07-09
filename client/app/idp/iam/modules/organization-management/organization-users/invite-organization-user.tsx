@@ -21,15 +21,13 @@ import {
   FormLabel,
   FormMessage,
 } from "@/components/ui-kits/form/form";
-import { useAddUser } from "@blocks-idp/iam/hooks/use-user";
+import { useAddUser, useCheckUserExists } from "@blocks-idp/iam/hooks/use-user";
 import { z } from "zod";
 import { useProjectStore } from "@seliseblocks/blocks-kit";
 import { useEffect } from "react";
 import { Loader, Plus } from "lucide-react";
 import { isErrorWithErrors } from "@/lib/error";
-import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { userService } from "@blocks-idp/iam/services/user.service";
-import type { IUpdateUserAccessControlPayload } from "@blocks-idp/iam/models/user";
+import { useQueryClient } from "@tanstack/react-query";
 
 const inviteOrganizationUserFormDefaultValue = {
   email: "",
@@ -88,6 +86,13 @@ export const InviteOrganizationUser = ({ organizationId }: InviteOrganizationUse
   const emailValue = form.watch("email") ?? "";
   const isValidEmailFormat = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(emailValue.trim());
 
+  // Silently check whether the email already maps to a user — drives whether
+  // the first/last name fields appear. The user is never notified either way.
+  const { data: existsData } = useCheckUserExists(emailValue, {
+    enabled: isValidEmailFormat,
+  });
+  const exists = existsData?.exists === true;
+
   useEffect(() => {
     if (!open) {
       form.reset();
@@ -96,8 +101,7 @@ export const InviteOrganizationUser = ({ organizationId }: InviteOrganizationUse
 
   const isFormInvalid =
     !isValidEmailFormat ||
-    !form.watch("firstName")?.trim() ||
-    !form.watch("lastName")?.trim();
+    (!exists && (!form.watch("firstName")?.trim() || !form.watch("lastName")?.trim()));
 
   const onSubmitHandler = async (values: InviteFormValues) => {
     try {
@@ -118,6 +122,8 @@ export const InviteOrganizationUser = ({ organizationId }: InviteOrganizationUse
         return;
       }
       showSuccessToast({ description: "Invitation is sent" });
+      queryClient.invalidateQueries({ queryKey: ["organizations"] });
+      queryClient.invalidateQueries({ queryKey: ["organization"] });
       form.reset();
       setOpen(false);
     } catch (error) {
@@ -169,32 +175,36 @@ export const InviteOrganizationUser = ({ organizationId }: InviteOrganizationUse
                 )}
               />
 
-              <FormField
-                control={form.control}
-                name="firstName"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>First name</FormLabel>
-                    <FormControl>
-                      <Input placeholder="Enter first name" {...field} />
-                    </FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-              <FormField
-                control={form.control}
-                name="lastName"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Last name</FormLabel>
-                    <FormControl>
-                      <Input placeholder="Enter last name" {...field} />
-                    </FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
+              {!exists && isValidEmailFormat && (
+                <>
+                  <FormField
+                    control={form.control}
+                    name="firstName"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>First name</FormLabel>
+                        <FormControl>
+                          <Input placeholder="Enter first name" {...field} />
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                  <FormField
+                    control={form.control}
+                    name="lastName"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Last name</FormLabel>
+                        <FormControl>
+                          <Input placeholder="Enter last name" {...field} />
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                </>
+              )}
             </div>
             <DialogFooter className="shrink-0 border-t pt-4">
               <Button
