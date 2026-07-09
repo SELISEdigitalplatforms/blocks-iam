@@ -214,25 +214,22 @@ export interface EditUserData {
 }
 
 interface DeviceInformation {
-  Browser: string;
-  OS: string;
-  Device: string;
-  Brand: string;
-  Model: string;
+  browser: string;
+  os: string;
+  device: string;
+  brand: string;
+  model: string;
 }
 
 export interface IHistories {
-  _id: string;
-  CreatedDate: string;
-  LastUpdatedDate: string;
-  CreatedBy: string;
-  LastUpdatedBy: string;
-  OrganizationIds: string[];
-  Tags: string[];
-  Event: string;
-  ActionBy: string;
-  IpAddresses: string;
-  DeviceInformation: DeviceInformation;
+  event: string;
+  actionBy: string;
+  deviceName: string;
+  deviceType: string;
+  deviceInformation: DeviceInformation;
+  ipAddresses: string;
+  sessionId: string;
+  createdDate: string;
 }
 
 export interface IHistoriesResponse {
@@ -242,17 +239,24 @@ export interface IHistoriesResponse {
 }
 
 export interface IDeviceSession {
-  RefreshToken: string;
-  TenantId: string;
-  IssuedUtc: Date;
-  ExpiresUtc: Date;
-  UserId: string;
-  IpAddresses: string;
-  DeviceInformation: DeviceInformation;
-  CreateDate: Date;
-  UpdateDate: Date;
-  IsActive: boolean;
-  _id: string;
+  sessionId: string;
+  userId: string;
+  tenantId: string;
+  organizationId: string;
+  clientId: string;
+  clientName: string;
+  deviceName: string;
+  deviceType: string;
+  operatingSystem: string;
+  browser: string;
+  ipAddresses: string;
+  grantType: string;
+  issuedUtc: string;
+  expiresUtc: string;
+  lastActivityAt: string;
+  isActive: boolean;
+  isCurrent: boolean;
+  isImpersonated: boolean;
 }
 
 export interface IDeviceSessionResponse {

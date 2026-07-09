@@ -1,6 +1,12 @@
 import { useQueryState } from "nuqs";
 import { BREADCRUMB_CUSTOM_TITLES } from "@/constants/breadcrumb-custom-title";
-import { Tabs, TabsList, TabsTrigger } from "@/components/ui-kits/tabs/tabs";
+import {
+  Tabs,
+  TabsList,
+  TabsTrigger,
+  underlineTabsListClass,
+  underlineTabTriggerClass,
+} from "@/components/ui-kits/tabs/tabs";
 import PageBreadcrumb from "@/components/breadcrumb/breadcrumb";
 import { useGetUserById } from "@blocks-idp/iam/hooks/use-user";
 import { useProjectStore } from "@seliseblocks/blocks-kit";
@@ -11,6 +17,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui-kits/select/select";
+import { cn } from "@/lib/utils";
 import { UserProfileSidebar } from "@blocks-idp/iam/components/user-profile-sidebar";
 import { UserActionMenu } from "./user-action-menu";
 import { UserDevices } from "../user-devices";
@@ -82,10 +89,10 @@ export const User = ({ id }: { id: string }) => {
           {/* desktop view */}
           <div className="hidden md:block">
             <Tabs value={tabId} onValueChange={setTabId}>
-              <div className="mb-5 flex items-center justify-between rounded text-base">
-                <TabsList>
+              <div className="mb-5 flex items-center justify-between gap-3">
+                <TabsList className={cn(underlineTabsListClass, "w-fit")}>
                   {Menu.map((item) => (
-                    <TabsTrigger key={item.id} value={item.value}>
+                    <TabsTrigger key={item.id} value={item.value} className={underlineTabTriggerClass}>
                       {item.label}
                     </TabsTrigger>
                   ))}

@@ -43,7 +43,7 @@ namespace Blocks.Api.Controllers
             try
             {
                 var bc = BlocksContext.GetContext();
-                var sessionCookieName = $"{IdpConstants.IdpSessionCookieName}_{bc.TenantId}";
+                var sessionCookieName = IdpConstants.BuildIdpSessionCookieKey(bc.TenantId);
                 var sessionId = GetSessionIdFromToken(sessionCookieName);
                 if (string.IsNullOrEmpty(sessionId))
                 {
@@ -103,7 +103,7 @@ namespace Blocks.Api.Controllers
             try
             {
                 var bc = BlocksContext.GetContext();
-                var sessionCookieName = $"{IdpConstants.IdpSessionCookieName}_{bc.TenantId}";
+                var sessionCookieName = IdpConstants.BuildIdpSessionCookieKey(bc.TenantId);
                 var sessionId = GetSessionIdFromToken(sessionCookieName);
                 if (string.IsNullOrEmpty(sessionId))
                 {
@@ -162,7 +162,7 @@ namespace Blocks.Api.Controllers
                     return StatusCode(403, new { error = "csrf_validation_failed" });
                 }
                 var bc = BlocksContext.GetContext();
-                var sessionCookieName = $"{IdpConstants.IdpSessionCookieName}_{request.TenantId ?? bc.TenantId}";
+                var sessionCookieName = IdpConstants.BuildIdpSessionCookieKey(request.TenantId ?? bc.TenantId);
 
                 var sessionId = GetSessionIdFromToken(sessionCookieName);
                 if (string.IsNullOrEmpty(sessionId))
@@ -218,7 +218,7 @@ namespace Blocks.Api.Controllers
                 }
 
                 var bc = BlocksContext.GetContext();
-                var sessionCookieName = $"{IdpConstants.IdpSessionCookieName}_{bc.TenantId}";
+                var sessionCookieName = IdpConstants.BuildIdpSessionCookieKey(bc.TenantId);
                 var sessionId = GetSessionIdFromToken(sessionCookieName);
                 if (string.IsNullOrEmpty(sessionId))
                 {
@@ -267,7 +267,7 @@ namespace Blocks.Api.Controllers
                 }
 
                 var bc = BlocksContext.GetContext();
-                var sessionCookieName = $"{IdpConstants.IdpSessionCookieName}_{bc.TenantId}";
+                var sessionCookieName = IdpConstants.BuildIdpSessionCookieKey(bc.TenantId);
                 var sessionId = GetSessionIdFromToken(sessionCookieName);
                 if (string.IsNullOrEmpty(sessionId))
                 {
@@ -311,7 +311,7 @@ namespace Blocks.Api.Controllers
                 }
 
                 var bc = BlocksContext.GetContext();
-                var sessionCookieName = $"{IdpConstants.IdpSessionCookieName}_{bc.TenantId}";
+                var sessionCookieName = IdpConstants.BuildIdpSessionCookieKey(bc.TenantId);
                 var sessionId = GetSessionIdFromToken(sessionCookieName);
                 if (string.IsNullOrEmpty(sessionId))
                 {

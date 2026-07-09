@@ -267,7 +267,7 @@ namespace Blocks.Api.Controllers
                 DeviceInformation = _authenticationDomainService.GetDeviceInfo(Request?.Headers?.UserAgent.ToString() ?? string.Empty),
                 IpAddresses = string.Join(",", _authenticationDomainService.GetVisitorsIpAddresses(Request.HttpContext)),
                 TenantId = User.FindFirst("tenant_id")?.Value,
-                SessionId = Request.Cookies["idp_session_id"],
+                SessionId = Request.Cookies[IdpConstants.BuildIdpSessionCookieKey(User.FindFirst("tenant_id")?.Value)],
                 CorrelationId = HttpContext.TraceIdentifier,
                 Outcome = outcome,
                 ReasonCode = reasonCode,

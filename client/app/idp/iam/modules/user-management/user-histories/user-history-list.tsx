@@ -45,7 +45,7 @@ export const UserHistoryList = ({ isLoading, data }: HistoryListProps) => {
   const columns: ColumnDef<IHistories>[] = useMemo(
     () => [
       {
-        accessorKey: "Event",
+        accessorKey: "event",
         header: () => (
           <div className="flex items-center">
             <span className="font-bold text-medium-emphasis">Event</span>
@@ -54,12 +54,12 @@ export const UserHistoryList = ({ isLoading, data }: HistoryListProps) => {
         cell: ({ row }) => (
           <div className="flex w-[200px] items-center">
             {/* <Check className="mr-2 h-5 w-5 text-success" /> */}
-            <span>{EVENT_TYPE[row.getValue("Event") as keyof typeof EVENT_TYPE]}</span>
+            <span>{EVENT_TYPE[row.getValue("event") as keyof typeof EVENT_TYPE] ?? row.original.event}</span>
           </div>
         ),
       },
       {
-        accessorKey: "LastUpdatedDate",
+        accessorKey: "createdDate",
         header: () => (
           <div className="flex items-center">
             <span className="font-bold text-medium-emphasis">Time</span>
@@ -68,7 +68,7 @@ export const UserHistoryList = ({ isLoading, data }: HistoryListProps) => {
         cell: ({ row }) => (
           <div className="flex w-[200px] items-center">
             <span>
-              {formatDistanceToNow(new Date(row.original.LastUpdatedDate), {
+              {formatDistanceToNow(new Date(row.original.createdDate), {
                 addSuffix: true,
               })}
             </span>
@@ -83,27 +83,27 @@ export const UserHistoryList = ({ isLoading, data }: HistoryListProps) => {
           </div>
         ),
         cell: ({ row }) => {
-          const deviceInfo = row.original.DeviceInformation;
+          const deviceInfo = row.original.deviceInformation;
           return (
             <div className="flex w-[200px] flex-col">
               <div className="mb-2 flex items-center">
                 <span>IP:</span>
                 <div className="ml-2 rounded-[4px] bg-blocks-primary-shades-300 px-2 py-1">
-                  <span>{row.original.IpAddresses}</span>
+                  <span>{row.original.ipAddresses}</span>
                 </div>
               </div>
               <div className="flex flex-col">
                 <span>
-                  {deviceInfo.Device
-                    ? `${deviceInfo.Device.charAt(0).toUpperCase() + deviceInfo.Device.slice(1)}`
+                  {deviceInfo.device
+                    ? `${deviceInfo.device.charAt(0).toUpperCase() + deviceInfo.device.slice(1)}`
                     : "Unknown Device"}{" "}
-                  {deviceInfo.Model
-                    ? `${deviceInfo.Model.charAt(0).toUpperCase() + deviceInfo.Model.slice(1)}`
+                  {deviceInfo.model
+                    ? `${deviceInfo.model.charAt(0).toUpperCase() + deviceInfo.model.slice(1)}`
                     : ""}
                 </span>
                 <span>
-                  {deviceInfo.Browser ? `${deviceInfo.Browser}` : "Unknown Browser"}{" "}
-                  {deviceInfo.OS ? `on ${deviceInfo.OS}` : " "}
+                  {deviceInfo.browser ? `${deviceInfo.browser}` : "Unknown Browser"}{" "}
+                  {deviceInfo.os ? `on ${deviceInfo.os}` : " "}
                 </span>
               </div>
             </div>

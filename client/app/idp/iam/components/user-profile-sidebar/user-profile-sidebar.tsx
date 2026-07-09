@@ -4,7 +4,7 @@ import { Card, CardContent } from "@/components/ui-kits/card/card";
 import { Skeleton } from "@/components/ui-kits/skeleton/skeleton";
 import { CopyToClipboardButton } from "@/components/copy-to-clipboard-button";
 import { ProfileImageUploader } from "@blocks-idp/iam/components/profile-image-uploader";
-import { UpdateUser } from "@blocks-idp/iam/modules/user-management/update-user";
+// import { UpdateUser } from "@blocks-idp/iam/modules/user-management/update-user";
 import { Activity, Calendar, ShieldCheck } from "lucide-react";
 
 type UserProfileSidebarProps = {
@@ -19,10 +19,10 @@ type InfoRowProps = {
 };
 
 const InfoRow = ({ icon, label, value }: InfoRowProps) => (
-  <div className="flex items-center gap-3 border-b px-4 py-3 text-sm last:border-0">
+  <div className="flex items-center gap-3 border-b px-4 py-2.5 text-sm last:border-0">
     <span className="flex shrink-0 items-center gap-2 text-muted-foreground">
       {icon}
-      {label.toUpperCase()}
+      {label}
     </span>
     <div className="ml-auto min-w-0 truncate text-right font-medium text-high-emphasis">
       {value ?? "—"}
@@ -48,37 +48,41 @@ export const UserProfileSidebar = ({ id, projectKey }: UserProfileSidebarProps) 
   const user = data?.data;
 
   return (
-    <div className="space-y-4">
-      <div className="flex items-center gap-1.5">
-        {isLoading ? (
-          <Skeleton className="h-7 w-40" />
-        ) : (
-          <h3 className="truncate text-xl font-bold tracking-tight text-high-emphasis">
-            {user?.firstName} {user?.lastName}
-          </h3>
-        )}
-        <UpdateUser id={id} projectKey={projectKey} iconOnly />
+    <div className="space-y-5">
+      <div className="flex items-center gap-3">
+        <ProfileImageUploader
+          id={id}
+          projectKey={projectKey}
+          className="h-16 w-16 rounded-full"
+          containerClassName="w-auto shrink-0"
+        />
+        <div className="min-w-0 flex-1">
+          <div className="flex items-center gap-1">
+            {isLoading ? (
+              <Skeleton className="h-6 w-32" />
+            ) : (
+              <h3 className="truncate text-lg font-bold tracking-tight text-high-emphasis">
+                {user?.firstName} {user?.lastName}
+              </h3>
+            )}
+            {/* <UpdateUser id={id} projectKey={projectKey} iconOnly /> */}
+          </div>
+
+          {isLoading ? (
+            <Skeleton className="mt-1 h-4 w-36" />
+          ) : (
+            user?.email && (
+              <CopyToClipboardButton textToCopy={user.email} isHoverable>
+                <span className="truncate text-sm text-muted-foreground">{user.email}</span>
+              </CopyToClipboardButton>
+            )
+          )}
+        </div>
       </div>
-
-      {isLoading ? (
-        <Skeleton className="h-5 w-48" />
-      ) : (
-        user?.email && (
-          <CopyToClipboardButton textToCopy={user.email} isHoverable>
-            <span className="truncate text-sm text-muted-foreground">{user.email}</span>
-          </CopyToClipboardButton>
-        )
-      )}
-
-      <ProfileImageUploader
-        id={id}
-        projectKey={projectKey}
-        className="max-w-[140px] rounded-full"
-      />
 
       <Card className="p-0">
         <CardContent className="p-0">
-          <p className="px-4 pt-4 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+          <p className="px-4 pt-4 text-sm font-semibold text-muted-foreground">
             Account Details
           </p>
           <div className="mt-1">

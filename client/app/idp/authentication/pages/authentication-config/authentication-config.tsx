@@ -36,6 +36,11 @@ export const AuthenticationConfig = ({ section }: AuthenticationConfigProps) => 
               Manage and organize access across your workspace.
             </p>
           )}
+          {section === "users" && (
+            <p className="mt-1 text-sm text-muted-foreground">
+              Invite, manage, and organize people who have access to your workspace.
+            </p>
+          )}
         </div>
         <div className="flex flex-wrap items-center gap-2">
           {section === "client-credential" && <CreateClientCredential />}

@@ -77,7 +77,7 @@ export const OrganizationDetailsTab = ({ organization }: { organization: IOrgani
 
   return (
     <Card>
-      <CardContent className="pt-6">
+      <CardContent>
         <DetailRow
           icon={<SquarePen className="h-4 w-4" />}
           label="Description"
