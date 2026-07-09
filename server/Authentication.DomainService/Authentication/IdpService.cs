@@ -1,11 +1,12 @@
 using Authentication.DomainService.Entities;
+using Authentication.DomainService.Utilities;
 using Authentication.DomainService.OAuth;
 using Authentication.DomainService.OAuth.ResponseModel;
 using Authentication.DomainService.Oidc.Repositories;
 using Authentication.DomainService.Services;
 using Authentication.DomainService.Shared;
 using Authentication.DomainService.Shared.RequestModel;
-using Authentication.DomainService.Utilities;
+using Iam.DomainService.Utilities;
 using Blocks.CaptchaDriver;
 using Blocks.Genesis;
 using Microsoft.AspNetCore.Http;
@@ -112,7 +113,7 @@ namespace Authentication.DomainService.Authentication
                     forwardedTo = forwardedTo
                 };
                 var cacheKey = $"idp_flow:{state}";
-                await _cacheClient.AddStringValueAsync(cacheKey, System.Text.Json.JsonSerializer.Serialize(flowContext), AuthenticationConstants.IdpFlowCacheTtlSeconds);
+                await _cacheClient.AddStringValueAsync(cacheKey, System.Text.Json.JsonSerializer.Serialize(flowContext), IdpConstants.IdpFlowCacheTtlSeconds);
 
                 // Build authorization URL
                 var authorizeUrl = BuildAuthorizeUrl(identityProvider, redirectUri, state, nonce, codeChallenge);
@@ -172,10 +173,10 @@ namespace Authentication.DomainService.Authentication
                 var blocksContext = BlocksContext.GetContext();
                 var resolvedTenantId = flowContext!.TenantId ?? blocksContext?.TenantId ?? string.Empty;
                 var authConfiguration = await _authenticationRepository.GetAuthenticationConfigurationAsync();
-                var configuredAccessLifetimeSeconds = Math.Max((authConfiguration?.AccessTokenValidForNumberMinutes ?? IdentityConfiguration.DefaultAccessTokenValidForNumberMinutes) * AuthenticationConstants.SecondsPerMinute, AuthenticationConstants.MinAccessTokenLifetimeSeconds);
-                var configuredRefreshLifetimeMinutes = Math.Max(authConfiguration?.AbsoluteRefreshTokenValidForNumberMinutes ?? IdentityConfiguration.DefaultRememberMeRefreshTokenValidForNumberMinutes, AuthenticationConstants.MinTokenLifetimeMinutes);
+                var configuredAccessLifetimeSeconds = Math.Max((authConfiguration?.AccessTokenValidForNumberMinutes ?? IdentityConfiguration.DefaultAccessTokenValidForNumberMinutes) * IdpConstants.SecondsPerMinute, IdpConstants.MinAccessTokenLifetimeSeconds);
+                var configuredRefreshLifetimeMinutes = Math.Max(authConfiguration?.AbsoluteRefreshTokenValidForNumberMinutes ?? IdentityConfiguration.DefaultRememberMeRefreshTokenValidForNumberMinutes, IdpConstants.MinTokenLifetimeMinutes);
                 var resolvedAccessLifetimeSeconds = tokenResponse!.ExpiresIn.HasValue
-                    ? Math.Max(tokenResponse.ExpiresIn.Value, AuthenticationConstants.MinAccessTokenLifetimeSeconds)
+                    ? Math.Max(tokenResponse.ExpiresIn.Value, IdpConstants.MinAccessTokenLifetimeSeconds)
                     : configuredAccessLifetimeSeconds;
 
                 var tenant = _tenants.GetTenantByID(resolvedTenantId);
@@ -380,8 +381,8 @@ namespace Authentication.DomainService.Authentication
         private static TimeSpan GetOutboundRequestTimeout()
         {
             return DomainResolver.IsLocalhost()
-                ? TimeSpan.FromMinutes(AuthenticationConstants.OutboundRequestLocalhostTimeoutMinutes)
-                : TimeSpan.FromSeconds(AuthenticationConstants.BackchannelTimeoutSeconds);
+                ? TimeSpan.FromMinutes(IdpConstants.OutboundRequestLocalhostTimeoutMinutes)
+                : TimeSpan.FromSeconds(IdpConstants.BackchannelTimeoutSeconds);
         }
 
         private async Task<(OidcTokenEndpointResponse? Response, string Error)> ExchangeCodeForTokenAsync(
@@ -400,7 +401,7 @@ namespace Authentication.DomainService.Authentication
                 { "client_id", provider.ClientId ?? string.Empty },
                 { "response_type", provider.ResponseType ?? "code" },
                 { "redirect_uri", redirectUri },
-                { "scope", provider.Scope ?? AuthenticationConstants.OpenIdProfileEmailScope },
+                { "scope", provider.Scope ?? IdpConstants.OpenIdProfileEmailScope },
                 { "state", state },
                 { "nonce", nonce }
             };
@@ -408,7 +409,7 @@ namespace Authentication.DomainService.Authentication
             if (provider.RequirePkce && !string.IsNullOrEmpty(codeChallenge))
             {
                 queryParams["code_challenge"] = codeChallenge;
-                queryParams["code_challenge_method"] = AuthenticationConstants.PkceMethodS256;
+                queryParams["code_challenge_method"] = IdpConstants.PkceMethodS256;
             }
 
             var queryString = string.Join("&", queryParams.Select(kvp => $"{kvp.Key}={Uri.EscapeDataString(kvp.Value)}"));

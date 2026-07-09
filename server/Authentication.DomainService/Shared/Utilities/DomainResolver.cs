@@ -1,4 +1,6 @@
 using Authentication.DomainService.Shared;
+using Authentication.DomainService.Utilities;
+using Iam.DomainService.Utilities;
 using Blocks.Genesis;
 using Microsoft.AspNetCore.Http;
 using System.Globalization;
@@ -197,7 +199,7 @@ namespace Authentication.DomainService.Utilities
                 return configuredAudience.Trim();
             }
 
-            return AuthenticationConstants.ProtectedApiAudience;
+            return IdpConstants.ProtectedApiAudience;
         }
 
         public static string GetIssuer(Tenant? tenant)

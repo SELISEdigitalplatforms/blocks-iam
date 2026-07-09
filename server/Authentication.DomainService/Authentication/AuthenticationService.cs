@@ -1,4 +1,5 @@
 using Authentication.DomainService.Dtos;
+using Authentication.DomainService.Utilities;
 using Authentication.DomainService.Entities;
 using Authentication.DomainService.OAuth;
 using Authentication.DomainService.OAuth.RequestModel;
@@ -8,7 +9,7 @@ using Authentication.DomainService.Services;
 using Authentication.DomainService.Shared;
 using Authentication.DomainService.Shared.Dtos;
 using Authentication.DomainService.Shared.RequestModel;
-using Authentication.DomainService.Utilities;
+using Iam.DomainService.Utilities;
 using Blocks.Genesis;
 using Idp.DomainService.Oidc.Contracts;
 using Microsoft.AspNetCore.Http;
@@ -351,10 +352,10 @@ namespace Authentication.DomainService.Authentication
                     RedirectUri = redirectUri,
                     Audience = clientId,
                 });
-                await _cacheClient.AddStringValueAsync(state, stateValue, AuthenticationConstants.OidcStateCacheTtlSeconds); // 5 minutes in seconds
+                await _cacheClient.AddStringValueAsync(state, stateValue, IdpConstants.OidcStateCacheTtlSeconds); // 5 minutes in seconds
 
                 // Build authorization URL
-                var scope = identityProvider.Scope ?? AuthenticationConstants.OpenIdProfileEmailScope;
+                var scope = identityProvider.Scope ?? IdpConstants.OpenIdProfileEmailScope;
                 redirectUri = string.IsNullOrWhiteSpace(redirectUri) ? identityProvider.RedirectUris.FirstOrDefault() : redirectUri;
                 var authorizationUrl = BuildAuthorizationUrl(identityProvider, state, redirectUri, scope);
 
@@ -416,11 +417,11 @@ namespace Authentication.DomainService.Authentication
                     Provider = identityProvider.Provider,
                     CreatedAt = DateTime.UtcNow
                 });
-                await _cacheClient.AddStringValueAsync(stateKey, stateValue, AuthenticationConstants.OidcStateCacheTtlSeconds); // 5 minute TTL
+                await _cacheClient.AddStringValueAsync(stateKey, stateValue, IdpConstants.OidcStateCacheTtlSeconds); // 5 minute TTL
 
                 // Build authorization URL for social provider
                 // Callback should redirect to /oidc/callback with provider and state
-                var scope = identityProvider.Scope ?? AuthenticationConstants.OpenIdProfileEmailScope;
+                var scope = identityProvider.Scope ?? IdpConstants.OpenIdProfileEmailScope;
                 providerRedirectUri = string.IsNullOrWhiteSpace(providerRedirectUri) ? identityProvider.RedirectUris.FirstOrDefault() : providerRedirectUri;
                 var authorizationUrl = BuildAuthorizationUrl(identityProvider, socialState, providerRedirectUri, scope);
 
@@ -513,8 +514,8 @@ namespace Authentication.DomainService.Authentication
                         if (response.IsSuccessStatusCode)
                         {
                             delivered = true;
-                            await PersistBackchannelDeliveryAuditAsync(logoutEventId, uri!, AuthenticationConstants.StatusSent, attempt, (int)response.StatusCode, BackchannelAuditEvents.Delivered);
-                            await PublishSecurityEventAsync(httpRequest, BackchannelAuditEvents.Succeeded, BackchannelAuditEvents.Dispatch, AuthenticationConstants.StatusSuccess, null, logoutEventId, uri);
+                            await PersistBackchannelDeliveryAuditAsync(logoutEventId, uri!, IdpConstants.StatusSent, attempt, (int)response.StatusCode, BackchannelAuditEvents.Delivered);
+                            await PublishSecurityEventAsync(httpRequest, BackchannelAuditEvents.Succeeded, BackchannelAuditEvents.Dispatch, IdpConstants.StatusSuccess, null, logoutEventId, uri);
                             _logger.LogInformation(
                                 "SecurityEvent backchannel_logout_succeeded event={LogoutEventId} tenant={TenantId} uri={Uri} attempt={Attempt}",
                                 logoutEventId,
@@ -524,8 +525,8 @@ namespace Authentication.DomainService.Authentication
                             break;
                         }
 
-                            await PersistBackchannelDeliveryAuditAsync(logoutEventId, uri!, AuthenticationConstants.StatusFailure, attempt, (int)response.StatusCode, BackchannelAuditEvents.DeliveryFailed);
-                            await PublishSecurityEventAsync(httpRequest, BackchannelAuditEvents.Failed, BackchannelAuditEvents.Dispatch, AuthenticationConstants.StatusFailure, $"status_{(int)response.StatusCode}", logoutEventId, uri);
+                            await PersistBackchannelDeliveryAuditAsync(logoutEventId, uri!, IdpConstants.StatusFailure, attempt, (int)response.StatusCode, BackchannelAuditEvents.DeliveryFailed);
+                            await PublishSecurityEventAsync(httpRequest, BackchannelAuditEvents.Failed, BackchannelAuditEvents.Dispatch, IdpConstants.StatusFailure, $"status_{(int)response.StatusCode}", logoutEventId, uri);
                         _logger.LogWarning(
                             "SecurityEvent backchannel_logout_failed event={LogoutEventId} tenant={TenantId} uri={Uri} status={StatusCode} attempt={Attempt}",
                             logoutEventId,
@@ -538,7 +539,7 @@ namespace Authentication.DomainService.Authentication
                     catch (Exception ex)
                     {
                         await PersistBackchannelDeliveryAuditAsync(logoutEventId, uri!, "failed_exception", attempt, null, ex.GetType().Name);
-                        await PublishSecurityEventAsync(httpRequest, BackchannelAuditEvents.Exception, BackchannelAuditEvents.Dispatch, AuthenticationConstants.StatusFailure, ex.GetType().Name, logoutEventId, uri);
+                        await PublishSecurityEventAsync(httpRequest, BackchannelAuditEvents.Exception, BackchannelAuditEvents.Dispatch, IdpConstants.StatusFailure, ex.GetType().Name, logoutEventId, uri);
                         _logger.LogWarning(
                             ex,
                             "SecurityEvent backchannel_logout_exception event={LogoutEventId} tenant={TenantId} uri={Uri} attempt={Attempt}",
@@ -550,7 +551,7 @@ namespace Authentication.DomainService.Authentication
 
                     if (attempt < maxAttempts)
                     {
-                        await Task.Delay(TimeSpan.FromMilliseconds(AuthenticationConstants.BackchannelRetryBackoffMilliseconds * attempt));
+                        await Task.Delay(TimeSpan.FromMilliseconds(IdpConstants.BackchannelRetryBackoffMilliseconds * attempt));
                     }
                 }
 
@@ -571,7 +572,7 @@ namespace Authentication.DomainService.Authentication
                     EventType = BackchannelAuditEvents.Delivery,
                 UserId = bc?.UserId,
                 TenantId = bc?.TenantId,
-                Severity = status.StartsWith("failed", StringComparison.OrdinalIgnoreCase) ? AuthenticationConstants.SeverityWarn : AuthenticationConstants.SeverityInfo,
+                Severity = status.StartsWith("failed", StringComparison.OrdinalIgnoreCase) ? IdpConstants.SeverityWarn : IdpConstants.SeverityInfo,
                 Status = status,
                 Message = $"backchannel logout {status}",
                 Details = $"event={logoutEventId};attempt={attempt};uri={uri};status_code={(statusCode?.ToString() ?? "n/a")};reason={details}",
@@ -1002,7 +1003,7 @@ namespace Authentication.DomainService.Authentication
 
                 // Set session cookie
                 var domain = DomainResolver.ResolveDomain(_tenants.GetTenantByID(tenantId), httpContext.Request).domain;
-                httpContext.Response.Cookies.Append(IdpConstants.BuildIdpSessionCookieKey(bc?.TenantId), sessionId, CreateCookieOptions(null, DateTime.UtcNow.AddDays(AuthenticationConstants.IdpSessionCookieTtlDays)));
+                httpContext.Response.Cookies.Append(IdpConstants.BuildIdpSessionCookieKey(bc?.TenantId), sessionId, CreateCookieOptions(null, DateTime.UtcNow.AddDays(IdpConstants.IdpSessionCookieTtlDays)));
                 return true;
             }
             catch (Exception ex)
@@ -1168,7 +1169,7 @@ namespace Authentication.DomainService.Authentication
                 }
 
                 _logger.LogInformation("Impersonation started by user {UserId} from root tenant {RootTenantId} to target tenant {TargetTenantId}", userId, rootTenant.TenantId, request.TargetTenantId);
-                await WriteImpersonationAuditEventAsync(httpRequest, LoginAuditEvents.ImpersonationStarted, userId, request.TargetTenantId, AuthenticationConstants.SeverityInfo, AuthenticationConstants.StatusSuccess, rootTenant.TenantId);
+                await WriteImpersonationAuditEventAsync(httpRequest, LoginAuditEvents.ImpersonationStarted, userId, request.TargetTenantId, IdpConstants.SeverityInfo, IdpConstants.StatusSuccess, rootTenant.TenantId);
 
                 var tokenRequest = new TokenRequest
                 {
@@ -1289,7 +1290,7 @@ namespace Authentication.DomainService.Authentication
 
             if (session == null)
             {
-                await WriteImpersonationAuditEventAsync(httpRequest, LoginAuditEvents.ImpersonationStopFailed, bc!.UserId, null, AuthenticationConstants.SeverityWarn, OAuthError.SessionNotFound, rootTenant.TenantId);
+                await WriteImpersonationAuditEventAsync(httpRequest, LoginAuditEvents.ImpersonationStopFailed, bc!.UserId, null, IdpConstants.SeverityWarn, OAuthError.SessionNotFound, rootTenant.TenantId);
                 ClearImpersonationCookies(httpResponse, rootDomain, rootCookieDomain);
                 return new UnauthorizedObjectResult(new { error = OAuthError.SessionExpired });
             }
@@ -1331,7 +1332,7 @@ namespace Authentication.DomainService.Authentication
             var rootUser = !string.IsNullOrWhiteSpace(bc!.UserId) ? await _authenticationRepository.GetUserByIdAsync(bc!.UserId) : null;
             if (rootUser == null)
             {
-                await WriteImpersonationAuditEventAsync(httpRequest, LoginAuditEvents.ImpersonationStopFailed, bc!.UserId, session.TargetTenantId, AuthenticationConstants.SeverityWarn, OAuthError.RootUserNotFound, rootTenant.TenantId);
+                await WriteImpersonationAuditEventAsync(httpRequest, LoginAuditEvents.ImpersonationStopFailed, bc!.UserId, session.TargetTenantId, IdpConstants.SeverityWarn, OAuthError.RootUserNotFound, rootTenant.TenantId);
                 ClearImpersonationCookies(httpResponse, rootDomain, rootCookieDomain);
                 return new BadRequestObjectResult(new { error = "session_expired" });
             }
@@ -1339,7 +1340,7 @@ namespace Authentication.DomainService.Authentication
             var tokenResponse = await _authSession.ManageTokenAsync(tokenRequest, configuration, rootUser);
             if (!string.IsNullOrWhiteSpace(tokenResponse.Error))
             {
-                await WriteImpersonationAuditEventAsync(httpRequest, LoginAuditEvents.ImpersonationStopFailed, bc!.UserId, session.TargetTenantId, AuthenticationConstants.SeverityWarn, tokenResponse.Error, rootTenant.TenantId);
+                await WriteImpersonationAuditEventAsync(httpRequest, LoginAuditEvents.ImpersonationStopFailed, bc!.UserId, session.TargetTenantId, IdpConstants.SeverityWarn, tokenResponse.Error, rootTenant.TenantId);
                 ClearImpersonationCookies(httpResponse, rootDomain, rootCookieDomain);
                 return new BadRequestObjectResult(new { error = tokenResponse.Error });
             }
@@ -1359,7 +1360,7 @@ namespace Authentication.DomainService.Authentication
                 _logger.LogWarning(ex, "Failed to cleanup impersonation session {SessionId}", impersonationSessionId);
             }
 
-            await WriteImpersonationAuditEventAsync(httpRequest, LoginAuditEvents.ImpersonationStopped, bc!.UserId, session.TargetTenantId, AuthenticationConstants.SeverityInfo, AuthenticationConstants.StatusSuccess, rootTenant.TenantId);
+            await WriteImpersonationAuditEventAsync(httpRequest, LoginAuditEvents.ImpersonationStopped, bc!.UserId, session.TargetTenantId, IdpConstants.SeverityInfo, IdpConstants.StatusSuccess, rootTenant.TenantId);
 
             await _authSession.RevokeRefreshToken(refreshToken);
 
@@ -1427,7 +1428,7 @@ namespace Authentication.DomainService.Authentication
             var isSharedWithUser = await IsTenantSharedWithUserAsync(userId, request.TargetTenantId);
             if (!isSharedWithUser)
             {
-                await WriteImpersonationAuditEventAsync(httpRequest, LoginAuditEvents.ImpersonationStartDenied, userId, request.TargetTenantId, AuthenticationConstants.SeverityWarn, OAuthError.NotSharedWithUser, rootTenant.TenantId);
+                await WriteImpersonationAuditEventAsync(httpRequest, LoginAuditEvents.ImpersonationStartDenied, userId, request.TargetTenantId, IdpConstants.SeverityWarn, OAuthError.NotSharedWithUser, rootTenant.TenantId);
                 return (new ObjectResult(new
                 {
                     error = "forbidden",
@@ -1497,7 +1498,7 @@ namespace Authentication.DomainService.Authentication
                     };
                 }
 
-                await WriteImpersonationAuditEventAsync(httpRequest, "org_switched", userId, request.TargetTenantId, AuthenticationConstants.SeverityInfo, AuthenticationConstants.StatusSuccess, rootTenant.TenantId);
+                await WriteImpersonationAuditEventAsync(httpRequest, "org_switched", userId, request.TargetTenantId, IdpConstants.SeverityInfo, IdpConstants.StatusSuccess, rootTenant.TenantId);
 
                 var cookiesSet = AppendCookies(newTokenResponse, httpResponse, rootDomain);
                 if (cookiesSet)
