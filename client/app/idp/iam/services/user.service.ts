@@ -110,7 +110,9 @@ export class UserService {
     return serviceInstances.idpService.post(USER_ENDPOINTS.CREATE, createPayload);
   }
 
-  isUserExist(email: string): Promise<{ isSuccess: boolean; exists: boolean }> {
+  isUserExist(
+    email: string,
+  ): Promise<{ isSuccess: boolean; exists: boolean; organizationIds?: string[] }> {
     return serviceInstances.idpService.get(`${USER_ENDPOINTS.EXISTS}?email=${encodeURIComponent(email)}`);
   }
 
