@@ -32,14 +32,15 @@ namespace Api.Controllers
         [HttpGet("sessions")]
         public async Task<ActionResult<BaseQueryListResponse<IQueryable<SessionDto>>>> GetSessions([FromQuery] GetSessionsRequest req, CancellationToken ct)
         {
-            var result = await _securityQueryService.GetSessionsAsync(req, ct);
+            var targetUserId = ResolveTargetUserId(req.UserId);
+            var result = await _securityQueryService.GetSessionsAsync(targetUserId, req, ct);
             return Ok(result);
         }
 
         [HttpGet("sessions/{sessionId}")]
         public async Task<ActionResult<SessionDto?>> GetSession([FromRoute] string sessionId, CancellationToken ct)
         {
-            var result = await _securityQueryService.GetSessionAsync(sessionId, ct);
+            var result = await _securityQueryService.GetSessionByIdAsync(sessionId, ct);
             if (result == null)
             {
                 return NotFound(new { error = "session_not_found" });
@@ -50,7 +51,14 @@ namespace Api.Controllers
         [HttpGet("sessions/{sessionId}/timeline")]
         public async Task<ActionResult<SessionTimelineDto?>> GetSessionTimeline([FromRoute] string sessionId, CancellationToken ct)
         {
-            var result = await _securityQueryService.GetSessionTimelineAsync(sessionId, ct);
+            var session = await _securityQueryService.GetSessionByIdAsync(sessionId, ct);
+            if (session == null)
+            {
+                return NotFound(new { error = "session_not_found" });
+            }
+
+            var targetUserId = ResolveTargetUserId(session.UserId);
+            var result = await _securityQueryService.GetSessionTimelineAsync(targetUserId, sessionId, ct);
             if (result == null)
             {
                 return NotFound(new { error = "session_not_found" });
@@ -61,16 +69,18 @@ namespace Api.Controllers
         [HttpPost("sessions/{sessionId}/revoke")]
         public async Task<ActionResult<RevokeSessionResponse>> RevokeSession([FromRoute] string sessionId, [FromBody] RevokeSessionRequest? req, CancellationToken ct)
         {
-            var bc = BlocksContext.GetContext();
-            var actorUserId = bc?.UserId;
-            if (string.IsNullOrWhiteSpace(actorUserId))
+            var session = await _securityQueryService.GetSessionByIdAsync(sessionId, ct);
+            if (session == null)
             {
-                return Unauthorized();
+                return NotFound(new { error = "session_not_found" });
             }
 
-            var currentSessionId = await _securityQueryService.ResolveCurrentSessionIdAsync(actorUserId!, ct);
+            var actorUserId = ResolveActorUserId();
+            var targetUserId = ResolveTargetUserId(session.UserId);
 
-            var result = await _sessionRevocationService.RevokeSessionAsync(sessionId, actorUserId!, currentSessionId, req?.Reason, ct);
+            var currentSessionId = await _securityQueryService.ResolveCurrentSessionIdAsync(actorUserId, ct);
+
+            var result = await _sessionRevocationService.RevokeSessionAsync(sessionId, actorUserId, currentSessionId, targetUserId, req?.Reason, ct);
 
             if (result.Warnings.Contains("cannot_revoke_current_session"))
             {
@@ -91,14 +101,16 @@ namespace Api.Controllers
         [HttpGet("history")]
         public async Task<ActionResult<BaseQueryListResponse<IQueryable<AuthHistoryDto>>>> GetHistory([FromQuery] GetHistoryRequest req, CancellationToken ct)
         {
-            var result = await _securityQueryService.GetHistoryAsync(req, ct);
+            var targetUserId = ResolveTargetUserId(req.UserId);
+            var result = await _securityQueryService.GetHistoryAsync(targetUserId, req, ct);
             return Ok(result);
         }
 
         [HttpGet("idp-sessions")]
-        public async Task<ActionResult<IdpSessionSummaryDto?>> GetIdpSession(CancellationToken ct)
+        public async Task<ActionResult<IdpSessionSummaryDto?>> GetIdpSession([FromQuery(Name = "userId")] string? userId, CancellationToken ct)
         {
-            var result = await _securityQueryService.GetIdpSessionAsync(ct);
+            var targetUserId = ResolveTargetUserId(userId);
+            var result = await _securityQueryService.GetIdpSessionAsync(targetUserId, ct);
             if (result == null)
             {
                 return NotFound(new { error = "idp_session_not_found" });
@@ -107,10 +119,22 @@ namespace Api.Controllers
         }
 
         [HttpGet("impersonations")]
-        public async Task<ActionResult<List<ImpersonationSummaryDto>>> GetImpersonations(CancellationToken ct)
+        public async Task<ActionResult<List<ImpersonationSummaryDto>>> GetImpersonations([FromQuery(Name = "userId")] string? userId, CancellationToken ct)
         {
-            var result = await _securityQueryService.GetImpersonationsAsync(ct);
+            var targetUserId = ResolveTargetUserId(userId);
+            var result = await _securityQueryService.GetImpersonationsAsync(targetUserId, ct);
             return Ok(result);
+        }
+
+        private string ResolveActorUserId() => BlocksContext.GetContext()?.UserId ?? string.Empty;
+
+        private string ResolveTargetUserId(string? requestedUserId)
+        {
+            if (!string.IsNullOrWhiteSpace(requestedUserId))
+            {
+                return requestedUserId;
+            }
+            return ResolveActorUserId();
         }
     }
 }

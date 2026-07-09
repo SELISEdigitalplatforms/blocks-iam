@@ -7,6 +7,7 @@ namespace Authentication.DomainService.Security.Repositories
     {
         Task<IReadOnlyList<SessionDto>> GetSessionsAsync(string userId, string? tenantId, GetSessionsRequest req, CancellationToken ct);
         Task<SessionDto?> GetSessionAsync(string userId, string? tenantId, string sessionId, CancellationToken ct);
+        Task<SessionDto?> GetSessionByIdAsync(string sessionId, CancellationToken ct);
         Task<SessionDto?> GetSessionByRefreshTokenAsync(string userId, string? tenantId, string refreshToken, CancellationToken ct);
         Task<RefreshTokenStatus?> GetRefreshTokenStatusAsync(string sessionId, CancellationToken ct);
         Task<IReadOnlyList<RevokedAccessTokenDto>> GetRevokedAccessTokensAsync(string userId, CancellationToken ct);
