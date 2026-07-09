@@ -53,7 +53,11 @@ export const OrganizationActions = ({ organization }: OrganizationActionsProps) 
         </DropdownMenuContent>
       </DropdownMenu>
       <Dialog open={isRenameModalOpen} onOpenChange={setIsRenameModalOpen}>
-        <UpdateOrganization organization={organization} isOpen={isRenameModalOpen} />
+        <UpdateOrganization
+          organization={organization}
+          isOpen={isRenameModalOpen}
+          onClose={() => setIsRenameModalOpen(false)}
+        />
       </Dialog>
       <Dialog open={isToggleStatusModalOpen} onOpenChange={setIsToggleStatusModalOpen}>
         <ToggleOrganizationStatus
