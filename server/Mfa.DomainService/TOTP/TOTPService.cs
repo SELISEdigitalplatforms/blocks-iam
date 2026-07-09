@@ -1,4 +1,5 @@
 ﻿using Blocks.Genesis;
+using DomainService.Storage;
 using FluentValidation;
 using Mfa.DomainService.Entities;
 using Mfa.DomainService.Services;
@@ -8,6 +9,7 @@ using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
 using OtpNet;
 using QRCoder;
+using StorageDriver;
 using System.Net;
 using System.Text;
 using System.Text.Json;
@@ -23,12 +25,10 @@ namespace Mfa.DomainService.TOTP
         private readonly ICacheClient _cacheClient;
         private readonly IValidator<VerifyOtpRequest> _validator;
         private readonly ITenants _tenant;
-        private readonly IHttpService _httpService;
+        private readonly IStorageDriverService _storageDriverService;
+        private HttpClient _httpClient;
 
         private const long DefaultTotpLoginSession = 15 * 60;
-        private const string AzureBlobHeader = "x-ms-blob-type";
-        private const string AzureBlobBlockType = "BlockBlob";
-        private const string BlocksKeyHeader = "x-blocks-key";
 
         public TotpService(IMfaManagementRepository repository,
                            ILogger<TotpService> logger,
@@ -37,7 +37,7 @@ namespace Mfa.DomainService.TOTP
                            ICacheClient cacheClient,
                            IValidator<VerifyOtpRequest> validator,
                            ITenants tenant,
-                           IHttpService httpService)
+                           IStorageDriverService storageDriverService)
         {
             _repository = repository;
             _logger = logger;
@@ -46,7 +46,7 @@ namespace Mfa.DomainService.TOTP
             _cacheClient = cacheClient;
             _validator = validator;
             _tenant = tenant;
-            _httpService = httpService;
+            _storageDriverService = storageDriverService;
         }
 
         public async Task<OtpGenerationResponse> GenerateAsync(UserInfo userInfo, string? sendPhoneNumberAsEmailDomain = null)
@@ -81,11 +81,11 @@ namespace Mfa.DomainService.TOTP
             if (string.IsNullOrWhiteSpace(preSignedUrl)) { return new SetUpUserTotpResponse { Errors = new Dictionary<string, string> { { "configuration_not_exit", "please_check_default_storage_configuration" } } }; }
 
             var qrCodeData = GenerateQrCodeImageData(applicationDomain, userInfo.Email ?? string.Empty, secret);
-            var statusCode = await UploadQrCodeAsync(preSignedUrl, qrCodeData);
+            var response = await UploadQrCodeAsync(preSignedUrl, qrCodeData);
 
-            if (statusCode != HttpStatusCode.Created)
+            if (response.StatusCode != HttpStatusCode.Created)
             {
-                _logger.LogError("QR code upload failed. statusCode: {0}", statusCode);
+                _logger.LogError("QR code upload failed. statusCode: {0}", response.StatusCode);
                 return CreateOtpResponse(false);
             }
 
@@ -110,9 +110,7 @@ namespace Mfa.DomainService.TOTP
 
         private async Task<string> GetPreSignedUrlAsync(string fileId)
         {
-            var url = _configuration["PreSignedUriForUpload"];
-
-            var requestBody = new
+            var requestBody = new GetPreSignedUrlForUploadRequest
             {
                 ItemId = fileId,
                 MetaData = "{\"Title\":{\"Type\":\"String\",\"Value\":\"QrImage.png\"},\"OriginalName\":{\"Type\":\"String\",\"Value\":\"image\"}}",
@@ -122,37 +120,35 @@ namespace Mfa.DomainService.TOTP
                 AccessModifier = "Public"
             };
 
-            var response = await SendAuthorizedRequestAsync(HttpMethod.Post, url ?? string.Empty, requestBody);
-            return response.GetProperty("uploadUrl").GetString() ?? string.Empty;
+            //var response = await SendAuthorizedRequestAsync(HttpMethod.Post, url ?? string.Empty, requestBody);
+            //return response.GetProperty("uploadUrl").GetString() ?? string.Empty;
+
+            var presignedUrlResponse = await _storageDriverService.GetPerSignedUrlForUploadAsync(requestBody);
+            return presignedUrlResponse.UploadUrl;
         }
 
         private async Task<string> GetFileUriAsync(string fileId)
         {
-            var url = $"{_configuration["GetFileEnpPoint"]}{fileId}";
-            var response = await SendAuthorizedRequestAsync(HttpMethod.Get, url);
-            return response.GetProperty("url").GetString() ?? string.Empty;
+            //var url = $"{_configuration["GetFileEnpPoint"]}{fileId}";
+            //var response = await SendAuthorizedRequestAsync(HttpMethod.Get, url);
+            //return response.GetProperty("url").GetString() ?? string.Empty;
+
+            var fileUriResponse = await _storageDriverService.GetUrlForDownloadFileAsync(new GetFileRequest { FileId = fileId });
+            return fileUriResponse.Url;
         }
 
-        private async Task<HttpStatusCode> UploadQrCodeAsync(string preSignedUrl, byte[] qrCodeData)
+        private async Task<HttpResponseMessage> UploadQrCodeAsync(string preSignedUrl, byte[] qrCodeData)
         {
-            var headers = new Dictionary<string, string>
+            _httpClient = new HttpClient();
+
+            using var request = new HttpRequestMessage(HttpMethod.Put, preSignedUrl)
             {
-                { AzureBlobHeader, AzureBlobBlockType }
+                Content = new ByteArrayContent(qrCodeData)
             };
 
-            var (response, error) = await _httpService.SendRequest<string>(
-                HttpMethod.Put,
-                preSignedUrl,
-                qrCodeData,
-                "application/octet-stream",
-                headers);
+            request.Headers.Add("x-ms-blob-type", "BlockBlob");
 
-            if (!string.IsNullOrWhiteSpace(error) || response is null)
-            {
-                return HttpStatusCode.BadRequest;
-            }
-
-            return HttpStatusCode.Created;
+            return await _httpClient.SendAsync(request);
         }
 
         private async Task SaveOtpInfoAsync(string userId, string secret, string imageUri, string fileId, string twoFactorId)
@@ -172,39 +168,6 @@ namespace Mfa.DomainService.TOTP
             await _repository.SaveAsync(otpInfo);
         }
 
-        private async Task<JsonElement> SendAuthorizedRequestAsync(HttpMethod method, string url, object? content = null)
-        {
-            var tokenResponse = TokenHelper.GetToken(_httpContextAccessor.HttpContext?.Request, _tenant);
-            var headers = new Dictionary<string, string>
-            {
-                { BlocksKeyHeader, GetBlocksKey() },
-                { "Authorization", $"Bearer {tokenResponse.Token}" }
-            };
-
-            var (response, error) = await _httpService.SendRequest<string>(method, url, content, "application/json", headers);
-
-            if (!string.IsNullOrWhiteSpace(error) || string.IsNullOrWhiteSpace(response))
-            {
-                _logger.LogError("IHttpService call failed. method: {0} url: {1} error: {2}", method, url, error);
-                return JsonDocument.Parse("{}").RootElement;
-            }
-
-            try
-            {
-                using var document = JsonDocument.Parse(response);
-                return document.RootElement.Clone();
-            }
-            catch (JsonException ex)
-            {
-                _logger.LogError(ex, "Failed to parse response. method: {0} url: {1}", method, url);
-                return JsonDocument.Parse("{}").RootElement;
-            }
-        }
-
-        private string GetBlocksKey()
-        {
-            return _httpContextAccessor.HttpContext?.Request.Headers[BlocksKeyHeader].ToString() ?? string.Empty;
-        }
 
         private static byte[] GenerateQrCodeImageData(string issuer, string email, string secret)
         {
