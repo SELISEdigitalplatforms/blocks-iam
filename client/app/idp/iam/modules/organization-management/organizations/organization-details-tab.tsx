@@ -2,6 +2,7 @@ import { IOrganization } from "@blocks-idp/iam/models/organization";
 import { useGetUserById } from "@blocks-idp/iam/hooks/use-user";
 import { useGetRoles } from "@blocks-idp/iam/hooks/use-roles";
 import { useProjectStore } from "@seliseblocks/blocks-kit";
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui-kits/card/card";
 import {
   Calendar,
   Clock,
@@ -75,48 +76,58 @@ export const OrganizationDetailsTab = ({ organization }: { organization: IOrgani
     .join(", ");
 
   return (
-    <div>
-      <DetailRow
-        icon={<SquarePen className="h-4 w-4" />}
-        label="Description"
-        value={organization.description}
-      />
-      <DetailRow
-        icon={<Globe className="h-4 w-4" />}
-        label="Website"
-        value={
-          organization.websiteUrl && (
-            <a
-              href={organization.websiteUrl}
-              target="_blank"
-              rel="noreferrer"
-              className="inline-flex items-center gap-1 text-primary hover:underline"
-            >
-              {organization.websiteUrl}
-              <ExternalLink className="h-3.5 w-3.5" />
-            </a>
-          )
-        }
-      />
-      <DetailRow icon={<Mail className="h-4 w-4" />} label="Email" value={organization.email} />
-      <DetailRow icon={<Phone className="h-4 w-4" />} label="Phone" value={organization.phoneNumber} />
-      <DetailRow
-        icon={<Calendar className="h-4 w-4" />}
-        label="Created"
-        value={formatDateTime(organization.createdDate)}
-      />
-      <DetailRow icon={<User className="h-4 w-4" />} label="Created by" value={createdByName} />
-      <DetailRow
-        icon={<Clock className="h-4 w-4" />}
-        label="Last updated"
-        value={formatDateTime(organization.lastUpdatedDate)}
-      />
-      <DetailRow icon={<User className="h-4 w-4" />} label="Last updated by" value={updatedByName} />
-      <DetailRow
-        icon={<UserCog className="h-4 w-4" />}
-        label="Default role for new members"
-        value={defaultRoleNames || undefined}
-      />
-    </div>
+    <Card>
+      <CardHeader className="gap-4">
+        <div>
+          <CardTitle>Details</CardTitle>
+          <CardDescription className="mt-1">
+            Organization information and configuration.
+          </CardDescription>
+        </div>
+      </CardHeader>
+      <CardContent>
+        <DetailRow
+          icon={<SquarePen className="h-4 w-4" />}
+          label="Description"
+          value={organization.description}
+        />
+        <DetailRow
+          icon={<Globe className="h-4 w-4" />}
+          label="Website"
+          value={
+            organization.websiteUrl && (
+              <a
+                href={organization.websiteUrl}
+                target="_blank"
+                rel="noreferrer"
+                className="inline-flex items-center gap-1 text-primary hover:underline"
+              >
+                {organization.websiteUrl}
+                <ExternalLink className="h-3.5 w-3.5" />
+              </a>
+            )
+          }
+        />
+        <DetailRow icon={<Mail className="h-4 w-4" />} label="Email" value={organization.email} />
+        <DetailRow icon={<Phone className="h-4 w-4" />} label="Phone" value={organization.phoneNumber} />
+        <DetailRow
+          icon={<Calendar className="h-4 w-4" />}
+          label="Created"
+          value={formatDateTime(organization.createdDate)}
+        />
+        <DetailRow icon={<User className="h-4 w-4" />} label="Created by" value={createdByName} />
+        <DetailRow
+          icon={<Clock className="h-4 w-4" />}
+          label="Last updated"
+          value={formatDateTime(organization.lastUpdatedDate)}
+        />
+        <DetailRow icon={<User className="h-4 w-4" />} label="Last updated by" value={updatedByName} />
+        <DetailRow
+          icon={<UserCog className="h-4 w-4" />}
+          label="Default role for new members"
+          value={defaultRoleNames || undefined}
+        />
+      </CardContent>
+    </Card>
   );
 };
