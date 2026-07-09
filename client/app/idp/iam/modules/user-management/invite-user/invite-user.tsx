@@ -21,7 +21,7 @@ import {
   FormLabel,
   FormMessage,
 } from "@/components/ui-kits/form/form";
-import { useAddUser } from "@blocks-idp/iam/hooks/use-user";
+import { useAddUser, useCheckUserExists } from "@blocks-idp/iam/hooks/use-user";
 import { z } from "zod";
 import { useProjectStore } from "@seliseblocks/blocks-kit";
 import { useEffect, useMemo, useState } from "react";
@@ -37,6 +37,8 @@ import {
 } from "@/components/ui-kits/popover/popover";
 
 type InviteFormValues = z.infer<typeof inviteUserFormSchema>;
+
+const DEFAULT_ORGANIZATION_ID = "default";
 
 export const InviteUser = () => {
   const { isPending, mutateAsync: createUser } = useAddUser();
@@ -60,6 +62,13 @@ export const InviteUser = () => {
   const selectedOrgId = form.watch("organizationIds")?.[0] ?? "";
   const isValidEmailFormat = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(emailValue.trim());
 
+  // Silently check whether the email already maps to a user — drives whether
+  // the first/last name fields appear. The user is never notified either way.
+  const { data: existsData } = useCheckUserExists(emailValue, {
+    enabled: isValidEmailFormat,
+  });
+  const exists = existsData?.exists === true;
+
   useEffect(() => {
     if (!open) {
       form.reset();
@@ -67,10 +76,19 @@ export const InviteUser = () => {
     }
   }, [open, form]);
 
-  const orgOptions = useMemo(
+  const enabledOrgs = useMemo(
     () => (orgsData?.organizations ?? []).filter((org) => org.isEnabled),
     [orgsData?.organizations],
   );
+
+  // Dropdown list: enabled orgs with a synthetic "Default" entry pinned at the top.
+  const orgOptions = useMemo(() => {
+    const list = enabledOrgs.filter((org) => org.itemId !== DEFAULT_ORGANIZATION_ID);
+    return [
+      { itemId: DEFAULT_ORGANIZATION_ID, name: "Default", isEnabled: true },
+      ...list,
+    ];
+  }, [enabledOrgs]);
 
   const orgIdToName = useMemo(() => {
     const map = new Map<string, string>();
@@ -119,8 +137,7 @@ export const InviteUser = () => {
   const isFormInvalid =
     !isValidEmailFormat ||
     !selectedOrgId ||
-    !form.watch("firstName")?.trim() ||
-    !form.watch("lastName")?.trim();
+    (!exists && (!form.watch("firstName")?.trim() || !form.watch("lastName")?.trim()));
 
   return (
     <Dialog open={open} onOpenChange={setOpen}>
@@ -208,7 +225,7 @@ export const InviteUser = () => {
                 )}
               />
 
-              {isValidEmailFormat && (
+              {!exists && isValidEmailFormat && (
                 <>
                   <FormField
                     control={form.control}
