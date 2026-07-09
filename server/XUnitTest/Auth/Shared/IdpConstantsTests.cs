@@ -23,6 +23,15 @@ namespace XUnitTest.Auth.Shared
             IdpConstants.IdpSessionCookieName.Should().Be("idp_session_id");
         }
 
+        [Theory]
+        [InlineData("tenant-123", "idp_session_id_tenant-123")]
+        [InlineData("", "idp_session_id")]
+        [InlineData(null, "idp_session_id")]
+        public void BuildIdpSessionCookieKey_AppendsTenantIdWhenProvided(string? tenantId, string expected)
+        {
+            IdpConstants.BuildIdpSessionCookieKey(tenantId).Should().Be(expected);
+        }
+
         [Fact]
         public void ProviderNames_AreCorrect()
         {

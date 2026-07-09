@@ -125,7 +125,7 @@ namespace Authentication.DomainService.Authentication
                     });
                 }
 
-                var effectiveSessionId = request.Cookies[$"{IdpConstants.IdpSessionCookieName}_{tenant_id}"];
+                var effectiveSessionId = request.Cookies[IdpConstants.BuildIdpSessionCookieKey(tenant_id)];
 
                 string? resolvedUserId = blocksUserId;
 
@@ -409,7 +409,7 @@ namespace Authentication.DomainService.Authentication
                 : DomainResolver.CreateProductionCookieOptions(resolvedDomain, effectiveExpiry);
 
             response.Cookies.Append(
-                $"{IdpConstants.IdpSessionCookieName}_{tenantId}",
+                IdpConstants.BuildIdpSessionCookieKey(tenantId),
                 sessionId,
                 cookieOptions);
         }

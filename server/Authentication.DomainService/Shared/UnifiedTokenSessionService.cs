@@ -52,7 +52,7 @@ namespace Authentication.DomainService.Shared
                 TenantId = tenant.TenantId,
                 OrganizationId = tokenRequest.OrganizationId,
                 ClientId = tokenRequest.ClientId,
-                SessionId = tokenRequest.Request?.Cookies["idp_session_id"],
+                SessionId = tokenRequest.Request?.Cookies[IdpConstants.BuildIdpSessionCookieKey(tenant?.TenantId)],
                 IssuedUtc = now,
                 ExpiresUtc = refreshTokenExpireOn,
                 AbsoluteExpiresUtc = absoluteRefreshTokenExpireOn,
