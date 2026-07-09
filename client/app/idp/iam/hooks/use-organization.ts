@@ -11,7 +11,7 @@ export const useGetOrganizations = (options: IOrganizationFilter) => {
       iamService.organization.getOrganizations({
         page: options.page,
         pageSize: options.pageSize,
-        searchText: options.search,
+        search: options.search,
         sort: options.sort,
       }),
     enabled: !!options.projectKey,

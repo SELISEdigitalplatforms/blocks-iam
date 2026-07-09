@@ -199,10 +199,10 @@ export const UserProfile = ({ id }: { id: string }) => {
                 <Clock className="h-3.5 w-3.5" />
                 <span>History</span>
               </TabsTrigger>
-              <TabsTrigger onClick={() => setTabId("personalAccessTokens")} value="personalAccessTokens" className={cn(underlineTabTriggerClass, "gap-1.5")}>
+              {/* <TabsTrigger onClick={() => setTabId("personalAccessTokens")} value="personalAccessTokens" className={cn(underlineTabTriggerClass, "gap-1.5")}>
                 <Key className="h-3.5 w-3.5" />
                 <span>PATs</span>
-              </TabsTrigger>
+              </TabsTrigger> */}
             </TabsList>
           </div>
 
