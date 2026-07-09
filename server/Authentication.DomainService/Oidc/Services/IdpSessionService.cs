@@ -1,9 +1,10 @@
 using Idp.DomainService.Oidc.Contracts;
+using Authentication.DomainService.Utilities;
 using Authentication.DomainService.Authentication;
 using Authentication.DomainService.Oidc.Repositories;
 using Authentication.DomainService.Services;
 using Authentication.DomainService.Shared;
-using Authentication.DomainService.Utilities;
+using Iam.DomainService.Utilities;
 using Blocks.Genesis;
 using Microsoft.Extensions.Logging;
 
@@ -442,8 +443,8 @@ namespace Authentication.DomainService.Oidc.Services
                 {
                     EventType = eventType,
                     UserId = userId,
-                    Severity = AuthenticationConstants.SeverityInfo,
-                    Status = AuthenticationConstants.StatusSuccess,
+                    Severity = IdpConstants.SeverityInfo,
+                    Status = IdpConstants.StatusSuccess,
                     Message = details ?? eventType,
                     Timestamp = DateTime.UtcNow
                 };

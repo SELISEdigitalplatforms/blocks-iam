@@ -1,4 +1,5 @@
 using Blocks.Genesis;
+using Authentication.DomainService.Utilities;
 using Authentication.DomainService.Entities;
 using Authentication.DomainService.OAuth.RequestModel;
 using Authentication.DomainService.OAuth.ResponseModel;
@@ -8,7 +9,7 @@ using Microsoft.IdentityModel.Tokens;
 using System.Security.Claims;
 using System.Security.Cryptography;
 using System.Text;
-using Authentication.DomainService.Utilities;
+using Iam.DomainService.Utilities;
 
 namespace Authentication.DomainService.OAuth.Services
 {

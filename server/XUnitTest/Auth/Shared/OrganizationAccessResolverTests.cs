@@ -1,5 +1,6 @@
 using Authentication.DomainService.Shared;
 using Authentication.DomainService.Utilities;
+using Iam.DomainService.Utilities;
 using FluentAssertions;
 using Iam.DomainService.Entities;
 
@@ -25,10 +26,10 @@ namespace XUnitTest.Auth.Shared
             var user = new User
             {
                 LastUsedOrganizationId = "org-deleted",
-                OrganizationIds = [AuthenticationConstants.DefaultOrganizationId, "org-2"]
+                OrganizationIds = [IdpConstants.DefaultOrganizationId, "org-2"]
             };
 
-            OrganizationAccessResolver.ResolveEffectiveOrganizationId(user).Should().Be(AuthenticationConstants.DefaultOrganizationId);
+            OrganizationAccessResolver.ResolveEffectiveOrganizationId(user).Should().Be(IdpConstants.DefaultOrganizationId);
         }
 
         [Fact]

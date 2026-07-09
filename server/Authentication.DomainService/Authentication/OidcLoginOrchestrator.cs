@@ -1,4 +1,5 @@
 using Authentication.DomainService.Entities;
+using Iam.DomainService.Utilities;
 using Authentication.DomainService.OAuth;
 using Authentication.DomainService.OAuth.RequestModel;
 using Authentication.DomainService.Oidc.Repositories;
@@ -100,7 +101,7 @@ namespace Authentication.DomainService.Authentication
                 TenantId = request.TenantId,
                 CreatedAt = DateTime.UtcNow
             });
-            await _cacheClient.AddStringValueAsync(contextKey, contextValue, AuthenticationConstants.OidcAuthorizationCodeCacheTtlSeconds);
+            await _cacheClient.AddStringValueAsync(contextKey, contextValue, IdpConstants.OidcAuthorizationCodeCacheTtlSeconds);
 
             return await _authenticationService.GetOidcSocialAuthorizationUrlAsync(request.ProviderClientId, oidcState, request.ProviderRedirectUri ?? string.Empty);
         }
@@ -147,7 +148,7 @@ namespace Authentication.DomainService.Authentication
                 request.State ?? string.Empty,
                 request.Nonce ?? string.Empty,
                 request.CodeChallenge ?? string.Empty,
-                request.CodeChallengeMethod ?? AuthenticationConstants.PkceMethodS256,
+                request.CodeChallengeMethod ?? IdpConstants.PkceMethodS256,
                 null,
                 requestedTenantId ?? string.Empty,
                 httpRequest.HttpContext.Request,
@@ -263,14 +264,14 @@ namespace Authentication.DomainService.Authentication
                 State = request.State ?? string.Empty,
                 Nonce = request.Nonce ?? string.Empty,
                 CodeChallenge = request.CodeChallenge ?? string.Empty,
-                CodeChallengeMethod = request.CodeChallengeMethod ?? AuthenticationConstants.PkceMethodS256,
+                CodeChallengeMethod = request.CodeChallengeMethod ?? IdpConstants.PkceMethodS256,
                 TenantId = tenantId ?? string.Empty
             };
 
             await _cacheClient.AddStringValueAsync(
                 $"oidc_mfa_login:{challengeResponse.MfaId}",
                 JsonSerializer.Serialize(mfaContext),
-                AuthenticationConstants.OidcStateCacheTtlSeconds);
+                IdpConstants.OidcStateCacheTtlSeconds);
 
             return new OkObjectResult(new
             {
@@ -344,8 +345,8 @@ namespace Authentication.DomainService.Authentication
                     UserId = user.ItemId,
                     ClientId = request.ClientId,
                     MfaType = user.UserMfaType,
-                    Severity = AuthenticationConstants.SeverityWarn,
-                    Status = AuthenticationConstants.StatusFailure
+                    Severity = IdpConstants.SeverityWarn,
+                    Status = IdpConstants.StatusFailure
                 });
 
                 if (updatedUser?.LockoutUntilUtc.HasValue == true && updatedUser.LockoutUntilUtc.Value > DateTime.UtcNow)
@@ -365,7 +366,7 @@ namespace Authentication.DomainService.Authentication
                 UserId = user.ItemId,
                 ClientId = request.ClientId,
                 MfaType = user.UserMfaType,
-                Status = AuthenticationConstants.StatusSuccess
+                Status = IdpConstants.StatusSuccess
             });
 
             return await _authorizationEndpoint.AuthorizeAsync(
@@ -376,7 +377,7 @@ namespace Authentication.DomainService.Authentication
                 mfaContext.State ?? string.Empty,
                 mfaContext.Nonce ?? string.Empty,
                 mfaContext.CodeChallenge ?? string.Empty,
-                mfaContext.CodeChallengeMethod ?? AuthenticationConstants.PkceMethodS256,
+                mfaContext.CodeChallengeMethod ?? IdpConstants.PkceMethodS256,
                 null,
                 mfaContext.TenantId ?? string.Empty,
                 httpRequest,
@@ -432,7 +433,7 @@ namespace Authentication.DomainService.Authentication
             public string State { get; set; } = string.Empty;
             public string Nonce { get; set; } = string.Empty;
             public string CodeChallenge { get; set; } = string.Empty;
-            public string CodeChallengeMethod { get; set; } = AuthenticationConstants.PkceMethodS256;
+            public string CodeChallengeMethod { get; set; } = IdpConstants.PkceMethodS256;
             public string TenantId { get; set; } = string.Empty;
         }
     }

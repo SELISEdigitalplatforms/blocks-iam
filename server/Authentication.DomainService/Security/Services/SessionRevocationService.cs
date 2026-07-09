@@ -2,7 +2,7 @@ using Authentication.DomainService.Authentication;
 using Authentication.DomainService.Dtos;
 using Authentication.DomainService.Oidc.Repositories;
 using Authentication.DomainService.Services;
-using Authentication.DomainService.Utilities;
+using Iam.DomainService.Utilities;
 using Blocks.Genesis;
 using Authentication.DomainService.Security.Models;
 using Authentication.DomainService.Security.Repositories;
