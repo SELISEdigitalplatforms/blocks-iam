@@ -195,15 +195,11 @@ export class UserService {
     );
   }
 
-  async revokeSession(sessionId: string): Promise<IRevokeSessionResponse> {
+  async revokeSession(sessionId: string, reason?: string): Promise<IRevokeSessionResponse> {
     return serviceInstances.idpService.post(
       `${USER_ENDPOINTS.REVOKE_SESSION}/${sessionId}/revoke`,
-      {},
+      reason ? { reason } : {},
     );
-  }
-
-  async revokeAllSessions(userId: string): Promise<IRevokeSessionResponse> {
-    return serviceInstances.idpService.post(USER_ENDPOINTS.REVOKE_ALL_SESSIONS, { userId });
   }
 
   async getHistories(
@@ -214,10 +210,6 @@ export class UserService {
     query.set("pageSize", String(payload.pageSize));
     query.set("projectkey", payload.projectKey);
     query.set("filter.userId", payload.filter.UserId);
-    if (payload.filter.FromDate) query.set("filter.fromDate", payload.filter.FromDate);
-    if (payload.filter.ToDate) query.set("filter.toDate", payload.filter.ToDate);
-    if (payload.filter.Event) query.set("filter.event", payload.filter.Event);
-    if (payload.filter.IpAddress) query.set("filter.ipAddress", payload.filter.IpAddress);
     const res = await serviceInstances.idpService.get<IHistoriesResponse>(
       `${USER_ENDPOINTS.GET_HISTORIES}?${query.toString()}`,
     );

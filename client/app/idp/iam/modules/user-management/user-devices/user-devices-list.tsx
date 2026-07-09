@@ -69,11 +69,7 @@ const SignOutAction = ({
 
   const handleConfirm = async () => {
     try {
-      const res = await mutateAsync(session.sessionId);
-      if (!res.isSuccess) {
-        showErrorToast({ errors: res.errors });
-        return;
-      }
+      await mutateAsync(session.sessionId);
       showSuccessToast({ description: "Device signed out successfully" });
       setOpen(false);
       onRevoked?.();

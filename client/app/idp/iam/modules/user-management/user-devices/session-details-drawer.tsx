@@ -82,11 +82,7 @@ export const SessionDetailsDrawer = ({
   const handleRevoke = async () => {
     if (!sessionId) return;
     try {
-      const res = await mutateAsync(sessionId);
-      if (!res.isSuccess) {
-        showErrorToast({ errors: res.errors });
-        return;
-      }
+      await mutateAsync(sessionId);
       showSuccessToast({ description: "Device signed out successfully" });
       setIsConfirmOpen(false);
       onRevoked?.();
