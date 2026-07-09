@@ -65,55 +65,56 @@ export const User = ({ id }: { id: string }) => {
         <PageBreadcrumb breadcrumbIndex={2} isLoadingLastItem={isLoading && !displayName} />
       </div>
 
-      <div className="flex flex-col gap-4 lg:flex-row lg:items-stretch lg:gap-x-6">
-        {/* Left column — sidebar (image + account details) */}
-        <div className="mx-auto w-full max-w-[460px] shrink-0 lg:mx-0 lg:max-w-[300px]">
+      <div className="grid grid-cols-1 gap-4 md:grid-cols-[300px_minmax(0,1fr)] md:gap-x-6 md:gap-y-3 lg:gap-x-8">
+        {/* Name + email — col 1, row 1 */}
+        <div className="hidden min-w-0 md:col-start-1 md:row-start-1 md:flex md:flex-col md:justify-end">
+          {isLoading ? (
+            <Skeleton className="h-7 w-48" />
+          ) : (
+            <h1 className="truncate text-2xl font-semibold tracking-tight text-foreground">
+              {displayName || "User"}
+            </h1>
+          )}
+          {data?.data?.email && (
+            <div className="mt-0.5 flex min-w-0 items-center gap-1.5">
+              <span className="min-w-0 truncate text-sm text-muted-foreground">
+                {data.data.email}
+              </span>
+              <CopyToClipboardButton textToCopy={data.data.email}>
+                <span className="sr-only">Copy email</span>
+              </CopyToClipboardButton>
+            </div>
+          )}
+        </div>
+
+        {/* TabsList + action menu — col 2, row 1, bottom-aligned so it meets the email line */}
+        <div className="hidden min-w-0 md:col-start-2 md:row-start-1 md:flex md:items-end md:justify-between md:gap-3">
+          <Tabs value={tabId} onValueChange={setTabId}>
+            <TabsList className={cn(underlineTabsListClass, "w-fit")}>
+              {Menu.map((item) => (
+                <TabsTrigger
+                  key={item.id}
+                  value={item.value}
+                  className={underlineTabTriggerClass}
+                >
+                  {item.label}
+                </TabsTrigger>
+              ))}
+            </TabsList>
+          </Tabs>
+          <UserActionMenu id={id} projectKey={tenantId} />
+        </div>
+
+        {/* Sidebar (image + account details) — col 1, row 2 */}
+        <div className="mx-auto w-full max-w-[460px] md:col-start-1 md:mx-0 md:max-w-none md:row-start-2">
           <UserProfileSidebar id={id} projectKey={tenantId} />
         </div>
 
-        {/* Right column — tabs + tab content, stretched to match left column height */}
-        <section className="flex min-w-0 flex-1 flex-col gap-4 lg:self-stretch">
-          {/* Name + email — aligned with tab list on the right (top of right column) */}
-          <div className="hidden min-w-0 md:flex md:items-end md:justify-between md:gap-3">
-            <div className="min-w-0">
-              {isLoading ? (
-                <Skeleton className="h-7 w-48" />
-              ) : (
-                <h1 className="truncate text-2xl font-semibold tracking-tight text-foreground">
-                  {displayName || "User"}
-                </h1>
-              )}
-              {data?.data?.email && (
-                <div className="mt-0.5 flex min-w-0 items-center gap-1.5">
-                  <span className="min-w-0 truncate text-sm text-muted-foreground">
-                    {data.data.email}
-                  </span>
-                  <CopyToClipboardButton textToCopy={data.data.email}>
-                    <span className="sr-only">Copy email</span>
-                  </CopyToClipboardButton>
-                </div>
-              )}
-            </div>
-
-            <Tabs value={tabId} onValueChange={setTabId}>
-              <TabsList className={cn(underlineTabsListClass, "w-fit")}>
-                {Menu.map((item) => (
-                  <TabsTrigger
-                    key={item.id}
-                    value={item.value}
-                    className={underlineTabTriggerClass}
-                  >
-                    {item.label}
-                  </TabsTrigger>
-                ))}
-              </TabsList>
-            </Tabs>
-            <UserActionMenu id={id} projectKey={tenantId} />
-          </div>
-
+        {/* Right column — col 2, row 2: starts level with the avatar */}
+        <section className="min-w-0 md:col-start-2 md:row-start-2">
           {/* Mobile tab selector */}
           <div className="md:hidden">
-            <div className="flex items-center justify-between rounded text-base">
+            <div className="mb-5 flex items-center justify-between rounded text-base">
               <Select value={tabId} onValueChange={setTabId}>
                 <SelectTrigger className="w-[180px]">
                   <SelectValue placeholder="Theme" />
@@ -130,14 +131,10 @@ export const User = ({ id }: { id: string }) => {
             </div>
           </div>
 
-          {/* Tab content — fills remaining right-column height */}
-          <div className="flex min-h-0 flex-1 flex-col">
-            <div className="flex min-h-0 flex-1 flex-col">
-              {tabId === "access" && <UserAccessTab userId={id} projectKey={tenantId} />}
-              {tabId === "devices" && <UserDevices id={id} projectKey={tenantId} />}
-              {tabId === "history" && <UserHistories id={id} projectKey={tenantId} />}
-            </div>
-          </div>
+          {/* Tab content */}
+          {tabId === "access" && <UserAccessTab userId={id} projectKey={tenantId} />}
+          {tabId === "devices" && <UserDevices id={id} projectKey={tenantId} />}
+          {tabId === "history" && <UserHistories id={id} projectKey={tenantId} />}
         </section>
       </div>
     </div>

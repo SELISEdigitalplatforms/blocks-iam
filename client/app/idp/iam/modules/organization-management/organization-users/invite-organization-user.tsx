@@ -100,18 +100,6 @@ export const InviteOrganizationUser = ({ organizationId }: InviteOrganizationUse
     [orgsData?.organizations],
   );
 
-  // Dropdown list: enabled orgs with a synthetic "Default" entry pinned at the top.
-  const orgOptions = useMemo(() => {
-    const list = enabledOrgs.filter((org) => org.itemId !== DEFAULT_ORGANIZATION_ID);
-    return [{ itemId: DEFAULT_ORGANIZATION_ID, name: "Default", isEnabled: true }, ...list];
-  }, [enabledOrgs]);
-
-  const orgIdToName = useMemo(() => {
-    const map = new Map<string, string>();
-    orgOptions.forEach((o) => map.set(o.itemId, o.name));
-    return map;
-  }, [orgOptions]);
-
   const form = useForm<InviteFormValues>({
     defaultValues: inviteOrganizationUserFormDefaultValue,
     resolver: zodResolver(inviteOrganizationUserFormSchema),
@@ -122,12 +110,33 @@ export const InviteOrganizationUser = ({ organizationId }: InviteOrganizationUse
   const isValidEmailFormat = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(emailValue.trim());
 
   // Silently check whether the email already maps to a user — drives whether
-  // the first/last name fields appear. The user is never notified either way.
+  // the first/last name fields appear and which orgs to hide from the picker.
+  // The user is never notified either way.
   const { data: existsData, isFetching: isFetchingExists } = useCheckUserExists(emailValue, {
     enabled: isValidEmailFormat,
   });
   const isCheckingEmail = useMinDurationFlag(isFetchingExists);
   const exists = existsData?.exists === true;
+  const existingUserOrgIds = useMemo(
+    () => new Set(existsData?.organizationIds ?? []),
+    [existsData?.organizationIds],
+  );
+
+  // Dropdown list: enabled orgs with a synthetic "Default" entry pinned at the top.
+  // When the email maps to an existing user, hide orgs they're already in.
+  const orgOptions = useMemo(() => {
+    const list = enabledOrgs.filter(
+      (org) =>
+        org.itemId !== DEFAULT_ORGANIZATION_ID && !existingUserOrgIds.has(org.itemId),
+    );
+    return [{ itemId: DEFAULT_ORGANIZATION_ID, name: "Default", isEnabled: true }, ...list];
+  }, [enabledOrgs, existingUserOrgIds]);
+
+  const orgIdToName = useMemo(() => {
+    const map = new Map<string, string>();
+    orgOptions.forEach((o) => map.set(o.itemId, o.name));
+    return map;
+  }, [orgOptions]);
 
   useEffect(() => {
     if (!open) {
