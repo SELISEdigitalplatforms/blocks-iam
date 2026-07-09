@@ -103,7 +103,7 @@ export const OrganizationsSidebarList = ({
   }, [hasMore, isLoadingMore]);
 
   const visibleOrgs = organizations.filter((org) =>
-    statusFilter.includes(org.isEnabled ? "active" : "disabled"),
+    statusFilter.includes(org.isDisabled ? "disabled" : "active"),
   );
   const isFiltered = statusFilter.length !== ALL_STATUSES.length;
 
@@ -209,10 +209,10 @@ export const OrganizationsSidebarList = ({
                         {org.name}
                       </span>
                       <Badge
-                        variant={org.isEnabled ? "success" : "secondary"}
+                        variant={!org.isDisabled ? "success" : "secondary"}
                         className="shrink-0 text-[10px]"
                       >
-                        {org.isEnabled ? "Active" : "Disabled"}
+                        {!org.isDisabled ? "Active" : "Disabled"}
                       </Badge>
                     </div>
                     <p className="mt-0.5 truncate text-xs text-muted-foreground">

@@ -80,12 +80,12 @@ export const ManageOrganizationDialog = ({
   // is the source of truth for whether a given org can actually be managed
   // by the caller; a rejected submit surfaces via the error toast below.
   const orgOptions = useMemo(() => {
-    const filtered = organizations.filter((org) => org.isEnabled);
+    const filtered = organizations.filter((org) => !org.isDisabled);
     if (filtered.some((org) => org.itemId === DEFAULT_ORGANIZATION_ID)) {
       return filtered;
     }
     return [
-      { itemId: DEFAULT_ORGANIZATION_ID, name: "Default", isEnabled: true } as IOrganization,
+      { itemId: DEFAULT_ORGANIZATION_ID, name: "Default", isDisabled: false } as IOrganization,
       ...filtered,
     ];
   }, [organizations]);

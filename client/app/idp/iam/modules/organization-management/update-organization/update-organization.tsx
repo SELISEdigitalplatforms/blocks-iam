@@ -50,7 +50,7 @@ export const UpdateOrganization = ({ organization, isOpen, onClose }: UpdateOrga
       const res = await mutateAsync({
         itemId: organization.itemId,
         name: data.name,
-        isEnable: organization.isEnabled,
+        isEnable: !organization.isDisabled,
       });
       if (!res.isSuccess) {
         showErrorToast({ errors: res.errors });

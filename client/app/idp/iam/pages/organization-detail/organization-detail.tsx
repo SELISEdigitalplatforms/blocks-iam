@@ -76,8 +76,8 @@ export const OrganizationDetail = ({ id }: { id: string }) => {
           </h3>
         )}
         {org && (
-          <Badge variant={org.isEnabled ? "success" : "secondary"}>
-            {org.isEnabled ? "Active" : "Disabled"}
+          <Badge variant={!org.isDisabled ? "success" : "secondary"}>
+            {!org.isDisabled ? "Active" : "Disabled"}
           </Badge>
         )}
       </div>

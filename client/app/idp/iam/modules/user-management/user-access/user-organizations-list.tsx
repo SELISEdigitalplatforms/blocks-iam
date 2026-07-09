@@ -92,7 +92,7 @@ export const UserOrganizationsList = ({
                     <Button
                       variant="ghost"
                       size="icon"
-                      className="h-7 w-7 shrink-0 opacity-0 group-hover:opacity-100"
+                      className="h-7 w-7 shrink-0 text-muted-foreground opacity-60 transition-opacity hover:opacity-100 focus:opacity-100 group-hover:opacity-100"
                       onClick={(e) => e.stopPropagation()}
                       aria-label={`Manage ${org.name}`}
                     >

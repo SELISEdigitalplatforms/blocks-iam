@@ -8,7 +8,7 @@ import { userService } from "@blocks-idp/iam/services/user.service";
 import { normalizeSearchQueryText } from "@/lib/utils";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useCallback, useMemo } from "react";
-import type { IUpdateUserAccessControlPayload } from "@blocks-idp/iam/models/user";
+import type { IRevokeAccessPayload, IUpdateUserAccessControlPayload } from "@blocks-idp/iam/models/user";
 
 export const useGetUsers = (
   option: IGetUsersPayload,
@@ -202,6 +202,24 @@ export const useUpdateUserAccessControl = (option: { id: string; projectKey: str
     mutationKey: ["user", "access-control", option],
     mutationFn: (payload: Omit<IUpdateUserAccessControlPayload, "userId">) =>
       userService.updateUserAccessControl({ ...payload, userId: option.id }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["users"] });
+      queryClient.invalidateQueries({ queryKey: ["user-by-id"] });
+      queryClient.invalidateQueries({ queryKey: ["user"] });
+      queryClient.invalidateQueries({ queryKey: ["user-roles"] });
+      queryClient.invalidateQueries({ queryKey: ["user-permissions"] });
+      queryClient.invalidateQueries({ queryKey: ["organizations"] });
+      queryClient.invalidateQueries({ queryKey: ["organization"] });
+    },
+  });
+};
+
+export const useRevokeAccess = (option: { id: string; projectKey: string }) => {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationKey: ["user", "revoke-access", option],
+    mutationFn: (payload: Omit<IRevokeAccessPayload, "userId">) =>
+      userService.revokeAccess({ ...payload, userId: option.id }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["users"] });
       queryClient.invalidateQueries({ queryKey: ["user-by-id"] });

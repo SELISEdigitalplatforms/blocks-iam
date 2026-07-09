@@ -60,7 +60,12 @@ export const OrganizationUsers = ({
       </CardHeader>
 
       <CardContent>
-        <OrganizationUsersTable users={data?.data || []} isLoading={isUserLoading} />
+        <OrganizationUsersTable
+          users={data?.data || []}
+          isLoading={isUserLoading}
+          organizationId={organizationId}
+          projectKey={tenantId}
+        />
         {!isUserLoading && data && data.totalCount > 0 && (
           <div className="mt-5 flex flex-col-reverse items-center gap-3 md:flex-row md:justify-between">
             <span className="text-xs text-muted-foreground">

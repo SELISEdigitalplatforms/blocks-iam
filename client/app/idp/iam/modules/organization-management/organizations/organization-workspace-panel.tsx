@@ -72,8 +72,8 @@ export const OrganizationWorkspacePanel = ({ organizationId }: OrganizationWorks
               <h2 className="truncate text-lg font-semibold text-high-emphasis">
                 {organization.name}
               </h2>
-              <Badge variant={organization.isEnabled ? "success" : "secondary"}>
-                {organization.isEnabled ? "Active" : "Disabled"}
+              <Badge variant={!organization.isDisabled ? "success" : "secondary"}>
+                {!organization.isDisabled ? "Active" : "Disabled"}
               </Badge>
             </div>
             <CopyToClipboardButton textToCopy={organization.itemId}>

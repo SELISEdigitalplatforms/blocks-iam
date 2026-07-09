@@ -147,6 +147,14 @@ export interface IUpdateUserAccessControlResponse {
   errors: unknown | null;
   isSuccess: boolean;
 }
+export interface IRevokeAccessPayload {
+  userId: string;
+  organizationId: string;
+}
+export interface IRevokeAccessResponse {
+  errors: unknown | null;
+  isSuccess: boolean;
+}
 export interface IGetSessionPayload {
   page: number;
   pageSize: number;

@@ -4,7 +4,7 @@ export interface IOrganization {
   description: string | null;
   parentOrganizationId: string | null;
   shortCode: string | null;
-  isEnabled: boolean;
+  isDisabled: boolean;
   defaultRoleForMembers: string[];
   defaultPermissionsForMembers: string[];
   email: string | null;
