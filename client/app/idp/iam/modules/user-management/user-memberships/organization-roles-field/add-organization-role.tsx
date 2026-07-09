@@ -22,13 +22,14 @@ import { useMemo, useState } from "react";
 type AddOrganizationRoleProps = {
   roles: IRole[];
   onAdd: (data: IRole[]) => void;
+  onSave?: () => void;
 };
 
-export const AddOrganizationRole = ({ onAdd, roles }: AddOrganizationRoleProps) => {
+export const AddOrganizationRole = ({ onAdd, roles, onSave }: AddOrganizationRoleProps) => {
   const tenantId = useProjectStore().selectedProject?.tenantId || "";
   const [open, setOpen] = useState<boolean>(false);
   const [selectedRoles, setSelectedRoles] = useState<IRole[]>([]);
-  const [filter, setFilter] = useState({ page: 0, pageSize: 10, search: "" });
+  const [filter, setFilter] = useState({ page: 0, pageSize: 5, search: "" });
 
   const { data, isLoading } = useGetRoles({
     page: filter.page,
@@ -51,7 +52,7 @@ export const AddOrganizationRole = ({ onAdd, roles }: AddOrganizationRoleProps) 
 
   const reset = () => {
     setSelectedRoles([]);
-    setFilter({ page: 0, pageSize: 10, search: "" });
+    setFilter({ page: 0, pageSize: 5, search: "" });
   };
 
   const rolesSlug = useMemo(() => roles.map((item) => item.slug) || [], [roles]);
@@ -69,7 +70,7 @@ export const AddOrganizationRole = ({ onAdd, roles }: AddOrganizationRoleProps) 
       }}
     >
       <DialogTrigger asChild>
-        <Button size="sm" variant="default" className="bg-primary text-sm" type="button">
+        <Button size="sm" variant="ghost" className="text-primary" type="button">
           <Plus className="h-4 w-4 md:mr-1.5" />
           <span className="sr-only sm:not-sr-only">Add Role</span>
         </Button>
@@ -152,6 +153,7 @@ export const AddOrganizationRole = ({ onAdd, roles }: AddOrganizationRoleProps) 
               onAdd(selectedRoles);
               reset();
               setOpen(false);
+              onSave?.();
             }}
             disabled={selectedRoles.length === 0}
           >
