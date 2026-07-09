@@ -22,7 +22,7 @@ import {
   FormMessage,
 } from "@/components/ui-kits/form/form";
 import { useAddUser, useCheckUserExists } from "@blocks-idp/iam/hooks/use-user";
-import { useGetOrganizationConfig, useGetOrganizations } from "@blocks-idp/iam/hooks/use-organization";
+import { useGetOrganizations } from "@blocks-idp/iam/hooks/use-organization";
 import { z } from "zod";
 import { useProjectStore } from "@seliseblocks/blocks-kit";
 import { ChevronsUpDown, Check, Loader, Plus } from "lucide-react";
@@ -92,8 +92,6 @@ export const InviteOrganizationUser = ({ organizationId }: InviteOrganizationUse
     page: 0,
     pageSize: 1000,
   });
-  const { data: configData, isLoading: isConfigLoading } = useGetOrganizationConfig(tenantId);
-  const isMultiOrgEnabled = configData?.isMultiOrgEnabled ?? true;
 
   // Treat a missing/undefined isEnabled as enabled — only explicitly disabled
   // orgs (isEnabled === false) should be excluded from the picker.
@@ -253,7 +251,7 @@ export const InviteOrganizationUser = ({ organizationId }: InviteOrganizationUse
                 </>
               )}
 
-              {isValidEmailFormat && !isConfigLoading && isMultiOrgEnabled && (
+              {isValidEmailFormat && (
                 <div className="space-y-2">
                   <label className="text-sm font-medium">Organization</label>
                   <Popover open={orgPopoverOpen} onOpenChange={setOrgPopoverOpen}>

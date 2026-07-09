@@ -224,7 +224,7 @@ export const InviteUser = () => {
                 </>
               )}
 
-              {isValidEmailFormat && !isConfigLoading && isMultiOrgEnabled && (
+              {isValidEmailFormat && !isConfigLoading && (
                 <FormField
                   control={form.control}
                   name="organizationIds"
