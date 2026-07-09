@@ -265,6 +265,14 @@
             <response code="401">Authentication required</response>
             <response code="404">Client not found</response>
         </member>
+        <member name="T:Api.Controllers.SecurityController">
+            <summary>
+            Self-service session, history, idp-session and impersonation endpoints.
+            Shares the <c>/iam</c> route prefix with <see cref="T:Api.Controllers.IamController"/> by design
+            (plan decision: no <c>/security</c> segment, URLs stay under <c>/iam/*</c>).
+            Action templates are disjoint from IamController, so route resolution is unambiguous.
+            </summary>
+        </member>
         <member name="M:Blocks.Api.Controllers.AuthorizationController.OidcLogin(Authentication.DomainService.Authentication.OidcLoginRequest)">
             <summary>
             OIDC Login Endpoint — authenticates credentials, sets IDP session, then issues authorization code.

@@ -159,7 +159,10 @@ namespace Iam.DomainService.Users
             var filters = new List<FilterDefinition<User>>();
             var contextOrgId = ResolveOrganizationId(filter?.OrganizationId);
 
-            filters.Add(builder.AnyEq(x => x.OrganizationIds, contextOrgId));
+            if(contextOrgId != "default")
+            {
+                filters.Add(builder.AnyEq(x => x.OrganizationIds, contextOrgId));
+            }
 
             if (filter == null)
             {
