@@ -50,7 +50,7 @@ export const OrganizationWorkspacePanel = ({ organizationId }: OrganizationWorks
   }
 
   return (
-    <div className="flex h-full flex-col rounded-lg border bg-card p-4">
+    <div className="flex h-full min-w-0 flex-col rounded-lg border bg-card p-4">
       <div className="flex items-start justify-between gap-3">
         <div className="flex items-center gap-3">
           <div className="flex h-11 w-11 shrink-0 items-center justify-center overflow-hidden rounded-lg bg-primary/10 text-primary">
@@ -93,7 +93,7 @@ export const OrganizationWorkspacePanel = ({ organizationId }: OrganizationWorks
           </TabsTrigger>
         </TabsList>
 
-        <div className="mt-4 min-h-0 flex-1 overflow-y-auto">
+        <div className="mt-4 min-h-0 min-w-0 flex-1 overflow-y-auto">
           <TabsContent value="details" className="mt-0">
             <OrganizationDetailsTab organization={organization} />
           </TabsContent>

@@ -116,7 +116,7 @@ export function Organizations() {
       {selectedOrgId ? (
         <OrganizationWorkspacePanel organizationId={selectedOrgId} />
       ) : (
-        <div className="flex h-full flex-col items-center justify-center gap-2 rounded-lg border bg-card text-center text-sm text-muted-foreground">
+        <div className="flex h-full min-w-0 flex-col items-center justify-center gap-2 rounded-lg border bg-card text-center text-sm text-muted-foreground">
           <Building2 className="h-6 w-6" />
           Select an organization to view its details.
         </div>
