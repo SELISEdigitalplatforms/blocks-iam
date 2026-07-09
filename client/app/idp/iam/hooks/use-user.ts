@@ -10,7 +10,10 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useCallback, useMemo } from "react";
 import type { IUpdateUserAccessControlPayload } from "@blocks-idp/iam/models/user";
 
-export const useGetUsers = (option: IGetUsersPayload) => {
+export const useGetUsers = (
+  option: IGetUsersPayload,
+  queryOptions?: { enabled?: boolean },
+) => {
   const { page, pageSize, projectKey, filter, sort } = option;
 
   const payload = useMemo(() => {
@@ -41,7 +44,7 @@ export const useGetUsers = (option: IGetUsersPayload) => {
   return useQuery({
     queryKey: ["users", projectKey, payload],
     queryFn: () => userService.getUsers(payload),
-    enabled: !!projectKey,
+    enabled: !!projectKey && (queryOptions?.enabled ?? true),
   });
 };
 
