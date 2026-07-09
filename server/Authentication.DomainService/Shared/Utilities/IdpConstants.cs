@@ -14,6 +14,13 @@ namespace Authentication.DomainService.Utilities
         public const string RefreshTokenCookieName = "rt";
         public const string IdpSessionCookieName = "idp_session_id";
 
+        public static string BuildIdpSessionCookieKey(string? tenantId)
+        {
+            return string.IsNullOrWhiteSpace(tenantId)
+                ? IdpSessionCookieName
+                : $"{IdpSessionCookieName}_{tenantId}";
+        }
+
         public const string BlocksProviderName = "blocks-idp";
         public const string BlocksProviderType = "blocks";
         public const string OidcProtocol = "oidc";
