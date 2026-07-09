@@ -231,15 +231,14 @@ namespace Iam.DomainService.Users
             }
 
             var blocksContext = BlocksContext.GetContext();
-
-            var organizationId = user.OrganizationIds.FirstOrDefault(x => x == blocksContext?.OrganizationId);
+            var organizationId = !string.IsNullOrWhiteSpace(command.OrganizationId) ? command.OrganizationId: blocksContext.OrganizationId;
 
             if (organizationId == null && (blocksContext?.OrganizationId == null || blocksContext?.OrganizationId == DefaultOrganizationId))
             {
                 organizationId = DefaultOrganizationId;
             }
 
-            if(organizationId == null)
+            if (organizationId == null)
             {
                 _logger.LogInformation("User update end -- Validation Error");
                 return new BaseMutationResponse
@@ -270,6 +269,10 @@ namespace Iam.DomainService.Users
                 user.UserMfaType = command.UserMfaType;
             }
 
+            if (!user.OrganizationIds.Contains(organizationId))
+            {
+                user.OrganizationIds.Add(organizationId);
+            }
 
             var result = await _userRepository.UpdateUserAsync(user);
 
@@ -280,8 +283,8 @@ namespace Iam.DomainService.Users
             }
 
             await SendEvent(user.ItemId, MutationEventType.Update);
-
             _logger.LogInformation("User update end -- Success");
+
             return new BaseMutationResponse
             {
                 IsSuccess = true,
@@ -412,58 +415,91 @@ namespace Iam.DomainService.Users
             return true;
         }
 
-        public async Task<BaseMutationResponse> SaveRolesAndPermissionsAsync(SaveRolesAndPermissionsRequest command)
+        public async Task<BaseMutationResponse> UpdateUserAccessControlAsync(UpdateUserAccessControlRequest command)
         {
-            _logger.LogInformation("SaveRolesAndPermissions start");
+            _logger.LogInformation("Update User Access Control start");
 
             var user = await _userRepository.GetUserByIdAsync(command.UserId);
             if (user == null)
             {
-                _logger.LogInformation("User update end -- Validation Error");
+                _logger.LogInformation("Update User Access Control end -- Validation Error");
                 return new BaseMutationResponse
                 {
                     Errors = new Dictionary<string, string>
                     {
-                        { "ItemId", "Not found" }
+                        { nameof(command.UserId), "Not found" }
                     }
                 };
             }
 
             var blocksContext = BlocksContext.GetContext();
+            var organizationId = string.IsNullOrWhiteSpace(command.OrganizationId)
+                ? blocksContext?.OrganizationId
+                : command.OrganizationId;
 
-            var organizationId = user.OrganizationIds.FirstOrDefault(x => x == blocksContext?.OrganizationId);
-
-            if (organizationId == null && (blocksContext?.OrganizationId == null || blocksContext?.OrganizationId == DefaultOrganizationId))
+            if (!string.Equals(blocksContext?.OrganizationId, DefaultOrganizationId, StringComparison.Ordinal)
+                && !string.Equals(blocksContext?.OrganizationId, organizationId, StringComparison.Ordinal))
             {
-                organizationId = DefaultOrganizationId;
-            }
-
-            if(organizationId == null)
-            {
-                _logger.LogInformation("User update end -- Validation Error");
+                _logger.LogInformation("Update User Access Control end -- Validation Error");
                 return new BaseMutationResponse
                 {
                     Errors = new Dictionary<string, string>
                     {
-                        { "OrganizationId", "User does not belong to the organization in context" }
+                        { nameof(command.OrganizationId), "Other org user can not add/update" }
                     }
                 };
             }
 
-            user.Roles[organizationId] = command.Roles ?? user.Roles.GetValueOrDefault(organizationId, new List<string>());
-            user.Permissions[organizationId] = command.Permissions ?? user.Permissions.GetValueOrDefault(organizationId, new List<string>());
+            if (!string.Equals(organizationId, DefaultOrganizationId, StringComparison.Ordinal))
+            {
+                var organization = await _resourceRepository.GetOrganizationById(organizationId);
+                if (organization == null)
+                {
+                    _logger.LogInformation("Update User Access Control end -- Validation Error");
+                    return new BaseMutationResponse
+                    {
+                        Errors = new Dictionary<string, string>
+                        {
+                            { nameof(command.OrganizationId), "Organization not found" }
+                        }
+                    };
+                }
+            }
+
+            user.Roles ??= new Dictionary<string, List<string>>();
+            user.Permissions ??= new Dictionary<string, List<string>>();
+
+            var isAddToOrganization = !user.OrganizationIds.Contains(organizationId);
+            if (isAddToOrganization)
+            {
+                user.OrganizationIds.Add(organizationId);
+                user.Roles[organizationId] = command.Roles?.Count > 0 ? command.Roles : new List<string> { "user" };
+                user.Permissions[organizationId] = command.Permissions ?? new List<string>();
+            }
+            else
+            {
+                user.Roles[organizationId] = command.Roles?.Count > 0
+                    ? command.Roles
+                    : user.Roles.GetValueOrDefault(organizationId, new List<string>());
+
+                user.Permissions[organizationId] = command.Permissions?.Count > 0
+                    ? command.Permissions
+                    : user.Permissions.GetValueOrDefault(organizationId, new List<string>());
+            }
+
+            user.LastUpdatedDate = DateTime.UtcNow;
+            user.LastUpdatedBy = blocksContext?.UserId ?? user.ItemId;
 
             var result = await _userRepository.UpdateUserAsync(user);
-
             if (!result)
             {
-                _logger.LogInformation("SaveRolesAndPermissions end -- Error");
+                _logger.LogError("Update User Access Control end -- Repository Error for UserId {UserId}", command.UserId);
                 return new BaseMutationResponse();
             }
 
             await SendEvent(user.ItemId, MutationEventType.Update);
 
-            _logger.LogInformation("SaveRolesAndPermissions end -- Success");
+            _logger.LogInformation("Update User Access Control end -- Success");
             return new BaseMutationResponse
             {
                 IsSuccess = true,
@@ -471,31 +507,19 @@ namespace Iam.DomainService.Users
             };
         }
 
-        public async Task<BaseMutationResponse> UpdateOrganizationUserAsync(UpdateOrganizationUserRequest command)
+        public async Task<BaseMutationResponse> RevokeUserAccessControlAsync(RevokeUserAccessControlRequest command)
         {
-            _logger.LogInformation("UpdateOrganizationUser start");
-            var tenantConfig = await _resourceRepository.GetTenantConfigurationAsync();
+            _logger.LogInformation("Revoke User Access Control start");
 
-            if(!tenantConfig.IsMultiOrgEnabled && !string.IsNullOrWhiteSpace(command.OrganizationId))
+            if (string.IsNullOrWhiteSpace(command.UserId))
             {
-                _logger.LogInformation("UpdateOrganizationUser end -- Validation Error");
+                _logger.LogInformation("Revoke User Access Control end -- Validation Error");
                 return new BaseMutationResponse
                 {
+                    IsSuccess = false,
                     Errors = new Dictionary<string, string>
                     {
-                        { "OrganizationId", "Multi-organization is not enabled for the tenant" }
-                    }
-                };
-            }
-
-            if(command.OrganizationId == DefaultOrganizationId)
-            {
-                _logger.LogInformation("UpdateOrganizationUser end -- Validation Error");
-                return new BaseMutationResponse
-                {
-                    Errors = new Dictionary<string, string>
-                    {
-                        { "OrganizationId", "OrganizationId cannot be default" }
+                        { nameof(command.UserId), "UserId is required" }
                     }
                 };
             }
@@ -503,71 +527,103 @@ namespace Iam.DomainService.Users
             var user = await _userRepository.GetUserByIdAsync(command.UserId);
             if (user == null)
             {
-                _logger.LogInformation("UpdateOrganizationUser end -- Validation Error");
+                _logger.LogInformation("Revoke User Access Control end -- Validation Error");
                 return new BaseMutationResponse
                 {
+                    IsSuccess = false,
                     Errors = new Dictionary<string, string>
                     {
-                        { "ItemId", "Not found" }
-                    }
-                };
-            }
-
-            var organization = await _resourceRepository.GetOrganizationById(command.OrganizationId);
-
-            if(organization == null)
-            {
-                _logger.LogInformation("UpdateOrganizationUser end -- Validation Error");
-                return new BaseMutationResponse
-                {
-                    Errors = new Dictionary<string, string>
-                    {
-                        { "OrganizationId", "Organization not found" }
+                        { nameof(command.UserId), "Not found" }
                     }
                 };
             }
 
             var blocksContext = BlocksContext.GetContext();
+            var organizationId = string.IsNullOrWhiteSpace(command.OrganizationId)
+                ? blocksContext?.OrganizationId
+                : command.OrganizationId;
 
-            if(blocksContext?.OrganizationId != command.OrganizationId || blocksContext?.OrganizationId == DefaultOrganizationId)
+            if (string.IsNullOrWhiteSpace(organizationId))
             {
-                _logger.LogInformation("UpdateOrganizationUser end -- Validation Error");
+                _logger.LogInformation("Revoke User Access Control end -- Validation Error");
                 return new BaseMutationResponse
                 {
+                    IsSuccess = false,
                     Errors = new Dictionary<string, string>
                     {
-                        { "OrganizationId", "BlocksContext organization id must match command organization id and cannot be default" }
+                        { nameof(command.OrganizationId), "OrganizationId is required" }
                     }
                 };
             }
 
-            var organizationId = user.OrganizationIds.FirstOrDefault(x => x == command?.OrganizationId);
-
-            var addOrUpdate = organizationId == null ? "add" : "update";
-
-            if(addOrUpdate == "add")
+            if (string.Equals(command.UserId, blocksContext?.UserId, StringComparison.Ordinal))
             {
-                user.OrganizationIds.Add(command.OrganizationId);
-                user.Roles[command.OrganizationId] = command.Roles ?? new List<string> { "user" };
-                user.Permissions[command.OrganizationId] = command.Permissions ?? new List<string>();
+                _logger.LogInformation("Revoke User Access Control end -- Validation Error");
+                return new BaseMutationResponse
+                {
+                    IsSuccess = false,
+                    Errors = new Dictionary<string, string>
+                    {
+                        { nameof(command.UserId), "You cannot revoke your own access" }
+                    }
+                };
             }
-            else
+
+            if (!string.Equals(blocksContext?.OrganizationId, DefaultOrganizationId, StringComparison.Ordinal)
+                && !string.Equals(blocksContext?.OrganizationId, organizationId, StringComparison.Ordinal))
             {
-                user.Roles[command.OrganizationId] = command.Roles ?? user.Roles.GetValueOrDefault(command.OrganizationId, new List<string>());
-                user.Permissions[command.OrganizationId] = command.Permissions ?? user.Permissions.GetValueOrDefault(command.OrganizationId, new List<string>());
+                _logger.LogInformation("Revoke User Access Control end -- Validation Error");
+                return new BaseMutationResponse
+                {
+                    IsSuccess = false,
+                    Errors = new Dictionary<string, string>
+                    {
+                        { nameof(command.OrganizationId), "Other org user can not revoke" }
+                    }
+                };
             }
+
+            if (!string.Equals(organizationId, DefaultOrganizationId, StringComparison.Ordinal))
+            {
+                var organization = await _resourceRepository.GetOrganizationById(organizationId);
+                if (organization == null)
+                {
+                    _logger.LogInformation("Revoke User Access Control end -- Validation Error");
+                    return new BaseMutationResponse
+                    {
+                        IsSuccess = false,
+                        Errors = new Dictionary<string, string>
+                        {
+                            { nameof(command.OrganizationId), "Organization not found" }
+                        }
+                    };
+                }
+            }
+
+            user.OrganizationIds.Remove(organizationId);
+            user.Roles.Remove(organizationId);
+            user.Permissions.Remove(organizationId);
+
+            user.LastUpdatedDate = DateTime.UtcNow;
+            user.LastUpdatedBy = blocksContext?.UserId ?? user.ItemId;
 
             var result = await _userRepository.UpdateUserAsync(user);
-
             if (!result)
             {
-                _logger.LogInformation("UpdateOrganizationUser end -- Error");
-                return new BaseMutationResponse();
+                _logger.LogError("Revoke User Access Control end -- Repository Error for UserId {UserId}", command.UserId);
+                return new BaseMutationResponse
+                {
+                    IsSuccess = false,
+                    Errors = new Dictionary<string, string>
+                    {
+                        { "Repository", "Failed to update user" }
+                    }
+                };
             }
 
             await SendEvent(user.ItemId, MutationEventType.Update);
 
-            _logger.LogInformation("UpdateOrganizationUser end -- Success");
+            _logger.LogInformation("Revoke User Access Control end -- Success");
             return new BaseMutationResponse
             {
                 IsSuccess = true,

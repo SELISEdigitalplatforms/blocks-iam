@@ -84,6 +84,23 @@ export const OrganizationUsersTable = ({ users, isLoading }: OrganizationUsersTa
         ),
       },
       {
+        id: "status",
+        accessorFn: (row) => row.active,
+        header: () => (
+          <FilterControls.SortHeader
+            id="Active"
+            label="Status"
+            value={sortQueryParams}
+            onChange={setSortQueryParams}
+          />
+        ),
+        cell: (info) => (
+          <Badge variant={info.row.original.active ? "success" : "error"} className="w-fit">
+            {info.row.original.active ? "Active" : "Inactive"}
+          </Badge>
+        ),
+      },
+      {
         accessorKey: "logInCount",
         header: () => (
           <FilterControls.SortHeader
@@ -121,23 +138,6 @@ export const OrganizationUsersTable = ({ users, isLoading }: OrganizationUsersTa
           );
         },
       },
-      {
-        id: "status",
-        accessorFn: (row) => row.active,
-        header: () => (
-          <FilterControls.SortHeader
-            id="Active"
-            label="Status"
-            value={sortQueryParams}
-            onChange={setSortQueryParams}
-          />
-        ),
-        cell: (info) => (
-          <Badge variant={info.row.original.active ? "success" : "error"} className="w-fit">
-            {info.row.original.active ? "Active" : "Inactive"}
-          </Badge>
-        ),
-      },
     ],
     [setSortQueryParams, sortQueryParams],
   );
@@ -160,46 +160,51 @@ export const OrganizationUsersTable = ({ users, isLoading }: OrganizationUsersTa
   if (isLoading) return <LoadingSkelton />;
 
   return (
-    <Table>
-      <TableHeader>
-        <TableRow isHoverable>
-          {table
-            .getHeaderGroups()
-            .map((headerGroup) =>
-              headerGroup.headers.map((header) => (
-                <TableHead key={header.id}>
-                  {header.isPlaceholder
-                    ? null
-                    : flexRender(header.column.columnDef.header, header.getContext())}
-                </TableHead>
-              )),
-            )}
-        </TableRow>
-      </TableHeader>
-      <TableBody>
-        {!users.length ? (
-          <TableRow>
-            <TableCell colSpan={columns.length} className="h-24 text-center text-muted-foreground">
-              No results found.
-            </TableCell>
+    <div className="w-full overflow-x-auto">
+      <Table>
+        <TableHeader>
+          <TableRow isHoverable>
+            {table
+              .getHeaderGroups()
+              .map((headerGroup) =>
+                headerGroup.headers.map((header) => (
+                  <TableHead key={header.id}>
+                    {header.isPlaceholder
+                      ? null
+                      : flexRender(header.column.columnDef.header, header.getContext())}
+                  </TableHead>
+                )),
+              )}
           </TableRow>
-        ) : (
-          table.getRowModel().rows.map((row) => (
-            <TableRow
-              key={row.id}
-              className="cursor-pointer"
-              onClick={() => handleRowClick(row.original.itemId)}
-              isHoverable
-            >
-              {row.getVisibleCells().map((cell) => (
-                <TableCell key={cell.id}>
-                  {flexRender(cell.column.columnDef.cell, cell.getContext())}
-                </TableCell>
-              ))}
+        </TableHeader>
+        <TableBody>
+          {!users.length ? (
+            <TableRow>
+              <TableCell
+                colSpan={columns.length}
+                className="h-24 text-center text-muted-foreground"
+              >
+                No results found.
+              </TableCell>
             </TableRow>
-          ))
-        )}
-      </TableBody>
-    </Table>
+          ) : (
+            table.getRowModel().rows.map((row) => (
+              <TableRow
+                key={row.id}
+                className="cursor-pointer"
+                onClick={() => handleRowClick(row.original.itemId)}
+                isHoverable
+              >
+                {row.getVisibleCells().map((cell) => (
+                  <TableCell key={cell.id}>
+                    {flexRender(cell.column.columnDef.cell, cell.getContext())}
+                  </TableCell>
+                ))}
+              </TableRow>
+            ))
+          )}
+        </TableBody>
+      </Table>
+    </div>
   );
 };

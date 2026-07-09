@@ -570,7 +570,7 @@ namespace XUnitTest.IamTests.Accounts.Services
         }
 
         [Fact]
-        public async Task Recover_UserNotFound_ReturnsEmailNotAllowed()
+        public async Task Recover_UnknownEmail_ReturnsSuccess_NoEmailSent()
         {
             var service = CreateService();
             _recoverValidatorMock.Setup(v => v.ValidateAsync(It.IsAny<RecoveryUserRequest>(), It.IsAny<CancellationToken>()))
@@ -579,14 +579,19 @@ namespace XUnitTest.IamTests.Accounts.Services
 
             var result = await service.RecoverAccountAsync(new RecoveryUserRequest { Email = "miss@example.com" });
 
-            result.Errors.Should().ContainKey("Email");
+            // INVARIANT: unknown email must always look like success to the client.
+            result.IsSuccess.Should().BeTrue();
+            _iamServiceMock.Verify(s => s.SendEmailAsync(It.IsAny<SendMail>()), Times.Never);
+            _iamServiceMock.Verify(s => s.SendActivationToEmailAsync(It.IsAny<User>(), It.IsAny<string>(), It.IsAny<string>()), Times.Never);
+            _cacheClientMock.Verify(c => c.AddStringValueAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<long>()), Times.Never);
+            _repositoryMock.Verify(r => r.InsertUserKeyMapAsync(It.IsAny<UserKeyMap>()), Times.Never);
         }
 
         [Fact]
-        public async Task Recover_Success_BuildsUrlAndAddsCacheAndInsertsUserKeyMap_AndSendsMail()
+        public async Task Recover_ActiveUser_SendsResetEmail()
         {
             var service = CreateService();
-            var user = TestDataBuilder.CreateUser();
+            var user = TestDataBuilder.CreateUser(active: true);
             _recoverValidatorMock.Setup(v => v.ValidateAsync(It.IsAny<RecoveryUserRequest>(), It.IsAny<CancellationToken>()))
                 .ReturnsAsync(new ValidationResult());
             _repositoryMock.Setup(r => r.GetUserByEmailAsync(It.IsAny<string>())).ReturnsAsync(user);
@@ -594,12 +599,55 @@ namespace XUnitTest.IamTests.Accounts.Services
             _repositoryMock.Setup(r => r.InsertUserKeyMapAsync(It.IsAny<UserKeyMap>())).ReturnsAsync(true);
             _iamServiceMock.Setup(s => s.SendEmailAsync(It.IsAny<SendMail>())).ReturnsAsync(true);
 
-            var result = await service.RecoverAccountAsync(new RecoveryUserRequest { Email = "u@example.com", MailPurpose = "ResetPassword" });
+            var result = await service.RecoverAccountAsync(new RecoveryUserRequest { Email = "u@example.com" });
 
             result.IsSuccess.Should().BeTrue();
             _cacheClientMock.Verify(c => c.AddStringValueAsync(It.IsAny<string>(), user.ItemId, It.IsAny<long>()), Times.Once);
             _repositoryMock.Verify(r => r.InsertUserKeyMapAsync(It.Is<UserKeyMap>(k => k.UserId == user.ItemId)), Times.Once);
-            _iamServiceMock.Verify(s => s.SendEmailAsync(It.IsAny<SendMail>()), Times.Once);
+            _iamServiceMock.Verify(s => s.SendEmailAsync(It.Is<SendMail>(m => m.Purpose == "RecoverAccount")), Times.Once);
+            // Activation path must NOT be used for active users.
+            _iamServiceMock.Verify(s => s.SendActivationToEmailAsync(It.IsAny<User>(), It.IsAny<string>(), It.IsAny<string>()), Times.Never);
+        }
+
+        [Fact]
+        public async Task Recover_InactiveUser_SendsActivationEmail()
+        {
+            var service = CreateService();
+            var user = TestDataBuilder.CreateUser(active: false);
+            _recoverValidatorMock.Setup(v => v.ValidateAsync(It.IsAny<RecoveryUserRequest>(), It.IsAny<CancellationToken>()))
+                .ReturnsAsync(new ValidationResult());
+            _repositoryMock.Setup(r => r.GetUserByEmailAsync(It.IsAny<string>())).ReturnsAsync(user);
+            _repositoryMock.Setup(r => r.GetIamConfigurationAsync()).ReturnsAsync(TestDataBuilder.CreateIamConfiguration());
+            _repositoryMock.Setup(r => r.InsertUserKeyMapAsync(It.IsAny<UserKeyMap>())).ReturnsAsync(true);
+            _iamServiceMock.Setup(s => s.SendActivationToEmailAsync(It.IsAny<User>(), It.IsAny<string>(), It.IsAny<string>()))
+                .ReturnsAsync(true);
+
+            var result = await service.RecoverAccountAsync(new RecoveryUserRequest { Email = "u@example.com" });
+
+            result.IsSuccess.Should().BeTrue();
+            _iamServiceMock.Verify(s => s.SendActivationToEmailAsync(user, It.IsAny<string>(), "AccountActivation"), Times.Once);
+            // Reset-mail path must NOT be used for inactive users.
+            _iamServiceMock.Verify(s => s.SendEmailAsync(It.IsAny<SendMail>()), Times.Never);
+        }
+
+        [Fact]
+        public async Task Recover_IgnoresMailPurposeOnRequest()
+        {
+            // Even though the DTO no longer carries MailPurpose, the active-user branch
+            // must always send a RecoverAccount email regardless of any purpose logic.
+            var service = CreateService();
+            var user = TestDataBuilder.CreateUser(active: true);
+            _recoverValidatorMock.Setup(v => v.ValidateAsync(It.IsAny<RecoveryUserRequest>(), It.IsAny<CancellationToken>()))
+                .ReturnsAsync(new ValidationResult());
+            _repositoryMock.Setup(r => r.GetUserByEmailAsync(It.IsAny<string>())).ReturnsAsync(user);
+            _repositoryMock.Setup(r => r.GetIamConfigurationAsync()).ReturnsAsync(TestDataBuilder.CreateIamConfiguration());
+            _repositoryMock.Setup(r => r.InsertUserKeyMapAsync(It.IsAny<UserKeyMap>())).ReturnsAsync(true);
+            _iamServiceMock.Setup(s => s.SendEmailAsync(It.IsAny<SendMail>())).ReturnsAsync(true);
+
+            var result = await service.RecoverAccountAsync(new RecoveryUserRequest { Email = "u@example.com" });
+
+            result.IsSuccess.Should().BeTrue();
+            _iamServiceMock.Verify(s => s.SendEmailAsync(It.Is<SendMail>(m => m.Purpose == "RecoverAccount")), Times.Once);
         }
 
         [Fact]

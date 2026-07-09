@@ -1,7 +1,7 @@
+using Authentication.DomainService.Authentication;
 using Authentication.DomainService.Utilities;
 using Blocks.Genesis;
 using Iam.DomainService.Accounts;
-using Iam.DomainService.Activities;
 using Iam.DomainService.Entities;
 using Iam.DomainService.Resources;
 using Iam.DomainService.Resources.RequestModel;
@@ -20,48 +20,28 @@ namespace Api.Controllers
     public class IamController : ControllerBase
     {
         private readonly IAccountService _accountService;
-        private readonly IUserActivityService _userActivityService;
         private readonly IUserManagementQueryService _userManagementQueryService;
         private readonly IUserManagementMutationService _userManagementMutationService;
         private readonly IResourceMutationService _resourceMutationService;
         private readonly IResourceQueryService _resourceQueryService;
+        private readonly IAuthenticationService _authenticationService;
 
         public IamController(IAccountService accountService,
-                             IUserActivityService userActivityService,
                              IResourceMutationService resourceMutationService,
                              IResourceQueryService resourceQueryService,
                              IUserManagementQueryService userManagementQueryService,
-                             IUserManagementMutationService userManagementMutationService)
+                             IUserManagementMutationService userManagementMutationService,
+                             IAuthenticationService authenticationService)
         {
-            _userActivityService = userActivityService;
             _resourceMutationService = resourceMutationService;
             _resourceQueryService = resourceQueryService;
             _userManagementQueryService = userManagementQueryService;
             _userManagementMutationService = userManagementMutationService;
             _accountService = accountService;
+            _authenticationService = authenticationService;
         }
 
 
-
-        #region Activity
-
-        [HttpGet("sessions")]
-        //[ProtectedEndPoint("blocks-idp::get-sessions")]
-        [Authorize]
-        public async Task<GetSessionsResponse> GetSessions([FromQuery] BaseActivityRequest query)
-        {
-            return await _userActivityService.GetSessionsAsync(query);
-        }
-
-        [HttpGet("history")]
-        //[ProtectedEndPoint("blocks-idp::get-histories")]
-        [Authorize]
-        public async Task<GetHistorysResponse> GetHistories([FromQuery] BaseActivityRequest query)
-        {
-            return await _userActivityService.GetHistoriesAsync(query);
-        }
-
-        #endregion
 
         #region Resource
 
@@ -96,7 +76,7 @@ namespace Api.Controllers
         [HttpPost("roles/update")]
         //[ProtectedEndPoint("blocks-idp::update-role")]
         [Authorize]
-        public async Task<IActionResult> UpdateRole( [FromBody] UpdateRoleRequest command)
+        public async Task<IActionResult> UpdateRole([FromBody] UpdateRoleRequest command)
         {
             var result = await _resourceMutationService.UpdateRoleAsync(command);
             return result.IsSuccess ? Ok(result) : BadRequest(result);
@@ -241,21 +221,21 @@ namespace Api.Controllers
             return result.IsSuccess ? Ok(result) : BadRequest(result);
         }
 
-        [HttpPost("users/roles-and-permissions")]
-        //[ProtectedEndPoint("blocks-idp::role-and-permission-management")]
+        [HttpPost("users/access")]
+        //[ProtectedEndPoint("blocks-idp::update-organization-user")]
         [Authorize]
-        public async Task<IActionResult> SaveRolesAndPermissions(SaveRolesAndPermissionsRequest command)
+        public async Task<IActionResult> UpdateUserAccessControl(UpdateUserAccessControlRequest command)
         {
-            var result = await _userManagementMutationService.SaveRolesAndPermissionsAsync(command);
+            var result = await _userManagementMutationService.UpdateUserAccessControlAsync(command);
             return result.IsSuccess ? Ok(result) : BadRequest(result);
         }
 
-        [HttpPost("users/org-update")]
+        [HttpPost("users/revoke-access")]
         //[ProtectedEndPoint("blocks-idp::update-organization-user")]
-        [Authorize] 
-        public async Task<IActionResult> UpdateOrganizationUser(UpdateOrganizationUserRequest command)
+        [Authorize]
+        public async Task<IActionResult> RevokeUserAccessControl(RevokeUserAccessControlRequest command)
         {
-            var result = await _userManagementMutationService.UpdateOrganizationUserAsync(command);
+            var result = await _userManagementMutationService.RevokeUserAccessControlAsync(command);
             return result.IsSuccess ? Ok(result) : BadRequest(result);
         }
 
@@ -267,6 +247,17 @@ namespace Api.Controllers
             {
                 IsAvailable = result
             });
+        }
+
+        [HttpGet("users/exists")]
+        [Authorize]
+        public async Task<IActionResult> IsUserExist([FromQuery] string? email)
+        {
+            if (string.IsNullOrWhiteSpace(email))
+                return BadRequest(new { error = "email is required" });
+
+            var result = await _userManagementQueryService.IsUserExistAsync(email);
+            return Ok(result);
         }
 
         [HttpGet("users/timeline")]
@@ -290,7 +281,7 @@ namespace Api.Controllers
 
         [HttpPost("organizations/{id}")]
         [Authorize]
-        public async Task<BaseResponse> UpdateOrganization([FromRoute] string id, [FromBody]  SaveOrganizationRequest request)
+        public async Task<BaseResponse> UpdateOrganization([FromRoute] string id, [FromBody] SaveOrganizationRequest request)
         {
             return await _resourceMutationService.UpdateOrganizationAsync(id, request);
         }
@@ -304,7 +295,7 @@ namespace Api.Controllers
 
         [HttpGet("organizations/{id}")]
         [Authorize]
-        public async Task<GetOrganizationResponse> GetOrganization([FromRoute]  string id)
+        public async Task<GetOrganizationResponse> GetOrganization([FromRoute] string id)
         {
             return await _resourceMutationService.GetOrganizationAsync(id);
         }
@@ -316,7 +307,7 @@ namespace Api.Controllers
             return await _resourceMutationService.GetMyOrganizationAsync();
         }
         #endregion
-        
+
         #region Config
 
         [HttpPost("organizations/config")]
@@ -334,7 +325,7 @@ namespace Api.Controllers
         }
 
         [HttpPost("signup-settings")]
-        // [Authorize]
+        [Authorize]
         public async Task<SaveSignUpSettingResponse> SaveSignUpSetting([FromBody] SaveSignUpSettingRequest request)
         {
             return await _accountService.SaveSignUpSettingAsync(request);
@@ -343,6 +334,19 @@ namespace Api.Controllers
         [HttpGet("signup-settings")]
         public async Task<Dictionary<string, object>> GetSignUpSetting()
         {
+            var userPrincipal = await _authenticationService.GetPrincipalFromTokenAsync(Request, BlocksContext.GetContext()?.TenantId ?? "", IsUserInfoGetRequest: false);
+
+            if (userPrincipal != null)
+            {
+                bool.TryParse(userPrincipal?.FindFirst("impersonated")?.Value, out bool impersonated);
+
+                if(impersonated)
+                {
+                    var claimUserId = userPrincipal?.FindFirst("user_id")?.Value;
+                    var claimTenantId = userPrincipal?.FindFirst("tenant_id")?.Value;
+                    BlocksContext.SetContext(BlocksContext.Create(claimTenantId, [], claimUserId, true, string.Empty, string.Empty, DateTime.MinValue, string.Empty, [], string.Empty, string.Empty, string.Empty, string.Empty, string.Empty));
+                }
+            }
             return await _accountService.GetSignUpSettingAsync();
         }
 

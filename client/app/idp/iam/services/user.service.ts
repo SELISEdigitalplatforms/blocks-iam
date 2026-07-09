@@ -23,6 +23,8 @@ import {
   ISaveRolesAndPermissionsResponse,
   IUpdateUserPayload,
   IUpdateUserResponse,
+  IUpdateUserAccessControlPayload,
+  IUpdateUserAccessControlResponse,
   IGetSignUpSettingResponse,
   ISaveSignUpSettingPayload,
   ISaveSignUpSettingResponse,
@@ -34,6 +36,36 @@ import {
   ORGANIZATION_ENDPOINTS,
 } from "../constants/endpoint.constant";
 import { AUTH_ENDPOINTS } from "@/idp/authentication/constants/endpoint.constant";
+
+type ApiUser = User & { OrganizationIds?: string[] };
+
+const toScopedRecord = (
+  organizationIds: string[],
+  value: Record<string, string[]> | string[] | undefined,
+): Record<string, string[]> => {
+  if (!value) return {};
+  if (!Array.isArray(value)) return { ...value };
+  if (organizationIds.length === 0) return {};
+  return Object.fromEntries(organizationIds.map((orgId) => [orgId, [...value]]));
+};
+
+const normalizeUserFromApi = (raw: ApiUser): User => {
+  const organizationIds =
+    raw.organizationIds?.length > 0 ? raw.organizationIds : raw.OrganizationIds ?? [];
+
+  return {
+    ...raw,
+    organizationIds,
+    roles: toScopedRecord(
+      organizationIds,
+      raw.roles as Record<string, string[]> | string[] | undefined,
+    ),
+    permissions: toScopedRecord(
+      organizationIds,
+      raw.permissions as Record<string, string[]> | string[] | undefined,
+    ),
+  };
+};
 
 export class UserService {
   constructor(public account: UserAccountService) {}
@@ -63,11 +95,20 @@ export class UserService {
   }
 
   getUserById(payload: IGetUserByIdPayload): Promise<IGetUserByIdResponse> {
-    return serviceInstances.idpService.get(`${USER_ENDPOINTS.GET_USER}/${payload.id}`);
+    return serviceInstances.idpService
+      .get<IGetUserByIdResponse>(`${USER_ENDPOINTS.GET_USER}/${payload.id}`)
+      .then((response) => ({
+        ...response,
+        data: normalizeUserFromApi(response.data as ApiUser),
+      }));
   }
 
   addUser(createPayload: ICreateUserPayload): Promise<ICreateUserResponse> {
     return serviceInstances.idpService.post(USER_ENDPOINTS.CREATE, createPayload);
+  }
+
+  isUserExist(email: string): Promise<{ isSuccess: boolean; exists: boolean }> {
+    return serviceInstances.idpService.get(`${USER_ENDPOINTS.EXISTS}?email=${encodeURIComponent(email)}`);
   }
 
   updateUser(payload: IUpdateUserPayload): Promise<IUpdateUserResponse> {
@@ -117,6 +158,12 @@ export class UserService {
     payload: ISaveRolesAndPermissionsPayload,
   ): Promise<ISaveRolesAndPermissionsResponse> {
     return serviceInstances.idpService.post(USER_ENDPOINTS.SAVE_ROLES_AND_PERMISSIONS, payload);
+  }
+
+  updateUserAccessControl(
+    payload: IUpdateUserAccessControlPayload,
+  ): Promise<IUpdateUserAccessControlResponse> {
+    return serviceInstances.idpService.post(USER_ENDPOINTS.ACCESS_CONTROL, payload);
   }
 
   async getSessions(

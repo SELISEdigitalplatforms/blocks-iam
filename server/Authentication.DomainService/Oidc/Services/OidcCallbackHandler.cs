@@ -206,9 +206,9 @@ namespace Authentication.DomainService.Oidc.Services
                 // Try to get existing user by email
                 var existingUser = await _userRepository.GetUserByEmailAsync(externalUserData.Email);
 
-                if (existingUser != null && (!existingUser.Active))
+                if (existingUser != null)
                 {
-                    return (existingUser.ItemId, false);
+                    return (existingUser.ItemId, existingUser.Active);
                 }
 
                 // Create new user from social provider info
@@ -239,6 +239,9 @@ namespace Authentication.DomainService.Oidc.Services
                         { "EmployeeId", externalUserData.EmployeeId },
                         { "ExternalProviderUserId", externalUserData.ExternalProviderUserId }
                     } : new Dictionary<string, object>(),
+
+                    CreatedDate = DateTime.UtcNow,
+                    LastUpdatedDate = DateTime.UtcNow
                 };
 
                 // Save new user

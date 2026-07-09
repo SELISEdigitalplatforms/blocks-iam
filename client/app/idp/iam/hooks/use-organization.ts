@@ -12,6 +12,7 @@ export const useGetOrganizations = (options: IOrganizationFilter) => {
         page: options.page,
         pageSize: options.pageSize,
         searchText: options.search,
+        sort: options.sort,
       }),
     enabled: !!options.projectKey,
     placeholderData: keepPreviousData,
