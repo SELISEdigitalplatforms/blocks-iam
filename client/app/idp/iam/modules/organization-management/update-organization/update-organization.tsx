@@ -30,9 +30,10 @@ import { updateOrganizationFormSchema } from "./utils";
 type UpdateOrganizationProps = {
   organization: IOrganization;
   isOpen: boolean;
+  onClose?: () => void;
 };
 
-export const UpdateOrganization = ({ organization, isOpen }: UpdateOrganizationProps) => {
+export const UpdateOrganization = ({ organization, isOpen, onClose }: UpdateOrganizationProps) => {
   const { mutateAsync, isPending } = useUpdateOrganization();
 
   const form = useForm({
@@ -56,6 +57,7 @@ export const UpdateOrganization = ({ organization, isOpen }: UpdateOrganizationP
         return;
       }
       showSuccessToast({ description: "Organization renamed successfully" });
+      onClose?.();
     } catch (error: unknown) {
       if (error && typeof error === "object" && "errors" in error) {
         showErrorToast({ errors: error.errors });
