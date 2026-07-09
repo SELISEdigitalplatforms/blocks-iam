@@ -1,5 +1,6 @@
 using System.Security.Cryptography;
 
+using Authentication.DomainService.Utilities;
 namespace Authentication.DomainService.Utilities
 {
     public static class ClientSecretGenerator

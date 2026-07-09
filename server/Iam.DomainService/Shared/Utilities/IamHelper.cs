@@ -6,9 +6,6 @@ namespace Iam.DomainService.Utilities
 {
     public static class IamHelper
     {
-        public const string OidcActivateRoute = "oidc/activate/";
-        public const string OidcRecoverRoute = "oidc/recover/";
-
         public static string GetOidcRequestBaseUrl(IHttpContextAccessor? httpContextAccessor)
         {
             var request = httpContextAccessor?.HttpContext?.Request;

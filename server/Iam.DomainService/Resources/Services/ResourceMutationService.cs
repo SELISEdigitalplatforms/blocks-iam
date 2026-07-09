@@ -76,8 +76,9 @@ namespace Iam.DomainService.Resources
                 }
             );
 
+
             var tenantConfig = await _resourceRepository.GetTenantConfigurationAsync();
-            if (tenantConfig.IsMultiOrgEnabled && command.PropagateToOtherOrg)
+            if (tenantConfig.IsMultiOrgEnabled && blocksContext.OrganizationId == "default")
             {
                 await _identityAccessManagementService.SendToQueueAsync(
                     IdpConstants.IamOrgQueue,
@@ -300,7 +301,7 @@ namespace Iam.DomainService.Resources
             );
 
             var tenantConfig = await _resourceRepository.GetTenantConfigurationAsync();
-            if (tenantConfig.IsMultiOrgEnabled & command.PropagateToOtherOrg)
+            if (tenantConfig.IsMultiOrgEnabled && blocksContext.OrganizationId == "default")
             {
                 await _identityAccessManagementService.SendToQueueAsync(
                     IdpConstants.IamOrgQueue,
@@ -836,6 +837,18 @@ namespace Iam.DomainService.Resources
             };
 
             var result = await _resourceRepository.SaveResourceTimelineAsync(timeline);
+
+            if(permission.IsBuiltIn)
+            {
+                await _identityAccessManagementService.SendToQueueAsync(
+                    IdpConstants.IamPermissionQueue,
+                    new PermissionMutationForTenantsEvent
+                    {
+                        Action = context.Action,
+                        ItemId = context.ItemId
+                    }
+                );
+            }
 
             return result;
         }

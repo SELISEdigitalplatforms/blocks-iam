@@ -1,4 +1,4 @@
-using Authentication.DomainService.Utilities;
+using Iam.DomainService.Utilities;
 using System.Text.Json;
 using Authentication.DomainService.Entities;
 using Authentication.DomainService.OAuth;

@@ -4,7 +4,7 @@ using Authentication.DomainService.Entities;
 using Authentication.DomainService.OAuth.RequestModel;
 using Authentication.DomainService.OAuth.ResponseModel;
 using Authentication.DomainService.Services;
-using Authentication.DomainService.Utilities;
+using Iam.DomainService.Utilities;
 using Iam.DomainService.Accounts;
 using Iam.DomainService.Entities;
 using Microsoft.Extensions.Logging;

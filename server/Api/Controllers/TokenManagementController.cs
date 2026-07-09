@@ -1,7 +1,7 @@
 using Authentication.DomainService.Oidc.Repositories;
 using Authentication.DomainService.Dtos;
 using Authentication.DomainService.Services;
-using Authentication.DomainService.Utilities;
+using Iam.DomainService.Utilities;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using System.Text;

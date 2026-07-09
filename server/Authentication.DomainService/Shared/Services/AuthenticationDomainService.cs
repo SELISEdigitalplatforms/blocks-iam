@@ -1,11 +1,12 @@
 using Blocks.Genesis;
+using Authentication.DomainService.Utilities;
 using DeviceDetectorNET;
 using Authentication.DomainService.Dtos;
 using Authentication.DomainService.Entities;
 using Authentication.DomainService.RequestModel;
 using Authentication.DomainService.ResponseModel;
 using Authentication.DomainService.Shared;
-using Authentication.DomainService.Utilities;
+using Iam.DomainService.Utilities;
 using Iam.DomainService.Users;
 using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.Configuration;

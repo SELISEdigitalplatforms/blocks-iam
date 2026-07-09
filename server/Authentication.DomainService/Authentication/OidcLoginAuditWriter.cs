@@ -1,4 +1,5 @@
 using Authentication.DomainService.OAuth;
+using Iam.DomainService.Utilities;
 using Authentication.DomainService.Oidc.Repositories;
 using Authentication.DomainService.Shared;
 using Iam.DomainService.Entities;
@@ -42,8 +43,8 @@ namespace Authentication.DomainService.Authentication
                     TenantId = request.TenantId ?? BlocksContext.GetContext()?.TenantId,
                     IpAddress = OidcRedirectUrlBuilder.GetClientIpAddress(httpRequest),
                     UserAgent = httpRequest.Headers.UserAgent.ToString(),
-                    Severity = isFailure ? AuthenticationConstants.SeverityWarn : AuthenticationConstants.SeverityInfo,
-                    Status = isSuccess ? AuthenticationConstants.StatusSuccess : AuthenticationConstants.StatusFailure,
+                    Severity = isFailure ? IdpConstants.SeverityWarn : IdpConstants.SeverityInfo,
+                    Status = isSuccess ? IdpConstants.StatusSuccess : IdpConstants.StatusFailure,
                     Details = details ?? eventType
                 });
             }

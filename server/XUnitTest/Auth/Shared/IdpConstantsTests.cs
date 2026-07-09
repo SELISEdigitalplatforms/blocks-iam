@@ -1,4 +1,4 @@
-using Authentication.DomainService.Utilities;
+using Iam.DomainService.Utilities;
 using FluentAssertions;
 
 namespace XUnitTest.Auth.Shared
@@ -8,12 +8,11 @@ namespace XUnitTest.Auth.Shared
         [Fact]
         public void QueueNames_AreCorrect()
         {
-            IdpConstants.AuthenticationQueue.Should().Be("blocks_idp_authentication_listener");
-            IdpConstants.IamQueue.Should().Be("blocks_idp_iam_listener");
-            IdpConstants.IamOrgQueue.Should().Be("blocks_idp_iam_org_listener");
+            IdpConstants.AuthenticationQueue.Should().Be("blocks_authentication_listener");
+            IdpConstants.IamQueue.Should().Be("blocks_iam_listener");
+            IdpConstants.IamOrgQueue.Should().Be("blocks_iam_org_listener");
             IdpConstants.MailQueue.Should().Be("blocks_email_listener");
-            IdpConstants.MfaQueueName.Should().Be("blocks_idp_mfa_listener");
-            IdpConstants.DataCleanupQueue.Should().Be("blocks_idp_data_cleanup_listener");
+            IdpConstants.MfaQueueName.Should().Be("blocks_mfa_listener");
         }
 
         [Fact]

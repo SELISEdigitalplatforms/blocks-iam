@@ -1,4 +1,5 @@
 using Authentication.DomainService.Authentication;
+using Iam.DomainService.Utilities;
 using global::Authentication.DomainService.Oidc.Repositories;
 using global::Authentication.DomainService.Shared;
 using Blocks.Genesis;
@@ -36,8 +37,8 @@ namespace XUnitTest.Auth
                 UserId = "user-1",
                 ClientId = "client-1",
                 TenantId = "tenant-1",
-                Status = AuthenticationConstants.StatusSuccess,
-                Severity = AuthenticationConstants.SeverityInfo,
+                Status = IdpConstants.StatusSuccess,
+                Severity = IdpConstants.SeverityInfo,
                 Details = "test"
             };
 
@@ -48,8 +49,8 @@ namespace XUnitTest.Auth
                 m.UserId == "user-1" &&
                 m.ClientId == "client-1" &&
                 m.TenantId == "tenant-1" &&
-                m.Severity == AuthenticationConstants.SeverityInfo &&
-                m.Status == AuthenticationConstants.StatusSuccess
+                m.Severity == IdpConstants.SeverityInfo &&
+                m.Status == IdpConstants.StatusSuccess
             )), Times.Once);
         }
 

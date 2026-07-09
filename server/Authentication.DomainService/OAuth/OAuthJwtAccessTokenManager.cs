@@ -1,4 +1,5 @@
 using Blocks.Genesis;
+using Authentication.DomainService.Utilities;
 using Authentication.DomainService.Authentication;
 using Authentication.DomainService.Dtos;
 using Authentication.DomainService.Entities;
@@ -12,7 +13,7 @@ using Mfa.DomainService.Entities;
 using Mfa.DomainService.Services;
 using System.IdentityModel.Tokens.Jwt;
 using System.Text.Json;
-using Authentication.DomainService.Utilities;
+using Iam.DomainService.Utilities;
 using Authentication.DomainService.Shared;
 
 namespace Authentication.DomainService.OAuth

@@ -8,7 +8,7 @@ using System.Text.Json;
 using Blocks.Genesis;
 using Authentication.DomainService.OAuth;
 using Authentication.DomainService.Services;
-using Authentication.DomainService.Utilities;
+using Iam.DomainService.Utilities;
 using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.Configuration;
 using Microsoft.IdentityModel.Tokens;
@@ -342,7 +342,7 @@ public sealed class PkceService : IPkceService
 {
     public Task<bool> ValidateVerifierAsync(string codeChallenge, string codeVerifier, string? codeChallengeMethod)
     {
-        if (!string.Equals(codeChallengeMethod, AuthenticationConstants.PkceMethodS256, StringComparison.OrdinalIgnoreCase))
+        if (!string.Equals(codeChallengeMethod, IdpConstants.PkceMethodS256, StringComparison.OrdinalIgnoreCase))
         {
             return Task.FromResult(false);
         }
@@ -518,7 +518,7 @@ public sealed class DiscoveryService : IDiscoveryService
             return $"{uri.Scheme}://{uri.Authority}";
         }
 
-        return AuthenticationConstants.FallbackIssuer;
+        return IdpConstants.FallbackIssuer;
     }
 
     private static string BuildUrl(string issuer, params string[] segments)

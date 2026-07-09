@@ -1,5 +1,6 @@
 using Authentication.DomainService.OAuth.ResponseModel;
 using Authentication.DomainService.Utilities;
+using Iam.DomainService.Utilities;
 using FluentAssertions;
 using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.Primitives;

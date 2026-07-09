@@ -1,4 +1,5 @@
 using Authentication.DomainService.Dtos;
+using Authentication.DomainService.Utilities;
 using Authentication.DomainService.Entities;
 using Authentication.DomainService.OAuth;
 using Authentication.DomainService.OAuth.RequestModel;
@@ -6,7 +7,7 @@ using Authentication.DomainService.OAuth.ResponseModel;
 using Authentication.DomainService.Services;
 using Authentication.DomainService.Shared;
 using Authentication.DomainService.Shared.RequestModel;
-using Authentication.DomainService.Utilities;
+using Iam.DomainService.Utilities;
 using Blocks.Genesis;
 using Iam.DomainService.Entities;
 using Microsoft.AspNetCore.Http;
