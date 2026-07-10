@@ -1,8 +1,9 @@
 using System.Text.Json.Serialization;
+using Iam.DomainService.Dtos;
 using Iam.DomainService.Utilities;
 using Authentication.DomainService.OAuth;
-using Authentication.DomainService.Shared;
 using Microsoft.IdentityModel.Tokens;
+using MongoDB.Bson.Serialization.Attributes;
 
 namespace Idp.DomainService.Oidc.Contracts;
 
@@ -54,17 +55,20 @@ public sealed class AuthorizationCodeModel
     public string? ImpersonatedUserId { get; set; } = string.Empty;
 }
 
+[BsonIgnoreExtraElements]
 public sealed class RefreshTokenModel
 {
-    public string Id { get; set; } = Guid.NewGuid().ToString("n");
+    [BsonId]
     public string TokenId { get; set; } = Guid.NewGuid().ToString("n");
     public string UserId { get; set; } = string.Empty;
     public string? TenantId { get; set; }
-    public string? OrgId { get; set; }
+    public string? OrganizationId { get; set; }
     public string? ClientId { get; set; }
     public string? Audience { get; set; }
     public string? Scope { get; set; }
     public string? SessionId { get; set; }
+    public string? GrantType { get; set; }
+    public DeviceInformation? DeviceInformation { get; set; }
     public DateTime IssuedUtc { get; set; }
     public DateTime SlidingExpiry { get; set; }
     public DateTime AbsoluteExpiry { get; set; }
@@ -81,8 +85,11 @@ public sealed class RefreshTokenModel
         var now = DateTime.UtcNow;
         return now >= SlidingExpiry || now >= AbsoluteExpiry;
     }
+
+    public bool IsActive(DateTime now) => !IsRevoked && now < AbsoluteExpiry;
 }
 
+[BsonIgnoreExtraElements]
 public sealed class IdpSessionAccount
 {
     public string UserId { get; set; } = string.Empty;
@@ -91,6 +98,7 @@ public sealed class IdpSessionAccount
     public DateTime LoginAt { get; set; }
 }
 
+[BsonIgnoreExtraElements]
 public sealed class IdpSessionModel
 {
     public string Id { get; set; } = Guid.NewGuid().ToString("n");

@@ -203,6 +203,7 @@ namespace Authentication.DomainService.Authentication
                 Permissions = resolvedClaims.Permissions
             };
 
+
             var authConfiguration = await _authenticationRepository.GetAuthenticationConfigurationAsync();
             var accessTokenLifetimeSeconds = Math.Max((authConfiguration?.AccessTokenValidForNumberMinutes ?? IdentityConfiguration.DefaultAccessTokenValidForNumberMinutes) * IdpConstants.SecondsPerMinute, IdpConstants.MinAccessTokenLifetimeSeconds);
             var absoluteRefreshTokenLifetimeMinutes = Math.Max(authConfiguration?.AbsoluteRefreshTokenValidForNumberMinutes ?? IdentityConfiguration.DefaultRememberMeRefreshTokenValidForNumberMinutes, 1);
@@ -218,7 +219,7 @@ namespace Authentication.DomainService.Authentication
             refreshTokenModel.UserId = authCode.UserId;
             refreshTokenModel.ClientId = clientId;
             refreshTokenModel.TenantId = effectiveTenantId!;
-            refreshTokenModel.OrgId = authCode.OrganizationId;
+            refreshTokenModel.OrganizationId = authCode.OrganizationId;
             refreshTokenModel.Audience = tenantAudience;
             refreshTokenModel.Scope = authCode.Scope;
             refreshTokenModel.IpAddress = OidcRedirectUrlBuilder.GetClientIpAddress(request);
@@ -324,37 +325,15 @@ namespace Authentication.DomainService.Authentication
             return (null, authCode, user, effectiveTenantId);
         }
 
-        private async Task<string> ResolveOrCreateIdpSessionAsync(HttpRequest request, string userId, string tenantId)
+        private Task<string> ResolveOrCreateIdpSessionAsync(HttpRequest request, string userId, string tenantId)
         {
-            try
-            {
-                var cookieKey = IdpConstants.BuildIdpSessionCookieKey(tenantId);
-                var existingSessionId = request.Cookies[cookieKey];
-                if (!string.IsNullOrWhiteSpace(existingSessionId))
-                {
-                    var existing = await _idpSessionService.GetSessionAsync(existingSessionId);
-                    if (existing != null && !existing.RevokedAt.HasValue && !existing.IsExpired())
-                    {
-                        await _idpSessionService.AddAccountAsync(existingSessionId, userId, tenantId, userId);
-                        return existingSessionId;
-                    }
-                }
-
-                var ipAddress = OidcRedirectUrlBuilder.GetClientIpAddress(request);
-                var newSessionId = await _idpSessionService.CreateSessionAsync(userId, tenantId, ipAddress);
-
-                var cookieOptions = DomainResolver.IsLocalhost()
-                    ? DomainResolver.CreateLoopbackCookieOptions(null, DateTime.UtcNow.AddDays(IdpConstants.IdpSessionCookieTtlDays))
-                    : DomainResolver.CreateProductionCookieOptions(null, DateTime.UtcNow.AddDays(IdpConstants.IdpSessionCookieTtlDays));
-                request.HttpContext.Response.Cookies.Append(cookieKey, newSessionId, cookieOptions);
-
-                return newSessionId;
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, "Failed to resolve/create IdP session during OIDC token exchange for user {UserId}", userId);
-                return string.Empty;
-            }
+            // Thin wrapper: cookie resolution + account-add + cookie-write are all handled inside the helper.
+            // Failure surfaces as an exception — caller maps the failure to invalid_grant.
+            return _idpSessionService.ResolveOrCreateAsync(
+                request.HttpContext,
+                userId,
+                tenantId,
+                OidcRedirectUrlBuilder.GetClientIpAddress(request));
         }
 
         private static bool AppendAccessAndRefreshTokenCookies(

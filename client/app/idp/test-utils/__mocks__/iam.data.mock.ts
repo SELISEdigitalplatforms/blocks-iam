@@ -15,7 +15,6 @@ import type {
 import type {
   ISaveSignUpSettingPayload,
   ISaveRolesAndPermissionsPayload,
-  IGetSessionPayload,
   IGeneratePATPayload,
   IGetUserRolesPayload,
   IGetUserPermissionsPayload,
@@ -135,13 +134,6 @@ export const mockSaveRolesAndPermissionsPayload: ISaveRolesAndPermissionsPayload
   userId: MOCK_USER_ITEM_ID,
   roles: ["admin"],
   permissions: ["read"],
-  projectKey: TEST_PROJECT_KEY,
-};
-
-export const mockGetSessionsPayload: IGetSessionPayload = {
-  page: 1,
-  pageSize: 10,
-  userId: MOCK_USER_ITEM_ID,
   projectKey: TEST_PROJECT_KEY,
 };
 

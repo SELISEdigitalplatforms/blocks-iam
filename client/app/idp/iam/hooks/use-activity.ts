@@ -1,20 +1,21 @@
 import { toast } from "@/hooks/use-toast";
-import { IGeneratePATPayload, IGetSessionPayload } from "@blocks-idp/iam/models/user";
+import { IGeneratePATPayload } from "@blocks-idp/iam/models/user";
 import { IGetActivitiesPayload } from "@blocks-idp/iam/models/activity";
 import { userService } from "@blocks-idp/iam/services/user.service";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
-export const useGetSessions = (option: IGetSessionPayload) => {
+export const useGetSecurityOverview = (options?: { enabled?: boolean }) => {
   return useQuery({
-    queryKey: ["sessions", option],
-    queryFn: () => userService.getSessions(option),
+    queryKey: ["security-overview"],
+    queryFn: () => userService.getSecurityOverview(),
+    enabled: options?.enabled ?? true,
   });
 };
 
-export const useGetSessionById = (sessionId: string, options?: { enabled?: boolean }) => {
+export const useGetSessionTimeline = (sessionId: string, options?: { enabled?: boolean }) => {
   return useQuery({
-    queryKey: ["session", sessionId],
-    queryFn: () => userService.getSessionById(sessionId),
+    queryKey: ["session-timeline", sessionId],
+    queryFn: () => userService.getSessionTimeline(sessionId),
     enabled: (options?.enabled ?? true) && !!sessionId,
   });
 };
@@ -24,10 +25,21 @@ export const useRevokeSession = () => {
   return useMutation({
     mutationFn: (sessionId: string) => userService.revokeSession(sessionId),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["sessions"] });
-      queryClient.invalidateQueries({ queryKey: ["session"] });
+      queryClient.invalidateQueries({ queryKey: ["security-overview"] });
+      queryClient.invalidateQueries({ queryKey: ["session-timeline"] });
       queryClient.invalidateQueries({ queryKey: ["activities"] });
-      queryClient.invalidateQueries({ queryKey: ["session-refresh-tokens"] });
+    },
+  });
+};
+
+export const useRevokeRefreshToken = () => {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ tokenId, reason }: { tokenId: string; reason?: string }) =>
+      userService.revokeRefreshToken(tokenId, reason),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["security-overview"] });
+      queryClient.invalidateQueries({ queryKey: ["session-timeline"] });
     },
   });
 };
@@ -37,13 +49,6 @@ export const useGetActivities = (option: IGetActivitiesPayload, options?: { enab
     queryKey: ["activities", option],
     queryFn: () => userService.getActivities(option),
     enabled: (options?.enabled ?? true) && !!option?.userId,
-  });
-
-export const useGetSessionRefreshTokens = (sessionId: string, options?: { enabled?: boolean }) =>
-  useQuery({
-    queryKey: ["session-refresh-tokens", sessionId],
-    queryFn: () => userService.getSessionRefreshTokens(sessionId),
-    enabled: (options?.enabled ?? true) && !!sessionId,
   });
 
 export const useGetPats = () => {

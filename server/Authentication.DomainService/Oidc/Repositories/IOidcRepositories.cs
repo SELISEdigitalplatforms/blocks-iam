@@ -19,16 +19,20 @@ namespace Authentication.DomainService.Oidc.Repositories
 
     /// <summary>
     /// Refresh Token Repository
-    /// Manages refresh tokens
+    /// Manages refresh tokens. Source of truth for cross-app session state (TokenId == _id).
     /// </summary>
     public interface IRefreshTokenRepository
     {
         Task<string> CreateAsync(RefreshTokenModel token);
         Task<RefreshTokenModel> GetByTokenIdAsync(string tokenId);
-        Task<IEnumerable<RefreshTokenModel>> GetBySessionIdAsync(string sessionId);
+        Task<IReadOnlyList<RefreshTokenModel>> GetBySessionIdAsync(string sessionId);
+        Task<IReadOnlyList<RefreshTokenModel>> GetActiveTokensBySessionIdAsync(string sessionId);
+        Task<IReadOnlyList<RefreshTokenModel>> GetActiveTokensByUserAsync(string userId);
         Task<IEnumerable<RefreshTokenModel>> GetRotationHistoryAsync(string sessionId);
         Task<IEnumerable<RefreshTokenModel>> GetByUserAsync(string userId, string tenantId);
         Task<bool> RevokeByTokenIdAsync(string tokenId, string reason);
+        Task<int> RevokeAllByTokenIdsAsync(IEnumerable<string> tokenIds, string reason);
+        Task<int> RevokeAllBySessionIdAsync(string sessionId, string reason);
         Task<bool> UpdateSlidingExpiryAsync(string tokenId);
         Task<bool> DeleteAsync(string tokenId);
         Task<IEnumerable<RefreshTokenModel>> GetExpiredAsync();

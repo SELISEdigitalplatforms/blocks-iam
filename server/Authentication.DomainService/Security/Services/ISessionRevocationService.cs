@@ -4,6 +4,7 @@ namespace Authentication.DomainService.Security.Services
 {
     public interface ISessionRevocationService
     {
-        Task<RevokeSessionResponse> RevokeSessionAsync(string sessionId, string actorUserId, string currentSessionId, string? targetUserId, string? reason, CancellationToken ct);
+        Task<RevokeSessionResponse> RevokeSessionAsync(string sessionId, string actorUserId, string currentSessionId, string? reason, CancellationToken ct);
+        Task<RevokeSessionResponse> RevokeRefreshTokenAsync(string tokenId, string actorUserId, string currentSessionId, string? reason, CancellationToken ct);
     }
 }

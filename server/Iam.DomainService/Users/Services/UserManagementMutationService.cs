@@ -328,35 +328,6 @@ namespace Iam.DomainService.Users
             return new BaseResponse { IsSuccess = true };
         }
 
-        public async Task UpdateUserByLoginInfoAsync(RefreshTokenEvent refreshTokenConsumer)
-        {
-            _logger.LogInformation("User Mutation event -- initiate to update login info");
-
-            var user = await _userRepository.GetUserByIdAsync(refreshTokenConsumer.UserId);
-
-            if (user == null)
-            {
-                _logger.LogError("User not found by this user id: {Id}", refreshTokenConsumer.UserId);
-                return;
-            }
-
-            if (user.LogInCount == 0)
-            {
-                user.FirstLoggedInTime = DateTime.Now;
-            }
-
-            user.LogInCount += 1;
-            user.LastLoggedInTime = DateTime.Now;
-            user.LastLoggedInDeviceInfo = JsonSerializer.Serialize(refreshTokenConsumer.DeviceInformation);
-            user.FailedLoginCount = 0;
-            user.LastFailedLoginUtc = null;
-            user.LockoutUntilUtc = null;
-
-            await _userRepository.UpdateUserAsync(user);
-
-            _logger.LogInformation("User Mutation event -- end of the update login info");
-        }
-
         public async Task ExecuteUserMutationCommandAsync(UserMutationEvent command)
         {
             _logger.LogInformation("User Mutation event -- initiate");

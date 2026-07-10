@@ -130,7 +130,7 @@ public sealed class OidcSigningKeyMaterial
             TokenId = refreshToken,
             UserId = claims.Sub,
             TenantId = claims.TenantId,
-            OrgId = claims.OrgId,
+            OrganizationId = claims.OrgId,
             Audience = claims.Audience,
             Scope = claims.Scope,
             IssuedUtc = DateTime.UtcNow,
