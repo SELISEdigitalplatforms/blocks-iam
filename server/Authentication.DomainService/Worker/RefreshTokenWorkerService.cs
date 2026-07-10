@@ -128,7 +128,13 @@ namespace Authentication.DomainService.Worker
                 IpAddresses = context?.IpAddresses ?? string.Empty,
                 Event = eventName,
                 ActionBy = "RefreshTokenWorkerService",
-                CreatedAt = DateTime.UtcNow
+                CreatedAt = DateTime.UtcNow,
+                SessionId = context?.SessionId,
+                ClientId = context?.ClientId,
+                CorrelationId = context?.CorrelationId,
+                Outcome = context?.Outcome,
+                ReasonCode = context?.ReasonCode,
+                RiskLevel = context?.RiskLevel
             };
 
             return await _oAuthRepository.InsertIdentityEventAsync(identityEvent);

@@ -17,5 +17,9 @@
         public string? GrantType { get; set; }
         public bool Impersonated { get; set; }
         public string? ImpersonationId { get; set; }
+        public string? Outcome { get; set; }
+        public string? ReasonCode { get; set; }
+        public string? RiskLevel { get; set; }
+        public string? CorrelationId { get; set; }
     }
 }

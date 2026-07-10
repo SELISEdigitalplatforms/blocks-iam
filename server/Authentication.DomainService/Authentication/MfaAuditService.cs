@@ -1,6 +1,9 @@
+using Authentication.DomainService.Dtos;
 using Authentication.DomainService.Oidc.Repositories;
+using Authentication.DomainService.Services;
 using Blocks.Genesis;
 using Idp.DomainService.Oidc.Contracts;
+using Iam.DomainService.Utilities;
 using Mfa.DomainService.Services;
 using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.Logging;
@@ -10,15 +13,18 @@ namespace Authentication.DomainService.Authentication
     public sealed class MfaAuditService : IMfaAuditService
     {
         private readonly IAuditLogRepository _auditLogRepository;
+        private readonly IAuthenticationDomainService _authenticationDomainService;
         private readonly IHttpContextAccessor _httpContextAccessor;
         private readonly ILogger<MfaAuditService> _logger;
 
         public MfaAuditService(
             IAuditLogRepository auditLogRepository,
+            IAuthenticationDomainService authenticationDomainService,
             IHttpContextAccessor httpContextAccessor,
             ILogger<MfaAuditService> logger)
         {
             _auditLogRepository = auditLogRepository;
+            _authenticationDomainService = authenticationDomainService;
             _httpContextAccessor = httpContextAccessor;
             _logger = logger;
         }
@@ -48,6 +54,22 @@ namespace Authentication.DomainService.Authentication
                 };
 
                 await _auditLogRepository.CreateAsync(log);
+
+                var timelineEvent = new UserAuthenticationTimelineEvent
+                {
+                    UserId = auditEvent.UserId,
+                    Event = auditEvent.EventType,
+                    ActionBy = "MfaAuditService",
+                    TenantId = tenantId,
+                    ClientId = auditEvent.ClientId,
+                    Outcome = auditEvent.Status,
+                    DeviceInformation = _authenticationDomainService.GetDeviceInfo(auditEvent.UserAgent ?? (http?.Request?.Headers?.UserAgent.ToString() ?? string.Empty)),
+                    IpAddresses = auditEvent.IpAddress ?? GetClientIpAddress(http),
+                    ReasonCode = auditEvent.Details,
+                    RiskLevel = auditEvent.Status == IdpConstants.StatusFailure ? "high" : "low"
+                };
+
+                await _authenticationDomainService.SendToQueueAsync(IdpConstants.AuthenticationQueue, timelineEvent);
             }
             catch (Exception ex)
             {

@@ -11,6 +11,12 @@ namespace Authentication.DomainService.Security.Models
         public DeviceInformation? DeviceInformation { get; set; }
         public string? IpAddresses { get; set; }
         public string? SessionId { get; set; }
+        public string? TenantId { get; set; }
+        public string? ClientId { get; set; }
+        public string? CorrelationId { get; set; }
+        public string? Outcome { get; set; }
+        public string? ReasonCode { get; set; }
+        public string? RiskLevel { get; set; }
         public DateTime CreatedDate { get; set; }
     }
 }
