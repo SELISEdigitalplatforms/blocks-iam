@@ -28,6 +28,7 @@ namespace Authentication.DomainService.Authentication
 
         public const string MfaEnabled = "mfa_enabled";
         public const string MfaDisabled = "mfa_disabled";
+        public const string MfaRemoved = "mfa_removed";
         public const string MfaEnrollmentCompleted = "mfa_enrollment_completed";
         public const string MfaEnrollmentFailed = "mfa_enrollment_failed";
         public const string MfaVerificationSuccess = "mfa_verification_success";

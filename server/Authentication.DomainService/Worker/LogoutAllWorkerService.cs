@@ -1,11 +1,10 @@
 using Blocks.Genesis;
-using Authentication.DomainService.Dtos;
 using Authentication.DomainService.OAuth;
-using Authentication.DomainService.Services;
-using Iam.DomainService.Utilities;
-using Iam.DomainService.Dtos;
-using Microsoft.Extensions.Logging;
 using Authentication.DomainService.Oidc.Repositories;
+using Authentication.DomainService.Services;
+using Iam.DomainService.Dtos;
+using Iam.DomainService.Services;
+using Microsoft.Extensions.Logging;
 
 namespace Authentication.DomainService.Worker
 {
@@ -13,21 +12,21 @@ namespace Authentication.DomainService.Worker
     {
         private readonly ICacheClient _cacheClient;
         private readonly IAuthenticationRepository _authenticationRepository;
-        private readonly IAuthenticationDomainService _authenticationDomainService;
         private readonly ITokenRevocationService _tokenRevocationService;
+        private readonly IUserActivityDispatcher _userActivityDispatcher;
         private readonly ILogger<LogoutAllWorkerService> _logger;
 
         public LogoutAllWorkerService(
             ICacheClient cacheClient,
             IAuthenticationRepository authenticationRepository,
-            IAuthenticationDomainService authenticationDomainService,
             ITokenRevocationService tokenRevocationService,
+            IUserActivityDispatcher userActivityDispatcher,
             ILogger<LogoutAllWorkerService> logger)
         {
             _cacheClient = cacheClient;
             _authenticationRepository = authenticationRepository;
-            _authenticationDomainService = authenticationDomainService;
             _tokenRevocationService = tokenRevocationService;
+            _userActivityDispatcher = userActivityDispatcher;
             _logger = logger;
         }
         public async Task Consume(LogoutAllEvent context)
@@ -47,24 +46,17 @@ namespace Authentication.DomainService.Worker
 
             await _authenticationRepository.UpdateSessionStatusForAllRefreshTokenAsync(refreshTokens);
 
-            await ProcessTimeline(context.UserId);
-        }
-
-        public async Task<bool> ProcessTimeline(string userId)
-        {
-            var eventTimeline = new UserAuthenticationTimelineEvent
+            await _userActivityDispatcher.SendUserActivityAsync(new UserActivityEvent
             {
-                DeviceInformation = new DeviceInformation
+                UserId = context.UserId,
+                Category = UserActivityCategory.Auth,
+                Event = "LOGGED_OUT_ALL",
+                Source = "auth-logout-all",
+                Context = new ActivityContext
                 {
-                    Device = "server"
-                },
-                Event = "revoke_access_by_logout_all",
-                ActionBy = "call_api_to_logout_all",
-                UserId = userId
-            };
-
-            await _authenticationDomainService.SendToQueueAsync(IdpConstants.AuthenticationQueue, eventTimeline);
-            return true;
+                    DeviceName = "server"
+                }
+            });
         }
     }
 }

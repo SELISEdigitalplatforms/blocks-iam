@@ -14,6 +14,7 @@ using Blocks.Extension.DependencyInjection;
 using DomainService.Storage;
 using FluentValidation;
 using Iam.DomainService.Accounts;
+using Iam.DomainService.Activity.Services;
 using Iam.DomainService.Configurations;
 using Iam.DomainService.Resources;
 using Iam.DomainService.Resources.TenantPropagation;
@@ -64,7 +65,6 @@ namespace Authentication.DomainService.Utilities
             serviceCollection.AddSingleton<IAuthorizationCodeRepository, AuthorizationCodeRepository>();
             serviceCollection.AddSingleton<IRefreshTokenRepository, RefreshTokenRepository>();
             serviceCollection.AddSingleton<IIdpSessionRepository, IdpSessionRepository>();
-            serviceCollection.AddSingleton<IAuditLogRepository, AuditLogRepository>();
             serviceCollection.AddSingleton<ITokenRevocationRepository, TokenRevocationRepository>();
             serviceCollection.AddSingleton<ITokenRevocationService, TokenRevocationService>();
             serviceCollection.AddSingleton<IIdpSessionService, IdpSessionService>();
@@ -153,6 +153,10 @@ namespace Authentication.DomainService.Utilities
 
             serviceCollection.AddSingleton<IAccountService, AccountService>();
             serviceCollection.AddSingleton<IIamConfigurationRepository, IamConfigurationRepository>();
+
+            serviceCollection.AddSingleton<IUserActivityRepository, UserActivityRepository>();
+            serviceCollection.AddSingleton<IUserActivityDispatcher, UserActivityDispatcher>();
+            serviceCollection.AddSingleton<IUserActivityQueryService, UserActivityQueryService>();
 
             serviceCollection.RegisterSecurityServices();
 

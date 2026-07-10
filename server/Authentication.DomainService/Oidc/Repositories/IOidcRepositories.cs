@@ -51,19 +51,6 @@ namespace Authentication.DomainService.Oidc.Repositories
     }
 
     /// <summary>
-    /// Audit Log Repository
-    /// Persists audit logs for compliance and security analysis
-    /// </summary>
-    public interface IAuditLogRepository
-    {
-        Task<string> CreateAsync(AuditLogModel log);
-        Task<IEnumerable<AuditLogModel>> GetByUserAsync(string userId, string tenantId, DateTime from, DateTime to);
-        Task<IEnumerable<AuditLogModel>> GetByEventTypeAsync(string eventType, DateTime from, DateTime to);
-        Task<IEnumerable<AuditLogModel>> GetBySeverityAsync(string severity, DateTime from, DateTime to);
-        Task<long> GetCountAsync(string eventType = null, DateTime? from = null, DateTime? to = null);
-    }
-
-    /// <summary>
     /// Token Revocation Repository
     /// Maintains JTI blacklist for immediate token revocation
     /// </summary>

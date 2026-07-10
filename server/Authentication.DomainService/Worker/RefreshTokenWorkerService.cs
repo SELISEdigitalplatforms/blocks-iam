@@ -2,6 +2,7 @@ using Blocks.Genesis;
 using Authentication.DomainService.Entities;
 using Authentication.DomainService.Services;
 using Iam.DomainService.Dtos;
+using Iam.DomainService.Services;
 using Iam.DomainService.Users;
 using Microsoft.Extensions.Logging;
 using System.Text.Json;
@@ -13,12 +14,18 @@ namespace Authentication.DomainService.Worker
         private readonly ILogger<RefreshTokenWorkerService> _logger;
         private readonly IAuthenticationRepository _oAuthRepository;
         private readonly IUserRepository _userRepository;
+        private readonly IUserActivityDispatcher _userActivityDispatcher;
 
-        public RefreshTokenWorkerService(ILogger<RefreshTokenWorkerService> logger, IAuthenticationRepository oAuthRepository, IUserRepository userRepository)
+        public RefreshTokenWorkerService(
+            ILogger<RefreshTokenWorkerService> logger,
+            IAuthenticationRepository oAuthRepository,
+            IUserRepository userRepository,
+            IUserActivityDispatcher userActivityDispatcher)
         {
             _logger = logger;
             _oAuthRepository = oAuthRepository;
             _userRepository = userRepository;
+            _userActivityDispatcher = userActivityDispatcher;
         }
         public async Task Consume(RefreshTokenEvent context)
         {
@@ -114,30 +121,30 @@ namespace Authentication.DomainService.Worker
         public async Task<bool> ProcessUserTimelineEvent(RefreshTokenEvent context)
         {
             var eventName = context.IsRevoke
-                ? "revoke_refresh_token"
+                ? "TOKEN_REVOKED"
                 : context.IsLogin
-                    ? $"login_via_{context.GrantType ?? "unknown"}"
-                    : "renew_refresh_token";
+                    ? $"LOGIN_VIA_{(context.GrantType ?? "unknown").ToUpperInvariant()}"
+                    : "TOKEN_REFRESHED";
 
-            var identityEvent = new IdentityEvent
+            await _userActivityDispatcher.SendUserActivityAsync(new UserActivityEvent
             {
-                TenantId = context?.TenantId ?? string.Empty,
                 UserId = context?.UserId ?? string.Empty,
-                OrganizationId = context?.OrganizationId,
-                DeviceInformation = context?.DeviceInformation,
-                IpAddresses = context?.IpAddresses ?? string.Empty,
+                Category = UserActivityCategory.Auth,
                 Event = eventName,
-                ActionBy = "RefreshTokenWorkerService",
-                CreatedAt = DateTime.UtcNow,
+                Source = "auth-refresh-token",
                 SessionId = context?.SessionId,
                 ClientId = context?.ClientId,
                 CorrelationId = context?.CorrelationId,
                 Outcome = context?.Outcome,
                 ReasonCode = context?.ReasonCode,
-                RiskLevel = context?.RiskLevel
-            };
-
-            return await _oAuthRepository.InsertIdentityEventAsync(identityEvent);
+                Context = new ActivityContext
+                {
+                    IpAddress = context?.IpAddresses,
+                    DeviceInformation = context?.DeviceInformation
+                },
+                Severity = context?.RiskLevel
+            });
+            return true;
         }
     }
 }

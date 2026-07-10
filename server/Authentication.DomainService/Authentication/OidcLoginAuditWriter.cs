@@ -1,11 +1,8 @@
-using Authentication.DomainService.OAuth;
 using Iam.DomainService.Utilities;
-using Authentication.DomainService.Oidc.Repositories;
 using Authentication.DomainService.Services;
-using Authentication.DomainService.Shared;
-using Authentication.DomainService.Dtos;
+using Iam.DomainService.Dtos;
 using Iam.DomainService.Entities;
-using Idp.DomainService.Oidc.Contracts;
+using Iam.DomainService.Services;
 using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.Logging;
 using Blocks.Genesis;
@@ -13,22 +10,22 @@ using Blocks.Genesis;
 namespace Authentication.DomainService.Authentication
 {
     /// <summary>
-    /// Writes <c>OidcLoginRequest</c>-driven audit log events. Failures are logged but never thrown,
+    /// Writes <c>OidcLoginRequest</c>-driven UserActivity events. Failures are logged but never thrown,
     /// preserving the original behavior of the inline helper in <c>AuthorizationFlowService</c>.
     /// </summary>
     public sealed class OidcLoginAuditWriter
     {
-        private readonly IAuditLogRepository _auditLogRepo;
         private readonly IAuthenticationDomainService _authenticationDomainService;
+        private readonly IUserActivityDispatcher _userActivityDispatcher;
         private readonly ILogger<OidcLoginAuditWriter> _logger;
 
         public OidcLoginAuditWriter(
-            IAuditLogRepository auditLogRepo,
             IAuthenticationDomainService authenticationDomainService,
+            IUserActivityDispatcher userActivityDispatcher,
             ILogger<OidcLoginAuditWriter> logger)
         {
-            _auditLogRepo = auditLogRepo;
             _authenticationDomainService = authenticationDomainService;
+            _userActivityDispatcher = userActivityDispatcher;
             _logger = logger;
         }
 
@@ -39,35 +36,28 @@ namespace Authentication.DomainService.Authentication
                 var isFailure = eventType.Contains("failure", StringComparison.OrdinalIgnoreCase)
                     || eventType.Contains("locked", StringComparison.OrdinalIgnoreCase);
                 var isSuccess = eventType.Contains("success", StringComparison.OrdinalIgnoreCase);
+                var ipAddress = OidcRedirectUrlBuilder.GetClientIpAddress(httpRequest);
+                var userAgent = httpRequest?.Headers?.UserAgent.ToString() ?? string.Empty;
 
-                await _auditLogRepo.CreateAsync(new AuditLogModel
-                {
-                    EventType = eventType,
-                    UserId = user.ItemId,
-                    ClientId = request.ClientId,
-                    TenantId = request.TenantId ?? BlocksContext.GetContext()?.TenantId,
-                    IpAddress = OidcRedirectUrlBuilder.GetClientIpAddress(httpRequest),
-                    UserAgent = httpRequest.Headers.UserAgent.ToString(),
-                    Severity = isFailure ? IdpConstants.SeverityWarn : IdpConstants.SeverityInfo,
-                    Status = isSuccess ? IdpConstants.StatusSuccess : IdpConstants.StatusFailure,
-                    Details = details ?? eventType
-                });
-
-                var timelineEvent = new UserAuthenticationTimelineEvent
+                await _userActivityDispatcher.SendUserActivityAsync(new UserActivityEvent
                 {
                     UserId = user.ItemId,
+                    Category = UserActivityCategory.Auth,
                     Event = eventType,
-                    ActionBy = "OidcLoginAuditWriter",
+                    Source = "auth-oidc-login",
+                    Severity = isFailure ? "medium" : "low",
+                    Outcome = isSuccess ? IdpConstants.StatusSuccess : IdpConstants.StatusFailure,
+                    ReasonCode = isFailure ? eventType : null,
                     TenantId = request.TenantId ?? BlocksContext.GetContext()?.TenantId,
                     ClientId = request.ClientId,
-                    Outcome = isSuccess ? IdpConstants.StatusSuccess : IdpConstants.StatusFailure,
-                    DeviceInformation = _authenticationDomainService.GetDeviceInfo(httpRequest?.Headers?.UserAgent.ToString() ?? string.Empty),
-                    IpAddresses = OidcRedirectUrlBuilder.GetClientIpAddress(httpRequest),
-                    RiskLevel = isFailure ? "medium" : "low",
-                    ReasonCode = isFailure ? eventType : null
-                };
-
-                await _authenticationDomainService.SendToQueueAsync(IdpConstants.AuthenticationQueue, timelineEvent);
+                    Context = new ActivityContext
+                    {
+                        IpAddress = ipAddress,
+                        UserAgent = userAgent,
+                        DeviceInformation = _authenticationDomainService.GetDeviceInfo(userAgent)
+                    },
+                    Metadata = details is null ? null : new Dictionary<string, string> { { "details", details } }
+                });
             }
             catch (Exception ex)
             {

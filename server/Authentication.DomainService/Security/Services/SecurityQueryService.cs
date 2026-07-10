@@ -82,61 +82,6 @@ namespace Authentication.DomainService.Security.Services
             return await _securityRepository.GetSessionByIdAsync(sessionId, ct);
         }
 
-        public async Task<BaseQueryListResponse<IQueryable<AuthHistoryDto>>> GetHistoryAsync(string targetUserId, GetHistoryRequest req, CancellationToken ct)
-        {
-            if (string.IsNullOrWhiteSpace(targetUserId))
-            {
-                return new BaseQueryListResponse<IQueryable<AuthHistoryDto>>
-                {
-                    Data = Enumerable.Empty<AuthHistoryDto>().AsQueryable(),
-                    TotalCount = 0
-                };
-            }
-
-            var items = (await _securityRepository.GetHistoryAsync(targetUserId, req, ct)).ToList();
-            return new BaseQueryListResponse<IQueryable<AuthHistoryDto>>
-            {
-                Data = items.AsQueryable(),
-                TotalCount = items.Count
-            };
-        }
-
-        public async Task<SessionTimelineDto?> GetSessionTimelineAsync(string targetUserId, string sessionId, CancellationToken ct)
-        {
-            if (string.IsNullOrWhiteSpace(targetUserId) || string.IsNullOrWhiteSpace(sessionId))
-            {
-                return null;
-            }
-
-            var tenantId = ResolveTenantId();
-            var session = await _securityRepository.GetSessionAsync(targetUserId, tenantId, sessionId, ct);
-            if (session == null)
-            {
-                return null;
-            }
-
-            var currentSessionId = await ResolveCurrentSessionIdAsync(targetUserId, tenantId, ct);
-            session.IsCurrent = !string.IsNullOrEmpty(currentSessionId) && currentSessionId == session.SessionId;
-
-            var refreshStatus = await _securityRepository.GetRefreshTokenStatusAsync(sessionId, ct);
-            var revokedAccess = await _securityRepository.GetRevokedAccessTokensAsync(targetUserId, ct);
-            var lifecycle = await _securityRepository.GetSessionLifecycleAsync(targetUserId, sessionId, ct);
-            var rotations = await _securityRepository.GetRotationHistoryAsync(sessionId, ct);
-
-            session.RotationCount = rotations.Count;
-            session.LastRotatedAt = rotations.Count > 0 ? rotations.Max(r => r.AbsoluteExpiry) : (DateTime?)null;
-
-            return new SessionTimelineDto
-            {
-                SessionId = sessionId,
-                Session = session,
-                RefreshTokenStatus = refreshStatus,
-                RevokedAccessTokens = revokedAccess.ToList(),
-                Lifecycle = lifecycle.ToList(),
-                Rotations = rotations.ToList()
-            };
-        }
-
         public async Task<IdpSessionSummaryDto?> GetIdpSessionAsync(string targetUserId, CancellationToken ct)
         {
             if (string.IsNullOrWhiteSpace(targetUserId))

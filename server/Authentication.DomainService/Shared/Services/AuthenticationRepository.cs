@@ -96,20 +96,6 @@ namespace Authentication.DomainService.Services
             return true;
         }
 
-        public async Task<bool> InsertIdentityEventAsync(IdentityEvent identityEvent)
-        {
-            var collection = GetCollection<IdentityEvent>();
-            await collection.InsertOneAsync(identityEvent);
-            return true;
-        }
-
-        public async Task<bool> InsertUserAuthenticationTimelineAsync(UserAuthenticationTimeline userAuthenticationTimeline)
-        {
-            var collection = GetCollection<UserAuthenticationTimeline>();
-            await collection.InsertOneAsync(userAuthenticationTimeline);
-            return true;
-        }
-
         public async Task<bool> RevokeIdentitySessionAsync(string refreshToken, string userId)
         {
             var collection = GetCollection<IdentitySession>();
