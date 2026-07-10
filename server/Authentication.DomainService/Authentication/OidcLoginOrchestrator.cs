@@ -131,9 +131,8 @@ namespace Authentication.DomainService.Authentication
             }
 
             await ResetAuthFailureCountersAsync(user!);
-            await _auditWriter.WriteAsync(request, user!, httpRequest, LoginAuditEvents.LoginSuccess, LoginAuditEvents.OidcLoginSuccess);
 
-            return await _authorizationEndpoint.AuthorizeAsync(
+            var authorizeResult = await _authorizationEndpoint.AuthorizeAsync(
                 request.ClientId ?? string.Empty,
                 "code",
                 request.RedirectUri ?? string.Empty,
@@ -149,6 +148,10 @@ namespace Authentication.DomainService.Authentication
                 user!.ItemId,
                 false,
                 mfaCompleted: false);
+
+            await _auditWriter.WriteAsync(request, user!, httpRequest, LoginAuditEvents.LoginSuccess, LoginAuditEvents.OidcLoginSuccess);
+
+            return authorizeResult;
         }
 
         private async Task<(IActionResult? Error, User? User, Tenant? Tenant, string? RequestedTenantId)> ValidateInputsAsync(OidcLoginRequest request)
@@ -362,7 +365,7 @@ namespace Authentication.DomainService.Authentication
                 Status = IdpConstants.StatusSuccess
             });
 
-            return await _authorizationEndpoint.AuthorizeAsync(
+            var authorizeResult = await _authorizationEndpoint.AuthorizeAsync(
                 mfaContext.ClientId ?? string.Empty,
                 "code",
                 mfaContext.RedirectUri ?? string.Empty,
@@ -378,6 +381,10 @@ namespace Authentication.DomainService.Authentication
                 user.ItemId,
                 false,
                 mfaCompleted: true);
+
+            await _auditWriter.WriteAsync(mfaContext.TenantId, mfaContext.ClientId, user, httpRequest, LoginAuditEvents.LoginSuccess, LoginAuditEvents.OidcLoginSuccess);
+
+            return authorizeResult;
         }
 
         private async Task ResetAuthFailureCountersAsync(User user)
