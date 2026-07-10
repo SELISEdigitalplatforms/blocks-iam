@@ -25,6 +25,7 @@ import {
   useGetSessionTimeline,
   useRevokeSession,
 } from "@blocks-idp/iam/hooks/use-activity";
+import { IAppSession } from "@blocks-idp/iam/models/user";
 import { getDeviceIcon } from "@blocks-idp/iam/utils/device-icon";
 import { showErrorToast, showSuccessToast } from "@/hooks/use-toast";
 import { Calendar, Globe, Monitor } from "lucide-react";
@@ -70,6 +71,11 @@ const InfoItem = ({
   </div>
 );
 
+const pickPrimaryApp = (apps: IAppSession[]): IAppSession | undefined => {
+  const active = apps.find((a) => a.isActive);
+  return active ?? apps[0];
+};
+
 export const SessionDetailsDrawer = ({
   sessionId,
   onOpenChange,
@@ -79,16 +85,21 @@ export const SessionDetailsDrawer = ({
   const { data: timeline, isLoading } = useGetSessionTimeline(sessionId ?? "", {
     enabled: !!sessionId,
   });
-  const session = timeline?.session ?? null;
-  const refreshTokens = timeline?.rotations ?? [];
+  const group = timeline?.group ?? null;
+  const primary = pickPrimaryApp(group?.apps ?? []);
+  const rotationCount = timeline?.rotations.length ?? 0;
+  const lastRotatedAt = timeline?.rotations?.length
+    ? timeline.rotations[timeline.rotations.length - 1].issuedUtc
+    : null;
+
   const { data: activities } = useGetActivities(
     {
-      userId: session?.userId ?? "",
+      userId: group?.userId ?? "",
       page: 0,
       pageSize: 50,
       filter: { sessionId: sessionId ?? "" },
     },
-    { enabled: !!sessionId && !!session?.userId },
+    { enabled: !!sessionId && !!group?.userId },
   );
   const { mutateAsync, isPending } = useRevokeSession();
 
@@ -110,12 +121,13 @@ export const SessionDetailsDrawer = ({
     }
   };
 
-  const Icon = getDeviceIcon(session?.deviceType, session?.operatingSystem);
+  const Icon = getDeviceIcon(primary?.deviceModel, primary?.operatingSystem);
+  const deviceName = primary?.deviceName ?? "Unknown device";
 
   return (
     <Sheet open={!!sessionId} onOpenChange={onOpenChange}>
       <SheetContent className="flex w-full flex-col overflow-hidden p-0 sm:max-w-md">
-        {isLoading || !session ? (
+        {isLoading || !group || !primary ? (
           <div className="space-y-4 p-6">
             <Skeleton className="h-10 w-10 rounded-lg" />
             <Skeleton className="h-6 w-40" />
@@ -129,10 +141,8 @@ export const SessionDetailsDrawer = ({
                   <Icon className="h-5 w-5" />
                 </div>
                 <div className="flex min-w-0 flex-1 items-center gap-2">
-                  <SheetTitle className="truncate">
-                    {session.deviceName || "Unknown device"}
-                  </SheetTitle>
-                  {session.isCurrent && <Badge variant="info">This device</Badge>}
+                  <SheetTitle className="truncate">{deviceName}</SheetTitle>
+                  {group.isCurrent && <Badge variant="info">This device</Badge>}
                 </div>
               </div>
             </SheetHeader>
@@ -140,10 +150,10 @@ export const SessionDetailsDrawer = ({
             <div className="min-h-0 flex-1 overflow-y-auto p-6">
               <div className="space-y-6">
                 <div className="flex items-center justify-between gap-3">
-                  <Badge variant={session.isActive ? "success" : "secondary"}>
-                    {session.isActive ? "Active" : "Expired"}
+                  <Badge variant={primary.isActive ? "success" : "secondary"}>
+                    {primary.isActive ? "Active" : "Expired"}
                   </Badge>
-                  {!session.isCurrent && (
+                  {!group.isCurrent && (
                     <Dialog open={isConfirmOpen} onOpenChange={setIsConfirmOpen}>
                       <DialogTrigger asChild>
                         <Button variant="destructive-outline" size="sm">
@@ -155,7 +165,7 @@ export const SessionDetailsDrawer = ({
                           <DialogTitle>Sign out of this device?</DialogTitle>
                           <DialogDescription>
                             This will immediately end the session on{" "}
-                            {session.deviceName || "this device"}.
+                            {deviceName || "this device"}.
                           </DialogDescription>
                         </DialogHeader>
                         <DialogFooter>
@@ -176,43 +186,102 @@ export const SessionDetailsDrawer = ({
                 </div>
 
                 <p className="break-all text-xs text-muted-foreground">
-                  Session ID: <span className="font-mono">{session.sessionId}</span>
+                  Session ID: <span className="font-mono">{group.sessionId}</span>
                 </p>
+
+                {group.apps.length > 1 && (
+                  <div className="space-y-2">
+                    <h4 className="text-sm font-semibold text-high-emphasis">
+                      Signed-in apps ({group.apps.length})
+                    </h4>
+                    <ul className="space-y-1.5">
+                      {group.apps.map((app) => (
+                        <li
+                          key={app.tokenId}
+                          className="flex items-center justify-between gap-2 rounded-md border bg-muted/30 px-3 py-2 text-sm"
+                        >
+                          <span className="truncate">
+                            <span className="font-medium text-high-emphasis">
+                              {app.clientId ?? "unknown client"}
+                            </span>
+                            <span className="ml-2 text-xs text-muted-foreground">
+                              {app.grantType ?? ""}
+                            </span>
+                          </span>
+                          <Badge variant={app.isActive ? "success" : "secondary"}>
+                            {app.isActive ? "Active" : "Expired"}
+                          </Badge>
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
 
                 <div className="grid grid-cols-2 gap-4">
                   <InfoItem
                     icon={<Globe className="h-3.5 w-3.5" />}
                     label="IP Address"
-                    value={session.ipAddresses}
+                    value={primary.ipAddresses}
                   />
                   <InfoItem
                     icon={<Calendar className="h-3.5 w-3.5" />}
                     label="First seen"
-                    value={formatDateTime(session.issuedUtc)}
+                    value={formatDateTime(primary.issuedUtc)}
                   />
                   <InfoItem
                     icon={<Icon className="h-3.5 w-3.5" />}
                     label="Device / Browser"
-                    value={`${session.browser || "Unknown browser"} on ${session.operatingSystem || "Unknown OS"}`}
+                    value={`${primary.browser || "Unknown browser"} on ${primary.operatingSystem || "Unknown OS"}`}
                   />
                   <InfoItem
                     icon={<Monitor className="h-3.5 w-3.5" />}
                     label="Platform"
-                    value={session.operatingSystem}
+                    value={primary.operatingSystem}
                   />
                 </div>
 
                 <div className="grid grid-cols-2 gap-4 rounded-md border bg-muted/30 p-3">
-                  <InfoItem
-                    label="Rotations"
-                    value={session.rotationCount ?? 0}
-                  />
+                  <InfoItem label="Rotations" value={rotationCount} />
                   <InfoItem
                     icon={<Calendar className="h-3.5 w-3.5" />}
                     label="Last rotated"
-                    value={formatDateTime(session.lastRotatedAt)}
+                    value={formatDateTime(lastRotatedAt)}
                   />
                 </div>
+
+                {timeline?.refreshTokenStatus && (
+                  <div className="space-y-2">
+                    <h4 className="text-sm font-semibold text-high-emphasis">
+                      Refresh-token status
+                    </h4>
+                    <InfoItem
+                      label="Token"
+                      value={
+                        <span className="font-mono text-xs">
+                          {timeline.refreshTokenStatus.tokenId ?? "—"}
+                        </span>
+                      }
+                    />
+                    <div className="grid grid-cols-2 gap-4 rounded-md border bg-muted/30 p-3">
+                      <InfoItem
+                        label="Issued"
+                        value={formatDateTime(timeline.refreshTokenStatus.issuedAt)}
+                      />
+                      <InfoItem
+                        label="Expires"
+                        value={formatDateTime(timeline.refreshTokenStatus.absoluteExpiry)}
+                      />
+                      <InfoItem
+                        label="Revoked at"
+                        value={formatDateTime(timeline.refreshTokenStatus.revokedAt)}
+                      />
+                      <InfoItem
+                        label="Reason"
+                        value={timeline.refreshTokenStatus.revokeReason ?? "—"}
+                      />
+                    </div>
+                  </div>
+                )}
 
                 <div className="space-y-3">
                   <h4 className="text-sm font-semibold text-high-emphasis">
@@ -245,7 +314,7 @@ export const SessionDetailsDrawer = ({
                   <h4 className="text-sm font-semibold text-high-emphasis">
                     Refresh-token rotations
                   </h4>
-                  {!refreshTokens?.length ? (
+                  {!timeline?.rotations?.length ? (
                     <p className="text-sm text-muted-foreground">No refresh-token activity yet.</p>
                   ) : (
                     <Table className="text-sm">
@@ -259,7 +328,7 @@ export const SessionDetailsDrawer = ({
                         </TableRow>
                       </TableHeader>
                       <TableBody>
-                        {refreshTokens.map((r) => (
+                        {timeline.rotations.map((r) => (
                           <TableRow key={`${r.fingerprint}-${r.issuedUtc}`}>
                             <TableCell>{formatDateTime(r.issuedUtc)}</TableCell>
                             <TableCell>{formatDateTime(r.absoluteExpiry)}</TableCell>
@@ -279,6 +348,28 @@ export const SessionDetailsDrawer = ({
                     </Table>
                   )}
                 </div>
+
+                {timeline?.revokedAccessTokens?.length ? (
+                  <div className="space-y-3">
+                    <h4 className="text-sm font-semibold text-high-emphasis">
+                      Revoked access tokens
+                    </h4>
+                    <ul className="space-y-1">
+                      {timeline.revokedAccessTokens.map((r, idx) => (
+                        <li
+                          key={r.jti ?? `${r.revokedAt ?? ""}-${idx}`}
+                          className="flex items-center justify-between gap-2 rounded-md border bg-muted/30 px-3 py-2 text-sm"
+                        >
+                          <span className="truncate font-mono text-xs">{r.jti ?? "—"}</span>
+                          <span className="text-xs text-muted-foreground">
+                            {formatDateTime(r.revokedAt)}
+                            {r.reason ? ` · ${r.reason}` : ""}
+                          </span>
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                ) : null}
               </div>
             </div>
           </>

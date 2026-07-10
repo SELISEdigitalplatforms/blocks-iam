@@ -19,7 +19,7 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui-kits/dialog/dialog";
-import { IDeviceSession } from "@blocks-idp/iam/models/user";
+import { IAppSession, ISessionGroup } from "@blocks-idp/iam/models/user";
 import { useRevokeSession } from "@blocks-idp/iam/hooks/use-activity";
 import { getDeviceIcon } from "@blocks-idp/iam/utils/device-icon";
 import { showErrorToast, showSuccessToast } from "@/hooks/use-toast";
@@ -31,7 +31,8 @@ import { SessionDetailsDrawer } from "./session-details-drawer";
 
 type DeviceListProps = {
   isLoading: boolean;
-  data: IDeviceSession[];
+  data: ISessionGroup[];
+  currentSessionId: string | null;
   onRevoked?: () => void;
 };
 
@@ -57,19 +58,40 @@ const EmptyState = () => (
   </div>
 );
 
+const pickPrimaryApp = (apps: IAppSession[]): IAppSession | undefined => {
+  const active = apps.find((a) => a.isActive);
+  return active ?? apps[0];
+};
+
+const deviceDescriptor = (app: IAppSession | undefined) => {
+  if (!app) {
+    return { deviceName: "Unknown device", deviceType: "", operatingSystem: "", browser: "" };
+  }
+  return {
+    deviceName: app.deviceName ?? "Unknown device",
+    deviceType: app.deviceModel ?? "",
+    operatingSystem: app.operatingSystem ?? "",
+    browser: app.browser ?? "",
+    ipAddresses: app.ipAddresses ?? "",
+  };
+};
+
 const SignOutAction = ({
-  session,
+  group,
   onRevoked,
 }: {
-  session: IDeviceSession;
+  group: ISessionGroup;
   onRevoked?: () => void;
 }) => {
   const [open, setOpen] = useState(false);
   const { mutateAsync, isPending } = useRevokeSession();
 
+  const primary = pickPrimaryApp(group.apps);
+  const { deviceName } = deviceDescriptor(primary);
+
   const handleConfirm = async () => {
     try {
-      await mutateAsync(session.sessionId);
+      await mutateAsync(group.sessionId);
       showSuccessToast({ description: "Device signed out successfully" });
       setOpen(false);
       onRevoked?.();
@@ -83,7 +105,7 @@ const SignOutAction = ({
     }
   };
 
-  if (session.isCurrent) {
+  if (group.isCurrent) {
     return <span className="text-sm text-muted-foreground">—</span>;
   }
 
@@ -102,7 +124,7 @@ const SignOutAction = ({
         <DialogHeader>
           <DialogTitle>Sign out of this device?</DialogTitle>
           <DialogDescription>
-            This will immediately end the session on {session.deviceName || "this device"}.
+            This will immediately end the session on {deviceName || "this device"}.
           </DialogDescription>
         </DialogHeader>
         <DialogFooter>
@@ -118,17 +140,25 @@ const SignOutAction = ({
   );
 };
 
-export const UserDevicesList = ({ isLoading, data, onRevoked }: DeviceListProps) => {
+export const UserDevicesList = ({
+  isLoading,
+  data,
+  currentSessionId,
+  onRevoked,
+}: DeviceListProps) => {
   const [selectedSessionId, setSelectedSessionId] = useState<string | null>(null);
 
-  const columns: ColumnDef<IDeviceSession>[] = useMemo(
+  const columns: ColumnDef<ISessionGroup>[] = useMemo(
     () => [
       {
-        accessorKey: "deviceName",
-        header: () => <span className="font-bold text-medium-emphasis">Device / Browser</span>,
+        accessorKey: "primary",
+        header: () => <span className="font-bold text-medium-emphasis">Device / Apps</span>,
         cell: ({ row }) => {
-          const session = row.original;
-          const Icon = getDeviceIcon(session.deviceType, session.operatingSystem);
+          const group = row.original;
+          const primary = pickPrimaryApp(group.apps);
+          const { deviceName, deviceType, operatingSystem, browser } = deviceDescriptor(primary);
+          const Icon = getDeviceIcon(deviceType, operatingSystem);
+          const extraApps = group.apps.length - 1;
           return (
             <div className="flex items-center gap-3">
               <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary">
@@ -136,11 +166,17 @@ export const UserDevicesList = ({ isLoading, data, onRevoked }: DeviceListProps)
               </div>
               <div className="min-w-0">
                 <p className="truncate font-medium text-high-emphasis">
-                  {session.deviceName || "Unknown device"}
+                  {deviceName || "Unknown device"}
                 </p>
                 <p className="truncate text-xs text-muted-foreground">
-                  {session.browser || "Unknown browser"}
-                  {session.operatingSystem ? ` on ${session.operatingSystem}` : ""}
+                  {browser || "Unknown browser"}
+                  {operatingSystem ? ` on ${operatingSystem}` : ""}
+                  {extraApps > 0 && (
+                    <>
+                      {" · "}
+                      <span className="font-medium text-high-emphasis">+{extraApps} more app</span>
+                    </>
+                  )}
                 </p>
               </div>
             </div>
@@ -148,32 +184,36 @@ export const UserDevicesList = ({ isLoading, data, onRevoked }: DeviceListProps)
         },
       },
       {
-        accessorKey: "ipAddresses",
+        accessorKey: "ip",
         header: () => <span className="font-bold text-medium-emphasis">IP Address</span>,
-        cell: ({ row }) => (
-          <span className="text-sm text-muted-foreground">{row.original.ipAddresses}</span>
-        ),
+        cell: ({ row }) => {
+          const { ipAddresses } = deviceDescriptor(pickPrimaryApp(row.original.apps));
+          return <span className="text-sm text-muted-foreground">{ipAddresses || "—"}</span>;
+        },
       },
       {
         accessorKey: "lastActivityAt",
         header: () => <span className="font-bold text-medium-emphasis">Last Active</span>,
-        cell: ({ row }) => (
-          <span className="text-sm text-muted-foreground">
-            {row.original.lastActivityAt
-              ? formatDistanceToNow(new Date(row.original.lastActivityAt), { addSuffix: true })
-              : "—"}
-          </span>
-        ),
+        cell: ({ row }) =>
+          row.original.lastActivityAt ? (
+            <span className="text-sm text-muted-foreground">
+              {formatDistanceToNow(new Date(row.original.lastActivityAt), { addSuffix: true })}
+            </span>
+          ) : (
+            <span className="text-sm text-muted-foreground">—</span>
+          ),
       },
       {
         accessorKey: "status",
         header: () => <span className="font-bold text-medium-emphasis">Status</span>,
         cell: ({ row }) => {
-          const session = row.original;
-          if (session.isCurrent) return <Badge variant="info">Current</Badge>;
+          const group = row.original;
+          const isCurrent = group.isCurrent || group.sessionId === currentSessionId;
+          if (isCurrent) return <Badge variant="info">Current</Badge>;
+          const hasActive = group.apps.some((a) => a.isActive);
           return (
-            <Badge variant={session.isActive ? "success" : "secondary"}>
-              {session.isActive ? "Active" : "Expired"}
+            <Badge variant={hasActive ? "success" : "secondary"}>
+              {hasActive ? "Active" : "Expired"}
             </Badge>
           );
         },
@@ -183,12 +223,12 @@ export const UserDevicesList = ({ isLoading, data, onRevoked }: DeviceListProps)
         header: () => null,
         cell: ({ row }) => (
           <div className="flex justify-end" onClick={(e) => e.stopPropagation()}>
-            <SignOutAction session={row.original} onRevoked={onRevoked} />
+            <SignOutAction group={row.original} onRevoked={onRevoked} />
           </div>
         ),
       },
     ],
-    [onRevoked],
+    [onRevoked, currentSessionId],
   );
 
   const table = useReactTable({
