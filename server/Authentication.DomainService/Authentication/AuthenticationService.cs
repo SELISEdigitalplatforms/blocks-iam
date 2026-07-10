@@ -9,6 +9,7 @@ using Authentication.DomainService.Services;
 using Authentication.DomainService.Shared;
 using Authentication.DomainService.Shared.Dtos;
 using Authentication.DomainService.Shared.RequestModel;
+using Authentication.DomainService.Shared.ResponseModel;
 using Iam.DomainService.Utilities;
 using Blocks.Genesis;
 using Idp.DomainService.Oidc.Contracts;
@@ -1013,9 +1014,9 @@ namespace Authentication.DomainService.Authentication
             }
         }
 
-        public async Task<BaseResponse> CreateIdentityProviderAsync(IdentityProvider provider)
+        public async Task<BaseResponse> CreateIdentityProviderAsync(SaveIdentityProviderRequest request)
         {
-            return await _authenticationDomainService.CreateIdentityProviderAsync(provider);
+            return await _authenticationDomainService.CreateIdentityProviderAsync(request);
         }
 
         public async Task<IdentityProvider?> GetIdentityProviderAsync(string provider)
@@ -1033,9 +1034,9 @@ namespace Authentication.DomainService.Authentication
             return await _authenticationDomainService.GetAllIdentityProvidersAsync();
         }
 
-        public async Task<BaseResponse> UpdateIdentityProviderAsync(IdentityProvider provider)
+        public async Task<BaseResponse> UpdateIdentityProviderAsync(string id, UpdateIdentityProviderRequest request)
         {
-            return await _authenticationDomainService.UpdateIdentityProviderAsync(provider);
+            return await _authenticationDomainService.UpdateIdentityProviderAsync(id, request);
         }
 
         public async Task<BaseResponse> DeleteIdentityProviderAsync(string id)
@@ -1046,6 +1047,11 @@ namespace Authentication.DomainService.Authentication
         public async Task<BaseResponse> UpdateIdentityProviderStatusAsync(string id, bool isActive)
         {
             return await _authenticationDomainService.UpdateIdentityProviderStatusAsync(id, isActive);
+        }
+
+        public async Task<RotateOidcClientSecretResponse> RotateOidcClientSecretAsync(string itemId)
+        {
+            return await _authenticationDomainService.RotateOidcClientSecretAsync(itemId);
         }
         private async Task<bool> IsTenantSharedWithUserAsync(string userId, string targetTenantId)
         {

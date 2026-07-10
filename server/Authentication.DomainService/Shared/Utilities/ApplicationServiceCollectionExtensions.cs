@@ -4,9 +4,11 @@ using Authentication.DomainService.OAuth.Services;
 using Authentication.DomainService.OAuth.SocialServices;
 using Authentication.DomainService.Oidc.Repositories;
 using Authentication.DomainService.Oidc.Services;
+using Authentication.DomainService.RequestModel;
 using Authentication.DomainService.Security.Utilities;
 using Authentication.DomainService.Services;
 using Authentication.DomainService.Shared;
+using Authentication.DomainService.Shared.RequestModel;
 using Authentication.DomainService.Shared.Services;
 using Blocks.Extension.DependencyInjection;
 using DomainService.Storage;
@@ -124,6 +126,9 @@ namespace Authentication.DomainService.Utilities
 
             serviceCollection.AddSingleton<IIamConfigurationRepository, IamConfigurationRepository>();
             serviceCollection.AddTransient<IValidator<SaveSsoCredentialRequest>, SaveSsoCredentialRequestValidator>();
+            serviceCollection.AddTransient<IValidator<SaveOIDCClientRequest>, SaveOIDCClientRequestValidator>();
+            serviceCollection.AddTransient<IValidator<SaveIdentityProviderRequest>, SaveIdentityProviderRequestValidator>();
+            serviceCollection.AddTransient<IValidator<UpdateIdentityProviderRequest>, UpdateIdentityProviderRequestValidator>();
 
             #endregion
 
