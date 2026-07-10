@@ -121,7 +121,7 @@ export const SessionDetailsDrawer = ({
     }
   };
 
-  const Icon = getDeviceIcon(primary?.deviceModel, primary?.operatingSystem);
+  const Icon = getDeviceIcon(primary?.deviceModel ?? undefined, primary?.operatingSystem ?? undefined);
   const deviceName = primary?.deviceName ?? "Unknown device";
 
   return (
