@@ -8,7 +8,10 @@ using Authentication.DomainService.Dtos;
 
 using Iam.DomainService.Entities;
 using Iam.DomainService.Dtos;
+using Iam.DomainService.Services;
 using Authentication.DomainService.Oidc.Repositories;
+using Authentication.DomainService.Authentication;
+using Microsoft.Extensions.Logging;
 
 namespace Authentication.DomainService.Shared
 {
@@ -17,15 +20,21 @@ namespace Authentication.DomainService.Shared
         private readonly ICacheClient _cacheClient;
         private readonly IAuthenticationDomainService _authenticationDomainService;
         private readonly IRefreshTokenRepository _refreshTokenRepository;
+        private readonly IUserActivityDispatcher _userActivityDispatcher;
+        private readonly ILogger<UnifiedTokenSessionService> _logger;
 
         public UnifiedTokenSessionService(
             ICacheClient cacheClient,
             IAuthenticationDomainService authenticationDomainService,
-            IRefreshTokenRepository refreshTokenRepository)
+            IRefreshTokenRepository refreshTokenRepository,
+            IUserActivityDispatcher userActivityDispatcher,
+            ILogger<UnifiedTokenSessionService> logger)
         {
             _cacheClient = cacheClient;
             _authenticationDomainService = authenticationDomainService;
             _refreshTokenRepository = refreshTokenRepository;
+            _userActivityDispatcher = userActivityDispatcher;
+            _logger = logger;
         }
 
         public async Task<(string RefreshToken, DateTime ExpiresUtc)> CreateOrRotateRefreshToken(
@@ -117,6 +126,13 @@ var refreshTokenCache = new RefreshTokenCache
             };
             await _authenticationDomainService.SendToQueueAsync(IdpConstants.AuthenticationQueue, addRefreshTokenEvent);
 
+            await SendTokenActivityEventAsync(
+                newRefreshToken: refreshTokenCache,
+                oldRefreshTokenId: oldRefreshToken,
+                tokenRequest: tokenRequest,
+                tenant: tenant,
+                user: user,
+                impersoanted: impersoanted);
 
             if (!string.IsNullOrWhiteSpace(oldRefreshToken))
             {
@@ -146,10 +162,108 @@ var refreshTokenCache = new RefreshTokenCache
                         RiskLevel = "low"
                     };
                     await _authenticationDomainService.SendToQueueAsync(IdpConstants.AuthenticationQueue, revokeOldTokenEvent);
+
+                    await SendSupersededTokenActivityEventAsync(oldRefreshTokenCache, tokenRequest, impersoanted);
                 }
             }
 
             return (refreshTokenId, refreshTokenExpireOn);
+        }
+
+        private async Task SendTokenActivityEventAsync(
+            RefreshTokenCache newRefreshToken,
+            string? oldRefreshTokenId,
+            TokenRequest tokenRequest,
+            Tenant tenant,
+            User user,
+            bool impersoanted)
+        {
+            try
+            {
+                var isRotation = !string.IsNullOrWhiteSpace(oldRefreshTokenId);
+                var eventType = isRotation
+                    ? LoginAuditEvents.RefreshTokenRotated
+                    : LoginAuditEvents.RefreshTokenIssued;
+
+                var userAgent = tokenRequest.Request?.Headers != null && tokenRequest.Request.Headers.ContainsKey("User-Agent")
+                    ? tokenRequest.Request.Headers["User-Agent"].ToString()
+                    : string.Empty;
+
+                await _userActivityDispatcher.SendUserActivityAsync(new UserActivityEvent
+                {
+                    UserId = user.ItemId ?? string.Empty,
+                    TenantId = tenant.TenantId,
+                    ClientId = tokenRequest.ClientId,
+                    Category = UserActivityCategory.Auth,
+                    Event = eventType,
+                    Source = "auth-refresh-token",
+                    Severity = "low",
+                    Outcome = IdpConstants.StatusSuccess,
+                    SessionId = newRefreshToken.SessionId,
+                    Context = new ActivityContext
+                    {
+                        IpAddress = newRefreshToken.IpAddresses,
+                        UserAgent = userAgent,
+                        DeviceInformation = _authenticationDomainService.GetDeviceInfo(userAgent)
+                    },
+                    Metadata = new Dictionary<string, string>
+                    {
+                        { "grantType", tokenRequest.GrantType ?? string.Empty },
+                        { "tokenId", newRefreshToken.RefreshToken ?? string.Empty },
+                        { "expiresUtc", newRefreshToken.ExpiresUtc.ToString("o") },
+                        { "impersonated", impersoanted ? "true" : "false" },
+                        { "supersededTokenId", oldRefreshTokenId ?? string.Empty },
+                        { "reason", isRotation ? "rotation" : "initial_issue" }
+                    }
+                });
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "Failed to publish refresh-token UserActivity event for user {UserId}", user.ItemId);
+            }
+        }
+
+        private async Task SendSupersededTokenActivityEventAsync(
+            RefreshTokenCache oldRefreshTokenCache,
+            TokenRequest tokenRequest,
+            bool impersoanted)
+        {
+            try
+            {
+                var userAgent = tokenRequest.Request?.Headers != null && tokenRequest.Request.Headers.ContainsKey("User-Agent")
+                    ? tokenRequest.Request.Headers["User-Agent"].ToString()
+                    : string.Empty;
+
+                await _userActivityDispatcher.SendUserActivityAsync(new UserActivityEvent
+                {
+                    UserId = oldRefreshTokenCache.UserId ?? string.Empty,
+                    TenantId = oldRefreshTokenCache.TenantId,
+                    ClientId = oldRefreshTokenCache.ClientId,
+                    Category = UserActivityCategory.Auth,
+                    Event = LoginAuditEvents.RefreshTokenSuperseded,
+                    Source = "auth-refresh-token",
+                    Severity = "low",
+                    Outcome = IdpConstants.StatusSuccess,
+                    SessionId = oldRefreshTokenCache.SessionId,
+                    Context = new ActivityContext
+                    {
+                        IpAddress = oldRefreshTokenCache.IpAddresses,
+                        UserAgent = userAgent,
+                        DeviceInformation = _authenticationDomainService.GetDeviceInfo(userAgent)
+                    },
+                    Metadata = new Dictionary<string, string>
+                    {
+                        { "grantType", tokenRequest.GrantType ?? string.Empty },
+                        { "tokenId", oldRefreshTokenCache.RefreshToken ?? string.Empty },
+                        { "impersonated", impersoanted ? "true" : "false" },
+                        { "reason", "superseded_by_rotation" }
+                    }
+                });
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "Failed to publish refresh-token superseded UserActivity event for user {UserId}", oldRefreshTokenCache.UserId);
+            }
         }
 
         public async Task RevokeRefreshToken(string refreshToken)

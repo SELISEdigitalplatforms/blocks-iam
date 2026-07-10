@@ -9,6 +9,7 @@ using FluentAssertions;
 using Microsoft.Extensions.Logging.Abstractions;
 using Moq;
 using Iam.DomainService.Entities;
+using Iam.DomainService.Services;
 
 namespace XUnitTest.Auth.Shared
 {
@@ -20,6 +21,7 @@ namespace XUnitTest.Auth.Shared
             var cache = new Mock<ICacheClient>();
             var authDomain = new Mock<IAuthenticationDomainService>();
             var refreshRepo = new Mock<IRefreshTokenRepository>();
+            var activityDispatcher = new Mock<IUserActivityDispatcher>();
 
             refreshRepo.Setup(r => r.CreateAsync(It.IsAny<Idp.DomainService.Oidc.Contracts.RefreshTokenModel>()))
                 .ReturnsAsync("new-token");
@@ -29,7 +31,9 @@ namespace XUnitTest.Auth.Shared
             var service = new UnifiedTokenSessionService(
                 cache.Object,
                 authDomain.Object,
-                refreshRepo.Object);
+                refreshRepo.Object,
+                activityDispatcher.Object,
+                NullLogger<UnifiedTokenSessionService>.Instance);
 
             var tenant = new Tenant
             {
