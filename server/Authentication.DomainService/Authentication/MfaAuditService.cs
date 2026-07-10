@@ -1,8 +1,8 @@
 using Authentication.DomainService.Dtos;
-using Authentication.DomainService.Oidc.Repositories;
 using Authentication.DomainService.Services;
 using Blocks.Genesis;
-using Idp.DomainService.Oidc.Contracts;
+using Iam.DomainService.Dtos;
+using Iam.DomainService.Services;
 using Iam.DomainService.Utilities;
 using Mfa.DomainService.Services;
 using Microsoft.AspNetCore.Http;
@@ -12,20 +12,20 @@ namespace Authentication.DomainService.Authentication
 {
     public sealed class MfaAuditService : IMfaAuditService
     {
-        private readonly IAuditLogRepository _auditLogRepository;
         private readonly IAuthenticationDomainService _authenticationDomainService;
         private readonly IHttpContextAccessor _httpContextAccessor;
+        private readonly IUserActivityDispatcher _userActivityDispatcher;
         private readonly ILogger<MfaAuditService> _logger;
 
         public MfaAuditService(
-            IAuditLogRepository auditLogRepository,
             IAuthenticationDomainService authenticationDomainService,
             IHttpContextAccessor httpContextAccessor,
+            IUserActivityDispatcher userActivityDispatcher,
             ILogger<MfaAuditService> logger)
         {
-            _auditLogRepository = auditLogRepository;
             _authenticationDomainService = authenticationDomainService;
             _httpContextAccessor = httpContextAccessor;
+            _userActivityDispatcher = userActivityDispatcher;
             _logger = logger;
         }
 
@@ -37,39 +37,30 @@ namespace Authentication.DomainService.Authentication
                 var tenantId = auditEvent.TenantId
                     ?? BlocksContext.GetContext()?.TenantId
                     ?? string.Empty;
+                var userAgent = auditEvent.UserAgent ?? (http?.Request?.Headers?.UserAgent.ToString() ?? string.Empty);
+                var ipAddress = auditEvent.IpAddress ?? GetClientIpAddress(http);
 
-                var log = new AuditLogModel
+                await _userActivityDispatcher.SendUserActivityAsync(new UserActivityEvent
                 {
-                    EventType = auditEvent.EventType,
-                    UserId = auditEvent.UserId,
-                    ClientId = auditEvent.ClientId,
-                    TenantId = tenantId,
-                    IpAddress = auditEvent.IpAddress ?? GetClientIpAddress(http),
-                    UserAgent = auditEvent.UserAgent ?? (http?.Request?.Headers?.UserAgent.ToString() ?? string.Empty),
-                    Severity = auditEvent.Severity,
-                    Status = auditEvent.Status,
-                    Details = auditEvent.Details ?? auditEvent.EventType,
-                    Timestamp = DateTime.UtcNow,
-                    Message = auditEvent.MfaType.HasValue ? auditEvent.MfaType.Value.ToString() : null
-                };
-
-                await _auditLogRepository.CreateAsync(log);
-
-                var timelineEvent = new UserAuthenticationTimelineEvent
-                {
-                    UserId = auditEvent.UserId,
+                    UserId = auditEvent.UserId ?? string.Empty,
+                    Category = UserActivityCategory.Audit,
                     Event = auditEvent.EventType,
-                    ActionBy = "MfaAuditService",
+                    Source = "auth-mfa",
+                    Severity = auditEvent.Status == IdpConstants.StatusFailure ? "high" : "low",
+                    Outcome = auditEvent.Status,
+                    ReasonCode = auditEvent.Details,
                     TenantId = tenantId,
                     ClientId = auditEvent.ClientId,
-                    Outcome = auditEvent.Status,
-                    DeviceInformation = _authenticationDomainService.GetDeviceInfo(auditEvent.UserAgent ?? (http?.Request?.Headers?.UserAgent.ToString() ?? string.Empty)),
-                    IpAddresses = auditEvent.IpAddress ?? GetClientIpAddress(http),
-                    ReasonCode = auditEvent.Details,
-                    RiskLevel = auditEvent.Status == IdpConstants.StatusFailure ? "high" : "low"
-                };
-
-                await _authenticationDomainService.SendToQueueAsync(IdpConstants.AuthenticationQueue, timelineEvent);
+                    Context = new ActivityContext
+                    {
+                        IpAddress = ipAddress,
+                        UserAgent = userAgent,
+                        DeviceInformation = _authenticationDomainService.GetDeviceInfo(userAgent)
+                    },
+                    Metadata = auditEvent.MfaType.HasValue
+                        ? new Dictionary<string, string> { { "mfaType", auditEvent.MfaType.Value.ToString() } }
+                        : null
+                });
             }
             catch (Exception ex)
             {

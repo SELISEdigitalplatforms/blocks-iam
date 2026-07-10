@@ -4,14 +4,13 @@ using Authentication.DomainService.Entities;
 using Authentication.DomainService.OAuth;
 using Authentication.DomainService.OAuth.RequestModel;
 using Authentication.DomainService.OAuth.ResponseModel;
-using Authentication.DomainService.Oidc.Repositories;
 using Authentication.DomainService.Services;
-using Authentication.DomainService.Shared;
 using Authentication.DomainService.Shared.RequestModel;
+using Iam.DomainService.Dtos;
+using Iam.DomainService.Services;
 using Iam.DomainService.Utilities;
 using Blocks.Genesis;
 using Iam.DomainService.Entities;
-using Idp.DomainService.Oidc.Contracts;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.Logging;
@@ -28,7 +27,7 @@ namespace Authentication.DomainService.Authentication
         private readonly ITokenRefresher _tokenRefresher;
         private readonly IAuthenticationService _authenticationService;
         private readonly ICaptchaEvaluator _captchaEvaluator;
-        private readonly IAuditLogRepository _auditLogRepo;
+        private readonly IUserActivityDispatcher _userActivityDispatcher;
         private readonly ILogger<AuthenticationFlowService> _logger;
 
         public AuthenticationFlowService(
@@ -37,7 +36,7 @@ namespace Authentication.DomainService.Authentication
             ITokenRefresher tokenRefresher,
             IAuthenticationService authenticationService,
             ICaptchaEvaluator captchaEvaluator,
-            IAuditLogRepository auditLogRepo,
+            IUserActivityDispatcher userActivityDispatcher,
             ILogger<AuthenticationFlowService> logger)
         {
             _authenticationRepository = authenticationRepository;
@@ -45,7 +44,7 @@ namespace Authentication.DomainService.Authentication
             _tokenRefresher = tokenRefresher;
             _authenticationService = authenticationService;
             _captchaEvaluator = captchaEvaluator;
-            _auditLogRepo = auditLogRepo;
+            _userActivityDispatcher = userActivityDispatcher;
             _logger = logger;
         }
 
@@ -309,17 +308,21 @@ namespace Authentication.DomainService.Authentication
                     || eventType.Contains("locked", StringComparison.OrdinalIgnoreCase);
                 var isSuccess = eventType.Contains("success", StringComparison.OrdinalIgnoreCase);
 
-                await _auditLogRepo.CreateAsync(new AuditLogModel
+                await _userActivityDispatcher.SendUserActivityAsync(new UserActivityEvent
                 {
-                    EventType = eventType,
                     UserId = user.ItemId,
-                    ClientId = string.Empty,
                     TenantId = BlocksContext.GetContext()?.TenantId,
-                    IpAddress = GetClientIpAddress(httpRequest),
-                    UserAgent = httpRequest.Headers.UserAgent.ToString(),
-                    Severity = isFailure ? IdpConstants.SeverityWarn : IdpConstants.SeverityInfo,
-                    Status = isSuccess ? IdpConstants.StatusSuccess : IdpConstants.StatusFailure,
-                    Details = details ?? eventType
+                    Category = UserActivityCategory.Audit,
+                    Event = eventType,
+                    Source = "auth-flow",
+                    Severity = isFailure ? "warn" : "info",
+                    Outcome = isSuccess ? IdpConstants.StatusSuccess : IdpConstants.StatusFailure,
+                    Context = new ActivityContext
+                    {
+                        IpAddress = GetClientIpAddress(httpRequest),
+                        UserAgent = httpRequest.Headers.UserAgent.ToString()
+                    },
+                    Metadata = details is null ? null : new Dictionary<string, string> { { "details", details } }
                 });
             }
             catch (Exception ex)

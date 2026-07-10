@@ -404,11 +404,6 @@
             Allows authorized clients to introspect tokens and get claims/metadata
             </summary>
         </member>
-        <member name="M:Blocks.Api.Controllers.TokenManagementController.GetRevocationHistory">
-            <summary>
-            Get revocation history for audit trail
-            </summary>
-        </member>
         <member name="T:Program">
             <summary>
             Auto-generated public partial Program class for top-level statement apps.

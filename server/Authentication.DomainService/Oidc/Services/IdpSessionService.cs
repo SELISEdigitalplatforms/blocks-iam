@@ -1,10 +1,10 @@
 using Idp.DomainService.Oidc.Contracts;
-using Authentication.DomainService.Dtos;
 using Authentication.DomainService.Utilities;
 using Authentication.DomainService.Authentication;
 using Authentication.DomainService.Oidc.Repositories;
 using Authentication.DomainService.Services;
-using Authentication.DomainService.Shared;
+using Iam.DomainService.Dtos;
+using Iam.DomainService.Services;
 using Iam.DomainService.Utilities;
 using Blocks.Genesis;
 using Microsoft.Extensions.Logging;
@@ -35,28 +35,28 @@ namespace Authentication.DomainService.Oidc.Services
     public sealed class IdpSessionService : IIdpSessionService
     {
         private readonly IIdpSessionRepository _sessionRepo;
-        private readonly IAuditLogRepository _auditLogRepo;
         private readonly IAuthenticationRepository _authenticationRepository;
         private readonly IAuthenticationDomainService _authenticationDomainService;
         private readonly IRefreshTokenRepository _refreshTokenRepo;
         private readonly ICacheClient _cacheClient;
+        private readonly IUserActivityDispatcher _userActivityDispatcher;
         private readonly ILogger<IdpSessionService> _logger;
 
         public IdpSessionService(
             IIdpSessionRepository sessionRepo,
-            IAuditLogRepository auditLogRepo,
             IAuthenticationRepository authenticationRepository,
             IAuthenticationDomainService authenticationDomainService,
             IRefreshTokenRepository refreshTokenRepo,
             ICacheClient cacheClient,
+            IUserActivityDispatcher userActivityDispatcher,
             ILogger<IdpSessionService> logger)
         {
             _sessionRepo = sessionRepo;
-            _auditLogRepo = auditLogRepo;
             _authenticationRepository = authenticationRepository;
             _authenticationDomainService = authenticationDomainService;
             _refreshTokenRepo = refreshTokenRepo;
             _cacheClient = cacheClient;
+            _userActivityDispatcher = userActivityDispatcher;
             _logger = logger;
         }
 
@@ -443,29 +443,28 @@ namespace Authentication.DomainService.Oidc.Services
         {
             try
             {
-                var auditLog = new AuditLogModel
+                var category = eventType switch
                 {
-                    EventType = eventType,
-                    UserId = userId,
-                    Severity = IdpConstants.SeverityInfo,
-                    Status = IdpConstants.StatusSuccess,
-                    Message = details ?? eventType,
-                    Timestamp = DateTime.UtcNow
+                    SessionAuditEvents.SessionCreated => UserActivityCategory.Auth,
+                    SessionAuditEvents.SessionRevoked => UserActivityCategory.Auth,
+                    SessionAuditEvents.SessionRotated => UserActivityCategory.Auth,
+                    _ => UserActivityCategory.Audit
                 };
-                await _auditLogRepo.CreateAsync(auditLog);
 
-                var timelineEvent = new UserAuthenticationTimelineEvent
+                await _userActivityDispatcher.SendUserActivityAsync(new UserActivityEvent
                 {
                     UserId = userId,
-                    SessionId = sessionId,
-                    Event = eventType,
-                    ActionBy = "IdpSessionService",
+                    Category = category,
+                    Event = eventType == SessionAuditEvents.SessionCreated ? "IDP_SESSION_STARTED"
+                        : eventType == SessionAuditEvents.SessionRevoked ? "IDP_SESSION_ENDED"
+                        : eventType == SessionAuditEvents.SessionRotated ? "IDP_SESSION_ROTATED"
+                        : eventType,
+                    Source = "auth-idp-session",
+                    Severity = eventType == SessionAuditEvents.SessionRevoked ? "medium" : "info",
                     Outcome = IdpConstants.StatusSuccess,
                     ReasonCode = details,
-                    RiskLevel = eventType == SessionAuditEvents.SessionRevoked ? "medium" : "low"
-                };
-
-                await _authenticationDomainService.SendToQueueAsync(IdpConstants.AuthenticationQueue, timelineEvent);
+                    SessionId = sessionId
+                });
             }
             catch (Exception ex)
             {

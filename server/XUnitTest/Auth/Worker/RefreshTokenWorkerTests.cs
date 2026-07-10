@@ -2,6 +2,7 @@ using Authentication.DomainService.Worker;
 using global::Authentication.DomainService.Entities;
 using global::Authentication.DomainService.Services;
 using global::Iam.DomainService.Dtos;
+using global::Iam.DomainService.Services;
 using global::Iam.DomainService.Users;
 using FluentAssertions;
 using Microsoft.Extensions.Logging.Abstractions;
@@ -13,20 +14,23 @@ namespace XUnitTest.Auth.Worker
     {
         private static RefreshTokenWorkerService CreateWorker(
             out Mock<IAuthenticationRepository> authRepo,
-            out Mock<IUserRepository> userRepo)
+            out Mock<IUserRepository> userRepo,
+            out Mock<IUserActivityDispatcher> dispatcher)
         {
             authRepo = new Mock<IAuthenticationRepository>();
             userRepo = new Mock<IUserRepository>();
+            dispatcher = new Mock<IUserActivityDispatcher>();
             return new RefreshTokenWorkerService(
                 NullLogger<RefreshTokenWorkerService>.Instance,
                 authRepo.Object,
-                userRepo.Object);
+                userRepo.Object,
+                dispatcher.Object);
         }
 
         [Fact]
         public async Task Consume_OnLogin_InsertsNewIdentitySession()
         {
-            var worker = CreateWorker(out var authRepo, out _);
+            var worker = CreateWorker(out var authRepo, out _, out _);
             authRepo.Setup(r => r.InsertIdentitySessionAsync(It.IsAny<IdentitySession>()))
                 .ReturnsAsync(true);
 
@@ -41,7 +45,7 @@ namespace XUnitTest.Auth.Worker
         [Fact]
         public async Task Consume_OnRenewal_UpsertsIdentitySession()
         {
-            var worker = CreateWorker(out var authRepo, out _);
+            var worker = CreateWorker(out var authRepo, out _, out _);
             authRepo.Setup(r => r.UpsertIdentitySessionBySessionIdAsync(It.IsAny<IdentitySession>()))
                 .ReturnsAsync(true);
 
@@ -56,7 +60,7 @@ namespace XUnitTest.Auth.Worker
         [Fact]
         public async Task Consume_OnRevoke_DoesNotInsertOrUpsert()
         {
-            var worker = CreateWorker(out var authRepo, out _);
+            var worker = CreateWorker(out var authRepo, out _, out _);
             authRepo.Setup(r => r.RevokeIdentitySessionAsync(It.IsAny<string>(), It.IsAny<string>()))
                 .ReturnsAsync(true);
 
@@ -72,7 +76,7 @@ namespace XUnitTest.Auth.Worker
         [Fact]
         public async Task ProcessSession_OnRenewal_UpsertsBySessionId()
         {
-            var worker = CreateWorker(out var authRepo, out _);
+            var worker = CreateWorker(out var authRepo, out _, out _);
             authRepo.Setup(r => r.UpsertIdentitySessionBySessionIdAsync(It.IsAny<IdentitySession>()))
                 .ReturnsAsync(true);
 
@@ -90,7 +94,7 @@ namespace XUnitTest.Auth.Worker
         [Fact]
         public async Task ProcessSession_OnLogin_InsertsNewSession()
         {
-            var worker = CreateWorker(out var authRepo, out _);
+            var worker = CreateWorker(out var authRepo, out _, out _);
             authRepo.Setup(r => r.InsertIdentitySessionAsync(It.IsAny<IdentitySession>()))
                 .ReturnsAsync(true);
 
@@ -124,21 +128,46 @@ namespace XUnitTest.Auth.Worker
         [Fact]
         public async Task ProcessUserTimelineEvent_PopulatesAllExtendedFields()
         {
-            var worker = CreateWorker(out var authRepo, out _);
+            var worker = CreateWorker(out _, out _, out var dispatcher);
 
-            var result = await worker.ProcessUserTimelineEvent(BuildEvent(isLogin: true));
+            await worker.ProcessUserTimelineEvent(BuildEvent(isLogin: true));
 
-            result.Should().BeTrue();
-            authRepo.Verify(r => r.InsertIdentityEventAsync(It.Is<IdentityEvent>(e =>
+            dispatcher.Verify(d => d.SendUserActivityAsync(It.Is<UserActivityEvent>(e =>
                 e.UserId == "user-1" &&
-                e.TenantId == "tenant-1" &&
                 e.SessionId == "session-1" &&
                 e.ClientId == "client-1" &&
                 e.Outcome == "success" &&
                 e.ReasonCode == "ok" &&
-                e.RiskLevel == "low" &&
+                e.Severity == "low" &&
                 e.CorrelationId == "corr-1" &&
-                e.Event == "login_via_password"
+                e.Event == "LOGIN_VIA_PASSWORD" &&
+                e.Category == UserActivityCategory.Auth &&
+                e.Source == "auth-refresh-token"
+            )), Times.Once);
+        }
+
+        [Fact]
+        public async Task ProcessUserTimelineEvent_OnRevoke_EmitsTokenRevoked()
+        {
+            var worker = CreateWorker(out _, out _, out var dispatcher);
+
+            await worker.ProcessUserTimelineEvent(BuildEvent(isLogin: false, isRevoke: true));
+
+            dispatcher.Verify(d => d.SendUserActivityAsync(It.Is<UserActivityEvent>(e =>
+                e.Event == "TOKEN_REVOKED" &&
+                e.Category == UserActivityCategory.Auth
+            )), Times.Once);
+        }
+
+        [Fact]
+        public async Task ProcessUserTimelineEvent_OnRenewal_EmitsTokenRefreshed()
+        {
+            var worker = CreateWorker(out _, out _, out var dispatcher);
+
+            await worker.ProcessUserTimelineEvent(BuildEvent(isLogin: false, isRevoke: false));
+
+            dispatcher.Verify(d => d.SendUserActivityAsync(It.Is<UserActivityEvent>(e =>
+                e.Event == "TOKEN_REFRESHED"
             )), Times.Once);
         }
     }

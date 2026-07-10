@@ -12,6 +12,7 @@ namespace Iam.DomainService.Utilities
         public const string IamOrgQueue = "blocks_iam_org_listener";
         public const string MailQueue = "blocks_email_listener";
         public const string MfaQueueName = "blocks_mfa_listener";
+        public const string UserActivityQueue = "blocks_user_activity_listener";
 
         #endregion
 
@@ -173,7 +174,8 @@ namespace Iam.DomainService.Utilities
                                              ConsumerSubscription.BindToQueue(IamQueue),
                                              ConsumerSubscription.BindToQueue(MfaQueueName),
                                              ConsumerSubscription.BindToQueue(IamOrgQueue),
-                                             ConsumerSubscription.BindToQueue(IamPermissionQueue)],
+                                             ConsumerSubscription.BindToQueue(IamPermissionQueue),
+                                             ConsumerSubscription.BindToQueue(UserActivityQueue)],
                 }
             };
         }
@@ -184,7 +186,7 @@ namespace Iam.DomainService.Utilities
             {
                 AzureServiceBusConfiguration = new AzureServiceBusConfiguration
                 {
-                    Queues = [AuthenticationQueue, IamQueue, MfaQueueName, IamOrgQueue, IamPermissionQueue],
+                    Queues = [AuthenticationQueue, IamQueue, MfaQueueName, IamOrgQueue, IamPermissionQueue, UserActivityQueue],
                     Topics = []
                 }
             };

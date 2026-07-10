@@ -2,7 +2,9 @@ using System.Text.Json.Serialization;
 using Authentication.DomainService.Authentication;
 using Authentication.DomainService.Services;
 using Blocks.Genesis;
+using Iam.DomainService.Dtos;
 using Iam.DomainService.Entities;
+using Iam.DomainService.Services;
 using Mfa.DomainService.Configuration;
 using Mfa.DomainService.Services;
 using Mfa.DomainService.Shared;
@@ -24,6 +26,7 @@ public class MfaController : ControllerBase
     private readonly IMfaAuditService _auditService;
     private readonly IAuthenticationRepository _authenticationRepository;
     private readonly TotpService _totpService;
+    private readonly IUserActivityDispatcher _userActivityDispatcher;
 
     public MfaController(
         IMfaManagementService mfaManagementService,
@@ -31,7 +34,8 @@ public class MfaController : ControllerBase
         IMfaBackupCodeService backupCodeService,
         IMfaAuditService auditService,
         IAuthenticationRepository authenticationRepository,
-        TotpService totpService)
+        TotpService totpService,
+        IUserActivityDispatcher userActivityDispatcher)
     {
         _mfaManagementService = mfaManagementService;
         _mfaConfigurationService = mfaConfigurationService;
@@ -39,6 +43,7 @@ public class MfaController : ControllerBase
         _auditService = auditService;
         _authenticationRepository = authenticationRepository;
         _totpService = totpService;
+        _userActivityDispatcher = userActivityDispatcher;
     }
 
     [HttpGet("config")]
@@ -116,6 +121,15 @@ public class MfaController : ControllerBase
         var verification = await _totpService.VerifyForUserAsync(userId, request.Code);
         if (!verification.IsValid)
         {
+            await _userActivityDispatcher.SendUserActivityAsync(new UserActivityEvent
+            {
+                UserId = userId,
+                Category = UserActivityCategory.Auth,
+                Event = LoginAuditEvents.MfaEnrollmentFailed,
+                Source = "auth-mfa-enrollment",
+                Outcome = "failure",
+                ReasonCode = "invalid_totp_code"
+            });
             return BadRequest(new { error = "invalid_totp_code", error_description = "TOTP code is invalid" });
         }
 
@@ -126,6 +140,16 @@ public class MfaController : ControllerBase
             { nameof(UserEntity.IsMfaVerified), true },
             { nameof(UserEntity.LastUpdatedDate), DateTime.UtcNow },
             { nameof(UserEntity.LastUpdatedBy), userId }
+        });
+
+        await _userActivityDispatcher.SendUserActivityAsync(new UserActivityEvent
+        {
+            UserId = userId,
+            Category = UserActivityCategory.Auth,
+            Event = LoginAuditEvents.MfaEnrollmentCompleted,
+            Source = "auth-mfa-enrollment",
+            Outcome = "success",
+            Metadata = new Dictionary<string, string> { { "method", UserMfaType.TOTP.ToString() } }
         });
 
         return Ok(new { enabled = true, method = "TOTP" });
@@ -238,8 +262,19 @@ public class MfaController : ControllerBase
 
             if (previousType != UserMfaType.Email)
             {
-                await AuditUserEventAsync(LoginAuditEvents.MfaMethodChanged, userId, UserMfaType.Email,
-                    new Dictionary<string, string> { { "previous", previousType.ToString() }, { "new", UserMfaType.Email.ToString() } });
+                await _userActivityDispatcher.SendUserActivityAsync(new UserActivityEvent
+                {
+                    UserId = userId,
+                    Category = UserActivityCategory.Auth,
+                    Event = LoginAuditEvents.MfaEnrollmentCompleted,
+                    Source = "auth-mfa-enrollment",
+                    Outcome = "success",
+                    Metadata = new Dictionary<string, string>
+                    {
+                        { "method", UserMfaType.Email.ToString() },
+                        { "previous", previousType.ToString() }
+                    }
+                });
             }
 
             return Ok(new { enabled = true, method = UserMfaType.Email.ToString() });
@@ -276,8 +311,18 @@ public class MfaController : ControllerBase
 
         if (previousType != UserMfaType.None)
         {
-            await AuditUserEventAsync(LoginAuditEvents.MfaMethodChanged, userId, UserMfaType.None,
-                new Dictionary<string, string> { { "previous", previousType.ToString() }, { "new", UserMfaType.None.ToString() } });
+            await _userActivityDispatcher.SendUserActivityAsync(new UserActivityEvent
+            {
+                UserId = userId,
+                Category = UserActivityCategory.Auth,
+                Event = LoginAuditEvents.MfaRemoved,
+                Source = "auth-mfa-enrollment",
+                Outcome = "success",
+                Metadata = new Dictionary<string, string>
+                {
+                    { "previous", previousType.ToString() }
+                }
+            });
         }
 
         return Ok(new { enabled = false, method = UserMfaType.None.ToString() });
@@ -298,6 +343,15 @@ public class MfaController : ControllerBase
         {
             return BadRequest(new { errors = result.Errors });
         }
+
+        await _userActivityDispatcher.SendUserActivityAsync(new UserActivityEvent
+        {
+            UserId = userId,
+            Category = UserActivityCategory.Auth,
+            Event = LoginAuditEvents.MfaRemoved,
+            Source = "auth-mfa-enrollment",
+            Outcome = "success"
+        });
         return Ok(new { disabled = true });
     }
 

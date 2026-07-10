@@ -19,7 +19,6 @@ namespace Iam.DomainService.Services
         Task<bool> InsertUserKeyMapAsync(UserKeyMap userKeyMap);
         Task<bool> UpdateUserKeyMapActivationAsync(string userId);
         Task<List<UserKeyMap>> GetActiveUserKeyMapAsync(string userId);
-        Task<bool> InsertUserTimelineAsync(UserTimeline userTimeline);
         Task<bool> UpdateUserAsync(User user);
         Task<string> GetUserIdFromKeyMapByKeyAsync(string key);
         Task SaveSignUpSettingAsync(TenantConfiguration tenantConfiguration);

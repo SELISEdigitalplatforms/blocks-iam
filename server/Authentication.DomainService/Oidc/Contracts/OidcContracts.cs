@@ -110,22 +110,6 @@ public sealed class IdpSessionModel
     }
 }
 
-public sealed class AuditLogModel
-{
-    public string Id { get; set; } = Guid.NewGuid().ToString("n");
-    public string EventType { get; set; } = string.Empty;
-    public string? UserId { get; set; }
-    public string? ClientId { get; set; }
-    public string? TenantId { get; set; }
-    public string? IpAddress { get; set; }
-    public string? UserAgent { get; set; }
-    public string Severity { get; set; } = IdpConstants.SeverityInfo;
-    public string? Status { get; set; }
-    public string? Details { get; set; }
-    public string? Message { get; set; }
-    public DateTime Timestamp { get; set; } = DateTime.UtcNow;
-}
-
 public sealed class ConsentGrantModel
 {
     public string Id { get; set; } = Guid.NewGuid().ToString("n");

@@ -1,8 +1,8 @@
 using Authentication.DomainService.Authentication;
-using Authentication.DomainService.Dtos;
 using Authentication.DomainService.Oidc.Repositories;
 using Authentication.DomainService.Services;
-using Iam.DomainService.Utilities;
+using Iam.DomainService.Dtos;
+using Iam.DomainService.Services;
 using Blocks.Genesis;
 using Authentication.DomainService.Security.Models;
 using Authentication.DomainService.Security.Repositories;
@@ -18,6 +18,7 @@ namespace Authentication.DomainService.Security.Services
         private readonly IRefreshTokenRepository _refreshTokenRepository;
         private readonly ITokenRevocationRepository _tokenRevocationRepository;
         private readonly IAuthenticationDomainService _authenticationDomainService;
+        private readonly IUserActivityDispatcher _userActivityDispatcher;
 
         public SessionRevocationService(
             ILogger<SessionRevocationService> logger,
@@ -25,7 +26,8 @@ namespace Authentication.DomainService.Security.Services
             IAuthenticationRepository authenticationRepository,
             IRefreshTokenRepository refreshTokenRepository,
             ITokenRevocationRepository tokenRevocationRepository,
-            IAuthenticationDomainService authenticationDomainService)
+            IAuthenticationDomainService authenticationDomainService,
+            IUserActivityDispatcher userActivityDispatcher)
         {
             _logger = logger;
             _securityRepository = securityRepository;
@@ -33,6 +35,7 @@ namespace Authentication.DomainService.Security.Services
             _refreshTokenRepository = refreshTokenRepository;
             _tokenRevocationRepository = tokenRevocationRepository;
             _authenticationDomainService = authenticationDomainService;
+            _userActivityDispatcher = userActivityDispatcher;
         }
 
         public async Task<RevokeSessionResponse> RevokeSessionAsync(string sessionId, string actorUserId, string currentSessionId, string? targetUserId, string? reason, CancellationToken ct)
@@ -101,25 +104,27 @@ namespace Authentication.DomainService.Security.Services
 
             try
             {
-                var timelineEvent = new UserAuthenticationTimelineEvent
+                await _userActivityDispatcher.SendUserActivityAsync(new UserActivityEvent
                 {
                     UserId = actorUserId,
                     TenantId = tenantId,
+                    Category = UserActivityCategory.Auth,
+                    Event = SessionAuditEvents.UserRevokedSession,
+                    Source = "auth-session-revocation",
                     SessionId = sessionId,
                     ClientId = session.ClientId,
-                    IpAddresses = session.IpAddresses,
-                    DeviceInformation = null,
-                    Event = SessionAuditEvents.UserRevokedSession,
-                    ActionBy = actorUserId,
+                    Outcome = "success",
                     ReasonCode = response.Reason,
-                    Outcome = "success"
-                };
-
-                await _authenticationDomainService.SendToQueueAsync(IdpConstants.AuthenticationQueue, timelineEvent);
+                    Context = new ActivityContext
+                    {
+                        IpAddress = session.IpAddresses
+                    },
+                    Metadata = new Dictionary<string, string> { { "actionBy", actorUserId } }
+                });
             }
             catch (Exception ex)
             {
-                _logger.LogWarning(ex, "Failed to publish user_revoked_session timeline event for session {SessionId}", sessionId);
+                _logger.LogWarning(ex, "Failed to publish user_revoked_session UserActivity event for session {SessionId}", sessionId);
                 response.Warnings.Add("timeline_event_publish_failed");
             }
 

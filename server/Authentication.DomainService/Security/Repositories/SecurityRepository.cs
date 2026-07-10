@@ -26,12 +26,6 @@ namespace Authentication.DomainService.Security.Repositories
         private IMongoCollection<IdentitySession> IdentitySessions() =>
             GetDatabase().GetCollection<IdentitySession>("IdentitySessions");
 
-        private IMongoCollection<UserAuthenticationTimeline> Timelines() =>
-            GetDatabase().GetCollection<UserAuthenticationTimeline>("UserAuthenticationTimelines");
-
-        private IMongoCollection<IdentityEvent> IdentityEventsCollection() =>
-            GetDatabase().GetCollection<IdentityEvent>("IdentityEvents");
-
         private IMongoCollection<RefreshTokenModel> RefreshTokens() =>
             GetDatabase().GetCollection<RefreshTokenModel>("IdpRefreshTokens");
 
@@ -228,193 +222,7 @@ namespace Authentication.DomainService.Security.Repositories
             }).ToList();
         }
 
-        public async Task<IReadOnlyList<AuthHistoryDto>> GetHistoryAsync(string userId, GetHistoryRequest req, CancellationToken ct)
-        {
-            // History is the union of UserAuthenticationTimelines (logout / backchannel / admin revoke /
-            // password grant timeline) and IdentityEvents (refresh-token / rotation / token-endpoint events).
-            // Pagination (skip/limit) applies after the union. Some events (e.g. password grant) appear
-            // in both collections because they record distinct phases (login decision vs token issue);
-            // duplication is by design and the UI can distinguish them by Event name.
-            var skip = Math.Max(req.Page, 0) * Math.Max(req.PageSize, 1);
-            var limit = Math.Max(req.PageSize, 1);
-
-            var timelineTask = QueryTimelinesAsync(userId, req, ct);
-            var identityEventTask = QueryIdentityEventsAsync(userId, req, ct);
-
-            await Task.WhenAll(timelineTask, identityEventTask);
-
-            var merged = timelineTask.Result
-                .Concat(identityEventTask.Result)
-                .OrderByDescending(x => x.CreatedDate)
-                .Skip(skip)
-                .Take(limit)
-                .ToList();
-
-            return merged;
-        }
-
-        private async Task<List<AuthHistoryDto>> QueryTimelinesAsync(string userId, GetHistoryRequest req, CancellationToken ct)
-        {
-            var b = Builders<UserAuthenticationTimeline>.Filter;
-            var filters = new List<FilterDefinition<UserAuthenticationTimeline>>
-            {
-                b.Eq(x => x.UserId, userId)
-            };
-
-            if (req.Filter != null)
-            {
-                if (!string.IsNullOrWhiteSpace(req.Filter.EventType))
-                {
-                    filters.Add(b.Eq(x => x.Event, req.Filter.EventType));
-                }
-                if (req.Filter.From.HasValue)
-                {
-                    filters.Add(b.Gte(x => x.CreatedDate, req.Filter.From.Value));
-                }
-                if (req.Filter.To.HasValue)
-                {
-                    filters.Add(b.Lte(x => x.CreatedDate, req.Filter.To.Value));
-                }
-                if (!string.IsNullOrWhiteSpace(req.Filter.IpAddress))
-                {
-                    filters.Add(b.Eq(x => x.IpAddresses, req.Filter.IpAddress));
-                }
-                if (!string.IsNullOrWhiteSpace(req.Filter.Device))
-                {
-                    var rx = new BsonRegularExpression(Regex.Escape(req.Filter.Device), "i");
-                    filters.Add(b.Or(
-                        b.Regex(x => x.DeviceName, rx),
-                        b.Regex(x => x.DeviceType, rx)
-                    ));
-                }
-                if (!string.IsNullOrWhiteSpace(req.Filter.Outcome))
-                {
-                    filters.Add(b.Eq(x => x.Outcome, req.Filter.Outcome));
-                }
-                if (!string.IsNullOrWhiteSpace(req.Filter.ReasonCode))
-                {
-                    filters.Add(b.Eq(x => x.ReasonCode, req.Filter.ReasonCode));
-                }
-                if (!string.IsNullOrWhiteSpace(req.Filter.ClientId))
-                {
-                    filters.Add(b.Eq(x => x.ClientId, req.Filter.ClientId));
-                }
-                if (!string.IsNullOrWhiteSpace(req.Filter.TenantId))
-                {
-                    filters.Add(b.Eq(x => x.TenantId, req.Filter.TenantId));
-                }
-                if (!string.IsNullOrWhiteSpace(req.Filter.SessionId))
-                {
-                    filters.Add(b.Eq(x => x.SessionId, req.Filter.SessionId));
-                }
-            }
-
-            var rows = await Timelines()
-                .Find(b.And(filters))
-                .SortByDescending(x => x.CreatedDate)
-                .ToListAsync(ct);
-
-            return rows.Select(MapHistory).ToList();
-        }
-
-        private async Task<List<AuthHistoryDto>> QueryIdentityEventsAsync(string userId, GetHistoryRequest req, CancellationToken ct)
-        {
-            var b = Builders<IdentityEvent>.Filter;
-            var filters = new List<FilterDefinition<IdentityEvent>>
-            {
-                b.Eq(x => x.UserId, userId)
-            };
-
-            if (req.Filter != null)
-            {
-                if (!string.IsNullOrWhiteSpace(req.Filter.EventType))
-                {
-                    filters.Add(b.Eq(x => x.Event, req.Filter.EventType));
-                }
-                if (req.Filter.From.HasValue)
-                {
-                    filters.Add(b.Gte(x => x.CreatedAt, req.Filter.From.Value));
-                }
-                if (req.Filter.To.HasValue)
-                {
-                    filters.Add(b.Lte(x => x.CreatedAt, req.Filter.To.Value));
-                }
-                if (!string.IsNullOrWhiteSpace(req.Filter.IpAddress))
-                {
-                    filters.Add(b.Eq(x => x.IpAddresses, req.Filter.IpAddress));
-                }
-                if (!string.IsNullOrWhiteSpace(req.Filter.Outcome))
-                {
-                    filters.Add(b.Eq(x => x.Outcome, req.Filter.Outcome));
-                }
-                if (!string.IsNullOrWhiteSpace(req.Filter.ReasonCode))
-                {
-                    filters.Add(b.Eq(x => x.ReasonCode, req.Filter.ReasonCode));
-                }
-                if (!string.IsNullOrWhiteSpace(req.Filter.ClientId))
-                {
-                    filters.Add(b.Eq(x => x.ClientId, req.Filter.ClientId));
-                }
-                if (!string.IsNullOrWhiteSpace(req.Filter.TenantId))
-                {
-                    filters.Add(b.Eq(x => x.TenantId, req.Filter.TenantId));
-                }
-                if (!string.IsNullOrWhiteSpace(req.Filter.SessionId))
-                {
-                    filters.Add(b.Eq(x => x.SessionId, req.Filter.SessionId));
-                }
-            }
-
-            var rows = await IdentityEventsCollection()
-                .Find(b.And(filters))
-                .SortByDescending(x => x.CreatedAt)
-                .ToListAsync(ct);
-
-            return rows.Select(MapIdentityEvent).ToList();
-        }
-
-        public async Task<IReadOnlyList<AuthHistoryDto>> GetSessionLifecycleAsync(string userId, string sessionId, CancellationToken ct)
-        {
-            if (string.IsNullOrWhiteSpace(userId) || string.IsNullOrWhiteSpace(sessionId))
-            {
-                return [];
-            }
-
-            var b = Builders<UserAuthenticationTimeline>.Filter;
-            var timelineFilters = new List<FilterDefinition<UserAuthenticationTimeline>>
-            {
-                b.Eq(x => x.UserId, userId),
-                b.Eq(x => x.SessionId, sessionId)
-            };
-            var timelineTask = Timelines()
-                .Find(b.And(timelineFilters))
-                .SortByDescending(x => x.CreatedDate)
-                .Limit(200)
-                .ToListAsync(ct);
-
-            var eb = Builders<IdentityEvent>.Filter;
-            var eventFilters = new List<FilterDefinition<IdentityEvent>>
-            {
-                eb.Eq(x => x.UserId, userId),
-                eb.Eq(x => x.SessionId, sessionId)
-            };
-            var eventTask = IdentityEventsCollection()
-                .Find(eb.And(eventFilters))
-                .SortByDescending(x => x.CreatedAt)
-                .Limit(200)
-                .ToListAsync(ct);
-
-            await Task.WhenAll(timelineTask, eventTask);
-
-            return timelineTask.Result
-                .Select(MapHistory)
-                .Concat(eventTask.Result.Select(MapIdentityEvent))
-                .OrderByDescending(x => x.CreatedDate)
-                .Take(200)
-                .ToList();
-        }
-
-        public async Task<IdpSessionSummaryDto?> GetIdpSessionAsync(string userId, string? tenantId, CancellationToken ct)
+public async Task<IdpSessionSummaryDto?> GetIdpSessionAsync(string userId, string? tenantId, CancellationToken ct)
         {
             if (string.IsNullOrWhiteSpace(userId))
             {
@@ -518,22 +326,6 @@ namespace Authentication.DomainService.Security.Repositories
                     new CreateIndexOptions { Name = "ix_user_tenant_session" })
             }, ct);
 
-            await Timelines().Indexes.CreateOneAsync(
-                new CreateIndexModel<UserAuthenticationTimeline>(
-                    Builders<UserAuthenticationTimeline>.IndexKeys
-                        .Ascending(x => x.UserId)
-                        .Descending(x => x.CreatedDate),
-                    new CreateIndexOptions { Name = "ix_user_created" }),
-                cancellationToken: ct);
-
-            await IdentityEventsCollection().Indexes.CreateOneAsync(
-                new CreateIndexModel<IdentityEvent>(
-                    Builders<IdentityEvent>.IndexKeys
-                        .Ascending(x => x.UserId)
-                        .Descending(x => x.CreatedAt),
-                    new CreateIndexOptions { Name = "ix_user_created" }),
-                cancellationToken: ct);
-
             await RefreshTokens().Indexes.CreateManyAsync(new[]
             {
                 new CreateIndexModel<RefreshTokenModel>(
@@ -582,40 +374,6 @@ namespace Authentication.DomainService.Security.Repositories
             ExpiresUtc = s.ExpiresUtc,
             LastActivityAt = s.UpdatedAt,
             IsActive = s.IsActive
-        };
-
-        private static AuthHistoryDto MapHistory(UserAuthenticationTimeline r) => new()
-        {
-            Event = r.Event,
-            ActionBy = r.ActionBy,
-            DeviceName = r.DeviceName,
-            DeviceType = r.DeviceType,
-            DeviceInformation = r.DeviceInformation,
-            IpAddresses = r.IpAddresses,
-            SessionId = r.SessionId,
-            TenantId = r.TenantId,
-            ClientId = r.ClientId,
-            CorrelationId = r.CorrelationId,
-            Outcome = r.Outcome,
-            ReasonCode = r.ReasonCode,
-            RiskLevel = r.RiskLevel,
-            CreatedDate = r.CreatedDate
-        };
-
-        private static AuthHistoryDto MapIdentityEvent(IdentityEvent r) => new()
-        {
-            Event = r.Event,
-            ActionBy = r.ActionBy,
-            DeviceInformation = r.DeviceInformation,
-            IpAddresses = r.IpAddresses,
-            SessionId = r.SessionId,
-            TenantId = r.TenantId,
-            ClientId = r.ClientId,
-            CorrelationId = r.CorrelationId,
-            Outcome = r.Outcome,
-            ReasonCode = r.ReasonCode,
-            RiskLevel = r.RiskLevel,
-            CreatedDate = r.CreatedAt
         };
     }
 }

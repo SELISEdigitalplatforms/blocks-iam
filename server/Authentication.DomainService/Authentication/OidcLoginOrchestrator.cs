@@ -1,15 +1,11 @@
 using Authentication.DomainService.Entities;
 using Iam.DomainService.Utilities;
 using Authentication.DomainService.OAuth;
-using Authentication.DomainService.OAuth.RequestModel;
-using Authentication.DomainService.Oidc.Repositories;
 using Authentication.DomainService.Services;
-using Authentication.DomainService.Shared;
 using Authentication.DomainService.Shared.Dtos;
 using Blocks.Genesis;
 using Iam.DomainService.Entities;
 using Iam.DomainService.Users;
-using Idp.DomainService.Oidc.Contracts;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.Logging;
@@ -28,7 +24,6 @@ namespace Authentication.DomainService.Authentication
     public sealed class OidcLoginOrchestrator
     {
         private readonly IAuthenticationRepository _authenticationRepository;
-        private readonly IAuditLogRepository _auditLogRepo;
         private readonly IMfaChallengeIssuer _mfaChallengeIssuer;
         private readonly IAuthenticationService _authenticationService;
         private readonly ITenants _tenants;
@@ -42,7 +37,6 @@ namespace Authentication.DomainService.Authentication
 
         public OidcLoginOrchestrator(
             IAuthenticationRepository authenticationRepository,
-            IAuditLogRepository auditLogRepo,
             IMfaChallengeIssuer mfaChallengeIssuer,
             IAuthenticationService authenticationService,
             ITenants tenants,
@@ -55,7 +49,6 @@ namespace Authentication.DomainService.Authentication
             ILogger<OidcLoginOrchestrator> logger)
         {
             _authenticationRepository = authenticationRepository;
-            _auditLogRepo = auditLogRepo;
             _mfaChallengeIssuer = mfaChallengeIssuer;
             _authenticationService = authenticationService;
             _tenants = tenants;
