@@ -4,13 +4,12 @@ import { createWrapper } from "@/test-utils/test-providers/query-client";
 import { mockToastFactory } from "@/test-utils/__mocks__";
 import {
   mockUserServiceFactory,
-  mockGetSessionsPayload,
   mockGetHistoriesPayload,
   mockGeneratePATPayload,
 } from "../../test-utils/__mocks__";
 import { userService } from "@blocks-idp/iam/services/user.service";
 import {
-  useGetSessions,
+  useGetSecurityOverview,
   useGetActivities,
   useGetPats,
   useGeneratePats,
@@ -24,18 +23,23 @@ describe("use-activity hooks", () => {
     vi.resetAllMocks();
   });
 
-  describe("useGetSessions", () => {
-    it("should fetch sessions successfully", async () => {
-      const mockResponse = { data: [], totalCount: 0, errors: null };
-      vi.mocked(userService.getSessions).mockResolvedValue(mockResponse as never);
+  describe("useGetSecurityOverview", () => {
+    it("should fetch security overview successfully", async () => {
+      const mockResponse = {
+        currentSessionId: null,
+        sessionGroups: [],
+        idpSession: null,
+        activeImpersonations: [],
+      };
+      vi.mocked(userService.getSecurityOverview).mockResolvedValue(mockResponse as never);
 
-      const { result } = renderHook(() => useGetSessions(mockGetSessionsPayload), {
+      const { result } = renderHook(() => useGetSecurityOverview(), {
         wrapper: createWrapper(),
       });
 
       await waitFor(() => expect(result.current.isSuccess).toBe(true));
       expect(result.current.data).toEqual(mockResponse);
-      expect(userService.getSessions).toHaveBeenCalledWith(mockGetSessionsPayload);
+      expect(userService.getSecurityOverview).toHaveBeenCalled();
     });
   });
 

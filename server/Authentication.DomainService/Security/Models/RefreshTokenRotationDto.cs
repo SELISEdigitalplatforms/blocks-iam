@@ -3,6 +3,9 @@ namespace Authentication.DomainService.Security.Models
     public sealed class RefreshTokenRotationDto
     {
         public string? Fingerprint { get; set; }
+        public string? ClientId { get; set; }
+        public string? OrganizationId { get; set; }
+        public string? GrantType { get; set; }
         public DateTime IssuedUtc { get; set; }
         public DateTime AbsoluteExpiry { get; set; }
         public bool IsRevoked { get; set; }

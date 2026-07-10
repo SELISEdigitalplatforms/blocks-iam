@@ -5,11 +5,8 @@ import {
   IAccountResendActivationResponse,
   ICreateUserPayload,
   ICreateUserResponse,
-  IDeviceSession,
-  IDeviceSessionResponse,
   IRevokeSessionResponse,
   IGeneratePATPayload,
-  IGetSessionPayload,
   IGetUserByIdPayload,
   IGetUserByIdResponse,
   IGetUserPermissionsPayload,
@@ -21,6 +18,8 @@ import {
   IPATResponse,
   ISaveRolesAndPermissionsPayload,
   ISaveRolesAndPermissionsResponse,
+  ISecurityOverview,
+  ISessionTimeline,
   IUpdateUserPayload,
   IUpdateUserResponse,
   IUpdateUserAccessControlPayload,
@@ -36,7 +35,6 @@ import {
   IGetActivitiesPayload,
   IUserActivityResponse,
 } from "@blocks-idp/iam/models/activity";
-import { IRefreshTokenRotation } from "@blocks-idp/iam/models/refresh-token";
 import { UserAccountService } from "./account.service";
 import {
   USER_ENDPOINTS,
@@ -179,24 +177,28 @@ export class UserService {
     return serviceInstances.idpService.post(USER_ENDPOINTS.REVOKE_ACCESS, payload);
   }
 
-  async getSessions(
-    payload: IGetSessionPayload,
-  ): Promise<IDeviceSessionResponse> {
-    const res = await serviceInstances.idpService.get<IDeviceSessionResponse>(
-      `${USER_ENDPOINTS.GET_SESSIONS}?page=${payload.page}&pageSize=${payload.pageSize}&userId=${payload.userId}`,
+  async getSecurityOverview(): Promise<ISecurityOverview> {
+    return serviceInstances.idpService.get<ISecurityOverview>(
+      USER_ENDPOINTS.GET_SECURITY_OVERVIEW,
     );
-    return res;
   }
 
-  async getSessionById(sessionId: string): Promise<IDeviceSession> {
-    return serviceInstances.idpService.get<IDeviceSession>(
-      `${USER_ENDPOINTS.GET_SESSIONS}/${sessionId}`,
+  async getSessionTimeline(sessionId: string): Promise<ISessionTimeline> {
+    return serviceInstances.idpService.get<ISessionTimeline>(
+      `${USER_ENDPOINTS.REVOKE_SESSION}/${sessionId}`,
     );
   }
 
   async revokeSession(sessionId: string, reason?: string): Promise<IRevokeSessionResponse> {
     return serviceInstances.idpService.post(
       `${USER_ENDPOINTS.REVOKE_SESSION}/${sessionId}/revoke`,
+      reason ? { reason } : {},
+    );
+  }
+
+  async revokeRefreshToken(tokenId: string, reason?: string): Promise<IRevokeSessionResponse> {
+    return serviceInstances.idpService.post(
+      USER_ENDPOINTS.REVOKE_REFRESH_TOKEN.replace("{tokenId}", encodeURIComponent(tokenId)),
       reason ? { reason } : {},
     );
   }
@@ -214,15 +216,6 @@ export class UserService {
     return serviceInstances.idpService.post<IUserActivityResponse>(
       USER_ENDPOINTS.GET_ACTIVITIES.replace("{userId}", encodeURIComponent(userId)),
       body,
-    );
-  }
-
-  async getSessionRefreshTokens(sessionId: string): Promise<IRefreshTokenRotation[]> {
-    return serviceInstances.idpService.get<IRefreshTokenRotation[]>(
-      USER_ENDPOINTS.GET_SESSION_REFRESH_TOKENS.replace(
-        "{sessionId}",
-        encodeURIComponent(sessionId),
-      ),
     );
   }
 

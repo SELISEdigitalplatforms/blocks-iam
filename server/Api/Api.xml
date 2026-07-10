@@ -286,10 +286,8 @@
         </member>
         <member name="T:Api.Controllers.SecurityController">
             <summary>
-            Self-service session, history, idp-session and impersonation endpoints.
-            Shares the <c>/iam</c> route prefix with <see cref="T:Api.Controllers.IamController"/> by design
-            (plan decision: no <c>/security</c> segment, URLs stay under <c>/iam/*</c>).
-            Action templates are disjoint from IamController, so route resolution is unambiguous.
+            Self-service security endpoints.
+            All routes live under <c>/security</c>.
             </summary>
         </member>
         <member name="M:Blocks.Api.Controllers.AuthorizationController.OidcLogin(Authentication.DomainService.Authentication.OidcLoginRequest)">

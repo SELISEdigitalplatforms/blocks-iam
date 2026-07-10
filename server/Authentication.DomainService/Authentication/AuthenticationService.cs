@@ -4,6 +4,7 @@ using Authentication.DomainService.Entities;
 using Authentication.DomainService.OAuth;
 using Authentication.DomainService.OAuth.RequestModel;
 using Authentication.DomainService.OAuth.ResponseModel;
+using Authentication.DomainService.Oidc.Repositories;
 using Authentication.DomainService.Services;
 using Authentication.DomainService.Shared;
 using Authentication.DomainService.Shared.Dtos;
@@ -37,6 +38,7 @@ namespace Authentication.DomainService.Authentication
         private readonly IAuthSessionFacade _authSession;
         private readonly ITenants _tenants;
         private readonly IUserActivityDispatcher _userActivityDispatcher;
+        private readonly IRefreshTokenRepository _refreshTokenRepository;
 
         private const string PublicCertCachePrefix = "tetocertpublic::";
 
@@ -47,7 +49,8 @@ namespace Authentication.DomainService.Authentication
             IAuthenticationDomainService authenticationDomainService,
             IAuthSessionFacade authSession,
             ITenants tenants,
-            IUserActivityDispatcher userActivityDispatcher
+            IUserActivityDispatcher userActivityDispatcher,
+            IRefreshTokenRepository refreshTokenRepository
         )
         {
             _logger = logger;
@@ -57,6 +60,7 @@ namespace Authentication.DomainService.Authentication
             _authSession = authSession;
             _tenants = tenants;
             _userActivityDispatcher = userActivityDispatcher;
+            _refreshTokenRepository = refreshTokenRepository;
         }
 
         public async Task<IActionResult> BuildFlowResultAsync(AuthenticationFlowResult result, HttpContext httpContext)
@@ -175,16 +179,18 @@ namespace Authentication.DomainService.Authentication
 
             await _cacheClient.RemoveKeyAsync(refreshToken);
 
-            var result = await _authenticationRepository.RevokeIdentitySessionAsync(refreshToken, bc?.UserId ?? "");
+            await _refreshTokenRepository.RevokeByTokenIdAsync(refreshToken, "logout");
 
-            return result;
+            return true;
         }
 
         public async Task<LogoutResponse> LogoutAll(HttpRequest httpRequest)
         {
             var bc = BlocksContext.GetContext();
+            var userId = bc?.UserId ?? string.Empty;
 
-            var refreshTokens = (await _authenticationRepository.GetActiveIdentitySessionByUserIdAsync(bc?.UserId ?? string.Empty)).Select(x => x.RefreshToken).ToList();
+            var activeTokens = await _refreshTokenRepository.GetActiveTokensByUserAsync(userId);
+            var refreshTokens = activeTokens.Select(t => t.TokenId).Where(id => !string.IsNullOrWhiteSpace(id)).ToList();
 
             var revokeTasks = refreshTokens.Select(async token =>
             {
@@ -197,12 +203,12 @@ namespace Authentication.DomainService.Authentication
             });
             await Task.WhenAll(revokeTasks);
 
-            var result = await _authenticationRepository.RevokeIdentitySessionsByRefreshTokensAsync(refreshTokens);
+            await _refreshTokenRepository.RevokeAllByTokenIdsAsync(refreshTokens, "logout_all");
 
             await ProcessTimeline(httpRequest, true);
             return new LogoutResponse
             {
-                IsSuccess = result,
+                IsSuccess = true,
             };
         }
 

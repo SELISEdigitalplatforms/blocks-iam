@@ -4,6 +4,7 @@ using Authentication.DomainService.Entities;
 using Authentication.DomainService.OAuth;
 using Authentication.DomainService.OAuth.RequestModel;
 using Authentication.DomainService.OAuth.ResponseModel;
+using Authentication.DomainService.Oidc.Repositories;
 using Authentication.DomainService.Services;
 using Authentication.DomainService.Shared.RequestModel;
 using Iam.DomainService.Dtos;
@@ -29,6 +30,7 @@ namespace Authentication.DomainService.Authentication
         private readonly ICaptchaEvaluator _captchaEvaluator;
         private readonly IUserActivityDispatcher _userActivityDispatcher;
         private readonly ILogger<AuthenticationFlowService> _logger;
+        private readonly IRefreshTokenRepository _refreshTokenRepository;
 
         public AuthenticationFlowService(
             IAuthenticationRepository authenticationRepository,
@@ -37,7 +39,8 @@ namespace Authentication.DomainService.Authentication
             IAuthenticationService authenticationService,
             ICaptchaEvaluator captchaEvaluator,
             IUserActivityDispatcher userActivityDispatcher,
-            ILogger<AuthenticationFlowService> logger)
+            ILogger<AuthenticationFlowService> logger,
+            IRefreshTokenRepository refreshTokenRepository)
         {
             _authenticationRepository = authenticationRepository;
             _authStrategy = authStrategy;
@@ -46,6 +49,7 @@ namespace Authentication.DomainService.Authentication
             _captchaEvaluator = captchaEvaluator;
             _userActivityDispatcher = userActivityDispatcher;
             _logger = logger;
+            _refreshTokenRepository = refreshTokenRepository;
         }
 
         public async Task<AuthenticationFlowResult> ExecuteEmbeddedLoginAsync(EmbeddedLoginRequest request, HttpRequest httpRequest)
@@ -582,7 +586,7 @@ namespace Authentication.DomainService.Authentication
 
         private async Task HandlePotentialRefreshTokenReuseAsync(string refreshToken)
         {
-            await _authenticationRepository.RevokeIdentitySessionsByRefreshTokensAsync(new List<string> { refreshToken });
+            await _refreshTokenRepository.RevokeByTokenIdAsync(refreshToken, "potential_reuse");
 
             await _tokenRefresher.RemoveKeyAsync(refreshToken);
             var tokenFingerprint = TruncateToken(refreshToken);

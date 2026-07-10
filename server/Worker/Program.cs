@@ -47,8 +47,6 @@ IHostBuilder CreateHostBuilder(string[] args) =>
         services.Configure<PeriodicPingConfiguration>(
             configuration.GetSection("PeriodicPingConfiguration"));
 
-        services.AddSingleton<IConsumer<RefreshTokenEvent>, RefreshTokenWorkerService>();
-
         services.AddSingleton<IConsumer<ResourceMutationEvent>, ResourceMutationConsumer>();
         services.AddSingleton<IConsumer<ResourceSetToPermissionMutationEvent>, ResourceSetToPermissionMutationConsumer>();
         services.AddSingleton<IConsumer<UserMutationEvent>, UserMutationConsumer>();

@@ -11,27 +11,28 @@ namespace Authentication.DomainService.Worker
     public sealed class LogoutAllWorkerService : IConsumer<LogoutAllEvent>
     {
         private readonly ICacheClient _cacheClient;
-        private readonly IAuthenticationRepository _authenticationRepository;
+        private readonly IRefreshTokenRepository _refreshTokenRepository;
         private readonly ITokenRevocationService _tokenRevocationService;
         private readonly IUserActivityDispatcher _userActivityDispatcher;
         private readonly ILogger<LogoutAllWorkerService> _logger;
 
         public LogoutAllWorkerService(
             ICacheClient cacheClient,
-            IAuthenticationRepository authenticationRepository,
+            IRefreshTokenRepository refreshTokenRepository,
             ITokenRevocationService tokenRevocationService,
             IUserActivityDispatcher userActivityDispatcher,
             ILogger<LogoutAllWorkerService> logger)
         {
             _cacheClient = cacheClient;
-            _authenticationRepository = authenticationRepository;
+            _refreshTokenRepository = refreshTokenRepository;
             _tokenRevocationService = tokenRevocationService;
             _userActivityDispatcher = userActivityDispatcher;
             _logger = logger;
         }
         public async Task Consume(LogoutAllEvent context)
         {
-            var refreshTokens = (await _authenticationRepository.GetActiveIdentitySessionByUserIdAsync(context.UserId)).Select(x => x.RefreshToken).ToList();
+            var activeTokens = await _refreshTokenRepository.GetActiveTokensByUserAsync(context.UserId);
+            var refreshTokens = activeTokens.Select(t => t.TokenId).Where(id => !string.IsNullOrWhiteSpace(id)).ToList();
 
             var revokeTasks = refreshTokens.Select(async token =>
             {
@@ -44,7 +45,7 @@ namespace Authentication.DomainService.Worker
             });
             await Task.WhenAll(revokeTasks);
 
-            await _authenticationRepository.UpdateSessionStatusForAllRefreshTokenAsync(refreshTokens);
+            await _refreshTokenRepository.RevokeAllByTokenIdsAsync(refreshTokens, "logout_all");
 
             await _userActivityDispatcher.SendUserActivityAsync(new UserActivityEvent
             {

@@ -22,8 +22,7 @@ import {
 } from "@/components/ui-kits/dialog/dialog";
 import {
   useGetActivities,
-  useGetSessionById,
-  useGetSessionRefreshTokens,
+  useGetSessionTimeline,
   useRevokeSession,
 } from "@blocks-idp/iam/hooks/use-activity";
 import { getDeviceIcon } from "@blocks-idp/iam/utils/device-icon";
@@ -77,9 +76,11 @@ export const SessionDetailsDrawer = ({
   onRevoked,
 }: SessionDetailsDrawerProps) => {
   const [isConfirmOpen, setIsConfirmOpen] = useState(false);
-  const { data: session, isLoading } = useGetSessionById(sessionId ?? "", {
+  const { data: timeline, isLoading } = useGetSessionTimeline(sessionId ?? "", {
     enabled: !!sessionId,
   });
+  const session = timeline?.session ?? null;
+  const refreshTokens = timeline?.rotations ?? [];
   const { data: activities } = useGetActivities(
     {
       userId: session?.userId ?? "",
@@ -89,9 +90,6 @@ export const SessionDetailsDrawer = ({
     },
     { enabled: !!sessionId && !!session?.userId },
   );
-  const { data: refreshTokens } = useGetSessionRefreshTokens(sessionId ?? "", {
-    enabled: !!sessionId,
-  });
   const { mutateAsync, isPending } = useRevokeSession();
 
   const handleRevoke = async () => {

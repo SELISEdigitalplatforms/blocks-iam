@@ -1,5 +1,6 @@
 import { IPermission } from "./permission";
 import { IRole } from "./role";
+import { IRefreshTokenRotation } from "./refresh-token";
 
 export interface User {
   itemId: string;
@@ -155,12 +156,6 @@ export interface IRevokeAccessResponse {
   errors: unknown | null;
   isSuccess: boolean;
 }
-export interface IGetSessionPayload {
-  page: number;
-  pageSize: number;
-  userId: string;
-  projectKey?: string;
-}
 
 export interface IRevokeSessionResponse {
   sessionId: string;
@@ -235,10 +230,45 @@ export interface IDeviceSession {
   lastRotatedAt?: string | null;
 }
 
-export interface IDeviceSessionResponse {
-  totalCount: number;
-  data: IDeviceSession[];
-  errors: unknown;
+export interface IRevokedAccessToken {
+  jti?: string;
+  revokedAt?: string | null;
+  reason?: string | null;
+}
+
+export interface IRefreshTokenStatus {
+  tokenId?: string;
+  isRevoked: boolean;
+  issuedAt?: string | null;
+  absoluteExpiry?: string | null;
+  revokedAt?: string | null;
+  revokeReason?: string | null;
+}
+
+export interface ISessionTimeline {
+  sessionId?: string | null;
+  session?: IDeviceSession | null;
+  refreshTokenStatus?: IRefreshTokenStatus | null;
+  revokedAccessTokens: IRevokedAccessToken[];
+  lifecycle: unknown[];
+  rotations: IRefreshTokenRotation[];
+}
+
+export interface IImpersonationSummary {
+  id?: string | null;
+  startedAt: string;
+  endedAt?: string | null;
+  rootTenantId?: string | null;
+  targetTenantId?: string | null;
+  status?: string | null;
+  reason?: string | null;
+}
+
+export interface ISecurityOverview {
+  currentSessionId?: string | null;
+  sessionGroups: IDeviceSession[];
+  idpSession: unknown | null;
+  activeImpersonations: IImpersonationSummary[];
 }
 
 export interface IPATResponse {
