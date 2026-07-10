@@ -79,7 +79,25 @@ namespace Authentication.DomainService.Security.Services
             {
                 return null;
             }
-            return await _securityRepository.GetSessionByIdAsync(sessionId, ct);
+
+            var dto = await _securityRepository.GetSessionByIdAsync(sessionId, ct);
+            if (dto == null)
+            {
+                return null;
+            }
+
+            if (!string.IsNullOrWhiteSpace(dto.UserId))
+            {
+                var tenantId = ResolveTenantId();
+                var currentSessionId = await ResolveCurrentSessionIdAsync(dto.UserId, tenantId, ct);
+                dto.IsCurrent = !string.IsNullOrEmpty(currentSessionId) && currentSessionId == dto.SessionId;
+
+                var rotations = await _securityRepository.GetRotationHistoryAsync(dto.SessionId ?? string.Empty, ct);
+                dto.RotationCount = rotations.Count;
+                dto.LastRotatedAt = rotations.Count > 0 ? rotations.Max(r => r.AbsoluteExpiry) : (DateTime?)null;
+            }
+
+            return dto;
         }
 
         public async Task<IdpSessionSummaryDto?> GetIdpSessionAsync(string targetUserId, CancellationToken ct)
