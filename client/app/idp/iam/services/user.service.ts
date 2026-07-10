@@ -8,9 +8,7 @@ import {
   IDeviceSession,
   IDeviceSessionResponse,
   IRevokeSessionResponse,
-  ISessionTimeline,
   IGeneratePATPayload,
-  IGetHistoriesPayload,
   IGetSessionPayload,
   IGetUserByIdPayload,
   IGetUserByIdResponse,
@@ -20,7 +18,6 @@ import {
   IGetUserRolesResponse,
   IGetUsersPayload,
   IGetUsersResponse,
-  IHistoriesResponse,
   IPATResponse,
   ISaveRolesAndPermissionsPayload,
   ISaveRolesAndPermissionsResponse,
@@ -35,6 +32,11 @@ import {
   ISaveSignUpSettingResponse,
   User,
 } from "@blocks-idp/iam/models/user";
+import {
+  IGetActivitiesPayload,
+  IUserActivityResponse,
+} from "@blocks-idp/iam/models/activity";
+import { IRefreshTokenRotation } from "@blocks-idp/iam/models/refresh-token";
 import { UserAccountService } from "./account.service";
 import {
   USER_ENDPOINTS,
@@ -177,7 +179,7 @@ export class UserService {
     return serviceInstances.idpService.post(USER_ENDPOINTS.REVOKE_ACCESS, payload);
   }
 
-async getSessions(
+  async getSessions(
     payload: IGetSessionPayload,
   ): Promise<IDeviceSessionResponse> {
     const res = await serviceInstances.idpService.get<IDeviceSessionResponse>(
@@ -192,12 +194,6 @@ async getSessions(
     );
   }
 
-  async getSessionTimeline(sessionId: string): Promise<ISessionTimeline> {
-    return serviceInstances.idpService.get<ISessionTimeline>(
-      `${USER_ENDPOINTS.GET_SESSIONS}/${sessionId}/timeline`,
-    );
-  }
-
   async revokeSession(sessionId: string, reason?: string): Promise<IRevokeSessionResponse> {
     return serviceInstances.idpService.post(
       `${USER_ENDPOINTS.REVOKE_SESSION}/${sessionId}/revoke`,
@@ -205,13 +201,29 @@ async getSessions(
     );
   }
 
-async getHistories(
-    payload: IGetHistoriesPayload,
-  ): Promise<IHistoriesResponse> {
-    const res = await serviceInstances.idpService.get<IHistoriesResponse>(
-      `${USER_ENDPOINTS.GET_HISTORIES}?page=${payload.page}&pageSize=${payload.pageSize}&userId=${payload.userId}`,
+  async getActivities(
+    payload: IGetActivitiesPayload,
+  ): Promise<IUserActivityResponse> {
+    const { userId, page, pageSize, sort, filter } = payload;
+    const body = {
+      page,
+      pageSize,
+      ...(sort ? { sort } : {}),
+      ...(filter ? { filter } : {}),
+    };
+    return serviceInstances.idpService.post<IUserActivityResponse>(
+      USER_ENDPOINTS.GET_ACTIVITIES.replace("{userId}", encodeURIComponent(userId)),
+      body,
     );
-    return res;
+  }
+
+  async getSessionRefreshTokens(sessionId: string): Promise<IRefreshTokenRotation[]> {
+    return serviceInstances.idpService.get<IRefreshTokenRotation[]>(
+      USER_ENDPOINTS.GET_SESSION_REFRESH_TOKENS.replace(
+        "{sessionId}",
+        encodeURIComponent(sessionId),
+      ),
+    );
   }
 
   async getPats(): Promise<IPATResponse> {

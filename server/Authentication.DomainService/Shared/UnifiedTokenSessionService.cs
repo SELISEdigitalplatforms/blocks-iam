@@ -83,6 +83,7 @@ namespace Authentication.DomainService.Shared
                 Scope = refreshTokenCache.Scope ?? string.Empty,
                 SlidingExpiry = refreshTokenCache.ExpiresUtc,
                 AbsoluteExpiry = refreshTokenCache.AbsoluteExpiresUtc,
+                IssuedUtc = refreshTokenCache.IssuedUtc,
                 IpAddress = refreshTokenCache.IpAddresses ?? string.Empty,
                 IsRevoked = false,
                 Impersonated = impersoanted,

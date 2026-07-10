@@ -1,5 +1,6 @@
 import { toast } from "@/hooks/use-toast";
-import { IGeneratePATPayload, IGetHistoriesPayload, IGetSessionPayload } from "@blocks-idp/iam/models/user";
+import { IGeneratePATPayload, IGetSessionPayload } from "@blocks-idp/iam/models/user";
+import { IGetActivitiesPayload } from "@blocks-idp/iam/models/activity";
 import { userService } from "@blocks-idp/iam/services/user.service";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
@@ -18,14 +19,6 @@ export const useGetSessionById = (sessionId: string, options?: { enabled?: boole
   });
 };
 
-export const useGetSessionTimeline = (sessionId: string, options?: { enabled?: boolean }) => {
-  return useQuery({
-    queryKey: ["session-timeline", sessionId],
-    queryFn: () => userService.getSessionTimeline(sessionId),
-    enabled: (options?.enabled ?? true) && !!sessionId,
-  });
-};
-
 export const useRevokeSession = () => {
   const queryClient = useQueryClient();
   return useMutation({
@@ -33,17 +26,25 @@ export const useRevokeSession = () => {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["sessions"] });
       queryClient.invalidateQueries({ queryKey: ["session"] });
-      queryClient.invalidateQueries({ queryKey: ["session-timeline"] });
+      queryClient.invalidateQueries({ queryKey: ["activities"] });
+      queryClient.invalidateQueries({ queryKey: ["session-refresh-tokens"] });
     },
   });
 };
 
-export const useGetHistories = (option: IGetHistoriesPayload) => {
-  return useQuery({
-    queryKey: ["histories", option],
-    queryFn: () => userService.getHistories(option),
+export const useGetActivities = (option: IGetActivitiesPayload, options?: { enabled?: boolean }) =>
+  useQuery({
+    queryKey: ["activities", option],
+    queryFn: () => userService.getActivities(option),
+    enabled: (options?.enabled ?? true) && !!option?.userId,
   });
-};
+
+export const useGetSessionRefreshTokens = (sessionId: string, options?: { enabled?: boolean }) =>
+  useQuery({
+    queryKey: ["session-refresh-tokens", sessionId],
+    queryFn: () => userService.getSessionRefreshTokens(sessionId),
+    enabled: (options?.enabled ?? true) && !!sessionId,
+  });
 
 export const useGetPats = () => {
   return useQuery({

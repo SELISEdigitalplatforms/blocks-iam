@@ -132,6 +132,7 @@ public sealed class OidcSigningKeyMaterial
             OrgId = claims.OrgId,
             Audience = claims.Audience,
             Scope = claims.Scope,
+            IssuedUtc = DateTime.UtcNow,
             SlidingExpiry = expiresUtc,
             AbsoluteExpiry = expiresUtc
         };

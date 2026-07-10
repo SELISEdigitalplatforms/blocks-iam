@@ -90,6 +90,42 @@ export const EVENT_META: Record<string, EventMeta> = {
     icon: XCircle,
     tone: "error",
   },
+  LOGIN_SUCCESS: {
+    label: "Sign in",
+    description: "Interactive sign-in",
+    icon: LogIn,
+    tone: "success",
+  },
+  LOGIN_FAILURE: {
+    label: "Sign in failed",
+    description: "Sign-in attempt failed",
+    icon: XCircle,
+    tone: "error",
+  },
+  TOKEN_REFRESHED: {
+    label: "Token refreshed",
+    description: "Session token refreshed",
+    icon: RefreshCw,
+    tone: "info",
+  },
+  SESSION_REVOKED: {
+    label: "Sign out",
+    description: "Signed out from session",
+    icon: LogOut,
+    tone: "error",
+  },
+  MFA_CHALLENGE_SUCCESS: {
+    label: "MFA challenge",
+    description: "MFA verified",
+    icon: ShieldCheck,
+    tone: "success",
+  },
+  PASSWORD_CHANGED: {
+    label: "Password changed",
+    description: "Account password updated",
+    icon: KeyRound,
+    tone: "info",
+  },
 };
 
 export const getEventMeta = (event: string): EventMeta =>

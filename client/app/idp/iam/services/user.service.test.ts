@@ -16,6 +16,7 @@ import {
   mockSaveRolesAndPermissionsPayload,
   mockGetSessionsPayload,
   mockGetHistoriesPayload,
+  mockSessionRefreshTokens,
   mockGeneratePATPayload,
   mockGetUserRolesPayload,
   mockGetUserPermissionsPayload,
@@ -248,46 +249,66 @@ describe("UserService", () => {
     });
   });
 
-  // ─── getHistories ─────────────────────────────────────────────────────────
-  describe("getHistories", () => {
-    it("should GET with correct query params and return response as-is", async () => {
+  // ─── getActivities ───────────────────────────────────────────────────────
+  describe("getActivities", () => {
+    it("should POST to the activities endpoint with the correct body and return response as-is", async () => {
       const rawResponse = {
         data: [
           {
-            event: "login_via_password",
-            actionBy: "u1",
-            deviceName: "Chrome",
-            deviceType: "Desktop",
-            deviceInformation: {
-              browser: "Chrome",
-              os: "macOS",
-              device: "Macbook",
-              brand: "Apple",
-              model: "Pro",
-            },
-            ipAddresses: "127.0.0.1",
-            sessionId: "s1",
+            itemId: "a1",
+            userId: "u1",
+            actorUserId: "u1",
+            category: "Auth",
+            event: "LOGIN_SUCCESS",
+            context: { ipAddress: "127.0.0.1" },
             createdDate: "2026-07-09T08:56:18.707Z",
           },
         ],
         totalCount: 1,
         errors: null,
       };
-      vi.mocked(http.get).mockResolvedValue(rawResponse);
+      vi.mocked(http.post).mockResolvedValue(rawResponse);
 
-      const result = await service.getHistories(mockGetHistoriesPayload);
+      const result = await service.getActivities(mockGetHistoriesPayload);
 
-      expect(http.get).toHaveBeenCalledWith(
-        `${USER_ENDPOINTS.GET_HISTORIES}?page=${mockGetHistoriesPayload.page}&pageSize=${mockGetHistoriesPayload.pageSize}&userId=${mockGetHistoriesPayload.userId}`,
+      expect(http.post).toHaveBeenCalledWith(
+        USER_ENDPOINTS.GET_ACTIVITIES.replace(
+          "{userId}",
+          encodeURIComponent(mockGetHistoriesPayload.userId),
+        ),
+        {
+          page: mockGetHistoriesPayload.page,
+          pageSize: mockGetHistoriesPayload.pageSize,
+        },
       );
       expect(result.totalCount).toBe(1);
-      expect(result.data[0].event).toBe("login_via_password");
+      expect(result.data[0].event).toBe("LOGIN_SUCCESS");
+    });
+
+    it("should throw when the API call fails", async () => {
+      vi.mocked(http.post).mockRejectedValue(new Error("Network error"));
+
+      await expect(service.getActivities(mockGetHistoriesPayload)).rejects.toThrow("Network error");
+    });
+  });
+
+  // ─── getSessionRefreshTokens ────────────────────────────────────────────
+  describe("getSessionRefreshTokens", () => {
+    it("should GET the session refresh-tokens endpoint and return response as-is", async () => {
+      vi.mocked(http.get).mockResolvedValue(mockSessionRefreshTokens);
+
+      const result = await service.getSessionRefreshTokens("sess-123");
+
+      expect(http.get).toHaveBeenCalledWith(
+        USER_ENDPOINTS.GET_SESSION_REFRESH_TOKENS.replace("{sessionId}", "sess-123"),
+      );
+      expect(result).toEqual(mockSessionRefreshTokens);
     });
 
     it("should throw when the API call fails", async () => {
       vi.mocked(http.get).mockRejectedValue(new Error("Network error"));
 
-      await expect(service.getHistories(mockGetHistoriesPayload)).rejects.toThrow("Network error");
+      await expect(service.getSessionRefreshTokens("sess-123")).rejects.toThrow("Network error");
     });
   });
 

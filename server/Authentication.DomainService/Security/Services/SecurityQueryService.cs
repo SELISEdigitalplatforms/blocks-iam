@@ -102,6 +102,15 @@ namespace Authentication.DomainService.Security.Services
             return items.ToList();
         }
 
+        public async Task<IReadOnlyList<RefreshTokenRotationDto>> GetRotationHistoryAsync(string sessionId, CancellationToken ct)
+        {
+            if (string.IsNullOrWhiteSpace(sessionId))
+            {
+                return Array.Empty<RefreshTokenRotationDto>();
+            }
+            return await _securityRepository.GetRotationHistoryAsync(sessionId, ct);
+        }
+
         private static string? ResolveTenantId() => BlocksContext.GetContext()?.TenantId;
 
         private async Task<string?> ResolveCurrentSessionIdAsync(string userId, string? tenantId, CancellationToken ct)

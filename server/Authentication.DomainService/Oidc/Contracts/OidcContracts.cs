@@ -65,6 +65,7 @@ public sealed class RefreshTokenModel
     public string? Audience { get; set; }
     public string? Scope { get; set; }
     public string? SessionId { get; set; }
+    public DateTime IssuedUtc { get; set; }
     public DateTime SlidingExpiry { get; set; }
     public DateTime AbsoluteExpiry { get; set; }
     public bool IsRevoked { get; set; }
