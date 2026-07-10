@@ -22,5 +22,7 @@ namespace Authentication.DomainService.Security.Models
         public bool IsActive { get; set; }
         public bool IsCurrent { get; set; }
         public bool IsImpersonated { get; set; }
+        public int RotationCount { get; set; }
+        public DateTime? LastRotatedAt { get; set; }
     }
 }

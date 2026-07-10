@@ -115,7 +115,7 @@ namespace Authentication.DomainService.Shared
             if (!string.IsNullOrWhiteSpace(oldRefreshToken))
             {
                 await _cacheClient.RemoveKeyAsync(oldRefreshToken);
-                await _refreshTokenRepository.DeleteAsync(oldRefreshToken);
+                await _refreshTokenRepository.RevokeByTokenIdAsync(oldRefreshToken, "superseded_by_rotation");
                 if (oldRefreshTokenCache != null)
                 {
                     var revokeOldTokenEvent = new RefreshTokenEvent

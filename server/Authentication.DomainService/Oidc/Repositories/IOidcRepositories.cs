@@ -26,6 +26,7 @@ namespace Authentication.DomainService.Oidc.Repositories
         Task<string> CreateAsync(RefreshTokenModel token);
         Task<RefreshTokenModel> GetByTokenIdAsync(string tokenId);
         Task<IEnumerable<RefreshTokenModel>> GetBySessionIdAsync(string sessionId);
+        Task<IEnumerable<RefreshTokenModel>> GetRotationHistoryAsync(string sessionId);
         Task<IEnumerable<RefreshTokenModel>> GetByUserAsync(string userId, string tenantId);
         Task<bool> RevokeByTokenIdAsync(string tokenId, string reason);
         Task<bool> UpdateSlidingExpiryAsync(string tokenId);

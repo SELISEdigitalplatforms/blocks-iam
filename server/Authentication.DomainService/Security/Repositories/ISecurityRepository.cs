@@ -10,6 +10,7 @@ namespace Authentication.DomainService.Security.Repositories
         Task<SessionDto?> GetSessionByIdAsync(string sessionId, CancellationToken ct);
         Task<SessionDto?> GetSessionByRefreshTokenAsync(string userId, string? tenantId, string refreshToken, CancellationToken ct);
         Task<RefreshTokenStatus?> GetRefreshTokenStatusAsync(string sessionId, CancellationToken ct);
+        Task<IReadOnlyList<RefreshTokenRotationDto>> GetRotationHistoryAsync(string sessionId, CancellationToken ct);
         Task<IReadOnlyList<RevokedAccessTokenDto>> GetRevokedAccessTokensAsync(string userId, CancellationToken ct);
         Task<IReadOnlyList<AuthHistoryDto>> GetHistoryAsync(string userId, GetHistoryRequest req, CancellationToken ct);
         Task<IReadOnlyList<AuthHistoryDto>> GetSessionLifecycleAsync(string userId, string sessionId, CancellationToken ct);

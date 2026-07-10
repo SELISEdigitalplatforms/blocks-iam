@@ -59,6 +59,20 @@ namespace Authentication.DomainService.Oidc.Repositories
             return await collection.Find(filter).ToListAsync();
         }
 
+        public async Task<IEnumerable<RefreshTokenModel>> GetRotationHistoryAsync(string sessionId)
+        {
+            if (string.IsNullOrWhiteSpace(sessionId))
+            {
+                return [];
+            }
+
+            var collection = GetDatabase().GetCollection<RefreshTokenModel>("IdpRefreshTokens");
+            var filter = Builders<RefreshTokenModel>.Filter.Eq(t => t.SessionId, sessionId);
+            return await collection.Find(filter)
+                .SortBy(t => t.AbsoluteExpiry)
+                .ToListAsync();
+        }
+
         public async Task<bool> RevokeByTokenIdAsync(string tokenId, string reason)
         {
             var collection = GetDatabase().GetCollection<RefreshTokenModel>("IdpRefreshTokens");
