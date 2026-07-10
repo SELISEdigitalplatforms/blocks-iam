@@ -46,13 +46,15 @@ namespace Authentication.DomainService.Shared
             DateTime refreshTokenExpireOn = now.AddMinutes(refreshTokenLifetime);
             DateTime absoluteRefreshTokenExpireOn = now.AddMinutes(absoluteLifetime);
 
-            var refreshTokenCache = new RefreshTokenCache
-            {
-                RefreshToken = refreshTokenId,
-                TenantId = tenant.TenantId,
-                OrganizationId = tokenRequest.OrganizationId,
-                ClientId = tokenRequest.ClientId,
-                SessionId = tokenRequest.Request?.Cookies[IdpConstants.BuildIdpSessionCookieKey(tenant?.TenantId)],
+var refreshTokenCache = new RefreshTokenCache
+        {
+            RefreshToken = refreshTokenId,
+            TenantId = tenant.TenantId,
+            OrganizationId = tokenRequest.OrganizationId,
+            ClientId = tokenRequest.ClientId,
+            SessionId = !string.IsNullOrWhiteSpace(tokenRequest.IdpSessionId)
+                ? tokenRequest.IdpSessionId
+                : tokenRequest.Request?.Cookies[IdpConstants.BuildIdpSessionCookieKey(tenant?.TenantId)],
                 IssuedUtc = now,
                 ExpiresUtc = refreshTokenExpireOn,
                 AbsoluteExpiresUtc = absoluteRefreshTokenExpireOn,

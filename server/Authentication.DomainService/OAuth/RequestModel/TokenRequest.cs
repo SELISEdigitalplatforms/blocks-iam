@@ -29,6 +29,7 @@ namespace Authentication.DomainService.OAuth.RequestModel
         public string? TargetTenantId { get; set; }
         public string? OriginalTenantId { get; set; }
         public string? ImpersonationSessionId { get; set; }
+        public string? IdpSessionId { get; set; }
 
     }
 }

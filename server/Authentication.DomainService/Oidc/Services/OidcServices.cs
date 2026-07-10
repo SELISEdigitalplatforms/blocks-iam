@@ -21,7 +21,7 @@ public interface ITokenGenerationService
 {
     Task<string> GenerateIdTokenAsync(Contracts.OidcClaims claims, string issuer, int expiresInSeconds);
     Task<string> GenerateAccessTokenAsync(Contracts.OidcClaims claims, string issuer, int expiresInSeconds);
-    Task<Contracts.RefreshTokenModel> GenerateRefreshTokenAsync(Contracts.OidcClaims claims, string issuer, bool isImpersonation);
+    Task<Contracts.RefreshTokenModel> GenerateRefreshTokenAsync(Contracts.OidcClaims claims, string issuer, bool isImpersonation, string? idpSessionId = null);
 }
 
 public interface IPkceService
@@ -100,7 +100,7 @@ public sealed class OidcSigningKeyMaterial
         return GenerateTokenAsync(claims, issuer, expiresInSeconds, includeNonce: false);
     }
 
-    public async Task<Contracts.RefreshTokenModel> GenerateRefreshTokenAsync(Contracts.OidcClaims claims, string issuer, bool isImpersonation)
+    public async Task<Contracts.RefreshTokenModel> GenerateRefreshTokenAsync(Contracts.OidcClaims claims, string issuer, bool isImpersonation, string? idpSessionId = null)
     {
         // UnifiedTokenSessionService handles all logic. This method is now a thin adapter only.
         var authConfiguration = await _authenticationRepository.GetAuthenticationConfigurationAsync();
@@ -111,7 +111,8 @@ public sealed class OidcSigningKeyMaterial
             ClientId = claims.ClientId,
             OrganizationId = claims.OrgId,
             Scope = claims.Scope,
-            Request = _httpContextAccessor.HttpContext?.Request
+            Request = _httpContextAccessor.HttpContext?.Request,
+            IdpSessionId = idpSessionId
         };
         var visitorsIpAddresses = new List<string> { _httpContextAccessor.HttpContext?.Connection?.RemoteIpAddress?.ToString() ?? string.Empty };
         var (refreshToken, expiresUtc) = await _unifiedTokenSessionService.CreateOrRotateRefreshToken(

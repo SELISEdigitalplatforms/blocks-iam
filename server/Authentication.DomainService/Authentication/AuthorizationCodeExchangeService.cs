@@ -2,9 +2,8 @@ using Authentication.DomainService.Entities;
 using Authentication.DomainService.Utilities;
 using Authentication.DomainService.OAuth;
 using Authentication.DomainService.Oidc.Repositories;
+using Authentication.DomainService.Oidc.Services;
 using Authentication.DomainService.Services;
-using Authentication.DomainService.Shared;
-using Authentication.DomainService.Shared.Dtos;
 using Iam.DomainService.Utilities;
 using Blocks.Genesis;
 using Iam.DomainService.Entities;
@@ -33,7 +32,7 @@ namespace Authentication.DomainService.Authentication
         private readonly IAuthorizationClaimsResolver _authorizationClaimsResolver;
         private readonly IAuthenticationRepository _authenticationRepository;
         private readonly ITenants _tenants;
-        private readonly ICacheClient _cacheClient;
+        private readonly IIdpSessionService _idpSessionService;
         private readonly ILogger<AuthorizationCodeExchangeService> _logger;
 
         public AuthorizationCodeExchangeService(
@@ -45,7 +44,7 @@ namespace Authentication.DomainService.Authentication
             IAuthorizationClaimsResolver authorizationClaimsResolver,
             IAuthenticationRepository authenticationRepository,
             ITenants tenants,
-            ICacheClient cacheClient,
+            IIdpSessionService idpSessionService,
             ILogger<AuthorizationCodeExchangeService> logger)
         {
             _authCodeRepo = authCodeRepo;
@@ -56,7 +55,7 @@ namespace Authentication.DomainService.Authentication
             _authorizationClaimsResolver = authorizationClaimsResolver;
             _authenticationRepository = authenticationRepository;
             _tenants = tenants;
-            _cacheClient = cacheClient;
+            _idpSessionService = idpSessionService;
             _logger = logger;
         }
 
@@ -209,9 +208,12 @@ namespace Authentication.DomainService.Authentication
             var absoluteRefreshTokenLifetimeMinutes = Math.Max(authConfiguration?.AbsoluteRefreshTokenValidForNumberMinutes ?? IdentityConfiguration.DefaultRememberMeRefreshTokenValidForNumberMinutes, 1);
 
             var issuer = DomainResolver.GetIssuer(tenant);
+
+            var idpSessionId = await ResolveOrCreateIdpSessionAsync(request, authCode.UserId, effectiveTenantId!);
+
             var idToken = await _tokenService.GenerateIdTokenAsync(claims, issuer, accessTokenLifetimeSeconds);
             var accessToken = await _tokenService.GenerateAccessTokenAsync(claims, issuer, accessTokenLifetimeSeconds);
-            var refreshTokenModel = await _tokenService.GenerateRefreshTokenAsync(claims, issuer, false);
+            var refreshTokenModel = await _tokenService.GenerateRefreshTokenAsync(claims, issuer, false, idpSessionId);
 
             refreshTokenModel.UserId = authCode.UserId;
             refreshTokenModel.ClientId = clientId;
@@ -320,6 +322,39 @@ namespace Authentication.DomainService.Authentication
 
             var effectiveTenantId = authCode.TenantId ?? tenantId ?? "default";
             return (null, authCode, user, effectiveTenantId);
+        }
+
+        private async Task<string> ResolveOrCreateIdpSessionAsync(HttpRequest request, string userId, string tenantId)
+        {
+            try
+            {
+                var cookieKey = IdpConstants.BuildIdpSessionCookieKey(tenantId);
+                var existingSessionId = request.Cookies[cookieKey];
+                if (!string.IsNullOrWhiteSpace(existingSessionId))
+                {
+                    var existing = await _idpSessionService.GetSessionAsync(existingSessionId);
+                    if (existing != null && !existing.RevokedAt.HasValue && !existing.IsExpired())
+                    {
+                        await _idpSessionService.AddAccountAsync(existingSessionId, userId, tenantId, userId);
+                        return existingSessionId;
+                    }
+                }
+
+                var ipAddress = OidcRedirectUrlBuilder.GetClientIpAddress(request);
+                var newSessionId = await _idpSessionService.CreateSessionAsync(userId, tenantId, ipAddress);
+
+                var cookieOptions = DomainResolver.IsLocalhost()
+                    ? DomainResolver.CreateLoopbackCookieOptions(null, DateTime.UtcNow.AddDays(IdpConstants.IdpSessionCookieTtlDays))
+                    : DomainResolver.CreateProductionCookieOptions(null, DateTime.UtcNow.AddDays(IdpConstants.IdpSessionCookieTtlDays));
+                request.HttpContext.Response.Cookies.Append(cookieKey, newSessionId, cookieOptions);
+
+                return newSessionId;
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Failed to resolve/create IdP session during OIDC token exchange for user {UserId}", userId);
+                return string.Empty;
+            }
         }
 
         private static bool AppendAccessAndRefreshTokenCookies(
