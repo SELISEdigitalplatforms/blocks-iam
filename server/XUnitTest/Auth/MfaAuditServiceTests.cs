@@ -1,10 +1,8 @@
 using Authentication.DomainService.Authentication;
 using Iam.DomainService.Utilities;
 using global::Authentication.DomainService.Oidc.Repositories;
-using global::Authentication.DomainService.Shared;
-using Blocks.Genesis;
+using global::Authentication.DomainService.Services;
 using global::Idp.DomainService.Oidc.Contracts;
-using global::Iam.DomainService.Entities;
 using global::Mfa.DomainService.Services;
 using FluentAssertions;
 using Microsoft.AspNetCore.Http;
@@ -24,7 +22,10 @@ namespace XUnitTest.Auth
             httpContext.Connection.RemoteIpAddress = System.Net.IPAddress.Parse("127.0.0.1");
             var accessor = new Mock<IHttpContextAccessor>();
             accessor.SetupGet(a => a.HttpContext).Returns(httpContext);
-            return new MfaAuditService(repo.Object, accessor.Object, NullLogger<MfaAuditService>.Instance);
+            var authDomain = new Mock<IAuthenticationDomainService>();
+            authDomain.Setup(a => a.SendToQueueAsync(It.IsAny<string>(), It.IsAny<It.IsAnyType>()))
+                .Returns(Task.CompletedTask);
+            return new MfaAuditService(repo.Object, authDomain.Object, accessor.Object, NullLogger<MfaAuditService>.Instance);
         }
 
         [Fact]
@@ -97,7 +98,10 @@ namespace XUnitTest.Auth
             var httpContext = new DefaultHttpContext();
             var accessor = new Mock<IHttpContextAccessor>();
             accessor.SetupGet(a => a.HttpContext).Returns(httpContext);
-            var service = new MfaAuditService(repo.Object, accessor.Object, NullLogger<MfaAuditService>.Instance);
+            var authDomain = new Mock<IAuthenticationDomainService>();
+            authDomain.Setup(a => a.SendToQueueAsync(It.IsAny<string>(), It.IsAny<It.IsAnyType>()))
+                .Returns(Task.CompletedTask);
+            var service = new MfaAuditService(repo.Object, authDomain.Object, accessor.Object, NullLogger<MfaAuditService>.Instance);
 
             await service.WriteAsync(new MfaAuditEvent { EventType = "evt", UserId = "u" });
 
@@ -145,8 +149,11 @@ namespace XUnitTest.Auth
             repo.Setup(r => r.CreateAsync(It.IsAny<AuditLogModel>())).ThrowsAsync(new Exception("db error"));
             var accessor = new Mock<IHttpContextAccessor>();
             accessor.SetupGet(a => a.HttpContext).Returns(new DefaultHttpContext());
+            var authDomain = new Mock<IAuthenticationDomainService>();
+            authDomain.Setup(a => a.SendToQueueAsync(It.IsAny<string>(), It.IsAny<It.IsAnyType>()))
+                .Returns(Task.CompletedTask);
 
-            var service = new MfaAuditService(repo.Object, accessor.Object, NullLogger<MfaAuditService>.Instance);
+            var service = new MfaAuditService(repo.Object, authDomain.Object, accessor.Object, NullLogger<MfaAuditService>.Instance);
 
             var act = async () => await service.WriteAsync(new MfaAuditEvent { EventType = "evt", UserId = "u" });
             await act.Should().NotThrowAsync();

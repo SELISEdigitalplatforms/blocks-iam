@@ -1,7 +1,9 @@
 using Authentication.DomainService.OAuth;
 using Iam.DomainService.Utilities;
 using Authentication.DomainService.Oidc.Repositories;
+using Authentication.DomainService.Services;
 using Authentication.DomainService.Shared;
+using Authentication.DomainService.Dtos;
 using Iam.DomainService.Entities;
 using Idp.DomainService.Oidc.Contracts;
 using Microsoft.AspNetCore.Http;
@@ -17,13 +19,16 @@ namespace Authentication.DomainService.Authentication
     public sealed class OidcLoginAuditWriter
     {
         private readonly IAuditLogRepository _auditLogRepo;
+        private readonly IAuthenticationDomainService _authenticationDomainService;
         private readonly ILogger<OidcLoginAuditWriter> _logger;
 
         public OidcLoginAuditWriter(
             IAuditLogRepository auditLogRepo,
+            IAuthenticationDomainService authenticationDomainService,
             ILogger<OidcLoginAuditWriter> logger)
         {
             _auditLogRepo = auditLogRepo;
+            _authenticationDomainService = authenticationDomainService;
             _logger = logger;
         }
 
@@ -47,6 +52,22 @@ namespace Authentication.DomainService.Authentication
                     Status = isSuccess ? IdpConstants.StatusSuccess : IdpConstants.StatusFailure,
                     Details = details ?? eventType
                 });
+
+                var timelineEvent = new UserAuthenticationTimelineEvent
+                {
+                    UserId = user.ItemId,
+                    Event = eventType,
+                    ActionBy = "OidcLoginAuditWriter",
+                    TenantId = request.TenantId ?? BlocksContext.GetContext()?.TenantId,
+                    ClientId = request.ClientId,
+                    Outcome = isSuccess ? IdpConstants.StatusSuccess : IdpConstants.StatusFailure,
+                    DeviceInformation = _authenticationDomainService.GetDeviceInfo(httpRequest?.Headers?.UserAgent.ToString() ?? string.Empty),
+                    IpAddresses = OidcRedirectUrlBuilder.GetClientIpAddress(httpRequest),
+                    RiskLevel = isFailure ? "medium" : "low",
+                    ReasonCode = isFailure ? eventType : null
+                };
+
+                await _authenticationDomainService.SendToQueueAsync(IdpConstants.AuthenticationQueue, timelineEvent);
             }
             catch (Exception ex)
             {

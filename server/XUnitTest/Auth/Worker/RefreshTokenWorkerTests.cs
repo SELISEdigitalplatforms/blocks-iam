@@ -114,7 +114,32 @@ namespace XUnitTest.Auth.Worker
             DeviceInformation = new DeviceInformation { Device = "Test", OS = "TestOS", Browser = "TestBrowser" },
             IsLogin = isLogin,
             IsRevoke = isRevoke,
-            GrantType = "password"
+            GrantType = "password",
+            Outcome = "success",
+            ReasonCode = "ok",
+            RiskLevel = "low",
+            CorrelationId = "corr-1"
         };
+
+        [Fact]
+        public async Task ProcessUserTimelineEvent_PopulatesAllExtendedFields()
+        {
+            var worker = CreateWorker(out var authRepo, out _);
+
+            var result = await worker.ProcessUserTimelineEvent(BuildEvent(isLogin: true));
+
+            result.Should().BeTrue();
+            authRepo.Verify(r => r.InsertIdentityEventAsync(It.Is<IdentityEvent>(e =>
+                e.UserId == "user-1" &&
+                e.TenantId == "tenant-1" &&
+                e.SessionId == "session-1" &&
+                e.ClientId == "client-1" &&
+                e.Outcome == "success" &&
+                e.ReasonCode == "ok" &&
+                e.RiskLevel == "low" &&
+                e.CorrelationId == "corr-1" &&
+                e.Event == "login_via_password"
+            )), Times.Once);
+        }
     }
 }

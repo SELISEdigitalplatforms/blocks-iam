@@ -21,5 +21,11 @@ namespace Authentication.DomainService.Entities
         public string? ActionBy { get; set; }
         public DateTime CreatedAt { get; set; }
         public Dictionary<string, string>? Metadata { get; set; }
+        public string? SessionId { get; set; }
+        public string? ClientId { get; set; }
+        public string? CorrelationId { get; set; }
+        public string? Outcome { get; set; }
+        public string? ReasonCode { get; set; }
+        public string? RiskLevel { get; set; }
     }
 }

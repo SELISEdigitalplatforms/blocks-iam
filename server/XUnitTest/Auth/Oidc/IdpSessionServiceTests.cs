@@ -21,11 +21,15 @@ namespace XUnitTest.Auth.Oidc
             auditRepo = new Mock<IAuditLogRepository>();
             authRepo = new Mock<IAuthenticationRepository>();
             refreshRepo = new Mock<IRefreshTokenRepository>();
+            var authDomain = new Mock<IAuthenticationDomainService>();
+            authDomain.Setup(a => a.SendToQueueAsync(It.IsAny<string>(), It.IsAny<It.IsAnyType>()))
+                .Returns(Task.CompletedTask);
 
             return new IdpSessionService(
                 sessionRepo.Object,
                 auditRepo.Object,
                 authRepo.Object,
+                authDomain.Object,
                 refreshRepo.Object,
                 Mock.Of<ICacheClient>(),
                 NullLogger<IdpSessionService>.Instance);

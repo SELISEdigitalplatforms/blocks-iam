@@ -1,4 +1,5 @@
 using Idp.DomainService.Oidc.Contracts;
+using Authentication.DomainService.Dtos;
 using Authentication.DomainService.Utilities;
 using Authentication.DomainService.Authentication;
 using Authentication.DomainService.Oidc.Repositories;
@@ -36,6 +37,7 @@ namespace Authentication.DomainService.Oidc.Services
         private readonly IIdpSessionRepository _sessionRepo;
         private readonly IAuditLogRepository _auditLogRepo;
         private readonly IAuthenticationRepository _authenticationRepository;
+        private readonly IAuthenticationDomainService _authenticationDomainService;
         private readonly IRefreshTokenRepository _refreshTokenRepo;
         private readonly ICacheClient _cacheClient;
         private readonly ILogger<IdpSessionService> _logger;
@@ -44,6 +46,7 @@ namespace Authentication.DomainService.Oidc.Services
             IIdpSessionRepository sessionRepo,
             IAuditLogRepository auditLogRepo,
             IAuthenticationRepository authenticationRepository,
+            IAuthenticationDomainService authenticationDomainService,
             IRefreshTokenRepository refreshTokenRepo,
             ICacheClient cacheClient,
             ILogger<IdpSessionService> logger)
@@ -51,6 +54,7 @@ namespace Authentication.DomainService.Oidc.Services
             _sessionRepo = sessionRepo;
             _auditLogRepo = auditLogRepo;
             _authenticationRepository = authenticationRepository;
+            _authenticationDomainService = authenticationDomainService;
             _refreshTokenRepo = refreshTokenRepo;
             _cacheClient = cacheClient;
             _logger = logger;
@@ -449,6 +453,19 @@ namespace Authentication.DomainService.Oidc.Services
                     Timestamp = DateTime.UtcNow
                 };
                 await _auditLogRepo.CreateAsync(auditLog);
+
+                var timelineEvent = new UserAuthenticationTimelineEvent
+                {
+                    UserId = userId,
+                    SessionId = sessionId,
+                    Event = eventType,
+                    ActionBy = "IdpSessionService",
+                    Outcome = IdpConstants.StatusSuccess,
+                    ReasonCode = details,
+                    RiskLevel = eventType == SessionAuditEvents.SessionRevoked ? "medium" : "low"
+                };
+
+                await _authenticationDomainService.SendToQueueAsync(IdpConstants.AuthenticationQueue, timelineEvent);
             }
             catch (Exception ex)
             {

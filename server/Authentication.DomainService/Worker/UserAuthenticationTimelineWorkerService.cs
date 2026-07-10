@@ -24,7 +24,7 @@ namespace Authentication.DomainService.Worker
 
         public async Task<bool> ProcessUserTimelineEvent(UserAuthenticationTimelineEvent context)
         {
-            var userAuthenticationTimeline = new UserAuthenticationTimeline 
+            var userAuthenticationTimeline = new UserAuthenticationTimeline
             {
                 ItemId = Guid.NewGuid().ToString(),
                 UserId = context?.UserId ?? string.Empty,
@@ -35,7 +35,14 @@ namespace Authentication.DomainService.Worker
                 DeviceInformation = context?.DeviceInformation,
                 IpAddresses = context?.IpAddresses ?? string.Empty,
                 Event = context?.Event ?? string.Empty,
-                ActionBy = context?.ActionBy ?? string.Empty
+                ActionBy = context?.ActionBy ?? string.Empty,
+                TenantId = context?.TenantId,
+                SessionId = context?.SessionId,
+                ClientId = context?.ClientId,
+                CorrelationId = context?.CorrelationId,
+                Outcome = context?.Outcome,
+                ReasonCode = context?.ReasonCode,
+                RiskLevel = context?.RiskLevel
             };
 
             return await _authenticationRepository.InsertUserAuthenticationTimelineAsync(userAuthenticationTimeline);

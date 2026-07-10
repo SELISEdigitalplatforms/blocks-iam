@@ -107,7 +107,10 @@ namespace Authentication.DomainService.Shared
                 IsLogin = true,
                 GrantType = tokenRequest.GrantType ?? string.Empty,
                 Impersonated = impersoanted,
-                ImpersonationId = tokenRequest.ImpersonationSessionId
+                ImpersonationId = tokenRequest.ImpersonationSessionId,
+                Outcome = IdpConstants.StatusSuccess,
+                ReasonCode = oldRefreshToken != null ? "rotation" : "initial_issue",
+                RiskLevel = "low"
             };
             await _authenticationDomainService.SendToQueueAsync(IdpConstants.AuthenticationQueue, addRefreshTokenEvent);
 
@@ -134,7 +137,10 @@ namespace Authentication.DomainService.Shared
                         IsLogin = false,
                         GrantType = tokenRequest.GrantType ?? string.Empty,
                         Impersonated = impersoanted,
-                        ImpersonationId = tokenRequest.ImpersonationSessionId
+                        ImpersonationId = tokenRequest.ImpersonationSessionId,
+                        Outcome = IdpConstants.StatusSuccess,
+                        ReasonCode = "superseded_by_rotation",
+                        RiskLevel = "low"
                     };
                     await _authenticationDomainService.SendToQueueAsync(IdpConstants.AuthenticationQueue, revokeOldTokenEvent);
                 }
