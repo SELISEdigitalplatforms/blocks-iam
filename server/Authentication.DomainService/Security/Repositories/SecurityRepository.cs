@@ -170,7 +170,7 @@ namespace Authentication.DomainService.Security.Repositories
             {
                 TokenId = row.TokenId,
                 IsRevoked = row.IsRevoked,
-                IssuedAt = row.SlidingExpiry,
+                IssuedAt = row.IssuedUtc,
                 AbsoluteExpiry = row.AbsoluteExpiry,
                 RevokedAt = row.RevokedAt,
                 RevokeReason = row.RevokeReason
@@ -187,16 +187,18 @@ namespace Authentication.DomainService.Security.Repositories
             var b = Builders<RefreshTokenModel>.Filter;
             var filter = b.Eq(x => x.SessionId, sessionId);
             var rows = await RefreshTokens().Find(filter).SortBy(x => x.AbsoluteExpiry).ToListAsync(ct);
-            return rows.Select(r => new RefreshTokenRotationDto
+            var count = rows.Count;
+            return rows.Select((r, idx) => new RefreshTokenRotationDto
             {
-                TokenId = r.TokenId,
-                IssuedAt = r.SlidingExpiry,
+                Fingerprint = r.TokenId.Length >= 6 ? r.TokenId.Substring(0, 6) : r.TokenId,
+                IssuedUtc = r.IssuedUtc,
                 AbsoluteExpiry = r.AbsoluteExpiry,
                 IsRevoked = r.IsRevoked,
                 RevokedAt = r.RevokedAt,
                 RevokeReason = r.RevokeReason,
                 IpAddress = r.IpAddress,
-                UserAgent = r.UserAgent
+                UserAgent = r.UserAgent,
+                IsCurrent = idx == count - 1 && !r.IsRevoked
             }).ToList();
         }
 

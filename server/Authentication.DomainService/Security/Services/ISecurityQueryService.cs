@@ -11,6 +11,7 @@ namespace Authentication.DomainService.Security.Services
         Task<SessionDto?> GetSessionByIdAsync(string sessionId, CancellationToken ct);
         Task<IdpSessionSummaryDto?> GetIdpSessionAsync(string targetUserId, CancellationToken ct);
         Task<List<ImpersonationSummaryDto>> GetImpersonationsAsync(string targetUserId, CancellationToken ct);
+        Task<IReadOnlyList<RefreshTokenRotationDto>> GetRotationHistoryAsync(string sessionId, CancellationToken ct);
         Task<string?> ResolveCurrentSessionIdAsync(string userId, CancellationToken ct);
     }
 }

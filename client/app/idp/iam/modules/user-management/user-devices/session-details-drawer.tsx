@@ -4,13 +4,13 @@ import { Badge } from "@/components/ui-kits/badge/badge";
 import { Button } from "@/components/ui-kits/button/button";
 import { Skeleton } from "@/components/ui-kits/skeleton/skeleton";
 import {
-  Tabs,
-  TabsContent,
-  TabsList,
-  TabsTrigger,
-  underlineTabsListClass,
-  underlineTabTriggerClass,
-} from "@/components/ui-kits/tabs/tabs";
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui-kits/table/table";
 import {
   Dialog,
   DialogContent,
@@ -20,10 +20,15 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui-kits/dialog/dialog";
-import { useGetSessionTimeline, useRevokeSession } from "@blocks-idp/iam/hooks/use-activity";
+import {
+  useGetActivities,
+  useGetSessionById,
+  useGetSessionRefreshTokens,
+  useRevokeSession,
+} from "@blocks-idp/iam/hooks/use-activity";
 import { getDeviceIcon } from "@blocks-idp/iam/utils/device-icon";
 import { showErrorToast, showSuccessToast } from "@/hooks/use-toast";
-import { Calendar, Globe, Monitor, ShieldOff } from "lucide-react";
+import { Calendar, Globe, Monitor } from "lucide-react";
 import { EVENT_TONE_CLASS, getEventMeta } from "../user-histories/event-meta";
 
 type SessionDetailsDrawerProps = {
@@ -72,12 +77,22 @@ export const SessionDetailsDrawer = ({
   onRevoked,
 }: SessionDetailsDrawerProps) => {
   const [isConfirmOpen, setIsConfirmOpen] = useState(false);
-  const { data: timeline, isLoading } = useGetSessionTimeline(sessionId ?? "", {
+  const { data: session, isLoading } = useGetSessionById(sessionId ?? "", {
+    enabled: !!sessionId,
+  });
+  const { data: activities } = useGetActivities(
+    {
+      userId: session?.userId ?? "",
+      page: 0,
+      pageSize: 50,
+      filter: { sessionId: sessionId ?? "" },
+    },
+    { enabled: !!sessionId && !!session?.userId },
+  );
+  const { data: refreshTokens } = useGetSessionRefreshTokens(sessionId ?? "", {
     enabled: !!sessionId,
   });
   const { mutateAsync, isPending } = useRevokeSession();
-
-  const session = timeline?.session;
 
   const handleRevoke = async () => {
     if (!sessionId) return;
@@ -188,109 +203,85 @@ export const SessionDetailsDrawer = ({
                     value={session.operatingSystem}
                   />
                 </div>
-              </div>
 
-              <Tabs defaultValue="timeline" className="mt-6">
-                <TabsList className={underlineTabsListClass}>
-                  <TabsTrigger value="timeline" className={underlineTabTriggerClass}>
-                    Session Timeline
-                  </TabsTrigger>
-                  <TabsTrigger value="refresh" className={underlineTabTriggerClass}>
-                    Refresh Status
-                  </TabsTrigger>
-                </TabsList>
+                <div className="grid grid-cols-2 gap-4 rounded-md border bg-muted/30 p-3">
+                  <InfoItem
+                    label="Rotations"
+                    value={session.rotationCount ?? 0}
+                  />
+                  <InfoItem
+                    icon={<Calendar className="h-3.5 w-3.5" />}
+                    label="Last rotated"
+                    value={formatDateTime(session.lastRotatedAt)}
+                  />
+                </div>
 
-                <TabsContent value="timeline" className="mt-4">
-                  {!timeline?.lifecycle?.length ? (
-                    <p className="text-sm text-muted-foreground">No timeline events yet.</p>
+                <div className="space-y-3">
+                  <h4 className="text-sm font-semibold text-high-emphasis">
+                    Session activity
+                  </h4>
+                  {!activities?.data?.length ? (
+                    <p className="text-sm text-muted-foreground">No activity events yet.</p>
                   ) : (
-                    <ul className="space-y-4 border-l pl-4">
-                      {timeline.lifecycle.map((entry, index) => {
+                    <ul className="space-y-3 border-l pl-4">
+                      {activities.data.map((entry) => {
                         const meta = getEventMeta(entry.event);
                         return (
-                          <li key={`${entry.sessionId}-${index}`} className="relative">
+                          <li key={entry.itemId} className="relative">
                             <span
                               className={`absolute -left-[21px] top-1 h-2.5 w-2.5 rounded-full border-2 bg-background ${EVENT_TONE_CLASS[meta.tone]} border-current`}
                             />
                             <p className="text-sm font-medium text-high-emphasis">{meta.label}</p>
                             <p className="text-xs text-muted-foreground">
                               {formatDateTime(entry.createdDate)}
-                              {entry.ipAddresses ? ` • ${entry.ipAddresses}` : ""}
+                              {entry.context?.ipAddress ? ` • ${entry.context.ipAddress}` : ""}
                             </p>
                           </li>
                         );
                       })}
                     </ul>
                   )}
-                </TabsContent>
+                </div>
 
-                <TabsContent value="refresh" className="mt-4 space-y-4">
-                  {!timeline?.refreshTokenStatus ? (
-                    <p className="text-sm text-muted-foreground">No refresh token data.</p>
+                <div className="space-y-3">
+                  <h4 className="text-sm font-semibold text-high-emphasis">
+                    Refresh-token rotations
+                  </h4>
+                  {!refreshTokens?.length ? (
+                    <p className="text-sm text-muted-foreground">No refresh-token activity yet.</p>
                   ) : (
-                    <>
-                      <div className="grid grid-cols-2 gap-4">
-                        <InfoItem
-                          icon={<ShieldOff className="h-3.5 w-3.5" />}
-                          label="Status"
-                          value={
-                            <Badge
-                              variant={
-                                timeline.refreshTokenStatus.isRevoked ? "secondary" : "success"
-                              }
-                            >
-                              {timeline.refreshTokenStatus.isRevoked ? "Revoked" : "Active"}
-                            </Badge>
-                          }
-                        />
-                        <InfoItem
-                          icon={<Calendar className="h-3.5 w-3.5" />}
-                          label="Issued at"
-                          value={formatDateTime(timeline.refreshTokenStatus.issuedAt)}
-                        />
-                        <InfoItem
-                          icon={<Calendar className="h-3.5 w-3.5" />}
-                          label="Expires"
-                          value={formatDateTime(timeline.refreshTokenStatus.absoluteExpiry)}
-                        />
-                        {timeline.refreshTokenStatus.isRevoked && (
-                          <InfoItem
-                            icon={<Calendar className="h-3.5 w-3.5" />}
-                            label="Revoked at"
-                            value={formatDateTime(timeline.refreshTokenStatus.revokedAt)}
-                          />
-                        )}
-                      </div>
-                      {timeline.refreshTokenStatus.revokeReason && (
-                        <p className="text-sm text-muted-foreground">
-                          Reason: {timeline.refreshTokenStatus.revokeReason}
-                        </p>
-                      )}
-                      {timeline.revokedAccessTokens.length > 0 && (
-                        <div>
-                          <h4 className="mb-2 text-sm font-semibold text-high-emphasis">
-                            Revoked access tokens
-                          </h4>
-                          <ul className="space-y-2">
-                            {timeline.revokedAccessTokens.map((token) => (
-                              <li
-                                key={token.jti}
-                                className="rounded-md border px-3 py-2 text-xs text-muted-foreground"
-                              >
-                                <p className="truncate font-mono">{token.jti}</p>
-                                <p className="mt-0.5">
-                                  Revoked {formatDateTime(token.revokedAt)}
-                                  {token.reason ? ` • ${token.reason}` : ""}
-                                </p>
-                              </li>
-                            ))}
-                          </ul>
-                        </div>
-                      )}
-                    </>
+                    <Table className="text-sm">
+                      <TableHeader>
+                        <TableRow className="hover:bg-transparent">
+                          <TableHead>Issued</TableHead>
+                          <TableHead>Expires</TableHead>
+                          <TableHead>Replaced</TableHead>
+                          <TableHead>IP</TableHead>
+                          <TableHead>Fingerprint</TableHead>
+                        </TableRow>
+                      </TableHeader>
+                      <TableBody>
+                        {refreshTokens.map((r) => (
+                          <TableRow key={`${r.fingerprint}-${r.issuedUtc}`}>
+                            <TableCell>{formatDateTime(r.issuedUtc)}</TableCell>
+                            <TableCell>{formatDateTime(r.absoluteExpiry)}</TableCell>
+                            <TableCell>
+                              {r.isRevoked ? formatDateTime(r.revokedAt) : "Active"}
+                            </TableCell>
+                            <TableCell>{r.ipAddress ?? "—"}</TableCell>
+                            <TableCell>
+                              <span className="flex items-center gap-2">
+                                <span className="font-mono">{r.fingerprint ?? "—"}</span>
+                                {r.isCurrent && <Badge variant="info">Current</Badge>}
+                              </span>
+                            </TableCell>
+                          </TableRow>
+                        ))}
+                      </TableBody>
+                    </Table>
                   )}
-                </TabsContent>
-              </Tabs>
+                </div>
+              </div>
             </div>
           </>
         )}

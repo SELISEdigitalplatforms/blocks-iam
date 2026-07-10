@@ -161,12 +161,6 @@ export interface IGetSessionPayload {
   userId: string;
   projectKey?: string;
 }
-export interface IGetHistoriesPayload {
-  page: number;
-  pageSize: number;
-  userId: string;
-  projectKey?: string;
-}
 
 export interface IRevokeSessionResponse {
   sessionId: string;
@@ -208,18 +202,6 @@ export interface UserDetailsDevicesData {
   lastAccessOn: string;
 }
 
-export interface UserDetailsHistoryData {
-  event: string;
-  time: string;
-  site: string | number;
-  accessFrom: UserAccessFromData;
-}
-
-export interface UserAccessFromData {
-  ip: string;
-  location: string;
-}
-
 // Interface for the data we pass to the InviteUser modal
 export interface EditUserData {
   itemId: string;
@@ -228,31 +210,6 @@ export interface EditUserData {
   email: string;
   phoneNumber: string | null;
   salutation: string;
-}
-
-interface DeviceInformation {
-  browser: string;
-  os: string;
-  device: string;
-  brand: string;
-  model: string;
-}
-
-export interface IHistories {
-  event: string;
-  actionBy: string;
-  deviceName: string;
-  deviceType: string;
-  deviceInformation: DeviceInformation;
-  ipAddresses: string;
-  sessionId: string;
-  createdDate: string;
-}
-
-export interface IHistoriesResponse {
-  totalCount: number;
-  data: IHistories[];
-  errors: unknown;
 }
 
 export interface IDeviceSession {
@@ -280,29 +237,6 @@ export interface IDeviceSessionResponse {
   totalCount: number;
   data: IDeviceSession[];
   errors: unknown;
-}
-
-export interface IRefreshTokenStatus {
-  tokenId: string;
-  isRevoked: boolean;
-  issuedAt: string;
-  absoluteExpiry: string;
-  revokedAt: string | null;
-  revokeReason: string | null;
-}
-
-export interface IRevokedAccessToken {
-  jti: string;
-  revokedAt: string;
-  reason: string;
-}
-
-export interface ISessionTimeline {
-  sessionId: string;
-  session: IDeviceSession;
-  refreshTokenStatus: IRefreshTokenStatus;
-  revokedAccessTokens: IRevokedAccessToken[];
-  lifecycle: IHistories[];
 }
 
 export interface IPATResponse {

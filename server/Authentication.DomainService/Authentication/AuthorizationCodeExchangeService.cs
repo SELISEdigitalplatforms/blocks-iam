@@ -221,6 +221,7 @@ namespace Authentication.DomainService.Authentication
             refreshTokenModel.Scope = authCode.Scope;
             refreshTokenModel.IpAddress = OidcRedirectUrlBuilder.GetClientIpAddress(request);
             refreshTokenModel.UserAgent = request.Headers["User-Agent"].ToString();
+            refreshTokenModel.IssuedUtc = DateTime.UtcNow;
             await _refreshTokenRepo.CreateAsync(refreshTokenModel);
 
             _logger.LogInformation("Tokens issued for user {UserId}, client {ClientId}", authCode.UserId, clientId);

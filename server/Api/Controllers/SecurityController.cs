@@ -48,6 +48,25 @@ namespace Api.Controllers
             return Ok(result);
         }
 
+        [HttpGet("sessions/{sessionId}/refresh-tokens")]
+        public async Task<ActionResult<IReadOnlyList<RefreshTokenRotationDto>>> GetSessionRefreshTokens([FromRoute] string sessionId, CancellationToken ct)
+        {
+            var session = await _securityQueryService.GetSessionByIdAsync(sessionId, ct);
+            if (session == null)
+            {
+                return NotFound(new { error = "session_not_found" });
+            }
+
+            var actorUserId = ResolveActorUserId();
+            if (!string.IsNullOrEmpty(actorUserId) && !string.IsNullOrEmpty(session.UserId) && actorUserId != session.UserId)
+            {
+                return Forbid();
+            }
+
+            var rows = await _securityQueryService.GetRotationHistoryAsync(sessionId, ct);
+            return Ok(rows);
+        }
+
 
         [HttpPost("sessions/{sessionId}/revoke")]
         public async Task<ActionResult<RevokeSessionResponse>> RevokeSession([FromRoute] string sessionId, [FromBody] RevokeSessionRequest? req, CancellationToken ct)
