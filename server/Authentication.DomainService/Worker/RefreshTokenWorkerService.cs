@@ -103,7 +103,12 @@ namespace Authentication.DomainService.Worker
                 IsActive = true
             };
 
-            return await _oAuthRepository.InsertIdentitySessionAsync(session);
+            if (context.IsLogin)
+            {
+                return await _oAuthRepository.InsertIdentitySessionAsync(session);
+            }
+
+            return await _oAuthRepository.UpsertIdentitySessionBySessionIdAsync(session);
         }
 
         public async Task<bool> ProcessUserTimelineEvent(RefreshTokenEvent context)

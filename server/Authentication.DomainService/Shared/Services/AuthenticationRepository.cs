@@ -336,6 +336,56 @@ namespace Authentication.DomainService.Services
             return await collection.Find(filter).SortByDescending(x => x.UpdatedAt).FirstOrDefaultAsync();
         }
 
+        public async Task<bool> UpsertIdentitySessionBySessionIdAsync(IdentitySession session)
+        {
+            var collection = GetCollectionByName<IdentitySession>("IdentitySessions");
+            var b = Builders<IdentitySession>.Filter;
+
+            FilterDefinition<IdentitySession> filter;
+            if (!string.IsNullOrWhiteSpace(session.SessionId))
+            {
+                filter = b.And(
+                    b.Eq(x => x.UserId, session.UserId),
+                    b.Eq(x => x.TenantId, session.TenantId),
+                    b.Eq(x => x.SessionId, session.SessionId)
+                );
+            }
+            else
+            {
+                filter = b.And(
+                    b.Eq(x => x.UserId, session.UserId),
+                    b.Eq(x => x.TenantId, session.TenantId),
+                    b.Eq(x => x.ClientId, session.ClientId ?? string.Empty),
+                    b.Eq(x => x.DeviceInformation!.Device, session.DeviceInformation?.Device ?? string.Empty)
+                );
+            }
+
+            var setOnInsert = Builders<IdentitySession>.Update
+                .SetOnInsert(x => x.TenantId, session.TenantId)
+                .SetOnInsert(x => x.UserId, session.UserId)
+                .SetOnInsert(x => x.OrganizationId, session.OrganizationId)
+                .SetOnInsert(x => x.ClientId, session.ClientId)
+                .SetOnInsert(x => x.SessionId, session.SessionId)
+                .SetOnInsert(x => x.IssuedUtc, session.IssuedUtc)
+                .SetOnInsert(x => x.CreatedAt, DateTime.UtcNow)
+                .SetOnInsert(x => x.IsLogin, session.IsLogin);
+
+            var setMutables = Builders<IdentitySession>.Update
+                .Set(x => x.RefreshToken, session.RefreshToken)
+                .Set(x => x.ExpiresUtc, session.ExpiresUtc)
+                .Set(x => x.UpdatedAt, DateTime.UtcNow)
+                .Set(x => x.IsActive, true)
+                .Set(x => x.IpAddresses, session.IpAddresses)
+                .Set(x => x.DeviceInformation, session.DeviceInformation)
+                .Set(x => x.GrantType, session.GrantType);
+
+            var update = Builders<IdentitySession>.Update.Combine(setOnInsert, setMutables);
+
+            var options = new UpdateOptions { IsUpsert = true };
+            var result = await collection.UpdateOneAsync(filter, update, options);
+            return result.IsAcknowledged;
+        }
+
         public async Task<IEnumerable<IdentitySession>> GetActiveIdentitySessionBySessionIdAsync(string sessionId)
         {
             var collection = GetCollection<IdentitySession>();

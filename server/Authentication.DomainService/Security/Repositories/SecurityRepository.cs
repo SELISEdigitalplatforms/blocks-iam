@@ -43,34 +43,59 @@ namespace Authentication.DomainService.Security.Repositories
 
         public async Task<IReadOnlyList<SessionDto>> GetSessionsAsync(string userId, string? tenantId, GetSessionsRequest req, CancellationToken ct)
         {
-            var b = Builders<IdentitySession>.Filter;
-            var filters = new List<FilterDefinition<IdentitySession>>
+            var match = new BsonDocument
             {
-                b.Eq(x => x.UserId, userId)
+                { "UserId", userId }
             };
             if (!string.IsNullOrWhiteSpace(tenantId))
             {
-                filters.Add(b.Eq(x => x.TenantId, tenantId));
+                match.Add("TenantId", tenantId);
             }
             if (req.Filter?.ActiveOnly == true)
             {
-                filters.Add(b.Eq(x => x.IsActive, true));
+                match.Add("IsActive", true);
             }
             if (!string.IsNullOrWhiteSpace(req.Filter?.ClientId))
             {
-                filters.Add(b.Eq(x => x.ClientId, req.Filter.ClientId));
+                match.Add("ClientId", req.Filter.ClientId);
             }
 
-            var filter = b.And(filters);
-            var sort = Builders<IdentitySession>.Sort.Descending(x => x.CreatedAt);
             var skip = Math.Max(req.Page, 0) * Math.Max(req.PageSize, 1);
             var limit = Math.Max(req.PageSize, 1);
 
+            var pipeline = new BsonDocument[]
+            {
+                new BsonDocument("$match", match),
+                new BsonDocument("$sort", new BsonDocument("UpdatedAt", -1)),
+                new BsonDocument("$group", new BsonDocument
+                {
+                    { "_id", new BsonDocument("$cond", new BsonArray
+                        {
+                            new BsonDocument("$eq", new BsonArray { "$SessionId", BsonNull.Value }),
+                            new BsonDocument("$concat", new BsonArray
+                            {
+                                "null:",
+                                "$UserId",
+                                ":",
+                                "$TenantId",
+                                ":",
+                                new BsonDocument("$ifNull", new BsonArray { "$ClientId", string.Empty }),
+                                ":",
+                                new BsonDocument("$ifNull", new BsonArray { "$DeviceInformation.Device", string.Empty })
+                            }),
+                            "$SessionId"
+                        })
+                    },
+                    { "doc", new BsonDocument("$first", "$$ROOT") }
+                }),
+                new BsonDocument("$replaceRoot", new BsonDocument("newRoot", "$doc")),
+                new BsonDocument("$sort", new BsonDocument("UpdatedAt", -1)),
+                new BsonDocument("$skip", skip),
+                new BsonDocument("$limit", limit)
+            };
+
             var rows = await IdentitySessions()
-                .Find(filter)
-                .Sort(sort)
-                .Skip(skip)
-                .Limit(limit)
+                .Aggregate<IdentitySession>(pipeline, cancellationToken: ct)
                 .ToListAsync(ct);
 
             return rows.Select(MapSession).ToList();
@@ -153,6 +178,29 @@ namespace Authentication.DomainService.Security.Repositories
                 RevokedAt = row.RevokedAt,
                 RevokeReason = row.RevokeReason
             };
+        }
+
+        public async Task<IReadOnlyList<RefreshTokenRotationDto>> GetRotationHistoryAsync(string sessionId, CancellationToken ct)
+        {
+            if (string.IsNullOrWhiteSpace(sessionId))
+            {
+                return [];
+            }
+
+            var b = Builders<RefreshTokenModel>.Filter;
+            var filter = b.Eq(x => x.SessionId, sessionId);
+            var rows = await RefreshTokens().Find(filter).SortBy(x => x.AbsoluteExpiry).ToListAsync(ct);
+            return rows.Select(r => new RefreshTokenRotationDto
+            {
+                TokenId = r.TokenId,
+                IssuedAt = r.SlidingExpiry,
+                AbsoluteExpiry = r.AbsoluteExpiry,
+                IsRevoked = r.IsRevoked,
+                RevokedAt = r.RevokedAt,
+                RevokeReason = r.RevokeReason,
+                IpAddress = r.IpAddress,
+                UserAgent = r.UserAgent
+            }).ToList();
         }
 
         public async Task<IReadOnlyList<RevokedAccessTokenDto>> GetRevokedAccessTokensAsync(string userId, CancellationToken ct)
@@ -341,7 +389,13 @@ namespace Authentication.DomainService.Security.Repositories
                     Builders<IdentitySession>.IndexKeys
                         .Ascending(x => x.UserId)
                         .Ascending(x => x.SessionId),
-                    new CreateIndexOptions { Name = "ix_user_session" })
+                    new CreateIndexOptions { Name = "ix_user_session" }),
+                new CreateIndexModel<IdentitySession>(
+                    Builders<IdentitySession>.IndexKeys
+                        .Ascending(x => x.UserId)
+                        .Ascending(x => x.TenantId)
+                        .Ascending(x => x.SessionId),
+                    new CreateIndexOptions { Name = "ix_user_tenant_session" })
             }, ct);
 
             await Timelines().Indexes.CreateOneAsync(
@@ -352,13 +406,19 @@ namespace Authentication.DomainService.Security.Repositories
                     new CreateIndexOptions { Name = "ix_user_created" }),
                 cancellationToken: ct);
 
-            await RefreshTokens().Indexes.CreateOneAsync(
+            await RefreshTokens().Indexes.CreateManyAsync(new[]
+            {
                 new CreateIndexModel<RefreshTokenModel>(
                     Builders<RefreshTokenModel>.IndexKeys
                         .Ascending(x => x.SessionId)
                         .Ascending(x => x.IsRevoked),
                     new CreateIndexOptions { Name = "ix_session_revoked" }),
-                cancellationToken: ct);
+                new CreateIndexModel<RefreshTokenModel>(
+                    Builders<RefreshTokenModel>.IndexKeys
+                        .Ascending(x => x.SessionId)
+                        .Descending(x => x.AbsoluteExpiry),
+                    new CreateIndexOptions { Name = "ix_session_absolute_expiry" })
+            }, ct);
 
             await RevokedTokens().Indexes.CreateOneAsync(
                 new CreateIndexModel<TokenRevocationModel>(

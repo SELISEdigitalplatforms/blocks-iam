@@ -26,6 +26,7 @@ namespace Authentication.DomainService.Services
         Task<IEnumerable<IdentitySession>> GetActiveIdentitySessionByUserIdAsync(string userId);
         Task<IdentitySession?> GetIdentitySessionByRefreshTokenAsync(string refreshToken);
         Task<IEnumerable<IdentitySession>> GetActiveIdentitySessionBySessionIdAsync(string sessionId);
+        Task<bool> UpsertIdentitySessionBySessionIdAsync(IdentitySession session);
         Task<bool> RevokeIdentitySessionsByRefreshTokensAsync(IEnumerable<string> refreshTokens);
         Task<bool> UpdateSessionStatusForAllRefreshTokenAsync(List<string> refreshTokens);
         Task<bool> RevokeIdentitySessionAsync(string refreshToken, string userId);

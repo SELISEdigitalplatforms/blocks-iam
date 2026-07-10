@@ -43,6 +43,8 @@ namespace Authentication.DomainService.Security.Services
                 item.IsCurrent = !string.IsNullOrEmpty(currentSessionId) && currentSessionId == item.SessionId;
             }
 
+            await PopulateRotationMetadataAsync(items, ct);
+
             return new BaseQueryListResponse<IQueryable<SessionDto>>
             {
                 Data = items.AsQueryable(),
@@ -63,6 +65,10 @@ namespace Authentication.DomainService.Security.Services
             {
                 var currentSessionId = await ResolveCurrentSessionIdAsync(targetUserId, tenantId, ct);
                 dto.IsCurrent = !string.IsNullOrEmpty(currentSessionId) && currentSessionId == dto.SessionId;
+
+                var rotations = await _securityRepository.GetRotationHistoryAsync(dto.SessionId ?? string.Empty, ct);
+                dto.RotationCount = rotations.Count;
+                dto.LastRotatedAt = rotations.Count > 0 ? rotations.Max(r => r.AbsoluteExpiry) : (DateTime?)null;
             }
             return dto;
         }
@@ -115,6 +121,10 @@ namespace Authentication.DomainService.Security.Services
             var refreshStatus = await _securityRepository.GetRefreshTokenStatusAsync(sessionId, ct);
             var revokedAccess = await _securityRepository.GetRevokedAccessTokensAsync(targetUserId, ct);
             var lifecycle = await _securityRepository.GetSessionLifecycleAsync(targetUserId, sessionId, ct);
+            var rotations = await _securityRepository.GetRotationHistoryAsync(sessionId, ct);
+
+            session.RotationCount = rotations.Count;
+            session.LastRotatedAt = rotations.Count > 0 ? rotations.Max(r => r.AbsoluteExpiry) : (DateTime?)null;
 
             return new SessionTimelineDto
             {
@@ -122,7 +132,8 @@ namespace Authentication.DomainService.Security.Services
                 Session = session,
                 RefreshTokenStatus = refreshStatus,
                 RevokedAccessTokens = revokedAccess.ToList(),
-                Lifecycle = lifecycle.ToList()
+                Lifecycle = lifecycle.ToList(),
+                Rotations = rotations.ToList()
             };
         }
 
@@ -182,6 +193,27 @@ namespace Authentication.DomainService.Security.Services
         public async Task<string?> ResolveCurrentSessionIdAsync(string userId, CancellationToken ct)
         {
             return await ResolveCurrentSessionIdAsync(userId, ResolveTenantId(), ct);
+        }
+
+        private async Task PopulateRotationMetadataAsync(IList<SessionDto> sessions, CancellationToken ct)
+        {
+            foreach (var s in sessions)
+            {
+                if (string.IsNullOrEmpty(s.SessionId))
+                {
+                    continue;
+                }
+                try
+                {
+                    var rotations = await _securityRepository.GetRotationHistoryAsync(s.SessionId, ct);
+                    s.RotationCount = rotations.Count;
+                    s.LastRotatedAt = rotations.Count > 0 ? rotations.Max(r => r.AbsoluteExpiry) : (DateTime?)null;
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogWarning(ex, "Failed to populate rotation metadata for session {SessionId}", s.SessionId);
+                }
+            }
         }
     }
 }
