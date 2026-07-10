@@ -155,7 +155,7 @@
             RFC 3986: OpenID Connect UserInfo Endpoint
             </summary>
         </member>
-        <member name="M:Api.Controllers.AuthenticationController.CreateIdentityProvider(Authentication.DomainService.Entities.IdentityProvider)">
+        <member name="M:Api.Controllers.AuthenticationController.CreateIdentityProvider(Authentication.DomainService.Shared.RequestModel.SaveIdentityProviderRequest)">
             <summary>
             Create identity provider configuration
             Registers new OAuth 2.0 / OIDC provider for tenant
@@ -170,11 +170,18 @@
             Does NOT return sensitive credentials (client_secret)
             </summary>
         </member>
-        <member name="M:Api.Controllers.AuthenticationController.UpdateIdentityProvider(System.String,Authentication.DomainService.Entities.IdentityProvider)">
+        <member name="M:Api.Controllers.AuthenticationController.UpdateIdentityProvider(System.String,Authentication.DomainService.Shared.RequestModel.UpdateIdentityProviderRequest)">
             <summary>
             Update identity provider configuration
-            Modifies existing provider settings
-            Validates configuration and tests endpoints if changed
+            Modifies existing provider settings (partial merge; null fields are left unchanged).
+            Provider, ProviderType, Protocol and ClientId are immutable and must echo the existing value if supplied.
+            </summary>
+        </member>
+        <member name="M:Api.Controllers.AuthenticationController.DeleteIdentityProvider(System.String)">
+            <summary>
+            Delete identity provider configuration
+            Removes the provider and cascades to delete the related OIDC client registration (if any).
+            Deletion is irreversible.
             </summary>
         </member>
         <member name="M:Api.Controllers.AuthenticationController.UpdateIdentityProviderStatus(System.String,Authentication.DomainService.Shared.RequestModel.UpdateStatusRequest)">
@@ -264,6 +271,18 @@
             <response code="400">client_id is required or validation failure</response>
             <response code="401">Authentication required</response>
             <response code="404">Client not found</response>
+        </member>
+        <member name="M:Api.Controllers.OidcClientsController.RotateSecret(System.String,Authentication.DomainService.Shared.RequestModel.RotateOidcClientSecretRequest)">
+            <summary>
+            Rotate OIDC client secret
+            Generates a new client_secret for the existing client and returns it exactly once.
+            The new secret is not stored anywhere else and subsequent GETs mask it as usual.
+            </summary>
+            <param name="itemId">OIDC client identifier</param>
+            <returns>The newly rotated client_secret (one-time disclosure)</returns>
+            <response code="200">Secret rotated; response contains the new client_secret</response>
+            <response code="400">itemId is required or client not found</response>
+            <response code="401">Authentication required</response>
         </member>
         <member name="T:Api.Controllers.SecurityController">
             <summary>

@@ -425,9 +425,14 @@ public class AuthenticationController : ControllerBase
     /// </summary>
     [HttpPost("identity-providers")]
     [Authorize]
-    public async Task<IActionResult> CreateIdentityProvider([FromBody] IdentityProvider provider)
+    public async Task<IActionResult> CreateIdentityProvider([FromBody] SaveIdentityProviderRequest request)
     {
-        var result = await _authenticationService.CreateIdentityProviderAsync(provider);
+        if (request == null)
+        {
+            return BadRequest(new { error = "invalid_payload", message = "Request body is required." });
+        }
+
+        var result = await _authenticationService.CreateIdentityProviderAsync(request);
         return result.IsSuccess ? Ok(result) : BadRequest(result);
     }
 
@@ -457,15 +462,32 @@ public class AuthenticationController : ControllerBase
 
     /// <summary>
     /// Update identity provider configuration
-    /// Modifies existing provider settings
-    /// Validates configuration and tests endpoints if changed
+    /// Modifies existing provider settings (partial merge; null fields are left unchanged).
+    /// Provider, ProviderType, Protocol and ClientId are immutable and must echo the existing value if supplied.
     /// </summary>
     [HttpPut("identity-providers/{id}")]
     [Authorize]
-    public async Task<IActionResult> UpdateIdentityProvider([FromRoute] string id, [FromBody] IdentityProvider provider)
+    public async Task<IActionResult> UpdateIdentityProvider([FromRoute] string id, [FromBody] UpdateIdentityProviderRequest request)
     {
-        provider.ItemId = id;
-        var result = await _authenticationService.UpdateIdentityProviderAsync(provider);
+        if (request == null)
+        {
+            return BadRequest(new { error = "invalid_payload", message = "Request body is required." });
+        }
+
+        var result = await _authenticationService.UpdateIdentityProviderAsync(id, request);
+        return result.IsSuccess ? Ok(result) : BadRequest(result);
+    }
+
+    /// <summary>
+    /// Delete identity provider configuration
+    /// Removes the provider and cascades to delete the related OIDC client registration (if any).
+    /// Deletion is irreversible.
+    /// </summary>
+    [HttpDelete("identity-providers/{id}")]
+    [Authorize]
+    public async Task<IActionResult> DeleteIdentityProvider([FromRoute] string id)
+    {
+        var result = await _authenticationService.DeleteIdentityProviderAsync(id);
         return result.IsSuccess ? Ok(result) : BadRequest(result);
     }
 
@@ -476,7 +498,7 @@ public class AuthenticationController : ControllerBase
     /// </summary>
     [HttpPatch("identity-providers/{id}/status")]
     [Authorize]
-    public async Task<IActionResult> UpdateIdentityProviderStatus([FromRoute] string id, [FromBody] Authentication.DomainService.Shared.RequestModel.UpdateStatusRequest request)
+    public async Task<IActionResult> UpdateIdentityProviderStatus([FromRoute] string id, [FromBody] UpdateStatusRequest request)
     {
         var result = await _authenticationService.UpdateIdentityProviderStatusAsync(id, request.IsActive);
         return result.IsSuccess ? Ok(result) : BadRequest(result);

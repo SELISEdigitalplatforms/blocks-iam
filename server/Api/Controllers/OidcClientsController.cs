@@ -1,5 +1,7 @@
 using Authentication.DomainService.RequestModel;
 using Authentication.DomainService.Services;
+using Authentication.DomainService.Shared.RequestModel;
+using Authentication.DomainService.Shared.ResponseModel;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 
@@ -128,6 +130,33 @@ public class OidcClientsController : ControllerBase
 
         var request = new DeleteOIDCClientRequest { ItemId = clientId };
         var response = await _authenticationDomainService.DeleteOidcClientAsync(request);
+        if (!response.IsSuccess)
+        {
+            return BadRequest(response);
+        }
+
+        return Ok(response);
+    }
+
+    /// <summary>
+    /// Rotate OIDC client secret
+    /// Generates a new client_secret for the existing client and returns it exactly once.
+    /// The new secret is not stored anywhere else and subsequent GETs mask it as usual.
+    /// </summary>
+    /// <param name="itemId">OIDC client identifier</param>
+    /// <returns>The newly rotated client_secret (one-time disclosure)</returns>
+    /// <response code="200">Secret rotated; response contains the new client_secret</response>
+    /// <response code="400">itemId is required or client not found</response>
+    /// <response code="401">Authentication required</response>
+    [HttpPost("{itemId}/rotate-secret")]
+    public async Task<IActionResult> RotateSecret([FromRoute] string itemId, [FromBody] RotateOidcClientSecretRequest? request = null)
+    {
+        if (string.IsNullOrWhiteSpace(itemId))
+        {
+            return BadRequest(new { error = "id_required", message = "itemId is required." });
+        }
+
+        var response = await _authenticationDomainService.RotateOidcClientSecretAsync(itemId);
         if (!response.IsSuccess)
         {
             return BadRequest(response);
