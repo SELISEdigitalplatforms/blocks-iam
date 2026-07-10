@@ -210,8 +210,11 @@ describe("UserService", () => {
             sessionId: "s1",
             userId: "u1",
             tenantId: "t1",
+            lastActivityAt: "2026-07-09T08:54:45.816Z",
+            isCurrent: true,
             apps: [
               {
+                tokenId: "t1",
                 sessionId: "s1",
                 userId: "u1",
                 tenantId: "t1",
@@ -226,9 +229,6 @@ describe("UserService", () => {
                 impersonated: false,
               },
             ],
-            createdAt: "2026-07-09T08:54:45.816Z",
-            lastActivityAt: "2026-07-09T08:54:45.816Z",
-            isCurrent: true,
           },
         ],
         idpSession: null,
@@ -241,6 +241,7 @@ describe("UserService", () => {
       expect(http.get).toHaveBeenCalledWith(USER_ENDPOINTS.GET_SECURITY_OVERVIEW);
       expect(result.currentSessionId).toBe("s-current");
       expect(result.sessionGroups).toHaveLength(1);
+      expect(result.sessionGroups[0].apps).toHaveLength(1);
     });
 
     it("should throw when the API call fails", async () => {
