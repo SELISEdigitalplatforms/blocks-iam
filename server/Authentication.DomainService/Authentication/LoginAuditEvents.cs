@@ -24,6 +24,14 @@ namespace Authentication.DomainService.Authentication
 
         #endregion
 
+        #region Token Rotation
+
+        public const string RefreshTokenIssued = "refresh_token_issued";
+        public const string RefreshTokenRotated = "refresh_token_rotated";
+        public const string RefreshTokenSuperseded = "refresh_token_superseded";
+
+        #endregion
+
         #region MFA
 
         public const string MfaEnabled = "mfa_enabled";
