@@ -10,8 +10,9 @@ using Blocks.Genesis;
 namespace Authentication.DomainService.Authentication
 {
     /// <summary>
-    /// Writes <c>OidcLoginRequest</c>-driven UserActivity events. Failures are logged but never thrown,
-    /// preserving the original behavior of the inline helper in <c>AuthorizationFlowService</c>.
+    /// Writes <c>UserActivity</c> events for any login flow (OIDC headless, embedded,
+    /// social). Failures are logged at <c>Error</c> level — never silently dropped — so
+    /// dropped events are visible in monitoring instead of disappearing into the void.
     /// </summary>
     public sealed class OidcLoginAuditWriter
     {
@@ -29,7 +30,12 @@ namespace Authentication.DomainService.Authentication
             _logger = logger;
         }
 
-        public async Task WriteAsync(OidcLoginRequest request, User user, HttpRequest httpRequest, string eventType, string? details)
+        public Task WriteAsync(OidcLoginRequest request, User user, HttpRequest httpRequest, string eventType, string? details)
+        {
+            return WriteAsync(request.TenantId, request.ClientId, user, httpRequest, eventType, details);
+        }
+
+        public async Task WriteAsync(string? tenantId, string? clientId, User user, HttpRequest httpRequest, string eventType, string? details)
         {
             try
             {
@@ -48,8 +54,8 @@ namespace Authentication.DomainService.Authentication
                     Severity = isFailure ? "medium" : "low",
                     Outcome = isSuccess ? IdpConstants.StatusSuccess : IdpConstants.StatusFailure,
                     ReasonCode = isFailure ? eventType : null,
-                    TenantId = request.TenantId ?? BlocksContext.GetContext()?.TenantId,
-                    ClientId = request.ClientId,
+                    TenantId = tenantId ?? BlocksContext.GetContext()?.TenantId,
+                    ClientId = clientId,
                     Context = new ActivityContext
                     {
                         IpAddress = ipAddress,
@@ -61,7 +67,9 @@ namespace Authentication.DomainService.Authentication
             }
             catch (Exception ex)
             {
-                _logger.LogWarning(ex, "Failed to write OIDC login audit event {EventType} for user {UserId}", eventType, user.ItemId);
+                _logger.LogError(ex,
+                    "Failed to publish UserActivity event {EventType} for user {UserId} (message lost — activity will be missing from history)",
+                    eventType, user?.ItemId);
             }
         }
     }
