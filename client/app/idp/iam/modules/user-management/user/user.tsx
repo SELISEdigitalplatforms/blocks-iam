@@ -34,7 +34,7 @@ const Menu = [
   },
   {
     id: 2,
-    label: "Devices",
+    label: "Sessions",
     value: "devices",
   },
   {

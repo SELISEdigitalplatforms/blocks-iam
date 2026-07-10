@@ -86,7 +86,7 @@ export const UserProfile = ({ id }: { id: string }) => {
               </TabsTrigger>
               <TabsTrigger onClick={() => setTabId("devices")} value="devices" className={cn(underlineTabTriggerClass, "gap-1.5")}>
                 <Smartphone className="h-3.5 w-3.5" />
-                <span>Devices</span>
+                <span>Sessions</span>
               </TabsTrigger>
               <TabsTrigger onClick={() => setTabId("history")} value="history" className={cn(underlineTabTriggerClass, "gap-1.5")}>
                 <Clock className="h-3.5 w-3.5" />
@@ -131,7 +131,7 @@ export const UserProfile = ({ id }: { id: string }) => {
                   <SelectContent>
                     <SelectItem value="info">Details</SelectItem>
                     <SelectItem value="security">Security</SelectItem>
-                    <SelectItem value="devices">Devices</SelectItem>
+                    <SelectItem value="devices">Sessions</SelectItem>
                     <SelectItem value="history">History</SelectItem>
                     <SelectItem value="personalAccessTokens">PATs</SelectItem>
                   </SelectContent>
