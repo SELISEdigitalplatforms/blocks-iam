@@ -231,6 +231,8 @@ export interface IDeviceSession {
   isActive: boolean;
   isCurrent: boolean;
   isImpersonated: boolean;
+  rotationCount?: number;
+  lastRotatedAt?: string | null;
 }
 
 export interface IDeviceSessionResponse {

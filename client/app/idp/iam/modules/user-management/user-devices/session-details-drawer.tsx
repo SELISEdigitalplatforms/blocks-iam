@@ -58,7 +58,7 @@ const InfoItem = ({
   label,
   value,
 }: {
-  icon: React.ReactNode;
+  icon?: React.ReactNode;
   label: string;
   value?: React.ReactNode;
 }) => (
