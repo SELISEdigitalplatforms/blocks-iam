@@ -102,12 +102,6 @@ export const mockUserServiceFactory = () => ({
     getSignUpSetting: vi.fn(),
     saveSignUpSetting: vi.fn(),
     saveRolesAndPermissions: vi.fn(),
-    getSecurityOverview: vi.fn(),
-    getSessionTimeline: vi.fn(),
-    revokeRefreshToken: vi.fn(),
-    getActivities: vi.fn(),
-    getPats: vi.fn(),
-    generatePats: vi.fn(),
     getUserRoles: vi.fn(),
     getUserPermissions: vi.fn(),
     accountDeactivate: vi.fn(),
@@ -118,6 +112,19 @@ export const mockUserServiceFactory = () => ({
       accountResetPassword: vi.fn(),
       checkActivationCodeExpiration: vi.fn(),
     },
+  },
+});
+
+export const mockSecurityServiceFactory = () => ({
+  securityService: {
+    getSummary: vi.fn(),
+    getSessions: vi.fn(),
+    getSessionDetails: vi.fn(),
+    revokeSession: vi.fn(),
+    revokeRefreshToken: vi.fn(),
+    getActivities: vi.fn(),
+    getPats: vi.fn(),
+    generatePats: vi.fn(),
   },
 });
 

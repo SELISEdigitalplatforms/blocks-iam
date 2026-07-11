@@ -13,7 +13,6 @@ import {
   mockGetIamConfigResponse,
   mockSignUpSettingResponse,
   mockActivationCodeValidationResponse,
-  mockUserActivity,
 } from "../__mocks__/iam.data.mock";
 import { mockSuccessResponse, mockSuccessResponseWithItemId } from "@/test-utils/__mocks__";
 import {
@@ -24,6 +23,7 @@ import {
   ORGANIZATION_ENDPOINTS,
   IAM_CONFIGURATION_ENDPOINTS,
 } from "../../iam/constants/endpoint.constant";
+import { SECURITY_ENDPOINTS } from "../../iam/security/constants/security-endpoints";
 
 // ─── Endpoint Patterns ────────────────────────────────────────────────────────
 
@@ -36,10 +36,9 @@ const UPDATE_USER_PATTERN = new RegExp(USER_ENDPOINTS.UPDATE);
 const GET_SIGNUP_SETTING_PATTERN = new RegExp(`${ORGANIZATION_ENDPOINTS.GET_SIGNUP_SETTING}\\?`);
 const SAVE_SIGNUP_SETTING_PATTERN = new RegExp(ORGANIZATION_ENDPOINTS.SAVE_SIGNUP_SETTING);
 const SAVE_ROLES_AND_PERMISSIONS_PATTERN = new RegExp(USER_ENDPOINTS.SAVE_ROLES_AND_PERMISSIONS);
-const GET_SECURITY_OVERVIEW_PATTERN = new RegExp(`${USER_ENDPOINTS.GET_SECURITY_OVERVIEW}\\/?$`);
-const POST_ACTIVITIES_PATTERN = new RegExp(
-  USER_ENDPOINTS.GET_ACTIVITIES.replace("{userId}", "[^/]+"),
-);
+const SECURITY_SUMMARY_PATTERN = new RegExp(`${SECURITY_ENDPOINTS.SUMMARY}\\/?$`);
+const SECURITY_SESSIONS_PATTERN = new RegExp(`${SECURITY_ENDPOINTS.SESSIONS}\\/?$`);
+const SECURITY_ACTIVITY_PATTERN = new RegExp(`${SECURITY_ENDPOINTS.ACTIVITY}\\/?$`);
 const GET_USER_CODES_PATTERN = new RegExp(USER_ENDPOINTS.GET_USER_CODES);
 const GENERATE_USER_CODE_PATTERN = new RegExp(USER_ENDPOINTS.GENERATE_USER_CODE);
 const GET_USER_ROLES_PATTERN = new RegExp(`${USER_ENDPOINTS.GET_USER_ROLES}\\?`);
@@ -98,15 +97,18 @@ export const iamHandlers = [
   http.post(SAVE_ROLES_AND_PERMISSIONS_PATTERN, () =>
     HttpResponse.json(mockSuccessResponseWithItemId),
   ),
-  http.get(GET_SECURITY_OVERVIEW_PATTERN, () =>
+  http.get(SECURITY_SUMMARY_PATTERN, () =>
     HttpResponse.json({
       currentSessionId: null,
-      sessionGroups: [],
-      idpSession: null,
+      totalSessions: 0,
+      activeSessions: 0,
+      expiredSessions: 0,
+      revokedSessions: 0,
     }),
   ),
-  http.post(POST_ACTIVITIES_PATTERN, () =>
-    HttpResponse.json({ data: [mockUserActivity], totalCount: 1, errors: null }),
+  http.get(SECURITY_SESSIONS_PATTERN, () => HttpResponse.json([])),
+  http.post(SECURITY_ACTIVITY_PATTERN, () =>
+    HttpResponse.json({ items: [], totalCount: 0, page: 0, pageSize: 25 }),
   ),
   http.get(GET_USER_CODES_PATTERN, () => HttpResponse.json({ data: [], errors: null })),
   http.post(GENERATE_USER_CODE_PATTERN, () => HttpResponse.json(mockSuccessResponse)),
