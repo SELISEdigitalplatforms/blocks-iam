@@ -1,6 +1,4 @@
-using Blocks.Genesis;
 using Authentication.DomainService.Oidc.Repositories;
-using Authentication.DomainService.Security.Contracts;
 using Authentication.DomainService.Security.Models;
 using Authentication.DomainService.Security.Repositories;
 using Microsoft.AspNetCore.Http;
@@ -12,126 +10,191 @@ namespace Authentication.DomainService.Security.Services
     {
         private readonly ILogger<SecurityQueryService> _logger;
         private readonly ISecurityRepository _securityRepository;
+        private readonly IActivityQueryService _activityQueryService;
         private readonly IRefreshTokenRepository _refreshTokenRepository;
         private readonly IHttpContextAccessor _httpContextAccessor;
 
         public SecurityQueryService(
             ILogger<SecurityQueryService> logger,
             ISecurityRepository securityRepository,
+            IActivityQueryService activityQueryService,
             IRefreshTokenRepository refreshTokenRepository,
             IHttpContextAccessor httpContextAccessor)
         {
             _logger = logger;
             _securityRepository = securityRepository;
+            _activityQueryService = activityQueryService;
             _refreshTokenRepository = refreshTokenRepository;
             _httpContextAccessor = httpContextAccessor;
         }
 
-        public async Task<SecurityOverviewDto> GetSecurityOverviewAsync(string userId, CancellationToken ct)
+        public async Task<SecuritySummaryDto> GetSecuritySummaryAsync(string userId, CancellationToken ct)
         {
-            var overview = new SecurityOverviewDto();
+            var summary = new SecuritySummaryDto();
 
             if (string.IsNullOrWhiteSpace(userId))
             {
-                return overview;
+                return summary;
             }
 
             var currentSessionId = await ResolveCurrentSessionIdAsync(userId, ct);
-            overview.CurrentSessionId = currentSessionId;
+            summary.CurrentSessionId = currentSessionId;
 
-            var groupsTask = GetSessionGroupsAsync(userId, ct);
-            var idpSessionTask = _securityRepository.GetIdpSessionAsync(userId, ResolveTenantId(), ct);
+            var sessions = await GetUserSessionsAsync(userId, ct);
+            summary.TotalSessions = sessions.Count;
+            summary.ActiveSessions = sessions.Count(s => s.Status == SessionStatus.Active);
+            summary.ExpiredSessions = sessions.Count(s => s.Status == SessionStatus.Expired);
+            summary.RevokedSessions = sessions.Count(s => s.Status == SessionStatus.Revoked);
+            summary.LastActivityAt = sessions
+                .Select(s => (DateTime?)s.LastActivityAt)
+                .Where(d => d.HasValue)
+                .Select(d => d!.Value)
+                .DefaultIfEmpty()
+                .Max();
+            summary.LastLoginAt = sessions
+                .Select(s => (DateTime?)s.CreatedAt)
+                .Where(d => d.HasValue)
+                .Select(d => d!.Value)
+                .DefaultIfEmpty()
+                .Max();
 
-            await Task.WhenAll(groupsTask, idpSessionTask);
-
-            var groups = groupsTask.Result;
-            foreach (var group in groups)
-            {
-                group.IsCurrent = !string.IsNullOrEmpty(currentSessionId) && currentSessionId == group.SessionId;
-            }
-
-            overview.SessionGroups = groups;
-            overview.IdpSession = idpSessionTask.Result;
-
-            return overview;
+            return summary;
         }
 
-        public async Task<SessionTimelineDto> GetSessionTimelineAsync(string userId, string sessionId, CancellationToken ct)
-        {
-            var timeline = new SessionTimelineDto { SessionId = sessionId };
-
-            if (string.IsNullOrWhiteSpace(userId) || string.IsNullOrWhiteSpace(sessionId))
-            {
-                return timeline;
-            }
-
-            var group = await _securityRepository.GetSessionGroupAsync(userId, sessionId, ct);
-            if (group == null)
-            {
-                return timeline;
-            }
-
-            var currentSessionId = await ResolveCurrentSessionIdAsync(userId, ct);
-            group.IsCurrent = !string.IsNullOrEmpty(currentSessionId) && currentSessionId == group.SessionId;
-            timeline.Session = group;
-
-            var activeApp = group.Apps.FirstOrDefault(a => a.IsActive) ?? group.Apps.FirstOrDefault();
-            if (activeApp != null && !string.IsNullOrWhiteSpace(activeApp.TokenId))
-            {
-                timeline.RefreshTokenStatus = await _securityRepository.GetRefreshTokenStatusAsync(activeApp.TokenId, ct);
-            }
-
-            timeline.RevokedAccessTokens = (await _securityRepository.GetRevokedAccessTokensAsync(userId, ct)).ToList();
-            timeline.Rotations = (await _securityRepository.GetRotationHistoryAsync(sessionId, ct)).ToList();
-
-            // TODO: Lifecycle from UserActivityEvent stream once a session-indexed reader exists.
-            timeline.Lifecycle = [];
-
-            return timeline;
-        }
-
-        public async Task<IReadOnlyList<SessionGroupDto>> GetSessionGroupsAsync(string userId, CancellationToken ct)
+        public async Task<IReadOnlyList<UserSessionDto>> GetUserSessionsAsync(string userId, CancellationToken ct)
         {
             if (string.IsNullOrWhiteSpace(userId))
             {
                 return [];
             }
 
-            var items = await _securityRepository.GetSessionGroupsAsync(userId, null, false, ct);
+            var sessions = await _securityRepository.GetUserSessionsAsync(userId, null, false, ct);
             var currentSessionId = await ResolveCurrentSessionIdAsync(userId, ct);
-            foreach (var item in items)
+            foreach (var s in sessions)
             {
-                item.IsCurrent = !string.IsNullOrEmpty(currentSessionId) && currentSessionId == item.SessionId;
+                s.IsCurrent = !string.IsNullOrEmpty(currentSessionId) && currentSessionId == s.SessionId;
             }
-            return items;
+            return sessions;
         }
 
-        public async Task<SessionGroupDto?> GetSessionGroupAsync(string userId, string sessionId, CancellationToken ct)
+        public async Task<SessionDetailsDto> GetSessionDetailsAsync(
+            string userId,
+            string sessionId,
+            CancellationToken ct)
         {
+            var details = new SessionDetailsDto();
+
             if (string.IsNullOrWhiteSpace(userId) || string.IsNullOrWhiteSpace(sessionId))
             {
-                return null;
+                return details;
             }
 
-            var dto = await _securityRepository.GetSessionGroupAsync(userId, sessionId, ct);
-            if (dto != null)
+            var session = await _securityRepository.GetUserSessionAsync(userId, sessionId, ct);
+            if (session == null)
             {
-                var currentSessionId = await ResolveCurrentSessionIdAsync(userId, ct);
-                dto.IsCurrent = !string.IsNullOrEmpty(currentSessionId) && currentSessionId == dto.SessionId;
+                return details;
             }
-            return dto;
+
+            var currentSessionId = await ResolveCurrentSessionIdAsync(userId, ct);
+            session.IsCurrent = !string.IsNullOrEmpty(currentSessionId) && currentSessionId == session.SessionId;
+
+            details.Overview = new SessionOverviewDto
+            {
+                SessionId = session.SessionId,
+                Status = session.Status,
+                IsCurrent = session.IsCurrent,
+                DeviceName = session.PrimaryDeviceName,
+                DeviceModel = null,
+                OperatingSystem = session.PrimaryOperatingSystem,
+                Browser = session.PrimaryBrowser,
+                IpAddress = session.PrimaryIpAddress,
+                ClientIds = session.ClientIds,
+                OrganizationIds = [],
+                StartedAt = session.CreatedAt,
+                LastActivityAt = session.LastActivityAt,
+                AbsoluteExpiry = session.AbsoluteExpiry,
+                IdleExpiry = session.IdleExpiry,
+            };
+
+            details.Applications = BuildApplications(session);
+            details.Timeline = await BuildTimelineAsync(userId, session, ct);
+
+            return details;
         }
 
-        public async Task<IReadOnlyList<RefreshTokenRotationDto>> GetRotationHistoryAsync(string sessionId, CancellationToken ct)
+        private static List<ApplicationDto> BuildApplications(UserSessionDto session)
         {
-            if (string.IsNullOrWhiteSpace(sessionId))
-            {
-                return Array.Empty<RefreshTokenRotationDto>();
-            }
-            return await _securityRepository.GetRotationHistoryAsync(sessionId, ct);
+            return session.ClientIds
+                .Where(c => !string.IsNullOrWhiteSpace(c))
+                .Cast<string>()
+                .Distinct(StringComparer.Ordinal)
+                .Select(clientId => new ApplicationDto
+                {
+                    ClientId = clientId,
+                    Status = session.Status,
+                    ExpiresAt = session.AbsoluteExpiry,
+                    RotationCount = 1,
+                    LastRotationAt = session.CreatedAt,
+                })
+                .ToList();
         }
 
-        private static string? ResolveTenantId() => BlocksContext.GetContext()?.TenantId;
+        private async Task<List<TimelineEventDto>> BuildTimelineAsync(
+            string userId,
+            UserSessionDto session,
+            CancellationToken ct)
+        {
+            var timeline = new List<TimelineEventDto>();
+
+            var activities = await _activityQueryService.GetActivitiesForSessionAsync(
+                userId,
+                session.SessionId,
+                0,
+                50,
+                ct);
+
+            foreach (var activity in activities)
+            {
+                timeline.Add(new TimelineEventDto
+                {
+                    Type = TimelineEventType.Auth,
+                    At = activity.CreatedDate,
+                    Event = activity.Event,
+                    Outcome = activity.Outcome,
+                    ReasonCode = activity.ReasonCode,
+                    IpAddress = activity.Context?.IpAddress,
+                    DeviceName = activity.Context?.DeviceName,
+                    ClientId = activity.ClientId,
+                });
+            }
+
+            var rotations = await _securityRepository.GetRotationHistoryAsync(session.SessionId, ct);
+            foreach (var rotation in rotations)
+            {
+                timeline.Add(new TimelineEventDto
+                {
+                    Type = TimelineEventType.Refresh,
+                    At = rotation.IssuedUtc,
+                    ClientId = rotation.ClientId,
+                });
+
+                if (rotation.IsRevoked && rotation.RevokedAt.HasValue)
+                {
+                    timeline.Add(new TimelineEventDto
+                    {
+                        Type = TimelineEventType.Revocation,
+                        At = rotation.RevokedAt.Value,
+                        ClientId = rotation.ClientId,
+                        ReasonCode = rotation.RevokeReason,
+                    });
+                }
+            }
+
+            return timeline
+                .OrderBy(t => t.At)
+                .ThenBy(t => t.Type)
+                .ToList();
+        }
 
         public async Task<string?> ResolveCurrentSessionIdAsync(string userId, CancellationToken ct)
         {
@@ -154,8 +217,6 @@ namespace Authentication.DomainService.Security.Services
                     return null;
                 }
 
-                // NOTE: cookie name is hardcoded; if the production cookie name differs,
-                // currentSessionId will silently return null.
                 var active = await _refreshTokenRepository.GetByTokenIdAsync(refreshToken!);
                 return active?.SessionId;
             }

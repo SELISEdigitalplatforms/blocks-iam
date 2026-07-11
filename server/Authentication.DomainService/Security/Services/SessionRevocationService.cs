@@ -46,9 +46,9 @@ namespace Authentication.DomainService.Security.Services
             }
 
             var tenantId = BlocksContext.GetContext()?.TenantId;
-            var sessionGroup = await _securityRepository.GetSessionGroupAsync(actorUserId, sessionId, ct);
+            var session = await _securityRepository.GetUserSessionAsync(actorUserId, sessionId, ct);
 
-            if (sessionGroup == null)
+            if (session == null)
             {
                 return response;
             }
@@ -59,8 +59,7 @@ namespace Authentication.DomainService.Security.Services
                 return response;
             }
 
-            var activeApps = sessionGroup.Apps.Where(a => a.IsActive).ToList();
-            if (activeApps.Count == 0)
+            if (session.Status != SessionStatus.Active || session.ClientIds.Count == 0)
             {
                 response.AlreadyRevoked = true;
                 response.RevokedAt = DateTime.UtcNow;
@@ -79,14 +78,14 @@ namespace Authentication.DomainService.Security.Services
                 revokedRefreshTokens = 0;
             }
 
-            // Best-effort: drop cache keys for active tokens under this session.
             try
             {
-                foreach (var app in activeApps)
+                var activeTokens = await _refreshTokenRepository.GetActiveTokensBySessionIdAsync(sessionId);
+                foreach (var token in activeTokens)
                 {
-                    if (!string.IsNullOrWhiteSpace(app.TokenId))
+                    if (!string.IsNullOrWhiteSpace(token.TokenId))
                     {
-                        await _cacheClient.RemoveKeyAsync(app.TokenId!);
+                        await _cacheClient.RemoveKeyAsync(token.TokenId);
                     }
                 }
             }
@@ -98,7 +97,7 @@ namespace Authentication.DomainService.Security.Services
             response.RevokedRefreshTokens = revokedRefreshTokens;
             response.AlreadyRevoked = false;
             response.RevokedAt = DateTime.UtcNow;
-            response.ClientId = activeApps.FirstOrDefault()?.ClientId;
+            response.ClientId = session.ClientIds.FirstOrDefault();
 
             try
             {
@@ -115,7 +114,7 @@ namespace Authentication.DomainService.Security.Services
                     ReasonCode = response.Reason,
                     Context = new ActivityContext
                     {
-                        IpAddress = activeApps.FirstOrDefault()?.IpAddresses
+                        IpAddress = session.PrimaryIpAddress
                     },
                     Metadata = new Dictionary<string, string> { { "actionBy", actorUserId } }
                 });

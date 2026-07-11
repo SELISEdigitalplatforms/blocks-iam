@@ -1,8 +1,9 @@
 import { useState } from "react";
 import { Card, CardContent, CardHeader } from "@/components/ui-kits/card/card";
 import { Pagination } from "@/components/ui-kits/pagination/pagination";
-import { useGetActivities } from "@blocks-idp/iam/hooks/use-activity";
-import { UserHistoryList } from "./user-history-list";
+import { ActivityList } from "@blocks-idp/iam/security/components/activity-list";
+import { useActivities } from "@blocks-idp/iam/security/hooks";
+import { toActivityRowViewModel } from "@blocks-idp/iam/security/mappers/activity.mapper";
 
 type HistoriesProps = {
   id: string;
@@ -13,16 +14,15 @@ export const UserHistories = ({ id }: HistoriesProps) => {
   const [filter, setFilter] = useState({
     page: 0,
     pageSize: 10,
-    userId: id,
-    activityFilter: { categories: ["Auth"] as const },
   });
-  const { isLoading, isFetching, data } = useGetActivities({
+  const { isLoading, isFetching, data } = useActivities({
+    userId: id,
     page: filter.page,
     pageSize: filter.pageSize,
-    userId: filter.userId,
     filter: { categories: ["Auth"] },
   });
   const loading = isLoading || isFetching;
+  const rows = (data?.items ?? []).map(toActivityRowViewModel);
 
   return (
     <Card className="flex h-full min-h-[420px] flex-col">
@@ -33,15 +33,15 @@ export const UserHistories = ({ id }: HistoriesProps) => {
         </p>
       </CardHeader>
       <CardContent className="flex-1 overflow-y-auto">
-        <UserHistoryList isLoading={loading} data={data?.data || []} />
+        <ActivityList isLoading={loading} rows={rows} />
         {!loading && data && data.totalCount > filter.pageSize && (
           <div className="mt-5 flex md:justify-end">
             <Pagination
               page={filter.page}
               pageSize={filter.pageSize}
-              onChange={(page) => setFilter((filter) => ({ ...filter, page }))}
+              onChange={(page) => setFilter((f) => ({ ...f, page }))}
               totalCount={data?.totalCount || 0}
-              onPageSizeChange={(pageSize) => setFilter((filter) => ({ ...filter, pageSize }))}
+              onPageSizeChange={(pageSize) => setFilter((f) => ({ ...f, pageSize }))}
               pageSizeOptions={[5, 10, 20, 40]}
             />
           </div>
