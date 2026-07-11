@@ -174,19 +174,19 @@ export const MultiOrgAccess = ({ userId, projectKey }: MultiOrgAccessProps) => {
   const isLoading = isUserLoading || isOrgsLoading;
 
   return (
-    <div className="min-w-0 rounded-lg border bg-card p-4">
+    <div className="flex h-full min-h-0 min-w-0 flex-col rounded-lg border bg-card p-4">
       {isLoading ? (
         <div className="space-y-4">
           <Skeleton className="h-6 w-40" />
           <Skeleton className="h-9 w-full" />
         </div>
       ) : organizationRows.length === 0 ? (
-        <div className="flex h-full flex-col items-center justify-center gap-2 py-16 text-center text-sm text-muted-foreground">
+        <div className="flex min-h-0 flex-1 flex-col items-center justify-center gap-2 py-16 text-center text-sm text-muted-foreground">
           <Building2 className="h-6 w-6" />
           No organizations assigned to this user.
         </div>
       ) : (
-        <div className="space-y-6">
+        <div className="flex min-h-0 flex-1 flex-col space-y-6 overflow-y-auto pr-1">
           <div className="flex items-center justify-between gap-3">
             <Select value={selectedOrgId} onValueChange={selectOrg}>
               <SelectTrigger className="h-auto w-full max-w-[280px] gap-2 border-input bg-background text-md font-semibold text-high-emphasis text-left">
@@ -230,7 +230,7 @@ export const MultiOrgAccess = ({ userId, projectKey }: MultiOrgAccessProps) => {
               onSave={onSave}
             />
           ) : (
-            <div className="flex h-full flex-col items-center justify-center gap-2 py-16 text-center text-sm text-muted-foreground">
+            <div className="flex min-h-0 flex-1 flex-col items-center justify-center gap-2 py-16 text-center text-sm text-muted-foreground">
               <Building2 className="h-6 w-6" />
               Select an organization to view its roles and permissions.
             </div>

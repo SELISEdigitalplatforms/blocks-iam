@@ -14,9 +14,9 @@ export const UserDevices = (_props: DevicesProps) => {
   const currentSessionId = data?.currentSessionId ?? null;
 
   return (
-    <Card className="flex h-full min-h-[420px] flex-col">
+    <Card className="flex h-full min-h-0 flex-col">
       <CardHeader>
-      
+
       </CardHeader>
       <CardContent className="flex-1 overflow-y-auto">
         <UserDevicesList

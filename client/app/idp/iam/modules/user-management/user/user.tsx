@@ -60,12 +60,19 @@ export const User = ({ id }: { id: string }) => {
   }
 
   return (
-    <div className="px-4 pt-4 md:px-6 md:pt-6">
-      <div className="mb-4 hidden md:mb-6 md:flex">
+    // The console shell's header is fixed and the page scrolls at the document level
+    // (no ancestor establishes a definite content height), so `h-full` can't resolve —
+    // pin height explicitly to the viewport minus the fixed header (59px) instead.
+    <div className="flex flex-col px-4 pt-4 md:h-[calc(100vh-83px)] md:min-h-0 md:px-6 md:pt-6">
+      <div className="mb-4 hidden shrink-0 md:mb-6 md:flex">
         <PageBreadcrumb breadcrumbIndex={2} isLoadingLastItem={isLoading && !displayName} />
       </div>
 
-      <div className="grid grid-cols-1 gap-4 md:grid-cols-[300px_minmax(0,1fr)] md:gap-x-6 md:gap-y-3 lg:gap-x-8">
+      {/* md:grid-rows-[auto_1fr] pins row 2 (sidebar + tab content) to the remaining
+          screen height, so both columns are sized against the viewport instead of
+          against each other — adding roles/permissions no longer changes their height,
+          it just scrolls within it. */}
+      <div className="grid grid-cols-1 gap-4 md:min-h-0 md:flex-1 md:grid-cols-[300px_minmax(0,1fr)] md:grid-rows-[auto_1fr] md:gap-x-6 md:gap-y-3 lg:gap-x-8">
         {/* Name + email — col 1, row 1 */}
         <div className="hidden min-w-0 md:col-start-1 md:row-start-1 md:flex md:flex-col md:justify-end">
           {isLoading ? (
@@ -105,13 +112,16 @@ export const User = ({ id }: { id: string }) => {
           <UserActionMenu id={id} projectKey={tenantId} />
         </div>
 
-        {/* Sidebar (image + account details) — col 1, row 2 */}
-        <div className="w-full md:col-start-1 md:row-start-2">
+        {/* Sidebar (image + account details) — col 1, row 2. Fills the row's height
+            (screen-relative at md+); UserProfileSidebar handles its own internal scroll. */}
+        <div className="flex h-full min-h-0 w-full flex-col md:col-start-1 md:row-start-2">
           <UserProfileSidebar id={id} projectKey={tenantId} />
         </div>
 
-        {/* Right column — col 2, row 2: starts level with the avatar */}
-        <section className="min-w-0 md:col-start-2 md:row-start-2">
+        {/* Right column — col 2, row 2. Fills the same row height; each tab content
+            component handles its own internal scroll, so a longer roles/permissions
+            list never resizes the panel around it. */}
+        <section className="flex min-h-0 min-w-0 flex-col md:col-start-2 md:row-start-2">
           {/* Mobile tab selector */}
           <div className="md:hidden">
             <div className="mb-5 flex items-center justify-between rounded text-base">
