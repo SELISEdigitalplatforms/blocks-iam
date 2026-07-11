@@ -1,13 +1,12 @@
 import { useEffect, useRef, useState } from "react";
 import { formatDistanceToNow } from "date-fns";
 import { IOrganization } from "@blocks-idp/iam/models/organization";
-import { Badge } from "@/components/ui-kits/badge/badge";
 import { Button } from "@/components/ui-kits/button/button";
 import { Input } from "@/components/ui-kits/input/input";
 import { Skeleton } from "@/components/ui-kits/skeleton/skeleton";
 import { Checkbox } from "@/components/ui-kits/checkbox/checkbox";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui-kits/popover/popover";
-import { Building2, ChevronRight, ListFilter, Search, X } from "lucide-react";
+import { Building2, ListFilter, Search, X } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { OrganizationMemberCount } from "./organization-member-count";
 
@@ -108,7 +107,7 @@ export const OrganizationsSidebarList = ({
   const isFiltered = statusFilter.length !== ALL_STATUSES.length;
 
   return (
-    <div className="flex h-full flex-col rounded-lg border bg-card">
+    <div className="flex h-full min-h-0 flex-col rounded-lg border bg-card">
       <div className="flex items-center gap-2 border-b p-3">
         <div className="relative flex-1">
           <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
@@ -204,23 +203,14 @@ export const OrganizationsSidebarList = ({
                     )}
                   </div>
                   <div className="min-w-0 flex-1">
-                    <div className="flex items-center gap-2">
-                      <span className="truncate text-sm font-semibold text-high-emphasis">
-                        {org.name}
-                      </span>
-                      <Badge
-                        variant={!org.isDisabled ? "success" : "secondary"}
-                        className="shrink-0 text-[10px]"
-                      >
-                        {!org.isDisabled ? "Active" : "Disabled"}
-                      </Badge>
-                    </div>
+                    <span className="truncate text-sm font-semibold text-high-emphasis">
+                      {org.name}
+                    </span>
                     <p className="mt-0.5 truncate text-xs text-muted-foreground">
                       <OrganizationMemberCount organizationId={org.itemId} />
                       {updatedLabel && <> &bull; Updated {updatedLabel}</>}
                     </p>
                   </div>
-                  <ChevronRight className="h-4 w-4 shrink-0 text-muted-foreground" />
                 </button>
               );
             })}

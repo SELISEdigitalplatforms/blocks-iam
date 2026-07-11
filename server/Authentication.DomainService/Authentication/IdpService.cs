@@ -329,8 +329,13 @@ namespace Authentication.DomainService.Authentication
 
                 if (!string.IsNullOrWhiteSpace(tokenError) || tokenResponse == null || string.IsNullOrWhiteSpace(tokenResponse.AccessToken))
                 {
-                    _logger.LogWarning("Token exchange failed: {TokenError}", tokenError ?? "empty token response");
-                    return (new BadRequestObjectResult(new { error = "invalid_grant", error_description = "Failed to exchange authorization code" }), null);
+                    var detail = !string.IsNullOrWhiteSpace(tokenError)
+                        ? tokenError
+                        : (tokenResponse == null || string.IsNullOrWhiteSpace(tokenResponse.AccessToken))
+                            ? "empty or invalid token response from IdP"
+                            : "unknown";
+                    _logger.LogWarning("Token exchange failed: {TokenError}", detail);
+                    return (new BadRequestObjectResult(new { error = "invalid_grant", error_description = $"Failed to exchange authorization code: {detail}" }), null);
                 }
 
                 return (null, tokenResponse);

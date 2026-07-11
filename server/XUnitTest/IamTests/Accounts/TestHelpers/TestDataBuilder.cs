@@ -34,20 +34,18 @@ namespace XUnitTest.IamTests.Accounts.TestHelpers
             };
         }
 
-        public static AccountActivityEvent CreateAccountActivityEvent(
-            string? code = null,
+        public static UserActivityEvent CreateUserActivityEvent(
             string? userId = null,
             string? @event = null,
-            bool preventPostEvent = false,
-            string? mailPurpose = null)
+            UserActivityCategory category = UserActivityCategory.Account,
+            string? source = "iam-account")
         {
-            return new AccountActivityEvent
+            return new UserActivityEvent
             {
-                Code = code ?? string.Empty,
                 UserId = userId ?? DefaultUserId,
+                Category = category,
                 Event = @event ?? "Activate_Account",
-                PreventPostEvent = preventPostEvent,
-                MailPurpose = mailPurpose
+                Source = source
             };
         }
 

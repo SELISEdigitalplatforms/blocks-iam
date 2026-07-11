@@ -160,30 +160,6 @@ namespace Iam.DomainService.Resources
             return (permissions.AsQueryable(), count);
         }
 
-        public async Task<ResourceTimeline<T>> GetResourceTimelineAsync<T>(string itemId)
-        {
-            var collection = _identityAccessManagementRepository.GetCollectionByName<ResourceTimeline<T>>("ResourceTimelines");
-            var result = await collection.Find(x => x.ItemId == itemId).FirstOrDefaultAsync();
-
-            return result;
-        }
-
-        public async Task<bool> SaveResourceTimelineAsync<T>(ResourceTimeline<T> timeline)
-        {
-            var collection = _identityAccessManagementRepository.GetCollectionByName<ResourceTimeline<T>>("ResourceTimelines");
-            var result = await collection.ReplaceOneAsync(x => x.ItemId == timeline.ItemId, timeline, new ReplaceOptions { IsUpsert = true });
-
-            return result.IsAcknowledged;
-        }
-
-        public async Task<bool> SaveResourceTimelinesAsync<T>(List<ResourceTimeline<T>> timelines)
-        {
-            var collection = _identityAccessManagementRepository.GetCollectionByName<ResourceTimeline<T>>("ResourceTimelines");
-            await collection.InsertManyAsync(timelines);
-
-            return true;
-        }
-
         public async Task<Role> GetRoleBySlugAsync(string slug, string? orgainzationId = null)
         {
             var collection = _identityAccessManagementRepository.GetCollection<Role>();

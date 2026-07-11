@@ -349,7 +349,7 @@ namespace Authentication.DomainService.Oidc.Repositories
                 return;
             }
 
-            await _authenticationRepository.UpdateSessionStatusForAllRefreshTokenAsync(tokenIds);
+            await _refreshTokenRepo.RevokeAllByTokenIdsAsync(tokenIds, "revoked");
         }
     }
 }

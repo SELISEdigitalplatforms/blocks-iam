@@ -27,7 +27,7 @@ export const AuthenticationConfig = ({ section }: AuthenticationConfigProps) => 
   const isMultiOrgEnabled = configData?.isMultiOrgEnabled ?? true;
 
   return (
-    <div>
+    <div className="flex h-full min-h-0 flex-col">
       <div className="mb-4 flex flex-wrap items-start justify-between gap-4 md:mb-6">
         <div>
           <h1 className="text-lg font-semibold md:text-2xl">{pageTitle}</h1>

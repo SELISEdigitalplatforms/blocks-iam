@@ -9,7 +9,6 @@ namespace Iam.DomainService.Users
     {
         Task<BaseMutationResponse> CreateUserAsync(CreateUserRequest command);
         Task<BaseMutationResponse> UpdateUserAsync(UpdateUserRequest command);
-        Task UpdateUserByLoginInfoAsync(RefreshTokenEvent refreshTokenConsumer);
         Task ExecuteUserMutationCommandAsync(UserMutationEvent command);
         Task<bool> CreateUserByEmailAsync(CreateUserByEmailEvent @event);
         Task<BaseMutationResponse> CreateUserFromSsoAsync(CreateUserViaSsoRequest command);

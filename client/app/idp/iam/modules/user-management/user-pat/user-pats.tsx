@@ -3,7 +3,7 @@
 import { Button } from "@/components/ui-kits/button/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui-kits/card/card";
 import { Pagination } from "@/components/ui-kits/pagination/pagination";
-import { useGetPats } from "@blocks-idp/iam/hooks/use-activity";
+import { usePats } from "@blocks-idp/iam/security/hooks/use-pats";
 import { useMemo, useState } from "react";
 import { GenerateTokenModal } from "./generate-pat-modal";
 import { UserPATList } from "./user-pats-list";
@@ -12,7 +12,7 @@ export const UserPats = ({ id }: { id: string }) => {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [filter, setFilter] = useState({ page: 0, pageSize: 10 });
 
-  const { isLoading, isFetching, data = [] } = useGetPats()
+  const { isLoading, isFetching, data = [] } = usePats()
 
   const loading = isLoading || isFetching;
 
