@@ -1,4 +1,3 @@
-import { useLocation } from "react-router-dom";
 import { useGetUserById } from "@blocks-idp/iam/hooks/use-user";
 import { Card, CardContent } from "@/components/ui-kits/card/card";
 import { ProfileImageUploader } from "@blocks-idp/iam/components/profile-image-uploader";
@@ -43,14 +42,12 @@ const formatLastLogin = (value?: string) => {
 export const UserProfileSidebar = ({ id, projectKey }: UserProfileSidebarProps) => {
   const { data } = useGetUserById({ id, projectKey });
   const user = data?.data;
-  const isUserDetailPage = useLocation().pathname.includes("/user-detail/");
-  const avatarMaxWidth = isUserDetailPage ? "max-w-[280px]" : "max-w-[220px]";
 
   return (
     <Card className="flex h-full min-h-0 flex-col overflow-hidden rounded-none border-0 bg-transparent px-0 shadow-none mt-4">
       {/* Avatar */}
       <div
-        className={`relative mx-auto w-full ${avatarMaxWidth} shrink-0`}
+        className="relative mx-auto w-full max-w-[220px] shrink-0"
         style={{ aspectRatio: "1 / 1" }}
       >
         <ProfileImageUploader
