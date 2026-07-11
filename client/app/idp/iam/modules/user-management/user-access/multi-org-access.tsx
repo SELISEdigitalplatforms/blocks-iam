@@ -15,6 +15,12 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui-kits/select/select";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui-kits/tooltip/tooltip";
 import { Building2, ChevronsUpDown, UserMinus } from "lucide-react";
 import { ManageOrganizationDialog } from "../user-memberships/manage-organization-dialog";
 import { RemoveMembership } from "../user-memberships/remove-membership";
@@ -207,16 +213,22 @@ export const MultiOrgAccess = ({ userId, projectKey }: MultiOrgAccessProps) => {
               </SelectContent>
             </Select>
             {selectedOrgRow && (
-              <Button
-                variant="destructive-outline"
-                size="xs"
-                className="h-8 gap-1.5 px-3 text-xs font-medium"
-                onClick={() => setRevokeTarget(selectedOrgRow)}
-                aria-label={`Revoke access to ${selectedOrgRow.name}`}
-              >
-                <UserMinus className="h-3.5 w-3.5" />
-                Revoke organization
-              </Button>
+              <TooltipProvider>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="h-8 w-8 shrink-0 text-muted-foreground hover:bg-destructive/10 hover:text-destructive"
+                      onClick={() => setRevokeTarget(selectedOrgRow)}
+                      aria-label={`Revoke access to ${selectedOrgRow.name}`}
+                    >
+                      <UserMinus className="h-4 w-4" />
+                    </Button>
+                  </TooltipTrigger>
+                  <TooltipContent side="bottom">Revoke organization access</TooltipContent>
+                </Tooltip>
+              </TooltipProvider>
             )}
           </div>
           {selectedOrgRow ? (
