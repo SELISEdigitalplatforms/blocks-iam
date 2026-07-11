@@ -7,7 +7,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui-kits/table/table";
-import { IHistories } from "@blocks-idp/iam/models/user";
+import { IUserActivity } from "@blocks-idp/iam/models/activity";
 import { getDeviceIcon } from "@blocks-idp/iam/utils/device-icon";
 import { ColumnDef, flexRender, getCoreRowModel, useReactTable } from "@tanstack/react-table";
 import { formatDistanceToNow } from "date-fns";
@@ -17,7 +17,7 @@ import { EVENT_TONE_CLASS, getEventMeta } from "./event-meta";
 
 type HistoryListProps = {
   isLoading: boolean;
-  data: IHistories[];
+  data: IUserActivity[];
 };
 
 const LoadingSkelton = () => (
@@ -41,7 +41,7 @@ const EmptyState = () => (
 );
 
 export const UserHistoryList = ({ isLoading, data }: HistoryListProps) => {
-  const columns: ColumnDef<IHistories>[] = useMemo(
+  const columns: ColumnDef<IUserActivity>[] = useMemo(
     () => [
       {
         accessorKey: "event",
@@ -67,10 +67,12 @@ export const UserHistoryList = ({ isLoading, data }: HistoryListProps) => {
         ),
       },
       {
-        accessorKey: "ipAddresses",
+        id: "ipAddress",
         header: () => <span className="font-bold text-medium-emphasis">IP Address</span>,
         cell: ({ row }) => (
-          <span className="text-sm text-muted-foreground">{row.original.ipAddresses || "—"}</span>
+          <span className="text-sm text-muted-foreground">
+            {row.original.context?.ipAddress ?? "—"}
+          </span>
         ),
       },
       {
@@ -88,14 +90,14 @@ export const UserHistoryList = ({ isLoading, data }: HistoryListProps) => {
         id: "device",
         header: () => <span className="font-bold text-medium-emphasis">Device</span>,
         cell: ({ row }) => {
-          const deviceInfo = row.original.deviceInformation;
+          const deviceInfo = row.original.context?.deviceInformation;
           const Icon = getDeviceIcon(deviceInfo?.device, deviceInfo?.os);
           return (
             <div className="flex items-center gap-2">
               <Icon className="h-4 w-4 shrink-0 text-muted-foreground" />
               <div className="min-w-0">
                 <p className="truncate text-sm text-high-emphasis">
-                  {deviceInfo?.device || row.original.deviceName || "Unknown device"}
+                  {deviceInfo?.device || row.original.context?.deviceName || "Unknown device"}
                 </p>
                 <p className="truncate text-xs text-muted-foreground">
                   {deviceInfo?.browser ? `${deviceInfo.browser}` : ""}

@@ -23,15 +23,15 @@ UPDATE_ACCOUNT: `/api${IAM_SUBPATH}/account/update`,
   GET_ACCOUNT_ROLES: `/api${IAM_SUBPATH}/account/roles`,
   GET_ACCOUNT_PERMISSIONS: `/api${IAM_SUBPATH}/account/permissions`,
   SAVE_ROLES_AND_PERMISSIONS: `/api${IAM_SUBPATH}/roles-permissions`,
-  GET_SESSIONS: `/api/security/sessions`,
+  GET_SECURITY_OVERVIEW: `/api/security/overview`,
   REVOKE_SESSION: `/api/security/sessions`, // POST {base}/{sessionId}/revoke
-  GET_HISTORIES: `/api/security/history`,
+  REVOKE_REFRESH_TOKEN: `/api/security/revoke/refresh-tokens/{tokenId}`,
+  GET_ACTIVITIES: `/api${IAM_SUBPATH}/activity/{userId}`,
   GET_USER_CODES: `/api${AUTH_SUBPATH}/GetUserCodes`,
   GENERATE_USER_CODE: `/api${AUTH_SUBPATH}/GenerateUserCode`,
   GET_USER_ROLES: `/api${IAM_SUBPATH}/user/roles`,
   GET_USER_PERMISSIONS: `/api${IAM_SUBPATH}/user/permissions`,
   IS_EMAIL_AVAILABLE: `/api${IAM_SUBPATH}/email/available`,
-  GET_USER_TIMELINES: `/api${IAM_SUBPATH}/users/timeline`,
 } as const;
 
 // ─── Account endpoints (account.service) ────────────────────────────────────

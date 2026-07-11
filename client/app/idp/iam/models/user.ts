@@ -1,5 +1,6 @@
 import { IPermission } from "./permission";
 import { IRole } from "./role";
+import { IRefreshTokenRotation } from "./refresh-token";
 
 export interface User {
   itemId: string;
@@ -155,18 +156,6 @@ export interface IRevokeAccessResponse {
   errors: unknown | null;
   isSuccess: boolean;
 }
-export interface IGetSessionPayload {
-  page: number;
-  pageSize: number;
-  userId: string;
-  projectKey?: string;
-}
-export interface IGetHistoriesPayload {
-  page: number;
-  pageSize: number;
-  userId: string;
-  projectKey?: string;
-}
 
 export interface IRevokeSessionResponse {
   sessionId: string;
@@ -208,18 +197,6 @@ export interface UserDetailsDevicesData {
   lastAccessOn: string;
 }
 
-export interface UserDetailsHistoryData {
-  event: string;
-  time: string;
-  site: string | number;
-  accessFrom: UserAccessFromData;
-}
-
-export interface UserAccessFromData {
-  ip: string;
-  location: string;
-}
-
 // Interface for the data we pass to the InviteUser modal
 export interface EditUserData {
   itemId: string;
@@ -230,79 +207,106 @@ export interface EditUserData {
   salutation: string;
 }
 
-interface DeviceInformation {
-  browser: string;
-  os: string;
-  device: string;
-  brand: string;
-  model: string;
-}
-
-export interface IHistories {
-  event: string;
-  actionBy: string;
-  deviceName: string;
-  deviceType: string;
-  deviceInformation: DeviceInformation;
-  ipAddresses: string;
-  sessionId: string;
-  createdDate: string;
-}
-
-export interface IHistoriesResponse {
-  totalCount: number;
-  data: IHistories[];
-  errors: unknown;
-}
-
-export interface IDeviceSession {
+export interface IAppSession {
+  tokenId: string;
   sessionId: string;
   userId: string;
   tenantId: string;
-  organizationId: string;
-  clientId: string;
-  clientName: string;
-  deviceName: string;
-  deviceType: string;
-  operatingSystem: string;
-  browser: string;
-  ipAddresses: string;
-  grantType: string;
-  issuedUtc: string;
-  expiresUtc: string;
-  lastActivityAt: string;
+  organizationId?: string | null;
+  clientId?: string | null;
+  grantType?: string | null;
+  ipAddresses?: string | null;
+  userAgent?: string | null;
+  deviceName?: string | null;
+  deviceModel?: string | null;
+  operatingSystem?: string | null;
+  browser?: string | null;
+  issuedUtc?: string;
+  slidingExpiry?: string;
+  absoluteExpiry?: string;
   isActive: boolean;
+  impersonated: boolean;
+  impersonationId?: string | null;
+}
+
+export interface ISessionGroup {
+  sessionId: string;
+  tenantId: string;
+  userId?: string | null;
+  createdAt?: string;
+  lastActivityAt?: string;
   isCurrent: boolean;
-  isImpersonated: boolean;
+  apps: IAppSession[];
 }
 
-export interface IDeviceSessionResponse {
-  totalCount: number;
-  data: IDeviceSession[];
-  errors: unknown;
+export interface IIdpSessionAccount {
+  userId?: string | null;
+  tenantId?: string | null;
+  displayName?: string | null;
+  loginAt?: string;
 }
 
-export interface IRefreshTokenStatus {
-  tokenId: string;
+export interface IIdpSession {
+  sessionId?: string | null;
+  tenantId?: string | null;
+  accounts: IIdpSessionAccount[];
+  ipAddress?: string | null;
+  createdAt?: string;
+  lastActivityAt?: string;
+  idleExpiry?: string;
+  absoluteExpiry?: string;
   isRevoked: boolean;
-  issuedAt: string;
-  absoluteExpiry: string;
-  revokedAt: string | null;
-  revokeReason: string | null;
 }
 
 export interface IRevokedAccessToken {
-  jti: string;
-  revokedAt: string;
-  reason: string;
+  jti?: string | null;
+  revokedAt?: string | null;
+  reason?: string | null;
+}
+
+export interface IRefreshTokenStatus {
+  tokenId?: string | null;
+  isRevoked: boolean;
+  issuedAt?: string | null;
+  absoluteExpiry?: string | null;
+  revokedAt?: string | null;
+  revokeReason?: string | null;
 }
 
 export interface ISessionTimeline {
-  sessionId: string;
-  session: IDeviceSession;
-  refreshTokenStatus: IRefreshTokenStatus;
+  sessionId?: string | null;
+  session?: ISessionGroup | null;
+  refreshTokenStatus?: IRefreshTokenStatus | null;
   revokedAccessTokens: IRevokedAccessToken[];
-  lifecycle: IHistories[];
+  lifecycle: IAuthHistoryEvent[];
+  rotations: IRefreshTokenRotation[];
+}
+
+export interface IAuthHistoryEvent {
+  event?: string | null;
+  actionBy?: string | null;
+  deviceName?: string | null;
+  deviceType?: string | null;
+  deviceInformation?: {
+    browser?: string;
+    os?: string;
+    device?: string;
+  } | null;
+  ipAddresses?: string | null;
+  sessionId?: string | null;
+  tenantId?: string | null;
+  clientId?: string | null;
+  correlationId?: string | null;
+  outcome?: string | null;
+  reasonCode?: string | null;
+  riskLevel?: string | null;
+  createdDate?: string;
+}
+
+export interface ISecurityOverview {
+  currentSessionId?: string | null;
+  sessionGroups: ISessionGroup[];
+  idpSession: IIdpSession | null;
 }
 
 export interface IPATResponse {

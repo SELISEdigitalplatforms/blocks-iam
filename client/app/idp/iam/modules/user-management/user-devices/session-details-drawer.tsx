@@ -4,13 +4,13 @@ import { Badge } from "@/components/ui-kits/badge/badge";
 import { Button } from "@/components/ui-kits/button/button";
 import { Skeleton } from "@/components/ui-kits/skeleton/skeleton";
 import {
-  Tabs,
-  TabsContent,
-  TabsList,
-  TabsTrigger,
-  underlineTabsListClass,
-  underlineTabTriggerClass,
-} from "@/components/ui-kits/tabs/tabs";
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui-kits/table/table";
 import {
   Dialog,
   DialogContent,
@@ -20,10 +20,16 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui-kits/dialog/dialog";
-import { useGetSessionTimeline, useRevokeSession } from "@blocks-idp/iam/hooks/use-activity";
+import {
+  useGetActivities,
+  useGetSessionTimeline,
+  useRevokeSession,
+} from "@blocks-idp/iam/hooks/use-activity";
+import { IAppSession } from "@blocks-idp/iam/models/user";
 import { getDeviceIcon } from "@blocks-idp/iam/utils/device-icon";
+import { enrichWithParsedUserAgent } from "@blocks-idp/iam/utils/parse-user-agent";
 import { showErrorToast, showSuccessToast } from "@/hooks/use-toast";
-import { Calendar, Globe, Monitor, ShieldOff } from "lucide-react";
+import { Calendar, Globe, Monitor } from "lucide-react";
 import { EVENT_TONE_CLASS, getEventMeta } from "../user-histories/event-meta";
 
 type SessionDetailsDrawerProps = {
@@ -53,7 +59,7 @@ const InfoItem = ({
   label,
   value,
 }: {
-  icon: React.ReactNode;
+  icon?: React.ReactNode;
   label: string;
   value?: React.ReactNode;
 }) => (
@@ -66,18 +72,37 @@ const InfoItem = ({
   </div>
 );
 
+const pickPrimaryApp = (apps: IAppSession[]): IAppSession | undefined => {
+  const active = apps.find((a) => a.isActive);
+  return active ?? apps[0];
+};
+
 export const SessionDetailsDrawer = ({
   sessionId,
   onOpenChange,
   onRevoked,
 }: SessionDetailsDrawerProps) => {
   const [isConfirmOpen, setIsConfirmOpen] = useState(false);
-  const { data: timeline, isLoading } = useGetSessionTimeline(sessionId ?? "", {
+  const { data: timeline, isLoading, isError, error } = useGetSessionTimeline(sessionId ?? "", {
     enabled: !!sessionId,
   });
-  const { mutateAsync, isPending } = useRevokeSession();
+  const group = timeline?.session ?? null;
+  const primary = enrichWithParsedUserAgent(pickPrimaryApp(group?.apps ?? []));
+  const rotationCount = timeline?.rotations.length ?? 0;
+  const lastRotatedAt = timeline?.rotations?.length
+    ? timeline.rotations[timeline.rotations.length - 1].issuedUtc
+    : null;
 
-  const session = timeline?.session;
+  const { data: activities } = useGetActivities(
+    {
+      userId: group?.userId ?? "",
+      page: 0,
+      pageSize: 50,
+      filter: { sessionId: sessionId ?? "" },
+    },
+    { enabled: !!sessionId && !!group?.userId },
+  );
+  const { mutateAsync, isPending } = useRevokeSession();
 
   const handleRevoke = async () => {
     if (!sessionId) return;
@@ -97,16 +122,47 @@ export const SessionDetailsDrawer = ({
     }
   };
 
-  const Icon = getDeviceIcon(session?.deviceType, session?.operatingSystem);
+  const Icon = getDeviceIcon(primary?.deviceModel ?? undefined, primary?.operatingSystem ?? undefined);
+  const deviceName = primary?.deviceName ?? "Unknown device";
 
   return (
     <Sheet open={!!sessionId} onOpenChange={onOpenChange}>
       <SheetContent className="flex w-full flex-col overflow-hidden p-0 sm:max-w-md">
-        {isLoading || !session ? (
+        {isLoading ? (
           <div className="space-y-4 p-6">
             <Skeleton className="h-10 w-10 rounded-lg" />
             <Skeleton className="h-6 w-40" />
             <Skeleton className="h-24 w-full" />
+          </div>
+        ) : isError ? (
+          <div className="flex flex-1 flex-col items-center justify-center gap-2 p-6 text-center">
+            <p className="text-sm font-medium text-high-emphasis">Unable to load session</p>
+            <p className="text-xs text-muted-foreground">
+              {error instanceof Error ? error.message : "An unexpected error occurred."}
+            </p>
+            <Button variant="outline" size="sm" onClick={() => onOpenChange(false)}>
+              Close
+            </Button>
+          </div>
+        ) : !group ? (
+          <div className="flex flex-1 flex-col items-center justify-center gap-2 p-6 text-center">
+            <p className="text-sm font-medium text-high-emphasis">Session not found</p>
+            <p className="text-xs text-muted-foreground">
+              This session may have expired or already been signed out.
+            </p>
+            <Button variant="outline" size="sm" onClick={() => onOpenChange(false)}>
+              Close
+            </Button>
+          </div>
+        ) : !primary ? (
+          <div className="flex flex-1 flex-col items-center justify-center gap-2 p-6 text-center">
+            <p className="text-sm font-medium text-high-emphasis">No apps found for this session</p>
+            <p className="text-xs text-muted-foreground">
+              There are no active or expired apps associated with this session.
+            </p>
+            <Button variant="outline" size="sm" onClick={() => onOpenChange(false)}>
+              Close
+            </Button>
           </div>
         ) : (
           <>
@@ -116,10 +172,8 @@ export const SessionDetailsDrawer = ({
                   <Icon className="h-5 w-5" />
                 </div>
                 <div className="flex min-w-0 flex-1 items-center gap-2">
-                  <SheetTitle className="truncate">
-                    {session.deviceName || "Unknown device"}
-                  </SheetTitle>
-                  {session.isCurrent && <Badge variant="info">This device</Badge>}
+                  <SheetTitle className="truncate">{deviceName}</SheetTitle>
+                  {group.isCurrent && <Badge variant="info">This device</Badge>}
                 </div>
               </div>
             </SheetHeader>
@@ -127,10 +181,10 @@ export const SessionDetailsDrawer = ({
             <div className="min-h-0 flex-1 overflow-y-auto p-6">
               <div className="space-y-6">
                 <div className="flex items-center justify-between gap-3">
-                  <Badge variant={session.isActive ? "success" : "secondary"}>
-                    {session.isActive ? "Active" : "Expired"}
+                  <Badge variant={primary.isActive ? "success" : "secondary"}>
+                    {primary.isActive ? "Active" : "Expired"}
                   </Badge>
-                  {!session.isCurrent && (
+                  {!group.isCurrent && (
                     <Dialog open={isConfirmOpen} onOpenChange={setIsConfirmOpen}>
                       <DialogTrigger asChild>
                         <Button variant="destructive-outline" size="sm">
@@ -142,7 +196,7 @@ export const SessionDetailsDrawer = ({
                           <DialogTitle>Sign out of this device?</DialogTitle>
                           <DialogDescription>
                             This will immediately end the session on{" "}
-                            {session.deviceName || "this device"}.
+                            {deviceName || "this device"}.
                           </DialogDescription>
                         </DialogHeader>
                         <DialogFooter>
@@ -163,134 +217,191 @@ export const SessionDetailsDrawer = ({
                 </div>
 
                 <p className="break-all text-xs text-muted-foreground">
-                  Session ID: <span className="font-mono">{session.sessionId}</span>
+                  Session ID: <span className="font-mono">{group.sessionId}</span>
                 </p>
+
+                {group.apps.length > 1 && (
+                  <div className="space-y-2">
+                    <h4 className="text-sm font-semibold text-high-emphasis">
+                      Signed-in apps ({group.apps.length})
+                    </h4>
+                    <ul className="space-y-1.5">
+                      {group.apps.map((app) => (
+                        <li
+                          key={app.tokenId}
+                          className="flex items-center justify-between gap-2 rounded-md border bg-muted/30 px-3 py-2 text-sm"
+                        >
+                          <span className="truncate">
+                            <span className="font-medium text-high-emphasis">
+                              {app.clientId ?? "unknown client"}
+                            </span>
+                            <span className="ml-2 text-xs text-muted-foreground">
+                              {app.grantType ?? ""}
+                            </span>
+                          </span>
+                          <Badge variant={app.isActive ? "success" : "secondary"}>
+                            {app.isActive ? "Active" : "Expired"}
+                          </Badge>
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
 
                 <div className="grid grid-cols-2 gap-4">
                   <InfoItem
                     icon={<Globe className="h-3.5 w-3.5" />}
                     label="IP Address"
-                    value={session.ipAddresses}
+                    value={primary.ipAddresses}
                   />
                   <InfoItem
                     icon={<Calendar className="h-3.5 w-3.5" />}
                     label="First seen"
-                    value={formatDateTime(session.issuedUtc)}
+                    value={formatDateTime(primary.issuedUtc)}
                   />
                   <InfoItem
                     icon={<Icon className="h-3.5 w-3.5" />}
                     label="Device / Browser"
-                    value={`${session.browser || "Unknown browser"} on ${session.operatingSystem || "Unknown OS"}`}
+                    value={`${primary.browser || "Unknown browser"} on ${primary.operatingSystem || "Unknown OS"}`}
                   />
                   <InfoItem
                     icon={<Monitor className="h-3.5 w-3.5" />}
                     label="Platform"
-                    value={session.operatingSystem}
+                    value={primary.operatingSystem}
                   />
                 </div>
-              </div>
 
-              <Tabs defaultValue="timeline" className="mt-6">
-                <TabsList className={underlineTabsListClass}>
-                  <TabsTrigger value="timeline" className={underlineTabTriggerClass}>
-                    Session Timeline
-                  </TabsTrigger>
-                  <TabsTrigger value="refresh" className={underlineTabTriggerClass}>
-                    Refresh Status
-                  </TabsTrigger>
-                </TabsList>
+                <div className="grid grid-cols-2 gap-4 rounded-md border bg-muted/30 p-3">
+                  <InfoItem label="Rotations" value={rotationCount} />
+                  <InfoItem
+                    icon={<Calendar className="h-3.5 w-3.5" />}
+                    label="Last rotated"
+                    value={formatDateTime(lastRotatedAt)}
+                  />
+                </div>
 
-                <TabsContent value="timeline" className="mt-4">
-                  {!timeline?.lifecycle?.length ? (
-                    <p className="text-sm text-muted-foreground">No timeline events yet.</p>
+                {timeline?.refreshTokenStatus && (
+                  <div className="space-y-2">
+                    <h4 className="text-sm font-semibold text-high-emphasis">
+                      Refresh-token status
+                    </h4>
+                    <InfoItem
+                      label="Token"
+                      value={
+                        <span className="font-mono text-xs">
+                          {timeline.refreshTokenStatus.tokenId ?? "—"}
+                        </span>
+                      }
+                    />
+                    <div className="grid grid-cols-2 gap-4 rounded-md border bg-muted/30 p-3">
+                      <InfoItem
+                        label="Issued"
+                        value={formatDateTime(timeline.refreshTokenStatus.issuedAt)}
+                      />
+                      <InfoItem
+                        label="Expires"
+                        value={formatDateTime(timeline.refreshTokenStatus.absoluteExpiry)}
+                      />
+                      <InfoItem
+                        label="Revoked at"
+                        value={formatDateTime(timeline.refreshTokenStatus.revokedAt)}
+                      />
+                      <InfoItem
+                        label="Reason"
+                        value={timeline.refreshTokenStatus.revokeReason ?? "—"}
+                      />
+                    </div>
+                  </div>
+                )}
+
+                <div className="space-y-3">
+                  <h4 className="text-sm font-semibold text-high-emphasis">
+                    Session activity
+                  </h4>
+                  {!activities?.data?.length ? (
+                    <p className="text-sm text-muted-foreground">No activity events yet.</p>
                   ) : (
-                    <ul className="space-y-4 border-l pl-4">
-                      {timeline.lifecycle.map((entry, index) => {
+                    <ul className="space-y-3 border-l pl-4">
+                      {activities.data.map((entry) => {
                         const meta = getEventMeta(entry.event);
                         return (
-                          <li key={`${entry.sessionId}-${index}`} className="relative">
+                          <li key={entry.itemId} className="relative">
                             <span
                               className={`absolute -left-[21px] top-1 h-2.5 w-2.5 rounded-full border-2 bg-background ${EVENT_TONE_CLASS[meta.tone]} border-current`}
                             />
                             <p className="text-sm font-medium text-high-emphasis">{meta.label}</p>
                             <p className="text-xs text-muted-foreground">
                               {formatDateTime(entry.createdDate)}
-                              {entry.ipAddresses ? ` • ${entry.ipAddresses}` : ""}
+                              {entry.context?.ipAddress ? ` • ${entry.context.ipAddress}` : ""}
                             </p>
                           </li>
                         );
                       })}
                     </ul>
                   )}
-                </TabsContent>
+                </div>
 
-                <TabsContent value="refresh" className="mt-4 space-y-4">
-                  {!timeline?.refreshTokenStatus ? (
-                    <p className="text-sm text-muted-foreground">No refresh token data.</p>
+                <div className="space-y-3">
+                  <h4 className="text-sm font-semibold text-high-emphasis">
+                    Refresh-token rotations
+                  </h4>
+                  {!timeline?.rotations?.length ? (
+                    <p className="text-sm text-muted-foreground">No refresh-token activity yet.</p>
                   ) : (
-                    <>
-                      <div className="grid grid-cols-2 gap-4">
-                        <InfoItem
-                          icon={<ShieldOff className="h-3.5 w-3.5" />}
-                          label="Status"
-                          value={
-                            <Badge
-                              variant={
-                                timeline.refreshTokenStatus.isRevoked ? "secondary" : "success"
-                              }
-                            >
-                              {timeline.refreshTokenStatus.isRevoked ? "Revoked" : "Active"}
-                            </Badge>
-                          }
-                        />
-                        <InfoItem
-                          icon={<Calendar className="h-3.5 w-3.5" />}
-                          label="Issued at"
-                          value={formatDateTime(timeline.refreshTokenStatus.issuedAt)}
-                        />
-                        <InfoItem
-                          icon={<Calendar className="h-3.5 w-3.5" />}
-                          label="Expires"
-                          value={formatDateTime(timeline.refreshTokenStatus.absoluteExpiry)}
-                        />
-                        {timeline.refreshTokenStatus.isRevoked && (
-                          <InfoItem
-                            icon={<Calendar className="h-3.5 w-3.5" />}
-                            label="Revoked at"
-                            value={formatDateTime(timeline.refreshTokenStatus.revokedAt)}
-                          />
-                        )}
-                      </div>
-                      {timeline.refreshTokenStatus.revokeReason && (
-                        <p className="text-sm text-muted-foreground">
-                          Reason: {timeline.refreshTokenStatus.revokeReason}
-                        </p>
-                      )}
-                      {timeline.revokedAccessTokens.length > 0 && (
-                        <div>
-                          <h4 className="mb-2 text-sm font-semibold text-high-emphasis">
-                            Revoked access tokens
-                          </h4>
-                          <ul className="space-y-2">
-                            {timeline.revokedAccessTokens.map((token) => (
-                              <li
-                                key={token.jti}
-                                className="rounded-md border px-3 py-2 text-xs text-muted-foreground"
-                              >
-                                <p className="truncate font-mono">{token.jti}</p>
-                                <p className="mt-0.5">
-                                  Revoked {formatDateTime(token.revokedAt)}
-                                  {token.reason ? ` • ${token.reason}` : ""}
-                                </p>
-                              </li>
-                            ))}
-                          </ul>
-                        </div>
-                      )}
-                    </>
+                    <Table className="text-sm">
+                      <TableHeader>
+                        <TableRow className="hover:bg-transparent">
+                          <TableHead>Issued</TableHead>
+                          <TableHead>Expires</TableHead>
+                          <TableHead>Replaced</TableHead>
+                          <TableHead>IP</TableHead>
+                          <TableHead>Fingerprint</TableHead>
+                        </TableRow>
+                      </TableHeader>
+                      <TableBody>
+                        {timeline.rotations.map((r) => (
+                          <TableRow key={`${r.fingerprint}-${r.issuedUtc}`}>
+                            <TableCell>{formatDateTime(r.issuedUtc)}</TableCell>
+                            <TableCell>{formatDateTime(r.absoluteExpiry)}</TableCell>
+                            <TableCell>
+                              {r.isRevoked ? formatDateTime(r.revokedAt) : "Active"}
+                            </TableCell>
+                            <TableCell>{r.ipAddress ?? "—"}</TableCell>
+                            <TableCell>
+                              <span className="flex items-center gap-2">
+                                <span className="font-mono">{r.fingerprint ?? "—"}</span>
+                                {r.isCurrent && <Badge variant="info">Current</Badge>}
+                              </span>
+                            </TableCell>
+                          </TableRow>
+                        ))}
+                      </TableBody>
+                    </Table>
                   )}
-                </TabsContent>
-              </Tabs>
+                </div>
+
+                {timeline?.revokedAccessTokens?.length ? (
+                  <div className="space-y-3">
+                    <h4 className="text-sm font-semibold text-high-emphasis">
+                      Revoked access tokens
+                    </h4>
+                    <ul className="space-y-1">
+                      {timeline.revokedAccessTokens.map((r, idx) => (
+                        <li
+                          key={r.jti ?? `${r.revokedAt ?? ""}-${idx}`}
+                          className="flex items-center justify-between gap-2 rounded-md border bg-muted/30 px-3 py-2 text-sm"
+                        >
+                          <span className="truncate font-mono text-xs">{r.jti ?? "—"}</span>
+                          <span className="text-xs text-muted-foreground">
+                            {formatDateTime(r.revokedAt)}
+                            {r.reason ? ` · ${r.reason}` : ""}
+                          </span>
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                ) : null}
+              </div>
             </div>
           </>
         )}

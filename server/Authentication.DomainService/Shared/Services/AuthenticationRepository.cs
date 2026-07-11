@@ -89,86 +89,6 @@ namespace Authentication.DomainService.Services
             return await cursor.FirstOrDefaultAsync();
         }
 
-        public async Task<bool> InsertIdentitySessionAsync(IdentitySession session)
-        {
-            var collection = GetCollection<IdentitySession>();
-            await collection.InsertOneAsync(session);
-            return true;
-        }
-
-        public async Task<bool> InsertIdentityEventAsync(IdentityEvent identityEvent)
-        {
-            var collection = GetCollection<IdentityEvent>();
-            await collection.InsertOneAsync(identityEvent);
-            return true;
-        }
-
-        public async Task<bool> InsertUserAuthenticationTimelineAsync(UserAuthenticationTimeline userAuthenticationTimeline)
-        {
-            var collection = GetCollection<UserAuthenticationTimeline>();
-            await collection.InsertOneAsync(userAuthenticationTimeline);
-            return true;
-        }
-
-        public async Task<bool> RevokeIdentitySessionAsync(string refreshToken, string userId)
-        {
-            var collection = GetCollection<IdentitySession>();
-            var update = Builders<IdentitySession>.Update.Set(x => x.IsActive, false)
-                .Set(x => x.ExpiresUtc, DateTime.UtcNow)
-                .Set(x => x.UpdatedAt, DateTime.UtcNow);
-            var result = await collection.UpdateManyAsync(x => x.RefreshToken == refreshToken && x.UserId == userId, update);
-            return result.IsAcknowledged;
-        }
-
-        public async Task<bool> RevokeIdentitySessionsByRefreshTokensAsync(IEnumerable<string> refreshTokens)
-        {
-            var collection = GetCollection<IdentitySession>();
-            var update = Builders<IdentitySession>.Update.Set(x => x.IsActive, false)
-                .Set(x => x.ExpiresUtc, DateTime.UtcNow)
-                .Set(x => x.UpdatedAt, DateTime.UtcNow);
-            var filter = Builders<IdentitySession>.Filter.In(x => x.RefreshToken, refreshTokens);
-            var result = await collection.UpdateManyAsync(filter, update);
-            return result.IsAcknowledged;
-        }
-
-        public async Task<bool> RevokeIdentitySessionsByUserIdAsync(string userId)
-        {
-            var collection = GetCollection<IdentitySession>();
-            var update = Builders<IdentitySession>.Update.Set(x => x.IsActive, false)
-                .Set(x => x.ExpiresUtc, DateTime.UtcNow)
-                .Set(x => x.UpdatedAt, DateTime.UtcNow);
-            var filter = Builders<IdentitySession>.Filter.Eq(x => x.UserId, userId);
-            var result = await collection.UpdateManyAsync(filter, update);
-            return result.IsAcknowledged;
-        }
-        public async Task<bool> RevokeIdentitySessionsBySessionIdsAsync(IEnumerable<string> sessionIds)
-        {
-            var collection = GetCollection<IdentitySession>();
-            var update = Builders<IdentitySession>.Update.Set(x => x.IsActive, false)
-                .Set(x => x.ExpiresUtc, DateTime.UtcNow)
-                .Set(x => x.UpdatedAt, DateTime.UtcNow);
-            var filter = Builders<IdentitySession>.Filter.In(x => x.SessionId, sessionIds);
-            var result = await collection.UpdateManyAsync(filter, update);
-            return result.IsAcknowledged;
-        }
-
-        public async Task<bool> UpdateSessionStatusForAllRefreshTokenAsync(List<string> refreshTokens)
-        {
-            if (refreshTokens == null || refreshTokens.Count == 0)
-            {
-                return true;
-            }
-
-            return await RevokeIdentitySessionsByRefreshTokensAsync(refreshTokens);
-        }
-
-        public async Task<IEnumerable<IdentitySession>> GetActiveIdentitySessionByUserIdAsync(string userId)
-        {
-            var collection = GetCollection<IdentitySession>();
-            var filter = Builders<IdentitySession>.Filter.Eq(x => x.UserId, userId) & Builders<IdentitySession>.Filter.Eq(x => x.IsActive, true);
-            return await collection.Find(filter).ToListAsync();
-        }
-
         public async Task<User?> IncrementFailedLoginAndApplyLockoutAsync(string userId, int lockThreshold, int lockDurationInMinutes, DateTime nowUtc)
         {
             var collection = GetCollection<User>();
@@ -327,20 +247,6 @@ namespace Authentication.DomainService.Services
                 2 => baseDurationMinutes * 12,         // 60 minutes (1 hour)
                 _ => baseDurationMinutes * 288         // 1440 minutes (24 hours)
             };
-        }
-
-        public async Task<IdentitySession?> GetIdentitySessionByRefreshTokenAsync(string refreshToken)
-        {
-            var collection = GetCollection<IdentitySession>();
-            var filter = Builders<IdentitySession>.Filter.Eq(x => x.RefreshToken, refreshToken);
-            return await collection.Find(filter).SortByDescending(x => x.UpdatedAt).FirstOrDefaultAsync();
-        }
-
-        public async Task<IEnumerable<IdentitySession>> GetActiveIdentitySessionBySessionIdAsync(string sessionId)
-        {
-            var collection = GetCollection<IdentitySession>();
-            var filter = Builders<IdentitySession>.Filter.Eq(x => x.SessionId, sessionId) & Builders<IdentitySession>.Filter.Eq(x => x.IsActive, true);
-            return await collection.Find(filter).ToListAsync();
         }
 
         public async Task<List<IdentityProvider>> GetIdentityProvidersAsync()

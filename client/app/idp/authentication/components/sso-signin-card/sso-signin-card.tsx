@@ -42,7 +42,6 @@ export const SSOSigninCard = ({
 
       // OIDC social login flow
       if (mode === "oidc" && oidcContext) {
-        // TEMP: hardcoded provider values for local debugging
         const res = await authService.signinByOidcEmail({
           provider: providerConfig.provider,
           clientId: oidcContext.clientId || "",
@@ -54,7 +53,7 @@ export const SSOSigninCard = ({
           code_challenge_method: oidcContext.code_challenge_method,
           tenantId: oidcContext.tenantId,
           provider_client_id: providerConfig.clientId,
-          provider_redirect_uri: providerConfig.redirectUrl,
+          provider_redirect_uri: providerConfig.redirectUrl
         });
 
         if (res.error) return showErrorToast({ errors: res.error });

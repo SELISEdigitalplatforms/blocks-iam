@@ -1,5 +1,7 @@
 using Authentication.DomainService.Authentication;
 using Authentication.DomainService.Utilities;
+using Iam.DomainService.Activity.RequestModel;
+using Iam.DomainService.Activity.Services;
 using Iam.DomainService.Utilities;
 using Blocks.Genesis;
 using Iam.DomainService.Accounts;
@@ -26,13 +28,15 @@ namespace Api.Controllers
         private readonly IResourceMutationService _resourceMutationService;
         private readonly IResourceQueryService _resourceQueryService;
         private readonly IAuthenticationService _authenticationService;
+        private readonly IUserActivityQueryService _userActivityQueryService;
 
         public IamController(IAccountService accountService,
                              IResourceMutationService resourceMutationService,
                              IResourceQueryService resourceQueryService,
                              IUserManagementQueryService userManagementQueryService,
                              IUserManagementMutationService userManagementMutationService,
-                             IAuthenticationService authenticationService)
+                             IAuthenticationService authenticationService,
+                             IUserActivityQueryService userActivityQueryService)
         {
             _resourceMutationService = resourceMutationService;
             _resourceQueryService = resourceQueryService;
@@ -40,6 +44,7 @@ namespace Api.Controllers
             _userManagementMutationService = userManagementMutationService;
             _accountService = accountService;
             _authenticationService = authenticationService;
+            _userActivityQueryService = userActivityQueryService;
         }
 
 
@@ -261,12 +266,22 @@ namespace Api.Controllers
             return Ok(result);
         }
 
-        [HttpGet("users/timeline")]
-        //[ProtectedEndPoint("blocks-idp::users-timeline")]
+        #endregion
+
+        #region Activity
+
+        [HttpPost("activity/{userId}")]
+        //[ProtectedEndPoint("blocks-idp::read-user-activity")]
         [Authorize]
-        public async Task<List<UserTimeline>> GetUserTimelines(GetUserTimeLineRequest request)
+        public async Task<BaseQueryListResponse<IQueryable<UserActivity>>> GetActivities(
+            [FromRoute] string? userId,
+            [FromBody] GetActivitiesRequest req,
+            CancellationToken ct)
         {
-            return await _userManagementQueryService.GetUserTimelinesAsync(request);
+            return await _userActivityQueryService.GetActivitiesAsync(
+                userId,
+                req,
+                ct);
         }
 
         #endregion

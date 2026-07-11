@@ -22,5 +22,6 @@ namespace Iam.DomainService.Resources
         Task<Dictionary<string, object>> GetOrganizationConfigAsync();
         Task ExecuteOrganizationProvisioningAsync(OrganizationProvisioningEvent command);
         Task ExecutePropagationRolePermissionUpdateAsync(PropagationRolePermissionUpdateEvent command);
+        Task ExecutePermissionMutationForTenantsAsync(PermissionMutationForTenantsEvent context);
     }
 }
