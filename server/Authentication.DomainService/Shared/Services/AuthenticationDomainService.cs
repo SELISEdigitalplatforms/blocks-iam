@@ -266,7 +266,7 @@ namespace Authentication.DomainService.Services
             credential.Scope = string.Join(' ', allowedScopes);
 
             credential.RedirectUris = redirectUris;
-            credential.RedirectUri = redirectUris.FirstOrDefault();
+           // credential.RedirectUri = redirectUris.FirstOrDefault();
 
             credential.AllowedResponseTypes = request.AllowedResponseTypes.Where(x => !string.IsNullOrWhiteSpace(x)).Distinct(StringComparer.OrdinalIgnoreCase).ToList();
             if (credential.AllowedResponseTypes.Count == 0)
