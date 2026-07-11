@@ -62,12 +62,12 @@ export const OrganizationDetail = ({ id }: { id: string }) => {
   BREADCRUMB_CUSTOM_TITLES[`/app/organization-detail/${id}`] = org?.name ?? null;
 
   return (
-    <div>
-      <div className="mb-4 md:mb-6">
+    <div className="flex h-full min-h-0 flex-col">
+      <div className="mb-4 shrink-0 md:mb-6">
         <PageBreadcrumb breadcrumbIndex={2} />
       </div>
 
-      <div className="mb-4 flex flex-wrap items-center gap-3 md:mb-6">
+      <div className="mb-4 flex shrink-0 flex-wrap items-center gap-3 md:mb-6">
         {isLoading ? (
           <Skeleton className="h-8 w-48" />
         ) : (
@@ -82,7 +82,7 @@ export const OrganizationDetail = ({ id }: { id: string }) => {
         )}
       </div>
 
-      <div className="grid grid-cols-1 gap-6 lg:grid-cols-12">
+      <div className="grid min-h-0 flex-1 grid-cols-1 gap-6 lg:grid-cols-12">
         <aside className="lg:col-span-3 xl:col-span-2">
           <Card className="sticky top-4 border-none shadow-sm">
             {/* <div className="flex items-center gap-3"> */}
@@ -151,7 +151,7 @@ export const OrganizationDetail = ({ id }: { id: string }) => {
           </Card>
         </aside>
 
-        <section className="lg:col-span-9 xl:col-span-10">
+        <section className="flex min-h-0 flex-col lg:col-span-9 xl:col-span-10">
           <OrganizationUsers
             organizationId={id}
             action={<InviteOrganizationUser organizationId={id} />}

@@ -161,7 +161,7 @@ const orgOptions = useMemo(() => {
           return;
         }
         const res = await updateUserAccess({
-          organizationId: selectedOrgId,
+          organizationId: isMultiOrgEnabled ? selectedOrgId : DEFAULT_ORGANIZATION_ID,
           roles: [],
           permissions: [],
         });
