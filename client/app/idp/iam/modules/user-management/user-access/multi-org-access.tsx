@@ -8,10 +8,19 @@ import { useGetUserById, useUpdateUserAccessControl } from "@blocks-idp/iam/hook
 import { showErrorToast, showSuccessToast } from "@/hooks/use-toast";
 import { Skeleton } from "@/components/ui-kits/skeleton/skeleton";
 import { Button } from "@/components/ui-kits/button/button";
-import { Building2, UserMinus } from "lucide-react";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui-kits/select/select";
+import { Building2, ChevronsUpDown, UserMinus } from "lucide-react";
 import { ManageOrganizationDialog } from "../user-memberships/manage-organization-dialog";
+import { RemoveMembership } from "../user-memberships/remove-membership";
 import { RolesPermissionsPillEditor } from "./roles-permissions-pill-editor";
-import { UserOrganizationRow, UserOrganizationsList } from "./user-organizations-list";
+import { UserOrganizationRow } from "./user-organizations-list";
+import { IMembership } from "@blocks-idp/iam/models/user";
 
 type MultiOrgAccessProps = {
   userId: string;
@@ -165,49 +174,39 @@ export const MultiOrgAccess = ({ userId, projectKey }: MultiOrgAccessProps) => {
   const isLoading = isUserLoading || isOrgsLoading;
 
   return (
-    <div className="grid grid-cols-1 gap-4 lg:grid-cols-[300px_1fr]">
-      <UserOrganizationsList
-        organizations={organizationRows}
-        selectedOrgId={selectedOrgId}
-        onSelect={selectOrg}
-        onManageClick={() => setIsManageOpen(true)}
-        isLoading={isLoading}
-        userId={userId}
-        projectKey={projectKey}
-        revokeTarget={revokeTarget}
-        onRevokeRequest={setRevokeTarget}
-        onRevokeDialogChange={(open) => !open && setRevokeTarget(null)}
-        onRevokeSuccess={() => {
-          const remaining = organizationRows.filter((row) => row.organizationId !== revokeTarget?.organizationId);
-          if (selectedOrgId === revokeTarget?.organizationId) {
-            const next = remaining[0]?.organizationId ?? "";
-            if (next) selectOrg(next);
-            else setSelectedOrgId("");
-          }
-          setRevokeTarget(null);
-        }}
-      />
-
-      <div className="min-w-0 rounded-lg border bg-card p-4">
-        {isLoading ? (
-          <div className="space-y-4">
-            <Skeleton className="h-6 w-40" />
-            <Skeleton className="h-9 w-full" />
-          </div>
-        ) : !selectedOrgRow ? (
-          <div className="flex h-full flex-col items-center justify-center gap-2 py-16 text-center text-sm text-muted-foreground">
-            <Building2 className="h-6 w-6" />
-            Select an organization to view its roles and permissions.
-          </div>
-        ) : (
-          <div className="space-y-6">
-            <div className="flex items-center justify-between gap-3">
-              <div className="flex items-center gap-2">
-                <h3 className="text-lg font-semibold text-high-emphasis">{selectedOrgRow.name}</h3>
-                {/* <Badge variant={selectedOrgRow.isEnabled ? "success" : "secondary"}>
-                  {selectedOrgRow.isEnabled ? "Active" : "Disabled"}
-                </Badge> */}
-              </div>
+    <div className="min-w-0 rounded-lg border bg-card p-4">
+      {isLoading ? (
+        <div className="space-y-4">
+          <Skeleton className="h-6 w-40" />
+          <Skeleton className="h-9 w-full" />
+        </div>
+      ) : organizationRows.length === 0 ? (
+        <div className="flex h-full flex-col items-center justify-center gap-2 py-16 text-center text-sm text-muted-foreground">
+          <Building2 className="h-6 w-6" />
+          No organizations assigned to this user.
+        </div>
+      ) : (
+        <div className="space-y-6">
+          <div className="flex items-center justify-between gap-3">
+            <Select value={selectedOrgId} onValueChange={selectOrg}>
+              <SelectTrigger className="h-auto w-full max-w-[280px] gap-2 border-input bg-background text-md font-semibold text-high-emphasis text-left">
+                <SelectValue placeholder="Select organization" />
+              </SelectTrigger>
+              <SelectContent>
+                {organizationRows.map((org) => (
+                  <SelectItem key={org.organizationId} value={org.organizationId}>
+                    <div className="flex flex-col ">
+                      <span className="font-semibold">{org.name}</span>
+                      <span className="text-xs font-normal text-muted-foreground">
+                        {org.roleCount} role{org.roleCount === 1 ? "" : "s"} • {org.permissionCount} permission
+                        {org.permissionCount === 1 ? "" : "s"}
+                      </span>
+                    </div>
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            {selectedOrgRow && (
               <Button
                 variant="destructive-outline"
                 size="xs"
@@ -218,7 +217,9 @@ export const MultiOrgAccess = ({ userId, projectKey }: MultiOrgAccessProps) => {
                 <UserMinus className="h-3.5 w-3.5" />
                 Revoke organization
               </Button>
-            </div>
+            )}
+          </div>
+          {selectedOrgRow ? (
             <RolesPermissionsPillEditor
               roles={selectedRoles}
               permissions={selectedPermissions}
@@ -228,9 +229,42 @@ export const MultiOrgAccess = ({ userId, projectKey }: MultiOrgAccessProps) => {
               permissionsDescription="Permissions assigned in this organization."
               onSave={onSave}
             />
-          </div>
-        )}
-      </div>
+          ) : (
+            <div className="flex h-full flex-col items-center justify-center gap-2 py-16 text-center text-sm text-muted-foreground">
+              <Building2 className="h-6 w-6" />
+              Select an organization to view its roles and permissions.
+            </div>
+          )}
+        </div>
+      )}
+
+      {revokeTarget && (
+        <RemoveMembership
+          open={!!revokeTarget}
+          onOpenChange={(open) => !open && setRevokeTarget(null)}
+          membership={
+            {
+              organizationId: revokeTarget.organizationId,
+              roles: [],
+              permissions: [],
+            } as IMembership
+          }
+          organizationName={revokeTarget.name}
+          userId={userId}
+          projectKey={projectKey}
+          onSuccess={() => {
+            const remaining = organizationRows.filter(
+              (row) => row.organizationId !== revokeTarget.organizationId,
+            );
+            if (selectedOrgId === revokeTarget.organizationId) {
+              const next = remaining[0]?.organizationId ?? "";
+              if (next) selectOrg(next);
+              else setSelectedOrgId("");
+            }
+            setRevokeTarget(null);
+          }}
+        />
+      )}
 
       <ManageOrganizationDialog
         open={isManageOpen}
