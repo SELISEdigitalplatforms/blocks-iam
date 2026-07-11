@@ -25,9 +25,9 @@ export const UserHistories = ({ id }: HistoriesProps) => {
   const loading = isLoading || isFetching;
 
   return (
-    <Card className="flex h-full min-h-[420px] flex-col">
+    <Card className="flex h-full min-h-0 flex-col">
       <CardHeader>
-      
+
       </CardHeader>
       <CardContent className="flex-1 overflow-y-auto">
         <UserHistoryList isLoading={loading} data={data?.data || []} />

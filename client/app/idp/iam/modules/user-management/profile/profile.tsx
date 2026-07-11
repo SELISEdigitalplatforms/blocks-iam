@@ -57,9 +57,15 @@ export const UserProfile = ({ id }: { id: string }) => {
   const email = user?.email ?? "";
 
   return (
-    <div className="mx-auto w-full max-w-7xl overflow-x-hidden p-4 sm:p-6 md:p-8">
-      <Tabs value={tabId}>
-        <div className="grid grid-cols-1 gap-4 md:grid-cols-[300px_minmax(0,1fr)] md:gap-x-6 md:gap-y-3 lg:gap-x-8">
+    // The console shell's header is fixed and the page scrolls at the document level
+    // (no ancestor establishes a definite content height), so `h-full` can't resolve —
+    // pin height explicitly to the viewport minus the fixed header (59px) instead.
+    <div className="mx-auto flex w-full max-w-7xl flex-col overflow-x-hidden p-4 sm:p-6 md:h-[calc(100vh-83px)] md:min-h-0 md:p-8">
+      <Tabs value={tabId} className="flex flex-1 flex-col md:min-h-0">
+        {/* md:grid-rows-[auto_1fr] pins row 2 (sidebar + tab content) to the remaining
+            screen height, so both columns are sized against the viewport instead of
+            against each other. */}
+        <div className="grid grid-cols-1 gap-4 md:min-h-0 md:flex-1 md:grid-cols-[300px_minmax(0,1fr)] md:grid-rows-[auto_1fr] md:gap-x-6 md:gap-y-3 lg:gap-x-8">
 
           {/* Name+email — col 1, row 1 */}
           <div className="hidden min-w-0 md:col-start-1 md:row-start-1 md:block">
@@ -99,13 +105,15 @@ export const UserProfile = ({ id }: { id: string }) => {
             </TabsList>
           </div>
 
-          {/* Sidebar — col 1, row 2 */}
-          <div className="w-full md:col-start-1 md:row-start-2">
+          {/* Sidebar — col 1, row 2. Fills the row's height (screen-relative at md+);
+              UserProfileSidebar handles its own internal scroll. */}
+          <div className="min-h-0 w-full md:col-start-1 md:row-start-2">
             <UserProfileSidebar id={id} projectKey={x_blocks_key} />
           </div>
 
-          {/* Right column — col 2, row 2: starts level with the avatar */}
-          <div className="min-w-0 space-y-4 md:col-start-2 md:row-start-2">
+          {/* Right column — col 2, row 2. Fills the same row height; each tab's own
+              component handles internal scroll so it never resizes the panel around it. */}
+          <div className="flex min-h-0 min-w-0 flex-col space-y-4 md:col-start-2 md:row-start-2">
 
             {/* Mobile header: name+email left, dropdown right */}
             <div className="flex items-center justify-between gap-3 md:hidden">
@@ -148,11 +156,11 @@ export const UserProfile = ({ id }: { id: string }) => {
               <ProfileDetails id={id} />
             </TabsContent>
 
-            <TabsContent value="devices" className="mt-0">
+            <TabsContent value="devices" className="mt-0 flex min-h-0 flex-1 flex-col md:h-full">
               <UserDevices id={id} projectKey={x_blocks_key} />
             </TabsContent>
 
-            <TabsContent value="history" className="mt-0">
+            <TabsContent value="history" className="mt-0 flex min-h-0 flex-1 flex-col md:h-full">
               <UserHistories id={id} projectKey={x_blocks_key} />
             </TabsContent>
 
