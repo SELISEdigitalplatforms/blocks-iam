@@ -54,13 +54,13 @@ export const UsersFilterToolbar = () => {
           {
             key: "search",
             type: "DropdownSearchInput",
-            label: "User search",
+            label: "Search",
             props: {
               placeholder: "Minimum 3 characters…",
               className: {
                 selectContent: "min-w-fit",
                 SelectItem: "[&>*:first-child]:hidden flex justify-center px-2",
-                input: "min-w-[17rem] md:min-w-[20rem]",
+                wrapper: "w-full md:w-80",
               },
               options: [
                 { label: <Mail className="aspect-square w-4" />, value: "email" },

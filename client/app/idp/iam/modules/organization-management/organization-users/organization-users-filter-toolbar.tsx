@@ -59,6 +59,8 @@ export const OrganizationUsersFilterToolbar = () => {
             className: {
               selectContent: "min-w-fit",
               SelectItem: "[&>*:first-child]:hidden flex justify-center px-2",
+              wrapper: "w-auto",
+              input: "w-52 flex-none",
             },
             options: [
               { label: <Mail className="aspect-square w-4" />, value: "email" },
