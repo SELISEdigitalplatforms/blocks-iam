@@ -90,11 +90,11 @@ export const OrganizationWorkspacePanel = ({ organizationId }: OrganizationWorks
           </TabsTrigger>
         </TabsList>
 
-        <div className="mt-4 min-h-0 min-w-0 flex-1 overflow-y-auto">
-          <TabsContent value="details" className="mt-0">
+        <div className="mt-4 flex min-h-0 min-w-0 flex-1 flex-col">
+          <TabsContent value="details" className="mt-0 flex-1">
             <OrganizationDetailsTab organization={organization} />
           </TabsContent>
-          <TabsContent value="members" className="mt-0">
+          <TabsContent value="members" className="mt-0 flex-1">
             <OrganizationUsers
               organizationId={organization.itemId}
               action={<InviteOrganizationUser organizationId={organization.itemId} />}

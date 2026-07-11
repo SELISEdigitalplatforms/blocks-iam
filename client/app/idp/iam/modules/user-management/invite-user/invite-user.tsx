@@ -217,6 +217,11 @@ const orgOptions = useMemo(() => {
     (exists && (isFetchingExistingUser || !existingUserId)) ||
     (!exists && (!form.watch("firstName")?.trim() || !form.watch("lastName")?.trim()));
 
+  // When multi-org is off, "grant access" is meaningless — there is no other
+  // org to add the existing user to. Block submit and tell the user instead.
+  const showExistingUserNotice = exists && !isMultiOrgEnabled;
+  const isSubmitDisabled = isPending || isFormInvalid || showExistingUserNotice;
+
   return (
     <Dialog open={open} onOpenChange={setOpen}>
       <DialogTrigger asChild>
@@ -280,6 +285,15 @@ const orgOptions = useMemo(() => {
                     )}
                   />
                 </>
+              )}
+
+              {showExistingUserNotice && (
+                <div
+                  role="alert"
+                  className="rounded-md border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-sm text-amber-700 dark:text-amber-400"
+                >
+                  A user with this email already exists in the system.
+                </div>
               )}
 
               {isValidEmailFormat && !isConfigLoading && isMultiOrgEnabled && (
@@ -361,7 +375,7 @@ const orgOptions = useMemo(() => {
               >
                 Cancel
               </Button>
-              <Button type="submit" disabled={isPending || isFormInvalid}>
+              <Button type="submit" disabled={isSubmitDisabled}>
                 {isPending ? (
                   <>
                     <Loader className="mr-2 h-4 w-4 animate-spin" />

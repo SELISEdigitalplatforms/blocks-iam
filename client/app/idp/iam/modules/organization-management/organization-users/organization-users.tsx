@@ -45,7 +45,7 @@ export const OrganizationUsers = ({
   const isUserLoading = isLoading || isFetching;
 
   return (
-    <Card>
+    <Card className="flex h-full min-h-0 flex-col overflow-hidden">
       <CardHeader className="flex-row flex-wrap items-start justify-between gap-3">
         <div className="flex flex-col gap-1">
           {title && <h3 className="text-base font-semibold leading-none">{title}</h3>}
@@ -59,7 +59,7 @@ export const OrganizationUsers = ({
         </div>
       </CardHeader>
 
-      <CardContent>
+      <CardContent className="min-h-0 flex-1 overflow-y-auto">
         <OrganizationUsersTable
           users={data?.data || []}
           isLoading={isUserLoading}

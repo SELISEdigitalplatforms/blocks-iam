@@ -39,3 +39,23 @@ export const formatAbsoluteWithSeconds = (value?: string | null): string => {
     return value;
   }
 };
+
+export const formatAbsoluteUtcWithSeconds = (value?: string | null): string => {
+  if (!value) return "—";
+  try {
+    const date = new Date(value);
+    const formatted = date.toLocaleString("en-GB", {
+      timeZone: "UTC",
+      month: "short",
+      day: "numeric",
+      year: "numeric",
+      hour: "2-digit",
+      minute: "2-digit",
+      second: "2-digit",
+      hour12: false,
+    });
+    return `${formatted} UTC`;
+  } catch {
+    return value;
+  }
+};
