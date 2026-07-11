@@ -1,6 +1,5 @@
 import { IRole } from "@blocks-idp/iam/models/role";
 import { IPermission } from "@blocks-idp/iam/models/permission";
-import { Separator } from "@/components/ui-kits/separator/separator";
 import { KeyRound, Shield, ShieldCheck } from "lucide-react";
 import { AddOrganizationRole } from "../user-memberships/organization-roles-field/add-organization-role";
 import { AddOrganizationPermission } from "../user-memberships/organization-permissions-field/add-organization-permission";
@@ -39,12 +38,12 @@ export const RolesPermissionsPillEditor = ({
   onSave,
 }: RolesPermissionsPillEditorProps) => {
   return (
-    <div className="flex min-h-0 flex-1 flex-col gap-6 overflow-y-auto pr-1">
+    <div className="flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto pr-1">
       <div>
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div>
-            <h3 className="text-base font-semibold text-high-emphasis">Roles</h3>
-            <p className="mt-0.5 text-sm text-muted-foreground">{rolesDescription}</p>
+            <h3 className="mb-2 text-base font-semibold text-high-emphasis">Roles</h3>
+            <p className="text-sm text-muted-foreground">{rolesDescription}</p>
           </div>
           <AddOrganizationRole
             roles={roles}
@@ -71,13 +70,11 @@ export const RolesPermissionsPillEditor = ({
         </div>
       </div>
 
-      <Separator />
-
       <div>
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div>
-            <h3 className="text-base font-semibold text-high-emphasis">Permissions</h3>
-            <p className="mt-0.5 text-sm text-muted-foreground">{permissionsDescription}</p>
+            <h3 className="mb-2 text-base font-semibold text-high-emphasis">Permissions</h3>
+            <p className="text-sm text-muted-foreground">{permissionsDescription}</p>
           </div>
           <AddOrganizationPermission
             permissions={permissions}

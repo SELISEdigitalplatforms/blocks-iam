@@ -15,6 +15,7 @@ import { CopyToClipboardButton } from "@/components/copy-to-clipboard-button";
 import PageBreadcrumb from "@/components/breadcrumb/breadcrumb";
 import { UserProfileSidebar } from "../user-profile-sidebar";
 import { UpdateUser } from "@blocks-idp/iam/modules/user-management/update-user";
+import { useGetUserById } from "@blocks-idp/iam/hooks/use-user";
 
 export type UserProfileTab = {
   value: string;
@@ -135,10 +136,18 @@ export const UserProfileShell = ({
 };
 
 const ProfileHeading = ({ id, projectKey }: { id: string; projectKey: string }) => {
+  const { data } = useGetUserById({ id, projectKey });
+  const user = data?.data;
+  const firstName = user?.firstName?.trim() ?? "";
+  const lastName = user?.lastName?.trim() ?? "";
+  const displayName =
+    firstName && lastName
+      ? `${firstName} ${lastName}`
+      : firstName || lastName || "Profile";
   return (
     <div className="flex min-w-0 items-center gap-2">
       <h1 className="truncate text-2xl font-semibold tracking-tight text-foreground">
-        Profile
+        {displayName}
       </h1>
       <UpdateUser id={id} projectKey={projectKey} own iconOnly />
       <span className="ml-2 text-xs text-muted-foreground">
