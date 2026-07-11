@@ -1,15 +1,9 @@
 import { useState } from "react";
 import { Button } from "@/components/ui-kits/button/button";
 import { Skeleton } from "@/components/ui-kits/skeleton/skeleton";
-import { Building2, ChevronRight, MoreVertical, Plus } from "lucide-react";
+import { Building2, Plus } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { IMembership } from "@blocks-idp/iam/models/user";
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
-} from "@/components/ui-kits/dropdown-menu/dropdown-menu";
 import { RemoveMembership } from "../user-memberships/remove-membership";
 
 export type UserOrganizationRow = {
@@ -85,29 +79,18 @@ export const UserOrganizationsList = ({
                       {org.permissionCount} permission{org.permissionCount === 1 ? "" : "s"}
                     </p>
                   </div>
-                  <ChevronRight className="h-4 w-4 shrink-0 text-muted-foreground" />
                 </button>
-                <DropdownMenu>
-                  <DropdownMenuTrigger asChild>
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      className="h-7 w-7 shrink-0 text-muted-foreground opacity-60 transition-opacity hover:opacity-100 focus:opacity-100 group-hover:opacity-100"
-                      onClick={(e) => e.stopPropagation()}
-                      aria-label={`Manage ${org.name}`}
-                    >
-                      <MoreVertical className="h-4 w-4" />
-                    </Button>
-                  </DropdownMenuTrigger>
-                  <DropdownMenuContent align="end">
-                    <DropdownMenuItem
-                      className="text-destructive"
-                      onSelect={() => setRemoveTarget(org)}
-                    >
-                      Remove from organization
-                    </DropdownMenuItem>
-                  </DropdownMenuContent>
-                </DropdownMenu>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="shrink-0 text-destructive hover:text-destructive"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setRemoveTarget(org);
+                  }}
+                >
+                  Revoke organization
+                </Button>
               </div>
             );
           })

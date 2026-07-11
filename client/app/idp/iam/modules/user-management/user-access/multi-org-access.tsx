@@ -6,7 +6,6 @@ import { useGetPermissions } from "@blocks-idp/iam/hooks/use-permission";
 import { useGetOrganizations } from "@blocks-idp/iam/hooks/use-organization";
 import { useGetUserById, useUpdateUserAccessControl } from "@blocks-idp/iam/hooks/use-user";
 import { showErrorToast, showSuccessToast } from "@/hooks/use-toast";
-import { Badge } from "@/components/ui-kits/badge/badge";
 import { Skeleton } from "@/components/ui-kits/skeleton/skeleton";
 import { Building2 } from "lucide-react";
 import { ManageOrganizationDialog } from "../user-memberships/manage-organization-dialog";
@@ -190,9 +189,9 @@ export const MultiOrgAccess = ({ userId, projectKey }: MultiOrgAccessProps) => {
           <div className="space-y-6">
             <div className="flex items-center gap-2">
               <h3 className="text-lg font-semibold text-high-emphasis">{selectedOrgRow.name}</h3>
-              <Badge variant={selectedOrgRow.isEnabled ? "success" : "secondary"}>
+              {/* <Badge variant={selectedOrgRow.isEnabled ? "success" : "secondary"}>
                 {selectedOrgRow.isEnabled ? "Active" : "Disabled"}
-              </Badge>
+              </Badge> */}
             </div>
             <RolesPermissionsPillEditor
               roles={selectedRoles}
