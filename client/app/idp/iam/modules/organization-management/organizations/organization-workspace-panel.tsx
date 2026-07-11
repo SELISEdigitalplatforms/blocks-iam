@@ -98,10 +98,18 @@ export const OrganizationWorkspacePanel = ({ organizationId }: OrganizationWorks
         </TabsList>
 
         <div className="mt-4 flex min-h-0 min-w-0 flex-1 flex-col">
-          <TabsContent value="details" className="mt-0 flex-1">
+          <TabsContent
+            value="details"
+            forceMount
+            className="mt-0 flex min-h-0 flex-1 flex-col data-[state=inactive]:hidden"
+          >
             <OrganizationDetailsTab organization={organization} />
           </TabsContent>
-          <TabsContent value="members" className="mt-0 flex-1">
+          <TabsContent
+            value="members"
+            forceMount
+            className="mt-0 flex min-h-0 flex-1 flex-col data-[state=inactive]:hidden"
+          >
             <OrganizationUsers
               organizationId={organization.itemId}
               action={<InviteOrganizationUser organizationId={organization.itemId} />}
