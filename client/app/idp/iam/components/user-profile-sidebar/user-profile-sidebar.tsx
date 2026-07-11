@@ -44,9 +44,9 @@ export const UserProfileSidebar = ({ id, projectKey }: UserProfileSidebarProps) 
   const user = data?.data;
 
   return (
-    <Card className="overflow-hidden border-0 bg-transparent shadow-none">
+    <Card className="flex h-full min-h-0 flex-col overflow-hidden rounded-none border-0 bg-transparent px-0 shadow-none mt-4">
       {/* Avatar */}
-      <div className="relative mx-auto w-full max-w-[280px]" style={{ aspectRatio: "1 / 1" }}>
+      <div className="relative mx-auto w-full max-w-[220px] shrink-0" style={{ aspectRatio: "1 / 1" }}>
         <ProfileImageUploader
           id={id}
           projectKey={projectKey}
@@ -56,7 +56,7 @@ export const UserProfileSidebar = ({ id, projectKey }: UserProfileSidebarProps) 
       </div>
 
       {/* Account details */}
-      <CardContent className="mt-4 w-full rounded-sm border bg-card p-5 shadow-sm">
+      <CardContent className="mt-4 flex-1 overflow-y-auto w-full rounded-sm border bg-card p-5 shadow-sm">
         <p className="mb-3 text-[10px] font-semibold uppercase tracking-widest text-muted-foreground/60">
           Account details
         </p>

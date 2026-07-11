@@ -15,7 +15,7 @@ export const UserAccessTab = ({ userId, projectKey }: UserAccessTabProps) => {
 
   if (isConfigLoading) {
     return (
-      <Card className="flex h-full min-h-[420px] flex-col">
+      <Card className="flex h-full min-h-0 flex-col">
         <CardContent className="space-y-4 pt-6">
           <Skeleton className="h-6 w-32" />
           <Skeleton className="h-9 w-full" />
@@ -30,8 +30,8 @@ export const UserAccessTab = ({ userId, projectKey }: UserAccessTabProps) => {
   }
 
   return (
-    <Card className="flex h-full min-h-[420px] flex-col">
-      <CardContent className="flex-1 pt-6">
+    <Card className="flex h-full min-h-0 flex-col">
+      <CardContent className="flex-1 overflow-y-auto pt-6">
         <SingleOrgAccess userId={userId} projectKey={projectKey} />
       </CardContent>
     </Card>

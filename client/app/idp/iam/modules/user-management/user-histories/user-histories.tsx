@@ -25,12 +25,9 @@ export const UserHistories = ({ id }: HistoriesProps) => {
   const rows = (data?.items ?? []).map(toActivityRowViewModel);
 
   return (
-    <Card className="flex h-full min-h-[420px] flex-col">
+    <Card className="flex h-full min-h-0 flex-col">
       <CardHeader>
-        <h3 className="text-base font-semibold text-high-emphasis">History</h3>
-        <p className="mt-0.5 text-sm text-muted-foreground">
-          A history of security-related activity on your account.
-        </p>
+
       </CardHeader>
       <CardContent className="flex-1 overflow-y-auto">
         <ActivityList isLoading={loading} rows={rows} />
