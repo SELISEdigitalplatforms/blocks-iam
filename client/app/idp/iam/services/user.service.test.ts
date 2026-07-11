@@ -232,7 +232,6 @@ describe("UserService", () => {
           },
         ],
         idpSession: null,
-        activeImpersonations: [],
       };
       vi.mocked(http.get).mockResolvedValue(rawResponse);
 

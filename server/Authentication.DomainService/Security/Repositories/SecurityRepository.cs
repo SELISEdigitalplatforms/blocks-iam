@@ -290,36 +290,6 @@ namespace Authentication.DomainService.Security.Repositories
             };
         }
 
-        public async Task<IReadOnlyList<ImpersonationSummaryDto>> GetImpersonationsAsync(string userId, CancellationToken ct)
-        {
-            if (string.IsNullOrWhiteSpace(userId))
-            {
-                return [];
-            }
-
-            var b = Builders<ImpersonationSession>.Filter;
-            var filter = b.And(
-                b.Eq(x => x.UserId, userId),
-                b.Eq(x => x.Status, "active")
-            );
-
-            var rows = await ImpersonationSessions()
-                .Find(filter)
-                .SortByDescending(x => x.StartedAt)
-                .ToListAsync(ct);
-
-            return rows.Select(r => new ImpersonationSummaryDto
-            {
-                Id = r.Id,
-                StartedAt = r.StartedAt,
-                EndedAt = r.EndedAt,
-                RootTenantId = r.RootTenantId,
-                TargetTenantId = r.TargetTenantId,
-                Status = r.Status,
-                Reason = r.Reason
-            }).ToList();
-        }
-
         public async Task EnsureIndexesAsync(CancellationToken ct)
         {
             await RefreshTokens().Indexes.CreateManyAsync(new[]
