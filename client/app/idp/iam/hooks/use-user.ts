@@ -214,7 +214,7 @@ export const useUpdateUserAccessControl = (option: { id: string; projectKey: str
   });
 };
 
-export const useRevokeAccess = (option: { id: string; projectKey: string }) => {
+export const useRevokeAccess = (option: { id: string }) => {
   const queryClient = useQueryClient();
   return useMutation({
     mutationKey: ["user", "revoke-access", option],

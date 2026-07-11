@@ -46,7 +46,7 @@ export const OrganizationUsers = ({
 
   return (
     <Card className="flex h-full min-h-0 flex-col overflow-hidden">
-      <CardHeader className="mb-0 flex-row flex-wrap items-start justify-between gap-3 pt-1">
+      <CardHeader className="mb-2 flex-row flex-wrap items-start justify-between gap-3 pt-1">
         <div className="flex flex-col gap-1">
           {title && <h3 className="text-base font-semibold leading-none">{title}</h3>}
           {description && (
@@ -59,7 +59,7 @@ export const OrganizationUsers = ({
         </div>
       </CardHeader>
 
-      <CardContent className="min-h-0 flex-1 overflow-y-auto">
+      <CardContent className="min-h-0 flex-1 overflow-y-auto mt-4">
         <OrganizationUsersTable
           users={data?.data || []}
           isLoading={isUserLoading}
@@ -82,7 +82,7 @@ export const OrganizationUsers = ({
             page={queryParams.page}
             pageSize={queryParams.pageSize}
             totalCount={data?.totalCount || 0}
-            pageSizeOptions={[10, 25, 50]}
+            pageSizeOptions={[5, 10, 25, 50]}
             onChange={onPageChangeHandler}
             onPageSizeChange={(size) =>
               setQueryParams((params) => ({ ...params, pageSize: size, page: 0 }))

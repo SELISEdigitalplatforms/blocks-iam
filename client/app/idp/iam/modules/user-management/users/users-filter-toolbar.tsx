@@ -60,6 +60,7 @@ export const UsersFilterToolbar = () => {
               className: {
                 selectContent: "min-w-fit",
                 SelectItem: "[&>*:first-child]:hidden flex justify-center px-2",
+                selectTrigger: "h-6",
                 wrapper: "w-full md:w-80",
               },
               options: [

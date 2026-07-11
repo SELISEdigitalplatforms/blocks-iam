@@ -30,7 +30,7 @@ export const RemoveMembership = ({
   projectKey,
   onSuccess,
 }: RemoveMembershipProps) => {
-  const { mutateAsync, isPending } = useRevokeAccess({ id: userId, projectKey });
+  const { mutateAsync, isPending } = useRevokeAccess({ id: userId });
 
   const onConfirm = async () => {
     try {
