@@ -74,7 +74,7 @@ export const AddOrganizationPermission = ({
           return prev;
         }
         if (prev.length >= MAX_PERMISSIONS_PER_USER) {
-          showErrorToast(`A maximum of ${MAX_PERMISSIONS_PER_USER} permissions can be added with any user permission.`);
+          showErrorToast({ errors: `A maximum of ${MAX_PERMISSIONS_PER_USER} permissions can be added with any user permission.` });
           return prev;
         }
         return [...prev, permission];
