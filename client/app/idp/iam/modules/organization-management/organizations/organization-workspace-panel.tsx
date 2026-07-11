@@ -70,6 +70,13 @@ export const OrganizationWorkspacePanel = ({ organizationId }: OrganizationWorks
             <h2 className="truncate text-lg font-semibold text-high-emphasis">
               {organization.name}
             </h2>
+            {organization.email && (
+              <CopyToClipboardButton textToCopy={organization.email}>
+                <p className="truncate text-xs text-muted-foreground">
+                  {organization.email}
+                </p>
+              </CopyToClipboardButton>
+            )}
             <CopyToClipboardButton textToCopy={organization.itemId}>
               <p className="break-all text-xs text-muted-foreground">
                 Organization ID: {organization.itemId}

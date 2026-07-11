@@ -87,23 +87,27 @@ export const UsersTable = ({ users, isLoading }: UserTableProps) => {
                 </div>
                 <div className="min-w-0">
                   <p className="truncate text-sm font-semibold text-high-emphasis">{fullName}</p>
-                  <div className="md:hidden">
-                    <CopyToClipboardButton textToCopy={user.email} isHoverable>
-                      <span className="truncate text-xs lowercase text-muted-foreground">
-                        {user.email || "-"}
-                      </span>
-                    </CopyToClipboardButton>
-                  </div>
+                  {user.email && (
+                    <div className="md:hidden">
+                      <CopyToClipboardButton textToCopy={user.email} isHoverable>
+                        <span className="truncate text-xs lowercase text-muted-foreground">
+                          {user.email}
+                        </span>
+                      </CopyToClipboardButton>
+                    </div>
+                  )}
                 </div>
               </div>
 
-              <div className="hidden min-w-0 md:block">
-                <CopyToClipboardButton textToCopy={user.email} isHoverable>
-                  <span className="truncate text-sm lowercase text-muted-foreground">
-                    {user.email || "-"}
-                  </span>
-                </CopyToClipboardButton>
-              </div>
+              {user.email && (
+                <div className="hidden min-w-0 md:block">
+                  <CopyToClipboardButton textToCopy={user.email} isHoverable>
+                    <span className="truncate text-sm lowercase text-muted-foreground">
+                      {user.email}
+                    </span>
+                  </CopyToClipboardButton>
+                </div>
+              )}
 
               <div className="md:shrink-0">
                 <Badge variant={user.active ? "success" : "error"} className="w-fit">

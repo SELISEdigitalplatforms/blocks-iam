@@ -133,8 +133,8 @@ const [confirmRevoke, setConfirmRevoke] = useState<User | null>(null);
           than the grid's intrinsic width. */}
       <div className="overflow-x-auto">
         <div className="flex min-w-[860px] flex-col gap-1.5">
-          {/* Column headers */}
-          <div className="hidden grid-cols-[220px_minmax(0,1fr)_90px_140px_40px_16px] items-center gap-2 px-2 text-xs md:grid">
+          {/* Column headers — sticky so they stay pinned while the rows below scroll */}
+          <div className="sticky top-0 z-10 hidden grid-cols-[220px_minmax(0,1fr)_90px_140px_40px_16px] items-center gap-2 bg-card px-2 pb-1.5 text-xs md:grid">
             <div className="min-w-0">
               <FilterControls.SortHeader
                 id="FirstName"
@@ -194,24 +194,28 @@ const [confirmRevoke, setConfirmRevoke] = useState<User | null>(null);
                   </div>
                   <div className="min-w-0">
                     <p className="truncate text-xs font-semibold leading-tight text-high-emphasis">{fullName}</p>
-                    <div className="md:hidden">
-                      <CopyToClipboardButton textToCopy={user.email} isHoverable>
-                        <span className="truncate text-[11px] leading-tight lowercase text-muted-foreground">
-                          {user.email || "-"}
-                        </span>
-                      </CopyToClipboardButton>
-                    </div>
+                    {user.email && (
+                      <div className="md:hidden">
+                        <CopyToClipboardButton textToCopy={user.email} isHoverable>
+                          <span className="truncate text-[11px] leading-tight lowercase text-muted-foreground">
+                            {user.email}
+                          </span>
+                        </CopyToClipboardButton>
+                      </div>
+                    )}
                   </div>
                 </div>
 
                 {/* Email — desktop only */}
-                <div className="hidden min-w-0 md:block">
-                  <CopyToClipboardButton textToCopy={user.email} isHoverable>
-                    <span className="truncate text-xs lowercase text-muted-foreground">
-                      {user.email || "-"}
-                    </span>
-                  </CopyToClipboardButton>
-                </div>
+                {user.email && (
+                  <div className="hidden min-w-0 md:block">
+                    <CopyToClipboardButton textToCopy={user.email} isHoverable>
+                      <span className="truncate text-xs lowercase text-muted-foreground">
+                        {user.email}
+                      </span>
+                    </CopyToClipboardButton>
+                  </div>
+                )}
 
                 {/* Status */}
                 <div className="md:shrink-0">
