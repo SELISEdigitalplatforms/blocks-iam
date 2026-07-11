@@ -29,9 +29,9 @@ const LoadingSkelton = () => (
 );
 
 const EmptyState = () => (
-  <div className="flex h-full min-h-[260px] flex-col items-center justify-center gap-3 rounded-lg  py-16 text-center">
-    <div className="flex h-14 w-14 items-center justify-center rounded-full bg-muted">
-      <History className="h-7 w-7 text-muted-foreground" />
+  <div className="flex h-full min-h-[200px] flex-col items-center justify-center gap-3 rounded-lg py-10 text-center">
+    <div className="flex h-12 w-12 items-center justify-center rounded-full bg-muted">
+      <History className="h-6 w-6 text-muted-foreground" />
     </div>
     <div>
       <p className="text-base font-semibold text-foreground">No activity yet</p>

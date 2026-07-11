@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Card, CardContent, CardHeader } from "@/components/ui-kits/card/card";
+import { Card, CardContent } from "@/components/ui-kits/card/card";
 import { Pagination } from "@/components/ui-kits/pagination/pagination";
 import { useGetActivities } from "@blocks-idp/iam/hooks/use-activity";
 import { UserHistoryList } from "./user-history-list";
@@ -26,9 +26,6 @@ export const UserHistories = ({ id }: HistoriesProps) => {
 
   return (
     <Card className="flex h-full min-h-0 flex-col">
-      <CardHeader>
-
-      </CardHeader>
       <CardContent className="flex-1 overflow-y-auto">
         <UserHistoryList isLoading={loading} data={data?.data || []} />
         {!loading && data && data.totalCount > filter.pageSize && (
