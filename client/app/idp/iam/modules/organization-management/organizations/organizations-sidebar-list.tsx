@@ -107,7 +107,7 @@ export const OrganizationsSidebarList = ({
   const isFiltered = statusFilter.length !== ALL_STATUSES.length;
 
   return (
-    <div className="flex h-full flex-col rounded-lg border bg-card">
+    <div className="flex h-full min-h-0 flex-col rounded-lg border bg-card">
       <div className="flex items-center gap-2 border-b p-3">
         <div className="relative flex-1">
           <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
