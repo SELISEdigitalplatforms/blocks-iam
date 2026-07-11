@@ -24,7 +24,6 @@ import {
 import {
   useAddUser,
   useCheckUserExists,
-  useGetUsers,
   useUpdateUserAccessControl,
 } from "@blocks-idp/iam/hooks/use-user";
 import { z } from "zod";
@@ -74,7 +73,7 @@ export const InviteUser = () => {
   const { data: existsData } = useCheckUserExists(emailValue, {
     enabled: isValidEmailFormat,
   });
-  const exists = existsData?.exists === true;
+  const exists = Boolean(existsData?.userId);
   const existingUserOrgIds = useMemo(
     () => new Set(existsData?.organizationIds ?? []),
     [existsData?.organizationIds],
@@ -82,18 +81,8 @@ export const InviteUser = () => {
 
   // When the email maps to an existing user, resolve their userId so we can
   // grant them access to the selected org instead of creating a new account.
-  // NOTE: this lookup is scoped to the current organization context server-side,
-  // so it may fail to find a user who isn't already a member of this org.
-  const { data: existingUsersData, isFetching: isFetchingExistingUser } = useGetUsers(
-    {
-      page: 0,
-      pageSize: 1,
-      projectKey: tenantId,
-      filter: { email: emailValue.trim(), name: "" },
-    },
-    { enabled: exists },
-  );
-  const existingUserId = existingUsersData?.data?.[0]?.itemId;
+  // The userId comes straight from the existence check response — no extra lookup needed.
+  const existingUserId = existsData?.userId;
   const { mutateAsync: updateUserAccess, isPending: isGrantingAccess } =
     useUpdateUserAccessControl({ id: existingUserId ?? "", projectKey: tenantId });
 
@@ -214,7 +203,7 @@ const orgOptions = useMemo(() => {
   const isFormInvalid =
     !isValidEmailFormat ||
     isConfigLoading ||
-    (exists && (isFetchingExistingUser || !existingUserId)) ||
+    (exists && !existingUserId) ||
     (!exists && (!form.watch("firstName")?.trim() || !form.watch("lastName")?.trim()));
 
   // When multi-org is off, "grant access" is meaningless — there is no other
