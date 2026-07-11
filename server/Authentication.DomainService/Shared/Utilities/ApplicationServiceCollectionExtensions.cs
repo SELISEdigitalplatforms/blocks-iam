@@ -142,7 +142,6 @@ namespace Authentication.DomainService.Utilities
             serviceCollection.AddSingleton<IResourceMutationService, ResourceMutationService>();
             serviceCollection.AddSingleton<IResourceRepository, ResourceRepository>();
 
-            serviceCollection.AddSingleton<TenantConnectionFactory>();
             serviceCollection.AddSingleton<ITenantPermissionPropagator, TenantPermissionPropagator>();
             // ITenantEnumeration / IMongoDatabase (root) must be registered by every host that
             // calls RegisterAllServices — TenantPermissionPropagator depends on both. See

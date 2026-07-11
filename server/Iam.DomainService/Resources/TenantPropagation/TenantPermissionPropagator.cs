@@ -3,6 +3,7 @@ using Blocks.Genesis;
 using Iam.DomainService.Dtos;
 using Iam.DomainService.Entities;
 using Iam.DomainService.Enums;
+using Iam.DomainService.Shared.Entities;
 using Microsoft.Extensions.Logging;
 using MongoDB.Bson;
 using MongoDB.Driver;
@@ -11,22 +12,22 @@ namespace Iam.DomainService.Resources.TenantPropagation
 {
     public class TenantPermissionPropagator : ITenantPermissionPropagator
     {
-        private const int MaxConcurrentTenants = 8;
+        public const string PermissionsCollectionName = "Permissions";
 
+        private const int MaxConcurrentTenants = 8;
+        
+        private readonly ConcurrentDictionary<string, MongoClient> _clients = new();
         private readonly IResourceRepository _resourceRepository;
-        private readonly ITenantEnumeration _tenantEnumeration;
-        private readonly TenantConnectionFactory _connectionFactory;
+        private readonly IDbContextProvider _dbContextProvider;
         private readonly ILogger<TenantPermissionPropagator> _logger;
 
         public TenantPermissionPropagator(
             IResourceRepository resourceRepository,
-            ITenantEnumeration tenantEnumeration,
-            TenantConnectionFactory connectionFactory,
+            IDbContextProvider dbContextProvider,
             ILogger<TenantPermissionPropagator> logger)
         {
             _resourceRepository = resourceRepository;
-            _tenantEnumeration = tenantEnumeration;
-            _connectionFactory = connectionFactory;
+            _dbContextProvider = dbContextProvider;
             _logger = logger;
         }
 
@@ -65,7 +66,7 @@ namespace Iam.DomainService.Resources.TenantPropagation
                 return summary;
             }
 
-            var tenants = await _tenantEnumeration.GetTargetsAsync(sourceTenantId);
+            var tenants = await GetTargetsAsync(sourceTenantId);
             if (tenants.Count == 0)
             {
                 _logger.LogInformation(
@@ -92,6 +93,66 @@ namespace Iam.DomainService.Resources.TenantPropagation
             return summary;
         }
 
+        public async Task<IReadOnlyList<PermissionMutationTarget>> GetTargetsAsync(string? excludeTenantId)
+        {
+            try
+            {
+                var collection = _dbContextProvider.GetCollection<Tenant>("Tenants");
+
+                var filter = Builders<Tenant>.Filter.Eq("IsDisabled", false);
+
+                var docs = await collection.Find(filter).ToListAsync();
+                var targets = new List<PermissionMutationTarget>(docs.Count);
+                foreach (var doc in docs)
+                {
+                    var tenantId = doc.TenantId;
+                    if (string.IsNullOrWhiteSpace(tenantId) || doc.IsDisabled)
+                    {
+                        continue;
+                    }
+
+                    if(doc.IsRootTenant)
+                    {
+                        targets.Add(new PermissionMutationTarget
+                        {
+                            TenantId = tenantId,
+                            TenantName = doc.Name,
+                            DbConnectionString = doc.DbConnectionString,
+                            DBName = "BlocksConfiguration"
+                        });
+
+                        continue;
+                    }
+
+                    var connString = doc.DbConnectionString;
+                    var dbName = doc.DBName;
+                    if (string.IsNullOrWhiteSpace(connString) || string.IsNullOrWhiteSpace(dbName))
+                    {
+                        continue;
+                    }
+
+                    targets.Add(new PermissionMutationTarget
+                    {
+                        TenantId = tenantId,
+                        TenantName = doc.Name,
+                        DbConnectionString = connString,
+                        DBName = dbName
+                    });
+                }
+
+                _logger.LogDebug(
+                    "Enumerated {Count} enabled tenants for propagation (excluded={Excluded})",
+                    targets.Count, excludeTenantId ?? "<none>");
+
+                return targets;
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Failed to enumerate tenants from root DB (Tenants collection).");
+                return Array.Empty<PermissionMutationTarget>();
+            }
+        }
+
         private async Task ProcessTenantAsync(
             Permission source,
             MutationEventType action,
@@ -102,15 +163,15 @@ namespace Iam.DomainService.Resources.TenantPropagation
             await semaphore.WaitAsync();
             try
             {
-                var database = _connectionFactory.OpenDatabase(target.DbConnectionString, target.DBName);
-                var collection = database.GetCollection<BsonDocument>(TenantConnectionFactory.PermissionsCollectionName);
+                var database = OpenDatabase(target.DbConnectionString, target.DBName);
+                var collection = database.GetCollection<BsonDocument>(PermissionsCollectionName);
                 var resourceFilter = Builders<BsonDocument>.Filter.Eq("Resource", source.Resource);
 
                 long affected;
                 switch (action)
                 {
                     case MutationEventType.Create:
-                        affected = await ApplyInsertAsync(collection, source);
+                        affected = await ApplyInsertAsync(collection, source, database);
                         break;
                     case MutationEventType.Update:
                         affected = await ApplyUpdateAsync(collection, source);
@@ -153,15 +214,56 @@ namespace Iam.DomainService.Resources.TenantPropagation
             }
         }
 
-        private static async Task<long> ApplyInsertAsync(
-            IMongoCollection<BsonDocument> collection,
-            Permission source)
+        public IMongoDatabase OpenDatabase(string connectionString, string databaseName)
         {
-            var payload = BuildPermissionBson(source);
+            if (string.IsNullOrWhiteSpace(connectionString))
+            {
+                throw new ArgumentException("Tenant connection string is required", nameof(connectionString));
+            }
+
+            if (string.IsNullOrWhiteSpace(databaseName))
+            {
+                throw new ArgumentException("Tenant database name is required", nameof(databaseName));
+            }
+
+            var client = _clients.GetOrAdd(connectionString, static cs => new MongoClient(cs));
+            return client.GetDatabase(databaseName);
+        }
+
+        private async Task<long> ApplyInsertAsync(
+            IMongoCollection<BsonDocument> collection,
+            Permission permission,
+            IMongoDatabase database)
+        {
             try
             {
+                var payload = BuildPermissionBson(permission);
                 await collection.InsertOneAsync(payload);
-                return 1;
+                var configCollection = database.GetCollection<TenantConfiguration>("TenantConfigurations");
+                var tenantConfiguration = await configCollection.Find(_ => true).FirstOrDefaultAsync();
+                if (tenantConfiguration == null || !tenantConfiguration.IsMultiOrgEnabled)
+                {
+                    return 1;
+                }
+
+                var orgIds = (await database.GetCollection<Organization>("Organizations").Find(_ => true).ToListAsync())?.Select(x => x.ItemId).ToList() ?? [];
+
+                if (!orgIds.Any())
+                {
+                    _logger.LogWarning("Organizations are empty");
+                    return 1;
+                }
+
+                var permissions = orgIds.Select(orgId => BuildPermissionBson(permission, orgId)).ToList();
+
+                await collection.InsertManyAsync(permissions);
+
+                _logger.LogInformation(
+                    "Created permission '{Resource}' for {Count} organizations",
+                    permission.Resource,
+                    permissions.Count);
+
+                return permissions.Count;
             }
             catch (MongoWriteException ex) when (ex.WriteError?.Category == ServerErrorCategory.DuplicateKey)
             {
@@ -169,7 +271,7 @@ namespace Iam.DomainService.Resources.TenantPropagation
             }
         }
 
-        private static async Task<long> ApplyUpdateAsync(
+        private async Task<long> ApplyUpdateAsync(
             IMongoCollection<BsonDocument> collection,
             Permission source)
         {
@@ -190,7 +292,7 @@ namespace Iam.DomainService.Resources.TenantPropagation
             return result.IsAcknowledged ? result.ModifiedCount : 0;
         }
 
-        private static BsonDocument BuildPermissionBson(Permission source)
+        private static BsonDocument BuildPermissionBson(Permission source, string orgId="default")
         {
             var now = DateTime.UtcNow;
             return new BsonDocument
@@ -207,7 +309,7 @@ namespace Iam.DomainService.Resources.TenantPropagation
                 { "PermissionSeverity", source.PermissionSeverity.ToString() },
                 { "Tags", new BsonArray(source.Tags ?? new List<string>()) },
                 { "DependentPermissions", new BsonArray(source.DependentPermissions ?? new List<string>()) },
-                { "OrganizationId", "default" },
+                { "OrganizationId", orgId },
                 { "Roles", new BsonArray() },
                 { "CreatedBy", source.CreatedBy ?? string.Empty },
                 { "CreatedDate", source.CreatedDate == default ? now : source.CreatedDate },

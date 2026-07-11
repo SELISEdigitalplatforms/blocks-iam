@@ -1,9 +1,7 @@
 using Authentication.DomainService.Entities;
-using Authentication.DomainService.Oidc.Repositories;
+using Authentication.DomainService.Security.Models;
 using Blocks.Genesis;
 using Idp.DomainService.Oidc.Contracts;
-using Authentication.DomainService.Security.Contracts;
-using Authentication.DomainService.Security.Models;
 using MongoDB.Bson;
 using MongoDB.Driver;
 
@@ -25,16 +23,16 @@ namespace Authentication.DomainService.Security.Repositories
         private IMongoCollection<RefreshTokenModel> RefreshTokens() =>
             GetDatabase().GetCollection<RefreshTokenModel>("IdpRefreshTokens");
 
-        private IMongoCollection<TokenRevocationModel> RevokedTokens() =>
-            GetDatabase().GetCollection<TokenRevocationModel>("IdpRevokedTokens");
-
         private IMongoCollection<IdpSessionModel> IdpSessions() =>
             GetDatabase().GetCollection<IdpSessionModel>("IdpSessions");
 
         private IMongoCollection<ImpersonationSession> ImpersonationSessions() =>
             GetDatabase().GetCollection<ImpersonationSession>("ImpersonationSessions");
 
-        public async Task<IReadOnlyList<SessionGroupDto>> GetSessionGroupsAsync(
+        private static bool IsTokenActive(RefreshTokenModel r, DateTime now) =>
+            !r.IsRevoked && now < r.AbsoluteExpiry;
+
+        public async Task<IReadOnlyList<UserSessionDto>> GetUserSessionsAsync(
             string userId,
             string? clientId,
             bool activeOnly,
@@ -47,8 +45,6 @@ namespace Authentication.DomainService.Security.Repositories
 
             var now = DateTime.UtcNow;
 
-            // Aggregate active refresh tokens into per-(SessionId, ClientId) groups, then join IdpSessions
-            // for createdAt / lastActivityAt.
             var match = new BsonDocument
             {
                 { "UserId", userId },
@@ -105,26 +101,41 @@ namespace Authentication.DomainService.Security.Repositories
                 .GroupBy(r => r.SessionId!, StringComparer.Ordinal)
                 .Select(g =>
                 {
-                    var apps = g.Select(MapActiveSession).ToList();
-                    var firstApp = g.First();
+                    var apps = g.ToList();
+                    var firstApp = apps.First();
                     idpSessionLookup.TryGetValue(g.Key, out var idpSession);
-                    return new SessionGroupDto
+                    var primary = apps.FirstOrDefault(a => IsTokenActive(a, now)) ?? firstApp;
+                    return new UserSessionDto
                     {
                         SessionId = g.Key,
                         TenantId = firstApp.TenantId ?? string.Empty,
                         UserId = firstApp.UserId,
                         CreatedAt = idpSession?.CreatedAt ?? firstApp.IssuedUtc,
                         LastActivityAt = idpSession?.LastActivityAt ?? firstApp.IssuedUtc,
-                        Apps = apps
+                        AbsoluteExpiry = firstApp.AbsoluteExpiry,
+                        IdleExpiry = firstApp.SlidingExpiry,
+                        Status = SessionStatus.Active,
+                        PrimaryDeviceName = primary.DeviceInformation?.Device ?? firstApp.DeviceInformation?.Device,
+                        PrimaryOperatingSystem = primary.DeviceInformation?.OS ?? firstApp.DeviceInformation?.OS,
+                        PrimaryBrowser = primary.DeviceInformation?.Browser ?? firstApp.DeviceInformation?.Browser,
+                        PrimaryIpAddress = primary.IpAddress ?? firstApp.IpAddress,
+                        ApplicationCount = apps.Count,
+                        ClientIds = apps
+                            .Select(a => a.ClientId)
+                            .Where(c => !string.IsNullOrWhiteSpace(c))
+                            .Cast<string>()
+                            .Distinct(StringComparer.Ordinal)
+                            .ToList()
                     };
                 })
-                .Where(g => !activeOnly || g.Apps.Any(a => a.IsActive))
+                .Where(g => !activeOnly || g.Status == SessionStatus.Active)
+                .OrderByDescending(g => g.LastActivityAt)
                 .ToList();
 
             return groups;
         }
 
-        public async Task<SessionGroupDto?> GetSessionGroupAsync(
+        public async Task<UserSessionDto?> GetUserSessionAsync(
             string userId,
             string sessionId,
             CancellationToken ct)
@@ -151,45 +162,36 @@ namespace Authentication.DomainService.Security.Repositories
                 .Find(Builders<IdpSessionModel>.Filter.Eq(x => x.SessionId, sessionId))
                 .FirstOrDefaultAsync(ct);
 
+            var now = DateTime.UtcNow;
             var firstApp = rows.First();
-            return new SessionGroupDto
+            var primary = rows.FirstOrDefault(a => IsTokenActive(a, now)) ?? firstApp;
+            return new UserSessionDto
             {
                 SessionId = sessionId,
                 TenantId = firstApp.TenantId ?? string.Empty,
                 UserId = firstApp.UserId,
                 CreatedAt = idpSession?.CreatedAt ?? firstApp.IssuedUtc,
                 LastActivityAt = idpSession?.LastActivityAt ?? firstApp.IssuedUtc,
-                Apps = rows.Select(MapActiveSession).ToList()
+                AbsoluteExpiry = firstApp.AbsoluteExpiry,
+                IdleExpiry = firstApp.SlidingExpiry,
+                Status = rows.Any(a => IsTokenActive(a, now)) ? SessionStatus.Active : SessionStatus.Expired,
+                PrimaryDeviceName = primary.DeviceInformation?.Device ?? firstApp.DeviceInformation?.Device,
+                PrimaryOperatingSystem = primary.DeviceInformation?.OS ?? firstApp.DeviceInformation?.OS,
+                PrimaryBrowser = primary.DeviceInformation?.Browser ?? firstApp.DeviceInformation?.Browser,
+                PrimaryIpAddress = primary.IpAddress ?? firstApp.IpAddress,
+                ApplicationCount = rows.Count,
+                ClientIds = rows
+                    .Select(a => a.ClientId)
+                    .Where(c => !string.IsNullOrWhiteSpace(c))
+                    .Cast<string>()
+                    .Distinct(StringComparer.Ordinal)
+                    .ToList()
             };
         }
 
-        public async Task<RefreshTokenStatus?> GetRefreshTokenStatusAsync(string tokenId, CancellationToken ct)
-        {
-            if (string.IsNullOrWhiteSpace(tokenId))
-            {
-                return null;
-            }
-
-            var row = await RefreshTokens()
-                .Find(Builders<RefreshTokenModel>.Filter.Eq(x => x.TokenId, tokenId))
-                .FirstOrDefaultAsync(ct);
-            if (row == null)
-            {
-                return null;
-            }
-
-            return new RefreshTokenStatus
-            {
-                TokenId = row.TokenId,
-                IsRevoked = row.IsRevoked,
-                IssuedAt = row.IssuedUtc,
-                AbsoluteExpiry = row.AbsoluteExpiry,
-                RevokedAt = row.RevokedAt,
-                RevokeReason = row.RevokeReason
-            };
-        }
-
-        public async Task<IReadOnlyList<RefreshTokenRotationDto>> GetRotationHistoryAsync(string sessionId, CancellationToken ct)
+        public async Task<IReadOnlyList<SessionRotationRecord>> GetRotationHistoryAsync(
+            string sessionId,
+            CancellationToken ct)
         {
             if (string.IsNullOrWhiteSpace(sessionId))
             {
@@ -200,94 +202,16 @@ namespace Authentication.DomainService.Security.Repositories
             var filter = b.Eq(x => x.SessionId, sessionId);
             var rows = await RefreshTokens().Find(filter).SortBy(x => x.AbsoluteExpiry).ToListAsync(ct);
             var count = rows.Count;
-            return rows.Select((r, idx) => new RefreshTokenRotationDto
+            return rows.Select((r, idx) => new SessionRotationRecord
             {
-                Fingerprint = r.TokenId.Length >= 6 ? r.TokenId.Substring(0, 6) : r.TokenId,
                 ClientId = r.ClientId,
-                OrganizationId = r.OrganizationId,
-                GrantType = r.GrantType,
                 IssuedUtc = r.IssuedUtc,
                 AbsoluteExpiry = r.AbsoluteExpiry,
                 IsRevoked = r.IsRevoked,
                 RevokedAt = r.RevokedAt,
                 RevokeReason = r.RevokeReason,
-                IpAddress = r.IpAddress,
-                UserAgent = r.UserAgent,
                 IsCurrent = idx == count - 1 && !r.IsRevoked
             }).ToList();
-        }
-
-        public async Task<IReadOnlyList<RevokedAccessTokenDto>> GetRevokedAccessTokensAsync(string userId, CancellationToken ct)
-        {
-            if (string.IsNullOrWhiteSpace(userId))
-            {
-                return [];
-            }
-
-            var filter = Builders<TokenRevocationModel>.Filter.Eq(x => x.UserId, userId);
-            var rows = await RevokedTokens()
-                .Find(filter)
-                .SortByDescending(x => x.RevokedAt)
-                .Limit(500)
-                .ToListAsync(ct);
-
-            return rows.Select(r => new RevokedAccessTokenDto
-            {
-                Jti = r.Jti,
-                RevokedAt = r.RevokedAt,
-                Reason = r.RevokeReason
-            }).ToList();
-        }
-
-        public async Task<IdpSessionSummaryDto?> GetIdpSessionAsync(string userId, string? tenantId, CancellationToken ct)
-        {
-            if (string.IsNullOrWhiteSpace(userId))
-            {
-                return null;
-            }
-
-            var b = Builders<IdpSessionModel>.Filter;
-            var filters = new List<FilterDefinition<IdpSessionModel>>
-            {
-                b.ElemMatch(x => x.Accounts, a => a.UserId == userId)
-            };
-            if (!string.IsNullOrWhiteSpace(tenantId))
-            {
-                filters = new List<FilterDefinition<IdpSessionModel>>
-                {
-                    b.Eq(x => x.TenantId, tenantId),
-                    b.ElemMatch(x => x.Accounts, a => a.UserId == userId && a.TenantId == tenantId)
-                };
-            }
-
-            var row = await IdpSessions()
-                .Find(b.And(filters))
-                .SortByDescending(x => x.LastActivityAt)
-                .FirstOrDefaultAsync(ct);
-
-            if (row == null)
-            {
-                return null;
-            }
-
-            return new IdpSessionSummaryDto
-            {
-                SessionId = row.SessionId,
-                TenantId = row.TenantId,
-                Accounts = row.Accounts.Select(a => new IdpSessionAccountDto
-                {
-                    UserId = a.UserId,
-                    TenantId = a.TenantId,
-                    DisplayName = a.DisplayName,
-                    LoginAt = a.LoginAt
-                }).ToList(),
-                IpAddress = row.IpAddress,
-                CreatedAt = row.CreatedAt,
-                LastActivityAt = row.LastActivityAt,
-                IdleExpiry = row.IdleExpiry,
-                AbsoluteExpiry = row.AbsoluteExpiry,
-                IsRevoked = row.RevokedAt.HasValue || row.IsExpired()
-            };
         }
 
         public async Task EnsureIndexesAsync(CancellationToken ct)
@@ -319,14 +243,6 @@ namespace Authentication.DomainService.Security.Repositories
                     new CreateIndexOptions { Name = "ix_session_absolute_expiry" })
             }, ct);
 
-            await RevokedTokens().Indexes.CreateOneAsync(
-                new CreateIndexModel<TokenRevocationModel>(
-                    Builders<TokenRevocationModel>.IndexKeys
-                        .Ascending(x => x.UserId)
-                        .Ascending(x => x.ExpiresAt),
-                    new CreateIndexOptions { Name = "ix_user_expires" }),
-                cancellationToken: ct);
-
             await ImpersonationSessions().Indexes.CreateOneAsync(
                 new CreateIndexModel<ImpersonationSession>(
                     Builders<ImpersonationSession>.IndexKeys
@@ -334,33 +250,6 @@ namespace Authentication.DomainService.Security.Repositories
                         .Ascending(x => x.Status),
                     new CreateIndexOptions { Name = "ix_user_status" }),
                 cancellationToken: ct);
-        }
-
-        private static ActiveSessionDto MapActiveSession(RefreshTokenModel r)
-        {
-            var now = DateTime.UtcNow;
-            return new ActiveSessionDto
-            {
-                TokenId = r.TokenId,
-                SessionId = r.SessionId ?? string.Empty,
-                UserId = r.UserId ?? string.Empty,
-                TenantId = r.TenantId ?? string.Empty,
-                OrganizationId = r.OrganizationId,
-                ClientId = r.ClientId,
-                GrantType = r.GrantType,
-                IpAddresses = r.IpAddress,
-                UserAgent = r.UserAgent,
-                DeviceName = r.DeviceInformation?.Device,
-                DeviceModel = r.DeviceInformation?.Model,
-                OperatingSystem = r.DeviceInformation?.OS,
-                Browser = r.DeviceInformation?.Browser,
-                IssuedUtc = r.IssuedUtc,
-                SlidingExpiry = r.SlidingExpiry,
-                AbsoluteExpiry = r.AbsoluteExpiry,
-                IsActive = !r.IsRevoked && now < r.AbsoluteExpiry,
-                Impersonated = r.Impersonated,
-                ImpersonationId = r.ImpersonationId
-            };
         }
     }
 }
