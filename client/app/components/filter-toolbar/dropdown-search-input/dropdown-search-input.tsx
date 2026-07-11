@@ -22,6 +22,7 @@ interface DropdownSearchInputProps {
   className?: {
     selectContent?: string;
     SelectItem?: string;
+    selectTrigger?: string;
     input?: string;
     wrapper?: string;
   };
@@ -88,7 +89,12 @@ export const DropdownSearchInput: React.FC<DropdownSearchInputProps> = ({
         )}
       >
         <Select onValueChange={handleSelect} value={state.selected}>
-          <SelectTrigger className="h-8 w-fit shrink-0 gap-1 rounded-lg border-0 bg-muted/60 px-2.5 focus:ring-0 focus:ring-ring focus:ring-offset-0">
+          <SelectTrigger
+            className={cn(
+              "h-8 w-fit shrink-0 gap-1 rounded-lg border-0 bg-muted/60 px-2.5 focus:ring-0 focus:ring-ring focus:ring-offset-0",
+              className.selectTrigger,
+            )}
+          >
             <SelectValue></SelectValue>
           </SelectTrigger>
           <SelectContent className={cn(className.selectContent)}>

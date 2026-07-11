@@ -54,12 +54,13 @@ export const UsersFilterToolbar = () => {
           {
             key: "search",
             type: "DropdownSearchInput",
-            label: "Search",
+            label: "",
             props: {
               placeholder: "Minimum 3 characters…",
               className: {
                 selectContent: "min-w-fit",
                 SelectItem: "[&>*:first-child]:hidden flex justify-center px-2",
+                selectTrigger: "h-6",
                 wrapper: "w-full md:w-80",
               },
               options: [

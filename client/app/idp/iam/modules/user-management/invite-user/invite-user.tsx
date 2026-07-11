@@ -11,7 +11,7 @@ import {
 import { Input } from "@/components/ui-kits/input/input";
 import { showErrorToast, showSuccessToast } from "@/hooks/use-toast";
 import { useForm } from "react-hook-form";
-import { inviteUserFormDefaultValue, inviteUserFormSchema } from "./utils";
+import { buildInviteUserFormSchema, inviteUserFormDefaultValue, inviteUserFormSchema } from "./utils";
 import { zodResolver } from "@hookform/resolvers/zod";
 import {
   Form,
@@ -60,7 +60,7 @@ export const InviteUser = () => {
 
   const form = useForm<InviteFormValues>({
     defaultValues: inviteUserFormDefaultValue,
-    resolver: zodResolver(inviteUserFormSchema),
+    resolver: zodResolver(buildInviteUserFormSchema(isMultiOrgEnabled)),
     mode: "onChange",
   });
 
@@ -106,13 +106,9 @@ export const InviteUser = () => {
     }
   }, [open, form]);
 
-  // When multi-org is disabled there's nowhere to pick an org from — default
-  // straight to "default" so the form is still submittable without that field.
-  useEffect(() => {
-    if (open && !isConfigLoading && !isMultiOrgEnabled) {
-      form.setValue("organizationIds", [DEFAULT_ORGANIZATION_ID], { shouldValidate: true });
-    }
-  }, [open, isConfigLoading, isMultiOrgEnabled, form]);
+  // When multi-org is disabled the org picker is hidden, and we don't send
+  // organizationIds in the payload — the user is implicitly scoped to the
+  // built-in "default" org on the server side.
 
   // If the form's currently selected org becomes hidden because the existing
   // user is already a member of it, clear it so the trigger label and submit
@@ -165,7 +161,7 @@ const orgOptions = useMemo(() => {
           return;
         }
         const res = await updateUserAccess({
-          organizationId: selectedOrgId,
+          organizationId: isMultiOrgEnabled ? selectedOrgId : DEFAULT_ORGANIZATION_ID,
           roles: [],
           permissions: [],
         });
@@ -192,7 +188,7 @@ const orgOptions = useMemo(() => {
         userCreationType: 1,
         platform: "blocks_portal",
         projectKey: tenantId,
-        organizationIds: values.organizationIds,
+        ...(isMultiOrgEnabled ? { organizationIds: values.organizationIds } : {}),
       });
       if (!res.isSuccess) {
         const msg =
@@ -220,6 +216,11 @@ const orgOptions = useMemo(() => {
     isConfigLoading ||
     (exists && (isFetchingExistingUser || !existingUserId)) ||
     (!exists && (!form.watch("firstName")?.trim() || !form.watch("lastName")?.trim()));
+
+  // When multi-org is off, "grant access" is meaningless — there is no other
+  // org to add the existing user to. Block submit and tell the user instead.
+  const showExistingUserNotice = exists && !isMultiOrgEnabled;
+  const isSubmitDisabled = isPending || isFormInvalid || showExistingUserNotice;
 
   return (
     <Dialog open={open} onOpenChange={setOpen}>
@@ -286,7 +287,16 @@ const orgOptions = useMemo(() => {
                 </>
               )}
 
-              {isValidEmailFormat && !isConfigLoading && (
+              {showExistingUserNotice && (
+                <div
+                  role="alert"
+                  className="rounded-md border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-sm text-amber-700 dark:text-amber-400"
+                >
+                  A user with this email already exists in the system.
+                </div>
+              )}
+
+              {isValidEmailFormat && !isConfigLoading && isMultiOrgEnabled && (
                 <FormField
                   control={form.control}
                   name="organizationIds"
@@ -365,7 +375,7 @@ const orgOptions = useMemo(() => {
               >
                 Cancel
               </Button>
-              <Button type="submit" disabled={isPending || isFormInvalid}>
+              <Button type="submit" disabled={isSubmitDisabled}>
                 {isPending ? (
                   <>
                     <Loader className="mr-2 h-4 w-4 animate-spin" />

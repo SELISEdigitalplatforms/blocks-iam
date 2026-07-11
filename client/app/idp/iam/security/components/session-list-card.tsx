@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { Button } from "@/components/ui-kits/button/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui-kits/card/card";
+import { Card, CardContent } from "@/components/ui-kits/card/card";
 import { Skeleton } from "@/components/ui-kits/skeleton/skeleton";
 import {
   Dialog,
@@ -27,7 +27,7 @@ const LoadingSkeleton = () => (
 );
 
 const EmptyState = () => (
-  <div className="flex h-full min-h-[260px] flex-col items-center justify-center gap-3 rounded-lg border border-dashed py-16 text-center">
+  <div className="flex h-full min-h-0 flex-col items-center justify-center gap-3 py-10 text-center">
     <div className="flex h-14 w-14 items-center justify-center rounded-full bg-muted">
       <Laptop className="h-7 w-7 text-muted-foreground" />
     </div>
@@ -120,13 +120,7 @@ export const SessionListCard = ({ showSignOut = true, userId }: SessionListCardP
   const cards = (data ?? []).map(toSessionCardViewModel);
 
   return (
-    <Card className="flex h-full min-h-[420px] flex-col">
-      <CardHeader>
-        <CardTitle className="text-base font-semibold text-high-emphasis">Sessions</CardTitle>
-        <p className="mt-0.5 text-sm text-muted-foreground">
-          These are the places where you&apos;re currently signed in.
-        </p>
-      </CardHeader>
+    <Card className="flex h-full min-h-0 flex-col">
       <CardContent className="flex-1 overflow-y-auto">
         {loading ? (
           <LoadingSkeleton />

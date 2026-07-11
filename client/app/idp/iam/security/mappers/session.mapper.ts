@@ -12,7 +12,7 @@ import type {
   ISessionOverviewViewModel,
   ITimelineEventViewModel,
 } from "../view-models/session.view-model";
-import { formatAbsoluteWithSeconds, formatRelative } from "../utils/date-format";
+import { formatAbsoluteWithSeconds, formatAbsoluteUtcWithSeconds, formatRelative } from "../utils/date-format";
 
 const STATUS_LABEL: Record<string, string> = {
   Active: "Active",
@@ -48,18 +48,18 @@ export const toSessionOverviewViewModel = (
   browser: api.browser ?? "Unknown browser",
   operatingSystem: api.operatingSystem ?? "Unknown OS",
   ipAddress: api.ipAddress ?? "—",
-  startedAtDisplay: formatAbsoluteWithSeconds(api.startedAt),
+  startedAtDisplay: formatAbsoluteUtcWithSeconds(api.startedAt),
   lastActivityAtDisplay: formatRelative(api.lastActivityAt),
-  absoluteExpiryDisplay: formatAbsoluteWithSeconds(api.absoluteExpiry),
-  idleExpiryDisplay: formatAbsoluteWithSeconds(api.idleExpiry),
+  absoluteExpiryDisplay: formatAbsoluteUtcWithSeconds(api.absoluteExpiry),
+  idleExpiryDisplay: formatAbsoluteUtcWithSeconds(api.idleExpiry),
   isCurrent: api.isCurrent,
 });
 
 export const toApplicationViewModel = (api: IApplicationApi): IApplicationViewModel => ({
   clientName: api.clientName ?? api.clientId,
   statusLabel: STATUS_LABEL[api.status] ?? api.status,
-  expiresDisplay: formatAbsoluteWithSeconds(api.expiresAt),
-  lastRotationDisplay: api.lastRotationAt ? formatAbsoluteWithSeconds(api.lastRotationAt) : "—",
+  expiresDisplay: formatAbsoluteUtcWithSeconds(api.expiresAt),
+  lastRotationDisplay: api.lastRotationAt ? formatAbsoluteUtcWithSeconds(api.lastRotationAt) : "—",
   rotationCountLabel: `${api.rotationCount}`,
   revokeReason: api.revokeReason ?? undefined,
 });
@@ -73,7 +73,7 @@ const TONE_MAP: Record<string, "info" | "warn" | "danger" | "success"> = {
 export const toTimelineEventViewModel = (api: ITimelineEventApi): ITimelineEventViewModel => ({
   type: api.type,
   label: api.event ?? api.type,
-  timestampDisplay: formatAbsoluteWithSeconds(api.at),
+  timestampDisplay: formatAbsoluteUtcWithSeconds(api.at),
   secondary: [
     api.outcome,
     api.reasonCode,
