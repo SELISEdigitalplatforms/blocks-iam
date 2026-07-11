@@ -54,7 +54,7 @@ export const parseUserAgent = (userAgent?: string | null): IParsedDevice => {
   return { deviceName, deviceModel, operatingSystem, browser };
 };
 
-export const enrichWithParsedUserAgent = <T extends IParsedDevice>(
+export const enrichWithParsedUserAgent = <T extends IParsedDevice & { userAgent?: string | null }>(
   app: T | undefined | null,
 ): T | undefined => {
   if (!app) return undefined;
