@@ -6,6 +6,7 @@ import { useNavigate } from "react-router-dom";
 import { useUsersSortQueryParams } from "./users-filter-toolbar";
 import { FilterControls } from "@/components/filter-toolbar";
 import { useScopedPath } from "@/hooks/use-scoped-path";
+import { checkValidDate, formatDate, parseDateString } from "@/lib/utils";
 import { ChevronRight, Users as UsersIcon } from "lucide-react";
 
 type UserTableProps = {
@@ -47,87 +48,83 @@ export const UsersTable = ({ users, isLoading }: UserTableProps) => {
   }
 
   return (
-    <div className="flex flex-col gap-3">
-      {/* Column headers — hidden on mobile, where each card reflows its own layout */}
-      <div className="hidden items-center gap-4 px-4 md:flex">
-        <div className="w-[220px] shrink-0 lg:w-[260px]">
-          <FilterControls.SortHeader
-            id="FirstName"
-            label="Name"
-            value={sortQueryParams}
-            onChange={setSortQueryParams}
-          />
+    <div className="overflow-x-auto">
+      <div className="flex min-w-[820px] flex-col gap-3">
+        <div className="hidden grid-cols-[220px_minmax(0,1fr)_90px_140px_16px] items-center gap-4 px-4 md:grid">
+          <div className="min-w-0">
+            <FilterControls.SortHeader id="FirstName" label="Name" value={sortQueryParams} onChange={setSortQueryParams} />
+          </div>
+          <div className="min-w-0">
+            <FilterControls.SortHeader id="Email" label="Email" value={sortQueryParams} onChange={setSortQueryParams} />
+          </div>
+          <div className="shrink-0">
+            <FilterControls.SortHeader id="Active" label="Status" value={sortQueryParams} onChange={setSortQueryParams} />
+          </div>
+          <div className="shrink-0">
+            <FilterControls.SortHeader id="LastLoggedInTime" label="Last login" value={sortQueryParams} onChange={setSortQueryParams} />
+          </div>
+          <div />
         </div>
-        <div className="min-w-0 flex-1">
-          <FilterControls.SortHeader
-            id="Email"
-            label="Email"
-            value={sortQueryParams}
-            onChange={setSortQueryParams}
-          />
-        </div>
-        <div className="w-[90px] shrink-0">
-          <FilterControls.SortHeader
-            id="Active"
-            label="Status"
-            value={sortQueryParams}
-            onChange={setSortQueryParams}
-          />
-        </div>
-        <div className="w-4 shrink-0" />
-      </div>
 
-      {users.map((user) => {
-        const fullName = `${user.firstName || ""} ${user.lastName || ""}`.trim() || "-";
+        {users.map((user) => {
+          const fullName = `${user.firstName || ""} ${user.lastName || ""}`.trim() || "-";
+          const hasLastLogin = checkValidDate(user.lastLoggedInTime);
 
-        return (
-          <div
-            key={user.itemId}
-            role="button"
-            tabIndex={0}
-            onClick={() => handleRowClick(user.itemId)}
-            onKeyDown={(e) => {
-              if (e.key === "Enter" || e.key === " ") handleRowClick(user.itemId);
-            }}
-            className="group flex cursor-pointer flex-col gap-3 rounded-xl border bg-card p-4 transition-colors hover:border-primary/30 md:flex-row md:items-center md:gap-4"
-          >
-            {/* Avatar + name (+ email on mobile) */}
-            <div className="flex min-w-0 flex-1 items-center gap-3 md:w-[220px] md:flex-none lg:w-[260px]">
-              <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-primary/10 text-xs font-semibold text-primary">
-                {getInitials(user.firstName, user.lastName)}
+          return (
+            <div
+              key={user.itemId}
+              role="button"
+              tabIndex={0}
+              onClick={() => handleRowClick(user.itemId)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter" || e.key === " ") handleRowClick(user.itemId);
+              }}
+              className="group grid cursor-pointer grid-cols-1 gap-3 rounded-xl border bg-card p-4 transition-colors hover:border-primary/30 md:grid-cols-[220px_minmax(0,1fr)_90px_140px_16px] md:items-center md:gap-4"
+            >
+              <div className="flex min-w-0 items-center gap-3">
+                <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-primary/10 text-xs font-semibold text-primary">
+                  {getInitials(user.firstName, user.lastName)}
+                </div>
+                <div className="min-w-0">
+                  <p className="truncate text-sm font-semibold text-high-emphasis">{fullName}</p>
+                  {user.email && (
+                    <div className="md:hidden">
+                      <CopyToClipboardButton textToCopy={user.email} isHoverable>
+                        <span className="truncate text-xs lowercase text-muted-foreground">
+                          {user.email}
+                        </span>
+                      </CopyToClipboardButton>
+                    </div>
+                  )}
+                </div>
               </div>
-              <div className="min-w-0">
-                <p className="truncate text-sm font-semibold text-high-emphasis">{fullName}</p>
-                <div className="md:hidden">
+
+              {user.email && (
+                <div className="hidden min-w-0 md:block">
                   <CopyToClipboardButton textToCopy={user.email} isHoverable>
-                    <span className="truncate text-xs lowercase text-muted-foreground">
-                      {user.email || "-"}
+                    <span className="truncate text-sm lowercase text-muted-foreground">
+                      {user.email}
                     </span>
                   </CopyToClipboardButton>
                 </div>
+              )}
+
+              <div className="md:shrink-0">
+                <Badge variant={user.active ? "success" : "error"} className="w-fit">
+                  {user.active ? "Active" : "Inactive"}
+                </Badge>
               </div>
-            </div>
 
-            {/* Email — desktop only */}
-            <div className="hidden min-w-0 flex-1 md:block">
-              <CopyToClipboardButton textToCopy={user.email} isHoverable>
-                <span className="truncate text-sm lowercase text-muted-foreground">
-                  {user.email || "-"}
-                </span>
-              </CopyToClipboardButton>
-            </div>
+              <div className="md:shrink-0 md:text-sm md:text-muted-foreground">
+                <span className="block text-xs text-muted-foreground md:hidden">Last login</span>
+                {hasLastLogin ? formatDate(parseDateString(user.lastLoggedInTime)) : "Never logged in"}
+              </div>
 
-            {/* Status */}
-            <div className="md:w-[90px] md:shrink-0">
-              <Badge variant={user.active ? "success" : "error"} className="w-fit">
-                {user.active ? "Active" : "Inactive"}
-              </Badge>
+              <ChevronRight className="hidden h-4 w-4 shrink-0 text-muted-foreground transition-transform group-hover:translate-x-0.5 md:block" />
             </div>
-
-            <ChevronRight className="hidden h-4 w-4 shrink-0 text-muted-foreground transition-transform group-hover:translate-x-0.5 md:block" />
-          </div>
-        );
-      })}
+          );
+        })}
+      </div>
     </div>
   );
 };

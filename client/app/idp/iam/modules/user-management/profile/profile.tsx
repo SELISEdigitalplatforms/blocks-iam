@@ -1,11 +1,12 @@
 import { useGetMe } from "@blocks-idp/iam/hooks/use-user";
 import { Skeleton } from "@/components/ui-kits/skeleton/skeleton";
 import { UserProfileShell } from "@blocks-idp/iam/components/user-profile-shell";
-import { Shield, Smartphone, Clock, Key } from "lucide-react";
+import { Shield, Smartphone, Clock } from "lucide-react";
 import { getRuntimeEnv } from "@/lib/runtime-env";
 import { ProfileDetails } from "@blocks-idp/iam/components/profile-details";
 import { UserHistories } from "../user-histories";
-import { UserPats } from "../user-pat";
+// import { UserPats } from "../user-pat";
+import { UserDevices } from "../user-devices";
 
 const x_blocks_key = getRuntimeEnv("BLOCKS_X_BLOCKS_KEY") || "";
 
@@ -38,7 +39,7 @@ export const UserProfile = ({ id }: { id: string }) => {
       value: "devices",
       label: "Sessions",
       icon: <Smartphone className="h-3.5 w-3.5" />,
-      render: () => <ProfileDetails id={id} />,
+      render: () => <UserDevices id={id} projectKey={x_blocks_key} />,
     },
     {
       value: "history",
@@ -46,12 +47,12 @@ export const UserProfile = ({ id }: { id: string }) => {
       icon: <Clock className="h-3.5 w-3.5" />,
       render: () => <UserHistories id={id} projectKey={x_blocks_key} />,
     },
-    {
-      value: "personalAccessTokens",
-      label: "PATs",
-      icon: <Key className="h-3.5 w-3.5" />,
-      render: () => <UserPats id={id} />,
-    },
+    // {
+    //   value: "personalAccessTokens",
+    //   label: "PATs",
+    //   icon: <Key className="h-3.5 w-3.5" />,
+    //   render: () => <UserPats id={id} />,
+    // },
   ];
 
   return (

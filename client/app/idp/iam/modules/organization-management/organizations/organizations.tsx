@@ -89,11 +89,10 @@ export function Organizations() {
             </div>
             <div className="flex flex-col gap-2">
               <h3 className="text-base font-semibold text-foreground">
-                Multiple Organizations not enabled
+                Multiple Organizations is not enabled
               </h3>
               <p className="text-sm leading-relaxed text-muted-foreground">
-                To view and manage organizations, you first need to enable the Multiple
-                Organization feature from organization configuration.
+                Enable Multiple Organizations in Organization Configuration to view and manage organizations in this workspace.
               </p>
             </div>
             <OrganizationConfig
@@ -111,7 +110,7 @@ export function Organizations() {
   }
 
   return (
-    <div className="grid h-[calc(100vh-220px)] min-h-[520px] grid-cols-1 gap-4 lg:grid-cols-[380px_1fr]">
+    <div className="grid min-h-0 flex-1 grid-cols-1 grid-rows-[minmax(0,1fr)_minmax(0,1fr)] gap-4 lg:grid-cols-[380px_minmax(0,1fr)] lg:grid-rows-[minmax(0,1fr)]">
       <OrganizationsSidebarList
         organizations={loadedOrgs}
         totalCount={totalCount}

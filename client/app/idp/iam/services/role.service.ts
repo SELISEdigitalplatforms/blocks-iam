@@ -13,7 +13,11 @@ import { ROLE_ENDPOINTS } from "../constants/endpoint.constant";
 
 export class RoleService {
   getRoles(payload: GetRolesPayload): Promise<GetRolesResponse> {
-    return serviceInstances.idpService.post(ROLE_ENDPOINTS.GET_ROLES, payload);
+    const { projectKey, ...rest } = payload;
+    return serviceInstances.idpService.post(ROLE_ENDPOINTS.GET_ROLES, {
+      ...rest,
+      organizationId: projectKey,
+    });
   }
 
   getRoleById(payload: IGetRolePayload): Promise<IGetRoleResponse> {

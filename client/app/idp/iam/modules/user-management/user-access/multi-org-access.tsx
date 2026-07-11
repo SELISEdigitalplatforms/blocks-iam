@@ -34,6 +34,15 @@ type MultiOrgAccessProps = {
 };
 
 export const MultiOrgAccess = ({ userId, projectKey }: MultiOrgAccessProps) => {
+  const [selectedOrgId, setSelectedOrgId] = useState("");
+  const [selectedRoles, setSelectedRoles] = useState<IRole[]>([]);
+  const [selectedPermissions, setSelectedPermissions] = useState<IPermission[]>([]);
+  const [initialRoleSlugs, setInitialRoleSlugs] = useState<string[]>([]);
+  const [initialPermissionNames, setInitialPermissionNames] = useState<string[]>([]);
+  const [isManageOpen, setIsManageOpen] = useState(false);
+  const [revokeTarget, setRevokeTarget] = useState<UserOrganizationRow | null>(null);
+
+  const orgScopedKey = selectedOrgId || projectKey;
   const { data: userData, isLoading: isUserLoading } = useGetUserById({ id: userId, projectKey });
   const { data: orgsData, isLoading: isOrgsLoading } = useGetOrganizations({
     projectKey,
@@ -45,25 +54,17 @@ export const MultiOrgAccess = ({ userId, projectKey }: MultiOrgAccessProps) => {
     pageSize: 1000,
     sort: { property: "Name", isDescending: false },
     filter: { search: "" },
-    projectKey,
+    projectKey: orgScopedKey,
   });
   const { data: permissionsData } = useGetPermissions({
-    projectKey,
+    projectKey: orgScopedKey,
     page: 0,
     pageSize: 1000,
     search: "",
     isBuiltIn: "",
     roles: [],
   });
-  const { mutateAsync } = useUpdateUserAccessControl({ id: userId, projectKey });
-
-  const [selectedOrgId, setSelectedOrgId] = useState("");
-  const [selectedRoles, setSelectedRoles] = useState<IRole[]>([]);
-  const [selectedPermissions, setSelectedPermissions] = useState<IPermission[]>([]);
-  const [initialRoleSlugs, setInitialRoleSlugs] = useState<string[]>([]);
-  const [initialPermissionNames, setInitialPermissionNames] = useState<string[]>([]);
-  const [isManageOpen, setIsManageOpen] = useState(false);
-  const [revokeTarget, setRevokeTarget] = useState<UserOrganizationRow | null>(null);
+  const { mutateAsync } = useUpdateUserAccessControl({ id: userId, projectKey: orgScopedKey });
 
   const roleBySlug = useMemo(
     () => new Map((rolesData?.data || []).map((role) => [role.slug, role])),
@@ -180,7 +181,7 @@ export const MultiOrgAccess = ({ userId, projectKey }: MultiOrgAccessProps) => {
   const isLoading = isUserLoading || isOrgsLoading;
 
   return (
-    <div className="flex h-full min-h-0 min-w-0 flex-col rounded-lg border bg-card p-4">
+    <div className="flex h-full min-h-0 min-w-0 flex-col overflow-hidden rounded-lg border bg-card p-6">
       {isLoading ? (
         <div className="space-y-4">
           <Skeleton className="h-6 w-40" />
@@ -192,26 +193,37 @@ export const MultiOrgAccess = ({ userId, projectKey }: MultiOrgAccessProps) => {
           No organizations assigned to this user.
         </div>
       ) : (
-        <div className="flex min-h-0 flex-1 flex-col space-y-6 overflow-y-auto pr-1">
-          <div className="flex items-center justify-between gap-3">
-            <Select value={selectedOrgId} onValueChange={selectOrg}>
-              <SelectTrigger className="h-auto w-full max-w-[280px] gap-2 border-input bg-background text-md font-semibold text-high-emphasis text-left">
-                <SelectValue placeholder="Select organization" />
-              </SelectTrigger>
-              <SelectContent>
-                {organizationRows.map((org) => (
-                  <SelectItem key={org.organizationId} value={org.organizationId}>
-                    <div className="flex flex-col ">
-                      <span className="font-semibold">{org.name}</span>
-                      <span className="text-xs font-normal text-muted-foreground">
-                        {org.roleCount} role{org.roleCount === 1 ? "" : "s"} • {org.permissionCount} permission
-                        {org.permissionCount === 1 ? "" : "s"}
-                      </span>
-                    </div>
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+        <>
+          <div className="flex shrink-0 items-center justify-between gap-3">
+            <div className="flex min-w-0 flex-1 flex-col gap-2">
+              <label
+                htmlFor="access-org-select"
+                className="mb-2 text-base font-semibold text-high-emphasis"
+              >
+                Organization
+              </label>
+              <Select value={selectedOrgId} onValueChange={selectOrg}>
+                <SelectTrigger
+                  id="access-org-select"
+                  className="h-auto w-full max-w-[320px] gap-2 border-input bg-background text-md font-semibold text-high-emphasis text-left"
+                >
+                  <SelectValue placeholder="Select organization" />
+                </SelectTrigger>
+                <SelectContent>
+                  {organizationRows.map((org) => (
+                    <SelectItem key={org.organizationId} value={org.organizationId}>
+                      <div className="flex flex-col ">
+                        <span className="font-semibold">{org.name}</span>
+                        <span className="text-xs font-normal text-muted-foreground">
+                          {org.roleCount} role{org.roleCount === 1 ? "" : "s"} • {org.permissionCount} permission
+                          {org.permissionCount === 1 ? "" : "s"}
+                        </span>
+                      </div>
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
             {selectedOrgRow && (
               <TooltipProvider>
                 <Tooltip>
@@ -219,7 +231,7 @@ export const MultiOrgAccess = ({ userId, projectKey }: MultiOrgAccessProps) => {
                     <Button
                       variant="ghost"
                       size="icon"
-                      className="h-8 w-8 shrink-0 text-muted-foreground hover:bg-destructive/10 hover:text-destructive"
+                      className="mt-6 h-8 w-8 shrink-0 text-muted-foreground hover:bg-destructive/10 hover:text-destructive"
                       onClick={() => setRevokeTarget(selectedOrgRow)}
                       aria-label={`Revoke access to ${selectedOrgRow.name}`}
                     >
@@ -231,6 +243,7 @@ export const MultiOrgAccess = ({ userId, projectKey }: MultiOrgAccessProps) => {
               </TooltipProvider>
             )}
           </div>
+          <div className="flex min-h-0 flex-1 flex-col overflow-y-auto pt-4 pr-1">
           {selectedOrgRow ? (
             <RolesPermissionsPillEditor
               roles={selectedRoles}
@@ -247,7 +260,8 @@ export const MultiOrgAccess = ({ userId, projectKey }: MultiOrgAccessProps) => {
               Select an organization to view its roles and permissions.
             </div>
           )}
-        </div>
+          </div>
+        </>
       )}
 
       {revokeTarget && (

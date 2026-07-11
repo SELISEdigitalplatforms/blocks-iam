@@ -32,7 +32,7 @@ const LoadingSkeleton = () => (
 );
 
 const EmptyState = () => (
-  <div className="flex h-full min-h-[260px] flex-col items-center justify-center gap-3 rounded-lg border border-dashed py-16 text-center">
+  <div className="flex h-full min-h-0 flex-col items-center justify-center gap-3 py-10 text-center">
     <div className="flex h-14 w-14 items-center justify-center rounded-full bg-muted">
       <History className="h-7 w-7 text-muted-foreground" />
     </div>
