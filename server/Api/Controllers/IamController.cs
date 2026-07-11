@@ -261,14 +261,6 @@ namespace Api.Controllers
             return Ok(result);
         }
 
-        [HttpGet("users/timeline")]
-        //[ProtectedEndPoint("blocks-idp::users-timeline")]
-        [Authorize]
-        public async Task<List<UserTimeline>> GetUserTimelines(GetUserTimeLineRequest request)
-        {
-            return await _userManagementQueryService.GetUserTimelinesAsync(request);
-        }
-
         #endregion
 
         #region Organization

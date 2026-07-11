@@ -24,12 +24,13 @@ namespace Authentication.DomainService.Services
         Task<BaseResponse> SaveClientCredentialAsync(SaveClientCredentialRequest request);
         Task<BaseResponse> DeleteClientCredentialAsync(DeleteClientCredentialRequest request);
         Task<List<ClientCredential>> GetClientCredentialsAsync(GetAllClientCredentialsRequest request);
-        Task<BaseResponse> CreateIdentityProviderAsync(IdentityProvider provider);
+        Task<BaseResponse> CreateIdentityProviderAsync(SaveIdentityProviderRequest request);
         Task<IdentityProvider?> GetIdentityProviderAsync(string provider);
         Task<IdentityProvider?> GetIdentityProviderByIdAsync(string id);
         Task<List<IdentityProvider>> GetAllIdentityProvidersAsync();
-        Task<BaseResponse> UpdateIdentityProviderAsync(IdentityProvider provider);
+        Task<BaseResponse> UpdateIdentityProviderAsync(string id, UpdateIdentityProviderRequest request);
         Task<BaseResponse> DeleteIdentityProviderAsync(string id);
         Task<BaseResponse> UpdateIdentityProviderStatusAsync(string id, bool isActive);
+        Task<RotateOidcClientSecretResponse> RotateOidcClientSecretAsync(string itemId);
     }
 }

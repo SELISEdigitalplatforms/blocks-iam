@@ -30,12 +30,12 @@ namespace Authentication.DomainService.Entities
         public bool RequireMfa { get; set; }
         public List<UserMfaType>? AllowedMfaMethods { get; set; }
 
-        [BsonIgnore]
-        public string? RedirectUri
-        {
-            get => RedirectUris.FirstOrDefault();
-            set => RedirectUris = string.IsNullOrWhiteSpace(value) ? new() : new() { value };
-        }
+        //[BsonIgnore]
+        //public string? RedirectUri
+        //{
+        //    get => RedirectUris.FirstOrDefault();
+        //    set => RedirectUris = string.IsNullOrWhiteSpace(value) ? new() : new() { value };
+        //}
 
         [BsonIgnore]
         public string? Scope

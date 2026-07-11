@@ -9,7 +9,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui-kits/table/table";
-import { IPATResponse } from "@blocks-idp/iam/models/user";
+import { IPATApi } from "@blocks-idp/iam/security/api";
 import { ColumnDef, flexRender, getCoreRowModel, useReactTable } from "@tanstack/react-table";
 import { Trash } from "lucide-react";
 import { useMemo } from "react";
@@ -20,7 +20,7 @@ import { format } from "date-fns";
 
 type PATListProps = {
   isLoading: boolean;
-  data: IPATResponse[];
+  data: IPATApi[];
 };
 
 const LoadingSkelton = () => (
@@ -34,7 +34,7 @@ const LoadingSkelton = () => (
 export const UserPATList = ({ isLoading, data }: PATListProps) => {
   const isMobile = useIsMobile();
 
-  const columns: ColumnDef<IPATResponse>[] = useMemo(
+  const columns: ColumnDef<IPATApi>[] = useMemo(
     () => [
       {
         accessorKey: "note",

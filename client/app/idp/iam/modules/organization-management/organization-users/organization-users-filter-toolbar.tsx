@@ -10,7 +10,7 @@ type OrganizationUsersFilter = {
 export const useOrganizationUsersFilterQueryParams = () => {
   const [queryParams, setQueryParams] = useQueryStates({
     page: parseAsInteger.withDefault(0),
-    pageSize: parseAsInteger.withDefault(10),
+    pageSize: parseAsInteger.withDefault(5),
     "selected-filter": parseAsString.withDefault("name"),
     name: parseAsString.withDefault(""),
     email: parseAsString.withDefault(""),
@@ -56,9 +56,12 @@ export const OrganizationUsersFilterToolbar = () => {
           type: "DropdownSearchInput",
           label: "",
           props: {
+            placeholder: "Minimum 3 characters…",
             className: {
               selectContent: "min-w-fit",
               SelectItem: "[&>*:first-child]:hidden flex justify-center px-2",
+              selectTrigger: "h-6",
+              wrapper: "w-full md:w-80",
             },
             options: [
               { label: <Mail className="aspect-square w-4" />, value: "email" },

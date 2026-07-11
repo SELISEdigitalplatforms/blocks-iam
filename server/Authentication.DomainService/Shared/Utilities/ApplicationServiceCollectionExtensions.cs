@@ -4,14 +4,17 @@ using Authentication.DomainService.OAuth.Services;
 using Authentication.DomainService.OAuth.SocialServices;
 using Authentication.DomainService.Oidc.Repositories;
 using Authentication.DomainService.Oidc.Services;
+using Authentication.DomainService.RequestModel;
 using Authentication.DomainService.Security.Utilities;
 using Authentication.DomainService.Services;
 using Authentication.DomainService.Shared;
+using Authentication.DomainService.Shared.RequestModel;
 using Authentication.DomainService.Shared.Services;
 using Blocks.Extension.DependencyInjection;
 using DomainService.Storage;
 using FluentValidation;
 using Iam.DomainService.Accounts;
+using Iam.DomainService.Activity.Services;
 using Iam.DomainService.Configurations;
 using Iam.DomainService.Resources;
 using Iam.DomainService.Resources.TenantPropagation;
@@ -62,7 +65,6 @@ namespace Authentication.DomainService.Utilities
             serviceCollection.AddSingleton<IAuthorizationCodeRepository, AuthorizationCodeRepository>();
             serviceCollection.AddSingleton<IRefreshTokenRepository, RefreshTokenRepository>();
             serviceCollection.AddSingleton<IIdpSessionRepository, IdpSessionRepository>();
-            serviceCollection.AddSingleton<IAuditLogRepository, AuditLogRepository>();
             serviceCollection.AddSingleton<ITokenRevocationRepository, TokenRevocationRepository>();
             serviceCollection.AddSingleton<ITokenRevocationService, TokenRevocationService>();
             serviceCollection.AddSingleton<IIdpSessionService, IdpSessionService>();
@@ -124,6 +126,9 @@ namespace Authentication.DomainService.Utilities
 
             serviceCollection.AddSingleton<IIamConfigurationRepository, IamConfigurationRepository>();
             serviceCollection.AddTransient<IValidator<SaveSsoCredentialRequest>, SaveSsoCredentialRequestValidator>();
+            serviceCollection.AddTransient<IValidator<SaveOIDCClientRequest>, SaveOIDCClientRequestValidator>();
+            serviceCollection.AddTransient<IValidator<SaveIdentityProviderRequest>, SaveIdentityProviderRequestValidator>();
+            serviceCollection.AddTransient<IValidator<UpdateIdentityProviderRequest>, UpdateIdentityProviderRequestValidator>();
 
             #endregion
 
@@ -137,7 +142,6 @@ namespace Authentication.DomainService.Utilities
             serviceCollection.AddSingleton<IResourceMutationService, ResourceMutationService>();
             serviceCollection.AddSingleton<IResourceRepository, ResourceRepository>();
 
-            serviceCollection.AddSingleton<TenantConnectionFactory>();
             serviceCollection.AddSingleton<ITenantPermissionPropagator, TenantPermissionPropagator>();
             // ITenantEnumeration / IMongoDatabase (root) must be registered by every host that
             // calls RegisterAllServices — TenantPermissionPropagator depends on both. See
@@ -148,6 +152,10 @@ namespace Authentication.DomainService.Utilities
 
             serviceCollection.AddSingleton<IAccountService, AccountService>();
             serviceCollection.AddSingleton<IIamConfigurationRepository, IamConfigurationRepository>();
+
+            serviceCollection.AddSingleton<IUserActivityRepository, UserActivityRepository>();
+            serviceCollection.AddSingleton<IUserActivityDispatcher, UserActivityDispatcher>();
+            serviceCollection.AddSingleton<IUserActivityQueryService, UserActivityQueryService>();
 
             serviceCollection.RegisterSecurityServices();
 

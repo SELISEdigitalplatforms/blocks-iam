@@ -17,14 +17,14 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui-kits/select/select";
-import { IGeneratePATPayload, IPATResponse } from "@blocks-idp/iam/models/user";
-import { useGeneratePats } from "@blocks-idp/iam/hooks/use-activity";
+import { useGeneratePats } from "@blocks-idp/iam/security/hooks/use-generate-pats";
+import type { IGeneratePATPayload, IPATApi } from "@blocks-idp/iam/security/api";
 
 interface GenerateTokenModalProps {
   isOpen: boolean;
   onClose: () => void;
   id: string;
-  onSuccess?: (data: IPATResponse) => void;
+  onSuccess?: (data: IPATApi) => void;
 }
 
 export function GenerateTokenModal({ isOpen, onClose, onSuccess }: GenerateTokenModalProps) {
@@ -80,7 +80,8 @@ export function GenerateTokenModal({ isOpen, onClose, onSuccess }: GenerateToken
         setNote("");
         setExpiration("30");
 
-        onSuccess?.(data);
+        const first = Array.isArray(data) ? data[0] : data;
+        if (first) onSuccess?.(first);
 
         onClose();
       },
