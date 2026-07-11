@@ -1,8 +1,11 @@
+using System.Text.Json.Serialization;
+
 namespace Authentication.DomainService.Security.Models
 {
     public sealed class SessionOverviewDto
     {
         public string SessionId { get; set; } = "";
+        [JsonConverter(typeof(JsonStringEnumConverter))]
         public SessionStatus Status { get; set; }
         public bool IsCurrent { get; set; }
         public string? DeviceName { get; set; }
