@@ -41,9 +41,8 @@ namespace Authentication.DomainService.Security.Services
 
             var groupsTask = GetSessionGroupsAsync(userId, ct);
             var idpSessionTask = _securityRepository.GetIdpSessionAsync(userId, ResolveTenantId(), ct);
-            var impersonationsTask = _securityRepository.GetImpersonationsAsync(userId, ct);
 
-            await Task.WhenAll(groupsTask, idpSessionTask, impersonationsTask);
+            await Task.WhenAll(groupsTask, idpSessionTask);
 
             var groups = groupsTask.Result;
             foreach (var group in groups)
@@ -53,7 +52,6 @@ namespace Authentication.DomainService.Security.Services
 
             overview.SessionGroups = groups;
             overview.IdpSession = idpSessionTask.Result;
-            overview.ActiveImpersonations = impersonationsTask.Result;
 
             return overview;
         }

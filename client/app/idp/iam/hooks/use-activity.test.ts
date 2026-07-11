@@ -29,7 +29,6 @@ describe("use-activity hooks", () => {
         currentSessionId: null,
         sessionGroups: [],
         idpSession: null,
-        activeImpersonations: [],
       };
       vi.mocked(userService.getSecurityOverview).mockResolvedValue(mockResponse as never);
 

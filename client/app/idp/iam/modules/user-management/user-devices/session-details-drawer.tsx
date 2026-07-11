@@ -27,6 +27,7 @@ import {
 } from "@blocks-idp/iam/hooks/use-activity";
 import { IAppSession } from "@blocks-idp/iam/models/user";
 import { getDeviceIcon } from "@blocks-idp/iam/utils/device-icon";
+import { enrichWithParsedUserAgent } from "@blocks-idp/iam/utils/parse-user-agent";
 import { showErrorToast, showSuccessToast } from "@/hooks/use-toast";
 import { Calendar, Globe, Monitor } from "lucide-react";
 import { EVENT_TONE_CLASS, getEventMeta } from "../user-histories/event-meta";
@@ -85,8 +86,8 @@ export const SessionDetailsDrawer = ({
   const { data: timeline, isLoading, isError, error } = useGetSessionTimeline(sessionId ?? "", {
     enabled: !!sessionId,
   });
-  const group = timeline?.group ?? null;
-  const primary = pickPrimaryApp(group?.apps ?? []);
+  const group = timeline?.session ?? null;
+  const primary = enrichWithParsedUserAgent(pickPrimaryApp(group?.apps ?? []));
   const rotationCount = timeline?.rotations.length ?? 0;
   const lastRotatedAt = timeline?.rotations?.length
     ? timeline.rotations[timeline.rotations.length - 1].issuedUtc

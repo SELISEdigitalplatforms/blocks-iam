@@ -5,6 +5,5 @@ namespace Authentication.DomainService.Security.Models
         public string? CurrentSessionId { get; set; }
         public IReadOnlyList<SessionGroupDto> SessionGroups { get; set; } = [];
         public IdpSessionSummaryDto? IdpSession { get; set; }
-        public IReadOnlyList<ImpersonationSummaryDto> ActiveImpersonations { get; set; } = [];
     }
 }

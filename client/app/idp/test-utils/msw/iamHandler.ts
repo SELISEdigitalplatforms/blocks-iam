@@ -103,7 +103,6 @@ export const iamHandlers = [
       currentSessionId: null,
       sessionGroups: [],
       idpSession: null,
-      activeImpersonations: [],
     }),
   ),
   http.post(POST_ACTIVITIES_PATTERN, () =>

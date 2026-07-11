@@ -275,7 +275,7 @@ export interface IRefreshTokenStatus {
 
 export interface ISessionTimeline {
   sessionId?: string | null;
-  group?: ISessionGroup | null;
+  session?: ISessionGroup | null;
   refreshTokenStatus?: IRefreshTokenStatus | null;
   revokedAccessTokens: IRevokedAccessToken[];
   lifecycle: IAuthHistoryEvent[];
@@ -303,21 +303,10 @@ export interface IAuthHistoryEvent {
   createdDate?: string;
 }
 
-export interface IImpersonationSummary {
-  id?: string | null;
-  startedAt?: string;
-  endedAt?: string | null;
-  rootTenantId?: string | null;
-  targetTenantId?: string | null;
-  status?: string | null;
-  reason?: string | null;
-}
-
 export interface ISecurityOverview {
   currentSessionId?: string | null;
   sessionGroups: ISessionGroup[];
   idpSession: IIdpSession | null;
-  activeImpersonations: IImpersonationSummary[];
 }
 
 export interface IPATResponse {

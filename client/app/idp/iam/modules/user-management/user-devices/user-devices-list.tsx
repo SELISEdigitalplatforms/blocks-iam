@@ -22,6 +22,7 @@ import {
 import { IAppSession, ISessionGroup } from "@blocks-idp/iam/models/user";
 import { useRevokeSession } from "@blocks-idp/iam/hooks/use-activity";
 import { getDeviceIcon } from "@blocks-idp/iam/utils/device-icon";
+import { enrichWithParsedUserAgent } from "@blocks-idp/iam/utils/parse-user-agent";
 import { showErrorToast, showSuccessToast } from "@/hooks/use-toast";
 import { ColumnDef, flexRender, getCoreRowModel, useReactTable } from "@tanstack/react-table";
 import { formatDistanceToNow } from "date-fns";
@@ -148,6 +149,15 @@ export const UserDevicesList = ({
 }: DeviceListProps) => {
   const [selectedSessionId, setSelectedSessionId] = useState<string | null>(null);
 
+  const enrichedGroups: ISessionGroup[] = useMemo(
+    () =>
+      data.map((group) => ({
+        ...group,
+        apps: group.apps.map((app) => enrichWithParsedUserAgent(app) ?? app),
+      })),
+    [data],
+  );
+
   const columns: ColumnDef<ISessionGroup>[] = useMemo(
     () => [
       {
@@ -232,13 +242,13 @@ export const UserDevicesList = ({
   );
 
   const table = useReactTable({
-    data,
+    data: enrichedGroups,
     columns,
     getCoreRowModel: getCoreRowModel(),
   });
 
   if (isLoading) return <LoadingSkelton />;
-  if (data.length === 0) return <EmptyState />;
+  if (enrichedGroups.length === 0) return <EmptyState />;
 
   return (
     <>
