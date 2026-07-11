@@ -54,6 +54,24 @@ const formatDateTime = (value?: string | null) => {
   }
 };
 
+const formatUtcDateTime = (value?: string | null) => {
+  if (!value) return "—";
+  try {
+    return `${new Date(value).toLocaleString("en-US", {
+      month: "short",
+      day: "numeric",
+      year: "numeric",
+      hour: "numeric",
+      minute: "2-digit",
+      second: "2-digit",
+      timeZone: "UTC",
+      timeZoneName: "short",
+    })} UTC`;
+  } catch {
+    return value;
+  }
+};
+
 const InfoItem = ({
   icon,
   label,
@@ -256,8 +274,8 @@ export const SessionDetailsDrawer = ({
                   />
                   <InfoItem
                     icon={<Calendar className="h-3.5 w-3.5" />}
-                    label="First seen"
-                    value={formatDateTime(primary.issuedUtc)}
+                    label="First seen (UTC)"
+                    value={formatUtcDateTime(primary.issuedUtc)}
                   />
                   <InfoItem
                     icon={<Icon className="h-3.5 w-3.5" />}
@@ -275,8 +293,8 @@ export const SessionDetailsDrawer = ({
                   <InfoItem label="Rotations" value={rotationCount} />
                   <InfoItem
                     icon={<Calendar className="h-3.5 w-3.5" />}
-                    label="Last rotated"
-                    value={formatDateTime(lastRotatedAt)}
+                    label="Last rotated (UTC)"
+                    value={formatUtcDateTime(lastRotatedAt)}
                   />
                 </div>
 
@@ -295,16 +313,16 @@ export const SessionDetailsDrawer = ({
                     />
                     <div className="grid grid-cols-2 gap-4 rounded-md border bg-muted/30 p-3">
                       <InfoItem
-                        label="Issued"
-                        value={formatDateTime(timeline.refreshTokenStatus.issuedAt)}
+                        label="Issued (UTC)"
+                        value={formatUtcDateTime(timeline.refreshTokenStatus.issuedAt)}
                       />
                       <InfoItem
-                        label="Expires"
-                        value={formatDateTime(timeline.refreshTokenStatus.absoluteExpiry)}
+                        label="Expires (UTC)"
+                        value={formatUtcDateTime(timeline.refreshTokenStatus.absoluteExpiry)}
                       />
                       <InfoItem
-                        label="Revoked at"
-                        value={formatDateTime(timeline.refreshTokenStatus.revokedAt)}
+                        label="Revoked at (UTC)"
+                        value={formatUtcDateTime(timeline.refreshTokenStatus.revokedAt)}
                       />
                       <InfoItem
                         label="Reason"
@@ -331,7 +349,7 @@ export const SessionDetailsDrawer = ({
                             />
                             <p className="text-sm font-medium text-high-emphasis">{meta.label}</p>
                             <p className="text-xs text-muted-foreground">
-                              {formatDateTime(entry.createdDate)}
+                              {formatUtcDateTime(entry.createdDate)}
                               {entry.context?.ipAddress ? ` • ${entry.context.ipAddress}` : ""}
                             </p>
                           </li>
@@ -351,9 +369,9 @@ export const SessionDetailsDrawer = ({
                     <Table className="text-sm">
                       <TableHeader>
                         <TableRow className="hover:bg-transparent">
-                          <TableHead>Issued</TableHead>
-                          <TableHead>Expires</TableHead>
-                          <TableHead>Replaced</TableHead>
+                          <TableHead>Issued (UTC)</TableHead>
+                          <TableHead>Expires (UTC)</TableHead>
+                          <TableHead>Replaced (UTC)</TableHead>
                           <TableHead>IP</TableHead>
                           <TableHead>Fingerprint</TableHead>
                         </TableRow>
@@ -361,10 +379,10 @@ export const SessionDetailsDrawer = ({
                       <TableBody>
                         {timeline.rotations.map((r) => (
                           <TableRow key={`${r.fingerprint}-${r.issuedUtc}`}>
-                            <TableCell>{formatDateTime(r.issuedUtc)}</TableCell>
-                            <TableCell>{formatDateTime(r.absoluteExpiry)}</TableCell>
+                            <TableCell>{formatUtcDateTime(r.issuedUtc)}</TableCell>
+                            <TableCell>{formatUtcDateTime(r.absoluteExpiry)}</TableCell>
                             <TableCell>
-                              {r.isRevoked ? formatDateTime(r.revokedAt) : "Active"}
+                              {r.isRevoked ? formatUtcDateTime(r.revokedAt) : "Active"}
                             </TableCell>
                             <TableCell>{r.ipAddress ?? "—"}</TableCell>
                             <TableCell>
@@ -393,7 +411,7 @@ export const SessionDetailsDrawer = ({
                         >
                           <span className="truncate font-mono text-xs">{r.jti ?? "—"}</span>
                           <span className="text-xs text-muted-foreground">
-                            {formatDateTime(r.revokedAt)}
+                            {formatUtcDateTime(r.revokedAt)}
                             {r.reason ? ` · ${r.reason}` : ""}
                           </span>
                         </li>
