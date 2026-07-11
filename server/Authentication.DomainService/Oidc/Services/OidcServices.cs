@@ -100,44 +100,51 @@ public sealed class OidcSigningKeyMaterial
         return GenerateTokenAsync(claims, issuer, expiresInSeconds, includeNonce: false);
     }
 
-    public async Task<Contracts.RefreshTokenModel> GenerateRefreshTokenAsync(Contracts.OidcClaims claims, string issuer, bool isImpersonation, string? idpSessionId = null)
-    {
-        // UnifiedTokenSessionService handles all logic. This method is now a thin adapter only.
-        var authConfiguration = await _authenticationRepository.GetAuthenticationConfigurationAsync();
-        var tenant = _tenants.GetTenantByID(claims.TenantId);
-        var user = new User { ItemId = claims.Sub, OrganizationIds = claims.OrgId != null ? new List<string> { claims.OrgId } : new List<string>(), TokenVersion = 1 };
-        var tokenRequest = new Authentication.DomainService.OAuth.RequestModel.TokenRequest
+        public async Task<Contracts.RefreshTokenModel> GenerateRefreshTokenAsync(Contracts.OidcClaims claims, string issuer, bool isImpersonation, string? idpSessionId = null)
         {
-            ClientId = claims.ClientId,
-            OrganizationId = claims.OrgId,
-            Scope = claims.Scope,
-            Request = _httpContextAccessor.HttpContext?.Request,
-            IdpSessionId = idpSessionId
-        };
-        var visitorsIpAddresses = new List<string> { _httpContextAccessor.HttpContext?.Connection?.RemoteIpAddress?.ToString() ?? string.Empty };
-        var (refreshToken, expiresUtc) = await _unifiedTokenSessionService.CreateOrRotateRefreshToken(
-            null,
-            null,
-            tokenRequest,
-            authConfiguration,
-            tenant,
-            user,
-            visitorsIpAddresses,
-            isImpersonation
-        );
-        return new Contracts.RefreshTokenModel
-        {
-            TokenId = refreshToken,
-            UserId = claims.Sub,
-            TenantId = claims.TenantId,
-            OrganizationId = claims.OrgId,
-            Audience = claims.Audience,
-            Scope = claims.Scope,
-            IssuedUtc = DateTime.UtcNow,
-            SlidingExpiry = expiresUtc,
-            AbsoluteExpiry = expiresUtc
-        };
-    }
+            // UnifiedTokenSessionService handles all logic. This method is now a thin adapter only.
+            var authConfiguration = await _authenticationRepository.GetAuthenticationConfigurationAsync();
+            var tenant = _tenants.GetTenantByID(claims.TenantId);
+            var user = new User { ItemId = claims.Sub, OrganizationIds = claims.OrgId != null ? new List<string> { claims.OrgId } : new List<string>(), TokenVersion = 1 };
+            var tokenRequest = new Authentication.DomainService.OAuth.RequestModel.TokenRequest
+            {
+                ClientId = claims.ClientId,
+                OrganizationId = claims.OrgId,
+                Scope = claims.Scope,
+                GrantType = "authorization_code",
+                Request = _httpContextAccessor.HttpContext?.Request,
+                IdpSessionId = idpSessionId
+            };
+            var visitorsIpAddresses = new List<string> { _httpContextAccessor.HttpContext?.Connection?.RemoteIpAddress?.ToString() ?? string.Empty };
+            var userAgent = _httpContextAccessor.HttpContext?.Request?.Headers?["User-Agent"].ToString() ?? string.Empty;
+            var (refreshToken, expiresUtc) = await _unifiedTokenSessionService.CreateOrRotateRefreshToken(
+                null,
+                null,
+                tokenRequest,
+                authConfiguration,
+                tenant,
+                user,
+                visitorsIpAddresses,
+                isImpersonation
+            );
+            return new Contracts.RefreshTokenModel
+            {
+                TokenId = refreshToken,
+                UserId = claims.Sub,
+                TenantId = claims.TenantId,
+                OrganizationId = claims.OrgId,
+                ClientId = claims.ClientId,
+                SessionId = idpSessionId,
+                Audience = claims.Audience,
+                Scope = claims.Scope,
+                GrantType = "authorization_code",
+                IssuedUtc = DateTime.UtcNow,
+                SlidingExpiry = expiresUtc,
+                AbsoluteExpiry = expiresUtc,
+                IpAddress = visitorsIpAddresses.FirstOrDefault() ?? string.Empty,
+                UserAgent = userAgent
+            };
+        }
 
     private async Task<string> GenerateTokenAsync(Contracts.OidcClaims claims, string issuer, int expiresInSeconds, bool includeNonce)
     {

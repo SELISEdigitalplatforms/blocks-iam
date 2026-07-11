@@ -216,16 +216,10 @@ namespace Authentication.DomainService.Authentication
             var accessToken = await _tokenService.GenerateAccessTokenAsync(claims, issuer, accessTokenLifetimeSeconds);
             var refreshTokenModel = await _tokenService.GenerateRefreshTokenAsync(claims, issuer, false, idpSessionId);
 
-            refreshTokenModel.UserId = authCode.UserId;
-            refreshTokenModel.ClientId = clientId;
-            refreshTokenModel.TenantId = effectiveTenantId!;
-            refreshTokenModel.OrganizationId = authCode.OrganizationId;
-            refreshTokenModel.Audience = tenantAudience;
-            refreshTokenModel.Scope = authCode.Scope;
-            refreshTokenModel.IpAddress = OidcRedirectUrlBuilder.GetClientIpAddress(request);
-            refreshTokenModel.UserAgent = request.Headers["User-Agent"].ToString();
-            refreshTokenModel.IssuedUtc = DateTime.UtcNow;
-            await _refreshTokenRepo.CreateAsync(refreshTokenModel);
+            // UnifiedTokenSessionService.CreateOrRotateRefreshToken (called inside GenerateRefreshTokenAsync)
+            // already persisted this refresh token to MongoDB with full SessionId/ClientId metadata.
+            // Do NOT call _refreshTokenRepo.CreateAsync here — it would (a) duplicate by TokenId ([BsonId])
+            // and (b) fail the tightened RefreshTokenRepository.CreateAsync validation when fields are empty.
 
             _logger.LogInformation("Tokens issued for user {UserId}, client {ClientId}", authCode.UserId, clientId);
 
