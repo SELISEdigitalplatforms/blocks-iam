@@ -106,7 +106,7 @@ export const User = ({ id }: { id: string }) => {
         </div>
 
         {/* Sidebar (image + account details) — col 1, row 2 */}
-        <div className="mx-auto w-full max-w-2xl md:col-start-1 md:mx-0 md:max-w-none md:row-start-2">
+        <div className="w-full md:col-start-1 md:row-start-2">
           <UserProfileSidebar id={id} projectKey={tenantId} />
         </div>
 
