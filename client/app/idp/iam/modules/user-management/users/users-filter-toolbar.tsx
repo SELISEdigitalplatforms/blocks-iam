@@ -54,7 +54,7 @@ export const UsersFilterToolbar = () => {
           {
             key: "search",
             type: "DropdownSearchInput",
-            label: "Search",
+            label: "",
             props: {
               placeholder: "Minimum 3 characters…",
               className: {

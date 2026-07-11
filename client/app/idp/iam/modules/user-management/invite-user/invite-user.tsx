@@ -11,7 +11,7 @@ import {
 import { Input } from "@/components/ui-kits/input/input";
 import { showErrorToast, showSuccessToast } from "@/hooks/use-toast";
 import { useForm } from "react-hook-form";
-import { inviteUserFormDefaultValue, inviteUserFormSchema } from "./utils";
+import { buildInviteUserFormSchema, inviteUserFormDefaultValue, inviteUserFormSchema } from "./utils";
 import { zodResolver } from "@hookform/resolvers/zod";
 import {
   Form,
@@ -60,7 +60,7 @@ export const InviteUser = () => {
 
   const form = useForm<InviteFormValues>({
     defaultValues: inviteUserFormDefaultValue,
-    resolver: zodResolver(inviteUserFormSchema),
+    resolver: zodResolver(buildInviteUserFormSchema(isMultiOrgEnabled)),
     mode: "onChange",
   });
 
@@ -106,13 +106,9 @@ export const InviteUser = () => {
     }
   }, [open, form]);
 
-  // When multi-org is disabled there's nowhere to pick an org from — default
-  // straight to "default" so the form is still submittable without that field.
-  useEffect(() => {
-    if (open && !isConfigLoading && !isMultiOrgEnabled) {
-      form.setValue("organizationIds", [DEFAULT_ORGANIZATION_ID], { shouldValidate: true });
-    }
-  }, [open, isConfigLoading, isMultiOrgEnabled, form]);
+  // When multi-org is disabled the org picker is hidden, and we don't send
+  // organizationIds in the payload — the user is implicitly scoped to the
+  // built-in "default" org on the server side.
 
   // If the form's currently selected org becomes hidden because the existing
   // user is already a member of it, clear it so the trigger label and submit
@@ -192,7 +188,7 @@ const orgOptions = useMemo(() => {
         userCreationType: 1,
         platform: "blocks_portal",
         projectKey: tenantId,
-        organizationIds: values.organizationIds,
+        ...(isMultiOrgEnabled ? { organizationIds: values.organizationIds } : {}),
       });
       if (!res.isSuccess) {
         const msg =
@@ -286,7 +282,7 @@ const orgOptions = useMemo(() => {
                 </>
               )}
 
-              {isValidEmailFormat && !isConfigLoading && (
+              {isValidEmailFormat && !isConfigLoading && isMultiOrgEnabled && (
                 <FormField
                   control={form.control}
                   name="organizationIds"

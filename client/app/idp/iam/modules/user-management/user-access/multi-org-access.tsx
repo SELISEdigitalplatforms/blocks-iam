@@ -180,7 +180,7 @@ export const MultiOrgAccess = ({ userId, projectKey }: MultiOrgAccessProps) => {
   const isLoading = isUserLoading || isOrgsLoading;
 
   return (
-    <div className="flex h-full min-h-0 min-w-0 flex-col rounded-lg border bg-card p-4">
+    <div className="flex h-full min-h-0 min-w-0 flex-col overflow-hidden rounded-lg border bg-card p-4">
       {isLoading ? (
         <div className="space-y-4">
           <Skeleton className="h-6 w-40" />
@@ -192,7 +192,7 @@ export const MultiOrgAccess = ({ userId, projectKey }: MultiOrgAccessProps) => {
           No organizations assigned to this user.
         </div>
       ) : (
-        <div className="flex min-h-0 flex-1 flex-col space-y-6 overflow-y-auto pr-1">
+        <div className="flex min-h-0 flex-1 flex-col space-y-4 overflow-y-auto pr-1">
           <div className="flex items-center justify-between gap-3">
             <Select value={selectedOrgId} onValueChange={selectOrg}>
               <SelectTrigger className="h-auto w-full max-w-[280px] gap-2 border-input bg-background text-md font-semibold text-high-emphasis text-left">
