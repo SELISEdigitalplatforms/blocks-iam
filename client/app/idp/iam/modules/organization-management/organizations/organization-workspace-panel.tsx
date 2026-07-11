@@ -1,7 +1,6 @@
 import { useQueryState } from "nuqs";
 import { useGetOrganizationById } from "@blocks-idp/iam/hooks/use-organization";
 import { useProjectStore } from "@seliseblocks/blocks-kit";
-import { Badge } from "@/components/ui-kits/badge/badge";
 import { Skeleton } from "@/components/ui-kits/skeleton/skeleton";
 import {
   Tabs,
@@ -68,14 +67,9 @@ export const OrganizationWorkspacePanel = ({ organizationId }: OrganizationWorks
             )}
           </div>
           <div className="min-w-0 flex-1">
-            <div className="flex flex-wrap items-center gap-2">
-              <h2 className="truncate text-lg font-semibold text-high-emphasis">
-                {organization.name}
-              </h2>
-              <Badge variant={!organization.isDisabled ? "success" : "secondary"}>
-                {!organization.isDisabled ? "Active" : "Disabled"}
-              </Badge>
-            </div>
+            <h2 className="truncate text-lg font-semibold text-high-emphasis">
+              {organization.name}
+            </h2>
             <CopyToClipboardButton textToCopy={organization.itemId}>
               <p className="break-all text-xs text-muted-foreground">
                 Organization ID: {organization.itemId}
@@ -96,11 +90,11 @@ export const OrganizationWorkspacePanel = ({ organizationId }: OrganizationWorks
           </TabsTrigger>
         </TabsList>
 
-        <div className="mt-4 min-h-0 min-w-0 flex-1 overflow-y-auto">
-          <TabsContent value="details" className="mt-0">
+        <div className="mt-4 flex min-h-0 min-w-0 flex-1 flex-col">
+          <TabsContent value="details" className="mt-0 flex-1">
             <OrganizationDetailsTab organization={organization} />
           </TabsContent>
-          <TabsContent value="members" className="mt-0">
+          <TabsContent value="members" className="mt-0 flex-1">
             <OrganizationUsers
               organizationId={organization.itemId}
               action={<InviteOrganizationUser organizationId={organization.itemId} />}

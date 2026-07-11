@@ -64,15 +64,6 @@ namespace Iam.DomainService.Services
             return true;
         }
 
-        public async Task<bool> InsertUserTimelineAsync(UserTimeline userTimeline)
-        {
-            var collection = GetCollection<UserTimeline>();
-            await collection.InsertOneAsync(userTimeline);
-
-            return true;
-        }
-
-
         public async Task<bool> UpdateUserAsync(User user)
         {
             var collection = GetCollection<User>();

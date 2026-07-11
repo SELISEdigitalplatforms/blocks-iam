@@ -15,12 +15,11 @@ import type {
 import type {
   ISaveSignUpSettingPayload,
   ISaveRolesAndPermissionsPayload,
-  IGetSessionPayload,
-  IGetHistoriesPayload,
-  IGeneratePATPayload,
   IGetUserRolesPayload,
   IGetUserPermissionsPayload,
 } from "../../iam/models/user";
+import type { IGetActivitiesPayload, IActivityItemApi } from "../../iam/security/api";
+import type { IGeneratePATPayload } from "../../iam/security/api";
 import type {
   IRole,
   GetRolesPayload,
@@ -137,18 +136,30 @@ export const mockSaveRolesAndPermissionsPayload: ISaveRolesAndPermissionsPayload
   projectKey: TEST_PROJECT_KEY,
 };
 
-export const mockGetSessionsPayload: IGetSessionPayload = {
-  page: 1,
+export const mockGetHistoriesPayload: IGetActivitiesPayload = {
+  page: 0,
   pageSize: 10,
   userId: MOCK_USER_ITEM_ID,
-  projectKey: TEST_PROJECT_KEY,
 };
 
-export const mockGetHistoriesPayload: IGetHistoriesPayload = {
-  page: 1,
-  pageSize: 10,
+export const mockUserActivity: IActivityItemApi = {
+  itemId: "activity-1",
   userId: MOCK_USER_ITEM_ID,
-  projectKey: TEST_PROJECT_KEY,
+  actorUserId: MOCK_USER_ITEM_ID,
+  category: "Auth",
+  event: "LOGIN_SUCCESS",
+  outcome: "Success",
+  severity: "Info",
+  context: {
+    ipAddress: "127.0.0.1",
+    deviceName: "Chrome on macOS",
+    deviceInformation: {
+      browser: "Chrome",
+      os: "macOS",
+      device: "Macbook",
+    },
+  },
+  createdDate: "2026-07-09T08:56:18.707Z",
 };
 
 export const mockGeneratePATPayload: IGeneratePATPayload = {

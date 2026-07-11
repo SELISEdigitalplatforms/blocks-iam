@@ -372,7 +372,7 @@ const orgOptions = useMemo(() => {
                 </div>
               )}
             </div>
-            <DialogFooter className="shrink-0 border-t pt-4">
+            <DialogFooter className="shrink-0 pt-4">
               <Button
                 type="button"
                 variant="secondary"

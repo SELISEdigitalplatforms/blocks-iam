@@ -2,11 +2,11 @@ using Authentication.DomainService.Entities;
 using Authentication.DomainService.OAuth;
 using Authentication.DomainService.OAuth.RequestModel;
 using Authentication.DomainService.Services;
-using Authentication.DomainService.Shared.Services;
 using Blocks.Genesis;
 using FluentAssertions;
 using Iam.DomainService.Accounts;
 using Iam.DomainService.Entities;
+using Iam.DomainService.Services;
 using Microsoft.Extensions.Logging.Abstractions;
 using Moq;
 
@@ -28,7 +28,8 @@ namespace XUnitTest.Auth.OAuth
                 new Mock<ICryptoService>().Object,
                 new Mock<IAuthenticationRepository>().Object,
                 new Mock<IAuthenticationDomainService>().Object,
-                new Mock<IAccountService>().Object);
+                new Mock<IAccountService>().Object,
+                new Mock<IUserActivityDispatcher>().Object);
 
         private static TokenRequest BuildRequest() => new()
         {

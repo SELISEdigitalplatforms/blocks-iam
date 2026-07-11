@@ -111,7 +111,7 @@ export function Organizations() {
   }
 
   return (
-    <div className="grid h-[calc(100vh-220px)] min-h-[520px] grid-cols-1 gap-4 lg:grid-cols-[380px_1fr]">
+    <div className="grid min-h-0 flex-1 grid-cols-1 grid-rows-[minmax(0,1fr)_minmax(0,1fr)] gap-4 lg:grid-cols-[380px_minmax(0,1fr)] lg:grid-rows-[minmax(0,1fr)]">
       <OrganizationsSidebarList
         organizations={loadedOrgs}
         totalCount={totalCount}
