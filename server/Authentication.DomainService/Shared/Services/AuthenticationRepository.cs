@@ -340,11 +340,6 @@ namespace Authentication.DomainService.Services
             }
         }
 
-        private static string? GetDefaultWellKnownUrl(string? providerName)
-        {
-            return GetSocialMetadata(providerName)?.WellKnownUrl;
-        }
-
         private static SocialMetadata? GetSocialMetadata(string? providerName)
         {
             if (string.IsNullOrWhiteSpace(providerName))
