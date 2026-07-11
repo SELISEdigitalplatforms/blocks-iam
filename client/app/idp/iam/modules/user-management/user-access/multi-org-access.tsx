@@ -7,7 +7,8 @@ import { useGetOrganizations } from "@blocks-idp/iam/hooks/use-organization";
 import { useGetUserById, useUpdateUserAccessControl } from "@blocks-idp/iam/hooks/use-user";
 import { showErrorToast, showSuccessToast } from "@/hooks/use-toast";
 import { Skeleton } from "@/components/ui-kits/skeleton/skeleton";
-import { Building2 } from "lucide-react";
+import { Button } from "@/components/ui-kits/button/button";
+import { Building2, UserMinus } from "lucide-react";
 import { ManageOrganizationDialog } from "../user-memberships/manage-organization-dialog";
 import { RolesPermissionsPillEditor } from "./roles-permissions-pill-editor";
 import { UserOrganizationRow, UserOrganizationsList } from "./user-organizations-list";
@@ -47,6 +48,7 @@ export const MultiOrgAccess = ({ userId, projectKey }: MultiOrgAccessProps) => {
   const [initialRoleSlugs, setInitialRoleSlugs] = useState<string[]>([]);
   const [initialPermissionNames, setInitialPermissionNames] = useState<string[]>([]);
   const [isManageOpen, setIsManageOpen] = useState(false);
+  const [revokeTarget, setRevokeTarget] = useState<UserOrganizationRow | null>(null);
 
   const roleBySlug = useMemo(
     () => new Map((rolesData?.data || []).map((role) => [role.slug, role])),
@@ -172,6 +174,18 @@ export const MultiOrgAccess = ({ userId, projectKey }: MultiOrgAccessProps) => {
         isLoading={isLoading}
         userId={userId}
         projectKey={projectKey}
+        revokeTarget={revokeTarget}
+        onRevokeRequest={setRevokeTarget}
+        onRevokeDialogChange={(open) => !open && setRevokeTarget(null)}
+        onRevokeSuccess={() => {
+          const remaining = organizationRows.filter((row) => row.organizationId !== revokeTarget?.organizationId);
+          if (selectedOrgId === revokeTarget?.organizationId) {
+            const next = remaining[0]?.organizationId ?? "";
+            if (next) selectOrg(next);
+            else setSelectedOrgId("");
+          }
+          setRevokeTarget(null);
+        }}
       />
 
       <div className="min-w-0 rounded-lg border bg-card p-4">
@@ -187,11 +201,23 @@ export const MultiOrgAccess = ({ userId, projectKey }: MultiOrgAccessProps) => {
           </div>
         ) : (
           <div className="space-y-6">
-            <div className="flex items-center gap-2">
-              <h3 className="text-lg font-semibold text-high-emphasis">{selectedOrgRow.name}</h3>
-              {/* <Badge variant={selectedOrgRow.isEnabled ? "success" : "secondary"}>
-                {selectedOrgRow.isEnabled ? "Active" : "Disabled"}
-              </Badge> */}
+            <div className="flex items-center justify-between gap-3">
+              <div className="flex items-center gap-2">
+                <h3 className="text-lg font-semibold text-high-emphasis">{selectedOrgRow.name}</h3>
+                {/* <Badge variant={selectedOrgRow.isEnabled ? "success" : "secondary"}>
+                  {selectedOrgRow.isEnabled ? "Active" : "Disabled"}
+                </Badge> */}
+              </div>
+              <Button
+                variant="destructive-outline"
+                size="xs"
+                className="h-8 gap-1.5 px-3 text-xs font-medium"
+                onClick={() => setRevokeTarget(selectedOrgRow)}
+                aria-label={`Revoke access to ${selectedOrgRow.name}`}
+              >
+                <UserMinus className="h-3.5 w-3.5" />
+                Revoke organization
+              </Button>
             </div>
             <RolesPermissionsPillEditor
               roles={selectedRoles}
