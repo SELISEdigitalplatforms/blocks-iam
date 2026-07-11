@@ -5,8 +5,6 @@ import {
   IAccountResendActivationResponse,
   ICreateUserPayload,
   ICreateUserResponse,
-  IRevokeSessionResponse,
-  IGeneratePATPayload,
   IGetUserByIdPayload,
   IGetUserByIdResponse,
   IGetUserPermissionsPayload,
@@ -15,11 +13,8 @@ import {
   IGetUserRolesResponse,
   IGetUsersPayload,
   IGetUsersResponse,
-  IPATResponse,
   ISaveRolesAndPermissionsPayload,
   ISaveRolesAndPermissionsResponse,
-  ISecurityOverview,
-  ISessionTimeline,
   IUpdateUserPayload,
   IUpdateUserResponse,
   IUpdateUserAccessControlPayload,
@@ -31,10 +26,6 @@ import {
   ISaveSignUpSettingResponse,
   User,
 } from "@blocks-idp/iam/models/user";
-import {
-  IGetActivitiesPayload,
-  IUserActivityResponse,
-} from "@blocks-idp/iam/models/activity";
 import { UserAccountService } from "./account.service";
 import {
   USER_ENDPOINTS,
@@ -175,56 +166,6 @@ export class UserService {
 
   revokeAccess(payload: IRevokeAccessPayload): Promise<IRevokeAccessResponse> {
     return serviceInstances.idpService.post(USER_ENDPOINTS.REVOKE_ACCESS, payload);
-  }
-
-  async getSecurityOverview(): Promise<ISecurityOverview> {
-    return serviceInstances.idpService.get<ISecurityOverview>(
-      USER_ENDPOINTS.GET_SECURITY_OVERVIEW,
-    );
-  }
-
-  async getSessionTimeline(sessionId: string): Promise<ISessionTimeline> {
-    return serviceInstances.idpService.get<ISessionTimeline>(
-      `${USER_ENDPOINTS.REVOKE_SESSION}/${sessionId}`,
-    );
-  }
-
-  async revokeSession(sessionId: string, reason?: string): Promise<IRevokeSessionResponse> {
-    return serviceInstances.idpService.post(
-      `${USER_ENDPOINTS.REVOKE_SESSION}/${sessionId}/revoke`,
-      reason ? { reason } : {},
-    );
-  }
-
-  async revokeRefreshToken(tokenId: string, reason?: string): Promise<IRevokeSessionResponse> {
-    return serviceInstances.idpService.post(
-      USER_ENDPOINTS.REVOKE_REFRESH_TOKEN.replace("{tokenId}", encodeURIComponent(tokenId)),
-      reason ? { reason } : {},
-    );
-  }
-
-  async getActivities(
-    payload: IGetActivitiesPayload,
-  ): Promise<IUserActivityResponse> {
-    const { userId, page, pageSize, sort, filter } = payload;
-    const body = {
-      page,
-      pageSize,
-      ...(sort ? { sort } : {}),
-      ...(filter ? { filter } : {}),
-    };
-    return serviceInstances.idpService.post<IUserActivityResponse>(
-      USER_ENDPOINTS.GET_ACTIVITIES.replace("{userId}", encodeURIComponent(userId)),
-      body,
-    );
-  }
-
-  async getPats(): Promise<IPATResponse> {
-    return serviceInstances.idpService.get(USER_ENDPOINTS.GET_USER_CODES);
-  }
-
-  async generatePats(payload: IGeneratePATPayload): Promise<IPATResponse> {
-    return serviceInstances.idpService.post(USER_ENDPOINTS.GENERATE_USER_CODE, payload);
   }
 
   getUserRoles(payload: IGetUserRolesPayload): Promise<IGetUserRolesResponse> {

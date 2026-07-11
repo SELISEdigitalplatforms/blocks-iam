@@ -2,6 +2,8 @@ using Authentication.DomainService.Security.Contracts;
 using Authentication.DomainService.Security.Models;
 using Authentication.DomainService.Security.Services;
 using Blocks.Genesis;
+using Iam.DomainService.Activity.RequestModel;
+using Iam.DomainService.Dtos;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 
@@ -18,48 +20,73 @@ namespace Api.Controllers
     {
         private readonly ISecurityQueryService _securityQueryService;
         private readonly ISessionRevocationService _sessionRevocationService;
+        private readonly IActivityQueryService _activityQueryService;
 
         public SecurityController(
             ISecurityQueryService securityQueryService,
-            ISessionRevocationService sessionRevocationService)
+            ISessionRevocationService sessionRevocationService,
+            IActivityQueryService activityQueryService)
         {
             _securityQueryService = securityQueryService;
             _sessionRevocationService = sessionRevocationService;
+            _activityQueryService = activityQueryService;
         }
 
-        [HttpGet("overview")]
-        public async Task<ActionResult<SecurityOverviewDto>> GetOverview(CancellationToken ct)
+        [HttpGet("summary")]
+        public async Task<IActionResult> GetSummary([FromQuery] string? uid, CancellationToken ct)
         {
-            var actorUserId = ResolveActorUserId();
-            var result = await _securityQueryService.GetSecurityOverviewAsync(actorUserId, ct);
-            return Ok(result);
+            var actor = ResolveActor(uid);
+            if (string.IsNullOrWhiteSpace(actor))
+            {
+                return BadRequest(new { error = "user_id_required" });
+            }
+            var summary = await _securityQueryService.GetSecuritySummaryAsync(actor, ct);
+            return Ok(summary);
+        }
+
+        [HttpGet("sessions")]
+        public async Task<ActionResult<IReadOnlyList<UserSessionDto>>> GetUserSessions([FromQuery] string? uid, CancellationToken ct)
+        {
+            var actor = ResolveActor(uid);
+            if (string.IsNullOrWhiteSpace(actor))
+            {
+                return BadRequest(new { error = "user_id_required" });
+            }
+            var sessions = await _securityQueryService.GetUserSessionsAsync(actor, ct);
+            return Ok(sessions);
         }
 
         [HttpGet("sessions/{sessionId}")]
-        public async Task<ActionResult<SessionTimelineDto>> GetSessionTimeline(
+        public async Task<ActionResult<SessionDetailsDto>> GetSessionDetails(
             [FromRoute] string sessionId,
+            [FromQuery] string? uid,
             CancellationToken ct)
         {
-            var actorUserId = ResolveActorUserId();
-            var timeline = await _securityQueryService.GetSessionTimelineAsync(actorUserId, sessionId, ct);
-            if (timeline.Session == null)
+            var actor = ResolveActor(uid);
+            if (string.IsNullOrWhiteSpace(actor))
+            {
+                return BadRequest(new { error = "user_id_required" });
+            }
+
+            var details = await _securityQueryService.GetSessionDetailsAsync(actor, sessionId, ct);
+            if (details.Overview == null)
             {
                 return NotFound(new { error = "session_not_found" });
             }
-            return Ok(timeline);
+            return Ok(details);
         }
 
         [HttpPost("sessions/{sessionId}/revoke")]
-        public async Task<ActionResult<RevokeSessionResponse>> RevokeSession(
+        public async Task<IActionResult> RevokeSession(
             [FromRoute] string sessionId,
             [FromBody] RevokeSessionRequest? req,
             CancellationToken ct)
         {
-            var actorUserId = ResolveActorUserId();
-            var currentSessionId = await _securityQueryService.ResolveCurrentSessionIdAsync(actorUserId, ct);
+            var actor = ResolveActor(req.UserId);
+            var currentSessionId = await _securityQueryService.ResolveCurrentSessionIdAsync(actor, ct);
 
             var result = await _sessionRevocationService.RevokeSessionAsync(
-                sessionId, actorUserId, currentSessionId, req?.Reason, ct);
+                sessionId, actor, currentSessionId, req?.Reason, ct);
 
             if (result.Warnings.Contains("cannot_revoke_current_session"))
             {
@@ -70,16 +97,16 @@ namespace Api.Controllers
         }
 
         [HttpPost("revoke/refresh-tokens/{tokenId}")]
-        public async Task<ActionResult<RevokeSessionResponse>> RevokeRefreshToken(
+        public async Task<IActionResult> RevokeRefreshToken(
             [FromRoute] string tokenId,
             [FromBody] RevokeSessionRequest? req,
             CancellationToken ct)
         {
-            var actorUserId = ResolveActorUserId();
-            var currentSessionId = await _securityQueryService.ResolveCurrentSessionIdAsync(actorUserId, ct);
+            var actor = ResolveActor(req.UserId);
+            var currentSessionId = await _securityQueryService.ResolveCurrentSessionIdAsync(actor, ct);
 
             var result = await _sessionRevocationService.RevokeRefreshTokenAsync(
-                tokenId, actorUserId, currentSessionId, req?.Reason, ct);
+                tokenId, actor, currentSessionId, req?.Reason, ct);
 
             if (result.Warnings.Contains("cannot_revoke_current_session"))
             {
@@ -89,6 +116,56 @@ namespace Api.Controllers
             return Ok(result);
         }
 
-        private string ResolveActorUserId() => BlocksContext.GetContext()?.UserId ?? string.Empty;
+        [HttpPost("activity")]
+        public async Task<IActionResult> GetActivity(
+            [FromBody] GetActivityPayload payload,
+            CancellationToken ct)
+        {
+            var actor = ResolveActor(payload?.UserId);
+            if (string.IsNullOrWhiteSpace(actor))
+            {
+                return BadRequest(new { error = "user_id_required" });
+            }
+
+            var req = new GetActivitiesRequest
+            {
+                Page = payload.Page ?? 0,
+                PageSize = payload.PageSize ?? 25,
+                Filter = new GetActivitiesFilter
+                {
+                    SessionId = payload.SessionId,
+                    ClientId = payload.ClientId,
+                    Events = payload.Events,
+                    Outcomes = payload.Outcomes,
+                    Categories = payload.Categories,
+                    From = payload.From,
+                    To = payload.To,
+                    Search = payload.Search,
+                },
+            };
+
+            var response = await _activityQueryService.GetActivityPageAsync(actor, req, ct);
+            return Ok(response);
+        }
+
+        public sealed class GetActivityPayload
+        {
+            public int? Page { get; set; }
+            public int? PageSize { get; set; }
+            public string? SessionId { get; set; }
+            public string? ClientId { get; set; }
+            public List<string>? Events { get; set; }
+            public List<string>? Outcomes { get; set; }
+            public List<UserActivityCategory>? Categories { get; set; }
+            public DateTime? From { get; set; }
+            public DateTime? To { get; set; }
+            public string? Search { get; set; }
+            public string? UserId { get; set; }
+        }
+
+        private static string ResolveActor(string? userIdOverride = null) =>
+            !string.IsNullOrWhiteSpace(userIdOverride)
+                ? userIdOverride
+                : BlocksContext.GetContext()?.UserId ?? string.Empty;
     }
 }

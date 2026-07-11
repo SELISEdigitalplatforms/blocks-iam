@@ -1,6 +1,5 @@
 import { IPermission } from "./permission";
 import { IRole } from "./role";
-import { IRefreshTokenRotation } from "./refresh-token";
 
 export interface User {
   itemId: string;
@@ -148,28 +147,15 @@ export interface IUpdateUserAccessControlResponse {
   errors: unknown | null;
   isSuccess: boolean;
 }
+
 export interface IRevokeAccessPayload {
   userId: string;
   organizationId: string;
 }
+
 export interface IRevokeAccessResponse {
   errors: unknown | null;
   isSuccess: boolean;
-}
-
-export interface IRevokeSessionResponse {
-  sessionId: string;
-  alreadyRevoked: boolean;
-  revokedAt: string;
-  reason: string | null;
-  revokedRefreshTokens: number;
-  warnings: string[];
-}
-
-export interface IGeneratePATPayload {
-  note?: string;
-  codeTtlInMinute: number;
-  clientId: string;
 }
 
 export interface IGetUserRolesPayload {
@@ -197,7 +183,6 @@ export interface UserDetailsDevicesData {
   lastAccessOn: string;
 }
 
-// Interface for the data we pass to the InviteUser modal
 export interface EditUserData {
   itemId: string;
   firstName: string;
@@ -205,123 +190,6 @@ export interface EditUserData {
   email: string;
   phoneNumber: string | null;
   salutation: string;
-}
-
-export interface IAppSession {
-  tokenId: string;
-  sessionId: string;
-  userId: string;
-  tenantId: string;
-  organizationId?: string | null;
-  clientId?: string | null;
-  grantType?: string | null;
-  ipAddresses?: string | null;
-  userAgent?: string | null;
-  deviceName?: string | null;
-  deviceModel?: string | null;
-  operatingSystem?: string | null;
-  browser?: string | null;
-  issuedUtc?: string;
-  slidingExpiry?: string;
-  absoluteExpiry?: string;
-  isActive: boolean;
-  impersonated: boolean;
-  impersonationId?: string | null;
-}
-
-export interface ISessionGroup {
-  sessionId: string;
-  tenantId: string;
-  userId?: string | null;
-  createdAt?: string;
-  lastActivityAt?: string;
-  isCurrent: boolean;
-  apps: IAppSession[];
-}
-
-export interface IIdpSessionAccount {
-  userId?: string | null;
-  tenantId?: string | null;
-  displayName?: string | null;
-  loginAt?: string;
-}
-
-export interface IIdpSession {
-  sessionId?: string | null;
-  tenantId?: string | null;
-  accounts: IIdpSessionAccount[];
-  ipAddress?: string | null;
-  createdAt?: string;
-  lastActivityAt?: string;
-  idleExpiry?: string;
-  absoluteExpiry?: string;
-  isRevoked: boolean;
-}
-
-export interface IRevokedAccessToken {
-  jti?: string | null;
-  revokedAt?: string | null;
-  reason?: string | null;
-}
-
-export interface IRefreshTokenStatus {
-  tokenId?: string | null;
-  isRevoked: boolean;
-  issuedAt?: string | null;
-  absoluteExpiry?: string | null;
-  revokedAt?: string | null;
-  revokeReason?: string | null;
-}
-
-export interface ISessionTimeline {
-  sessionId?: string | null;
-  session?: ISessionGroup | null;
-  refreshTokenStatus?: IRefreshTokenStatus | null;
-  revokedAccessTokens: IRevokedAccessToken[];
-  lifecycle: IAuthHistoryEvent[];
-  rotations: IRefreshTokenRotation[];
-}
-
-export interface IAuthHistoryEvent {
-  event?: string | null;
-  actionBy?: string | null;
-  deviceName?: string | null;
-  deviceType?: string | null;
-  deviceInformation?: {
-    browser?: string;
-    os?: string;
-    device?: string;
-  } | null;
-  ipAddresses?: string | null;
-  sessionId?: string | null;
-  tenantId?: string | null;
-  clientId?: string | null;
-  correlationId?: string | null;
-  outcome?: string | null;
-  reasonCode?: string | null;
-  riskLevel?: string | null;
-  createdDate?: string;
-}
-
-export interface ISecurityOverview {
-  currentSessionId?: string | null;
-  sessionGroups: ISessionGroup[];
-  idpSession: IIdpSession | null;
-}
-
-export interface IPATResponse {
-  note: string;
-  itemId: string;
-  createdDate: Date;
-  expiryDate: Date;
-  createdBy: string;
-  language: string;
-  lastUpdatedBy: string;
-  organizationIds: string[];
-  tags: string[];
-  code: string;
-  userId: string;
-  clientId: string;
 }
 
 export const status = [
