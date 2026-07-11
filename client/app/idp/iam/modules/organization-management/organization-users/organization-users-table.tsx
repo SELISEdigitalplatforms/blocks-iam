@@ -22,9 +22,9 @@ type OrganizationUsersTableProps = {
 };
 
 const LoadingSkelton = () => (
-  <div className="flex flex-col gap-3">
+  <div className="flex flex-col gap-1.5">
     {Array.from({ length: 8 }).map((_, index) => (
-      <Skeleton key={index} className="h-[72px] w-full rounded-xl" />
+      <Skeleton key={index} className="h-11 w-full rounded-xl" />
     ))}
   </div>
 );
@@ -78,10 +78,9 @@ export const OrganizationUsersTable = ({
   const scoped = useScopedPath();
   const { sortQueryParams, setSortQueryParams } = useOrganizationUsersSortQueryParams();
 
-  const [confirmRevoke, setConfirmRevoke] = useState<User | null>(null);
+const [confirmRevoke, setConfirmRevoke] = useState<User | null>(null);
   const { mutateAsync, isPending } = useRevokeAccess({
     id: confirmRevoke?.itemId ?? "",
-    projectKey,
   });
 
   const handleRowClick = (itemId: string) => {
@@ -133,9 +132,9 @@ export const OrganizationUsersTable = ({
           becomes horizontally scrollable on md+ when the viewport is narrower
           than the grid's intrinsic width. */}
       <div className="overflow-x-auto">
-        <div className="flex min-w-[860px] flex-col gap-3">
+        <div className="flex min-w-[860px] flex-col gap-1.5">
           {/* Column headers */}
-          <div className="hidden grid-cols-[220px_minmax(0,1fr)_90px_140px_40px_16px] items-center gap-4 px-4 md:grid">
+          <div className="hidden grid-cols-[220px_minmax(0,1fr)_90px_140px_40px_16px] items-center gap-2 px-2 text-xs md:grid">
             <div className="min-w-0">
               <FilterControls.SortHeader
                 id="FirstName"
@@ -186,18 +185,18 @@ export const OrganizationUsersTable = ({
                 onKeyDown={(e) => {
                   if (e.key === "Enter" || e.key === " ") handleRowClick(user.itemId);
                 }}
-                className="group grid cursor-pointer grid-cols-1 gap-3 rounded-xl border bg-card p-4 transition-colors hover:border-primary/30 md:grid-cols-[220px_minmax(0,1fr)_90px_140px_40px_16px] md:items-center md:gap-4"
+                className="group grid cursor-pointer grid-cols-1 gap-1.5 rounded-xl border bg-card p-2 transition-colors hover:border-primary/30 md:grid-cols-[220px_minmax(0,1fr)_90px_140px_40px_16px] md:items-center md:gap-2"
               >
                 {/* Avatar + name */}
-                <div className="flex min-w-0 items-center gap-3">
-                  <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-primary/10 text-xs font-semibold text-primary">
+                <div className="flex min-w-0 items-center gap-2">
+                  <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-primary/10 text-[11px] font-semibold text-primary">
                     {getInitials(user.firstName, user.lastName)}
                   </div>
                   <div className="min-w-0">
-                    <p className="truncate text-sm font-semibold text-high-emphasis">{fullName}</p>
+                    <p className="truncate text-xs font-semibold leading-tight text-high-emphasis">{fullName}</p>
                     <div className="md:hidden">
                       <CopyToClipboardButton textToCopy={user.email} isHoverable>
-                        <span className="truncate text-xs lowercase text-muted-foreground">
+                        <span className="truncate text-[11px] leading-tight lowercase text-muted-foreground">
                           {user.email || "-"}
                         </span>
                       </CopyToClipboardButton>
@@ -208,7 +207,7 @@ export const OrganizationUsersTable = ({
                 {/* Email — desktop only */}
                 <div className="hidden min-w-0 md:block">
                   <CopyToClipboardButton textToCopy={user.email} isHoverable>
-                    <span className="truncate text-sm lowercase text-muted-foreground">
+                    <span className="truncate text-xs lowercase text-muted-foreground">
                       {user.email || "-"}
                     </span>
                   </CopyToClipboardButton>
@@ -222,8 +221,8 @@ export const OrganizationUsersTable = ({
                 </div>
 
                 {/* Last login */}
-                <div className="md:shrink-0 md:text-sm md:text-muted-foreground">
-                  <span className="block text-xs text-muted-foreground md:hidden">Last login</span>
+                <div className="md:shrink-0 md:text-xs md:text-muted-foreground">
+                  <span className="block text-[11px] text-muted-foreground md:hidden">Last login</span>
                   {hasLastLogin
                     ? formatDate(parseDateString(user.lastLoggedInTime))
                     : "Never logged in"}
@@ -240,14 +239,14 @@ export const OrganizationUsersTable = ({
                     variant="ghost"
                     aria-label="Revoke from organization"
                     title="Revoke from organization"
-                    className="h-8 w-8 text-destructive hover:bg-destructive/10"
+                    className="h-6 w-6 text-destructive hover:bg-destructive/10"
                     onClick={() => setConfirmRevoke(user)}
                   >
-                    <UserMinus className="h-4 w-4" />
+                    <UserMinus className="h-3.5 w-3.5" />
                   </Button>
                 </div>
 
-                <ChevronRight className="hidden h-4 w-4 shrink-0 text-muted-foreground transition-transform group-hover:translate-x-0.5 md:block" />
+                <ChevronRight className="hidden h-3.5 w-3.5 shrink-0 text-muted-foreground transition-transform group-hover:translate-x-0.5 md:block" />
               </div>
             );
           })}

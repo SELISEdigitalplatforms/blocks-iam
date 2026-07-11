@@ -19,7 +19,11 @@ export class PermissionService {
   getPermissions(
     payload: IGetPermissionsPayload,
   ): Promise<IAPIResponse<IPermission[]> & { totalCount: number }> {
-    return serviceInstances.idpService.post(PERMISSION_ENDPOINTS.GET_PERMISSIONS, payload);
+    const { projectKey, ...rest } = payload;
+    return serviceInstances.idpService.post(PERMISSION_ENDPOINTS.GET_PERMISSIONS, {
+      ...rest,
+      organizationId: projectKey,
+    });
   }
 
   getPermissionsSeverity(): Promise<IGetPermissionsSeverityResponse> {

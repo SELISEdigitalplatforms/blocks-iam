@@ -34,6 +34,15 @@ type MultiOrgAccessProps = {
 };
 
 export const MultiOrgAccess = ({ userId, projectKey }: MultiOrgAccessProps) => {
+  const [selectedOrgId, setSelectedOrgId] = useState("");
+  const [selectedRoles, setSelectedRoles] = useState<IRole[]>([]);
+  const [selectedPermissions, setSelectedPermissions] = useState<IPermission[]>([]);
+  const [initialRoleSlugs, setInitialRoleSlugs] = useState<string[]>([]);
+  const [initialPermissionNames, setInitialPermissionNames] = useState<string[]>([]);
+  const [isManageOpen, setIsManageOpen] = useState(false);
+  const [revokeTarget, setRevokeTarget] = useState<UserOrganizationRow | null>(null);
+
+  const orgScopedKey = selectedOrgId || projectKey;
   const { data: userData, isLoading: isUserLoading } = useGetUserById({ id: userId, projectKey });
   const { data: orgsData, isLoading: isOrgsLoading } = useGetOrganizations({
     projectKey,
@@ -45,25 +54,17 @@ export const MultiOrgAccess = ({ userId, projectKey }: MultiOrgAccessProps) => {
     pageSize: 1000,
     sort: { property: "Name", isDescending: false },
     filter: { search: "" },
-    projectKey,
+    projectKey: orgScopedKey,
   });
   const { data: permissionsData } = useGetPermissions({
-    projectKey,
+    projectKey: orgScopedKey,
     page: 0,
     pageSize: 1000,
     search: "",
     isBuiltIn: "",
     roles: [],
   });
-  const { mutateAsync } = useUpdateUserAccessControl({ id: userId, projectKey });
-
-  const [selectedOrgId, setSelectedOrgId] = useState("");
-  const [selectedRoles, setSelectedRoles] = useState<IRole[]>([]);
-  const [selectedPermissions, setSelectedPermissions] = useState<IPermission[]>([]);
-  const [initialRoleSlugs, setInitialRoleSlugs] = useState<string[]>([]);
-  const [initialPermissionNames, setInitialPermissionNames] = useState<string[]>([]);
-  const [isManageOpen, setIsManageOpen] = useState(false);
-  const [revokeTarget, setRevokeTarget] = useState<UserOrganizationRow | null>(null);
+  const { mutateAsync } = useUpdateUserAccessControl({ id: userId, projectKey: orgScopedKey });
 
   const roleBySlug = useMemo(
     () => new Map((rolesData?.data || []).map((role) => [role.slug, role])),
