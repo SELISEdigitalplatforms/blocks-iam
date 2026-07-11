@@ -1,7 +1,10 @@
+using System.Text.Json.Serialization;
+
 namespace Authentication.DomainService.Security.Models
 {
     public sealed class TimelineEventDto
     {
+        [JsonConverter(typeof(JsonStringEnumConverter))]
         public TimelineEventType Type { get; set; }
         public DateTime At { get; set; }
         public string? Event { get; set; }
