@@ -42,8 +42,12 @@ namespace Iam.DomainService.Resources
         public async Task<GetPermissionsResponse> GetPermissionsAsync(GetPermissionsRequest query)
         {
             _logger.LogInformation("Permissions get start");
+            var bc = BlocksContext.GetContext();
+            var orgId = bc?.OrganizationId == "default" && !string.IsNullOrWhiteSpace(query.OrganizationId)
+                ? query.OrganizationId
+                : null;
 
-            var (data, count) = await _resourceRepository.GetPermissionsAsync(query);
+            var (data, count) = await _resourceRepository.GetPermissionsAsync(query, orgId);
 
             _logger.LogInformation("Permissions get end");
 
@@ -71,8 +75,12 @@ namespace Iam.DomainService.Resources
         public async Task<GetRolesResponse> GetRolesAsync(GetRolesRequest query)
         {
             _logger.LogInformation("Roles get start");
+            var bc = BlocksContext.GetContext();
+            var orgId = bc?.OrganizationId == "default" && !string.IsNullOrWhiteSpace(query.OrganizationId)
+                ? query.OrganizationId
+                : null;
 
-            var (data, count) = await _resourceRepository.GetRolesAsync(query);
+            var (data, count) = await _resourceRepository.GetRolesAsync(query, orgId);
 
             _logger.LogInformation("Roles get end");
 
