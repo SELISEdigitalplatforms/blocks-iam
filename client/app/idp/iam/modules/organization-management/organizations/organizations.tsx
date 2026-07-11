@@ -89,11 +89,10 @@ export function Organizations() {
             </div>
             <div className="flex flex-col gap-2">
               <h3 className="text-base font-semibold text-foreground">
-                Multiple Organizations not enabled
+                Multiple Organizations is not enabled
               </h3>
               <p className="text-sm leading-relaxed text-muted-foreground">
-                To view and manage organizations, you first need to enable the Multiple
-                Organization feature from organization configuration.
+                Enable Multiple Organizations in Organization Configuration to view and manage organizations in this workspace.
               </p>
             </div>
             <OrganizationConfig

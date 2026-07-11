@@ -149,16 +149,20 @@ const ProfileHeading = ({ id, projectKey }: { id: string; projectKey: string }) 
       ? `${firstName} ${lastName}`
       : firstName || lastName || "Profile";
   return (
-    <div className="flex min-w-0 items-center gap-2">
-      <h1 className="truncate text-2xl font-semibold tracking-tight text-foreground">
-        {displayName}
-      </h1>
-      <UpdateUser id={id} projectKey={projectKey} own iconOnly />
-      <span className="ml-2 text-xs text-muted-foreground">
-        <CopyToClipboardButton textToCopy={id}>
-          <span className="sr-only">Copy user id</span>
+    <div className="flex min-w-0 flex-col gap-0.5">
+      <div className="flex min-w-0 items-center gap-2">
+        <h1 className="truncate text-2xl font-semibold tracking-tight text-foreground">
+          {displayName}
+        </h1>
+        <UpdateUser id={id} projectKey={projectKey} own iconOnly />
+      </div>
+      {user?.email && (
+        <CopyToClipboardButton textToCopy={user.email}>
+          <span className="truncate text-xs text-muted-foreground transition-colors hover:text-foreground">
+            {user.email}
+          </span>
         </CopyToClipboardButton>
-      </span>
+      )}
     </div>
   );
 };
