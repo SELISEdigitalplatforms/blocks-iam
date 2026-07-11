@@ -46,7 +46,7 @@ export const UserProfileSidebar = ({ id, projectKey }: UserProfileSidebarProps) 
   return (
     <Card className="overflow-hidden rounded-none border-0 bg-transparent px-0 shadow-none">
       {/* Avatar */}
-      <div className="relative mx-auto w-full max-w-[280px]" style={{ aspectRatio: "1 / 1" }}>
+      <div className="relative mx-auto w-full max-w-[160px]" style={{ aspectRatio: "1 / 1" }}>
         <ProfileImageUploader
           id={id}
           projectKey={projectKey}
