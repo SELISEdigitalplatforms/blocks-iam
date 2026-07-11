@@ -27,7 +27,7 @@ export const UserHistories = ({ id }: HistoriesProps) => {
   return (
     <Card className="flex h-full min-h-[420px] flex-col">
       <CardHeader>
-        <h3 className="text-base font-semibold text-high-emphasis">Activity</h3>
+        <h3 className="text-base font-semibold text-high-emphasis">History</h3>
         <p className="mt-0.5 text-sm text-muted-foreground">
           A history of security-related activity on your account.
         </p>
