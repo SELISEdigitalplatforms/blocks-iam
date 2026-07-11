@@ -68,8 +68,8 @@ export const OrganizationDetailsTab = ({ organization }: { organization: IOrgani
     .join(", ");
 
   return (
-    <Card>
-      <CardContent>
+    <Card className="flex h-full min-h-0 flex-col overflow-hidden mt-4">
+      <CardContent className="min-h-0 flex-1 overflow-y-auto">
         <DetailRow
           icon={<SquarePen className="h-4 w-4" />}
           label="Description"
