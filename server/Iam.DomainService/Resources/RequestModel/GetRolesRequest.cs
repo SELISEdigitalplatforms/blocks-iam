@@ -6,7 +6,7 @@ namespace Iam.DomainService.Resources
 {
     public class GetRolesRequest : BaseGetsRequest<GetRolesFilter>
     {
-
+        public string? OrganizationId {get; set;}
     }
     public class GetRolesResponse : BaseQueryListResponse<IQueryable<Role>>
     {

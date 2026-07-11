@@ -1,13 +1,9 @@
-using Authentication.DomainService.Dtos;
 using Authentication.DomainService.Utilities;
 using Iam.DomainService.Utilities;
-using Authentication.DomainService.Worker;
 using Blocks.Genesis;
 using Iam.DomainService.Accounts;
 using Iam.DomainService.Dtos;
-using Iam.DomainService.Resources.TenantPropagation;
 using Iam.DomainService.Users;
-using MongoDB.Driver;
 using SeliseBlocks.ConfigurationDriver;
 using Worker;
 using Worker.Configuration;
@@ -47,13 +43,10 @@ IHostBuilder CreateHostBuilder(string[] args) =>
         services.Configure<PeriodicPingConfiguration>(
             configuration.GetSection("PeriodicPingConfiguration"));
 
-        services.AddSingleton<IConsumer<RefreshTokenEvent>, RefreshTokenWorkerService>();
-        services.AddSingleton<IConsumer<UserAuthenticationTimelineEvent>, UserAuthenticationTimelineWorkerService>();
-
         services.AddSingleton<IConsumer<ResourceMutationEvent>, ResourceMutationConsumer>();
         services.AddSingleton<IConsumer<ResourceSetToPermissionMutationEvent>, ResourceSetToPermissionMutationConsumer>();
         services.AddSingleton<IConsumer<UserMutationEvent>, UserMutationConsumer>();
-        services.AddSingleton<IConsumer<AccountActivityEvent>, AccountActivityWorkerService>();
+        services.AddSingleton<IConsumer<UserActivityEvent>, UserActivityWorker>();
         services.AddSingleton<IConsumer<CreateUserByEmailEvent>, CreateUserByEmailConsumer>();
         services.AddSingleton<IConsumer<CreateUserRequest>, CreateUserConsumer>();
         services.AddSingleton<IConsumer<CreateUserViaSsoEvent>, CreateUserViaSsoConsumer>();
@@ -62,11 +55,6 @@ IHostBuilder CreateHostBuilder(string[] args) =>
         services.AddSingleton<IConsumer<PermissionMutationForTenantsEvent>, PermissionMutationForTenantsConsumer>();
 
         services.AddHostedService<PeriodicPingBackgroundService>();
-
-        services.AddMemoryCache();
-        services.AddSingleton<IMongoDatabase>(_ =>
-            new MongoClient(secret.DatabaseConnectionString).GetDatabase(secret.RootDatabaseName));
-        services.AddSingleton<ITenantEnumeration, TenantEnumeration>();
 
         services.RegisterAllServices();
 

@@ -10,6 +10,7 @@ namespace Authentication.DomainService.Security.Utilities
         {
             services.AddSingleton<ISecurityRepository, SecurityRepository>();
             services.AddSingleton<ISecurityQueryService, SecurityQueryService>();
+            services.AddSingleton<IActivityQueryService, ActivityQueryService>();
             services.AddSingleton<ISessionRevocationService, SessionRevocationService>();
             services.AddHttpContextAccessor();
         }

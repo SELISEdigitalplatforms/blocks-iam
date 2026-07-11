@@ -228,36 +228,9 @@ namespace Iam.DomainService.Users
             return await _identityAccessManagementRepository.InsertUserKeyMapAsync(userKeyMap);
         }
 
-        public async Task<bool> InsertUserTimelineAsync(UserTimeline userTimeline)
-        {
-            return await _identityAccessManagementRepository.InsertUserTimelineAsync(userTimeline);
-        }
-
         public async Task<bool> UpdateUserAsync(User user)
         {
             return await _identityAccessManagementRepository.UpdateUserAsync(user);
-        }
-
-        public async Task<List<UserTimeline>> GetUserTimelinesAsync(GetUserTimeLineRequest request)
-        {
-            var collection = _identityAccessManagementRepository.GetCollection<UserTimeline>();
-            var builder = Builders<UserTimeline>.Filter;
-            var contextOrgId = ResolveOrganizationId(null);
-            var userId = BlocksContext.GetContext()?.UserId;
-            var filter = builder.Eq(x => x.OrganizationId, contextOrgId)
-                         & builder.Eq(x => x.UserId, userId);
-
-            if (!string.IsNullOrWhiteSpace(request?.Filter.Event))
-                filter = builder.Eq(x => x.Event, request.Filter.Event);
-
-            var options = new FindOptions<UserTimeline>
-            {
-                Skip = request.PageSize * request.Page,
-                Limit = request.PageSize
-            };
-
-            var userTimeLines = await collection.FindAsync(filter, options);
-            return await userTimeLines.ToListAsync();
         }
 
         public async Task<string> GetProjectIdFromProjectPeopleAsync(string userId)

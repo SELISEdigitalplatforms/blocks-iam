@@ -1,8 +1,4 @@
-import { useState } from "react";
-import { Card, CardContent, CardHeader } from "@/components/ui-kits/card/card";
-import { Pagination } from "@/components/ui-kits/pagination/pagination";
-import { useGetSessions } from "@blocks-idp/iam/hooks/use-activity";
-import { UserDevicesList } from "./user-devices-list";
+import { SessionListCard } from "@blocks-idp/iam/security/components/session-list-card";
 
 type DevicesProps = {
   id: string;
@@ -10,39 +6,5 @@ type DevicesProps = {
 };
 
 export const UserDevices = ({ id }: DevicesProps) => {
-  const [filter, setFilter] = useState({ page: 0, pageSize: 10, userId: id });
-  const { isLoading, isFetching, data, refetch } = useGetSessions({
-    ...filter,
-  });
-  const loading = isLoading || isFetching;
-
-  return (
-    <Card className="flex h-full min-h-[420px] flex-col">
-      <CardHeader>
-        <h3 className="text-base font-semibold text-high-emphasis">Sessions</h3>
-        <p className="mt-0.5 text-sm text-muted-foreground">
-          These are the places where you&apos;re currently signed in.
-        </p>
-      </CardHeader>
-      <CardContent className="flex-1 overflow-y-auto">
-        <UserDevicesList
-          isLoading={loading}
-          data={data?.data || []}
-          onRevoked={() => refetch()}
-        />
-        {!loading && data && data.totalCount > filter.pageSize && (
-          <div className="mt-5 flex md:justify-end">
-            <Pagination
-              page={filter.page}
-              pageSize={filter.pageSize}
-              onChange={(page) => setFilter((filter) => ({ ...filter, page }))}
-              totalCount={data?.totalCount || 0}
-              onPageSizeChange={(pageSize) => setFilter((filter) => ({ ...filter, pageSize }))}
-              pageSizeOptions={[5, 10, 20, 40]}
-            />
-          </div>
-        )}
-      </CardContent>
-    </Card>
-  );
+  return <SessionListCard showSignOut userId={id} />;
 };
