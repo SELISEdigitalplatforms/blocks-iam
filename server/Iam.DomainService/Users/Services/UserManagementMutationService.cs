@@ -17,6 +17,7 @@ namespace Iam.DomainService.Users
     public class UserManagementMutationService : IUserManagementMutationService
     {
         private const string DefaultOrganizationId = "default";
+        private const int MaxPermissionsPerUser = 5;
         private readonly ILogger<UserManagementMutationService> _logger;
         private readonly IValidator<CreateUserRequest> _createValidator;
         private readonly IValidator<UpdateUserRequest> _updateValidator;
@@ -137,6 +138,16 @@ namespace Iam.DomainService.Users
             command.Permissions ??= organization != null && organization.DefaultPermissionsForMembers != null && organization.DefaultPermissionsForMembers.Count > 0
                     ? organization.DefaultPermissionsForMembers
                     : [];
+
+            if (command.Permissions != null && command.Permissions.Count > MaxPermissionsPerUser)
+            {
+                throw new ValidationException(new[]
+                {
+                    new FluentValidation.Results.ValidationFailure(
+                        nameof(command.Permissions),
+                        $"A maximum of {MaxPermissionsPerUser} permissions can be added with any user permission.")
+                });
+            }
 
             var user = MapUser(command);
             await _userRepository.CreateUserAsync(user);
@@ -436,6 +447,18 @@ namespace Iam.DomainService.Users
                 }
             }
 
+            if (command.Permissions != null && command.Permissions.Count > MaxPermissionsPerUser)
+            {
+                _logger.LogInformation("Update User Access Control end -- Validation Error");
+                return new BaseMutationResponse
+                {
+                    Errors = new Dictionary<string, string>
+                    {
+                        { nameof(command.Permissions), $"A maximum of {MaxPermissionsPerUser} permissions can be added with any user permission." }
+                    }
+                };
+            }
+
             user.Roles ??= new Dictionary<string, List<string>>();
             user.Permissions ??= new Dictionary<string, List<string>>();
 
@@ -443,7 +466,7 @@ namespace Iam.DomainService.Users
             if (isAddToOrganization)
             {
                 user.OrganizationIds.Add(organizationId);
-                user.Roles[organizationId] = command.Roles?.Count > 0 ? command.Roles : new List<string> { "user" };
+                user.Roles[organizationId] = command.Roles?.Count > 0 ? command.Roles : new List<string>();
                 user.Permissions[organizationId] = command.Permissions ?? new List<string>();
             }
             else

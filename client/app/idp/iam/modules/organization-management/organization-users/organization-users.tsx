@@ -52,10 +52,12 @@ export const OrganizationUsers = ({
           {description && (
             <p className="text-sm text-muted-foreground">{description}</p>
           )}
+          <div>
+            <OrganizationUsersFilterToolbar />
+          </div>
         </div>
-        <div className="ml-auto flex flex-row flex-wrap items-center gap-3">
+        <div className="ml-auto flex shrink-0 items-center gap-3">
           {action}
-          <OrganizationUsersFilterToolbar />
         </div>
       </CardHeader>
 
