@@ -1,4 +1,4 @@
-import { Card, CardContent, CardHeader } from "@/components/ui-kits/card/card";
+import { Card, CardContent } from "@/components/ui-kits/card/card";
 import { useGetSecurityOverview } from "@blocks-idp/iam/hooks/use-activity";
 import { UserDevicesList } from "./user-devices-list";
 
@@ -15,9 +15,6 @@ export const UserDevices = (_props: DevicesProps) => {
 
   return (
     <Card className="flex h-full min-h-0 flex-col">
-      <CardHeader>
-
-      </CardHeader>
       <CardContent className="flex-1 overflow-y-auto">
         <UserDevicesList
           isLoading={loading}
