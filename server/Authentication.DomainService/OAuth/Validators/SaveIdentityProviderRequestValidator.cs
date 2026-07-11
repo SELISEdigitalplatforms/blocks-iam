@@ -18,7 +18,7 @@ namespace Authentication.DomainService.OAuth
 
             RuleFor(x => x.ProviderType)
                 .NotEmpty().WithMessage("ProviderType is required.")
-                .Must(BeInProviderTypes).WithMessage("ProviderType must be one of: social, enterprise, custom, internal.");
+                .Must(BeInProviderTypes).WithMessage("ProviderType must be one of: social, byos orblocks-oidc");
 
             RuleFor(x => x.Protocol)
                 .NotEmpty().WithMessage("Protocol is required.")
@@ -26,10 +26,6 @@ namespace Authentication.DomainService.OAuth
 
             RuleFor(x => x.ClientId)
                 .NotEmpty().WithMessage("ClientId is required.");
-
-            RuleFor(x => x)
-                .Must(HaveAtLeastOneEndpoint)
-                .WithMessage("At least one of WellKnownUrl or (AuthorizationUrl + TokenUrl) is required.");
 
             RuleFor(x => x.WellKnownUrl)
                 .Cascade(CascadeMode.Stop)
@@ -75,23 +71,13 @@ namespace Authentication.DomainService.OAuth
         private static bool BeInProviderTypes(string? value)
         {
             if (string.IsNullOrWhiteSpace(value)) return false;
-            return value is "social" or "enterprise" or "custom" or "internal";
+            return value is "social" or "byos" or "blocks-oidc";
         }
 
         private static bool BeInProtocols(string? value)
         {
             if (string.IsNullOrWhiteSpace(value)) return false;
             return value is "oidc" or "oauth2" or "saml" or "ldap";
-        }
-
-        private static bool HaveAtLeastOneEndpoint(SaveIdentityProviderRequest req)
-        {
-            var hasWellKnown = !string.IsNullOrWhiteSpace(req.WellKnownUrl);
-            var hasAuthAndToken = !string.IsNullOrWhiteSpace(req.AuthorizationUrl) && !string.IsNullOrWhiteSpace(req.TokenUrl);
-            if (hasWellKnown || hasAuthAndToken) return true;
-            if (string.Equals(req.Protocol, "saml", StringComparison.OrdinalIgnoreCase))
-                return !string.IsNullOrWhiteSpace(req.Issuer);
-            return false;
         }
 
         private static bool BeAValidUrl(string? url)

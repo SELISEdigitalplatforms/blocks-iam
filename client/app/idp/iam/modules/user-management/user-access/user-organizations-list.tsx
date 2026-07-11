@@ -1,7 +1,6 @@
-import { useState } from "react";
 import { Button } from "@/components/ui-kits/button/button";
 import { Skeleton } from "@/components/ui-kits/skeleton/skeleton";
-import { Building2, Plus } from "lucide-react";
+import { Building2 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { IMembership } from "@blocks-idp/iam/models/user";
 import { RemoveMembership } from "../user-memberships/remove-membership";
@@ -22,6 +21,10 @@ type UserOrganizationsListProps = {
   isLoading: boolean;
   userId: string;
   projectKey: string;
+  revokeTarget: UserOrganizationRow | null;
+  onRevokeRequest: (org: UserOrganizationRow) => void;
+  onRevokeDialogChange: (open: boolean) => void;
+  onRevokeSuccess: () => void;
 };
 
 export const UserOrganizationsList = ({
@@ -32,9 +35,11 @@ export const UserOrganizationsList = ({
   isLoading,
   userId,
   projectKey,
+  revokeTarget,
+  onRevokeRequest,
+  onRevokeDialogChange,
+  onRevokeSuccess,
 }: UserOrganizationsListProps) => {
-  const [removeTarget, setRemoveTarget] = useState<UserOrganizationRow | null>(null);
-
   return (
     <div className="flex flex-col gap-3 rounded-lg border bg-card p-3">
       <div>
@@ -80,17 +85,7 @@ export const UserOrganizationsList = ({
                     </p>
                   </div>
                 </button>
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  className="shrink-0 text-destructive hover:text-destructive"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    setRemoveTarget(org);
-                  }}
-                >
-                  Revoke organization
-                </Button>
+             
               </div>
             );
           })
@@ -102,21 +97,21 @@ export const UserOrganizationsList = ({
         Manage Organizations
       </Button> */}
 
-      {removeTarget && (
+      {revokeTarget && (
         <RemoveMembership
-          open={!!removeTarget}
-          onOpenChange={(open) => !open && setRemoveTarget(null)}
+          open={!!revokeTarget}
+          onOpenChange={onRevokeDialogChange}
           membership={
             {
-              organizationId: removeTarget.organizationId,
+              organizationId: revokeTarget.organizationId,
               roles: [],
               permissions: [],
             } as IMembership
           }
-          organizationName={removeTarget.name}
+          organizationName={revokeTarget.name}
           userId={userId}
           projectKey={projectKey}
-          onSuccess={() => setRemoveTarget(null)}
+          onSuccess={onRevokeSuccess}
         />
       )}
     </div>

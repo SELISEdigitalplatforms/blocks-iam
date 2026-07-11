@@ -1,7 +1,6 @@
 import { useQueryState } from "nuqs";
 import { useGetOrganizationById } from "@blocks-idp/iam/hooks/use-organization";
 import { useProjectStore } from "@seliseblocks/blocks-kit";
-import { Badge } from "@/components/ui-kits/badge/badge";
 import { Skeleton } from "@/components/ui-kits/skeleton/skeleton";
 import {
   Tabs,
@@ -68,14 +67,9 @@ export const OrganizationWorkspacePanel = ({ organizationId }: OrganizationWorks
             )}
           </div>
           <div className="min-w-0 flex-1">
-            <div className="flex flex-wrap items-center gap-2">
-              <h2 className="truncate text-lg font-semibold text-high-emphasis">
-                {organization.name}
-              </h2>
-              <Badge variant={!organization.isDisabled ? "success" : "secondary"}>
-                {!organization.isDisabled ? "Active" : "Disabled"}
-              </Badge>
-            </div>
+            <h2 className="truncate text-lg font-semibold text-high-emphasis">
+              {organization.name}
+            </h2>
             <CopyToClipboardButton textToCopy={organization.itemId}>
               <p className="break-all text-xs text-muted-foreground">
                 Organization ID: {organization.itemId}

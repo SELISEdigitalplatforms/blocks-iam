@@ -9,6 +9,7 @@ import {
   Globe,
   Mail,
   Phone,
+  Power,
   SquarePen,
   User,
   UserCog,
@@ -73,6 +74,11 @@ export const OrganizationDetailsTab = ({ organization }: { organization: IOrgani
           icon={<SquarePen className="h-4 w-4" />}
           label="Description"
           value={organization.description}
+        />
+        <DetailRow
+          icon={<Power className="h-4 w-4" />}
+          label="Status"
+          value={organization.isDisabled ? "Disabled" : "Active"}
         />
         <DetailRow
           icon={<Globe className="h-4 w-4" />}
