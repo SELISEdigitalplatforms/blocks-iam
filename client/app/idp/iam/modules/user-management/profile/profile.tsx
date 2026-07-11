@@ -107,7 +107,7 @@ export const UserProfile = ({ id }: { id: string }) => {
 
           {/* Sidebar — col 1, row 2. Fills the row's height (screen-relative at md+);
               UserProfileSidebar handles its own internal scroll. */}
-          <div className="min-h-0 w-full md:col-start-1 md:row-start-2">
+          <div className="flex h-full min-h-0 w-full flex-col md:col-start-1 md:row-start-2">
             <UserProfileSidebar id={id} projectKey={x_blocks_key} />
           </div>
 
