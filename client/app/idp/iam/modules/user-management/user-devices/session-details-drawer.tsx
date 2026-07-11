@@ -82,7 +82,7 @@ export const SessionDetailsDrawer = ({
   onRevoked,
 }: SessionDetailsDrawerProps) => {
   const [isConfirmOpen, setIsConfirmOpen] = useState(false);
-  const { data: timeline, isLoading } = useGetSessionTimeline(sessionId ?? "", {
+  const { data: timeline, isLoading, isError, error } = useGetSessionTimeline(sessionId ?? "", {
     enabled: !!sessionId,
   });
   const group = timeline?.group ?? null;
@@ -127,11 +127,41 @@ export const SessionDetailsDrawer = ({
   return (
     <Sheet open={!!sessionId} onOpenChange={onOpenChange}>
       <SheetContent className="flex w-full flex-col overflow-hidden p-0 sm:max-w-md">
-        {isLoading || !group || !primary ? (
+        {isLoading ? (
           <div className="space-y-4 p-6">
             <Skeleton className="h-10 w-10 rounded-lg" />
             <Skeleton className="h-6 w-40" />
             <Skeleton className="h-24 w-full" />
+          </div>
+        ) : isError ? (
+          <div className="flex flex-1 flex-col items-center justify-center gap-2 p-6 text-center">
+            <p className="text-sm font-medium text-high-emphasis">Unable to load session</p>
+            <p className="text-xs text-muted-foreground">
+              {error instanceof Error ? error.message : "An unexpected error occurred."}
+            </p>
+            <Button variant="outline" size="sm" onClick={() => onOpenChange(false)}>
+              Close
+            </Button>
+          </div>
+        ) : !group ? (
+          <div className="flex flex-1 flex-col items-center justify-center gap-2 p-6 text-center">
+            <p className="text-sm font-medium text-high-emphasis">Session not found</p>
+            <p className="text-xs text-muted-foreground">
+              This session may have expired or already been signed out.
+            </p>
+            <Button variant="outline" size="sm" onClick={() => onOpenChange(false)}>
+              Close
+            </Button>
+          </div>
+        ) : !primary ? (
+          <div className="flex flex-1 flex-col items-center justify-center gap-2 p-6 text-center">
+            <p className="text-sm font-medium text-high-emphasis">No apps found for this session</p>
+            <p className="text-xs text-muted-foreground">
+              There are no active or expired apps associated with this session.
+            </p>
+            <Button variant="outline" size="sm" onClick={() => onOpenChange(false)}>
+              Close
+            </Button>
           </div>
         ) : (
           <>
