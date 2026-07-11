@@ -12,7 +12,8 @@ import {
   mockOrganizationConfigResponse,
   mockGetIamConfigResponse,
   mockSignUpSettingResponse,
-mockActivationCodeValidationResponse,
+  mockActivationCodeValidationResponse,
+  mockUserActivity,
 } from "../__mocks__/iam.data.mock";
 import { mockSuccessResponse, mockSuccessResponseWithItemId } from "@/test-utils/__mocks__";
 import {
@@ -35,8 +36,10 @@ const UPDATE_USER_PATTERN = new RegExp(USER_ENDPOINTS.UPDATE);
 const GET_SIGNUP_SETTING_PATTERN = new RegExp(`${ORGANIZATION_ENDPOINTS.GET_SIGNUP_SETTING}\\?`);
 const SAVE_SIGNUP_SETTING_PATTERN = new RegExp(ORGANIZATION_ENDPOINTS.SAVE_SIGNUP_SETTING);
 const SAVE_ROLES_AND_PERMISSIONS_PATTERN = new RegExp(USER_ENDPOINTS.SAVE_ROLES_AND_PERMISSIONS);
-const GET_SESSIONS_PATTERN = new RegExp(`${USER_ENDPOINTS.GET_SESSIONS}\\?`);
-const GET_HISTORIES_PATTERN = new RegExp(`${USER_ENDPOINTS.GET_HISTORIES}\\?`);
+const GET_SECURITY_OVERVIEW_PATTERN = new RegExp(`${USER_ENDPOINTS.GET_SECURITY_OVERVIEW}\\/?$`);
+const POST_ACTIVITIES_PATTERN = new RegExp(
+  USER_ENDPOINTS.GET_ACTIVITIES.replace("{userId}", "[^/]+"),
+);
 const GET_USER_CODES_PATTERN = new RegExp(USER_ENDPOINTS.GET_USER_CODES);
 const GENERATE_USER_CODE_PATTERN = new RegExp(USER_ENDPOINTS.GENERATE_USER_CODE);
 const GET_USER_ROLES_PATTERN = new RegExp(`${USER_ENDPOINTS.GET_USER_ROLES}\\?`);
@@ -95,11 +98,15 @@ export const iamHandlers = [
   http.post(SAVE_ROLES_AND_PERMISSIONS_PATTERN, () =>
     HttpResponse.json(mockSuccessResponseWithItemId),
   ),
-  http.get(GET_SESSIONS_PATTERN, () =>
-    HttpResponse.json({ data: [], totalCount: 0, errors: null }),
+  http.get(GET_SECURITY_OVERVIEW_PATTERN, () =>
+    HttpResponse.json({
+      currentSessionId: null,
+      sessionGroups: [],
+      idpSession: null,
+    }),
   ),
-  http.get(GET_HISTORIES_PATTERN, () =>
-    HttpResponse.json({ data: [], totalCount: 0, errors: null }),
+  http.post(POST_ACTIVITIES_PATTERN, () =>
+    HttpResponse.json({ data: [mockUserActivity], totalCount: 1, errors: null }),
   ),
   http.get(GET_USER_CODES_PATTERN, () => HttpResponse.json({ data: [], errors: null })),
   http.post(GENERATE_USER_CODE_PATTERN, () => HttpResponse.json(mockSuccessResponse)),

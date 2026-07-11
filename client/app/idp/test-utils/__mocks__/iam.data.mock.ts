@@ -15,12 +15,12 @@ import type {
 import type {
   ISaveSignUpSettingPayload,
   ISaveRolesAndPermissionsPayload,
-  IGetSessionPayload,
-  IGetHistoriesPayload,
   IGeneratePATPayload,
   IGetUserRolesPayload,
   IGetUserPermissionsPayload,
 } from "../../iam/models/user";
+import type { IGetActivitiesPayload, IUserActivity } from "../../iam/models/activity";
+import type { IRefreshTokenRotation } from "../../iam/models/refresh-token";
 import type {
   IRole,
   GetRolesPayload,
@@ -137,19 +137,54 @@ export const mockSaveRolesAndPermissionsPayload: ISaveRolesAndPermissionsPayload
   projectKey: TEST_PROJECT_KEY,
 };
 
-export const mockGetSessionsPayload: IGetSessionPayload = {
-  page: 1,
+export const mockGetHistoriesPayload: IGetActivitiesPayload = {
+  page: 0,
   pageSize: 10,
   userId: MOCK_USER_ITEM_ID,
-  projectKey: TEST_PROJECT_KEY,
 };
 
-export const mockGetHistoriesPayload: IGetHistoriesPayload = {
-  page: 1,
-  pageSize: 10,
+export const mockUserActivity: IUserActivity = {
+  itemId: "activity-1",
   userId: MOCK_USER_ITEM_ID,
-  projectKey: TEST_PROJECT_KEY,
+  actorUserId: MOCK_USER_ITEM_ID,
+  category: "Auth",
+  event: "LOGIN_SUCCESS",
+  outcome: "Success",
+  severity: "Info",
+  context: {
+    ipAddress: "127.0.0.1",
+    deviceName: "Chrome on macOS",
+    deviceInformation: {
+      browser: "Chrome",
+      os: "macOS",
+      device: "Macbook",
+    },
+  },
+  createdDate: "2026-07-09T08:56:18.707Z",
 };
+
+export const mockSessionRefreshTokens: IRefreshTokenRotation[] = [
+  {
+    fingerprint: "a1b2c3",
+    issuedUtc: "2026-07-09T08:00:00.000Z",
+    absoluteExpiry: "2026-09-07T08:00:00.000Z",
+    isRevoked: true,
+    revokedAt: "2026-07-09T09:00:00.000Z",
+    revokeReason: "superseded_by_rotation",
+    ipAddress: "127.0.0.1",
+    userAgent: "Mozilla/5.0",
+    isCurrent: false,
+  },
+  {
+    fingerprint: "d4e5f6",
+    issuedUtc: "2026-07-09T09:00:00.000Z",
+    absoluteExpiry: "2026-09-07T09:00:00.000Z",
+    isRevoked: false,
+    ipAddress: "127.0.0.1",
+    userAgent: "Mozilla/5.0",
+    isCurrent: true,
+  },
+];
 
 export const mockGeneratePATPayload: IGeneratePATPayload = {
   note: "test pat",

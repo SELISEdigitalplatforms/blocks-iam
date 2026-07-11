@@ -1,4 +1,4 @@
-﻿using Iam.DomainService.Enums;
+using Iam.DomainService.Enums;
 
 namespace Iam.DomainService.Dtos
 {
@@ -7,6 +7,4 @@ namespace Iam.DomainService.Dtos
         public required string ItemId { get; set; }
         public required MutationEventType Action { get; set; }
     }
-
-    
 }

@@ -4,6 +4,7 @@ using Iam.DomainService.Dtos;
 using Iam.DomainService.Entities;
 using Iam.DomainService.Enums;
 using Iam.DomainService.Resources.ResponseModel;
+using Iam.DomainService.Resources.TenantPropagation;
 using Iam.DomainService.Services;
 using Iam.DomainService.Shared.Entities;
 using Iam.DomainService.Utilities;
@@ -20,6 +21,8 @@ namespace Iam.DomainService.Resources
         private readonly IValidator<CreatePermissionRequest> _permissionValidator;
         private readonly IValidator<UpdatePermissionRequest> _updatepPermissionValidator;
         private readonly IValidator<CreateRoleRequest> _roleValidator;
+        private readonly ITenantPermissionPropagator _tenantPermissionPropagator;
+        private readonly IUserActivityDispatcher _userActivityDispatcher;
 
         public ResourceMutationService(
             ILogger<ResourceMutationService> logger,
@@ -27,7 +30,9 @@ namespace Iam.DomainService.Resources
             IIdentityAccessManagementService identityAccessManagementService,
             IValidator<CreatePermissionRequest> permissionValidator,
             IValidator<UpdatePermissionRequest> updatepPermissionValidator,
-            IValidator<CreateRoleRequest> roleValidator
+            IValidator<CreateRoleRequest> roleValidator,
+            ITenantPermissionPropagator tenantPermissionPropagator,
+            IUserActivityDispatcher userActivityDispatcher
         )
         {
             _logger = logger;
@@ -36,6 +41,8 @@ namespace Iam.DomainService.Resources
             _permissionValidator = permissionValidator;
             _updatepPermissionValidator = updatepPermissionValidator;
             _roleValidator = roleValidator;
+            _tenantPermissionPropagator = tenantPermissionPropagator;
+            _userActivityDispatcher = userActivityDispatcher;
         }
 
         public async Task<BaseMutationResponse> CreatePermissionAsync(CreatePermissionRequest command)
@@ -291,10 +298,14 @@ namespace Iam.DomainService.Resources
 
             await _resourceRepository.UpdateAllSamePermissionAsync(permission);
 
+            var mutationAction = command.IsArchived
+                ? MutationEventType.Delete
+                : MutationEventType.Update;
+
             await SendResourceMutationEventAsync(
                 new ResourceMutationEvent
                 {
-                    Action = MutationEventType.Update,
+                    Action = mutationAction,
                     ItemId = permission.ItemId,
                     Entity = ResourceEntity.Permission
                 }
@@ -823,22 +834,23 @@ namespace Iam.DomainService.Resources
             _logger.LogInformation("Processing permission timeline for ResourceMutationEvent.");
 
             var permission = await _resourceRepository.GetPermissionByIdAsync(context.ItemId);
-            var blocksContext = BlocksContext.GetContext();
-            var timeline = new ResourceTimeline<Permission>
+            await _userActivityDispatcher.SendUserActivityAsync(new UserActivityEvent
             {
-                ItemId = Guid.NewGuid().ToString(),
-                CreatedDate = DateTime.Now,
-                CreatedBy = blocksContext?.UserId,
-                LastUpdatedDate = DateTime.Now,
-                LastUpdatedBy = blocksContext?.UserId,
-                CurrentData = permission,
-                Event = context.Action.ToString().ToLower(),
-                Entity = typeof(Permission).Name.ToLower(),
-            };
+                UserId = BlocksContext.GetContext()?.UserId ?? permission?.ItemId ?? string.Empty,
+                Category = UserActivityCategory.Resource,
+                Event = context.Action switch
+                {
+                    MutationEventType.Create => "PERMISSION_CREATED",
+                    MutationEventType.Update => "PERMISSION_UPDATED",
+                    MutationEventType.Delete => "PERMISSION_DELETED",
+                    _ => context.Action.ToString().ToUpperInvariant()
+                },
+                Source = "iam-resource-mutation",
+                Entity = "Permission",
+                EntityId = context.ItemId
+            });
 
-            var result = await _resourceRepository.SaveResourceTimelineAsync(timeline);
-
-            if(permission.IsBuiltIn)
+            if (permission.IsBuiltIn)
             {
                 await _identityAccessManagementService.SendToQueueAsync(
                     IdpConstants.IamPermissionQueue,
@@ -850,43 +862,81 @@ namespace Iam.DomainService.Resources
                 );
             }
 
-            return result;
+            return true;
         }
 
         private async Task<bool> ProcessRoleAsync(ResourceMutationEvent context)
         {
             _logger.LogInformation("Processing role timeline for ResourceMutationEvent.");
             var role = await _resourceRepository.GetRoleByIdAsync(context.ItemId);
-            var blocksContext = BlocksContext.GetContext();
-            var timeline = new ResourceTimeline<Role>
+            await _userActivityDispatcher.SendUserActivityAsync(new UserActivityEvent
             {
-                ItemId = Guid.NewGuid().ToString(),
-                CreatedDate = DateTime.Now,
-                CreatedBy = blocksContext?.UserId,
-                LastUpdatedDate = DateTime.Now,
-                LastUpdatedBy = blocksContext?.UserId,
-                CurrentData = role,
-                Event = context.Action.ToString().ToLower(),
-                Entity = typeof(Role).Name.ToLower(),
-            };
-
-            var result = await _resourceRepository.SaveResourceTimelineAsync(timeline);
+                UserId = BlocksContext.GetContext()?.UserId ?? role?.ItemId ?? string.Empty,
+                Category = UserActivityCategory.Resource,
+                Event = context.Action switch
+                {
+                    MutationEventType.Create => "ROLE_CREATED",
+                    MutationEventType.Update => "ROLE_UPDATED",
+                    MutationEventType.Delete => "ROLE_DELETED",
+                    _ => context.Action.ToString().ToUpperInvariant()
+                },
+                Source = "iam-resource-mutation",
+                Entity = "Role",
+                EntityId = context.ItemId
+            });
             await _resourceRepository.UpdateRolesCountAsync(role.Slug);
 
-            return result;
+            return true;
+        }
+
+        public async Task ExecutePermissionMutationForTenantsAsync(PermissionMutationForTenantsEvent context)
+        {
+            _logger.LogInformation(
+                "Tenant permission propagation start. ItemId={ItemId} Action={Action}",
+                context.ItemId, context.Action);
+
+            var summary = await _tenantPermissionPropagator.PropagateAsync(context);
+
+            await _userActivityDispatcher.SendUserActivityAsync(new UserActivityEvent
+            {
+                UserId = BlocksContext.GetContext()?.UserId ?? string.Empty,
+                Category = UserActivityCategory.Resource,
+                Event = "PERMISSION_PROPAGATED",
+                Source = "iam-permission-propagation",
+                Entity = "Permission",
+                EntityId = context.ItemId,
+                Outcome = summary.TenantsFailed == 0 ? "success" : "partial_failure",
+                Metadata = new Dictionary<string, string>
+                {
+                    { "action", context.Action.ToString() },
+                    { "tenantsAttempted", summary.TenantsAttempted.ToString() },
+                    { "tenantsSucceeded", summary.TenantsSucceeded.ToString() },
+                    { "tenantsFailed", summary.TenantsFailed.ToString() }
+                }
+            });
+
+            _logger.LogInformation(
+                "Tenant permission propagation done. ItemId={ItemId} Action={Action} Attempted={Attempted} Succeeded={Succeeded} Failed={Failed}",
+                context.ItemId, context.Action, summary.TenantsAttempted, summary.TenantsSucceeded, summary.TenantsFailed);
         }
 
         public async Task<bool> ProcessPermissionAsync(ResourceSetToPermissionMutationEvent command)
         {
             _logger.LogInformation("Processing permission timeline for ResourceMutationEvent.");
-            var blocksContext = BlocksContext.GetContext();
-            var timelines = new List<ResourceTimeline<Permission>>();
+            var actorUserId = BlocksContext.GetContext()?.UserId ?? string.Empty;
+            var eventName = command.Entity == ResourceEntity.Role ? "ROLE_PERMISSIONS_UPDATED" : "GROUP_PERMISSIONS_UPDATED";
             foreach (var itemId in command.AddPermissions.Union(command.RemovePermissions))
             {
-                timelines.Add(await ProcessTimelineAsync(blocksContext, itemId, command.Entity == ResourceEntity.Role ? "roleupdate" : "groupupdate"));
+                await _userActivityDispatcher.SendUserActivityAsync(new UserActivityEvent
+                {
+                    UserId = actorUserId,
+                    Category = UserActivityCategory.Resource,
+                    Event = eventName,
+                    Source = "iam-resource-mutation",
+                    Entity = "Permission",
+                    EntityId = itemId
+                });
             }
-
-            await _resourceRepository.SaveResourceTimelinesAsync(timelines);
 
             if (command.Entity == ResourceEntity.Role)
             {
@@ -965,21 +1015,9 @@ namespace Iam.DomainService.Resources
             return true;
         }
 
-        private async Task<ResourceTimeline<Permission>> ProcessTimelineAsync(BlocksContext blocksContext, string itemId, string eventname)
+        private Task ProcessTimelineAsync(BlocksContext blocksContext, string itemId, string eventname)
         {
-            var permission = await _resourceRepository.GetPermissionByIdAsync(itemId);
-
-            return new ResourceTimeline<Permission>
-            {
-                ItemId = Guid.NewGuid().ToString(),
-                CreatedDate = DateTime.Now,
-                CreatedBy = blocksContext?.UserId,
-                LastUpdatedDate = DateTime.Now,
-                LastUpdatedBy = blocksContext?.UserId,
-                CurrentData = permission,
-                Event = eventname,
-                Entity = typeof(Permission).Name.ToLower(),
-            };
+            return Task.CompletedTask;
         }
 
         public async Task<BaseMutationResponse> CreateOrganizationAsync(CreateOrganizationRequest request, string? creatorId = null)
@@ -1069,6 +1107,21 @@ namespace Iam.DomainService.Resources
             };
 
             await _resourceRepository.SaveOrganizationAsync(organization);
+
+            await _userActivityDispatcher.SendUserActivityAsync(new UserActivityEvent
+            {
+                UserId = createdByUserId ?? string.Empty,
+                Category = UserActivityCategory.Resource,
+                Event = "ORGANIZATION_CREATED",
+                Source = "iam-organization",
+                Entity = "Organization",
+                EntityId = organization.ItemId,
+                Metadata = new Dictionary<string, string>
+                {
+                    { "name", organization.Name },
+                    { "createdFrom", request.CreatedFrom.ToString() }
+                }
+            });
 
             await _identityAccessManagementService.SendToQueueAsync(
                 IdpConstants.IamOrgQueue,

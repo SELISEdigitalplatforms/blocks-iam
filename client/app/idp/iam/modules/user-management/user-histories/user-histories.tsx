@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { Card, CardContent, CardHeader } from "@/components/ui-kits/card/card";
 import { Pagination } from "@/components/ui-kits/pagination/pagination";
-import { useGetHistories } from "@blocks-idp/iam/hooks/use-activity";
+import { useGetActivities } from "@blocks-idp/iam/hooks/use-activity";
 import { UserHistoryList } from "./user-history-list";
 
 type HistoriesProps = {
@@ -10,9 +10,17 @@ type HistoriesProps = {
 };
 
 export const UserHistories = ({ id }: HistoriesProps) => {
-  const [filter, setFilter] = useState({ page: 0, pageSize: 10, userId: id });
-  const { isLoading, isFetching, data } = useGetHistories({
-    ...filter,
+  const [filter, setFilter] = useState({
+    page: 0,
+    pageSize: 10,
+    userId: id,
+    activityFilter: { categories: ["Auth"] as const },
+  });
+  const { isLoading, isFetching, data } = useGetActivities({
+    page: filter.page,
+    pageSize: filter.pageSize,
+    userId: filter.userId,
+    filter: { categories: ["Auth"] },
   });
   const loading = isLoading || isFetching;
 

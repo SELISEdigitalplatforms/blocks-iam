@@ -1,7 +1,5 @@
-import { useState } from "react";
 import { Card, CardContent, CardHeader } from "@/components/ui-kits/card/card";
-import { Pagination } from "@/components/ui-kits/pagination/pagination";
-import { useGetSessions } from "@blocks-idp/iam/hooks/use-activity";
+import { useGetSecurityOverview } from "@blocks-idp/iam/hooks/use-activity";
 import { UserDevicesList } from "./user-devices-list";
 
 type DevicesProps = {
@@ -9,12 +7,11 @@ type DevicesProps = {
   projectKey: string;
 };
 
-export const UserDevices = ({ id }: DevicesProps) => {
-  const [filter, setFilter] = useState({ page: 0, pageSize: 10, userId: id });
-  const { isLoading, isFetching, data, refetch } = useGetSessions({
-    ...filter,
-  });
+export const UserDevices = (_props: DevicesProps) => {
+  const { isLoading, isFetching, data, refetch } = useGetSecurityOverview();
   const loading = isLoading || isFetching;
+  const groups = data?.sessionGroups ?? [];
+  const currentSessionId = data?.currentSessionId ?? null;
 
   return (
     <Card className="flex h-full min-h-[420px] flex-col">
@@ -27,21 +24,10 @@ export const UserDevices = ({ id }: DevicesProps) => {
       <CardContent className="flex-1 overflow-y-auto">
         <UserDevicesList
           isLoading={loading}
-          data={data?.data || []}
+          data={groups}
+          currentSessionId={currentSessionId}
           onRevoked={() => refetch()}
         />
-        {!loading && data && data.totalCount > filter.pageSize && (
-          <div className="mt-5 flex md:justify-end">
-            <Pagination
-              page={filter.page}
-              pageSize={filter.pageSize}
-              onChange={(page) => setFilter((filter) => ({ ...filter, page }))}
-              totalCount={data?.totalCount || 0}
-              onPageSizeChange={(pageSize) => setFilter((filter) => ({ ...filter, pageSize }))}
-              pageSizeOptions={[5, 10, 20, 40]}
-            />
-          </div>
-        )}
       </CardContent>
     </Card>
   );

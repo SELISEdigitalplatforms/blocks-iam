@@ -14,7 +14,6 @@ import {
   mockSignUpSettingResponse,
   mockSaveSignUpSettingPayload,
   mockSaveRolesAndPermissionsPayload,
-  mockGetSessionsPayload,
   mockGetHistoriesPayload,
   mockGeneratePATPayload,
   mockGetUserRolesPayload,
@@ -201,93 +200,153 @@ describe("UserService", () => {
     });
   });
 
-  // ─── getSessions ──────────────────────────────────────────────────────────
-  describe("getSessions", () => {
-    it("should GET with correct query params and return response as-is", async () => {
+  // ─── getSecurityOverview ───────────────────────────────────────────────────
+  describe("getSecurityOverview", () => {
+    it("should GET the overview endpoint", async () => {
       const rawResponse = {
-        data: [
+        currentSessionId: "s-current",
+        sessionGroups: [
           {
             sessionId: "s1",
             userId: "u1",
             tenantId: "t1",
-            organizationId: "o1",
-            clientId: "c1",
-            clientName: "Test Client",
-            deviceName: "Chrome",
-            deviceType: "Desktop",
-            operatingSystem: "macOS",
-            browser: "Chrome",
-            ipAddresses: "127.0.0.1",
-            grantType: "password",
-            issuedUtc: "2026-07-09T08:54:45.816Z",
-            expiresUtc: "2026-07-09T08:54:45.816Z",
             lastActivityAt: "2026-07-09T08:54:45.816Z",
-            isActive: true,
             isCurrent: true,
-            isImpersonated: false,
+            apps: [
+              {
+                tokenId: "t1",
+                sessionId: "s1",
+                userId: "u1",
+                tenantId: "t1",
+                clientId: "c1",
+                deviceName: "Chrome",
+                operatingSystem: "macOS",
+                browser: "Chrome",
+                ipAddresses: "127.0.0.1",
+                issuedUtc: "2026-07-09T08:54:45.816Z",
+                absoluteExpiry: "2026-09-07T08:54:45.816Z",
+                isActive: true,
+                impersonated: false,
+              },
+            ],
           },
         ],
-        totalCount: 1,
-        errors: null,
+        idpSession: null,
       };
       vi.mocked(http.get).mockResolvedValue(rawResponse);
 
-      const result = await service.getSessions(mockGetSessionsPayload);
+      const result = await service.getSecurityOverview();
 
-      expect(http.get).toHaveBeenCalledWith(
-        `${USER_ENDPOINTS.GET_SESSIONS}?page=${mockGetSessionsPayload.page}&pageSize=${mockGetSessionsPayload.pageSize}&userId=${mockGetSessionsPayload.userId}`,
-      );
-      expect(result.totalCount).toBe(1);
-      expect(result.data[0].sessionId).toBe("s1");
+      expect(http.get).toHaveBeenCalledWith(USER_ENDPOINTS.GET_SECURITY_OVERVIEW);
+      expect(result.currentSessionId).toBe("s-current");
+      expect(result.sessionGroups).toHaveLength(1);
+      expect(result.sessionGroups[0].apps).toHaveLength(1);
     });
 
     it("should throw when the API call fails", async () => {
       vi.mocked(http.get).mockRejectedValue(new Error("Network error"));
 
-      await expect(service.getSessions(mockGetSessionsPayload)).rejects.toThrow("Network error");
+      await expect(service.getSecurityOverview()).rejects.toThrow("Network error");
     });
   });
 
-  // ─── getHistories ─────────────────────────────────────────────────────────
-  describe("getHistories", () => {
-    it("should GET with correct query params and return response as-is", async () => {
+  // ─── getSessionTimeline ──────────────────────────────────────────────────
+  describe("getSessionTimeline", () => {
+    it("should GET the session timeline endpoint", async () => {
+      const rawResponse = {
+        sessionId: "s1",
+        session: { sessionId: "s1" },
+        revokedAccessTokens: [],
+        lifecycle: [],
+        rotations: [],
+      };
+      vi.mocked(http.get).mockResolvedValue(rawResponse);
+
+      const result = await service.getSessionTimeline("s1");
+
+      expect(http.get).toHaveBeenCalledWith(`${USER_ENDPOINTS.REVOKE_SESSION}/s1`);
+      expect(result.sessionId).toBe("s1");
+    });
+
+    it("should throw when the API call fails", async () => {
+      vi.mocked(http.get).mockRejectedValue(new Error("Network error"));
+
+      await expect(service.getSessionTimeline("s1")).rejects.toThrow("Network error");
+    });
+  });
+
+  // ─── revokeRefreshToken ──────────────────────────────────────────────────
+  describe("revokeRefreshToken", () => {
+    it("should POST to the revoke-refresh-token endpoint with reason", async () => {
+      vi.mocked(http.post).mockResolvedValue(mockSuccessResponse);
+
+      const result = await service.revokeRefreshToken("tok-1", "user_revoked");
+
+      expect(http.post).toHaveBeenCalledWith(
+        USER_ENDPOINTS.REVOKE_REFRESH_TOKEN.replace("{tokenId}", "tok-1"),
+        { reason: "user_revoked" },
+      );
+      expect(result).toEqual(mockSuccessResponse);
+    });
+
+    it("should POST without a body when no reason is supplied", async () => {
+      vi.mocked(http.post).mockResolvedValue(mockSuccessResponse);
+
+      await service.revokeRefreshToken("tok-2");
+
+      expect(http.post).toHaveBeenCalledWith(
+        USER_ENDPOINTS.REVOKE_REFRESH_TOKEN.replace("{tokenId}", "tok-2"),
+        {},
+      );
+    });
+
+    it("should throw when the API call fails", async () => {
+      vi.mocked(http.post).mockRejectedValue(new Error("Network error"));
+
+      await expect(service.revokeRefreshToken("tok-3")).rejects.toThrow("Network error");
+    });
+  });
+
+  // ─── getActivities ───────────────────────────────────────────────────────
+  describe("getActivities", () => {
+    it("should POST to the activities endpoint with the correct body and return response as-is", async () => {
       const rawResponse = {
         data: [
           {
-            event: "login_via_password",
-            actionBy: "u1",
-            deviceName: "Chrome",
-            deviceType: "Desktop",
-            deviceInformation: {
-              browser: "Chrome",
-              os: "macOS",
-              device: "Macbook",
-              brand: "Apple",
-              model: "Pro",
-            },
-            ipAddresses: "127.0.0.1",
-            sessionId: "s1",
+            itemId: "a1",
+            userId: "u1",
+            actorUserId: "u1",
+            category: "Auth",
+            event: "LOGIN_SUCCESS",
+            context: { ipAddress: "127.0.0.1" },
             createdDate: "2026-07-09T08:56:18.707Z",
           },
         ],
         totalCount: 1,
         errors: null,
       };
-      vi.mocked(http.get).mockResolvedValue(rawResponse);
+      vi.mocked(http.post).mockResolvedValue(rawResponse);
 
-      const result = await service.getHistories(mockGetHistoriesPayload);
+      const result = await service.getActivities(mockGetHistoriesPayload);
 
-      expect(http.get).toHaveBeenCalledWith(
-        `${USER_ENDPOINTS.GET_HISTORIES}?page=${mockGetHistoriesPayload.page}&pageSize=${mockGetHistoriesPayload.pageSize}&userId=${mockGetHistoriesPayload.userId}`,
+      expect(http.post).toHaveBeenCalledWith(
+        USER_ENDPOINTS.GET_ACTIVITIES.replace(
+          "{userId}",
+          encodeURIComponent(mockGetHistoriesPayload.userId),
+        ),
+        {
+          page: mockGetHistoriesPayload.page,
+          pageSize: mockGetHistoriesPayload.pageSize,
+        },
       );
       expect(result.totalCount).toBe(1);
-      expect(result.data[0].event).toBe("login_via_password");
+      expect(result.data[0].event).toBe("LOGIN_SUCCESS");
     });
 
     it("should throw when the API call fails", async () => {
-      vi.mocked(http.get).mockRejectedValue(new Error("Network error"));
+      vi.mocked(http.post).mockRejectedValue(new Error("Network error"));
 
-      await expect(service.getHistories(mockGetHistoriesPayload)).rejects.toThrow("Network error");
+      await expect(service.getActivities(mockGetHistoriesPayload)).rejects.toThrow("Network error");
     });
   });
 

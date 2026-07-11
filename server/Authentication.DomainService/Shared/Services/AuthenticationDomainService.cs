@@ -27,6 +27,9 @@ namespace Authentication.DomainService.Services
         private readonly IConfiguration _configuration;
         private readonly IUserRepository _userRepository;
         private readonly IValidator<SaveSsoCredentialRequest> _validator;
+        private readonly IValidator<SaveOIDCClientRequest> _oidcClientValidator;
+        private readonly IValidator<SaveIdentityProviderRequest> _saveIdpValidator;
+        private readonly IValidator<UpdateIdentityProviderRequest> _updateIdpValidator;
         private readonly ITenants _tenants;
         private readonly IHttpClientFactory _httpClientFactory;
 
@@ -40,6 +43,9 @@ namespace Authentication.DomainService.Services
                                            IConfiguration configuration,
                                            IUserRepository userRepository,
                                            IValidator<SaveSsoCredentialRequest> validator,
+                                           IValidator<SaveOIDCClientRequest> oidcClientValidator,
+                                           IValidator<SaveIdentityProviderRequest> saveIdpValidator,
+                                           IValidator<UpdateIdentityProviderRequest> updateIdpValidator,
                                            ITenants tenants,
                                            IHttpClientFactory httpClientFactory)
         {
@@ -48,6 +54,9 @@ namespace Authentication.DomainService.Services
             _configuration = configuration;
             _userRepository = userRepository;
             _validator = validator;
+            _oidcClientValidator = oidcClientValidator;
+            _saveIdpValidator = saveIdpValidator;
+            _updateIdpValidator = updateIdpValidator;
             _tenants = tenants;
             _httpClientFactory = httpClientFactory;
         }
@@ -138,12 +147,25 @@ namespace Authentication.DomainService.Services
 
         public async Task<SaveOIDCClientResponse> SaveOIDCClientAsync(SaveOIDCClientRequest request)
         {
+            var validation = await _oidcClientValidator.ValidateAsync(request);
+            if (!validation.IsValid)
+            {
+                return new SaveOIDCClientResponse
+                {
+                    IsSuccess = false,
+                    Errors = validation.Errors
+                        .GroupBy(e => e.PropertyName)
+                        .ToDictionary(g => g.Key, g => g.First().ErrorMessage)
+                };
+            }
+
             var credential = await InitializeOidcClientCredentialAsync(request);
             ApplyOidcClientScopesAndRedirects(credential, request);
             ApplyOidcClientOptions(credential, request);
 
             await _authenticationRepository.SaveOidcClientRegistrationAsync(credential);
 
+            // NOTE: OIDC -> IdentityProvider auto-sync is intentionally disabled. Tracked separately.
             // Auto-insert/update IdentityProvider for OIDC client
             // Create provider name from client ID or client name
             //var providerName = !string.IsNullOrWhiteSpace(request.ClientDisplayName)
@@ -222,8 +244,9 @@ namespace Authentication.DomainService.Services
 
             credential.ItemId = clientId;
             credential.ClientId = clientId;
+            // ClientSecret rule: BE-generated on create only; preserved (never overwritten) on update.
             credential.ClientSecret = string.IsNullOrWhiteSpace(credential.ClientSecret)
-                ? Guid.NewGuid().ToString("n")
+                ? GenerateClientSecret()
                 : credential.ClientSecret;
 
             return credential;
@@ -428,23 +451,73 @@ namespace Authentication.DomainService.Services
             return await _authenticationRepository.GetClientCredentialsAsync();
         }
 
-        public async Task<BaseResponse> CreateIdentityProviderAsync(IdentityProvider provider)
+        public async Task<BaseResponse> CreateIdentityProviderAsync(SaveIdentityProviderRequest request)
         {
-            if (string.IsNullOrWhiteSpace(provider.Provider))
-                return new BaseResponse { IsSuccess = false, Errors = new Dictionary<string, string> { { "provider_required", "Provider name is required." } } };
+            var validation = await _saveIdpValidator.ValidateAsync(request);
+            if (!validation.IsValid)
+            {
+                return new BaseResponse
+                {
+                    IsSuccess = false,
+                    Errors = validation.Errors
+                        .GroupBy(e => e.PropertyName)
+                        .ToDictionary(g => g.Key, g => g.First().ErrorMessage)
+                };
+            }
 
+            var providerName = request.Provider!;
+            var clientId = request.ClientId!;
 
-            if (string.IsNullOrWhiteSpace(provider.ClientId))
-                return new BaseResponse { IsSuccess = false, Errors = new Dictionary<string, string> { { "client_id_required", "ClientId is required." } } };
-
-            var existingProvider = await _authenticationRepository.GetIdentityProviderAsync(provider.Provider);
+            var existingProvider = await _authenticationRepository.GetIdentityProviderAsync(providerName);
             if (existingProvider != null)
-                return new BaseResponse { IsSuccess = false, Errors = new Dictionary<string, string> { { "duplicate_provider", $"Provider '{provider.Provider}' already exists." } } };
+                return new BaseResponse { IsSuccess = false, Errors = new Dictionary<string, string> { { "duplicate_provider", $"Provider '{providerName}' already exists." } } };
 
-            // One ClientId should map to one IdentityProvider entry.
-            var existingByClientId = await _authenticationRepository.GetIdentityProviderByClientIdAsync(provider.ClientId);
+            var existingByClientId = await _authenticationRepository.GetIdentityProviderByClientIdAsync(clientId);
             if (existingByClientId != null)
-                return new BaseResponse { IsSuccess = false, Errors = new Dictionary<string, string> { { "duplicate_client_id", $"An identity provider with ClientId '{provider.ClientId}' already exists." } } };
+                return new BaseResponse { IsSuccess = false, Errors = new Dictionary<string, string> { { "duplicate_client_id", $"An identity provider with ClientId '{clientId}' already exists." } } };
+
+            var blocksContext = BlocksContext.GetContext();
+            var now = DateTime.UtcNow;
+            var grantTypes = (request.GrantTypes is { Count: > 0 } ? request.GrantTypes : new List<string> { "authorization_code", "refresh_token" })
+                .Where(g => !string.IsNullOrWhiteSpace(g)).Distinct(StringComparer.OrdinalIgnoreCase).ToList();
+            var tokenEndpointAuthMethod = !string.IsNullOrWhiteSpace(request.TokenEndpointAuthMethod)
+                ? request.TokenEndpointAuthMethod
+                : "client_secret_post";
+
+            var provider = new IdentityProvider
+            {
+                ItemId = Guid.NewGuid().ToString(),
+                Provider = providerName,
+                ProviderType = request.ProviderType!,
+                Protocol = string.IsNullOrWhiteSpace(request.Protocol) ? "oidc" : request.Protocol,
+                DisplayName = request.DisplayName,
+                IsActive = request.IsActive ?? true,
+                ClientId = clientId,
+                ClientSecret = GenerateClientSecret(),
+                Issuer = request.Issuer,
+                AuthorizationUrl = request.AuthorizationUrl,
+                TokenUrl = request.TokenUrl,
+                UserInfoUrl = request.UserInfoUrl,
+                JwksUri = request.JwksUri,
+                WellKnownUrl = request.WellKnownUrl,
+                RedirectUris = request.RedirectUris ?? new List<string>(),
+                Scope = request.Scope,
+                ResponseType = request.ResponseType,
+                GrantTypes = grantTypes,
+                RequirePkce = request.RequirePkce ?? true,
+                TokenEndpointAuthMethod = tokenEndpointAuthMethod,
+                InitialRoles = request.InitialRoles ?? new List<string>(),
+                InitialPermissions = request.InitialPermissions ?? new List<string>(),
+                Icon = request.Icon,
+                TeamId = request.TeamId,
+                KeyId = request.KeyId,
+                PrivateKey = request.PrivateKey,
+                AppleAudience = request.AppleAudience,
+                CreatedBy = blocksContext?.UserId,
+                CreatedDate = now,
+                LastUpdatedBy = blocksContext?.UserId,
+                LastUpdatedDate = now,
+            };
 
             await _authenticationRepository.CreateIdentityProviderAsync(provider);
             return new BaseResponse { IsSuccess = true };
@@ -465,28 +538,82 @@ namespace Authentication.DomainService.Services
             return await _authenticationRepository.GetIdentityProvidersAsync();
         }
 
-        public async Task<BaseResponse> UpdateIdentityProviderAsync(IdentityProvider provider)
+        public async Task<BaseResponse> UpdateIdentityProviderAsync(string id, UpdateIdentityProviderRequest request)
         {
-            if (string.IsNullOrWhiteSpace(provider.ItemId))
+            if (string.IsNullOrWhiteSpace(id))
                 return new BaseResponse { IsSuccess = false, Errors = new Dictionary<string, string> { { "id_required", "Provider ID is required." } } };
 
-            // Validate required fields
-            if (string.IsNullOrWhiteSpace(provider.ClientId))
-                return new BaseResponse { IsSuccess = false, Errors = new Dictionary<string, string> { { "client_id_required", "ClientId is required." } } };
+            var validation = await _updateIdpValidator.ValidateAsync(request);
+            if (!validation.IsValid)
+            {
+                return new BaseResponse
+                {
+                    IsSuccess = false,
+                    Errors = validation.Errors
+                        .GroupBy(e => e.PropertyName)
+                        .ToDictionary(g => g.Key, g => g.First().ErrorMessage)
+                };
+            }
 
-            var existing = await _authenticationRepository.GetIdentityProviderByIdAsync(provider.ItemId);
+            var existing = await _authenticationRepository.GetIdentityProviderByIdAsync(id);
             if (existing == null)
                 return new BaseResponse { IsSuccess = false, Errors = new Dictionary<string, string> { { "not_found", "Provider not found." } } };
 
-            // Ensure ClientId remains unique across providers.
-            if (existing.ClientId != provider.ClientId)
+            // Immutability check: Provider, ProviderType, Protocol, ClientId cannot change after create.
+            if (request.Provider != null && !string.Equals(request.Provider, existing.Provider, StringComparison.OrdinalIgnoreCase))
+                return new BaseResponse { IsSuccess = false, Errors = new Dictionary<string, string> { { "immutable_field", "Provider is immutable and must match the existing value." } } };
+            if (request.ProviderType != null && !string.Equals(request.ProviderType, existing.ProviderType, StringComparison.OrdinalIgnoreCase))
+                return new BaseResponse { IsSuccess = false, Errors = new Dictionary<string, string> { { "immutable_field", "ProviderType is immutable and must match the existing value." } } };
+            if (request.Protocol != null && !string.Equals(request.Protocol, existing.Protocol, StringComparison.OrdinalIgnoreCase))
+                return new BaseResponse { IsSuccess = false, Errors = new Dictionary<string, string> { { "immutable_field", "Protocol is immutable and must match the existing value." } } };
+            if (request.ClientId != null && !string.Equals(request.ClientId, existing.ClientId, StringComparison.Ordinal))
+                return new BaseResponse { IsSuccess = false, Errors = new Dictionary<string, string> { { "immutable_field", "ClientId is immutable and must match the existing value." } } };
+
+            // Discovery re-validation when WellKnownUrl changes.
+            if (request.WellKnownUrl != null && !string.Equals(request.WellKnownUrl, existing.WellKnownUrl, StringComparison.OrdinalIgnoreCase))
             {
-                var existingByClientId = await _authenticationRepository.GetIdentityProviderByClientIdAsync(provider.ClientId);
-                if (existingByClientId != null && existingByClientId.ItemId != provider.ItemId)
-                    return new BaseResponse { IsSuccess = false, Errors = new Dictionary<string, string> { { "duplicate_client_id", $"An identity provider with ClientId '{provider.ClientId}' already exists." } } };
+                var probe = new SaveIdentityProviderRequest { WellKnownUrl = request.WellKnownUrl };
+                var wellKnownValidation = await _saveIdpValidator.ValidateAsync(probe);
+                if (!wellKnownValidation.IsValid)
+                {
+                    return new BaseResponse
+                    {
+                        IsSuccess = false,
+                        Errors = wellKnownValidation.Errors
+                            .GroupBy(e => e.PropertyName)
+                            .ToDictionary(g => g.Key, g => g.First().ErrorMessage)
+                    };
+                }
             }
 
-            await _authenticationRepository.UpdateIdentityProviderAsync(provider);
+            // Partial merge: only copy non-null request fields.
+            if (request.DisplayName != null) existing.DisplayName = request.DisplayName;
+            if (request.IsActive.HasValue) existing.IsActive = request.IsActive.Value;
+            if (request.Issuer != null) existing.Issuer = request.Issuer;
+            if (request.AuthorizationUrl != null) existing.AuthorizationUrl = request.AuthorizationUrl;
+            if (request.TokenUrl != null) existing.TokenUrl = request.TokenUrl;
+            if (request.UserInfoUrl != null) existing.UserInfoUrl = request.UserInfoUrl;
+            if (request.JwksUri != null) existing.JwksUri = request.JwksUri;
+            if (request.WellKnownUrl != null) existing.WellKnownUrl = request.WellKnownUrl;
+            if (request.RedirectUris != null) existing.RedirectUris = request.RedirectUris;
+            if (request.Scope != null) existing.Scope = request.Scope;
+            if (request.ResponseType != null) existing.ResponseType = request.ResponseType;
+            if (request.GrantTypes != null) existing.GrantTypes = request.GrantTypes;
+            if (request.RequirePkce.HasValue) existing.RequirePkce = request.RequirePkce.Value;
+            if (request.TokenEndpointAuthMethod != null) existing.TokenEndpointAuthMethod = request.TokenEndpointAuthMethod;
+            if (request.InitialRoles != null) existing.InitialRoles = request.InitialRoles;
+            if (request.InitialPermissions != null) existing.InitialPermissions = request.InitialPermissions;
+            if (request.Icon != null) existing.Icon = request.Icon;
+            if (request.TeamId != null) existing.TeamId = request.TeamId;
+            if (request.KeyId != null) existing.KeyId = request.KeyId;
+            if (request.PrivateKey != null) existing.PrivateKey = request.PrivateKey;
+            if (request.AppleAudience != null) existing.AppleAudience = request.AppleAudience;
+
+            var blocksContext = BlocksContext.GetContext();
+            existing.LastUpdatedBy = blocksContext?.UserId;
+            existing.LastUpdatedDate = DateTime.UtcNow;
+
+            await _authenticationRepository.UpdateIdentityProviderAsync(existing);
             return new BaseResponse { IsSuccess = true };
         }
 
@@ -529,6 +656,34 @@ namespace Authentication.DomainService.Services
             existing.IsActive = isActive;
             await _authenticationRepository.UpdateIdentityProviderAsync(existing);
             return new BaseResponse { IsSuccess = true };
+        }
+
+        public async Task<RotateOidcClientSecretResponse> RotateOidcClientSecretAsync(string itemId)
+        {
+            if (string.IsNullOrWhiteSpace(itemId))
+                return new RotateOidcClientSecretResponse { IsSuccess = false, Errors = new Dictionary<string, string> { { "id_required", "ItemId is required." } } };
+
+            var credential = await _authenticationRepository.GetOidcClientRegistrationAsync(itemId);
+            if (credential == null)
+                return new RotateOidcClientSecretResponse { IsSuccess = false, Errors = new Dictionary<string, string> { { "not_found", $"OIDC client '{itemId}' not found." } } };
+
+            var blocksContext = BlocksContext.GetContext();
+            var rotatedAt = DateTime.UtcNow;
+            credential.ClientSecret = GenerateClientSecret();
+            credential.LastUpdatedBy = blocksContext?.UserId;
+            credential.LastUpdatedDate = rotatedAt;
+
+            await _authenticationRepository.SaveOidcClientRegistrationAsync(credential);
+
+            return new RotateOidcClientSecretResponse
+            {
+                IsSuccess = true,
+                ItemId = credential.ItemId,
+                ClientId = credential.ClientId,
+                ClientSecret = credential.ClientSecret,
+                RotatedAt = rotatedAt,
+                RotatedBy = blocksContext?.UserId,
+            };
         }
     }
 }
