@@ -11,7 +11,7 @@ import {
   underlineTabTriggerClass,
 } from "@/components/ui-kits/tabs/tabs";
 import { CopyToClipboardButton } from "@/components/copy-to-clipboard-button/copy-to-clipboard-button";
-import { Building2 } from "lucide-react";
+import { Building2, ChevronLeft } from "lucide-react";
 import {
   OrganizationUsers,
   InviteOrganizationUser,
@@ -22,9 +22,13 @@ import { useOrganizationMemberCount } from "./organization-member-count";
 
 type OrganizationWorkspacePanelProps = {
   organizationId: string;
+  onBack?: () => void;
 };
 
-export const OrganizationWorkspacePanel = ({ organizationId }: OrganizationWorkspacePanelProps) => {
+export const OrganizationWorkspacePanel = ({
+  organizationId,
+  onBack,
+}: OrganizationWorkspacePanelProps) => {
   const tenantId = useProjectStore().selectedProject?.tenantId || "";
   const { data, isLoading } = useGetOrganizationById({
     itemId: organizationId,
@@ -38,6 +42,16 @@ export const OrganizationWorkspacePanel = ({ organizationId }: OrganizationWorks
   if (isLoading || !organization) {
     return (
       <div className="flex h-full min-h-0 flex-col gap-4 rounded-lg border bg-card p-4">
+        {onBack && (
+          <button
+            type="button"
+            onClick={onBack}
+            className="flex w-fit items-center gap-1 text-sm text-muted-foreground lg:hidden"
+          >
+            <ChevronLeft className="h-4 w-4" />
+            Organizations
+          </button>
+        )}
         <div className="flex items-center gap-3">
           <Skeleton className="h-11 w-11 rounded-lg" />
           <div className="space-y-2">
@@ -53,6 +67,16 @@ export const OrganizationWorkspacePanel = ({ organizationId }: OrganizationWorks
 
   return (
     <div className="flex h-full min-h-0 min-w-0 flex-col rounded-lg border bg-card p-4">
+      {onBack && (
+        <button
+          type="button"
+          onClick={onBack}
+          className="mb-3 flex w-fit items-center gap-1 text-sm text-muted-foreground lg:hidden"
+        >
+          <ChevronLeft className="h-4 w-4" />
+          Organizations
+        </button>
+      )}
       <div className="flex items-start justify-between gap-3">
         <div className="flex items-center gap-3">
           <div className="flex h-11 w-11 shrink-0 items-center justify-center overflow-hidden rounded-lg bg-primary/10 text-primary">
