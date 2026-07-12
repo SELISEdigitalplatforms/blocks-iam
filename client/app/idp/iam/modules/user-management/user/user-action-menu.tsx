@@ -1,4 +1,10 @@
 import { Button } from "@/components/ui-kits/button/button";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui-kits/tooltip/tooltip";
 import { RotateCcw, Send } from "lucide-react";
 import { useState } from "react";
 import { UserResetPassword } from "./user-reset-password";
@@ -20,12 +26,47 @@ export const UserActionMenu = ({ id, projectKey }: UserActionMenuProps) => {
 
   return (
     <>
-      <div className="flex items-center gap-2">
+      <div className="flex shrink-0 items-center gap-2">
+        {isActive ? (
+          <TooltipProvider>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button
+                  variant="outline"
+                  size="icon"
+                  className="lg:hidden"
+                  onClick={() => setIsResetPasswordModalOpen(true)}
+                  aria-label="Reset Password"
+                >
+                  <RotateCcw className="h-4 w-4" />
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent side="bottom">Reset Password</TooltipContent>
+            </Tooltip>
+          </TooltipProvider>
+        ) : (
+          <TooltipProvider>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button
+                  variant="outline"
+                  size="icon"
+                  className="lg:hidden"
+                  onClick={() => setIsResendActivationModalOpen(true)}
+                  aria-label="Resend Activation"
+                >
+                  <Send className="h-4 w-4" />
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent side="bottom">Resend Activation</TooltipContent>
+            </Tooltip>
+          </TooltipProvider>
+        )}
         {isActive ? (
           <Button
             variant="outline"
             size="sm"
-            className="gap-1.5"
+            className="hidden gap-1.5 lg:inline-flex"
             onClick={() => setIsResetPasswordModalOpen(true)}
           >
             <RotateCcw className="h-4 w-4" />
@@ -35,7 +76,7 @@ export const UserActionMenu = ({ id, projectKey }: UserActionMenuProps) => {
           <Button
             variant="outline"
             size="sm"
-            className="gap-1.5"
+            className="hidden gap-1.5 lg:inline-flex"
             onClick={() => setIsResendActivationModalOpen(true)}
           >
             <Send className="h-4 w-4" />

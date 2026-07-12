@@ -4,7 +4,6 @@ using Authentication.DomainService.Security.Services;
 using Blocks.Genesis;
 using Iam.DomainService.Activity.RequestModel;
 using Iam.DomainService.Dtos;
-using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 
 namespace Api.Controllers
@@ -15,7 +14,6 @@ namespace Api.Controllers
     /// </summary>
     [ApiController]
     [Route("security")]
-    [Authorize]
     public class SecurityController : ControllerBase
     {
         private readonly ISecurityQueryService _securityQueryService;
@@ -33,6 +31,7 @@ namespace Api.Controllers
         }
 
         [HttpGet("summary")]
+        [ProtectedEndPoint("blocks-iam::iam::security-audit")]
         public async Task<IActionResult> GetSummary([FromQuery] string? uid, CancellationToken ct)
         {
             var actor = ResolveActor(uid);
@@ -45,6 +44,7 @@ namespace Api.Controllers
         }
 
         [HttpGet("sessions")]
+        [ProtectedEndPoint("blocks-iam::iam::security-audit")]
         public async Task<ActionResult<IReadOnlyList<UserSessionDto>>> GetUserSessions([FromQuery] string? uid, CancellationToken ct)
         {
             var actor = ResolveActor(uid);
@@ -57,6 +57,7 @@ namespace Api.Controllers
         }
 
         [HttpGet("sessions/{sessionId}")]
+        [ProtectedEndPoint("blocks-iam::iam::security-audit")]
         public async Task<ActionResult<SessionDetailsDto>> GetSessionDetails(
             [FromRoute] string sessionId,
             [FromQuery] string? uid,
@@ -77,6 +78,7 @@ namespace Api.Controllers
         }
 
         [HttpPost("sessions/{sessionId}/revoke")]
+        [ProtectedEndPoint("blocks-iam::iam::mutate-security-audit")]
         public async Task<IActionResult> RevokeSession(
             [FromRoute] string sessionId,
             [FromBody] RevokeSessionRequest? req,
@@ -97,6 +99,7 @@ namespace Api.Controllers
         }
 
         [HttpPost("revoke/refresh-tokens/{tokenId}")]
+        [ProtectedEndPoint("blocks-iam::iam::mutate-security-audit")]
         public async Task<IActionResult> RevokeRefreshToken(
             [FromRoute] string tokenId,
             [FromBody] RevokeSessionRequest? req,
@@ -117,6 +120,7 @@ namespace Api.Controllers
         }
 
         [HttpPost("activity")]
+        [ProtectedEndPoint("blocks-iam::iam::security-audit")]
         public async Task<IActionResult> GetActivity(
             [FromBody] GetActivityPayload payload,
             CancellationToken ct)

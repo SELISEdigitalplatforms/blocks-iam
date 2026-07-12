@@ -42,6 +42,7 @@ export const Users = () => {
         {!isUserLoading && data && data.totalCount > queryParams.pageSize && (
           <div className="mt-5 flex items-center md:justify-end">
             <Pagination
+              compact
               page={queryParams.page}
               pageSize={queryParams.pageSize}
               totalCount={data?.totalCount || 0}

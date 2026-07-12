@@ -7,9 +7,14 @@ import { useState } from "react";
 type DeleteOrganizationRoleProps = {
   role: IRole;
   onDelete: (role: IRole) => void;
+  onSave?: () => void;
 };
 
-export const DeleteOrganizationRole = ({ role, onDelete }: DeleteOrganizationRoleProps) => {
+export const DeleteOrganizationRole = ({
+  role,
+  onDelete,
+  onSave,
+}: DeleteOrganizationRoleProps) => {
   const [open, setOpen] = useState<boolean>(false);
 
   return (
@@ -22,7 +27,12 @@ export const DeleteOrganizationRole = ({ role, onDelete }: DeleteOrganizationRol
           dialogTitle: "Remove Role",
           dialogSubtitle: "Are you sure you want to remove this role?",
         }}
-        onConfirm={() => onDelete(role)}
+        onConfirm={() => {
+          onDelete(role);
+          // Defer save so the parent's queued state update lands before
+          // `onSave` reads the new selection.
+          setTimeout(() => onSave?.(), 0);
+        }}
         onCancel={() => setOpen(false)}
       />
     </Dialog>
