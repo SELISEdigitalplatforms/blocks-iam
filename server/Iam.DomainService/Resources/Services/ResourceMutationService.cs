@@ -48,7 +48,7 @@ namespace Iam.DomainService.Resources
         public async Task<BaseMutationResponse> CreatePermissionAsync(CreatePermissionRequest command)
         {
             var blocksContext = BlocksContext.GetContext();
-            if (!(string.IsNullOrWhiteSpace(blocksContext.OrganizationId) || blocksContext.OrganizationId == DefaultOrganizationId))
+            if (!IsDefaultOrgScope(blocksContext?.OrganizationId))
             {
                 return new BaseMutationResponse
                 {
@@ -85,7 +85,7 @@ namespace Iam.DomainService.Resources
 
 
             var tenantConfig = await _resourceRepository.GetTenantConfigurationAsync();
-            if (tenantConfig.IsMultiOrgEnabled && blocksContext.OrganizationId == "default")
+            if (tenantConfig.IsMultiOrgEnabled && IsDefaultOrgScope(blocksContext?.OrganizationId))
             {
                 await _identityAccessManagementService.SendToQueueAsync(
                     IdpConstants.IamOrgQueue,
@@ -137,6 +137,19 @@ namespace Iam.DomainService.Resources
 
         public async Task<BaseMutationResponse> CreateRoleAsync(CreateRoleRequest command)
         {
+            var blocksContext = BlocksContext.GetContext();
+            if (!IsDefaultOrgScope(blocksContext?.OrganizationId))
+            {
+                return new BaseMutationResponse
+                {
+                    IsSuccess = false,
+                    Errors = new Dictionary<string, string>
+                    {
+                        { "forbidden", "Not allowed to create role in this organization" }
+                    }
+                };
+            }
+
             _logger.LogInformation("Role creation start");
 
             var validationResult = await _roleValidator.ValidateAsync(command);
@@ -160,9 +173,8 @@ namespace Iam.DomainService.Resources
             );
 
             var tenantConfig = await _resourceRepository.GetTenantConfigurationAsync();
-            var blocksContext = BlocksContext.GetContext();
 
-            if (blocksContext.OrganizationId == DefaultOrganizationId && (tenantConfig?.IsMultiOrgEnabled ?? false))
+            if (IsDefaultOrgScope(blocksContext?.OrganizationId) && (tenantConfig?.IsMultiOrgEnabled ?? false))
             {
                 await _identityAccessManagementService.SendToQueueAsync(
                     IdpConstants.IamOrgQueue,
@@ -238,7 +250,7 @@ namespace Iam.DomainService.Resources
         public async Task<BaseMutationResponse> UpdatePermissionAsync(string id, UpdatePermissionRequest command)
         {
             var blocksContext = BlocksContext.GetContext();
-            if (!(string.IsNullOrWhiteSpace(blocksContext.OrganizationId) || blocksContext.OrganizationId == DefaultOrganizationId))
+            if (!IsDefaultOrgScope(blocksContext?.OrganizationId))
             {
                 return new BaseMutationResponse
                 {
@@ -312,7 +324,7 @@ namespace Iam.DomainService.Resources
             );
 
             var tenantConfig = await _resourceRepository.GetTenantConfigurationAsync();
-            if (tenantConfig.IsMultiOrgEnabled && blocksContext.OrganizationId == DefaultOrganizationId)
+            if (tenantConfig.IsMultiOrgEnabled && IsDefaultOrgScope(blocksContext?.OrganizationId))
             {
                 await _identityAccessManagementService.SendToQueueAsync(
                     IdpConstants.IamOrgQueue,
@@ -320,7 +332,7 @@ namespace Iam.DomainService.Resources
                     {
                         Entity = "permission",
                         ItemId = permission.ItemId,
-                        Action = "update"
+                        Action = command.IsArchived ? "delete" : "update"
                     }
                 );
             }
@@ -349,7 +361,7 @@ namespace Iam.DomainService.Resources
                 };
             }
 
-            if (role.CreatedFromDefault)
+            if (role.CreatedFromDefault && !IsDefaultOrgScope(role.OrganizationId))
             {
                 return new BaseMutationResponse
                 {
@@ -433,7 +445,7 @@ namespace Iam.DomainService.Resources
             );
 
             var tenantConfig = await _resourceRepository.GetTenantConfigurationAsync();
-            if (tenantConfig.IsMultiOrgEnabled)
+            if (tenantConfig.IsMultiOrgEnabled && IsDefaultOrgScope(blocksContext?.OrganizationId))
             {
                 await _identityAccessManagementService.SendToQueueAsync(
                     IdpConstants.IamOrgQueue,
@@ -525,7 +537,7 @@ namespace Iam.DomainService.Resources
                     AddPermissions = command.AddPermissions,
                     RemovePermissions = command.RemovePermissions,
                     Slug = command.Slug,
-                    IsPropagationEnable = tenantConfig.IsMultiOrgEnabled && string.Equals(currentOrganizationId, DefaultOrganizationId, StringComparison.OrdinalIgnoreCase)
+                    IsPropagationEnable = tenantConfig.IsMultiOrgEnabled && IsDefaultOrgScope(currentOrganizationId)
                     && (command.AddPermissions.Any() || command.RemovePermissions.Any()),
                 });
 
@@ -540,30 +552,40 @@ namespace Iam.DomainService.Resources
 
         public async Task ExecutePropagationRolePermissionUpdateAsync(PropagationRolePermissionUpdateEvent command)
         {
-            if (command.Entity == "permission")
+            if (command == null)
             {
-                if (command.Action == "insert")
-                {
-                    await InsertPermissionForAllOrg(command.ItemId);
-                }
-
-                if (command.Action == "update")
-                {
-                    await UpdatePermissionForAllOrg(command.ItemId);
-                }
+                _logger.LogWarning("Received null PropagationRolePermissionUpdateEvent.");
+                return;
             }
 
-            if (command.Entity == "role")
-            {
-                if (command.Action == "insert")
-                {
-                    await InsertRoleForAllOrg(command.ItemId);
-                }
+            var (entity, action) = (command.Entity?.ToLowerInvariant(), command.Action?.ToLowerInvariant());
 
-                if (command.Action == "update")
-                {
+            switch (entity, action)
+            {
+                case ("permission", "insert"):
+                    await InsertPermissionForAllOrg(command.ItemId);
+                    break;
+                case ("permission", "update"):
+                    await UpdatePermissionForAllOrg(command.ItemId);
+                    break;
+                case ("permission", "delete"):
+                    await DeletePermissionForAllOrg(command.ItemId);
+                    break;
+                case ("role", "insert"):
+                    await InsertRoleForAllOrg(command.ItemId);
+                    break;
+                case ("role", "update"):
                     await UpdateRoleForAllOrg(command.ItemId);
-                }
+                    break;
+                case ("role", "delete"):
+                    await DeleteRoleForAllOrg(command.ItemId);
+                    break;
+                default:
+                    _logger.LogWarning(
+                        "Unhandled propagation event: Entity={Entity}, Action={Action}",
+                        command.Entity,
+                        command.Action);
+                    break;
             }
         }
 
@@ -653,7 +675,7 @@ namespace Iam.DomainService.Resources
 
             foreach (var orgPermission in permissions)
             {
-                if (permission.OrganizationId == DefaultOrganizationId) continue;
+                if (orgPermission.OrganizationId == DefaultOrganizationId) continue;
 
                 orgPermission.Name = permission.Name;
                 orgPermission.Description = permission.Description;
@@ -702,28 +724,48 @@ namespace Iam.DomainService.Resources
                 return false;
             }
 
-            var roles = orgIds.Select(orgId => new Role
+            var roles = new List<Role>();
+            foreach (var orgId in orgIds)
             {
-                ItemId = Guid.NewGuid().ToString(),
-                CreatedDate = DateTime.UtcNow,
-                LastUpdatedDate = DateTime.UtcNow,
+                var existing = await _resourceRepository.GetRoleBySlugAsync(role.Slug, orgId);
+                if (existing != null)
+                {
+                    continue;
+                }
 
-                CreatedBy = role.CreatedBy,
-                LastUpdatedBy = role.LastUpdatedBy,
-                Language = role.Language,
+                roles.Add(new Role
+                {
+                    ItemId = Guid.NewGuid().ToString(),
+                    CreatedDate = DateTime.UtcNow,
+                    LastUpdatedDate = DateTime.UtcNow,
 
-                Name = role.Name,
-                Slug = role.Slug,
-                Description = role.Description,
-                AncestorRoleSlugs = role.AncestorRoleSlugs,
-                ParentRoleSlug = role.ParentRoleSlug,
+                    CreatedBy = role.CreatedBy,
+                    LastUpdatedBy = role.LastUpdatedBy,
+                    Language = role.Language,
 
-                CanCreateOwn = role.CanCreateOwn,
-                Count = role.Count,
-                CreatedFromDefault = role.CreatedFromDefault,
+                    Name = role.Name,
+                    Slug = role.Slug,
+                    Description = role.Description,
+                    AncestorRoleSlugs = role.AncestorRoleSlugs != null
+                        ? new List<string>(role.AncestorRoleSlugs)
+                        : [],
+                    ParentRoleSlug = role.ParentRoleSlug,
 
-                OrganizationId = orgId,
-            }).ToList();
+                    CanCreateOwn = role.CanCreateOwn,
+                    Count = role.Count,
+                    CreatedFromDefault = true,
+
+                    OrganizationId = orgId,
+                });
+            }
+
+            if (!roles.Any())
+            {
+                _logger.LogInformation(
+                    "Role '{Slug}' already exists in all organizations; nothing to insert",
+                    role.Slug);
+                return true;
+            }
 
             await _resourceRepository.InsertRolesAsync(roles);
 
@@ -786,6 +828,89 @@ namespace Iam.DomainService.Resources
                 "Updated role '{Slug}' for {Count} organizations",
                 role.Slug,
                 rolesToUpdate.Count);
+
+            return true;
+        }
+
+        private async Task<bool> DeletePermissionForAllOrg(string itemId)
+        {
+            var permission = await _resourceRepository.GetPermissionByIdAsync(itemId);
+
+            if (permission == null)
+            {
+                _logger.LogWarning("Permission not found for delete propagation. ItemId: {ItemId}", itemId);
+                return false;
+            }
+
+            var permissions = await _resourceRepository.GetPermissionsByResourceAsync(permission.Resource);
+
+            if (permissions == null || !permissions.Any())
+            {
+                return true;
+            }
+
+            var stale = 0;
+            foreach (var orgPermission in permissions)
+            {
+                if (orgPermission.OrganizationId == DefaultOrganizationId)
+                {
+                    continue;
+                }
+
+                if (orgPermission.IsArchived)
+                {
+                    continue;
+                }
+
+                orgPermission.IsArchived = true;
+                orgPermission.LastUpdatedDate = DateTime.UtcNow;
+                orgPermission.LastUpdatedBy = permission.LastUpdatedBy;
+                stale++;
+            }
+
+            if (stale > 0)
+            {
+                await _resourceRepository.UpdatePermissionsAsync(permissions);
+            }
+
+            _logger.LogInformation(
+                "Archived permission '{Resource}' for {Count} organizations",
+                permission.Resource,
+                stale);
+
+            return true;
+        }
+
+        private async Task<bool> DeleteRoleForAllOrg(string itemId)
+        {
+            var role = await _resourceRepository.GetRoleByIdAsync(itemId);
+
+            if (role == null)
+            {
+                _logger.LogWarning("Role not found for delete propagation. ItemId: {ItemId}", itemId);
+                return false;
+            }
+
+            var roles = await _resourceRepository.GetRolesBySlugAsync(role.Slug);
+
+            if (roles == null || !roles.Any())
+            {
+                return true;
+            }
+
+            var orphaned = roles
+                .Where(x => x.ItemId != role.ItemId && x.CreatedFromDefault)
+                .ToList();
+
+            if (!orphaned.Any())
+            {
+                return true;
+            }
+
+            _logger.LogWarning(
+                "Role deletion propagation received for '{Slug}' across {Count} organizations, but no role-delete repository API exists yet. Manual cleanup required.",
+                role.Slug,
+                orphaned.Count);
 
             return true;
         }
@@ -1461,6 +1586,11 @@ namespace Iam.DomainService.Resources
 
             var contextOrgId = BlocksContext.GetContext()?.OrganizationId;
             return string.IsNullOrWhiteSpace(contextOrgId) ? DefaultOrganizationId : contextOrgId;
+        }
+
+        private static bool IsDefaultOrgScope(string? organizationId)
+        {
+            return string.IsNullOrWhiteSpace(organizationId) || organizationId == DefaultOrganizationId;
         }
     }
 }
