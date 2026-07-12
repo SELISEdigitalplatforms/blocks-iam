@@ -87,8 +87,8 @@ export function Organizations() {
 
   if (showMultiOrgDisabledCard) {
     return (
-      <Card>
-        <CardContent className="flex items-center justify-center py-16">
+      <Card className="min-h-[420px]">
+        <CardContent className="flex h-full min-h-[388px] items-center justify-center py-16">
           <div className="flex max-w-md flex-col items-center gap-6 text-center">
             <div className="flex h-16 w-16 items-center justify-center rounded-2xl bg-muted">
               <Building2 className="h-8 w-8 text-muted-foreground" />
