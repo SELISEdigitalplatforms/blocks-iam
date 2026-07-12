@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
+import { useQueryState } from "nuqs";
 import { IRole } from "@blocks-idp/iam/models/role";
 import { IPermission } from "@blocks-idp/iam/models/permission";
 import { useGetRoles } from "@blocks-idp/iam/hooks/use-roles";
@@ -33,8 +34,41 @@ type MultiOrgAccessProps = {
   projectKey: string;
 };
 
+const encodeOrgSelection = (userId: string, orgId: string) => `${userId}:${orgId}`;
+const decodeOrgSelection = (value: string): { userId: string; orgId: string } | null => {
+  const idx = value.indexOf(":");
+  if (idx <= 0 || idx === value.length - 1) return null;
+  return { userId: value.slice(0, idx), orgId: value.slice(idx + 1) };
+};
+
 export const MultiOrgAccess = ({ userId, projectKey }: MultiOrgAccessProps) => {
-  const [selectedOrgId, setSelectedOrgId] = useState("");
+  // Persist the per-user organization selection in the URL so it survives
+  // tab switches, navigation back/forth, and reloads — but resets when the
+  // user id changes (encoded value mismatch).
+  const [persistedSelection, setPersistedSelection] = useQueryState("userOrgSelection", {
+    defaultValue: "",
+  });
+  const decoded = decodeOrgSelection(persistedSelection);
+  const isScopedToCurrentUser = !!decoded && decoded.userId === userId;
+  const selectedOrgId = isScopedToCurrentUser ? decoded!.orgId : "";
+  const setSelectedOrgId = (orgId: string) => {
+    setPersistedSelection(orgId ? encodeOrgSelection(userId, orgId) : null);
+  };
+
+  // Clear the URL selection if it was scoped to a different user (e.g. user
+  // navigated to a different user-detail page with the param still in the URL).
+  const hasClearedStaleSelectionRef = useRef(false);
+  useEffect(() => {
+    if (persistedSelection && !isScopedToCurrentUser && !hasClearedStaleSelectionRef.current) {
+      hasClearedStaleSelectionRef.current = true;
+      setPersistedSelection(null);
+    }
+    // Reset the latch when the persisted value actually changes (e.g. user
+    // picked something) so future mismatches still get cleared.
+    if (!persistedSelection) {
+      hasClearedStaleSelectionRef.current = false;
+    }
+  }, [persistedSelection, isScopedToCurrentUser, setPersistedSelection]);
   const [selectedRoles, setSelectedRoles] = useState<IRole[]>([]);
   const [selectedPermissions, setSelectedPermissions] = useState<IPermission[]>([]);
   const [initialRoleSlugs, setInitialRoleSlugs] = useState<string[]>([]);
