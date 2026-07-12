@@ -162,7 +162,7 @@ namespace Iam.DomainService.Resources
             var tenantConfig = await _resourceRepository.GetTenantConfigurationAsync();
             var blocksContext = BlocksContext.GetContext();
 
-            if (blocksContext.OrganizationId == DefaultOrganizationId && (tenantConfig?.IsMultiOrgEnabled ?? false) & command.PropagateToOtherOrg)
+            if (blocksContext.OrganizationId == DefaultOrganizationId && (tenantConfig?.IsMultiOrgEnabled ?? false))
             {
                 await _identityAccessManagementService.SendToQueueAsync(
                     IdpConstants.IamOrgQueue,
@@ -312,7 +312,7 @@ namespace Iam.DomainService.Resources
             );
 
             var tenantConfig = await _resourceRepository.GetTenantConfigurationAsync();
-            if (tenantConfig.IsMultiOrgEnabled && blocksContext.OrganizationId == "default")
+            if (tenantConfig.IsMultiOrgEnabled && blocksContext.OrganizationId == DefaultOrganizationId)
             {
                 await _identityAccessManagementService.SendToQueueAsync(
                     IdpConstants.IamOrgQueue,
@@ -433,7 +433,7 @@ namespace Iam.DomainService.Resources
             );
 
             var tenantConfig = await _resourceRepository.GetTenantConfigurationAsync();
-            if (tenantConfig.IsMultiOrgEnabled & command.PropagateToOtherOrg)
+            if (tenantConfig.IsMultiOrgEnabled)
             {
                 await _identityAccessManagementService.SendToQueueAsync(
                     IdpConstants.IamOrgQueue,
