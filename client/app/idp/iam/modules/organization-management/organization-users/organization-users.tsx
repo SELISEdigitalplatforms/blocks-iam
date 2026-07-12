@@ -63,7 +63,7 @@ export const OrganizationUsers = ({
         </div>
       </CardHeader>
 
-      <CardContent className="min-h-0 min-w-0 flex-1 overflow-y-auto mt-4">
+      <CardContent className="scrollbar-slim min-h-0 min-w-0 flex-1 mt-4">
         <OrganizationUsersTable
           users={data?.data || []}
           isLoading={isUserLoading}
