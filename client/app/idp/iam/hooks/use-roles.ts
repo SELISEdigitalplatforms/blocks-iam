@@ -2,10 +2,14 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { roleService } from "@blocks-idp/iam/services/role.service";
 import { GetRolesPayload } from "@blocks-idp/iam/models/role";
 
-export const useGetRoles = (option: GetRolesPayload) => {
+export const useGetRoles = (
+  option: GetRolesPayload,
+  queryOptions?: { enabled?: boolean },
+) => {
   return useQuery({
     queryKey: ["roles", option],
     queryFn: () => roleService.getRoles(option),
+    enabled: queryOptions?.enabled ?? true,
   });
 };
 

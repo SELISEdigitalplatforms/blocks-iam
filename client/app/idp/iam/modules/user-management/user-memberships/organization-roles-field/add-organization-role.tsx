@@ -23,23 +23,46 @@ type AddOrganizationRoleProps = {
   /** Called with the picked new roles on confirm. */
   onAdd: (data: IRole[]) => void;
   onSave?: () => void;
+  /**
+   * Scope the picker to a specific organization — when provided, the role
+   * list is fetched with this id as the `organizationId` so the request
+   * matches the per-org editor on the same page. Defaults to the tenant id.
+   */
+  organizationId?: string;
 };
 
-export const AddOrganizationRole = ({ onAdd, roles, onSave }: AddOrganizationRoleProps) => {
+export const AddOrganizationRole = ({
+  onAdd,
+  roles,
+  onSave,
+  organizationId,
+}: AddOrganizationRoleProps) => {
   const tenantId = useProjectStore().selectedProject?.tenantId || "";
+  // An explicit `organizationId` always wins — sending the tenant id to
+  // `/api/iam/roles` would either be wrong (different scope) or duplicate
+  // the per-org editor's request. Empty string is treated as "not provided"
+  // so the picker doesn't fall back to `tenantId` between the time the page
+  // mounts and the org data resolves.
+  const scopeKey = organizationId || tenantId;
   const [open, setOpen] = useState<boolean>(false);
   const [selectedRoles, setSelectedRoles] = useState<IRole[]>([]);
   const [filter, setFilter] = useState({ page: 0, pageSize: 10, search: "" });
 
-  const { data, isLoading } = useGetRoles({
-    page: filter.page,
-    pageSize: filter.pageSize,
-    projectKey: tenantId,
-    sort: { property: "Name", isDescending: false },
-    filter: {
-      search: filter.search,
+  const { data, isLoading } = useGetRoles(
+    {
+      page: filter.page,
+      pageSize: filter.pageSize,
+      projectKey: scopeKey,
+      sort: { property: "Name", isDescending: false },
+      filter: {
+        search: filter.search,
+      },
     },
-  });
+    // Don't fetch the role list until the picker is opened — the per-org
+    // editor on this page already fetches with a matching queryKey, so an
+    // eager fetch here would be a redundant `/api/iam/roles` request.
+    { enabled: open && !!scopeKey },
+  );
 
   const onCheckedChangeHandler = (checked: boolean, role: IRole) => {
     if (checked) {

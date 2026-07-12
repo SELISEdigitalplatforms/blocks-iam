@@ -52,22 +52,31 @@ export const ManageOrganizationDialog = ({
   const [selectedRoles, setSelectedRoles] = useState<IRole[]>([]);
   const [selectedPermissions, setSelectedPermissions] = useState<IPermission[]>([]);
 
-  const { data: userData } = useGetUserById({ id: userId, projectKey: tenantId });
-  const { data: rolesData } = useGetRoles({
-    page: 0,
-    pageSize: 1000,
-    sort: { property: "Name", isDescending: false },
-    filter: { search: "" },
-    projectKey: tenantId,
-  });
-  const { data: permissionsData } = useGetPermissions({
-    projectKey: tenantId,
-    page: 0,
-    pageSize: 1000,
-    search: "",
-    isBuiltIn: "",
-    roles: [],
-  });
+  const { data: userData } = useGetUserById({ id: userId, projectKey: tenantId }, { enabled: open });
+  const { data: rolesData } = useGetRoles(
+    {
+      page: 0,
+      pageSize: 1000,
+      sort: { property: "Name", isDescending: false },
+      filter: { search: "" },
+      projectKey: tenantId,
+    },
+    // Don't fetch roles/permissions until the dialog is opened — they aren't
+    // needed otherwise, and this avoids a tenant-scoped duplicate call on
+    // the user-detail access tab.
+    { enabled: open && !!tenantId },
+  );
+  const { data: permissionsData } = useGetPermissions(
+    {
+      projectKey: tenantId,
+      page: 0,
+      pageSize: 1000,
+      search: "",
+      isBuiltIn: "",
+      roles: [],
+    },
+    { enabled: open && !!tenantId },
+  );
 
   const { mutateAsync, isPending } = useUpdateUserAccessControl({
     id: userId,
