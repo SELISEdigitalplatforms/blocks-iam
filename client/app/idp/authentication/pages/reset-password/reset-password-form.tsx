@@ -102,6 +102,7 @@ export const ResetPasswordForm = ({ code, tenantId }: ResetPasswordFormProps) =>
         await animCtx?.failAnimation(msg);
         return;
       }
+      await animCtx?.succeedAnimation();
       navigate("/reset-password-success");
     } catch (error) {
       resetCaptcha();
