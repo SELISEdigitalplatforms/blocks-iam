@@ -9,7 +9,9 @@ namespace XUnitTest.Auth.Shared
         public void QueueNames_AreCorrect()
         {
             IdpConstants.AuthenticationQueue.Should().Be("blocks_authentication_listener");
-            IdpConstants.IamQueue.Should().Be("blocks_iam_listener");
+            IdpConstants.IamUserQueue.Should().Be("blocks_iam_listener_user");
+            IdpConstants.IamResourceQueue.Should().Be("blocks_iam_listener_resource");
+            IdpConstants.IamPermissionQueue.Should().Be("blocks_iam_listener_permission");
             IdpConstants.IamOrgQueue.Should().Be("blocks_iam_org_listener");
             IdpConstants.MailQueue.Should().Be("blocks_email_listener");
             IdpConstants.MfaQueueName.Should().Be("blocks_mfa_listener");
