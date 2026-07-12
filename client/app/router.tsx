@@ -109,6 +109,34 @@ export const router = createBrowserRouter([
         ],
       },
 
+      // ── Public confirmation pages (outside AuthResolver) ──
+      // AuthResolver calls GET /api/auth/me on mount. When the session is
+      // expired/revoked, blocks-kit HttpClient auto-redirects to /login for
+      // any path not in excludedPaths (only /login, /signup). These pages
+      // must stay outside AuthResolver so users can read the success message.
+      {
+        element: <PublicLayout />,
+        children: [
+          {
+            path: "/activate-success",
+            element: <ActivateSuccessPage />,
+          },
+          {
+            path: "/forgot-email-sent",
+            element: <ForgotEmailSentPage />,
+          },
+          {
+            path: "/signup-email-sent",
+            element: <SignupEmailSentPage />,
+          },
+          { path: "/mfa-check", element: <MfaCheckPage /> },
+          {
+            path: "/reset-password-success",
+            element: <ResetPasswordSuccessPage />,
+          },
+        ],
+      },
+
       // ── Everything inside AuthResolver (resolves auth state) ──
       {
         element: (
@@ -136,33 +164,33 @@ export const router = createBrowserRouter([
                   { path: "/sso-activate", element: <SsoActivatePage /> },
                 ],
               },
-              {
-                element: <PublicLayout />,
-                children: [
-                  // { path: "/activate", element: <ActivatePage /> },
+              // {
+              //   element: <PublicLayout />,
+              //   children: [
+              //     // { path: "/activate", element: <ActivatePage /> },
 
-                  // { path: "/forgot-password", element: <ForgotPasswordPage /> },
+              //     // { path: "/forgot-password", element: <ForgotPasswordPage /> },
 
-                  // { path: "/resetpassword", element: <ResetPasswordPage /> },
-                  {
-                    path: "/activate-success",
-                    element: <ActivateSuccessPage />,
-                  },
-                  {
-                    path: "/forgot-email-sent",
-                    element: <ForgotEmailSentPage />,
-                  },
-                  {
-                    path: "/signup-email-sent",
-                    element: <SignupEmailSentPage />,
-                  },
-                  { path: "/mfa-check", element: <MfaCheckPage /> },
-                  {
-                    path: "/reset-password-success",
-                    element: <ResetPasswordSuccessPage />,
-                  },
-                ],
-              },
+              //     // { path: "/resetpassword", element: <ResetPasswordPage /> },
+              //     {
+              //       path: "/activate-success",
+              //       element: <ActivateSuccessPage />,
+              //     },
+              //     {
+              //       path: "/forgot-email-sent",
+              //       element: <ForgotEmailSentPage />,
+              //     },
+              //     {
+              //       path: "/signup-email-sent",
+              //       element: <SignupEmailSentPage />,
+              //     },
+              //     { path: "/mfa-check", element: <MfaCheckPage /> },
+              //     {
+              //       path: "/reset-password-success",
+              //       element: <ResetPasswordSuccessPage />,
+              //     },
+              //   ],
+              // },
             ],
           },
 

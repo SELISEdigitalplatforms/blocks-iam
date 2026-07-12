@@ -109,6 +109,7 @@ export const ActivationForm = ({ code, tenantId }: ActivationFormProps) => {
         await animCtx?.failAnimation(msg);
         return;
       }
+      await animCtx?.succeedAnimation();
       navigate("/activate-success");
     } catch (error: unknown) {
       resetCaptcha();
