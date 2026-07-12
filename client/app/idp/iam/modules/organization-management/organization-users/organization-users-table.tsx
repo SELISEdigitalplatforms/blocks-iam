@@ -113,9 +113,9 @@ const [confirmRevoke, setConfirmRevoke] = useState<User | null>(null);
 
   if (!users.length) {
     return (
-      <div className="flex flex-col items-center justify-center gap-2 rounded-xl border border-dashed py-16 text-center text-sm text-muted-foreground">
+      <div className="flex h-full min-h-[200px] flex-1 flex-col items-center justify-center gap-2 rounded-xl border border-dashed py-16 text-center text-sm text-muted-foreground">
         <UsersIcon className="h-6 w-6" />
-        No results found.
+        No users found.
       </div>
     );
   }
@@ -128,11 +128,11 @@ const [confirmRevoke, setConfirmRevoke] = useState<User | null>(null);
   return (
     <>
       {/* Both the header row and the data rows share the same grid template so
-          the column labels stay perfectly aligned with their cells. The wrapper
-          becomes horizontally scrollable on md+ when the viewport is narrower
-          than the grid's intrinsic width. */}
-      <div className="overflow-x-auto">
-        <div className="flex min-w-[860px] flex-col gap-1.5">
+          the column labels stay perfectly aligned with their cells. Below md,
+          rows render as stacked cards instead, so the min-width (and the
+          resulting horizontal scroll) only applies at md+. */}
+      <div className="scrollbar-hidden-x overflow-x-hidden md:overflow-x-auto">
+        <div className="flex flex-col gap-1.5 md:min-w-[860px]">
           {/* Column headers — sticky so they stay pinned while the rows below scroll */}
           <div className="sticky top-0 z-10 hidden grid-cols-[220px_minmax(0,1fr)_90px_140px_40px_16px] items-center gap-2 bg-card px-2 pb-1.5 text-xs md:grid">
             <div className="min-w-0">
@@ -185,14 +185,14 @@ const [confirmRevoke, setConfirmRevoke] = useState<User | null>(null);
                 onKeyDown={(e) => {
                   if (e.key === "Enter" || e.key === " ") handleRowClick(user.itemId);
                 }}
-                className="group grid cursor-pointer grid-cols-1 gap-1.5 rounded-xl border bg-card p-2 transition-colors hover:border-primary/30 md:grid-cols-[220px_minmax(0,1fr)_90px_140px_40px_16px] md:items-center md:gap-2"
+                className="group flex cursor-pointer flex-col gap-2.5 rounded-xl border bg-card p-3 transition-colors hover:border-primary/30 md:grid md:grid-cols-[220px_minmax(0,1fr)_90px_140px_40px_16px] md:items-center md:gap-2 md:p-2"
               >
-                {/* Avatar + name */}
+                {/* Avatar + name (+ inline revoke action on mobile) */}
                 <div className="flex min-w-0 items-center gap-2">
                   <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-primary/10 text-[11px] font-semibold text-primary">
                     {getInitials(user.firstName, user.lastName)}
                   </div>
-                  <div className="min-w-0">
+                  <div className="min-w-0 flex-1">
                     <p className="truncate text-xs font-semibold leading-tight text-high-emphasis">{fullName}</p>
                     {user.email && (
                       <div className="md:hidden">
@@ -203,6 +203,22 @@ const [confirmRevoke, setConfirmRevoke] = useState<User | null>(null);
                         </CopyToClipboardButton>
                       </div>
                     )}
+                  </div>
+                  <div
+                    className="shrink-0 md:hidden"
+                    onClick={(e) => e.stopPropagation()}
+                    onKeyDown={(e) => e.stopPropagation()}
+                  >
+                    <Button
+                      size="icon"
+                      variant="ghost"
+                      aria-label="Revoke from organization"
+                      title="Revoke from organization"
+                      className="h-7 w-7 text-destructive hover:bg-destructive/10"
+                      onClick={() => setConfirmRevoke(user)}
+                    >
+                      <UserMinus className="h-3.5 w-3.5" />
+                    </Button>
                   </div>
                 </div>
 
@@ -217,24 +233,29 @@ const [confirmRevoke, setConfirmRevoke] = useState<User | null>(null);
                   </div>
                 )}
 
-                {/* Status */}
-                <div className="md:shrink-0">
-                  <Badge variant={user.active ? "success" : "error"} className="w-fit">
-                    {user.active ? "Active" : "Inactive"}
-                  </Badge>
+                {/* Status + Last login: paired on one row on mobile; on md+ this
+                    wrapper becomes `contents` so its children fall back into
+                    their own grid columns (3 and 4), matching the header. */}
+                <div className="flex items-center justify-between gap-3 md:contents">
+                  {/* Status */}
+                  <div className="md:shrink-0">
+                    <Badge variant={user.active ? "success" : "error"} className="w-fit">
+                      {user.active ? "Active" : "Inactive"}
+                    </Badge>
+                  </div>
+
+                  {/* Last login */}
+                  <div className="text-right md:shrink-0 md:text-left md:text-xs md:text-muted-foreground">
+                    <span className="block text-[11px] text-muted-foreground md:hidden">Last login</span>
+                    {hasLastLogin
+                      ? formatDate(parseDateString(user.lastLoggedInTime))
+                      : "Never logged in"}
+                  </div>
                 </div>
 
-                {/* Last login */}
-                <div className="md:shrink-0 md:text-xs md:text-muted-foreground">
-                  <span className="block text-[11px] text-muted-foreground md:hidden">Last login</span>
-                  {hasLastLogin
-                    ? formatDate(parseDateString(user.lastLoggedInTime))
-                    : "Never logged in"}
-                </div>
-
-                {/* Revoke */}
+                {/* Revoke — desktop only (mobile has its own copy inline with the name) */}
                 <div
-                  className="md:shrink-0"
+                  className="hidden md:block md:shrink-0"
                   onClick={(e) => e.stopPropagation()}
                   onKeyDown={(e) => e.stopPropagation()}
                 >

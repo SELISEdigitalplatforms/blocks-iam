@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
+import { useQueryState } from "nuqs";
 import { IRole } from "@blocks-idp/iam/models/role";
 import { IPermission } from "@blocks-idp/iam/models/permission";
 import { useGetRoles } from "@blocks-idp/iam/hooks/use-roles";
@@ -33,8 +34,41 @@ type MultiOrgAccessProps = {
   projectKey: string;
 };
 
+const encodeOrgSelection = (userId: string, orgId: string) => `${userId}:${orgId}`;
+const decodeOrgSelection = (value: string): { userId: string; orgId: string } | null => {
+  const idx = value.indexOf(":");
+  if (idx <= 0 || idx === value.length - 1) return null;
+  return { userId: value.slice(0, idx), orgId: value.slice(idx + 1) };
+};
+
 export const MultiOrgAccess = ({ userId, projectKey }: MultiOrgAccessProps) => {
-  const [selectedOrgId, setSelectedOrgId] = useState("");
+  // Persist the per-user organization selection in the URL so it survives
+  // tab switches, navigation back/forth, and reloads — but resets when the
+  // user id changes (encoded value mismatch).
+  const [persistedSelection, setPersistedSelection] = useQueryState("userOrgSelection", {
+    defaultValue: "",
+  });
+  const decoded = decodeOrgSelection(persistedSelection);
+  const isScopedToCurrentUser = !!decoded && decoded.userId === userId;
+  const selectedOrgId = isScopedToCurrentUser ? decoded!.orgId : "";
+  const setSelectedOrgId = (orgId: string) => {
+    setPersistedSelection(orgId ? encodeOrgSelection(userId, orgId) : null);
+  };
+
+  // Clear the URL selection if it was scoped to a different user (e.g. user
+  // navigated to a different user-detail page with the param still in the URL).
+  const hasClearedStaleSelectionRef = useRef(false);
+  useEffect(() => {
+    if (persistedSelection && !isScopedToCurrentUser && !hasClearedStaleSelectionRef.current) {
+      hasClearedStaleSelectionRef.current = true;
+      setPersistedSelection(null);
+    }
+    // Reset the latch when the persisted value actually changes (e.g. user
+    // picked something) so future mismatches still get cleared.
+    if (!persistedSelection) {
+      hasClearedStaleSelectionRef.current = false;
+    }
+  }, [persistedSelection, isScopedToCurrentUser, setPersistedSelection]);
   const [selectedRoles, setSelectedRoles] = useState<IRole[]>([]);
   const [selectedPermissions, setSelectedPermissions] = useState<IPermission[]>([]);
   const [initialRoleSlugs, setInitialRoleSlugs] = useState<string[]>([]);
@@ -42,38 +76,13 @@ export const MultiOrgAccess = ({ userId, projectKey }: MultiOrgAccessProps) => {
   const [isManageOpen, setIsManageOpen] = useState(false);
   const [revokeTarget, setRevokeTarget] = useState<UserOrganizationRow | null>(null);
 
-  const orgScopedKey = selectedOrgId || projectKey;
   const { data: userData, isLoading: isUserLoading } = useGetUserById({ id: userId, projectKey });
   const { data: orgsData, isLoading: isOrgsLoading } = useGetOrganizations({
     projectKey,
     page: 0,
     pageSize: 1000,
   });
-  const { data: rolesData } = useGetRoles({
-    page: 0,
-    pageSize: 1000,
-    sort: { property: "Name", isDescending: false },
-    filter: { search: "" },
-    projectKey: orgScopedKey,
-  });
-  const { data: permissionsData } = useGetPermissions({
-    projectKey: orgScopedKey,
-    page: 0,
-    pageSize: 1000,
-    search: "",
-    isBuiltIn: "",
-    roles: [],
-  });
-  const { mutateAsync } = useUpdateUserAccessControl({ id: userId, projectKey: orgScopedKey });
 
-  const roleBySlug = useMemo(
-    () => new Map((rolesData?.data || []).map((role) => [role.slug, role])),
-    [rolesData?.data],
-  );
-  const permissionByName = useMemo(
-    () => new Map((permissionsData?.data || []).map((permission) => [permission.name, permission])),
-    [permissionsData?.data],
-  );
   const orgById = useMemo(
     () => new Map((orgsData?.organizations || []).map((org) => [org.itemId, org])),
     [orgsData?.organizations],
@@ -112,6 +121,41 @@ export const MultiOrgAccess = ({ userId, projectKey }: MultiOrgAccessProps) => {
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [userData?.data, orgById]);
+
+  // Always send the selected organization's `itemId` as the `organizationId`
+  // on roles/permissions queries and updates — never the tenant id. Fall back
+  // to the first available org, and disable the queries if no org exists yet.
+  const organizationIdForQueries =
+    selectedOrgId || organizationRows[0]?.organizationId || "";
+
+  const { data: rolesData } = useGetRoles({
+    page: 0,
+    pageSize: 1000,
+    sort: { property: "Name", isDescending: false },
+    filter: { search: "" },
+    projectKey: organizationIdForQueries,
+  });
+  const { data: permissionsData } = useGetPermissions({
+    projectKey: organizationIdForQueries,
+    page: 0,
+    pageSize: 1000,
+    search: "",
+    isBuiltIn: "",
+    roles: [],
+  });
+  const { mutateAsync } = useUpdateUserAccessControl({
+    id: userId,
+    projectKey: organizationIdForQueries,
+  });
+
+  const roleBySlug = useMemo(
+    () => new Map((rolesData?.data || []).map((role) => [role.slug, role])),
+    [rolesData?.data],
+  );
+  const permissionByName = useMemo(
+    () => new Map((permissionsData?.data || []).map((permission) => [permission.name, permission])),
+    [permissionsData?.data],
+  );
 
   const selectOrg = (orgId: string) => {
     setSelectedOrgId(orgId);
@@ -243,7 +287,7 @@ export const MultiOrgAccess = ({ userId, projectKey }: MultiOrgAccessProps) => {
               </TooltipProvider>
             )}
           </div>
-          <div className="flex min-h-0 flex-1 flex-col overflow-y-auto pt-4 pr-1">
+          <div className="scrollbar-slim flex min-h-0 flex-1 flex-col pt-4 pr-1">
           {selectedOrgRow ? (
             <RolesPermissionsPillEditor
               roles={selectedRoles}
@@ -253,6 +297,7 @@ export const MultiOrgAccess = ({ userId, projectKey }: MultiOrgAccessProps) => {
               rolesDescription="Roles assigned in this organization."
               permissionsDescription="Permissions assigned in this organization."
               onSave={onSave}
+              organizationId={organizationIdForQueries}
             />
           ) : (
             <div className="flex min-h-0 flex-1 flex-col items-center justify-center gap-2 py-16 text-center text-sm text-muted-foreground">

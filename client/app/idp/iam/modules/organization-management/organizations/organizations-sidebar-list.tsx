@@ -8,7 +8,6 @@ import { Checkbox } from "@/components/ui-kits/checkbox/checkbox";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui-kits/popover/popover";
 import { Building2, ListFilter, Search, X } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { OrganizationMemberCount } from "./organization-member-count";
 
 const AVATAR_PALETTES = [
   { bg: "bg-blue-500/10", text: "text-blue-600 dark:text-blue-400" },
@@ -207,8 +206,7 @@ export const OrganizationsSidebarList = ({
                       {org.name}
                     </span>
                     <p className="mt-0.5 truncate text-xs text-muted-foreground">
-                      <OrganizationMemberCount organizationId={org.itemId} />
-                      {updatedLabel && <> &bull; Updated {updatedLabel}</>}
+                      {updatedLabel && <>Updated {updatedLabel}</>}
                     </p>
                   </div>
                 </button>

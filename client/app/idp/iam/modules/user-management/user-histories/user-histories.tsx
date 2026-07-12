@@ -26,7 +26,7 @@ export const UserHistories = ({ id }: HistoriesProps) => {
 
   return (
     <Card className="flex h-full min-h-0 flex-col">
-      <CardContent className="flex-1 overflow-y-auto">
+      <CardContent className="scrollbar-slim flex-1">
         <ActivityList isLoading={loading} rows={rows} />
         {!loading && data && data.totalCount > filter.pageSize && (
           <div className="mt-5 flex md:justify-end">

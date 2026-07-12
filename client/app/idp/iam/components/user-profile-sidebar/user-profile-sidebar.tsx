@@ -44,7 +44,7 @@ export const UserProfileSidebar = ({ id, projectKey }: UserProfileSidebarProps) 
   const user = data?.data;
 
   return (
-    <Card className="flex h-full min-h-0 flex-col overflow-hidden rounded-none border-0 bg-transparent px-0 shadow-none mt-4">
+    <Card className="flex h-full min-h-0 flex-col overflow-hidden rounded-none border-0 bg-transparent px-0 py-0 shadow-none mt-4">
       {/* Avatar */}
       <div
         className="relative mx-auto w-full max-w-[220px] shrink-0"

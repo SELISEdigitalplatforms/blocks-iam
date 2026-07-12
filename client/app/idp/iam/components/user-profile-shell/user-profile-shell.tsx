@@ -34,6 +34,13 @@ type UserProfileShellProps = {
   rightSlot?: ReactNode;
   skeleton?: ReactNode;
   isLoading?: boolean;
+  /**
+   * Height (px) of the fixed header above this shell in the current layout.
+   * DashboardLayout's header (used by the admin user-detail page) differs
+   * from ConsoleLayout's header (used by the self-service profile page), so
+   * this must be passed per call site rather than assumed.
+   */
+  fixedHeaderOffsetPx?: number;
 };
 
 const DefaultSkeleton = () => (
@@ -55,6 +62,7 @@ export const UserProfileShell = ({
   rightSlot,
   skeleton,
   isLoading,
+  fixedHeaderOffsetPx = 83,
 }: UserProfileShellProps) => {
   const initialTab = defaultTab ?? tabs[0]?.value ?? "";
   const [tabId, setTabId] = useQueryState("userDetails", { defaultValue: initialTab });
@@ -64,10 +72,14 @@ export const UserProfileShell = ({
   BREADCRUMB_CUSTOM_TITLES[`/app/user-detail/${id}`] = activeTab?.label || "";
 
   return (
-    // The console shell's header is fixed and the page scrolls at the document level
+    // The header above this shell is fixed and the page scrolls at the document level
     // (no ancestor establishes a definite content height), so `h-full` can't resolve —
-    // pin height explicitly to the viewport minus the fixed header instead.
-    <div className="mx-auto flex w-full max-w-7xl flex-col overflow-hidden p-4 md:h-[calc(100vh-83px)] md:min-h-0 md:p-6">
+    // pin height explicitly to the viewport minus the fixed header instead. The header
+    // height differs by layout (DashboardLayout vs ConsoleLayout), hence the prop.
+    <div
+      className="mx-auto flex w-full max-w-7xl flex-col overflow-hidden p-4 md:h-[calc(100vh-var(--profile-shell-header-offset))] md:min-h-0 md:p-6"
+      style={{ ["--profile-shell-header-offset" as string]: `${fixedHeaderOffsetPx}px` }}
+    >
       <div className="mb-4 hidden shrink-0 md:mb-4 md:block">
         <PageBreadcrumb breadcrumbIndex={2} isLoadingLastItem={!!isLoading} />
       </div>
@@ -96,7 +108,7 @@ export const UserProfileShell = ({
           <div className="hidden md:col-start-1 md:row-start-1 md:block">
             <ProfileHeading id={id} projectKey={projectKey} />
           </div>
-          <div className="hidden md:col-start-2 md:row-start-1 md:flex md:items-end md:justify-between md:gap-3">
+          <div className="hidden flex-wrap items-end justify-between gap-3 md:col-start-2 md:row-start-1 md:flex">
             <TabsList className={cn(underlineTabsListClass, "w-fit")}>
               {tabs.map((tab) => (
                 <TabsTrigger
