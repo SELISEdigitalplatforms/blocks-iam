@@ -211,6 +211,12 @@ namespace Iam.DomainService.Users
             return filters.Any() ? builder.And(filters) : builder.Empty;
         }
 
+        private static string ResolveOrganizationId(string? organizationId)
+        {
+            organizationId = !string.IsNullOrWhiteSpace(organizationId)? organizationId:  BlocksContext.GetContext()?.OrganizationId;
+            return string.IsNullOrWhiteSpace(organizationId) ? "default" : organizationId;
+        }
+
         private static SortDefinition<User> BuildSortDefinition(BaseSortRequest? sortRequest)
         {
             var builder = Builders<User>.Sort;
@@ -278,20 +284,5 @@ namespace Iam.DomainService.Users
             return string.IsNullOrWhiteSpace(orgId) ? "default" : orgId;
         }
 
-        private static string ResolveOrganizationId(string? requestedOrgId = null)
-        {
-            var orgId = BlocksContext.GetContext()?.OrganizationId;
-            orgId = string.IsNullOrWhiteSpace(orgId) ? "default" : orgId;
-
-            if (!string.IsNullOrWhiteSpace(requestedOrgId))
-            {
-                if (orgId == "default" || orgId == requestedOrgId)
-                {
-                    return requestedOrgId;
-                }
-            }
-
-            return orgId;
-        }
     }
 }

@@ -35,7 +35,7 @@ namespace Iam.DomainService.Users
 
             return new IsUserExistResponse
             {
-                Exists = user != null,
+                UserId = user?.ItemId,
                 OrganizationIds = user?.OrganizationIds ?? new List<string>()
             };
         }
