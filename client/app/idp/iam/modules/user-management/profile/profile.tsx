@@ -61,6 +61,7 @@ export const UserProfile = ({ id }: { id: string }) => {
       projectKey={x_blocks_key}
       defaultTab="security"
       tabs={tabs}
+      own
       fixedHeaderOffsetPx={59}
     />
   );
