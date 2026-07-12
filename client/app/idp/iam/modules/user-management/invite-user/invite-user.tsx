@@ -100,12 +100,42 @@ export const InviteUser = () => {
 
   const isPending = isCreatingUser || isGrantingAccess;
 
+  // Treat a missing/undefined isDisabled as enabled — only explicitly disabled
+  // orgs (isDisabled === true) should be excluded from the picker.
+  const enabledOrgs = useMemo(
+    () => (orgsData?.organizations ?? []).filter((org) => org.isDisabled !== true),
+    [orgsData?.organizations],
+  );
+
+  // "Default" is an implicit organization every account belongs to — it is
+  // never returned by the tenant organizations list, so it has to be added
+  // in manually or it can never be selected.
+  const hasNonDefaultOrgs = useMemo(
+    () => enabledOrgs.some((org) => org.itemId !== DEFAULT_ORGANIZATION_ID),
+    [enabledOrgs],
+  );
+
   useEffect(() => {
     if (!open) {
       form.reset();
       setOrgPopoverOpen(false);
+      return;
     }
-  }, [open, form]);
+    // When multi-org is disabled we don't show an org picker, and the server
+    // implicitly assigns new users to the built-in "Default" org, so the form
+    // payload stays empty.
+    if (!isMultiOrgEnabled) {
+      form.setValue("organizationIds", [], { shouldValidate: true });
+      return;
+    }
+    // When multi-org is enabled but the workspace has no real orgs, seed the
+    // selection with the synthetic "default" org so the user can submit
+    // without having to pick from an empty list.
+    if (!orgsData) return;
+    if (!hasNonDefaultOrgs) {
+      form.setValue("organizationIds", [DEFAULT_ORGANIZATION_ID], { shouldValidate: true });
+    }
+  }, [open, isMultiOrgEnabled, orgsData, hasNonDefaultOrgs, form]);
 
   // When multi-org is disabled the org picker is hidden, and we don't send
   // organizationIds in the payload — the user is implicitly scoped to the
@@ -120,13 +150,6 @@ export const InviteUser = () => {
       form.setValue("organizationIds", [], { shouldValidate: true });
     }
   }, [open, existingUserOrgIds, selectedOrgId, form]);
-
-  // Treat a missing/undefined isDisabled as enabled — only explicitly disabled
-  // orgs (isDisabled === true) should be excluded from the picker.
-  const enabledOrgs = useMemo(
-    () => (orgsData?.organizations ?? []).filter((org) => org.isDisabled !== true),
-    [orgsData?.organizations],
-  );
 
   // Dropdown list: enabled orgs with a synthetic "Default" entry pinned at the top.
 // When the email maps to an existing user, hide orgs (including Default) they're already in.
@@ -272,37 +295,6 @@ const orgOptions = useMemo(() => {
                 )}
               />
 
-              {!exists && isValidEmailFormat && (
-                <>
-                  <FormField
-                    control={form.control}
-                    name="firstName"
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel>First name</FormLabel>
-                        <FormControl>
-                          <Input placeholder="Enter first name" {...field} />
-                        </FormControl>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
-                  <FormField
-                    control={form.control}
-                    name="lastName"
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel>Last name</FormLabel>
-                        <FormControl>
-                          <Input placeholder="Enter last name" {...field} />
-                        </FormControl>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
-                </>
-              )}
-
               {showExistingUserNotice && (
                 <div
                   role="alert"
@@ -377,6 +369,37 @@ const orgOptions = useMemo(() => {
                     </FormItem>
                   )}
                 />
+              )}
+
+              {!exists && isValidEmailFormat && (
+                <>
+                  <FormField
+                    control={form.control}
+                    name="firstName"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>First name</FormLabel>
+                        <FormControl>
+                          <Input placeholder="Enter first name" {...field} />
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                  <FormField
+                    control={form.control}
+                    name="lastName"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Last name</FormLabel>
+                        <FormControl>
+                          <Input placeholder="Enter last name" {...field} />
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                </>
               )}
             </div>
             <DialogFooter className="mt-6">

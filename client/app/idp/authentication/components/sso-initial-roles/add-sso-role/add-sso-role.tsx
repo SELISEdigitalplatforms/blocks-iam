@@ -30,15 +30,19 @@ export const AddSSORole = ({ onAdd, roles }: AddSSORoleProps) => {
   const [selectedRolos, setSelectedRoles] = useState<IRole[]>([]);
   const [filter, setFilter] = useState({ page: 0, pageSize: 10, search: "" });
 
-  const { data, isLoading } = useGetRoles({
-    page: filter.page,
-    pageSize: filter.pageSize,
-    projectKey: tenantId,
-    sort: { property: "Name", isDescending: false },
-    filter: {
-      search: filter.search,
+  const { data, isLoading } = useGetRoles(
+    {
+      page: filter.page,
+      pageSize: filter.pageSize,
+      projectKey: tenantId,
+      sort: { property: "Name", isDescending: false },
+      filter: {
+        search: filter.search,
+      },
     },
-  });
+    // Don't fetch roles until the picker is opened.
+    { enabled: open && !!tenantId },
+  );
 
   const onCheckedChangeHandler = (checked: boolean, role: IRole) => {
     if (checked) {

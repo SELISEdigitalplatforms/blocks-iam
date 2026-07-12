@@ -11,6 +11,7 @@ type OrganizationRolesFieldProps = {
   onChange: (data: IRole[]) => void;
   onSave?: () => void;
   description?: string;
+  organizationId?: string;
 };
 
 export const OrganizationRolesField = ({
@@ -18,6 +19,7 @@ export const OrganizationRolesField = ({
   onChange,
   onSave,
   description = "Assign default roles to this user automatically",
+  organizationId,
 }: OrganizationRolesFieldProps) => {
   const [filter, setFilter] = useState({ page: 0, pageSize: 5 });
 
@@ -52,7 +54,12 @@ export const OrganizationRolesField = ({
           <p className="text-sm text-muted-foreground">{description}</p>
         </div>
         <div className="shrink-0">
-          <AddOrganizationRole onAdd={onAddHandler} roles={roles} onSave={onSave} />
+          <AddOrganizationRole
+            onAdd={onAddHandler}
+            roles={roles}
+            onSave={onSave}
+            organizationId={organizationId}
+          />
         </div>
       </div>
       {roles.length === 0 ? (

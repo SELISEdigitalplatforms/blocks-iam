@@ -56,6 +56,12 @@ export const UserProfile = ({ id }: { id: string }) => {
   ];
 
   return (
-    <UserProfileShell id={id} projectKey={x_blocks_key} defaultTab="security" tabs={tabs} />
+    <UserProfileShell
+      id={id}
+      projectKey={x_blocks_key}
+      defaultTab="security"
+      tabs={tabs}
+      fixedHeaderOffsetPx={59}
+    />
   );
 };
