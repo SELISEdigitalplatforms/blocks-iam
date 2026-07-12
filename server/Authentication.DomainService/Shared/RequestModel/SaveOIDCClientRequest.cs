@@ -25,5 +25,6 @@ namespace Authentication.DomainService.RequestModel
         public bool UseTokensCookie { get; set; } = true;
         public bool RequireMfa { get; set; }
         public List<UserMfaType>? AllowedMfaMethods { get; set; }
+        public bool RegisterAsIdentityProvider { get; set; }
     }
 }
