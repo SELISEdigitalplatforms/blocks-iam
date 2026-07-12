@@ -85,7 +85,7 @@ export interface ICreateUserPayload {
   userPassType: number;
   userCreationType: number;
   platform: string;
-  projectKey: string;
+  projectKey?: string;
   organizationId?: string;
   organizationIds?: string[];
 }
