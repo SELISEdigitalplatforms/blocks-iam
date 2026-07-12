@@ -35,6 +35,13 @@ type UserProfileShellProps = {
   skeleton?: ReactNode;
   isLoading?: boolean;
   /**
+   * Whether `id` refers to the signed-in user's own profile (self-service
+   * /app/profile) rather than an arbitrary user viewed/edited by an admin
+   * (/app/user-detail/[id]). Determines whether the edit form reads from
+   * `useGetMe` or fetches `id` directly.
+   */
+  own?: boolean;
+  /**
    * Height (px) of the fixed header above this shell in the current layout.
    * DashboardLayout's header (used by the admin user-detail page) differs
    * from ConsoleLayout's header (used by the self-service profile page), so
@@ -62,6 +69,7 @@ export const UserProfileShell = ({
   rightSlot,
   skeleton,
   isLoading,
+  own = false,
   fixedHeaderOffsetPx = 83,
 }: UserProfileShellProps) => {
   const initialTab = defaultTab ?? tabs[0]?.value ?? "";
@@ -106,7 +114,7 @@ export const UserProfileShell = ({
 
           {/* Desktop: title row + tabs */}
           <div className="hidden md:col-start-1 md:row-start-1 md:block">
-            <ProfileHeading id={id} projectKey={projectKey} />
+            <ProfileHeading id={id} projectKey={projectKey} own={own} />
           </div>
           <div className="hidden flex-wrap items-end justify-between gap-3 md:col-start-2 md:row-start-1 md:flex">
             <TabsList className={cn(underlineTabsListClass, "w-fit")}>
@@ -151,7 +159,15 @@ export const UserProfileShell = ({
   );
 };
 
-const ProfileHeading = ({ id, projectKey }: { id: string; projectKey: string }) => {
+const ProfileHeading = ({
+  id,
+  projectKey,
+  own,
+}: {
+  id: string;
+  projectKey: string;
+  own: boolean;
+}) => {
   const { data } = useGetUserById({ id, projectKey });
   const user = data?.data;
   const firstName = user?.firstName?.trim() ?? "";
@@ -166,7 +182,7 @@ const ProfileHeading = ({ id, projectKey }: { id: string; projectKey: string }) 
         <h1 className="truncate text-2xl font-semibold tracking-tight text-foreground">
           {displayName}
         </h1>
-        <UpdateUser id={id} projectKey={projectKey} own iconOnly />
+        <UpdateUser id={id} projectKey={projectKey} own={own} iconOnly />
       </div>
       {user?.email && (
         <CopyToClipboardButton textToCopy={user.email}>

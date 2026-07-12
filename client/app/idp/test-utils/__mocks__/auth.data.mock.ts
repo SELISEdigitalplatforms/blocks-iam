@@ -65,6 +65,8 @@ export const mockSigninMfaResponse = {
 
 export const mockSignupPayload: ISignupByEmailPayload = {
   email: "newuser@blocks.com",
+  firstName: "New",
+  lastName: "User",
   captchaCode: "captcha-code",
 };
 

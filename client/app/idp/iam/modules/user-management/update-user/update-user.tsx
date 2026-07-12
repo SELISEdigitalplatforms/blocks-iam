@@ -56,13 +56,14 @@ export const UpdateUser = ({ id, projectKey, own = false, iconOnly = false }: Up
   } = form;
   const onSubmitHandler = async (values: z.infer<typeof inviteUserFormSchema>) => {
     try {
+      // Only the explicitly edited fields should travel in the PATCH body —
+      // spreading `userData.data` (the full record) and reusing every value
+      // defeats the server's partial-update semantics and overwrites state
+      // the form never touches (active, MFA flags, roles, etc.).
       const res = await mutateAsync({
-        ...userData?.data,
-        ...values,
         itemId: id,
-        organizations: userData?.data?.organizationIds || [],
-        roles: Object.values(userData?.data?.roles || {}).flat(),
-        permissions: Object.values(userData?.data?.permissions || {}).flat(),
+        firstName: values.firstName,
+        lastName: values.lastName,
       });
       if (!res.isSuccess) return showErrorToast({ errors: res.errors });
       showSuccessToast({ description: "User updated successfully" });
