@@ -197,22 +197,22 @@ export const router = createBrowserRouter([
                 ],
               },
               // ── Project overview group (impersonation terminated) ──
-              {
-                path: "project/:tenantGroupId",
-                element: (
-                  <ProjectOverviewRoute
-                    redirectPaths={redirectPaths}
-                    navigationMenus={navigationMenus}
-                  />
-                ),
-                children: [
-                  { index: true, element: <Navigate to="environments" replace /> },
-                  {
-                    path: "environments",
-                    element: <EnvironmentsPage />,
-                  },
-                ],
-              },
+              // {
+              //   path: "project/:tenantGroupId",
+              //   element: (
+              //     <ProjectOverviewRoute
+              //       redirectPaths={redirectPaths}
+              //       navigationMenus={navigationMenus}
+              //     />
+              //   ),
+              //   children: [
+              //     { index: true, element: <Navigate to="environments" replace /> },
+              //     {
+              //       path: "environments",
+              //       element: <EnvironmentsPage />,
+              //     },
+              //   ],
+              // },
               // ── Dashboard group (impersonation synchronized) ──
               {
                 path: ":itemId",
