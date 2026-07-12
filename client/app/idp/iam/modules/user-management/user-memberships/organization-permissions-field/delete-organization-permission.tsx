@@ -7,11 +7,13 @@ import { useState } from "react";
 type DeleteOrganizationPermissionProps = {
   permission: IPermission;
   onDelete: (permission: IPermission) => void;
+  onSave?: () => void;
 };
 
 export const DeleteOrganizationPermission = ({
   permission,
   onDelete,
+  onSave,
 }: DeleteOrganizationPermissionProps) => {
   const [open, setOpen] = useState<boolean>(false);
 
@@ -25,7 +27,12 @@ export const DeleteOrganizationPermission = ({
           dialogTitle: "Remove Permission",
           dialogSubtitle: "Are you sure you want to remove this permission?",
         }}
-        onConfirm={() => onDelete(permission)}
+        onConfirm={() => {
+          onDelete(permission);
+          // Defer save so the parent's queued state update lands before
+          // `onSave` reads the new selection.
+          setTimeout(() => onSave?.(), 0);
+        }}
         onCancel={() => setOpen(false)}
       />
     </Dialog>

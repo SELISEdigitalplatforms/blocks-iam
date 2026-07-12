@@ -42,14 +42,14 @@ export const UsersTable = ({ users, isLoading }: UserTableProps) => {
     return (
       <div className="flex flex-col items-center justify-center gap-2 rounded-xl border border-dashed py-16 text-center text-sm text-muted-foreground">
         <UsersIcon className="h-6 w-6" />
-        No results found.
+        No users found.
       </div>
     );
   }
 
   return (
-    <div className="overflow-x-auto">
-      <div className="flex min-w-[820px] flex-col gap-3">
+    <div className="scrollbar-hidden-x overflow-x-hidden md:overflow-x-auto">
+      <div className="flex flex-col gap-3 md:min-w-[820px]">
         <div className="hidden grid-cols-[220px_minmax(0,1fr)_90px_140px_16px] items-center gap-4 px-4 md:grid">
           <div className="min-w-0">
             <FilterControls.SortHeader id="FirstName" label="Name" value={sortQueryParams} onChange={setSortQueryParams} />
@@ -79,13 +79,13 @@ export const UsersTable = ({ users, isLoading }: UserTableProps) => {
               onKeyDown={(e) => {
                 if (e.key === "Enter" || e.key === " ") handleRowClick(user.itemId);
               }}
-              className="group grid cursor-pointer grid-cols-1 gap-3 rounded-xl border bg-card p-4 transition-colors hover:border-primary/30 md:grid-cols-[220px_minmax(0,1fr)_90px_140px_16px] md:items-center md:gap-4"
+              className="group flex cursor-pointer flex-col gap-3 rounded-xl border bg-card p-4 transition-colors hover:border-primary/30 md:grid md:grid-cols-[220px_minmax(0,1fr)_90px_140px_16px] md:items-center md:gap-4"
             >
               <div className="flex min-w-0 items-center gap-3">
                 <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-primary/10 text-xs font-semibold text-primary">
                   {getInitials(user.firstName, user.lastName)}
                 </div>
-                <div className="min-w-0">
+                <div className="min-w-0 flex-1">
                   <p className="truncate text-sm font-semibold text-high-emphasis">{fullName}</p>
                   {user.email && (
                     <div className="md:hidden">
@@ -109,15 +109,20 @@ export const UsersTable = ({ users, isLoading }: UserTableProps) => {
                 </div>
               )}
 
-              <div className="md:shrink-0">
-                <Badge variant={user.active ? "success" : "error"} className="w-fit">
-                  {user.active ? "Active" : "Inactive"}
-                </Badge>
-              </div>
+              {/* Status + Last login: paired on one row on mobile; on md+ this
+                  wrapper becomes `contents` so its children fall back into
+                  their own grid columns (3 and 4), matching the header. */}
+              <div className="flex items-center justify-between gap-3 md:contents">
+                <div className="md:shrink-0">
+                  <Badge variant={user.active ? "success" : "error"} className="w-fit">
+                    {user.active ? "Active" : "Inactive"}
+                  </Badge>
+                </div>
 
-              <div className="md:shrink-0 md:text-sm md:text-muted-foreground">
-                <span className="block text-xs text-muted-foreground md:hidden">Last login</span>
-                {hasLastLogin ? formatDate(parseDateString(user.lastLoggedInTime)) : "Never logged in"}
+                <div className="text-right md:shrink-0 md:text-left md:text-sm md:text-muted-foreground">
+                  <span className="block text-xs text-muted-foreground md:hidden">Last login</span>
+                  {hasLastLogin ? formatDate(parseDateString(user.lastLoggedInTime)) : "Never logged in"}
+                </div>
               </div>
 
               <ChevronRight className="hidden h-4 w-4 shrink-0 text-muted-foreground transition-transform group-hover:translate-x-0.5 md:block" />
