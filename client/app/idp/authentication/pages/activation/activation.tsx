@@ -115,7 +115,7 @@ export const Activation = ({ code, tenantId }: ActivationProps) => {
       heading={heading}
       headingDimFirst={headingDimFirst}
       successTitle="Account Activated"
-      successSubtitle="Your account is ready. Redirecting to login…"
+      successSubtitle="Your account is ready to use."
       showCorners={false}
     >
       {isActivationPending || isValidCode === null ? (

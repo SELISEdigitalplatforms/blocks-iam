@@ -1,5 +1,7 @@
 export interface ISignupByEmailPayload {
   email: string;
+  firstName: string;
+  lastName: string;
   captchaCode: string;
 }
 export interface ISignupByEmailResponse {

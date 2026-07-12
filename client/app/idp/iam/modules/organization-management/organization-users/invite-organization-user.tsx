@@ -249,7 +249,6 @@ const orgOptions = useMemo(() => {
         userPassType: 1,
         userCreationType: 1,
         platform: "blocks_portal",
-        projectKey: tenantId,
         organizationId: selectedOrgId,
       });
       if (!res.isSuccess) {
@@ -318,7 +317,7 @@ const orgOptions = useMemo(() => {
                       )}
                       {isValidEmailFormat && !isCheckingUserExists && exists && (
                         <span className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2">
-                          <Loader className="h-4 w-4 animate-spin text-green-600 dark:text-green-400" />
+                          <Check className="h-4 w-4 text-green-600 dark:text-green-400" />
                         </span>
                       )}
                     </div>
