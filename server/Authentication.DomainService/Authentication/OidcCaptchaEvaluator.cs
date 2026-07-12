@@ -60,10 +60,20 @@ namespace Authentication.DomainService.Authentication
             });
         }
 
+        /// <summary>
+        /// Result of the captcha gate evaluated during OIDC authentication.
+        /// Returned as part of <see cref="OidcCaptchaEvaluation"/> so the
+        /// controller layer can decide whether to issue a 400 or continue.
+        /// </summary>
         public enum CaptchaOutcome
         {
+            /// <summary>Captcha was not required, or the supplied answer was accepted.</summary>
             Pass,
+
+            /// <summary>Captcha is required but the caller did not supply an answer.</summary>
             Missing,
+
+            /// <summary>Captcha was supplied but the provider rejected it.</summary>
             Invalid
         }
 
