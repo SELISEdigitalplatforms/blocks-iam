@@ -17,7 +17,6 @@ namespace Api.Controllers;
 
 [ApiController]
 [Route("api/mfa")]
-[Authorize]
 public class MfaController : ControllerBase
 {
     private readonly IMfaManagementService _mfaManagementService;
@@ -47,7 +46,7 @@ public class MfaController : ControllerBase
     }
 
     [HttpGet("config")]
-    [Authorize]
+    [ProtectedEndPoint("blocks-iam::iam::mfa-configs")]
     public async Task<IActionResult> GetPolicy()
     {
         var config = await _mfaConfigurationService.GetAsync() ?? new Configuration { UserMfaType = new List<UserMfaType>() };
@@ -65,7 +64,7 @@ public class MfaController : ControllerBase
     }
 
     [HttpPost("config")]
-    [Authorize]
+    [ProtectedEndPoint("blocks-iam::iam::mutate-mfa-configs")]
     public async Task<IActionResult> UpdatePolicy([FromBody] UpdateMfaPolicyRequest request, CancellationToken ct)
     {
         var current = await _mfaConfigurationService.GetAsync() ?? new Configuration { UserMfaType = new List<UserMfaType>() };
@@ -86,7 +85,7 @@ public class MfaController : ControllerBase
     }
 
     [HttpPost("totp/setup")]
-    [Authorize]
+    [ProtectedEndPoint("blocks-iam::iam::mutate-mfa-configs")]
     public async Task<IActionResult> SetupTotp()
     {
         var userId = GetCurrentUserId();
@@ -109,7 +108,7 @@ public class MfaController : ControllerBase
     }
 
     [HttpPost("totp/verify-setup")]
-    [Authorize]
+    [ProtectedEndPoint("blocks-iam::iam::mutate-mfa-configs")]
     public async Task<IActionResult> VerifyTotpSetup([FromBody] VerifyTotpSetupRequest request)
     {
         var userId = GetCurrentUserId();
@@ -227,7 +226,7 @@ public class MfaController : ControllerBase
     }
 
     [HttpPut("method")]
-    [Authorize]
+    [ProtectedEndPoint("blocks-iam::iam::mutate-mfa-configs")]
     public async Task<IActionResult> SetMfaMethod([FromBody] SetMfaMethodRequest request)
     {
         var userId = GetCurrentUserId();
@@ -329,7 +328,7 @@ public class MfaController : ControllerBase
     }
 
     [HttpPost("disable")]
-    [Authorize]
+    [ProtectedEndPoint("blocks-iam::iam::mutate-mfa-configs")]
     public async Task<IActionResult> DisableMfa()
     {
         var userId = GetCurrentUserId();
