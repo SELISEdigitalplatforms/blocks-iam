@@ -76,38 +76,13 @@ export const MultiOrgAccess = ({ userId, projectKey }: MultiOrgAccessProps) => {
   const [isManageOpen, setIsManageOpen] = useState(false);
   const [revokeTarget, setRevokeTarget] = useState<UserOrganizationRow | null>(null);
 
-  const orgScopedKey = selectedOrgId || projectKey;
   const { data: userData, isLoading: isUserLoading } = useGetUserById({ id: userId, projectKey });
   const { data: orgsData, isLoading: isOrgsLoading } = useGetOrganizations({
     projectKey,
     page: 0,
     pageSize: 1000,
   });
-  const { data: rolesData } = useGetRoles({
-    page: 0,
-    pageSize: 1000,
-    sort: { property: "Name", isDescending: false },
-    filter: { search: "" },
-    projectKey: orgScopedKey,
-  });
-  const { data: permissionsData } = useGetPermissions({
-    projectKey: orgScopedKey,
-    page: 0,
-    pageSize: 1000,
-    search: "",
-    isBuiltIn: "",
-    roles: [],
-  });
-  const { mutateAsync } = useUpdateUserAccessControl({ id: userId, projectKey: orgScopedKey });
 
-  const roleBySlug = useMemo(
-    () => new Map((rolesData?.data || []).map((role) => [role.slug, role])),
-    [rolesData?.data],
-  );
-  const permissionByName = useMemo(
-    () => new Map((permissionsData?.data || []).map((permission) => [permission.name, permission])),
-    [permissionsData?.data],
-  );
   const orgById = useMemo(
     () => new Map((orgsData?.organizations || []).map((org) => [org.itemId, org])),
     [orgsData?.organizations],
@@ -146,6 +121,41 @@ export const MultiOrgAccess = ({ userId, projectKey }: MultiOrgAccessProps) => {
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [userData?.data, orgById]);
+
+  // Always send the selected organization's `itemId` as the `organizationId`
+  // on roles/permissions queries and updates — never the tenant id. Fall back
+  // to the first available org, and disable the queries if no org exists yet.
+  const organizationIdForQueries =
+    selectedOrgId || organizationRows[0]?.organizationId || "";
+
+  const { data: rolesData } = useGetRoles({
+    page: 0,
+    pageSize: 1000,
+    sort: { property: "Name", isDescending: false },
+    filter: { search: "" },
+    projectKey: organizationIdForQueries,
+  });
+  const { data: permissionsData } = useGetPermissions({
+    projectKey: organizationIdForQueries,
+    page: 0,
+    pageSize: 1000,
+    search: "",
+    isBuiltIn: "",
+    roles: [],
+  });
+  const { mutateAsync } = useUpdateUserAccessControl({
+    id: userId,
+    projectKey: organizationIdForQueries,
+  });
+
+  const roleBySlug = useMemo(
+    () => new Map((rolesData?.data || []).map((role) => [role.slug, role])),
+    [rolesData?.data],
+  );
+  const permissionByName = useMemo(
+    () => new Map((permissionsData?.data || []).map((permission) => [permission.name, permission])),
+    [permissionsData?.data],
+  );
 
   const selectOrg = (orgId: string) => {
     setSelectedOrgId(orgId);
@@ -287,6 +297,7 @@ export const MultiOrgAccess = ({ userId, projectKey }: MultiOrgAccessProps) => {
               rolesDescription="Roles assigned in this organization."
               permissionsDescription="Permissions assigned in this organization."
               onSave={onSave}
+              organizationId={organizationIdForQueries}
             />
           ) : (
             <div className="flex min-h-0 flex-1 flex-col items-center justify-center gap-2 py-16 text-center text-sm text-muted-foreground">

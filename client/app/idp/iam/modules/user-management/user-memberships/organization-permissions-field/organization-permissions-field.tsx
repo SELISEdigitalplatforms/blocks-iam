@@ -11,6 +11,7 @@ type OrganizationPermissionsFieldProps = {
   onChange: (data: IPermission[]) => void;
   onSave?: () => void;
   description?: string;
+  organizationId?: string;
 };
 
 export const OrganizationPermissionsField = ({
@@ -18,6 +19,7 @@ export const OrganizationPermissionsField = ({
   onChange,
   onSave,
   description = "Additional permissions for this user",
+  organizationId,
 }: OrganizationPermissionsFieldProps) => {
   const [filter, setFilter] = useState({ page: 0, pageSize: 5 });
 
@@ -54,7 +56,12 @@ export const OrganizationPermissionsField = ({
           <p className="text-sm text-muted-foreground">{description}</p>
         </div>
         <div className="shrink-0">
-          <AddOrganizationPermission onAdd={onAddHandler} permissions={permissions} onSave={onSave} />
+          <AddOrganizationPermission
+            onAdd={onAddHandler}
+            permissions={permissions}
+            onSave={onSave}
+            organizationId={organizationId}
+          />
         </div>
       </div>
       {permissions.length === 0 ? (

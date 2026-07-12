@@ -6,7 +6,10 @@ import {
 } from "@blocks-idp/iam/models/permission";
 import { iamService } from "@blocks-idp/iam/services/iam.service";
 
-export const useGetPermissions = (options: IPermissionFilter) => {
+export const useGetPermissions = (
+  options: IPermissionFilter,
+  queryOptions?: { enabled?: boolean },
+) => {
   return useQuery({
     queryKey: ["permissions", options],
     queryFn: () =>
@@ -30,6 +33,7 @@ export const useGetPermissions = (options: IPermissionFilter) => {
         },
       }),
     placeholderData: keepPreviousData,
+    enabled: queryOptions?.enabled ?? true,
   });
 };
 
