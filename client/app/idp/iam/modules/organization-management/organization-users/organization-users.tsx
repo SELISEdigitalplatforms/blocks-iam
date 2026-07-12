@@ -46,18 +46,20 @@ export const OrganizationUsers = ({
 
   return (
     <Card className="flex h-full min-h-0 min-w-0 flex-col overflow-hidden">
-      <CardHeader className="mb-2 flex-row flex-wrap items-start justify-between gap-3 pt-1">
-        <div className="flex flex-col gap-1">
-          {title && <h3 className="text-base font-semibold leading-none">{title}</h3>}
-          {description && (
-            <p className="text-sm text-muted-foreground">{description}</p>
-          )}
-          <div>
+      <CardHeader className="mb-2 flex-col gap-3 pt-1">
+        {(title || description) && (
+          <div className="flex flex-col gap-1">
+            {title && <h3 className="text-base font-semibold leading-none">{title}</h3>}
+            {description && (
+              <p className="text-sm text-muted-foreground">{description}</p>
+            )}
+          </div>
+        )}
+        <div className="flex items-center justify-between gap-3">
+          <div className="min-w-0 flex-1">
             <OrganizationUsersFilterToolbar />
           </div>
-        </div>
-        <div className="ml-auto flex shrink-0 items-center gap-3">
-          {action}
+          <div className="flex shrink-0 items-center gap-3">{action}</div>
         </div>
       </CardHeader>
 
@@ -70,8 +72,8 @@ export const OrganizationUsers = ({
         />
       </CardContent>
       {!isUserLoading && data && data.totalCount > 0 && (
-        <CardFooter className="flex flex-col-reverse items-center gap-3 pt-5 md:flex-row md:justify-between">
-          <span className="text-xs text-muted-foreground">
+        <CardFooter className="flex items-center justify-between gap-3 pt-3 md:pt-5">
+          <span className="hidden text-xs text-muted-foreground md:inline">
             {(() => {
               const total = data?.totalCount ?? 0;
               const size = queryParams.pageSize;
@@ -81,6 +83,7 @@ export const OrganizationUsers = ({
             })()}
           </span>
           <Pagination
+            compact
             page={queryParams.page}
             pageSize={queryParams.pageSize}
             totalCount={data?.totalCount || 0}

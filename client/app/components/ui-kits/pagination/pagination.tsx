@@ -8,6 +8,7 @@ import {
   SelectValue,
 } from "@/components/ui-kits/select/select";
 import { Button } from "@/components/ui-kits/button/button";
+import { cn } from "@/lib/utils";
 
 interface PaginationProps {
   onChange: (pageIndex: number) => void;
@@ -16,6 +17,8 @@ interface PaginationProps {
   pageSize: number;
   page: number;
   onPageSizeChange?: (pageSize: number) => void;
+  /** Condenses the control onto a single, smaller row below the md breakpoint. Desktop is unaffected. */
+  compact?: boolean;
 }
 
 export function Pagination({
@@ -25,6 +28,7 @@ export function Pagination({
   pageSizeOptions,
   pageSize,
   onPageSizeChange,
+  compact,
 }: PaginationProps) {
   const pageChangeHandler = (page: number) => {
     onChange(page);
@@ -39,12 +43,19 @@ export function Pagination({
   };
 
   return (
-    <div className="flex flex-col gap-0 md:flex-row md:gap-8">
+    <div
+      className={cn(
+        "flex flex-col gap-0 md:flex-row md:gap-8",
+        compact && "flex-row items-center gap-2",
+      )}
+    >
       {pageSizeOptions && pageSizeOptions?.length > 0 ? (
-        <div className="flex items-center space-x-2">
-          <p className="text-sm font-medium">Rows per page</p>
+        <div className={cn("flex items-center space-x-2", compact && "shrink-0 space-x-1.5")}>
+          <p className={cn("text-sm font-medium", compact && "hidden md:block")}>Rows per page</p>
           <Select value={`${pageSize}`} onValueChange={onPageSizeChangeHandler}>
-            <SelectTrigger className="h-8 w-[70px]">
+            <SelectTrigger
+              className={cn("h-8 w-[70px]", compact && "h-7 w-[58px] text-xs md:h-8 md:w-[70px] md:text-sm")}
+            >
               <SelectValue placeholder={pageSize} />
             </SelectTrigger>
             <SelectContent side="top">
@@ -60,14 +71,19 @@ export function Pagination({
         ""
       )}
 
-      <div className="mt-2 flex items-center gap-4 md:mt-0">
-        <div className="flex items-center justify-center text-sm font-medium">
+      <div className={cn("mt-2 flex items-center gap-4 md:mt-0", compact && "mt-0 gap-2")}>
+        <div
+          className={cn(
+            "flex items-center justify-center whitespace-nowrap text-sm font-medium",
+            compact && "text-xs md:text-sm",
+          )}
+        >
           Page {page + 1} of {totalPage}
         </div>
-        <div className="flex items-center gap-1">
+        <div className={cn("flex items-center gap-1", compact && "gap-0.5")}>
           <Button
             variant="outline"
-            className={`flex h-8 w-8 p-0 disabled:cursor-not-allowed`}
+            className={cn("flex h-8 w-8 p-0 disabled:cursor-not-allowed", compact && "h-7 w-7 md:h-8 md:w-8")}
             onClick={() => {
               pageChangeHandler(0);
             }}
@@ -77,7 +93,7 @@ export function Pagination({
           </Button>
           <Button
             variant="outline"
-            className="h-8 w-8 p-0"
+            className={cn("h-8 w-8 p-0", compact && "h-7 w-7 md:h-8 md:w-8")}
             onClick={() => {
               pageChangeHandler(page - 1);
             }}
@@ -87,7 +103,7 @@ export function Pagination({
           </Button>
           <Button
             variant="outline"
-            className="h-8 w-8 p-0"
+            className={cn("h-8 w-8 p-0", compact && "h-7 w-7 md:h-8 md:w-8")}
             onClick={() => {
               pageChangeHandler(page + 1);
             }}
@@ -97,7 +113,7 @@ export function Pagination({
           </Button>
           <Button
             variant="outline"
-            className="flex h-8 w-8 p-0"
+            className={cn("flex h-8 w-8 p-0", compact && "h-7 w-7 md:h-8 md:w-8")}
             onClick={() => {
               pageChangeHandler(totalPage - 1);
             }}
