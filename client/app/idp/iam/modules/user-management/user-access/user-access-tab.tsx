@@ -1,6 +1,5 @@
 import { useGetOrganizationConfig } from "@blocks-idp/iam/hooks/use-organization";
 import { useGetUserById } from "@blocks-idp/iam/hooks/use-user";
-import { Card, CardContent } from "@/components/ui-kits/card/card";
 import { Skeleton } from "@/components/ui-kits/skeleton/skeleton";
 import { SingleOrgAccess } from "./single-org-access";
 import { MultiOrgAccess } from "./multi-org-access";
@@ -23,13 +22,13 @@ export const UserAccessTab = ({ userId, projectKey }: UserAccessTabProps) => {
 
   if (isConfigLoading || isUserLoading) {
     return (
-      <Card className="flex h-full min-h-0 flex-col">
-        <CardContent className="space-y-4 pt-6">
+      <div className="flex h-full min-h-0 flex-col overflow-hidden rounded-lg border bg-card p-6">
+        <div className="space-y-4">
           <Skeleton className="h-6 w-32" />
           <Skeleton className="h-9 w-full" />
           <Skeleton className="h-9 w-full" />
-        </CardContent>
-      </Card>
+        </div>
+      </div>
     );
   }
 
@@ -38,10 +37,8 @@ export const UserAccessTab = ({ userId, projectKey }: UserAccessTabProps) => {
   }
 
   return (
-    <Card className="flex h-full min-h-0 flex-col">
-      <CardContent className="scrollbar-slim flex-1 pt-6">
-        <SingleOrgAccess userId={userId} projectKey={projectKey} />
-      </CardContent>
-    </Card>
+    <div className="flex h-full min-h-0 min-w-0 flex-col overflow-hidden rounded-lg border bg-card p-6">
+      <SingleOrgAccess userId={userId} projectKey={projectKey} />
+    </div>
   );
 };
