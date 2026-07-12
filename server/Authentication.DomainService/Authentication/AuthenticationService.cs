@@ -1168,7 +1168,9 @@ namespace Authentication.DomainService.Authentication
             try
             {
 
-                var clientId = rootRefreshCache.ClientId;
+                var clientId = !string.IsNullOrWhiteSpace(rootRefreshCache.ClientId)
+                    ? rootRefreshCache.ClientId
+                    : request.ClientId;
                 if (string.IsNullOrWhiteSpace(clientId) || !await HasOidcClientConfigurationAsync(clientId))
                 {
                     return new ObjectResult(new
