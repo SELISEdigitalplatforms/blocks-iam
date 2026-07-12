@@ -45,10 +45,7 @@ namespace Authentication.DomainService.Oidc.Repositories
             {
                 throw new ArgumentException("RefreshTokenModel.TenantId is required.", nameof(token));
             }
-            if (string.IsNullOrWhiteSpace(token.ClientId))
-            {
-                throw new ArgumentException("RefreshTokenModel.ClientId is required.", nameof(token));
-            }
+
             if (string.IsNullOrWhiteSpace(token.SessionId))
             {
                 throw new ArgumentException("RefreshTokenModel.SessionId is required.", nameof(token));
