@@ -1,9 +1,7 @@
 using Authentication.DomainService.RequestModel;
 using Authentication.DomainService.Services;
 using Authentication.DomainService.Shared.RequestModel;
-using Authentication.DomainService.Shared.ResponseModel;
 using Blocks.Genesis;
-using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 
 namespace Api.Controllers;

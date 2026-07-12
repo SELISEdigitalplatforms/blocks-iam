@@ -115,31 +115,55 @@ export class UserService {
       if (Array.isArray(value)) return value as string[];
       return Object.values(value as Record<string, string[]>).flat();
     };
-    const normalized = {
+    // The update endpoint treats the request body as a partial — only fields
+    // explicitly present on `payload` are forwarded. Undefined keys are
+    // dropped so callers can PATCH a single field without overwriting the
+    // rest of the server-side record.
+    const normalized: Record<string, unknown> = {
       itemId: payload.itemId,
       firstName: payload.firstName,
       lastName: payload.lastName,
-      email: payload.email,
-      userName: payload.userName,
-      language: payload.language,
-      organizationIds: payload.organizationIds,
-      roles: flattenRecord(payload.roles),
-      permissions: flattenRecord(payload.permissions),
-      active: payload.active,
-      status: payload.status,
-      isVerified: payload.isVerified,
-      mfaEnabled: payload.mfaEnabled,
-      isMfaVerified: payload.isMfaVerified,
-      userMfaType: payload.userMfaType,
-      provisioningSource: payload.provisioningSource,
-      externalIdentities: payload.externalIdentities,
-      userCreationType: payload.userCreationType,
-      isMultiOrgEnabled: payload.isMultiOrgEnabled,
-      organizations: payload.organizations,
-      profileImageId: payload.profileImageId,
-      profileImageUrl: payload.profileImageUrl,
     };
-    return serviceInstances.idpService.post(`/api/iam/users/${payload.itemId}`, normalized);
+    if (payload.email !== undefined) normalized.email = payload.email;
+    if (payload.userName !== undefined) normalized.userName = payload.userName;
+    if (payload.language !== undefined) normalized.language = payload.language;
+    if (payload.organizationIds !== undefined) {
+      normalized.organizationIds = payload.organizationIds;
+    }
+    if (payload.roles !== undefined) {
+      normalized.roles = flattenRecord(payload.roles);
+    }
+    if (payload.permissions !== undefined) {
+      normalized.permissions = flattenRecord(payload.permissions);
+    }
+    if (payload.active !== undefined) normalized.active = payload.active;
+    if (payload.status !== undefined) normalized.status = payload.status;
+    if (payload.isVerified !== undefined) normalized.isVerified = payload.isVerified;
+    if (payload.mfaEnabled !== undefined) normalized.mfaEnabled = payload.mfaEnabled;
+    if (payload.isMfaVerified !== undefined) {
+      normalized.isMfaVerified = payload.isMfaVerified;
+    }
+    if (payload.userMfaType !== undefined) normalized.userMfaType = payload.userMfaType;
+    if (payload.provisioningSource !== undefined) {
+      normalized.provisioningSource = payload.provisioningSource;
+    }
+    if (payload.externalIdentities !== undefined) {
+      normalized.externalIdentities = payload.externalIdentities;
+    }
+    if (payload.userCreationType !== undefined) {
+      normalized.userCreationType = payload.userCreationType;
+    }
+    if (payload.isMultiOrgEnabled !== undefined) {
+      normalized.isMultiOrgEnabled = payload.isMultiOrgEnabled;
+    }
+    if (payload.organizations !== undefined) normalized.organizations = payload.organizations;
+    if (payload.profileImageId !== undefined) {
+      normalized.profileImageId = payload.profileImageId;
+    }
+    if (payload.profileImageUrl !== undefined) {
+      normalized.profileImageUrl = payload.profileImageUrl;
+    }
+    return serviceInstances.idpService.post(USER_ENDPOINTS.UPDATE, normalized);
   }
 
   getSignUpSetting(): Promise<IGetSignUpSettingResponse> {
