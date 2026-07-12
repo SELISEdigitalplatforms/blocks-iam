@@ -39,7 +39,7 @@ export const UserAccessTab = ({ userId, projectKey }: UserAccessTabProps) => {
 
   return (
     <Card className="flex h-full min-h-0 flex-col">
-      <CardContent className="flex-1 overflow-y-auto pt-6">
+      <CardContent className="scrollbar-slim flex-1 pt-6">
         <SingleOrgAccess userId={userId} projectKey={projectKey} />
       </CardContent>
     </Card>
