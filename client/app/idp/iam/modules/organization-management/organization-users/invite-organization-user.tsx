@@ -26,7 +26,7 @@ import {
   useCheckUserExists,
   useUpdateUserAccessControl,
 } from "@blocks-idp/iam/hooks/use-user";
-import { useGetOrganizations } from "@blocks-idp/iam/hooks/use-organization";
+import { useGetOrganizationConfig, useGetOrganizations } from "@blocks-idp/iam/hooks/use-organization";
 import { z } from "zod";
 import { useProjectStore } from "@seliseblocks/blocks-kit";
 import { ChevronsUpDown, Check, Loader, Plus } from "lucide-react";
@@ -95,6 +95,20 @@ export const InviteOrganizationUser = ({ organizationId }: InviteOrganizationUse
     page: 0,
     pageSize: 1000,
   });
+  const { data: configData, isLoading: isConfigLoading } =
+    useGetOrganizationConfig(tenantId);
+  const isMultiOrgEnabled = configData?.isMultiOrgEnabled ?? true;
+
+  // "Default" is an implicit organization every account belongs to — it is
+  // never returned by the tenant organizations list, so it has to be added
+  // in manually or it can never be selected.
+  const hasNonDefaultOrgs = useMemo(
+    () =>
+      (orgsData?.organizations ?? []).some(
+        (org) => org.isDisabled !== true && org.itemId !== DEFAULT_ORGANIZATION_ID,
+      ),
+    [orgsData?.organizations],
+  );
 
   // Treat a missing/undefined isDisabled as enabled — only explicitly disabled
   // orgs (isDisabled === true) should be excluded from the picker.
@@ -169,8 +183,21 @@ const orgOptions = useMemo(() => {
       form.reset();
       setOrgPopoverOpen(false);
       setSelectedOrgId(organizationId);
+      return;
     }
-  }, [open, form, organizationId]);
+    // When multi-org is disabled we don't show an org picker, and the parent
+    // org id is the only legitimate scope, so clear any prior selection.
+    if (!isMultiOrgEnabled) {
+      setSelectedOrgId("");
+      return;
+    }
+    // When multi-org is enabled but the workspace has no real orgs, fall back
+    // to the synthetic "default" so the user can submit against the implied
+    // organization.
+    if (orgsData && !hasNonDefaultOrgs) {
+      setSelectedOrgId(DEFAULT_ORGANIZATION_ID);
+    }
+  }, [open, isMultiOrgEnabled, orgsData, hasNonDefaultOrgs, form, organizationId]);
 
   // If the current selected org becomes hidden (because the existing user is
   // already a member of it), drop the selection so the trigger label and the
@@ -300,38 +327,7 @@ const orgOptions = useMemo(() => {
                 )}
               />
 
-              {!exists && isValidEmailFormat && (
-                <>
-                  <FormField
-                    control={form.control}
-                    name="firstName"
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel>First name</FormLabel>
-                        <FormControl>
-                          <Input placeholder="Enter first name" {...field} />
-                        </FormControl>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
-                  <FormField
-                    control={form.control}
-                    name="lastName"
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel>Last name</FormLabel>
-                        <FormControl>
-                          <Input placeholder="Enter last name" {...field} />
-                        </FormControl>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
-                </>
-              )}
-
-              {isValidEmailFormat && (
+              {isValidEmailFormat && !isConfigLoading && isMultiOrgEnabled && (
                 <div className="space-y-2">
                   <label className="text-sm font-medium">Organization</label>
                   <Popover open={orgPopoverOpen} onOpenChange={setOrgPopoverOpen}>
@@ -387,6 +383,37 @@ const orgOptions = useMemo(() => {
                     </PopoverContent>
                   </Popover>
                 </div>
+              )}
+
+              {!exists && isValidEmailFormat && (
+                <>
+                  <FormField
+                    control={form.control}
+                    name="firstName"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>First name</FormLabel>
+                        <FormControl>
+                          <Input placeholder="Enter first name" {...field} />
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                  <FormField
+                    control={form.control}
+                    name="lastName"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Last name</FormLabel>
+                        <FormControl>
+                          <Input placeholder="Enter last name" {...field} />
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                </>
               )}
             </div>
             <DialogFooter className="shrink-0 pt-4">
