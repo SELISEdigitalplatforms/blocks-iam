@@ -7,7 +7,8 @@ namespace Iam.DomainService.Utilities
         #region Queues
 
         public const string AuthenticationQueue = "blocks_authentication_listener";
-        public const string IamQueue = "blocks_iam_listener";
+        public const string IamUserQueue = "blocks_iam_listener_user";
+        public const string IamResourceQueue = "blocks_iam_listener_resource";
         public const string IamPermissionQueue = "blocks_iam_listener_permission";
         public const string IamOrgQueue = "blocks_iam_org_listener";
         public const string MailQueue = "blocks_email_listener";
@@ -171,7 +172,8 @@ namespace Iam.DomainService.Utilities
                 RabbitMqConfiguration = new RabbitMqConfiguration
                 {
                     ConsumerSubscriptions = [ConsumerSubscription.BindToQueue(AuthenticationQueue),
-                                             ConsumerSubscription.BindToQueue(IamQueue),
+                                             ConsumerSubscription.BindToQueue(IamUserQueue),
+                                             ConsumerSubscription.BindToQueue(IamResourceQueue),
                                              ConsumerSubscription.BindToQueue(MfaQueueName),
                                              ConsumerSubscription.BindToQueue(IamOrgQueue),
                                              ConsumerSubscription.BindToQueue(IamPermissionQueue),
@@ -186,7 +188,7 @@ namespace Iam.DomainService.Utilities
             {
                 AzureServiceBusConfiguration = new AzureServiceBusConfiguration
                 {
-                    Queues = [AuthenticationQueue, IamQueue, MfaQueueName, IamOrgQueue, IamPermissionQueue, UserActivityQueue],
+                    Queues = [AuthenticationQueue, IamUserQueue, IamResourceQueue, MfaQueueName, IamOrgQueue, IamPermissionQueue, UserActivityQueue],
                     Topics = []
                 }
             };
