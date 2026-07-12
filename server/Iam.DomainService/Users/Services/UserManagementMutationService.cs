@@ -104,7 +104,7 @@ namespace Iam.DomainService.Users
             await _messageClient.SendToConsumerAsync(
                 new ConsumerMessage<UserMutationEvent>
                 {
-                    ConsumerName = IdpConstants.IamQueue,
+                    ConsumerName = IdpConstants.IamUserQueue,
                     Payload = new UserMutationEvent
                     {
                         ItemId = itemId,
@@ -326,7 +326,7 @@ namespace Iam.DomainService.Users
             _userRepository.UpdateUserAsync(user),
             _messageClient.SendToConsumerAsync(new ConsumerMessage<UserStatusChangedEvent>
             {
-                ConsumerName = IdpConstants.IamQueue,
+                ConsumerName = IdpConstants.IamUserQueue,
                 Payload = new UserStatusChangedEvent
                 {
                     UserId = request.UserId,
@@ -765,7 +765,7 @@ namespace Iam.DomainService.Users
             await _messageClient.SendToConsumerAsync(
                 new ConsumerMessage<CreateUserViaSsoEvent>
                 {
-                    ConsumerName = IdpConstants.IamQueue,
+                    ConsumerName = IdpConstants.IamUserQueue,
                     Payload = new CreateUserViaSsoEvent
                     {
                         ItemId = itemId,
