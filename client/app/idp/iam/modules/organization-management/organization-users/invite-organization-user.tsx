@@ -31,6 +31,7 @@ import { z } from "zod";
 import { useProjectStore } from "@seliseblocks/blocks-kit";
 import { ChevronsUpDown, Check, Loader, Plus } from "lucide-react";
 import { isErrorWithErrors } from "@/lib/error";
+import { cn } from "@/lib/utils";
 import { useQueryClient } from "@tanstack/react-query";
 import {
   Popover,
@@ -109,14 +110,26 @@ export const InviteOrganizationUser = ({ organizationId }: InviteOrganizationUse
   });
 
   const emailValue = form.watch("email") ?? "";
-  const isValidEmailFormat = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(emailValue.trim());
+  const trimmedEmail = emailValue.trim();
+  const isValidEmailFormat = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(trimmedEmail);
 
-  // Silently check whether the email already maps to a user — drives whether
-  // the first/last name fields appear and which orgs to hide from the picker.
-  // The user is never notified either way.
-  const { data: existsData } = useCheckUserExists(emailValue, {
-    enabled: isValidEmailFormat,
+  // Debounce the value driving the existence check so it doesn't refire on
+  // every keystroke — this also keeps the pending state visible long enough
+  // to actually render instead of resolving within the same frame it started.
+  const [debouncedEmail, setDebouncedEmail] = useState("");
+  useEffect(() => {
+    const handle = setTimeout(() => setDebouncedEmail(trimmedEmail), 400);
+    return () => clearTimeout(handle);
+  }, [trimmedEmail]);
+  const isEmailSettled = debouncedEmail === trimmedEmail;
+
+  // Check whether the email already maps to a user — drives whether the
+  // first/last name fields appear, which orgs to hide from the picker, and
+  // the loading/found indicator shown inside the email field.
+  const { data: existsData, isFetching: isFetchingExists } = useCheckUserExists(debouncedEmail, {
+    enabled: isValidEmailFormat && isEmailSettled,
   });
+  const isCheckingUserExists = isValidEmailFormat && (!isEmailSettled || isFetchingExists);
   const exists = Boolean(existsData?.userId);
   const existingUserOrgIds = useMemo(
     () => new Set(existsData?.organizationIds ?? []),
@@ -259,14 +272,29 @@ const orgOptions = useMemo(() => {
                 render={({ field }) => (
                   <FormItem>
                     <FormLabel>Email</FormLabel>
-                    <FormControl>
-                      <Input
-                        type="email"
-                        placeholder="name@company.com"
-                        autoComplete="off"
-                        {...field}
-                      />
-                    </FormControl>
+                    <div className="relative">
+                      <FormControl>
+                        <Input
+                          type="email"
+                          placeholder="name@company.com"
+                          autoComplete="off"
+                          className={cn(
+                            isValidEmailFormat && (isCheckingUserExists || exists) && "pr-9",
+                          )}
+                          {...field}
+                        />
+                      </FormControl>
+                      {isValidEmailFormat && isCheckingUserExists && (
+                        <span className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2">
+                          <Loader className="h-4 w-4 animate-spin text-muted-foreground" />
+                        </span>
+                      )}
+                      {isValidEmailFormat && !isCheckingUserExists && exists && (
+                        <span className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2">
+                          <Loader className="h-4 w-4 animate-spin text-green-600 dark:text-green-400" />
+                        </span>
+                      )}
+                    </div>
                     <FormMessage />
                   </FormItem>
                 )}

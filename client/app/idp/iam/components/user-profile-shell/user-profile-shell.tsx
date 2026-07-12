@@ -96,7 +96,7 @@ export const UserProfileShell = ({
           <div className="hidden md:col-start-1 md:row-start-1 md:block">
             <ProfileHeading id={id} projectKey={projectKey} />
           </div>
-          <div className="hidden md:col-start-2 md:row-start-1 md:flex md:items-end md:justify-between md:gap-3">
+          <div className="hidden flex-wrap items-end justify-between gap-3 md:col-start-2 md:row-start-1 md:flex">
             <TabsList className={cn(underlineTabsListClass, "w-fit")}>
               {tabs.map((tab) => (
                 <TabsTrigger
