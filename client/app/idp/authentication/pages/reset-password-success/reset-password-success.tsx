@@ -1,7 +1,6 @@
-import { Logo } from "@/components/logo"
-import { ModeToggle } from "@/components/mode-toggle/mode-toggle"
 import { Button } from "@/components/ui-kits/button/button"
 import { Separator } from "@/components/ui-kits/separator/separator"
+import { SuccessConfirmationCardHeader } from "@blocks-idp/authentication/components/success-confirmation-card-header"
 import { SuccessConfirmationIcon } from "@blocks-idp/authentication/components/success-confirmation-icon"
 import { HelpCircle, LogIn } from "lucide-react"
 import { Link } from "react-router-dom"
@@ -13,17 +12,10 @@ export const ResetPasswordSuccess = () => {
     <div className="min-h-dvh overflow-x-hidden bg-surface-app">
       <main className="flex min-h-dvh w-full items-center justify-center px-4 py-6 pb-[max(1.5rem,env(safe-area-inset-bottom))] pt-[max(1.5rem,env(safe-area-inset-top))] sm:px-6 sm:py-8 md:py-10">
         <div className="w-full max-w-[600px] rounded-xl border border-border/50 bg-card p-6 shadow-[0_4px_24px_rgba(15,23,42,0.06)] sm:rounded-2xl sm:p-9 md:px-12 md:py-11">
-          <div className="flex w-full flex-col items-center text-center">
-            <Logo
-              width={148}
-              height={63.5}
-              alt="Blocks IAM"
-              className="h-auto w-[7.5rem] sm:w-[8.75rem] md:w-[9.25rem]"
-            />
+          <SuccessConfirmationCardHeader />
 
-            <div className="mt-5 sm:mt-7 md:mt-8">
-              <SuccessConfirmationIcon />
-            </div>
+          <div className="mt-5 flex w-full flex-col items-center text-center sm:mt-7 md:mt-8">
+            <SuccessConfirmationIcon />
 
             <h1 className="mt-5 text-xl font-bold tracking-tight text-foreground sm:mt-6 sm:text-2xl md:mt-7 md:text-[1.75rem]">
               Password updated
@@ -48,7 +40,7 @@ export const ResetPasswordSuccess = () => {
                   Ready to sign in?
                 </p>
                 <p className="mt-0.5 text-sm leading-relaxed text-muted-foreground">
-                  Use your new password to access your workspace.
+                  Sign in with your new password.
                 </p>
               </div>
             </div>
@@ -84,11 +76,6 @@ export const ResetPasswordSuccess = () => {
             >
               Contact support
             </a>
-          </div>
-
-          <div className="mt-5 flex justify-center sm:mt-7 md:mt-8" role="group" aria-label="Theme">
-            <span className="sr-only">Appearance</span>
-            <ModeToggle />
           </div>
         </div>
       </main>
