@@ -17,7 +17,7 @@ export const ResetPassword = ({ code, tenantId }: ResetPasswordProps) => {
       heading="Set a new password"
       headingDimFirst={3}
       successTitle="Password Updated"
-      successSubtitle="Your password has been reset. Redirecting to login…"
+      successSubtitle="Your password has been reset successfully."
       showCorners={false}
       footerNote={
         <p className="text-xs" style={{ color: "var(--muted)", fontFamily: "system-ui, sans-serif" }}>
