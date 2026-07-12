@@ -11,6 +11,12 @@ type RolesPermissionsPillEditorProps = {
   rolesDescription: string;
   permissionsDescription: string;
   onSave: () => void;
+  /**
+   * Organization scope for the role/permission pickers. When provided, the
+   * pickers query roles/permissions for that scope rather than the tenant —
+   * keeping `/api/iam/roles` requests consistent with the per-org editor call.
+   */
+  organizationId?: string;
 };
 
 export const RolesPermissionsPillEditor = ({
@@ -21,6 +27,7 @@ export const RolesPermissionsPillEditor = ({
   rolesDescription,
   permissionsDescription,
   onSave,
+  organizationId,
 }: RolesPermissionsPillEditorProps) => {
   return (
     <div className="scrollbar-slim flex min-h-0 flex-1 flex-col gap-6 pr-1">
@@ -29,12 +36,14 @@ export const RolesPermissionsPillEditor = ({
         onChange={onRolesChange}
         onSave={onSave}
         description={rolesDescription}
+        organizationId={organizationId}
       />
       <OrganizationPermissionsField
         permissions={permissions}
         onChange={onPermissionsChange}
         onSave={onSave}
         description={permissionsDescription}
+        organizationId={organizationId}
       />
     </div>
   );

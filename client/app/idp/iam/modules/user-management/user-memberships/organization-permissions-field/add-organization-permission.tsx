@@ -34,6 +34,7 @@ type AddOrganizationPermissionProps = {
   /** Called with the picked new permissions on confirm. */
   onAdd: (data: IPermission[]) => void;
   onSave?: () => void;
+  organizationId?: string;
 };
 
 const MAX_PERMISSIONS_PER_USER = 5;
@@ -42,8 +43,10 @@ export const AddOrganizationPermission = ({
   onAdd,
   permissions,
   onSave,
+  organizationId,
 }: AddOrganizationPermissionProps) => {
   const tenantId = useProjectStore().selectedProject?.tenantId || "";
+  const scopeKey = organizationId || tenantId;
   const [open, setOpen] = useState<boolean>(false);
   const [selectedPermissions, setSelectedPermissions] = useState<IPermission[]>([]);
   const [filter, setFilter] = useState({
@@ -54,10 +57,15 @@ export const AddOrganizationPermission = ({
     search: "",
   });
 
-  const { data, isLoading } = useGetPermissions({
-    ...filter,
-    projectKey: tenantId,
-  });
+  const { data, isLoading } = useGetPermissions(
+    {
+      ...filter,
+      projectKey: scopeKey,
+    },
+    // Don't fetch the permission list until the picker is opened — the per-org
+    // editor on this page already fetches it with a matching queryKey.
+    { enabled: open && !!scopeKey },
+  );
 
   const onCheckedChangeHandler = (checked: boolean, permission: IPermission) => {
     if (checked) {
