@@ -1,6 +1,7 @@
 ﻿using Blocks.Genesis;
 using FluentValidation;
 using Iam.DomainService.Configurations;
+using Iam.DomainService.Resources;
 using System.Text.RegularExpressions;
 
 namespace Iam.DomainService.Users
@@ -10,12 +11,14 @@ namespace Iam.DomainService.Users
         private readonly BlocksContext? _securityContext;
         private readonly IUserRepository _userRepository;
         private readonly IIamConfigurationRepository _configurationRepository;
+        private readonly IResourceRepository _resourceRepository;
 
-        public CreateUserValidator(IUserRepository userRepository, IIamConfigurationRepository configurationRepository)
+        public CreateUserValidator(IUserRepository userRepository, IIamConfigurationRepository configurationRepository, IResourceRepository resourceRepository)
         {
             _securityContext = BlocksContext.GetContext();
             _userRepository = userRepository;
             _configurationRepository = configurationRepository;
+            _resourceRepository = resourceRepository;
 
             RuleFor(u => u.FirstName).MaximumLength(150).WithMessage("Maximum character limit 150 exceeded").When(u => !string.IsNullOrWhiteSpace(u.FirstName));
             RuleFor(u => u.LastName).MaximumLength(150).WithMessage("Maximum character limit 150 exceeded").When(u => !string.IsNullOrWhiteSpace(u.LastName));
@@ -61,6 +64,31 @@ namespace Iam.DomainService.Users
                 .NotEmpty()
                 .NotNull()
                 .IsInEnum();
+            RuleFor(u => u.OrganizationId)
+                .Cascade(CascadeMode.Stop)
+                .NotEmpty()
+                .NotNull()
+                .WithMessage("Organization id is required when multi organization is enabled")
+                .MustAsync(BeAnExistingOrganization)
+                .WithMessage("Organization does not exist")
+                .WhenAsync(async (_, cancellationToken) => await IsMultiOrgEnabledAsync(cancellationToken));
+        }
+
+        private async Task<bool> IsMultiOrgEnabledAsync(CancellationToken cancellationToken)
+        {
+            var tenantConfig = await _resourceRepository.GetTenantConfigurationAsync();
+            return tenantConfig?.IsMultiOrgEnabled ?? false;
+        }
+
+        private async Task<bool> BeAnExistingOrganization(string? organizationId, CancellationToken cancellationToken)
+        {
+            if (organizationId == "default")
+            {
+                return true;
+            }
+
+            var organization = await _resourceRepository.GetOrganizationById(organizationId);
+            return organization != null;
         }
 
         private async Task<bool> NotAnExistingUser(CreateUserRequest model, string userName, CancellationToken cancellationToken)
