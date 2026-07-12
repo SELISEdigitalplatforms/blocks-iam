@@ -131,7 +131,7 @@ const [confirmRevoke, setConfirmRevoke] = useState<User | null>(null);
           the column labels stay perfectly aligned with their cells. Below md,
           rows render as stacked cards instead, so the min-width (and the
           resulting horizontal scroll) only applies at md+. */}
-      <div className="overflow-x-auto">
+      <div className="scrollbar-hidden-x overflow-x-hidden md:overflow-x-auto">
         <div className="flex flex-col gap-1.5 md:min-w-[860px]">
           {/* Column headers — sticky so they stay pinned while the rows below scroll */}
           <div className="sticky top-0 z-10 hidden grid-cols-[220px_minmax(0,1fr)_90px_140px_40px_16px] items-center gap-2 bg-card px-2 pb-1.5 text-xs md:grid">

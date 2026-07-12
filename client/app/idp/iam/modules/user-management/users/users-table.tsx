@@ -48,7 +48,7 @@ export const UsersTable = ({ users, isLoading }: UserTableProps) => {
   }
 
   return (
-    <div className="overflow-x-auto">
+    <div className="scrollbar-hidden-x overflow-x-hidden md:overflow-x-auto">
       <div className="flex min-w-[820px] flex-col gap-3">
         <div className="hidden grid-cols-[220px_minmax(0,1fr)_90px_140px_16px] items-center gap-4 px-4 md:grid">
           <div className="min-w-0">

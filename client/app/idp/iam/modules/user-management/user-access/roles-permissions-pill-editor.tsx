@@ -38,7 +38,7 @@ export const RolesPermissionsPillEditor = ({
   onSave,
 }: RolesPermissionsPillEditorProps) => {
   return (
-    <div className="flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto pr-1">
+    <div className="scrollbar-slim flex min-h-0 flex-1 flex-col gap-4 pr-1">
       <div>
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div>
