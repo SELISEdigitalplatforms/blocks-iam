@@ -141,8 +141,16 @@ export const useUpdateUser = (options: {
     mutationKey: ["users", "update"],
     mutationFn: userService.updateUser,
     onSuccess: () => {
-      if (own) return queryClient.invalidateQueries({ queryKey: ["user"] });
-      queryClient.invalidateQueries({ queryKey: ["user-by-id", rest] });
+      // Always refresh the cached profile so pages like /app/profile show
+      // the updated name without a manual reload — `["user"]` is the query
+      // key for `useGetMe`, and `["user-by-id"]` covers the user-detail view.
+      queryClient.invalidateQueries({ queryKey: ["user"] });
+      queryClient.invalidateQueries({ queryKey: ["user-by-id"] });
+      // The users-list pages keep the user's record too.
+      queryClient.invalidateQueries({ queryKey: ["users"] });
+      if (!own) {
+        queryClient.invalidateQueries({ queryKey: ["user-by-id", rest] });
+      }
     },
   });
 };
