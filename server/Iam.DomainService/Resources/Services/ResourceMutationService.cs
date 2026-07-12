@@ -1590,7 +1590,7 @@ namespace Iam.DomainService.Resources
 
         private static bool IsDefaultOrgScope(string? organizationId)
         {
-            return string.IsNullOrWhiteSpace(organizationId) || organizationId == DefaultOrganizationId;
+            return organizationId == DefaultOrganizationId;
         }
     }
 }
