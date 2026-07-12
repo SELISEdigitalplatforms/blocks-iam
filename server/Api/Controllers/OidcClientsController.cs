@@ -2,6 +2,7 @@ using Authentication.DomainService.RequestModel;
 using Authentication.DomainService.Services;
 using Authentication.DomainService.Shared.RequestModel;
 using Authentication.DomainService.Shared.ResponseModel;
+using Blocks.Genesis;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 
@@ -14,7 +15,6 @@ namespace Api.Controllers;
 /// </summary>
 [ApiController]
 [Route("oidc-clients")]
-[Authorize]
 public class OidcClientsController : ControllerBase
 {
     private readonly IAuthenticationDomainService _authenticationDomainService;
@@ -34,6 +34,7 @@ public class OidcClientsController : ControllerBase
     /// <response code="400">Invalid request parameters</response>
     /// <response code="401">Authentication required</response>
     [HttpGet]
+    [ProtectedEndPoint("blocks-iam::iam::oidc-clients")]
     public async Task<IActionResult> GetAll()
     {
         var response = await _authenticationDomainService.GetOidcClientsAsync();
@@ -58,6 +59,7 @@ public class OidcClientsController : ControllerBase
     /// <response code="401">Authentication required</response>
     /// <response code="404">Client not found</response>
     [HttpGet("{clientId}")]
+    [ProtectedEndPoint("blocks-iam::iam::oidc-clients")]
     public async Task<IActionResult> GetByClientId([FromRoute] string clientId)
     {
         if (string.IsNullOrWhiteSpace(clientId))
@@ -92,6 +94,7 @@ public class OidcClientsController : ControllerBase
     /// <response code="400">Invalid request payload or validation failure</response>
     /// <response code="401">Authentication required</response>
     [HttpPost]
+    [ProtectedEndPoint("blocks-iam::iam::mutate-oidc-clients")]
     public async Task<IActionResult> Upsert([FromBody] SaveOIDCClientRequest request)
     {
         if (request == null)
@@ -121,6 +124,7 @@ public class OidcClientsController : ControllerBase
     /// <response code="401">Authentication required</response>
     /// <response code="404">Client not found</response>
     [HttpDelete("{clientId}")]
+    [ProtectedEndPoint("blocks-iam::iam::mutate-oidc-clients")]
     public async Task<IActionResult> Delete([FromRoute] string clientId)
     {
         if (string.IsNullOrWhiteSpace(clientId))
@@ -149,6 +153,7 @@ public class OidcClientsController : ControllerBase
     /// <response code="400">itemId is required or client not found</response>
     /// <response code="401">Authentication required</response>
     [HttpPost("{itemId}/rotate-secret")]
+    [ProtectedEndPoint("blocks-iam::iam::mutate-oidc-clients")]
     public async Task<IActionResult> RotateSecret([FromRoute] string itemId, [FromBody] RotateOidcClientSecretRequest? request = null)
     {
         if (string.IsNullOrWhiteSpace(itemId))

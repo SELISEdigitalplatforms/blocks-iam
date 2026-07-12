@@ -1,4 +1,5 @@
 import { FilterControls } from "@/components/filter-toolbar";
+import { showErrorToast } from "@/hooks/use-toast";
 import { Badge } from "@/components/ui-kits/badge/badge";
 import { Button } from "@/components/ui-kits/button/button";
 import { Card, CardContent } from "@/components/ui-kits/card/card";
@@ -35,6 +36,8 @@ type AddOrganizationPermissionProps = {
   onSave?: () => void;
 };
 
+const MAX_PERMISSIONS_PER_USER = 5;
+
 export const AddOrganizationPermission = ({
   onChange,
   permissions,
@@ -66,11 +69,16 @@ export const AddOrganizationPermission = ({
 
   const onCheckedChangeHandler = (checked: boolean, permission: IPermission) => {
     if (checked) {
-      return setSelectedPermissions((prev) =>
-        prev.some((item) => item.resource === permission.resource)
-          ? prev
-          : [...prev, permission],
-      );
+      return setSelectedPermissions((prev) => {
+        if (prev.some((item) => item.resource === permission.resource)) {
+          return prev;
+        }
+        if (prev.length >= MAX_PERMISSIONS_PER_USER) {
+          showErrorToast({ errors: `A maximum of ${MAX_PERMISSIONS_PER_USER} permissions can be added with any user permission.` });
+          return prev;
+        }
+        return [...prev, permission];
+      });
     }
     setSelectedPermissions((prev) =>
       prev.filter((item) => item.resource !== permission.resource),
@@ -143,6 +151,10 @@ export const AddOrganizationPermission = ({
                       <TableCell>
                         <Checkbox
                           checked={selectedPermissionsResource.includes(item.resource)}
+                          disabled={
+                            !selectedPermissionsResource.includes(item.resource) &&
+                            selectedPermissions.length >= MAX_PERMISSIONS_PER_USER
+                          }
                           onCheckedChange={(checked) =>
                             onCheckedChangeHandler(!!checked, item)
                           }
@@ -191,6 +203,7 @@ export const AddOrganizationPermission = ({
           </DialogClose>
           <Button
             size="default"
+            disabled={selectedPermissions.length > MAX_PERMISSIONS_PER_USER}
             onClick={() => {
               onChange(selectedPermissions);
               reset();
