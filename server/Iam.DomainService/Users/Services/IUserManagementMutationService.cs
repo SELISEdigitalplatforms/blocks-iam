@@ -2,6 +2,7 @@
 using Iam.DomainService.Dtos;
 using Iam.DomainService.Entities;
 using Iam.DomainService.Shared.Entities;
+using Iam.DomainService.Users.RequestModel;
 
 namespace Iam.DomainService.Users
 {
@@ -16,6 +17,7 @@ namespace Iam.DomainService.Users
         Task<bool> ProcessCreateUserByEmailAfterActionAsync(CreateUserByEmailEvent @event, string userId);
         Task<BaseResponse> DeactivateUserAsync(DeactivateUserRequest request);
         Task<BaseMutationResponse> ActivateUserAsync(ActivateUserByAdminRequest request);
+        Task<BaseMutationResponse> ActivateAndLinkSocialIdentityAsync(ActivateAndLinkSocialIdentityRequest request);
         Task<BaseMutationResponse> UpdateUserAccessControlAsync(UpdateUserAccessControlRequest command);
         Task<BaseMutationResponse> RevokeUserAccessControlAsync(RevokeUserAccessControlRequest command);
         Task<TenantConfiguration> GetTenantConfigurationAsync();
