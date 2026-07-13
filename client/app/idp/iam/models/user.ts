@@ -52,6 +52,7 @@ export interface IMembership {
 export interface IGetUsersPayload {
   page: number;
   pageSize: number;
+  query?: string;
   sort?: {
     property: string;
     isDescending: boolean;
@@ -59,6 +60,12 @@ export interface IGetUsersPayload {
   filter?: {
     email: string;
     name: string;
+    userIds?: string[];
+    status?: { active?: boolean; inactive?: boolean };
+    mfa?: { enabled?: boolean; disabled?: boolean };
+    joinedOn?: string;
+    lastLogin?: string;
+    lastUpdatedDate?: string;
     organizationId?: string;
   };
   projectKey: string;
