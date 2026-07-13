@@ -83,7 +83,7 @@ namespace Authentication.DomainService.Authentication
                 {
                     return new OkObjectResult(new DeviceInteractionResponse
                     {
-                        Redirect = $"/api/device/continue/{entity.Id}",
+                        Redirect = $"/device/{Uri.EscapeDataString(tenantId)}/continue/{Uri.EscapeDataString(entity.Id)}",
                         InteractionId = entity.Id
                     });
                 }
@@ -105,7 +105,7 @@ namespace Authentication.DomainService.Authentication
             }
             await _interactionStore.SaveAsync(interactionId, context, ttl, ct);
 
-            var returnUrl = $"/api/device/continue/{interactionId}";
+            var returnUrl = $"/device/{Uri.EscapeDataString(tenantId)}/continue/{Uri.EscapeDataString(interactionId)}";
             var loginRedirect = $"/oidc/login?returnUrl={Uri.EscapeDataString(returnUrl)}&tenant_id={Uri.EscapeDataString(tenantId)}";
 
             return new OkObjectResult(new DeviceInteractionResponse
@@ -240,7 +240,7 @@ namespace Authentication.DomainService.Authentication
 
             return new OkObjectResult(new DeviceApproveResponse
             {
-                Redirect = "/device/success",
+                Redirect = $"/device/{Uri.EscapeDataString(tenantId)}/success",
                 Status = newStatus
             });
         }
