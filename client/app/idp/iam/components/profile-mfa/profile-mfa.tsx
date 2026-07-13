@@ -10,6 +10,7 @@ import { BLOCKS_OS_BASE_URL } from "@/constants/endpoint.constant";
 type ProfileMFAProps = {
   userId: string;
   projectKey: string;
+  own?: boolean;
 };
 
 export const ProfileConfigMFA = () => {
@@ -80,6 +81,7 @@ export const profileMfaContext = createContext<
 >({
   projectKey: "",
   userId: "",
+  own: false,
   isVerifyModalOpen: false,
   setIsVerifyModalOpen: () => {},
   isDisableModalOpen: false,
