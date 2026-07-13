@@ -18,5 +18,6 @@ namespace Iam.DomainService.Accounts
         Task<Dictionary<string, object>> GetSignUpSettingAsync();
         Task<BaseAccountResponse> UnlockAccountAsync(string userId); // Admin method to unlock a locked account
         Task SendAccountLockedNotificationAsync(User user, DateTime lockoutUntilUtc); // Send email when account is locked
+        Task<BaseAccountResponse> ActivateAndLinkSocialIdentityAsync(ActivateAndLinkSocialIdentityRequest request);
     }
 }
