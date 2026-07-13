@@ -111,19 +111,32 @@ describe("UserService", () => {
   });
 
   describe("updateUser", () => {
-    it("should POST to the correct endpoint with payload", async () => {
+    it("should fetch the current user and POST the merged payload", async () => {
+      vi.mocked(http.get).mockResolvedValue({ data: mockUser });
       vi.mocked(http.post).mockResolvedValue(mockSuccessResponse);
 
       const result = await service.updateUser(mockUpdateUserPayload);
 
+      const postedBody = vi.mocked(http.post).mock.calls[0][1] as Record<string, unknown>;
+      expect(postedBody).toMatchObject({
+        itemId: mockUpdateUserPayload.itemId,
+        firstName: mockUpdateUserPayload.firstName,
+        lastName: mockUpdateUserPayload.lastName,
+        email: mockUser.email,
+        active: mockUser.active,
+        mfaEnabled: mockUser.mfaEnabled,
+      });
+      // No raw payload — current user fields must be merged in
+      expect(postedBody).not.toEqual(mockUpdateUserPayload);
       expect(http.post).toHaveBeenCalledWith(
         `${USER_ENDPOINTS.UPDATE}/${mockUpdateUserPayload.itemId}`,
-        mockUpdateUserPayload,
+        expect.objectContaining({ itemId: mockUpdateUserPayload.itemId }),
       );
       expect(result).toEqual(mockSuccessResponse);
     });
 
     it("should throw when the API call fails", async () => {
+      vi.mocked(http.get).mockResolvedValue({ data: mockUser });
       vi.mocked(http.post).mockRejectedValue(new Error("Network error"));
 
       await expect(service.updateUser(mockUpdateUserPayload)).rejects.toThrow("Network error");
