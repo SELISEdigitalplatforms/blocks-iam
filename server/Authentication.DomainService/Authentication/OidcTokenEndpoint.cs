@@ -19,17 +19,20 @@ namespace Authentication.DomainService.Authentication
         private readonly AuthorizationCodeExchangeService _exchangeService;
         private readonly OidcRefreshTokenService _refreshService;
         private readonly ClientCredentialsTokenIssuer _clientCredentialsIssuer;
+        private readonly DeviceCodeExchangeService _deviceCodeExchange;
         private readonly ILogger<OidcTokenEndpoint> _logger;
 
         public OidcTokenEndpoint(
             AuthorizationCodeExchangeService exchangeService,
             OidcRefreshTokenService refreshService,
             ClientCredentialsTokenIssuer clientCredentialsIssuer,
+            DeviceCodeExchangeService deviceCodeExchange,
             ILogger<OidcTokenEndpoint> logger)
         {
             _exchangeService = exchangeService;
             _refreshService = refreshService;
             _clientCredentialsIssuer = clientCredentialsIssuer;
+            _deviceCodeExchange = deviceCodeExchange;
             _logger = logger;
         }
 
@@ -50,6 +53,11 @@ namespace Authentication.DomainService.Authentication
                 if (grantType == GrantTypes.ClientCredential)
                 {
                     return await _clientCredentialsIssuer.IssueAsync(request);
+                }
+
+                if (grantType == GrantTypes.DeviceCode)
+                {
+                    return await _deviceCodeExchange.ExchangeAsync(request);
                 }
 
                 return new BadRequestObjectResult(new { error = "unsupported_grant_type", error_description = $"Grant type '{grantType}' not supported" });

@@ -311,6 +311,7 @@ namespace Authentication.DomainService.Services
             credential.LogoUri = request.ClientLogoUrl;
             credential.ClientName = request.ClientDisplayName;
             credential.UiBrandColor = request.ClientBrandColor;
+            credential.IsDeviceFlowClient = request.IsDeviceFlowClient;
         }
 
         public async Task<GetOIDCClientResponse> GetOidcClientAsync(string tenantId)
