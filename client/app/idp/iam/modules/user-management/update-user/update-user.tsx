@@ -48,7 +48,6 @@ export const UpdateUser = ({ id, projectKey, own = false, iconOnly = false }: Up
   const form = useForm({
     defaultValues: inviteUserFormDefaultValue,
     resolver: zodResolver(inviteUserFormSchema),
-    values: userData?.data,
   });
 
   const {
@@ -79,7 +78,14 @@ export const UpdateUser = ({ id, projectKey, own = false, iconOnly = false }: Up
     <Dialog
       open={open}
       onOpenChange={(value) => {
-        form.reset(userData?.data || inviteUserFormDefaultValue);
+        if (userData?.data) {
+          form.reset({
+            firstName: userData.data.firstName || "",
+            lastName: userData.data.lastName || "",
+          });
+        } else {
+          form.reset(inviteUserFormDefaultValue);
+        }
         setOpen(value);
       }}
     >

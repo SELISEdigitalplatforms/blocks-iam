@@ -1,4 +1,4 @@
-import { useGetUserById } from "@blocks-idp/iam/hooks/use-user";
+import { useGetMe, useGetUserById } from "@blocks-idp/iam/hooks/use-user";
 import { Card, CardContent } from "@/components/ui-kits/card/card";
 import { ProfileImageUploader } from "@blocks-idp/iam/components/profile-image-uploader";
 import { Activity, Calendar, Shield } from "lucide-react";
@@ -6,6 +6,7 @@ import { Activity, Calendar, Shield } from "lucide-react";
 type UserProfileSidebarProps = {
   id: string;
   projectKey: string;
+  own?: boolean;
 };
 
 type InfoRowProps = {
@@ -39,8 +40,13 @@ const formatLastLogin = (value?: string) => {
   });
 };
 
-export const UserProfileSidebar = ({ id, projectKey }: UserProfileSidebarProps) => {
-  const { data } = useGetUserById({ id, projectKey });
+export const UserProfileSidebar = ({ id, projectKey, own = false }: UserProfileSidebarProps) => {
+  const { data: userByIdData } = useGetUserById(
+    { id, projectKey },
+    { enabled: !own },
+  );
+  const { data: meData } = useGetMe();
+  const data = own ? meData : userByIdData;
   const user = data?.data;
 
   return (
@@ -53,6 +59,7 @@ export const UserProfileSidebar = ({ id, projectKey }: UserProfileSidebarProps) 
         <ProfileImageUploader
           id={id}
           projectKey={projectKey}
+          own={own}
           containerClassName="h-full w-full"
           className="h-full w-full max-w-none rounded-full bg-transparent shadow-none dark:bg-transparent"
         />

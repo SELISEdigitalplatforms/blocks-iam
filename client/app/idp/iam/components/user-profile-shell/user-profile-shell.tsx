@@ -16,7 +16,7 @@ import { CopyToClipboardButton } from "@/components/copy-to-clipboard-button";
 import PageBreadcrumb from "@/components/breadcrumb/breadcrumb";
 import { UserProfileSidebar } from "../user-profile-sidebar";
 import { UpdateUser } from "@blocks-idp/iam/modules/user-management/update-user";
-import { useGetUserById } from "@blocks-idp/iam/hooks/use-user";
+import { useGetMe, useGetUserById } from "@blocks-idp/iam/hooks/use-user";
 
 export type UserProfileTab = {
   value: string;
@@ -135,7 +135,7 @@ export const UserProfileShell = ({
 
           {/* Sidebar (col 1, row 2) — fills the row's height at md+ */}
           <div className="flex h-full min-h-0 w-full flex-col md:col-start-1 md:row-start-2">
-            <UserProfileSidebar id={id} projectKey={projectKey} />
+            <UserProfileSidebar id={id} projectKey={projectKey} own={own} />
           </div>
 
           {/* Right column (col 2, row 2) — fills the same row height; each tab
@@ -168,7 +168,12 @@ const ProfileHeading = ({
   projectKey: string;
   own: boolean;
 }) => {
-  const { data } = useGetUserById({ id, projectKey });
+  const { data: userByIdData } = useGetUserById(
+    { id, projectKey },
+    { enabled: !own },
+  );
+  const { data: meData } = useGetMe();
+  const data = own ? meData : userByIdData;
   const user = data?.data;
   const firstName = user?.firstName?.trim() ?? "";
   const lastName = user?.lastName?.trim() ?? "";

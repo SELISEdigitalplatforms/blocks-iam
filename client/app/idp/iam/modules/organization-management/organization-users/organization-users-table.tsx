@@ -113,7 +113,7 @@ const [confirmRevoke, setConfirmRevoke] = useState<User | null>(null);
 
   if (!users.length) {
     return (
-      <div className="flex h-full min-h-[200px] flex-1 flex-col items-center justify-center gap-2 rounded-xl border border-dashed py-16 text-center text-sm text-muted-foreground">
+      <div className="flex h-full min-h-[200px] flex-1 flex-col items-center justify-center gap-2 rounded-xl  py-16 text-center text-sm text-muted-foreground">
         <UsersIcon className="h-6 w-6" />
         No users found.
       </div>
