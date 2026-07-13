@@ -101,7 +101,7 @@ export const UsersSearchFilter = () => {
       ]}
       values={{
         search: {
-          selected: queryParams["selected-filter"],
+          selected: queryParams["selected-filter"] as "name" | "email",
           value:
             queryParams["selected-filter"] === "email"
               ? queryParams.email
