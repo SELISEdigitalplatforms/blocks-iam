@@ -8,7 +8,7 @@ namespace Authentication.DomainService.Authentication
     /// URL builders and helpers used by the OIDC endpoints.
     /// Extracted from <c>AuthorizationFlowService</c> to keep the orchestrator lean.
     /// </summary>
-    internal static class OidcRedirectUrlBuilder
+    public static class OidcRedirectUrlBuilder
     {
         public static string BuildRedirectUri(string baseUri, IDictionary<string, string> parameters)
         {
@@ -94,6 +94,46 @@ namespace Authentication.DomainService.Authentication
         public static string GetClientIpAddress(HttpRequest request)
         {
             return request.HttpContext.Connection.RemoteIpAddress?.ToString() ?? "unknown";
+        }
+
+        public static string BuildVerificationUri(string apiBase, string? userCode, string? tenantId)
+        {
+            var baseUrl = TrimTrailingSlash(apiBase);
+            var url = $"{baseUrl}/device";
+
+            var query = new List<string>();
+            if (!string.IsNullOrWhiteSpace(tenantId))
+            {
+                query.Add($"tenant_id={Uri.EscapeDataString(tenantId)}");
+            }
+
+            if (query.Count > 0)
+            {
+                url += "?" + string.Join("&", query);
+            }
+
+            return url;
+        }
+
+        public static string BuildVerificationUriComplete(string apiBase, string userCode, string? tenantId)
+        {
+            if (string.IsNullOrWhiteSpace(userCode))
+            {
+                throw new ArgumentException("userCode must not be empty", nameof(userCode));
+            }
+
+            var url = BuildVerificationUri(apiBase, null, tenantId);
+            var separator = url.Contains('?') ? '&' : '?';
+            return $"{url}{separator}user_code={Uri.EscapeDataString(userCode)}";
+        }
+
+        private static string TrimTrailingSlash(string value)
+        {
+            if (string.IsNullOrEmpty(value))
+            {
+                return string.Empty;
+            }
+            return value.EndsWith('/') ? value[..^1] : value;
         }
     }
 }

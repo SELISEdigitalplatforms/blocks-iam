@@ -80,5 +80,27 @@ namespace Authentication.DomainService.Oidc.Repositories
         Task<bool> DeleteAsync(string userId, string clientId, string tenantId);
         Task<IEnumerable<ConsentGrantModel>> GetByUserAsync(string userId, string tenantId);
     }
+
+    /// <summary>
+    /// RFC 8628 Device Authorization Grant repository. Persists pending device/user code pairs
+    /// in MongoDB. The <c>device_code</c> is stored as a SHA-256 hex digest (raw value is never
+    /// written). Atomicity of the <c>Approved → Consumed</c> transition is enforced by a
+    /// conditional update — RFC 8628 §6.5 acceptance #17.
+    /// </summary>
+    public interface IDeviceAuthorizationRepository
+    {
+        Task CreateAsync(DeviceAuthorizationRequestModel entity, CancellationToken ct = default);
+        Task<DeviceAuthorizationRequestModel?> GetByDeviceCodeHashAsync(string hash, CancellationToken ct = default);
+        Task<DeviceAuthorizationRequestModel?> GetByUserCodeAsync(string userCode, CancellationToken ct = default);
+        Task<DeviceAuthorizationRequestModel?> GetByIdAsync(string id, CancellationToken ct = default);
+        Task<bool> MarkApprovedAsync(string id, string userId, DateTime at, CancellationToken ct = default);
+        Task<bool> MarkDeniedAsync(string id, DateTime at, CancellationToken ct = default);
+        Task<bool> MarkConsumedAsync(string id, DateTime at, CancellationToken ct = default);
+        Task<bool> MarkExpiredAsync(IEnumerable<string> ids, CancellationToken ct = default);
+        Task<bool> UpdatePollAsync(string id, DateTime lastPollAt, int pollsObserved, CancellationToken ct = default);
+        Task<int> BumpPollIntervalAsync(string id, int currentInterval, CancellationToken ct = default);
+        Task<IReadOnlyList<string>> GetExpiredIdsAsync(DateTime olderThanUtc, int limit, CancellationToken ct = default);
+        Task EnsureIndexesAsync(CancellationToken ct = default);
+    }
 }
 

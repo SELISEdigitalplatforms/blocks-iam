@@ -29,6 +29,7 @@ namespace Authentication.DomainService.Entities
         public bool UseTokensCookie { get; set; } = true; // Default: tokens in cookies
         public bool RequireMfa { get; set; }
         public List<UserMfaType>? AllowedMfaMethods { get; set; }
+        public bool IsDeviceFlowClient { get; set; } = false;
 
         //[BsonIgnore]
         //public string? RedirectUri
