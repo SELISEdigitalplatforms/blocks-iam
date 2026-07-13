@@ -470,7 +470,7 @@ namespace Iam.DomainService.Resources
         {
             _logger.LogInformation("Permission event -- initiate");
             await _identityAccessManagementService.SendToQueueAsync(
-                IdpConstants.IamQueue,
+                IdpConstants.IamResourceQueue,
                 resourceMutation
             );
             _logger.LogInformation("Permission event -- sent");
@@ -920,7 +920,7 @@ namespace Iam.DomainService.Resources
         {
             _logger.LogInformation("Permission event -- initiate");
             await _identityAccessManagementService.SendToQueueAsync(
-                IdpConstants.IamQueue,
+                IdpConstants.IamPermissionQueue,
                 resourceMutation
             );
             _logger.LogInformation("Permission event -- sent");
@@ -1263,7 +1263,7 @@ namespace Iam.DomainService.Resources
             if (request.CreatedFrom == CreatedFrom.ConstructPortal && tenantConfig.AllowOrgCreationFromPortal)
             {
                 await _identityAccessManagementService.SendToQueueAsync(
-                    IdpConstants.IamQueue,
+                    IdpConstants.IamUserQueue,
                     new UpdateOrganizationUserEvent
                     {
                         OrganizationId = organization.ItemId,
@@ -1590,7 +1590,7 @@ namespace Iam.DomainService.Resources
 
         private static bool IsDefaultOrgScope(string? organizationId)
         {
-            return string.IsNullOrWhiteSpace(organizationId) || organizationId == DefaultOrganizationId;
+            return organizationId == DefaultOrganizationId;
         }
     }
 }
