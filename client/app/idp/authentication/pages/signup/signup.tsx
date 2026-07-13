@@ -7,12 +7,16 @@ import { OidcAuthShell } from "@blocks-idp/authentication/pages/oidc/oidc-auth-s
 import { SIGNUP_PANEL } from "@blocks-idp/authentication/pages/oidc/oidc-panel-config";
 
 export const Signup = () => {
-  const { data: loginOption, isLoading: isLoginOptionLoading } = useGetLoginOptions();
   const { data: signUpSetting, isLoading: isSignUpSettingLoading } = useGetSignUpSetting();
 
   const isSignUpEnabled = signUpSetting?.isSignUpEnable ?? false;
   const emailSignUpEnabled = signUpSetting?.isEmailPasswordSignUpEnabled ?? false;
   const ssoSignUpEnabled = signUpSetting?.isSSoSignUpEnabled ?? false;
+
+  const { data: loginOption, isLoading: isLoginOptionLoading } = useGetLoginOptions(
+    undefined,
+    ssoSignUpEnabled,
+  );
   const hasSsoProviders = (loginOption?.ssoInfo?.length ?? 0) > 0;
 
   const showEmailSignup = isSignUpEnabled && emailSignUpEnabled;
