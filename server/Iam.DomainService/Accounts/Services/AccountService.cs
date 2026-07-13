@@ -134,7 +134,7 @@ namespace Iam.DomainService.Accounts
             }
 
             var normalizedEmail = signupUserRequest.Email.Trim().ToLowerInvariant();
-            var existingHandlingResult = await HandleExistingSignupUserAsync(normalizedEmail);
+            var existingHandlingResult = await HandleExistingSignupUserAsync(signupUserRequest, normalizedEmail);
             if (existingHandlingResult != null)
             {
                 return existingHandlingResult;
@@ -230,12 +230,25 @@ namespace Iam.DomainService.Accounts
             return null;
         }
 
-        private async Task<BaseAccountResponse?> HandleExistingSignupUserAsync(string normalizedEmail)
+        private async Task<BaseAccountResponse?> HandleExistingSignupUserAsync(SignupUserRequest signupUserRequest, string normalizedEmail)
         {
             var existingUser = await _repository.GetUserByEmailAsync(normalizedEmail);
             if (existingUser == null)
             {
                 return null;
+            }
+
+            if (existingUser.Status == UserLifecycleStatus.Disabled)
+            {
+                _logger.LogWarning("Signup blocked -- account disabled for email: {Email}", normalizedEmail);
+                return new BaseAccountResponse
+                {
+                    IsSuccess = false,
+                    Errors = new Dictionary<string, string>
+                    {
+                        { "account_disabled", "This account has been disabled. Please contact support." }
+                    }
+                };
             }
 
             if (existingUser.Active && existingUser.IsVerified)
@@ -247,6 +260,40 @@ namespace Iam.DomainService.Accounts
                     Errors = new Dictionary<string, string>
                     {
                         { "already_signed_up", $"{normalizedEmail} is already registered" }
+                    }
+                };
+            }
+
+            if (signupUserRequest.IsSsoSignup
+                && !string.IsNullOrWhiteSpace(signupUserRequest.Provider)
+                && !string.IsNullOrWhiteSpace(signupUserRequest.ExternalUserId))
+            {
+                var linkResult = await _userManagementMutationService.ActivateAndLinkSocialIdentityAsync(
+                    new ActivateAndLinkSocialIdentityRequest
+                    {
+                        UserId = existingUser.ItemId,
+                        Provider = signupUserRequest.Provider,
+                        ProviderUserId = signupUserRequest.ExternalUserId,
+                        Issuer = signupUserRequest.Provider
+                    });
+
+                if (linkResult.IsSuccess)
+                {
+                    return new BaseAccountResponse
+                    {
+                        IsSuccess = true,
+                        ItemId = existingUser.ItemId,
+                        Errors = null
+                    };
+                }
+
+                _logger.LogWarning("ActivateAndLink failed for {Email}: {Errors}", normalizedEmail, string.Join(",", linkResult.Errors?.Keys ?? Enumerable.Empty<string>()));
+                return new BaseAccountResponse
+                {
+                    IsSuccess = false,
+                    Errors = (linkResult.Errors as Dictionary<string, string>) ?? new Dictionary<string, string>
+                    {
+                        { "social_link_failed", "Could not link social identity to the existing account." }
                     }
                 };
             }
@@ -457,6 +504,8 @@ namespace Iam.DomainService.Accounts
 
             user.Active = true;
             user.IsVerified = true;
+            user.Status = UserLifecycleStatus.Active;
+            user.StatusReason = "email_verified";
             user.FirstName = activateUserRequest.FirstName;
             user.LastName = activateUserRequest.LastName;
 
@@ -809,6 +858,42 @@ namespace Iam.DomainService.Accounts
 
             _logger.LogInformation("Send ReActivation for {UsId} is {Send}", user.ItemId, result ? "sent" : "not sent");
             return result;
+        }
+
+        public async Task<BaseAccountResponse> ActivateAndLinkSocialIdentityAsync(ActivateAndLinkSocialIdentityRequest request)
+        {
+            if (request == null)
+            {
+                return new BaseAccountResponse
+                {
+                    IsSuccess = false,
+                    Errors = new Dictionary<string, string>
+                    {
+                        { "request", "Request is required" }
+                    }
+                };
+            }
+
+            var result = await _userManagementMutationService.ActivateAndLinkSocialIdentityAsync(request);
+            if (result.IsSuccess)
+            {
+                return new BaseAccountResponse
+                {
+                    IsSuccess = true,
+                    ItemId = result.ItemId,
+                    Errors = null
+                };
+            }
+
+            return new BaseAccountResponse
+            {
+                IsSuccess = false,
+                ItemId = result.ItemId,
+                Errors = (result.Errors as Dictionary<string, string>) ?? new Dictionary<string, string>
+                {
+                    { "activation_failed", "Account activation via social identity link failed." }
+                }
+            };
         }
 
         public async Task<ActivationCodeValidationResponse> ValidateAccountActivationCodeAsync(ValidateActivationCodeRequest validateActivationCodeRequest)

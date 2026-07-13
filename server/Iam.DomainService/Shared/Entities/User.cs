@@ -55,6 +55,8 @@ namespace Iam.DomainService.Entities
         public string? StatusReason { get; set; }
         public DateTime? DeactivatedAtUtc { get; set; }
         public string? DeactivatedBy { get; set; }
+        public DateTime? ActivatedAtUtc { get; set; }
+        public string? ActivatedBy { get; set; }
         public string? ExternalUserId { get; set; }
         public List<ExternalIdentity> ExternalIdentities { get; set; } = new List<ExternalIdentity>();
         public List<string> OrganizationIds { get; set; } = [];
