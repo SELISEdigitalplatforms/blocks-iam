@@ -110,7 +110,7 @@ export class UserService {
   }
 
   async updateUser(payload: IUpdateUserPayload): Promise<IUpdateUserResponse> {
-    const current = await this.getUserById({ id: payload.itemId });
+    const current = await this.getUserById({ id: payload.itemId, projectKey: "" });
     const flattened = flattenRolesAndPermissions(current.data, payload);
     // The /users/{id} endpoint treats the body as a full record replacement —
     // omitting a field on the request wipes it on the server. Fetch the

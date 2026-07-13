@@ -1,14 +1,19 @@
 import { useContext } from "react";
 import { profileMfaContext } from "../../profile-mfa";
-import { useGetUserById } from "@blocks-idp/iam/hooks/use-user";
+import { useGetMe, useGetUserById } from "@blocks-idp/iam/hooks/use-user";
 
 const imageUrl = "/assets/images/mail-sent.png";
 import { Button } from "@/components/ui-kits/button/button";
 import { useResendOtp } from "@blocks-idp/mfa/hooks/use-resend-otp";
 
 export const ProfileMfaVerifyGuideLineEmail = ({ mfaId }: { mfaId: string }) => {
-  const { userId, projectKey } = useContext(profileMfaContext);
-  const { data } = useGetUserById({ id: userId, projectKey });
+  const { userId, projectKey, own } = useContext(profileMfaContext);
+  const { data: userByIdData } = useGetUserById(
+    { id: userId, projectKey },
+    { enabled: !own },
+  );
+  const { data: meData } = useGetMe();
+  const data = own ? meData : userByIdData;
   const { remainingTime, resend } = useResendOtp({ mfaId });
 
   const resendButtonLabel = remainingTime
