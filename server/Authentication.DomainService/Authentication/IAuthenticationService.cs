@@ -1,6 +1,7 @@
 using Authentication.DomainService.Entities;
 using Authentication.DomainService.OAuth.ResponseModel;
 using Authentication.DomainService.Shared.RequestModel;
+using Authentication.DomainService.Shared.ResponseModel;
 using Blocks.Genesis;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
@@ -27,13 +28,14 @@ namespace Authentication.DomainService.Authentication
         Task<(bool IsValid, Dictionary<string, object> UserInfo)> BuildOidcUserInfoAsync(ClaimsPrincipal principal);
         Task<bool> TriggerBackchannelLogoutAllAsync(HttpRequest httpRequest);
         Task<bool> EnsureIdpSessionForOidcCallbackAsync(HttpContext httpContext, string userId, string tenantId);
-        Task<BaseResponse> CreateIdentityProviderAsync(IdentityProvider provider);
+        Task<BaseResponse> CreateIdentityProviderAsync(SaveIdentityProviderRequest request);
         Task<IdentityProvider?> GetIdentityProviderAsync(string provider);
         Task<IdentityProvider?> GetIdentityProviderByIdAsync(string id);
         Task<List<IdentityProvider>> GetAllIdentityProvidersAsync();
-        Task<BaseResponse> UpdateIdentityProviderAsync(IdentityProvider provider);
+        Task<BaseResponse> UpdateIdentityProviderAsync(string id, UpdateIdentityProviderRequest request);
         Task<BaseResponse> DeleteIdentityProviderAsync(string id);
         Task<BaseResponse> UpdateIdentityProviderStatusAsync(string id, bool isActive);
+        Task<RotateOidcClientSecretResponse> RotateOidcClientSecretAsync(string itemId);
         Task<IActionResult> ExecuteImpersonateAsync(ImpersonateRequest request, HttpRequest httpRequest, HttpResponse httpResponse);
         Task<IActionResult> ExecuteStopImpersonationAsync(StopImpersonationRequest request, HttpRequest httpRequest, HttpResponse httpResponse);
     }

@@ -4,7 +4,7 @@ export interface IOrganization {
   description: string | null;
   parentOrganizationId: string | null;
   shortCode: string | null;
-  isEnabled: boolean;
+  isDisabled: boolean;
   defaultRoleForMembers: string[];
   defaultPermissionsForMembers: string[];
   email: string | null;
@@ -32,7 +32,7 @@ export interface IOrganization {
 }
 
 export interface IOrganizationFilter {
-  projectKey: string;
+  projectKey?: string;
   page: number;
   pageSize: number;
   search?: string;
@@ -45,7 +45,9 @@ export interface IOrganizationFilter {
 export interface IGetOrganizationsParams {
   page: number;
   pageSize: number;
-  searchText?: string;
+  search?: string;
+  isDisabled?: boolean;
+  parentOrganizationId?: string;
   sort?: {
     property: string;
     isDescending: boolean;

@@ -1,7 +1,8 @@
 using Authentication.DomainService.Oidc.Repositories;
-using Authentication.DomainService.Dtos;
 using Authentication.DomainService.Services;
-using Authentication.DomainService.Utilities;
+using Iam.DomainService.Dtos;
+using Iam.DomainService.Services;
+using Iam.DomainService.Utilities;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using System.Text;
@@ -19,17 +20,20 @@ namespace Blocks.Api.Controllers
         private readonly ITokenRevocationService _revocationService;
         private readonly IAuthenticationRepository _authenticationRepository;
         private readonly IAuthenticationDomainService _authenticationDomainService;
+        private readonly IUserActivityDispatcher _userActivityDispatcher;
         private readonly ILogger<TokenManagementController> _logger;
 
         public TokenManagementController(
             ITokenRevocationService revocationService,
             IAuthenticationRepository authenticationRepository,
             IAuthenticationDomainService authenticationDomainService,
+            IUserActivityDispatcher userActivityDispatcher,
             ILogger<TokenManagementController> logger)
         {
             _revocationService = revocationService;
             _authenticationRepository = authenticationRepository;
             _authenticationDomainService = authenticationDomainService;
+            _userActivityDispatcher = userActivityDispatcher;
             _logger = logger;
         }
 
@@ -214,44 +218,6 @@ namespace Blocks.Api.Controllers
             return resolvedClientId;
         }
 
-        /// <summary>
-        /// Get revocation history for audit trail
-        /// </summary>
-        [HttpGet("revocation-history")]
-        [Authorize]
-        public async Task<IActionResult> GetRevocationHistory()
-        {
-            try
-            {
-                var userId = User.FindFirst("sub")?.Value;
-
-                if (string.IsNullOrWhiteSpace(userId))
-                {
-                    return Unauthorized(new { error = "invalid_request", error_description = "User not authenticated" });
-                }
-
-                var history = await _revocationService.GetRevocationHistoryAsync(userId);
-
-                return Ok(new
-                {
-                    user_id = userId,
-                    revocation_count = history?.Count() ?? 0,
-                    revocations = history?.Select(r => new
-                    {
-                        jti = r.Jti,
-                        revoked_at = r.RevokedAt,
-                        reason = r.RevokeReason,
-                        expires_at = r.ExpiresAt
-                    })
-                });
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, "Error retrieving revocation history");
-                return StatusCode(500, new { error = "server_error" });
-            }
-        }
-
         private async Task PublishTimelineAsync(string userId, string eventName, string actionBy, string outcome, string? reasonCode, string? clientId, string? tokenTypeHint)
         {
             if (string.IsNullOrWhiteSpace(userId))
@@ -259,30 +225,29 @@ namespace Blocks.Api.Controllers
                 return;
             }
 
-            var timelineEvent = new UserAuthenticationTimelineEvent
+            await _userActivityDispatcher.SendUserActivityAsync(new UserActivityEvent
             {
                 UserId = userId,
+                Category = UserActivityCategory.Auth,
                 Event = eventName,
-                ActionBy = actionBy,
-                DeviceInformation = _authenticationDomainService.GetDeviceInfo(Request?.Headers?.UserAgent.ToString() ?? string.Empty),
-                IpAddresses = string.Join(",", _authenticationDomainService.GetVisitorsIpAddresses(Request.HttpContext)),
-                TenantId = User.FindFirst("tenant_id")?.Value,
+                Source = "auth-token-management",
                 SessionId = Request.Cookies[IdpConstants.BuildIdpSessionCookieKey(User.FindFirst("tenant_id")?.Value)],
+                ClientId = clientId,
                 CorrelationId = HttpContext.TraceIdentifier,
                 Outcome = outcome,
                 ReasonCode = reasonCode,
-                RiskLevel = "low",
-                ClientId = clientId
-            };
-
-            if (!string.IsNullOrWhiteSpace(tokenTypeHint))
-            {
-                timelineEvent.ReasonCode = string.IsNullOrWhiteSpace(timelineEvent.ReasonCode)
-                    ? $"token_type_{tokenTypeHint}"
-                    : $"{timelineEvent.ReasonCode};token_type_{tokenTypeHint}";
-            }
-
-            await _authenticationDomainService.SendToQueueAsync(IdpConstants.AuthenticationQueue, timelineEvent);
+                TenantId = User.FindFirst("tenant_id")?.Value,
+                Context = new ActivityContext
+                {
+                    IpAddress = string.Join(",", _authenticationDomainService.GetVisitorsIpAddresses(Request.HttpContext)),
+                    DeviceInformation = _authenticationDomainService.GetDeviceInfo(Request?.Headers?.UserAgent.ToString() ?? string.Empty)
+                },
+                Metadata = new Dictionary<string, string>
+                {
+                    { "actionBy", actionBy },
+                    { "tokenTypeHint", tokenTypeHint ?? string.Empty }
+                }
+            });
         }
     }
 }

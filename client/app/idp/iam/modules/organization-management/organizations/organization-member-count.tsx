@@ -3,14 +3,14 @@ import { useProjectStore } from "@seliseblocks/blocks-kit";
 
 export const useOrganizationMemberCount = (organizationId: string) => {
   const tenantId = useProjectStore().selectedProject?.tenantId || "";
-  const { data, isLoading } = useGetUsers({
+  // Fetch a single page of 1 so we can read the total count without pulling rows.
+  const { data, isLoading, isFetching } = useGetUsers({
     page: 0,
     pageSize: 1,
     projectKey: tenantId,
     filter: { email: "", name: "", organizationId },
   });
-
-  return { count: data?.totalCount ?? 0, isLoading: isLoading || !data };
+  return { count: data?.totalCount ?? 0, isLoading: isLoading || isFetching };
 };
 
 export const OrganizationMemberCount = ({ organizationId }: { organizationId: string }) => {

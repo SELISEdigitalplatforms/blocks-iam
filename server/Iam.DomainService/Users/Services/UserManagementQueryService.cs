@@ -1,6 +1,5 @@
 ﻿using Blocks.Genesis;
 using Iam.DomainService.Dtos;
-using Iam.DomainService.Entities;
 using Microsoft.Extensions.Logging;
 
 namespace Iam.DomainService.Users
@@ -36,7 +35,7 @@ namespace Iam.DomainService.Users
 
             return new IsUserExistResponse
             {
-                Exists = user != null,
+                UserId = user?.ItemId,
                 OrganizationIds = user?.OrganizationIds ?? new List<string>()
             };
         }
@@ -102,11 +101,6 @@ namespace Iam.DomainService.Users
             {
                 Data = data
             };
-        }
-
-        public async Task<List<UserTimeline>> GetUserTimelinesAsync(GetUserTimeLineRequest request)
-        {
-            return await _userRepository.GetUserTimelinesAsync(request);
         }
 
         private static Dictionary<string, object> MapToListAccountFields(GetAccounts user)

@@ -1,7 +1,9 @@
 using Blocks.Genesis;
+using MongoDB.Bson.Serialization.Attributes;
 
 namespace Authentication.DomainService.Entities
 {
+    [BsonIgnoreExtraElements]
     public class ClientCredential : BaseEntity
     {
         public string? Name { get; set; }

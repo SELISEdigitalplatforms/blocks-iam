@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Button } from "@/components/ui-kits/button/button";
 import {
   Dialog,
@@ -24,23 +24,22 @@ import {
 import {
   useAddUser,
   useCheckUserExists,
-  useGetUsers,
+  useUpdateUserAccessControl,
 } from "@blocks-idp/iam/hooks/use-user";
+import { useGetOrganizationConfig, useGetOrganizations } from "@blocks-idp/iam/hooks/use-organization";
 import { z } from "zod";
 import { useProjectStore } from "@seliseblocks/blocks-kit";
-import { useEffect, useMemo } from "react";
-import { CheckCircle2, Loader, Plus, XCircle } from "lucide-react";
+import { ChevronsUpDown, Check, Loader, Plus } from "lucide-react";
 import { isErrorWithErrors } from "@/lib/error";
 import { cn } from "@/lib/utils";
-import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { userService } from "@blocks-idp/iam/services/user.service";
-import type { IUpdateUserAccessControlPayload } from "@blocks-idp/iam/models/user";
-import type { IRole } from "@blocks-idp/iam/models/role";
-import type { IPermission } from "@blocks-idp/iam/models/permission";
-import { useGetRoles } from "@blocks-idp/iam/hooks/use-roles";
-import { useGetPermissions } from "@blocks-idp/iam/hooks/use-permission";
-import { OrganizationRolesField } from "@blocks-idp/iam/modules/user-management/user-memberships/organization-roles-field/organization-roles-field";
-import { OrganizationPermissionsField } from "@blocks-idp/iam/modules/user-management/user-memberships/organization-permissions-field/organization-permissions-field";
+import { useQueryClient } from "@tanstack/react-query";
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@/components/ui-kits/popover/popover";
+
+const DEFAULT_ORGANIZATION_ID = "default";
 
 const inviteOrganizationUserFormDefaultValue = {
   email: "",
@@ -84,43 +83,39 @@ const extractFirstErrorMessage = (errors: unknown, fallback: string): string => 
 };
 
 export const InviteOrganizationUser = ({ organizationId }: InviteOrganizationUserProps) => {
-  const { isPending: isCreatePending, mutateAsync: createUser } = useAddUser();
+  const { isPending: isCreatingUser, mutateAsync: createUser } = useAddUser();
   const queryClient = useQueryClient();
-  const { mutateAsync: updateAccess, isPending: isAccessPending } = useMutation({
-    mutationFn: (payload: IUpdateUserAccessControlPayload) =>
-      userService.updateUserAccessControl(payload),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["users"] });
-      queryClient.invalidateQueries({ queryKey: ["user-by-id"] });
-      queryClient.invalidateQueries({ queryKey: ["user"] });
-      queryClient.invalidateQueries({ queryKey: ["user-roles"] });
-      queryClient.invalidateQueries({ queryKey: ["user-permissions"] });
-      queryClient.invalidateQueries({ queryKey: ["organizations"] });
-      queryClient.invalidateQueries({ queryKey: ["organization"] });
-    },
-  });
-  const isPending = isCreatePending || isAccessPending;
 
   const tenantId = useProjectStore().selectedProject?.tenantId || "";
   const [open, setOpen] = useState(false);
-  const [selectedRoles, setSelectedRoles] = useState<IRole[]>([]);
-  const [selectedPermissions, setSelectedPermissions] = useState<IPermission[]>([]);
+  const [orgPopoverOpen, setOrgPopoverOpen] = useState(false);
+  const [selectedOrgId, setSelectedOrgId] = useState(organizationId);
 
-  const { data: rolesData } = useGetRoles({
+  const { data: orgsData, isLoading: isOrgsLoading } = useGetOrganizations({
     page: 0,
     pageSize: 1000,
-    sort: { property: "Name", isDescending: false },
-    filter: { search: "" },
-    projectKey: tenantId,
   });
-  const { data: permissionsData } = useGetPermissions({
-    projectKey: tenantId,
-    page: 0,
-    pageSize: 1000,
-    search: "",
-    isBuiltIn: "",
-    roles: [],
-  });
+  const { data: configData, isLoading: isConfigLoading } =
+    useGetOrganizationConfig(tenantId);
+  const isMultiOrgEnabled = configData?.isMultiOrgEnabled ?? true;
+
+  // "Default" is an implicit organization every account belongs to — it is
+  // never returned by the tenant organizations list, so it has to be added
+  // in manually or it can never be selected.
+  const hasNonDefaultOrgs = useMemo(
+    () =>
+      (orgsData?.organizations ?? []).some(
+        (org) => org.isDisabled !== true && org.itemId !== DEFAULT_ORGANIZATION_ID,
+      ),
+    [orgsData?.organizations],
+  );
+
+  // Treat a missing/undefined isDisabled as enabled — only explicitly disabled
+  // orgs (isDisabled === true) should be excluded from the picker.
+  const enabledOrgs = useMemo(
+    () => (orgsData?.organizations ?? []).filter((org) => org.isDisabled !== true),
+    [orgsData?.organizations],
+  );
 
   const form = useForm<InviteFormValues>({
     defaultValues: inviteOrganizationUserFormDefaultValue,
@@ -129,85 +124,142 @@ export const InviteOrganizationUser = ({ organizationId }: InviteOrganizationUse
   });
 
   const emailValue = form.watch("email") ?? "";
-  const isValidEmailFormat = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(emailValue.trim());
+  const trimmedEmail = emailValue.trim();
+  const isValidEmailFormat = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(trimmedEmail);
 
-  const { data: existsData, isFetching: isCheckingExists } = useCheckUserExists(
-    emailValue,
-    { enabled: isValidEmailFormat },
+  // Debounce the value driving the existence check so it doesn't refire on
+  // every keystroke — this also keeps the pending state visible long enough
+  // to actually render instead of resolving within the same frame it started.
+  const [debouncedEmail, setDebouncedEmail] = useState("");
+  useEffect(() => {
+    const handle = setTimeout(() => setDebouncedEmail(trimmedEmail), 400);
+    return () => clearTimeout(handle);
+  }, [trimmedEmail]);
+  const isEmailSettled = debouncedEmail === trimmedEmail;
+
+  // Check whether the email already maps to a user — drives whether the
+  // first/last name fields appear, which orgs to hide from the picker, and
+  // the loading/found indicator shown inside the email field.
+  const { data: existsData, isFetching: isFetchingExists } = useCheckUserExists(debouncedEmail, {
+    enabled: isValidEmailFormat && isEmailSettled,
+  });
+  const isCheckingUserExists = isValidEmailFormat && (!isEmailSettled || isFetchingExists);
+  const exists = Boolean(existsData?.userId);
+  const existingUserOrgIds = useMemo(
+    () => new Set(existsData?.organizationIds ?? []),
+    [existsData?.organizationIds],
   );
 
-  const exists = existsData?.exists === true;
+  // When the email maps to an existing user, resolve their userId so we can
+  // grant them access to the selected org instead of creating a new account.
+  // The userId comes straight from the existence check response — no extra lookup needed.
+  const existingUserId = existsData?.userId;
+  const { mutateAsync: updateUserAccess, isPending: isGrantingAccess } =
+    useUpdateUserAccessControl({ id: existingUserId ?? "", projectKey: tenantId });
 
-  const { data: lookupData } = useGetUsers({
-    page: 0,
-    pageSize: 5,
-    projectKey: tenantId,
-    filter: { email: emailValue.trim(), name: "", organizationId: "" },
-    sort: { property: "FirstName", isDescending: false },
-  });
-  const existingUserId = useMemo(() => {
-    if (!exists || !lookupData?.data) return "";
-    const match = lookupData.data.find(
-      (u) => u.email?.toLowerCase() === emailValue.trim().toLowerCase(),
-    );
-    return match?.itemId ?? "";
-  }, [exists, lookupData, emailValue]);
+  const isPending = isCreatingUser || isGrantingAccess;
+
+  // Dropdown list: enabled orgs with a synthetic "Default" entry pinned at the top.
+// When the email maps to an existing user, hide orgs (including Default) they're already in.
+const orgOptions = useMemo(() => {
+  const hideDefault = existingUserOrgIds.has(DEFAULT_ORGANIZATION_ID);
+  const list = enabledOrgs.filter(
+    (org) =>
+      org.itemId !== DEFAULT_ORGANIZATION_ID && !existingUserOrgIds.has(org.itemId),
+  );
+  return hideDefault
+    ? list
+    : [{ itemId: DEFAULT_ORGANIZATION_ID, name: "Default", isDisabled: false }, ...list];
+}, [enabledOrgs, existingUserOrgIds]);
+
+  const orgIdToName = useMemo(() => {
+    const map = new Map<string, string>();
+    orgOptions.forEach((o) => map.set(o.itemId, o.name));
+    return map;
+  }, [orgOptions]);
 
   useEffect(() => {
     if (!open) {
       form.reset();
-      setSelectedRoles([]);
-      setSelectedPermissions([]);
+      setOrgPopoverOpen(false);
+      setSelectedOrgId(organizationId);
+      return;
     }
-  }, [open, form]);
+    // When multi-org is disabled we don't show an org picker, and the parent
+    // org id is the only legitimate scope, so clear any prior selection.
+    if (!isMultiOrgEnabled) {
+      setSelectedOrgId("");
+      return;
+    }
+    // When multi-org is enabled but the workspace has no real orgs, fall back
+    // to the synthetic "default" so the user can submit against the implied
+    // organization.
+    if (orgsData && !hasNonDefaultOrgs) {
+      setSelectedOrgId(DEFAULT_ORGANIZATION_ID);
+    }
+  }, [open, isMultiOrgEnabled, orgsData, hasNonDefaultOrgs, form, organizationId]);
 
-  const isFormInvalid = !isValidEmailFormat
-    ? true
-    : !exists
-      ? !form.watch("firstName")?.trim() || !form.watch("lastName")?.trim()
-      : selectedRoles.length === 0;
+  // If the current selected org becomes hidden (because the existing user is
+  // already a member of it), drop the selection so the trigger label and the
+  // submit-time org id stay in sync with the filtered dropdown.
+  useEffect(() => {
+    if (!open) return;
+    if (selectedOrgId && existingUserOrgIds.has(selectedOrgId)) {
+      setSelectedOrgId("");
+    }
+  }, [open, existingUserOrgIds, selectedOrgId]);
+
+  const isFormInvalid =
+    !isValidEmailFormat ||
+    (exists && !existingUserId) ||
+    (!exists && (!form.watch("firstName")?.trim() || !form.watch("lastName")?.trim()));
 
   const onSubmitHandler = async (values: InviteFormValues) => {
     try {
       if (exists) {
         if (!existingUserId) {
           showErrorToast({
-            errors: "Could not resolve the existing user. Please retry.",
+            errors: "Could not find this user's account. Please try again.",
           });
           return;
         }
-        const res = await updateAccess({
-          userId: existingUserId,
-          roles: selectedRoles.map((role) => role.slug),
-          permissions: selectedPermissions.map((permission) => permission.name),
-          organizationId,
-        });
-        if (!res?.isSuccess) {
-          showErrorToast({
-            errors: extractFirstErrorMessage(res?.errors, "Failed to grant access"),
-          });
-          return;
-        }
-        showSuccessToast({ description: "Member added to organization" });
-      } else {
-        const res = await createUser({
-          ...values,
-          firstName: values.firstName ?? "",
-          lastName: values.lastName ?? "",
-          userPassType: 1,
-          userCreationType: 1,
-          platform: "blocks_portal",
-          projectKey: tenantId,
-          organizationId,
+        const res = await updateUserAccess({
+          organizationId: selectedOrgId,
+          roles: [],
+          permissions: [],
         });
         if (!res.isSuccess) {
           showErrorToast({
-            errors: extractFirstErrorMessage(res.errors, "Failed to invite member"),
+            errors: extractFirstErrorMessage(res.errors, "Failed to grant access"),
           });
           return;
         }
-        showSuccessToast({ description: "Invitation is sent" });
+        showSuccessToast({ description: "User granted access to the organization" });
+        queryClient.invalidateQueries({ queryKey: ["organizations"] });
+        queryClient.invalidateQueries({ queryKey: ["organization"] });
+        form.reset();
+        setOpen(false);
+        return;
       }
+
+      const res = await createUser({
+        ...values,
+        firstName: values.firstName ?? "",
+        lastName: values.lastName ?? "",
+        userPassType: 1,
+        userCreationType: 1,
+        platform: "blocks_portal",
+        organizationId: selectedOrgId,
+      });
+      if (!res.isSuccess) {
+        showErrorToast({
+          errors: extractFirstErrorMessage(res.errors, "Failed to invite member"),
+        });
+        return;
+      }
+      showSuccessToast({ description: "Invitation is sent" });
+      queryClient.invalidateQueries({ queryKey: ["organizations"] });
+      queryClient.invalidateQueries({ queryKey: ["organization"] });
       form.reset();
       setOpen(false);
     } catch (error) {
@@ -227,12 +279,11 @@ export const InviteOrganizationUser = ({ organizationId }: InviteOrganizationUse
           <span className="sr-only sm:not-sr-only">Invite Member</span>
         </Button>
       </DialogTrigger>
-      <DialogContent className="flex max-h-[90vh] flex-col sm:max-w-[640px]">
+      <DialogContent className="flex max-h-[90vh] flex-col sm:max-w-[480px]">
         <DialogHeader className="shrink-0">
           <DialogTitle>Invite Member</DialogTitle>
           <DialogDescription className="!mt-2 text-sm text-medium-emphasis">
-            Add a member to this organization. We'll create a new account or grant access if
-            the email already exists.
+            Add a member to this organization.
           </DialogDescription>
         </DialogHeader>
         <Form {...form}>
@@ -247,23 +298,91 @@ export const InviteOrganizationUser = ({ organizationId }: InviteOrganizationUse
                 render={({ field }) => (
                   <FormItem>
                     <FormLabel>Email</FormLabel>
-                    <FormControl>
-                      <Input
-                        type="email"
-                        placeholder="name@company.com"
-                        autoComplete="off"
-                        {...field}
-                      />
-                    </FormControl>
+                    <div className="relative">
+                      <FormControl>
+                        <Input
+                          type="email"
+                          placeholder="name@company.com"
+                          autoComplete="off"
+                          className={cn(
+                            isValidEmailFormat && (isCheckingUserExists || exists) && "pr-9",
+                          )}
+                          {...field}
+                        />
+                      </FormControl>
+                      {isValidEmailFormat && isCheckingUserExists && (
+                        <span className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2">
+                          <Loader className="h-4 w-4 animate-spin text-muted-foreground" />
+                        </span>
+                      )}
+                      {isValidEmailFormat && !isCheckingUserExists && exists && (
+                        <span className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2">
+                          <Check className="h-4 w-4 text-green-600 dark:text-green-400" />
+                        </span>
+                      )}
+                    </div>
                     <FormMessage />
-                    <EmailStatus
-                      isValidFormat={isValidEmailFormat}
-                      isChecking={isCheckingExists}
-                      exists={exists}
-                    />
                   </FormItem>
                 )}
               />
+
+              {isValidEmailFormat && !isConfigLoading && isMultiOrgEnabled && (
+                <div className="space-y-2">
+                  <label className="text-sm font-medium">Organization</label>
+                  <Popover open={orgPopoverOpen} onOpenChange={setOrgPopoverOpen}>
+                    <PopoverTrigger asChild>
+                      <Button
+                        type="button"
+                        variant="outline"
+                        role="combobox"
+                        aria-expanded={orgPopoverOpen}
+                        className="w-full justify-between"
+                      >
+                        <span className="truncate text-sm font-normal">
+                          {selectedOrgId
+                            ? orgIdToName.get(selectedOrgId) ?? selectedOrgId
+                            : "Select organization"}
+                        </span>
+                        <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+                      </Button>
+                    </PopoverTrigger>
+                    <PopoverContent className="w-[--radix-popover-trigger-width] p-0" align="start">
+                      <div className="max-h-[260px] overflow-y-auto p-1">
+                        {orgOptions.length === 0 && !isOrgsLoading && (
+                          <div className="px-2 py-1.5 text-sm text-muted-foreground">
+                            {exists
+                              ? "This user is already a member of all organizations"
+                              : "No organizations available"}
+                          </div>
+                        )}
+                        {orgOptions.map((org) => {
+                          const isSelected = selectedOrgId === org.itemId;
+                          return (
+                            <button
+                              key={org.itemId}
+                              type="button"
+                              onClick={() => {
+                                setSelectedOrgId(org.itemId);
+                                setOrgPopoverOpen(false);
+                              }}
+                              className="flex w-full cursor-pointer items-center gap-2 rounded-sm px-2 py-1.5 text-left text-sm hover:bg-muted/50"
+                            >
+                              <span className="flex-1 truncate">{org.name}</span>
+                              {isSelected && <Check className="h-4 w-4 text-primary" />}
+                            </button>
+                          );
+                        })}
+                        {isOrgsLoading && (
+                          <div className="flex items-center gap-2 px-2 py-1.5 text-sm text-muted-foreground">
+                            <Loader className="h-3.5 w-3.5 animate-spin" />
+                            Loading organizations...
+                          </div>
+                        )}
+                      </div>
+                    </PopoverContent>
+                  </Popover>
+                </div>
+              )}
 
               {!exists && isValidEmailFormat && (
                 <>
@@ -295,18 +414,8 @@ export const InviteOrganizationUser = ({ organizationId }: InviteOrganizationUse
                   />
                 </>
               )}
-
-              {exists && isValidEmailFormat && (
-                <div className="flex flex-col gap-5 rounded-lg border bg-muted/10 p-4">
-                  <OrganizationRolesField roles={selectedRoles} onChange={setSelectedRoles} />
-                  <OrganizationPermissionsField
-                    permissions={selectedPermissions}
-                    onChange={setSelectedPermissions}
-                  />
-                </div>
-              )}
             </div>
-            <DialogFooter className="shrink-0 border-t pt-4">
+            <DialogFooter className="shrink-0 pt-4">
               <Button
                 type="button"
                 variant="secondary"
@@ -318,19 +427,11 @@ export const InviteOrganizationUser = ({ organizationId }: InviteOrganizationUse
               >
                 Cancel
               </Button>
-              <Button
-                type="submit"
-                disabled={
-                  isPending ||
-                  isFormInvalid ||
-                  isCheckingExists ||
-                  (exists && !existingUserId)
-                }
-              >
+              <Button type="submit" disabled={isPending || isFormInvalid}>
                 {isPending ? (
                   <>
                     <Loader className="mr-2 h-4 w-4 animate-spin" />
-                    Sending...
+                    {exists ? "Granting access..." : "Sending..."}
                   </>
                 ) : exists ? (
                   "Grant access"
@@ -343,45 +444,5 @@ export const InviteOrganizationUser = ({ organizationId }: InviteOrganizationUse
         </Form>
       </DialogContent>
     </Dialog>
-  );
-};
-
-const EmailStatus = ({
-  isValidFormat,
-  isChecking,
-  exists,
-}: {
-  isValidFormat: boolean;
-  isChecking: boolean;
-  exists: boolean;
-}) => {
-  if (!isValidFormat) return null;
-  if (isChecking) {
-    return (
-      <p className="mt-1 flex items-center gap-1.5 text-xs text-muted-foreground">
-        <Loader className="h-3 w-3 animate-spin" />
-        Checking email...
-      </p>
-    );
-  }
-  return (
-    <p
-      className={cn(
-        "mt-1 flex items-center gap-1.5 text-xs",
-        exists ? "text-success" : "text-destructive",
-      )}
-    >
-      {exists ? (
-        <>
-          <CheckCircle2 className="h-3.5 w-3.5" />
-          User exists. We will grant access instead of creating a new account.
-        </>
-      ) : (
-        <>
-          <XCircle className="h-3.5 w-3.5" />
-          User not found. We will create a new account.
-        </>
-      )}
-    </p>
   );
 };

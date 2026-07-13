@@ -1,16 +1,14 @@
 using Authentication.DomainService.Dtos;
+using Authentication.DomainService.Utilities;
 using Authentication.DomainService.Entities;
 using Authentication.DomainService.OAuth;
 using Authentication.DomainService.OAuth.RequestModel;
 using Authentication.DomainService.OAuth.ResponseModel;
 using Authentication.DomainService.Oidc.Repositories;
 using Authentication.DomainService.Services;
-using Authentication.DomainService.Shared;
 using Authentication.DomainService.Shared.RequestModel;
-using Authentication.DomainService.Utilities;
 using Blocks.Genesis;
 using Iam.DomainService.Entities;
-using Idp.DomainService.Oidc.Contracts;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.Logging;
@@ -27,8 +25,9 @@ namespace Authentication.DomainService.Authentication
         private readonly ITokenRefresher _tokenRefresher;
         private readonly IAuthenticationService _authenticationService;
         private readonly ICaptchaEvaluator _captchaEvaluator;
-        private readonly IAuditLogRepository _auditLogRepo;
+        private readonly OidcLoginAuditWriter _auditWriter;
         private readonly ILogger<AuthenticationFlowService> _logger;
+        private readonly IRefreshTokenRepository _refreshTokenRepository;
 
         public AuthenticationFlowService(
             IAuthenticationRepository authenticationRepository,
@@ -36,16 +35,18 @@ namespace Authentication.DomainService.Authentication
             ITokenRefresher tokenRefresher,
             IAuthenticationService authenticationService,
             ICaptchaEvaluator captchaEvaluator,
-            IAuditLogRepository auditLogRepo,
-            ILogger<AuthenticationFlowService> logger)
+            OidcLoginAuditWriter auditWriter,
+            ILogger<AuthenticationFlowService> logger,
+            IRefreshTokenRepository refreshTokenRepository)
         {
             _authenticationRepository = authenticationRepository;
             _authStrategy = authStrategy;
             _tokenRefresher = tokenRefresher;
             _authenticationService = authenticationService;
             _captchaEvaluator = captchaEvaluator;
-            _auditLogRepo = auditLogRepo;
+            _auditWriter = auditWriter;
             _logger = logger;
+            _refreshTokenRepository = refreshTokenRepository;
         }
 
         public async Task<AuthenticationFlowResult> ExecuteEmbeddedLoginAsync(EmbeddedLoginRequest request, HttpRequest httpRequest)
@@ -66,7 +67,7 @@ namespace Authentication.DomainService.Authentication
                 && user.LockoutUntilUtc.HasValue
                 && user.LockoutUntilUtc.Value > DateTime.UtcNow)
             {
-                await WriteLoginAuditAsync(user, httpRequest, LoginAuditEvents.LoginFailureAccountLocked, "embedded_login_account_locked");
+                await _auditWriter.WriteAsync(null, null, user, httpRequest, LoginAuditEvents.LoginFailureAccountLocked, "embedded_login_account_locked");
                 return new AuthenticationFlowResult
                 {
                     StatusCode = StatusCodes.Status423Locked,
@@ -86,7 +87,7 @@ namespace Authentication.DomainService.Authentication
                 if (user != null
                     && string.Equals(captchaValidationResult.Error, OAuthError.CaptchaInvalid, StringComparison.OrdinalIgnoreCase))
                 {
-                    await WriteLoginAuditAsync(user, httpRequest, LoginAuditEvents.CaptchaValidationFailure, captchaValidationResult.ErrorDescription);
+                    await _auditWriter.WriteAsync(null, null, user, httpRequest, LoginAuditEvents.CaptchaValidationFailure, captchaValidationResult.ErrorDescription);
                 }
                 return captchaValidationResult;
             }
@@ -107,11 +108,11 @@ namespace Authentication.DomainService.Authentication
             if (user != null && !string.IsNullOrWhiteSpace(tokenResponse.Error)
                 && string.Equals(tokenResponse.Error, OAuthError.InValidUseNamePassword, StringComparison.OrdinalIgnoreCase))
             {
-                await WriteLoginAuditAsync(user, httpRequest, LoginAuditEvents.LoginFailure, tokenResponse.ErrorDescription);
+                await _auditWriter.WriteAsync(null, null, user, httpRequest, LoginAuditEvents.LoginFailure, tokenResponse.ErrorDescription);
             }
             else if (user != null && string.IsNullOrWhiteSpace(tokenResponse.Error))
             {
-                await WriteLoginAuditAsync(user, httpRequest, LoginAuditEvents.LoginSuccess, tokenResponse.ErrorDescription);
+                await _auditWriter.WriteAsync(null, null, user, httpRequest, LoginAuditEvents.LoginSuccess, tokenResponse.ErrorDescription);
             }
 
             return new AuthenticationFlowResult
@@ -298,42 +299,6 @@ namespace Authentication.DomainService.Authentication
                 CaptchaRequired = true,
                 CaptchaSiteKey = siteKey
             };
-        }
-
-        private async Task WriteLoginAuditAsync(User user, HttpRequest httpRequest, string eventType, string? details)
-        {
-            try
-            {
-                var isFailure = eventType.Contains("failure", StringComparison.OrdinalIgnoreCase)
-                    || eventType.Contains("locked", StringComparison.OrdinalIgnoreCase);
-                var isSuccess = eventType.Contains("success", StringComparison.OrdinalIgnoreCase);
-
-                await _auditLogRepo.CreateAsync(new AuditLogModel
-                {
-                    EventType = eventType,
-                    UserId = user.ItemId,
-                    ClientId = string.Empty,
-                    TenantId = BlocksContext.GetContext()?.TenantId,
-                    IpAddress = GetClientIpAddress(httpRequest),
-                    UserAgent = httpRequest.Headers.UserAgent.ToString(),
-                    Severity = isFailure ? AuthenticationConstants.SeverityWarn : AuthenticationConstants.SeverityInfo,
-                    Status = isSuccess ? AuthenticationConstants.StatusSuccess : AuthenticationConstants.StatusFailure,
-                    Details = details ?? eventType
-                });
-            }
-            catch (Exception ex)
-            {
-                _logger.LogWarning(ex, "Failed to write login audit event {EventType} for user {UserId}", eventType, user.ItemId);
-            }
-        }
-
-        private static string GetClientIpAddress(HttpRequest request)
-        {
-            if (request?.HttpContext?.Connection?.RemoteIpAddress != null)
-            {
-                return request.HttpContext.Connection.RemoteIpAddress.ToString();
-            }
-            return "unknown";
         }
 
         private static string ResolveOrgIdFromUser(User? user)
@@ -578,7 +543,7 @@ namespace Authentication.DomainService.Authentication
 
         private async Task HandlePotentialRefreshTokenReuseAsync(string refreshToken)
         {
-            await _authenticationRepository.RevokeIdentitySessionsByRefreshTokensAsync(new List<string> { refreshToken });
+            await _refreshTokenRepository.RevokeByTokenIdAsync(refreshToken, "potential_reuse");
 
             await _tokenRefresher.RemoveKeyAsync(refreshToken);
             var tokenFingerprint = TruncateToken(refreshToken);

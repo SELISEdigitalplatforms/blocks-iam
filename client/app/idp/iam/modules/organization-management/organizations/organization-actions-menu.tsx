@@ -38,15 +38,15 @@ export const OrganizationActions = ({ organization }: OrganizationActionsProps) 
             <span>Rename</span>
           </DropdownMenuItem>
           <DropdownMenuItem className="gap-2" onSelect={() => setIsToggleStatusModalOpen(true)}>
-            {organization.isEnabled ? (
-              <>
-                <PowerOff className="aspect-square w-4" />
-                <span>Disable</span>
-              </>
-            ) : (
+            {organization.isDisabled ? (
               <>
                 <Power className="aspect-square w-4" />
                 <span>Enable</span>
+              </>
+            ) : (
+              <>
+                <PowerOff className="aspect-square w-4" />
+                <span>Disable</span>
               </>
             )}
           </DropdownMenuItem>

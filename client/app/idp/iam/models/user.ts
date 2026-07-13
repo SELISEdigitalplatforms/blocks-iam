@@ -85,7 +85,7 @@ export interface ICreateUserPayload {
   userPassType: number;
   userCreationType: number;
   platform: string;
-  projectKey: string;
+  projectKey?: string;
   organizationId?: string;
   organizationIds?: string[];
 }
@@ -147,23 +147,15 @@ export interface IUpdateUserAccessControlResponse {
   errors: unknown | null;
   isSuccess: boolean;
 }
-export interface IGetSessionPayload {
-  page: number;
-  pageSize: number;
-  filter: { UserId: string };
-  projectKey: string;
-}
-export interface IGetHistoriesPayload {
-  page: number;
-  pageSize: number;
-  filter: { UserId: string };
-  projectKey: string;
+
+export interface IRevokeAccessPayload {
+  userId: string;
+  organizationId: string;
 }
 
-export interface IGeneratePATPayload {
-  note?: string;
-  codeTtlInMinute: number;
-  clientId: string;
+export interface IRevokeAccessResponse {
+  errors: unknown | null;
+  isSuccess: boolean;
 }
 
 export interface IGetUserRolesPayload {
@@ -191,19 +183,6 @@ export interface UserDetailsDevicesData {
   lastAccessOn: string;
 }
 
-export interface UserDetailsHistoryData {
-  event: string;
-  time: string;
-  site: string | number;
-  accessFrom: UserAccessFromData;
-}
-
-export interface UserAccessFromData {
-  ip: string;
-  location: string;
-}
-
-// Interface for the data we pass to the InviteUser modal
 export interface EditUserData {
   itemId: string;
   firstName: string;
@@ -211,73 +190,6 @@ export interface EditUserData {
   email: string;
   phoneNumber: string | null;
   salutation: string;
-}
-
-interface DeviceInformation {
-  browser: string;
-  os: string;
-  device: string;
-  brand: string;
-  model: string;
-}
-
-export interface IHistories {
-  event: string;
-  actionBy: string;
-  deviceName: string;
-  deviceType: string;
-  deviceInformation: DeviceInformation;
-  ipAddresses: string;
-  sessionId: string;
-  createdDate: string;
-}
-
-export interface IHistoriesResponse {
-  totalCount: number;
-  data: IHistories[];
-  errors: unknown;
-}
-
-export interface IDeviceSession {
-  sessionId: string;
-  userId: string;
-  tenantId: string;
-  organizationId: string;
-  clientId: string;
-  clientName: string;
-  deviceName: string;
-  deviceType: string;
-  operatingSystem: string;
-  browser: string;
-  ipAddresses: string;
-  grantType: string;
-  issuedUtc: string;
-  expiresUtc: string;
-  lastActivityAt: string;
-  isActive: boolean;
-  isCurrent: boolean;
-  isImpersonated: boolean;
-}
-
-export interface IDeviceSessionResponse {
-  totalCount: number;
-  data: IDeviceSession[];
-  errors: unknown;
-}
-
-export interface IPATResponse {
-  note: string;
-  itemId: string;
-  createdDate: Date;
-  expiryDate: Date;
-  createdBy: string;
-  language: string;
-  lastUpdatedBy: string;
-  organizationIds: string[];
-  tags: string[];
-  code: string;
-  userId: string;
-  clientId: string;
 }
 
 export const status = [

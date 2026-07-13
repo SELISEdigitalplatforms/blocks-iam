@@ -8,9 +8,12 @@ import { userService } from "@blocks-idp/iam/services/user.service";
 import { normalizeSearchQueryText } from "@/lib/utils";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useCallback, useMemo } from "react";
-import type { IUpdateUserAccessControlPayload } from "@blocks-idp/iam/models/user";
+import type { IRevokeAccessPayload, IUpdateUserAccessControlPayload } from "@blocks-idp/iam/models/user";
 
-export const useGetUsers = (option: IGetUsersPayload) => {
+export const useGetUsers = (
+  option: IGetUsersPayload,
+  queryOptions?: { enabled?: boolean },
+) => {
   const { page, pageSize, projectKey, filter, sort } = option;
 
   const payload = useMemo(() => {
@@ -41,7 +44,7 @@ export const useGetUsers = (option: IGetUsersPayload) => {
   return useQuery({
     queryKey: ["users", projectKey, payload],
     queryFn: () => userService.getUsers(payload),
-    enabled: !!projectKey,
+    enabled: !!projectKey && (queryOptions?.enabled ?? true),
   });
 };
 
@@ -136,10 +139,18 @@ export const useUpdateUser = (options: {
   const { own = false, ...rest } = options;
   return useMutation({
     mutationKey: ["users", "update"],
-    mutationFn: userService.updateUser,
+    mutationFn: own ? userService.updateMe : userService.updateUser,
     onSuccess: () => {
-      if (own) return queryClient.invalidateQueries({ queryKey: ["user"] });
-      queryClient.invalidateQueries({ queryKey: ["user-by-id", rest] });
+      // Always refresh the cached profile so pages like /app/profile show
+      // the updated name without a manual reload — `["user"]` is the query
+      // key for `useGetMe`, and `["user-by-id"]` covers the user-detail view.
+      queryClient.invalidateQueries({ queryKey: ["user"] });
+      queryClient.invalidateQueries({ queryKey: ["user-by-id"] });
+      // The users-list pages keep the user's record too.
+      queryClient.invalidateQueries({ queryKey: ["users"] });
+      if (!own) {
+        queryClient.invalidateQueries({ queryKey: ["user-by-id", rest] });
+      }
     },
   });
 };
@@ -199,6 +210,24 @@ export const useUpdateUserAccessControl = (option: { id: string; projectKey: str
     mutationKey: ["user", "access-control", option],
     mutationFn: (payload: Omit<IUpdateUserAccessControlPayload, "userId">) =>
       userService.updateUserAccessControl({ ...payload, userId: option.id }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["users"] });
+      queryClient.invalidateQueries({ queryKey: ["user-by-id"] });
+      queryClient.invalidateQueries({ queryKey: ["user"] });
+      queryClient.invalidateQueries({ queryKey: ["user-roles"] });
+      queryClient.invalidateQueries({ queryKey: ["user-permissions"] });
+      queryClient.invalidateQueries({ queryKey: ["organizations"] });
+      queryClient.invalidateQueries({ queryKey: ["organization"] });
+    },
+  });
+};
+
+export const useRevokeAccess = (option: { id: string }) => {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationKey: ["user", "revoke-access", option],
+    mutationFn: (payload: Omit<IRevokeAccessPayload, "userId">) =>
+      userService.revokeAccess({ ...payload, userId: option.id }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["users"] });
       queryClient.invalidateQueries({ queryKey: ["user-by-id"] });

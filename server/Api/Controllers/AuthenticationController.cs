@@ -1,11 +1,12 @@
 using Authentication.DomainService.Authentication;
+using Authentication.DomainService.Utilities;
 using Authentication.DomainService.Authentication.RequestModel;
 using Authentication.DomainService.Entities;
 using Authentication.DomainService.OAuth.RequestModel;
 using Authentication.DomainService.Services;
 using Authentication.DomainService.Shared.RequestModel;
 using Authentication.DomainService.Shared.ResponseModel;
-using Authentication.DomainService.Utilities;
+using Iam.DomainService.Utilities;
 using Blocks.Genesis;
 using Iam.DomainService.Accounts;
 using Microsoft.AspNetCore.Authorization;
@@ -82,7 +83,7 @@ public class AuthenticationController : ControllerBase
     /// Issues access and refresh tokens on success
     /// </summary>
     [HttpPost("login")]
-
+    [AllowAnonymous]
     public async Task<IActionResult> ExecutePasswordLogin([FromBody] EmbeddedLoginRequest request)
     {
         var result = await _authenticationFlowService.ExecuteEmbeddedLoginAsync(request, Request);
@@ -99,7 +100,7 @@ public class AuthenticationController : ControllerBase
     /// activation email instead of a reset email to prevent account enumeration.
     /// </summary>
     [HttpPost("recover")]
-
+    [AllowAnonymous]
     public async Task<IActionResult> InitiateAccountRecovery([FromBody] RecoveryUserRequest request)
     {
         var result = await _accountService.RecoverAccountAsync(request);
@@ -111,6 +112,7 @@ public class AuthenticationController : ControllerBase
     /// Validates token before allowing password change
     /// </summary>
     [HttpPost("reset-password")]
+    [AllowAnonymous]
     public async Task<IActionResult> ExecutePasswordReset([FromBody] ResetPasswordRequest request)
     {
         var result = await _accountService.ResetAccountPasswordAsync(request);
@@ -122,7 +124,7 @@ public class AuthenticationController : ControllerBase
     /// Requires current password for security validation
     /// </summary>
     [HttpPost("change-password")]
-    [Authorize]
+    [ProtectedEndPoint("blocks-iam::auth::change-password")]
     public async Task<IActionResult> UpdatePassword([FromBody] ChangePasswordRequest request)
     {
         var result = await _accountService.ChangePasswordAsync(request);
@@ -160,7 +162,7 @@ public class AuthenticationController : ControllerBase
     /// <response code="200">Activation email resent successfully</response>
     /// <response code="400">User not found or already activated</response>
     [HttpPost("resend-activation")]
-    [Authorize]
+    [ProtectedEndPoint("blocks-iam::auth::resend-activation")]
     public async Task<IActionResult> ResendActivation([FromBody] ResendActivationRequest command)
     {
         var result = await _accountService.ResendActivationAsync(command);
@@ -423,15 +425,20 @@ public class AuthenticationController : ControllerBase
     /// Requires authorization (admin role)
     /// </summary>
     [HttpPost("identity-providers")]
-    [Authorize]
-    public async Task<IActionResult> CreateIdentityProvider([FromBody] IdentityProvider provider)
+    [ProtectedEndPoint("blocks-iam::auth::mutate-identity-providers")]
+    public async Task<IActionResult> CreateIdentityProvider([FromBody] SaveIdentityProviderRequest request)
     {
-        var result = await _authenticationService.CreateIdentityProviderAsync(provider);
+        if (request == null)
+        {
+            return BadRequest(new { error = "invalid_payload", message = "Request body is required." });
+        }
+
+        var result = await _authenticationService.CreateIdentityProviderAsync(request);
         return result.IsSuccess ? Ok(result) : BadRequest(result);
     }
 
     [HttpGet("identity-providers")]
-    [Authorize]
+    [ProtectedEndPoint("blocks-iam::auth::identity-providers")]
     public async Task<IActionResult> GetAllIdentityProviders()
     {
         var providers = await _authenticationService.GetAllIdentityProvidersAsync();
@@ -444,7 +451,7 @@ public class AuthenticationController : ControllerBase
     /// Does NOT return sensitive credentials (client_secret)
     /// </summary>
     [HttpGet("identity-providers/{id}")]
-    [Authorize]
+    [ProtectedEndPoint("blocks-iam::auth::identity-providers")]
     public async Task<IActionResult> GetIdentityProviderById([FromRoute] string id)
     {
         var provider = await _authenticationService.GetIdentityProviderByIdAsync(id);
@@ -456,15 +463,32 @@ public class AuthenticationController : ControllerBase
 
     /// <summary>
     /// Update identity provider configuration
-    /// Modifies existing provider settings
-    /// Validates configuration and tests endpoints if changed
+    /// Modifies existing provider settings (partial merge; null fields are left unchanged).
+    /// Provider, ProviderType, Protocol and ClientId are immutable and must echo the existing value if supplied.
     /// </summary>
     [HttpPut("identity-providers/{id}")]
-    [Authorize]
-    public async Task<IActionResult> UpdateIdentityProvider([FromRoute] string id, [FromBody] IdentityProvider provider)
+    [ProtectedEndPoint("blocks-iam::auth::mutate-identity-providers")]
+    public async Task<IActionResult> UpdateIdentityProvider([FromRoute] string id, [FromBody] UpdateIdentityProviderRequest request)
     {
-        provider.ItemId = id;
-        var result = await _authenticationService.UpdateIdentityProviderAsync(provider);
+        if (request == null)
+        {
+            return BadRequest(new { error = "invalid_payload", message = "Request body is required." });
+        }
+
+        var result = await _authenticationService.UpdateIdentityProviderAsync(id, request);
+        return result.IsSuccess ? Ok(result) : BadRequest(result);
+    }
+
+    /// <summary>
+    /// Delete identity provider configuration
+    /// Removes the provider and cascades to delete the related OIDC client registration (if any).
+    /// Deletion is irreversible.
+    /// </summary>
+    [HttpDelete("identity-providers/{id}")]
+    [ProtectedEndPoint("blocks-iam::auth::mutate-identity-providers")]
+    public async Task<IActionResult> DeleteIdentityProvider([FromRoute] string id)
+    {
+        var result = await _authenticationService.DeleteIdentityProviderAsync(id);
         return result.IsSuccess ? Ok(result) : BadRequest(result);
     }
 
@@ -474,37 +498,39 @@ public class AuthenticationController : ControllerBase
     /// Preferred over deletion for temporary disabling
     /// </summary>
     [HttpPatch("identity-providers/{id}/status")]
-    [Authorize]
-    public async Task<IActionResult> UpdateIdentityProviderStatus([FromRoute] string id, [FromBody] Authentication.DomainService.Shared.RequestModel.UpdateStatusRequest request)
+    [ProtectedEndPoint("blocks-iam::auth::mutate-identity-providers")]
+    public async Task<IActionResult> UpdateIdentityProviderStatus([FromRoute] string id, [FromBody] UpdateStatusRequest request)
     {
         var result = await _authenticationService.UpdateIdentityProviderStatusAsync(id, request.IsActive);
         return result.IsSuccess ? Ok(result) : BadRequest(result);
     }
 
     #endregion
-    [Authorize]
+
     [HttpGet("config")]
+    [ProtectedEndPoint("blocks-iam::auth::identity-config")]
     public async Task<IActionResult> Get([FromQuery] GetAuthenticationConfigurationRequest request)
     {
         
         return await _configurationService.GetAuthenticationConfigAsync();
     }
-    [Authorize]
+    
     [HttpPost("config")]
+    [ProtectedEndPoint("blocks-iam::auth::mutate-identity-config")]
     public async Task<BaseResponse> Update([FromBody] UpdateAuthenticationConfigurationRequest configuration)
     {
         return await _configurationService.UpdateAuthenticationConfigAsync(configuration);
     }
 
     [HttpPost("user-codes")]
-    [Authorize]
+    [ProtectedEndPoint("blocks-iam::auth::mutate-user-pats")]
     public async Task<BaseResponse> GenerateUserCode([FromBody] GenerateUserCodeRequest request)
     {
         return await _authenticationDomainService.GenerateUserCodeByClientAsync(request);
     }
 
     [HttpGet("user-codes")]
-    [Authorize]
+    [ProtectedEndPoint("blocks-iam::auth::user-pats")]
     public async Task<List<GetUserCodesByUserIdResponse>> GetUserCodes()
     {
         return await _authenticationRepository.GetUserCodesByUserIdAsync(BlocksContext.GetContext()?.UserId);
@@ -512,15 +538,15 @@ public class AuthenticationController : ControllerBase
 
     #region Client Credential Management
 
-    [Authorize]
     [HttpPost("client-credentials")]
+    [ProtectedEndPoint("blocks-iam::auth::mutate-client-credentials")]
     public async Task<BaseResponse> SaveClientCredential([FromBody] SaveClientCredentialRequest request)
     {
         return await _authenticationDomainService.SaveClientCredentialAsync(request);
     }
 
-    [Authorize]
     [HttpDelete("client-credentials/{id}")]
+    [ProtectedEndPoint("blocks-iam::auth::mutate-client-credentials")]
     public async Task<BaseResponse> DeleteClientCredential([FromRoute] string id)
     {
         return await _authenticationDomainService.DeleteClientCredentialAsync(new DeleteClientCredentialRequest
@@ -529,8 +555,8 @@ public class AuthenticationController : ControllerBase
         });
     }
 
-    [Authorize]
     [HttpGet("client-credentials")]
+    [ProtectedEndPoint("blocks-iam::auth::client-credentials")]
     public async Task<List<ClientCredential>> GetClientCredentials([FromQuery] GetAllClientCredentialsRequest request)
     {
         return await _authenticationRepository.GetClientCredentialsAsync();

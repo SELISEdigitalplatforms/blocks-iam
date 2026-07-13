@@ -250,7 +250,11 @@ export const RepositorySelectionModal = ({
     } finally {
       setIsLoadingRevoke(false);
       setShowAccessModal(false);
-      window.location.reload();
+      // A full reload would drop an in-flight rotating refresh-token response,
+      // leaving the browser holding a consumed token.
+      queryClient.invalidateQueries({ queryKey: ["verify-auth"] });
+      queryClient.invalidateQueries({ queryKey: ["github-repos"] });
+      queryClient.invalidateQueries({ queryKey: ["repository-user"] });
     }
   };
 

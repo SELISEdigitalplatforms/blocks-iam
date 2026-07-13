@@ -50,11 +50,9 @@ import {
   CallbackPage,
   ConsoleLayout,
   ConsolePage,
-  DashboardLayout,
   DashboardOverview,
-  EnvironmentsPage,
+  DashboardRoute,
   LoginPage,
-  ProjectOverviewLayout,
   ProtectedGuard,
   PublicGuard,
   TooltipProvider,
@@ -111,6 +109,34 @@ export const router = createBrowserRouter([
         ],
       },
 
+      // ── Public confirmation pages (outside AuthResolver) ──
+      // AuthResolver calls GET /api/auth/me on mount. When the session is
+      // expired/revoked, blocks-kit HttpClient auto-redirects to /login for
+      // any path not in excludedPaths (only /login, /signup). These pages
+      // must stay outside AuthResolver so users can read the success message.
+      {
+        element: <PublicLayout />,
+        children: [
+          {
+            path: "/activate-success",
+            element: <ActivateSuccessPage />,
+          },
+          {
+            path: "/forgot-email-sent",
+            element: <ForgotEmailSentPage />,
+          },
+          {
+            path: "/signup-email-sent",
+            element: <SignupEmailSentPage />,
+          },
+          { path: "/mfa-check", element: <MfaCheckPage /> },
+          {
+            path: "/reset-password-success",
+            element: <ResetPasswordSuccessPage />,
+          },
+        ],
+      },
+
       // ── Everything inside AuthResolver (resolves auth state) ──
       {
         element: (
@@ -138,33 +164,33 @@ export const router = createBrowserRouter([
                   { path: "/sso-activate", element: <SsoActivatePage /> },
                 ],
               },
-              {
-                element: <PublicLayout />,
-                children: [
-                  // { path: "/activate", element: <ActivatePage /> },
+              // {
+              //   element: <PublicLayout />,
+              //   children: [
+              //     // { path: "/activate", element: <ActivatePage /> },
 
-                  // { path: "/forgot-password", element: <ForgotPasswordPage /> },
+              //     // { path: "/forgot-password", element: <ForgotPasswordPage /> },
 
-                  // { path: "/resetpassword", element: <ResetPasswordPage /> },
-                  {
-                    path: "/activate-success",
-                    element: <ActivateSuccessPage />,
-                  },
-                  {
-                    path: "/forgot-email-sent",
-                    element: <ForgotEmailSentPage />,
-                  },
-                  {
-                    path: "/signup-email-sent",
-                    element: <SignupEmailSentPage />,
-                  },
-                  { path: "/mfa-check", element: <MfaCheckPage /> },
-                  {
-                    path: "/reset-password-success",
-                    element: <ResetPasswordSuccessPage />,
-                  },
-                ],
-              },
+              //     // { path: "/resetpassword", element: <ResetPasswordPage /> },
+              //     {
+              //       path: "/activate-success",
+              //       element: <ActivateSuccessPage />,
+              //     },
+              //     {
+              //       path: "/forgot-email-sent",
+              //       element: <ForgotEmailSentPage />,
+              //     },
+              //     {
+              //       path: "/signup-email-sent",
+              //       element: <SignupEmailSentPage />,
+              //     },
+              //     { path: "/mfa-check", element: <MfaCheckPage /> },
+              //     {
+              //       path: "/reset-password-success",
+              //       element: <ResetPasswordSuccessPage />,
+              //     },
+              //   ],
+              // },
             ],
           },
 
@@ -177,6 +203,7 @@ export const router = createBrowserRouter([
               </ProtectedGuard>
             ),
             children: [
+              { index: true, element: <Navigate to="console" replace /> },
               // ── Console group (no impersonation allowed) ──
               {
                 element: (
@@ -195,37 +222,35 @@ export const router = createBrowserRouter([
                   { path: "profile", element: <ProfilePage /> },
                 ],
               },
-              {
-                path: "project-overview",
-                element: (
-                  
-                    <ProjectOverviewLayout
-                      redirectPaths={redirectPaths}
-                      navigationMenus={navigationMenus}
-                    >
-                      <Outlet />
-                    </ProjectOverviewLayout>
-                ),
-                children: [
-                  {
-                    path: "environments",
-                    element: <EnvironmentsPage />,
-                  },
-                ],
-              },
+              // ── Project overview group (impersonation terminated) ──
+              // {
+              //   path: "project/:tenantGroupId",
+              //   element: (
+              //     <ProjectOverviewRoute
+              //       redirectPaths={redirectPaths}
+              //       navigationMenus={navigationMenus}
+              //     />
+              //   ),
+              //   children: [
+              //     { index: true, element: <Navigate to="environments" replace /> },
+              //     {
+              //       path: "environments",
+              //       element: <EnvironmentsPage />,
+              //     },
+              //   ],
+              // },
               // ── Dashboard group (impersonation synchronized) ──
               {
+                path: ":itemId",
                 element: (
-                  
-                    <DashboardLayout
-                      redirectPaths={redirectPaths}
-                      navigationMenus={navigationMenus}
-                    >
-                      <Outlet />
-                    </DashboardLayout>
+                  <DashboardRoute
+                    redirectPaths={redirectPaths}
+                    navigationMenus={navigationMenus}
+                  />
                 ),
 
                 children: [
+                  { index: true, element: <Navigate to="dashboard" replace /> },
                   { path: "iam", element: <IamPage /> },
                   {
                     path: "user-detail/:id",
@@ -244,7 +269,7 @@ export const router = createBrowserRouter([
                     element: <IamPermissionDetailPage />,
                   },
                   {
-                    path: "organization-detail/:itemId",
+                    path: "organization-detail/:orgId",
                     element: <IamOrgDetailPage />,
                   },
                   { path: "iam/logs", element: <IamLogsPage /> },

@@ -1,4 +1,5 @@
 import { useGetOrganizationConfig } from "@blocks-idp/iam/hooks/use-organization";
+import { useGetUserById } from "@blocks-idp/iam/hooks/use-user";
 import { Skeleton } from "@/components/ui-kits/skeleton/skeleton";
 import { SingleOrgAccess } from "./single-org-access";
 import { MultiOrgAccess } from "./multi-org-access";
@@ -10,24 +11,33 @@ type UserAccessTabProps = {
 
 export const UserAccessTab = ({ userId, projectKey }: UserAccessTabProps) => {
   const { data: configData, isLoading: isConfigLoading } = useGetOrganizationConfig(projectKey);
-  const isMultiOrgEnabled = configData?.isMultiOrgEnabled ?? false;
+  const { data: userData, isLoading: isUserLoading } = useGetUserById({ id: userId, projectKey });
 
-  if (isConfigLoading) {
+  const isMultiOrgEnabled = configData?.isMultiOrgEnabled ?? false;
+  const userOrgs =
+    userData?.data?.organizationIds ?? (userData?.data as { OrganizationIds?: string[] })?.OrganizationIds ?? [];
+  const orgKeys = Object.keys(userData?.data?.OrganizationsRoles ?? {});
+  const orgCountFromRoles = orgKeys.filter((k) => k && k !== "undefined").length;
+  const hasMultipleOrgs = userOrgs.length > 1 || orgCountFromRoles > 1;
+
+  if (isConfigLoading || isUserLoading) {
     return (
-      <div className="space-y-4 rounded-lg border bg-card p-4">
-        <Skeleton className="h-6 w-32" />
-        <Skeleton className="h-9 w-full" />
-        <Skeleton className="h-9 w-full" />
+      <div className="flex h-full min-h-0 flex-col overflow-hidden rounded-lg border bg-card p-6">
+        <div className="space-y-4">
+          <Skeleton className="h-6 w-32" />
+          <Skeleton className="h-9 w-full" />
+          <Skeleton className="h-9 w-full" />
+        </div>
       </div>
     );
   }
 
-  if (isMultiOrgEnabled) {
+  if (isMultiOrgEnabled || hasMultipleOrgs || userOrgs.length > 0) {
     return <MultiOrgAccess userId={userId} projectKey={projectKey} />;
   }
 
   return (
-    <div className="flex h-[calc(100vh-260px)] min-h-[520px] flex-col rounded-lg border bg-card p-4">
+    <div className="flex h-full min-h-0 min-w-0 flex-col overflow-hidden rounded-lg border bg-card p-6">
       <SingleOrgAccess userId={userId} projectKey={projectKey} />
     </div>
   );

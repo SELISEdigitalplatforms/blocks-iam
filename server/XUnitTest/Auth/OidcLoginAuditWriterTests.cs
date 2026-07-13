@@ -1,13 +1,10 @@
 using Authentication.DomainService.Authentication;
-using global::Authentication.DomainService.Entities;
-using global::Authentication.DomainService.OAuth;
-using global::Authentication.DomainService.Oidc.Repositories;
-using global::Authentication.DomainService.Services;
-using global::Authentication.DomainService.Shared;
-using Blocks.Genesis;
-using global::Idp.DomainService.Oidc.Contracts;
-using FluentAssertions;
+using Authentication.DomainService.Services;
+using Iam.DomainService.Dtos;
 using Iam.DomainService.Entities;
+using Iam.DomainService.Services;
+using Iam.DomainService.Utilities;
+using FluentAssertions;
 using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.Logging.Abstractions;
 using Moq;
@@ -16,139 +13,131 @@ namespace XUnitTest.Auth
 {
     public class OidcLoginAuditWriterTests
     {
-        private static OidcLoginAuditWriter Create(out Mock<IAuditLogRepository> repo)
+        [Fact]
+        public async Task WriteAsync_OnLoginSuccess_PublishesAuthCategoryAndSuccessOutcome()
         {
-            repo = new Mock<IAuditLogRepository>();
-            return new OidcLoginAuditWriter(repo.Object, NullLogger<OidcLoginAuditWriter>.Instance);
-        }
+            var dispatcher = new Mock<IUserActivityDispatcher>();
+            UserActivityEvent? captured = null;
+            dispatcher.Setup(d => d.SendUserActivityAsync(It.IsAny<UserActivityEvent>()))
+                .Callback<UserActivityEvent>(e => captured = e)
+                .Returns(Task.CompletedTask);
 
-        private static OidcLoginRequest BuildRequest() => new()
-        {
-            ClientId = "client-1",
-            TenantId = "tenant-1"
-        };
+            var authDomain = new Mock<IAuthenticationDomainService>();
+            authDomain.Setup(a => a.GetDeviceInfo(It.IsAny<string>()))
+                .Returns(new DeviceInformation());
 
-        private static User BuildUser() => new() { ItemId = "user-1" };
+            var writer = new OidcLoginAuditWriter(
+                authDomain.Object,
+                dispatcher.Object,
+                NullLogger<OidcLoginAuditWriter>.Instance);
 
-        private static HttpRequest BuildRequestWithIp(string ip = "127.0.0.1")
-        {
-            var ctx = new DefaultHttpContext();
-            ctx.Connection.RemoteIpAddress = System.Net.IPAddress.Parse(ip);
-            ctx.Request.Headers.UserAgent = "Browser/1.0";
-            return ctx.Request;
+            var user = new User { ItemId = "user-1" };
+            var httpRequest = new DefaultHttpContext().Request;
+
+            await writer.WriteAsync("tenant-1", "client-1", user, httpRequest, "login_success", "oidc_login_success");
+
+            captured.Should().NotBeNull();
+            captured!.Category.Should().Be(UserActivityCategory.Auth);
+            captured.Event.Should().Be("login_success");
+            captured.Outcome.Should().Be(IdpConstants.StatusSuccess);
+            captured.Severity.Should().Be("low");
+            captured.UserId.Should().Be("user-1");
+            captured.TenantId.Should().Be("tenant-1");
+            captured.ClientId.Should().Be("client-1");
+            captured.Source.Should().Be("auth-oidc-login");
+            captured.ReasonCode.Should().BeNull();
+            captured.Metadata.Should().ContainKey("details").WhoseValue.Should().Be("oidc_login_success");
         }
 
         [Fact]
-        public async Task WriteAsync_PersistsAuditLog()
+        public async Task WriteAsync_OnLoginFailure_PublishesFailureOutcomeAndReasonCode()
         {
-            var writer = Create(out var repo);
-            await writer.WriteAsync(BuildRequest(), BuildUser(), BuildRequestWithIp(), "login_success", "details");
+            var dispatcher = new Mock<IUserActivityDispatcher>();
+            UserActivityEvent? captured = null;
+            dispatcher.Setup(d => d.SendUserActivityAsync(It.IsAny<UserActivityEvent>()))
+                .Callback<UserActivityEvent>(e => captured = e)
+                .Returns(Task.CompletedTask);
 
-            repo.Verify(r => r.CreateAsync(It.IsAny<AuditLogModel>()), Times.Once);
+            var authDomain = new Mock<IAuthenticationDomainService>();
+            authDomain.Setup(a => a.GetDeviceInfo(It.IsAny<string>()))
+                .Returns(new DeviceInformation());
+
+            var writer = new OidcLoginAuditWriter(
+                authDomain.Object,
+                dispatcher.Object,
+                NullLogger<OidcLoginAuditWriter>.Instance);
+
+            var user = new User { ItemId = "user-2" };
+            var httpRequest = new DefaultHttpContext().Request;
+
+            await writer.WriteAsync(null, null, user, httpRequest, "login_failure", "invalid_credentials");
+
+            captured.Should().NotBeNull();
+            captured!.Category.Should().Be(UserActivityCategory.Auth);
+            captured.Outcome.Should().Be(IdpConstants.StatusFailure);
+            captured.Severity.Should().Be("medium");
+            captured.ReasonCode.Should().Be("login_failure");
+            captured.TenantId.Should().BeNull();
+            captured.ClientId.Should().BeNull();
         }
 
         [Fact]
-        public async Task WriteAsync_SetsEventType()
+        public async Task WriteAsync_WhenDispatcherThrows_DoesNotRethrow()
         {
-            var writer = Create(out var repo);
-            await writer.WriteAsync(BuildRequest(), BuildUser(), BuildRequestWithIp(), "login_success", "details");
+            var dispatcher = new Mock<IUserActivityDispatcher>();
+            dispatcher.Setup(d => d.SendUserActivityAsync(It.IsAny<UserActivityEvent>()))
+                .ThrowsAsync(new InvalidOperationException("queue down"));
 
-            repo.Verify(r => r.CreateAsync(It.Is<AuditLogModel>(m => m.EventType == "login_success")), Times.Once);
-        }
+            var authDomain = new Mock<IAuthenticationDomainService>();
+            authDomain.Setup(a => a.GetDeviceInfo(It.IsAny<string>()))
+                .Returns(new DeviceInformation());
 
-        [Fact]
-        public async Task WriteAsync_MarksAsInfoAndSuccess_OnSuccess()
-        {
-            var writer = Create(out var repo);
-            await writer.WriteAsync(BuildRequest(), BuildUser(), BuildRequestWithIp(), "login_success", "details");
+            var writer = new OidcLoginAuditWriter(
+                authDomain.Object,
+                dispatcher.Object,
+                NullLogger<OidcLoginAuditWriter>.Instance);
 
-            repo.Verify(r => r.CreateAsync(It.Is<AuditLogModel>(m =>
-                m.Severity == AuthenticationConstants.SeverityInfo &&
-                m.Status == AuthenticationConstants.StatusSuccess
-            )), Times.Once);
-        }
+            var act = async () => await writer.WriteAsync(
+                "tenant-1", "client-1",
+                new User { ItemId = "user-3" },
+                new DefaultHttpContext().Request,
+                "login_success",
+                null);
 
-        [Fact]
-        public async Task WriteAsync_MarksAsWarnAndFailure_OnFailure()
-        {
-            var writer = Create(out var repo);
-            await writer.WriteAsync(BuildRequest(), BuildUser(), BuildRequestWithIp(), "login_failure", "details");
-
-            repo.Verify(r => r.CreateAsync(It.Is<AuditLogModel>(m =>
-                m.Severity == AuthenticationConstants.SeverityWarn &&
-                m.Status == AuthenticationConstants.StatusFailure
-            )), Times.Once);
-        }
-
-        [Fact]
-        public async Task WriteAsync_MarksAsWarn_OnLocked()
-        {
-            var writer = Create(out var repo);
-            await writer.WriteAsync(BuildRequest(), BuildUser(), BuildRequestWithIp(), "login_locked", "details");
-
-            repo.Verify(r => r.CreateAsync(It.Is<AuditLogModel>(m =>
-                m.Severity == AuthenticationConstants.SeverityWarn
-            )), Times.Once);
-        }
-
-        [Fact]
-        public async Task WriteAsync_SetsUserAndClientAndTenant()
-        {
-            var writer = Create(out var repo);
-            await writer.WriteAsync(BuildRequest(), BuildUser(), BuildRequestWithIp(), "login_success", null);
-
-            repo.Verify(r => r.CreateAsync(It.Is<AuditLogModel>(m =>
-                m.UserId == "user-1" &&
-                m.ClientId == "client-1" &&
-                m.TenantId == "tenant-1"
-            )), Times.Once);
-        }
-
-        [Fact]
-        public async Task WriteAsync_UsesProvidedDetails_WhenSupplied()
-        {
-            var writer = Create(out var repo);
-            await writer.WriteAsync(BuildRequest(), BuildUser(), BuildRequestWithIp(), "login_success", "my-details");
-
-            repo.Verify(r => r.CreateAsync(It.Is<AuditLogModel>(m => m.Details == "my-details")), Times.Once);
-        }
-
-        [Fact]
-        public async Task WriteAsync_FallsBackToEventType_WhenDetailsNull()
-        {
-            var writer = Create(out var repo);
-            await writer.WriteAsync(BuildRequest(), BuildUser(), BuildRequestWithIp(), "login_success", null);
-
-            repo.Verify(r => r.CreateAsync(It.Is<AuditLogModel>(m => m.Details == "login_success")), Times.Once);
-        }
-
-        [Fact]
-        public async Task WriteAsync_SwallowsRepositoryException()
-        {
-            var repo = new Mock<IAuditLogRepository>();
-            repo.Setup(r => r.CreateAsync(It.IsAny<AuditLogModel>())).ThrowsAsync(new Exception("db error"));
-            var writer = new OidcLoginAuditWriter(repo.Object, NullLogger<OidcLoginAuditWriter>.Instance);
-
-            var act = async () => await writer.WriteAsync(BuildRequest(), BuildUser(), BuildRequestWithIp(), "evt", null);
             await act.Should().NotThrowAsync();
         }
 
         [Fact]
-        public async Task WriteAsync_CapturesUserAgent()
+        public async Task WriteAsync_AcceptsOidcLoginRequestOverload_AndDelegatesToPrimitiveOverload()
         {
-            var writer = Create(out var repo);
-            await writer.WriteAsync(BuildRequest(), BuildUser(), BuildRequestWithIp(), "login_success", null);
+            var dispatcher = new Mock<IUserActivityDispatcher>();
+            UserActivityEvent? captured = null;
+            dispatcher.Setup(d => d.SendUserActivityAsync(It.IsAny<UserActivityEvent>()))
+                .Callback<UserActivityEvent>(e => captured = e)
+                .Returns(Task.CompletedTask);
 
-            repo.Verify(r => r.CreateAsync(It.Is<AuditLogModel>(m => m.UserAgent == "Browser/1.0")), Times.Once);
-        }
+            var authDomain = new Mock<IAuthenticationDomainService>();
+            authDomain.Setup(a => a.GetDeviceInfo(It.IsAny<string>()))
+                .Returns(new DeviceInformation());
 
-        [Fact]
-        public async Task WriteAsync_CapturesIpAddress()
-        {
-            var writer = Create(out var repo);
-            await writer.WriteAsync(BuildRequest(), BuildUser(), BuildRequestWithIp("10.0.0.5"), "login_success", null);
+            var writer = new OidcLoginAuditWriter(
+                authDomain.Object,
+                dispatcher.Object,
+                NullLogger<OidcLoginAuditWriter>.Instance);
 
-            repo.Verify(r => r.CreateAsync(It.Is<AuditLogModel>(m => m.IpAddress == "10.0.0.5")), Times.Once);
+            var request = new Authentication.DomainService.Authentication.OidcLoginRequest
+            {
+                TenantId = "tenant-9",
+                ClientId = "client-9"
+            };
+            var user = new User { ItemId = "user-9" };
+            var httpRequest = new DefaultHttpContext().Request;
+
+            await writer.WriteAsync(request, user, httpRequest, "login_success", null);
+
+            captured.Should().NotBeNull();
+            captured!.TenantId.Should().Be("tenant-9");
+            captured.ClientId.Should().Be("client-9");
         }
     }
 }

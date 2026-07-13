@@ -52,22 +52,31 @@ export const ManageOrganizationDialog = ({
   const [selectedRoles, setSelectedRoles] = useState<IRole[]>([]);
   const [selectedPermissions, setSelectedPermissions] = useState<IPermission[]>([]);
 
-  const { data: userData } = useGetUserById({ id: userId, projectKey: tenantId });
-  const { data: rolesData } = useGetRoles({
-    page: 0,
-    pageSize: 1000,
-    sort: { property: "Name", isDescending: false },
-    filter: { search: "" },
-    projectKey: tenantId,
-  });
-  const { data: permissionsData } = useGetPermissions({
-    projectKey: tenantId,
-    page: 0,
-    pageSize: 1000,
-    search: "",
-    isBuiltIn: "",
-    roles: [],
-  });
+  const { data: userData } = useGetUserById({ id: userId, projectKey: tenantId }, { enabled: open });
+  const { data: rolesData } = useGetRoles(
+    {
+      page: 0,
+      pageSize: 1000,
+      sort: { property: "Name", isDescending: false },
+      filter: { search: "" },
+      projectKey: tenantId,
+    },
+    // Don't fetch roles/permissions until the dialog is opened — they aren't
+    // needed otherwise, and this avoids a tenant-scoped duplicate call on
+    // the user-detail access tab.
+    { enabled: open && !!tenantId },
+  );
+  const { data: permissionsData } = useGetPermissions(
+    {
+      projectKey: tenantId,
+      page: 0,
+      pageSize: 1000,
+      search: "",
+      isBuiltIn: "",
+      roles: [],
+    },
+    { enabled: open && !!tenantId },
+  );
 
   const { mutateAsync, isPending } = useUpdateUserAccessControl({
     id: userId,
@@ -80,12 +89,12 @@ export const ManageOrganizationDialog = ({
   // is the source of truth for whether a given org can actually be managed
   // by the caller; a rejected submit surfaces via the error toast below.
   const orgOptions = useMemo(() => {
-    const filtered = organizations.filter((org) => org.isEnabled);
+    const filtered = organizations.filter((org) => !org.isDisabled);
     if (filtered.some((org) => org.itemId === DEFAULT_ORGANIZATION_ID)) {
       return filtered;
     }
     return [
-      { itemId: DEFAULT_ORGANIZATION_ID, name: "Default", isEnabled: true } as IOrganization,
+      { itemId: DEFAULT_ORGANIZATION_ID, name: "Default", isDisabled: false } as IOrganization,
       ...filtered,
     ];
   }, [organizations]);
