@@ -339,6 +339,109 @@ namespace Iam.DomainService.Users
             return new BaseResponse { IsSuccess = true };
         }
 
+        public async Task<BaseMutationResponse> ActivateUserAsync(ActivateUserByAdminRequest request)
+        {
+            if (string.IsNullOrWhiteSpace(request.UserId))
+            {
+                return new BaseMutationResponse
+                {
+                    Errors = new Dictionary<string, string>
+                    {
+                        { nameof(request.UserId), "UserId is required" }
+                    }
+                };
+            }
+
+            if (string.IsNullOrWhiteSpace(request.Reason) || request.Reason.Trim().Length < 3)
+            {
+                return new BaseMutationResponse
+                {
+                    Errors = new Dictionary<string, string>
+                    {
+                        { nameof(request.Reason), "A reason is required (minimum 3 characters)" }
+                    }
+                };
+            }
+
+            var user = await _userRepository.GetUserByIdAsync(request.UserId);
+            if (user == null)
+            {
+                return new BaseMutationResponse
+                {
+                    Errors = new Dictionary<string, string>
+                    {
+                        { nameof(request.UserId), $"No user found with id {request.UserId}" }
+                    }
+                };
+            }
+
+            if (user.Active && user.Status == UserLifecycleStatus.Active)
+            {
+                return new BaseMutationResponse
+                {
+                    Errors = new Dictionary<string, string>
+                    {
+                        { nameof(request.UserId), "User is already active" }
+                    }
+                };
+            }
+
+            var blocksContext = BlocksContext.GetContext();
+            var actorUserId = blocksContext?.UserId ?? request.UserId;
+
+            user.Active = true;
+            user.IsVerified = true;
+            user.Status = UserLifecycleStatus.Active;
+            user.StatusReason = "activated";
+            user.ActivatedAtUtc = DateTime.UtcNow;
+            user.ActivatedBy = actorUserId;
+            user.DeactivatedAtUtc = null;
+            user.DeactivatedBy = null;
+            user.LockoutUntilUtc = null;
+            user.FailedLoginCount = 0;
+            user.LastFailedLoginUtc = null;
+            user.SecurityStamp = Guid.NewGuid().ToString("N");
+            user.LastUpdatedBy = actorUserId;
+            user.LastUpdatedDate = DateTime.Now;
+
+            await Task.WhenAll(
+                _userRepository.UpdateUserAsync(user),
+                _messageClient.SendToConsumerAsync(new ConsumerMessage<UserStatusChangedEvent>
+                {
+                    ConsumerName = IdpConstants.IamUserQueue,
+                    Payload = new UserStatusChangedEvent
+                    {
+                        UserId = request.UserId,
+                        IsActive = true
+                    }
+                }));
+
+            await SendEvent(user.ItemId, MutationEventType.Update);
+
+            await _userActivityDispatcher.SendUserActivityAsync(new UserActivityEvent
+            {
+                UserId = user.ItemId,
+                ActorUserId = actorUserId,
+                Category = UserActivityCategory.Account,
+                Event = "USER_ACTIVATED",
+                Source = "iam-user-mutation",
+                Entity = "User",
+                EntityId = user.ItemId,
+                ReasonCode = "ADMIN_REINSTATE",
+                Metadata = new Dictionary<string, string>
+                {
+                    { "reason", request.Reason }
+                }
+            });
+
+            _logger.LogInformation("User activation end -- Success for {Id}", user.ItemId);
+            return new BaseMutationResponse
+            {
+                IsSuccess = true,
+                ItemId = user.ItemId
+            };
+        }
+
         public async Task ExecuteUserMutationCommandAsync(UserMutationEvent command)
         {
             _logger.LogInformation("User Mutation event -- initiate");
