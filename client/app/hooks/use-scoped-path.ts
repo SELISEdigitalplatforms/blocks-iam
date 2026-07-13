@@ -1,4 +1,4 @@
-import { useScopedPath } from "@seliseblocks/blocks-kit";
+import { useScopedPath } from "@seliseblocks/blocks-kit/hooks";
 
 export { useScopedPath };
 
