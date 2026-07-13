@@ -15,6 +15,7 @@ namespace Iam.DomainService.Users
         Task ExecuteUserMutationViaSsoCommandAsync(CreateUserViaSsoEvent command);
         Task<bool> ProcessCreateUserByEmailAfterActionAsync(CreateUserByEmailEvent @event, string userId);
         Task<BaseResponse> DeactivateUserAsync(DeactivateUserRequest request);
+        Task<BaseMutationResponse> ActivateUserAsync(ActivateUserByAdminRequest request);
         Task<BaseMutationResponse> UpdateUserAccessControlAsync(UpdateUserAccessControlRequest command);
         Task<BaseMutationResponse> RevokeUserAccessControlAsync(RevokeUserAccessControlRequest command);
         Task<TenantConfiguration> GetTenantConfigurationAsync();
