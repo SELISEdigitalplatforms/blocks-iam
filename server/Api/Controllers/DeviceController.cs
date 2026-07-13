@@ -51,7 +51,7 @@ public class DeviceController : ControllerBase
     /// <summary>
     /// GET /continue/{interactionId} — returns the consent payload for the SPA to render.
     /// </summary>
-    [HttpGet("/continue/{interactionId}")]
+    [HttpGet("continue/{interactionId}")]
     [AllowAnonymous]
     public async Task<IActionResult> Continue([FromRoute] string interactionId, CancellationToken ct)
     {
@@ -61,7 +61,7 @@ public class DeviceController : ControllerBase
     /// <summary>
     /// POST /approve — records allow/deny decision.
     /// </summary>
-    [HttpPost("/approve")]
+    [HttpPost("approve")]
     [AllowAnonymous]
     public async Task<IActionResult> Approve([FromBody] DeviceApproveRequest request, CancellationToken ct)
     {

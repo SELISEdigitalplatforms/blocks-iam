@@ -137,8 +137,8 @@ namespace XUnitTest.Auth.Oidc
             response.DeviceCode.Should().NotBeNullOrEmpty();
             response.UserCode.Should().NotBeNullOrEmpty();
             response.UserCode.Should().HaveLength(9).And.Contain("-");
-            response.VerificationUri.Should().StartWith("https://idp.example.com/device");
-            response.VerificationUriComplete.Should().Contain("user_code=");
+            response.VerificationUri.Should().StartWith("https://idp.example.com/device/t1");
+            response.VerificationUriComplete.Should().Be("https://idp.example.com/device/t1?user_code=" + response.UserCode);
             response.ExpiresIn.Should().Be(600);
             response.Interval.Should().Be(5);
 

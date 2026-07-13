@@ -101,15 +101,14 @@ namespace Authentication.DomainService.Authentication
             var baseUrl = TrimTrailingSlash(apiBase);
             var url = $"{baseUrl}/device";
 
-            var query = new List<string>();
             if (!string.IsNullOrWhiteSpace(tenantId))
             {
-                query.Add($"tenant_id={Uri.EscapeDataString(tenantId)}");
+                url += "/" + Uri.EscapeDataString(tenantId);
             }
 
-            if (query.Count > 0)
+            if (!string.IsNullOrWhiteSpace(userCode))
             {
-                url += "?" + string.Join("&", query);
+                url += "?user_code=" + Uri.EscapeDataString(userCode);
             }
 
             return url;
@@ -122,9 +121,7 @@ namespace Authentication.DomainService.Authentication
                 throw new ArgumentException("userCode must not be empty", nameof(userCode));
             }
 
-            var url = BuildVerificationUri(apiBase, null, tenantId);
-            var separator = url.Contains('?') ? '&' : '?';
-            return $"{url}{separator}user_code={Uri.EscapeDataString(userCode)}";
+            return BuildVerificationUri(apiBase, userCode, tenantId);
         }
 
         private static string TrimTrailingSlash(string value)
