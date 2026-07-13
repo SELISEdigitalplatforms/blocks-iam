@@ -1,7 +1,7 @@
 import { profileMfaContext } from "../profile-mfa";
 import { ReactNode, useContext, useEffect, useMemo, useState } from "react";
 import { useGetMFAConfig } from "@blocks-idp/mfa/hooks/use-mfa-config";
-import { useGetUserById } from "@blocks-idp/iam/hooks/use-user";
+import { useGetMe, useGetUserById } from "@blocks-idp/iam/hooks/use-user";
 import { MFA_Provider_Data } from "@blocks-idp/mfa/utils/mfa-config";
 import { Button } from "@/components/ui-kits/button/button";
 import { Badge } from "@/components/ui-kits/badge/badge";
@@ -66,10 +66,15 @@ const MethodsOption = ({
 };
 
 export const ProfileMfaMethodSelectList = () => {
-  const { userId, projectKey, showVerifyModal, setIsDisableModalOpen } =
+  const { userId, projectKey, own, showVerifyModal, setIsDisableModalOpen } =
     useContext(profileMfaContext);
   const { data: projectConfig } = useGetMFAConfig();
-  const { data: userData } = useGetUserById({ id: userId, projectKey });
+  const { data: userByIdData } = useGetUserById(
+    { id: userId, projectKey },
+    { enabled: !own },
+  );
+  const { data: meData } = useGetMe();
+  const userData = own ? meData : userByIdData;
 
   const projectEnabled = !!projectConfig?.enabled;
   const projectAllowedMethods = projectConfig?.allowedMethods ?? [];
