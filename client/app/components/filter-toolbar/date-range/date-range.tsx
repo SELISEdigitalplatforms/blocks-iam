@@ -34,6 +34,8 @@ export function DateRange({ label, value, onChange }: DateRangeFilterProps) {
   const resetBtnHandler = (event: MouseEvent) => {
     event.stopPropagation();
     setDate(null);
+    onChange(null);
+    setOpen(false);
   };
   const applyBtnHandler = (event: MouseEvent) => {
     event.stopPropagation();

@@ -1,10 +1,11 @@
-import { Card, CardContent, CardHeader } from "@/components/ui-kits/card/card";
+import { Card, CardContent } from "@/components/ui-kits/card/card";
 import { UsersTable } from "./users-table";
 import { Pagination } from "@/components/ui-kits/pagination/pagination";
 import { useGetUsers } from "@blocks-idp/iam/hooks/use-user";
 import { useProjectStore } from "@seliseblocks/blocks-kit";
 import {
-  UsersFilterToolbar,
+  UsersDateFilters,
+  UsersSearchFilter,
   useUsersFilterQueryParams,
   useUsersSortQueryParams,
 } from "./users-filter-toolbar";
@@ -14,13 +15,22 @@ export const Users = () => {
   const { sortQueryParams } = useUsersSortQueryParams();
   const tenantId = useProjectStore().selectedProject?.tenantId || "";
 
+  const searchText =
+    queryParams["selected-filter"] === "email"
+      ? queryParams.email
+      : queryParams.name;
+
   const { isLoading, isFetching, data } = useGetUsers({
     page: queryParams.page,
     pageSize: queryParams.pageSize,
     projectKey: tenantId,
+    query: searchText,
     filter: {
       email: queryParams.email,
       name: queryParams.name,
+      joinedOn: queryParams["joinedOn-start"] || undefined,
+      lastLogin: queryParams["lastLogin-start"] || undefined,
+      lastUpdatedDate: queryParams["lastUpdatedDate-start"] || undefined,
     },
     sort: sortQueryParams,
   });
@@ -33,11 +43,11 @@ export const Users = () => {
 
   return (
     <Card>
-      <CardHeader>
-        <UsersFilterToolbar />
-      </CardHeader>
-
       <CardContent>
+        <div className="mb-6 flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
+          <UsersSearchFilter />
+          <UsersDateFilters />
+        </div>
         <UsersTable users={data?.data || []} isLoading={isUserLoading} />
         {!isUserLoading && data && data.totalCount > queryParams.pageSize && (
           <div className="mt-5 flex items-center md:justify-end">
