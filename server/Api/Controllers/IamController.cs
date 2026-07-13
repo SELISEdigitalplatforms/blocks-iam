@@ -172,6 +172,14 @@ namespace Api.Controllers
             return result.IsSuccess ? Ok(result) : BadRequest(result);
         }
 
+        [HttpPost("users/activate")]
+        [ProtectedEndPoint("blocks-iam::iam::mutate-users")]
+        public async Task<IActionResult> Activate([FromBody] ActivateUserByAdminRequest request)
+        {
+            var result = await _userManagementMutationService.ActivateUserAsync(request);
+            return result.IsSuccess ? Ok(result) : BadRequest(result);
+        }
+
         [HttpPost("users")]
         [ProtectedEndPoint("blocks-iam::iam::users")]
         public async Task<GetUsersResponse> GetUsers([FromBody] GetUsersRequest query)
