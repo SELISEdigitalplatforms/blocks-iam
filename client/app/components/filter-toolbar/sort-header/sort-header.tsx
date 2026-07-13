@@ -1,6 +1,7 @@
-import { ArrowDown, ArrowUp } from "lucide-react";
+import { ChevronDown, ChevronUp } from "lucide-react";
 import { parseAsBoolean, parseAsString, useQueryStates } from "nuqs";
 import { MouseEvent, useCallback } from "react";
+import { cn } from "@/lib/utils";
 
 export type SortValue = { property: string; isDescending: boolean };
 
@@ -9,6 +10,7 @@ type SortHeaderProps = {
   label: string;
   value: SortValue;
   onChange: (params: SortValue) => void;
+  className?: string;
 };
 
 export const useSortQueryParams = ({
@@ -47,8 +49,8 @@ export const useSortQueryParams = ({
   };
 };
 
-export const SortHeader = ({ label, id, value, onChange }: SortHeaderProps) => {
-  const Icon = value.isDescending ? ArrowDown : ArrowUp;
+export const SortHeader = ({ label, id, value, onChange, className }: SortHeaderProps) => {
+  const Icon = value.isDescending ? ChevronDown : ChevronUp;
 
   const onClickHandler = (e: MouseEvent) => {
     e.stopPropagation();
@@ -58,9 +60,9 @@ export const SortHeader = ({ label, id, value, onChange }: SortHeaderProps) => {
   const isActive = id === value.property;
 
   return (
-    <div className="flex cursor-pointer items-center" onClick={onClickHandler}>
-      <span className="font-bold text-medium-emphasis">{label}</span>
-      <Icon className={`ml-2 h-4 w-4 ${isActive ? "text-high-emphasis" : "text-medium-emphasis opacity-50"}`}></Icon>
+    <div className={cn("flex cursor-pointer items-center", className)} onClick={onClickHandler}>
+      <span className="font-medium text-medium-emphasis">{label}</span>
+      <Icon className={`ml-1.5 h-3 w-3 ${isActive ? "text-high-emphasis" : "text-medium-emphasis opacity-60"}`}></Icon>
     </div>
   );
 };

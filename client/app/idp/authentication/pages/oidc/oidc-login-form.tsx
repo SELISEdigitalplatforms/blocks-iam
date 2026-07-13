@@ -22,6 +22,7 @@ import {
   buildOIDCNavigationUrl,
 } from "@blocks-idp/authentication/utils/oidc-utils";
 import { useGetLoginOptions } from "@blocks-idp/authentication/hooks/use-auth";
+import { useGetSignUpSetting } from "@blocks-idp/iam/hooks/use-user";
 import { SsoSignin } from "@blocks-idp/authentication/pages/login/sso-signin";
 import { useAuthStore } from "@seliseblocks/blocks-kit";
 import { sha256 } from "js-sha256";
@@ -92,6 +93,8 @@ export const OidcLoginForm = ({
   const animCtx = useOidcAuthAnimation();
   const { data: loginOption } = useGetLoginOptions(tenantId, true);
   const { data: oidcUiConfig, captchaEnabled } = useOidcUiConfig(tenantId);
+  const { data: signUpSetting } = useGetSignUpSetting();
+  const isSignUpEnabled = signUpSetting?.isSignUpEnable ?? false;
   const [token, setToken] = useState("");
   const [accounts, setAccounts] = useState<OidcAccountInfo[]>([]);
   const [isSelectingAccount, setIsSelectingAccount] = useState(false);
@@ -573,14 +576,16 @@ shake();
         />
       )}
 
-      <div className="mt-4">
-        <p className="text-xs oidc-font-rajdhani" style={{ color: "var(--muted)" }}>
-          Not a member?{" "}
-          <Link to="/signup" className="oidc-sci-fi-link" style={{ fontSize: "0.75rem" }}>
-            Create an account
-          </Link>
-        </p>
-      </div>
+      {isSignUpEnabled && (
+        <div className="mt-4">
+          <p className="text-xs oidc-font-rajdhani" style={{ color: "var(--muted)" }}>
+            Not a member?{" "}
+            <Link to="/signup" className="oidc-sci-fi-link" style={{ fontSize: "0.75rem" }}>
+              Create an account
+            </Link>
+          </p>
+        </div>
+      )}
     </>
   );
 };
