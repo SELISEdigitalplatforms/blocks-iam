@@ -51,7 +51,7 @@ function BlocksLogo() {
 function SectionHeading({ text, dimFirst = 3 }: { text: string; dimFirst?: number }) {
   const words = text.split(" ");
   return (
-    <h1 className="text-xl sm:text-2xl font-semibold tracking-tight leading-snug mb-5 font-sans text-center">
+    <h1 className="text-xl sm:text-2xl font-semibold tracking-tight leading-snug mb-5 font-sans text-left">
       {words.map((word, i) => (
         <span
           key={i}

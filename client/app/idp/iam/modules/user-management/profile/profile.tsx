@@ -33,7 +33,7 @@ export const UserProfile = ({ id }: { id: string }) => {
       value: "security",
       label: "Security",
       icon: <Shield className="h-3.5 w-3.5" />,
-      render: () => <ProfileDetails id={id} />,
+      render: () => <ProfileDetails id={id} own />,
     },
     {
       value: "devices",

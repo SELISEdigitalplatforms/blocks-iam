@@ -19,7 +19,7 @@ export const UserHistories = ({ id }: HistoriesProps) => {
     userId: id,
     page: filter.page,
     pageSize: filter.pageSize,
-    filter: { categories: ["Auth"] },
+    filter: { categories: [] },
   });
   const loading = isLoading || isFetching;
   const rows = (data?.items ?? []).map(toActivityRowViewModel);

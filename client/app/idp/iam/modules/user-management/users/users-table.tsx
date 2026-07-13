@@ -40,7 +40,7 @@ export const UsersTable = ({ users, isLoading }: UserTableProps) => {
 
   if (!users.length) {
     return (
-      <div className="flex min-h-[420px] flex-col items-center justify-center gap-3 rounded-xl border border-dashed py-16 text-center text-sm text-muted-foreground">
+      <div className="flex min-h-[420px] flex-col items-center justify-center gap-3 rounded-xl  py-16 text-center text-sm text-muted-foreground">
         <UsersIcon className="h-6 w-6" />
         No users found.
       </div>
