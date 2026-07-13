@@ -1,15 +1,8 @@
-import { useState } from "react";
 import { Button } from "@/components/ui-kits/button/button";
 import { Skeleton } from "@/components/ui-kits/skeleton/skeleton";
-import { Building2, ChevronRight, MoreVertical, Plus } from "lucide-react";
+import { Building2 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { IMembership } from "@blocks-idp/iam/models/user";
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
-} from "@/components/ui-kits/dropdown-menu/dropdown-menu";
 import { RemoveMembership } from "../user-memberships/remove-membership";
 
 export type UserOrganizationRow = {
@@ -28,6 +21,10 @@ type UserOrganizationsListProps = {
   isLoading: boolean;
   userId: string;
   projectKey: string;
+  revokeTarget: UserOrganizationRow | null;
+  onRevokeRequest: (org: UserOrganizationRow) => void;
+  onRevokeDialogChange: (open: boolean) => void;
+  onRevokeSuccess: () => void;
 };
 
 export const UserOrganizationsList = ({
@@ -38,9 +35,11 @@ export const UserOrganizationsList = ({
   isLoading,
   userId,
   projectKey,
+  revokeTarget,
+  onRevokeRequest,
+  onRevokeDialogChange,
+  onRevokeSuccess,
 }: UserOrganizationsListProps) => {
-  const [removeTarget, setRemoveTarget] = useState<UserOrganizationRow | null>(null);
-
   return (
     <div className="flex flex-col gap-3 rounded-lg border bg-card p-3">
       <div>
@@ -85,55 +84,34 @@ export const UserOrganizationsList = ({
                       {org.permissionCount} permission{org.permissionCount === 1 ? "" : "s"}
                     </p>
                   </div>
-                  <ChevronRight className="h-4 w-4 shrink-0 text-muted-foreground" />
                 </button>
-                <DropdownMenu>
-                  <DropdownMenuTrigger asChild>
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      className="h-7 w-7 shrink-0 opacity-0 group-hover:opacity-100"
-                      onClick={(e) => e.stopPropagation()}
-                      aria-label={`Manage ${org.name}`}
-                    >
-                      <MoreVertical className="h-4 w-4" />
-                    </Button>
-                  </DropdownMenuTrigger>
-                  <DropdownMenuContent align="end">
-                    <DropdownMenuItem
-                      className="text-destructive"
-                      onSelect={() => setRemoveTarget(org)}
-                    >
-                      Remove from organization
-                    </DropdownMenuItem>
-                  </DropdownMenuContent>
-                </DropdownMenu>
+             
               </div>
             );
           })
         )}
       </div>
 
-      <Button variant="outline" className="w-full gap-2" onClick={onManageClick}>
+      {/* <Button variant="outline" className="w-full gap-2" onClick={onManageClick}>
         <Plus className="h-4 w-4" />
         Manage Organizations
-      </Button>
+      </Button> */}
 
-      {removeTarget && (
+      {revokeTarget && (
         <RemoveMembership
-          open={!!removeTarget}
-          onOpenChange={(open) => !open && setRemoveTarget(null)}
+          open={!!revokeTarget}
+          onOpenChange={onRevokeDialogChange}
           membership={
             {
-              organizationId: removeTarget.organizationId,
+              organizationId: revokeTarget.organizationId,
               roles: [],
               permissions: [],
             } as IMembership
           }
-          organizationName={removeTarget.name}
+          organizationName={revokeTarget.name}
           userId={userId}
           projectKey={projectKey}
-          onSuccess={() => setRemoveTarget(null)}
+          onSuccess={onRevokeSuccess}
         />
       )}
     </div>

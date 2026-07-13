@@ -178,7 +178,7 @@ export const ProfileChangePassword = () => {
   const [open, setOpen] = useState(false);
 
   return (
-    <Card>
+    <Card className="">
       <CardHeader className="mb-3">
         <div className="flex items-center justify-between">
           <CardTitle>Change Password</CardTitle>

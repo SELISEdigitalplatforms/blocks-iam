@@ -17,6 +17,7 @@ namespace Iam.DomainService.Users
     public class UserManagementMutationService : IUserManagementMutationService
     {
         private const string DefaultOrganizationId = "default";
+        private const int MaxPermissionsPerUser = 5;
         private readonly ILogger<UserManagementMutationService> _logger;
         private readonly IValidator<CreateUserRequest> _createValidator;
         private readonly IValidator<UpdateUserRequest> _updateValidator;
@@ -28,6 +29,7 @@ namespace Iam.DomainService.Users
         private readonly ICacheClient _cacheClient;
         private readonly ITenants _tenants;
         private readonly IHttpContextAccessor? _httpContextAccessor;
+        private readonly IUserActivityDispatcher _userActivityDispatcher;
         public UserManagementMutationService(
             ILogger<UserManagementMutationService> logger,
             IValidator<CreateUserRequest> createValidator,
@@ -37,6 +39,7 @@ namespace Iam.DomainService.Users
             IMessageClient messageClient,
             ICacheClient cacheClient,
             ITenants tenants,
+            IUserActivityDispatcher userActivityDispatcher,
             IIdentityAccessManagementRepository? identityAccessManagementRepository = null,
             IResourceRepository? resourceRepository = null,
             IHttpContextAccessor? httpContextAccessor = null
@@ -50,6 +53,7 @@ namespace Iam.DomainService.Users
             _messageClient = messageClient;
             _cacheClient = cacheClient;
             _tenants = tenants;
+            _userActivityDispatcher = userActivityDispatcher;
             _identityAccessManagementRepository = identityAccessManagementRepository;
             _resourceRepository = resourceRepository;
             _httpContextAccessor = httpContextAccessor;
@@ -100,7 +104,7 @@ namespace Iam.DomainService.Users
             await _messageClient.SendToConsumerAsync(
                 new ConsumerMessage<UserMutationEvent>
                 {
-                    ConsumerName = IdpConstants.IamQueue,
+                    ConsumerName = IdpConstants.IamUserQueue,
                     Payload = new UserMutationEvent
                     {
                         ItemId = itemId,
@@ -134,6 +138,16 @@ namespace Iam.DomainService.Users
             command.Permissions ??= organization != null && organization.DefaultPermissionsForMembers != null && organization.DefaultPermissionsForMembers.Count > 0
                     ? organization.DefaultPermissionsForMembers
                     : [];
+
+            if (command.Permissions != null && command.Permissions.Count > MaxPermissionsPerUser)
+            {
+                throw new ValidationException(new[]
+                {
+                    new FluentValidation.Results.ValidationFailure(
+                        nameof(command.Permissions),
+                        $"A maximum of {MaxPermissionsPerUser} permissions can be added with any user permission.")
+                });
+            }
 
             var user = MapUser(command);
             await _userRepository.CreateUserAsync(user);
@@ -312,7 +326,7 @@ namespace Iam.DomainService.Users
             _userRepository.UpdateUserAsync(user),
             _messageClient.SendToConsumerAsync(new ConsumerMessage<UserStatusChangedEvent>
             {
-                ConsumerName = IdpConstants.IamQueue,
+                ConsumerName = IdpConstants.IamUserQueue,
                 Payload = new UserStatusChangedEvent
                 {
                     UserId = request.UserId,
@@ -325,35 +339,6 @@ namespace Iam.DomainService.Users
             return new BaseResponse { IsSuccess = true };
         }
 
-        public async Task UpdateUserByLoginInfoAsync(RefreshTokenEvent refreshTokenConsumer)
-        {
-            _logger.LogInformation("User Mutation event -- initiate to update login info");
-
-            var user = await _userRepository.GetUserByIdAsync(refreshTokenConsumer.UserId);
-
-            if (user == null)
-            {
-                _logger.LogError("User not found by this user id: {Id}", refreshTokenConsumer.UserId);
-                return;
-            }
-
-            if (user.LogInCount == 0)
-            {
-                user.FirstLoggedInTime = DateTime.Now;
-            }
-
-            user.LogInCount += 1;
-            user.LastLoggedInTime = DateTime.Now;
-            user.LastLoggedInDeviceInfo = JsonSerializer.Serialize(refreshTokenConsumer.DeviceInformation);
-            user.FailedLoginCount = 0;
-            user.LastFailedLoginUtc = null;
-            user.LockoutUntilUtc = null;
-
-            await _userRepository.UpdateUserAsync(user);
-
-            _logger.LogInformation("User Mutation event -- end of the update login info");
-        }
-
         public async Task ExecuteUserMutationCommandAsync(UserMutationEvent command)
         {
             _logger.LogInformation("User Mutation event -- initiate");
@@ -361,7 +346,7 @@ namespace Iam.DomainService.Users
             var user = await _userRepository.GetUserByIdAsync(command.ItemId);
 
             await SendActivationAsync(user);
-            await SaveUserTimelineAsync(user, command.Action);
+            await PublishUserActivityAsync(user, command.Action);
         }
 
         private async Task<bool> SendActivationAsync(User user)
@@ -370,7 +355,7 @@ namespace Iam.DomainService.Users
             var config = await _userRepository.GetIamConfigurationAsync();
             var key = Guid.NewGuid().ToString("n");
             var bc = BlocksContext.GetContext();
-            var path = $"{(config.IsOidcEnabled ? IamHelper.OidcActivateRoute + bc.TenantId : config.AccountActivationPath)}?code={key}&lang={user.Language}";
+            var path = $"{(config.IsOidcEnabled ? IdpConstants.OidcActivateRoute + bc.TenantId : config.AccountActivationPath)}?code={key}&lang={user.Language}";
             if (!IamHelper.TryBuildUserActionUrl(config, path, out var accountActivationUri, _httpContextAccessor, logger: _logger))
             {
                 _logger.LogWarning("Activation URL could not be built for user {Id}", user.ItemId);
@@ -397,21 +382,17 @@ namespace Iam.DomainService.Users
             return result;
         }
 
-        private async Task<bool> SaveUserTimelineAsync(User user, MutationEventType mutationEventType)
+        private async Task<bool> PublishUserActivityAsync(User user, MutationEventType mutationEventType)
         {
-            var blocksContext = BlocksContext.GetContext();
-            var timeline = new UserTimeline
+            await _userActivityDispatcher.SendUserActivityAsync(new UserActivityEvent
             {
-                ItemId = Guid.NewGuid().ToString(),
                 UserId = user.ItemId,
-                OrganizationId = blocksContext?.OrganizationId ?? DefaultOrganizationId,
-                CreatedBy = blocksContext?.UserId ?? user.CreatedBy,
-                CreatedDate = DateTime.Now,
-                CurrentData = user,
-                Event = ResolveTimelineEvent(user, mutationEventType)
-            };
-
-            await _userRepository.InsertUserTimelineAsync(timeline);
+                Category = UserActivityCategory.Resource,
+                Event = ResolveTimelineEvent(user, mutationEventType),
+                Source = "iam-user-mutation",
+                Entity = "User",
+                EntityId = user.ItemId
+            });
             return true;
         }
 
@@ -466,6 +447,18 @@ namespace Iam.DomainService.Users
                 }
             }
 
+            if (command.Permissions != null && command.Permissions.Count > MaxPermissionsPerUser)
+            {
+                _logger.LogInformation("Update User Access Control end -- Validation Error");
+                return new BaseMutationResponse
+                {
+                    Errors = new Dictionary<string, string>
+                    {
+                        { nameof(command.Permissions), $"A maximum of {MaxPermissionsPerUser} permissions can be added with any user permission." }
+                    }
+                };
+            }
+
             user.Roles ??= new Dictionary<string, List<string>>();
             user.Permissions ??= new Dictionary<string, List<string>>();
 
@@ -473,7 +466,7 @@ namespace Iam.DomainService.Users
             if (isAddToOrganization)
             {
                 user.OrganizationIds.Add(organizationId);
-                user.Roles[organizationId] = command.Roles?.Count > 0 ? command.Roles : new List<string> { "user" };
+                user.Roles[organizationId] = command.Roles?.Count > 0 ? command.Roles : new List<string>();
                 user.Permissions[organizationId] = command.Permissions ?? new List<string>();
             }
             else
@@ -498,6 +491,22 @@ namespace Iam.DomainService.Users
             }
 
             await SendEvent(user.ItemId, MutationEventType.Update);
+
+            await _userActivityDispatcher.SendUserActivityAsync(new UserActivityEvent
+            {
+                UserId = user.ItemId,
+                Category = UserActivityCategory.Resource,
+                Event = isAddToOrganization ? "USER_ACCESS_UPDATED" : "USER_ACCESS_REVOKED",
+                Source = "iam-user-access-control",
+                Entity = "User",
+                EntityId = user.ItemId,
+                Metadata = new Dictionary<string, string>
+                {
+                    { "organizationId", organizationId ?? string.Empty },
+                    { "rolesAdded", string.Join(",", command.Roles ?? new List<string>()) },
+                    { "permissionsAdded", string.Join(",", command.Permissions ?? new List<string>()) }
+                }
+            });
 
             _logger.LogInformation("Update User Access Control end -- Success");
             return new BaseMutationResponse
@@ -623,6 +632,20 @@ namespace Iam.DomainService.Users
 
             await SendEvent(user.ItemId, MutationEventType.Update);
 
+            await _userActivityDispatcher.SendUserActivityAsync(new UserActivityEvent
+            {
+                UserId = user.ItemId,
+                Category = UserActivityCategory.Resource,
+                Event = "USER_ACCESS_REVOKED",
+                Source = "iam-user-access-control",
+                Entity = "User",
+                EntityId = user.ItemId,
+                Metadata = new Dictionary<string, string>
+                {
+                    { "organizationId", organizationId ?? string.Empty }
+                }
+            });
+
             _logger.LogInformation("Revoke User Access Control end -- Success");
             return new BaseMutationResponse
             {
@@ -669,7 +692,7 @@ namespace Iam.DomainService.Users
 
             var key = await CreateUserByEmailActivationProcessAsync(user, @event.EventType);
 
-            await SaveUserTimelineAsync(user, MutationEventType.Create);
+            await PublishUserActivityAsync(user, MutationEventType.Create);
 
             await _identityAccessManagementService.SendToQueueAsync(@event.EventQueue, new CreateUserByEmailPostEvent
             {
@@ -742,7 +765,7 @@ namespace Iam.DomainService.Users
             await _messageClient.SendToConsumerAsync(
                 new ConsumerMessage<CreateUserViaSsoEvent>
                 {
-                    ConsumerName = IdpConstants.IamQueue,
+                    ConsumerName = IdpConstants.IamUserQueue,
                     Payload = new CreateUserViaSsoEvent
                     {
                         ItemId = itemId,
@@ -845,7 +868,7 @@ namespace Iam.DomainService.Users
             {
                 await SendPostEventAsync(user, command.MailPurpose);
             }
-            await SaveUserTimelineAsync(user, command.Action);
+            await PublishUserActivityAsync(user, command.Action);
         }
 
         private static string ResolveTimelineEvent(User user, MutationEventType mutationEventType)

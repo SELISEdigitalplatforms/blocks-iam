@@ -19,12 +19,15 @@ import { ORGANIZATION_ENDPOINTS } from "../constants/endpoint.constant";
 export class OrganizationService {
   getOrganizations(params: IGetOrganizationsParams): Promise<IGetOrganizationsResponse> {
     const query = new URLSearchParams();
-    query.set("page", String(params.page));
-    query.set("pageSize", String(params.pageSize));
-    if (params.searchText) query.set("filter.name", params.searchText);
+    query.set("Page", String(params.page));
+    query.set("PageSize", String(params.pageSize));
+    if (params.search) query.set("Filter.Search", params.search);
+    if (params.isDisabled !== undefined) query.set("Filter.IsDisabled", String(params.isDisabled));
+    if (params.parentOrganizationId)
+      query.set("Filter.ParentOrganizationId", params.parentOrganizationId);
     if (params.sort) {
-      query.set("sort.property", params.sort.property);
-      query.set("sort.isDescending", String(params.sort.isDescending));
+      query.set("Sort.Property", params.sort.property);
+      query.set("Sort.IsDescending", String(params.sort.isDescending));
     }
     return serviceInstances.idpService.get(
       `${ORGANIZATION_ENDPOINTS.GET_ORGANIZATIONS}?${query.toString()}`,

@@ -1,17 +1,15 @@
 import { Button } from "@/components/ui-kits/button/button";
 import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
-} from "@/components/ui-kits/dropdown-menu/dropdown-menu";
-import { EllipsisVertical, RotateCcw, Send, ShieldBan, UserX } from "lucide-react";
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui-kits/tooltip/tooltip";
+import { RotateCcw, Send } from "lucide-react";
 import { useState } from "react";
 import { UserResetPassword } from "./user-reset-password";
 import { UserResendActivationMail } from "./user-resend-activation/user-resend-activation";
-import { UserDeactivate } from "./user-deactivate/user-deactivate";
 import { UpdateUser } from "../update-user";
-import { UserDisableMFA } from "./user-disable-mfa";
 import { useGetUserById } from "@blocks-idp/iam/hooks/use-user";
 
 type UserActionMenuProps = {
@@ -23,52 +21,69 @@ export const UserActionMenu = ({ id, projectKey }: UserActionMenuProps) => {
   const { data } = useGetUserById({ id, projectKey });
   const [isResendActivationModalOpen, setIsResendActivationModalOpen] = useState<boolean>(false);
   const [isResetPasswordModalOpen, setIsResetPasswordModalOpen] = useState<boolean>(false);
-  const [isDisableMFAModalOpen, setIsDisableMFAModalOpen] = useState<boolean>(false);
-  const [isDeactivateModalOpen, setIsDeactivateModalOpen] = useState<boolean>(false);
+
+  const isActive = data?.data?.active === true;
 
   return (
     <>
-      <div className="flex items-center gap-2">
-        <DropdownMenu>
-          <DropdownMenuTrigger asChild>
-            <Button variant="outline" className="px-2">
-              <EllipsisVertical className="h-5 w-5" />
-            </Button>
-          </DropdownMenuTrigger>
-          <DropdownMenuContent align="end">
-            <DropdownMenuItem
-              className="gap-2"
-              onClick={(e) => {
-                e.stopPropagation();
-                setIsResendActivationModalOpen(true);
-              }}
-            >
-              <Send className="aspect-square w-4" />
-              <span>Resend Activation</span>
-            </DropdownMenuItem>
-            <DropdownMenuItem className="gap-2" onSelect={() => setIsResetPasswordModalOpen(true)}>
-              <RotateCcw className="aspect-square w-4" />
-              <span>Reset Password</span>
-            </DropdownMenuItem>
-            <DropdownMenuItem
-              className="gap-2"
-              onSelect={() => setIsDisableMFAModalOpen(true)}
-              disabled={!data?.data.mfaEnabled}
-            >
-              <ShieldBan className="aspect-square w-4" />
-              <span>Disable MFA</span>
-            </DropdownMenuItem>
-            <DropdownMenuItem
-              className="gap-2"
-              onSelect={() => setIsDeactivateModalOpen(true)}
-              disabled={!data?.data?.active}
-            >
-              <UserX className="aspect-square w-4" />
-              <span>Deactivate User</span>
-            </DropdownMenuItem>
-          </DropdownMenuContent>
-        </DropdownMenu>
-        <UpdateUser id={id} projectKey={projectKey} />
+      <div className="flex shrink-0 items-center gap-2">
+        {isActive ? (
+          <TooltipProvider>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button
+                  variant="outline"
+                  size="icon"
+                  className="lg:hidden"
+                  onClick={() => setIsResetPasswordModalOpen(true)}
+                  aria-label="Reset Password"
+                >
+                  <RotateCcw className="h-4 w-4" />
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent side="bottom">Reset Password</TooltipContent>
+            </Tooltip>
+          </TooltipProvider>
+        ) : (
+          <TooltipProvider>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button
+                  variant="outline"
+                  size="icon"
+                  className="lg:hidden"
+                  onClick={() => setIsResendActivationModalOpen(true)}
+                  aria-label="Resend Activation"
+                >
+                  <Send className="h-4 w-4" />
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent side="bottom">Resend Activation</TooltipContent>
+            </Tooltip>
+          </TooltipProvider>
+        )}
+        {isActive ? (
+          <Button
+            variant="outline"
+            size="sm"
+            className="hidden gap-1.5 lg:inline-flex"
+            onClick={() => setIsResetPasswordModalOpen(true)}
+          >
+            <RotateCcw className="h-4 w-4" />
+            Reset Password
+          </Button>
+        ) : (
+          <Button
+            variant="outline"
+            size="sm"
+            className="hidden gap-1.5 lg:inline-flex"
+            onClick={() => setIsResendActivationModalOpen(true)}
+          >
+            <Send className="h-4 w-4" />
+            Resend Activation
+          </Button>
+        )}
+        {/* <UpdateUser id={id} projectKey={projectKey} /> */}
       </div>
       <UserResendActivationMail
         open={isResendActivationModalOpen}
@@ -80,16 +95,6 @@ export const UserActionMenu = ({ id, projectKey }: UserActionMenuProps) => {
         userId={id}
         open={isResetPasswordModalOpen}
         setOpen={setIsResetPasswordModalOpen}
-      />
-      <UserDisableMFA
-        userId={id}
-        open={isDisableMFAModalOpen}
-        setOpen={setIsDisableMFAModalOpen}
-      />
-      <UserDeactivate
-        userId={id}
-        open={isDeactivateModalOpen}
-        setOpen={setIsDeactivateModalOpen}
       />
     </>
   );

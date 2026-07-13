@@ -60,6 +60,7 @@ namespace Iam.DomainService.Accounts
         private readonly ICaptchaService _captchaService;
         private readonly IDbContextProvider _dbContextProvider;
         private readonly IHttpContextAccessor? _httpContextAccessor;
+        private readonly IUserActivityDispatcher _userActivityDispatcher;
 
         public AccountService(
             ILogger<AccountService> logger,
@@ -74,6 +75,7 @@ namespace Iam.DomainService.Accounts
             IResourceMutationService resourceMutationService,
             ICaptchaService captchaService,
             IDbContextProvider dbContextProvider,
+            IUserActivityDispatcher userActivityDispatcher,
             IHttpContextAccessor? httpContextAccessor = null)
         {
             _logger = logger;
@@ -88,6 +90,7 @@ namespace Iam.DomainService.Accounts
             _resourceMutationService = resourceMutationService;
             _captchaService = captchaService;
             _dbContextProvider = dbContextProvider;
+            _userActivityDispatcher = userActivityDispatcher;
             _httpContextAccessor = httpContextAccessor;
         }
 
@@ -328,22 +331,6 @@ namespace Iam.DomainService.Accounts
                 };
             }
 
-            //var createdUser = await _repository.GetUserByIdAsync(result.ItemId);
-            //var activationSent = createdUser != null && await SendReActivationAsync(createdUser);
-
-            //if (!activationSent)
-            //{
-            //    return new BaseAccountResponse
-            //    {
-            //        IsSuccess = false,
-            //        ItemId = result.ItemId,
-            //        Errors = new Dictionary<string, string>
-            //        {
-            //            { "activation_email_failed", "User created but activation email could not be sent." }
-            //        }
-            //    };
-            //}
-
             return new BaseAccountResponse
             {
                 IsSuccess = true,
@@ -487,18 +474,37 @@ namespace Iam.DomainService.Accounts
             if (result)
             {
                 await _cacheClient.RemoveKeyAsync(activateUserRequest.Code);
-                await _identityAccessManagementService.SendToQueueAsync(IdpConstants.IamQueue, new AccountActivityEvent
+                await InvalidateActivationCacheAsync(userId, activateUserRequest.Code);
+                await _userActivityDispatcher.SendUserActivityAsync(new UserActivityEvent
                 {
-                    Code = activateUserRequest.Code,
                     UserId = userId,
-                    MailPurpose = activateUserRequest.MailPurpose,
-                    PreventPostEvent = activateUserRequest.PreventPostEvent,
-                    Event = AccountEvents.ActivateAccount
+                    Category = UserActivityCategory.Account,
+                    Event = AccountEvents.ActivateAccount,
+                    Source = "iam-account"
                 });
+
+                if (!activateUserRequest.PreventPostEvent)
+                {
+                    await _identityAccessManagementService.SendAccountActivationEmailAsync(user, activateUserRequest.MailPurpose!);
+                }
             }
 
 
             return result;
+        }
+
+        private async Task InvalidateActivationCacheAsync(string userId, string code)
+        {
+            if (string.IsNullOrWhiteSpace(code))
+            {
+                return;
+            }
+
+            var keys = (await _repository.GetActiveUserKeyMapAsync(userId))?.Select(x => x.Key) ?? new List<string>();
+            var cacheTask = keys.Select(async x => await _cacheClient.RemoveKeyAsync(x));
+            await Task.WhenAll(cacheTask);
+
+            await _repository.UpdateUserKeyMapActivationAsync(userId);
         }
 
         /// <summary>
@@ -575,7 +581,7 @@ namespace Iam.DomainService.Accounts
             var config = await _repository.GetIamConfigurationAsync();
             var key = Guid.NewGuid().ToString("n");
             var bc = BlocksContext.GetContext();
-            var path = $"{(config.IsOidcEnabled ? IamHelper.OidcRecoverRoute + bc.TenantId : config.RecoverAccountPath)}?code={key}&lang={user.Language}";
+            var path = $"{(config.IsOidcEnabled ? IdpConstants.OidcRecoverRoute + bc.TenantId : config.RecoverAccountPath)}?code={key}&lang={user.Language}";
             if (!IamHelper.TryBuildUserActionUrl(config, path, out var recoverAccountUrl, _httpContextAccessor, logger: _logger))
             {
                 _logger.LogWarning("Recover account URL could not be built for user {UserId}", user.ItemId);
@@ -659,13 +665,21 @@ namespace Iam.DomainService.Accounts
             if (result)
             {
                 await _cacheClient.RemoveKeyAsync(resetPasswordRequest.Code);
-                await _identityAccessManagementService.SendToQueueAsync(IdpConstants.IamQueue, new AccountActivityEvent
+                await _userActivityDispatcher.SendUserActivityAsync(new UserActivityEvent
                 {
-                    Code = resetPasswordRequest.Code,
                     UserId = userId,
+                    Category = UserActivityCategory.Account,
                     Event = AccountEvents.ResetPassword,
-                    PreventPostEvent = !resetPasswordRequest.LogoutFromAllDevices
+                    Source = "iam-account"
                 });
+
+                if (resetPasswordRequest.LogoutFromAllDevices)
+                {
+                    await _identityAccessManagementService.SendToQueueAsync(IdpConstants.AuthenticationQueue, new LogoutAllEvent
+                    {
+                        UserId = userId
+                    });
+                }
             }
 
 
@@ -718,12 +732,21 @@ namespace Iam.DomainService.Accounts
             if (result)
             {
                 var config = await _repository.GetIamConfigurationAsync();
-                await _identityAccessManagementService.SendToQueueAsync(IdpConstants.IamQueue, new AccountActivityEvent
+                await _userActivityDispatcher.SendUserActivityAsync(new UserActivityEvent
                 {
-                    UserId = bc?.UserId,
+                    UserId = bc?.UserId ?? string.Empty,
+                    Category = UserActivityCategory.Account,
                     Event = AccountEvents.ChangePassword,
-                    PreventPostEvent = !config.LogoutOnPasswordChange
+                    Source = "iam-account"
                 });
+
+                if (config.LogoutOnPasswordChange)
+                {
+                    await _identityAccessManagementService.SendToQueueAsync(IdpConstants.AuthenticationQueue, new LogoutAllEvent
+                    {
+                        UserId = bc?.UserId ?? string.Empty
+                    });
+                }
             }
             return result;
         }
@@ -761,7 +784,7 @@ namespace Iam.DomainService.Accounts
             var config = await _repository.GetIamConfigurationAsync();
             var key = Guid.NewGuid().ToString("n");
             var bc = BlocksContext.GetContext();
-            var path = $"{(config.IsOidcEnabled ? IamHelper.OidcActivateRoute + bc.TenantId : config.AccountActivationPath)}?code={key}&lang={user.Language}";
+            var path = $"{(config.IsOidcEnabled ? IdpConstants.OidcActivateRoute + bc.TenantId : config.AccountActivationPath)}?code={key}&lang={user.Language}";
             if (!IamHelper.TryBuildUserActionUrl(config, path, out var accountActivationUri, _httpContextAccessor, logger: _logger))
             {
                 _logger.LogWarning("Activation URL could not be built for user {UserId}", user.ItemId);

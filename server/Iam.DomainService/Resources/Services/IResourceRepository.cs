@@ -28,9 +28,6 @@ namespace Iam.DomainService.Resources
         
         Task<bool> InsertRoleAsync(Role role);
         Task<bool> UpdateRoleAsync(Role role);
-        Task<ResourceTimeline<T>> GetResourceTimelineAsync<T>(string itemId);
-        Task<bool> SaveResourceTimelineAsync<T>(ResourceTimeline<T> timeline);
-        Task<bool> SaveResourceTimelinesAsync<T>(List<ResourceTimeline<T>> timelines);
         Task<bool> UpdateRolePermissionByIdsAsync(string slug, List<string> permissions, string? orgainzationId = null);
         Task<bool> RemoveRolePermissionByIdsAsync(string slug, List<string> permissions, string? orgainzationId = null);
         Task<bool> UpdateRolesCountAsync(string slug, string? orgainzationId = null);

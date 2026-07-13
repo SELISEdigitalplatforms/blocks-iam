@@ -1,4 +1,4 @@
-using Authentication.DomainService.Utilities;
+using Iam.DomainService.Utilities;
 using Microsoft.Extensions.Logging;
 using BCryptNet = BCrypt.Net.BCrypt;
 

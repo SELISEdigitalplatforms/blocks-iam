@@ -1,10 +1,13 @@
 using Idp.DomainService.Oidc.Contracts;
+using Authentication.DomainService.Utilities;
 using Authentication.DomainService.Authentication;
 using Authentication.DomainService.Oidc.Repositories;
 using Authentication.DomainService.Services;
-using Authentication.DomainService.Shared;
-using Authentication.DomainService.Utilities;
+using Iam.DomainService.Dtos;
+using Iam.DomainService.Services;
+using Iam.DomainService.Utilities;
 using Blocks.Genesis;
+using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.Logging;
 
 namespace Authentication.DomainService.Oidc.Services
@@ -28,30 +31,31 @@ namespace Authentication.DomainService.Oidc.Services
         Task<bool> RevokeSessionAsync(string sessionId, string reason);
         Task<bool> IsSessionActiveAsync(string sessionId);
         Task<IEnumerable<IdpSessionModel>> GetUserSessionsAsync(string userId, string tenantId);
+        Task<string> ResolveOrCreateAsync(HttpContext? httpContext, string userId, string tenantId, string? ipAddress);
     }
 
     public sealed class IdpSessionService : IIdpSessionService
     {
         private readonly IIdpSessionRepository _sessionRepo;
-        private readonly IAuditLogRepository _auditLogRepo;
-        private readonly IAuthenticationRepository _authenticationRepository;
+        private readonly IAuthenticationDomainService _authenticationDomainService;
         private readonly IRefreshTokenRepository _refreshTokenRepo;
         private readonly ICacheClient _cacheClient;
+        private readonly IUserActivityDispatcher _userActivityDispatcher;
         private readonly ILogger<IdpSessionService> _logger;
 
         public IdpSessionService(
             IIdpSessionRepository sessionRepo,
-            IAuditLogRepository auditLogRepo,
-            IAuthenticationRepository authenticationRepository,
+            IAuthenticationDomainService authenticationDomainService,
             IRefreshTokenRepository refreshTokenRepo,
             ICacheClient cacheClient,
+            IUserActivityDispatcher userActivityDispatcher,
             ILogger<IdpSessionService> logger)
         {
             _sessionRepo = sessionRepo;
-            _auditLogRepo = auditLogRepo;
-            _authenticationRepository = authenticationRepository;
+            _authenticationDomainService = authenticationDomainService;
             _refreshTokenRepo = refreshTokenRepo;
             _cacheClient = cacheClient;
+            _userActivityDispatcher = userActivityDispatcher;
             _logger = logger;
         }
 
@@ -332,6 +336,7 @@ namespace Authentication.DomainService.Oidc.Services
 
         /// <summary>
         /// Revoke session (logout from all accounts)
+        /// Cascade-revokes all refresh tokens under this IdP session.
         /// </summary>
         public async Task<bool> RevokeSessionAsync(string sessionId, string reason)
         {
@@ -343,28 +348,18 @@ namespace Authentication.DomainService.Oidc.Services
                     return false;
                 }
 
-                // Revoke tokens associated with this session before deleting it.
-                var activeSessions = await _authenticationRepository.GetActiveIdentitySessionBySessionIdAsync(sessionId);
-                var refreshTokens = activeSessions
-                    .Select(s => s.RefreshToken)
-                    .Where(token => !string.IsNullOrWhiteSpace(token))
+                var activeTokens = await _refreshTokenRepo.GetActiveTokensBySessionIdAsync(sessionId);
+                var tokenIds = activeTokens
+                    .Select(t => t.TokenId)
+                    .Where(id => !string.IsNullOrWhiteSpace(id))
                     .Distinct(StringComparer.Ordinal)
                     .ToList();
 
-                foreach (var refreshToken in refreshTokens)
-                {
-                    await _cacheClient.RemoveKeyAsync(refreshToken);
+                await _refreshTokenRepo.RevokeAllBySessionIdAsync(sessionId, $"session_revoked:{reason}");
 
-                    var tokenModel = await _refreshTokenRepo.GetByTokenIdAsync(refreshToken);
-                    if (tokenModel != null && !tokenModel.IsRevoked)
-                    {
-                        await _refreshTokenRepo.RevokeByTokenIdAsync(tokenModel.TokenId, $"session_revoked:{reason}");
-                    }
-                }
-
-                if (refreshTokens.Count > 0)
+                foreach (var tokenId in tokenIds)
                 {
-                    await _authenticationRepository.RevokeIdentitySessionsByRefreshTokensAsync(refreshTokens);
+                    await _cacheClient.RemoveKeyAsync(tokenId);
                 }
 
                 var success = await _sessionRepo.DeleteAsync(sessionId);
@@ -386,6 +381,84 @@ namespace Authentication.DomainService.Oidc.Services
                 _logger.LogError(ex, $"Error revoking session: {sessionId}");
                 throw;
             }
+        }
+
+        /// <summary>
+        /// Resolve the current IdP session id from the request cookie, or create a new session
+        /// (and write the cookie). Single entry point used by both OIDC and OAuth token flows.
+        /// </summary>
+        public async Task<string> ResolveOrCreateAsync(HttpContext? httpContext, string userId, string tenantId, string? ipAddress)
+        {
+            if (string.IsNullOrWhiteSpace(userId) || string.IsNullOrWhiteSpace(tenantId))
+            {
+                throw new ArgumentException("userId and tenantId are required to resolve an IdP session.");
+            }
+
+            var cookieKey = IdpConstants.BuildIdpSessionCookieKey(tenantId);
+            var fromCookie = httpContext?.Request?.Cookies[cookieKey];
+            if (!string.IsNullOrWhiteSpace(fromCookie))
+            {
+                var existing = await _sessionRepo.GetBySessionIdAsync(fromCookie);
+                if (existing != null && !existing.RevokedAt.HasValue && !existing.IsExpired())
+                {
+                    var accountExists = existing.Accounts.Any(a =>
+                        string.Equals(a.UserId, userId, StringComparison.OrdinalIgnoreCase)
+                        && string.Equals(a.TenantId, tenantId, StringComparison.OrdinalIgnoreCase));
+
+                    if (!accountExists)
+                    {
+                        await _sessionRepo.AddAccountAsync(fromCookie, new IdpSessionAccount
+                        {
+                            UserId = userId,
+                            TenantId = tenantId,
+                            LoginAt = DateTime.UtcNow
+                        });
+                    }
+                    else
+                    {
+                        await _sessionRepo.UpdateActivityAsync(fromCookie);
+                    }
+
+                    return fromCookie;
+                }
+            }
+
+            var session = new IdpSessionModel
+            {
+                SessionId = Guid.NewGuid().ToString("n"),
+                TenantId = tenantId,
+                Accounts = new List<IdpSessionAccount>
+                {
+                    new IdpSessionAccount
+                    {
+                        UserId = userId,
+                        TenantId = tenantId,
+                        LoginAt = DateTime.UtcNow
+                    }
+                },
+                IpAddress = ipAddress,
+                CreatedAt = DateTime.UtcNow,
+                LastActivityAt = DateTime.UtcNow,
+                IdleExpiry = DateTime.UtcNow.Add(GetIdpSessionIdleTimeout()),
+                AbsoluteExpiry = DateTime.UtcNow.AddDays(IdpConstants.IdpSessionCookieTtlDays)
+            };
+
+            var newId = await _sessionRepo.CreateAsync(session);
+            _logger.LogInformation("IdP session created via ResolveOrCreate: {SessionId}, user: {UserId}", newId, userId);
+            await LogSessionEvent(SessionAuditEvents.SessionCreated, userId, newId);
+
+            if (httpContext?.Response != null)
+            {
+                httpContext.Response.Cookies.Append(cookieKey, newId, new CookieOptions
+                {
+                    HttpOnly = true,
+                    Secure = !DomainResolver.IsLocalhost(),
+                    SameSite = SameSiteMode.Lax,
+                    Expires = DateTime.UtcNow.AddDays(IdpConstants.IdpSessionCookieTtlDays)
+                });
+            }
+
+            return newId;
         }
 
         /// <summary>
@@ -438,16 +511,28 @@ namespace Authentication.DomainService.Oidc.Services
         {
             try
             {
-                var auditLog = new AuditLogModel
+                var category = eventType switch
                 {
-                    EventType = eventType,
-                    UserId = userId,
-                    Severity = AuthenticationConstants.SeverityInfo,
-                    Status = AuthenticationConstants.StatusSuccess,
-                    Message = details ?? eventType,
-                    Timestamp = DateTime.UtcNow
+                    SessionAuditEvents.SessionCreated => UserActivityCategory.Auth,
+                    SessionAuditEvents.SessionRevoked => UserActivityCategory.Auth,
+                    SessionAuditEvents.SessionRotated => UserActivityCategory.Auth,
+                    _ => UserActivityCategory.Audit
                 };
-                await _auditLogRepo.CreateAsync(auditLog);
+
+                await _userActivityDispatcher.SendUserActivityAsync(new UserActivityEvent
+                {
+                    UserId = userId,
+                    Category = category,
+                    Event = eventType == SessionAuditEvents.SessionCreated ? "IDP_SESSION_STARTED"
+                        : eventType == SessionAuditEvents.SessionRevoked ? "IDP_SESSION_ENDED"
+                        : eventType == SessionAuditEvents.SessionRotated ? "IDP_SESSION_ROTATED"
+                        : eventType,
+                    Source = "auth-idp-session",
+                    Severity = eventType == SessionAuditEvents.SessionRevoked ? "medium" : "info",
+                    Outcome = IdpConstants.StatusSuccess,
+                    ReasonCode = details,
+                    SessionId = sessionId
+                });
             }
             catch (Exception ex)
             {

@@ -9,9 +9,15 @@ namespace Authentication.DomainService.Security.Contracts
         public DateTime? To { get; set; }
         public string? IpAddress { get; set; }
         public string? Device { get; set; }
+        public string? Outcome { get; set; }
+        public string? ReasonCode { get; set; }
+        public string? ClientId { get; set; }
+        public string? TenantId { get; set; }
+        public string? SessionId { get; set; }
     }
 
     public sealed class GetHistoryRequest : BaseGetsRequest<AuthHistoryFilter>
     {
+        public string? UserId { get; set; }
     }
 }

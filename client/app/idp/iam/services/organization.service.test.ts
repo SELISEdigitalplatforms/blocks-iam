@@ -37,7 +37,7 @@ describe("OrganizationService", () => {
       const result = await service.getOrganizations(mockGetOrganizationsPayload);
 
       expect(http.get).toHaveBeenCalledWith(
-        `${ORGANIZATION_ENDPOINTS.GET_ORGANIZATIONS}?projectKey=${mockGetOrganizationsPayload.projectKey}&page=${mockGetOrganizationsPayload.page}&pageSize=${mockGetOrganizationsPayload.pageSize}`,
+        `${ORGANIZATION_ENDPOINTS.GET_ORGANIZATIONS}?Page=${mockGetOrganizationsPayload.page}&PageSize=${mockGetOrganizationsPayload.pageSize}`,
       );
       expect(result).toEqual(mockOrganizationsResponse);
     });

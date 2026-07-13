@@ -2,7 +2,7 @@ import { useRef, useState } from "react";
 import { Camera } from "lucide-react";
 import { useGetPreSignedUrlForUpload, useUploadFile } from "@blocks-storage/hooks/use-storage-file";
 import { storageService } from "@blocks-storage/services/storage.service";
-import { useGetUserById, useUpdateUser } from "@blocks-idp/iam/hooks/use-user";
+import { useGetMe, useGetUserById, useUpdateUser } from "@blocks-idp/iam/hooks/use-user";
 import { showErrorToast, showSuccessToast } from "@/hooks/use-toast";
 import { isErrorWithErrors } from "@/lib/error";
 import { useProfileImageSrc } from "@/hooks/use-profile-image-src";
@@ -13,17 +13,29 @@ import { ModuleName } from "@/constants/modules.constants";
 type ProfileImageUploaderProps = {
   projectKey: string;
   id: string;
+  own?: boolean;
   className?: string;
   containerClassName?: string;
 };
-export const ProfileImageUploader = ({ projectKey, id, className, containerClassName }: ProfileImageUploaderProps) => {
+export const ProfileImageUploader = ({
+  projectKey,
+  id,
+  own = false,
+  className,
+  containerClassName,
+}: ProfileImageUploaderProps) => {
   const [localPreview, setLocalPreview] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const queryClient = useQueryClient();
-  const { data } = useGetUserById({ id, projectKey });
+  const { data: userByIdData } = useGetUserById(
+    { id, projectKey },
+    { enabled: !own },
+  );
+  const { data: meData } = useGetMe();
+  const data = own ? meData : userByIdData;
   const { mutateAsync } = useGetPreSignedUrlForUpload();
   const { mutateAsync: uploadImageMutate } = useUploadFile();
-  const { mutateAsync: updateUserMutate } = useUpdateUser({ projectKey, id });
+  const { mutateAsync: updateUserMutate } = useUpdateUser({ projectKey, id, own });
   const [isProfileImageUploading, setIsProfileImageUploading] = useState<boolean>(false);
   const currentUser = data?.data;
   const storedImageSrc = useProfileImageSrc(currentUser?.profileImageUrl);
@@ -51,11 +63,7 @@ export const ProfileImageUploader = ({ projectKey, id, className, containerClass
         projectKey,
       });
       const updatedUser = await updateUserMutate({
-        ...data?.data,
         itemId: id,
-        organizations: data?.data?.organizationIds || [],
-        roles: Object.values(data?.data?.roles || {}).flat(),
-        permissions: Object.values(data?.data?.permissions || {}).flat(),
         profileImageId: userProfileFile.itemId,
         profileImageUrl: userProfileFile.url,
       });
