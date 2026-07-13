@@ -8,6 +8,7 @@ using Iam.DomainService.Services;
 using Iam.DomainService.Shared.Dtos;
 using Iam.DomainService.Shared.Entities;
 using Iam.DomainService.Utilities;
+using Iam.DomainService.Users.RequestModel;
 using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.Logging;
 using System.Text.Json;
@@ -337,6 +338,261 @@ namespace Iam.DomainService.Users
             await SendEvent(user.ItemId, MutationEventType.Delete);
 
             return new BaseResponse { IsSuccess = true };
+        }
+
+        public async Task<BaseMutationResponse> ActivateUserAsync(ActivateUserByAdminRequest request)
+        {
+            if (string.IsNullOrWhiteSpace(request.UserId))
+            {
+                return new BaseMutationResponse
+                {
+                    Errors = new Dictionary<string, string>
+                    {
+                        { nameof(request.UserId), "UserId is required" }
+                    }
+                };
+            }
+
+            if (string.IsNullOrWhiteSpace(request.Reason) || request.Reason.Trim().Length < 3)
+            {
+                return new BaseMutationResponse
+                {
+                    Errors = new Dictionary<string, string>
+                    {
+                        { nameof(request.Reason), "A reason is required (minimum 3 characters)" }
+                    }
+                };
+            }
+
+            var user = await _userRepository.GetUserByIdAsync(request.UserId);
+            if (user == null)
+            {
+                return new BaseMutationResponse
+                {
+                    Errors = new Dictionary<string, string>
+                    {
+                        { nameof(request.UserId), $"No user found with id {request.UserId}" }
+                    }
+                };
+            }
+
+            if (user.Active && user.Status == UserLifecycleStatus.Active)
+            {
+                return new BaseMutationResponse
+                {
+                    Errors = new Dictionary<string, string>
+                    {
+                        { nameof(request.UserId), "User is already active" }
+                    }
+                };
+            }
+
+            var blocksContext = BlocksContext.GetContext();
+            var actorUserId = blocksContext?.UserId ?? request.UserId;
+
+            user.Active = true;
+            user.IsVerified = true;
+            user.Status = UserLifecycleStatus.Active;
+            user.StatusReason = "activated";
+            user.ActivatedAtUtc = DateTime.UtcNow;
+            user.ActivatedBy = actorUserId;
+            user.DeactivatedAtUtc = null;
+            user.DeactivatedBy = null;
+            user.LockoutUntilUtc = null;
+            user.FailedLoginCount = 0;
+            user.LastFailedLoginUtc = null;
+            user.SecurityStamp = Guid.NewGuid().ToString("N");
+            user.LastUpdatedBy = actorUserId;
+            user.LastUpdatedDate = DateTime.Now;
+
+            await Task.WhenAll(
+                _userRepository.UpdateUserAsync(user),
+                _messageClient.SendToConsumerAsync(new ConsumerMessage<UserStatusChangedEvent>
+                {
+                    ConsumerName = IdpConstants.IamUserQueue,
+                    Payload = new UserStatusChangedEvent
+                    {
+                        UserId = request.UserId,
+                        IsActive = true
+                    }
+                }));
+
+            await SendEvent(user.ItemId, MutationEventType.Update);
+
+            await _userActivityDispatcher.SendUserActivityAsync(new UserActivityEvent
+            {
+                UserId = user.ItemId,
+                ActorUserId = actorUserId,
+                Category = UserActivityCategory.Account,
+                Event = "USER_ACTIVATED",
+                Source = "iam-user-mutation",
+                Entity = "User",
+                EntityId = user.ItemId,
+                ReasonCode = "ADMIN_REINSTATE",
+                Metadata = new Dictionary<string, string>
+                {
+                    { "reason", request.Reason }
+                }
+            });
+
+            _logger.LogInformation("User activation end -- Success for {Id}", user.ItemId);
+            return new BaseMutationResponse
+            {
+                IsSuccess = true,
+                ItemId = user.ItemId
+            };
+        }
+
+        public async Task<BaseMutationResponse> ActivateAndLinkSocialIdentityAsync(ActivateAndLinkSocialIdentityRequest request)
+        {
+            if (string.IsNullOrWhiteSpace(request.UserId))
+            {
+                return new BaseMutationResponse
+                {
+                    Errors = new Dictionary<string, string>
+                    {
+                        { nameof(request.UserId), "UserId is required" }
+                    }
+                };
+            }
+
+            if (string.IsNullOrWhiteSpace(request.Provider))
+            {
+                return new BaseMutationResponse
+                {
+                    Errors = new Dictionary<string, string>
+                    {
+                        { nameof(request.Provider), "Provider is required" }
+                    }
+                };
+            }
+
+            if (string.IsNullOrWhiteSpace(request.ProviderUserId))
+            {
+                return new BaseMutationResponse
+                {
+                    Errors = new Dictionary<string, string>
+                    {
+                        { nameof(request.ProviderUserId), "ProviderUserId is required" }
+                    }
+                };
+            }
+
+            var user = await _userRepository.GetUserByIdAsync(request.UserId);
+            if (user == null)
+            {
+                return new BaseMutationResponse
+                {
+                    Errors = new Dictionary<string, string>
+                    {
+                        { nameof(request.UserId), $"No user found with id {request.UserId}" }
+                    }
+                };
+            }
+
+            if (user.Active && user.IsVerified)
+            {
+                return new BaseMutationResponse
+                {
+                    IsSuccess = true,
+                    ItemId = user.ItemId
+                };
+            }
+
+            if (user.Status == UserLifecycleStatus.Disabled)
+            {
+                return new BaseMutationResponse
+                {
+                    Errors = new Dictionary<string, string>
+                    {
+                        { "account_disabled", "This account has been disabled by an administrator. Please contact support." }
+                    }
+                };
+            }
+
+            var blocksContext = BlocksContext.GetContext();
+            var actorUserId = blocksContext?.UserId ?? request.UserId;
+
+            user.Active = true;
+            user.IsVerified = true;
+            user.Status = UserLifecycleStatus.Active;
+            user.StatusReason = "activated_via_social_link";
+            user.ActivatedAtUtc = DateTime.UtcNow;
+            user.ActivatedBy = actorUserId;
+            user.EmailVerifiedAtUtc = DateTime.UtcNow;
+            user.VerifiedType = user.VerifiedType == UserVerifiedType.None
+                ? UserVerifiedType.Email
+                : user.VerifiedType;
+            user.SecurityStamp = Guid.NewGuid().ToString("N");
+            user.FailedLoginCount = 0;
+            user.LastFailedLoginUtc = null;
+            user.LockoutUntilUtc = null;
+            user.LastUpdatedBy = actorUserId;
+            user.LastUpdatedDate = DateTime.Now;
+
+            if (user.ExternalIdentities == null)
+            {
+                user.ExternalIdentities = new List<ExternalIdentity>();
+            }
+
+            var alreadyLinked = user.ExternalIdentities.Any(ei =>
+                string.Equals(ei.Provider, request.Provider, StringComparison.OrdinalIgnoreCase) &&
+                string.Equals(ei.ProviderUserId, request.ProviderUserId, StringComparison.OrdinalIgnoreCase));
+
+            if (!alreadyLinked)
+            {
+                user.ExternalIdentities.Add(new ExternalIdentity
+                {
+                    Provider = request.Provider,
+                    ProviderUserId = request.ProviderUserId,
+                    Issuer = request.Issuer ?? request.Provider,
+                    LinkedAtUtc = DateTime.UtcNow
+                });
+            }
+
+            var updated = await _userRepository.UpdateUserAsync(user);
+            if (!updated)
+            {
+                _logger.LogError("ActivateAndLinkSocialIdentityAsync -- Repository update failed for user {Id}", user.ItemId);
+                return new BaseMutationResponse();
+            }
+
+            await Task.WhenAll(
+                _messageClient.SendToConsumerAsync(new ConsumerMessage<UserStatusChangedEvent>
+                {
+                    ConsumerName = IdpConstants.IamUserQueue,
+                    Payload = new UserStatusChangedEvent
+                    {
+                        UserId = user.ItemId,
+                        IsActive = true
+                    }
+                }));
+
+            await SendEvent(user.ItemId, MutationEventType.Update);
+
+            await _userActivityDispatcher.SendUserActivityAsync(new UserActivityEvent
+            {
+                UserId = user.ItemId,
+                ActorUserId = actorUserId,
+                Category = UserActivityCategory.Account,
+                Event = "USER_ACTIVATED_VIA_SOCIAL_LINK",
+                Source = "iam-user-mutation",
+                Entity = "User",
+                EntityId = user.ItemId,
+                ReasonCode = "SOCIAL_SIGNUP_RECOVERY",
+                Metadata = new Dictionary<string, string>
+                {
+                    { "provider", request.Provider },
+                    { "issuer", request.Issuer ?? request.Provider }
+                }
+            });
+
+            _logger.LogInformation("User activation via social link -- Success for {Id} provider={Provider}", user.ItemId, request.Provider);
+            return new BaseMutationResponse
+            {
+                IsSuccess = true,
+                ItemId = user.ItemId
+            };
         }
 
         public async Task ExecuteUserMutationCommandAsync(UserMutationEvent command)

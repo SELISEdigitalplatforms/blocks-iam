@@ -222,6 +222,10 @@ namespace Authentication.DomainService.Oidc.Services
                     PhoneNumber = externalUserData.PhoneNumber,
                     Platform = provider,
                     Active = true,
+                    IsVerified = true,
+                    Status = Iam.DomainService.Entities.UserLifecycleStatus.Active,
+                    StatusReason = "social_signup",
+                    ProvisioningSource = Iam.DomainService.Entities.UserProvisioningSource.Social,
 
                     Roles = new Dictionary<string, List<string>>
                     {
