@@ -1,8 +1,15 @@
 import { useRef, useState } from "react";
 import { Camera } from "lucide-react";
-import { useGetPreSignedUrlForUpload, useUploadFile } from "@blocks-storage/hooks/use-storage-file";
+import {
+  useGetPreSignedUrlForUpload,
+  useUploadFile,
+} from "@blocks-storage/hooks/use-storage-file";
 import { storageService } from "@blocks-storage/services/storage.service";
-import { useGetMe, useGetUserById, useUpdateUser } from "@blocks-idp/iam/hooks/use-user";
+import {
+  useGetMe,
+  useGetUserById,
+  useUpdateUser,
+} from "@blocks-idp/iam/hooks/use-user";
 import { showErrorToast, showSuccessToast } from "@/hooks/use-toast";
 import { isErrorWithErrors } from "@/lib/error";
 import { useProfileImageSrc } from "@/hooks/use-profile-image-src";
@@ -35,8 +42,13 @@ export const ProfileImageUploader = ({
   const data = own ? meData : userByIdData;
   const { mutateAsync } = useGetPreSignedUrlForUpload();
   const { mutateAsync: uploadImageMutate } = useUploadFile();
-  const { mutateAsync: updateUserMutate } = useUpdateUser({ projectKey, id, own });
-  const [isProfileImageUploading, setIsProfileImageUploading] = useState<boolean>(false);
+  const { mutateAsync: updateUserMutate } = useUpdateUser({
+    projectKey,
+    id,
+    own,
+  });
+  const [isProfileImageUploading, setIsProfileImageUploading] =
+    useState<boolean>(false);
   const currentUser = data?.data;
   const storedImageSrc = useProfileImageSrc(currentUser?.profileImageUrl);
   const image = localPreview ?? storedImageSrc;
@@ -67,14 +79,15 @@ export const ProfileImageUploader = ({
         profileImageId: userProfileFile.itemId,
         profileImageUrl: userProfileFile.url,
       });
-      if (!updatedUser.isSuccess) return showErrorToast({ errors: updatedUser.errors });
+      if (!updatedUser.isSuccess)
+        return showErrorToast({ errors: updatedUser.errors });
       queryClient.invalidateQueries({ queryKey: ["user"] });
       showSuccessToast({ description: "Profile pic updated successfully" });
     } catch (error) {
       if (isErrorWithErrors(error)) {
         return showErrorToast({ errors: error.errors });
       }
-      return showErrorToast({ errors: "Something wen wrong" });
+      return showErrorToast({ errors: "Something went wrong" });
     } finally {
       setIsProfileImageUploading(false);
     }
@@ -99,14 +112,20 @@ export const ProfileImageUploader = ({
     }
     if (selectedFile.size > MAX_SIZE_MB * 1024 * 1024) {
       event.target.value = "";
-      return showErrorToast({ errors: `File size must be less than ${MAX_SIZE_MB}MB` });
+      return showErrorToast({
+        errors: `File size must be less than ${MAX_SIZE_MB}MB`,
+      });
     }
     setLocalPreview(URL.createObjectURL(selectedFile));
     uploadImage(selectedFile);
     event.target.value = "";
   };
   return (
-    <div className={cn("flex flex-col items-center justify-center", containerClassName)}>
+    <div
+      className={cn(
+        "flex flex-col items-center justify-center",
+        containerClassName,
+      )}>
       <input
         type="file"
         accept="image/*"
@@ -125,8 +144,7 @@ export const ProfileImageUploader = ({
         className={cn(
           "group relative aspect-square w-full max-w-[200px] cursor-pointer overflow-hidden rounded-lg bg-gray-50 disabled:cursor-not-allowed dark:bg-gray-800",
           className,
-        )}
-      >
+        )}>
         <img
           src={image ?? emptyProfilePhoto}
           alt="Profile Image"
