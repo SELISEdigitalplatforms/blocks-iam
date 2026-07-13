@@ -194,7 +194,7 @@ namespace Api.Controllers
             return await _userManagementQueryService.GetAccountAsync();
         }
 
-        [HttpPatch("me")]
+        [HttpPost("me")]
         [Authorize]
         public async Task<IActionResult> UpdateMyAccount([FromBody] UpdateUserRequest command)
         {
