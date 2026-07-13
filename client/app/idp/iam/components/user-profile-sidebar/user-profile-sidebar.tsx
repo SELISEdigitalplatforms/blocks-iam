@@ -6,6 +6,7 @@ import { Activity, Calendar, Shield } from "lucide-react";
 type UserProfileSidebarProps = {
   id: string;
   projectKey: string;
+  own?: boolean;
 };
 
 type InfoRowProps = {
@@ -39,7 +40,7 @@ const formatLastLogin = (value?: string) => {
   });
 };
 
-export const UserProfileSidebar = ({ id, projectKey }: UserProfileSidebarProps) => {
+export const UserProfileSidebar = ({ id, projectKey, own = false }: UserProfileSidebarProps) => {
   const { data } = useGetUserById({ id, projectKey });
   const user = data?.data;
 
@@ -53,6 +54,7 @@ export const UserProfileSidebar = ({ id, projectKey }: UserProfileSidebarProps) 
         <ProfileImageUploader
           id={id}
           projectKey={projectKey}
+          own={own}
           containerClassName="h-full w-full"
           className="h-full w-full max-w-none rounded-full bg-transparent shadow-none dark:bg-transparent"
         />

@@ -116,7 +116,10 @@ describe("UserService", () => {
 
       const result = await service.updateUser(mockUpdateUserPayload);
 
-      expect(http.post).toHaveBeenCalledWith(USER_ENDPOINTS.UPDATE, mockUpdateUserPayload);
+      expect(http.post).toHaveBeenCalledWith(
+        `${USER_ENDPOINTS.UPDATE}/${mockUpdateUserPayload.itemId}`,
+        mockUpdateUserPayload,
+      );
       expect(result).toEqual(mockSuccessResponse);
     });
 

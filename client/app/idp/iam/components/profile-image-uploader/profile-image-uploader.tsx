@@ -13,10 +13,17 @@ import { ModuleName } from "@/constants/modules.constants";
 type ProfileImageUploaderProps = {
   projectKey: string;
   id: string;
+  own?: boolean;
   className?: string;
   containerClassName?: string;
 };
-export const ProfileImageUploader = ({ projectKey, id, className, containerClassName }: ProfileImageUploaderProps) => {
+export const ProfileImageUploader = ({
+  projectKey,
+  id,
+  own = false,
+  className,
+  containerClassName,
+}: ProfileImageUploaderProps) => {
   const [localPreview, setLocalPreview] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const queryClient = useQueryClient();

@@ -163,7 +163,14 @@ export class UserService {
     if (payload.profileImageUrl !== undefined) {
       normalized.profileImageUrl = payload.profileImageUrl;
     }
-    return serviceInstances.idpService.post(USER_ENDPOINTS.UPDATE, normalized);
+    return serviceInstances.idpService.post(
+      `${USER_ENDPOINTS.UPDATE}/${normalized.itemId}`,
+      normalized,
+    );
+  }
+
+  updateMe(payload: IUpdateUserPayload): Promise<IUpdateUserResponse> {
+    return serviceInstances.idpService.post(USER_ENDPOINTS.UPDATE_ME, payload);
   }
 
   getSignUpSetting(): Promise<IGetSignUpSettingResponse> {
