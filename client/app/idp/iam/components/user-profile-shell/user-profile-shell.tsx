@@ -135,7 +135,7 @@ export const UserProfileShell = ({
 
           {/* Sidebar (col 1, row 2) — fills the row's height at md+ */}
           <div className="flex h-full min-h-0 w-full flex-col md:col-start-1 md:row-start-2">
-            <UserProfileSidebar id={id} projectKey={projectKey} />
+            <UserProfileSidebar id={id} projectKey={projectKey} own={own} />
           </div>
 
           {/* Right column (col 2, row 2) — fills the same row height; each tab

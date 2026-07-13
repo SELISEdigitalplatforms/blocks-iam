@@ -139,7 +139,7 @@ export const useUpdateUser = (options: {
   const { own = false, ...rest } = options;
   return useMutation({
     mutationKey: ["users", "update"],
-    mutationFn: userService.updateUser,
+    mutationFn: own ? userService.updateMe : userService.updateUser,
     onSuccess: () => {
       // Always refresh the cached profile so pages like /app/profile show
       // the updated name without a manual reload — `["user"]` is the query
