@@ -1,14 +1,17 @@
- import { useAuthStore } from "@seliseblocks/blocks-kit";
+import { normalizeSearchQueryText } from "@/lib/utils";
+import type {
+  IRevokeAccessPayload,
+  IUpdateUserAccessControlPayload,
+} from "@blocks-idp/iam/models/user";
 import {
   IGetUserByIdPayload,
   IGetUserRolesPayload,
   IGetUsersPayload,
+  IUpdateUserPayload,
 } from "@blocks-idp/iam/models/user";
 import { userService } from "@blocks-idp/iam/services/user.service";
-import { normalizeSearchQueryText } from "@/lib/utils";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useCallback, useMemo } from "react";
-import type { IRevokeAccessPayload, IUpdateUserAccessControlPayload } from "@blocks-idp/iam/models/user";
 
 export const useGetUsers = (
   option: IGetUsersPayload,
@@ -32,13 +35,9 @@ export const useGetUsers = (
     };
   }, [
     page,
-    pageSize,
-    projectKey,
-    filter?.email,
-    filter?.name,
-    filter?.organizationId,
-    sort?.property,
-    sort?.isDescending,
+    pageSize,   
+    filter, 
+    sort,
   ]);
 
   return useQuery({
@@ -139,7 +138,8 @@ export const useUpdateUser = (options: {
   const { own = false, ...rest } = options;
   return useMutation({
     mutationKey: ["users", "update"],
-    mutationFn: own ? userService.updateMe : userService.updateUser,
+    mutationFn: (payload: IUpdateUserPayload) =>
+      own ? userService.updateMe(payload) : userService.updateUser(payload),
     onSuccess: () => {
       // Always refresh the cached profile so pages like /app/profile show
       // the updated name without a manual reload — `["user"]` is the query
@@ -204,7 +204,10 @@ export const useGetUserPermissions = (option: IGetUserRolesPayload) => {
   });
 };
 
-export const useUpdateUserAccessControl = (option: { id: string; projectKey: string }) => {
+export const useUpdateUserAccessControl = (option: {
+  id: string;
+  projectKey: string;
+}) => {
   const queryClient = useQueryClient();
   return useMutation({
     mutationKey: ["user", "access-control", option],
@@ -241,7 +244,11 @@ export const useRevokeAccess = (option: { id: string }) => {
 };
 
 export const useUserRoles = (option: { id: string; projectKey: string }) => {
-  const { isLoading: isUserLoading, isFetching, data: userData } = useGetUserById(option);
+  const {
+    isLoading: isUserLoading,
+    isFetching,
+    data: userData,
+  } = useGetUserById(option);
   const { isLoading: isRolesLoading, data: rolesData } = useGetUserRoles({
     userId: option.id,
   });
@@ -263,7 +270,7 @@ export const useUserRoles = (option: { id: string; projectKey: string }) => {
         permissions: Object.values(userData?.data?.permissions || {}).flat(),
       });
     },
-    [userData?.data, mutateAsync, option.id, option.projectKey, slugs],
+    [userData?.data, mutateAsync, option.id, slugs],
   );
 
   const deleteRoles = useCallback(
@@ -277,8 +284,10 @@ export const useUserRoles = (option: { id: string; projectKey: string }) => {
         permissions: Object.values(userData?.data?.permissions || {}).flat(),
       });
     },
-    [slugs, userData?.data, mutateAsync, option.projectKey, option.id],
+    [slugs, userData?.data, mutateAsync, option.id],
   );
+
+
 
   return {
     isLoading: isUserLoading || isFetching || isRolesLoading,
@@ -294,13 +303,18 @@ export const useUserPermissions = (option: {
   userId: string;
   projectKey: string;
 }) => {
-  const { isLoading: isUserLoading, isFetching, data: userData } = useGetUserById({
+  const {
+    isLoading: isUserLoading,
+    isFetching,
+    data: userData,
+  } = useGetUserById({
     id: option.userId,
     projectKey: option.projectKey,
   });
-  const { isLoading: isPermissionsLoading, data: permissionsData } = useGetUserPermissions({
-    userId: option.userId,
-  });
+  const { isLoading: isPermissionsLoading, data: permissionsData } =
+    useGetUserPermissions({
+      userId: option.userId,
+    });
   const { isPending, mutateAsync } = useUpdateUser({
     id: option.userId,
     projectKey: option.projectKey,
@@ -322,7 +336,7 @@ export const useUserPermissions = (option: {
         permissions: Array.from(totalResources),
       });
     },
-    [mutateAsync, option.userId, resources, option.projectKey, userData?.data],
+    [mutateAsync, option.userId, resources, userData?.data],
   );
 
   const deletePermissions = useCallback(
@@ -338,7 +352,7 @@ export const useUserPermissions = (option: {
         permissions: restResources,
       });
     },
-    [mutateAsync, option.userId, resources, option.projectKey, userData?.data],
+    [mutateAsync, option.userId, userData?.data,resources],
   );
 
   return {
