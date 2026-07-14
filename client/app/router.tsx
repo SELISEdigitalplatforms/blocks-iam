@@ -27,7 +27,6 @@ import OidcPermissionPage from "./routes/oidc/permission";
 
 // Device flow routes (RFC 8628)
 import DeviceEntryRoute from "./routes/device";
-import DeviceContinueRoute from "./routes/device/continue";
 import DeviceSuccessRoute from "./routes/device/success";
 
 // Dashboard routes (protected)
@@ -110,10 +109,6 @@ export const router = createBrowserRouter([
         element: <OidcLayout />,
         children: [
           { path: ":tenantId", element: <DeviceEntryRoute /> },
-          {
-            path: ":tenantId/continue/:interactionId",
-            element: <DeviceContinueRoute />,
-          },
           { path: ":tenantId/success", element: <DeviceSuccessRoute /> },
         ],
       },

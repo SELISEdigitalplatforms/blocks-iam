@@ -38,6 +38,12 @@ namespace Idp.DomainService.Oidc.Contracts
         public const string Expired = "Expired";
     }
 
+    public static class DeviceVerifyStatus
+    {
+        public const string Ready = "ready";
+        public const string LoginRequired = "login_required";
+    }
+
     public sealed class DeviceAuthorizationRequest
     {
         [Required]
@@ -66,20 +72,33 @@ namespace Idp.DomainService.Oidc.Contracts
         public int Interval { get; set; }
     }
 
-    public sealed class DeviceInteractionRequest
+    /// <summary>
+    /// RFC 8628 browser-side verify request. Replaces the previous two-step
+    /// <c>POST /api/device</c> + <c>GET /api/device/continue/{interactionId}</c>.
+    /// </summary>
+    public sealed class DeviceVerifyRequest
     {
         [Required]
         public string UserCode { get; set; } = string.Empty;
-        public string? TenantId { get; set; }
     }
 
-    public sealed class DeviceInteractionResponse
+    /// <summary>
+    /// RFC 8628 browser-side verify response.
+    /// <list type="bullet">
+    /// <item><c>Status = "ready"</c> &mdash; <c>Payload</c> carries the consent screen data.</item>
+    /// <item><c>Status = "login_required"</c> &mdash; <c>ReturnUrl</c> is the OIDC login URL for the SPA to follow.</item>
+    /// </list>
+    /// </summary>
+    public sealed class DeviceVerifyResponse
     {
-        [JsonPropertyName("redirect")]
-        public string Redirect { get; set; } = string.Empty;
+        [JsonPropertyName("status")]
+        public string Status { get; set; } = string.Empty;
 
-        [JsonPropertyName("interactionId")]
-        public string InteractionId { get; set; } = string.Empty;
+        [JsonPropertyName("payload")]
+        public DeviceConsentPayload? Payload { get; set; }
+
+        [JsonPropertyName("returnUrl")]
+        public string? ReturnUrl { get; set; }
     }
 
     public sealed class DeviceConsentPayload
@@ -100,10 +119,14 @@ namespace Idp.DomainService.Oidc.Contracts
         public string UserCode { get; set; } = string.Empty;
     }
 
-    public sealed class DeviceApproveRequest
+    /// <summary>
+    /// Browser-side decision request. Replaces <c>DeviceApproveRequest</c>;
+    /// carries <c>user_code</c> instead of the removed <c>interactionId</c>.
+    /// </summary>
+    public sealed class DeviceDecisionRequest
     {
         [Required]
-        public string InteractionId { get; set; } = string.Empty;
+        public string UserCode { get; set; } = string.Empty;
 
         [Required]
         public string Decision { get; set; } = "allow";
@@ -116,21 +139,6 @@ namespace Idp.DomainService.Oidc.Contracts
 
         [JsonPropertyName("status")]
         public string Status { get; set; } = string.Empty;
-    }
-
-    public sealed class DeviceInteractionContext
-    {
-        [JsonPropertyName("requestId")]
-        public string RequestId { get; set; } = string.Empty;
-
-        [JsonPropertyName("tenantId")]
-        public string TenantId { get; set; } = string.Empty;
-
-        [JsonPropertyName("clientId")]
-        public string ClientId { get; set; } = string.Empty;
-
-        [JsonPropertyName("createdAt")]
-        public DateTime CreatedAt { get; set; }
     }
 }
 

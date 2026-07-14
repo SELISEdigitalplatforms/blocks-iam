@@ -1,17 +1,18 @@
 import { serviceInstances } from "@/lib/http-client";
 import { DEVICE_ENDPOINTS } from "../constants/endpoints/device.endpoint";
 
-export interface DeviceInteractionResponse {
-  redirect: string;
-  interactionId: string;
-}
-
 export interface DeviceConsentPayload {
   clientName: string;
   clientId: string;
   scopes: string[];
   tenant: string;
   userCode: string;
+}
+
+export interface DeviceVerifyResponse {
+  status: "ready" | "login_required";
+  payload?: DeviceConsentPayload;
+  returnUrl?: string;
 }
 
 export interface DeviceApproveResponse {
@@ -33,29 +34,22 @@ function tenantHeaders(tenantId: string): Record<string, string> | undefined {
 }
 
 export const deviceService = {
-  submitUserCode(userCode: string, tenantId: string): Promise<DeviceInteractionResponse> {
-    return http.post<DeviceInteractionResponse>(
-      DEVICE_ENDPOINTS.BEGIN,
-      { user_code: userCode, tenant_id: tenantId || undefined },
+  verify(userCode: string, tenantId: string): Promise<DeviceVerifyResponse> {
+    return http.post<DeviceVerifyResponse>(
+      DEVICE_ENDPOINTS.VERIFY,
+      { user_code: userCode },
       tenantHeaders(tenantId),
-    ) as Promise<DeviceInteractionResponse>;
+    ) as Promise<DeviceVerifyResponse>;
   },
 
-  loadConsent(interactionId: string, tenantId: string): Promise<DeviceConsentPayload> {
-    return http.get<DeviceConsentPayload>(
-      DEVICE_ENDPOINTS.continue(interactionId),
-      tenantHeaders(tenantId),
-    ) as Promise<DeviceConsentPayload>;
-  },
-
-  approve(
-    interactionId: string,
+  decide(
+    userCode: string,
     decision: "allow" | "deny",
     tenantId: string,
   ): Promise<DeviceApproveResponse> {
     return http.post<DeviceApproveResponse>(
-      DEVICE_ENDPOINTS.APPROVE,
-      { interactionId, decision },
+      DEVICE_ENDPOINTS.DECISION,
+      { user_code: userCode, decision },
       tenantHeaders(tenantId),
     ) as Promise<DeviceApproveResponse>;
   },

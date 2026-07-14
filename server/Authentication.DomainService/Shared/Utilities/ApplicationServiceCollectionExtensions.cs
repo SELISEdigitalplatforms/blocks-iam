@@ -100,11 +100,10 @@ namespace Authentication.DomainService.Utilities
             // RFC 8628 Device Authorization Grant
             serviceCollection.AddSingleton<DeviceCodeGenerator>();
             serviceCollection.AddSingleton<IDeviceAuthorizationRepository, DeviceAuthorizationRepository>();
-            serviceCollection.AddSingleton<IDeviceInteractionStateStore, DeviceInteractionStateStore>();
             serviceCollection.AddSingleton<IDeviceAuthorizationService, DeviceAuthorizationService>();
             serviceCollection.AddSingleton<IOidcTokenMintService, OidcTokenMintService>();
             serviceCollection.AddSingleton<DeviceAuthorizationEndpoint>();
-            serviceCollection.AddSingleton<DeviceVerificationController>();
+            serviceCollection.AddSingleton<DeviceVerificationService>();
             serviceCollection.AddSingleton<DeviceCodeExchangeService>();
             serviceCollection.AddHostedService<DeviceCleanupWorker>();
             serviceCollection.AddSingleton<IdpTokenExchangeClient>();

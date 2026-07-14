@@ -1,5 +1,4 @@
 using Authentication.DomainService.Authentication;
-using Authentication.DomainService.Oidc.Contracts;
 using Idp.DomainService.Oidc.Contracts;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
@@ -15,15 +14,12 @@ namespace Api.Controllers;
 [Route("device")]
 public class DeviceController : ControllerBase
 {
-    private readonly DeviceVerificationController _verification;
-    private readonly DeviceAuthorizationEndpoint _deviceAuthorization;
+    private readonly DeviceVerificationService _verification;
 
     public DeviceController(
-        DeviceVerificationController verification,
-        DeviceAuthorizationEndpoint deviceAuthorization)
+        DeviceVerificationService verification)
     {
         _verification = verification;
-        _deviceAuthorization = deviceAuthorization;
     }
 
     /// <summary>
@@ -38,33 +34,24 @@ public class DeviceController : ControllerBase
     }
 
     /// <summary>
-    /// POST /device — accepts a user_code, mints an interactionId, and either returns the
-    /// continue endpoint (already authenticated) or the OIDC login URL.
+    /// POST /api/device/verify — validates a user_code and returns either the inline consent
+    /// payload (<c>status: "ready"</c>) or an OIDC login URL (<c>status: "login_required"</c>).
     /// </summary>
-    [HttpPost]
+    [HttpPost("verify")]
     [AllowAnonymous]
-    public async Task<IActionResult> Submit([FromBody] DeviceInteractionRequest request, CancellationToken ct)
+    public async Task<IActionResult> Verify([FromBody] DeviceVerifyRequest request, CancellationToken ct)
     {
-        return await _verification.BeginAsync(request, HttpContext, ct);
+        return await _verification.VerifyAsync(request, HttpContext, ct);
     }
 
     /// <summary>
-    /// GET /continue/{interactionId} — returns the consent payload for the SPA to render.
+    /// POST /api/device/decision — records an allow/deny decision for the device authorization
+    /// request identified by <c>user_code</c>. Returns the SPA's success-page redirect.
     /// </summary>
-    [HttpGet("continue/{interactionId}")]
+    [HttpPost("decision")]
     [AllowAnonymous]
-    public async Task<IActionResult> Continue([FromRoute] string interactionId, CancellationToken ct)
+    public async Task<IActionResult> Decision([FromBody] DeviceDecisionRequest request, CancellationToken ct)
     {
-        return await _verification.ContinueAsync(interactionId, HttpContext, ct);
-    }
-
-    /// <summary>
-    /// POST /approve — records allow/deny decision.
-    /// </summary>
-    [HttpPost("approve")]
-    [AllowAnonymous]
-    public async Task<IActionResult> Approve([FromBody] DeviceApproveRequest request, CancellationToken ct)
-    {
-        return await _verification.ApproveAsync(request, HttpContext, ct);
+        return await _verification.DecisionAsync(request, HttpContext, ct);
     }
 }
