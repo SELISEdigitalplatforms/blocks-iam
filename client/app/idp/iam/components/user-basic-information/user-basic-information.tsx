@@ -45,12 +45,14 @@ export const UserBasicInformation = ({
   detailsGridClassName = "",
   className = "",
   hideRedundantFields = false,
+  hideNameAndEmailOnMobile = false,
 }: {
   id: string;
   projectKey: string;
   detailsGridClassName?: string;
   className?: string;
   hideRedundantFields?: boolean;
+  hideNameAndEmailOnMobile?: boolean;
 }) => {
   const { isLoading, data } = useGetUserById({ id, projectKey });
 
@@ -83,13 +85,23 @@ export const UserBasicInformation = ({
           ) : (
             <>
               {!hideRedundantFields && (
-                <p className="truncate text-base font-medium leading-tight text-foreground">
+                <p
+                  className={cn(
+                    "truncate text-base font-medium leading-tight text-foreground",
+                    hideNameAndEmailOnMobile && "hidden sm:block"
+                  )}
+                >
                   {fullName ?? "—"}
                 </p>
               )}
 
               {!hideRedundantFields && user?.email && (
-                <div className="mt-0.5 flex items-center gap-1.5">
+                <div
+                  className={cn(
+                    "mt-0.5 flex items-center gap-1.5",
+                    hideNameAndEmailOnMobile && "hidden sm:flex"
+                  )}
+                >
                   <CopyToClipboardButton textToCopy={user.email}>
                     <span className="truncate text-sm text-muted-foreground hover:text-foreground transition-colors">
                       {user.email}

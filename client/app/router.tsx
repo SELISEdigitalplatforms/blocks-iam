@@ -94,6 +94,7 @@ export const router = createBrowserRouter([
           },
           { path: "recover/:tenantId", element: <ResetPasswordPage /> },
           { path: "activate/:tenantId", element: <ActivatePage /> },
+          { path: "signup/:tenantId", element: <SignupPage /> },
           { path: "mfa-check", element: <MfaCheckPage /> },
           { path: ":provider/callback/:tenantId", element: <SSOCallbackPage  /> },
         ],
@@ -160,7 +161,7 @@ export const router = createBrowserRouter([
               {
                 element: <AuthLayout />,
                 children: [
-                  { path: "/signup", element: <SignupPage /> },
+                  // { path: "/signup", element: <SignupPage /> },
                   { path: "/sso-activate", element: <SsoActivatePage /> },
                 ],
               },
