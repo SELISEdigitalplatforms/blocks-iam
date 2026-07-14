@@ -16,6 +16,12 @@ import {
 import { Pagination } from "@/components/ui-kits/pagination/pagination";
 import { Skeleton } from "@/components/ui-kits/skeleton/skeleton";
 import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui-kits/tooltip/tooltip";
+import {
   Table,
   TableBody,
   TableCell,
@@ -26,7 +32,7 @@ import {
 import { useProjectStore } from "@seliseblocks/blocks-kit";
 import { useGetPermissions } from "@blocks-idp/iam/hooks/use-permission";
 import { IPermission, RESOURCE_TYPE } from "@blocks-idp/iam/models/permission";
-import { Plus, KeyRound } from "lucide-react";
+import { Plus, KeyRound, Info } from "lucide-react";
 import { useMemo, useState } from "react";
 
 type AddOrganizationPermissionProps = {
@@ -121,9 +127,27 @@ export const AddOrganizationPermission = ({
           <span className="sr-only sm:not-sr-only">Manage Permissions</span>
         </Button>
       </DialogTrigger>
-      <DialogContent className="flex max-h-[560px] flex-col gap-3 overflow-hidden">
+      <DialogContent className="flex max-h-[560px] flex-col gap-3 overflow-hidden sm:max-w-2xl">
         <DialogHeader>
-          <DialogTitle className="text-left">Manage permissions</DialogTitle>
+          <div className="flex items-center gap-2">
+            <DialogTitle className="text-left">Manage permissions</DialogTitle>
+            <TooltipProvider>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <button
+                    type="button"
+                    aria-label="Maximum permissions info"
+                    className="inline-flex items-center justify-center text-muted-foreground transition-colors hover:text-foreground focus:outline-none"
+                  >
+                    <Info className="h-4 w-4" aria-hidden />
+                  </button>
+                </TooltipTrigger>
+                <TooltipContent side="right">
+                  You can assign a maximum of {MAX_PERMISSIONS_PER_USER} permissions per user.
+                </TooltipContent>
+              </Tooltip>
+            </TooltipProvider>
+          </div>
           <DialogDescription></DialogDescription>
         </DialogHeader>
         <div>

@@ -200,8 +200,8 @@ export const mockAccountActivationPayload: IAccountActivationPayload = {
   password: "NewPass@1234",
   preventPostEvent: false,
   projectKey: TEST_PROJECT_KEY,
-  firstname: "Test",
-  lastname: "User",
+  firstName: "Test",
+  lastName: "User",
 };
 
 export const mockAccountRecoverPayload: IAccountRecoverPayload = {
