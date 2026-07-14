@@ -15,6 +15,12 @@ import {
 } from "@/components/ui-kits/dialog/dialog";
 import { Pagination } from "@/components/ui-kits/pagination/pagination";
 import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui-kits/tooltip/tooltip";
+import {
   Table,
   TableBody,
   TableCell,
@@ -27,7 +33,7 @@ import { isErrorWithErrors } from "@/lib/error";
 import { useGetPermissions } from "@blocks-idp/iam/hooks/use-permission";
 import { useUserPermissions } from "@blocks-idp/iam/hooks/use-user";
 import { RESOURCE_TYPE } from "@blocks-idp/iam/models/permission";
-import { CirclePlus } from "lucide-react";
+import { CirclePlus, Info } from "lucide-react";
 import { useState } from "react";
 
 type AddUserPermissionProps = {
@@ -97,24 +103,58 @@ export const AddUserPermission = ({ userId, projectKey }: AddUserPermissionProps
         setOpen(v);
       }}
     >
-      <DialogTrigger asChild>
-        <Button
-          size="sm"
-          variant="default"
-          className="h-10 bg-primary text-sm"
-          disabled={resources.length >= 5}
-          onClick={(e) => {
-            e.stopPropagation();
-          }}
-        >
-          <CirclePlus className="h-5 w-5 md:mr-2.5" />
-          <span className="sr-only sm:not-sr-only">Assign Permissions</span>
-        </Button>
-      </DialogTrigger>
-      <DialogContent className="max-w-2xl">
+      <TooltipProvider>
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <span
+              className="inline-flex"
+              tabIndex={resources.length >= 5 ? 0 : undefined}
+              aria-disabled={resources.length >= 5}
+            >
+              <DialogTrigger asChild>
+                <Button
+                  size="sm"
+                  variant="default"
+                  className="h-10 bg-primary text-sm disabled:cursor-not-allowed disabled:opacity-50"
+                  disabled={resources.length >= 5}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                  }}
+                >
+                  <CirclePlus className="h-5 w-5 md:mr-2.5" />
+                  <span className="sr-only sm:not-sr-only">Assign Permissions</span>
+                </Button>
+              </DialogTrigger>
+            </span>
+          </TooltipTrigger>
+          {resources.length >= 5 && (
+            <TooltipContent side="bottom">
+              Maximum 5 permissions can be assigned to a user
+            </TooltipContent>
+          )}
+        </Tooltip>
+      </TooltipProvider>
+      <DialogContent className="max-w-xl">
         <DialogHeader>
-          <DialogTitle className="text-left">Include Permissions</DialogTitle>
-          <DialogDescription>Maximum 5 permissions are allowed</DialogDescription>
+          <div className="flex items-center gap-2">
+            <DialogTitle className="text-left">Include Permissions</DialogTitle>
+            <TooltipProvider>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <button
+                    type="button"
+                    aria-label="Maximum permissions info"
+                    className="inline-flex items-center justify-center text-muted-foreground transition-colors hover:text-foreground focus:outline-none"
+                  >
+                    <Info className="h-4 w-4" aria-hidden />
+                  </button>
+                </TooltipTrigger>
+                <TooltipContent side="top">
+                  You can assign a maximum of 5 permissions per user.
+                </TooltipContent>
+              </Tooltip>
+            </TooltipProvider>
+          </div>
         </DialogHeader>
         <div>
           <FilterControls.SearchInput
@@ -136,34 +176,57 @@ export const AddUserPermission = ({ userId, projectKey }: AddUserPermissionProps
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {data?.data.map((item) => (
-                  <TableRow key={item.itemId}>
-                    <TableCell>
-                      <Checkbox
-                        checked={
-                          resources.includes(item.resource) ||
-                          selectedPermisson.includes(item.resource)
-                        }
-                        disabled={!!resources.includes(item.resource)}
-                        onCheckedChange={(checked) =>
-                          onCheckedChangeHandler(checked as boolean, item.resource)
-                        }
-                      />
-                    </TableCell>
-                    <TableCell>
-                      <Badge variant="secondary" className="w-fit">
-                        {item.name}
-                      </Badge>
-                    </TableCell>
-                    <TableCell>
-                      {
-                        RESOURCE_TYPE.find((resoruce) => resoruce.value === item.type.toString())
-                          ?.label
-                      }
-                    </TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
+                {data?.data.map((item) => {
+                  const isAlreadyAssigned = !!resources.includes(item.resource);
+                  const isAtCap = resources.length + selectedPermisson.length >= 5;
+                  const isCheckboxDisabled = isAlreadyAssigned || isAtCap;
+                  return (
+                    <TableRow key={item.itemId}>
+                      <TableCell>
+                        <TooltipProvider>
+                          <Tooltip>
+                            <TooltipTrigger asChild>
+                              <span
+                                className="inline-flex"
+                                tabIndex={isCheckboxDisabled ? 0 : undefined}
+                                aria-disabled={isCheckboxDisabled}
+                              >
+                                <Checkbox
+                                  checked={
+                                    isAlreadyAssigned ||
+                                    selectedPermisson.includes(item.resource)
+                                  }
+                                  disabled={isCheckboxDisabled}
+                                  onCheckedChange={(checked) =>
+                                    onCheckedChangeHandler(checked as boolean, item.resource)
+                                  }
+                                />
+                              </span>
+                            </TooltipTrigger>
+                            {isAtCap && !isAlreadyAssigned && (
+                              <TooltipContent side="right">
+                                Maximum 5 permissions can be assigned to a user
+                              </TooltipContent>
+                            )}
+                              </Tooltip>
+                            </TooltipProvider>
+                          </TableCell>
+                          <TableCell>
+                            <Badge variant="secondary" className="w-fit">
+                              {item.name}
+                            </Badge>
+                          </TableCell>
+                          <TableCell>
+                            {
+                              RESOURCE_TYPE.find(
+                                (resoruce) => resoruce.value === item.type.toString()
+                              )?.label
+                            }
+                          </TableCell>
+                        </TableRow>
+                      );
+                    })}
+                  </TableBody>
             </Table>
           </CardContent>
         </Card>

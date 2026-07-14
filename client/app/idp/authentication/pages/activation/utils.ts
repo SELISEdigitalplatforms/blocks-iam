@@ -21,4 +21,3 @@ export const activationFormSchema = z.object({
   password: passwordSchema,
   confirmPassword: passwordSchema,
 });
-

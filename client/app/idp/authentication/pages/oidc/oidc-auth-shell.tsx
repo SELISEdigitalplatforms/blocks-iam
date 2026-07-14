@@ -48,10 +48,22 @@ function BlocksLogo() {
 }
 
 /* ── Heading ────────────────────────────────────────────────── */
-function SectionHeading({ text, dimFirst = 3 }: { text: string; dimFirst?: number }) {
+function SectionHeading({
+  text,
+  dimFirst = 3,
+  align = "left",
+}: {
+  text: string;
+  dimFirst?: number;
+  align?: "left" | "center";
+}) {
   const words = text.split(" ");
   return (
-    <h1 className="text-xl sm:text-2xl font-semibold tracking-tight leading-snug mb-5 font-sans text-left">
+    <h1
+      className={`text-xl sm:text-2xl font-semibold tracking-tight leading-snug mb-5 font-sans ${
+        align === "center" ? "text-center" : "text-left"
+      }`}
+    >
       {words.map((word, i) => (
         <span
           key={i}
@@ -90,6 +102,7 @@ interface OidcAuthShellProps {
   panelConfig: OidcPanelConfig;
   heading: string;
   headingDimFirst?: number;
+  headingAlign?: "left" | "center";
   footerNote?: React.ReactNode;
   successTitle?: string;
   successSubtitle?: string;
@@ -102,6 +115,7 @@ export function OidcAuthShell({
   panelConfig,
   heading,
   headingDimFirst = 3,
+  headingAlign = "left",
   footerNote,
   successTitle    = "Access Granted",
   successSubtitle = "Redirecting to your application…",
@@ -221,7 +235,7 @@ export function OidcAuthShell({
                     <div
                       className={`flex flex-col transition-[opacity,transform] duration-[600ms] ease-[ease] ${formContainerClass}`}
                     >
-                      <SectionHeading text={heading} dimFirst={headingDimFirst} />
+                      <SectionHeading text={heading} dimFirst={headingDimFirst} align={headingAlign} />
                       {children}
                     </div>
                   )}
