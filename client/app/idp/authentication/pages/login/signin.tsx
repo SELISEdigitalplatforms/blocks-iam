@@ -15,7 +15,7 @@ import { Link } from "react-router-dom";
 import { useEffect } from "react";
 import { SigninForm } from "./signin-form";
 import { SsoSignin } from "./sso-signin";
-import { buildOIDCNavigationUrl } from "@blocks-idp/authentication/utils/oidc-utils";
+import { buildOIDCNavigationUrl, extractOIDCParams } from "@blocks-idp/authentication/utils/oidc-utils";
 
 type SigninProps = {
   ssoError?: string;
@@ -97,7 +97,14 @@ export const Signin = ({ ssoError, mode = "default", oidcContext }: SigninProps)
     (loginOption?.allowedGrantTypes?.includes(GRANT_TYPES.password) ||
       loginOption?.allowedGrantTypes?.includes(GRANT_TYPES.social));
 
-  const signUpUrl = mode === "oidc" ? buildOIDCNavigationUrl("/oidc/signup") : "/oidc/signup";
+  const { tenantId: oidcTenantId } = extractOIDCParams();
+  const oidcQuery = oidcTenantId
+    ? buildOIDCNavigationUrl("/oidc/signup").split("?")[1] || ""
+    : "";
+  const signUpUrl =
+    mode === "oidc" && oidcTenantId
+      ? `/oidc/signup/${encodeURIComponent(oidcTenantId)}${oidcQuery ? `?${oidcQuery}` : ""}`
+      : "/oidc/signup";
 
   return (
     <Card className="flex h-full flex-col rounded border-solid border-background shadow-none md:min-w-[448px] md:border-[#95ADC4] lg:max-w-md">

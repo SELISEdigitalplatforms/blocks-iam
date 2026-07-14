@@ -217,8 +217,6 @@ export const status = [
 export interface IAccountActivationPayload {
   code: string;
   password: string;
-  firstname?: string;
-  lastname?: string;
   captchaCode?: string;
   mailPurpose?: string;
   preventPostEvent: boolean;

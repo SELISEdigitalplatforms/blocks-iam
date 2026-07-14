@@ -26,10 +26,12 @@ export const SignupForm = ({
   loginOption,
   emailSignUpEnabled,
   ssoSignUpEnabled,
+  tenantId,
 }: {
   loginOption?: LoginOption;
   emailSignUpEnabled: boolean;
   ssoSignUpEnabled: boolean;
+  tenantId?: string;
 }) => {
   const [isChecked, setIsChecked] = useState(false);
   const navigate = useNavigate();
@@ -41,7 +43,7 @@ export const SignupForm = ({
     resolver: zodResolver(signupFormSchema),
   });
   const { isPending, mutateAsync } = useSignupByEmail();
-  const { data: oidcUiConfig, captchaEnabled } = useOidcUiConfig();
+  const { data: oidcUiConfig, captchaEnabled } = useOidcUiConfig(tenantId);
 
   const googleSiteKey =
     oidcUiConfig?.captcha?.key || getRuntimeEnv("BLOCKS_GOOGLE_SITE_KEY") || "";
@@ -77,6 +79,7 @@ export const SignupForm = ({
       const res = await mutateAsync({
         ...values,
         captchaCode,
+        tenantId,
       });
       if (!res.isSuccess) {
         resetCaptcha();

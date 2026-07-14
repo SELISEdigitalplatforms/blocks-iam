@@ -506,8 +506,8 @@ namespace Iam.DomainService.Accounts
             user.IsVerified = true;
             user.Status = UserLifecycleStatus.Active;
             user.StatusReason = "email_verified";
-            user.FirstName = activateUserRequest.FirstName;
-            user.LastName = activateUserRequest.LastName;
+           // user.FirstName = activateUserRequest.FirstName;
+           // user.LastName = activateUserRequest.LastName;
 
             if (!string.IsNullOrWhiteSpace(activateUserRequest.Password))
             {
