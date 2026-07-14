@@ -36,10 +36,11 @@ describe("PermissionService", () => {
 
       const result = await service.getPermissions(mockGetPermissionsPayload);
 
-      expect(http.post).toHaveBeenCalledWith(
-        PERMISSION_ENDPOINTS.GET_PERMISSIONS,
-        mockGetPermissionsPayload,
-      );
+      const { projectKey, ...rest } = mockGetPermissionsPayload;
+      expect(http.post).toHaveBeenCalledWith(PERMISSION_ENDPOINTS.GET_PERMISSIONS, {
+        ...rest,
+        organizationId: projectKey,
+      });
       expect(result).toEqual(mockPermissionsResponse);
     });
 

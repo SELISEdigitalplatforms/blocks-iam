@@ -1,10 +1,10 @@
 using Authentication.DomainService.Entities;
+using Authentication.DomainService.Utilities;
 using Authentication.DomainService.OAuth;
 using Authentication.DomainService.Oidc.Repositories;
+using Authentication.DomainService.Oidc.Services;
 using Authentication.DomainService.Services;
-using Authentication.DomainService.Shared;
-using Authentication.DomainService.Shared.Dtos;
-using Authentication.DomainService.Utilities;
+using Iam.DomainService.Utilities;
 using Blocks.Genesis;
 using Iam.DomainService.Entities;
 using Iam.DomainService.Users;
@@ -32,7 +32,7 @@ namespace Authentication.DomainService.Authentication
         private readonly IAuthorizationClaimsResolver _authorizationClaimsResolver;
         private readonly IAuthenticationRepository _authenticationRepository;
         private readonly ITenants _tenants;
-        private readonly ICacheClient _cacheClient;
+        private readonly IIdpSessionService _idpSessionService;
         private readonly ILogger<AuthorizationCodeExchangeService> _logger;
 
         public AuthorizationCodeExchangeService(
@@ -44,7 +44,7 @@ namespace Authentication.DomainService.Authentication
             IAuthorizationClaimsResolver authorizationClaimsResolver,
             IAuthenticationRepository authenticationRepository,
             ITenants tenants,
-            ICacheClient cacheClient,
+            IIdpSessionService idpSessionService,
             ILogger<AuthorizationCodeExchangeService> logger)
         {
             _authCodeRepo = authCodeRepo;
@@ -55,7 +55,7 @@ namespace Authentication.DomainService.Authentication
             _authorizationClaimsResolver = authorizationClaimsResolver;
             _authenticationRepository = authenticationRepository;
             _tenants = tenants;
-            _cacheClient = cacheClient;
+            _idpSessionService = idpSessionService;
             _logger = logger;
         }
 
@@ -203,24 +203,23 @@ namespace Authentication.DomainService.Authentication
                 Permissions = resolvedClaims.Permissions
             };
 
+
             var authConfiguration = await _authenticationRepository.GetAuthenticationConfigurationAsync();
-            var accessTokenLifetimeSeconds = Math.Max((authConfiguration?.AccessTokenValidForNumberMinutes ?? IdentityConfiguration.DefaultAccessTokenValidForNumberMinutes) * AuthenticationConstants.SecondsPerMinute, AuthenticationConstants.MinAccessTokenLifetimeSeconds);
+            var accessTokenLifetimeSeconds = Math.Max((authConfiguration?.AccessTokenValidForNumberMinutes ?? IdentityConfiguration.DefaultAccessTokenValidForNumberMinutes) * IdpConstants.SecondsPerMinute, IdpConstants.MinAccessTokenLifetimeSeconds);
             var absoluteRefreshTokenLifetimeMinutes = Math.Max(authConfiguration?.AbsoluteRefreshTokenValidForNumberMinutes ?? IdentityConfiguration.DefaultRememberMeRefreshTokenValidForNumberMinutes, 1);
 
             var issuer = DomainResolver.GetIssuer(tenant);
+
+            var idpSessionId = await ResolveOrCreateIdpSessionAsync(request, authCode.UserId, effectiveTenantId!);
+
             var idToken = await _tokenService.GenerateIdTokenAsync(claims, issuer, accessTokenLifetimeSeconds);
             var accessToken = await _tokenService.GenerateAccessTokenAsync(claims, issuer, accessTokenLifetimeSeconds);
-            var refreshTokenModel = await _tokenService.GenerateRefreshTokenAsync(claims, issuer, false);
+            var refreshTokenModel = await _tokenService.GenerateRefreshTokenAsync(claims, issuer, false, idpSessionId);
 
-            refreshTokenModel.UserId = authCode.UserId;
-            refreshTokenModel.ClientId = clientId;
-            refreshTokenModel.TenantId = effectiveTenantId!;
-            refreshTokenModel.OrgId = authCode.OrganizationId;
-            refreshTokenModel.Audience = tenantAudience;
-            refreshTokenModel.Scope = authCode.Scope;
-            refreshTokenModel.IpAddress = OidcRedirectUrlBuilder.GetClientIpAddress(request);
-            refreshTokenModel.UserAgent = request.Headers["User-Agent"].ToString();
-            await _refreshTokenRepo.CreateAsync(refreshTokenModel);
+            // UnifiedTokenSessionService.CreateOrRotateRefreshToken (called inside GenerateRefreshTokenAsync)
+            // already persisted this refresh token to MongoDB with full SessionId/ClientId metadata.
+            // Do NOT call _refreshTokenRepo.CreateAsync here — it would (a) duplicate by TokenId ([BsonId])
+            // and (b) fail the tightened RefreshTokenRepository.CreateAsync validation when fields are empty.
 
             _logger.LogInformation("Tokens issued for user {UserId}, client {ClientId}", authCode.UserId, clientId);
 
@@ -318,6 +317,17 @@ namespace Authentication.DomainService.Authentication
 
             var effectiveTenantId = authCode.TenantId ?? tenantId ?? "default";
             return (null, authCode, user, effectiveTenantId);
+        }
+
+        private Task<string> ResolveOrCreateIdpSessionAsync(HttpRequest request, string userId, string tenantId)
+        {
+            // Thin wrapper: cookie resolution + account-add + cookie-write are all handled inside the helper.
+            // Failure surfaces as an exception — caller maps the failure to invalid_grant.
+            return _idpSessionService.ResolveOrCreateAsync(
+                request.HttpContext,
+                userId,
+                tenantId,
+                OidcRedirectUrlBuilder.GetClientIpAddress(request));
         }
 
         private static bool AppendAccessAndRefreshTokenCookies(

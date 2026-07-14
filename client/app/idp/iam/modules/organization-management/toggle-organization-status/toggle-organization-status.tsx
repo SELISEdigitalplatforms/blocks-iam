@@ -23,7 +23,7 @@ export const ToggleOrganizationStatus = ({
 }: ToggleOrganizationStatusProps) => {
   const { mutateAsync, isPending } = useUpdateOrganization();
 
-  const isEnabling = !organization.isEnabled;
+  const isEnabling = organization.isDisabled;
   const action = isEnabling ? "enable" : "disable";
   const actionLabel = isEnabling ? "Enable" : "Disable";
   const actioningLabel = isEnabling ? "Enabling..." : "Disabling...";

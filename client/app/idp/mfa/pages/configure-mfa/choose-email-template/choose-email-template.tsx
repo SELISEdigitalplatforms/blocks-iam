@@ -10,7 +10,6 @@ import {
 import { Pagination } from "@/components/ui-kits/pagination/pagination";
 import { Skeleton } from "@/components/ui-kits/skeleton/skeleton";
 import { toast } from "@/hooks/use-toast";
-import { useProjectStore } from "@seliseblocks/blocks-kit";
 import { IEmailTemplate } from "@blocks-communication/mail/models/email";
 import { useState } from "react";
 import { useGetMFAConfig, useSaveMFAConfig } from "@blocks-idp/mfa/hooks/use-mfa-config";
@@ -36,7 +35,6 @@ const LoadingSkelton = () => {
 };
 
 export const ChooseEmailTemplate = ({ open, setOpen }: ChooseEmailTemplateProps) => {
-  const tenantId = useProjectStore().selectedProject?.tenantId || "";
   const { data: mfaConfigData } = useGetMFAConfig();
   const [filter, setFilter] = useState({ page: 0, pageSize: 10 });
   const { data, isLoading, isFetching } = useGetEmailTemplates(filter.page, filter.pageSize, "", "Name", false, "", "");
@@ -45,9 +43,8 @@ export const ChooseEmailTemplate = ({ open, setOpen }: ChooseEmailTemplateProps)
 
   const onSaveHandler = async () => {
     try {
-      const userMfaTypes = mfaConfigData?.userMfaType ? [...mfaConfigData.userMfaType] : [];
+      const userMfaTypes = mfaConfigData?.allowedMethods ? [...mfaConfigData.allowedMethods] : [];
       const res = await mutateAsync({
-        projectKey: tenantId,
         enableMfa: true,
         userMfaType: userMfaTypes,
       });

@@ -37,12 +37,6 @@ namespace Authentication.DomainService.Authentication
                 TryReadBasicClientAuthentication(request, out clientId, out clientSecret);
             }
 
-            var organizationId = request.Form["organization_id"].ToString();
-            if (string.IsNullOrWhiteSpace(organizationId))
-            {
-                organizationId = request.Form["org_id"].ToString();
-            }
-
             if (string.IsNullOrWhiteSpace(clientId) || string.IsNullOrWhiteSpace(clientSecret))
             {
                 return new BadRequestObjectResult(new { error = "invalid_client", error_description = "Missing client authentication" });
@@ -59,7 +53,6 @@ namespace Authentication.DomainService.Authentication
                 GrantType = GrantTypes.ClientCredential,
                 ClientId = clientId,
                 ClientSecret = clientSecret,
-                OrganizationId = organizationId,
                 Request = request
             };
 
@@ -78,11 +71,12 @@ namespace Authentication.DomainService.Authentication
                 { StatusCode = statusCode };
             }
 
-            return new OkObjectResult(new TokenResponse
+            return new OkObjectResult(new 
             {
                 AccessToken = result.AccessToken,
                 TokenType = "Bearer",
-                ExpiresIn = result.ExpiresIn
+                ExpiresIn = result.ExpiresIn,
+                ExpiresUtc= result.ExpiresUtc
             });
         }
 

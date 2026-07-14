@@ -12,7 +12,7 @@ import {
   mockOrganizationConfigResponse,
   mockGetIamConfigResponse,
   mockSignUpSettingResponse,
-  mockActivationCodeExpirationResponse,
+  mockActivationCodeValidationResponse,
 } from "../__mocks__/iam.data.mock";
 import { mockSuccessResponse, mockSuccessResponseWithItemId } from "@/test-utils/__mocks__";
 import {
@@ -23,6 +23,7 @@ import {
   ORGANIZATION_ENDPOINTS,
   IAM_CONFIGURATION_ENDPOINTS,
 } from "../../iam/constants/endpoint.constant";
+import { SECURITY_ENDPOINTS } from "../../iam/security/constants/security-endpoints";
 
 // ─── Endpoint Patterns ────────────────────────────────────────────────────────
 
@@ -35,8 +36,9 @@ const UPDATE_USER_PATTERN = new RegExp(USER_ENDPOINTS.UPDATE);
 const GET_SIGNUP_SETTING_PATTERN = new RegExp(`${ORGANIZATION_ENDPOINTS.GET_SIGNUP_SETTING}\\?`);
 const SAVE_SIGNUP_SETTING_PATTERN = new RegExp(ORGANIZATION_ENDPOINTS.SAVE_SIGNUP_SETTING);
 const SAVE_ROLES_AND_PERMISSIONS_PATTERN = new RegExp(USER_ENDPOINTS.SAVE_ROLES_AND_PERMISSIONS);
-const GET_SESSIONS_PATTERN = new RegExp(`${USER_ENDPOINTS.GET_SESSIONS}\\?`);
-const GET_HISTORIES_PATTERN = new RegExp(`${USER_ENDPOINTS.GET_HISTORIES}\\?`);
+const SECURITY_SUMMARY_PATTERN = new RegExp(`${SECURITY_ENDPOINTS.SUMMARY}\\/?$`);
+const SECURITY_SESSIONS_PATTERN = new RegExp(`${SECURITY_ENDPOINTS.SESSIONS}\\/?$`);
+const SECURITY_ACTIVITY_PATTERN = new RegExp(`${SECURITY_ENDPOINTS.ACTIVITY}\\/?$`);
 const GET_USER_CODES_PATTERN = new RegExp(USER_ENDPOINTS.GET_USER_CODES);
 const GENERATE_USER_CODE_PATTERN = new RegExp(USER_ENDPOINTS.GENERATE_USER_CODE);
 const GET_USER_ROLES_PATTERN = new RegExp(`${USER_ENDPOINTS.GET_USER_ROLES}\\?`);
@@ -95,11 +97,18 @@ export const iamHandlers = [
   http.post(SAVE_ROLES_AND_PERMISSIONS_PATTERN, () =>
     HttpResponse.json(mockSuccessResponseWithItemId),
   ),
-  http.get(GET_SESSIONS_PATTERN, () =>
-    HttpResponse.json({ data: [], totalCount: 0, errors: null }),
+  http.get(SECURITY_SUMMARY_PATTERN, () =>
+    HttpResponse.json({
+      currentSessionId: null,
+      totalSessions: 0,
+      activeSessions: 0,
+      expiredSessions: 0,
+      revokedSessions: 0,
+    }),
   ),
-  http.get(GET_HISTORIES_PATTERN, () =>
-    HttpResponse.json({ data: [], totalCount: 0, errors: null }),
+  http.get(SECURITY_SESSIONS_PATTERN, () => HttpResponse.json([])),
+  http.post(SECURITY_ACTIVITY_PATTERN, () =>
+    HttpResponse.json({ items: [], totalCount: 0, page: 0, pageSize: 25 }),
   ),
   http.get(GET_USER_CODES_PATTERN, () => HttpResponse.json({ data: [], errors: null })),
   http.post(GENERATE_USER_CODE_PATTERN, () => HttpResponse.json(mockSuccessResponse)),
@@ -117,7 +126,7 @@ export const iamHandlers = [
   http.post(RECOVER_PATTERN, () => HttpResponse.json(mockSuccessResponse)),
   http.post(RESET_PASSWORD_PATTERN, () => HttpResponse.json(mockSuccessResponse)),
   http.post(VALIDATE_ACTIVATION_CODE_PATTERN, () =>
-    HttpResponse.json(mockActivationCodeExpirationResponse),
+    HttpResponse.json(mockActivationCodeValidationResponse),
   ),
 
   // Role
@@ -205,7 +214,7 @@ export const resetPasswordHandler = (response: JsonBodyType = mockSuccessRespons
   http.post(RESET_PASSWORD_PATTERN, () => HttpResponse.json(response));
 
 export const validateActivationCodeHandler = (
-  response: JsonBodyType = mockActivationCodeExpirationResponse,
+  response: JsonBodyType = mockActivationCodeValidationResponse,
 ) => http.post(VALIDATE_ACTIVATION_CODE_PATTERN, () => HttpResponse.json(response));
 
 // Role

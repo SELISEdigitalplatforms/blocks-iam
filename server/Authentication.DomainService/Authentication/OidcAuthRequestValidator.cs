@@ -1,6 +1,6 @@
 using Authentication.DomainService.OAuth.RequestModel;
 using Authentication.DomainService.Shared;
-using Authentication.DomainService.Utilities;
+using Iam.DomainService.Utilities;
 
 namespace Authentication.DomainService.Authentication
 {
@@ -54,9 +54,9 @@ namespace Authentication.DomainService.Authentication
             {
                 errors.Add("code_challenge_method is required when code_challenge is provided");
             }
-            else if (!string.IsNullOrWhiteSpace(request.CodeChallengeMethod) && request.CodeChallengeMethod != AuthenticationConstants.PkceMethodS256)
+            else if (!string.IsNullOrWhiteSpace(request.CodeChallengeMethod) && request.CodeChallengeMethod != IdpConstants.PkceMethodS256)
             {
-                errors.Add($"code_challenge_method must be '{AuthenticationConstants.PkceMethodS256}' (plain method not supported)");
+                errors.Add($"code_challenge_method must be '{IdpConstants.PkceMethodS256}' (plain method not supported)");
             }
 
             return new AuthorizeValidationResult

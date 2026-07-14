@@ -26,10 +26,12 @@ export const SignupForm = ({
   loginOption,
   emailSignUpEnabled,
   ssoSignUpEnabled,
+  tenantId,
 }: {
   loginOption?: LoginOption;
   emailSignUpEnabled: boolean;
   ssoSignUpEnabled: boolean;
+  tenantId?: string;
 }) => {
   const [isChecked, setIsChecked] = useState(false);
   const navigate = useNavigate();
@@ -41,7 +43,7 @@ export const SignupForm = ({
     resolver: zodResolver(signupFormSchema),
   });
   const { isPending, mutateAsync } = useSignupByEmail();
-  const { data: oidcUiConfig, captchaEnabled } = useOidcUiConfig();
+  const { data: oidcUiConfig, captchaEnabled } = useOidcUiConfig(tenantId);
 
   const googleSiteKey =
     oidcUiConfig?.captcha?.key || getRuntimeEnv("BLOCKS_GOOGLE_SITE_KEY") || "";
@@ -77,6 +79,7 @@ export const SignupForm = ({
       const res = await mutateAsync({
         ...values,
         captchaCode,
+        tenantId,
       });
       if (!res.isSuccess) {
         resetCaptcha();
@@ -118,6 +121,62 @@ export const SignupForm = ({
       {emailSignUpEnabled && (
         <Form {...form}>
           <form ref={formRef} onSubmit={form.handleSubmit(onSubmitHandler, shake)} className="flex flex-col gap-5 w-full" noValidate>
+            {/* First Name & Last Name */}
+            <div className="flex flex-col sm:flex-row gap-4">
+              <FormField
+                control={form.control}
+                name="firstName"
+                render={({ field }) => (
+                  <FormItem className="flex-1">
+                    <div className="flex flex-col gap-2">
+                      <label htmlFor="signup-first-name" className="oidc-sci-fi-label">
+                        First Name
+                      </label>
+                      <FormControl>
+                        <input
+                          id="signup-first-name"
+                          type="text"
+                          autoComplete="given-name"
+                          placeholder="Jane"
+                          className="oidc-sci-fi-input"
+                          aria-invalid={!!form.formState.errors.firstName}
+                          disabled={isAuthenticating}
+                          {...field}
+                        />
+                      </FormControl>
+                      <FormMessage className="text-xs oidc-font-rajdhani" style={{ color: "var(--danger)" }} />
+                    </div>
+                  </FormItem>
+                )}
+              />
+              <FormField
+                control={form.control}
+                name="lastName"
+                render={({ field }) => (
+                  <FormItem className="flex-1">
+                    <div className="flex flex-col gap-2">
+                      <label htmlFor="signup-last-name" className="oidc-sci-fi-label">
+                        Last Name
+                      </label>
+                      <FormControl>
+                        <input
+                          id="signup-last-name"
+                          type="text"
+                          autoComplete="family-name"
+                          placeholder="Doe"
+                          className="oidc-sci-fi-input"
+                          aria-invalid={!!form.formState.errors.lastName}
+                          disabled={isAuthenticating}
+                          {...field}
+                        />
+                      </FormControl>
+                      <FormMessage className="text-xs oidc-font-rajdhani" style={{ color: "var(--danger)" }} />
+                    </div>
+                  </FormItem>
+                )}
+              />
+            </div>
+
             {/* Email */}
             <FormField
               control={form.control}

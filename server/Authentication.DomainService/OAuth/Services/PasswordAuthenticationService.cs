@@ -1,10 +1,10 @@
 using Blocks.Genesis;
-using Authentication.DomainService.Dtos;
 using Authentication.DomainService.Entities;
 using Authentication.DomainService.OAuth.RequestModel;
 using Authentication.DomainService.OAuth.ResponseModel;
 using Authentication.DomainService.Services;
-using Authentication.DomainService.Utilities;
+using Iam.DomainService.Dtos;
+using Iam.DomainService.Services;
 using Iam.DomainService.Accounts;
 using Iam.DomainService.Entities;
 using Microsoft.Extensions.Logging;
@@ -21,6 +21,7 @@ namespace Authentication.DomainService.OAuth
         private readonly ICryptoService _cryptoService;
         private readonly IAuthenticationDomainService _authenticationDomainService;
         private readonly IAccountService _accountService;
+        private readonly IUserActivityDispatcher _userActivityDispatcher;
 
         public PasswordAuthenticationService(
             ILogger<PasswordAuthenticationService> logger,
@@ -29,7 +30,8 @@ namespace Authentication.DomainService.OAuth
             ICryptoService cryptoService,
             IAuthenticationRepository oAuthRepository,
             IAuthenticationDomainService authenticationDomainService,
-            IAccountService accountService
+            IAccountService accountService,
+            IUserActivityDispatcher userActivityDispatcher
         )
         {
             _logger = logger;
@@ -39,11 +41,17 @@ namespace Authentication.DomainService.OAuth
             _oAuthRepository = oAuthRepository;
             _authenticationDomainService = authenticationDomainService;
             _accountService = accountService;
+            _userActivityDispatcher = userActivityDispatcher;
         }
         public async Task<TokenResponse> AuthenticateAsync(TokenRequest request, IdentityConfiguration authenticationConfiguration, User? user = null)
         {
             _logger.LogInformation("Password Authentication start");
 
+            // INVARIANT: All login failure modes (user not found, inactive, not verified)
+            // MUST return the generic `OAuthError.InValidResponse(request)` shape. The client
+            // only ever sees `invalid_username_password` / 401. Do not leak discriminators
+            // such as "user is not active" or "user not verified" — see
+            // PasswordAuthenticationServiceInvariantTests for regression coverage.
             user ??= await _oAuthRepository.GetUserByUsernameAsync(request.Username, request.OrganizationId);
             if (!IsValidUser(user) || !IsUserActiveAndVerified(user!)) return OAuthError.InValidResponse(request);
 
@@ -143,6 +151,12 @@ namespace Authentication.DomainService.OAuth
 
         }
 
+        // INVARIANT: Both `IsValidUser` and `IsUserActiveAndVerified` are combined in
+        // `AuthenticateAsync` to collapse "user not found", "inactive", and "not verified"
+        // into the same generic `OAuthError.InValidResponse`. Returning a different error
+        // for any of these branches leaks an account-state discriminator. The lockout path
+        // (returning 423) is an intentional, separate response and not a security leak
+        // because the user already knows whether their own account is locked.
         private static bool IsValidUser(User? user) =>
             user != null;
 
@@ -191,16 +205,20 @@ namespace Authentication.DomainService.OAuth
                 return;
             }
 
-            var timelineEvent = new UserAuthenticationTimelineEvent
+            await _userActivityDispatcher.SendUserActivityAsync(new UserActivityEvent
             {
                 UserId = userId,
+                Category = UserActivityCategory.Auth,
                 Event = eventName,
-                ActionBy = actionBy,
-                DeviceInformation = _authenticationDomainService.GetDeviceInfo(request.Request.Headers.UserAgent.ToString()),
-                IpAddresses = string.Join(",", _authenticationDomainService.GetVisitorsIpAddresses(request.Request.HttpContext))
-            };
-
-            await _authenticationDomainService.SendToQueueAsync(IdpConstants.AuthenticationQueue, timelineEvent);
+                Source = "auth-password",
+                Outcome = eventName.Contains("SUCCESS", StringComparison.OrdinalIgnoreCase) ? "success" : "failure",
+                Context = new ActivityContext
+                {
+                    IpAddress = string.Join(",", _authenticationDomainService.GetVisitorsIpAddresses(request.Request.HttpContext)),
+                    DeviceInformation = _authenticationDomainService.GetDeviceInfo(request.Request.Headers.UserAgent.ToString())
+                },
+                Metadata = new Dictionary<string, string> { { "actionBy", actionBy } }
+            });
         }
 
         private static string ResolveSignInOrganizationId(User user, string? requestedOrganizationId)

@@ -27,10 +27,22 @@ export const AuthenticationConfig = ({ section }: AuthenticationConfigProps) => 
   const isMultiOrgEnabled = configData?.isMultiOrgEnabled ?? true;
 
   return (
-    <div>
-      <div className="mb-4 flex flex-wrap items-start justify-between gap-4 md:mb-6">
-        <h1 className="text-lg font-semibold md:text-2xl">{pageTitle}</h1>
-        <div className="flex flex-wrap items-center gap-2">
+    <div className="flex min-h-0 flex-col lg:h-full">
+      <div className="mb-4 flex flex-col gap-3 md:mb-6 md:flex-row md:flex-wrap md:items-start md:justify-between md:gap-4">
+        <div className="min-w-0">
+          <h1 className="text-lg font-semibold md:text-2xl">{pageTitle}</h1>
+          {section === "organizations" && (
+            <p className="mt-1 text-sm text-muted-foreground">
+              Manage and organize access across your workspace.
+            </p>
+          )}
+          {section === "users" && (
+            <p className="mt-1 text-sm text-muted-foreground">
+              Invite, manage, and organize people who have access to your workspace.
+            </p>
+          )}
+        </div>
+        <div className="flex flex-wrap items-center justify-end gap-2">
           {section === "client-credential" && <CreateClientCredential />}
           {section === "users" && (
             <>

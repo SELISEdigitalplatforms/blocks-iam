@@ -1,4 +1,4 @@
-import { Card, CardContent, CardHeader } from "@/components/ui-kits/card/card";
+import { Card, CardContent, CardFooter, CardHeader } from "@/components/ui-kits/card/card";
 import { OrganizationUsersTable } from "./organization-users-table";
 import { Pagination } from "@/components/ui-kits/pagination/pagination";
 import { useGetUsers } from "@blocks-idp/iam/hooks/use-user";
@@ -11,9 +11,17 @@ import {
 
 interface OrganizationUsersProps {
   organizationId: string;
+  title?: string;
+  description?: string;
+  action?: React.ReactNode;
 }
 
-export const OrganizationUsers = ({ organizationId }: OrganizationUsersProps) => {
+export const OrganizationUsers = ({
+  organizationId,
+  title,
+  description,
+  action,
+}: OrganizationUsersProps) => {
   const { queryParams, setQueryParams } = useOrganizationUsersFilterQueryParams();
   const { sortQueryParams } = useOrganizationUsersSortQueryParams();
   const tenantId = useProjectStore().selectedProject?.tenantId || "";
@@ -37,25 +45,56 @@ export const OrganizationUsers = ({ organizationId }: OrganizationUsersProps) =>
   const isUserLoading = isLoading || isFetching;
 
   return (
-    <Card>
-      <CardHeader>
-        <OrganizationUsersFilterToolbar />
-      </CardHeader>
-
-      <CardContent>
-        <OrganizationUsersTable users={data?.data || []} isLoading={isUserLoading} />
-        {!isUserLoading && data && data.totalCount > queryParams.pageSize && (
-          <div className="mt-5 flex items-center md:justify-end">
-            <Pagination
-              page={queryParams.page}
-              pageSize={queryParams.pageSize}
-              totalCount={data?.totalCount || 0}
-              pageSizeOptions={[10]}
-              onChange={onPageChangeHandler}
-            />
+    <Card className="flex h-full min-h-0 min-w-0 flex-col overflow-hidden">
+      <CardHeader className="mb-2 flex-col gap-3 pt-1">
+        {(title || description) && (
+          <div className="flex flex-col gap-1">
+            {title && <h3 className="text-base font-semibold leading-none">{title}</h3>}
+            {description && (
+              <p className="text-sm text-muted-foreground">{description}</p>
+            )}
           </div>
         )}
+        <div className="flex items-center justify-between gap-3">
+          <div className="min-w-0 flex-1">
+            <OrganizationUsersFilterToolbar />
+          </div>
+          <div className="flex shrink-0 items-center gap-3">{action}</div>
+        </div>
+      </CardHeader>
+
+      <CardContent className="scrollbar-slim min-h-0 min-w-0 flex-1 mt-4">
+        <OrganizationUsersTable
+          users={data?.data || []}
+          isLoading={isUserLoading}
+          organizationId={organizationId}
+          projectKey={tenantId}
+        />
       </CardContent>
+      {!isUserLoading && data && data.totalCount > 0 && (
+        <CardFooter className="flex items-center justify-between gap-3 pt-3 md:pt-5">
+          <span className="hidden text-xs text-muted-foreground md:inline">
+            {(() => {
+              const total = data?.totalCount ?? 0;
+              const size = queryParams.pageSize;
+              const start = total === 0 ? 0 : queryParams.page * size + 1;
+              const end = Math.min(total, (queryParams.page + 1) * size);
+              return `Showing ${start}–${end} of ${total} members`;
+            })()}
+          </span>
+          <Pagination
+            compact
+            page={queryParams.page}
+            pageSize={queryParams.pageSize}
+            totalCount={data?.totalCount || 0}
+            pageSizeOptions={[5, 10, 25, 50]}
+            onChange={onPageChangeHandler}
+            onPageSizeChange={(size) =>
+              setQueryParams((params) => ({ ...params, pageSize: size, page: 0 }))
+            }
+          />
+        </CardFooter>
+      )}
     </Card>
   );
 };

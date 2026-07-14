@@ -12,6 +12,7 @@ import { isErrorWithErrors } from "@/lib/error";
 import { ISsoProviderConfiguration } from "@blocks-idp/authentication/models/sso.model";
 import { useNavigate } from "react-router-dom";
 import { SSOProviderConfigOwnSSOForm } from "./sso-provider-config-blocks-own-sso-form";
+import { useScopedPath } from "@/hooks/use-scoped-path";
 export type SsoConfigFormsProps = {
   provider: SSO_PROVIDERS;
   id: string;
@@ -25,6 +26,7 @@ export type SsoConfigForms = {
 export const SsoProviderConfigForms = ({ provider, id }: SsoConfigFormsProps) => {
   const tenantId = useProjectStore().selectedProject?.tenantId || "";
   const navigate = useNavigate();
+  const scoped = useScopedPath();
   const { data } = useGetSsoCredentialById({
     itemId: id,
     projectKey: tenantId,
@@ -46,7 +48,7 @@ export const SsoProviderConfigForms = ({ provider, id }: SsoConfigFormsProps) =>
         projectKey: tenantId,
       });
       if (!res.isSuccess) return showErrorToast({ errors: res.errors });
-      if (!id) navigate(`/app/sso-configuration?provider=${provider}&id=${res.itemId}`);
+      if (!id) navigate(scoped(`sso-configuration?provider=${provider}&id=${res.itemId}`));
       showSuccessToast({ description: `${provider} is configured successfully` });
     } catch (error) {
       if (isErrorWithErrors(error)) return showErrorToast({ errors: error.errors });

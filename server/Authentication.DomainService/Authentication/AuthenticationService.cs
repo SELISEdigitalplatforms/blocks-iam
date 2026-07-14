@@ -1,4 +1,5 @@
 using Authentication.DomainService.Dtos;
+using Authentication.DomainService.Utilities;
 using Authentication.DomainService.Entities;
 using Authentication.DomainService.OAuth;
 using Authentication.DomainService.OAuth.RequestModel;
@@ -8,9 +9,11 @@ using Authentication.DomainService.Services;
 using Authentication.DomainService.Shared;
 using Authentication.DomainService.Shared.Dtos;
 using Authentication.DomainService.Shared.RequestModel;
-using Authentication.DomainService.Utilities;
+using Authentication.DomainService.Shared.ResponseModel;
+using Iam.DomainService.Dtos;
+using Iam.DomainService.Services;
+using Iam.DomainService.Utilities;
 using Blocks.Genesis;
-using Idp.DomainService.Oidc.Contracts;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.Logging;
@@ -31,10 +34,11 @@ namespace Authentication.DomainService.Authentication
         private readonly ILogger<AuthenticationService> _logger;
         private readonly ICacheClient _cacheClient;
         private readonly IAuthenticationRepository _authenticationRepository;
-        private readonly IAuditLogRepository _auditLogRepository;
         private readonly IAuthenticationDomainService _authenticationDomainService;
         private readonly IAuthSessionFacade _authSession;
         private readonly ITenants _tenants;
+        private readonly IUserActivityDispatcher _userActivityDispatcher;
+        private readonly IRefreshTokenRepository _refreshTokenRepository;
 
         private const string PublicCertCachePrefix = "tetocertpublic::";
 
@@ -42,19 +46,21 @@ namespace Authentication.DomainService.Authentication
             ILogger<AuthenticationService> logger,
             ICacheClient cacheClient,
             IAuthenticationRepository authenticationRepository,
-            IAuditLogRepository auditLogRepository,
             IAuthenticationDomainService authenticationDomainService,
             IAuthSessionFacade authSession,
-            ITenants tenants
+            ITenants tenants,
+            IUserActivityDispatcher userActivityDispatcher,
+            IRefreshTokenRepository refreshTokenRepository
         )
         {
             _logger = logger;
             _cacheClient = cacheClient;
             _authenticationRepository = authenticationRepository;
-            _auditLogRepository = auditLogRepository;
             _authenticationDomainService = authenticationDomainService;
             _authSession = authSession;
             _tenants = tenants;
+            _userActivityDispatcher = userActivityDispatcher;
+            _refreshTokenRepository = refreshTokenRepository;
         }
 
         public async Task<IActionResult> BuildFlowResultAsync(AuthenticationFlowResult result, HttpContext httpContext)
@@ -91,7 +97,7 @@ namespace Authentication.DomainService.Authentication
         public async Task<bool> UpdateIdpSessionForLogoutAsync(HttpContext httpContext, ClaimsPrincipal user, bool isGlobalLogout)
         {
             var bc = BlocksContext.GetContext();
-            var sessionId = httpContext.Request.Cookies[$"{IdpConstants.IdpSessionCookieName}_{bc!.TenantId}"];
+            var sessionId = httpContext.Request.Cookies[IdpConstants.BuildIdpSessionCookieKey(bc!.TenantId)];
             if (string.IsNullOrWhiteSpace(sessionId))
             {
                 return true;
@@ -124,7 +130,7 @@ namespace Authentication.DomainService.Authentication
         public void ClearIdpSessionCookie(HttpResponse response)
         {
             var bc = BlocksContext.GetContext();
-            response.Cookies.Delete($"{IdpConstants.IdpSessionCookieName}_{bc!.TenantId}");
+            response.Cookies.Delete(IdpConstants.BuildIdpSessionCookieKey(bc!.TenantId));
         }
 
         public async Task<LogoutResponse> LogoutUser(string refreshToken, HttpRequest httpRequest)
@@ -173,16 +179,18 @@ namespace Authentication.DomainService.Authentication
 
             await _cacheClient.RemoveKeyAsync(refreshToken);
 
-            var result = await _authenticationRepository.RevokeIdentitySessionAsync(refreshToken, bc?.UserId ?? "");
+            await _refreshTokenRepository.RevokeByTokenIdAsync(refreshToken, "logout");
 
-            return result;
+            return true;
         }
 
         public async Task<LogoutResponse> LogoutAll(HttpRequest httpRequest)
         {
             var bc = BlocksContext.GetContext();
+            var userId = bc?.UserId ?? string.Empty;
 
-            var refreshTokens = (await _authenticationRepository.GetActiveIdentitySessionByUserIdAsync(bc?.UserId ?? string.Empty)).Select(x => x.RefreshToken).ToList();
+            var activeTokens = await _refreshTokenRepository.GetActiveTokensByUserAsync(userId);
+            var refreshTokens = activeTokens.Select(t => t.TokenId).Where(id => !string.IsNullOrWhiteSpace(id)).ToList();
 
             var revokeTasks = refreshTokens.Select(async token =>
             {
@@ -195,28 +203,37 @@ namespace Authentication.DomainService.Authentication
             });
             await Task.WhenAll(revokeTasks);
 
-            var result = await _authenticationRepository.RevokeIdentitySessionsByRefreshTokensAsync(refreshTokens);
+            await _refreshTokenRepository.RevokeAllByTokenIdsAsync(refreshTokens, "logout_all");
 
             await ProcessTimeline(httpRequest, true);
             return new LogoutResponse
             {
-                IsSuccess = result,
+                IsSuccess = true,
             };
         }
 
         public async Task<bool> ProcessTimeline(HttpRequest httpRequest, bool isFromAll)
         {
             var bc = BlocksContext.GetContext();
-            var eventTimeline = new UserAuthenticationTimelineEvent
-            {
-                DeviceInformation = _authenticationDomainService.GetDeviceInfo(httpRequest?.Headers?.UserAgent ?? string.Empty),
-                IpAddresses = string.Join(",", _authenticationDomainService.GetVisitorsIpAddresses(httpRequest?.HttpContext)),
-                Event = isFromAll ? "revoke_access_by_logout_all" : "revoke_access_by_logout",
-                ActionBy = isFromAll ? "call_api_to_logout_all" : "call_api_to_logout",
-                UserId = bc?.UserId ?? ""
-            };
+            var deviceInfo = _authenticationDomainService.GetDeviceInfo(httpRequest?.Headers?.UserAgent ?? string.Empty);
+            var ipAddresses = string.Join(",", _authenticationDomainService.GetVisitorsIpAddresses(httpRequest?.HttpContext));
 
-            await _authenticationDomainService.SendToQueueAsync(IdpConstants.AuthenticationQueue, eventTimeline);
+            await _userActivityDispatcher.SendUserActivityAsync(new UserActivityEvent
+            {
+                UserId = bc?.UserId ?? "",
+                Category = UserActivityCategory.Auth,
+                Event = isFromAll ? "LOGOUT_ALL" : "LOGOUT",
+                Source = "auth-logout",
+                Context = new ActivityContext
+                {
+                    IpAddress = ipAddresses,
+                    DeviceInformation = deviceInfo
+                },
+                Metadata = new Dictionary<string, string>
+                {
+                    { "actionBy", isFromAll ? "call_api_to_logout_all" : "call_api_to_logout" }
+                }
+            });
             return true;
         }
 
@@ -286,7 +303,6 @@ namespace Authentication.DomainService.Authentication
 
         public async Task<IActionResult> GetLoginOptionsAsync()
         {
-            var config = await _authenticationRepository.GetAuthenticationConfigurationAsync();
             var identityProviders = await _authenticationRepository.GetIdentityProvidersAsync();
 
             // Filter to only social providers that are active
@@ -352,10 +368,10 @@ namespace Authentication.DomainService.Authentication
                     RedirectUri = redirectUri,
                     Audience = clientId,
                 });
-                await _cacheClient.AddStringValueAsync(state, stateValue, AuthenticationConstants.OidcStateCacheTtlSeconds); // 5 minutes in seconds
+                await _cacheClient.AddStringValueAsync(state, stateValue, IdpConstants.OidcStateCacheTtlSeconds); // 5 minutes in seconds
 
                 // Build authorization URL
-                var scope = identityProvider.Scope ?? AuthenticationConstants.OpenIdProfileEmailScope;
+                var scope = identityProvider.Scope ?? IdpConstants.OpenIdProfileEmailScope;
                 redirectUri = string.IsNullOrWhiteSpace(redirectUri) ? identityProvider.RedirectUris.FirstOrDefault() : redirectUri;
                 var authorizationUrl = BuildAuthorizationUrl(identityProvider, state, redirectUri, scope);
 
@@ -417,11 +433,11 @@ namespace Authentication.DomainService.Authentication
                     Provider = identityProvider.Provider,
                     CreatedAt = DateTime.UtcNow
                 });
-                await _cacheClient.AddStringValueAsync(stateKey, stateValue, AuthenticationConstants.OidcStateCacheTtlSeconds); // 5 minute TTL
+                await _cacheClient.AddStringValueAsync(stateKey, stateValue, IdpConstants.OidcStateCacheTtlSeconds); // 5 minute TTL
 
                 // Build authorization URL for social provider
                 // Callback should redirect to /oidc/callback with provider and state
-                var scope = identityProvider.Scope ?? AuthenticationConstants.OpenIdProfileEmailScope;
+                var scope = identityProvider.Scope ?? IdpConstants.OpenIdProfileEmailScope;
                 providerRedirectUri = string.IsNullOrWhiteSpace(providerRedirectUri) ? identityProvider.RedirectUris.FirstOrDefault() : providerRedirectUri;
                 var authorizationUrl = BuildAuthorizationUrl(identityProvider, socialState, providerRedirectUri, scope);
 
@@ -495,7 +511,7 @@ namespace Authentication.DomainService.Authentication
                 user_id = bc?.UserId,
                 tenant_id = bc?.TenantId,
                 event_name = "logout_all",
-                session_id = httpRequest.Cookies["idp_session_id"],
+                session_id = httpRequest.Cookies[IdpConstants.BuildIdpSessionCookieKey(bc?.TenantId)],
                 occurred_at_utc = DateTime.UtcNow
             };
 
@@ -514,8 +530,8 @@ namespace Authentication.DomainService.Authentication
                         if (response.IsSuccessStatusCode)
                         {
                             delivered = true;
-                            await PersistBackchannelDeliveryAuditAsync(logoutEventId, uri!, AuthenticationConstants.StatusSent, attempt, (int)response.StatusCode, BackchannelAuditEvents.Delivered);
-                            await PublishSecurityEventAsync(httpRequest, BackchannelAuditEvents.Succeeded, BackchannelAuditEvents.Dispatch, AuthenticationConstants.StatusSuccess, null, logoutEventId, uri);
+                            await PersistBackchannelDeliveryAuditAsync(logoutEventId, uri!, IdpConstants.StatusSent, attempt, (int)response.StatusCode, BackchannelAuditEvents.Delivered);
+                            await PublishSecurityEventAsync(httpRequest, BackchannelAuditEvents.Succeeded, BackchannelAuditEvents.Dispatch, IdpConstants.StatusSuccess, null, logoutEventId, uri);
                             _logger.LogInformation(
                                 "SecurityEvent backchannel_logout_succeeded event={LogoutEventId} tenant={TenantId} uri={Uri} attempt={Attempt}",
                                 logoutEventId,
@@ -525,8 +541,8 @@ namespace Authentication.DomainService.Authentication
                             break;
                         }
 
-                            await PersistBackchannelDeliveryAuditAsync(logoutEventId, uri!, AuthenticationConstants.StatusFailure, attempt, (int)response.StatusCode, BackchannelAuditEvents.DeliveryFailed);
-                            await PublishSecurityEventAsync(httpRequest, BackchannelAuditEvents.Failed, BackchannelAuditEvents.Dispatch, AuthenticationConstants.StatusFailure, $"status_{(int)response.StatusCode}", logoutEventId, uri);
+                            await PersistBackchannelDeliveryAuditAsync(logoutEventId, uri!, IdpConstants.StatusFailure, attempt, (int)response.StatusCode, BackchannelAuditEvents.DeliveryFailed);
+                            await PublishSecurityEventAsync(httpRequest, BackchannelAuditEvents.Failed, BackchannelAuditEvents.Dispatch, IdpConstants.StatusFailure, $"status_{(int)response.StatusCode}", logoutEventId, uri);
                         _logger.LogWarning(
                             "SecurityEvent backchannel_logout_failed event={LogoutEventId} tenant={TenantId} uri={Uri} status={StatusCode} attempt={Attempt}",
                             logoutEventId,
@@ -539,7 +555,7 @@ namespace Authentication.DomainService.Authentication
                     catch (Exception ex)
                     {
                         await PersistBackchannelDeliveryAuditAsync(logoutEventId, uri!, "failed_exception", attempt, null, ex.GetType().Name);
-                        await PublishSecurityEventAsync(httpRequest, BackchannelAuditEvents.Exception, BackchannelAuditEvents.Dispatch, AuthenticationConstants.StatusFailure, ex.GetType().Name, logoutEventId, uri);
+                        await PublishSecurityEventAsync(httpRequest, BackchannelAuditEvents.Exception, BackchannelAuditEvents.Dispatch, IdpConstants.StatusFailure, ex.GetType().Name, logoutEventId, uri);
                         _logger.LogWarning(
                             ex,
                             "SecurityEvent backchannel_logout_exception event={LogoutEventId} tenant={TenantId} uri={Uri} attempt={Attempt}",
@@ -551,7 +567,7 @@ namespace Authentication.DomainService.Authentication
 
                     if (attempt < maxAttempts)
                     {
-                        await Task.Delay(TimeSpan.FromMilliseconds(AuthenticationConstants.BackchannelRetryBackoffMilliseconds * attempt));
+                        await Task.Delay(TimeSpan.FromMilliseconds(IdpConstants.BackchannelRetryBackoffMilliseconds * attempt));
                     }
                 }
 
@@ -567,41 +583,52 @@ namespace Authentication.DomainService.Authentication
         private async Task PersistBackchannelDeliveryAuditAsync(string logoutEventId, string uri, string status, int attempt, int? statusCode, string details)
         {
             var bc = BlocksContext.GetContext();
-            var log = new AuditLogModel
-            {
-                    EventType = BackchannelAuditEvents.Delivery,
-                UserId = bc?.UserId,
-                TenantId = bc?.TenantId,
-                Severity = status.StartsWith("failed", StringComparison.OrdinalIgnoreCase) ? AuthenticationConstants.SeverityWarn : AuthenticationConstants.SeverityInfo,
-                Status = status,
-                Message = $"backchannel logout {status}",
-                Details = $"event={logoutEventId};attempt={attempt};uri={uri};status_code={(statusCode?.ToString() ?? "n/a")};reason={details}",
-                Timestamp = DateTime.UtcNow
-            };
 
-            await _auditLogRepository.CreateAsync(log);
+            await _userActivityDispatcher.SendUserActivityAsync(new UserActivityEvent
+            {
+                UserId = bc?.UserId ?? string.Empty,
+                TenantId = bc?.TenantId,
+                Category = UserActivityCategory.Audit,
+                Event = BackchannelAuditEvents.Delivery,
+                Source = "auth-backchannel",
+                Severity = status.StartsWith("failed", StringComparison.OrdinalIgnoreCase) ? "warn" : "info",
+                Outcome = status,
+                ReasonCode = details,
+                Metadata = new Dictionary<string, string>
+                {
+                    { "logoutEventId", logoutEventId },
+                    { "attempt", attempt.ToString() },
+                    { "uri", uri },
+                    { "statusCode", statusCode?.ToString() ?? "n/a" },
+                    { "message", $"backchannel logout {status}" }
+                }
+            });
         }
 
         private async Task PublishSecurityEventAsync(HttpRequest request, string eventName, string actionBy, string outcome, string? reasonCode, string correlationId, string? targetUri = null)
         {
             var bc = BlocksContext.GetContext();
-            var timelineEvent = new UserAuthenticationTimelineEvent
+
+            await _userActivityDispatcher.SendUserActivityAsync(new UserActivityEvent
             {
-                DeviceInformation = _authenticationDomainService.GetDeviceInfo(request?.Headers?.UserAgent.ToString() ?? string.Empty),
-                IpAddresses = string.Join(",", _authenticationDomainService.GetVisitorsIpAddresses(request?.HttpContext)),
-                Event = eventName,
-                ActionBy = actionBy,
-                UserId = bc?.UserId,
+                UserId = bc?.UserId ?? string.Empty,
                 TenantId = bc?.TenantId,
-                SessionId = request?.Cookies[$"{IdpConstants.IdpSessionCookieName}_{bc?.TenantId}"],
-                CorrelationId = correlationId,
+                Category = UserActivityCategory.Audit,
+                Event = eventName,
+                Source = "auth-security",
+                Severity = "low",
                 Outcome = outcome,
                 ReasonCode = reasonCode,
-                RiskLevel = "low",
-                ClientId = targetUri
-            };
-
-            await _authenticationDomainService.SendToQueueAsync(IdpConstants.AuthenticationQueue, timelineEvent);
+                CorrelationId = correlationId,
+                SessionId = request?.Cookies[IdpConstants.BuildIdpSessionCookieKey(bc?.TenantId)],
+                ClientId = targetUri,
+                Context = new ActivityContext
+                {
+                    IpAddress = string.Join(",", _authenticationDomainService.GetVisitorsIpAddresses(request?.HttpContext)),
+                    DeviceInformation = _authenticationDomainService.GetDeviceInfo(request?.Headers?.UserAgent.ToString() ?? string.Empty)
+                },
+                Metadata = new Dictionary<string, string> { { "actionBy", actionBy } }
+            });
         }
 
         public async Task<ClaimsPrincipal?> GetPrincipalFromTokenAsync(HttpRequest request, string tenantId, bool IsUserInfoGetRequest = false)
@@ -919,7 +946,7 @@ namespace Authentication.DomainService.Authentication
                 return;
             }
             var bc = BlocksContext.GetContext();
-            var sessionId = httpContext.Request.Cookies[$"{IdpConstants.IdpSessionCookieName}_{bc?.TenantId}"];
+            var sessionId = httpContext.Request.Cookies[IdpConstants.BuildIdpSessionCookieKey(bc?.TenantId)];
             if (string.IsNullOrWhiteSpace(sessionId))
             {
                 sessionId = await _authSession.CreateSessionAsync(userId, tenantId, httpContext.Connection.RemoteIpAddress?.ToString() ?? "unknown");
@@ -951,7 +978,7 @@ namespace Authentication.DomainService.Authentication
                 }
             }
 
-            httpContext.Response.Cookies.Append($"{IdpConstants.IdpSessionCookieName}_{bc?.TenantId}", sessionId, CreateCookieOptions(tokenResponse.CookieDomain, tokenResponse.RefreshExpiresUtc));
+            httpContext.Response.Cookies.Append(IdpConstants.BuildIdpSessionCookieKey(bc?.TenantId), sessionId, CreateCookieOptions(tokenResponse.CookieDomain, tokenResponse.RefreshExpiresUtc));
         }
 
         public async Task<bool> EnsureIdpSessionForOidcCallbackAsync(HttpContext httpContext, string userId, string tenantId)
@@ -965,7 +992,7 @@ namespace Authentication.DomainService.Authentication
             try
             {
                 var bc = BlocksContext.GetContext();
-                var sessionId = httpContext.Request.Cookies[$"{IdpConstants.IdpSessionCookieName}_{bc?.TenantId}"];
+                var sessionId = httpContext.Request.Cookies[IdpConstants.BuildIdpSessionCookieKey(bc?.TenantId)];
                 if (string.IsNullOrWhiteSpace(sessionId))
                 {
                     // Create new session for this OIDC callback
@@ -1003,7 +1030,7 @@ namespace Authentication.DomainService.Authentication
 
                 // Set session cookie
                 var domain = DomainResolver.ResolveDomain(_tenants.GetTenantByID(tenantId), httpContext.Request).domain;
-                httpContext.Response.Cookies.Append($"{IdpConstants.IdpSessionCookieName}_{bc?.TenantId}", sessionId, CreateCookieOptions(null, DateTime.UtcNow.AddDays(AuthenticationConstants.IdpSessionCookieTtlDays)));
+                httpContext.Response.Cookies.Append(IdpConstants.BuildIdpSessionCookieKey(bc?.TenantId), sessionId, CreateCookieOptions(null, DateTime.UtcNow.AddDays(IdpConstants.IdpSessionCookieTtlDays)));
                 return true;
             }
             catch (Exception ex)
@@ -1013,9 +1040,9 @@ namespace Authentication.DomainService.Authentication
             }
         }
 
-        public async Task<BaseResponse> CreateIdentityProviderAsync(IdentityProvider provider)
+        public async Task<BaseResponse> CreateIdentityProviderAsync(SaveIdentityProviderRequest request)
         {
-            return await _authenticationDomainService.CreateIdentityProviderAsync(provider);
+            return await _authenticationDomainService.CreateIdentityProviderAsync(request);
         }
 
         public async Task<IdentityProvider?> GetIdentityProviderAsync(string provider)
@@ -1033,9 +1060,9 @@ namespace Authentication.DomainService.Authentication
             return await _authenticationDomainService.GetAllIdentityProvidersAsync();
         }
 
-        public async Task<BaseResponse> UpdateIdentityProviderAsync(IdentityProvider provider)
+        public async Task<BaseResponse> UpdateIdentityProviderAsync(string id, UpdateIdentityProviderRequest request)
         {
-            return await _authenticationDomainService.UpdateIdentityProviderAsync(provider);
+            return await _authenticationDomainService.UpdateIdentityProviderAsync(id, request);
         }
 
         public async Task<BaseResponse> DeleteIdentityProviderAsync(string id)
@@ -1046,6 +1073,11 @@ namespace Authentication.DomainService.Authentication
         public async Task<BaseResponse> UpdateIdentityProviderStatusAsync(string id, bool isActive)
         {
             return await _authenticationDomainService.UpdateIdentityProviderStatusAsync(id, isActive);
+        }
+
+        public async Task<RotateOidcClientSecretResponse> RotateOidcClientSecretAsync(string itemId)
+        {
+            return await _authenticationDomainService.RotateOidcClientSecretAsync(itemId);
         }
         private async Task<bool> IsTenantSharedWithUserAsync(string userId, string targetTenantId)
         {
@@ -1136,7 +1168,9 @@ namespace Authentication.DomainService.Authentication
             try
             {
 
-                var clientId = rootRefreshCache.ClientId;
+                var clientId = !string.IsNullOrWhiteSpace(rootRefreshCache.ClientId)
+                    ? rootRefreshCache.ClientId
+                    : request.ClientId;
                 if (string.IsNullOrWhiteSpace(clientId) || !await HasOidcClientConfigurationAsync(clientId))
                 {
                     return new ObjectResult(new
@@ -1169,7 +1203,7 @@ namespace Authentication.DomainService.Authentication
                 }
 
                 _logger.LogInformation("Impersonation started by user {UserId} from root tenant {RootTenantId} to target tenant {TargetTenantId}", userId, rootTenant.TenantId, request.TargetTenantId);
-                await WriteImpersonationAuditEventAsync(httpRequest, LoginAuditEvents.ImpersonationStarted, userId, request.TargetTenantId, AuthenticationConstants.SeverityInfo, AuthenticationConstants.StatusSuccess, rootTenant.TenantId);
+                await WriteImpersonationAuditEventAsync(httpRequest, LoginAuditEvents.ImpersonationStarted, userId, request.TargetTenantId, IdpConstants.SeverityInfo, IdpConstants.StatusSuccess, rootTenant.TenantId);
 
                 var tokenRequest = new TokenRequest
                 {
@@ -1250,20 +1284,24 @@ namespace Authentication.DomainService.Authentication
         {
             try
             {
-                var entry = new AuditLogModel
+                await _userActivityDispatcher.SendUserActivityAsync(new UserActivityEvent
                 {
-                    EventType = eventType,
                     UserId = userId,
                     TenantId = rootTenantId,
+                    Category = UserActivityCategory.Audit,
+                    Event = eventType,
+                    Source = "auth-impersonation",
                     Severity = severity,
-                    Status = status,
-                    Timestamp = DateTime.UtcNow,
-                    IpAddress = httpRequest.HttpContext.Connection.RemoteIpAddress?.ToString(),
-                    UserAgent = httpRequest.Headers.UserAgent.ToString(),
-                    Details = string.IsNullOrWhiteSpace(targetTenantId) ? null : $"target_tenant={targetTenantId}"
-                };
-
-                await _auditLogRepository.CreateAsync(entry);
+                    Outcome = status,
+                    Context = new ActivityContext
+                    {
+                        IpAddress = httpRequest.HttpContext.Connection.RemoteIpAddress?.ToString(),
+                        UserAgent = httpRequest.Headers.UserAgent.ToString()
+                    },
+                    Metadata = string.IsNullOrWhiteSpace(targetTenantId)
+                        ? null
+                        : new Dictionary<string, string> { { "targetTenantId", targetTenantId } }
+                });
             }
             catch (Exception ex)
             {
@@ -1290,7 +1328,7 @@ namespace Authentication.DomainService.Authentication
 
             if (session == null)
             {
-                await WriteImpersonationAuditEventAsync(httpRequest, LoginAuditEvents.ImpersonationStopFailed, bc!.UserId, null, AuthenticationConstants.SeverityWarn, OAuthError.SessionNotFound, rootTenant.TenantId);
+                await WriteImpersonationAuditEventAsync(httpRequest, LoginAuditEvents.ImpersonationStopFailed, bc!.UserId, null, IdpConstants.SeverityWarn, OAuthError.SessionNotFound, rootTenant.TenantId);
                 ClearImpersonationCookies(httpResponse, rootDomain, rootCookieDomain);
                 return new UnauthorizedObjectResult(new { error = OAuthError.SessionExpired });
             }
@@ -1332,7 +1370,7 @@ namespace Authentication.DomainService.Authentication
             var rootUser = !string.IsNullOrWhiteSpace(bc!.UserId) ? await _authenticationRepository.GetUserByIdAsync(bc!.UserId) : null;
             if (rootUser == null)
             {
-                await WriteImpersonationAuditEventAsync(httpRequest, LoginAuditEvents.ImpersonationStopFailed, bc!.UserId, session.TargetTenantId, AuthenticationConstants.SeverityWarn, OAuthError.RootUserNotFound, rootTenant.TenantId);
+                await WriteImpersonationAuditEventAsync(httpRequest, LoginAuditEvents.ImpersonationStopFailed, bc!.UserId, session.TargetTenantId, IdpConstants.SeverityWarn, OAuthError.RootUserNotFound, rootTenant.TenantId);
                 ClearImpersonationCookies(httpResponse, rootDomain, rootCookieDomain);
                 return new BadRequestObjectResult(new { error = "session_expired" });
             }
@@ -1340,7 +1378,7 @@ namespace Authentication.DomainService.Authentication
             var tokenResponse = await _authSession.ManageTokenAsync(tokenRequest, configuration, rootUser);
             if (!string.IsNullOrWhiteSpace(tokenResponse.Error))
             {
-                await WriteImpersonationAuditEventAsync(httpRequest, LoginAuditEvents.ImpersonationStopFailed, bc!.UserId, session.TargetTenantId, AuthenticationConstants.SeverityWarn, tokenResponse.Error, rootTenant.TenantId);
+                await WriteImpersonationAuditEventAsync(httpRequest, LoginAuditEvents.ImpersonationStopFailed, bc!.UserId, session.TargetTenantId, IdpConstants.SeverityWarn, tokenResponse.Error, rootTenant.TenantId);
                 ClearImpersonationCookies(httpResponse, rootDomain, rootCookieDomain);
                 return new BadRequestObjectResult(new { error = tokenResponse.Error });
             }
@@ -1360,7 +1398,7 @@ namespace Authentication.DomainService.Authentication
                 _logger.LogWarning(ex, "Failed to cleanup impersonation session {SessionId}", impersonationSessionId);
             }
 
-            await WriteImpersonationAuditEventAsync(httpRequest, LoginAuditEvents.ImpersonationStopped, bc!.UserId, session.TargetTenantId, AuthenticationConstants.SeverityInfo, AuthenticationConstants.StatusSuccess, rootTenant.TenantId);
+            await WriteImpersonationAuditEventAsync(httpRequest, LoginAuditEvents.ImpersonationStopped, bc!.UserId, session.TargetTenantId, IdpConstants.SeverityInfo, IdpConstants.StatusSuccess, rootTenant.TenantId);
 
             await _authSession.RevokeRefreshToken(refreshToken);
 
@@ -1428,7 +1466,7 @@ namespace Authentication.DomainService.Authentication
             var isSharedWithUser = await IsTenantSharedWithUserAsync(userId, request.TargetTenantId);
             if (!isSharedWithUser)
             {
-                await WriteImpersonationAuditEventAsync(httpRequest, LoginAuditEvents.ImpersonationStartDenied, userId, request.TargetTenantId, AuthenticationConstants.SeverityWarn, OAuthError.NotSharedWithUser, rootTenant.TenantId);
+                await WriteImpersonationAuditEventAsync(httpRequest, LoginAuditEvents.ImpersonationStartDenied, userId, request.TargetTenantId, IdpConstants.SeverityWarn, OAuthError.NotSharedWithUser, rootTenant.TenantId);
                 return (new ObjectResult(new
                 {
                     error = "forbidden",
@@ -1498,7 +1536,7 @@ namespace Authentication.DomainService.Authentication
                     };
                 }
 
-                await WriteImpersonationAuditEventAsync(httpRequest, "org_switched", userId, request.TargetTenantId, AuthenticationConstants.SeverityInfo, AuthenticationConstants.StatusSuccess, rootTenant.TenantId);
+                await WriteImpersonationAuditEventAsync(httpRequest, "org_switched", userId, request.TargetTenantId, IdpConstants.SeverityInfo, IdpConstants.StatusSuccess, rootTenant.TenantId);
 
                 var cookiesSet = AppendCookies(newTokenResponse, httpResponse, rootDomain);
                 if (cookiesSet)

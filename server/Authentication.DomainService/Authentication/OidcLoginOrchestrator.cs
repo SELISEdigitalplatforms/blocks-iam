@@ -1,14 +1,11 @@
 using Authentication.DomainService.Entities;
+using Iam.DomainService.Utilities;
 using Authentication.DomainService.OAuth;
-using Authentication.DomainService.OAuth.RequestModel;
-using Authentication.DomainService.Oidc.Repositories;
 using Authentication.DomainService.Services;
-using Authentication.DomainService.Shared;
 using Authentication.DomainService.Shared.Dtos;
 using Blocks.Genesis;
 using Iam.DomainService.Entities;
 using Iam.DomainService.Users;
-using Idp.DomainService.Oidc.Contracts;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.Logging;
@@ -27,7 +24,6 @@ namespace Authentication.DomainService.Authentication
     public sealed class OidcLoginOrchestrator
     {
         private readonly IAuthenticationRepository _authenticationRepository;
-        private readonly IAuditLogRepository _auditLogRepo;
         private readonly IMfaChallengeIssuer _mfaChallengeIssuer;
         private readonly IAuthenticationService _authenticationService;
         private readonly ITenants _tenants;
@@ -41,7 +37,6 @@ namespace Authentication.DomainService.Authentication
 
         public OidcLoginOrchestrator(
             IAuthenticationRepository authenticationRepository,
-            IAuditLogRepository auditLogRepo,
             IMfaChallengeIssuer mfaChallengeIssuer,
             IAuthenticationService authenticationService,
             ITenants tenants,
@@ -54,7 +49,6 @@ namespace Authentication.DomainService.Authentication
             ILogger<OidcLoginOrchestrator> logger)
         {
             _authenticationRepository = authenticationRepository;
-            _auditLogRepo = auditLogRepo;
             _mfaChallengeIssuer = mfaChallengeIssuer;
             _authenticationService = authenticationService;
             _tenants = tenants;
@@ -100,7 +94,7 @@ namespace Authentication.DomainService.Authentication
                 TenantId = request.TenantId,
                 CreatedAt = DateTime.UtcNow
             });
-            await _cacheClient.AddStringValueAsync(contextKey, contextValue, AuthenticationConstants.OidcAuthorizationCodeCacheTtlSeconds);
+            await _cacheClient.AddStringValueAsync(contextKey, contextValue, IdpConstants.OidcAuthorizationCodeCacheTtlSeconds);
 
             return await _authenticationService.GetOidcSocialAuthorizationUrlAsync(request.ProviderClientId, oidcState, request.ProviderRedirectUri ?? string.Empty);
         }
@@ -137,9 +131,8 @@ namespace Authentication.DomainService.Authentication
             }
 
             await ResetAuthFailureCountersAsync(user!);
-            await _auditWriter.WriteAsync(request, user!, httpRequest, LoginAuditEvents.LoginSuccess, LoginAuditEvents.OidcLoginSuccess);
 
-            return await _authorizationEndpoint.AuthorizeAsync(
+            var authorizeResult = await _authorizationEndpoint.AuthorizeAsync(
                 request.ClientId ?? string.Empty,
                 "code",
                 request.RedirectUri ?? string.Empty,
@@ -147,7 +140,7 @@ namespace Authentication.DomainService.Authentication
                 request.State ?? string.Empty,
                 request.Nonce ?? string.Empty,
                 request.CodeChallenge ?? string.Empty,
-                request.CodeChallengeMethod ?? AuthenticationConstants.PkceMethodS256,
+                request.CodeChallengeMethod ?? IdpConstants.PkceMethodS256,
                 null,
                 requestedTenantId ?? string.Empty,
                 httpRequest.HttpContext.Request,
@@ -155,6 +148,10 @@ namespace Authentication.DomainService.Authentication
                 user!.ItemId,
                 false,
                 mfaCompleted: false);
+
+            await _auditWriter.WriteAsync(request, user!, httpRequest, LoginAuditEvents.LoginSuccess, LoginAuditEvents.OidcLoginSuccess);
+
+            return authorizeResult;
         }
 
         private async Task<(IActionResult? Error, User? User, Tenant? Tenant, string? RequestedTenantId)> ValidateInputsAsync(OidcLoginRequest request)
@@ -263,14 +260,14 @@ namespace Authentication.DomainService.Authentication
                 State = request.State ?? string.Empty,
                 Nonce = request.Nonce ?? string.Empty,
                 CodeChallenge = request.CodeChallenge ?? string.Empty,
-                CodeChallengeMethod = request.CodeChallengeMethod ?? AuthenticationConstants.PkceMethodS256,
+                CodeChallengeMethod = request.CodeChallengeMethod ?? IdpConstants.PkceMethodS256,
                 TenantId = tenantId ?? string.Empty
             };
 
             await _cacheClient.AddStringValueAsync(
                 $"oidc_mfa_login:{challengeResponse.MfaId}",
                 JsonSerializer.Serialize(mfaContext),
-                AuthenticationConstants.OidcStateCacheTtlSeconds);
+                IdpConstants.OidcStateCacheTtlSeconds);
 
             return new OkObjectResult(new
             {
@@ -344,8 +341,8 @@ namespace Authentication.DomainService.Authentication
                     UserId = user.ItemId,
                     ClientId = request.ClientId,
                     MfaType = user.UserMfaType,
-                    Severity = AuthenticationConstants.SeverityWarn,
-                    Status = AuthenticationConstants.StatusFailure
+                    Severity = IdpConstants.SeverityWarn,
+                    Status = IdpConstants.StatusFailure
                 });
 
                 if (updatedUser?.LockoutUntilUtc.HasValue == true && updatedUser.LockoutUntilUtc.Value > DateTime.UtcNow)
@@ -365,10 +362,10 @@ namespace Authentication.DomainService.Authentication
                 UserId = user.ItemId,
                 ClientId = request.ClientId,
                 MfaType = user.UserMfaType,
-                Status = AuthenticationConstants.StatusSuccess
+                Status = IdpConstants.StatusSuccess
             });
 
-            return await _authorizationEndpoint.AuthorizeAsync(
+            var authorizeResult = await _authorizationEndpoint.AuthorizeAsync(
                 mfaContext.ClientId ?? string.Empty,
                 "code",
                 mfaContext.RedirectUri ?? string.Empty,
@@ -376,7 +373,7 @@ namespace Authentication.DomainService.Authentication
                 mfaContext.State ?? string.Empty,
                 mfaContext.Nonce ?? string.Empty,
                 mfaContext.CodeChallenge ?? string.Empty,
-                mfaContext.CodeChallengeMethod ?? AuthenticationConstants.PkceMethodS256,
+                mfaContext.CodeChallengeMethod ?? IdpConstants.PkceMethodS256,
                 null,
                 mfaContext.TenantId ?? string.Empty,
                 httpRequest,
@@ -384,6 +381,10 @@ namespace Authentication.DomainService.Authentication
                 user.ItemId,
                 false,
                 mfaCompleted: true);
+
+            await _auditWriter.WriteAsync(mfaContext.TenantId, mfaContext.ClientId, user, httpRequest, LoginAuditEvents.LoginSuccess, LoginAuditEvents.OidcLoginSuccess);
+
+            return authorizeResult;
         }
 
         private async Task ResetAuthFailureCountersAsync(User user)
@@ -432,7 +433,7 @@ namespace Authentication.DomainService.Authentication
             public string State { get; set; } = string.Empty;
             public string Nonce { get; set; } = string.Empty;
             public string CodeChallenge { get; set; } = string.Empty;
-            public string CodeChallengeMethod { get; set; } = AuthenticationConstants.PkceMethodS256;
+            public string CodeChallengeMethod { get; set; } = IdpConstants.PkceMethodS256;
             public string TenantId { get; set; } = string.Empty;
         }
     }

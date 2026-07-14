@@ -1,4 +1,5 @@
 using Blocks.Genesis;
+using Authentication.DomainService.Utilities;
 using Authentication.DomainService.Entities;
 using Iam.DomainService.Entities;
 using Microsoft.Extensions.Logging;
@@ -8,7 +9,7 @@ using System.Security.Claims;
 using System.Security.Cryptography;
 using System.Security.Cryptography.X509Certificates;
 using System.Text;
-using Authentication.DomainService.Utilities;
+using Iam.DomainService.Utilities;
 using Authentication.DomainService.OAuth.RequestModel;
 
 namespace Authentication.DomainService.OAuth

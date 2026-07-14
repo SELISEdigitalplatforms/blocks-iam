@@ -1,108 +1,79 @@
-
 import { Button } from "@/components/ui-kits/button/button";
 import {
-    Dialog,
-    DialogContent,
-    DialogDescription,
-    DialogFooter,
-    DialogHeader,
-    DialogTitle,
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
 } from "@/components/ui-kits/dialog/dialog";
 import { showErrorToast, showSuccessToast } from "@/hooks/use-toast";
-import { useUpdateUser, useGetUserById } from "@blocks-idp/iam/hooks/use-user";
+import { useRevokeAccess } from "@blocks-idp/iam/hooks/use-user";
 import { IMembership } from "@blocks-idp/iam/models/user";
 
 type RemoveMembershipProps = {
-    open: boolean;
-    onOpenChange: (open: boolean) => void;
-    membership: IMembership;
-    organizationName: string;
-    userId: string;
-    projectKey: string;
-    onSuccess?: () => void;
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  membership: IMembership;
+  organizationName: string;
+  userId: string;
+  projectKey: string;
+  onSuccess?: () => void;
 };
 
 export const RemoveMembership = ({
-    open,
-    onOpenChange,
-    membership,
-    organizationName,
-    userId,
-    projectKey,
-    onSuccess,
+  open,
+  onOpenChange,
+  membership,
+  organizationName,
+  userId,
+  projectKey,
+  onSuccess,
 }: RemoveMembershipProps) => {
-    const { data: userData } = useGetUserById({ id: userId, projectKey });
-    const { mutateAsync, isPending } = useUpdateUser({ id: userId, projectKey });
+  const { mutateAsync, isPending } = useRevokeAccess({ id: userId });
 
-    const onConfirm = async () => {
-        try {
+  const onConfirm = async () => {
+    try {
+      const res = await mutateAsync({
+        organizationId: membership.organizationId,
+      });
+      if (!res.isSuccess) {
+        showErrorToast({ errors: res.errors });
+        return;
+      }
+      showSuccessToast({ description: "Organization membership removed successfully" });
+      onOpenChange(false);
+      onSuccess?.();
+    } catch (error) {
+      showErrorToast({
+        errors:
+          typeof error === "object" && error !== null && "errors" in error
+            ? (error as { errors: unknown }).errors
+            : "Something went wrong",
+      });
+    }
+  };
 
-            const updatedOrganizationIds = (userData?.data?.organizationIds || []).filter(
-                (id) => id !== membership.organizationId,
-            );
-            // Remove the unassigned org's entries from roles/permissions Records
-            const updatedRoles = Object.values(
-                Object.fromEntries(
-                    Object.entries(userData?.data?.roles || {}).filter(
-                        ([orgId]) => orgId !== membership.organizationId,
-                    ),
-                ),
-            ).flat();
-            const updatedPermissions = Object.values(
-                Object.fromEntries(
-                    Object.entries(userData?.data?.permissions || {}).filter(
-                        ([orgId]) => orgId !== membership.organizationId,
-                    ),
-                ),
-            ).flat();
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="sm:max-w-[425px]">
+        <DialogHeader>
+          <DialogTitle>Remove organization membership</DialogTitle>
+          <DialogDescription>
+            Are you sure you want to remove the user from &quot;{organizationName}&quot;? This will
+            revoke all roles associated with this organization.
+          </DialogDescription>
+        </DialogHeader>
 
-            const res = await mutateAsync({
-                ...userData?.data,
-                itemId: userId,
-                organizationIds: updatedOrganizationIds,
-                organizations: updatedOrganizationIds,
-                roles: updatedRoles,
-                permissions: updatedPermissions,
-            });
-
-            if (!res.isSuccess) {
-                showErrorToast({ errors: res.errors });
-                return;
-            }
-
-            showSuccessToast({ description: "Organization membership removed successfully" });
-            onOpenChange(false);
-            onSuccess?.();
-        } catch (error) {
-            showErrorToast({
-                errors:
-                    typeof error === "object" && error !== null && "errors" in error
-                        ? (error as { errors: unknown }).errors
-                        : "Something went wrong",
-            });
-        }
-    };
-
-    return (
-        <Dialog open={open} onOpenChange={onOpenChange}>
-            <DialogContent className="sm:max-w-[425px]">
-                <DialogHeader>
-                    <DialogTitle>Remove organization membership</DialogTitle>
-                    <DialogDescription>
-                        Are you sure you want to remove the user from &quot;{organizationName}&quot;? This will
-                        revoke all roles associated with this organization.
-                    </DialogDescription>
-                </DialogHeader>
-
-                <DialogFooter>
-                    <Button variant="outline" onClick={() => onOpenChange(false)}>
-                        Cancel
-                    </Button>
-                    <Button variant="destructive" onClick={onConfirm} disabled={isPending}>
-                        {isPending ? "Removing..." : "Remove"}
-                    </Button>
-                </DialogFooter>
-            </DialogContent>
-        </Dialog>
-    );
+        <DialogFooter>
+          <Button variant="outline" onClick={() => onOpenChange(false)}>
+            Cancel
+          </Button>
+          <Button variant="destructive" onClick={onConfirm} disabled={isPending}>
+            {isPending ? "Removing..." : "Remove"}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
 };

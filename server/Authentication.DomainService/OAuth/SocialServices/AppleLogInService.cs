@@ -1,4 +1,5 @@
 using Authentication.DomainService.Entities;
+using Iam.DomainService.Utilities;
 using Authentication.DomainService.Services;
 using Authentication.DomainService.Shared;
 using Blocks.Genesis;
@@ -100,7 +101,7 @@ namespace Authentication.DomainService.OAuth.SocialServices
                 { "iss", teamId },
                 { "iat", now },
                 { "exp", now + 300 },
-                { "aud", identityProvider.AppleAudience ?? AuthenticationConstants.AppleAuthUrl },
+                { "aud", identityProvider.AppleAudience ?? IdpConstants.AppleAuthUrl },
                 { "sub", clientId }
             };
             var header = new JwtHeader(signingCredentials);

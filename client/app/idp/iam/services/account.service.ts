@@ -8,8 +8,8 @@ import {
   IAccountResendActivationResponse,
   IAccountResetPasswordPayload,
   IAccountResetPasswordResponse,
-  IActivationCodeExpirationResponse,
   IActivationCodeValidationPayload,
+  IActivationCodeValidationResponse,
   IChangePasswordPayload,
   IChangePasswordResponse,
 } from "@blocks-idp/iam/models/user";
@@ -54,7 +54,7 @@ export class UserAccountService {
 
   checkActivationCodeExpiration(
     payload: IActivationCodeValidationPayload,
-  ): Promise<IActivationCodeExpirationResponse> {
+  ): Promise<IActivationCodeValidationResponse> {
     const headers: Record<string, string> = {};
     if (payload.tenantId) {
       headers["X-Blocks-Key"] = payload.tenantId;
