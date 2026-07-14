@@ -1,6 +1,7 @@
 import { useGetMe, useGetUserById } from "@blocks-idp/iam/hooks/use-user";
 import { Card, CardContent } from "@/components/ui-kits/card/card";
 import { ProfileImageUploader } from "@blocks-idp/iam/components/profile-image-uploader";
+import { CopyToClipboardButton } from "@/components/copy-to-clipboard-button";
 import { Activity, Calendar, Shield } from "lucide-react";
 
 type UserProfileSidebarProps = {
@@ -49,11 +50,31 @@ export const UserProfileSidebar = ({ id, projectKey, own = false }: UserProfileS
   const data = own ? meData : userByIdData;
   const user = data?.data;
 
+  const fullName =
+    user?.firstName || user?.lastName
+      ? `${user?.firstName ?? ""} ${user?.lastName ?? ""}`.trim()
+      : null;
+
   return (
     <Card className="flex h-full min-h-0 flex-col overflow-hidden rounded-none border-0 bg-transparent px-0 py-0 shadow-none mt-4">
+      {fullName && (
+        <div className="flex flex-col items-start gap-1 px-2 text-left md:hidden">
+          <p className="truncate text-base font-semibold leading-tight text-foreground">
+            {fullName}
+          </p>
+          {user?.email && (
+            <CopyToClipboardButton textToCopy={user.email}>
+              <span className="truncate text-sm text-muted-foreground">
+                {user.email}
+              </span>
+            </CopyToClipboardButton>
+          )}
+        </div>
+      )}
+
       {/* Avatar */}
       <div
-        className="relative mx-auto w-full max-w-[220px] shrink-0"
+        className="relative mx-auto mt-6 w-full max-w-[220px] shrink-0 md:mt-0"
         style={{ aspectRatio: "1 / 1" }}
       >
         <ProfileImageUploader

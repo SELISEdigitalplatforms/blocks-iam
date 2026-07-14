@@ -119,7 +119,7 @@ export const AddOrganizationPermission = ({
         <Button
           size="sm"
           variant="ghost"
-          className="text-primary"
+          className="text-primary bg-accent hover:bg-transparent hover:text-accent-foreground"
           type="button"
           onClick={(e) => e.stopPropagation()}
         >

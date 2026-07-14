@@ -114,6 +114,7 @@ export const Activation = ({ code, tenantId }: ActivationProps) => {
       panelConfig={ACTIVATE_PANEL}
       heading={heading}
       headingDimFirst={headingDimFirst}
+      headingAlign={heading === "Invalid Activation Link" ? "center" : "left"}
       successTitle="Account Activated"
       successSubtitle="Your account is ready to use."
       showCorners={false}
