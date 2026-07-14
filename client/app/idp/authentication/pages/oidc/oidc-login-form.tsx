@@ -580,7 +580,19 @@ shake();
         <div className="mt-4">
           <p className="text-xs oidc-font-rajdhani" style={{ color: "var(--muted)" }}>
             Not a member?{" "}
-            <Link to="/signup" className="oidc-sci-fi-link" style={{ fontSize: "0.75rem" }}>
+            <Link
+              to={
+                tenantId
+                  ? `/oidc/signup/${encodeURIComponent(tenantId)}${
+                      buildOIDCNavigationUrl("/oidc/signup").includes("?")
+                        ? `?${buildOIDCNavigationUrl("/oidc/signup").split("?")[1]}`
+                        : ""
+                    }`
+                  : "/oidc/signup"
+              }
+              className="oidc-sci-fi-link"
+              style={{ fontSize: "0.75rem" }}
+            >
               Create an account
             </Link>
           </p>
