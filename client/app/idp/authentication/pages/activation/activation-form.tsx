@@ -94,8 +94,6 @@ export const ActivationForm = ({ code, tenantId }: ActivationFormProps) => {
       const res = await mutateAsync({
         code: code,
         preventPostEvent: true,
-        firstName: values.firstName,
-        lastName: values.lastName,
         password: values.password,
         captchaCode,
         tenantId,
@@ -138,50 +136,6 @@ export const ActivationForm = ({ code, tenantId }: ActivationFormProps) => {
       }}
       className="flex flex-col gap-5"
     >
-      {/* First Name & Last Name */}
-      <div className="flex flex-col sm:flex-row gap-4">
-        <div className="flex flex-col gap-2 flex-1">
-          <label htmlFor="activation-first-name" className="oidc-sci-fi-label">
-            First Name
-          </label>
-          <input
-            id="activation-first-name"
-            type="text"
-            autoComplete="given-name"
-            placeholder="Jane"
-            className="oidc-sci-fi-input"
-            aria-invalid={!!form.formState.errors.firstName}
-            disabled={isAuthenticating}
-            {...form.register("firstName")}
-          />
-          {form.formState.errors.firstName && (
-            <p className="text-xs oidc-font-rajdhani" style={{ color: "var(--danger)" }}>
-              {form.formState.errors.firstName.message}
-            </p>
-          )}
-        </div>
-        <div className="flex flex-col gap-2 flex-1">
-          <label htmlFor="activation-last-name" className="oidc-sci-fi-label">
-            Last Name
-          </label>
-          <input
-            id="activation-last-name"
-            type="text"
-            autoComplete="family-name"
-            placeholder="Doe"
-            className="oidc-sci-fi-input"
-            aria-invalid={!!form.formState.errors.lastName}
-            disabled={isAuthenticating}
-            {...form.register("lastName")}
-          />
-          {form.formState.errors.lastName && (
-            <p className="text-xs oidc-font-rajdhani" style={{ color: "var(--danger)" }}>
-              {form.formState.errors.lastName.message}
-            </p>
-          )}
-        </div>
-      </div>
-
       <div className="flex flex-col gap-2">
         <label className="oidc-sci-fi-label">Password</label>
         <div className="relative">
