@@ -12,10 +12,16 @@ import {
   DialogTrigger,
 } from "@/components/ui-kits/dialog/dialog";
 import { Pagination } from "@/components/ui-kits/pagination/pagination";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui-kits/tooltip/tooltip";
 import { useProjectStore } from "@seliseblocks/blocks-kit";
 import { useGetRoles } from "@blocks-idp/iam/hooks/use-roles";
 import { IRole } from "@blocks-idp/iam/models/role";
-import { Plus, ShieldCheck } from "lucide-react";
+import { Plus, ShieldCheck, Info } from "lucide-react";
 import { useMemo, useState } from "react";
 
 type AddOrganizationRoleProps = {
@@ -100,7 +106,7 @@ export const AddOrganizationRole = ({
         <Button
           size="sm"
           variant="ghost"
-          className="text-primary"
+          className="text-primary bg-accent hover:bg-transparent hover:text-accent-foreground"
           type="button"
           onClick={(e) => e.stopPropagation()}
         >
@@ -110,7 +116,25 @@ export const AddOrganizationRole = ({
       </DialogTrigger>
       <DialogContent>
         <DialogHeader>
-          <DialogTitle className="text-left">Manage roles</DialogTitle>
+          <div className="flex items-center gap-2">
+            <DialogTitle className="text-left">Manage roles</DialogTitle>
+            <TooltipProvider>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <button
+                    type="button"
+                    aria-label="Maximum roles info"
+                    className="inline-flex items-center justify-center text-muted-foreground transition-colors hover:text-foreground focus:outline-none"
+                  >
+                    <Info className="h-4 w-4" aria-hidden />
+                  </button>
+                </TooltipTrigger>
+                <TooltipContent side="right">
+                  You can assign a maximum of 5 roles per user.
+                </TooltipContent>
+              </Tooltip>
+            </TooltipProvider>
+          </div>
           <DialogDescription></DialogDescription>
         </DialogHeader>
         <div>
