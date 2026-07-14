@@ -90,11 +90,21 @@ export class AuthService {
 
   signupByEmail(
     payload: ISignupByEmailPayload,
+    tenantId?: string,
   ): Promise<ISignupByEmailResponse> {
-    return serviceInstances.idpService.post(AUTH_ENDPOINTS.SIGNUP, {
-      ...payload,
-      isSsoSignup: false,
-    });
+    const headers: Record<string, string> = {};
+    if (tenantId) {
+      headers["X-Blocks-Key"] = tenantId;
+    }
+    return serviceInstances.idpService.post(
+      AUTH_ENDPOINTS.SIGNUP,
+      {
+        ...payload,
+        isSsoSignup: false,
+      },
+      headers,
+      tenantId ? { skipBlocksKey: true } : undefined,
+    );
   }
 
   activateAccount(

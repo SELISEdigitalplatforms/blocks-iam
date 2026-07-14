@@ -1,10 +1,8 @@
-using Authentication.DomainService.Entities;
-using Authentication.DomainService.OAuth;
+using Authentication.DomainService.Utilities;
 using Authentication.DomainService.OAuth.RequestModel;
 using Authentication.DomainService.Oidc.Repositories;
 using Authentication.DomainService.Services;
-using Authentication.DomainService.Shared;
-using Authentication.DomainService.Utilities;
+using Iam.DomainService.Utilities;
 using Blocks.Genesis;
 using Iam.DomainService.Entities;
 using Iam.DomainService.Users;
@@ -27,11 +25,8 @@ namespace Authentication.DomainService.Authentication
     {
         private readonly IAuthorizationCodeRepository _authCodeRepo;
         private readonly IIdpSessionRepository _sessionRepo;
-        private readonly IAuditLogRepository _auditLogRepo;
-        private readonly ITokenGenerationService _tokenService;
         private readonly IPkceService _pkceService;
         private readonly IUserRepository _userRepository;
-        private readonly IAuthorizationClaimsResolver _authorizationClaimsResolver;
         private readonly IAuthenticationRepository _authenticationRepository;
         private readonly IAuthenticationService _authenticationService;
         private readonly ITenants _tenants;
@@ -41,11 +36,8 @@ namespace Authentication.DomainService.Authentication
         public OidcAuthorizationEndpoint(
             IAuthorizationCodeRepository authCodeRepo,
             IIdpSessionRepository sessionRepo,
-            IAuditLogRepository auditLogRepo,
-            ITokenGenerationService tokenService,
             IPkceService pkceService,
             IUserRepository userRepository,
-            IAuthorizationClaimsResolver authorizationClaimsResolver,
             IAuthenticationRepository authenticationRepository,
             IAuthenticationService authenticationService,
             ITenants tenants,
@@ -54,11 +46,8 @@ namespace Authentication.DomainService.Authentication
         {
             _authCodeRepo = authCodeRepo;
             _sessionRepo = sessionRepo;
-            _auditLogRepo = auditLogRepo;
-            _tokenService = tokenService;
             _pkceService = pkceService;
             _userRepository = userRepository;
-            _authorizationClaimsResolver = authorizationClaimsResolver;
             _authenticationRepository = authenticationRepository;
             _authenticationService = authenticationService;
             _tenants = tenants;
@@ -125,7 +114,7 @@ namespace Authentication.DomainService.Authentication
                     });
                 }
 
-                var effectiveSessionId = request.Cookies[$"{IdpConstants.IdpSessionCookieName}_{tenant_id}"];
+                var effectiveSessionId = request.Cookies[IdpConstants.BuildIdpSessionCookieKey(tenant_id)];
 
                 string? resolvedUserId = blocksUserId;
 
@@ -409,7 +398,7 @@ namespace Authentication.DomainService.Authentication
                 : DomainResolver.CreateProductionCookieOptions(resolvedDomain, effectiveExpiry);
 
             response.Cookies.Append(
-                $"{IdpConstants.IdpSessionCookieName}_{tenantId}",
+                IdpConstants.BuildIdpSessionCookieKey(tenantId),
                 sessionId,
                 cookieOptions);
         }

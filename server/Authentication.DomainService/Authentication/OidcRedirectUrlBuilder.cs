@@ -8,7 +8,7 @@ namespace Authentication.DomainService.Authentication
     /// URL builders and helpers used by the OIDC endpoints.
     /// Extracted from <c>AuthorizationFlowService</c> to keep the orchestrator lean.
     /// </summary>
-    internal static class OidcRedirectUrlBuilder
+    public static class OidcRedirectUrlBuilder
     {
         public static string BuildRedirectUri(string baseUri, IDictionary<string, string> parameters)
         {
@@ -94,6 +94,43 @@ namespace Authentication.DomainService.Authentication
         public static string GetClientIpAddress(HttpRequest request)
         {
             return request.HttpContext.Connection.RemoteIpAddress?.ToString() ?? "unknown";
+        }
+
+        public static string BuildVerificationUri(string apiBase, string? userCode, string? tenantId)
+        {
+            var baseUrl = TrimTrailingSlash(apiBase);
+            var url = $"{baseUrl}/device";
+
+            if (!string.IsNullOrWhiteSpace(tenantId))
+            {
+                url += "/" + Uri.EscapeDataString(tenantId);
+            }
+
+            if (!string.IsNullOrWhiteSpace(userCode))
+            {
+                url += "?user_code=" + Uri.EscapeDataString(userCode);
+            }
+
+            return url;
+        }
+
+        public static string BuildVerificationUriComplete(string apiBase, string userCode, string? tenantId)
+        {
+            if (string.IsNullOrWhiteSpace(userCode))
+            {
+                throw new ArgumentException("userCode must not be empty", nameof(userCode));
+            }
+
+            return BuildVerificationUri(apiBase, userCode, tenantId);
+        }
+
+        private static string TrimTrailingSlash(string value)
+        {
+            if (string.IsNullOrEmpty(value))
+            {
+                return string.Empty;
+            }
+            return value.EndsWith('/') ? value[..^1] : value;
         }
     }
 }

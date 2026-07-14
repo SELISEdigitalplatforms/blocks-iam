@@ -1,20 +1,27 @@
-using Authentication.DomainService.OAuth.SocialServices;
-using Blocks.Extension.DependencyInjection;
-using Idp.DomainService.Oidc.Services;
 using Authentication.DomainService.Authentication;
-using Authentication.DomainService.Oidc.Repositories;
-using Authentication.DomainService.Oidc.Services;
 using Authentication.DomainService.OAuth;
 using Authentication.DomainService.OAuth.Services;
+using Authentication.DomainService.OAuth.SocialServices;
+using Authentication.DomainService.Oidc.Contracts;
+using Authentication.DomainService.Oidc.Repositories;
+using Authentication.DomainService.Oidc.Services;
+using Authentication.DomainService.RequestModel;
+using Authentication.DomainService.Security.Utilities;
 using Authentication.DomainService.Services;
 using Authentication.DomainService.Shared;
+using Authentication.DomainService.Shared.RequestModel;
+using Authentication.DomainService.Shared.Services;
+using Blocks.Extension.DependencyInjection;
+using DomainService.Storage;
 using FluentValidation;
 using Iam.DomainService.Accounts;
-using Iam.DomainService.Activities;
+using Iam.DomainService.Activity.Services;
 using Iam.DomainService.Configurations;
 using Iam.DomainService.Resources;
+using Iam.DomainService.Resources.TenantPropagation;
 using Iam.DomainService.Services;
 using Iam.DomainService.Users;
+using Idp.DomainService.Oidc.Services;
 using Mfa.DomainService.Configuration;
 using Mfa.DomainService.OTP.Services;
 using Mfa.DomainService.Services;
@@ -22,7 +29,10 @@ using Mfa.DomainService.Shared;
 using Mfa.DomainService.TOTP;
 using Mfa.DomainService.Validators;
 using Microsoft.Extensions.DependencyInjection;
-using Authentication.DomainService.Shared.Services;
+using Storage.DomainService.Shared.Services;
+using Storage.DomainService.Storage;
+using Storage.DomainService.Storage.Validators;
+
 
 namespace Authentication.DomainService.Utilities
 {
@@ -56,7 +66,6 @@ namespace Authentication.DomainService.Utilities
             serviceCollection.AddSingleton<IAuthorizationCodeRepository, AuthorizationCodeRepository>();
             serviceCollection.AddSingleton<IRefreshTokenRepository, RefreshTokenRepository>();
             serviceCollection.AddSingleton<IIdpSessionRepository, IdpSessionRepository>();
-            serviceCollection.AddSingleton<IAuditLogRepository, AuditLogRepository>();
             serviceCollection.AddSingleton<ITokenRevocationRepository, TokenRevocationRepository>();
             serviceCollection.AddSingleton<ITokenRevocationService, TokenRevocationService>();
             serviceCollection.AddSingleton<IIdpSessionService, IdpSessionService>();
@@ -87,6 +96,16 @@ namespace Authentication.DomainService.Utilities
 
             serviceCollection.AddSingleton<ICertificateProviderFactory, CertificateProviderFactory>();
             serviceCollection.AddSingleton<ISocialLogInServiceProvider, SocialLogInServiceProvider>();
+
+            // RFC 8628 Device Authorization Grant
+            serviceCollection.AddSingleton<DeviceCodeGenerator>();
+            serviceCollection.AddSingleton<IDeviceAuthorizationRepository, DeviceAuthorizationRepository>();
+            serviceCollection.AddSingleton<IDeviceAuthorizationService, DeviceAuthorizationService>();
+            serviceCollection.AddSingleton<IOidcTokenMintService, OidcTokenMintService>();
+            serviceCollection.AddSingleton<DeviceAuthorizationEndpoint>();
+            serviceCollection.AddSingleton<DeviceVerificationService>();
+            serviceCollection.AddSingleton<DeviceCodeExchangeService>();
+            serviceCollection.AddHostedService<DeviceCleanupWorker>();
             serviceCollection.AddSingleton<IdpTokenExchangeClient>();
             serviceCollection.AddSingleton<IAuthSessionFacade, AuthSessionFacade>();
             serviceCollection.AddSingleton<IAuthStrategy, AuthStrategy>();
@@ -118,6 +137,9 @@ namespace Authentication.DomainService.Utilities
 
             serviceCollection.AddSingleton<IIamConfigurationRepository, IamConfigurationRepository>();
             serviceCollection.AddTransient<IValidator<SaveSsoCredentialRequest>, SaveSsoCredentialRequestValidator>();
+            serviceCollection.AddTransient<IValidator<SaveOIDCClientRequest>, SaveOIDCClientRequestValidator>();
+            serviceCollection.AddTransient<IValidator<SaveIdentityProviderRequest>, SaveIdentityProviderRequestValidator>();
+            serviceCollection.AddTransient<IValidator<UpdateIdentityProviderRequest>, UpdateIdentityProviderRequestValidator>();
 
             #endregion
 
@@ -131,13 +153,22 @@ namespace Authentication.DomainService.Utilities
             serviceCollection.AddSingleton<IResourceMutationService, ResourceMutationService>();
             serviceCollection.AddSingleton<IResourceRepository, ResourceRepository>();
 
+            serviceCollection.AddSingleton<ITenantPermissionPropagator, TenantPermissionPropagator>();
+            // ITenantEnumeration / IMongoDatabase (root) must be registered by every host that
+            // calls RegisterAllServices — TenantPermissionPropagator depends on both. See
+            // Api/Program.cs and Worker/Program.cs for the per-host registrations.
+
             serviceCollection.AddSingleton<IUserManagementQueryService, UserManagementQueryService>();
             serviceCollection.AddSingleton<IResourceQueryService, ResourceQueryService>();
 
-            serviceCollection.AddSingleton<IUserActivityRepository, UserActivityRepository>();
-            serviceCollection.AddSingleton<IUserActivityService, UserActivityService>();
             serviceCollection.AddSingleton<IAccountService, AccountService>();
             serviceCollection.AddSingleton<IIamConfigurationRepository, IamConfigurationRepository>();
+
+            serviceCollection.AddSingleton<IUserActivityRepository, UserActivityRepository>();
+            serviceCollection.AddSingleton<IUserActivityDispatcher, UserActivityDispatcher>();
+            serviceCollection.AddSingleton<IUserActivityQueryService, UserActivityQueryService>();
+
+            serviceCollection.RegisterSecurityServices();
 
             //Validators
             serviceCollection.AddSingleton<IValidator<BaseAccountRequest>, BaseAccountValidator>();
@@ -156,6 +187,7 @@ namespace Authentication.DomainService.Utilities
             serviceCollection.AddSingleton<IOtpServiceFactory, OtpServiceFactory>();
             serviceCollection.AddSingleton<IMfaManagementRepository, MfaManagementRepository>();
             serviceCollection.AddSingleton<IMfaConfigurationService, MfaConfigurationService>();
+            serviceCollection.AddSingleton<IMfaBackupCodeService, MfaBackupCodeService>();
             serviceCollection.AddSingleton<TotpService>();
             serviceCollection.AddSingleton<EmailOtpService>();
             serviceCollection.AddHttpContextAccessor();
@@ -174,6 +206,15 @@ namespace Authentication.DomainService.Utilities
 
             serviceCollection.AddSingleton<UnifiedTokenSessionService, UnifiedTokenSessionService>();
             serviceCollection.AddSingleton<IImpersonationFlowHelper, ImpersonationFlowHelper>();
+
+            // Drivers
+            serviceCollection.AddSingleton<DmsArtifactBuilderFactory>();
+            serviceCollection.AddTransient<IValidator<UpdateFileRequest>, UpdateFileRequestValidator>();
+            serviceCollection.AddTransient<AwsS3CompatibleStorageService>();
+            serviceCollection.AddSingleton<FileArtifactBuilder>();
+            serviceCollection.AddSingleton<FolderArtifactBuilder>();
+
+            serviceCollection.RegisterBlocksStorageServices();
         }
     }
 }

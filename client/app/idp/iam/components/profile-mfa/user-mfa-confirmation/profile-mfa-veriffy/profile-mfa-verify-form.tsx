@@ -12,7 +12,7 @@ import { useContext } from "react";
 import { useForm } from "react-hook-form";
 import { z } from "zod";
 import { profileMfaContext } from "../../profile-mfa";
-import { useVerifyMfaOTP } from "@blocks-idp/mfa/hooks/use-mfa-config";
+import { useVerifyMfaOTP, useVerifyTotpSetup } from "@blocks-idp/mfa/hooks/use-mfa-config";
 import { showErrorToast, showSuccessToast } from "@/hooks/use-toast";
 import { DialogTrigger } from "@/components/ui-kits/dialog/dialog";
 import { isErrorWithErrors } from "@/lib/error";
@@ -30,8 +30,15 @@ const FormSchema = z.object({
 });
 
 export const ProfileMfaVerifyForm = ({ mfaId }: { mfaId: string }) => {
-  const { projectKey, setIsVerifyModalOpen, mfaMethodType, userId } = useContext(profileMfaContext);
-  const { mutateAsync, isPending } = useVerifyMfaOTP({ id: userId, projectKey, own: true });
+  const { setIsVerifyModalOpen, mfaMethodType, userId } = useContext(profileMfaContext);
+  const { mutateAsync: verifyOtpAsync, isPending: isVerifyOtpPending } = useVerifyMfaOTP({
+    id: userId,
+    own: true,
+  });
+  const { mutateAsync: verifyTotpSetupAsync, isPending: isVerifyTotpSetupPending } =
+    useVerifyTotpSetup({ id: userId });
+
+  const isPending = isVerifyOtpPending || isVerifyTotpSetupPending;
 
   const form = useForm<z.infer<typeof FormSchema>>({
     resolver: zodResolver(FormSchema),
@@ -42,13 +49,24 @@ export const ProfileMfaVerifyForm = ({ mfaId }: { mfaId: string }) => {
 
   const submitHandler = async ({ code }: z.infer<typeof FormSchema>) => {
     try {
-      const verifyOtpResponse = await mutateAsync({
+      if (mfaMethodType === 1) {
+        const res = await verifyTotpSetupAsync({ code });
+        if (res?.enabled === false) {
+          return showErrorToast({ errors: "TOTP code is invalid" });
+        }
+        setIsVerifyModalOpen(false);
+        showSuccessToast({ description: "MFA is verified successfully" });
+        return;
+      }
+
+      const verifyOtpResponse = await verifyOtpAsync({
         mfaId,
         verificationCode: code,
         authType: mfaMethodType,
       });
-      if (!verifyOtpResponse.isSuccess) return showErrorToast({ errors: verifyOtpResponse.errors });
-      if (!verifyOtpResponse.isValid)
+      if (verifyOtpResponse?.isSuccess === false)
+        return showErrorToast({ errors: verifyOtpResponse.errors });
+      if (verifyOtpResponse?.isValid === false)
         return showErrorToast({ errors: verifyOtpResponse.errors || "Code is not valid" });
       setIsVerifyModalOpen(false);
       showSuccessToast({ description: "MFA is verified successfully" });

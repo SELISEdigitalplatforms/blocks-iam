@@ -2,6 +2,6 @@
 {
     public class CreatePermissionRequest : PermissionRequestBase
     {
-        public bool PropagateToOtherOrg { get; set; } = false;
+
     }
 }

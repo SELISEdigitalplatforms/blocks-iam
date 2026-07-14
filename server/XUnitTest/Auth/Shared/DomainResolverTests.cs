@@ -1,3 +1,4 @@
+using Iam.DomainService.Utilities;
 using Authentication.DomainService.Utilities;
 using FluentAssertions;
 using Microsoft.AspNetCore.Http;
@@ -90,7 +91,7 @@ namespace XUnitTest.Auth.Shared
         public void GetAudience_FallsBackToProtected_WhenTenantHasNone()
         {
             // Test the fallback constant
-            Authentication.DomainService.Shared.AuthenticationConstants.ProtectedApiAudience
+            Iam.DomainService.Utilities.IdpConstants.ProtectedApiAudience
                 .Should().Be("api://blocks-protected-api");
         }
 

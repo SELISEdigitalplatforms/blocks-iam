@@ -1,3 +1,4 @@
+using Iam.DomainService.Utilities;
 using Authentication.DomainService.Utilities;
 using FluentAssertions;
 

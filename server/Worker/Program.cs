@@ -1,6 +1,5 @@
-using Authentication.DomainService.Dtos;
 using Authentication.DomainService.Utilities;
-using Authentication.DomainService.Worker;
+using Iam.DomainService.Utilities;
 using Blocks.Genesis;
 using Iam.DomainService.Accounts;
 using Iam.DomainService.Dtos;
@@ -44,18 +43,17 @@ IHostBuilder CreateHostBuilder(string[] args) =>
         services.Configure<PeriodicPingConfiguration>(
             configuration.GetSection("PeriodicPingConfiguration"));
 
-        services.AddSingleton<IConsumer<RefreshTokenEvent>, RefreshTokenWorkerService>();
-        services.AddSingleton<IConsumer<UserAuthenticationTimelineEvent>, UserAuthenticationTimelineWorkerService>();
-
         services.AddSingleton<IConsumer<ResourceMutationEvent>, ResourceMutationConsumer>();
         services.AddSingleton<IConsumer<ResourceSetToPermissionMutationEvent>, ResourceSetToPermissionMutationConsumer>();
         services.AddSingleton<IConsumer<UserMutationEvent>, UserMutationConsumer>();
-        services.AddSingleton<IConsumer<AccountActivityEvent>, AccountActivityWorkerService>();
+        services.AddSingleton<IConsumer<UserActivityEvent>, UserActivityWorker>();
         services.AddSingleton<IConsumer<CreateUserByEmailEvent>, CreateUserByEmailConsumer>();
         services.AddSingleton<IConsumer<CreateUserRequest>, CreateUserConsumer>();
         services.AddSingleton<IConsumer<CreateUserViaSsoEvent>, CreateUserViaSsoConsumer>();
         services.AddSingleton<IConsumer<OrganizationProvisioningEvent>, OrganizationProvisioningConsumer>();
         services.AddSingleton<IConsumer<UpdateOrganizationUserEvent>, UpdateOrganizationUserConsumer>();
+        services.AddSingleton<IConsumer<PermissionMutationForTenantsEvent>, PermissionMutationForTenantsConsumer>();
+        services.AddSingleton<IConsumer<PropagationRolePermissionUpdateEvent>, PropagationRolePermissionUpdateConsumer>();
 
         services.AddHostedService<PeriodicPingBackgroundService>();
 

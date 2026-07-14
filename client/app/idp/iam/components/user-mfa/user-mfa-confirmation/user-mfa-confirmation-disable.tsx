@@ -15,18 +15,17 @@ import { useContext, useState } from "react";
 import { userMfaContext } from "../user-mfa";
 
 export const UserMFAConfirmationDisable = () => {
-  const { projectKey, userId } = useContext(userMfaContext);
+  const { userId } = useContext(userMfaContext);
   const [open, setOpen] = useState<boolean>(false);
-  const { isPending, mutateAsync } = useConfigureUserMFA({ id: userId, projectKey });
+  const { isPending, mutateAsync } = useConfigureUserMFA({ id: userId });
   const onClickHandler = async () => {
     try {
       const res = await mutateAsync({
         mfaEnabled: false,
-        projectKey,
         userId,
         userMfaType: 0,
       });
-      if (!res.isSuccess) return showErrorToast({ errors: res.errors });
+      if (res?.isSuccess === false) return showErrorToast({ errors: res.errors });
       showSuccessToast({ description: "MFA disabled successfully" });
       setOpen(false);
     } catch (error) {

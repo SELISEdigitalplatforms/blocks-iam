@@ -8,5 +8,6 @@ namespace Authentication.DomainService.Authentication
         public const string AccountRemoved = "account_removed";
         public const string SessionRotated = "session_rotated";
         public const string SessionRevoked = "session_revoked";
+        public const string UserRevokedSession = "user_revoked_session";
     }
 }

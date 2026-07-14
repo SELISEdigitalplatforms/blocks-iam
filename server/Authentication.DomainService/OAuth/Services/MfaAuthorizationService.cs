@@ -1,4 +1,5 @@
 using Authentication.DomainService.Authentication;
+using Iam.DomainService.Utilities;
 using Authentication.DomainService.Entities;
 using Authentication.DomainService.OAuth.RequestModel;
 using Authentication.DomainService.OAuth.ResponseModel;
@@ -102,7 +103,7 @@ namespace Authentication.DomainService.OAuth.Services
                     UserId = user.ItemId,
                     ClientId = request.ClientId,
                     MfaType = request.MfaType,
-                    Status = AuthenticationConstants.StatusSuccess
+                    Status = IdpConstants.StatusSuccess
                 });
 
                 return tokenResponse;
@@ -119,8 +120,8 @@ namespace Authentication.DomainService.OAuth.Services
                 UserId = response.UserId,
                 ClientId = request.ClientId,
                 MfaType = request.MfaType,
-                Status = AuthenticationConstants.StatusFailure,
-                Severity = AuthenticationConstants.SeverityWarn
+                Status = IdpConstants.StatusFailure,
+                Severity = IdpConstants.SeverityWarn
             });
 
             if (justLocked)

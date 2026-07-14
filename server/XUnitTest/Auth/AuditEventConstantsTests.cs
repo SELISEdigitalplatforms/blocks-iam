@@ -21,6 +21,9 @@ namespace XUnitTest.Auth
         [InlineData(LoginAuditEvents.MfaVerificationFailure, "mfa_verification_failure")]
         [InlineData(LoginAuditEvents.ImpersonationStarted, "impersonation_started")]
         [InlineData(LoginAuditEvents.ImpersonationStopped, "impersonation_stopped")]
+        [InlineData(LoginAuditEvents.RefreshTokenIssued, "refresh_token_issued")]
+        [InlineData(LoginAuditEvents.RefreshTokenRotated, "refresh_token_rotated")]
+        [InlineData(LoginAuditEvents.RefreshTokenSuperseded, "refresh_token_superseded")]
         public void LoginAuditEvents_HaveExpectedValues(string actual, string expected)
         {
             actual.Should().Be(expected);

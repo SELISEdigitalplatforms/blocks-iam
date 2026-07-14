@@ -48,7 +48,6 @@ export const UpdateUser = ({ id, projectKey, own = false, iconOnly = false }: Up
   const form = useForm({
     defaultValues: inviteUserFormDefaultValue,
     resolver: zodResolver(inviteUserFormSchema),
-    values: userData?.data,
   });
 
   const {
@@ -56,13 +55,14 @@ export const UpdateUser = ({ id, projectKey, own = false, iconOnly = false }: Up
   } = form;
   const onSubmitHandler = async (values: z.infer<typeof inviteUserFormSchema>) => {
     try {
+      // Only the explicitly edited fields should travel in the PATCH body —
+      // spreading `userData.data` (the full record) and reusing every value
+      // defeats the server's partial-update semantics and overwrites state
+      // the form never touches (active, MFA flags, roles, etc.).
       const res = await mutateAsync({
-        ...userData?.data,
-        ...values,
         itemId: id,
-        organizations: userData?.data?.organizationIds || [],
-        roles: Object.values(userData?.data?.roles || {}).flat(),
-        permissions: Object.values(userData?.data?.permissions || {}).flat(),
+        firstName: values.firstName,
+        lastName: values.lastName,
       });
       if (!res.isSuccess) return showErrorToast({ errors: res.errors });
       showSuccessToast({ description: "User updated successfully" });
@@ -78,29 +78,34 @@ export const UpdateUser = ({ id, projectKey, own = false, iconOnly = false }: Up
     <Dialog
       open={open}
       onOpenChange={(value) => {
-        form.reset(userData?.data || inviteUserFormDefaultValue);
+        if (userData?.data) {
+          form.reset({
+            firstName: userData.data.firstName || "",
+            lastName: userData.data.lastName || "",
+          });
+        } else {
+          form.reset(inviteUserFormDefaultValue);
+        }
         setOpen(value);
       }}
     >
       <DialogTrigger asChild>
-        {own ? (
-          iconOnly ? (
-            <Button
-              variant="ghost"
-              size="icon"
-              aria-label="Edit profile"
-              className="h-9 w-9 rounded-full text-muted-foreground hover:bg-muted hover:text-foreground"
-            >
-              <Pen className="h-4 w-4" />
-            </Button>
-          ) : (
-            <Button
-              className="w-full gap-2 rounded-lg border border-border/70 bg-background font-medium text-foreground shadow-sm transition-all hover:bg-muted"
-            >
-              <Pen className="h-4 w-4" />
-              Edit Profile
-            </Button>
-          )
+        {iconOnly ? (
+          <Button
+            variant="ghost"
+            size="icon"
+            aria-label={own ? "Edit profile" : "Edit user"}
+            className="h-7 w-7 shrink-0 rounded-full text-muted-foreground hover:bg-muted hover:text-foreground"
+          >
+            <Pen className="h-3.5 w-3.5" />
+          </Button>
+        ) : own ? (
+          <Button
+            className="w-full gap-2 rounded-lg border border-border/70 bg-background font-medium text-foreground shadow-sm transition-all hover:bg-muted"
+          >
+            <Pen className="h-4 w-4" />
+            Edit Profile
+          </Button>
         ) : (
           <Button variant="outline" size="sm" className="gap-2">
             <Pen className="h-4 w-4" />

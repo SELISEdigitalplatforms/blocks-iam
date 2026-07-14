@@ -10,11 +10,12 @@ import { Skeleton } from "@/components/ui-kits/skeleton/skeleton";
 import { showErrorToast } from "@/hooks/use-toast";
 import { GRANT_TYPES } from "@blocks-idp/authentication/constants/authentication.constant";
 import { useGetLoginOptions } from "@blocks-idp/authentication/hooks/use-auth";
+import { useGetSignUpSetting } from "@blocks-idp/iam/hooks/use-user";
 import { Link } from "react-router-dom";
 import { useEffect } from "react";
 import { SigninForm } from "./signin-form";
 import { SsoSignin } from "./sso-signin";
-import { buildOIDCNavigationUrl } from "@blocks-idp/authentication/utils/oidc-utils";
+import { buildOIDCNavigationUrl, extractOIDCParams } from "@blocks-idp/authentication/utils/oidc-utils";
 
 type SigninProps = {
   ssoError?: string;
@@ -76,6 +77,7 @@ const SigninSkeleton = () => (
 
 export const Signin = ({ ssoError, mode = "default", oidcContext }: SigninProps) => {
   const { data: loginOption, isLoading: isLoginOptionLoading } = useGetLoginOptions();
+  const { data: signUpSetting, isLoading: isSignUpSettingLoading } = useGetSignUpSetting();
 
   useEffect(() => {
     if (ssoError) {
@@ -83,18 +85,26 @@ export const Signin = ({ ssoError, mode = "default", oidcContext }: SigninProps)
     }
   }, [ssoError]);
 
-  if (isLoginOptionLoading) {
+  if (isLoginOptionLoading || isSignUpSettingLoading) {
     return <SigninSkeleton />;
   }
 
   if (!loginOption || loginOption.allowedGrantTypes?.length < 1) return null;
 
-  const showSignUp = mode !== "oidc" && (
-    loginOption?.allowedGrantTypes?.includes(GRANT_TYPES.password) ||
-    loginOption?.allowedGrantTypes?.includes(GRANT_TYPES.social)
-  );
+  const showSignUp =
+    (signUpSetting?.isSignUpEnable ?? false) &&
+    mode !== "oidc" &&
+    (loginOption?.allowedGrantTypes?.includes(GRANT_TYPES.password) ||
+      loginOption?.allowedGrantTypes?.includes(GRANT_TYPES.social));
 
-  const signUpUrl = mode === "oidc" ? buildOIDCNavigationUrl("/oidc/signup") : "/oidc/signup";
+  const { tenantId: oidcTenantId } = extractOIDCParams();
+  const oidcQuery = oidcTenantId
+    ? buildOIDCNavigationUrl("/oidc/signup").split("?")[1] || ""
+    : "";
+  const signUpUrl =
+    mode === "oidc" && oidcTenantId
+      ? `/oidc/signup/${encodeURIComponent(oidcTenantId)}${oidcQuery ? `?${oidcQuery}` : ""}`
+      : "/oidc/signup";
 
   return (
     <Card className="flex h-full flex-col rounded border-solid border-background shadow-none md:min-w-[448px] md:border-[#95ADC4] lg:max-w-md">

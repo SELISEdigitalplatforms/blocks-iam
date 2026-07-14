@@ -19,14 +19,20 @@ namespace Authentication.DomainService.Oidc.Repositories
 
     /// <summary>
     /// Refresh Token Repository
-    /// Manages refresh tokens
+    /// Manages refresh tokens. Source of truth for cross-app session state (TokenId == _id).
     /// </summary>
     public interface IRefreshTokenRepository
     {
         Task<string> CreateAsync(RefreshTokenModel token);
         Task<RefreshTokenModel> GetByTokenIdAsync(string tokenId);
+        Task<IReadOnlyList<RefreshTokenModel>> GetBySessionIdAsync(string sessionId);
+        Task<IReadOnlyList<RefreshTokenModel>> GetActiveTokensBySessionIdAsync(string sessionId);
+        Task<IReadOnlyList<RefreshTokenModel>> GetActiveTokensByUserAsync(string userId);
+        Task<IEnumerable<RefreshTokenModel>> GetRotationHistoryAsync(string sessionId);
         Task<IEnumerable<RefreshTokenModel>> GetByUserAsync(string userId, string tenantId);
         Task<bool> RevokeByTokenIdAsync(string tokenId, string reason);
+        Task<int> RevokeAllByTokenIdsAsync(IEnumerable<string> tokenIds, string reason);
+        Task<int> RevokeAllBySessionIdAsync(string sessionId, string reason);
         Task<bool> UpdateSlidingExpiryAsync(string tokenId);
         Task<bool> DeleteAsync(string tokenId);
         Task<IEnumerable<RefreshTokenModel>> GetExpiredAsync();
@@ -49,19 +55,6 @@ namespace Authentication.DomainService.Oidc.Repositories
     }
 
     /// <summary>
-    /// Audit Log Repository
-    /// Persists audit logs for compliance and security analysis
-    /// </summary>
-    public interface IAuditLogRepository
-    {
-        Task<string> CreateAsync(AuditLogModel log);
-        Task<IEnumerable<AuditLogModel>> GetByUserAsync(string userId, string tenantId, DateTime from, DateTime to);
-        Task<IEnumerable<AuditLogModel>> GetByEventTypeAsync(string eventType, DateTime from, DateTime to);
-        Task<IEnumerable<AuditLogModel>> GetBySeverityAsync(string severity, DateTime from, DateTime to);
-        Task<long> GetCountAsync(string eventType = null, DateTime? from = null, DateTime? to = null);
-    }
-
-    /// <summary>
     /// Token Revocation Repository
     /// Maintains JTI blacklist for immediate token revocation
     /// </summary>
@@ -71,6 +64,7 @@ namespace Authentication.DomainService.Oidc.Repositories
         Task<bool> IsRevokedAsync(string jti);
         Task<TokenRevocationModel> GetRevocationDetailsAsync(string jti);
         Task<IEnumerable<TokenRevocationModel>> GetRevokedTokensByUserAsync(string userId);
+        Task<IEnumerable<TokenRevocationModel>> GetByUserAsync(string userId);
         Task<bool> DeleteAsync(string jti);
     }
 
@@ -85,6 +79,28 @@ namespace Authentication.DomainService.Oidc.Repositories
         Task<bool> UpdateAsync(ConsentGrantModel consent);
         Task<bool> DeleteAsync(string userId, string clientId, string tenantId);
         Task<IEnumerable<ConsentGrantModel>> GetByUserAsync(string userId, string tenantId);
+    }
+
+    /// <summary>
+    /// RFC 8628 Device Authorization Grant repository. Persists pending device/user code pairs
+    /// in MongoDB. The <c>device_code</c> is stored as a SHA-256 hex digest (raw value is never
+    /// written). Atomicity of the <c>Approved → Consumed</c> transition is enforced by a
+    /// conditional update — RFC 8628 §6.5 acceptance #17.
+    /// </summary>
+    public interface IDeviceAuthorizationRepository
+    {
+        Task CreateAsync(DeviceAuthorizationRequestModel entity, CancellationToken ct = default);
+        Task<DeviceAuthorizationRequestModel?> GetByDeviceCodeHashAsync(string hash, CancellationToken ct = default);
+        Task<DeviceAuthorizationRequestModel?> GetByUserCodeAsync(string userCode, CancellationToken ct = default);
+        Task<DeviceAuthorizationRequestModel?> GetByIdAsync(string id, CancellationToken ct = default);
+        Task<bool> MarkApprovedAsync(string id, string userId, DateTime at, CancellationToken ct = default);
+        Task<bool> MarkDeniedAsync(string id, DateTime at, CancellationToken ct = default);
+        Task<bool> MarkConsumedAsync(string id, DateTime at, CancellationToken ct = default);
+        Task<bool> MarkExpiredAsync(IEnumerable<string> ids, CancellationToken ct = default);
+        Task<bool> UpdatePollAsync(string id, DateTime lastPollAt, int pollsObserved, CancellationToken ct = default);
+        Task<int> BumpPollIntervalAsync(string id, int currentInterval, CancellationToken ct = default);
+        Task<IReadOnlyList<string>> GetExpiredIdsAsync(DateTime olderThanUtc, int limit, CancellationToken ct = default);
+        Task EnsureIndexesAsync(CancellationToken ct = default);
     }
 }
 

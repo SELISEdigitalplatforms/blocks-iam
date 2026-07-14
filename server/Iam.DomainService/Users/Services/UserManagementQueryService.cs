@@ -1,6 +1,5 @@
 ﻿using Blocks.Genesis;
 using Iam.DomainService.Dtos;
-using Iam.DomainService.Entities;
 using Microsoft.Extensions.Logging;
 
 namespace Iam.DomainService.Users
@@ -28,6 +27,17 @@ namespace Iam.DomainService.Users
             _logger.LogInformation("User existance search end");
 
             return user == null;
+        }
+
+        public async Task<IsUserExistResponse> IsUserExistAsync(string email)
+        {
+            var user = await _userRepository.GetUserByEmailAsync(email.ToLower());
+
+            return new IsUserExistResponse
+            {
+                UserId = user?.ItemId,
+                OrganizationIds = user?.OrganizationIds ?? new List<string>()
+            };
         }
 
         public async Task<GetUsersResponse> GetUsersAsync(GetUsersRequest query)
@@ -79,17 +89,18 @@ namespace Iam.DomainService.Users
 
             var data = user == null ? null : MapToSingleUserFields(user, contextOrgId);
 
+            if(contextOrgId == "default")
+            {
+                data.Add("OrganizationsRoles", user.Roles);
+                data.Add("OrganizationsPermissions", user.Permissions);
+            }
+
             _logger.LogInformation("User get end");
 
             return new GetUserResponse
             {
                 Data = data
             };
-        }
-
-        public async Task<List<UserTimeline>> GetUserTimelinesAsync(GetUserTimeLineRequest request)
-        {
-            return await _userRepository.GetUserTimelinesAsync(request);
         }
 
         private static Dictionary<string, object> MapToListAccountFields(GetAccounts user)
@@ -150,7 +161,7 @@ namespace Iam.DomainService.Users
 
         private static Dictionary<string, object> MapToSingleUserFields(GetAccounts user, string contextOrgId)
         {
-            if (!user.OrganizationIds.Contains(contextOrgId))
+            if (!user.OrganizationIds.Contains(contextOrgId) && contextOrgId != "default")
             {
                 return new Dictionary<string, object>();
             }
@@ -180,7 +191,7 @@ namespace Iam.DomainService.Users
                 ["logInCount"] = user.LogInCount,
                 ["lastLoggedInTime"] = user.LastLoggedInTime,
                 ["lastLoggedInDeviceInfo"] = user.LastLoggedInDeviceInfo ?? string.Empty,
-                ["OrganizationIds"] = user.OrganizationIds
+                ["organizationIds"] = user.OrganizationIds
             };
         }
     }

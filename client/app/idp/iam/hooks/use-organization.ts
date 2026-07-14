@@ -11,9 +11,9 @@ export const useGetOrganizations = (options: IOrganizationFilter) => {
       iamService.organization.getOrganizations({
         page: options.page,
         pageSize: options.pageSize,
-        searchText: options.search,
+        search: options.search,
+        sort: options.sort,
       }),
-    enabled: !!options.projectKey,
     placeholderData: keepPreviousData,
   });
 };
@@ -33,6 +33,8 @@ export const useSaveOrganization = () => {
     mutationFn: iamService.organization.saveOrganization,
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["organizations"] });
+      queryClient.invalidateQueries({ queryKey: ["organization"] });
+      queryClient.invalidateQueries({ queryKey: ["organizations", "my"] });
     },
   });
 };
@@ -43,8 +45,15 @@ export const useUpdateOrganization = () => {
     mutationKey: ["organization", "update"],
     mutationFn: (payload: IUpdateOrganizationPayload) =>
       iamService.organization.updateOrganization(payload),
-    onSuccess: () => {
+    onSuccess: (_data, variables) => {
       queryClient.invalidateQueries({ queryKey: ["organizations"] });
+      queryClient.invalidateQueries({ queryKey: ["organization"] });
+      queryClient.invalidateQueries({ queryKey: ["organizations", "my"] });
+      if (variables?.itemId) {
+        queryClient.invalidateQueries({
+          queryKey: ["organization", variables.itemId],
+        });
+      }
     },
   });
 };

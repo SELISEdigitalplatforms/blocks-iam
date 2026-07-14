@@ -36,7 +36,11 @@ describe("RoleService", () => {
 
       const result = await service.getRoles(mockGetRolesPayload);
 
-      expect(http.post).toHaveBeenCalledWith(ROLE_ENDPOINTS.GET_ROLES, mockGetRolesPayload);
+      const { projectKey, ...rest } = mockGetRolesPayload;
+      expect(http.post).toHaveBeenCalledWith(ROLE_ENDPOINTS.GET_ROLES, {
+        ...rest,
+        organizationId: projectKey,
+      });
       expect(result).toEqual(mockRolesResponse);
     });
 
