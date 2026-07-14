@@ -59,15 +59,17 @@ namespace Authentication.DomainService.Oidc.Services
                 throw new DeviceAuthorizationException("invalid_request", "client_id is required");
             }
 
-            if (string.IsNullOrWhiteSpace(request.TenantId))
+            var blocksContext = BlocksContext.GetContext();
+
+            if (string.IsNullOrWhiteSpace(blocksContext.TenantId))
             {
                 throw new DeviceAuthorizationException("invalid_request", "tenant_id is required");
             }
 
-            var tenant = _tenants.GetTenantByID(request.TenantId);
+            var tenant = _tenants.GetTenantByID(blocksContext.TenantId);
             if (tenant == null)
             {
-                throw new DeviceAuthorizationException("invalid_tenant", $"tenant '{request.TenantId}' not found");
+                throw new DeviceAuthorizationException("invalid_tenant", $"tenant '{blocksContext.TenantId}' not found");
             }
 
             var client = await _authenticationRepository.GetOidcClientRegistrationAsync(request.ClientId);
@@ -96,7 +98,7 @@ namespace Authentication.DomainService.Oidc.Services
                 DeviceCodeHash = deviceCodeHash,
                 UserCode = userCode,
                 ClientId = request.ClientId,
-                TenantId = request.TenantId,
+                TenantId = blocksContext.TenantId,
                 RequestedScopes = string.Join(' ', resolvedScopes),
                 Status = DeviceAuthorizationStatus.Pending,
                 CreatedAt = DateTime.UtcNow,
@@ -110,10 +112,10 @@ namespace Authentication.DomainService.Oidc.Services
             await _repository.CreateAsync(entity, ct);
 
             var apiBase = $"{httpRequest.Scheme}://{httpRequest.Host.Value}";
-            var verificationUri = OidcRedirectUrlBuilder.BuildVerificationUri(apiBase, null, request.TenantId);
-            var verificationUriComplete = OidcRedirectUrlBuilder.BuildVerificationUriComplete(apiBase, userCode, request.TenantId);
+            var verificationUri = OidcRedirectUrlBuilder.BuildVerificationUri(apiBase, null, blocksContext.TenantId);
+            var verificationUriComplete = OidcRedirectUrlBuilder.BuildVerificationUriComplete(apiBase, userCode, blocksContext.TenantId);
 
-            _logger.LogInformation("Device authorization request created {Id} for client {ClientId} tenant {TenantId}", entity.Id, request.ClientId, request.TenantId);
+            _logger.LogInformation("Device authorization request created {Id} for client {ClientId} tenant {TenantId}", entity.Id, request.ClientId, blocksContext.TenantId);
 
             return new DeviceAuthorizationResponse
             {
