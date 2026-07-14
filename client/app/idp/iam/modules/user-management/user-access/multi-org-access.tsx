@@ -275,7 +275,7 @@ export const MultiOrgAccess = ({ userId, projectKey }: MultiOrgAccessProps) => {
                     <Button
                       variant="ghost"
                       size="icon"
-                      className="mt-6 h-8 w-8 shrink-0 text-muted-foreground hover:bg-destructive/10 hover:text-destructive"
+                      className="mt-6 h-8 w-8 shrink-0 bg-destructive/10 text-destructive hover:bg-destructive hover:text-destructive-foreground"
                       onClick={() => setRevokeTarget(selectedOrgRow)}
                       aria-label={`Revoke access to ${selectedOrgRow.name}`}
                     >
