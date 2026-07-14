@@ -134,8 +134,16 @@ export class UserService {
     return serviceInstances.idpService.post(USER_ENDPOINTS.UPDATE_ME, body);
   }
 
-  getSignUpSetting(): Promise<IGetSignUpSettingResponse> {
-    return serviceInstances.idpService.get(`${ORGANIZATION_ENDPOINTS.GET_SIGNUP_SETTING}`);
+  getSignUpSetting(tenantId?: string): Promise<IGetSignUpSettingResponse> {
+    const headers: Record<string, string> = {};
+    if (tenantId) {
+      headers["X-Blocks-Key"] = tenantId;
+    }
+    return serviceInstances.idpService.get(
+      `${ORGANIZATION_ENDPOINTS.GET_SIGNUP_SETTING}`,
+      headers,
+      tenantId ? { skipBlocksKey: true } : undefined,
+    );
   }
 
   saveSignUpSetting(

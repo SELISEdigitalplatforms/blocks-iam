@@ -92,7 +92,7 @@ describe("use-auth hooks", () => {
 
       result.current.mutate(mockSignupPayload);
       await waitFor(() => expect(result.current.isSuccess).toBe(true));
-      expect(authService.signupByEmail).toHaveBeenCalledWith(mockSignupPayload);
+      expect(authService.signupByEmail).toHaveBeenCalledWith(mockSignupPayload, undefined);
     });
   });
 });
