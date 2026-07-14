@@ -204,20 +204,16 @@
             form. For Accept: application/json callers we return a redirect hint.
             </summary>
         </member>
-        <member name="M:Api.Controllers.DeviceController.Submit(Idp.DomainService.Oidc.Contracts.DeviceInteractionRequest,System.Threading.CancellationToken)">
+        <member name="M:Api.Controllers.DeviceController.Verify(Idp.DomainService.Oidc.Contracts.DeviceVerifyRequest,System.Threading.CancellationToken)">
             <summary>
-            POST /api/device — accepts a user_code, mints an interactionId, and either returns the
-            continue endpoint (already authenticated) or the OIDC login URL.
+            POST /api/device/verify — validates a user_code and returns either the inline consent
+            payload (<c>status: "ready"</c>) or an OIDC login URL (<c>status: "login_required"</c>).
             </summary>
         </member>
-        <member name="M:Api.Controllers.DeviceController.Continue(System.String,System.Threading.CancellationToken)">
+        <member name="M:Api.Controllers.DeviceController.Decision(Idp.DomainService.Oidc.Contracts.DeviceDecisionRequest,System.Threading.CancellationToken)">
             <summary>
-            GET /api/device/continue/{interactionId} — returns the consent payload for the SPA to render.
-            </summary>
-        </member>
-        <member name="M:Api.Controllers.DeviceController.Approve(Idp.DomainService.Oidc.Contracts.DeviceApproveRequest,System.Threading.CancellationToken)">
-            <summary>
-            POST /api/device/approve — records allow/deny decision.
+            POST /api/device/decision — records an allow/deny decision for the device authorization
+            request identified by <c>user_code</c>. Returns the SPA's success-page redirect.
             </summary>
         </member>
         <member name="T:Api.Controllers.IdpController">
@@ -340,7 +336,7 @@
         <member name="M:Blocks.Api.Controllers.AuthorizationController.DeviceAuthorization(System.Threading.CancellationToken)">
             <summary>
             OAuth 2.0 Device Authorization Endpoint (RFC 8628 Section 3.1).
-            Accepts application/x-www-form-urlencoded <c>client_id</c>, <c>tenant_id</c>, <c>scope</c>
+            Accepts application/x-www-form-urlencoded <c>client_id</c>, <c>scope</c>
             and returns device_code, user_code, verification_uri, expires_in, interval.
             </summary>
         </member>
