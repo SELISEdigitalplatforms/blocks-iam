@@ -41,7 +41,7 @@ export const OrganizationRolesField = ({
 
   return (
     <div className="space-y-3">
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+      <div className="flex flex-row items-center justify-between gap-3">
         <div className="flex-1 space-y-1">
           <div className="flex items-center gap-2">
             <Label className="text-base font-medium">Roles</Label>
