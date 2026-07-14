@@ -42,8 +42,6 @@ namespace Idp.DomainService.Oidc.Contracts
     {
         [Required]
         public string ClientId { get; set; } = string.Empty;
-        [Required]
-        public string TenantId { get; set; } = string.Empty;
         public string? Scope { get; set; }
     }
 

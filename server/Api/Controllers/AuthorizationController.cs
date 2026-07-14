@@ -73,28 +73,28 @@ namespace Blocks.Api.Controllers
                 Response);
         }
 
-/// <summary>
-/// OAuth 2.0 Token Endpoint (RFC 6749 Section 3.2)
-/// Supports both authorization_code and refresh_token grants
-/// </summary>
-[HttpPost("token")]
-[AllowAnonymous]
-public async Task<IActionResult> Token([FromForm] string grant_type)
-{
-    return await _authorizationFlowService.TokenAsync(grant_type, Request);
-}
+        /// <summary>
+        /// OAuth 2.0 Token Endpoint (RFC 6749 Section 3.2)
+        /// Supports both authorization_code and refresh_token grants
+        /// </summary>
+        [HttpPost("token")]
+        [AllowAnonymous]
+        public async Task<IActionResult> Token([FromForm] string grant_type)
+        {
+            return await _authorizationFlowService.TokenAsync(grant_type, Request);
+        }
 
-/// <summary>
-/// OAuth 2.0 Device Authorization Endpoint (RFC 8628 Section 3.1).
-/// Accepts application/x-www-form-urlencoded <c>client_id</c>, <c>tenant_id</c>, <c>scope</c>
-/// and returns device_code, user_code, verification_uri, expires_in, interval.
-/// </summary>
-[HttpPost("/device_authorization")]
-[AllowAnonymous]
-public async Task<IActionResult> DeviceAuthorization(CancellationToken ct)
-{
-    return await _deviceAuthorizationEndpoint.HandleAsync(Request, ct);
-}
+        /// <summary>
+        /// OAuth 2.0 Device Authorization Endpoint (RFC 8628 Section 3.1).
+        /// Accepts application/x-www-form-urlencoded <c>client_id</c>, <c>scope</c>
+        /// and returns device_code, user_code, verification_uri, expires_in, interval.
+        /// </summary>
+        [HttpPost("device_authorization")]
+        [AllowAnonymous]
+        public async Task<IActionResult> DeviceAuthorization(CancellationToken ct)
+        {
+            return await _deviceAuthorizationEndpoint.HandleAsync(Request, ct);
+        }
 
         #region OIDC Federated Authentication (OpenID Connect 1.0)
 

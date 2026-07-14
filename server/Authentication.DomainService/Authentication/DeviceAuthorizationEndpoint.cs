@@ -43,7 +43,6 @@ namespace Authentication.DomainService.Authentication
             var dto = new DeviceAuthorizationRequest
             {
                 ClientId = form["client_id"].ToString(),
-                TenantId = form["tenant_id"].ToString(),
                 Scope = form["scope"].ToString()
             };
 
