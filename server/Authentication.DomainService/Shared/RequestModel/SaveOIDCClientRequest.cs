@@ -26,5 +26,6 @@ namespace Authentication.DomainService.RequestModel
         public bool RequireMfa { get; set; }
         public List<UserMfaType>? AllowedMfaMethods { get; set; }
         public bool RegisterAsIdentityProvider { get; set; }
+        public bool IsDeviceFlowClient { get; set; }
     }
 }
