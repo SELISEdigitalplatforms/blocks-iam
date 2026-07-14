@@ -25,6 +25,10 @@ import OidcIndexPage from "./routes/oidc/index";
 import OidcLoginPage from "./routes/oidc/login";
 import OidcPermissionPage from "./routes/oidc/permission";
 
+// Device flow routes (RFC 8628)
+import DeviceEntryRoute from "./routes/device";
+import DeviceSuccessRoute from "./routes/device/success";
+
 // Dashboard routes (protected)
 import AuthLogsPage from "./routes/dashboard/auth-logs";
 import AuthenticationConfigPage from "./routes/dashboard/authentication-config";
@@ -97,6 +101,16 @@ export const router = createBrowserRouter([
           { path: "signup/:tenantId", element: <SignupPage /> },
           { path: "mfa-check", element: <MfaCheckPage /> },
           { path: ":provider/callback/:tenantId", element: <SSOCallbackPage  /> },
+        ],
+      },
+
+      // ── Device authorization flow (RFC 8628) ──
+      {
+        path: "/device",
+        element: <OidcLayout />,
+        children: [
+          { path: ":tenantId", element: <DeviceEntryRoute /> },
+          { path: ":tenantId/success", element: <DeviceSuccessRoute /> },
         ],
       },
       {
