@@ -11,8 +11,37 @@ using Moq;
 
 namespace XUnitTest.Auth.Oidc
 {
-    public class DeviceAuthorizationServiceTests
+    public class DeviceAuthorizationServiceTests : IDisposable
     {
+        private static void SetContext(string tenantId)
+        {
+            BlocksContext.IsTestMode = true;
+            BlocksContext.SetContext(BlocksContext.Create(
+                tenantId: tenantId,
+                roles: null,
+                userId: "user-1",
+                impersonated: false,
+                isAuthenticated: true,
+                requestUri: "https://test/device",
+                organizationId: "org-1",
+                permissions: null,
+                expireOn: DateTime.UtcNow.AddHours(1),
+                email: "user@example.com",
+                userName: "tester",
+                phoneNumber: null,
+                displayName: "Tester",
+                oauthToken: null,
+                originalTenantId: tenantId,
+                impersonationSessionId: null,
+                applicationDomain: "test"));
+        }
+
+        public void Dispose()
+        {
+            BlocksContext.SetContext(null);
+            BlocksContext.IsTestMode = false;
+        }
+
         private static DeviceAuthorizationService CreateService(
             Mock<IDeviceAuthorizationRepository> repo,
             Mock<IAuthenticationRepository> authRepo,
@@ -47,27 +76,28 @@ namespace XUnitTest.Auth.Oidc
             };
         }
 
-        private static IFormCollection EmptyForm() => new FormCollection(new Dictionary<string, Microsoft.Extensions.Primitives.StringValues>());
-
         [Fact]
         public async Task RequestAsync_Throws_WhenClientIdMissing()
         {
+            SetContext("tenant-1");
             var service = CreateService(new Mock<IDeviceAuthorizationRepository>(), new Mock<IAuthenticationRepository>());
-            var act = async () => await service.RequestAsync(new DeviceAuthorizationRequest { ClientId = "", TenantId = "tenant-1" }, new DefaultHttpContext().Request);
+            var act = async () => await service.RequestAsync(new DeviceAuthorizationRequest { ClientId = "" }, new DefaultHttpContext().Request);
             await act.Should().ThrowAsync<DeviceAuthorizationException>().Where(e => e.Error == "invalid_request");
         }
 
         [Fact]
         public async Task RequestAsync_Throws_WhenTenantIdMissing()
         {
+            SetContext("");
             var service = CreateService(new Mock<IDeviceAuthorizationRepository>(), new Mock<IAuthenticationRepository>());
-            var act = async () => await service.RequestAsync(new DeviceAuthorizationRequest { ClientId = "cli", TenantId = "" }, new DefaultHttpContext().Request);
+            var act = async () => await service.RequestAsync(new DeviceAuthorizationRequest { ClientId = "cli" }, new DefaultHttpContext().Request);
             await act.Should().ThrowAsync<DeviceAuthorizationException>().Where(e => e.Error == "invalid_request");
         }
 
         [Fact]
         public async Task RequestAsync_Throws_WhenTenantNotFound()
         {
+            SetContext("missing");
             var tenants = new Mock<Blocks.Genesis.ITenants>();
             tenants.Setup(t => t.GetTenantByID(It.IsAny<string>())).Returns((Tenant?)null);
 
@@ -79,46 +109,50 @@ namespace XUnitTest.Auth.Oidc
                 tenants.Object,
                 NullLogger<DeviceAuthorizationService>.Instance);
 
-            var act = async () => await service.RequestAsync(new DeviceAuthorizationRequest { ClientId = "cli", TenantId = "missing" }, new DefaultHttpContext().Request);
+            var act = async () => await service.RequestAsync(new DeviceAuthorizationRequest { ClientId = "cli" }, new DefaultHttpContext().Request);
             await act.Should().ThrowAsync<DeviceAuthorizationException>().Where(e => e.Error == "invalid_tenant");
         }
 
         [Fact]
         public async Task RequestAsync_Throws_WhenClientNotFound()
         {
+            SetContext("t1");
             var authRepo = new Mock<IAuthenticationRepository>();
             authRepo.Setup(r => r.GetOidcClientRegistrationAsync(It.IsAny<string>())).ReturnsAsync((OidcClientRegistration?)null);
 
             var service = CreateService(new Mock<IDeviceAuthorizationRepository>(), authRepo);
-            var act = async () => await service.RequestAsync(new DeviceAuthorizationRequest { ClientId = "missing", TenantId = "t1" }, new DefaultHttpContext().Request);
+            var act = async () => await service.RequestAsync(new DeviceAuthorizationRequest { ClientId = "missing" }, new DefaultHttpContext().Request);
             await act.Should().ThrowAsync<DeviceAuthorizationException>().Where(e => e.Error == "invalid_client");
         }
 
         [Fact]
         public async Task RequestAsync_Throws_WhenClientIsNotDeviceFlowEnabled()
         {
+            SetContext("t1");
             var authRepo = new Mock<IAuthenticationRepository>();
             var client = new OidcClientRegistration { ClientId = "c1", IsDeviceFlowClient = false, IsActive = true, AllowedScopes = new List<string> { "openid" } };
             var service = CreateService(new Mock<IDeviceAuthorizationRepository>(), authRepo, client);
 
-            var act = async () => await service.RequestAsync(new DeviceAuthorizationRequest { ClientId = "c1", TenantId = "t1", Scope = "openid" }, new DefaultHttpContext().Request);
+            var act = async () => await service.RequestAsync(new DeviceAuthorizationRequest { ClientId = "c1", Scope = "openid" }, new DefaultHttpContext().Request);
             await act.Should().ThrowAsync<DeviceAuthorizationException>().Where(e => e.Error == "unauthorized_client");
         }
 
         [Fact]
         public async Task RequestAsync_Throws_WhenScopeNotAllowed()
         {
+            SetContext("t1");
             var authRepo = new Mock<IAuthenticationRepository>();
             var client = new OidcClientRegistration { ClientId = "c1", IsDeviceFlowClient = true, IsActive = true, AllowedScopes = new List<string> { "openid" } };
             var service = CreateService(new Mock<IDeviceAuthorizationRepository>(), authRepo, client);
 
-            var act = async () => await service.RequestAsync(new DeviceAuthorizationRequest { ClientId = "c1", TenantId = "t1", Scope = "forbidden other" }, new DefaultHttpContext().Request);
+            var act = async () => await service.RequestAsync(new DeviceAuthorizationRequest { ClientId = "c1", Scope = "forbidden other" }, new DefaultHttpContext().Request);
             await act.Should().ThrowAsync<DeviceAuthorizationException>().Where(e => e.Error == "invalid_scope");
         }
 
         [Fact]
         public async Task RequestAsync_ReturnsStandardRfc8628Payload_OnSuccess()
         {
+            SetContext("t1");
             var client = new OidcClientRegistration { ClientId = "c1", IsDeviceFlowClient = true, IsActive = true, AllowedScopes = new List<string> { "openid", "profile" } };
             var repo = new Mock<IDeviceAuthorizationRepository>();
             repo.Setup(r => r.CreateAsync(It.IsAny<DeviceAuthorizationRequestModel>(), It.IsAny<CancellationToken>())).Returns(Task.CompletedTask);
@@ -131,7 +165,7 @@ namespace XUnitTest.Auth.Oidc
             ctx.Request.Scheme = "https";
             ctx.Request.Host = new HostString("idp.example.com");
 
-            var response = await service.RequestAsync(new DeviceAuthorizationRequest { ClientId = "c1", TenantId = "t1", Scope = "openid profile" }, ctx.Request);
+            var response = await service.RequestAsync(new DeviceAuthorizationRequest { ClientId = "c1", Scope = "openid profile" }, ctx.Request);
 
             response.Should().NotBeNull();
             response.DeviceCode.Should().NotBeNullOrEmpty();

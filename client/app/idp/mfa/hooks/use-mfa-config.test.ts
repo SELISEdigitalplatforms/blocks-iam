@@ -45,9 +45,8 @@ describe("use-mfa-config hooks", () => {
 
       await waitFor(() => expect(result.current.isSuccess).toBe(true));
       expect(result.current.data).toEqual(mockMfaConfigResponse);
-      expect(mfaService.getConfigurations).toHaveBeenCalledWith({
-        projectKey: TEST_PROJECT_KEY,
-      });
+      // The config endpoint resolves the project server-side; the hook passes no args.
+      expect(mfaService.getConfigurations).toHaveBeenCalledWith();
     });
   });
 
@@ -61,7 +60,7 @@ describe("use-mfa-config hooks", () => {
 
       result.current.mutate(mockSaveMfaConfigPayload);
       await waitFor(() => expect(result.current.isSuccess).toBe(true));
-      expect(mfaService.saveMFAConfiguration).toHaveBeenCalledWith(mockSaveMfaConfigPayload);
+      expect(mfaService.saveMFAConfiguration).toHaveBeenCalledWith(mockSaveMfaConfigPayload, expect.anything());
     });
   });
 
@@ -76,7 +75,7 @@ describe("use-mfa-config hooks", () => {
 
       result.current.mutate(mockConfigureUserMfaPayload);
       await waitFor(() => expect(result.current.isSuccess).toBe(true));
-      expect(mfaService.configureUserMFA).toHaveBeenCalledWith(mockConfigureUserMfaPayload);
+      expect(mfaService.configureUserMFA).toHaveBeenCalledWith(mockConfigureUserMfaPayload, expect.anything());
     });
   });
 
@@ -108,7 +107,7 @@ describe("use-mfa-config hooks", () => {
 
       result.current.mutate(mockGenerateOtpPayload);
       await waitFor(() => expect(result.current.isSuccess).toBe(true));
-      expect(mfaService.generateUserMfaOTP).toHaveBeenCalledWith(mockGenerateOtpPayload);
+      expect(mfaService.generateUserMfaOTP).toHaveBeenCalledWith(mockGenerateOtpPayload, expect.anything());
     });
   });
 
@@ -123,7 +122,7 @@ describe("use-mfa-config hooks", () => {
 
       result.current.mutate(mockVerifyOtpPayload);
       await waitFor(() => expect(result.current.isSuccess).toBe(true));
-      expect(mfaService.verifyOtp).toHaveBeenCalledWith(mockVerifyOtpPayload);
+      expect(mfaService.verifyOtp).toHaveBeenCalledWith(mockVerifyOtpPayload, expect.anything());
     });
   });
 
@@ -137,7 +136,7 @@ describe("use-mfa-config hooks", () => {
 
       result.current.mutate(mockResendOtpPayload);
       await waitFor(() => expect(result.current.isSuccess).toBe(true));
-      expect(mfaService.resendOtp).toHaveBeenCalledWith(mockResendOtpPayload);
+      expect(mfaService.resendOtp).toHaveBeenCalledWith(mockResendOtpPayload, expect.anything());
     });
   });
 
@@ -151,7 +150,7 @@ describe("use-mfa-config hooks", () => {
 
       result.current.mutate(mockDisableMfaPayload);
       await waitFor(() => expect(result.current.isSuccess).toBe(true));
-      expect(mfaService.disableMFA).toHaveBeenCalledWith(mockDisableMfaPayload);
+      expect(mfaService.disableMFA).toHaveBeenCalledWith(mockDisableMfaPayload, expect.anything());
     });
   });
 });
