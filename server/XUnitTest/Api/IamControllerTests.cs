@@ -1,0 +1,531 @@
+using Api.Controllers;
+using Authentication.DomainService.Authentication;
+using Blocks.Genesis;
+using FluentAssertions;
+using Iam.DomainService.Accounts;
+using Iam.DomainService.Resources;
+using Iam.DomainService.Resources.RequestModel;
+using Iam.DomainService.Resources.ResponseModel;
+using Iam.DomainService.Users;
+using Iam.DomainService.Users.RequestModel;
+using Iam.DomainService.Users.ResponseModel;
+using Microsoft.AspNetCore.Http;
+using Microsoft.AspNetCore.Mvc;
+using Moq;
+
+namespace XUnitTest.ApiTests
+{
+    /// <summary>
+    /// Unit tests for <see cref="IamController"/>. Injected services are mocked; each test asserts
+    /// the returned result type/value and verifies the delegated call.
+    /// </summary>
+    public class IamControllerTests : IDisposable
+    {
+        private const string ActorUserId = "actor-1";
+
+        private readonly Mock<IAccountService> _accountService = new();
+        private readonly Mock<IUserManagementQueryService> _userQuery = new();
+        private readonly Mock<IUserManagementMutationService> _userMutation = new();
+        private readonly Mock<IResourceMutationService> _resourceMutation = new();
+        private readonly Mock<IResourceQueryService> _resourceQuery = new();
+        private readonly Mock<IAuthenticationService> _authService = new();
+
+        public IamControllerTests()
+        {
+            BlocksContext.IsTestMode = true;
+            BlocksContext.SetContext(BlocksContext.Create(
+                tenantId: "tenant-1", roles: null, userId: ActorUserId, impersonated: false,
+                isAuthenticated: true, requestUri: "https://test/iam", organizationId: "default",
+                permissions: null, expireOn: DateTime.UtcNow.AddHours(1), email: "a@b.com",
+                userName: "tester", phoneNumber: null, displayName: "T", oauthToken: null,
+                originalTenantId: "tenant-1", impersonationSessionId: null, applicationDomain: "test"));
+        }
+
+        public void Dispose()
+        {
+            BlocksContext.SetContext(null);
+            BlocksContext.IsTestMode = false;
+        }
+
+        private IamController CreateController()
+        {
+            var controller = new IamController(
+                _accountService.Object,
+                _resourceMutation.Object,
+                _resourceQuery.Object,
+                _userQuery.Object,
+                _userMutation.Object,
+                _authService.Object);
+            controller.ControllerContext = new ControllerContext
+            {
+                HttpContext = new DefaultHttpContext()
+            };
+            return controller;
+        }
+
+        // ---------- Permissions ----------
+
+        [Fact]
+        public async Task CreatePermission_Success_ReturnsOk()
+        {
+            _resourceMutation.Setup(s => s.CreatePermissionAsync(It.IsAny<CreatePermissionRequest>()))
+                .ReturnsAsync(new BaseMutationResponse { IsSuccess = true });
+
+            var result = await CreateController().CreatePermission(new CreatePermissionRequest());
+
+            result.Should().BeOfType<OkObjectResult>();
+        }
+
+        [Fact]
+        public async Task CreatePermission_Failure_ReturnsBadRequest()
+        {
+            _resourceMutation.Setup(s => s.CreatePermissionAsync(It.IsAny<CreatePermissionRequest>()))
+                .ReturnsAsync(new BaseMutationResponse { IsSuccess = false });
+
+            var result = await CreateController().CreatePermission(new CreatePermissionRequest());
+
+            result.Should().BeOfType<BadRequestObjectResult>();
+        }
+
+        [Fact]
+        public async Task UpdatePermission_Success_SetsItemIdAndReturnsOk()
+        {
+            _resourceMutation.Setup(s => s.UpdatePermissionAsync("p-1", It.Is<UpdatePermissionRequest>(c => c.ItemId == "p-1")))
+                .ReturnsAsync(new BaseMutationResponse { IsSuccess = true });
+
+            var result = await CreateController().UpdatePermission("p-1", new UpdatePermissionRequest());
+
+            result.Should().BeOfType<OkObjectResult>();
+            _resourceMutation.Verify(s => s.UpdatePermissionAsync("p-1", It.Is<UpdatePermissionRequest>(c => c.ItemId == "p-1")), Times.Once);
+        }
+
+        [Fact]
+        public async Task UpdatePermission_Failure_ReturnsBadRequest()
+        {
+            _resourceMutation.Setup(s => s.UpdatePermissionAsync(It.IsAny<string>(), It.IsAny<UpdatePermissionRequest>()))
+                .ReturnsAsync(new BaseMutationResponse { IsSuccess = false });
+
+            var result = await CreateController().UpdatePermission("p-1", new UpdatePermissionRequest());
+
+            result.Should().BeOfType<BadRequestObjectResult>();
+        }
+
+        [Fact]
+        public async Task GetPermissions_DelegatesToQueryService()
+        {
+            var response = new GetPermissionsResponse();
+            _resourceQuery.Setup(s => s.GetPermissionsAsync(It.IsAny<GetPermissionsRequest>())).ReturnsAsync(response);
+
+            var result = await CreateController().GetPermissions(new GetPermissionsRequest());
+
+            result.Should().BeSameAs(response);
+        }
+
+        [Fact]
+        public async Task GetPermission_DelegatesToQueryService()
+        {
+            var response = new GetPermissionResponse();
+            _resourceQuery.Setup(s => s.GetPermissionAsync("p-1")).ReturnsAsync(response);
+
+            var result = await CreateController().GetPermission("p-1");
+
+            result.Should().BeSameAs(response);
+        }
+
+        [Fact]
+        public async Task GetPermissionsGroupBySeverity_DelegatesToQueryService()
+        {
+            var response = new List<PermissionGroupBySeverityResponse>();
+            _resourceQuery.Setup(s => s.GetPermissionsGroupBySeverityAsync()).ReturnsAsync(response);
+
+            var result = await CreateController().GetPermissionsGroupBySeverity(new GetPermissionGroupBySeverityRequest());
+
+            result.Should().BeSameAs(response);
+        }
+
+        // ---------- Roles ----------
+
+        [Fact]
+        public async Task CreateRole_Success_ReturnsOk()
+        {
+            _resourceMutation.Setup(s => s.CreateRoleAsync(It.IsAny<CreateRoleRequest>()))
+                .ReturnsAsync(new BaseMutationResponse { IsSuccess = true });
+
+            var result = await CreateController().CreateRole(new CreateRoleRequest());
+
+            result.Should().BeOfType<OkObjectResult>();
+        }
+
+        [Fact]
+        public async Task CreateRole_Failure_ReturnsBadRequest()
+        {
+            _resourceMutation.Setup(s => s.CreateRoleAsync(It.IsAny<CreateRoleRequest>()))
+                .ReturnsAsync(new BaseMutationResponse { IsSuccess = false });
+
+            var result = await CreateController().CreateRole(new CreateRoleRequest());
+
+            result.Should().BeOfType<BadRequestObjectResult>();
+        }
+
+        [Fact]
+        public async Task UpdateRole_Success_ReturnsOk()
+        {
+            _resourceMutation.Setup(s => s.UpdateRoleAsync(It.IsAny<UpdateRoleRequest>()))
+                .ReturnsAsync(new BaseMutationResponse { IsSuccess = true });
+
+            var result = await CreateController().UpdateRole(new UpdateRoleRequest());
+
+            result.Should().BeOfType<OkObjectResult>();
+        }
+
+        [Fact]
+        public async Task GetRoles_DelegatesToQueryService()
+        {
+            var response = new GetRolesResponse();
+            _resourceQuery.Setup(s => s.GetRolesAsync(It.IsAny<GetRolesRequest>())).ReturnsAsync(response);
+
+            var result = await CreateController().GetRoles(new GetRolesRequest());
+
+            result.Should().BeSameAs(response);
+        }
+
+        [Fact]
+        public async Task GetRole_DelegatesToQueryService()
+        {
+            var response = new GetRoleResponse();
+            _resourceQuery.Setup(s => s.GetRoleAsync("r-1")).ReturnsAsync(response);
+
+            var result = await CreateController().GetRole("r-1");
+
+            result.Should().BeSameAs(response);
+        }
+
+        [Fact]
+        public async Task SetRoles_Success_ReturnsOk()
+        {
+            _resourceMutation.Setup(s => s.SetRolesAsync(It.IsAny<SetRolesRequest>()))
+                .ReturnsAsync(new SetRolesResponse { Success = true });
+
+            var result = await CreateController().SetRoles(new SetRolesRequest());
+
+            result.Should().BeOfType<OkObjectResult>();
+        }
+
+        [Fact]
+        public async Task SetRoles_Failure_ReturnsBadRequest()
+        {
+            _resourceMutation.Setup(s => s.SetRolesAsync(It.IsAny<SetRolesRequest>()))
+                .ReturnsAsync(new SetRolesResponse { Success = false });
+
+            var result = await CreateController().SetRoles(new SetRolesRequest());
+
+            result.Should().BeOfType<BadRequestObjectResult>();
+        }
+
+        [Fact]
+        public async Task GetAssignableRoles_DelegatesToQueryService()
+        {
+            var response = new GetAssignableRolesResponse();
+            _resourceQuery.Setup(s => s.GetAssignableRolesAsync()).ReturnsAsync(response);
+
+            var result = await CreateController().GetAssignableRoles();
+
+            result.Should().BeSameAs(response);
+        }
+
+        [Fact]
+        public async Task GetResourceGroups_DelegatesToQueryService()
+        {
+            var response = new List<GetResourceGroupResponse>();
+            _resourceQuery.Setup(s => s.GetResourceGroupsAsync()).ReturnsAsync(response);
+
+            var result = await CreateController().GetResourceGroups(new GetResourceGroupRequest());
+
+            result.Should().BeSameAs(response);
+        }
+
+        [Fact]
+        public async Task GetFeResourceFeatures_DelegatesToQueryService()
+        {
+            var response = new List<GetFeResourceFeatureResponse>();
+            _resourceQuery.Setup(s => s.GetFeResourceFeaturesAsync(It.IsAny<GetFeResourceFeatureRequest>())).ReturnsAsync(response);
+
+            var result = await CreateController().GetFeResourceFeatures(new GetFeResourceFeatureRequest());
+
+            result.Should().BeSameAs(response);
+        }
+
+        // ---------- Users ----------
+
+        [Fact]
+        public async Task Create_Success_ReturnsOk()
+        {
+            _userMutation.Setup(s => s.CreateUserAsync(It.IsAny<CreateUserRequest>()))
+                .ReturnsAsync(new BaseMutationResponse { IsSuccess = true });
+
+            var result = await CreateController().Create(new CreateUserRequest());
+
+            result.Should().BeOfType<OkObjectResult>();
+        }
+
+        [Fact]
+        public async Task Create_Failure_ReturnsBadRequest()
+        {
+            _userMutation.Setup(s => s.CreateUserAsync(It.IsAny<CreateUserRequest>()))
+                .ReturnsAsync(new BaseMutationResponse { IsSuccess = false });
+
+            var result = await CreateController().Create(new CreateUserRequest());
+
+            result.Should().BeOfType<BadRequestObjectResult>();
+        }
+
+        [Fact]
+        public async Task Update_Success_SetsItemIdAndReturnsOk()
+        {
+            _userMutation.Setup(s => s.UpdateUserAsync(It.Is<UpdateUserRequest>(c => c.ItemId == "u-1")))
+                .ReturnsAsync(new BaseMutationResponse { IsSuccess = true });
+
+            var result = await CreateController().Update("u-1", new UpdateUserRequest());
+
+            result.Should().BeOfType<OkObjectResult>();
+            _userMutation.Verify(s => s.UpdateUserAsync(It.Is<UpdateUserRequest>(c => c.ItemId == "u-1")), Times.Once);
+        }
+
+        [Fact]
+        public async Task Deactivate_Success_ReturnsOk()
+        {
+            _userMutation.Setup(s => s.DeactivateUserAsync(It.IsAny<DeactivateUserRequest>()))
+                .ReturnsAsync(new BaseResponse { IsSuccess = true });
+
+            var result = await CreateController().Deactivate(new DeactivateUserRequest());
+
+            result.Should().BeOfType<OkObjectResult>();
+        }
+
+        [Fact]
+        public async Task Deactivate_Failure_ReturnsBadRequest()
+        {
+            _userMutation.Setup(s => s.DeactivateUserAsync(It.IsAny<DeactivateUserRequest>()))
+                .ReturnsAsync(new BaseResponse { IsSuccess = false });
+
+            var result = await CreateController().Deactivate(new DeactivateUserRequest());
+
+            result.Should().BeOfType<BadRequestObjectResult>();
+        }
+
+        [Fact]
+        public async Task Activate_Success_ReturnsOk()
+        {
+            _userMutation.Setup(s => s.ActivateUserAsync(It.IsAny<ActivateUserByAdminRequest>()))
+                .ReturnsAsync(new BaseMutationResponse { IsSuccess = true });
+
+            var result = await CreateController().Activate(new ActivateUserByAdminRequest { UserId = "u-1", Reason = "test" });
+
+            result.Should().BeOfType<OkObjectResult>();
+        }
+
+        [Fact]
+        public async Task GetUsers_DelegatesToQueryService()
+        {
+            var response = new GetUsersResponse();
+            _userQuery.Setup(s => s.GetUsersAsync(It.IsAny<GetUsersRequest>())).ReturnsAsync(response);
+
+            var result = await CreateController().GetUsers(new GetUsersRequest());
+
+            result.Should().BeSameAs(response);
+        }
+
+        [Fact]
+        public async Task GetUser_DelegatesToQueryService()
+        {
+            var response = new GetUserResponse();
+            _userQuery.Setup(s => s.GetUserAsync("u-1", "org-1")).ReturnsAsync(response);
+
+            var result = await CreateController().GetUser("u-1", "org-1");
+
+            result.Should().BeSameAs(response);
+        }
+
+        [Fact]
+        public async Task GetMyAccount_DelegatesToQueryService()
+        {
+            var response = new GetUserResponse();
+            _userQuery.Setup(s => s.GetAccountAsync()).ReturnsAsync(response);
+
+            var result = await CreateController().GetMyAccount();
+
+            result.Should().BeSameAs(response);
+        }
+
+        [Fact]
+        public async Task UpdateMyAccount_Success_SetsItemIdFromContextAndReturnsOk()
+        {
+            _userMutation.Setup(s => s.UpdateUserAsync(It.Is<UpdateUserRequest>(c => c.ItemId == ActorUserId)))
+                .ReturnsAsync(new BaseMutationResponse { IsSuccess = true });
+
+            var result = await CreateController().UpdateMyAccount(new UpdateUserRequest());
+
+            result.Should().BeOfType<OkObjectResult>();
+            _userMutation.Verify(s => s.UpdateUserAsync(It.Is<UpdateUserRequest>(c => c.ItemId == ActorUserId)), Times.Once);
+        }
+
+        [Fact]
+        public async Task UpdateUserAccessControl_Success_ReturnsOk()
+        {
+            _userMutation.Setup(s => s.UpdateUserAccessControlAsync(It.IsAny<UpdateUserAccessControlRequest>()))
+                .ReturnsAsync(new BaseMutationResponse { IsSuccess = true });
+
+            var result = await CreateController().UpdateUserAccessControl(new UpdateUserAccessControlRequest { UserId = "u-1" });
+
+            result.Should().BeOfType<OkObjectResult>();
+        }
+
+        [Fact]
+        public async Task RevokeUserAccessControl_Failure_ReturnsBadRequest()
+        {
+            _userMutation.Setup(s => s.RevokeUserAccessControlAsync(It.IsAny<RevokeUserAccessControlRequest>()))
+                .ReturnsAsync(new BaseMutationResponse { IsSuccess = false });
+
+            var result = await CreateController().RevokeUserAccessControl(new RevokeUserAccessControlRequest { UserId = "u-1" });
+
+            result.Should().BeOfType<BadRequestObjectResult>();
+        }
+
+        [Fact]
+        public async Task IsEmailAvailable_ReturnsOk()
+        {
+            _userQuery.Setup(s => s.IsUserAvailableAsync(It.IsAny<IsEmailAvailableRequest>())).ReturnsAsync(true);
+
+            var result = await CreateController().IsEmailAvailable(new IsEmailAvailableRequest());
+
+            var ok = result.Should().BeOfType<OkObjectResult>().Subject;
+            ok.Value.Should().BeOfType<IsEmailAvailableResponse>().Which.IsAvailable.Should().BeTrue();
+        }
+
+        [Fact]
+        public async Task IsUserExist_MissingEmail_ReturnsBadRequest()
+        {
+            var result = await CreateController().IsUserExist(null);
+
+            result.Should().BeOfType<BadRequestObjectResult>();
+            _userQuery.Verify(s => s.IsUserExistAsync(It.IsAny<string>()), Times.Never);
+        }
+
+        [Fact]
+        public async Task IsUserExist_ValidEmail_ReturnsOk()
+        {
+            _userQuery.Setup(s => s.IsUserExistAsync("a@b.com")).ReturnsAsync(new IsUserExistResponse { UserId = "u-1" });
+
+            var result = await CreateController().IsUserExist("a@b.com");
+
+            result.Should().BeOfType<OkObjectResult>();
+        }
+
+        // ---------- Organizations ----------
+
+        [Fact]
+        public async Task CreateOrganization_DelegatesToMutationService()
+        {
+            var response = new BaseMutationResponse { ItemId = "org-1" };
+            _resourceMutation.Setup(s => s.CreateOrganizationAsync(It.IsAny<CreateOrganizationRequest>(), It.IsAny<string>()))
+                .ReturnsAsync(response);
+
+            var result = await CreateController().CreateOrganization(new CreateOrganizationRequest { Name = "Acme" });
+
+            result.Should().BeSameAs(response);
+        }
+
+        [Fact]
+        public async Task UpdateOrganization_DelegatesToMutationService()
+        {
+            var response = new BaseResponse { IsSuccess = true };
+            _resourceMutation.Setup(s => s.UpdateOrganizationAsync("org-1", It.IsAny<SaveOrganizationRequest>()))
+                .ReturnsAsync(response);
+
+            var result = await CreateController().UpdateOrganization("org-1", new SaveOrganizationRequest());
+
+            result.Should().BeSameAs(response);
+        }
+
+        [Fact]
+        public async Task GetOrganizations_DelegatesToMutationService()
+        {
+            var response = new GetOrganizationsResponse();
+            _resourceMutation.Setup(s => s.GetOrganizationsAsync(It.IsAny<GetOrganizationsRequest>())).ReturnsAsync(response);
+
+            var result = await CreateController().GetOrganizations(new GetOrganizationsRequest());
+
+            result.Should().BeSameAs(response);
+        }
+
+        [Fact]
+        public async Task GetOrganization_DelegatesToMutationService()
+        {
+            var response = new GetOrganizationResponse();
+            _resourceMutation.Setup(s => s.GetOrganizationAsync("org-1")).ReturnsAsync(response);
+
+            var result = await CreateController().GetOrganization("org-1");
+
+            result.Should().BeSameAs(response);
+        }
+
+        [Fact]
+        public async Task GetMyOrganization_DelegatesToMutationService()
+        {
+            var response = new GetMyOrganizationsResponse();
+            _resourceMutation.Setup(s => s.GetMyOrganizationAsync()).ReturnsAsync(response);
+
+            var result = await CreateController().GetMyOrganization();
+
+            result.Should().BeSameAs(response);
+        }
+
+        // ---------- Config ----------
+
+        [Fact]
+        public async Task SaveOrganizationConfig_DelegatesToMutationService()
+        {
+            var response = new BaseResponse { IsSuccess = true };
+            _resourceMutation.Setup(s => s.SaveOrganizationConfigAsync(It.IsAny<SaveOrganizationConfigRequest>())).ReturnsAsync(response);
+
+            var result = await CreateController().SaveOrganizationConfig(new SaveOrganizationConfigRequest());
+
+            result.Should().BeSameAs(response);
+        }
+
+        [Fact]
+        public async Task GetOrganizationConfig_DelegatesToMutationService()
+        {
+            var response = new Dictionary<string, object> { { "k", "v" } };
+            _resourceMutation.Setup(s => s.GetOrganizationConfigAsync()).ReturnsAsync(response);
+
+            var result = await CreateController().GetOrganizationConfig();
+
+            result.Should().BeSameAs(response);
+        }
+
+        [Fact]
+        public async Task SaveSignUpSetting_DelegatesToAccountService()
+        {
+            var response = new SaveSignUpSettingResponse();
+            _accountService.Setup(s => s.SaveSignUpSettingAsync(It.IsAny<SaveSignUpSettingRequest>())).ReturnsAsync(response);
+
+            var result = await CreateController().SaveSignUpSetting(new SaveSignUpSettingRequest());
+
+            result.Should().BeSameAs(response);
+        }
+
+        [Fact]
+        public async Task GetSignUpSetting_NoPrincipal_DelegatesToAccountService()
+        {
+            _authService.Setup(s => s.GetPrincipalFromTokenAsync(It.IsAny<HttpRequest>(), It.IsAny<string>(), false))
+                .ReturnsAsync((System.Security.Claims.ClaimsPrincipal)null);
+            var response = new Dictionary<string, object> { { "signup", true } };
+            _accountService.Setup(s => s.GetSignUpSettingAsync()).ReturnsAsync(response);
+
+            var result = await CreateController().GetSignUpSetting();
+
+            result.Should().BeSameAs(response);
+        }
+    }
+}

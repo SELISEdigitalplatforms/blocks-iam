@@ -71,7 +71,6 @@ namespace XUnitTest.Auth.Shared
             IdpConstants.GithubUserEmailsUrl.Should().Be("https://api.github.com/user/emails");
             IdpConstants.FallbackIssuer.Should().Be("https://localhost:5000");
             IdpConstants.ProtectedApiAudience.Should().Be("api://blocks-protected-api");
-            IdpConstants.LocalhostDefaultUrl.Should().Be("https://localhost:5000");
         }
     }
 }

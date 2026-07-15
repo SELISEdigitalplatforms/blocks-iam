@@ -132,7 +132,7 @@ namespace XUnitTest.Auth.Oidc
                 .ReturnsAsync(new SocialCallbackResult { ExternalUserData = externalUser });
 
             userRepo.Setup(r => r.GetUserByEmailAsync("u@example.com"))
-                .ReturnsAsync(new User { ItemId = "existing-user", Email = "u@example.com" });
+                .ReturnsAsync(new User { ItemId = "existing-user", Email = "u@example.com", Active = true });
 
             var result = await handler.HandleCallbackAsync("code-1", "state-1");
 
@@ -203,7 +203,7 @@ namespace XUnitTest.Auth.Oidc
                 .ReturnsAsync(new SocialCallbackResult { ExternalUserData = externalUser });
 
             userRepo.Setup(r => r.GetUserByEmailAsync("u@example.com"))
-                .ReturnsAsync(new User { ItemId = "u1", Email = "u@example.com" });
+                .ReturnsAsync(new User { ItemId = "u1", Email = "u@example.com", Active = true });
 
             var result = await handler.HandleCallbackAsync("code-1", "state-1");
 
