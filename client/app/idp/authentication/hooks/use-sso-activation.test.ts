@@ -108,7 +108,7 @@ describe("useSsoActivation", () => {
       wrapper: createWrapper(),
     });
 
-    await waitFor(() => expect(mockReplace).toHaveBeenCalledWith("/login"));
+    await waitFor(() => expect(mockPush).toHaveBeenCalledWith("/login"));
   });
 
   it("should return isPending state", () => {
