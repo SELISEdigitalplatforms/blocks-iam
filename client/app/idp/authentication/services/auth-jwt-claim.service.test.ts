@@ -23,7 +23,9 @@ describe("JwtClaimServices", () => {
 
       const result = await jwtClaimServices.addJwtClaim(mockJwtClaimPayload);
 
-      expect(http.post).toHaveBeenCalledWith(PROJECT_ENDPOINTS.ADD_JWT_CLAIM, mockJwtClaimPayload);
+      expect(http.post).toHaveBeenCalledWith(PROJECT_ENDPOINTS.ADD_JWT_CLAIM, mockJwtClaimPayload, undefined, {
+        absoluteUrl: true,
+      });
       expect(result).toEqual(mockSuccessResponse);
     });
 
