@@ -186,7 +186,7 @@ namespace Authentication.DomainService.Services
                         var newProvider = new IdentityProvider
                         {
                             Provider = providerName,
-                            ProviderType = IdpConstants.BlocksProviderType,
+                            ProviderType = IdpConstants.BlocksOidcProviderType,
                             Protocol = IdpConstants.OidcProtocol,
                             DisplayName = request.ClientDisplayName ?? credential.ClientId,
                             IsActive = credential.IsActive,
