@@ -34,7 +34,7 @@ namespace Iam.DomainService.Utilities
         #region Providers / Protocols
 
         public const string BlocksProviderName = "blocks-iam";
-        public const string BlocksProviderType = "blocks";
+        public const string BlocksProviderType = "blocks-oidc";
         public const string OidcProtocol = "oidc";
 
         #endregion
