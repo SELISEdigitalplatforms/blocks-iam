@@ -16,12 +16,6 @@ import {
 import { Pagination } from "@/components/ui-kits/pagination/pagination";
 import { Skeleton } from "@/components/ui-kits/skeleton/skeleton";
 import {
-  Tooltip,
-  TooltipContent,
-  TooltipProvider,
-  TooltipTrigger,
-} from "@/components/ui-kits/tooltip/tooltip";
-import {
   Table,
   TableBody,
   TableCell,
@@ -32,8 +26,19 @@ import {
 import { useProjectStore } from "@seliseblocks/blocks-kit";
 import { useGetPermissions } from "@blocks-idp/iam/hooks/use-permission";
 import { IPermission, RESOURCE_TYPE } from "@blocks-idp/iam/models/permission";
-import { Plus, KeyRound, Info } from "lucide-react";
+import { Plus, KeyRound } from "lucide-react";
 import { useMemo, useState } from "react";
+import {
+  MAX_PERMISSIONS_PER_USER,
+  PERMISSION_LIMIT_MESSAGE,
+  getNewlySelectedPermissions,
+  getTotalPermissionCount,
+  isAtMaxPermissions,
+  isPermissionAssigned,
+  isSelectedInModal,
+  shouldDisablePermissionCheckbox,
+  togglePermissionSelection,
+} from "./permission-selection.utils";
 
 type AddOrganizationPermissionProps = {
   permissions: IPermission[];
@@ -42,8 +47,6 @@ type AddOrganizationPermissionProps = {
   onSave?: () => void;
   organizationId?: string;
 };
-
-const MAX_PERMISSIONS_PER_USER = 5;
 
 export const AddOrganizationPermission = ({
   onAdd,
@@ -68,44 +71,52 @@ export const AddOrganizationPermission = ({
       ...filter,
       projectKey: scopeKey,
     },
-    // Don't fetch the permission list until the picker is opened — the per-org
-    // editor on this page already fetches it with a matching queryKey.
     { enabled: open && !!scopeKey },
   );
-
-  const onCheckedChangeHandler = (checked: boolean, permission: IPermission) => {
-    if (checked) {
-      if (selectedPermissions.length >= MAX_PERMISSIONS_PER_USER) {
-        showErrorToast({
-          errors: `A maximum of ${MAX_PERMISSIONS_PER_USER} permissions can be added with any user permission.`,
-        });
-        return;
-      }
-      return setSelectedPermissions((prev) =>
-        prev.some((item) => item.resource === permission.resource)
-          ? prev
-          : [...prev, permission],
-      );
-    }
-    setSelectedPermissions((prev) =>
-      prev.filter((item) => item.resource !== permission.resource),
-    );
-  };
 
   const reset = () => {
     setSelectedPermissions([]);
     setFilter({ page: 0, pageSize: 5, isBuiltIn: "", roles: [], search: "" });
   };
 
-  const selectedPermissionsResource = useMemo(
-    () => selectedPermissions.map((item) => item.resource) || [],
-    [selectedPermissions],
+  const newlySelectedPermissions = useMemo(
+    () => getNewlySelectedPermissions(selectedPermissions, permissions),
+    [selectedPermissions, permissions],
   );
 
-  const permissionsResource = useMemo(
-    () => permissions.map((item) => item.resource) || [],
-    [permissions],
-  );
+  const totalPermissionCount = getTotalPermissionCount(permissions, selectedPermissions);
+  const atMaxPermissions = isAtMaxPermissions(permissions, selectedPermissions);
+
+  const onCheckedChangeHandler = (checked: boolean, permission: IPermission) => {
+    setSelectedPermissions((currentSelection) => {
+      const result = togglePermissionSelection(
+        checked,
+        permission,
+        permissions,
+        currentSelection,
+      );
+
+      if (result.blocked) {
+        showErrorToast({ errors: PERMISSION_LIMIT_MESSAGE });
+        return currentSelection;
+      }
+
+      return result.selectedPermissions;
+    });
+  };
+
+  const getCheckboxAriaLabel = (item: IPermission) => {
+    const selected = isSelectedInModal(item, permissions, selectedPermissions);
+    const disabled = shouldDisablePermissionCheckbox(item, permissions, selectedPermissions);
+
+    if (isPermissionAssigned(item, permissions)) {
+      return `${item.name} already assigned`;
+    }
+    if (disabled && atMaxPermissions) {
+      return `${item.name} unavailable, maximum of ${MAX_PERMISSIONS_PER_USER} permissions reached`;
+    }
+    return `${selected ? "Deselect" : "Select"} ${item.name}`;
+  };
 
   return (
     <Dialog
@@ -131,24 +142,18 @@ export const AddOrganizationPermission = ({
         <DialogHeader>
           <div className="flex items-center gap-2">
             <DialogTitle className="text-left">Manage permissions</DialogTitle>
-            <TooltipProvider>
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <button
-                    type="button"
-                    aria-label="Maximum permissions info"
-                    className="inline-flex items-center justify-center text-muted-foreground transition-colors hover:text-foreground focus:outline-none"
-                  >
-                    <Info className="h-4 w-4" aria-hidden />
-                  </button>
-                </TooltipTrigger>
-                <TooltipContent side="right">
-                  You can assign a maximum of {MAX_PERMISSIONS_PER_USER} permissions per user.
-                </TooltipContent>
-              </Tooltip>
-            </TooltipProvider>
+            <Badge
+              variant="success"
+              className="font-normal"
+              aria-live="polite"
+              aria-label={`${totalPermissionCount} out of ${MAX_PERMISSIONS_PER_USER} permissions selected`}
+            >
+              {totalPermissionCount}/{MAX_PERMISSIONS_PER_USER} selected
+            </Badge>
           </div>
-          <DialogDescription></DialogDescription>
+          <DialogDescription className="text-left">
+            You can assign a maximum of {MAX_PERMISSIONS_PER_USER} permissions per user.
+          </DialogDescription>
         </DialogHeader>
         <div>
           <FilterControls.SearchInput
@@ -193,38 +198,39 @@ export const AddOrganizationPermission = ({
               </TableRow>
             </TableHeader>
             <TableBody>
-              {data.data.map((item) => (
-                <TableRow key={item.itemId}>
-                  <TableCell>
-                    <Checkbox
-                      checked={
-                        permissionsResource.includes(item.resource) ||
-                        selectedPermissionsResource.includes(item.resource)
+              {data.data.map((item) => {
+                const checked = isSelectedInModal(item, permissions, selectedPermissions);
+                const disabled = shouldDisablePermissionCheckbox(
+                  item,
+                  permissions,
+                  selectedPermissions,
+                );
+
+                return (
+                  <TableRow key={item.itemId}>
+                    <TableCell>
+                      <Checkbox
+                        checked={checked}
+                        disabled={disabled}
+                        aria-label={getCheckboxAriaLabel(item)}
+                        onCheckedChange={(value) => onCheckedChangeHandler(!!value, item)}
+                      />
+                    </TableCell>
+                    <TableCell>
+                      <Badge variant="secondary" className="w-fit">
+                        {item.name}
+                      </Badge>
+                    </TableCell>
+                    <TableCell>
+                      {
+                        RESOURCE_TYPE.find(
+                          (resource) => resource.value === item.type.toString(),
+                        )?.label
                       }
-                      disabled={
-                        permissionsResource.includes(item.resource) ||
-                        (!selectedPermissionsResource.includes(item.resource) &&
-                          selectedPermissions.length >= MAX_PERMISSIONS_PER_USER)
-                      }
-                      onCheckedChange={(checked) =>
-                        onCheckedChangeHandler(!!checked, item)
-                      }
-                    />
-                  </TableCell>
-                  <TableCell>
-                    <Badge variant="secondary" className="w-fit">
-                      {item.name}
-                    </Badge>
-                  </TableCell>
-                  <TableCell>
-                    {
-                      RESOURCE_TYPE.find(
-                        (resource) => resource.value === item.type.toString(),
-                      )?.label
-                    }
-                  </TableCell>
-                </TableRow>
-              ))}
+                    </TableCell>
+                  </TableRow>
+                );
+              })}
             </TableBody>
           </Table>
         ) : (
@@ -254,14 +260,11 @@ export const AddOrganizationPermission = ({
           </DialogClose>
           <Button
             size="default"
-            disabled={selectedPermissions.length === 0}
+            disabled={newlySelectedPermissions.length === 0}
             onClick={() => {
-              onAdd(selectedPermissions);
+              onAdd(newlySelectedPermissions);
               reset();
               setOpen(false);
-              // Defer save so the parent React tree has time to commit the
-              // queued `setSelectedRoles`/`setSelectedPermissions` updates
-              // (and its refs) before `onSave` reads the latest values.
               setTimeout(() => onSave?.(), 0);
             }}
           >

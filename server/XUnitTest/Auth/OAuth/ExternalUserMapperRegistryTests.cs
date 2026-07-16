@@ -15,9 +15,9 @@ namespace XUnitTest.Auth.OAuth
         {
             var mockMapper = new Mock<IExternalUserMapper>();
             mockMapper.SetupGet(m => m.ProviderKey).Returns(SocialLogInTypes.Google);
-            var googleMapper = new GoogleExternalUserMapper();
 
-            var registry = new ExternalUserMapperRegistry([mockMapper.Object, googleMapper]);
+            // Registry rejects duplicate provider keys, so register a single Google mapper (the mock).
+            var registry = new ExternalUserMapperRegistry([mockMapper.Object]);
             var json = ParseJson(@"{ ""sub"": ""google-id"", ""email"": ""g@e.com"" }");
             var user = new BYOSsoUserData();
 

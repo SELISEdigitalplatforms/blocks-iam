@@ -1,0 +1,95 @@
+import { render, screen, waitFor } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
+import { beforeEach, describe, expect, it, vi } from "vitest";
+import { createWrapper } from "@/test-utils/test-providers/query-client";
+
+const h = vi.hoisted(() => ({
+  createUser: vi.fn(),
+  updateUserAccess: vi.fn(),
+  checkExists: { data: undefined as unknown, isFetching: false },
+  orgs: { data: { organizations: [] as unknown[] }, isLoading: false },
+  // Multi-org OFF keeps the org picker hidden, so the happy path is just
+  // email + first name + last name.
+  config: { data: { isMultiOrgEnabled: false }, isLoading: false },
+  showSuccessToast: vi.fn(),
+  showErrorToast: vi.fn(),
+}));
+
+vi.mock("@blocks-idp/iam/hooks/use-user", () => ({
+  useAddUser: () => ({ isPending: false, mutateAsync: h.createUser }),
+  useCheckUserExists: () => h.checkExists,
+  useUpdateUserAccessControl: () => ({ mutateAsync: h.updateUserAccess, isPending: false }),
+}));
+vi.mock("@blocks-idp/iam/hooks/use-organization", () => ({
+  useGetOrganizations: () => h.orgs,
+  useGetOrganizationConfig: () => h.config,
+}));
+vi.mock("@/store/useProjectStore", () => ({
+  useProjectStore: vi.fn(() => ({
+    selectedProject: { tenantId: "t1", itemId: "p1" },
+    selectedTenantGroup: "tg1",
+  })),
+}));
+vi.mock("@/hooks/use-toast", () => ({
+  showSuccessToast: h.showSuccessToast,
+  showErrorToast: h.showErrorToast,
+}));
+
+import { InviteUser } from "./invite-user";
+
+const renderInvite = () => render(<InviteUser />, { wrapper: createWrapper() });
+
+beforeEach(() => {
+  vi.clearAllMocks();
+  h.checkExists = { data: undefined, isFetching: false };
+});
+
+describe("InviteUser", () => {
+  it("renders the trigger button", () => {
+    renderInvite();
+    expect(screen.getByRole("button", { name: /invite user/i })).toBeInTheDocument();
+  });
+
+  it("opens the dialog with the email field", async () => {
+    const user = userEvent.setup();
+    renderInvite();
+    await user.click(screen.getByRole("button", { name: /invite user/i }));
+    expect(await screen.findByText("Add a user to an organization.")).toBeInTheDocument();
+    expect(screen.getByPlaceholderText("name@company.com")).toBeInTheDocument();
+  });
+
+  it("reveals the name fields once a valid email is entered", async () => {
+    const user = userEvent.setup();
+    renderInvite();
+    await user.click(screen.getByRole("button", { name: /invite user/i }));
+    await user.type(screen.getByPlaceholderText("name@company.com"), "new@user.com");
+    expect(await screen.findByPlaceholderText("Enter first name")).toBeInTheDocument();
+    expect(screen.getByPlaceholderText("Enter last name")).toBeInTheDocument();
+  });
+
+  it("creates a new user and shows a success toast", async () => {
+    h.createUser.mockResolvedValue({ isSuccess: true });
+    const user = userEvent.setup();
+    renderInvite();
+    await user.click(screen.getByRole("button", { name: /invite user/i }));
+    await user.type(screen.getByPlaceholderText("name@company.com"), "new@user.com");
+    await user.type(await screen.findByPlaceholderText("Enter first name"), "Ada");
+    await user.type(screen.getByPlaceholderText("Enter last name"), "Lovelace");
+
+    const submit = screen.getByRole("button", { name: /send invite/i });
+    await waitFor(() => expect(submit).not.toBeDisabled());
+    await user.click(submit);
+
+    await waitFor(() => expect(h.createUser).toHaveBeenCalled());
+    const payload = h.createUser.mock.calls[0][0];
+    expect(payload).toMatchObject({
+      email: "new@user.com",
+      firstName: "Ada",
+      lastName: "Lovelace",
+      userPassType: 1,
+      userCreationType: 1,
+      platform: "blocks_portal",
+    });
+    expect(h.showSuccessToast).toHaveBeenCalledWith({ description: "Invitation is sent" });
+  });
+});

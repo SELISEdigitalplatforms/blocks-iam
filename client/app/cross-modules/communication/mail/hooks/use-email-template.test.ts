@@ -46,7 +46,7 @@ describe("Email Template Hooks", () => {
 
       await waitFor(() => expect(result.current.isSuccess).toBe(true));
 
-      expect(emailService.sendTestMail).toHaveBeenCalledWith(mockSendTestMailPayload);
+      expect(emailService.sendTestMail).toHaveBeenCalledWith(mockSendTestMailPayload, expect.anything());
       expect(result.current.data).toEqual(mockSuccessResponse);
     });
 
@@ -92,7 +92,7 @@ describe("Email Template Hooks", () => {
 
       await waitFor(() => expect(result.current.isSuccess).toBe(true));
 
-      expect(emailService.cloneMailTemplate).toHaveBeenCalledWith(mockCloneTemplatePayload);
+      expect(emailService.cloneMailTemplate).toHaveBeenCalledWith(mockCloneTemplatePayload, expect.anything());
       expect(result.current.data).toEqual(mockSuccessResponse);
     });
 
@@ -154,7 +154,7 @@ describe("Email Template Hooks", () => {
 
       await waitFor(() => expect(result.current.isSuccess).toBe(true));
 
-      expect(emailService.deleteMailTemplate).toHaveBeenCalledWith(mockDeleteTemplatePayload);
+      expect(emailService.deleteMailTemplate).toHaveBeenCalledWith(mockDeleteTemplatePayload, expect.anything());
       expect(result.current.data).toEqual(mockSuccessResponse);
     });
 
@@ -449,7 +449,7 @@ describe("Email Template Hooks", () => {
 
       await waitFor(() => expect(result.current.isSuccess).toBe(true));
 
-      expect(emailService.saveMailTemplate).toHaveBeenCalledWith(mockSaveTemplatePayload);
+      expect(emailService.saveMailTemplate).toHaveBeenCalledWith(mockSaveTemplatePayload, expect.anything());
       expect(result.current.data).toEqual(mockSuccessResponse);
     });
 

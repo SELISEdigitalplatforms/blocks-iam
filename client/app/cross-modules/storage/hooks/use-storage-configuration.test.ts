@@ -112,7 +112,7 @@ describe("Storage Configuration Hooks", () => {
 
       await waitFor(() => expect(result.current.isSuccess).toBe(true));
 
-      expect(storageService.configuration.save).toHaveBeenCalledWith(mockSaveAmazonConfigPayload);
+      expect(storageService.configuration.save).toHaveBeenCalledWith(mockSaveAmazonConfigPayload, expect.anything());
       expect(result.current.data).toEqual(mockSuccessResponse);
     });
 
@@ -194,7 +194,7 @@ describe("Storage Configuration Hooks", () => {
 
       await waitFor(() => expect(result.current.isSuccess).toBe(true));
 
-      expect(storageService.configuration.delete).toHaveBeenCalledWith(mockDeleteConfigPayload);
+      expect(storageService.configuration.delete).toHaveBeenCalledWith(mockDeleteConfigPayload, expect.anything());
       expect(result.current.data).toEqual(mockDeleteSuccessResponse);
     });
 

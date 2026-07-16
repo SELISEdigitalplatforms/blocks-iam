@@ -1,7 +1,6 @@
-using System.Net;
-using System.Text;
 using System.Text.Json;
 using Blocks.Genesis;
+using DomainService.Storage;
 using FluentAssertions;
 using FluentValidation;
 using FluentValidation.Results;
@@ -14,6 +13,7 @@ using Mfa.DomainService.Services;
 using Mfa.DomainService.Shared;
 using Mfa.DomainService.TOTP;
 using Moq;
+using StorageDriver;
 
 namespace XUnitTest.Mfa.TOTP
 {
@@ -38,7 +38,7 @@ namespace XUnitTest.Mfa.TOTP
             out Mock<ICacheClient> cache,
             out Mock<IValidator<VerifyOtpRequest>> validator,
             out Mock<ITenants> tenants,
-            out Mock<IHttpService> http,
+            out Mock<IStorageDriverService> storage,
             out IConfiguration configuration,
             out IHttpContextAccessor httpContext)
         {
@@ -46,7 +46,7 @@ namespace XUnitTest.Mfa.TOTP
             cache = new Mock<ICacheClient>();
             validator = new Mock<IValidator<VerifyOtpRequest>>();
             tenants = new Mock<ITenants>();
-            http = new Mock<IHttpService>();
+            storage = new Mock<IStorageDriverService>();
 
             var configBuilder = new ConfigurationBuilder();
             configBuilder.AddInMemoryCollection(new Dictionary<string, string?>
@@ -65,7 +65,7 @@ namespace XUnitTest.Mfa.TOTP
                 cache.Object,
                 validator.Object,
                 tenants.Object,
-                http.Object);
+                storage.Object);
         }
 
         [Fact]
@@ -254,9 +254,9 @@ namespace XUnitTest.Mfa.TOTP
         }
 
         [Fact]
-        public async Task GenerateTotpImageByUserAsync_WhenExistingOtpInfo_HasImageUri_ReturnsExistingWithoutCallingHttp()
+        public async Task GenerateTotpImageByUserAsync_WhenExistingOtpInfo_HasImageUri_ReturnsExistingWithoutUploading()
         {
-            var service = CreateService(out var repo, out _, out _, out _, out var http, out _, out _);
+            var service = CreateService(out var repo, out _, out _, out _, out var storage, out _, out _);
             repo.Setup(r => r.GetItemAsync<UserInfo>(It.IsAny<System.Linq.Expressions.Expression<Func<UserInfo, bool>>>(), It.IsAny<string>()))
                 .ReturnsAsync(new UserInfo { ItemId = "u1", Email = "u1@e.com" });
             repo.Setup(r => r.GetItemAsync<UserTotpDetail>(It.IsAny<System.Linq.Expressions.Expression<Func<UserTotpDetail, bool>>>(), It.IsAny<string>()))
@@ -267,146 +267,25 @@ namespace XUnitTest.Mfa.TOTP
             result.IsSuccess.Should().BeTrue();
             result.QrImageUrl.Should().Be("https://img.test/qr.png");
             result.QrCode.Should().Be("JBSWY3DPEHPK3PXP");
-            http.Verify(h => h.SendRequest<string>(It.IsAny<HttpMethod>(), It.IsAny<string>(), It.IsAny<object?>(), It.IsAny<string>(), It.IsAny<Dictionary<string, string>?>()), Times.Never);
+            storage.Verify(s => s.GetPerSignedUrlForUploadAsync(It.IsAny<GetPreSignedUrlForUploadRequest>()), Times.Never);
         }
 
         [Fact]
-        public async Task GenerateTotpImageByUserAsync_WhenTenantIsNull_StillCallsHttp_WithEmptyDomain()
+        public async Task GenerateTotpImageByUserAsync_WhenPreSignedUrlEmpty_ReturnsConfigurationError()
         {
-            var service = CreateService(out var repo, out _, out _, out var tenants, out var http, out _, out _);
+            var service = CreateService(out var repo, out _, out _, out var tenants, out var storage, out _, out _);
             repo.Setup(r => r.GetItemAsync<UserInfo>(It.IsAny<System.Linq.Expressions.Expression<Func<UserInfo, bool>>>(), It.IsAny<string>()))
                 .ReturnsAsync(new UserInfo { ItemId = "u1", Email = "u1@e.com" });
             repo.Setup(r => r.GetItemAsync<UserTotpDetail>(It.IsAny<System.Linq.Expressions.Expression<Func<UserTotpDetail, bool>>>(), It.IsAny<string>()))
                 .ReturnsAsync((UserTotpDetail?)null);
             tenants.Setup(t => t.GetTenantByID(It.IsAny<string>())).Returns((Tenant?)null);
-            http.Setup(h => h.SendRequest<string>(HttpMethod.Post, "https://upload.test/", It.IsAny<object?>(), It.IsAny<string>(), It.IsAny<Dictionary<string, string>?>()))
-                .ReturnsAsync(("{\"uploadUrl\":\"https://upload.test/abc\"}", string.Empty));
-http.Setup(h => h.SendRequest<string>(HttpMethod.Put, It.IsAny<string>(), It.IsAny<object?>(), It.IsAny<string>(), It.IsAny<Dictionary<string, string>?>()))
-                .ReturnsAsync(("{}", string.Empty));
-http.Setup(h => h.SendRequest<string>(HttpMethod.Get, It.IsAny<string>(), It.IsAny<object?>(), It.IsAny<string>(), It.IsAny<Dictionary<string, string>?>()))
-                .ReturnsAsync(("{\"url\":\"https://file.test/abc\"}", string.Empty));
-
-            var result = await service.GenerateTotpImageByUserAsync("u1");
-
-            result.IsSuccess.Should().BeTrue();
-            result.QrImageUrl.Should().Be("https://file.test/abc");
-        }
-
-        [Fact]
-        public async Task GenerateTotpImageByUserAsync_WhenFileUriEmpty_ReturnsFailureResponse()
-        {
-            var service = CreateService(out var repo, out _, out _, out var tenants, out var http, out _, out _);
-            repo.Setup(r => r.GetItemAsync<UserInfo>(It.IsAny<System.Linq.Expressions.Expression<Func<UserInfo, bool>>>(), It.IsAny<string>()))
-                .ReturnsAsync(new UserInfo { ItemId = "u1", Email = "u1@e.com" });
-            repo.Setup(r => r.GetItemAsync<UserTotpDetail>(It.IsAny<System.Linq.Expressions.Expression<Func<UserTotpDetail, bool>>>(), It.IsAny<string>()))
-                .ReturnsAsync((UserTotpDetail?)null);
-            tenants.Setup(t => t.GetTenantByID(It.IsAny<string>())).Returns(new Tenant { DbConnectionString = "x", JwtTokenParameters = new JwtTokenParameters { PrivateCertificatePassword = "", IssueDate = DateTime.UtcNow }, Applications = new List<Applications> { new() { Domain = "https://app.test" } } });
-            http.Setup(h => h.SendRequest<string>(HttpMethod.Post, "https://upload.test/", It.IsAny<object?>(), It.IsAny<string>(), It.IsAny<Dictionary<string, string>?>()))
-                .ReturnsAsync(("{\"uploadUrl\":\"https://upload.test/abc\"}", string.Empty));
-            http.Setup(h => h.SendRequest<string>(HttpMethod.Put, It.IsAny<string>(), It.IsAny<object?>(), It.IsAny<string>(), It.IsAny<Dictionary<string, string>?>()))
-                .ReturnsAsync(("{}", "upload failed"));
-            http.Setup(h => h.SendRequest<string>(HttpMethod.Get, "https://file.test/" + It.IsAny<string>(), It.IsAny<object?>(), It.IsAny<string>(), It.IsAny<Dictionary<string, string>?>()))
-                .ReturnsAsync(("{\"url\":\"\"}", string.Empty));
+            storage.Setup(s => s.GetPerSignedUrlForUploadAsync(It.IsAny<GetPreSignedUrlForUploadRequest>()))
+                .ReturnsAsync(new GetPreSignedUrlForUploadResponse { UploadUrl = string.Empty });
 
             var result = await service.GenerateTotpImageByUserAsync("u1");
 
             result.IsSuccess.Should().BeFalse();
-        }
-
-        [Fact]
-        public async Task GenerateTotpImageByUserAsync_WhenFileUriResponseInvalidJson_Throws()
-        {
-            var service = CreateService(out var repo, out _, out _, out var tenants, out var http, out _, out _);
-            repo.Setup(r => r.GetItemAsync<UserInfo>(It.IsAny<System.Linq.Expressions.Expression<Func<UserInfo, bool>>>(), It.IsAny<string>()))
-                .ReturnsAsync(new UserInfo { ItemId = "u1", Email = "u1@e.com" });
-            repo.Setup(r => r.GetItemAsync<UserTotpDetail>(It.IsAny<System.Linq.Expressions.Expression<Func<UserTotpDetail, bool>>>(), It.IsAny<string>()))
-                .ReturnsAsync((UserTotpDetail?)null);
-            tenants.Setup(t => t.GetTenantByID(It.IsAny<string>())).Returns(new Tenant { DbConnectionString = "x", JwtTokenParameters = new JwtTokenParameters { PrivateCertificatePassword = "", IssueDate = DateTime.UtcNow }, Applications = new List<Applications> { new() { Domain = "https://app.test" } } });
-            http.Setup(h => h.SendRequest<string>(HttpMethod.Post, "https://upload.test/", It.IsAny<object?>(), It.IsAny<string>(), It.IsAny<Dictionary<string, string>?>()))
-                .ReturnsAsync(("{\"uploadUrl\":\"https://upload.test/abc\"}", string.Empty));
-            http.Setup(h => h.SendRequest<string>(HttpMethod.Put, It.IsAny<string>(), It.IsAny<object?>(), It.IsAny<string>(), It.IsAny<Dictionary<string, string>?>()))
-                .ReturnsAsync(("{}", string.Empty));
-            http.Setup(h => h.SendRequest<string>(HttpMethod.Get, "https://file.test/" + It.IsAny<string>(), It.IsAny<object?>(), It.IsAny<string>(), It.IsAny<Dictionary<string, string>?>()))
-                .ReturnsAsync(("not-json", string.Empty));
-
-            Func<Task> act = async () => await service.GenerateTotpImageByUserAsync("u1");
-            await act.Should().ThrowAsync<Exception>();
-        }
-
-        [Fact]
-        public async Task GenerateTotpImageByUserAsync_OnHappyPath_PersistsAndReturnsImageAndSecret()
-        {
-            var service = CreateService(out var repo, out _, out _, out var tenants, out var http, out _, out _);
-            repo.Setup(r => r.GetItemAsync<UserInfo>(It.IsAny<System.Linq.Expressions.Expression<Func<UserInfo, bool>>>(), It.IsAny<string>()))
-                .ReturnsAsync(new UserInfo { ItemId = "u1", Email = "u1@e.com" });
-            repo.Setup(r => r.GetItemAsync<UserTotpDetail>(It.IsAny<System.Linq.Expressions.Expression<Func<UserTotpDetail, bool>>>(), It.IsAny<string>()))
-                .ReturnsAsync((UserTotpDetail?)null);
-            tenants.Setup(t => t.GetTenantByID(It.IsAny<string>())).Returns(new Tenant { DbConnectionString = "x", JwtTokenParameters = new JwtTokenParameters { PrivateCertificatePassword = "", IssueDate = DateTime.UtcNow }, Applications = new List<Applications> { new() { Domain = "https://app.test" } } });
-            http.Setup(h => h.SendRequest<string>(HttpMethod.Post, "https://upload.test/", It.IsAny<object?>(), It.IsAny<string>(), It.IsAny<Dictionary<string, string>?>()))
-                .ReturnsAsync(("{\"uploadUrl\":\"https://upload.test/abc\"}", string.Empty));
-            http.Setup(h => h.SendRequest<string>(HttpMethod.Put, It.IsAny<string>(), It.IsAny<object?>(), It.IsAny<string>(), It.IsAny<Dictionary<string, string>?>()))
-                .ReturnsAsync(("{}", string.Empty));
-            http.Setup(h => h.SendRequest<string>(HttpMethod.Get, It.IsAny<string>(), It.IsAny<object?>(), It.IsAny<string>(), It.IsAny<Dictionary<string, string>?>()))
-                .ReturnsAsync(("{\"url\":\"https://file.test/abc.png\"}", string.Empty));
-
-            UserTotpDetail? persisted = null;
-            repo.Setup(r => r.SaveAsync(It.IsAny<UserTotpDetail>(), It.IsAny<string>()))
-                .Callback<UserTotpDetail, string>((d, _) => persisted = d)
-                .Returns(Task.CompletedTask);
-
-            var result = await service.GenerateTotpImageByUserAsync("u1");
-
-            result.IsSuccess.Should().BeTrue();
-            result.QrImageUrl.Should().Be("https://file.test/abc.png");
-            result.QrCode.Should().NotBeNullOrEmpty();
-            persisted.Should().NotBeNull();
-            persisted!.ImageUri.Should().Be("https://file.test/abc.png");
-            persisted.Secret.Should().Be(result.QrCode);
-            persisted.CreatedBy.Should().Be("u1");
-            persisted.LastUpdatedBy.Should().Be("u1");
-            persisted.CreatedDate.Should().BeCloseTo(DateTime.UtcNow, TimeSpan.FromSeconds(5));
-        }
-
-        [Fact]
-        public async Task GenerateTotpImageByUserAsync_SendsAuthorizationHeaderFromContext()
-        {
-            var httpContext = BuildHttpContextAccessor(authorization: "Bearer my-token");
-            var configBuilder = new ConfigurationBuilder();
-            configBuilder.AddInMemoryCollection(new Dictionary<string, string?>
-            {
-                { "PreSignedUriForUpload", "https://upload.test/" },
-                { "GetFileEnpPoint", "https://file.test/" }
-            });
-            var configuration = configBuilder.Build();
-
-            var repo = new Mock<IMfaManagementRepository>();
-            var cache = new Mock<ICacheClient>();
-            var validator = new Mock<IValidator<VerifyOtpRequest>>();
-            var tenants = new Mock<ITenants>();
-            var http = new Mock<IHttpService>();
-
-            repo.Setup(r => r.GetItemAsync<UserInfo>(It.IsAny<System.Linq.Expressions.Expression<Func<UserInfo, bool>>>(), It.IsAny<string>()))
-                .ReturnsAsync(new UserInfo { ItemId = "u1", Email = "u1@e.com" });
-            repo.Setup(r => r.GetItemAsync<UserTotpDetail>(It.IsAny<System.Linq.Expressions.Expression<Func<UserTotpDetail, bool>>>(), It.IsAny<string>()))
-                .ReturnsAsync((UserTotpDetail?)null);
-            tenants.Setup(t => t.GetTenantByID(It.IsAny<string>())).Returns(new Tenant { DbConnectionString = "x", JwtTokenParameters = new JwtTokenParameters { PrivateCertificatePassword = "", IssueDate = DateTime.UtcNow }, Applications = new List<Applications> { new() { Domain = "https://app.test" } } });
-            Dictionary<string, string>? capturedHeaders = null;
-            http.Setup(h => h.SendRequest<string>(HttpMethod.Post, "https://upload.test/", It.IsAny<object?>(), It.IsAny<string>(), It.IsAny<Dictionary<string, string>?>(), It.IsAny<CancellationToken>(), It.IsAny<int?>()))
-                .Callback<HttpMethod, string, object?, string, Dictionary<string, string>?, CancellationToken, int?>((_, _, _, _, hdrs, _, _) => capturedHeaders = hdrs)
-                .ReturnsAsync(("{\"uploadUrl\":\"https://upload.test/abc\"}", string.Empty));
-            http.Setup(h => h.SendRequest<string>(HttpMethod.Put, It.IsAny<string>(), It.IsAny<object?>(), It.IsAny<string>(), It.IsAny<Dictionary<string, string>?>()))
-                .ReturnsAsync(("{}", string.Empty));
-            http.Setup(h => h.SendRequest<string>(HttpMethod.Get, It.IsAny<string>(), It.IsAny<object?>(), It.IsAny<string>(), It.IsAny<Dictionary<string, string>?>()))
-                .ReturnsAsync(("{\"url\":\"https://file.test/abc.png\"}", string.Empty));
-
-            var service = new TotpService(repo.Object, NullLogger<TotpService>.Instance, httpContext, configuration, cache.Object, validator.Object, tenants.Object, http.Object);
-
-            await service.GenerateTotpImageByUserAsync("u1");
-
-            capturedHeaders.Should().NotBeNull();
-            capturedHeaders!.Should().ContainKey("Authorization");
-            capturedHeaders["Authorization"].Should().Be("Bearer my-token");
-            capturedHeaders.Should().ContainKey("x-blocks-key");
+            result.Errors.Should().ContainKey("configuration_not_exit");
         }
     }
 }
