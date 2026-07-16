@@ -317,11 +317,18 @@ namespace Authentication.DomainService.Services
         public async Task<GetOIDCClientResponse> GetOidcClientAsync(string tenantId)
         {
             var client = await _authenticationRepository.GetOIDCCredentialByIdAsync(tenantId);
+            var identityProvider = await _authenticationRepository.GetIdentityProviderByClientIdAsync(client.ClientId);
+            var registerAsIdentityProvider = false;
 
+            if (identityProvider is not null && identityProvider.ProviderType == IdpConstants.BlocksOidcProviderType)
+            {
+                registerAsIdentityProvider = true;
+            }
             return new GetOIDCClientResponse
             {
                 oIDCClientCredential = client,
-                IsSuccess = true
+                IsSuccess = true,
+                registerAsIdentityProvider= registerAsIdentityProvider
             };
         }
 

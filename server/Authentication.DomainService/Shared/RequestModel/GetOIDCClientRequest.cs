@@ -26,5 +26,6 @@ namespace Authentication.DomainService.RequestModel
     public class GetOIDCClientResponse : BaseResponse
     {
         public OidcClientRegistration? oIDCClientCredential { get; set; }
+        public bool? registerAsIdentityProvider { get; set; }
     }
 }
