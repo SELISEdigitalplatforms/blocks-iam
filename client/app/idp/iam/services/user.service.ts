@@ -49,17 +49,22 @@ const normalizeUserFromApi = (raw: ApiUser): User => {
   const organizationIds =
     raw.organizationIds?.length > 0 ? raw.organizationIds : raw.OrganizationIds ?? [];
 
+  const roles = toScopedRecord(
+    organizationIds,
+    raw.roles as Record<string, string[]> | string[] | undefined,
+  );
+  const permissions = toScopedRecord(
+    organizationIds,
+    raw.permissions as Record<string, string[]> | string[] | undefined,
+  );
+
   return {
     ...raw,
     organizationIds,
-    roles: toScopedRecord(
-      organizationIds,
-      raw.roles as Record<string, string[]> | string[] | undefined,
-    ),
-    permissions: toScopedRecord(
-      organizationIds,
-      raw.permissions as Record<string, string[]> | string[] | undefined,
-    ),
+    roles,
+    permissions,
+    OrganizationsRoles: raw.OrganizationsRoles ?? roles,
+    OrganizationsPermissions: raw.OrganizationsPermissions ?? permissions,
   };
 };
 

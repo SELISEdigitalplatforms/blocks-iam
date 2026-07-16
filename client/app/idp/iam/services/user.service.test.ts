@@ -93,6 +93,29 @@ describe("UserService", () => {
         service.getUserById({ id: MOCK_USER_ITEM_ID, projectKey: TEST_PROJECT_KEY }),
       ).rejects.toThrow("Network error");
     });
+
+    it("should normalize flat roles and permissions into per-organization maps", async () => {
+      const payload = { id: MOCK_USER_ITEM_ID, projectKey: TEST_PROJECT_KEY };
+      vi.mocked(http.get).mockResolvedValue({
+        data: {
+          itemId: MOCK_USER_ITEM_ID,
+          organizationIds: ["default"],
+          roles: ["test", "user"],
+          permissions: ["Change User Password", "View Client Credentials"],
+        },
+      });
+
+      const result = await service.getUserById(payload);
+
+      expect(result.data.roles).toEqual({ default: ["test", "user"] });
+      expect(result.data.permissions).toEqual({
+        default: ["Change User Password", "View Client Credentials"],
+      });
+      expect(result.data.OrganizationsRoles).toEqual({ default: ["test", "user"] });
+      expect(result.data.OrganizationsPermissions).toEqual({
+        default: ["Change User Password", "View Client Credentials"],
+      });
+    });
   });
 
   describe("addUser", () => {
