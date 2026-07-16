@@ -1,4 +1,5 @@
 import { FilterControls } from "@/components/filter-toolbar";
+import { Badge } from "@/components/ui-kits/badge/badge";
 import { Button } from "@/components/ui-kits/button/button";
 import { Checkbox } from "@/components/ui-kits/checkbox/checkbox";
 import {
@@ -12,16 +13,10 @@ import {
   DialogTrigger,
 } from "@/components/ui-kits/dialog/dialog";
 import { Pagination } from "@/components/ui-kits/pagination/pagination";
-import {
-  Tooltip,
-  TooltipContent,
-  TooltipProvider,
-  TooltipTrigger,
-} from "@/components/ui-kits/tooltip/tooltip";
 import { useProjectStore } from "@seliseblocks/blocks-kit";
 import { useGetRoles } from "@blocks-idp/iam/hooks/use-roles";
 import { IRole } from "@blocks-idp/iam/models/role";
-import { Plus, ShieldCheck, Info } from "lucide-react";
+import { Plus, ShieldCheck } from "lucide-react";
 import { useMemo, useState } from "react";
 
 type AddOrganizationRoleProps = {
@@ -36,6 +31,8 @@ type AddOrganizationRoleProps = {
    */
   organizationId?: string;
 };
+
+const MAX_ROLES_PER_USER = 5;
 
 export const AddOrganizationRole = ({
   onAdd,
@@ -70,20 +67,6 @@ export const AddOrganizationRole = ({
     { enabled: open && !!scopeKey },
   );
 
-  const onCheckedChangeHandler = (checked: boolean, role: IRole) => {
-    if (checked) {
-      return setSelectedRoles((roles) => [...roles, role]);
-    }
-    setSelectedRoles((roles) => roles.filter((item) => item.slug !== role.slug));
-  };
-
-  const pageChangeHandler = (page: number) => setFilter((prev) => ({ ...prev, page }));
-
-  const reset = () => {
-    setSelectedRoles([]);
-    setFilter({ page: 0, pageSize: 10, search: "" });
-  };
-
   const rolesSlug = useMemo(
     () => roles.map((item) => item.slug) || [],
     [roles],
@@ -93,6 +76,40 @@ export const AddOrganizationRole = ({
     () => selectedRoles.map((item) => item.slug) || [],
     [selectedRoles],
   );
+
+  const newlySelectedRoles = useMemo(
+    () => selectedRoles.filter((item) => !rolesSlug.includes(item.slug)),
+    [selectedRoles, rolesSlug],
+  );
+
+  const totalRoleCount = roles.length + newlySelectedRoles.length;
+  const isAtMaxRoles = totalRoleCount >= MAX_ROLES_PER_USER;
+
+  const isRoleSelectedInModal = (slug: string) =>
+    rolesSlug.includes(slug) || selectedRolesSlug.includes(slug);
+
+  const onCheckedChangeHandler = (checked: boolean, role: IRole) => {
+    if (checked) {
+      if (!rolesSlug.includes(role.slug) && totalRoleCount >= MAX_ROLES_PER_USER) {
+        return;
+      }
+      return setSelectedRoles((currentRoles) =>
+        currentRoles.some((item) => item.slug === role.slug)
+          ? currentRoles
+          : [...currentRoles, role],
+      );
+    }
+    setSelectedRoles((currentRoles) =>
+      currentRoles.filter((item) => item.slug !== role.slug),
+    );
+  };
+
+  const pageChangeHandler = (page: number) => setFilter((prev) => ({ ...prev, page }));
+
+  const reset = () => {
+    setSelectedRoles([]);
+    setFilter({ page: 0, pageSize: 10, search: "" });
+  };
 
   return (
     <Dialog
@@ -118,24 +135,17 @@ export const AddOrganizationRole = ({
         <DialogHeader>
           <div className="flex items-center gap-2">
             <DialogTitle className="text-left">Manage roles</DialogTitle>
-            <TooltipProvider>
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <button
-                    type="button"
-                    aria-label="Maximum roles info"
-                    className="inline-flex items-center justify-center text-muted-foreground transition-colors hover:text-foreground focus:outline-none"
-                  >
-                    <Info className="h-4 w-4" aria-hidden />
-                  </button>
-                </TooltipTrigger>
-                <TooltipContent side="right">
-                  You can assign a maximum of 5 roles per user.
-                </TooltipContent>
-              </Tooltip>
-            </TooltipProvider>
+            <Badge
+              variant="success"
+              className="font-normal"
+              aria-live="polite"
+              aria-label={`${totalRoleCount} out of ${MAX_ROLES_PER_USER} roles selected`}>
+              {totalRoleCount}/{MAX_ROLES_PER_USER} selected
+            </Badge>
           </div>
-          <DialogDescription></DialogDescription>
+          <DialogDescription className="text-left">
+            You can assign a maximum of {MAX_ROLES_PER_USER} roles per user.
+          </DialogDescription>
         </DialogHeader>
         <div>
           <FilterControls.SearchInput
@@ -160,10 +170,11 @@ export const AddOrganizationRole = ({
             {data.data.map((item) => (
               <div key={item.itemId} className="col-span-1 flex items-center py-2">
                 <Checkbox
-                  checked={
-                    rolesSlug.includes(item.slug) || selectedRolesSlug.includes(item.slug)
+                  checked={isRoleSelectedInModal(item.slug)}
+                  disabled={
+                    rolesSlug.includes(item.slug) ||
+                    (!isRoleSelectedInModal(item.slug) && isAtMaxRoles)
                   }
-                  disabled={rolesSlug.includes(item.slug)}
                   onCheckedChange={(value) => onCheckedChangeHandler(!!value, item)}
                 />
                 <div className="ml-2 flex flex-col">
@@ -212,8 +223,9 @@ export const AddOrganizationRole = ({
           <Button
             type="button"
             size="default"
+            disabled={newlySelectedRoles.length === 0}
             onClick={() => {
-              onAdd(selectedRoles);
+              onAdd(newlySelectedRoles);
               reset();
               setOpen(false);
               // Defer save so the parent React tree has time to commit the
