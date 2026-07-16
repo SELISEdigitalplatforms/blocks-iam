@@ -186,7 +186,7 @@ namespace Authentication.DomainService.Services
                         var newProvider = new IdentityProvider
                         {
                             Provider = providerName,
-                            ProviderType = IdpConstants.BlocksProviderType,
+                            ProviderType = IdpConstants.BlocksOidcProviderType,
                             Protocol = IdpConstants.OidcProtocol,
                             DisplayName = request.ClientDisplayName ?? credential.ClientId,
                             IsActive = credential.IsActive,
@@ -311,16 +311,16 @@ namespace Authentication.DomainService.Services
             credential.LogoUri = request.ClientLogoUrl;
             credential.ClientName = request.ClientDisplayName;
             credential.UiBrandColor = request.ClientBrandColor;
+            credential.IsDeviceFlowClient = request.IsDeviceFlowClient;
         }
 
         public async Task<GetOIDCClientResponse> GetOidcClientAsync(string tenantId)
         {
             var client = await _authenticationRepository.GetOIDCCredentialByIdAsync(tenantId);
-
             return new GetOIDCClientResponse
             {
                 oIDCClientCredential = client,
-                IsSuccess = true
+                IsSuccess = true,
             };
         }
 

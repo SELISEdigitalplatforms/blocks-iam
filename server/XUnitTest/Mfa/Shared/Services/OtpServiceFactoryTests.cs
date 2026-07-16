@@ -11,6 +11,7 @@ using Mfa.DomainService.Services;
 using Mfa.DomainService.Shared;
 using Mfa.DomainService.TOTP;
 using Moq;
+using StorageDriver;
 
 namespace XUnitTest.Mfa.Shared.Services
 {
@@ -27,7 +28,7 @@ namespace XUnitTest.Mfa.Shared.Services
                 new Mock<ICacheClient>().Object,
                 new Mock<IValidator<VerifyOtpRequest>>().Object,
                 new Mock<ITenants>().Object,
-                new Mock<IHttpService>().Object);
+                new Mock<IStorageDriverService>().Object);
 
             var services = new ServiceCollection();
             services.AddSingleton(totpService);

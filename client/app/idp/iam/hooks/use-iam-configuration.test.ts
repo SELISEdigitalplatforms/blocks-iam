@@ -47,6 +47,7 @@ describe("use-iam-configuration hooks", () => {
       await waitFor(() => expect(result.current.isSuccess).toBe(true));
       expect(configurationService.saveIamConfiguration).toHaveBeenCalledWith(
         mockSaveIamConfigPayload,
+        expect.anything(),
       );
     });
   });
