@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Button } from "@/components/ui-kits/button/button";
 import {
   Dialog,
@@ -51,6 +51,7 @@ export const ManageOrganizationDialog = ({
   const [selectedOrgId, setSelectedOrgId] = useState<string>("");
   const [selectedRoles, setSelectedRoles] = useState<IRole[]>([]);
   const [selectedPermissions, setSelectedPermissions] = useState<IPermission[]>([]);
+  const hydratedKeyRef = useRef("");
 
   const { data: userData } = useGetUserById({ id: userId, projectKey: tenantId }, { enabled: open });
   const { data: rolesData } = useGetRoles(
@@ -118,8 +119,14 @@ export const ManageOrganizationDialog = ({
     }
 
     return {
-      roleSlugs: user.OrganizationsRoles?.[orgId] ?? [],
-      permissionNames: user.OrganizationsPermissions?.[orgId] ?? [],
+      roleSlugs:
+        user.OrganizationsRoles?.[orgId] ??
+        user.roles?.[orgId] ??
+        [],
+      permissionNames:
+        user.OrganizationsPermissions?.[orgId] ??
+        user.permissions?.[orgId] ??
+        [],
     };
   };
 
@@ -142,13 +149,21 @@ export const ManageOrganizationDialog = ({
   };
 
   useEffect(() => {
-    if (!open) return;
+    if (!open) {
+      hydratedKeyRef.current = "";
+      return;
+    }
     const preselectedOrgId =
       initialOrganizationId ||
       (orgOptions.some((org) => org.itemId === DEFAULT_ORGANIZATION_ID) ? DEFAULT_ORGANIZATION_ID : "");
+    if (!preselectedOrgId || !userData?.data) return;
+
+    const hydrationKey = `${preselectedOrgId}:${rolesData?.data?.length ?? 0}:${permissionsData?.data?.length ?? 0}`;
+    if (hydrationKey === hydratedKeyRef.current) return;
+    hydratedKeyRef.current = hydrationKey;
     handleOrgChange(preselectedOrgId);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [open, initialOrganizationId]);
+  }, [open, initialOrganizationId, userData?.data, rolesData?.data, permissionsData?.data]);
 
   const onConfirm = async () => {
     if (!selectedOrgId || selectedRoles.length === 0) {
