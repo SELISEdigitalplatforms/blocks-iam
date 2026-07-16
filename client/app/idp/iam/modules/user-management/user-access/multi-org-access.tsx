@@ -96,9 +96,33 @@ export const MultiOrgAccess = ({ userId, projectKey }: MultiOrgAccessProps) => {
       return { roleSlugs: membership.roles ?? [], permissionNames: membership.permissions ?? [] };
     }
     return {
-      roleSlugs: user.OrganizationsRoles?.[orgId] ?? [],
-      permissionNames: user.OrganizationsPermissions?.[orgId] ?? [],
+      roleSlugs:
+        user.OrganizationsRoles?.[orgId] ??
+        user.roles?.[orgId] ??
+        [],
+      permissionNames:
+        user.OrganizationsPermissions?.[orgId] ??
+        user.permissions?.[orgId] ??
+        [],
     };
+  };
+
+  const applyOrgSelection = (orgId: string) => {
+    const { roleSlugs, permissionNames } = getExistingSelection(orgId);
+    setSelectedRoles(
+      roleSlugs.map(
+        (slug) => roleBySlug.get(slug) ?? { itemId: slug, name: slug, slug, description: "" },
+      ),
+    );
+    setSelectedPermissions(
+      permissionNames.map(
+        (name) =>
+          permissionByName.get(name) ??
+          ({ itemId: name, name, resource: name, resourceGroup: "Other" } as IPermission),
+      ),
+    );
+    setInitialRoleSlugs(roleSlugs);
+    setInitialPermissionNames(permissionNames);
   };
 
   const organizationRows: UserOrganizationRow[] = useMemo(() => {
@@ -159,27 +183,38 @@ export const MultiOrgAccess = ({ userId, projectKey }: MultiOrgAccessProps) => {
 
   const selectOrg = (orgId: string) => {
     setSelectedOrgId(orgId);
-    const { roleSlugs, permissionNames } = getExistingSelection(orgId);
-    const roles = roleSlugs.map(
-      (slug) => roleBySlug.get(slug) ?? { itemId: slug, name: slug, slug, description: "" },
-    );
-    const permissions = permissionNames.map(
-      (name) =>
-        permissionByName.get(name) ??
-        ({ itemId: name, name, resource: name, resourceGroup: "Other" } as IPermission),
-    );
-    setSelectedRoles(roles);
-    setSelectedPermissions(permissions);
-    setInitialRoleSlugs(roleSlugs);
-    setInitialPermissionNames(permissionNames);
+    applyOrgSelection(orgId);
   };
 
+  const hydratedKeyRef = useRef("");
   useEffect(() => {
-    if (!selectedOrgId && organizationRows.length > 0) {
-      selectOrg(organizationRows[0].organizationId);
-    }
+    const orgId = selectedOrgId || organizationRows[0]?.organizationId;
+    if (!orgId || !userData?.data) return;
+
+    const { roleSlugs, permissionNames } = getExistingSelection(orgId);
+    const hydrationKey = `${userData.data.itemId}:${orgId}:${rolesData?.data?.length ?? 0}:${permissionsData?.data?.length ?? 0}`;
+    const selectionEmpty = selectedRoles.length === 0 && selectedPermissions.length === 0;
+    const shouldHydrate =
+      hydrationKey !== hydratedKeyRef.current ||
+      (selectionEmpty && (roleSlugs.length > 0 || permissionNames.length > 0));
+
+    if (!shouldHydrate) return;
+
+    hydratedKeyRef.current = hydrationKey;
+    if (!selectedOrgId) setSelectedOrgId(orgId);
+    applyOrgSelection(orgId);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [organizationRows]);
+  }, [
+    selectedOrgId,
+    organizationRows,
+    userData?.data,
+    rolesData?.data,
+    permissionsData?.data,
+    roleBySlug,
+    permissionByName,
+    selectedRoles.length,
+    selectedPermissions.length,
+  ]);
 
   // Refs so the deferred `onSave` callback always reads the latest selection
   // — `setSelectedRoles`/`setSelectedPermissions` from the add modal are queued
