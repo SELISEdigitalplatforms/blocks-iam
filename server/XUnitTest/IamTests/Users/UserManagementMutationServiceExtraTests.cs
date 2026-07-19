@@ -130,9 +130,10 @@ namespace XUnitTest.IamTests.Users
                 .ReturnsAsync(new IamConfiguration { ActivationUrlLifetimeInMinutes = 45 });
             var user = new User { ItemId = "u1" };
 
-            var key = await Create().CreateUserByEmailActivationProcessAsync(user, "AccountActivation");
+            var (key, expiresAtUtc) = await Create().CreateUserByEmailActivationProcessAsync(user, "AccountActivation");
 
             key.Should().NotBeNullOrWhiteSpace();
+            expiresAtUtc.Should().BeAfter(DateTime.UtcNow);
             _cache.Verify(c => c.AddStringValueAsync(key, "u1", 45 * 60), Times.Once);
             _userRepo.Verify(r => r.InsertUserKeyMapAsync(It.Is<UserKeyMap>(m => m.UserId == "u1" && m.Key == key && m.MailPurpose == "AccountActivation")), Times.Once);
         }
