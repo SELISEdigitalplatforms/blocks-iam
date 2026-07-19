@@ -8,14 +8,12 @@ namespace Iam.DomainService.Users
 {
     public class CreateUserValidator : AbstractValidator<CreateUserRequest>
     {
-        private readonly BlocksContext? _securityContext;
         private readonly IUserRepository _userRepository;
         private readonly IIamConfigurationRepository _configurationRepository;
         private readonly IResourceRepository _resourceRepository;
 
         public CreateUserValidator(IUserRepository userRepository, IIamConfigurationRepository configurationRepository, IResourceRepository resourceRepository)
         {
-            _securityContext = BlocksContext.GetContext();
             _userRepository = userRepository;
             _configurationRepository = configurationRepository;
             _resourceRepository = resourceRepository;
@@ -112,7 +110,8 @@ namespace Iam.DomainService.Users
 
         private async Task<bool> CheckBlackListPassword(string password, CancellationToken cancellationToken)
         {
-            var isExist = await _userRepository.CheckPasswordBlackListedAsync(password, _securityContext?.TenantId);
+            var tenantId = BlocksContext.GetContext()?.TenantId;
+            var isExist = await _userRepository.CheckPasswordBlackListedAsync(password, tenantId);
             return !isExist;
         }
 
