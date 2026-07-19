@@ -105,10 +105,20 @@ namespace Iam.DomainService.Services
             });
 
             var userId = await cursor.FirstOrDefaultAsync();
-            var user = await GetUserByIdAsync(userId);
-            bool isActive = user?.Active ?? false;
 
-            return !isActive ? user.ItemId : "";
+            // No key-map row for this key: nothing to activate. Return empty rather than looking up a null user.
+            if (string.IsNullOrWhiteSpace(userId)) return string.Empty;
+
+            var user = await GetUserByIdAsync(userId);
+
+            // The key maps to a user that no longer exists (deleted, or a partial write during minting).
+            // Guard against dereferencing null — this previously threw a NullReferenceException (HTTP 500),
+            // which the activation page rendered as a misleading "Invalid Activation Link".
+            if (user is null) return string.Empty;
+
+            // Only surface the user while the account still needs activation; an already-active account
+            // has nothing to activate.
+            return user.Active ? string.Empty : user.ItemId;
         }
 
         public async Task SaveSignUpSettingAsync(TenantConfiguration tenantConfiguration)
