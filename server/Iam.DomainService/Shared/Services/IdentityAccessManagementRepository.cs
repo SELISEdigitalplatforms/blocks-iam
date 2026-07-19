@@ -50,6 +50,11 @@ namespace Iam.DomainService.Services
 
         public async Task<bool> CheckPasswordBlackListedAsync(string password, string tenantId)
         {
+            if (string.IsNullOrWhiteSpace(tenantId))
+            {
+                return false;
+            }
+
             var collection = GetCollection<BlackListInformation>(tenantId);
             var result = await collection.CountDocumentsAsync(x => x.Key == "password" && x.Value == password);
 
