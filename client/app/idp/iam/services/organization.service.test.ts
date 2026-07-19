@@ -81,7 +81,7 @@ describe("OrganizationService", () => {
       const result = await service.saveOrganization(mockSaveOrganizationPayload);
 
       expect(http.post).toHaveBeenCalledWith(
-        ORGANIZATION_ENDPOINTS.SAVE_ORGANIZATION,
+        ORGANIZATION_ENDPOINTS.CREATE_ORGANIZATION,
         mockSaveOrganizationPayload,
       );
       expect(result).toEqual(mockSuccessResponse);
@@ -101,11 +101,9 @@ describe("OrganizationService", () => {
     it("should GET with correct query params", async () => {
       vi.mocked(http.get).mockResolvedValue(mockOrganizationConfigResponse);
 
-      const result = await service.getOrganizationConfig(TEST_PROJECT_KEY);
+      const result = await service.getOrganizationConfig();
 
-      expect(http.get).toHaveBeenCalledWith(
-        `${ORGANIZATION_ENDPOINTS.GET_ORGANIZATION_CONFIG}?projectKey=${TEST_PROJECT_KEY}`,
-      );
+      expect(http.get).toHaveBeenCalledWith(ORGANIZATION_ENDPOINTS.GET_ORGANIZATION_CONFIG);
       expect(result).toEqual(mockOrganizationConfigResponse);
     });
 
