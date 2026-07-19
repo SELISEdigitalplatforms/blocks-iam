@@ -18,6 +18,7 @@ describe("PeopleService", () => {
 
   beforeEach(() => {
     service = new PeopleService();
+    vi.clearAllMocks();
   });
 
   // ─── peopleAcceptInvitation ─────────────────────────────────────────────────
@@ -45,31 +46,20 @@ describe("PeopleService", () => {
   // ─── getPeople ──────────────────────────────────────────────────────────────
 
   describe("getPeople", () => {
-    it("should call correct endpoint with payload", async () => {
-      vi.mocked(http.post).mockResolvedValue(mockGetPeopleResponse);
-
+    // The GETS endpoint is currently disabled server-side; getPeople resolves an
+    // empty owner-less result client-side without any HTTP call.
+    it("should resolve an empty result without hitting the API", async () => {
       const payload = { page: 1, pageSize: 10, filter: "", projectGroupId: "group-1" };
       const result = await service.getPeople(payload);
 
-      expect(http.post).toHaveBeenCalledWith(PEOPLE_ENDPOINTS.GETS, payload);
-      expect(result).toEqual(mockGetPeopleResponse);
-    });
-
-    it("should pass filter parameter correctly", async () => {
-      vi.mocked(http.post).mockResolvedValue(mockGetPeopleResponse);
-
-      const payload = { page: 1, pageSize: 20, filter: "john", projectGroupId: "group-1" };
-      await service.getPeople(payload);
-
-      expect(http.post).toHaveBeenCalledWith(PEOPLE_ENDPOINTS.GETS, payload);
-    });
-
-    it("should handle API errors", async () => {
-      vi.mocked(http.post).mockRejectedValue(new Error("Failed to fetch people"));
-
-      await expect(
-        service.getPeople({ page: 1, pageSize: 10, filter: "", projectGroupId: "group-1" }),
-      ).rejects.toThrow("Failed to fetch people");
+      expect(http.post).not.toHaveBeenCalled();
+      expect(result).toEqual({
+        peoples: [],
+        totalCount: 0,
+        errors: null,
+        isSuccess: true,
+        isOwner: false,
+      });
     });
   });
 

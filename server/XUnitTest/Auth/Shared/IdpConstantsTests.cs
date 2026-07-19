@@ -36,7 +36,7 @@ namespace XUnitTest.Auth.Shared
         [Fact]
         public void ProviderNames_AreCorrect()
         {
-            IdpConstants.BlocksProviderName.Should().Be("blocks-idp");
+            IdpConstants.BlocksProviderName.Should().Be("blocks-iam");
             IdpConstants.BlocksProviderType.Should().Be("blocks");
             IdpConstants.OidcProtocol.Should().Be("oidc");
         }

@@ -1,15 +1,8 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import {
-  AUTH_ENDPOINTS,
-  AUTH_OIDC_ENDPOINTS,
-  OIDC_FLOW_ENDPOINTS,
-} from "../constants/endpoint.constant";
-import { ACCOUNT_ENDPOINTS } from "@blocks-idp/iam/constants/endpoint.constant";
+import { AUTH_ENDPOINTS, AUTH_OIDC_ENDPOINTS } from "../constants/endpoint.constant";
 import {
   mockOidcFlowCredentialPayload,
   mockOidcFlowCredentialResponse,
-  mockUserAcknowledgementPayload,
-  mockUserAcknowledgementResponse,
   mockOidcFlowAccountRecoverPayload,
   mockOidcFlowAccountRecoverResponse,
   mockRefreshTokenStorage,
@@ -25,17 +18,14 @@ const MOCK_API_BASE = "https://api.blocks.test";
 describe("oidc-auth-flow.service", () => {
   let refreshAccessToken: typeof import("./oidc-auth-flow.service").refreshAccessToken;
   let getOidcCredential: typeof import("./oidc-auth-flow.service").getOidcCredential;
-  let userAcknowledgement: typeof import("./oidc-auth-flow.service").userAcknowledgement;
   let accountRecover: typeof import("./oidc-auth-flow.service").accountRecover;
 
   beforeEach(async () => {
-    vi.stubEnv("NEXT_PUBLIC_API_BASE_URL", MOCK_API_BASE);
     vi.stubGlobal("fetch", vi.fn());
 
     const mod = await import("./oidc-auth-flow.service");
     refreshAccessToken = mod.refreshAccessToken;
     getOidcCredential = mod.getOidcCredential;
-    userAcknowledgement = mod.userAcknowledgement;
     accountRecover = mod.accountRecover;
   });
 
@@ -48,28 +38,25 @@ describe("oidc-auth-flow.service", () => {
 
   // ─── refreshAccessToken ─────────────────────────────────────────────────────
   describe("refreshAccessToken", () => {
-    it("should refresh token and update localStorage", async () => {
-      localStorage.setItem("oidc-auth-storage", mockRefreshTokenStorage);
-
+    it("should POST to the refresh endpoint and resolve the new access token", async () => {
       vi.mocked(fetch).mockResolvedValue({
         ok: true,
         json: () => Promise.resolve(mockRefreshedTokenResponse),
       } as Response);
 
-      const result = await refreshAccessToken("test-project-key");
+      const result = await refreshAccessToken();
 
+      // Refresh is cookie-based (credentials: include); the base URL is empty in
+      // tests so the URL is just the refresh endpoint path.
       expect(fetch).toHaveBeenCalledWith(
-        `${MOCK_API_BASE}${AUTH_ENDPOINTS.TOKEN}`,
-        expect.objectContaining({ method: "POST" }),
+        AUTH_ENDPOINTS.REFRESH,
+        expect.objectContaining({ method: "POST", credentials: "include" }),
       );
       expect(result).toBe(mockRefreshedTokenResponse.access_token);
-
-      const stored = JSON.parse(localStorage.getItem("oidc-auth-storage")!);
-      expect(stored.access_token).toBe(mockRefreshedTokenResponse.access_token);
     });
 
-    it("should return null when no oidc-auth-storage exists", async () => {
-      const result = await refreshAccessToken("test-project-key");
+    it("should return null when the refresh request fails", async () => {
+      const result = await refreshAccessToken();
       expect(result).toBeNull();
     });
 
@@ -149,37 +136,6 @@ describe("oidc-auth-flow.service", () => {
     });
   });
 
-  // ─── userAcknowledgement ──────────────────────────────────────────────────────
-  describe("userAcknowledgement", () => {
-    it("should POST to the correct endpoint with payload", async () => {
-      vi.mocked(fetch).mockResolvedValue({
-        ok: true,
-        json: () => Promise.resolve(mockUserAcknowledgementResponse),
-      } as Response);
-
-      const result = await userAcknowledgement(mockUserAcknowledgementPayload);
-
-      expect(fetch).toHaveBeenCalledWith(
-        `${MOCK_API_BASE}${OIDC_FLOW_ENDPOINTS.USER_ACKNOWLEDGEMENT}`,
-        expect.objectContaining({
-          method: "POST",
-          body: expect.any(String),
-        }),
-      );
-      expect(result).toEqual(mockUserAcknowledgementResponse);
-    });
-
-    it("should throw when the API call fails", async () => {
-      vi.mocked(fetch).mockResolvedValue({
-        ok: false,
-        status: 400,
-        statusText: "Bad Request",
-      } as Response);
-
-      await expect(userAcknowledgement(mockUserAcknowledgementPayload)).rejects.toThrow();
-    });
-  });
-
   // ─── accountRecover ───────────────────────────────────────────────────────────
   describe("accountRecover", () => {
     it("should POST to the correct endpoint with payload", async () => {
@@ -191,7 +147,7 @@ describe("oidc-auth-flow.service", () => {
       const result = await accountRecover(mockOidcFlowAccountRecoverPayload);
 
       expect(fetch).toHaveBeenCalledWith(
-        `${MOCK_API_BASE}${ACCOUNT_ENDPOINTS.RECOVER}`,
+        AUTH_ENDPOINTS.RECOVER,
         expect.objectContaining({
           method: "POST",
           body: expect.any(String),

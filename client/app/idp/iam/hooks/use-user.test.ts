@@ -51,7 +51,13 @@ describe("use-user hooks", () => {
 
       await waitFor(() => expect(result.current.isSuccess).toBe(true));
       expect(result.current.data).toEqual(mockUsersResponse);
-      expect(userService.getUsers).toHaveBeenCalledWith(mockGetUsersPayload);
+      // The hook derives a trimmed payload (projectKey drives the query key, not
+      // the request body) and includes the optional sort field.
+      expect(userService.getUsers).toHaveBeenCalledWith({
+        page: mockGetUsersPayload.page,
+        pageSize: mockGetUsersPayload.pageSize,
+        sort: undefined,
+      });
     });
   });
 
@@ -66,7 +72,7 @@ describe("use-user hooks", () => {
 
       await waitFor(() => expect(result.current.isSuccess).toBe(true));
       expect(userService.getUser).toHaveBeenCalled();
-      expect(mockSetUser).toHaveBeenCalledWith(mockUser);
+      expect(result.current.data).toEqual(mockResponse);
     });
   });
 
@@ -96,7 +102,7 @@ describe("use-user hooks", () => {
 
       result.current.mutate(mockCreateUserPayload);
       await waitFor(() => expect(result.current.isSuccess).toBe(true));
-      expect(userService.addUser).toHaveBeenCalledWith(mockCreateUserPayload);
+      expect(userService.addUser).toHaveBeenCalledWith(mockCreateUserPayload, expect.anything());
     });
   });
 
@@ -139,7 +145,7 @@ describe("use-user hooks", () => {
 
       result.current.mutate(mockSaveSignUpSettingPayload);
       await waitFor(() => expect(result.current.isSuccess).toBe(true));
-      expect(userService.saveSignUpSetting).toHaveBeenCalledWith(mockSaveSignUpSettingPayload);
+      expect(userService.saveSignUpSetting).toHaveBeenCalledWith(mockSaveSignUpSettingPayload, expect.anything());
     });
   });
 
@@ -153,9 +159,7 @@ describe("use-user hooks", () => {
 
       result.current.mutate(mockSaveRolesAndPermissionsPayload);
       await waitFor(() => expect(result.current.isSuccess).toBe(true));
-      expect(userService.saveRolesAndPermissions).toHaveBeenCalledWith(
-        mockSaveRolesAndPermissionsPayload,
-      );
+      expect(userService.saveRolesAndPermissions).toHaveBeenCalledWith(mockSaveRolesAndPermissionsPayload, expect.anything());
     });
   });
 
