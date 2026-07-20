@@ -99,7 +99,7 @@ namespace XUnitTest.ApiTests
         {
             _mfaConfig.Setup(c => c.GetAsync()).ReturnsAsync((MfaConfiguration?)null);
 
-            var result = await CreateController().GetPolicy();
+            var result = await CreateController().GetMfaConfig();
 
             result.Should().BeOfType<OkObjectResult>();
         }
@@ -116,7 +116,7 @@ namespace XUnitTest.ApiTests
                 BackupCodesCount = 10
             });
 
-            var result = await CreateController().GetPolicy();
+            var result = await CreateController().GetMfaConfig();
 
             result.Should().BeOfType<OkObjectResult>();
         }
@@ -141,7 +141,7 @@ namespace XUnitTest.ApiTests
                 BackupCodesCount = 8
             };
 
-            var result = await CreateController().UpdatePolicy(request, CancellationToken.None);
+            var result = await CreateController().UpdateMfaConfig(request, CancellationToken.None);
 
             var ok = result.Should().BeOfType<OkObjectResult>().Subject;
             var saved = ok.Value.Should().BeOfType<MfaConfiguration>().Subject;

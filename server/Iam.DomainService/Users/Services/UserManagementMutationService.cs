@@ -915,12 +915,41 @@ namespace Iam.DomainService.Users
             _logger.LogInformation("User creation start from CreateUserByEmail");
             var tenantConfig = await _resourceRepository.GetTenantConfigurationAsync();
 
+            var email = @event.Email?.Trim().ToLower() ?? string.Empty;
+
+            var organizationId = (tenantConfig?.IsMultiOrgEnabled ?? false)
+                ? (string.IsNullOrWhiteSpace(@event.OrganizationId) ? DefaultOrganizationId : @event.OrganizationId)
+                : DefaultOrganizationId;
+
+            // This path bypasses _createValidator (and its BeAnUniqueEmail rule), so the uniqueness check has
+            // to happen here: without it a caller whose lookup missed would have a second account created for
+            // an email that already has one.
+            var existingUser = await _userRepository.GetUserByUserNameOrgIdAsync(email, organizationId);
+
+            if (existingUser != null)
+            {
+                _logger.LogInformation("User already exists for CreateUserByEmail; reusing existing user instead of creating a duplicate");
+
+                // An account that cannot sign in yet still needs an activation key, even though it exists.
+                if (RequiresActivation(existingUser))
+                {
+                    var (existingUserKey, existingUserKeyExpiry) = await CreateUserByEmailActivationProcessAsync(existingUser, @event.EventType);
+                    await SendCreateUserByEmailPostEventAsync(@event, existingUser.ItemId, existingUserKey, existingUserKeyExpiry);
+                }
+                else
+                {
+                    await SendCreateUserByEmailPostEventAsync(@event, existingUser.ItemId, string.Empty, null);
+                }
+
+                return true;
+            }
+
             var command = new CreateUserRequest
             {
-                Email = @event.Email,
+                Email = email,
                 UserCreationType = UserCreationType.Service,
                 MailPurpose = @event.EventType,
-                OrganizationId =@event.OrganizationId ?? DefaultOrganizationId,
+                OrganizationId = organizationId,
                 Roles = @event.Roles ?? tenantConfig.DefaultRolesForNewUserOnSignUp ?? new List<string>(),
                 Permissions = @event.Permissions ?? tenantConfig.DefaultPermissionsForNewUserOnSignUp ?? new List<string>()
             };
@@ -946,25 +975,37 @@ namespace Iam.DomainService.Users
         {
             var user = await _userRepository.GetUserByIdAsync(userId);
 
-            var key = await CreateUserByEmailActivationProcessAsync(user, @event.EventType);
+            var (key, keyExpiresAtUtc) = await CreateUserByEmailActivationProcessAsync(user, @event.EventType);
 
             await PublishUserActivityAsync(user, MutationEventType.Create);
 
+            await SendCreateUserByEmailPostEventAsync(@event, userId, key, keyExpiresAtUtc);
+
+            return true;
+        }
+
+        /// <summary>An account that is inactive or unverified cannot sign in yet, so it still needs an activation key.</summary>
+        private static bool RequiresActivation(User user) => !user.Active || !user.IsVerified;
+
+        private async Task SendCreateUserByEmailPostEventAsync(CreateUserByEmailEvent @event, string userId, string key, DateTime? keyExpiresAtUtc)
+        {
             await _identityAccessManagementService.SendToQueueAsync(@event.EventQueue, new CreateUserByEmailPostEvent
             {
                 Key = key,
                 UserId = userId,
                 EventType = @event.EventType,
+                TenantId = @event.TenantId,
+                ForceInvitation = @event.ForceInvitation,
+                KeyExpiresAtUtc = keyExpiresAtUtc,
             });
-
-            return true;
         }
 
-        public async Task<string> CreateUserByEmailActivationProcessAsync(User user, string eventType)
+        public async Task<(string key, DateTime expiresAtUtc)> CreateUserByEmailActivationProcessAsync(User user, string eventType)
         {
             var config = await _userRepository.GetIamConfigurationAsync();
 
             var key = Guid.NewGuid().ToString("n");
+            var expiresAtUtc = DateTime.UtcNow.AddMinutes(config.ActivationUrlLifetimeInMinutes);
 
             await _cacheClient.AddStringValueAsync(key, user.ItemId, config.ActivationUrlLifetimeInMinutes * 60);
 
@@ -973,12 +1014,12 @@ namespace Iam.DomainService.Users
                 ItemId = Guid.NewGuid().ToString(),
                 Key = key,
                 UserId = user.ItemId,
-                IssueDate = DateTime.Now,
-                ExpireDate = DateTime.Now.AddMinutes(config.ActivationUrlLifetimeInMinutes),
+                IssueDate = DateTime.UtcNow,
+                ExpireDate = expiresAtUtc,
                 MailPurpose = eventType
             });
 
-            return key;
+            return (key, expiresAtUtc);
         }
 
         async Task<TenantConfiguration> IUserManagementMutationService.GetTenantConfigurationAsync()

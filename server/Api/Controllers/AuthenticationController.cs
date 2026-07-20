@@ -509,15 +509,14 @@ public class AuthenticationController : ControllerBase
 
     [HttpGet("config")]
     [ProtectedEndPoint("blocks-iam::auth::identity-config")]
-    public async Task<IActionResult> Get([FromQuery] GetAuthenticationConfigurationRequest request)
+    public async Task<IActionResult> GetAuthenticationConfiguration()
     {
-        
         return await _configurationService.GetAuthenticationConfigAsync();
     }
-    
+
     [HttpPost("config")]
     [ProtectedEndPoint("blocks-iam::auth::mutate-identity-config")]
-    public async Task<BaseResponse> Update([FromBody] UpdateAuthenticationConfigurationRequest configuration)
+    public async Task<BaseResponse> UpdateAuthenticationConfiguration([FromBody] UpdateAuthenticationConfigurationRequest configuration)
     {
         return await _configurationService.UpdateAuthenticationConfigAsync(configuration);
     }
@@ -557,7 +556,7 @@ public class AuthenticationController : ControllerBase
 
     [HttpGet("client-credentials")]
     [ProtectedEndPoint("blocks-iam::auth::client-credentials")]
-    public async Task<List<ClientCredential>> GetClientCredentials([FromQuery] GetAllClientCredentialsRequest request)
+    public async Task<List<ClientCredential>> GetClientCredentials()
     {
         return await _authenticationRepository.GetClientCredentialsAsync();
     }
