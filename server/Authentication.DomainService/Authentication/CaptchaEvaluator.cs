@@ -17,11 +17,12 @@ namespace Authentication.DomainService.Authentication
         public Task<CaptchaConfiguration?> GetConfigurationAsync()
             => _captchaConfigurationService.GetCaptchaConfigurationAsync();
 
-        public async Task<object> VerifyAsync(string captchaCode)
+        public async Task<object> VerifyAsync(string captchaCode, string configurationName)
         {
             var response = await _captchaService.VerifyCaptchaAsync(new VerifyCaptchaRequest
             {
-                VerificationCode = captchaCode
+                VerificationCode = captchaCode,
+                ConfigurationName = configurationName
             });
             return new { Verified = response.Verified };
         }

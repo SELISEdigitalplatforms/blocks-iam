@@ -11,6 +11,6 @@ namespace Authentication.DomainService.Authentication
     public interface ICaptchaEvaluator
     {
         Task<CaptchaConfiguration?> GetConfigurationAsync();
-        Task<object> VerifyAsync(string captchaCode);
+        Task<object> VerifyAsync(string captchaCode, string configurationName);
     }
 }
