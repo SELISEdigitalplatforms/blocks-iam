@@ -7,6 +7,7 @@ using Microsoft.Extensions.Primitives;
 
 namespace XUnitTest.Auth.Shared
 {
+    [Collection("DomainResolverStatic")]
     public class CookieHelperTests
     {
         private static TokenResponse BuildTokenResponse(string? access = "access-token", string? refresh = "refresh-token", DateTime? expiresUtc = null, DateTime? refreshExpiresUtc = null, string? error = null, string? cookieDomain = null)
@@ -98,7 +99,11 @@ namespace XUnitTest.Auth.Shared
 
             CookieHelper.AppendCookies(response, ctx.Response, "example.com");
 
-            ctx.Response.Headers["Set-Cookie"].Count.Should().Be(1);
+            // AppendCookies first deletes stale access+refresh cookies, then writes the access cookie.
+            // With no refresh token, no refresh cookie carrying a token value is written.
+            var setCookies = ctx.Response.Headers["Set-Cookie"].ToArray();
+            setCookies.Should().Contain(c => c!.StartsWith("example.com=access-token"));
+            setCookies.Should().NotContain(c => c!.Contains("rt_example.com=refresh-token"));
         }
 
         [Fact]

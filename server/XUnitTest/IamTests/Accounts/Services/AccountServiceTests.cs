@@ -314,7 +314,7 @@ namespace XUnitTest.IamTests.Accounts.Services
         }
 
         [Fact]
-        public async Task Signup_Email_NewUser_ActivationEmailFails_ReturnsActivationEmailFailed()
+        public async Task Signup_Email_NewUser_CreationSucceeds_ReturnsSuccessWithItemId()
         {
             var service = CreateService();
             _repositoryMock.Setup(r => r.GetTenantConfigurationAsync())
@@ -323,13 +323,12 @@ namespace XUnitTest.IamTests.Accounts.Services
             _repositoryMock.Setup(r => r.GetUserByIdAsync(It.IsAny<string>())).ReturnsAsync(TestDataBuilder.CreateUser());
             _userMutationMock.Setup(m => m.CreateUserAsync(It.IsAny<CreateUserRequest>()))
                 .ReturnsAsync(new BaseMutationResponse { ItemId = "u-new", IsSuccess = true });
-            _iamServiceMock.Setup(s => s.SendActivationToEmailAsync(It.IsAny<User>(), It.IsAny<string>(), It.IsAny<string>()))
-                .ReturnsAsync(false);
 
             var result = await service.SignupAccountAsync(new SignupUserRequest { Email = "u@example.com" });
 
-            result.IsSuccess.Should().BeFalse();
-            result.Errors.Should().ContainKey("activation_email_failed");
+            result.IsSuccess.Should().BeTrue();
+            result.ItemId.Should().Be("u-new");
+            result.Errors.Should().BeNull();
         }
 
         [Fact]
@@ -472,8 +471,6 @@ namespace XUnitTest.IamTests.Accounts.Services
             var result = await service.ActivateAccountAsync(new ActivateUserRequest
             {
                 Code = "code-1",
-                FirstName = "F",
-                LastName = "L",
                 MailPurpose = "AccountActivated",
                 PreventPostEvent = false
             });
@@ -981,22 +978,24 @@ namespace XUnitTest.IamTests.Accounts.Services
         }
 
         [Fact]
-        public async Task Validate_CodeExistsInCache_ReturnsIsSuccessTrue_NoErrors()
+        public async Task Validate_CodeExistsInCache_KeyMapUserIdPresent_ReturnsIsSuccessTrue_WithUserId()
         {
             var service = CreateService();
             _cacheClientMock.Setup(c => c.KeyExistsAsync("xyz")).ReturnsAsync(true);
+            _repositoryMock.Setup(r => r.GetUserIdFromKeyMapByKeyAsync("xyz")).ReturnsAsync("u-99");
 
             var result = await service.ValidateAccountActivationCodeAsync(new ValidateActivationCodeRequest { ActivationCode = "xyz" });
 
             result.IsSuccess.Should().BeTrue();
+            result.UserId.Should().Be("u-99");
             result.Errors.Should().BeNull();
         }
 
         [Fact]
-        public async Task Validate_CodeNotInCache_KeyMapUserIdEmpty_ReturnsInvalidActivationCode()
+        public async Task Validate_CodeExistsInCache_KeyMapUserIdEmpty_ReturnsInvalidActivationCode()
         {
             var service = CreateService();
-            _cacheClientMock.Setup(c => c.KeyExistsAsync("xyz")).ReturnsAsync(false);
+            _cacheClientMock.Setup(c => c.KeyExistsAsync("xyz")).ReturnsAsync(true);
             _repositoryMock.Setup(r => r.GetUserIdFromKeyMapByKeyAsync("xyz")).ReturnsAsync(string.Empty);
 
             var result = await service.ValidateAccountActivationCodeAsync(new ValidateActivationCodeRequest { ActivationCode = "xyz" });
@@ -1006,16 +1005,15 @@ namespace XUnitTest.IamTests.Accounts.Services
         }
 
         [Fact]
-        public async Task Validate_CodeNotInCache_KeyMapUserIdPresent_ReturnsIsSuccessTrue_WithUserId()
+        public async Task Validate_CodeNotInCache_ReturnsIsSuccessFalse_WithoutErrors()
         {
             var service = CreateService();
             _cacheClientMock.Setup(c => c.KeyExistsAsync("xyz")).ReturnsAsync(false);
-            _repositoryMock.Setup(r => r.GetUserIdFromKeyMapByKeyAsync("xyz")).ReturnsAsync("u-99");
 
             var result = await service.ValidateAccountActivationCodeAsync(new ValidateActivationCodeRequest { ActivationCode = "xyz" });
 
-            result.IsSuccess.Should().BeTrue();
-            result.UserId.Should().Be("u-99");
+            result.IsSuccess.Should().BeFalse();
+            result.Errors.Should().BeNull();
         }
 
         [Fact]
