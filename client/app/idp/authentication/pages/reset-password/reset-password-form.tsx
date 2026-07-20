@@ -28,6 +28,7 @@ export const ResetPasswordForm = ({ code, tenantId }: ResetPasswordFormProps) =>
   const [requirementsMet, setRequirementsMet] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
+  const [serverError, setServerError] = useState<string | null>(null);
 
   const form = useForm<ResetPasswordFormValuesType>({
     defaultValues: resetPasswordFormDefaultValue,
@@ -82,6 +83,7 @@ export const ResetPasswordForm = ({ code, tenantId }: ResetPasswordFormProps) =>
   }, [captchaCode, isValid, requirementsMet, resetCaptcha]);
 
   const onSubmitHandler = async (values: ResetPasswordFormValuesType) => {
+    setServerError(null);
     animCtx?.startAnimation();
     try {
       const res = await mutateAsync({
@@ -98,6 +100,7 @@ export const ResetPasswordForm = ({ code, tenantId }: ResetPasswordFormProps) =>
           : res.errors && typeof res.errors === "object"
           ? (Object.values(res.errors as Record<string, string>)[0] ?? "Reset failed")
           : (res.errors as string) || "Reset failed";
+        setServerError(msg);
         shake();
         await animCtx?.failAnimation(msg);
         return;
@@ -113,9 +116,12 @@ export const ResetPasswordForm = ({ code, tenantId }: ResetPasswordFormProps) =>
           : error.errors && typeof error.errors === "object"
           ? (Object.values(error.errors as Record<string, string>)[0] ?? "Something went wrong")
           : (error.errors as unknown as string) || "Something went wrong";
+        setServerError(msg);
         await animCtx?.failAnimation(msg);
       } else {
-        await animCtx?.failAnimation("Something went wrong");
+        const msg = "Something went wrong";
+        setServerError(msg);
+        await animCtx?.failAnimation(msg);
       }
     }
   };
@@ -125,7 +131,10 @@ export const ResetPasswordForm = ({ code, tenantId }: ResetPasswordFormProps) =>
       <form
         ref={formRef}
         onSubmit={form.handleSubmit(onSubmitHandler, shake)}
-        onInput={() => { if (animCtx?.phase === "failed") animCtx?.resetAnimation(); }}
+        onInput={() => {
+          if (serverError) setServerError(null);
+          if (animCtx?.phase === "failed") animCtx?.resetAnimation();
+        }}
         className="flex flex-col gap-5"
       >
         <div className="flex flex-col gap-2">
@@ -200,6 +209,12 @@ export const ResetPasswordForm = ({ code, tenantId }: ResetPasswordFormProps) =>
         </div>
 
         {captchaEnabled && isValid && requirementsMet && <Captcha {...captcha} />}
+
+        {serverError && (
+          <p className="text-sm" style={{ color: "var(--danger)", fontFamily: "system-ui, sans-serif" }}>
+            {serverError}
+          </p>
+        )}
 
         <button
           type="submit"
