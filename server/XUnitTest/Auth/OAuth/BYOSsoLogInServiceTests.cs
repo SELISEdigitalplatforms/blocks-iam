@@ -49,10 +49,12 @@ namespace XUnitTest.Auth.OAuth
                 .ReturnsAsync((token!, error));
         }
 
-        // Source calls _httpService.Get<dynamic>(...) which compiles to Get<object>(...).
-        private void SetupUserInfo(object? payload, string error = "")
+        // Source calls _httpService.Get<JsonDocument>(...); the real HttpService
+        // deserializes the JSON user-info body into a JsonDocument whose RootElement
+        // is the JsonElement passed to the mapper registry.
+        private void SetupUserInfo(JsonDocument? payload, string error = "")
         {
-            _http.Setup(h => h.Get<object>(
+            _http.Setup(h => h.Get<JsonDocument>(
                     It.IsAny<string>(), It.IsAny<Dictionary<string, string>>(),
                     It.IsAny<CancellationToken>(), It.IsAny<int?>()))
                 .ReturnsAsync((payload!, error));
@@ -96,33 +98,49 @@ namespace XUnitTest.Auth.OAuth
                 Times.Never);
         }
 
-        // Characterization test documenting a latent production bug on the
-        // SUCCESS path. BYOSsoLogInService calls _httpService.Get<dynamic>(...),
-        // which the real HttpService (where T : class) deserializes via
-        // JsonSerializer.Deserialize<object>(...) into a boxed JsonElement
-        // (a value type). Line "result.Item1 == null" is a dynamic comparison
-        // of that boxed struct against null, which the C# runtime binder cannot
-        // resolve -> RuntimeBinderException. Because of this, the mapping branch
-        // (mapperRegistry.Map) is UNREACHABLE without a production fix, so it
-        // cannot be asserted green. We pin the actual behavior instead.
+        // SUCCESS path. After the fix, BYOSsoLogInService calls
+        // _httpService.Get<JsonDocument>(...) (JsonElement is a value type and
+        // cannot satisfy the IHttpService.Get<T> "where T : class" constraint),
+        // then hands RootElement to the mapper registry. The user-info payload is
+        // now mapped onto the external user and returned with the provider tokens,
+        // roles and permissions.
         [Fact]
-        public async Task SuccessPath_Throws_BecauseDynamicUserInfoCannotBeNullChecked()
+        public async Task SuccessPath_MapsExternalUser_FromUserInfoPayload()
         {
             _authRepo.Setup(r => r.GetIdentityProviderByClientIdAsync(It.IsAny<string>())).ReturnsAsync(Provider());
-            SetupToken(new SocialOauthAccessToken { AccessToken = "at-1" });
+            SetupToken(new SocialOauthAccessToken { AccessToken = "at-1", IdToken = "id-1", RefreshToken = "rt-1" });
 
-            // Matches what the real HttpService.Get<object> returns for a JSON body.
-            var payload = JsonDocument.Parse("""{"email":"bring@your.own","sub":"byo-1"}""").RootElement.Clone();
+            // Matches what the real HttpService.Get<JsonDocument> returns for a JSON body.
+            using var payload = JsonDocument.Parse("""{"email":"bring@your.own","sub":"byo-1"}""");
             SetupUserInfo(payload);
 
-            var act = async () => await Create().HandleSocialLoginCallback(State());
+            // The mapper projects the raw JsonElement onto the strongly-typed user.
+            _mapperRegistry
+                .Setup(m => m.Map(It.IsAny<string>(), It.IsAny<JsonElement>(), It.IsAny<BYOSsoUserData>()))
+                .Callback<string, JsonElement, BYOSsoUserData>((_, json, user) =>
+                {
+                    user.Email = json.GetProperty("email").GetString()!;
+                    user.ExternalProviderUserId = json.GetProperty("sub").GetString()!;
+                });
 
-            (await act.Should().ThrowAsync<Exception>())
-                .Which.Message.Should().Contain("JsonElement");
+            var result = await Create().HandleSocialLoginCallback(State());
 
-            // mapping is never reached
-            _mapperRegistry.Verify(m => m.Map(It.IsAny<string>(), It.IsAny<JsonElement>(), It.IsAny<BYOSsoUserData>()),
-                Times.Never);
+            var user = result.ExternalUserData.Should().BeOfType<BYOSsoUserData>().Subject;
+            user.Email.Should().Be("bring@your.own");
+            user.ExternalProviderUserId.Should().Be("byo-1");
+            user.Platform.Should().Be("okta");
+            user.Permissions.Should().BeEquivalentTo(new[] { "perm-1" });
+            user.Roles.Should().BeEquivalentTo(new[] { "init-role" });
+
+            result.AccessToken.Should().Be("at-1");
+            result.IdToken.Should().Be("id-1");
+            result.RefreshToken.Should().Be("rt-1");
+
+            // Mapping is reached exactly once, with the provider name and the payload's root element.
+            _mapperRegistry.Verify(
+                m => m.Map("okta", It.Is<JsonElement>(e => e.GetProperty("email").GetString() == "bring@your.own"),
+                    It.IsAny<BYOSsoUserData>()),
+                Times.Once);
         }
     }
 }

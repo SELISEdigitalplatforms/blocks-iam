@@ -59,11 +59,11 @@ namespace XUnitTest.Auth
                 MfaExemptRoles = ["admin"]
             });
 
-            // NOTE: MfaPolicyService matches against user.Roles.Keys, so the role name must be the
-            // dictionary key here (see "needs refactor" note - the service should read role values).
+            // Roles is Dictionary<organizationId, List<roleName>>: the exempt role name lives in the
+            // values, keyed by the org id.
             var user = new User
             {
-                Roles = new Dictionary<string, List<string>> { { "Admin", ["default"] } }
+                Roles = new Dictionary<string, List<string>> { { "org-1", ["Admin"] } }
             };
 
             var decision = await service.EvaluateAsync(user, clientId: null);
@@ -116,10 +116,11 @@ namespace XUnitTest.Auth
                 MfaRequiredRoles = ["manager"]
             });
 
-            // NOTE: MfaPolicyService matches against user.Roles.Keys (see "needs refactor" note).
+            // Roles is Dictionary<organizationId, List<roleName>>: the required role name lives in the
+            // values, keyed by the org id.
             var user = new User
             {
-                Roles = new Dictionary<string, List<string>> { { "Manager", ["default"] } }
+                Roles = new Dictionary<string, List<string>> { { "org-1", ["Manager"] } }
             };
 
             var decision = await service.EvaluateAsync(user, clientId: null);

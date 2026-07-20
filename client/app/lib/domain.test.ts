@@ -30,8 +30,25 @@ describe("isValidSubdomain", () => {
     expect(isValidSubdomain("")).toBe(false);
   });
 
-  it("accepts a valid label-based subdomain", () => {
+  it("accepts a single-label subdomain", () => {
     expect(isValidSubdomain("https://tenant")).toBe(true);
+  });
+
+  it("accepts multi-label hosts", () => {
+    expect(isValidSubdomain("https://app.example.com")).toBe(true);
+    expect(isValidSubdomain("https://a.b.c.example.com")).toBe(true);
+  });
+
+  it("trims surrounding whitespace before validating", () => {
+    expect(isValidSubdomain("  https://app.example.com  ")).toBe(true);
+  });
+
+  it("rejects a host without a scheme", () => {
+    expect(isValidSubdomain("app.example.com")).toBe(false);
+  });
+
+  it("rejects a trailing dot", () => {
+    expect(isValidSubdomain("https://app.example.com.")).toBe(false);
   });
 
   it("rejects labels that fail the subdomain regex", () => {
