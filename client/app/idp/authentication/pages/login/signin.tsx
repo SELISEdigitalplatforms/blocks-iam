@@ -109,7 +109,7 @@ export const Signin = ({ ssoError, mode = "default", oidcContext }: SigninProps)
   return (
     <Card className="flex h-full flex-col rounded border-solid border-background shadow-none md:min-w-[448px] md:border-[#95ADC4] lg:max-w-md">
       <CardHeader className="text-center">
-        <CardTitle className="text-3xl">Blocks Cloud</CardTitle>
+        <CardTitle className="text-3xl">Blocks IAM</CardTitle>
         <CardDescription className="text-xl text-foreground">Log in</CardDescription>
       </CardHeader>
       <CardContent className="flex flex-1 flex-col justify-between">
@@ -236,7 +236,7 @@ export const Signin = ({ ssoError, mode = "default", oidcContext }: SigninProps)
 //   return (
 //     <Card className="flex h-full flex-col rounded border-solid border-background shadow-none md:min-w-[448px] md:border-[#95ADC4] lg:max-w-md">
 //       <CardHeader className="text-center">
-//         <CardTitle className="text-3xl">Blocks Cloud</CardTitle>
+//         <CardTitle className="text-3xl">Blocks IAM</CardTitle>
 //         <CardDescription className="text-xl text-foreground">Log in</CardDescription>
 //       </CardHeader>
 //       <CardContent className="flex flex-1 flex-col justify-between">
