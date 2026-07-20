@@ -42,7 +42,7 @@ beforeEach(() => {
 describe("SsoActivate", () => {
   it("renders the card with the terms checkbox and a disabled continue button", () => {
     renderComp();
-    expect(screen.getByText("Blocks Cloud")).toBeInTheDocument();
+    expect(screen.getByText("Blocks IAM")).toBeInTheDocument();
     expect(screen.getByText(/I agree to the/i)).toBeInTheDocument();
     expect(screen.getByRole("checkbox")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /continue/i })).toBeDisabled();

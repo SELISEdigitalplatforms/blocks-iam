@@ -29,7 +29,7 @@ namespace XUnitTest.ApiTests
             _domainService.Setup(s => s.GetOidcClientsAsync())
                 .ReturnsAsync(new GetOIDCClientsResponse { IsSuccess = true });
 
-            var result = await CreateController().GetAll();
+            var result = await CreateController().GetOidcClients();
 
             result.Should().BeOfType<OkObjectResult>();
         }
@@ -40,7 +40,7 @@ namespace XUnitTest.ApiTests
             _domainService.Setup(s => s.GetOidcClientsAsync())
                 .ReturnsAsync(new GetOIDCClientsResponse { IsSuccess = false });
 
-            var result = await CreateController().GetAll();
+            var result = await CreateController().GetOidcClients();
 
             result.Should().BeOfType<BadRequestObjectResult>();
         }
@@ -98,7 +98,7 @@ namespace XUnitTest.ApiTests
         [Fact]
         public async Task Upsert_NullRequest_ReturnsBadRequest()
         {
-            var result = await CreateController().Upsert(null);
+            var result = await CreateController().UpsertOidcClient(null);
 
             result.Should().BeOfType<BadRequestObjectResult>();
             _domainService.Verify(s => s.SaveOIDCClientAsync(It.IsAny<SaveOIDCClientRequest>()), Times.Never);
@@ -110,7 +110,7 @@ namespace XUnitTest.ApiTests
             _domainService.Setup(s => s.SaveOIDCClientAsync(It.IsAny<SaveOIDCClientRequest>()))
                 .ReturnsAsync(new SaveOIDCClientResponse { IsSuccess = true, ItemId = "cid" });
 
-            var result = await CreateController().Upsert(new SaveOIDCClientRequest());
+            var result = await CreateController().UpsertOidcClient(new SaveOIDCClientRequest());
 
             result.Should().BeOfType<OkObjectResult>();
         }
@@ -121,7 +121,7 @@ namespace XUnitTest.ApiTests
             _domainService.Setup(s => s.SaveOIDCClientAsync(It.IsAny<SaveOIDCClientRequest>()))
                 .ReturnsAsync(new SaveOIDCClientResponse { IsSuccess = false });
 
-            var result = await CreateController().Upsert(new SaveOIDCClientRequest());
+            var result = await CreateController().UpsertOidcClient(new SaveOIDCClientRequest());
 
             result.Should().BeOfType<BadRequestObjectResult>();
         }
@@ -131,7 +131,7 @@ namespace XUnitTest.ApiTests
         [Fact]
         public async Task Delete_MissingId_ReturnsBadRequest()
         {
-            var result = await CreateController().Delete("");
+            var result = await CreateController().DeleteOidcClient("");
 
             result.Should().BeOfType<BadRequestObjectResult>();
             _domainService.Verify(s => s.DeleteOidcClientAsync(It.IsAny<DeleteOIDCClientRequest>()), Times.Never);
@@ -143,7 +143,7 @@ namespace XUnitTest.ApiTests
             _domainService.Setup(s => s.DeleteOidcClientAsync(It.Is<DeleteOIDCClientRequest>(r => r.ItemId == "cid")))
                 .ReturnsAsync(new Blocks.Genesis.BaseResponse { IsSuccess = true });
 
-            var result = await CreateController().Delete("cid");
+            var result = await CreateController().DeleteOidcClient("cid");
 
             result.Should().BeOfType<OkObjectResult>();
         }
@@ -154,7 +154,7 @@ namespace XUnitTest.ApiTests
             _domainService.Setup(s => s.DeleteOidcClientAsync(It.IsAny<DeleteOIDCClientRequest>()))
                 .ReturnsAsync(new Blocks.Genesis.BaseResponse { IsSuccess = false });
 
-            var result = await CreateController().Delete("cid");
+            var result = await CreateController().DeleteOidcClient("cid");
 
             result.Should().BeOfType<BadRequestObjectResult>();
         }

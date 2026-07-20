@@ -41,6 +41,50 @@ module.exports = {
         caughtErrorsIgnorePattern: "^_",
       },
     ],
+    // Naming conventions (see CONTRIBUTING.md). Authored to reflect the style already in
+    // use so it lands green; severity is "warn" and will be ratcheted toward "error" later.
+    // Filename conventions (kebab-case, use-* hooks, *.service.ts) are documented in
+    // CONTRIBUTING.md; enforcing them in-lint needs eslint-plugin-unicorn, deferred here to
+    // avoid adding a dependency in this change.
+    "@typescript-eslint/naming-convention": [
+      "warn",
+      {
+        selector: "default",
+        format: ["camelCase"],
+        leadingUnderscore: "allow",
+        trailingUnderscore: "allow",
+      },
+      {
+        selector: "variable",
+        format: ["camelCase", "PascalCase", "UPPER_CASE"],
+        leadingUnderscore: "allow",
+      },
+      {
+        selector: "parameter",
+        format: ["camelCase", "PascalCase"],
+        leadingUnderscore: "allow",
+      },
+      {
+        selector: "function",
+        format: ["camelCase", "PascalCase"],
+      },
+      {
+        selector: "typeLike",
+        format: ["PascalCase"],
+      },
+      {
+        selector: "enumMember",
+        format: ["camelCase", "PascalCase", "UPPER_CASE"],
+      },
+      {
+        selector: "property",
+        format: null,
+      },
+      {
+        selector: "import",
+        format: ["camelCase", "PascalCase"],
+      },
+    ],
   },
   ignorePatterns: ["node_modules/", "dist/"],
 };
