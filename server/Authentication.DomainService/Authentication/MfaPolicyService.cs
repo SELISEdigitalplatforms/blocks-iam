@@ -39,7 +39,8 @@ namespace Authentication.DomainService.Authentication
             }
 
             var allowedMethods = config.UserMfaType ?? new List<UserMfaType>();
-            var userRoles = user.Roles?.Keys?.ToList() ?? new List<string>();
+            var userRoles = user.Roles?.Values.SelectMany(r => r)
+                    .Distinct(StringComparer.OrdinalIgnoreCase).ToList() ?? new List<string>();
 
             if (config.MfaExemptRoles != null
                 && config.MfaExemptRoles.Count > 0
