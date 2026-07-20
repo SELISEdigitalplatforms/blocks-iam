@@ -41,11 +41,11 @@ export const SingleOrgAccess = ({ userId, projectKey }: SingleOrgAccessProps) =>
     () => new Map((rolesData?.data || []).map((role) => [role.slug, role])),
     [rolesData?.data],
   );
-  const permissionByResource = useMemo(
+  const permissionByName = useMemo(
     () =>
       new Map(
         (permissionsData?.data || []).map(
-          (permission: IPermission) => [permission.resource, permission] as const,
+          (permission: IPermission) => [permission.name, permission] as const,
         ),
       ),
     [permissionsData?.data],
@@ -55,7 +55,7 @@ export const SingleOrgAccess = ({ userId, projectKey }: SingleOrgAccessProps) =>
   const orgId = DEFAULT_ORG_ID;
   const roleSlugs =
     user?.OrganizationsRoles?.[orgId] ?? user?.roles?.[orgId] ?? [];
-  const permissionResources =
+  const permissionNames =
     user?.OrganizationsPermissions?.[orgId] ?? user?.permissions?.[orgId] ?? [];
 
   const initialRoles: IRole[] = useMemo(() => {
@@ -67,14 +67,14 @@ export const SingleOrgAccess = ({ userId, projectKey }: SingleOrgAccessProps) =>
   }, [user?.itemId, JSON.stringify(roleSlugs)]);
 
   const initialPermissions: IPermission[] = useMemo(() => {
-    return permissionResources
+    return permissionNames
       .map(
-        (resource) =>
-          permissionByResource.get(resource) ??
+        (name) =>
+          permissionByName.get(name) ??
           ({
-            itemId: resource,
-            name: resource,
-            resource,
+            itemId: name,
+            name,
+            resource: name,
             resourceGroup: "Other",
             type: 0,
             description: "",
@@ -91,11 +91,12 @@ export const SingleOrgAccess = ({ userId, projectKey }: SingleOrgAccessProps) =>
       )
       .filter(Boolean);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [user?.itemId, JSON.stringify(permissionResources)]);
+  }, [user?.itemId, JSON.stringify(permissionNames)]);
 
   const [selectedRoles, setSelectedRoles] = useState<IRole[]>(initialRoles);
   const [selectedPermissions, setSelectedPermissions] = useState<IPermission[]>(initialPermissions);
   const [isInitialized, setIsInitialized] = useState(false);
+  const hydratedKeyRef = useRef("");
 
   // Refs so the deferred `onSave` callback always reads the latest selection
   // — `setSelectedRoles`/`setSelectedPermissions` from the add modal are queued
@@ -110,18 +111,29 @@ export const SingleOrgAccess = ({ userId, projectKey }: SingleOrgAccessProps) =>
   }, [selectedPermissions]);
 
   useEffect(() => {
-    if (isInitialized && user) return;
+    if (!user) return;
+
+    const hydrationKey = `${user.itemId}:${rolesData?.data?.length ?? 0}:${permissionsData?.data?.length ?? 0}`;
+    const selectionEmpty = selectedRoles.length === 0 && selectedPermissions.length === 0;
+    const shouldHydrate =
+      !isInitialized ||
+      hydrationKey !== hydratedKeyRef.current ||
+      (selectionEmpty && (roleSlugs.length > 0 || permissionNames.length > 0));
+
+    if (!shouldHydrate) return;
+
+    hydratedKeyRef.current = hydrationKey;
     setSelectedRoles(initialRoles);
     setSelectedPermissions(initialPermissions);
     setIsInitialized(true);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [user?.itemId, initialRoles, initialPermissions]);
+  }, [user?.itemId, initialRoles, initialPermissions, rolesData?.data, permissionsData?.data, selectedRoles.length, selectedPermissions.length]);
 
   const onSave = async () => {
     try {
       const res = await mutateAsync({
         roles: selectedRolesRef.current.map((role) => role.slug),
-        permissions: selectedPermissionsRef.current.map((permission) => permission.resource),
+        permissions: selectedPermissionsRef.current.map((permission) => permission.name),
         organizationId: DEFAULT_ORG_ID,
       });
       if (!res.isSuccess) {

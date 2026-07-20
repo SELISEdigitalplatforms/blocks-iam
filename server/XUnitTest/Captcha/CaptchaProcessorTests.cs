@@ -47,12 +47,12 @@ namespace XUnitTest.Captcha
         }
 
         [Fact]
-        public async Task VerifyCaptchaAsync_ForwardsPrefixedKeyToVerificationService()
+        public async Task VerifyCaptchaAsync_ForwardsVerificationCodeToVerificationService()
         {
             var processor = CreateProcessor(out _, out var provider);
             var verification = new Mock<ICaptchaVerificationService>();
             verification.SetupGet(v => v.Provider).Returns("bcaptcha");
-            verification.Setup(v => v.VerifyAsync("captcha:vc:CODE"))
+            verification.Setup(v => v.VerifyAsync("CODE"))
                 .ReturnsAsync(new VerificationResult { Verified = true, HostName = "h" });
             provider.Setup(p => p.GetCaptchaVerificationService("bcaptcha")).Returns(verification.Object);
 

@@ -191,6 +191,31 @@
             Preferred over deletion for temporary disabling
             </summary>
         </member>
+        <member name="T:Api.Controllers.DeviceController">
+            <summary>
+            Browser-facing RFC 8628 device flow endpoints. The SPA already owns /oidc/* so it ships /device/*
+            too. This controller exposes the JSON payloads the SPA consumes; HTML responses fall through to
+            the SPA fallback configured in <c>Program.cs</c>.
+            </summary>
+        </member>
+        <member name="M:Api.Controllers.DeviceController.Entry">
+            <summary>
+            GET /device — entry. The SPA reads <c>user_code</c> from the query string and renders the
+            form. For Accept: application/json callers we return a redirect hint.
+            </summary>
+        </member>
+        <member name="M:Api.Controllers.DeviceController.Verify(Idp.DomainService.Oidc.Contracts.DeviceVerifyRequest,System.Threading.CancellationToken)">
+            <summary>
+            POST /api/device/verify — validates a user_code and returns either the inline consent
+            payload (<c>status: "ready"</c>) or an OIDC login URL (<c>status: "login_required"</c>).
+            </summary>
+        </member>
+        <member name="M:Api.Controllers.DeviceController.Decision(Idp.DomainService.Oidc.Contracts.DeviceDecisionRequest,System.Threading.CancellationToken)">
+            <summary>
+            POST /api/device/decision — records an allow/deny decision for the device authorization
+            request identified by <c>user_code</c>. Returns the SPA's success-page redirect.
+            </summary>
+        </member>
         <member name="T:Api.Controllers.IdpController">
             <summary>
             IDP Controller
@@ -306,6 +331,13 @@
             <summary>
             OAuth 2.0 Token Endpoint (RFC 6749 Section 3.2)
             Supports both authorization_code and refresh_token grants
+            </summary>
+        </member>
+        <member name="M:Blocks.Api.Controllers.AuthorizationController.DeviceAuthorization(System.Threading.CancellationToken)">
+            <summary>
+            OAuth 2.0 Device Authorization Endpoint (RFC 8628 Section 3.1).
+            Accepts application/x-www-form-urlencoded <c>client_id</c>, <c>scope</c>
+            and returns device_code, user_code, verification_uri, expires_in, interval.
             </summary>
         </member>
         <member name="M:Blocks.Api.Controllers.AuthorizationController.HandleOidcCallbackGet(System.String,System.String,Authentication.DomainService.OAuth.RequestModel.OidcCallbackRequest)">

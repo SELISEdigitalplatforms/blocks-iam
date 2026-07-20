@@ -5,6 +5,7 @@ import { IPermission } from "@blocks-idp/iam/models/permission";
 import { KeyRound } from "lucide-react";
 import { AddOrganizationPermission } from "./add-organization-permission";
 import { OrganizationPermissionsList } from "./organization-permissions-list";
+import { permissionMatches } from "./permission-selection.utils";
 
 type OrganizationPermissionsFieldProps = {
   permissions: IPermission[];
@@ -38,7 +39,7 @@ export const OrganizationPermissionsField = ({
   };
 
   const onRemoveHandler = (permission: IPermission) => {
-    onChange(permissions.filter((item) => item.resource !== permission.resource));
+    onChange(permissions.filter((item) => !permissionMatches(item, permission)));
   };
 
   return (
