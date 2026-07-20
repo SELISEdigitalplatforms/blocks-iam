@@ -138,7 +138,7 @@ namespace XUnitTest.ApiTests
             var response = new List<PermissionGroupBySeverityResponse>();
             _resourceQuery.Setup(s => s.GetPermissionsGroupBySeverityAsync()).ReturnsAsync(response);
 
-            var result = await CreateController().GetPermissionsGroupBySeverity(new GetPermissionGroupBySeverityRequest());
+            var result = await CreateController().GetPermissionsGroupBySeverity();
 
             result.Should().BeSameAs(response);
         }
@@ -206,7 +206,7 @@ namespace XUnitTest.ApiTests
             _resourceMutation.Setup(s => s.SetRolesAsync(It.IsAny<SetRolesRequest>()))
                 .ReturnsAsync(new SetRolesResponse { Success = true });
 
-            var result = await CreateController().SetRoles(new SetRolesRequest());
+            var result = await CreateController().AssignRolePermissions(new SetRolesRequest());
 
             result.Should().BeOfType<OkObjectResult>();
         }
@@ -217,7 +217,7 @@ namespace XUnitTest.ApiTests
             _resourceMutation.Setup(s => s.SetRolesAsync(It.IsAny<SetRolesRequest>()))
                 .ReturnsAsync(new SetRolesResponse { Success = false });
 
-            var result = await CreateController().SetRoles(new SetRolesRequest());
+            var result = await CreateController().AssignRolePermissions(new SetRolesRequest());
 
             result.Should().BeOfType<BadRequestObjectResult>();
         }
@@ -239,7 +239,7 @@ namespace XUnitTest.ApiTests
             var response = new List<GetResourceGroupResponse>();
             _resourceQuery.Setup(s => s.GetResourceGroupsAsync()).ReturnsAsync(response);
 
-            var result = await CreateController().GetResourceGroups(new GetResourceGroupRequest());
+            var result = await CreateController().GetResourceGroups();
 
             result.Should().BeSameAs(response);
         }
@@ -263,7 +263,7 @@ namespace XUnitTest.ApiTests
             _userMutation.Setup(s => s.CreateUserAsync(It.IsAny<CreateUserRequest>()))
                 .ReturnsAsync(new BaseMutationResponse { IsSuccess = true });
 
-            var result = await CreateController().Create(new CreateUserRequest());
+            var result = await CreateController().CreateUser(new CreateUserRequest());
 
             result.Should().BeOfType<OkObjectResult>();
         }
@@ -274,7 +274,7 @@ namespace XUnitTest.ApiTests
             _userMutation.Setup(s => s.CreateUserAsync(It.IsAny<CreateUserRequest>()))
                 .ReturnsAsync(new BaseMutationResponse { IsSuccess = false });
 
-            var result = await CreateController().Create(new CreateUserRequest());
+            var result = await CreateController().CreateUser(new CreateUserRequest());
 
             result.Should().BeOfType<BadRequestObjectResult>();
         }
@@ -285,7 +285,7 @@ namespace XUnitTest.ApiTests
             _userMutation.Setup(s => s.UpdateUserAsync(It.Is<UpdateUserRequest>(c => c.ItemId == "u-1")))
                 .ReturnsAsync(new BaseMutationResponse { IsSuccess = true });
 
-            var result = await CreateController().Update("u-1", new UpdateUserRequest());
+            var result = await CreateController().UpdateUser("u-1", new UpdateUserRequest());
 
             result.Should().BeOfType<OkObjectResult>();
             _userMutation.Verify(s => s.UpdateUserAsync(It.Is<UpdateUserRequest>(c => c.ItemId == "u-1")), Times.Once);
@@ -297,7 +297,7 @@ namespace XUnitTest.ApiTests
             _userMutation.Setup(s => s.DeactivateUserAsync(It.IsAny<DeactivateUserRequest>()))
                 .ReturnsAsync(new BaseResponse { IsSuccess = true });
 
-            var result = await CreateController().Deactivate(new DeactivateUserRequest());
+            var result = await CreateController().DeactivateUser(new DeactivateUserRequest());
 
             result.Should().BeOfType<OkObjectResult>();
         }
@@ -308,7 +308,7 @@ namespace XUnitTest.ApiTests
             _userMutation.Setup(s => s.DeactivateUserAsync(It.IsAny<DeactivateUserRequest>()))
                 .ReturnsAsync(new BaseResponse { IsSuccess = false });
 
-            var result = await CreateController().Deactivate(new DeactivateUserRequest());
+            var result = await CreateController().DeactivateUser(new DeactivateUserRequest());
 
             result.Should().BeOfType<BadRequestObjectResult>();
         }
@@ -319,7 +319,7 @@ namespace XUnitTest.ApiTests
             _userMutation.Setup(s => s.ActivateUserAsync(It.IsAny<ActivateUserByAdminRequest>()))
                 .ReturnsAsync(new BaseMutationResponse { IsSuccess = true });
 
-            var result = await CreateController().Activate(new ActivateUserByAdminRequest { UserId = "u-1", Reason = "test" });
+            var result = await CreateController().ActivateUser(new ActivateUserByAdminRequest { UserId = "u-1", Reason = "test" });
 
             result.Should().BeOfType<OkObjectResult>();
         }
