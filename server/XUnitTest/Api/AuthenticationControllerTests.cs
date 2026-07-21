@@ -344,9 +344,9 @@ namespace XUnitTest.ApiTests
         public async Task ExecuteLogout_Success_ClearsCookieAndReturnsOk()
         {
             _authService.Setup(s => s.LogoutUser("rt", It.IsAny<HttpRequest>()))
-                .ReturnsAsync(new LogoutResponse { IsSuccess = true });
+                .ReturnsAsync(new LogoutResponse { IsSuccess = true, IdpSessionId = "sess-1" });
             _authService.Setup(s => s.UpdateIdpSessionForLogoutAsync(It.IsAny<HttpContext>(),
-                    It.IsAny<System.Security.Claims.ClaimsPrincipal>(), false))
+                    It.IsAny<System.Security.Claims.ClaimsPrincipal>(), false, It.IsAny<IEnumerable<string>>()))
                 .ReturnsAsync(true);
 
             var result = await CreateController().ExecuteLogout(new LogoutRequest { RefreshToken = "rt" });
@@ -443,9 +443,9 @@ namespace XUnitTest.ApiTests
         public async Task ExecuteGlobalLogout_Success_NoBackchannel_ReturnsOk()
         {
             _authService.Setup(s => s.LogoutAll(It.IsAny<HttpRequest>()))
-                .ReturnsAsync(new LogoutResponse { IsSuccess = true });
+                .ReturnsAsync(new LogoutResponse { IsSuccess = true, IdpSessionIds = new[] { "sess-1" } });
             _authService.Setup(s => s.UpdateIdpSessionForLogoutAsync(It.IsAny<HttpContext>(),
-                    It.IsAny<System.Security.Claims.ClaimsPrincipal>(), true))
+                    It.IsAny<System.Security.Claims.ClaimsPrincipal>(), true, It.IsAny<IEnumerable<string>>()))
                 .ReturnsAsync(false);
 
             var result = await CreateController().ExecuteGlobalLogout(new LogoutAllRequest { UseBackchannel = false });
