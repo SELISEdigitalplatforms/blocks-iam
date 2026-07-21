@@ -23,6 +23,8 @@ type AddOrganizationRoleProps = {
   roles: IRole[];
   /** Called with the picked new roles on confirm. */
   onAdd: (data: IRole[]) => void;
+  /** Called when a role is deselected in the modal (for already-assigned roles). */
+  onRemove?: (data: IRole) => void;
   onSave?: () => void;
   /**
    * Scope the picker to a specific organization — when provided, the role
@@ -36,6 +38,7 @@ const MAX_ROLES_PER_USER = 5;
 
 export const AddOrganizationRole = ({
   onAdd,
+  onRemove,
   roles,
   onSave,
   organizationId,
@@ -98,6 +101,10 @@ export const AddOrganizationRole = ({
           ? currentRoles
           : [...currentRoles, role],
       );
+    }
+    // When unchecking, if the role was already assigned (in rolesSlug), notify parent via onRemove
+    if (rolesSlug.includes(role.slug)) {
+      onRemove?.(role);
     }
     setSelectedRoles((currentRoles) =>
       currentRoles.filter((item) => item.slug !== role.slug),
@@ -172,8 +179,7 @@ export const AddOrganizationRole = ({
                 <Checkbox
                   checked={isRoleSelectedInModal(item.slug)}
                   disabled={
-                    rolesSlug.includes(item.slug) ||
-                    (!isRoleSelectedInModal(item.slug) && isAtMaxRoles)
+                    !isRoleSelectedInModal(item.slug) && isAtMaxRoles
                   }
                   onCheckedChange={(value) => onCheckedChangeHandler(!!value, item)}
                 />

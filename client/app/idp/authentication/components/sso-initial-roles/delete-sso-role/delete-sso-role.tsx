@@ -22,7 +22,10 @@ export const DeleteSSORole = ({ role, onDelete }: DeleteUserRoleProps) => {
           dialogTitle: "Remove Role",
           dialogSubtitle: "Are you sure you want to remove the role?",
         }}
-        onConfirm={() => onDelete(role)}
+        onConfirm={() => {
+          onDelete(role);
+          setOpen(false);
+        }}
         onCancel={() => setOpen(false)}
       />
     </Dialog>
