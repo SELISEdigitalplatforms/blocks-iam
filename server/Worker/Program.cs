@@ -1,13 +1,12 @@
-using Authentication.DomainService.Dtos;
 using Authentication.DomainService.Utilities;
-using Authentication.DomainService.Worker;
+using Iam.DomainService.Utilities;
 using Blocks.Genesis;
 using Iam.DomainService.Accounts;
 using Iam.DomainService.Dtos;
 using Iam.DomainService.Users;
-using Identifier.DomainService.Shared;
-using Mfa.DomainService.Configuration;
+using SeliseBlocks.ConfigurationDriver;
 using Worker;
+using Worker.Configuration;
 using Worker.Consumers;
 
 var configuration = new ConfigurationBuilder()
@@ -26,42 +25,48 @@ var secret = await ApplicationConfigurations.ConfigureLogAndSecretsAsync(service
 await CreateHostBuilder(args).Build().RunAsync();
 
 IHostBuilder CreateHostBuilder(string[] args) =>
-        Host.CreateDefaultBuilder(args)
-        .ConfigureAppConfiguration((context, builder) =>
+    Host.CreateDefaultBuilder(args)
+    .ConfigureAppConfiguration((context, builder) =>
+    {
+        builder.AddMongoDbConfiguration(options =>
         {
-            // ApplicationConfigurations.ConfigureWorkerEnv(builder, args);
-        })
-        .ConfigureServices((services) =>
-        {
-            services.AddHttpClient();
-
-            services.AddSingleton<IConsumer<RefreshTokenEvent>, RefreshTokenWorkerService>();
-            services.AddSingleton<IConsumer<UserAuthenticationTimelineEvent>, UserAuthenticationTimelineWorkerService>();
-            services.AddSingleton<IConsumer<MfaActionEvent>, UpdateMfaConfigurationService>();
-
-            services.AddSingleton<IConsumer<ResourceMutationEvent>, ResourceMutationConsumer>();
-            services.AddSingleton<IConsumer<ResourceSetToPermissionMutationEvent>, ResourceSetToPermissionMutationConsumer>();
-            services.AddSingleton<IConsumer<UserMutationEvent>, UserMutationConsumer>();
-            services.AddSingleton<IConsumer<AccountActivityEvent>, AccountActivityWorkerService>();
-            services.AddSingleton<IConsumer<CreateUserByEmailEvent>, CreateUserByEmailConsumer>();
-            services.AddSingleton<IConsumer<CreateUserRequest>, CreateUserConsumer>();
-            services.AddSingleton<IConsumer<CreateUserViaSsoEvent>, CreateUserViaSsoConsumer>();
-
-            services.AddHostedService<PeriodicPingBackgroundService>();
-
-            services.RegisterAllServices();
-
-
-
-            #region Identifier Service Consumers
-            services.AddApplicationServices();
-
-            var workerMessageConfiguration = IdpConstants.GetMessageConfiguration(secret.MessageConnectionString);
-            workerMessageConfiguration.ServiceName = serviceName;
-            ApplicationConfigurations.ConfigureWorker(services, workerMessageConfiguration);
-            //ApplicationConfigurations.ConfigureWorker(services, IdentifierConstants.GetMessageConfiguration(secret.MessageConnectionString));
-            #endregion
+            options.ConnectionString = secret.DatabaseConnectionString;
+            options.DatabaseName = secret.RootDatabaseName;
+            options.CollectionName = "Secrets";
+            options.SecretKey = "blocks-secret-iam";
         });
+    })
+    .ConfigureServices((services) =>
+    {
+        services.AddHttpClient();
+
+        services.Configure<PeriodicPingConfiguration>(
+            configuration.GetSection("PeriodicPingConfiguration"));
+
+        services.AddSingleton<IConsumer<ResourceMutationEvent>, ResourceMutationConsumer>();
+        services.AddSingleton<IConsumer<ResourceSetToPermissionMutationEvent>, ResourceSetToPermissionMutationConsumer>();
+        services.AddSingleton<IConsumer<UserMutationEvent>, UserMutationConsumer>();
+        services.AddSingleton<IConsumer<UserActivityEvent>, UserActivityWorker>();
+        services.AddSingleton<IConsumer<CreateUserByEmailEvent>, CreateUserByEmailConsumer>();
+        services.AddSingleton<IConsumer<CreateUserRequest>, CreateUserConsumer>();
+        services.AddSingleton<IConsumer<CreateUserViaSsoEvent>, CreateUserViaSsoConsumer>();
+        services.AddSingleton<IConsumer<OrganizationProvisioningEvent>, OrganizationProvisioningConsumer>();
+        services.AddSingleton<IConsumer<UpdateOrganizationUserEvent>, UpdateOrganizationUserConsumer>();
+        services.AddSingleton<IConsumer<PermissionMutationForTenantsEvent>, PermissionMutationForTenantsConsumer>();
+        services.AddSingleton<IConsumer<PropagationRolePermissionUpdateEvent>, PropagationRolePermissionUpdateConsumer>();
+
+        services.AddHostedService<PeriodicPingBackgroundService>();
+
+        services.RegisterAllServices();
+
+
+
+        #region Identifier Service Consumers
+        var workerMessageConfiguration = IdpConstants.GetMessageConfiguration(secret.MessageConnectionString);
+        workerMessageConfiguration.ServiceName = serviceName;
+        ApplicationConfigurations.ConfigureWorker(services, workerMessageConfiguration);
+        #endregion
+    });
 
 static string ResolveRequiredServiceName(IConfiguration configuration)
 {

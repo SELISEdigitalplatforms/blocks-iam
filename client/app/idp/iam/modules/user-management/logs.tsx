@@ -3,8 +3,8 @@ import { BREADCRUMB_CUSTOM_TITLES } from "@/constants/breadcrumb-custom-title";
 import { LogsViewer } from "@blocks-lmt/components";
 
 export function IamLogs() {
-  BREADCRUMB_CUSTOM_TITLES["/services/iam"] = "IAM";
-  BREADCRUMB_CUSTOM_TITLES["/services/iam/logs"] = "Logs";
+  BREADCRUMB_CUSTOM_TITLES["/app/iam"] = "IAM";
+  BREADCRUMB_CUSTOM_TITLES["/app/iam/logs"] = "Logs";
 
   return (
     <div>

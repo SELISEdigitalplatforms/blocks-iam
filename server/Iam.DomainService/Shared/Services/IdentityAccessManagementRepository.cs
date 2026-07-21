@@ -1,4 +1,5 @@
 ﻿using Blocks.Genesis;
+using Iam.DomainService.Dtos;
 using Iam.DomainService.Entities;
 using Iam.DomainService.Shared.Entities;
 using MongoDB.Driver;
@@ -7,13 +8,15 @@ namespace Iam.DomainService.Services
 {
     public class IdentityAccessManagementRepository : BaseRepository, IIdentityAccessManagementRepository
     {
+        private const string IdentityConfigurationCollectionName = "IdentityConfigurations";
+
         public IdentityAccessManagementRepository(IDbContextProvider dbContextProvider) : base(dbContextProvider)
         {
         }
 
         public async Task<IamConfiguration> GetIamConfigurationAsync()
         {
-            var collection = GetCollection<IamConfiguration>();
+            var collection = GetCollectionByName<IamConfiguration>(IdentityConfigurationCollectionName);
 
             return await collection.Find(_ => true).FirstOrDefaultAsync();
         }
@@ -47,6 +50,11 @@ namespace Iam.DomainService.Services
 
         public async Task<bool> CheckPasswordBlackListedAsync(string password, string tenantId)
         {
+            if (string.IsNullOrWhiteSpace(tenantId))
+            {
+                return false;
+            }
+
             var collection = GetCollection<BlackListInformation>(tenantId);
             var result = await collection.CountDocumentsAsync(x => x.Key == "password" && x.Value == password);
 
@@ -60,15 +68,6 @@ namespace Iam.DomainService.Services
 
             return true;
         }
-
-        public async Task<bool> InsertUserTimelineAsync(UserTimeline userTimeline)
-        {
-            var collection = GetCollection<UserTimeline>();
-            await collection.InsertOneAsync(userTimeline);
-
-            return true;
-        }
-
 
         public async Task<bool> UpdateUserAsync(User user)
         {
@@ -111,10 +110,20 @@ namespace Iam.DomainService.Services
             });
 
             var userId = await cursor.FirstOrDefaultAsync();
-            var user = await GetUserByIdAsync(userId);
-            bool isActive = user?.Active ?? false;
 
-            return !isActive ? user.ItemId : "";
+            // No key-map row for this key: nothing to activate. Return empty rather than looking up a null user.
+            if (string.IsNullOrWhiteSpace(userId)) return string.Empty;
+
+            var user = await GetUserByIdAsync(userId);
+
+            // The key maps to a user that no longer exists (deleted, or a partial write during minting).
+            // Guard against dereferencing null — this previously threw a NullReferenceException (HTTP 500),
+            // which the activation page rendered as a misleading "Invalid Activation Link".
+            if (user is null) return string.Empty;
+
+            // Only surface the user while the account still needs activation; an already-active account
+            // has nothing to activate.
+            return user.Active ? string.Empty : user.ItemId;
         }
 
         public async Task SaveSignUpSettingAsync(TenantConfiguration tenantConfiguration)

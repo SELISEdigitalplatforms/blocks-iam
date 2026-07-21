@@ -5,18 +5,23 @@ import { Permissions } from "@blocks-idp/iam/modules/permission-management";
 import { AddRole, Roles } from "@blocks-idp/iam/modules/role-management";
 import { Link } from "react-router-dom";
 import { useQueryState } from "nuqs";
+import { useScopedPath } from "@/hooks/use-scoped-path";
+
+const AddPermissionButton = () => {
+  const scoped = useScopedPath();
+  return (
+    <Link to={scoped("permission-detail/new")}>
+      <PrimaryButton label="Add Permission" />
+    </Link>
+  );
+};
 
 const getActionComponents = (tab: string) => {
   switch (tab) {
     case "roles":
       return AddRole;
     case "permissions":
-      // eslint-disable-next-line react/display-name
-      return () => (
-        <Link to="/services/iam/permission-detail/new">
-          <PrimaryButton label="Add Permission" />
-        </Link>
-      );
+      return AddPermissionButton;
     default:
       return () => null;
   }

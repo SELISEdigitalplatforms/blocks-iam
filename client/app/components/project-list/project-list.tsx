@@ -10,14 +10,14 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui-kits/dropdown-menu/dropdown-menu";
 import { useGetProject, useGetProjects } from "@/hooks/use-project";
-import { IProject } from "@/models/project.model";
+import { IProject } from "@blocks-identifier/models/project.model";
 import { useProjectStore } from "@seliseblocks/blocks-kit";
 const redirectPaths: Record<string, string> = {
-  "/services/iam/user-detail/*": "/services/iam",
-  "/services/iam/role-detail/*": "/services/iam?tab=roles",
-  "/services/iam/organization-detail/*": "/services/iam",
-  "/services/iam/permission-detail/*": "/services/iam",
-  "/services/authentication/sso-configuration": "/services/authentication?tab=social",
+  "/app/user-detail/*": "/app/iam",
+  "/app/role-detail/*": "/app/iam?tab=roles",
+  "/app/organization-detail/*": "/app/iam",
+  "/app/permission-detail/*": "/app/iam",
+  "/app/sso-configuration": "/app/authentication?tab=social",
 };
 const wildcardToRegex = (pattern: string) => {
   const escaped = pattern.replace(/[-/\\^$+?.()|[\]{}]/g, "\\$&");
@@ -99,7 +99,7 @@ export function ProjectList({ collapsed = false }: { collapsed?: boolean }) {
             .filter((project) => project.itemId !== selectedProject?.itemId)
             .slice(0, 5)
             .map((project) => (
-              <DropdownMenuItem key={project.itemId} onSelect={() => handleProjectSelect(project)}>
+             <DropdownMenuItem key={project.itemId} onSelect={() => handleProjectSelect(project)}>
                 <span>{project.name}</span>
               </DropdownMenuItem>
             ))

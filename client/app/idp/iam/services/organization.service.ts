@@ -1,7 +1,8 @@
-import { http } from "@/lib/http-client";
+import { serviceInstances } from "@/lib/http-client";
 import {
   ICreateOrUpdateOrganizationPayload,
   ICreateOrUpdateOrganizationResponse,
+  IGetMyOrganizationsResponse,
   IGetOrganizationByIdParams,
   IGetOrganizationByIdResponse,
   IGetOrganizationsParams,
@@ -17,40 +18,55 @@ import { ORGANIZATION_ENDPOINTS } from "../constants/endpoint.constant";
 
 export class OrganizationService {
   getOrganizations(params: IGetOrganizationsParams): Promise<IGetOrganizationsResponse> {
-    let url = `${ORGANIZATION_ENDPOINTS.GET_ORGANIZATIONS}?page=${params.page}&pageSize=${params.pageSize}`;
-    if (params.searchText) url += `&searchText=${params.searchText}`;
-    return http.get(url);
+    const query = new URLSearchParams();
+    query.set("Page", String(params.page));
+    query.set("PageSize", String(params.pageSize));
+    if (params.search) query.set("Filter.Search", params.search);
+    if (params.isDisabled !== undefined) query.set("Filter.IsDisabled", String(params.isDisabled));
+    if (params.parentOrganizationId)
+      query.set("Filter.ParentOrganizationId", params.parentOrganizationId);
+    if (params.sort) {
+      query.set("Sort.Property", params.sort.property);
+      query.set("Sort.IsDescending", String(params.sort.isDescending));
+    }
+    return serviceInstances.idpService.get(
+      `${ORGANIZATION_ENDPOINTS.GET_ORGANIZATIONS}?${query.toString()}`,
+    );
   }
 
   getOrganizationById(params: IGetOrganizationByIdParams): Promise<IGetOrganizationByIdResponse> {
-    return http.get(
-      `${ORGANIZATION_ENDPOINTS.GET_ORGANIZATION}?ProjectKey=${params.projectKey}&ItemId=${params.itemId}`,
+    return serviceInstances.idpService.get(
+      `${ORGANIZATION_ENDPOINTS.GET_ORGANIZATION}/${params.itemId}`,
     );
   }
 
   saveOrganization = (
     payload: ICreateOrUpdateOrganizationPayload,
   ): Promise<ICreateOrUpdateOrganizationResponse> => {
-    return http.post(ORGANIZATION_ENDPOINTS.CREATE_ORGANIZATION, payload);
+    return serviceInstances.idpService.post(ORGANIZATION_ENDPOINTS.CREATE_ORGANIZATION, payload);
   };
 
   updateOrganization = (
     payload: IUpdateOrganizationPayload,
   ): Promise<ICreateOrUpdateOrganizationResponse> => {
-    return http.post(`${ORGANIZATION_ENDPOINTS.UPDATE_ORGANIZATION}/${payload.itemId}`, {
+    return serviceInstances.idpService.post(`${ORGANIZATION_ENDPOINTS.UPDATE_ORGANIZATION}/${payload.itemId}`, {
       name: payload.name,
       isEnable: payload.isEnable,
     });
   };
 
   getOrganizationConfig(): Promise<IOrganizationConfigResponse | null> {
-    return http.get(`${ORGANIZATION_ENDPOINTS.GET_ORGANIZATION_CONFIG}`);
+    return serviceInstances.idpService.get(`${ORGANIZATION_ENDPOINTS.GET_ORGANIZATION_CONFIG}`);
+  }
+
+  getMyOrganizations(): Promise<IGetMyOrganizationsResponse> {
+    return serviceInstances.idpService.get(ORGANIZATION_ENDPOINTS.GET_MY_ORGANIZATIONS);
   }
 
   saveOrganizationConfig = (
     payload: IOrganizationConfigPayload,
   ): Promise<IOrganizationConfigSaveResponse> => {
-    return http.post(ORGANIZATION_ENDPOINTS.SAVE_ORGANIZATION_CONFIG, payload);
+    return serviceInstances.idpService.post(ORGANIZATION_ENDPOINTS.SAVE_ORGANIZATION_CONFIG, payload);
   };
 }
 

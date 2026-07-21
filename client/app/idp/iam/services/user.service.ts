@@ -1,14 +1,10 @@
-import { http } from "@/lib/http-client";
+import { serviceInstances } from "@/lib/http-client";
 import { parseMongoDBString } from "@/lib/utils";
 import {
   IAccountResendActivationPayload,
   IAccountResendActivationResponse,
   ICreateUserPayload,
   ICreateUserResponse,
-  IDeviceSessionResponse,
-  IGeneratePATPayload,
-  IGetHistoriesPayload,
-  IGetSessionPayload,
   IGetUserByIdPayload,
   IGetUserByIdResponse,
   IGetUserPermissionsPayload,
@@ -17,12 +13,14 @@ import {
   IGetUserRolesResponse,
   IGetUsersPayload,
   IGetUsersResponse,
-  IHistoriesResponse,
-  IPATResponse,
   ISaveRolesAndPermissionsPayload,
   ISaveRolesAndPermissionsResponse,
   IUpdateUserPayload,
   IUpdateUserResponse,
+  IUpdateUserAccessControlPayload,
+  IUpdateUserAccessControlResponse,
+  IRevokeAccessPayload,
+  IRevokeAccessResponse,
   IGetSignUpSettingResponse,
   ISaveSignUpSettingPayload,
   ISaveSignUpSettingResponse,
@@ -35,148 +33,148 @@ import {
 } from "../constants/endpoint.constant";
 import { AUTH_ENDPOINTS } from "@/idp/authentication/constants/endpoint.constant";
 
+type ApiUser = User & { OrganizationIds?: string[] };
+
+const toScopedRecord = (
+  organizationIds: string[],
+  value: Record<string, string[]> | string[] | undefined,
+): Record<string, string[]> => {
+  if (!value) return {};
+  if (!Array.isArray(value)) return { ...value };
+  if (organizationIds.length === 0) return {};
+  return Object.fromEntries(organizationIds.map((orgId) => [orgId, [...value]]));
+};
+
+const normalizeUserFromApi = (raw: ApiUser): User => {
+  const organizationIds =
+    raw.organizationIds?.length > 0 ? raw.organizationIds : raw.OrganizationIds ?? [];
+
+  const roles = toScopedRecord(
+    organizationIds,
+    raw.roles as Record<string, string[]> | string[] | undefined,
+  );
+  const permissions = toScopedRecord(
+    organizationIds,
+    raw.permissions as Record<string, string[]> | string[] | undefined,
+  );
+
+  return {
+    ...raw,
+    organizationIds,
+    roles,
+    permissions,
+    OrganizationsRoles: raw.OrganizationsRoles ?? roles,
+    OrganizationsPermissions: raw.OrganizationsPermissions ?? permissions,
+  };
+};
+
 export class UserService {
   constructor(public account: UserAccountService) {}
 
   getUsers(
     payload: Omit<IGetUsersPayload, "projectKey">,
   ): Promise<IGetUsersResponse> {
-    const params = new URLSearchParams();
-    params.set("page", String(payload.page));
-    params.set("pageSize", String(payload.pageSize));
-    if (payload.sort) {
-      params.set("sort.property", payload.sort.property);
-      params.set("sort.isDescending", String(payload.sort.isDescending));
-    }
-    if (payload.filter) {
-      if (payload.filter.email)
-        params.set("filter.email", payload.filter.email);
-      if (payload.filter.name) params.set("filter.name", payload.filter.name);
-      if (payload.filter.organizationId)
-        params.set("filter.organizationId", payload.filter.organizationId);
-    }
-    return http.get(`${USER_ENDPOINTS.GET_USERS}?${params.toString()}`);
+    return serviceInstances.idpService.post(USER_ENDPOINTS.GET_USERS, payload);
   }
 
   getUser(): Promise<{ data: User }> {
-    return http.get(`${USER_ENDPOINTS.GET_USER}`, undefined, {
+    return serviceInstances.idpService.get(`${USER_ENDPOINTS.GET_USER}`, undefined, {
       absoluteUrl: true,
     });
   }
 
   me(): Promise<{ data: User }> {
-    return http.get(`${USER_ENDPOINTS.ME}`, undefined, {
+    return serviceInstances.idpService.get(`${USER_ENDPOINTS.ME}`, undefined, {
       absoluteUrl: true,
     });
   }
 
   getUserInfo(): Promise<User> {
-    return http.get(`${AUTH_ENDPOINTS.USER_INFO}`, undefined, {
+    return serviceInstances.idpService.get(`${AUTH_ENDPOINTS.USER_INFO}`, undefined, {
       absoluteUrl: true,
     });
   }
 
   getUserById(payload: IGetUserByIdPayload): Promise<IGetUserByIdResponse> {
-    return http.get(`${USER_ENDPOINTS.GET_USER}/${payload.id}`);
+    return serviceInstances.idpService
+      .get<IGetUserByIdResponse>(`${USER_ENDPOINTS.GET_USER}/${payload.id}`)
+      .then((response) => ({
+        ...response,
+        data: normalizeUserFromApi(response.data as ApiUser),
+      }));
   }
 
   addUser(createPayload: ICreateUserPayload): Promise<ICreateUserResponse> {
-    return http.post(USER_ENDPOINTS.CREATE, createPayload);
+    return serviceInstances.idpService.post(USER_ENDPOINTS.CREATE, createPayload);
   }
 
-  updateUser(payload: IUpdateUserPayload): Promise<IUpdateUserResponse> {
-    const flattenRecord = (value: unknown): string[] => {
-      if (!value) return [];
-      if (Array.isArray(value)) return value as string[];
-      return Object.values(value as Record<string, string[]>).flat();
-    };
-    const normalized = {
-      itemId: payload.itemId,
-      firstName: payload.firstName,
-      lastName: payload.lastName,
-      email: payload.email,
-      userName: payload.userName,
-      language: payload.language,
-      organizationIds: payload.organizationIds,
-      roles: flattenRecord(payload.roles),
-      permissions: flattenRecord(payload.permissions),
-      active: payload.active,
-      status: payload.status,
-      isVerified: payload.isVerified,
-      mfaEnabled: payload.mfaEnabled,
-      isMfaVerified: payload.isMfaVerified,
-      userMfaType: payload.userMfaType,
-      provisioningSource: payload.provisioningSource,
-      externalIdentities: payload.externalIdentities,
-      userCreationType: payload.userCreationType,
-      isMultiOrgEnabled: payload.isMultiOrgEnabled,
-      organizations: payload.organizations,
-      profileImageId: payload.profileImageId,
-      profileImageUrl: payload.profileImageUrl,
-    };
-    return http.post(`/api/iam/users/${payload.itemId}`, normalized);
+  isUserExist(
+    email: string,
+  ): Promise<{ userId?: string; organizationIds?: string[] }> {
+    return serviceInstances.idpService.get(`${USER_ENDPOINTS.EXISTS}?email=${encodeURIComponent(email)}`);
   }
 
-  getSignUpSetting(): Promise<IGetSignUpSettingResponse> {
-    return http.get(`${ORGANIZATION_ENDPOINTS.GET_SIGNUP_SETTING}`);
+  async updateUser(payload: IUpdateUserPayload): Promise<IUpdateUserResponse> {
+    const current = await this.getUserById({ id: payload.itemId, projectKey: "" });
+    const flattened = flattenRolesAndPermissions(current.data, payload);
+    // The /users/{id} endpoint treats the body as a full record replacement —
+    // omitting a field on the request wipes it on the server. Fetch the
+    // latest server-side record and merge the requested changes on top so
+    // unrelated fields (image, name, roles, MFA flags, etc.) survive the
+    // update.
+    const body = mergeUserUpdate(current.data, payload, flattened);
+    return serviceInstances.idpService.post(
+      `${USER_ENDPOINTS.UPDATE}/${payload.itemId}`,
+      body,
+    );
+  }
+
+  async updateMe(payload: IUpdateUserPayload): Promise<IUpdateUserResponse> {
+    const current = await this.me();
+    const flattened = flattenRolesAndPermissions(current.data, payload);
+    // /api/iam/me behaves the same as /api/iam/users/{id} — it overwrites
+    // whatever fields aren't in the body. Read the current record, apply
+    // the requested changes, and POST the merged record.
+    const body = mergeUserUpdate(current.data, payload, flattened);
+    return serviceInstances.idpService.post(USER_ENDPOINTS.UPDATE_ME, body);
+  }
+
+  getSignUpSetting(tenantId?: string): Promise<IGetSignUpSettingResponse> {
+    const headers: Record<string, string> = {};
+    if (tenantId) {
+      headers["X-Blocks-Key"] = tenantId;
+    }
+    return serviceInstances.idpService.get(
+      `${ORGANIZATION_ENDPOINTS.GET_SIGNUP_SETTING}`,
+      headers,
+      tenantId ? { skipBlocksKey: true } : undefined,
+    );
   }
 
   saveSignUpSetting(
     payload: ISaveSignUpSettingPayload,
   ): Promise<ISaveSignUpSettingResponse> {
-    return http.post(ORGANIZATION_ENDPOINTS.SAVE_SIGNUP_SETTING, payload);
+    return serviceInstances.idpService.post(ORGANIZATION_ENDPOINTS.SAVE_SIGNUP_SETTING, payload);
   }
 
   saveRolesAndPermissions(
     payload: ISaveRolesAndPermissionsPayload,
   ): Promise<ISaveRolesAndPermissionsResponse> {
-    return http.post(USER_ENDPOINTS.SAVE_ROLES_AND_PERMISSIONS, payload);
+    return serviceInstances.idpService.post(USER_ENDPOINTS.SAVE_ROLES_AND_PERMISSIONS, payload);
   }
 
-  async getSessions(
-    payload: IGetSessionPayload,
-  ): Promise<IDeviceSessionResponse> {
-    const res = await http.get<{
-      data: string[];
-      errors: unknown;
-      totalCount: number;
-    }>(
-      `${USER_ENDPOINTS.GET_SESSIONS}?page=${payload.page}&pageSize=${payload.pageSize}&projectkey=${payload.projectKey}&filter.userId=${payload.filter.UserId}`,
-    );
-    return {
-      data: res.data.map((item) => JSON.parse(parseMongoDBString(item))),
-      totalCount: res.totalCount,
-      errors: res.errors,
-    };
+  updateUserAccessControl(
+    payload: IUpdateUserAccessControlPayload,
+  ): Promise<IUpdateUserAccessControlResponse> {
+    return serviceInstances.idpService.post(USER_ENDPOINTS.ACCESS_CONTROL, payload);
   }
 
-  async getHistories(
-    payload: IGetHistoriesPayload,
-  ): Promise<IHistoriesResponse> {
-    const res = await http.get<{
-      data: string[];
-      errors: unknown;
-      totalCount: number;
-    }>(
-      `${USER_ENDPOINTS.GET_HISTORIES}?page=${payload.page}&pageSize=${payload.pageSize}&projectkey=${payload.projectKey}&filter.userId=${payload.filter.UserId}`,
-    );
-    return {
-      data: res.data.map((item) => JSON.parse(parseMongoDBString(item))),
-      totalCount: res.totalCount,
-      errors: res.errors,
-    };
-  }
-
-  async getPats(): Promise<IPATResponse> {
-    return http.get(USER_ENDPOINTS.GET_USER_CODES);
-  }
-
-  async generatePats(payload: IGeneratePATPayload): Promise<IPATResponse> {
-    return http.post(USER_ENDPOINTS.GENERATE_USER_CODE, payload);
+  revokeAccess(payload: IRevokeAccessPayload): Promise<IRevokeAccessResponse> {
+    return serviceInstances.idpService.post(USER_ENDPOINTS.REVOKE_ACCESS, payload);
   }
 
   getUserRoles(payload: IGetUserRolesPayload): Promise<IGetUserRolesResponse> {
-    return http.get(
+    return serviceInstances.idpService.get(
       `${USER_ENDPOINTS.GET_USER_ROLES}?Id=${payload.userId}`,
     );
   }
@@ -184,7 +182,7 @@ export class UserService {
   getUserPermissions(
     payload: IGetUserPermissionsPayload,
   ): Promise<IGetUserPermissionsResponse> {
-    return http.get(
+    return serviceInstances.idpService.get(
       `${USER_ENDPOINTS.GET_USER_PERMISSIONS}?Id=${payload.userId}`,
     );
   }
@@ -192,8 +190,82 @@ export class UserService {
   accountDeactivate(
     payload: IAccountResendActivationPayload,
   ): Promise<IAccountResendActivationResponse> {
-    return http.post(USER_ENDPOINTS.DEACTIVATE, payload);
+    return serviceInstances.idpService.post(USER_ENDPOINTS.DEACTIVATE, payload);
   }
 }
 
 export const userService = new UserService(new UserAccountService());
+
+type FlattenedRolesAndPermissions = {
+  organizationIds?: string[];
+  roles?: string[];
+  permissions?: string[];
+};
+
+const flattenRolesAndPermissions = (
+  current: User | undefined,
+  payload: IUpdateUserPayload,
+): FlattenedRolesAndPermissions => {
+  const result: FlattenedRolesAndPermissions = {};
+  const payloadHasRolesOrOrgs =
+    payload.roles !== undefined ||
+    payload.permissions !== undefined ||
+    payload.organizations !== undefined ||
+    payload.organizationIds !== undefined;
+
+  if (!payloadHasRolesOrOrgs && !current) return result;
+
+  const organizationIds =
+    payload.organizationIds !== undefined
+      ? payload.organizationIds
+      : (current?.organizationIds ?? []);
+
+  if (payload.organizationIds !== undefined) {
+    result.organizationIds = payload.organizationIds;
+  }
+
+  if (payload.roles !== undefined) {
+    result.roles = Array.isArray(payload.roles)
+      ? payload.roles
+      : Object.values(payload.roles as Record<string, string[]>).flat();
+  } else if (current?.roles) {
+    result.roles = Object.values(current.roles).flat();
+  }
+
+  if (payload.permissions !== undefined) {
+    result.permissions = Array.isArray(payload.permissions)
+      ? payload.permissions
+      : Object.values(payload.permissions as Record<string, string[]>).flat();
+  } else if (current?.permissions) {
+    result.permissions = Object.values(current.permissions).flat();
+  }
+
+  if (payload.roles !== undefined || payload.permissions !== undefined) {
+    result.organizationIds = organizationIds;
+  }
+
+  return result;
+};
+
+const mergeUserUpdate = (
+  current: User,
+  payload: IUpdateUserPayload,
+  flattened: FlattenedRolesAndPermissions,
+): Record<string, unknown> => {
+  // Send every known field of the current record so the server doesn't
+  // wipe untouched ones (profileImage, name, MFA flags, etc.). The fields
+  // in `payload` (and the flattened role/permission forms) override.
+  const body: Record<string, unknown> = {
+    ...current,
+    itemId: payload.itemId,
+  };
+  for (const [key, value] of Object.entries(payload)) {
+    if (value !== undefined) body[key] = value;
+  }
+  if (flattened.organizationIds !== undefined) {
+    body.organizationIds = flattened.organizationIds;
+  }
+  if (flattened.roles !== undefined) body.roles = flattened.roles;
+  if (flattened.permissions !== undefined) body.permissions = flattened.permissions;
+  return body;
+};

@@ -9,7 +9,7 @@ namespace Authentication.DomainService.Oidc.Repositories
     /// Token Revocation Service Implementation
     /// Implements RFC 7009 (Token Revocation) and RFC 7662 (Token Introspection)
     /// </summary>
-    public class TokenRevocationService : ITokenRevocationService
+    public sealed class TokenRevocationService : ITokenRevocationService
     {
         private readonly ITokenRevocationRepository _revocationRepo;
         private readonly IRefreshTokenRepository _refreshTokenRepo;
@@ -157,7 +157,7 @@ namespace Authentication.DomainService.Oidc.Repositories
                 var isRevoked = await _revocationRepo.IsRevokedAsync(jti);
                 if (isRevoked)
                 {
-                    _logger.LogInformation($"Introspection request for revoked token: {jti}");
+                    _logger.LogInformation("Introspection request for revoked token: {Jti}", jti);
                     return new TokenIntrospectionResult
                     {
                         Active = false
@@ -166,9 +166,9 @@ namespace Authentication.DomainService.Oidc.Repositories
 
                 // Extract claims from token
                 var handler = new JwtSecurityTokenHandler();
-                var token_obj = handler.ReadJwtToken(token);
+                var tokenObj = handler.ReadJwtToken(token);
 
-                if (!IsClientAuthorizedForAccessToken(token_obj, clientId))
+                if (!IsClientAuthorizedForAccessToken(tokenObj, clientId))
                 {
                     return new TokenIntrospectionResult
                     {
@@ -176,12 +176,12 @@ namespace Authentication.DomainService.Oidc.Repositories
                     };
                 }
 
-                var expiryTime = token_obj.ValidTo;
+                var expiryTime = tokenObj.ValidTo;
                 var isExpired = expiryTime < DateTime.UtcNow;
 
                 if (isExpired)
                 {
-                    _logger.LogInformation($"Introspection request for expired token: {jti}");
+                    _logger.LogInformation("Introspection request for expired token: {Jti}", jti);
                     return new TokenIntrospectionResult
                     {
                         Active = false,
@@ -194,13 +194,13 @@ namespace Authentication.DomainService.Oidc.Repositories
                 {
                     Active = true,
                     Jti = jti,
-                    Sub = token_obj.Subject,
-                    ClientId = token_obj.Audiences.FirstOrDefault(),
-                    Iss = token_obj.Issuer,
-                    Iat = new DateTimeOffset(token_obj.IssuedAt).ToUnixTimeSeconds(),
+                    Sub = tokenObj.Subject,
+                    ClientId = tokenObj.Audiences.FirstOrDefault(),
+                    Iss = tokenObj.Issuer,
+                    Iat = new DateTimeOffset(tokenObj.IssuedAt).ToUnixTimeSeconds(),
                     Exp = new DateTimeOffset(expiryTime).ToUnixTimeSeconds(),
                     TokenType = "Bearer",
-                    Scope = ExtractScopeFromToken(token_obj)
+                    Scope = ExtractScopeFromToken(tokenObj)
                 };
             }
             catch (Exception ex)
@@ -233,7 +233,7 @@ namespace Authentication.DomainService.Oidc.Repositories
 
                 await SyncSessionStatusForRefreshTokensAsync(userTokens.Select(t => t.TokenId));
 
-                _logger.LogInformation($"All tokens revoked for user {userId}, reason: {reason}");
+                _logger.LogInformation("All tokens revoked for user {UserId}, reason: {Reason}", userId, reason);
                 return true;
             }
             catch (Exception ex)
@@ -261,7 +261,7 @@ namespace Authentication.DomainService.Oidc.Repositories
 
                 await SyncSessionStatusForRefreshTokensAsync(clientTokens.Select(t => t.TokenId));
 
-                _logger.LogInformation($"All tokens revoked for user {userId} on client {clientId}, reason: {reason}");
+                _logger.LogInformation("All tokens revoked for user {UserId} on client {ClientId}, reason: {Reason}", userId, clientId, reason);
                 return true;
             }
             catch (Exception ex)
@@ -349,7 +349,7 @@ namespace Authentication.DomainService.Oidc.Repositories
                 return;
             }
 
-            await _authenticationRepository.UpdateSessionStatusForAllRefreshTokenAsync(tokenIds);
+            await _refreshTokenRepo.RevokeAllByTokenIdsAsync(tokenIds, "revoked");
         }
     }
 }

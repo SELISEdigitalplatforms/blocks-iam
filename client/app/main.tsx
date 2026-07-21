@@ -6,28 +6,31 @@ import { Toaster } from "./components/ui-kits/toaster/toaster";
 import QueryProvider from "./providers/query-provider";
 import { router } from "./router";
 import "./styles/globals.css";
-import { BlocksAppLayout } from "@seliseblocks/blocks-kit";
+import { BlocksAppLayout, TooltipProvider } from "@seliseblocks/blocks-kit";
+import { ThemeProvider } from "./hooks/use-theme";
 
 createRoot(document.getElementById("root")!).render(
   <StrictMode>
     <QueryProvider>
+      <ThemeProvider>
+
       <NuqsAdapter>
-        
+         <TooltipProvider delayDuration={0}>
          <BlocksAppLayout
             config={{
               name: "blocks-iam",
-              userBaseUrlKey: "BLOCKS_IAM_BASE_URL",
-              projectBaseUrlKey: "BLOCKS_LOGIC_BASE_URL",
-               appLogoUrl:{
+              appLogoUrl:{
                 dark:"/blocks-logos/iam_dark_mode.svg",
                 light:"/blocks-logos/iam_light_mode.svg"
               }
             }}
-          >
+            >
             <RouterProvider router={router} />
           </BlocksAppLayout>
         <Toaster />
+        </TooltipProvider>
       </NuqsAdapter>
+              </ThemeProvider>
     </QueryProvider>
   </StrictMode>,
 );

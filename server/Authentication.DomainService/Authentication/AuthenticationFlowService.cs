@@ -1,10 +1,12 @@
 using Authentication.DomainService.Dtos;
+using Authentication.DomainService.Utilities;
+using Authentication.DomainService.Entities;
 using Authentication.DomainService.OAuth;
 using Authentication.DomainService.OAuth.RequestModel;
 using Authentication.DomainService.OAuth.ResponseModel;
+using Authentication.DomainService.Oidc.Repositories;
 using Authentication.DomainService.Services;
 using Authentication.DomainService.Shared.RequestModel;
-using Authentication.DomainService.Utilities;
 using Blocks.Genesis;
 using Iam.DomainService.Entities;
 using Microsoft.AspNetCore.Http;
@@ -16,129 +18,164 @@ using System.Text.Json;
 
 namespace Authentication.DomainService.Authentication
 {
-    public class AuthenticationFlowService : IAuthenticationFlowService
+    public sealed class AuthenticationFlowService : IAuthenticationFlowService
     {
         private readonly IAuthenticationRepository _authenticationRepository;
-        private readonly ITenants _tenants;
-        private readonly PasswordAuthenticationService _passwordAuthenticationService;
-        private readonly SocialAuthorizationService _socialAuthorizationService;
-        private readonly RefreshTokenAuthenticationService _refreshTokenAuthenticationService;
-        private readonly IOAuthJwtAccessTokenManager _oAuthJwtAccessTokenManager;
+        private readonly IAuthStrategy _authStrategy;
+        private readonly ITokenRefresher _tokenRefresher;
         private readonly IAuthenticationService _authenticationService;
-        private readonly ICacheClient _cacheClient;
+        private readonly ICaptchaEvaluator _captchaEvaluator;
+        private readonly OidcLoginAuditWriter _auditWriter;
         private readonly ILogger<AuthenticationFlowService> _logger;
+        private readonly IRefreshTokenRepository _refreshTokenRepository;
 
         public AuthenticationFlowService(
             IAuthenticationRepository authenticationRepository,
-            ITenants tenants,
-            PasswordAuthenticationService passwordAuthenticationService,
-            SocialAuthorizationService socialAuthorizationService,
-            RefreshTokenAuthenticationService refreshTokenAuthenticationService,
-            IOAuthJwtAccessTokenManager oAuthJwtAccessTokenManager,
+            IAuthStrategy authStrategy,
+            ITokenRefresher tokenRefresher,
             IAuthenticationService authenticationService,
-            ICacheClient cacheClient,
-            ILogger<AuthenticationFlowService> logger)
+            ICaptchaEvaluator captchaEvaluator,
+            OidcLoginAuditWriter auditWriter,
+            ILogger<AuthenticationFlowService> logger,
+            IRefreshTokenRepository refreshTokenRepository)
         {
             _authenticationRepository = authenticationRepository;
-            _tenants = tenants;
-            _passwordAuthenticationService = passwordAuthenticationService;
-            _socialAuthorizationService = socialAuthorizationService;
-            _refreshTokenAuthenticationService = refreshTokenAuthenticationService;
-            _oAuthJwtAccessTokenManager = oAuthJwtAccessTokenManager;
+            _authStrategy = authStrategy;
+            _tokenRefresher = tokenRefresher;
             _authenticationService = authenticationService;
-            _cacheClient = cacheClient;
+            _captchaEvaluator = captchaEvaluator;
+            _auditWriter = auditWriter;
             _logger = logger;
+            _refreshTokenRepository = refreshTokenRepository;
         }
 
         public async Task<AuthenticationFlowResult> ExecuteEmbeddedLoginAsync(EmbeddedLoginRequest request, HttpRequest httpRequest)
         {
-            var clientId = ResolveClientId(httpRequest, request.ClientId);
-            if (string.IsNullOrWhiteSpace(clientId))
-            {
-                return new AuthenticationFlowResult
-                {
-                    StatusCode = StatusCodes.Status400BadRequest,
-                    Error = "invalid_client",
-                    ErrorDescription = "client_id is required"
-                };
-            }
-
-            if (!await HasOidcClientConfigurationAsync(clientId))
-            {
-                return new AuthenticationFlowResult
-                {
-                    StatusCode = StatusCodes.Status401Unauthorized,
-                    Error = "invalid_client",
-                    ErrorDescription = "Client configuration not found"
-                };
-            }
-
             var configuration = await _authenticationRepository.GetAuthenticationConfigurationAsync();
             if (configuration == null)
             {
                 return new AuthenticationFlowResult
                 {
                     StatusCode = StatusCodes.Status400BadRequest,
-                    Error = "auth_config_missing"
+                    Error = OAuthError.AuthConfigMissing
                 };
             }
 
             var user = await _authenticationRepository.GetUserByUsernameAsync(request.Username);
+
+            if (user != null
+                && user.LockoutUntilUtc.HasValue
+                && user.LockoutUntilUtc.Value > DateTime.UtcNow)
+            {
+                await _auditWriter.WriteAsync(null, null, user, httpRequest, LoginAuditEvents.LoginFailureAccountLocked, "embedded_login_account_locked");
+                return new AuthenticationFlowResult
+                {
+                    StatusCode = StatusCodes.Status423Locked,
+                    Error = OAuthError.AccountLocked,
+                    ErrorDescription = "Account is temporarily locked due to failed authentication attempts"
+                };
+            }
+
+            if (IsEmbeddedMfaVerificationRequest(request))
+            {
+                return await ExecuteEmbeddedMfaVerificationAsync(request, httpRequest, configuration, user);
+            }
+
+            var captchaValidationResult = await ValidateCaptchaIfRequiredAsync(user, request.CaptchaCode);
+            if (captchaValidationResult != null)
+            {
+                if (user != null
+                    && string.Equals(captchaValidationResult.Error, OAuthError.CaptchaInvalid, StringComparison.OrdinalIgnoreCase))
+                {
+                    await _auditWriter.WriteAsync(null, null, user, httpRequest, LoginAuditEvents.CaptchaValidationFailure, captchaValidationResult.ErrorDescription);
+                }
+                return captchaValidationResult;
+            }
+
             var resolvedOrganizationId = ResolveOrgIdFromUser(user);
 
             var tokenRequest = new TokenRequest
             {
                 GrantType = GrantTypes.Password,
-                ClientId = clientId,
                 Username = request.Username,
                 Password = request.Password,
                 OrganizationId = resolvedOrganizationId,
                 Request = httpRequest
             };
 
+            var tokenResponse = await _authStrategy.AuthenticatePasswordAsync(tokenRequest, configuration);
+
+            if (user != null && !string.IsNullOrWhiteSpace(tokenResponse.Error)
+                && string.Equals(tokenResponse.Error, OAuthError.InValidUseNamePassword, StringComparison.OrdinalIgnoreCase))
+            {
+                await _auditWriter.WriteAsync(null, null, user, httpRequest, LoginAuditEvents.LoginFailure, tokenResponse.ErrorDescription);
+            }
+            else if (user != null && string.IsNullOrWhiteSpace(tokenResponse.Error))
+            {
+                await _auditWriter.WriteAsync(null, null, user, httpRequest, LoginAuditEvents.LoginSuccess, tokenResponse.ErrorDescription);
+            }
+
             return new AuthenticationFlowResult
             {
-                TokenResponse = await _passwordAuthenticationService.AuthenticateAsync(tokenRequest, configuration)
+                TokenResponse = tokenResponse
             };
         }
 
         public async Task<AuthenticationFlowResult> ExecuteSocialLoginAsync(SocialLoginRequest request, HttpRequest httpRequest)
         {
-            var clientId = ResolveClientId(httpRequest, request.ClientId);
-            if (string.IsNullOrWhiteSpace(clientId))
-            {
-                return new AuthenticationFlowResult
-                {
-                    StatusCode = StatusCodes.Status400BadRequest,
-                    Error = "invalid_client",
-                    ErrorDescription = "client_id is required"
-                };
-            }
-
-            if (!await HasOidcClientConfigurationAsync(clientId))
-            {
-                return new AuthenticationFlowResult
-                {
-                    StatusCode = StatusCodes.Status401Unauthorized,
-                    Error = "invalid_client",
-                    ErrorDescription = "Client configuration not found"
-                };
-            }
-
             var configuration = await _authenticationRepository.GetAuthenticationConfigurationAsync();
             if (configuration == null)
             {
                 return new AuthenticationFlowResult
                 {
                     StatusCode = StatusCodes.Status400BadRequest,
-                    Error = "auth_config_missing"
+                    Error = OAuthError.AuthConfigMissing
+                };
+            }
+
+            if (IsSocialMfaVerificationRequest(request))
+            {
+                return await ExecuteMfaVerificationAsync(
+                    request.MfaId,
+                    request.MfaCode,
+                    request.MfaType,
+                    httpRequest,
+                    configuration);
+            }
+
+            if (string.IsNullOrWhiteSpace(request.Code))
+            {
+                return new AuthenticationFlowResult
+                {
+                    StatusCode = StatusCodes.Status400BadRequest,
+                    Error = "authorization_code_missing",
+                    ErrorDescription = "Authorization code is required"
+                };
+            }
+
+            if (string.IsNullOrWhiteSpace(request.State))
+            {
+                return new AuthenticationFlowResult
+                {
+                    StatusCode = StatusCodes.Status400BadRequest,
+                    Error = "state_missing",
+                    ErrorDescription = "State parameter is required"
+                };
+            }
+
+            if (string.IsNullOrWhiteSpace(request.Provider))
+            {
+                return new AuthenticationFlowResult
+                {
+                    StatusCode = StatusCodes.Status400BadRequest,
+                    Error = "provider_missing",
+                    ErrorDescription = "Provider name is required"
                 };
             }
 
             var tokenRequest = new TokenRequest
             {
                 GrantType = GrantTypes.Social,
-                ClientId = clientId,
                 Code = request.Code,
                 State = request.State,
                 Request = httpRequest
@@ -146,7 +183,121 @@ namespace Authentication.DomainService.Authentication
 
             return new AuthenticationFlowResult
             {
-                TokenResponse = await _socialAuthorizationService.AuthenticateAsync(tokenRequest, configuration)
+                TokenResponse = await _authStrategy.AuthenticateSocialAsync(tokenRequest, configuration)
+            };
+        }
+
+        private static bool IsEmbeddedMfaVerificationRequest(EmbeddedLoginRequest request)
+        {
+            return !string.IsNullOrWhiteSpace(request.MfaId)
+                || !string.IsNullOrWhiteSpace(request.MfaCode)
+                || request.MfaType.HasValue;
+        }
+
+        private static bool IsSocialMfaVerificationRequest(SocialLoginRequest request)
+        {
+            return !string.IsNullOrWhiteSpace(request.MfaId)
+                || !string.IsNullOrWhiteSpace(request.MfaCode)
+                || request.MfaType.HasValue;
+        }
+
+        private async Task<AuthenticationFlowResult> ExecuteEmbeddedMfaVerificationAsync(
+            EmbeddedLoginRequest request,
+            HttpRequest httpRequest,
+            IdentityConfiguration configuration,
+            User? user)
+        {
+            return await ExecuteMfaVerificationAsync(
+                request.MfaId,
+                request.MfaCode,
+                request.MfaType,
+                httpRequest,
+                configuration,
+                user);
+        }
+
+        private async Task<AuthenticationFlowResult> ExecuteMfaVerificationAsync(
+            string? mfaId,
+            string? mfaCode,
+            UserMfaType? mfaType,
+            HttpRequest httpRequest,
+            IdentityConfiguration configuration,
+            User? user = null)
+        {
+            if (string.IsNullOrWhiteSpace(mfaId)
+                || string.IsNullOrWhiteSpace(mfaCode)
+                || !mfaType.HasValue
+                || mfaType.Value == UserMfaType.None)
+            {
+                return new AuthenticationFlowResult
+                {
+                    StatusCode = StatusCodes.Status400BadRequest,
+                    Error = "invalid_request",
+                    ErrorDescription = "mfa_id, mfa_code and mfa_type are required"
+                };
+            }
+
+            var tokenRequest = new TokenRequest
+            {
+                GrantType = GrantTypes.MfaCode,
+                MfaId = mfaId,
+                Code = mfaCode,
+                MfaType = mfaType.Value,
+                Request = httpRequest
+            };
+
+            return new AuthenticationFlowResult
+            {
+                TokenResponse = await _authStrategy.AuthenticateMfaAsync(tokenRequest, configuration, user)
+            };
+        }
+
+        private async Task<AuthenticationFlowResult?> ValidateCaptchaIfRequiredAsync(User? user, string? captchaCode)
+        {
+            if (!CaptchaGate.IsCaptchaRequired(user))
+            {
+                return null;
+            }
+
+            var captchaConfiguration = await _captchaEvaluator.GetConfigurationAsync();
+            if (captchaConfiguration == null || !captchaConfiguration.IsEnable)
+            {
+                return null;
+            }
+
+            if (string.IsNullOrWhiteSpace(captchaCode))
+            {
+                return BuildCaptchaRequiredResult(captchaConfiguration.CaptchaKey);
+            }
+
+            var verifyCaptchaResponse = await _captchaEvaluator.VerifyAsync(captchaCode, captchaConfiguration.Provider);
+
+            return (bool)verifyCaptchaResponse.GetType().GetProperty("Verified")!.GetValue(verifyCaptchaResponse)!
+                ? null
+                : BuildCaptchaInvalidResult(captchaConfiguration.CaptchaKey);
+        }
+
+        private static AuthenticationFlowResult BuildCaptchaRequiredResult(string? siteKey)
+        {
+            return new AuthenticationFlowResult
+            {
+                StatusCode = StatusCodes.Status400BadRequest,
+                Error = OAuthError.CaptchaEnabled,
+                ErrorDescription = "Captcha verification is required",
+                CaptchaRequired = true,
+                CaptchaSiteKey = siteKey
+            };
+        }
+
+        private static AuthenticationFlowResult BuildCaptchaInvalidResult(string? siteKey)
+        {
+            return new AuthenticationFlowResult
+            {
+                StatusCode = StatusCodes.Status400BadRequest,
+                Error = OAuthError.CaptchaInvalid,
+                ErrorDescription = "Captcha answer is invalid. Please try again.",
+                CaptchaRequired = true,
+                CaptchaSiteKey = siteKey
             };
         }
 
@@ -193,7 +344,7 @@ namespace Authentication.DomainService.Authentication
                 return new AuthenticationFlowResult
                 {
                     StatusCode = StatusCodes.Status400BadRequest,
-                    Error = "auth_config_missing"
+                    Error = OAuthError.AuthConfigMissing
                 };
             }
 
@@ -252,11 +403,11 @@ namespace Authentication.DomainService.Authentication
                 return new AuthenticationFlowResult
                 {
                     StatusCode = StatusCodes.Status401Unauthorized,
-                    Error = "session_expired"
+                    Error = OAuthError.SessionExpired
                 };
             }
 
-            var refreshCacheRaw = await _cacheClient.GetStringValueAsync(refreshToken);
+            var refreshCacheRaw = await _tokenRefresher.GetCacheValueAsync(refreshToken);
             var refreshCache = string.IsNullOrWhiteSpace(refreshCacheRaw)
                 ? null
                 : JsonSerializer.Deserialize<RefreshTokenCache>(refreshCacheRaw);
@@ -266,7 +417,7 @@ namespace Authentication.DomainService.Authentication
                 return new AuthenticationFlowResult
                 {
                     StatusCode = StatusCodes.Status401Unauthorized,
-                    Error = "session_expired"
+                    Error = OAuthError.SessionExpired
                 };
             }
 
@@ -276,32 +427,21 @@ namespace Authentication.DomainService.Authentication
                 return new AuthenticationFlowResult
                 {
                     StatusCode = StatusCodes.Status401Unauthorized,
-                    Error = "session_expired"
+                    Error = OAuthError.SessionExpired
                 };
             }
 
             var tokenRequest = new TokenRequest
             {
                 GrantType = GrantTypes.SwitchOrganization,
-                ClientId = refreshCache.ClientId,
                 OrganizationId = request.OrganizationId,
                 RefreshToken = refreshToken,
                 Request = httpRequest
             };
 
-            if (string.IsNullOrWhiteSpace(tokenRequest.ClientId) || !await HasOidcClientConfigurationAsync(tokenRequest.ClientId))
-            {
-                return new AuthenticationFlowResult
-                {
-                    StatusCode = StatusCodes.Status401Unauthorized,
-                    Error = "invalid_client",
-                    ErrorDescription = "Client configuration not found"
-                };
-            }
-
             return new AuthenticationFlowResult
             {
-                TokenResponse = await _oAuthJwtAccessTokenManager.ManageTokenAsync(tokenRequest, configuration, user!)
+                TokenResponse = await _tokenRefresher.AuthenticateAsync(tokenRequest, configuration, user!)
             };
         }
 
@@ -310,7 +450,7 @@ namespace Authentication.DomainService.Authentication
             var configuration = await _authenticationRepository.GetAuthenticationConfigurationAsync();
             if (configuration == null)
             {
-                return new BadRequestObjectResult(new { error = "auth_config_missing" });
+                return new BadRequestObjectResult(new { error = OAuthError.AuthConfigMissing });
             }
 
             var refreshToken = string.IsNullOrWhiteSpace(request.RefreshToken)
@@ -322,7 +462,7 @@ namespace Authentication.DomainService.Authentication
                 return new BadRequestObjectResult(new { error = OAuthError.InvalidRefreshToken, error_description = "Refresh token is required" });
             }
 
-            var cachedRefreshToken = await _cacheClient.GetStringValueAsync(refreshToken);
+            var cachedRefreshToken = await _tokenRefresher.GetCacheValueAsync(refreshToken);
             if (string.IsNullOrWhiteSpace(cachedRefreshToken))
             {
                 await HandlePotentialRefreshTokenReuseAsync(refreshToken);
@@ -333,18 +473,6 @@ namespace Authentication.DomainService.Authentication
             if (tokenCache == null || string.IsNullOrWhiteSpace(tokenCache.UserId))
             {
                 return new BadRequestObjectResult(new { error = OAuthError.InvalidRefreshToken, error_description = "Refresh token is invalid or expired" });
-            }
-
-            if (string.IsNullOrWhiteSpace(tokenCache.ClientId) || !await HasOidcClientConfigurationAsync(tokenCache.ClientId))
-            {
-                return new UnauthorizedObjectResult(new { error = "invalid_client", error_description = "Client configuration not found" });
-            }
-
-            // Defense-in-depth: Validate sent client_id matches the cached/bound client_id
-            if (!string.IsNullOrWhiteSpace(request.ClientId) &&
-                !string.Equals(request.ClientId, tokenCache.ClientId, StringComparison.OrdinalIgnoreCase))
-            {
-                return new UnauthorizedObjectResult(new { error = "invalid_client", error_description = "Client mismatch: sent client_id does not match token binding" });
             }
 
             var currentTenantId = BlocksContext.GetContext()?.TenantId;
@@ -360,16 +488,27 @@ namespace Authentication.DomainService.Authentication
                 return new UnauthorizedObjectResult(new { error = "invalid_user" });
             }
 
+            if (user.LockoutUntilUtc.HasValue && user.LockoutUntilUtc.Value > DateTime.UtcNow)
+            {
+                return new ObjectResult(new
+                {
+                    error = OAuthError.AccountLocked,
+                    error_description = "Account is temporarily locked due to failed authentication attempts"
+                })
+                {
+                    StatusCode = StatusCodes.Status423Locked
+                };
+            }
+
             var tokenRequest = new TokenRequest
             {
                 GrantType = GrantTypes.RefreshToken,
                 OrganizationId = string.IsNullOrWhiteSpace(tokenCache.OrganizationId) ? "default" : tokenCache.OrganizationId,
-                ClientId = tokenCache.ClientId,
                 RefreshToken = refreshToken,
                 Request = httpRequest
             };
 
-            var response = await _refreshTokenAuthenticationService.AuthenticateAsync(tokenRequest, configuration, user);
+            var response = await _tokenRefresher.AuthenticateAsync(tokenRequest, configuration, user);
 
             if (!string.IsNullOrWhiteSpace(response.Error))
             {
@@ -385,43 +524,10 @@ namespace Authentication.DomainService.Authentication
                 };
             }
 
-            if (tokenCache.Impersonated && !string.IsNullOrWhiteSpace(tokenCache.ImpersonationId))
-            {
-                var existingSession = await _authenticationRepository.GetImpersonationSessionByIdAsync(tokenCache.ImpersonationId);
-                return await _authenticationService.ExecuteImpersonateAsync(
-                    new ImpersonateRequest
-                    {
-                        TargetTenantId = existingSession.TargetTenantId,
-                        OrganizationId = tokenCache.OrganizationId,
-                        ImpersonationId = tokenCache.ImpersonationId,
-                        ImpersontingUserId = tokenCache.UserId,
-                        RefreshToken = response.RefreshToken
-                    },
-                    httpRequest,
-                    httpResponse
-                );
-            }
-
-            var useTokensCookie = await ResolveUseTokensCookieAsync(request.ClientId);
-
-            if (useTokensCookie)
-            {
-                var tenantId = BlocksContext.GetContext()?.TenantId ?? "default";
-                var tenant = _tenants.GetTenantByID(tenantId);
-                var (domain, _, _) = DomainResolver.ResolveDomain(tenant, httpRequest);
-                var cookiesSet = AppendCookies(response, httpResponse, domain);
-                if (cookiesSet)
-                {
-                    return new OkObjectResult(new
-                    {
-                        token_type = response.TokenType,
-                        expires_in = response.ExpiresIn,
-                        scope = response.Scope,
-                        client_id = request.ClientId,
-                        cookie_set = true
-                    });
-                }
-            }
+            var tenantId = BlocksContext.GetContext()?.TenantId ?? "default";
+            var tenant = await _tokenRefresher.GetTenantByIDAsync(tenantId);
+            var (domain, _, _) = DomainResolver.ResolveDomain(tenant, httpRequest);
+            AppendCookies(response, httpResponse, domain);
 
             return new OkObjectResult(new
             {
@@ -431,110 +537,28 @@ namespace Authentication.DomainService.Authentication
                 expires_in = response.ExpiresIn,
                 scope = response.Scope,
                 id_token = response.IdToken,
-                client_id = request.ClientId,
-                cookie_set = false
+                cookie_set = true
             });
         }
 
         private async Task HandlePotentialRefreshTokenReuseAsync(string refreshToken)
         {
-            await _authenticationRepository.RevokeIdentitySessionsByRefreshTokensAsync(new List<string> { refreshToken });
+            await _refreshTokenRepository.RevokeByTokenIdAsync(refreshToken, "potential_reuse");
 
-            await _cacheClient.RemoveKeyAsync(refreshToken);
-            _logger.LogWarning("Potential refresh token reuse detected for token {RefreshToken}. Existing session revoked.", refreshToken);
+            await _tokenRefresher.RemoveKeyAsync(refreshToken);
+            var tokenFingerprint = TruncateToken(refreshToken);
+            _logger.LogWarning("Potential refresh token reuse detected for token {TokenFingerprint}. Existing session revoked.", tokenFingerprint);
         }
 
-        private static string? ResolveClientId(HttpRequest request, string? modelClientId = null)
+        private static string TruncateToken(string token)
         {
-            if (!string.IsNullOrWhiteSpace(modelClientId))
-            {
-                return modelClientId;
-            }
-
-            if (request == null)
-            {
-                return null;
-            }
-
-            var queryClientId = request.Query["client_id"].ToString();
-            if (!string.IsNullOrWhiteSpace(queryClientId))
-            {
-                return queryClientId;
-            }
-
-            var formClientId = request.HasFormContentType ? request.Form["client_id"].ToString() : string.Empty;
-            if (!string.IsNullOrWhiteSpace(formClientId))
-            {
-                return formClientId;
-            }
-
-            var headerClientId = request.Headers["X-Client-Id"].ToString();
-            return string.IsNullOrWhiteSpace(headerClientId) ? null : headerClientId;
-        }
-
-        private async Task<bool> HasOidcClientConfigurationAsync(string clientId)
-        {
-            if (string.IsNullOrWhiteSpace(clientId))
-            {
-                return false;
-            }
-
-            var oidcClient = await _authenticationRepository.GetOidcClientRegistrationAsync(clientId);
-            return oidcClient != null;
-        }
-
-        private async Task<bool> ResolveUseTokensCookieAsync(string? clientId)
-        {
-            if (string.IsNullOrWhiteSpace(clientId))
-            {
-                return true;
-            }
-
-            var registration = await _authenticationRepository.GetOidcClientRegistrationAsync(clientId);
-            return registration?.UseTokensCookie ?? true;
+            const int visibleLength = 8;
+            return token.Length <= visibleLength ? token : string.Concat(token.AsSpan(0, visibleLength), "...");
         }
 
         private static bool AppendCookies(TokenResponse response, HttpResponse httpResponse, string domain)
         {
-            // Validate response has no error indicator
-            if (!string.IsNullOrWhiteSpace(response.Error))
-            {
-                return false;
-            }
-
-            // Validate access token is present
-            if (string.IsNullOrWhiteSpace(response.AccessToken))
-            {
-                return false;
-            }
-
-            if (string.IsNullOrWhiteSpace(domain))
-            {
-                return false;
-            }
-
-
-            var accessCookieOptions = DomainResolver.CreateCookieOptions(response.CookieDomain, response.ExpiresUtc);
-            var refreshCookieOptions = DomainResolver.CreateCookieOptions(response.CookieDomain, response.RefreshExpiresUtc);
-
-            DeleteCookie(httpResponse, domain, accessCookieOptions, refreshCookieOptions);
-
-            httpResponse.Cookies.Append(domain, response.AccessToken, accessCookieOptions);
-
-            if (!string.IsNullOrWhiteSpace(response.RefreshToken))
-            {
-                httpResponse.Cookies.Append($"{IdpConstants.RefreshTokenCookieName}_{domain}", response.RefreshToken, refreshCookieOptions);
-            }
-
-            return true;
-        }
-
-        private static void DeleteCookie(HttpResponse httpResponse, string domain, CookieOptions accessCookieOptions, CookieOptions refreshCookieOptions)
-        {
-
-            httpResponse.Cookies.Delete(domain, accessCookieOptions);
-            httpResponse.Cookies.Delete($"{IdpConstants.RefreshTokenCookieName}_{domain}", refreshCookieOptions);
-
+            return CookieHelper.AppendCookies(response, httpResponse, domain);
         }
 
         public Task<IActionResult> ExecuteImpersonateAsync(ImpersonateRequest request, HttpRequest httpRequest, HttpResponse httpResponse)

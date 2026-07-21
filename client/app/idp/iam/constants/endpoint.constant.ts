@@ -11,22 +11,24 @@ export const USER_ENDPOINTS = {
   ME: `/api${IAM_SUBPATH}/me`,
 
   CREATE: `/api${IAM_SUBPATH}/users/create`,
-  UPDATE: `/api${IAM_SUBPATH}/users/update`,
+  UPDATE: `/api${IAM_SUBPATH}/users`,
+  UPDATE_ME: `/api${IAM_SUBPATH}/me`,
   DEACTIVATE: `/api${IAM_SUBPATH}/users/deactivate`,
   UPDATE_ACCOUNT: `/api${IAM_SUBPATH}/account/update`,
+  ACCESS_CONTROL: `/api${IAM_SUBPATH}/users/access`,
+  ACCESS_CONTROL_V1: `/api${IAM_SUBPATH}/users/access-control`,
+  REVOKE_ACCESS: `/api${IAM_SUBPATH}/users/revoke-access`,
+  EXISTS: `/api${IAM_SUBPATH}/users/exists`,
   GET_ACCOUNTS: `/api${IAM_SUBPATH}/accounts`,
   GET_ACCOUNT: `/api${IAM_SUBPATH}/account`,
   GET_ACCOUNT_ROLES: `/api${IAM_SUBPATH}/account/roles`,
   GET_ACCOUNT_PERMISSIONS: `/api${IAM_SUBPATH}/account/permissions`,
   SAVE_ROLES_AND_PERMISSIONS: `/api${IAM_SUBPATH}/roles-permissions`,
-  GET_SESSIONS: `/api${IAM_SUBPATH}/sessions`,
-  GET_HISTORIES: `/api${IAM_SUBPATH}/history`,
   GET_USER_CODES: `/api${AUTH_SUBPATH}/GetUserCodes`,
   GENERATE_USER_CODE: `/api${AUTH_SUBPATH}/GenerateUserCode`,
   GET_USER_ROLES: `/api${IAM_SUBPATH}/user/roles`,
   GET_USER_PERMISSIONS: `/api${IAM_SUBPATH}/user/permissions`,
   IS_EMAIL_AVAILABLE: `/api${IAM_SUBPATH}/email/available`,
-  GET_USER_TIMELINES: `/api${IAM_SUBPATH}/users/timeline`,
 } as const;
 
 // ─── Account endpoints (account.service) ────────────────────────────────────
@@ -65,12 +67,13 @@ export const PERMISSION_ENDPOINTS = {
 
 export const ORGANIZATION_ENDPOINTS = {
   GET_ORGANIZATIONS: `/api${IAM_SUBPATH}/organizations`,
-  GET_ORGANIZATION: `/api${IAM_SUBPATH}/organization`,
+  GET_ORGANIZATION: `/api${IAM_SUBPATH}/organizations`,
   CREATE_ORGANIZATION: `/api${IAM_SUBPATH}/organizations/create`,
   SAVE_ORGANIZATION: `/api${IAM_SUBPATH}/organizations`,
   UPDATE_ORGANIZATION: `/api${IAM_SUBPATH}/organizations`,
   GET_ORGANIZATION_CONFIG: `/api${IAM_SUBPATH}/organizations/config`,
   SAVE_ORGANIZATION_CONFIG: `/api${IAM_SUBPATH}/organizations/config`,
+  GET_MY_ORGANIZATIONS: `/api${IAM_SUBPATH}/organizations/my`,
   GET_SIGNUP_SETTING: `/api${IAM_SUBPATH}/signup-settings`,
   SAVE_SIGNUP_SETTING: `/api${IAM_SUBPATH}/signup-settings`,
 } as const;

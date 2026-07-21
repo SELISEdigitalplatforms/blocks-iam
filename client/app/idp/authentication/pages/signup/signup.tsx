@@ -6,11 +6,27 @@ import { Link } from "react-router-dom";
 import { OidcAuthShell } from "@blocks-idp/authentication/pages/oidc/oidc-auth-shell";
 import { SIGNUP_PANEL } from "@blocks-idp/authentication/pages/oidc/oidc-panel-config";
 
-export const Signup = () => {
-  const { data: loginOption, isLoading: isLoginOptionLoading } = useGetLoginOptions();
-  const { data: signUpSetting, isLoading: isSignUpSettingLoading } = useGetSignUpSetting();
+export const Signup = ({ tenantId }: { tenantId?: string } = {}) => {
+  const { data: signUpSetting, isLoading: isSignUpSettingLoading } =
+    useGetSignUpSetting(tenantId);
 
-  const isLoading = isLoginOptionLoading || isSignUpSettingLoading;
+  const isSignUpEnabled = signUpSetting?.isSignUpEnable ?? false;
+  const emailSignUpEnabled = signUpSetting?.isEmailPasswordSignUpEnabled ?? false;
+  const ssoSignUpEnabled = signUpSetting?.isSSoSignUpEnabled ?? false;
+
+  const { data: loginOption, isLoading: isLoginOptionLoading } = useGetLoginOptions(
+    tenantId,
+    ssoSignUpEnabled,
+  );
+  const hasSsoProviders = (loginOption?.ssoInfo?.length ?? 0) > 0;
+
+  const showEmailSignup = isSignUpEnabled && emailSignUpEnabled;
+  const showSsoSignup = isSignUpEnabled && ssoSignUpEnabled && hasSsoProviders;
+  const showSignupForm = showEmailSignup || showSsoSignup;
+
+  const isLoading =
+    isSignUpSettingLoading ||
+    (ssoSignUpEnabled && isLoginOptionLoading);
 
   return (
     <OidcAuthShell
@@ -34,13 +50,14 @@ export const Signup = () => {
           <Skeleton className="h-9 w-full rounded-md" />
           <Skeleton className="h-9 w-1/2 rounded-md" />
         </div>
-      ) : !loginOption || loginOption.allowedGrantTypes?.length < 1 || !signUpSetting ? null : (
+      ) : showSignupForm ? (
         <SignupForm
           loginOption={loginOption}
-          emailSignUpEnabled={signUpSetting?.IsEmailPasswordSignUpEnabled || false}
-          ssoSignUpEnabled={signUpSetting?.IsSSoSignUpEnabled || false}
+          emailSignUpEnabled={showEmailSignup}
+          ssoSignUpEnabled={showSsoSignup}
+          tenantId={tenantId}
         />
-      )}
+      ) : null}
     </OidcAuthShell>
   );
 };

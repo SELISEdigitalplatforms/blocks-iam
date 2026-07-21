@@ -51,13 +51,19 @@ export const mockProject: IProject = {
   organizationIds: [TEST_TENANT_ID],
   tags: [],
   name: "Test Project",
-  applicationDomain: "https://test.seliseblocks.com",
-  customDomain: "",
+  applications: [
+    {
+      domain: "https://test.seliseblocks.com",
+      cookieDomain: "blocksdevelopers.com",
+      isDomainVerified: true,
+    },
+  ],
+  customDomain: null,
   isProduction: true,
   tenantId: TEST_TENANT_ID,
   isCookieEnable: true,
   isDomainVerified: true,
-  cookieDomain: "test.seliseblocks.com",
+  cookieDomain: "blocksdevelopers.com",
   isDisabled: false,
   environment: "dev",
   tenantGroupId: MOCK_TENANT_GROUP_ID,
@@ -213,4 +219,30 @@ export const mockValidateCNameResponse = {
 export const mockLoginOptionsResponse = {
   allowedGrantTypes: ["password"],
   ssoInfo: [],
+};
+
+// ─── Mock People ──────────────────────────────────────────────────────────────
+
+export const mockGetPeopleResponse = {
+  peoples: [],
+  totalCount: 0,
+  errors: null,
+  isSuccess: true,
+  isOwner: false,
+};
+
+export const mockPeopleAcceptInvitationResponse = {
+  isSuccess: true,
+  errors: null,
+};
+
+export const mockInvitePeopleResponse = {
+  isSuccess: true,
+  errors: null,
+};
+
+export const mockConfirmInvitationResponse = {
+  isSuccess: true,
+  errors: null,
+  activationKey: "mock-activation-key-456",
 };

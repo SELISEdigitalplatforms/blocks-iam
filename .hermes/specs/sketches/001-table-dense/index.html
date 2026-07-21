@@ -1,0 +1,452 @@
+<!DOCTYPE html>
+<html lang="en" class="light">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Variant 1: Table-Dense — Activity Timeline (Light Mode)</title>
+<style>
+  :root {
+    --font-sans: 'DM Sans', system-ui, -apple-system, sans-serif;
+    --background: 0 0% 100%;
+    --foreground: 222.2 84% 4.9%;
+    --card: 0 0% 100%;
+    --card-foreground: 222.2 84% 4.9%;
+    --primary: 206 100% 35%;
+    --primary-foreground: 210 40% 98%;
+    --secondary: 210 40% 96.1%;
+    --secondary-foreground: 222.2 47.4% 11.2%;
+    --muted: 210 40% 96.1%;
+    --muted-foreground: 215.4 16.3% 46.9%;
+    --accent: 210 40% 96.1%;
+    --accent-foreground: 222.2 47.4% 11.2%;
+    --destructive: 0 84.2% 60.2%;
+    --destructive-foreground: 210 40% 98%;
+    --border: 214.3 31.8% 91.4%;
+    --input: 214.3 31.8% 91.4%;
+    --ring: 221.2 83.2% 53.3%;
+    --radius: 0.5rem;
+    --high-emphasis: 0 0% 15%;
+    --medium-emphasis: 0 0% 33%;
+    --low-emphasis: 0 0% 62%;
+    --border-default: 0 0% 85%;
+    --success: 146 79% 44%;
+    --error: 0 100% 60%;
+    --surface-app: 220 33% 96%;
+    --blocks-primary-500: 218 78% 32%;
+    --blocks-primary-shades-300: 217 37% 93%;
+    --blocks-secondary-300: 172 66% 58%;
+    --warning-500: 43 94% 56%;
+    --blocks-primary-300: 214 39% 48%;
+    --chart-purple: 277 66% 71%;
+    --chart-blue: 211 96% 70%;
+    --chart-orange: 30 92% 57%;
+    --chart-red: 2 71% 70%;
+    --chart-yellow: 49 89% 49%;
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: var(--font-sans);
+    background: hsl(var(--surface-app));
+    color: hsl(var(--high-emphasis));
+    -webkit-font-smoothing: antialiased;
+    line-height: 1.5;
+    min-height: 100vh;
+  }
+
+  .page {
+    max-width: 1340px;
+    margin: 0 auto;
+    padding: 24px 32px;
+  }
+
+  .breadcrumb {
+    font-size: 13px;
+    color: hsl(var(--low-emphasis));
+    margin-bottom: 20px;
+  }
+  .breadcrumb .current { color: hsl(var(--high-emphasis)); font-weight: 500; }
+
+  .header {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    margin-bottom: 20px;
+  }
+  .header h1 { font-size: 24px; font-weight: 700; letter-spacing: -0.3px; color: hsl(var(--high-emphasis)); }
+
+  .export-btn {
+    display: flex; align-items: center; gap: 8px;
+    padding: 8px 16px;
+    background: hsl(var(--card)); border: 1px solid hsl(var(--border));
+    border-radius: calc(var(--radius) - 2px);
+    color: hsl(var(--medium-emphasis)); font-size: 13px; cursor: pointer;
+    transition: all .15s; font-family: inherit;
+  }
+  .export-btn:hover { border-color: hsl(var(--primary)); color: hsl(var(--high-emphasis)); }
+
+  .stats-row {
+    display: flex; gap: 10px; margin-bottom: 20px;
+  }
+  .stat-pill {
+    display: flex; align-items: center; gap: 8px;
+    padding: 8px 14px; background: hsl(var(--card));
+    border: 1px solid hsl(var(--border)); border-radius: var(--radius);
+    font-size: 13px; color: hsl(var(--medium-emphasis)); cursor: pointer;
+    transition: all .15s; font-family: inherit;
+  }
+  .stat-pill:hover { border-color: hsl(var(--primary)); }
+  .stat-pill .count { font-weight: 700; font-size: 16px; color: hsl(var(--high-emphasis)); }
+  .stat-pill .dot { width: 8px; height: 8px; border-radius: 50%; }
+  .dot-blue { background: hsl(var(--chart-blue)); }
+  .dot-purple { background: hsl(var(--chart-purple)); }
+  .dot-red { background: hsl(var(--error)); }
+  .dot-green { background: hsl(var(--success)); }
+
+  .filters {
+    display: flex; gap: 10px; margin-bottom: 16px; flex-wrap: wrap;
+  }
+  .filter-input {
+    flex: 1; min-width: 200px; padding: 9px 12px 9px 34px;
+    background: hsl(var(--card)); border: 1px solid hsl(var(--border));
+    border-radius: calc(var(--radius) - 2px); color: hsl(var(--high-emphasis));
+    font-size: 13px; outline: none; font-family: inherit;
+  }
+  .filter-input:focus { border-color: hsl(var(--primary)); }
+  .filter-input::placeholder { color: hsl(var(--low-emphasis)); }
+  .search-wrap { position: relative; flex: 1; min-width: 200px; }
+  .search-wrap svg { position: absolute; left: 10px; top: 10px; color: hsl(var(--low-emphasis)); }
+
+  .filter-select {
+    padding: 9px 32px 9px 12px; background: hsl(var(--card));
+    border: 1px solid hsl(var(--border)); border-radius: calc(var(--radius) - 2px);
+    color: hsl(var(--medium-emphasis)); font-size: 13px; cursor: pointer;
+    appearance: none; outline: none; font-family: inherit;
+  }
+  .filter-select:focus { border-color: hsl(var(--primary)); }
+
+  .refresh-btn {
+    display: flex; align-items: center; gap: 6px;
+    padding: 9px 14px; background: hsl(var(--card));
+    border: 1px solid hsl(var(--border)); border-radius: calc(var(--radius) - 2px);
+    color: hsl(var(--medium-emphasis)); font-size: 13px; cursor: pointer;
+    font-family: inherit;
+  }
+  .refresh-btn:hover { border-color: hsl(var(--primary)); }
+
+  .live-bar {
+    display: flex; align-items: center; gap: 8px;
+    padding: 8px 16px; margin-bottom: 16px;
+    background: hsl(var(--blocks-primary-shades-300)); border: 1px solid hsl(var(--blocks-primary-300) / 0.2);
+    border-radius: calc(var(--radius) - 2px); font-size: 13px; color: hsl(var(--primary));
+    cursor: pointer; transition: all .2s;
+    animation: slideDown .3s ease-out; font-family: inherit;
+  }
+  .live-dot { width: 8px; height: 8px; border-radius: 50%; background: hsl(var(--success)); animation: pulse 2s infinite; }
+
+  @keyframes slideDown { from { opacity: 0; transform: translateY(-8px); } to { opacity: 1; transform: translateY(0); } }
+  @keyframes pulse { 0%,100% { opacity: 1; } 50% { opacity: .4; } }
+
+  .card {
+    background: hsl(var(--card)); border: 1px solid hsl(var(--border));
+    border-radius: var(--radius); overflow: hidden;
+  }
+
+  table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  th {
+    text-align: left; padding: 12px 16px;
+    font-weight: 600; color: hsl(var(--medium-emphasis)); font-size: 12px;
+    text-transform: uppercase; letter-spacing: .5px;
+    border-bottom: 1px solid hsl(var(--border));
+  }
+  td { padding: 14px 16px; border-bottom: 1px solid hsl(var(--border)); }
+  tr:last-child td { border-bottom: none; }
+  tbody tr { transition: background .12s; cursor: pointer; }
+  tbody tr:hover { background: hsl(var(--accent)); }
+
+  .user-cell { display: flex; align-items: center; gap: 10px; }
+  .avatar {
+    width: 32px; height: 32px; border-radius: 50%;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 12px; font-weight: 600; color: white;
+  }
+  .av-blue { background: hsl(var(--chart-blue)); }
+  .av-green { background: hsl(var(--success)); }
+  .av-purple { background: hsl(var(--chart-purple)); }
+  .av-orange { background: hsl(var(--chart-orange)); }
+  .av-red { background: hsl(var(--error)); }
+
+  .user-info .name { font-weight: 500; color: hsl(var(--high-emphasis)); }
+  .user-info .email { font-size: 12px; color: hsl(var(--low-emphasis)); }
+
+  .badge {
+    display: inline-flex; align-items: center; gap: 6px;
+    padding: 3px 10px; border-radius: 20px; font-size: 12px; font-weight: 500;
+    white-space: nowrap;
+  }
+  .badge-blue { background: hsl(211 96% 70% / 0.15); color: hsl(211 96% 40%); }
+  .badge-purple { background: hsl(277 66% 71% / 0.15); color: hsl(277 66% 45%); }
+  .badge-orange { background: hsl(30 92% 57% / 0.15); color: hsl(30 92% 40%); }
+  .badge-red { background: hsl(2 71% 70% / 0.15); color: hsl(var(--error)); }
+  .badge-green { background: hsl(146 79% 44% / 0.15); color: hsl(146 79% 35%); }
+  .badge-indigo { background: hsl(214 39% 48% / 0.12); color: hsl(var(--blocks-primary-300)); }
+
+  .when .relative { font-weight: 500; color: hsl(var(--medium-emphasis)); }
+  .when .absolute { font-size: 11px; color: hsl(var(--low-emphasis)); margin-top: 2px; }
+
+  .details .ip {
+    display: inline-flex; padding: 2px 8px; background: hsl(var(--accent));
+    border-radius: 4px; font-size: 12px; font-family: "SF Mono", monospace;
+    color: hsl(var(--medium-emphasis)); margin-bottom: 4px;
+  }
+  .details .device { font-size: 12px; color: hsl(var(--low-emphasis)); }
+
+  .pagination {
+    display: flex; justify-content: space-between; align-items: center;
+    padding: 14px nn 16px; border-top: 1px solid hsl(var(--border));
+    font-size: 13px; color: hsl(var(--medium-emphasis));
+  }
+  .page-btns { display: flex; gap: 6px; }
+  .page-btn {
+    width: 32px; height: 32px; display: flex; align-items: center; justify-content: center;
+    border-radius: calc(var(--radius) - 2px); border: 1px solid hsl(var(--border));
+    background: transparent; color: hsl(var(--medium-emphasis)); font-size: 13px; cursor: pointer;
+    transition: all .12s; font-family: inherit;
+  }
+  .page-btn:hover { border-color: hsl(var(--primary)); color: hsl(var(--high-emphasis)); background: hsl(var(--accent)); }
+  .page-btn.active { background: hsl(var(--primary)); border-color: hsl(var(--primary)); color: hsl(var(--primary-foreground)); }
+  .page-btn:disabled { opacity: .3; cursor: default; }
+
+  strong { color: hsl(var(--high-emphasis)); }
+</style>
+</head>
+<body>
+
+<div class="page">
+  <div class="breadcrumb">
+    IAM <span style="color:hsl(var(--low-emphasis))">/</span> <span class="current">Activity Timeline</span>
+  </div>
+
+  <div class="header">
+    <h1>Activity Timeline</h1>
+    <button class="export-btn">
+      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+      Export CSV
+    </button>
+  </div>
+
+  <div class="stats-row">
+    <button class="stat-pill">
+      <span class="dot dot-blue"></span>
+      <span class="count">42</span> Logins this week
+    </button>
+    <button class="stat-pill">
+      <span class="dot dot-purple"></span>
+      <span class="count">15</span> MFA events
+    </button>
+    <button class="stat-pill">
+      <span class="dot dot-red"></span>
+      <span class="count">8</span> Failures
+    </button>
+    <button class="stat-pill">
+      <span class="dot dot-green"></span>
+      <span class="count">12</span> User changes
+    </button>
+  </div>
+
+  <div class="filters">
+    <div class="search-wrap">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>
+      <input class="filter-input" placeholder="Search users, events, or IPs..." value="">
+    </div>
+    <select class="filter-select"><option>Last 7 days</option><option>Today</option><option>Last 30 days</option></select>
+    <select class="filter-select"><option>All events</option><option>Login events</option><option>MFA events</option></select>
+    <select class="filter-select"><option>All organizations</option><option>Acme Corp</option></select>
+    <button class="refresh-btn" title="Reset filters">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 11-2.12-9.36L23 10"/></svg>
+    </button>
+  </div>
+
+  <div class="live-bar" onclick="this.style.display='none'">
+    <span class="live-dot"></span>
+    <strong>3 new events</strong> &mdash; click to refresh
+  </div>
+
+  <div class="card">
+    <table>
+      <thead>
+        <tr>
+          <th style="width:48px"></th>
+          <th>User</th>
+          <th>Event</th>
+          <th>When</th>
+          <th>Details</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td><span class="badge badge-blue">🔑</span></td>
+          <td>
+            <div class="user-cell">
+              <div class="avatar av-blue">JD</div>
+              <div class="user-info">
+                <div class="name">Jane Doe</div>
+                <div class="email">jane@selise.com</div>
+              </div>
+            </div>
+          </td>
+          <td><span class="badge badge-blue">Login via Password</span></td>
+          <td>
+            <div class="when">
+              <div class="relative">2 minutes ago</div>
+              <div class="absolute">Jun 24, 2026 &middot; 14:32 UTC</div>
+            </div>
+          </td>
+          <td>
+            <div class="details">
+              <div class="ip">10.0.0.1</div>
+              <div class="device">Chrome &middot; Windows 10</div>
+            </div>
+          </td>
+        </tr>
+        <tr>
+          <td><span class="badge badge-purple">🛡</span></td>
+          <td>
+            <div class="user-cell">
+              <div class="avatar av-purple">BS</div>
+              <div class="user-info">
+                <div class="name">Bob Smith</div>
+                <div class="email">bob@selise.com</div>
+              </div>
+            </div>
+          </td>
+          <td><span class="badge badge-purple">MFA Enabled</span></td>
+          <td>
+            <div class="when">
+              <div class="relative">12 minutes ago</div>
+              <div class="absolute">Jun 24, 2026 &middot; 14:22 UTC</div>
+            </div>
+          </td>
+          <td>
+            <div class="details">
+              <div class="ip">10.0.0.42</div>
+              <div class="device">Chrome &middot; macOS</div>
+            </div>
+          </td>
+        </tr>
+        <tr>
+          <td><span class="badge badge-green">👤</span></td>
+          <td>
+            <div class="user-cell">
+              <div class="avatar av-green">AD</div>
+              <div class="user-info">
+                <div class="name">Admin User</div>
+                <div class="email">admin@selise.com</div>
+              </div>
+            </div>
+          </td>
+          <td>
+            <span class="badge badge-green">User Created</span>
+            <div style="font-size:11px;color:hsl(var(--low-emphasis));margin-top:3px;">Target: alice@selise.com</div>
+          </td>
+          <td>
+            <div class="when">
+              <div class="relative">1 hour ago</div>
+              <div class="absolute">Jun 24, 2026 &middot; 13:15 UTC</div>
+            </div>
+          </td>
+          <td>
+            <div class="details">
+              <div class="device">Action by: Admin</div>
+            </div>
+          </td>
+        </tr>
+        <tr>
+          <td><span class="badge badge-red">⛔</span></td>
+          <td>
+            <div class="user-cell">
+              <div class="avatar av-red">CL</div>
+              <div class="user-info">
+                <div class="name">Carol Lee</div>
+                <div class="email">carol@selise.com</div>
+              </div>
+            </div>
+          </td>
+          <td><span class="badge badge-red">Account Deactivated</span></td>
+          <td>
+            <div class="when">
+              <div class="relative">2 hours ago</div>
+              <div class="absolute">Jun 24, 2026 &middot; 12:05 UTC</div>
+            </div>
+          </td>
+          <td><div class="details"><div class="device">Action by: Admin</div></div></td>
+        </tr>
+        <tr>
+          <td><span class="badge badge-orange">🔄</span></td>
+          <td>
+            <div class="user-cell">
+              <div class="avatar av-orange">DK</div>
+              <div class="user-info">
+                <div class="name">Dave Kim</div>
+                <div class="email">dave@selise.com</div>
+              </div>
+            </div>
+          </td>
+          <td><span class="badge badge-orange">Token Renewed</span></td>
+          <td>
+            <div class="when">
+              <div class="relative">3 hours ago</div>
+              <div class="absolute">Jun 24, 2026 &middot; 11:42 UTC</div>
+            </div>
+          </td>
+          <td>
+            <div class="details">
+              <div class="ip">10.0.0.88</div>
+              <div class="device">Safari &middot; iOS</div>
+            </div>
+          </td>
+        </tr>
+        <tr>
+          <td><span class="badge badge-indigo">🔐</span></td>
+          <td>
+            <div class="user-cell">
+              <div class="avatar av-blue">EM</div>
+              <div class="user-info">
+                <div class="name">Eva Martinez</div>
+                <div class="email">eva@selise.com</div>
+              </div>
+            </div>
+          </td>
+          <td><span class="badge badge-indigo">Roles Changed</span></td>
+          <td>
+            <div class="when">
+              <div class="relative">5 hours ago</div>
+              <div class="absolute">Jun 24, 2026 &middot; 09:18 UTC</div>
+            </div>
+          </td>
+          <td>
+            <div class="details">
+              <div class="device">Added: manager, viewer</div>
+            </div>
+          </td>
+        </tr>
+      </tbody>
+    </table>
+
+    <div class="pagination">
+      <span>Showing 1-6 of 1,542</span>
+      <div class="page-btns">
+        <button class="page-btn" disabled>◀</button>
+        <button class="page-btn active">1</button>
+        <button class="page-btn">2</button>
+        <button class="page-btn">3</button>
+        <button class="page-btn">...</button>
+        <button class="page-btn">78</button>
+        <button class="page-btn">▶</button>
+      </div>
+    </div>
+  </div>
+
+</div>
+</body>
+</html>

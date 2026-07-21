@@ -5,7 +5,7 @@ import { useNavigate } from "react-router-dom";
 import { getApiUrl } from "@/lib/get-api-path";
 import { getRuntimeEnv } from "@/lib/runtime-env";
 import { showErrorToast } from "@/hooks/use-toast";
-import { useAuthStore } from "@/store/useAuthStore";
+import { useAuthStore } from "@seliseblocks/blocks-kit";
 import { isErrorWithErrors } from "@/lib/error";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui-kits/card/card";
 import { Checkbox } from "@/components/ui-kits/checkbox/checkbox";
@@ -103,7 +103,7 @@ export const SsoActivate = ({ oauthParams }: SsoActivateProps) => {
         }
         
         setAuthenticated();
-        navigate("/services/authentication/users");
+        navigate("/app/console");
       } else {
         showErrorToast({ errors: data.errors || "Something went wrong" });
       }
@@ -123,7 +123,7 @@ export const SsoActivate = ({ oauthParams }: SsoActivateProps) => {
   return (
     <Card className="w-full rounded border-solid border-background shadow-none md:border-[#95ADC4] lg:max-w-md">
       <CardHeader className="text-center">
-        <CardTitle className="text-3xl leading-9">Blocks Cloud</CardTitle>
+        <CardTitle className="text-3xl leading-9">Blocks IAM</CardTitle>
       </CardHeader>
       <CardContent>
         {config && (

@@ -21,18 +21,17 @@ export const UserMFAConfirmationEnable = () => {
   const [open, setOpen] = useState<boolean>(false);
 
   const [type, setType] = useState(0);
-  const { isPending, mutateAsync } = useConfigureUserMFA({ id: userId, projectKey });
+  const { isPending, mutateAsync } = useConfigureUserMFA({ id: userId });
   const { data: userData, isLoading, isFetching } = useGetUserById({ id: userId, projectKey });
 
   const onClickHandler = async () => {
     try {
       const res = await mutateAsync({
         mfaEnabled: true,
-        projectKey,
         userId,
         userMfaType: type,
       });
-      if (!res.isSuccess) return showErrorToast({ errors: res.errors });
+      if (res?.isSuccess === false) return showErrorToast({ errors: res.errors });
       showSuccessToast({ description: "MFA enabled successfully" });
       setOpen(false);
       if (enableTotpModal) showTotpModal(type);

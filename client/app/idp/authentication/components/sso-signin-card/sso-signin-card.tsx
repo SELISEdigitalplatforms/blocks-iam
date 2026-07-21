@@ -53,7 +53,7 @@ export const SSOSigninCard = ({
           code_challenge_method: oidcContext.code_challenge_method,
           tenantId: oidcContext.tenantId,
           provider_client_id: providerConfig.clientId,
-          provider_redirect_uri: providerConfig.redirectUrl,
+          provider_redirect_uri: providerConfig.redirectUrl
         });
 
         if (res.error) return showErrorToast({ errors: res.error });

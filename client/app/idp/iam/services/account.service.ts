@@ -1,4 +1,4 @@
-import { http } from "@/lib/http-client";
+import { serviceInstances } from "@/lib/http-client";
 import {
   IAccountActivationPayload,
   IAccountActivationResponse,
@@ -8,8 +8,8 @@ import {
   IAccountResendActivationResponse,
   IAccountResetPasswordPayload,
   IAccountResetPasswordResponse,
-  IActivationCodeExpirationResponse,
   IActivationCodeValidationPayload,
+  IActivationCodeValidationResponse,
   IChangePasswordPayload,
   IChangePasswordResponse,
 } from "@blocks-idp/iam/models/user";
@@ -17,32 +17,52 @@ import { ACCOUNT_ENDPOINTS } from "../constants/endpoint.constant";
 
 export class UserAccountService {
   accountActivation(payload: IAccountActivationPayload): Promise<IAccountActivationResponse> {
-    return http.post(ACCOUNT_ENDPOINTS.ACTIVATE, payload);
+    const headers: Record<string, string> = {};
+    if (payload.tenantId) {
+      headers["X-Blocks-Key"] = payload.tenantId;
+    }
+    return serviceInstances.idpService.post(ACCOUNT_ENDPOINTS.ACTIVATE, payload, headers);
   }
 
   accountResendActivation(
     payload: IAccountResendActivationPayload,
   ): Promise<IAccountResendActivationResponse> {
-    return http.post(ACCOUNT_ENDPOINTS.RESEND_ACTIVATION, payload);
+    const headers: Record<string, string> = {};
+    if (payload.tenantId) {
+      headers["X-Blocks-Key"] = payload.tenantId;
+    }
+    return serviceInstances.idpService.post(ACCOUNT_ENDPOINTS.RESEND_ACTIVATION, payload, headers);
   }
 
   accountRecover(payload: IAccountRecoverPayload): Promise<IAccountRecoverResponse> {
-    return http.post(ACCOUNT_ENDPOINTS.RECOVER, payload);
+    const headers: Record<string, string> = {};
+    if (payload.tenantId) {
+      headers["X-Blocks-Key"] = payload.tenantId;
+    }
+    return serviceInstances.idpService.post(ACCOUNT_ENDPOINTS.RECOVER, payload, headers);
   }
 
   accountResetPassword(
     payload: IAccountResetPasswordPayload,
   ): Promise<IAccountResetPasswordResponse> {
-    return http.post(ACCOUNT_ENDPOINTS.RESET_PASSWORD, payload);
+    const headers: Record<string, string> = {};
+    if (payload.tenantId) {
+      headers["X-Blocks-Key"] = payload.tenantId;
+    }
+    return serviceInstances.idpService.post(ACCOUNT_ENDPOINTS.RESET_PASSWORD, payload, headers);
   }
 
   checkActivationCodeExpiration(
     payload: IActivationCodeValidationPayload,
-  ): Promise<IActivationCodeExpirationResponse> {
-    return http.post(ACCOUNT_ENDPOINTS.VALIDATE_ACTIVATION_CODE, payload);
+  ): Promise<IActivationCodeValidationResponse> {
+    const headers: Record<string, string> = {};
+    if (payload.tenantId) {
+      headers["X-Blocks-Key"] = payload.tenantId;
+    }
+    return serviceInstances.idpService.post(ACCOUNT_ENDPOINTS.VALIDATE_ACTIVATION_CODE, payload, headers);
   }
 
   changePassword(payload: IChangePasswordPayload): Promise<IChangePasswordResponse> {
-    return http.post(ACCOUNT_ENDPOINTS.CHANGE_PASSWORD, payload);
+    return serviceInstances.idpService.post(ACCOUNT_ENDPOINTS.CHANGE_PASSWORD, payload);
   }
 }

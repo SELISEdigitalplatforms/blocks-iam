@@ -1,4 +1,4 @@
-import { http } from "@/lib/http-client";
+import { serviceInstances } from "@/lib/http-client";
 import {
   CreateRolePayload,
   GetRolesPayload,
@@ -13,19 +13,23 @@ import { ROLE_ENDPOINTS } from "../constants/endpoint.constant";
 
 export class RoleService {
   getRoles(payload: GetRolesPayload): Promise<GetRolesResponse> {
-    return http.post(ROLE_ENDPOINTS.GET_ROLES, payload);
+    const { projectKey, ...rest } = payload;
+    return serviceInstances.idpService.post(ROLE_ENDPOINTS.GET_ROLES, {
+      ...rest,
+      organizationId: projectKey,
+    });
   }
 
   getRoleById(payload: IGetRolePayload): Promise<IGetRoleResponse> {
-    return http.get(`${ROLE_ENDPOINTS.GET_ROLE}?projectKey=${payload.projectKey}&id=${payload.id}`);
+    return serviceInstances.idpService.get(`${ROLE_ENDPOINTS.GET_ROLE}?projectKey=${payload.projectKey}&id=${payload.id}`);
   }
 
   addRole(payload: CreateRolePayload): Promise<IRole> {
-    return http.post(ROLE_ENDPOINTS.CREATE_ROLE, payload);
+    return serviceInstances.idpService.post(ROLE_ENDPOINTS.CREATE_ROLE, payload);
   }
 
   updateRole(payload: UpdateRolePayload) {
-    return http.post<{
+    return serviceInstances.idpService.post<{
       errors: unknown;
       isSuccess: boolean;
       itemId: string;
@@ -33,7 +37,7 @@ export class RoleService {
   }
 
   setRoles(addSetRolesPayload: SetRoles): Promise<SetRoles> {
-    return http.post<SetRoles>(ROLE_ENDPOINTS.SET_ROLES, { ...addSetRolesPayload });
+    return serviceInstances.idpService.post<SetRoles>(ROLE_ENDPOINTS.SET_ROLES, { ...addSetRolesPayload });
   }
 }
 

@@ -14,11 +14,6 @@ import {
   mockSignUpSettingResponse,
   mockSaveSignUpSettingPayload,
   mockSaveRolesAndPermissionsPayload,
-  mockGetSessionsPayload,
-  mockGetHistoriesPayload,
-  mockGeneratePATPayload,
-  mockGetUserRolesPayload,
-  mockGetUserPermissionsPayload,
   mockResendActivationPayload,
   mockSuccessResponse,
   MOCK_USER_ITEM_ID,
@@ -41,7 +36,6 @@ describe("UserService", () => {
     vi.clearAllMocks();
   });
 
-  // ─── getUsers ─────────────────────────────────────────────────────────────
   describe("getUsers", () => {
     it("should POST to the correct endpoint with payload", async () => {
       vi.mocked(http.post).mockResolvedValue(mockUsersResponse);
@@ -59,7 +53,6 @@ describe("UserService", () => {
     });
   });
 
-  // ─── getUser ──────────────────────────────────────────────────────────────
   describe("getUser", () => {
     it("should GET from the correct endpoint", async () => {
       const mockResponse = { data: mockUser };
@@ -67,7 +60,9 @@ describe("UserService", () => {
 
       const result = await service.getUser();
 
-      expect(http.get).toHaveBeenCalledWith(USER_ENDPOINTS.GET_USER);
+      expect(http.get).toHaveBeenCalledWith(USER_ENDPOINTS.GET_USER, undefined, {
+        absoluteUrl: true,
+      });
       expect(result).toEqual(mockResponse);
     });
 
@@ -78,7 +73,6 @@ describe("UserService", () => {
     });
   });
 
-  // ─── getUserById ──────────────────────────────────────────────────────────
   describe("getUserById", () => {
     it("should GET with correct query params", async () => {
       const payload = { id: MOCK_USER_ITEM_ID, projectKey: TEST_PROJECT_KEY };
@@ -86,10 +80,10 @@ describe("UserService", () => {
 
       const result = await service.getUserById(payload);
 
-      expect(http.get).toHaveBeenCalledWith(
-        `${USER_ENDPOINTS.GET_USER}?id=${payload.id}&ProjectKey=${payload.projectKey}`,
-      );
-      expect(result).toEqual({ data: mockUser });
+      expect(http.get).toHaveBeenCalledWith(`${USER_ENDPOINTS.GET_USER}/${payload.id}`);
+      // Response goes through normalizeUserFromApi; core identity fields are preserved.
+      expect(result.data.itemId).toBe(MOCK_USER_ITEM_ID);
+      expect(result.data.email).toBe(mockUser.email);
     });
 
     it("should throw when the API call fails", async () => {
@@ -99,9 +93,31 @@ describe("UserService", () => {
         service.getUserById({ id: MOCK_USER_ITEM_ID, projectKey: TEST_PROJECT_KEY }),
       ).rejects.toThrow("Network error");
     });
+
+    it("should normalize flat roles and permissions into per-organization maps", async () => {
+      const payload = { id: MOCK_USER_ITEM_ID, projectKey: TEST_PROJECT_KEY };
+      vi.mocked(http.get).mockResolvedValue({
+        data: {
+          itemId: MOCK_USER_ITEM_ID,
+          organizationIds: ["default"],
+          roles: ["test", "user"],
+          permissions: ["Change User Password", "View Client Credentials"],
+        },
+      });
+
+      const result = await service.getUserById(payload);
+
+      expect(result.data.roles).toEqual({ default: ["test", "user"] });
+      expect(result.data.permissions).toEqual({
+        default: ["Change User Password", "View Client Credentials"],
+      });
+      expect(result.data.OrganizationsRoles).toEqual({ default: ["test", "user"] });
+      expect(result.data.OrganizationsPermissions).toEqual({
+        default: ["Change User Password", "View Client Credentials"],
+      });
+    });
   });
 
-  // ─── addUser ──────────────────────────────────────────────────────────────
   describe("addUser", () => {
     it("should POST to the correct endpoint with payload", async () => {
       vi.mocked(http.post).mockResolvedValue(mockSuccessResponse);
@@ -119,32 +135,52 @@ describe("UserService", () => {
     });
   });
 
-  // ─── updateUser ───────────────────────────────────────────────────────────
   describe("updateUser", () => {
-    it("should POST to the correct endpoint with payload", async () => {
+    it("should fetch the current user and POST the merged payload", async () => {
+      vi.mocked(http.get).mockResolvedValue({ data: mockUser });
       vi.mocked(http.post).mockResolvedValue(mockSuccessResponse);
 
       const result = await service.updateUser(mockUpdateUserPayload);
 
-      expect(http.post).toHaveBeenCalledWith(USER_ENDPOINTS.UPDATE, mockUpdateUserPayload);
+      const postedBody = vi.mocked(http.post).mock.calls[0][1] as Record<string, unknown>;
+      // payload only overrides firstName; every other field is merged from the
+      // freshly-fetched current record so the server doesn't wipe them.
+      expect(postedBody).toMatchObject({
+        itemId: mockUpdateUserPayload.itemId,
+        firstName: mockUpdateUserPayload.firstName,
+        lastName: mockUser.lastName,
+        email: mockUser.email,
+        active: mockUser.active,
+        mfaEnabled: mockUser.mfaEnabled,
+      });
+      // No raw payload — current user fields must be merged in
+      expect(postedBody).not.toEqual(mockUpdateUserPayload);
+      expect(http.post).toHaveBeenCalledWith(
+        `${USER_ENDPOINTS.UPDATE}/${mockUpdateUserPayload.itemId}`,
+        expect.objectContaining({ itemId: mockUpdateUserPayload.itemId }),
+      );
       expect(result).toEqual(mockSuccessResponse);
     });
 
     it("should throw when the API call fails", async () => {
+      vi.mocked(http.get).mockResolvedValue({ data: mockUser });
       vi.mocked(http.post).mockRejectedValue(new Error("Network error"));
 
       await expect(service.updateUser(mockUpdateUserPayload)).rejects.toThrow("Network error");
     });
   });
 
-  // ─── getSignUpSetting ─────────────────────────────────────────────────────
   describe("getSignUpSetting", () => {
     it("should GET the signup-settings endpoint", async () => {
       vi.mocked(http.get).mockResolvedValue(mockSignUpSettingResponse);
 
       const result = await service.getSignUpSetting();
 
-      expect(http.get).toHaveBeenCalledWith(ORGANIZATION_ENDPOINTS.GET_SIGNUP_SETTING);
+      expect(http.get).toHaveBeenCalledWith(
+        ORGANIZATION_ENDPOINTS.GET_SIGNUP_SETTING,
+        {},
+        undefined,
+      );
       expect(result).toEqual(mockSignUpSettingResponse);
     });
 
@@ -155,7 +191,6 @@ describe("UserService", () => {
     });
   });
 
-  // ─── saveSignUpSetting ────────────────────────────────────────────────────
   describe("saveSignUpSetting", () => {
     it("should POST to the correct endpoint with payload", async () => {
       vi.mocked(http.post).mockResolvedValue(mockSuccessResponse);
@@ -178,7 +213,6 @@ describe("UserService", () => {
     });
   });
 
-  // ─── saveRolesAndPermissions ──────────────────────────────────────────────
   describe("saveRolesAndPermissions", () => {
     it("should POST to the correct endpoint with payload", async () => {
       vi.mocked(http.post).mockResolvedValue(mockSuccessResponse);
@@ -201,141 +235,6 @@ describe("UserService", () => {
     });
   });
 
-  // ─── getSessions ──────────────────────────────────────────────────────────
-  describe("getSessions", () => {
-    it("should GET with correct query params and parse response", async () => {
-      const rawResponse = {
-        data: ['{"device":"Chrome"}', '{"device":"Firefox"}'],
-        totalCount: 2,
-        errors: null,
-      };
-      vi.mocked(http.get).mockResolvedValue(rawResponse);
-
-      const result = await service.getSessions(mockGetSessionsPayload);
-
-      expect(http.get).toHaveBeenCalledWith(
-        `${USER_ENDPOINTS.GET_SESSIONS}?page=${mockGetSessionsPayload.page}&pageSize=${mockGetSessionsPayload.pageSize}&projectkey=${mockGetSessionsPayload.projectKey}&filter.userId=${mockGetSessionsPayload.filter.UserId}`,
-      );
-      expect(result.totalCount).toBe(2);
-    });
-
-    it("should throw when the API call fails", async () => {
-      vi.mocked(http.get).mockRejectedValue(new Error("Network error"));
-
-      await expect(service.getSessions(mockGetSessionsPayload)).rejects.toThrow("Network error");
-    });
-  });
-
-  // ─── getHistories ─────────────────────────────────────────────────────────
-  describe("getHistories", () => {
-    it("should GET with correct query params and parse response", async () => {
-      const rawResponse = {
-        data: ['{"action":"login"}'],
-        totalCount: 1,
-        errors: null,
-      };
-      vi.mocked(http.get).mockResolvedValue(rawResponse);
-
-      const result = await service.getHistories(mockGetHistoriesPayload);
-
-      expect(http.get).toHaveBeenCalledWith(
-        `${USER_ENDPOINTS.GET_HISTORIES}?page=${mockGetHistoriesPayload.page}&pageSize=${mockGetHistoriesPayload.pageSize}&projectkey=${mockGetHistoriesPayload.projectKey}&filter.userId=${mockGetHistoriesPayload.filter.UserId}`,
-      );
-      expect(result.totalCount).toBe(1);
-    });
-
-    it("should throw when the API call fails", async () => {
-      vi.mocked(http.get).mockRejectedValue(new Error("Network error"));
-
-      await expect(service.getHistories(mockGetHistoriesPayload)).rejects.toThrow("Network error");
-    });
-  });
-
-  // ─── getPats ──────────────────────────────────────────────────────────────
-  describe("getPats", () => {
-    it("should GET from the correct endpoint", async () => {
-      const mockResponse = { data: [], errors: null };
-      vi.mocked(http.get).mockResolvedValue(mockResponse);
-
-      const result = await service.getPats();
-
-      expect(http.get).toHaveBeenCalledWith(USER_ENDPOINTS.GET_USER_CODES);
-      expect(result).toEqual(mockResponse);
-    });
-
-    it("should throw when the API call fails", async () => {
-      vi.mocked(http.get).mockRejectedValue(new Error("Network error"));
-
-      await expect(service.getPats()).rejects.toThrow("Network error");
-    });
-  });
-
-  // ─── generatePats ─────────────────────────────────────────────────────────
-  describe("generatePats", () => {
-    it("should POST to the correct endpoint with payload", async () => {
-      vi.mocked(http.post).mockResolvedValue(mockSuccessResponse);
-
-      const result = await service.generatePats(mockGeneratePATPayload);
-
-      expect(http.post).toHaveBeenCalledWith(
-        USER_ENDPOINTS.GENERATE_USER_CODE,
-        mockGeneratePATPayload,
-      );
-      expect(result).toEqual(mockSuccessResponse);
-    });
-
-    it("should throw when the API call fails", async () => {
-      vi.mocked(http.post).mockRejectedValue(new Error("Network error"));
-
-      await expect(service.generatePats(mockGeneratePATPayload)).rejects.toThrow("Network error");
-    });
-  });
-
-  // ─── getUserRoles ─────────────────────────────────────────────────────────
-  describe("getUserRoles", () => {
-    it("should GET with correct query params", async () => {
-      const mockResponse = { data: ["admin"], errors: null };
-      vi.mocked(http.get).mockResolvedValue(mockResponse);
-
-      const result = await service.getUserRoles(mockGetUserRolesPayload);
-
-      expect(http.get).toHaveBeenCalledWith(
-        `${USER_ENDPOINTS.GET_USER_ROLES}?Id=${mockGetUserRolesPayload.userId}&ProjectKey=${mockGetUserRolesPayload.projectKey}`,
-      );
-      expect(result).toEqual(mockResponse);
-    });
-
-    it("should throw when the API call fails", async () => {
-      vi.mocked(http.get).mockRejectedValue(new Error("Network error"));
-
-      await expect(service.getUserRoles(mockGetUserRolesPayload)).rejects.toThrow("Network error");
-    });
-  });
-
-  // ─── getUserPermissions ───────────────────────────────────────────────────
-  describe("getUserPermissions", () => {
-    it("should GET with correct query params", async () => {
-      const mockResponse = { data: ["read"], errors: null };
-      vi.mocked(http.get).mockResolvedValue(mockResponse);
-
-      const result = await service.getUserPermissions(mockGetUserPermissionsPayload);
-
-      expect(http.get).toHaveBeenCalledWith(
-        `${USER_ENDPOINTS.GET_USER_PERMISSIONS}?Id=${mockGetUserPermissionsPayload.userId}&ProjectKey=${mockGetUserPermissionsPayload.projectKey}`,
-      );
-      expect(result).toEqual(mockResponse);
-    });
-
-    it("should throw when the API call fails", async () => {
-      vi.mocked(http.get).mockRejectedValue(new Error("Network error"));
-
-      await expect(service.getUserPermissions(mockGetUserPermissionsPayload)).rejects.toThrow(
-        "Network error",
-      );
-    });
-  });
-
-  // ─── accountDeactivate ────────────────────────────────────────────────────
   describe("accountDeactivate", () => {
     it("should POST to the correct endpoint with payload", async () => {
       vi.mocked(http.post).mockResolvedValue(mockSuccessResponse);

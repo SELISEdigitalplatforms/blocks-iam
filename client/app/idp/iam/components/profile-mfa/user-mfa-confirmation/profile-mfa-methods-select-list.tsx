@@ -1,7 +1,7 @@
 import { profileMfaContext } from "../profile-mfa";
 import { ReactNode, useContext, useEffect, useMemo, useState } from "react";
 import { useGetMFAConfig } from "@blocks-idp/mfa/hooks/use-mfa-config";
-import { useGetUserById } from "@blocks-idp/iam/hooks/use-user";
+import { useGetMe, useGetUserById } from "@blocks-idp/iam/hooks/use-user";
 import { MFA_Provider_Data } from "@blocks-idp/mfa/utils/mfa-config";
 import { Button } from "@/components/ui-kits/button/button";
 import { Badge } from "@/components/ui-kits/badge/badge";
@@ -12,15 +12,21 @@ import { UserMFAConfirmationDisable } from "./profile-mfa-confirmation-disable";
 
 type MethodsOptionProps = {
   method: Omit<(typeof MFA_Provider_Data)[0], "description"> & { description: ReactNode };
-  selected: string;
-  onSaveClick: () => void;
-  activeType: string;
+  onEnableClick: () => void;
+  onDisableClick: () => void;
+  isActive: boolean;
   isVerified: boolean;
+  hideButton?: boolean;
 };
 
-const MethodsOption = ({ method, onSaveClick, activeType, isVerified }: MethodsOptionProps) => {
-  const isActive = method.type.toString() === activeType;
-
+const MethodsOption = ({
+  method,
+  onEnableClick,
+  onDisableClick,
+  isActive,
+  isVerified,
+  hideButton,
+}: MethodsOptionProps) => {
   return (
     <div className="flex gap-2 border-b p-4 py-6">
       <div className="w-full">
@@ -28,7 +34,7 @@ const MethodsOption = ({ method, onSaveClick, activeType, isVerified }: MethodsO
           <div>
             <div className="flex items-center gap-2 text-medium-emphasis">
               <method.Icon className="aspect-square w-4" />
-              {method.label} {/* check it again */}
+              {method.label}
               {isActive && isVerified && (
                 <Badge
                   variant="outline"
@@ -40,13 +46,19 @@ const MethodsOption = ({ method, onSaveClick, activeType, isVerified }: MethodsO
             </div>
             <p className="text-low-emphasis">{method.description}</p>
           </div>
-          <div>
-            {!isActive && (
-              <Button size="xs" onClick={onSaveClick} variant="outline">
-                {method.type === 0 ? "Disable" : "Enable"}
-              </Button>
-            )}
-          </div>
+          {!hideButton && (
+            <div>
+              {isActive ? (
+                <Button size="xs" onClick={onDisableClick} variant="outline">
+                  Disable
+                </Button>
+              ) : (
+                <Button size="xs" onClick={onEnableClick} variant="outline">
+                  Enable
+                </Button>
+              )}
+            </div>
+          )}
         </div>
       </div>
     </div>
@@ -54,54 +66,68 @@ const MethodsOption = ({ method, onSaveClick, activeType, isVerified }: MethodsO
 };
 
 export const ProfileMfaMethodSelectList = () => {
-  const { userId, projectKey, showVerifyModal, setIsDisableModalOpen } =
+  const { userId, projectKey, own, showVerifyModal, setIsDisableModalOpen } =
     useContext(profileMfaContext);
-  const { data } = useGetMFAConfig();
-  const { data: userData } = useGetUserById({ id: userId, projectKey });
+  const { data: projectConfig } = useGetMFAConfig();
+  const { data: userByIdData } = useGetUserById(
+    { id: userId, projectKey },
+    { enabled: !own },
+  );
+  const { data: meData } = useGetMe();
+  const userData = own ? meData : userByIdData;
 
-  const [type, setType] = useState<string>("");
+  const projectEnabled = !!projectConfig?.enabled;
+  const projectAllowedMethods = projectConfig?.allowedMethods ?? [];
+
   const availableMFaMethod = useMemo(() => {
-    if (!data?.userMfaType.length) return [];
-    return MFA_Provider_Data.filter((item) => data?.userMfaType.includes(item.type));
-  }, [data?.userMfaType]);
+    if (!projectAllowedMethods.length) return [];
+    return MFA_Provider_Data.filter((item) => projectAllowedMethods.includes(item.type));
+  }, [projectAllowedMethods]);
 
-  useEffect(() => {
-    if (userData && userData.data) setType(userData.data.userMfaType.toString());
-  }, [userData, userData?.data]);
+  const userMfaType = userData?.data.userMfaType;
+  const isMfaEnabled = !!userData?.data.mfaEnabled;
+  const activeType = userMfaType !== undefined ? userMfaType.toString() : "";
 
-  const saveHandler = (type: number) => {
-    showVerifyModal(type);
+  const enableHandler = (methodType: number) => {
+    showVerifyModal(methodType);
   };
 
   return (
     <>
-      <div className="rounded-sm border">
-        <MethodsOption
-          method={{
-            type: 0,
-            label: "None",
-            description: "No two-factor authentication.",
-            provider: "none",
-            status: false,
-            Icon: CircleOff,
-          }}
-          selected={type}
-          onSaveClick={() => setIsDisableModalOpen(true)}
-          // backend gives false even if active type is 0
-          isVerified={true}
-          activeType={userData?.data.userMfaType.toString() || ""}
-        />
-        {availableMFaMethod.map((item) => (
+      {!projectEnabled ? (
+        <div className="rounded-sm border p-4 py-6 text-sm text-muted-foreground">
+          Multi-factor Authentication is disabled for your project. Contact your project admin to
+          activate it.
+        </div>
+      ) : (
+        <div className="rounded-sm border">
+          {availableMFaMethod.map((item) => (
+            <MethodsOption
+              key={item.type}
+              method={item}
+              onEnableClick={() => enableHandler(item.type)}
+              onDisableClick={() => setIsDisableModalOpen(true)}
+              isVerified={!!userData?.data.isMfaVerified}
+              isActive={isMfaEnabled && activeType === item.type.toString()}
+            />
+          ))}
           <MethodsOption
-            key={item.type}
-            method={item}
-            selected={type}
-            onSaveClick={() => saveHandler(item.type)}
-            isVerified={!!userData?.data.isMfaVerified}
-            activeType={userData?.data.userMfaType.toString() || ""}
+            method={{
+              type: 0,
+              label: "None",
+              description: "No two-factor authentication.",
+              provider: "none",
+              status: false,
+              Icon: CircleOff,
+            }}
+            onEnableClick={() => undefined}
+            onDisableClick={() => setIsDisableModalOpen(true)}
+            isVerified={true}
+            isActive={isMfaEnabled}
+            hideButton={!isMfaEnabled}
           />
-        ))}
-      </div>
+        </div>
+      )}
 
       <ProfileMFAVerify />
       <UserMFAConfirmationDisable />

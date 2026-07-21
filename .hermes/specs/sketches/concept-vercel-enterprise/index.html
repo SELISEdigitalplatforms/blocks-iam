@@ -1,0 +1,280 @@
+<!DOCTYPE html>
+<html lang="en" class="light">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Concept C: Vercel-Enterprise — Activity Timeline</title>
+<style>
+  :root {
+    --font-sans: 'DM Sans', system-ui, -apple-system, sans-serif;
+    --background: 0 0% 100%;
+    --foreground: 222.2 84% 4.9%;
+    --card: 0 0% 100%;
+    --primary: 206 100% 35%;
+    --primary-foreground: 210 40% 98%;
+    --secondary: 210 40% 96.1%;
+    --muted: 210 40% 96.1%;
+    --muted-foreground: 215.4 16.3% 46.9%;
+    --accent: 210 40% 96.1%;
+    --border: 214.3 31.8% 91.4%;
+    --radius: 0.625rem;
+    --high-emphasis: 0 0% 12%;
+    --medium-emphasis: 0 0% 35%;
+    --low-emphasis: 0 0% 55%;
+    --success: 146 79% 44%;
+    --error: 0 100% 60%;
+    --surface-app: 220 20% 97%;
+    --chart-blue: 211 96% 50%;
+    --chart-purple: 277 66% 55%;
+    --chart-orange: 30 92% 50%;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: var(--font-sans);
+    background: hsl(var(--surface-app));
+    color: hsl(var(--high-emphasis));
+    -webkit-font-smoothing: antialiased;
+    line-height: 1.5;
+  }
+
+  .layout { display: flex; gap: 20px; max-width: 1340px; margin: 0 auto; padding: 24px 28px; align-items: flex-start; }
+
+  .sidebar {
+    width: 260px; flex-shrink: 0;
+    position: sticky; top: 24px;
+  }
+  .sidebar-card {
+    background: hsl(var(--card));
+    border: 1px solid hsl(var(--border));
+    border-radius: var(--radius);
+    padding: 20px;
+    margin-bottom: 16px;
+  }
+  .sidebar-card h3 {
+    font-size: 11px; font-weight: 600; text-transform: uppercase;
+    letter-spacing: 0.5px; color: hsl(var(--low-emphasis));
+    margin-bottom: 12px;
+  }
+  .sb-btn {
+    display: flex; align-items: center; gap: 8px;
+    width: 100%; padding: 8px 10px;
+    border: none; border-radius: calc(var(--radius) - 2px);
+    background: transparent; font-size: 13px;
+    color: hsl(var(--medium-emphasis)); cursor: pointer;
+    font-family: inherit; transition: all .1s;
+    margin-bottom: 2px;
+  }
+  .sb-btn:hover { background: hsl(var(--accent)); color: hsl(var(--high-emphasis)); }
+  .sb-btn .sb-dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
+  .sb-btn .sb-count { margin-left: auto; font-size: 11px; color: hsl(var(--low-emphasis)); font-family: "SF Mono", monospace; }
+  .sb-btn.active { background: hsl(var(--accent)); font-weight: 600; color: hsl(var(--high-emphasis)); }
+
+  .main { flex: 1; min-width: 0; }
+
+  .card {
+    background: hsl(var(--card));
+    border: 1px solid hsl(var(--border));
+    border-radius: var(--radius);
+    overflow: hidden;
+    margin-bottom: 16px;
+  }
+
+  .card-header {
+    display: flex; justify-content: space-between; align-items: center;
+    padding: 16px 20px; border-bottom: 1px solid hsl(var(--border));
+  }
+  .card-header h2 { font-size: 15px; font-weight: 600; }
+  .card-header .subtitle { font-size: 12px; color: hsl(var(--low-emphasis)); }
+
+  .btn {
+    padding: 7px 14px; border-radius: calc(var(--radius) - 2px);
+    font-size: 12px; font-weight: 500; cursor: pointer;
+    font-family: inherit; transition: all .12s;
+    border: 1px solid hsl(var(--border));
+    background: hsl(var(--card)); color: hsl(var(--medium-emphasis));
+  }
+  .btn:hover { border-color: hsl(var(--primary)); color: hsl(var(--high-emphasis)); }
+  .btn-primary { background: hsl(var(--primary)); color: white; border-color: hsl(var(--primary)); }
+
+  .filter-bar {
+    display: flex; gap: 8px; padding: 12px 20px;
+    border-bottom: 1px solid hsl(var(--border));
+    flex-wrap: wrap; align-items: center;
+  }
+  .filter-pill {
+    padding: 4px 12px; border-radius: 100px;
+    font-size: 12px; border: 1px solid hsl(var(--border));
+    background: transparent; color: hsl(var(--medium-emphasis));
+    cursor: pointer; font-family: inherit;
+    transition: all .1s;
+  }
+  .filter-pill:hover { border-color: hsl(var(--primary)); }
+  .filter-pill.active { background: hsl(var(--high-emphasis)); color: white; border-color: hsl(var(--high-emphasis)); }
+
+  table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  th {
+    text-align: left; padding: 10px 20px;
+    font-size: 11px; font-weight: 600; text-transform: uppercase;
+    letter-spacing: 0.4px; color: hsl(var(--low-emphasis));
+    border-bottom: 1px solid hsl(var(--border));
+  }
+  td { padding: 12px 20px; border-bottom: 1px solid hsl(var(--border)); }
+  tr:last-child td { border-bottom: none; }
+  tbody tr { transition: background .08s; cursor: pointer; }
+  tbody tr:hover { background: hsl(var(--accent)); }
+
+  .status-dot { width: 8px; height: 8px; border-radius: 50%; display: inline-block; margin-right: 8px; }
+  .sd-blue { background: hsl(var(--chart-blue)); }
+  .sd-purple { background: hsl(var(--chart-purple)); }
+  .sd-orange { background: hsl(var(--chart-orange)); }
+  .sd-red { background: hsl(var(--error)); }
+  .sd-green { background: hsl(var(--success)); }
+  .sd-indigo { background: hsl(218 78% 42%); }
+
+  .label {
+    font-size: 11px; padding: 2px 8px; border-radius: 4px;
+    font-weight: 500; white-space: nowrap;
+  }
+  .label-blue { background: hsl(211 96% 50% / 0.08); color: hsl(211 96% 40%); }
+  .label-purple { background: hsl(277 66% 55% / 0.08); color: hsl(277 66% 42%); }
+  .label-orange { background: hsl(30 92% 50% / 0.08); color: hsl(30 92% 38%); }
+  .label-red { background: hsl(0 100% 60% / 0.08); color: hsl(0 80% 50%); }
+  .label-green { background: hsl(146 79% 44% / 0.08); color: hsl(146 79% 32%); }
+  .label-indigo { background: hsl(218 78% 42% / 0.08); color: hsl(218 78% 38%); }
+
+  .user-cell { display: flex; align-items: center; gap: 10px; }
+  .user-av {
+    width: 30px; height: 30px; border-radius: var(--radius);
+    display: flex; align-items: center; justify-content: center;
+    font-size: 11px; font-weight: 700; color: white;
+  }
+  .uav-blue { background: hsl(var(--chart-blue)); }
+  .uav-purple { background: hsl(var(--chart-purple)); }
+  .uav-green { background: hsl(var(--success)); }
+  .uav-red { background: hsl(var(--error)); }
+  .uav-orange { background: hsl(var(--chart-orange)); }
+
+  .time-short { font-family: "SF Mono", "Consolas", monospace; font-size: 12px; color: hsl(var(--medium-emphasis)); }
+  .time-full { font-size: 11px; color: hsl(var(--low-emphasis)); }
+
+  .detail-mono { font-family: "SF Mono", "Consolas", monospace; font-size: 11px; color: hsl(var(--medium-emphasis)); background: hsl(var(--accent)); padding: 1px 6px; border-radius: 3px; }
+  .detail-text { font-size: 12px; color: hsl(var(--low-emphasis)); }
+
+  .pag-row {
+    display: flex; justify-content: space-between; align-items: center;
+    padding: 12px 20px; border-top: 1px solid hsl(var(--border));
+    font-size: 12px; color: hsl(var(--low-emphasis));
+  }
+  .pag-btns { display: flex; gap: 4px; }
+  .pag-btn {
+    width: 28px; height: 28px; display: flex; align-items: center; justify-content: center;
+    border-radius: calc(var(--radius) - 2px); border: 1px solid hsl(var(--border));
+    background: transparent; font-size: 12px; cursor: pointer;
+    font-family: inherit; color: hsl(var(--medium-emphasis));
+    transition: all .1s;
+  }
+  .pag-btn:hover { border-color: hsl(var(--primary)); }
+  .pag-btn.active { background: hsl(var(--primary)); color: white; border-color: hsl(var(--primary)); }
+  .pag-btn:disabled { opacity: 0.35; }
+</style>
+</head>
+<body>
+
+<div class="layout">
+  <aside class="sidebar">
+    <div class="sidebar-card">
+      <h3>Event Type</h3>
+      <button class="sb-btn active"><span class="sb-dot" style="background:hsl(var(--high-emphasis))"></span>All events<span class="sb-count">1,542</span></button>
+      <button class="sb-btn"><span class="sb-dot sd-blue"></span>Login<span class="sb-count">892</span></button>
+      <button class="sb-btn"><span class="sb-dot sd-purple"></span>MFA<span class="sb-count">124</span></button>
+      <button class="sb-btn"><span class="sb-dot sd-green"></span>User changes<span class="sb-count">218</span></button>
+      <button class="sb-btn"><span class="sb-dot sd-red"></span>Security<span class="sb-count">67</span></button>
+      <button class="sb-btn"><span class="sb-dot sd-orange"></span>Tokens<span class="sb-count">241</span></button>
+    </div>
+    <div class="sidebar-card">
+      <h3>Time</h3>
+      <button class="sb-btn">Today</button>
+      <button class="sb-btn active">Last 7 days</button>
+      <button class="sb-btn">Last 30 days</button>
+      <button class="sb-btn">Custom range</button>
+    </div>
+  </aside>
+
+  <main class="main">
+    <div class="card">
+      <div class="card-header">
+        <div>
+          <h2>Activity Timeline</h2>
+          <span class="subtitle">1,542 events · Last 7 days</span>
+        </div>
+        <button class="btn">Export CSV</button>
+      </div>
+
+      <div class="filter-bar">
+        <input style="flex:1;min-width:160px;padding:6px 10px;border:1px solid hsl(var(--border));border-radius:100px;font-size:12px;font-family:inherit;outline:none" placeholder="Search users or events...">
+        <span class="filter-pill active">All</span>
+        <span class="filter-pill">Login</span>
+        <span class="filter-pill">MFA</span>
+        <span class="filter-pill">Users</span>
+        <span class="filter-pill">Security</span>
+      </div>
+
+      <table>
+        <thead><tr><th>Event</th><th>User</th><th>Time</th><th>Details</th></tr></thead>
+        <tbody>
+          <tr>
+            <td><span class="status-dot sd-blue"></span><span class="label label-blue">Login · Password</span></td>
+            <td><div class="user-cell"><div class="user-av uav-blue">JD</div><div>Jane Doe<br><span style="font-size:11px;color:hsl(var(--low-emphasis))">jane@selise.com</span></div></div></td>
+            <td><div class="time-short">2m ago</div><div class="time-full">14:32 UTC</div></td>
+            <td><span class="detail-mono">10.0.0.1</span> <span class="detail-text">· Chrome · Windows</span></td>
+          </tr>
+          <tr>
+            <td><span class="status-dot sd-purple"></span><span class="label label-purple">MFA Enabled</span></td>
+            <td><div class="user-cell"><div class="user-av uav-purple">BS</div><div>Bob Smith<br><span style="font-size:11px;color:hsl(var(--low-emphasis))">bob@selise.com</span></div></div></td>
+            <td><div class="time-short">12m ago</div><div class="time-full">14:22 UTC</div></td>
+            <td><span class="detail-mono">10.0.0.42</span> <span class="detail-text">· Chrome · macOS · TOTP</span></td>
+          </tr>
+          <tr>
+            <td><span class="status-dot sd-green"></span><span class="label label-green">User Created</span></td>
+            <td><div class="user-cell"><div class="user-av uav-green">AD</div><div>Admin User<br><span style="font-size:11px;color:hsl(var(--low-emphasis))">admin@selise.com</span></div></div></td>
+            <td><div class="time-short">1h ago</div><div class="time-full">13:15 UTC</div></td>
+            <td><span class="detail-text">Created</span> <span class="detail-mono">alice@selise.com</span> <span class="detail-text">· role member</span></td>
+          </tr>
+          <tr>
+            <td><span class="status-dot sd-red"></span><span class="label label-red">Deactivated</span></td>
+            <td><div class="user-cell"><div class="user-av uav-red">CL</div><div>Carol Lee<br><span style="font-size:11px;color:hsl(var(--low-emphasis))">carol@selise.com</span></div></div></td>
+            <td><div class="time-short">2h ago</div><div class="time-full">12:05 UTC</div></td>
+            <td><span class="detail-text">By</span> <span class="detail-mono">admin@selise.com</span></td>
+          </tr>
+          <tr>
+            <td><span class="status-dot sd-orange"></span><span class="label label-orange">Token Renewed</span></td>
+            <td><div class="user-cell"><div class="user-av uav-orange">DK</div><div>Dave Kim<br><span style="font-size:11px;color:hsl(var(--low-emphasis))">dave@selise.com</span></div></div></td>
+            <td><div class="time-short">3h ago</div><div class="time-full">11:42 UTC</div></td>
+            <td><span class="detail-mono">10.0.0.88</span> <span class="detail-text">· Safari · iOS</span></td>
+          </tr>
+          <tr>
+            <td><span class="status-dot sd-indigo"></span><span class="label label-indigo">Roles Changed</span></td>
+            <td><div class="user-cell"><div class="user-av uav-blue">EM</div><div>Eva Martinez<br><span style="font-size:11px;color:hsl(var(--low-emphasis))">eva@selise.com</span></div></div></td>
+            <td><div class="time-short">5h ago</div><div class="time-full">09:18 UTC</div></td>
+            <td><span class="detail-text">+manager +viewer</span></td>
+          </tr>
+        </tbody>
+      </table>
+
+      <div class="pag-row">
+        <span>Showing 1–6 of 1,542</span>
+        <div class="pag-btns">
+          <button class="pag-btn" disabled>←</button>
+          <button class="pag-btn active">1</button>
+          <button class="pag-btn">2</button>
+          <button class="pag-btn">3</button>
+          <button class="pag-btn">4</button>
+          <button class="pag-btn">→</button>
+        </div>
+      </div>
+    </div>
+  </main>
+</div>
+
+</body>
+</html>

@@ -8,7 +8,7 @@ import {
   mockGetMailBoxMailResponse,
   mockSuccessResponse,
 } from "../../test-utils/__mocks__";
-import { http } from "@/lib/http-client";
+import { serviceInstances } from "@/lib/http-client";
 import EmailService from "./email.services";
 import { TEST_PROJECT_KEY } from "@/test-utils/__mocks__/data.mock";
 import {

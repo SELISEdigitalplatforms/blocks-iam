@@ -8,8 +8,9 @@ import {
 import { Captcha } from "@/components/captcha";
 import { isErrorWithErrors } from "@/lib/error";
 import { getRuntimeEnv } from "@/lib/runtime-env";
+import { useOidcUiConfig } from "@blocks-idp/authentication/hooks/use-oidc-ui-config";
 import { useSignupByEmail } from "@blocks-idp/authentication/hooks/use-auth";
-import { LoginOption } from "@blocks-idp/authentication/models/auth-configuration.model";
+import { LoginOption } from "@blocks-idp/authentication/models/auth.model";
 import { useCaptcha } from "@blocks-idp/captcha/hooks/use-captcha";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { Link, useNavigate } from "react-router-dom";
@@ -25,10 +26,12 @@ export const SignupForm = ({
   loginOption,
   emailSignUpEnabled,
   ssoSignUpEnabled,
+  tenantId,
 }: {
-  loginOption: LoginOption;
+  loginOption?: LoginOption;
   emailSignUpEnabled: boolean;
   ssoSignUpEnabled: boolean;
+  tenantId?: string;
 }) => {
   const [isChecked, setIsChecked] = useState(false);
   const navigate = useNavigate();
@@ -40,15 +43,20 @@ export const SignupForm = ({
     resolver: zodResolver(signupFormSchema),
   });
   const { isPending, mutateAsync } = useSignupByEmail();
+  const { data: oidcUiConfig, captchaEnabled } = useOidcUiConfig(tenantId);
 
-  const googleSiteKey = getRuntimeEnv("BLOCKS_GOOGLE_SITE_KEY") || "";
+  const googleSiteKey =
+    oidcUiConfig?.captcha?.key || getRuntimeEnv("BLOCKS_GOOGLE_SITE_KEY") || "";
+  const captchaType =
+    oidcUiConfig?.captcha?.provider === "hcaptcha" ? "hCaptcha" : "reCaptcha-v2-checkbox";
   const {
     code: captchaCode,
     captcha,
     reset: resetCaptcha,
   } = useCaptcha({
-    type: "reCaptcha-v2-checkbox",
     siteKey: googleSiteKey,
+    type: captchaType,
+    generator: oidcUiConfig?.captcha?.generator,
   });
 
   const { isValid } = form.formState;
@@ -71,6 +79,7 @@ export const SignupForm = ({
       const res = await mutateAsync({
         ...values,
         captchaCode,
+        tenantId,
       });
       if (!res.isSuccess) {
         resetCaptcha();
@@ -112,6 +121,62 @@ export const SignupForm = ({
       {emailSignUpEnabled && (
         <Form {...form}>
           <form ref={formRef} onSubmit={form.handleSubmit(onSubmitHandler, shake)} className="flex flex-col gap-5 w-full" noValidate>
+            {/* First Name & Last Name */}
+            <div className="flex flex-col sm:flex-row gap-4">
+              <FormField
+                control={form.control}
+                name="firstName"
+                render={({ field }) => (
+                  <FormItem className="flex-1">
+                    <div className="flex flex-col gap-2">
+                      <label htmlFor="signup-first-name" className="oidc-sci-fi-label">
+                        First Name
+                      </label>
+                      <FormControl>
+                        <input
+                          id="signup-first-name"
+                          type="text"
+                          autoComplete="given-name"
+                          placeholder="Jane"
+                          className="oidc-sci-fi-input"
+                          aria-invalid={!!form.formState.errors.firstName}
+                          disabled={isAuthenticating}
+                          {...field}
+                        />
+                      </FormControl>
+                      <FormMessage className="text-xs oidc-font-rajdhani" style={{ color: "var(--danger)" }} />
+                    </div>
+                  </FormItem>
+                )}
+              />
+              <FormField
+                control={form.control}
+                name="lastName"
+                render={({ field }) => (
+                  <FormItem className="flex-1">
+                    <div className="flex flex-col gap-2">
+                      <label htmlFor="signup-last-name" className="oidc-sci-fi-label">
+                        Last Name
+                      </label>
+                      <FormControl>
+                        <input
+                          id="signup-last-name"
+                          type="text"
+                          autoComplete="family-name"
+                          placeholder="Doe"
+                          className="oidc-sci-fi-input"
+                          aria-invalid={!!form.formState.errors.lastName}
+                          disabled={isAuthenticating}
+                          {...field}
+                        />
+                      </FormControl>
+                      <FormMessage className="text-xs oidc-font-rajdhani" style={{ color: "var(--danger)" }} />
+                    </div>
+                  </FormItem>
+                )}
+              />
+            </div>
+
             {/* Email */}
             <FormField
               control={form.control}
@@ -140,8 +205,8 @@ export const SignupForm = ({
               )}
             />
 
-            {/* CAPTCHA (shown when form is valid) */}
-            {isValid && (
+            {/* CAPTCHA (shown when captcha is enabled and form is valid) */}
+            {captchaEnabled && isValid && (
               <div>
                 <Captcha {...(captcha as any)} />
               </div>
@@ -194,7 +259,12 @@ export const SignupForm = ({
             {/* Submit */}
             <button
               type="submit"
-              disabled={isAuthenticating || !isValid || !captchaCode || !isChecked}
+              disabled={
+                isAuthenticating ||
+                !isValid ||
+                (captchaEnabled && !captchaCode) ||
+                !isChecked
+              }
               className="oidc-sci-fi-btn mt-1 w-full flex items-center justify-center gap-2"
             >
               {isAuthenticating ? (
@@ -221,7 +291,7 @@ export const SignupForm = ({
         </div>
       )}
 
-      {showSocialLogin && (
+      {showSocialLogin && loginOption && (
         <SsoSignin loginOption={loginOption} />
       )}
     </div>

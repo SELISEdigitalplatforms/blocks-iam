@@ -7,16 +7,17 @@ import { ResetPasswordForm } from "./reset-password-form";
 type ResetPasswordProps = {
   code?: string;
   lang?: string;
+  tenantId?: string;
 };
 
-export const ResetPassword = ({ code }: ResetPasswordProps) => {
+export const ResetPassword = ({ code, tenantId }: ResetPasswordProps) => {
   return (
     <OidcAuthShell
       panelConfig={RESET_PASSWORD_PANEL}
       heading="Set a new password"
       headingDimFirst={3}
       successTitle="Password Updated"
-      successSubtitle="Your password has been reset. Redirecting to login…"
+      successSubtitle="Your password has been reset successfully."
       showCorners={false}
       footerNote={
         <p className="text-xs" style={{ color: "var(--muted)", fontFamily: "system-ui, sans-serif" }}>
@@ -25,7 +26,7 @@ export const ResetPassword = ({ code }: ResetPasswordProps) => {
       }
     >
       {code ? (
-        <ResetPasswordForm code={code} />
+        <ResetPasswordForm code={code} tenantId={tenantId} />
       ) : (
         <div className="flex flex-col items-center gap-4 py-4 text-center">
           <div

@@ -1,12 +1,12 @@
 namespace Authentication.DomainService.Dtos
 {
-    public class RefreshTokenCache
+    public sealed class RefreshTokenCache
     {
         public string? RefreshToken { get; set; }
         public string? TenantId { get; set; }
         public string? OrganizationId { get; set; }
         public string? ClientId { get; set; }
-        public string? SessionId { get; set; }
+        public string SessionId { get; set; } = string.Empty;
         public DateTime IssuedUtc { get; set; }
         public DateTime ExpiresUtc { get; set; }
         public DateTime AbsoluteExpiresUtc { get; set; }

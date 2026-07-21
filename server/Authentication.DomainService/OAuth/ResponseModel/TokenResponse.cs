@@ -2,7 +2,7 @@ using Iam.DomainService.Entities;
 
 namespace Authentication.DomainService.OAuth.ResponseModel
 {
-    public class TokenResponse
+    public sealed class TokenResponse
     {
         public string? AccessToken { get; set; }
         public string TokenType { get; set; } = "Bearer";
@@ -18,6 +18,9 @@ namespace Authentication.DomainService.OAuth.ResponseModel
         public string? MfaId { get; set; }
         public UserMfaType UserMfa { get; set; }
         public int StatusCode { get; set; }
+        public string? ClientId { get; set; }
+        public string? MfaMethods { get; set; }
+        public bool MfaRequired { get; set; }
 
         public string? SsoUserRedirectUrl { get; set; }
     }

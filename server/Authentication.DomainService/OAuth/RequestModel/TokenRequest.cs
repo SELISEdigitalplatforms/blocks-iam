@@ -3,7 +3,7 @@ using Microsoft.AspNetCore.Http;
 
 namespace Authentication.DomainService.OAuth.RequestModel
 {
-    public class TokenRequest
+    public sealed class TokenRequest
     {
         public string? GrantType { get; set; }
         public string? Code { get; set; }
@@ -29,6 +29,7 @@ namespace Authentication.DomainService.OAuth.RequestModel
         public string? TargetTenantId { get; set; }
         public string? OriginalTenantId { get; set; }
         public string? ImpersonationSessionId { get; set; }
+        public string? IdpSessionId { get; set; }
 
     }
 }

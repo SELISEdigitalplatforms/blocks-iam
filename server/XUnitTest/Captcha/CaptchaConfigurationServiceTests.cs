@@ -1,70 +1,46 @@
-using Captcha.DomainService.Configuration;
+using Blocks.CaptchaDriver;
 using FluentAssertions;
-using Microsoft.Extensions.Logging;
 using Moq;
 
 namespace XUnitTest.Captcha
 {
     public class CaptchaConfigurationServiceTests
     {
-        private readonly Mock<ICaptchaConfigurationRepository> _repository;
-        private readonly CaptchaConfigurationService _service;
-
-        public CaptchaConfigurationServiceTests()
+        [Fact]
+        public async Task GetByNameAsync_DelegatesToRepository()
         {
-            _repository = new Mock<ICaptchaConfigurationRepository>();
-            _service = new CaptchaConfigurationService(_repository.Object);
+            var repo = new Mock<ICaptchaConfigurationRepository>();
+            var config = new CaptchaConfiguration { Provider = "recaptcha" };
+            repo.Setup(r => r.GetByProviderAsync("recaptcha"))
+                .Returns(Task.FromResult<CaptchaConfiguration?>(config));
+
+            var service = new CaptchaConfigurationService(repo.Object);
+            var result = await service.GetByNameAsync("recaptcha");
+
+            result.Should().Be(config);
+            repo.Verify(r => r.GetByProviderAsync("recaptcha"), Times.Once);
         }
 
         [Fact]
-        public async Task GetByNameAsync_WithExistingConfiguration_ReturnsConfiguration()
+        public async Task GetByNameAsync_ThrowsOnNull()
         {
-            // Arrange
-            var configName = "recaptcha";
-            var expected = new CaptchaConfiguration
-            {
-                Provider = configName,
-                CaptchaKey = "test-key",
-                CaptchaSecret = "test-secret",
-                IsEnable = true
-            };
-
-            _repository.Setup(x => x.GetByProviderAsync(configName))
-                .ReturnsAsync(expected);
-
-            // Act
-            var result = await _service.GetByNameAsync(configName);
-
-            // Assert
-            result.Should().NotBeNull();
-            result.Provider.Should().Be(configName);
-            result.CaptchaKey.Should().Be("test-key");
-            _repository.Verify(x => x.GetByProviderAsync(configName), Times.Once);
+            var service = new CaptchaConfigurationService(new Mock<ICaptchaConfigurationRepository>().Object);
+            await Assert.ThrowsAnyAsync<ArgumentNullException>(() => service.GetByNameAsync(null!));
         }
 
         [Fact]
-        public async Task GetCaptchaConfigurationAsync_WithEnabledConfiguration_ReturnsConfiguration()
+        public async Task GetCaptchaConfigurationAsync_DelegatesToRepository()
         {
-            // Arrange
-            var expected = new CaptchaConfiguration
-            {
-                Provider = "blocks",
-                CaptchaKey = "key",
-                CaptchaSecret = "secret",
-                IsEnable = true
-            };
+            var repo = new Mock<ICaptchaConfigurationRepository>();
+            var config = new CaptchaConfiguration { IsEnable = true };
+            repo.Setup(r => r.GetCaptchaConfigurationAsync())
+                .Returns(Task.FromResult<CaptchaConfiguration?>(config));
 
-            _repository.Setup(x => x.GetCaptchaConfigurationAsync())
-                .ReturnsAsync(expected);
+            var service = new CaptchaConfigurationService(repo.Object);
+            var result = await service.GetCaptchaConfigurationAsync();
 
-            // Act
-            var result = await _service.GetCaptchaConfigurationAsync();
-
-            // Assert
-            result.Should().NotBeNull();
-            result.IsEnable.Should().BeTrue();
-            result.Provider.Should().Be("blocks");
-            _repository.Verify(x => x.GetCaptchaConfigurationAsync(), Times.Once);
+            result.Should().Be(config);
+            repo.Verify(r => r.GetCaptchaConfigurationAsync(), Times.Once);
         }
     }
 }

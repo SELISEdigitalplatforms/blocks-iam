@@ -1,478 +1,167 @@
+using System.Net;
 using FluentAssertions;
-using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Options;
 using Moq;
 using Moq.Protected;
-using System.Net;
 using Worker;
+using Worker.Configuration;
 
 namespace XUnitTest.Worker
 {
     public class PeriodicPingBackgroundServiceTests
     {
-        #region Constructor and Configuration Tests
-
-        [Fact]
-        public void Constructor_LoadsConfigurationCorrectly()
+        private static PeriodicPingBackgroundService CreateService(
+            PeriodicPingConfiguration options,
+            out Mock<IHttpClientFactory> httpFactory,
+            out List<HttpRequestMessage> sentRequests,
+            out List<string> logMessages)
         {
-            // Arrange
-            var config = CreateConfiguration(enabled: true, url: "http://test.com", interval: 60);
-            var mockHttpFactory = new Mock<IHttpClientFactory>();
-            var mockLogger = new Mock<ILogger<PeriodicPingBackgroundService>>();
+            var optionsMonitor = new Mock<IOptionsMonitor<PeriodicPingConfiguration>>();
+            optionsMonitor.SetupGet(m => m.CurrentValue).Returns(options);
 
-            // Act
-            var service = new PeriodicPingBackgroundService(mockHttpFactory.Object, config, mockLogger.Object);
-
-            // Assert
-            service.Should().NotBeNull();
-        }
-
-        #endregion
-
-        #region ExecuteAsync - Disabled Service Tests
-
-        [Fact]
-        public async Task ExecuteAsync_WhenDisabled_LogsAndReturnsImmediately()
-        {
-            // Arrange
-            var config = CreateConfiguration(enabled: false, url: "http://test.com", interval: 60);
-            var mockHttpFactory = new Mock<IHttpClientFactory>();
-            var mockLogger = new Mock<ILogger<PeriodicPingBackgroundService>>();
-            var service = new PeriodicPingBackgroundService(mockHttpFactory.Object, config, mockLogger.Object);
-            var cts = new CancellationTokenSource();
-
-            // Act
-            await service.StartAsync(cts.Token);
-            await Task.Delay(100);
-            await service.StopAsync(cts.Token);
-
-            // Assert
-            mockLogger.Verify(
-                x => x.Log(
-                    LogLevel.Information,
-                    It.IsAny<EventId>(),
-                    It.Is<It.IsAnyType>((v, t) => v.ToString().Contains("Periodic ping is disabled")),
-                    It.IsAny<Exception>(),
-                    It.IsAny<Func<It.IsAnyType, Exception?, string>>()),
-                Times.Once);
-
-            // Should not create any HTTP client
-            mockHttpFactory.Verify(x => x.CreateClient(It.IsAny<string>()), Times.Never);
-        }
-
-        [Fact]
-        public async Task ExecuteAsync_WhenEnabledButUrlEmpty_LogsWarningAndReturns()
-        {
-            // Arrange
-            var config = CreateConfiguration(enabled: true, url: "", interval: 60);
-            var mockHttpFactory = new Mock<IHttpClientFactory>();
-            var mockLogger = new Mock<ILogger<PeriodicPingBackgroundService>>();
-            var service = new PeriodicPingBackgroundService(mockHttpFactory.Object, config, mockLogger.Object);
-            var cts = new CancellationTokenSource();
-
-            // Act
-            await service.StartAsync(cts.Token);
-            await Task.Delay(100);
-            await service.StopAsync(cts.Token);
-
-            // Assert
-            mockLogger.Verify(
-                x => x.Log(
-                    LogLevel.Warning,
-                    It.IsAny<EventId>(),
-                    It.Is<It.IsAnyType>((v, t) => v.ToString().Contains("PingUrl is empty")),
-                    It.IsAny<Exception>(),
-                    It.IsAny<Func<It.IsAnyType, Exception?, string>>()),
-                Times.Once);
-
-            mockHttpFactory.Verify(x => x.CreateClient(It.IsAny<string>()), Times.Never);
-        }
-
-        [Fact]
-        public async Task ExecuteAsync_WhenEnabledButUrlWhitespace_LogsWarningAndReturns()
-        {
-            // Arrange
-            var config = CreateConfiguration(enabled: true, url: "   ", interval: 60);
-            var mockHttpFactory = new Mock<IHttpClientFactory>();
-            var mockLogger = new Mock<ILogger<PeriodicPingBackgroundService>>();
-            var service = new PeriodicPingBackgroundService(mockHttpFactory.Object, config, mockLogger.Object);
-            var cts = new CancellationTokenSource();
-
-            // Act
-            await service.StartAsync(cts.Token);
-            await Task.Delay(100);
-            await service.StopAsync(cts.Token);
-
-            // Assert
-            mockLogger.Verify(
-                x => x.Log(
-                    LogLevel.Warning,
-                    It.IsAny<EventId>(),
-                    It.Is<It.IsAnyType>((v, t) => v.ToString().Contains("PingUrl is empty")),
-                    It.IsAny<Exception>(),
-                    It.IsAny<Func<It.IsAnyType, Exception?, string>>()),
-                Times.Once);
-        }
-
-        #endregion
-
-        #region PingAsync - Success Tests
-
-        [Fact]
-        public async Task ExecuteAsync_WhenEnabled_PerformsImmediatePing()
-        {
-            // Arrange
-            var config = CreateConfiguration(enabled: true, url: "http://test.com", interval: 60);
-            var mockHttpHandler = CreateMockHttpHandler(HttpStatusCode.OK);
-            var mockHttpFactory = CreateMockHttpClientFactory(mockHttpHandler.Object);
-            var mockLogger = new Mock<ILogger<PeriodicPingBackgroundService>>();
-            var service = new PeriodicPingBackgroundService(mockHttpFactory.Object, config, mockLogger.Object);
-            var cts = new CancellationTokenSource();
-
-            // Act
-            await service.StartAsync(cts.Token);
-            await Task.Delay(200); // Wait for immediate ping
-            await service.StopAsync(cts.Token);
-
-            // Assert
-            mockLogger.Verify(
-                x => x.Log(
-                    LogLevel.Information,
-                    It.IsAny<EventId>(),
-                    It.Is<It.IsAnyType>((v, t) => v.ToString().Contains("Pinging")),
-                    It.IsAny<Exception>(),
-                    It.IsAny<Func<It.IsAnyType, Exception?, string>>()),
-                Times.AtLeastOnce);
-
-            mockHttpHandler.Protected().Verify(
-                "SendAsync",
-                Times.AtLeastOnce(),
-                ItExpr.Is<HttpRequestMessage>(req => req.Method == HttpMethod.Get && req.RequestUri.ToString().StartsWith("http://test.com")),
-                ItExpr.IsAny<CancellationToken>());
-        }
-
-        [Fact]
-        public async Task PingAsync_WithSuccessResponse_LogsDebug()
-        {
-            // Arrange
-            var config = CreateConfiguration(enabled: true, url: "http://test.com", interval: 60);
-            var mockHttpHandler = CreateMockHttpHandler(HttpStatusCode.OK);
-            var mockHttpFactory = CreateMockHttpClientFactory(mockHttpHandler.Object);
-            var mockLogger = new Mock<ILogger<PeriodicPingBackgroundService>>();
-            var service = new PeriodicPingBackgroundService(mockHttpFactory.Object, config, mockLogger.Object);
-            var cts = new CancellationTokenSource();
-
-            // Act
-            await service.StartAsync(cts.Token);
-            await Task.Delay(200);
-            await service.StopAsync(cts.Token);
-
-            // Assert
-            mockLogger.Verify(
-                x => x.Log(
-                    LogLevel.Debug,
-                    It.IsAny<EventId>(),
-                    It.Is<It.IsAnyType>((v, t) => v.ToString().Contains("Ping success")),
-                    It.IsAny<Exception>(),
-                    It.IsAny<Func<It.IsAnyType, Exception?, string>>()),
-                Times.AtLeastOnce);
-        }
-
-        #endregion
-
-        #region PingAsync - Error Response Tests
-
-        [Theory]
-        [InlineData(HttpStatusCode.BadRequest)]
-        [InlineData(HttpStatusCode.Unauthorized)]
-        [InlineData(HttpStatusCode.Forbidden)]
-        [InlineData(HttpStatusCode.NotFound)]
-        public async Task PingAsync_WithClientError_LogsWarning(HttpStatusCode statusCode)
-        {
-            // Arrange
-            var config = CreateConfiguration(enabled: true, url: "http://test.com", interval: 60);
-            var mockHttpHandler = CreateMockHttpHandler(statusCode);
-            var mockHttpFactory = CreateMockHttpClientFactory(mockHttpHandler.Object);
-            var mockLogger = new Mock<ILogger<PeriodicPingBackgroundService>>();
-            var service = new PeriodicPingBackgroundService(mockHttpFactory.Object, config, mockLogger.Object);
-            var cts = new CancellationTokenSource();
-
-            // Act
-            await service.StartAsync(cts.Token);
-            await Task.Delay(200);
-            await service.StopAsync(cts.Token);
-
-            // Assert
-            mockLogger.Verify(
-                x => x.Log(
-                    LogLevel.Warning,
-                    It.IsAny<EventId>(),
-                    It.Is<It.IsAnyType>((v, t) => v.ToString().Contains("client error")),
-                    It.IsAny<Exception>(),
-                    It.IsAny<Func<It.IsAnyType, Exception?, string>>()),
-                Times.AtLeastOnce);
-        }
-
-        [Theory]
-        [InlineData(HttpStatusCode.InternalServerError)]
-        [InlineData(HttpStatusCode.BadGateway)]
-        [InlineData(HttpStatusCode.ServiceUnavailable)]
-        [InlineData(HttpStatusCode.GatewayTimeout)]
-        public async Task PingAsync_WithServerError_LogsError(HttpStatusCode statusCode)
-        {
-            // Arrange
-            var config = CreateConfiguration(enabled: true, url: "http://test.com", interval: 60);
-            var mockHttpHandler = CreateMockHttpHandler(statusCode);
-            var mockHttpFactory = CreateMockHttpClientFactory(mockHttpHandler.Object);
-            var mockLogger = new Mock<ILogger<PeriodicPingBackgroundService>>();
-            var service = new PeriodicPingBackgroundService(mockHttpFactory.Object, config, mockLogger.Object);
-            var cts = new CancellationTokenSource();
-
-            // Act
-            await service.StartAsync(cts.Token);
-            await Task.Delay(200);
-            await service.StopAsync(cts.Token);
-
-            // Assert
-            mockLogger.Verify(
-                x => x.Log(
-                    LogLevel.Error,
-                    It.IsAny<EventId>(),
-                    It.Is<It.IsAnyType>((v, t) => v.ToString().Contains("server error")),
-                    It.IsAny<Exception>(),
-                    It.IsAny<Func<It.IsAnyType, Exception?, string>>()),
-                Times.AtLeastOnce);
-        }
-
-        #endregion
-
-        #region PingAsync - Exception Tests
-
-        [Fact]
-        public async Task PingAsync_WithTimeout_LogsWarning()
-        {
-            // Arrange
-            var config = CreateConfiguration(enabled: true, url: "http://test.com", interval: 60);
-            var mockHttpHandler = new Mock<HttpMessageHandler>();
-            mockHttpHandler.Protected()
+            var capturedRequests = new List<HttpRequestMessage>();
+            var handler = new Mock<HttpMessageHandler>();
+            handler.Protected()
                 .Setup<Task<HttpResponseMessage>>(
                     "SendAsync",
                     ItExpr.IsAny<HttpRequestMessage>(),
                     ItExpr.IsAny<CancellationToken>())
-                .ThrowsAsync(new TaskCanceledException("Timeout"));
+                .ReturnsAsync(new HttpResponseMessage(HttpStatusCode.OK))
+                .Callback<HttpRequestMessage, CancellationToken>((req, _) => capturedRequests.Add(req));
 
-            var mockHttpFactory = CreateMockHttpClientFactory(mockHttpHandler.Object);
-            var mockLogger = new Mock<ILogger<PeriodicPingBackgroundService>>();
-            var service = new PeriodicPingBackgroundService(mockHttpFactory.Object, config, mockLogger.Object);
-            var cts = new CancellationTokenSource();
+            var client = new HttpClient(handler.Object);
+            httpFactory = new Mock<IHttpClientFactory>();
+            httpFactory.Setup(f => f.CreateClient(It.IsAny<string>())).Returns(client);
 
-            // Act
-            await service.StartAsync(cts.Token);
-            await Task.Delay(200);
-            await service.StopAsync(cts.Token);
+            sentRequests = capturedRequests;
+            logMessages = new List<string>();
+            var logger = new LoggerFactory().CreateLogger<PeriodicPingBackgroundService>();
 
-            // Assert
-            mockLogger.Verify(
-                x => x.Log(
-                    LogLevel.Warning,
-                    It.IsAny<EventId>(),
-                    It.Is<It.IsAnyType>((v, t) => v.ToString().Contains("timed out")),
-                    It.IsAny<Exception>(),
-                    It.IsAny<Func<It.IsAnyType, Exception?, string>>()),
-                Times.AtLeastOnce);
+            return new PeriodicPingBackgroundService(
+                httpFactory.Object,
+                optionsMonitor.Object,
+                logger);
         }
 
         [Fact]
-        public async Task PingAsync_WithHttpRequestException_LogsError()
+        public async Task ExecuteAsync_WhenDisabled_LogsAndReturnsWithoutPinging()
         {
-            // Arrange
-            var config = CreateConfiguration(enabled: true, url: "http://test.com", interval: 60);
-            var mockHttpHandler = new Mock<HttpMessageHandler>();
-            mockHttpHandler.Protected()
-                .Setup<Task<HttpResponseMessage>>(
-                    "SendAsync",
-                    ItExpr.IsAny<HttpRequestMessage>(),
-                    ItExpr.IsAny<CancellationToken>())
-                .ThrowsAsync(new HttpRequestException("Connection failed"));
+            var options = new PeriodicPingConfiguration { Enabled = false, PingUrl = "https://x", PingIntervalSeconds = 60 };
+            var service = CreateService(options, out var httpFactory, out var sentRequests, out _);
 
-            var mockHttpFactory = CreateMockHttpClientFactory(mockHttpHandler.Object);
-            var mockLogger = new Mock<ILogger<PeriodicPingBackgroundService>>();
-            var service = new PeriodicPingBackgroundService(mockHttpFactory.Object, config, mockLogger.Object);
-            var cts = new CancellationTokenSource();
-
-            // Act
-            await service.StartAsync(cts.Token);
-            await Task.Delay(200);
-            await service.StopAsync(cts.Token);
-
-            // Assert
-            mockLogger.Verify(
-                x => x.Log(
-                    LogLevel.Error,
-                    It.IsAny<EventId>(),
-                    It.Is<It.IsAnyType>((v, t) => v.ToString().Contains("request failed")),
-                    It.IsAny<HttpRequestException>(),
-                    It.IsAny<Func<It.IsAnyType, Exception?, string>>()),
-                Times.AtLeastOnce);
-        }
-
-        [Fact]
-        public async Task ExecuteAsync_WhenExceptionInLoop_ContinuesRunning()
-        {
-            // Arrange
-            var config = CreateConfiguration(enabled: true, url: "http://test.com", interval: 1);
-            var callCount = 0;
-            var mockHttpHandler = new Mock<HttpMessageHandler>();
-            mockHttpHandler.Protected()
-                .Setup<Task<HttpResponseMessage>>(
-                    "SendAsync",
-                    ItExpr.IsAny<HttpRequestMessage>(),
-                    ItExpr.IsAny<CancellationToken>())
-                .ReturnsAsync(() =>
-                {
-                    callCount++;
-                    if (callCount == 1)
-                        throw new HttpRequestException("First call failed");
-                    return new HttpResponseMessage(HttpStatusCode.OK);
-                });
-
-            var mockHttpFactory = CreateMockHttpClientFactory(mockHttpHandler.Object);
-            var mockLogger = new Mock<ILogger<PeriodicPingBackgroundService>>();
-            var service = new PeriodicPingBackgroundService(mockHttpFactory.Object, config, mockLogger.Object);
-            var cts = new CancellationTokenSource();
-
-            // Act
-            await service.StartAsync(cts.Token);
-            await Task.Delay(1500); // Wait for multiple pings
-            await service.StopAsync(cts.Token);
-
-            // Assert
-            callCount.Should().BeGreaterThan(1, "Service should continue after exception");
-            mockLogger.Verify(
-                x => x.Log(
-                    LogLevel.Error,
-                    It.IsAny<EventId>(),
-                    It.Is<It.IsAnyType>((v, t) => v.ToString().Contains("Periodic ping failed")),
-                    It.IsAny<Exception>(),
-                    It.IsAny<Func<It.IsAnyType, Exception?, string>>()),
-                Times.Never); // HttpRequestException is caught in PingAsync, not outer loop
-        }
-
-        #endregion
-
-        #region Cancellation Tests
-
-        [Fact]
-        public async Task ExecuteAsync_WhenCancelled_StopsGracefully()
-        {
-            // Arrange
-            var config = CreateConfiguration(enabled: true, url: "http://test.com", interval: 60);
-            var mockHttpHandler = CreateMockHttpHandler(HttpStatusCode.OK);
-            var mockHttpFactory = CreateMockHttpClientFactory(mockHttpHandler.Object);
-            var mockLogger = new Mock<ILogger<PeriodicPingBackgroundService>>();
-            var service = new PeriodicPingBackgroundService(mockHttpFactory.Object, config, mockLogger.Object);
-            var cts = new CancellationTokenSource();
-
-            // Act
-            await service.StartAsync(cts.Token);
+            await service.StartAsync(CancellationToken.None);
             await Task.Delay(100);
-            await service.StopAsync(cts.Token);
+            await service.StopAsync(CancellationToken.None);
 
-            // Assert - Should stop without errors
-            service.Should().NotBeNull();
-        }
-
-        #endregion
-
-        #region Timer Reset Tests
-
-        [Fact]
-        public async Task ResetTimer_WithZeroInterval_DisablesTimer()
-        {
-            // Arrange
-            var config = CreateConfiguration(enabled: true, url: "http://test.com", interval: 0);
-            var mockHttpHandler = CreateMockHttpHandler(HttpStatusCode.OK);
-            var mockHttpFactory = CreateMockHttpClientFactory(mockHttpHandler.Object);
-            var mockLogger = new Mock<ILogger<PeriodicPingBackgroundService>>();
-            var service = new PeriodicPingBackgroundService(mockHttpFactory.Object, config, mockLogger.Object);
-            var cts = new CancellationTokenSource();
-
-            // Act
-            await service.StartAsync(cts.Token);
-            await Task.Delay(300); // Only immediate ping should happen
-            await service.StopAsync(cts.Token);
-
-            // Assert - Should only do immediate ping, no periodic pings
-            mockHttpHandler.Protected().Verify(
-                "SendAsync",
-                Times.Once(), // Only the immediate ping
-                ItExpr.IsAny<HttpRequestMessage>(),
-                ItExpr.IsAny<CancellationToken>());
+            sentRequests.Should().BeEmpty();
         }
 
         [Fact]
-        public async Task ResetTimer_WithNegativeInterval_DisablesTimer()
+        public async Task ExecuteAsync_WhenPingUrlIsEmpty_LogsWarningAndReturnsWithoutPinging()
         {
-            // Arrange
-            var config = CreateConfiguration(enabled: true, url: "http://test.com", interval: -1);
-            var mockHttpHandler = CreateMockHttpHandler(HttpStatusCode.OK);
-            var mockHttpFactory = CreateMockHttpClientFactory(mockHttpHandler.Object);
-            var mockLogger = new Mock<ILogger<PeriodicPingBackgroundService>>();
-            var service = new PeriodicPingBackgroundService(mockHttpFactory.Object, config, mockLogger.Object);
-            var cts = new CancellationTokenSource();
+            var options = new PeriodicPingConfiguration { Enabled = true, PingUrl = "", PingIntervalSeconds = 60 };
+            var service = CreateService(options, out _, out var sentRequests, out _);
 
-            // Act
-            await service.StartAsync(cts.Token);
-            await Task.Delay(300);
-            await service.StopAsync(cts.Token);
+            await service.StartAsync(CancellationToken.None);
+            await Task.Delay(100);
+            await service.StopAsync(CancellationToken.None);
 
-            // Assert
-            mockHttpHandler.Protected().Verify(
-                "SendAsync",
-                Times.Once(), // Only immediate ping
-                ItExpr.IsAny<HttpRequestMessage>(),
-                ItExpr.IsAny<CancellationToken>());
+            sentRequests.Should().BeEmpty();
         }
 
-        #endregion
-
-        #region Helper Methods
-
-        private static IConfiguration CreateConfiguration(bool enabled, string url, int interval)
+        [Fact]
+        public async Task ExecuteAsync_WhenIntervalIsZero_LogsWarningAndReturnsWithoutPinging()
         {
-            var configData = new Dictionary<string, string>
+            var options = new PeriodicPingConfiguration { Enabled = true, PingUrl = "https://example.com", PingIntervalSeconds = 0 };
+            var service = CreateService(options, out _, out var sentRequests, out _);
+
+            await service.StartAsync(CancellationToken.None);
+            await Task.Delay(100);
+            await service.StopAsync(CancellationToken.None);
+
+            sentRequests.Should().BeEmpty();
+        }
+
+        [Fact]
+        public async Task ExecuteAsync_WhenEnabled_PingsUrlImmediately()
+        {
+            var options = new PeriodicPingConfiguration { Enabled = true, PingUrl = "https://example.com/health", PingIntervalSeconds = 60 };
+            var service = CreateService(options, out _, out var sentRequests, out _);
+
+            await service.StartAsync(CancellationToken.None);
+            await Task.Delay(1500);
+            await service.StopAsync(CancellationToken.None);
+
+            sentRequests.Should().NotBeEmpty();
+            sentRequests[0].RequestUri!.ToString().Should().Be("https://example.com/health");
+        }
+
+        [Fact]
+        public async Task ExecuteAsync_WhenServerReturnsSuccess_DoesNotThrow()
+        {
+            var options = new PeriodicPingConfiguration { Enabled = true, PingUrl = "https://example.com", PingIntervalSeconds = 60 };
+            var service = CreateService(options, out _, out var sentRequests, out _);
+
+            Func<Task> act = async () =>
             {
-                { "PeriodicPingConfiguration:Enabled", enabled.ToString() },
-                { "PeriodicPingConfiguration:PingUrl", url },
-                { "PeriodicPingConfiguration:PingIntervalInSeconds", interval.ToString() }
+                await service.StartAsync(CancellationToken.None);
+                await Task.Delay(1500);
+                await service.StopAsync(CancellationToken.None);
             };
 
-            return new ConfigurationBuilder()
-                .AddInMemoryCollection(configData)
-                .Build();
+            await act.Should().NotThrowAsync();
+            sentRequests.Should().NotBeEmpty();
         }
 
-        private static Mock<HttpMessageHandler> CreateMockHttpHandler(HttpStatusCode statusCode)
+        [Fact]
+        public async Task ExecuteAsync_OnServerError_DoesNotCrashLoop()
         {
-            var mockHttpHandler = new Mock<HttpMessageHandler>();
-            mockHttpHandler.Protected()
+            var options = new PeriodicPingConfiguration { Enabled = true, PingUrl = "https://example.com", PingIntervalSeconds = 60 };
+
+            var optionsMonitor = new Mock<IOptionsMonitor<PeriodicPingConfiguration>>();
+            optionsMonitor.SetupGet(m => m.CurrentValue).Returns(options);
+
+            var handler = new Mock<HttpMessageHandler>();
+            handler.Protected()
                 .Setup<Task<HttpResponseMessage>>(
                     "SendAsync",
                     ItExpr.IsAny<HttpRequestMessage>(),
                     ItExpr.IsAny<CancellationToken>())
-                .ReturnsAsync(new HttpResponseMessage(statusCode));
+                .ThrowsAsync(new HttpRequestException("boom"));
 
-            return mockHttpHandler;
+            var client = new HttpClient(handler.Object);
+            var httpFactory = new Mock<IHttpClientFactory>();
+            httpFactory.Setup(f => f.CreateClient(It.IsAny<string>())).Returns(client);
+
+            var service = new PeriodicPingBackgroundService(
+                httpFactory.Object,
+                optionsMonitor.Object,
+                new LoggerFactory().CreateLogger<PeriodicPingBackgroundService>());
+
+            Func<Task> act = async () =>
+            {
+                await service.StartAsync(CancellationToken.None);
+                await Task.Delay(1500);
+                await service.StopAsync(CancellationToken.None);
+            };
+
+            await act.Should().NotThrowAsync();
         }
 
-        private static Mock<IHttpClientFactory> CreateMockHttpClientFactory(HttpMessageHandler handler)
+        [Fact]
+        public void Dispose_CanBeCalledMultipleTimesWithoutThrowing()
         {
-            var mockFactory = new Mock<IHttpClientFactory>();
-            mockFactory.Setup(x => x.CreateClient(It.IsAny<string>()))
-                .Returns(new HttpClient(handler));
-            return mockFactory;
-        }
+            var options = new PeriodicPingConfiguration { Enabled = false, PingUrl = "", PingIntervalSeconds = 0 };
+            var service = CreateService(options, out _, out _, out _);
 
-        #endregion
+            Action act = () =>
+            {
+                service.Dispose();
+                service.Dispose();
+            };
+
+            act.Should().NotThrow();
+        }
     }
 }

@@ -14,6 +14,7 @@ import { Link } from "react-router-dom";
 import { SSoProviderStatusToggle } from "../sso-provider-status-toggle";
 import { useMemo, useState } from "react";
 import { useTheme } from "@/hooks/use-theme";
+import { useScopedPath } from "@/hooks/use-scoped-path";
 
 type SSOProviderCardProps = {
   configuration: ISsoProviderConfigurationWithMeta;
@@ -39,6 +40,7 @@ export const SSOProviderCardSkelton = () => {
 export const SSOProviderCard = ({ configuration }: SSOProviderCardProps) => {
   const [open, setOpen] = useState<boolean>(false);
   const { resolvedTheme } = useTheme();
+  const scoped = useScopedPath();
   const imageSrc = useMemo(() => {
     return resolvedTheme === "light"
       ? configuration.imageSrc
@@ -82,7 +84,7 @@ export const SSOProviderCard = ({ configuration }: SSOProviderCardProps) => {
                 </DropdownMenuTrigger>
                 <DropdownMenuContent align="end">
                   <Link
-                    to={`/services/authentication/sso-configuration?provider=${configuration.provider}&id=${configuration.itemId || ""}`}
+                    to={scoped(`sso-configuration?provider=${configuration.provider}&id=${configuration.itemId || ""}`)}
                   >
                     <DropdownMenuItem>Configure</DropdownMenuItem>
                   </Link>
