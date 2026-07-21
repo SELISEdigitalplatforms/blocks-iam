@@ -45,6 +45,7 @@ public sealed class AuthorizationCodeModel
     public DateTime ExpiresAt { get; set; }
     public DateTime CreatedAt { get; set; }
     public string? CreatedByIpAddress { get; set; }
+    public string? IdpSessionId { get; set; }
     public bool IsRevoked { get; set; }
     public DateTime? RevokedAt { get; set; }
 
