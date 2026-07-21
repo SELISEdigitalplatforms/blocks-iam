@@ -12,7 +12,6 @@ import {
   IRecoverAccountResponse,
 } from "@blocks-idp/authentication/models/auth.model";
 import { AUTH_ENDPOINTS } from "../constants/endpoint.constant";
-import { getRuntimeEnv } from "@/lib/runtime-env";
 
 export class AuthService {
   signinByEmail(
@@ -168,7 +167,6 @@ export class AuthService {
     provider_redirect_uri: string;
   }): Promise<any> {
     const tenantId = payload.tenantId?.trim();
-          const iamBaseUrl = getRuntimeEnv("BLOCKS_IAM_BASE_URL");
     
     const headers: Record<string, string> = tenantId
       ? { "X-Blocks-Key": tenantId }
@@ -186,8 +184,7 @@ export class AuthService {
         code_challenge_method: payload.code_challenge_method,
         tenant_id: tenantId,
         provider_client_id: payload.provider_client_id,
-        // provider_redirect_uri: payload.provider_redirect_uri,
-        provider_redirect_uri: `${iamBaseUrl}/oidc/microsoft/callback/${tenantId}`,
+        provider_redirect_uri: payload.provider_redirect_uri,
 
       },
       headers,
