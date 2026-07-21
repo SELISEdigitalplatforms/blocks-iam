@@ -27,7 +27,6 @@ namespace XUnitTest.Auth
         private readonly Mock<IAuthorizationClaimsResolver> _claimsResolver = new();
         private readonly Mock<IAuthenticationRepository> _repo = new();
         private readonly Mock<ITenants> _tenants = new();
-        private readonly Mock<Authentication.DomainService.Oidc.Services.IIdpSessionService> _idpSession = new();
 
         public AuthorizationCodeExchangeServiceTests()
         {
@@ -49,8 +48,6 @@ namespace XUnitTest.Auth
                 .ReturnsAsync("access-token");
             _tokenService.Setup(t => t.GenerateRefreshTokenAsync(It.IsAny<OidcClaims>(), It.IsAny<string>(), It.IsAny<bool>(), It.IsAny<string>()))
                 .ReturnsAsync(new RefreshTokenModel { TokenId = "rt-1", AbsoluteExpiry = DateTime.UtcNow.AddDays(30) });
-            _idpSession.Setup(s => s.ResolveOrCreateAsync(It.IsAny<HttpContext>(), It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string?>()))
-                .ReturnsAsync("sess-1");
         }
 
         public void Dispose()
@@ -61,8 +58,7 @@ namespace XUnitTest.Auth
 
         private AuthorizationCodeExchangeService Create() =>
             new(_authCodeRepo.Object, _refreshTokenRepo.Object, _tokenService.Object, _pkce.Object,
-                _userRepo.Object, _claimsResolver.Object, _repo.Object, _tenants.Object, _idpSession.Object,
-                NullLogger<AuthorizationCodeExchangeService>.Instance);
+                _userRepo.Object, _claimsResolver.Object, _repo.Object, _tenants.Object, NullLogger<AuthorizationCodeExchangeService>.Instance);
 
         private static DefaultHttpContext BuildContext(
             string code = "auth-code", string codeVerifier = "", string clientId = "cid",
@@ -88,7 +84,8 @@ namespace XUnitTest.Auth
         {
             Code = "auth-code", ClientId = "cid", TenantId = "tenant-1", UserId = "user-1",
             OrganizationId = "default", RedirectUri = "https://app/cb", Scope = "openid profile",
-            CodeChallenge = "", CodeChallengeMethod = "S256", Amr = new(), ExpiresAt = DateTime.UtcNow.AddMinutes(5)
+            CodeChallenge = "", CodeChallengeMethod = "S256", Amr = new(), ExpiresAt = DateTime.UtcNow.AddMinutes(5),
+            IdpSessionId = "sess-from-code"
         };
 
         private static User ValidUser() => new()
@@ -236,6 +233,47 @@ namespace XUnitTest.Auth
             var obj = result.Should().BeOfType<ObjectResult>().Subject;
             obj.StatusCode.Should().Be(StatusCodes.Status423Locked);
             Prop(obj.Value, "error").Should().Be("account_locked");
+        }
+
+        [Fact]
+        public async Task Exchange_UsesAuthorizationCodeSessionId_WhenPresent()
+        {
+            var authCode = ValidAuthCode();
+            _authCodeRepo.Setup(r => r.GetByCodeAsync("auth-code")).ReturnsAsync(authCode);
+            _repo.Setup(r => r.GetOidcClientRegistrationAsync("cid"))
+                .ReturnsAsync(new OidcClientRegistration { ItemId = "cid", ClientId = "cid", UseTokensCookie = false });
+            _userRepo.Setup(r => r.GetUserByIdAsync("user-1")).ReturnsAsync(ValidUser());
+
+            var result = await Create().ExchangeAsync(BuildContext().Request);
+
+            result.Should().BeOfType<OkObjectResult>();
+            _tokenService.Verify(t => t.GenerateRefreshTokenAsync(
+                It.IsAny<OidcClaims>(),
+                It.IsAny<string>(),
+                false,
+                "sess-from-code"), Times.Once);
+        }
+
+        [Fact]
+        public async Task Exchange_MissingAuthorizationCodeSessionId_ReturnsInvalidGrant()
+        {
+            var authCode = ValidAuthCode();
+            authCode.IdpSessionId = null;
+            _authCodeRepo.Setup(r => r.GetByCodeAsync("auth-code")).ReturnsAsync(authCode);
+            _repo.Setup(r => r.GetOidcClientRegistrationAsync("cid"))
+                .ReturnsAsync(new OidcClientRegistration { ItemId = "cid", ClientId = "cid", UseTokensCookie = false });
+            _userRepo.Setup(r => r.GetUserByIdAsync("user-1")).ReturnsAsync(ValidUser());
+
+            var result = await Create().ExchangeAsync(BuildContext().Request);
+
+            var bad = result.Should().BeOfType<BadRequestObjectResult>().Subject;
+            Prop(bad.Value, "error").Should().Be("invalid_grant");
+            Prop(bad.Value, "error_description").Should().Be("Authorization code is missing IdP session");
+            _tokenService.Verify(t => t.GenerateRefreshTokenAsync(
+                It.IsAny<OidcClaims>(),
+                It.IsAny<string>(),
+                It.IsAny<bool>(),
+                It.IsAny<string>()), Times.Never);
         }
 
         // ---------- ExchangeCoreAsync branches ----------
