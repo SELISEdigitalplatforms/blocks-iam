@@ -18,7 +18,7 @@ namespace Api.Controllers;
 [ApiController]
 [Route("mfa")]
 // Deprecated: use "mfa". "api/mfa" kept as a temporary compatibility alias.
-[Route("api/mfa")]
+
 public class MfaController : ControllerBase
 {
     private readonly IMfaManagementService _mfaManagementService;
