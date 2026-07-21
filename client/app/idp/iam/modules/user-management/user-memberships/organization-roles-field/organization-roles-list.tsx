@@ -7,7 +7,7 @@ import {
   TableRow,
 } from "@/components/ui-kits/table/table";
 import { ColumnDef, flexRender, getCoreRowModel, useReactTable } from "@tanstack/react-table";
-import { useMemo } from "react";
+import { useCallback, useMemo } from "react";
 import { IRole } from "@blocks-idp/iam/models/role";
 import { Badge } from "@/components/ui-kits/badge/badge";
 import { DeleteOrganizationRole } from "./delete-organization-role";
@@ -19,6 +19,10 @@ type OrganizationRolesListProps = {
 };
 
 export const OrganizationRolesList = ({ roles, onDelete, onSave }: OrganizationRolesListProps) => {
+  const handleDelete = useCallback((role: IRole) => {
+    onDelete(role);
+  }, [onDelete]);
+
   const columns = useMemo<ColumnDef<IRole>[]>(
     () => [
       {
@@ -57,12 +61,12 @@ export const OrganizationRolesList = ({ roles, onDelete, onSave }: OrganizationR
               e.stopPropagation();
             }}
           >
-            <DeleteOrganizationRole role={row.original} onDelete={onDelete} onSave={onSave} />
+            <DeleteOrganizationRole role={row.original} onDelete={handleDelete} onSave={onSave} />
           </div>
         ),
       },
     ],
-    [onDelete, onSave],
+    [handleDelete, onSave],
   );
 
   const table = useReactTable({

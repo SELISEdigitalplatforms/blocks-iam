@@ -158,7 +158,7 @@ namespace Authentication.DomainService.Authentication
                     });
                 }
 
-                await EnsureIdpSessionAsync(request, response, effectiveSessionId, resolvedUserId, tenant_id);
+                var idpSessionId = await EnsureIdpSessionAsync(request, response, effectiveSessionId, resolvedUserId, tenant_id);
 
                 var client = await _authenticationRepository.GetOidcClientRegistrationAsync(client_id);
                 if (client == null)
@@ -235,6 +235,7 @@ namespace Authentication.DomainService.Authentication
                     ExpiresAt = DateTime.UtcNow.AddMinutes(10),
                     CreatedAt = DateTime.UtcNow,
                     CreatedByIpAddress = OidcRedirectUrlBuilder.GetClientIpAddress(request),
+                    IdpSessionId = idpSessionId,
                 };
 
                 // Blocks Cloud Impersonation Support
@@ -315,7 +316,7 @@ namespace Authentication.DomainService.Authentication
             return amr;
         }
 
-        private async Task EnsureIdpSessionAsync(HttpRequest request, HttpResponse response, string? currentSessionId, string userId, string? tenantId)
+        private async Task<string> EnsureIdpSessionAsync(HttpRequest request, HttpResponse response, string? currentSessionId, string userId, string? tenantId)
         {
             var session = string.IsNullOrWhiteSpace(currentSessionId)
                 ? null
@@ -346,7 +347,7 @@ namespace Authentication.DomainService.Authentication
 
                 await _sessionRepo.CreateAsync(newSession);
                 SetIdpSessionCookie(request, response, tenantId, newSession.SessionId, newSession.AbsoluteExpiry);
-                return;
+                return newSession.SessionId;
             }
 
             var accountExists = session.Accounts.Any(a =>
@@ -369,6 +370,7 @@ namespace Authentication.DomainService.Authentication
             }
 
             SetIdpSessionCookie(request, response, tenantId, session.SessionId, session.AbsoluteExpiry);
+            return session.SessionId;
         }
 
         private void SetIdpSessionCookie(
