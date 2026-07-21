@@ -24,6 +24,7 @@ namespace Iam.DomainService.Users
 
         public async Task<bool> CreateUserAsync(User user)
         {
+            NormalizeUserIdentity(user);
             var collection = _identityAccessManagementRepository.GetCollection<User>();
             await collection.InsertOneAsync(user);
 
@@ -105,7 +106,7 @@ namespace Iam.DomainService.Users
 
         public async Task<User> GetUserByEmailAsync(string email)
         {
-            return await _identityAccessManagementRepository.GetUserByEmailAsync(email);
+            return await _identityAccessManagementRepository.GetUserByEmailAsync(NormalizeEmail(email));
         }
 
         public async Task<User> GetUserByIdAsync(string itemId)
@@ -121,10 +122,15 @@ namespace Iam.DomainService.Users
         public async Task<User> GetUserByUserNameOrgIdAsync(string userName, string organizatoinId = "")
         {
             var collection = _identityAccessManagementRepository.GetCollection<User>();
+            userName = NormalizeIdentity(userName);
+            var options = new FindOptions
+            {
+                Collation = new Collation("en", strength: CollationStrength.Secondary)
+            };
 
             var user = !string.IsNullOrWhiteSpace(organizatoinId)
-                ? await collection.Find(x => x.UserName == userName && x.OrganizationIds.Any(o => o == organizatoinId)).FirstOrDefaultAsync()
-                : await collection.Find(x => x.UserName == userName).FirstOrDefaultAsync();
+                ? await collection.Find(x => x.UserName == userName && x.OrganizationIds.Any(o => o == organizatoinId), options).FirstOrDefaultAsync()
+                : await collection.Find(x => x.UserName == userName, options).FirstOrDefaultAsync();
 
             return user;
         }
@@ -185,7 +191,7 @@ namespace Iam.DomainService.Users
             }
 
             if (!string.IsNullOrWhiteSpace(filter.Email))
-                filters.Add(builder.Eq(u => u.Email, filter.Email));
+                filters.Add(builder.Eq(u => u.Email, NormalizeEmail(filter.Email)));
 
             if (filter.Status?.Active == true)
                 filters.Add(builder.Eq(u => u.Active, true));
@@ -236,6 +242,7 @@ namespace Iam.DomainService.Users
 
         public async Task<bool> UpdateUserAsync(User user)
         {
+            NormalizeUserIdentity(user);
             return await _identityAccessManagementRepository.UpdateUserAsync(user);
         }
 
@@ -282,6 +289,22 @@ namespace Iam.DomainService.Users
         {
             var orgId = BlocksContext.GetContext()?.OrganizationId;
             return string.IsNullOrWhiteSpace(orgId) ? "default" : orgId;
+        }
+
+        private static void NormalizeUserIdentity(User user)
+        {
+            user.Email = NormalizeEmail(user.Email);
+            user.UserName = NormalizeIdentity(user.UserName);
+        }
+
+        private static string NormalizeEmail(string? email)
+        {
+            return string.IsNullOrWhiteSpace(email) ? string.Empty : email.Trim().ToLowerInvariant();
+        }
+
+        private static string NormalizeIdentity(string? value)
+        {
+            return string.IsNullOrWhiteSpace(value) ? string.Empty : value.Trim().ToLowerInvariant();
         }
 
     }

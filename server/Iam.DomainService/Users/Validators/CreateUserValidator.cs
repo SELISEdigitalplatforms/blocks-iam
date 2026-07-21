@@ -128,7 +128,7 @@ namespace Iam.DomainService.Users
         private async Task<bool> BeAnUniqueEmail(CreateUserRequest model, string email, CancellationToken cancellationToken)
         {
             var organizationId = ResolveOrganizationId(model);
-            var user = await _userRepository.GetUserByUserNameOrgIdAsync(email.ToLower(), organizationId);
+            var user = await _userRepository.GetUserByUserNameOrgIdAsync(email.Trim().ToLowerInvariant(), organizationId);
             return user == null;
         }
 
