@@ -364,7 +364,25 @@ namespace XUnitTest.Auth.Oidc
             redirect.Url.Should().Contain("code=authcode123");
             redirect.Url.Should().Contain("state=st");
             _authCodeRepo.Verify(a => a.CreateAsync(It.Is<AuthorizationCodeModel>(m =>
-                m.Code == "authcode123" && m.ClientId == "client-1" && m.UserId == "user-1")), Times.Once);
+                m.Code == "authcode123"
+                && m.ClientId == "client-1"
+                && m.UserId == "user-1"
+                && !string.IsNullOrWhiteSpace(m.IdpSessionId))), Times.Once);
+        }
+
+        [Fact]
+        public async Task AuthorizeAsync_StoresExistingIdpSessionId_OnAuthorizationCode()
+        {
+            ClientExists();
+            _userRepo.Setup(u => u.GetUserByIdAsync(It.IsAny<string>())).ReturnsAsync(ValidUser());
+            _sessionRepo.Setup(s => s.GetBySessionIdAsync("SID"))
+                .ReturnsAsync(Session("SID", new IdpSessionAccount { UserId = "user-1", TenantId = "tenant-1" }));
+
+            var ctx = Ctx("idp_session_id_tenant-1=SID");
+            await Authorize(ctx: ctx, tenant_id: "tenant-1");
+
+            _authCodeRepo.Verify(a => a.CreateAsync(It.Is<AuthorizationCodeModel>(m =>
+                m.IdpSessionId == "SID")), Times.Once);
         }
 
         [Fact]
