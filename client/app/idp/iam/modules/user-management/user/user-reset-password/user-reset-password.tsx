@@ -31,6 +31,7 @@ export const UserResetPassword = ({
       const res = await mutateAsync({
         email: data?.data.email,
         captchaCode: "",
+        ...(projectKey ? { tenantId: projectKey } : {}),
       });
       if (!res.isSuccess) return showErrorToast({ errors: res.errors });
       showSuccessToast({
