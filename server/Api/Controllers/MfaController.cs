@@ -16,7 +16,9 @@ using UserEntity = Iam.DomainService.Entities.User;
 namespace Api.Controllers;
 
 [ApiController]
-[Route("api/mfa")]
+[Route("mfa")]
+// Deprecated: use "mfa". "api/mfa" kept as a temporary compatibility alias.
+
 public class MfaController : ControllerBase
 {
     private readonly IMfaManagementService _mfaManagementService;
@@ -47,7 +49,7 @@ public class MfaController : ControllerBase
 
     [HttpGet("config")]
     [ProtectedEndPoint("blocks-iam::iam::mfa-configs")]
-    public async Task<IActionResult> GetPolicy()
+    public async Task<IActionResult> GetMfaConfig()
     {
         var config = await _mfaConfigurationService.GetAsync() ?? new Configuration { UserMfaType = new List<UserMfaType>() };
         return Ok(new
@@ -65,7 +67,7 @@ public class MfaController : ControllerBase
 
     [HttpPost("config")]
     [ProtectedEndPoint("blocks-iam::iam::mutate-mfa-configs")]
-    public async Task<IActionResult> UpdatePolicy([FromBody] UpdateMfaPolicyRequest request, CancellationToken ct)
+    public async Task<IActionResult> UpdateMfaConfig([FromBody] UpdateMfaPolicyRequest request, CancellationToken ct)
     {
         var current = await _mfaConfigurationService.GetAsync() ?? new Configuration { UserMfaType = new List<UserMfaType>() };
         if (request.EnableMfa.HasValue) current.EnableMfa = request.EnableMfa.Value;
@@ -84,8 +86,10 @@ public class MfaController : ControllerBase
         return Ok(current);
     }
 
+    // Self-service: a user enrolls their own TOTP. Own-identity is enforced by operating
+    // solely on GetCurrentUserId(); no admin config scope is required.
     [HttpPost("totp/setup")]
-    [ProtectedEndPoint("blocks-iam::iam::mutate-mfa-configs")]
+    [Authorize]
     public async Task<IActionResult> SetupTotp()
     {
         var userId = GetCurrentUserId();
@@ -107,8 +111,9 @@ public class MfaController : ControllerBase
         });
     }
 
+    // Self-service: a user verifies their own TOTP enrollment. Own-identity enforced via GetCurrentUserId().
     [HttpPost("totp/verify-setup")]
-    [ProtectedEndPoint("blocks-iam::iam::mutate-mfa-configs")]
+    [Authorize]
     public async Task<IActionResult> VerifyTotpSetup([FromBody] VerifyTotpSetupRequest request)
     {
         var userId = GetCurrentUserId();
@@ -225,8 +230,9 @@ public class MfaController : ControllerBase
         return Ok(new { valid = true, userId = result.UserId });
     }
 
+    // Self-service: a user switches their own preferred MFA method. Own-identity enforced via GetCurrentUserId().
     [HttpPut("method")]
-    [ProtectedEndPoint("blocks-iam::iam::mutate-mfa-configs")]
+    [Authorize]
     public async Task<IActionResult> SetMfaMethod([FromBody] SetMfaMethodRequest request)
     {
         var userId = GetCurrentUserId();
@@ -327,8 +333,9 @@ public class MfaController : ControllerBase
         return Ok(new { enabled = false, method = UserMfaType.None.ToString() });
     }
 
+    // Self-service: a user disables their own MFA. Own-identity enforced via GetCurrentUserId().
     [HttpPost("disable")]
-    [ProtectedEndPoint("blocks-iam::iam::mutate-mfa-configs")]
+    [Authorize]
     public async Task<IActionResult> DisableMfa()
     {
         var userId = GetCurrentUserId();

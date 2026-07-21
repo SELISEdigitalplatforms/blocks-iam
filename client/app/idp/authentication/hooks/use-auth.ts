@@ -1,6 +1,7 @@
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { authService } from "@blocks-idp/authentication/services/auth.service";
 import { oauthService } from "@blocks-idp/authentication/services/oauth.service";
+import { ISignupByEmailPayload } from "@blocks-idp/authentication/models/auth.model";
 
 export const useSigninByEmail = () => {
   return useMutation({
@@ -33,7 +34,11 @@ export const useLogout = () => {
 export const useSignupByEmail = () => {
   return useMutation({
     mutationKey: ["signup", "email"],
-    mutationFn: authService.signupByEmail,
+    mutationFn: ({
+      tenantId,
+      ...payload
+    }: ISignupByEmailPayload & { tenantId?: string }) =>
+      authService.signupByEmail(payload, tenantId),
   });
 };
 

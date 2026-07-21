@@ -88,7 +88,7 @@ namespace Api.Controllers
 
         [HttpGet("permissions/by-severity")]
         [Authorize]
-        public async Task<List<PermissionGroupBySeverityResponse>> GetPermissionsGroupBySeverity([FromQuery] GetPermissionGroupBySeverityRequest request)
+        public async Task<List<PermissionGroupBySeverityResponse>> GetPermissionsGroupBySeverity()
         {
             return await _resourceQueryService.GetPermissionsGroupBySeverityAsync();
         }
@@ -116,10 +116,10 @@ namespace Api.Controllers
 
         [HttpPost("roles/assign-permissions")]
         [ProtectedEndPoint("blocks-iam::iam::mutate-roles")]
-        public async Task<IActionResult> SetRoles([FromBody] SetRolesRequest command)
+        public async Task<IActionResult> AssignRolePermissions([FromBody] SetRolesRequest command)
         {
             var result = await _resourceMutationService.SetRolesAsync(command);
-            return result.Success ? Ok(result) : BadRequest(result);
+            return result.IsSuccess ? Ok(result) : BadRequest(result);
         }
 
         [HttpGet("roles/assignable")]
@@ -131,7 +131,7 @@ namespace Api.Controllers
 
         [HttpGet("resource-groups")]
         [ProtectedEndPoint("blocks-iam::iam::permissions")]
-        public async Task<List<GetResourceGroupResponse>> GetResourceGroups([FromQuery] GetResourceGroupRequest request)
+        public async Task<List<GetResourceGroupResponse>> GetResourceGroups()
         {
             return await _resourceQueryService.GetResourceGroupsAsync();
         }
@@ -149,7 +149,7 @@ namespace Api.Controllers
 
         [HttpPost("users/create")]
         [ProtectedEndPoint("blocks-iam::iam::mutate-users")]
-        public async Task<IActionResult> Create([FromBody] CreateUserRequest command)
+        public async Task<IActionResult> CreateUser([FromBody] CreateUserRequest command)
         {
             var result = await _userManagementMutationService.CreateUserAsync(command);
             return result.IsSuccess ? Ok(result) : BadRequest(result);
@@ -157,7 +157,7 @@ namespace Api.Controllers
 
         [HttpPost("users/{id}")]
         [ProtectedEndPoint("blocks-iam::iam::mutate-users")]
-        public async Task<IActionResult> Update([FromRoute] string id, [FromBody] UpdateUserRequest command)
+        public async Task<IActionResult> UpdateUser([FromRoute] string id, [FromBody] UpdateUserRequest command)
         {
             command.ItemId = id;
             var result = await _userManagementMutationService.UpdateUserAsync(command);
@@ -166,9 +166,17 @@ namespace Api.Controllers
 
         [HttpPost("users/deactivate")]
         [ProtectedEndPoint("blocks-iam::iam::mutate-users")]
-        public async Task<IActionResult> Deactivate([FromBody] DeactivateUserRequest request)
+        public async Task<IActionResult> DeactivateUser([FromBody] DeactivateUserRequest request)
         {
             var result = await _userManagementMutationService.DeactivateUserAsync(request);
+            return result.IsSuccess ? Ok(result) : BadRequest(result);
+        }
+
+        [HttpPost("users/activate")]
+        [ProtectedEndPoint("blocks-iam::iam::mutate-users")]
+        public async Task<IActionResult> ActivateUser([FromBody] ActivateUserByAdminRequest request)
+        {
+            var result = await _userManagementMutationService.ActivateUserAsync(request);
             return result.IsSuccess ? Ok(result) : BadRequest(result);
         }
 

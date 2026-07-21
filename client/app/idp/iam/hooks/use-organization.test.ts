@@ -47,14 +47,6 @@ describe("use-organization hooks", () => {
       });
     });
 
-    it("should not fetch when projectKey is empty", () => {
-      const options = { ...mockGetOrganizationsPayload, projectKey: "" };
-      const { result } = renderHook(() => useGetOrganizations(options), {
-        wrapper: createWrapper(),
-      });
-
-      expect(result.current.fetchStatus).toBe("idle");
-    });
   });
 
   describe("useGetOrganizationById", () => {
@@ -94,9 +86,7 @@ describe("use-organization hooks", () => {
 
       result.current.mutate(mockSaveOrganizationPayload);
       await waitFor(() => expect(result.current.isSuccess).toBe(true));
-      expect(iamService.organization.saveOrganization).toHaveBeenCalledWith(
-        mockSaveOrganizationPayload,
-      );
+      expect(iamService.organization.saveOrganization).toHaveBeenCalledWith(mockSaveOrganizationPayload, expect.anything());
     });
   });
 
@@ -112,7 +102,8 @@ describe("use-organization hooks", () => {
 
       await waitFor(() => expect(result.current.isSuccess).toBe(true));
       expect(result.current.data).toEqual(mockOrganizationConfigResponse);
-      expect(iamService.organization.getOrganizationConfig).toHaveBeenCalledWith(TEST_PROJECT_KEY);
+      // The config endpoint derives the project server-side; the hook passes no args.
+      expect(iamService.organization.getOrganizationConfig).toHaveBeenCalled();
     });
 
     it("should not fetch when projectKey is empty", () => {

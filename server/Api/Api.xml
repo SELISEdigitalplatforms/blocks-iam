@@ -191,6 +191,63 @@
             Preferred over deletion for temporary disabling
             </summary>
         </member>
+        <member name="T:Api.Controllers.DeviceController">
+            <summary>
+            Browser-facing RFC 8628 device flow endpoints. The SPA already owns /oidc/* so it ships /device/*
+            too. This controller exposes the JSON payloads the SPA consumes; HTML responses fall through to
+            the SPA fallback configured in <c>Program.cs</c>.
+            </summary>
+        </member>
+        <member name="M:Api.Controllers.DeviceController.Entry">
+            <summary>
+            GET /device — entry. The SPA reads <c>user_code</c> from the query string and renders the
+            form. For Accept: application/json callers we return a redirect hint.
+            </summary>
+        </member>
+        <member name="M:Api.Controllers.DeviceController.Verify(Idp.DomainService.Oidc.Contracts.DeviceVerifyRequest,System.Threading.CancellationToken)">
+            <summary>
+            POST /api/device/verify — validates a user_code and returns either the inline consent
+            payload (<c>status: "ready"</c>) or an OIDC login URL (<c>status: "login_required"</c>).
+            </summary>
+        </member>
+        <member name="M:Api.Controllers.DeviceController.Decision(Idp.DomainService.Oidc.Contracts.DeviceDecisionRequest,System.Threading.CancellationToken)">
+            <summary>
+            POST /api/device/decision — records an allow/deny decision for the device authorization
+            request identified by <c>user_code</c>. Returns the SPA's success-page redirect.
+            </summary>
+        </member>
+        <member name="T:Api.Controllers.DiscoveryController">
+            <summary>
+            OpenID Connect Discovery Endpoints
+            RFC 8414: OAuth 2.0 Authorization Server Metadata
+            OIDC Core 1.0: OpenID Connect Discovery 1.0
+            
+            These endpoints provide machine-readable metadata for client discovery
+            and automatic configuration.
+            </summary>
+        </member>
+        <!-- Badly formed XML comment ignored for member "M:Api.Controllers.DiscoveryController.OpenIdConfiguration" -->
+        <member name="M:Api.Controllers.DiscoveryController.OAuthAuthorizationServer">
+            <summary>
+            OAuth Authorization Server Metadata Endpoint
+            RFC 8414 Section 3.2
+            
+            Provides metadata for OAuth Authorization Servers
+            Compatible with both OAuth and OIDC servers
+            
+            Standard response caching: 1 hour
+            </summary>
+        </member>
+        <!-- Badly formed XML comment ignored for member "M:Api.Controllers.DiscoveryController.JwksJson" -->
+        <member name="M:Api.Controllers.DiscoveryController.ExecutePasswordLogin(Authentication.DomainService.OAuth.RequestModel.EmbeddedLoginRequest)">
+            <summary>
+            Temporary anonymous password-login surface. The absolute route <c>/auth-login</c>
+            deliberately escapes the discovery prefix and mirrors <c>POST /api/auth/login</c>.
+            DEPRECATED: this is a temporary compatibility route pending the device-code flow
+            replacement and is slated for removal once that flow ships. Do not build new clients
+            against it.
+            </summary>
+        </member>
         <member name="T:Api.Controllers.IdpController">
             <summary>
             IDP Controller
@@ -222,7 +279,7 @@
             Requires authentication and admin privileges
             </summary>
         </member>
-        <member name="M:Api.Controllers.OidcClientsController.GetAll">
+        <member name="M:Api.Controllers.OidcClientsController.GetOidcClients">
             <summary>
             Retrieve all OIDC clients for the tenant
             Returns list of registered OAuth 2.0 / OIDC client applications
@@ -246,7 +303,7 @@
             <response code="401">Authentication required</response>
             <response code="404">Client not found</response>
         </member>
-        <member name="M:Api.Controllers.OidcClientsController.Upsert(Authentication.DomainService.RequestModel.SaveOIDCClientRequest)">
+        <member name="M:Api.Controllers.OidcClientsController.UpsertOidcClient(Authentication.DomainService.RequestModel.SaveOIDCClientRequest)">
             <summary>
             Create or update OIDC client configuration (Upsert)
             Registers new OIDC client or updates existing configuration
@@ -259,7 +316,7 @@
             <response code="400">Invalid request payload or validation failure</response>
             <response code="401">Authentication required</response>
         </member>
-        <member name="M:Api.Controllers.OidcClientsController.Delete(System.String)">
+        <member name="M:Api.Controllers.OidcClientsController.DeleteOidcClient(System.String)">
             <summary>
             Delete OIDC client configuration
             Removes client application and revokes all issued tokens
@@ -278,10 +335,10 @@
             Generates a new client_secret for the existing client and returns it exactly once.
             The new secret is not stored anywhere else and subsequent GETs mask it as usual.
             </summary>
-            <param name="itemId">OIDC client identifier</param>
+            <param name="clientId">OIDC client identifier</param>
             <returns>The newly rotated client_secret (one-time disclosure)</returns>
             <response code="200">Secret rotated; response contains the new client_secret</response>
-            <response code="400">itemId is required or client not found</response>
+            <response code="400">clientId is required or client not found</response>
             <response code="401">Authentication required</response>
         </member>
         <member name="T:Api.Controllers.SecurityController">
@@ -308,6 +365,13 @@
             Supports both authorization_code and refresh_token grants
             </summary>
         </member>
+        <member name="M:Blocks.Api.Controllers.AuthorizationController.DeviceAuthorization(System.Threading.CancellationToken)">
+            <summary>
+            OAuth 2.0 Device Authorization Endpoint (RFC 8628 Section 3.1).
+            Accepts application/x-www-form-urlencoded <c>client_id</c>, <c>scope</c>
+            and returns device_code, user_code, verification_uri, expires_in, interval.
+            </summary>
+        </member>
         <member name="M:Blocks.Api.Controllers.AuthorizationController.HandleOidcCallbackGet(System.String,System.String,Authentication.DomainService.OAuth.RequestModel.OidcCallbackRequest)">
             <summary>
             OIDC callback handler (Browser Redirect Pattern - GET)
@@ -316,29 +380,6 @@
             RFC 6749: OAuth 2.0 | RFC 3986: OpenID Connect | RFC 7519: JWT | RFC 5280: X.509
             </summary>
         </member>
-        <member name="T:Blocks.Api.Controllers.DiscoveryController">
-            <summary>
-            OpenID Connect Discovery Endpoints
-            RFC 8414: OAuth 2.0 Authorization Server Metadata
-            OIDC Core 1.0: OpenID Connect Discovery 1.0
-            
-            These endpoints provide machine-readable metadata for client discovery
-            and automatic configuration.
-            </summary>
-        </member>
-        <!-- Badly formed XML comment ignored for member "M:Blocks.Api.Controllers.DiscoveryController.OpenIdConfiguration" -->
-        <member name="M:Blocks.Api.Controllers.DiscoveryController.OAuthAuthorizationServer">
-            <summary>
-            OAuth Authorization Server Metadata Endpoint
-            RFC 8414 Section 3.2
-            
-            Provides metadata for OAuth Authorization Servers
-            Compatible with both OAuth and OIDC servers
-            
-            Standard response caching: 1 hour
-            </summary>
-        </member>
-        <!-- Badly formed XML comment ignored for member "M:Blocks.Api.Controllers.DiscoveryController.JwksJson" -->
         <!-- Badly formed XML comment ignored for member "T:Blocks.Api.Controllers.IdpSessionController" -->
         <member name="M:Blocks.Api.Controllers.IdpSessionController.GetSession">
             <summary>
