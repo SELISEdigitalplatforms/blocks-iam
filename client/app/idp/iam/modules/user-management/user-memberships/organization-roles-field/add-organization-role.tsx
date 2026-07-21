@@ -23,6 +23,8 @@ type AddOrganizationRoleProps = {
   roles: IRole[];
   /** Called with the picked new roles on confirm. */
   onAdd: (data: IRole[]) => void;
+  /** Called when a role is deselected in the modal (for already-assigned roles). */
+  onRemove?: (data: IRole) => void;
   onSave?: () => void;
   /**
    * Scope the picker to a specific organization — when provided, the role
@@ -36,6 +38,7 @@ const MAX_ROLES_PER_USER = 5;
 
 export const AddOrganizationRole = ({
   onAdd,
+  onRemove,
   roles,
   onSave,
   organizationId,
@@ -90,7 +93,10 @@ export const AddOrganizationRole = ({
 
   const onCheckedChangeHandler = (checked: boolean, role: IRole) => {
     if (checked) {
-      if (!rolesSlug.includes(role.slug) && totalRoleCount >= MAX_ROLES_PER_USER) {
+      if (
+        !rolesSlug.includes(role.slug) &&
+        totalRoleCount >= MAX_ROLES_PER_USER
+      ) {
         return;
       }
       return setSelectedRoles((currentRoles) =>
@@ -99,12 +105,17 @@ export const AddOrganizationRole = ({
           : [...currentRoles, role],
       );
     }
+    // When unchecking, if the role was already assigned (in rolesSlug), notify parent via onRemove
+    if (rolesSlug.includes(role.slug)) {
+      onRemove?.(role);
+    }
     setSelectedRoles((currentRoles) =>
       currentRoles.filter((item) => item.slug !== role.slug),
     );
   };
 
-  const pageChangeHandler = (page: number) => setFilter((prev) => ({ ...prev, page }));
+  const pageChangeHandler = (page: number) =>
+    setFilter((prev) => ({ ...prev, page }));
 
   const reset = () => {
     setSelectedRoles([]);
@@ -139,7 +150,8 @@ export const AddOrganizationRole = ({
               variant="success"
               className="font-normal"
               aria-live="polite"
-              aria-label={`${totalRoleCount} out of ${MAX_ROLES_PER_USER} roles selected`}>
+              aria-label={`${totalRoleCount} out of ${MAX_ROLES_PER_USER} roles selected`}
+            >
               {totalRoleCount}/{MAX_ROLES_PER_USER} selected
             </Badge>
           </div>
@@ -150,7 +162,9 @@ export const AddOrganizationRole = ({
         <div>
           <FilterControls.SearchInput
             value={filter.search}
-            onChange={(value) => setFilter((prev) => ({ ...prev, search: value, page: 0 }))}
+            onChange={(value) =>
+              setFilter((prev) => ({ ...prev, search: value, page: 0 }))
+            }
             className="h-fit w-full py-3"
             placeholder="Search by role name"
           />
@@ -158,7 +172,10 @@ export const AddOrganizationRole = ({
         {isLoading ? (
           <div className="grid grid-cols-2">
             {Array.from({ length: filter.pageSize }).map((_, idx) => (
-              <div key={idx} className="flex animate-pulse items-center space-x-2 py-2">
+              <div
+                key={idx}
+                className="flex animate-pulse items-center space-x-2 py-2"
+              >
                 <div className="h-4 w-4 rounded bg-gray-200" />
                 <div className="h-4 w-24 rounded bg-gray-200" />
                 <div className="h-4 w-20 rounded bg-gray-200" />
@@ -168,14 +185,16 @@ export const AddOrganizationRole = ({
         ) : data && data.data && data.data.length > 0 ? (
           <div className="grid grid-cols-2">
             {data.data.map((item) => (
-              <div key={item.itemId} className="col-span-1 flex items-center py-2">
+              <div
+                key={item.itemId}
+                className="col-span-1 flex items-center py-2"
+              >
                 <Checkbox
                   checked={isRoleSelectedInModal(item.slug)}
-                  disabled={
-                    rolesSlug.includes(item.slug) ||
-                    (!isRoleSelectedInModal(item.slug) && isAtMaxRoles)
+                  disabled={!isRoleSelectedInModal(item.slug) && isAtMaxRoles}
+                  onCheckedChange={(value) =>
+                    onCheckedChangeHandler(!!value, item)
                   }
-                  onCheckedChange={(value) => onCheckedChangeHandler(!!value, item)}
                 />
                 <div className="ml-2 flex flex-col">
                   <div className="max-w-[150px] truncate" title={item.name}>
@@ -196,7 +215,9 @@ export const AddOrganizationRole = ({
             <div className="mx-auto flex h-10 w-10 items-center justify-center rounded-full bg-primary/10">
               <ShieldCheck className="h-5 w-5 text-primary" />
             </div>
-            <p className="mt-3 text-sm font-medium text-foreground">No roles added</p>
+            <p className="mt-3 text-sm font-medium text-foreground">
+              No roles added
+            </p>
             <p className="mt-1 text-xs text-muted-foreground">
               Add at least one role for this user
             </p>

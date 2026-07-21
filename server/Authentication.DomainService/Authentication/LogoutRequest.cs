@@ -1,3 +1,5 @@
+using System.Text.Json.Serialization;
+
 namespace Authentication.DomainService.Authentication
 {
     public sealed class LogoutRequest
@@ -13,5 +15,11 @@ namespace Authentication.DomainService.Authentication
     public sealed class LogoutResponse
     {
         public bool IsSuccess { get; set; }
+
+        [JsonIgnore]
+        public string? IdpSessionId { get; set; }
+
+        [JsonIgnore]
+        public IReadOnlyList<string> IdpSessionIds { get; set; } = Array.Empty<string>();
     }
 }

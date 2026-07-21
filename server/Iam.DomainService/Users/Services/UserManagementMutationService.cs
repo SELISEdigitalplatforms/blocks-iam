@@ -163,6 +163,9 @@ namespace Iam.DomainService.Users
             var tenantId = bc?.TenantId;
             var tenant = !string.IsNullOrWhiteSpace(tenantId) ? _tenants.GetTenantByID(tenantId) : null;
 
+            var normalizedEmail = NormalizeEmail(command.Email);
+            var normalizedUserName = NormalizeIdentity(string.IsNullOrWhiteSpace(command.UserName) ? command.Email : command.UserName);
+
             var user = new User
             {
                 ItemId = id,
@@ -170,8 +173,8 @@ namespace Iam.DomainService.Users
                 CreatedBy = bc?.UserId ?? id,
                 LastUpdatedDate = DateTime.Now,
                 LastUpdatedBy = bc?.UserId ?? id,
-                Email = string.IsNullOrWhiteSpace(command.Email) ? string.Empty : command.Email.ToLower(),
-                UserName = (string.IsNullOrWhiteSpace(command.UserName) ? command.Email : command.UserName).ToLower(),
+                Email = normalizedEmail,
+                UserName = normalizedUserName,
                 Password = string.IsNullOrWhiteSpace(command.Password) ? string.Empty : _identityAccessManagementService.HashPassword(command.Password, tenant?.TenantSalt),
                 PasswordSetTime = string.IsNullOrWhiteSpace(command.Password) ? DateTime.MinValue : DateTime.Now,
                 PasswordChangedAtUtc = string.IsNullOrWhiteSpace(command.Password) ? null : DateTime.UtcNow,
@@ -915,7 +918,7 @@ namespace Iam.DomainService.Users
             _logger.LogInformation("User creation start from CreateUserByEmail");
             var tenantConfig = await _resourceRepository.GetTenantConfigurationAsync();
 
-            var email = @event.Email?.Trim().ToLower() ?? string.Empty;
+            var email = NormalizeEmail(@event.Email);
 
             var organizationId = (tenantConfig?.IsMultiOrgEnabled ?? false)
                 ? (string.IsNullOrWhiteSpace(@event.OrganizationId) ? DefaultOrganizationId : @event.OrganizationId)
@@ -1088,6 +1091,8 @@ namespace Iam.DomainService.Users
             var tenantId = blocksContext?.TenantId;
             var tenant = !string.IsNullOrWhiteSpace(tenantId) ? _tenants.GetTenantByID(tenantId) : null;
             
+            var normalizedEmail = NormalizeEmail(command.Email);
+
             var user = new User
             {
                 ItemId = id,
@@ -1095,8 +1100,8 @@ namespace Iam.DomainService.Users
                 CreatedBy = blocksContext?.UserId ?? id,
                 LastUpdatedDate = DateTime.Now,
                 LastUpdatedBy = blocksContext?.UserId ?? id,
-                Email = string.IsNullOrWhiteSpace(command.Email) ? string.Empty : command.Email.ToLower(),
-                UserName = string.IsNullOrWhiteSpace(command.Email) ? string.Empty : command.Email.ToLower(),
+                Email = normalizedEmail,
+                UserName = normalizedEmail,
                 Password = _identityAccessManagementService.HashPassword(Guid.NewGuid().ToString(), tenant?.TenantSalt),
                 PasswordSetTime = DateTime.Now,
                 PasswordChangedAtUtc = DateTime.UtcNow,
@@ -1154,6 +1159,16 @@ namespace Iam.DomainService.Users
                 UserCreationType.Api => UserProvisioningSource.API,
                 _ => UserProvisioningSource.Manual
             };
+        }
+
+        private static string NormalizeEmail(string? email)
+        {
+            return string.IsNullOrWhiteSpace(email) ? string.Empty : email.Trim().ToLowerInvariant();
+        }
+
+        private static string NormalizeIdentity(string? value)
+        {
+            return string.IsNullOrWhiteSpace(value) ? string.Empty : value.Trim().ToLowerInvariant();
         }
 
         public async Task ExecuteUserMutationViaSsoCommandAsync(CreateUserViaSsoEvent command)

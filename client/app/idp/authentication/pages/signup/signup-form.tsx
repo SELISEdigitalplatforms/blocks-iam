@@ -34,6 +34,7 @@ export const SignupForm = ({
   tenantId?: string;
 }) => {
   const [isChecked, setIsChecked] = useState(false);
+  const [serverError, setServerError] = useState<string | null>(null);
   const navigate = useNavigate();
   const animCtx = useOidcAuthAnimation();
   const formRef = useRef<HTMLFormElement>(null);
@@ -74,6 +75,7 @@ export const SignupForm = ({
   }
 
   const onSubmitHandler = async (values: z.infer<typeof signupFormSchema>) => {
+    setServerError(null);
     animCtx?.startAnimation();
     try {
       const res = await mutateAsync({
@@ -88,6 +90,7 @@ export const SignupForm = ({
           : res.errors && typeof res.errors === "object"
           ? (Object.values(res.errors as Record<string, string>)[0] ?? "Registration failed")
           : (res.errors as string) || "Registration failed";
+        setServerError(msg);
         shake();
         await animCtx?.failAnimation(msg);
         return;
@@ -103,9 +106,12 @@ export const SignupForm = ({
           : error.errors && typeof error.errors === "object"
           ? (Object.values(error.errors as Record<string, string>)[0] ?? "Something went wrong")
           : (error.errors as unknown as string) || "Something went wrong";
+        setServerError(msg);
         await animCtx?.failAnimation(msg);
       } else {
-        await animCtx?.failAnimation("Something went wrong");
+        const msg = "Something went wrong";
+        setServerError(msg);
+        await animCtx?.failAnimation(msg);
       }
     }
   };
@@ -120,7 +126,16 @@ export const SignupForm = ({
     <div className="flex flex-col gap-4 w-full">
       {emailSignUpEnabled && (
         <Form {...form}>
-          <form ref={formRef} onSubmit={form.handleSubmit(onSubmitHandler, shake)} className="flex flex-col gap-5 w-full" noValidate>
+          <form
+            ref={formRef}
+            onSubmit={form.handleSubmit(onSubmitHandler, shake)}
+            onInput={() => {
+              if (serverError) setServerError(null);
+              if (animCtx?.phase === "failed") animCtx?.resetAnimation();
+            }}
+            className="flex flex-col gap-5 w-full"
+            noValidate
+          >
             {/* First Name & Last Name */}
             <div className="flex flex-col sm:flex-row gap-4">
               <FormField
@@ -255,6 +270,12 @@ export const SignupForm = ({
                 .
               </label>
             </div>
+
+            {serverError && (
+              <p className="text-sm" style={{ color: "var(--danger)", fontFamily: "system-ui, sans-serif" }}>
+                {serverError}
+              </p>
+            )}
 
             {/* Submit */}
             <button
