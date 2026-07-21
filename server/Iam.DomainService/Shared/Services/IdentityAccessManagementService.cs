@@ -99,7 +99,7 @@ namespace Iam.DomainService.Services
                 BodyDataContext = bodyContext,
                 Language = user.Language ?? "en-US",
                 Purpose = emailPurpose,
-                To = new string[] { user.Email.ToLower() }
+                To = new string[] { NormalizeEmail(user.Email) }
             };
 
             await SendToQueueAsync(IdpConstants.MailQueue, sendMailCommand);
@@ -145,7 +145,7 @@ namespace Iam.DomainService.Services
                 },
                 Language = user.Language ?? "en-US",
                 Purpose = string.IsNullOrWhiteSpace(mailPurpose) ? "AccountActivated" : mailPurpose,
-                To = new string[] { user.Email.ToLower() }
+                To = new string[] { NormalizeEmail(user.Email) }
             };
 
             return await SendEmailAsync(sendMailCommand);
@@ -155,6 +155,11 @@ namespace Iam.DomainService.Services
         {
             var bc = BlocksContext.GetContext();
             return _tenants.GetTenantByID(bc.TenantId)?.IsRootTenant ?? false;
+        }
+
+        private static string NormalizeEmail(string? email)
+        {
+            return string.IsNullOrWhiteSpace(email) ? string.Empty : email.Trim().ToLowerInvariant();
         }
 
     }

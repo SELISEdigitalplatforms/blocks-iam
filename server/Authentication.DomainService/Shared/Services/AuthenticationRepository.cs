@@ -46,6 +46,7 @@ namespace Authentication.DomainService.Services
         public async Task<User> GetUserByEmailAsync(string email)
         {
             var collection = GetCollection<User>();
+            email = NormalizeIdentity(email);
             var options = new FindOptions<User>
             {
                 Collation = new Collation("en", strength: CollationStrength.Secondary)
@@ -57,8 +58,13 @@ namespace Authentication.DomainService.Services
         public async Task<User> GetUserByUsernameAsync(string username, string? organizationId = null)
         {
             var collection = GetCollection<User>();
+            username = NormalizeIdentity(username);
 
             var filter = Builders<User>.Filter.Eq(u => u.UserName, username) | Builders<User>.Filter.Eq(u => u.Email, username);
+            var options = new FindOptions
+            {
+                Collation = new Collation("en", strength: CollationStrength.Secondary)
+            };
 
             if (!string.IsNullOrWhiteSpace(organizationId) && organizationId != "default")
             {
@@ -66,7 +72,7 @@ namespace Authentication.DomainService.Services
                 filter &= Builders<User>.Filter.AnyEq("OrganizationIds", organizationId);
             }
 
-            return await collection.Find(filter).FirstOrDefaultAsync();
+            return await collection.Find(filter, options).FirstOrDefaultAsync();
         }
 
         public async Task<User> GetUserByIdAsync(string itemId)
@@ -588,6 +594,11 @@ namespace Authentication.DomainService.Services
                 // Log exception
                 return false;
             }
+        }
+
+        private static string NormalizeIdentity(string? value)
+        {
+            return string.IsNullOrWhiteSpace(value) ? string.Empty : value.Trim().ToLowerInvariant();
         }
 
     }
