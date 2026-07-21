@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useCallback, useState } from "react";
 import { Label } from "@/components/ui-kits/label/label";
 import { Pagination } from "@/components/ui-kits/pagination/pagination";
 import { IRole } from "@blocks-idp/iam/models/role";
@@ -31,13 +31,13 @@ export const OrganizationRolesField = ({
     roles.slice(filter.page * filter.pageSize, filter.page * filter.pageSize + filter.pageSize) ||
     [];
 
-  const onAddHandler = (newRoles: IRole[]) => {
-    onChange([...roles, ...newRoles]);
-  };
+  const onAddHandler = useCallback((newRoles: IRole[]) => {
+    (onChange as unknown as (fn: (prev: IRole[]) => IRole[]) => void)((prevRoles) => [...prevRoles, ...newRoles]);
+  }, [onChange]);
 
-  const onRemoveHandler = (role: IRole) => {
-    onChange(roles.filter((item) => item.slug !== role.slug));
-  };
+  const onRemoveHandler = useCallback((role: IRole) => {
+    (onChange as unknown as (fn: (prev: IRole[]) => IRole[]) => void)((prevRoles) => prevRoles.filter((item) => item.slug !== role.slug));
+  }, [onChange]);
 
   return (
     <div className="space-y-3">
@@ -78,9 +78,7 @@ export const OrganizationRolesField = ({
           <div className="overflow-hidden rounded-lg border">
             <OrganizationRolesList
               roles={slicedRoles}
-              onDelete={(role) => {
-                onRemoveHandler(role);
-              }}
+              onDelete={onRemoveHandler}
               onSave={onSave}
             />
           </div>
