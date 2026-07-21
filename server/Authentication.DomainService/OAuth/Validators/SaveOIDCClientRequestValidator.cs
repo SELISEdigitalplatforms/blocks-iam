@@ -47,6 +47,23 @@ namespace Authentication.DomainService.OAuth
             RuleFor(x => x.AllowedScopes)
                 .Must(AllNonEmpty)
                 .When(x => x.AllowedScopes != null && x.AllowedScopes.Count > 0);
+
+            RuleFor(x => x)
+                .Must(NotCombineDeviceFlowWithCodeResponseType)
+                .When(x => x.IsDeviceFlowClient);
+        }
+
+        private static bool NotCombineDeviceFlowWithCodeResponseType(SaveOIDCClientRequest request)
+        {
+            if (request.AllowedResponseTypes == null || request.AllowedResponseTypes.Count == 0)
+            {
+                return true;
+            }
+
+            var hasCode = request.AllowedResponseTypes.Any(v =>
+                string.Equals(v, "code", StringComparison.OrdinalIgnoreCase));
+
+            return !hasCode;
         }
 
         private static bool BeUrlSafe(string value)

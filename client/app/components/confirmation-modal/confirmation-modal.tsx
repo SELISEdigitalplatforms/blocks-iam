@@ -5,7 +5,6 @@ import {
   DialogTitle,
   DialogContent,
   DialogFooter,
-  DialogTrigger,
 } from "@/components/ui-kits/dialog/dialog";
 import { Button } from "@/components/ui-kits/button/button";
 
@@ -23,7 +22,7 @@ interface ConfirmationModalProps {
   };
 }
 
-const ConfirmationModal: React.FC<ConfirmationModalProps> = ({ data, onConfirm, buttonState }) => (
+const ConfirmationModal: React.FC<ConfirmationModalProps> = ({ data, onCancel, onConfirm, buttonState }) => (
   <DialogContent className="mr-4 w-full max-w-[425px] rounded-md">
     <DialogHeader>
       <DialogTitle className="text-left text-lg font-semibold leading-7">
@@ -34,11 +33,9 @@ const ConfirmationModal: React.FC<ConfirmationModalProps> = ({ data, onConfirm, 
       </DialogDescription>
     </DialogHeader>
     <DialogFooter className="mt-4 flex flex-row gap-2">
-      <DialogTrigger asChild>
-        <Button variant="outline" size="sm">
-          {data.cancelButton || "Cancel"}
-        </Button>
-      </DialogTrigger>
+      <Button variant="outline" size="sm" onClick={onCancel}>
+        {data.cancelButton || "Cancel"}
+      </Button>
 
       <Button size="sm" onClick={onConfirm} disabled={buttonState?.confirm.disable}>
         {data.confirmButton || "Yes"}

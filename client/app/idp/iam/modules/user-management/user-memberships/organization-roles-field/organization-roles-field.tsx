@@ -56,6 +56,7 @@ export const OrganizationRolesField = ({
         <div className="shrink-0">
           <AddOrganizationRole
             onAdd={onAddHandler}
+            onRemove={onRemoveHandler}
             roles={roles}
             onSave={onSave}
             organizationId={organizationId}

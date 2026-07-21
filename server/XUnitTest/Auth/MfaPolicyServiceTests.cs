@@ -59,9 +59,11 @@ namespace XUnitTest.Auth
                 MfaExemptRoles = ["admin"]
             });
 
+            // Roles is Dictionary<organizationId, List<roleName>>: the exempt role name lives in the
+            // values, keyed by the org id.
             var user = new User
             {
-                Roles = new Dictionary<string, List<string>> { { "default", ["Admin"] } }
+                Roles = new Dictionary<string, List<string>> { { "org-1", ["Admin"] } }
             };
 
             var decision = await service.EvaluateAsync(user, clientId: null);
@@ -114,9 +116,11 @@ namespace XUnitTest.Auth
                 MfaRequiredRoles = ["manager"]
             });
 
+            // Roles is Dictionary<organizationId, List<roleName>>: the required role name lives in the
+            // values, keyed by the org id.
             var user = new User
             {
-                Roles = new Dictionary<string, List<string>> { { "default", ["Manager"] } }
+                Roles = new Dictionary<string, List<string>> { { "org-1", ["Manager"] } }
             };
 
             var decision = await service.EvaluateAsync(user, clientId: null);
@@ -246,7 +250,8 @@ namespace XUnitTest.Auth
             cfg.Setup(c => c.GetAsync()).ReturnsAsync(new Configuration
             {
                 EnableMfa = true,
-                UserMfaType = [UserMfaType.Email, UserMfaType.TOTP]
+                UserMfaType = [UserMfaType.Email, UserMfaType.TOTP],
+                RequireMfaForAllUsers = true
             });
 
             var user = new User

@@ -51,9 +51,7 @@ describe("use-auth-config hooks", () => {
 
       result.current.mutate(mockSaveAuthConfigPayload);
       await waitFor(() => expect(result.current.isSuccess).toBe(true));
-      expect(authenticationService.configuration.saveAuthConfig).toHaveBeenCalledWith(
-        mockSaveAuthConfigPayload,
-      );
+      expect(authenticationService.configuration.saveAuthConfig).toHaveBeenCalledWith(mockSaveAuthConfigPayload, expect.anything());
     });
   });
 });

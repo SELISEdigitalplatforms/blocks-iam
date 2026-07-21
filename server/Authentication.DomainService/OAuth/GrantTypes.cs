@@ -13,5 +13,6 @@ namespace Authentication.DomainService.OAuth
         public const string SwitchOrganization = "switch_organization";
         public const string SsoConsentCode = "sso_consent";
         public const string ImpersonationCloud = "impersonation_cloud";
+        public const string DeviceCode = "urn:ietf:params:oauth:grant-type:device_code";
     }
 }

@@ -82,3 +82,7 @@ export const IMPERSONATE_ENDPOINTS = {
 export const EXECUTION_CONTEXT_ENDPOINTS = {
   CONTEXT: `/api/auth/context`,
 };
+
+// ─── Device flow endpoints (RFC 8628) ──────────────────────────────────────
+
+export { DEVICE_ENDPOINTS } from "./endpoints/device.endpoint";

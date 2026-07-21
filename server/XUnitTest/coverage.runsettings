@@ -1,0 +1,50 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Coverage settings for measuring MEANINGFUL units only.
+  Excludes infrastructure/boilerplate that is out of scope for unit testing:
+   - Program/Startup and DI registration (*Extensions, ServiceRegistry)
+   - MongoDB repositories and Mongo-coupled encoding
+   - pure DTO/request/response/model/entity folders (no behaviour)
+   - infra-only certificate storage backends
+-->
+<RunSettings>
+  <DataCollectionRunSettings>
+    <DataCollectors>
+      <DataCollector friendlyName="XPlat code coverage">
+        <Configuration>
+          <Format>cobertura</Format>
+          <ExcludeByFile>
+            **/Program.cs,
+            **/Startup.cs,
+            **/*Extensions.cs,
+            **/ServiceRegistry.cs,
+            **/*ServiceRegistry.cs,
+            **/Repositories/**/*.cs,
+            **/*Repository.cs,
+            **/Consumers/**/*.cs,
+            **/Certificate/**/*.cs,
+            **/Shared/Services/EncodingService.cs,
+            **/GlobalApiRoutePrefixConvention.cs,
+            **/Entities/**/*.cs,
+            **/Entity/**/*.cs,
+            **/Dtos/**/*.cs,
+            **/Dto/**/*.cs,
+            **/RequestModel/**/*.cs,
+            **/RequestModels/**/*.cs,
+            **/ResponseModel/**/*.cs,
+            **/ResponseModels/**/*.cs,
+            **/Requests/**/*.cs,
+            **/Responses/**/*.cs,
+            **/Models/**/*.cs,
+            **/Model/**/*.cs,
+            **/*Request.cs,
+            **/*Response.cs,
+            **/*Dto.cs,
+            **/*Entity.cs
+          </ExcludeByFile>
+          <ExcludeByAttribute>ExcludeFromCodeCoverage,GeneratedCodeAttribute</ExcludeByAttribute>
+        </Configuration>
+      </DataCollector>
+    </DataCollectors>
+  </DataCollectionRunSettings>
+</RunSettings>

@@ -70,7 +70,7 @@ describe("use-permission hooks", () => {
 
       result.current.mutate(mockCreatePermissionPayload);
       await waitFor(() => expect(result.current.isSuccess).toBe(true));
-      expect(iamService.permission.addPermission).toHaveBeenCalledWith(mockCreatePermissionPayload);
+      expect(iamService.permission.addPermission).toHaveBeenCalledWith(mockCreatePermissionPayload, expect.anything());
     });
   });
 
@@ -84,9 +84,7 @@ describe("use-permission hooks", () => {
 
       result.current.mutate(mockUpdatePermissionPayload);
       await waitFor(() => expect(result.current.isSuccess).toBe(true));
-      expect(iamService.permission.updatePermission).toHaveBeenCalledWith(
-        mockUpdatePermissionPayload,
-      );
+      expect(iamService.permission.updatePermission).toHaveBeenCalledWith(mockUpdatePermissionPayload, expect.anything());
     });
   });
 
