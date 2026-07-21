@@ -1,7 +1,9 @@
+/// <reference types="vite/client" />
 import fs from "fs";
 import react from "@vitejs/plugin-react";
 import path from "path";
 import { defineConfig, loadEnv } from "vite";
+import type { InlineConfig } from "vitest/node";
 
 // Local dev HTTPS, driven ONLY by the machine env vars IAM_SSL_CERT /
 // IAM_SSL_KEY (abs paths to an mkcert PEM cert + key). Read directly
@@ -39,7 +41,6 @@ export default defineConfig(({ mode }) => {
   const devHost = env.BLOCKS_DEV_HOST || true;
   const httpsConfig = resolveDevHttps();
 
-
   return {
     envPrefix: ["BLOCKS_"],
     publicDir: path.resolve(__dirname, "public"),
@@ -61,6 +62,56 @@ export default defineConfig(({ mode }) => {
       outDir: "../server/Api/wwwroot",
       emptyOutDir: true,
     },
+    test: {
+      environment: "jsdom",
+      globals: true,
+      setupFiles: ["./app/test-utils/vitest.setup.ts"],
+      coverage: {
+        all: true,
+        provider: "v8",
+        include: ["app/**/*.{ts,tsx}"],
+        exclude: [
+          "app/**/*.test.*",
+          "app/**/*.spec.*",
+          "app/**/*.d.ts",
+          "app/**/main.tsx",
+          "app/**/vite-env.d.ts",
+          "**/components/ui/**",
+          "app/**/*.stories.*",
+          "**/__generated__/**",
+          "**/*.gen.*",
+          "app/**/test-utils/**",
+          "app/**/__mocks__/**",
+        ],
+      },
+      alias: {
+        // Stub the design-system package in tests. Its barrel eagerly imports
+        // framer-motion, whose motion-utils reads `process.env.NODE_ENV` at load
+        // time and crashes under jsdom. The stub also re-exports the local
+        // stores so `vi.mock("@/store/...")` stays effective in hook tests.
+        "@seliseblocks/blocks-kit": path.resolve(
+          __dirname,
+          "./app/test-utils/stubs/blocks-kit.tsx",
+        ),
+        "@seliseblocks/blocks-kit/lib": path.resolve(
+          __dirname,
+          "./app/test-utils/stubs/blocks-kit.tsx",
+        ),
+        "@seliseblocks/blocks-kit/providers": path.resolve(
+          __dirname,
+          "./app/test-utils/stubs/blocks-kit.tsx",
+        ),
+        "@": path.resolve(__dirname, "./app"),
+        "@blocks-idp": path.resolve(__dirname, "./app/idp"),
+        "@blocks-lmt": path.resolve(__dirname, "./app/cross-modules/lmt"),
+        "@blocks-storage": path.resolve(__dirname, "./app/cross-modules/storage"),
+        "@blocks-communication": path.resolve(__dirname, "./app/cross-modules/communication"),
+        "@blocks-identifier": path.resolve(__dirname, "./app/cross-modules/identifier"),
+        "@blocks-localization": path.resolve(__dirname, "./app/cross-modules/localization"),
+        "@blocks-utilities": path.resolve(__dirname, "./app/cross-modules/utilities"),
+        "@blocks-ai": path.resolve(__dirname, "./app/cross-modules/ai"),
+      },
+    } as InlineConfig,
     server: {
       host: devHost,
       port: 4000,

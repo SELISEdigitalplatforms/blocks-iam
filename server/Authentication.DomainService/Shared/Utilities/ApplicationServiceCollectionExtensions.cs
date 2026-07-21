@@ -2,6 +2,7 @@ using Authentication.DomainService.Authentication;
 using Authentication.DomainService.OAuth;
 using Authentication.DomainService.OAuth.Services;
 using Authentication.DomainService.OAuth.SocialServices;
+using Authentication.DomainService.Oidc.Contracts;
 using Authentication.DomainService.Oidc.Repositories;
 using Authentication.DomainService.Oidc.Services;
 using Authentication.DomainService.RequestModel;
@@ -95,6 +96,16 @@ namespace Authentication.DomainService.Utilities
 
             serviceCollection.AddSingleton<ICertificateProviderFactory, CertificateProviderFactory>();
             serviceCollection.AddSingleton<ISocialLogInServiceProvider, SocialLogInServiceProvider>();
+
+            // RFC 8628 Device Authorization Grant
+            serviceCollection.AddSingleton<DeviceCodeGenerator>();
+            serviceCollection.AddSingleton<IDeviceAuthorizationRepository, DeviceAuthorizationRepository>();
+            serviceCollection.AddSingleton<IDeviceAuthorizationService, DeviceAuthorizationService>();
+            serviceCollection.AddSingleton<IOidcTokenMintService, OidcTokenMintService>();
+            serviceCollection.AddSingleton<DeviceAuthorizationEndpoint>();
+            serviceCollection.AddSingleton<DeviceVerificationService>();
+            serviceCollection.AddSingleton<DeviceCodeExchangeService>();
+            serviceCollection.AddHostedService<DeviceCleanupWorker>();
             serviceCollection.AddSingleton<IdpTokenExchangeClient>();
             serviceCollection.AddSingleton<IAuthSessionFacade, AuthSessionFacade>();
             serviceCollection.AddSingleton<IAuthStrategy, AuthStrategy>();

@@ -8,6 +8,7 @@ using Iam.DomainService.Services;
 using Iam.DomainService.Shared.Dtos;
 using Iam.DomainService.Shared.Entities;
 using Iam.DomainService.Utilities;
+using Iam.DomainService.Users.RequestModel;
 using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.Logging;
 using System.Text.Json;
@@ -339,6 +340,261 @@ namespace Iam.DomainService.Users
             return new BaseResponse { IsSuccess = true };
         }
 
+        public async Task<BaseMutationResponse> ActivateUserAsync(ActivateUserByAdminRequest request)
+        {
+            if (string.IsNullOrWhiteSpace(request.UserId))
+            {
+                return new BaseMutationResponse
+                {
+                    Errors = new Dictionary<string, string>
+                    {
+                        { nameof(request.UserId), "UserId is required" }
+                    }
+                };
+            }
+
+            if (string.IsNullOrWhiteSpace(request.Reason) || request.Reason.Trim().Length < 3)
+            {
+                return new BaseMutationResponse
+                {
+                    Errors = new Dictionary<string, string>
+                    {
+                        { nameof(request.Reason), "A reason is required (minimum 3 characters)" }
+                    }
+                };
+            }
+
+            var user = await _userRepository.GetUserByIdAsync(request.UserId);
+            if (user == null)
+            {
+                return new BaseMutationResponse
+                {
+                    Errors = new Dictionary<string, string>
+                    {
+                        { nameof(request.UserId), $"No user found with id {request.UserId}" }
+                    }
+                };
+            }
+
+            if (user.Active && user.Status == UserLifecycleStatus.Active)
+            {
+                return new BaseMutationResponse
+                {
+                    Errors = new Dictionary<string, string>
+                    {
+                        { nameof(request.UserId), "User is already active" }
+                    }
+                };
+            }
+
+            var blocksContext = BlocksContext.GetContext();
+            var actorUserId = blocksContext?.UserId ?? request.UserId;
+
+            user.Active = true;
+            user.IsVerified = true;
+            user.Status = UserLifecycleStatus.Active;
+            user.StatusReason = "activated";
+            user.ActivatedAtUtc = DateTime.UtcNow;
+            user.ActivatedBy = actorUserId;
+            user.DeactivatedAtUtc = null;
+            user.DeactivatedBy = null;
+            user.LockoutUntilUtc = null;
+            user.FailedLoginCount = 0;
+            user.LastFailedLoginUtc = null;
+            user.SecurityStamp = Guid.NewGuid().ToString("N");
+            user.LastUpdatedBy = actorUserId;
+            user.LastUpdatedDate = DateTime.Now;
+
+            await Task.WhenAll(
+                _userRepository.UpdateUserAsync(user),
+                _messageClient.SendToConsumerAsync(new ConsumerMessage<UserStatusChangedEvent>
+                {
+                    ConsumerName = IdpConstants.IamUserQueue,
+                    Payload = new UserStatusChangedEvent
+                    {
+                        UserId = request.UserId,
+                        IsActive = true
+                    }
+                }));
+
+            await SendEvent(user.ItemId, MutationEventType.Update);
+
+            await _userActivityDispatcher.SendUserActivityAsync(new UserActivityEvent
+            {
+                UserId = user.ItemId,
+                ActorUserId = actorUserId,
+                Category = UserActivityCategory.Account,
+                Event = "USER_ACTIVATED",
+                Source = "iam-user-mutation",
+                Entity = "User",
+                EntityId = user.ItemId,
+                ReasonCode = "ADMIN_REINSTATE",
+                Metadata = new Dictionary<string, string>
+                {
+                    { "reason", request.Reason }
+                }
+            });
+
+            _logger.LogInformation("User activation end -- Success for {Id}", user.ItemId);
+            return new BaseMutationResponse
+            {
+                IsSuccess = true,
+                ItemId = user.ItemId
+            };
+        }
+
+        public async Task<BaseMutationResponse> ActivateAndLinkSocialIdentityAsync(ActivateAndLinkSocialIdentityRequest request)
+        {
+            if (string.IsNullOrWhiteSpace(request.UserId))
+            {
+                return new BaseMutationResponse
+                {
+                    Errors = new Dictionary<string, string>
+                    {
+                        { nameof(request.UserId), "UserId is required" }
+                    }
+                };
+            }
+
+            if (string.IsNullOrWhiteSpace(request.Provider))
+            {
+                return new BaseMutationResponse
+                {
+                    Errors = new Dictionary<string, string>
+                    {
+                        { nameof(request.Provider), "Provider is required" }
+                    }
+                };
+            }
+
+            if (string.IsNullOrWhiteSpace(request.ProviderUserId))
+            {
+                return new BaseMutationResponse
+                {
+                    Errors = new Dictionary<string, string>
+                    {
+                        { nameof(request.ProviderUserId), "ProviderUserId is required" }
+                    }
+                };
+            }
+
+            var user = await _userRepository.GetUserByIdAsync(request.UserId);
+            if (user == null)
+            {
+                return new BaseMutationResponse
+                {
+                    Errors = new Dictionary<string, string>
+                    {
+                        { nameof(request.UserId), $"No user found with id {request.UserId}" }
+                    }
+                };
+            }
+
+            if (user.Active && user.IsVerified)
+            {
+                return new BaseMutationResponse
+                {
+                    IsSuccess = true,
+                    ItemId = user.ItemId
+                };
+            }
+
+            if (user.Status == UserLifecycleStatus.Disabled)
+            {
+                return new BaseMutationResponse
+                {
+                    Errors = new Dictionary<string, string>
+                    {
+                        { "account_disabled", "This account has been disabled by an administrator. Please contact support." }
+                    }
+                };
+            }
+
+            var blocksContext = BlocksContext.GetContext();
+            var actorUserId = blocksContext?.UserId ?? request.UserId;
+
+            user.Active = true;
+            user.IsVerified = true;
+            user.Status = UserLifecycleStatus.Active;
+            user.StatusReason = "activated_via_social_link";
+            user.ActivatedAtUtc = DateTime.UtcNow;
+            user.ActivatedBy = actorUserId;
+            user.EmailVerifiedAtUtc = DateTime.UtcNow;
+            user.VerifiedType = user.VerifiedType == UserVerifiedType.None
+                ? UserVerifiedType.Email
+                : user.VerifiedType;
+            user.SecurityStamp = Guid.NewGuid().ToString("N");
+            user.FailedLoginCount = 0;
+            user.LastFailedLoginUtc = null;
+            user.LockoutUntilUtc = null;
+            user.LastUpdatedBy = actorUserId;
+            user.LastUpdatedDate = DateTime.Now;
+
+            if (user.ExternalIdentities == null)
+            {
+                user.ExternalIdentities = new List<ExternalIdentity>();
+            }
+
+            var alreadyLinked = user.ExternalIdentities.Any(ei =>
+                string.Equals(ei.Provider, request.Provider, StringComparison.OrdinalIgnoreCase) &&
+                string.Equals(ei.ProviderUserId, request.ProviderUserId, StringComparison.OrdinalIgnoreCase));
+
+            if (!alreadyLinked)
+            {
+                user.ExternalIdentities.Add(new ExternalIdentity
+                {
+                    Provider = request.Provider,
+                    ProviderUserId = request.ProviderUserId,
+                    Issuer = request.Issuer ?? request.Provider,
+                    LinkedAtUtc = DateTime.UtcNow
+                });
+            }
+
+            var updated = await _userRepository.UpdateUserAsync(user);
+            if (!updated)
+            {
+                _logger.LogError("ActivateAndLinkSocialIdentityAsync -- Repository update failed for user {Id}", user.ItemId);
+                return new BaseMutationResponse();
+            }
+
+            await Task.WhenAll(
+                _messageClient.SendToConsumerAsync(new ConsumerMessage<UserStatusChangedEvent>
+                {
+                    ConsumerName = IdpConstants.IamUserQueue,
+                    Payload = new UserStatusChangedEvent
+                    {
+                        UserId = user.ItemId,
+                        IsActive = true
+                    }
+                }));
+
+            await SendEvent(user.ItemId, MutationEventType.Update);
+
+            await _userActivityDispatcher.SendUserActivityAsync(new UserActivityEvent
+            {
+                UserId = user.ItemId,
+                ActorUserId = actorUserId,
+                Category = UserActivityCategory.Account,
+                Event = "USER_ACTIVATED_VIA_SOCIAL_LINK",
+                Source = "iam-user-mutation",
+                Entity = "User",
+                EntityId = user.ItemId,
+                ReasonCode = "SOCIAL_SIGNUP_RECOVERY",
+                Metadata = new Dictionary<string, string>
+                {
+                    { "provider", request.Provider },
+                    { "issuer", request.Issuer ?? request.Provider }
+                }
+            });
+
+            _logger.LogInformation("User activation via social link -- Success for {Id} provider={Provider}", user.ItemId, request.Provider);
+            return new BaseMutationResponse
+            {
+                IsSuccess = true,
+                ItemId = user.ItemId
+            };
+        }
+
         public async Task ExecuteUserMutationCommandAsync(UserMutationEvent command)
         {
             _logger.LogInformation("User Mutation event -- initiate");
@@ -659,12 +915,41 @@ namespace Iam.DomainService.Users
             _logger.LogInformation("User creation start from CreateUserByEmail");
             var tenantConfig = await _resourceRepository.GetTenantConfigurationAsync();
 
+            var email = @event.Email?.Trim().ToLower() ?? string.Empty;
+
+            var organizationId = (tenantConfig?.IsMultiOrgEnabled ?? false)
+                ? (string.IsNullOrWhiteSpace(@event.OrganizationId) ? DefaultOrganizationId : @event.OrganizationId)
+                : DefaultOrganizationId;
+
+            // This path bypasses _createValidator (and its BeAnUniqueEmail rule), so the uniqueness check has
+            // to happen here: without it a caller whose lookup missed would have a second account created for
+            // an email that already has one.
+            var existingUser = await _userRepository.GetUserByUserNameOrgIdAsync(email, organizationId);
+
+            if (existingUser != null)
+            {
+                _logger.LogInformation("User already exists for CreateUserByEmail; reusing existing user instead of creating a duplicate");
+
+                // An account that cannot sign in yet still needs an activation key, even though it exists.
+                if (RequiresActivation(existingUser))
+                {
+                    var (existingUserKey, existingUserKeyExpiry) = await CreateUserByEmailActivationProcessAsync(existingUser, @event.EventType);
+                    await SendCreateUserByEmailPostEventAsync(@event, existingUser.ItemId, existingUserKey, existingUserKeyExpiry);
+                }
+                else
+                {
+                    await SendCreateUserByEmailPostEventAsync(@event, existingUser.ItemId, string.Empty, null);
+                }
+
+                return true;
+            }
+
             var command = new CreateUserRequest
             {
-                Email = @event.Email,
+                Email = email,
                 UserCreationType = UserCreationType.Service,
                 MailPurpose = @event.EventType,
-                OrganizationId =@event.OrganizationId ?? DefaultOrganizationId,
+                OrganizationId = organizationId,
                 Roles = @event.Roles ?? tenantConfig.DefaultRolesForNewUserOnSignUp ?? new List<string>(),
                 Permissions = @event.Permissions ?? tenantConfig.DefaultPermissionsForNewUserOnSignUp ?? new List<string>()
             };
@@ -690,25 +975,37 @@ namespace Iam.DomainService.Users
         {
             var user = await _userRepository.GetUserByIdAsync(userId);
 
-            var key = await CreateUserByEmailActivationProcessAsync(user, @event.EventType);
+            var (key, keyExpiresAtUtc) = await CreateUserByEmailActivationProcessAsync(user, @event.EventType);
 
             await PublishUserActivityAsync(user, MutationEventType.Create);
 
+            await SendCreateUserByEmailPostEventAsync(@event, userId, key, keyExpiresAtUtc);
+
+            return true;
+        }
+
+        /// <summary>An account that is inactive or unverified cannot sign in yet, so it still needs an activation key.</summary>
+        private static bool RequiresActivation(User user) => !user.Active || !user.IsVerified;
+
+        private async Task SendCreateUserByEmailPostEventAsync(CreateUserByEmailEvent @event, string userId, string key, DateTime? keyExpiresAtUtc)
+        {
             await _identityAccessManagementService.SendToQueueAsync(@event.EventQueue, new CreateUserByEmailPostEvent
             {
                 Key = key,
                 UserId = userId,
                 EventType = @event.EventType,
+                TenantId = @event.TenantId,
+                ForceInvitation = @event.ForceInvitation,
+                KeyExpiresAtUtc = keyExpiresAtUtc,
             });
-
-            return true;
         }
 
-        public async Task<string> CreateUserByEmailActivationProcessAsync(User user, string eventType)
+        public async Task<(string key, DateTime expiresAtUtc)> CreateUserByEmailActivationProcessAsync(User user, string eventType)
         {
             var config = await _userRepository.GetIamConfigurationAsync();
 
             var key = Guid.NewGuid().ToString("n");
+            var expiresAtUtc = DateTime.UtcNow.AddMinutes(config.ActivationUrlLifetimeInMinutes);
 
             await _cacheClient.AddStringValueAsync(key, user.ItemId, config.ActivationUrlLifetimeInMinutes * 60);
 
@@ -717,12 +1014,12 @@ namespace Iam.DomainService.Users
                 ItemId = Guid.NewGuid().ToString(),
                 Key = key,
                 UserId = user.ItemId,
-                IssueDate = DateTime.Now,
-                ExpireDate = DateTime.Now.AddMinutes(config.ActivationUrlLifetimeInMinutes),
+                IssueDate = DateTime.UtcNow,
+                ExpireDate = expiresAtUtc,
                 MailPurpose = eventType
             });
 
-            return key;
+            return (key, expiresAtUtc);
         }
 
         async Task<TenantConfiguration> IUserManagementMutationService.GetTenantConfigurationAsync()

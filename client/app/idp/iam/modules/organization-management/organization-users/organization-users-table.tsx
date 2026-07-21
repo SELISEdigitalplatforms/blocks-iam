@@ -8,7 +8,7 @@ import { Skeleton } from "@/components/ui-kits/skeleton/skeleton";
 import { User } from "@blocks-idp/iam/models/user";
 import { useRevokeAccess } from "@blocks-idp/iam/hooks/use-user";
 import { checkValidDate, formatDate, parseDateString } from "@/lib/utils";
-import { ChevronRight, UserMinus, Users as UsersIcon } from "lucide-react";
+import { UserMinus, Users as UsersIcon } from "lucide-react";
 import { useOrganizationUsersSortQueryParams } from "./organization-users-filter-toolbar";
 import { FilterControls } from "@/components/filter-toolbar";
 import { useNavigate } from "react-router-dom";
@@ -134,7 +134,7 @@ const [confirmRevoke, setConfirmRevoke] = useState<User | null>(null);
       <div className="scrollbar-hidden-x overflow-x-hidden md:overflow-x-auto">
         <div className="flex flex-col gap-1.5 md:min-w-[860px]">
           {/* Column headers — sticky so they stay pinned while the rows below scroll */}
-          <div className="sticky top-0 z-10 hidden grid-cols-[220px_minmax(0,1fr)_90px_140px_40px_16px] items-center gap-2 bg-card px-2 pb-1.5 text-xs md:grid">
+          <div className="sticky top-0 z-10 hidden grid-cols-[220px_minmax(0,1fr)_90px_140px_40px] items-center gap-2 bg-card px-2 pb-1.5 text-xs md:grid">
             <div className="min-w-0">
               <FilterControls.SortHeader
                 id="FirstName"
@@ -168,7 +168,6 @@ const [confirmRevoke, setConfirmRevoke] = useState<User | null>(null);
               />
             </div>
             <div />
-            <div />
           </div>
 
           {users.map((user) => {
@@ -185,7 +184,7 @@ const [confirmRevoke, setConfirmRevoke] = useState<User | null>(null);
                 onKeyDown={(e) => {
                   if (e.key === "Enter" || e.key === " ") handleRowClick(user.itemId);
                 }}
-                className="group flex cursor-pointer flex-col gap-2.5 rounded-xl border bg-card p-3 transition-colors hover:border-primary/30 md:grid md:grid-cols-[220px_minmax(0,1fr)_90px_140px_40px_16px] md:items-center md:gap-2 md:p-2"
+                className="group flex cursor-pointer flex-col gap-2.5 rounded-xl border bg-card p-3 transition-colors hover:border-primary/30 md:grid md:grid-cols-[220px_minmax(0,1fr)_90px_140px_40px] md:items-center md:gap-2 md:p-2"
               >
                 {/* Avatar + name (+ inline revoke action on mobile) */}
                 <div className="flex min-w-0 items-center gap-2">
@@ -270,8 +269,6 @@ const [confirmRevoke, setConfirmRevoke] = useState<User | null>(null);
                     <UserMinus className="h-3.5 w-3.5" />
                   </Button>
                 </div>
-
-                <ChevronRight className="hidden h-3.5 w-3.5 shrink-0 text-muted-foreground transition-transform group-hover:translate-x-0.5 md:block" />
               </div>
             );
           })}

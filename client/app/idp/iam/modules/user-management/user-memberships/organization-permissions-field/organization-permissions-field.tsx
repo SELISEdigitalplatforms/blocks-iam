@@ -5,6 +5,7 @@ import { IPermission } from "@blocks-idp/iam/models/permission";
 import { KeyRound } from "lucide-react";
 import { AddOrganizationPermission } from "./add-organization-permission";
 import { OrganizationPermissionsList } from "./organization-permissions-list";
+import { permissionMatches } from "./permission-selection.utils";
 
 type OrganizationPermissionsFieldProps = {
   permissions: IPermission[];
@@ -38,12 +39,12 @@ export const OrganizationPermissionsField = ({
   };
 
   const onRemoveHandler = (permission: IPermission) => {
-    onChange(permissions.filter((item) => item.resource !== permission.resource));
+    onChange(permissions.filter((item) => !permissionMatches(item, permission)));
   };
 
   return (
     <div className="space-y-3">
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+      <div className="flex flex-row items-center justify-between gap-3">
         <div className="flex-1 space-y-1">
           <div className="flex items-center gap-2">
             <Label className="text-base font-medium">Permissions</Label>

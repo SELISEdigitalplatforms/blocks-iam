@@ -38,7 +38,7 @@ namespace Authentication.DomainService.Authentication
                 return OidcCaptchaEvaluation.Require(OAuthError.CaptchaEnabled, "Captcha verification is required", captchaConfiguration.CaptchaKey, CaptchaOutcome.Missing);
             }
 
-            var verifyCaptchaResponse = await _captchaEvaluator.VerifyAsync(captchaCode);
+            var verifyCaptchaResponse = await _captchaEvaluator.VerifyAsync(captchaCode, captchaConfiguration.Provider);
             var verified = (bool)verifyCaptchaResponse.GetType().GetProperty("Verified")!.GetValue(verifyCaptchaResponse)!;
 
             if (verified)

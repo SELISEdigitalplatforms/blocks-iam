@@ -38,20 +38,18 @@ describe("MFAService", () => {
     it("should GET with correct query params", async () => {
       vi.mocked(http.get).mockResolvedValue(mockMfaConfigResponse);
 
-      const result = await service.getConfigurations(mockGetMfaConfigPayload);
+      const result = await service.getConfigurations();
 
-      expect(http.get).toHaveBeenCalledWith(
-        `${MFA_CONFIG_ENDPOINTS.GET}?ProjectKey=${mockGetMfaConfigPayload.projectKey}`,
-      );
+      expect(http.get).toHaveBeenCalledWith(MFA_CONFIG_ENDPOINTS.GET, undefined, {
+        absoluteUrl: true,
+      });
       expect(result).toEqual(mockMfaConfigResponse);
     });
 
     it("should throw when the API call fails", async () => {
       vi.mocked(http.get).mockRejectedValue(new Error("Network error"));
 
-      await expect(service.getConfigurations(mockGetMfaConfigPayload)).rejects.toThrow(
-        "Network error",
-      );
+      await expect(service.getConfigurations()).rejects.toThrow("Network error");
     });
   });
 
@@ -62,7 +60,12 @@ describe("MFAService", () => {
 
       const result = await service.saveMFAConfiguration(mockSaveMfaConfigPayload);
 
-      expect(http.post).toHaveBeenCalledWith(MFA_CONFIG_ENDPOINTS.SAVE, mockSaveMfaConfigPayload);
+      expect(http.post).toHaveBeenCalledWith(
+        MFA_CONFIG_ENDPOINTS.SAVE,
+        mockSaveMfaConfigPayload,
+        undefined,
+        { absoluteUrl: true },
+      );
       expect(result).toEqual(mockSuccessResponse);
     });
 
@@ -82,7 +85,12 @@ describe("MFAService", () => {
 
       const result = await service.generateUserMfaOTP(mockGenerateOtpPayload);
 
-      expect(http.post).toHaveBeenCalledWith(MFA_ENDPOINTS.GENERATE_OTP, mockGenerateOtpPayload);
+      expect(http.post).toHaveBeenCalledWith(
+        MFA_ENDPOINTS.GENERATE_OTP,
+        mockGenerateOtpPayload,
+        undefined,
+        { absoluteUrl: true },
+      );
       expect(result).toEqual(mockGenerateOtpResponse);
     });
 
@@ -120,19 +128,19 @@ describe("MFAService", () => {
 
   // ─── setupUserTotp ────────────────────────────────────────────────────────
   describe("setupUserTotp", () => {
-    it("should GET with correct query params", async () => {
-      vi.mocked(http.get).mockResolvedValue(mockSetupTotpResponse);
+    it("should POST to the setup-totp endpoint with an empty body", async () => {
+      vi.mocked(http.post).mockResolvedValue(mockSetupTotpResponse);
 
       const result = await service.setupUserTotp(mockSetupTotpPayload);
 
-      expect(http.get).toHaveBeenCalledWith(
-        `${MFA_ENDPOINTS.SETUP_TOTP}?UserId=${mockSetupTotpPayload.id}&ProjectKey=${mockSetupTotpPayload.projectKey}`,
-      );
+      expect(http.post).toHaveBeenCalledWith(MFA_ENDPOINTS.SETUP_TOTP, {}, undefined, {
+        absoluteUrl: true,
+      });
       expect(result).toEqual(mockSetupTotpResponse);
     });
 
     it("should throw when the API call fails", async () => {
-      vi.mocked(http.get).mockRejectedValue(new Error("Network error"));
+      vi.mocked(http.post).mockRejectedValue(new Error("Network error"));
 
       await expect(service.setupUserTotp(mockSetupTotpPayload)).rejects.toThrow("Network error");
     });
@@ -145,7 +153,9 @@ describe("MFAService", () => {
 
       const result = await service.verifyOtp(mockVerifyOtpPayload);
 
-      expect(http.post).toHaveBeenCalledWith(MFA_ENDPOINTS.VERIFY_OTP, mockVerifyOtpPayload);
+      expect(http.post).toHaveBeenCalledWith(MFA_ENDPOINTS.VERIFY_OTP, mockVerifyOtpPayload, undefined, {
+        absoluteUrl: true,
+      });
       expect(result).toEqual(mockVerifyOtpResponse);
     });
 

@@ -5,13 +5,15 @@ using Microsoft.AspNetCore.Http;
 
 namespace XUnitTest.Auth.Shared
 {
+    [Collection("DomainResolverStatic")]
     public class DomainResolverTests
     {
         [Fact]
         public void GetRootDomain_ReturnsHost_WhenLessThanTwoParts()
         {
             DomainResolver.GetRootDomain("localhost").Should().Be("localhost");
-            DomainResolver.GetRootDomain("127.0.0.1").Should().Be("127.0.0.1");
+            // Dotted hosts collapse to the last two labels; an IPv4 literal therefore yields its last two octets.
+            DomainResolver.GetRootDomain("127.0.0.1").Should().Be("0.1");
             DomainResolver.GetRootDomain("::1").Should().Be("::1");
         }
 

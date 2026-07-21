@@ -8,10 +8,8 @@ export const isValidDomain = (domain: string) => domainRegex.test(domain.trim())
 export const subdomainRegex =
   /^(https?:\/\/)(?!-)([A-Za-z0-9-]{1,63}\.)*[A-Za-z0-9-]{1,63}(?<!-)$/;
 
-export const isValidSubdomain = (subdomain: string) => {
-  if (!subdomain) return false;
-  return subdomain.split(".").every((label) => subdomainRegex.test(label));
-};
+export const isValidSubdomain = (subdomain: string) =>
+  !!subdomain && subdomainRegex.test(subdomain.trim());
 
 export const getDomain = (url: string = "") => {
   const trimUrl = url.trim();
