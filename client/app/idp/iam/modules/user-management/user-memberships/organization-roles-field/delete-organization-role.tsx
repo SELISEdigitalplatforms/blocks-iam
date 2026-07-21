@@ -29,6 +29,7 @@ export const DeleteOrganizationRole = ({
         }}
         onConfirm={() => {
           onDelete(role);
+          setOpen(false);
           // Defer save so the parent's queued state update lands before
           // `onSave` reads the new selection.
           setTimeout(() => onSave?.(), 0);
