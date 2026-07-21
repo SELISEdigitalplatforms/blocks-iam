@@ -185,3 +185,6 @@ docs/
 .cursor/
 
 .kilo/
+
+# build output (never commit)
+builds/
