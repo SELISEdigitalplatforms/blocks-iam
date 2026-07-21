@@ -273,7 +273,11 @@ public class AuthenticationController : ControllerBase
         // Keep a single logout contract for both embedded and OIDC flows.
         // For embedded flows this is effectively a no-op (no idp_session_id cookie).
         // For OIDC flows this removes current account from IDP session and clears cookie when session becomes empty.
-        var shouldClearIdpSessionCookie = await _authenticationService.UpdateIdpSessionForLogoutAsync(HttpContext, User, isGlobalLogout: false);
+        var shouldClearIdpSessionCookie = await _authenticationService.UpdateIdpSessionForLogoutAsync(
+            HttpContext,
+            User,
+            isGlobalLogout: false,
+            new[] { logoutResult.IdpSessionId });
         if (shouldClearIdpSessionCookie)
         {
             _authenticationService.ClearIdpSessionCookie(Response);
@@ -369,7 +373,11 @@ public class AuthenticationController : ControllerBase
 
         _authenticationService.DeleteCookie(Request);
 
-        var shouldClearIdpSessionCookie = await _authenticationService.UpdateIdpSessionForLogoutAsync(HttpContext, User, isGlobalLogout: true);
+        var shouldClearIdpSessionCookie = await _authenticationService.UpdateIdpSessionForLogoutAsync(
+            HttpContext,
+            User,
+            isGlobalLogout: true,
+            logoutAllResult.IdpSessionIds);
         if (shouldClearIdpSessionCookie)
         {
             _authenticationService.ClearIdpSessionCookie(Response);
