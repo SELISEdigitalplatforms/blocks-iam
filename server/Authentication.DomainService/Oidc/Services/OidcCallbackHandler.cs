@@ -149,7 +149,7 @@ namespace Authentication.DomainService.Oidc.Services
                 }
 
                 // 5. Create or update Blocks user based on provider's user info
-                var ssoUser = await CreateOrUpdateUserFromExternalUserAsync(externalUserData, new List<string> { "user"}, new List<string>(), provider);
+                var ssoUser = await CreateOrUpdateUserFromExternalUserAsync(externalUserData, new List<string> { "clouduser"}, new List<string>(), provider);
 
                 if (string.IsNullOrWhiteSpace(ssoUser.userId))
                 {

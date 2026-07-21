@@ -105,7 +105,7 @@ export const OIDCPermissionScreen = () => {
           )}
         </div>
         <CardDescription className="mt-3 text-lg text-foreground">
-          You&apos;re about to connect your Blocks Account to Blocks Cloud
+          You&apos;re about to connect your Blocks Account to Blocks IAM
         </CardDescription>
       </CardHeader>
       <CardContent className="mt-2 flex flex-1 flex-col justify-between">
@@ -119,7 +119,7 @@ export const OIDCPermissionScreen = () => {
             </ul>
           </div>
           <div className="my-4 text-left text-sm text-foreground">
-            By clicking Allow, you permit Blocks Cloud to use your information in accordance with
+            By clicking Allow, you permit Blocks IAM to use your information in accordance with
             its{" "}
             <Link
               to="https://selisegroup.com/software-development-terms/"
@@ -250,7 +250,7 @@ export const OIDCPermissionScreen = () => {
 //           )}
 //         </div>
 //         <CardDescription className="mt-3 text-lg text-foreground">
-//           You&apos;re about to connect your Blocks Account to Blocks Cloud
+//           You&apos;re about to connect your Blocks Account to Blocks IAM
 //         </CardDescription>
 //       </CardHeader>
 //       <CardContent className="mt-2 flex flex-1 flex-col justify-between">
@@ -264,7 +264,7 @@ export const OIDCPermissionScreen = () => {
 //             </ul>
 //           </div>
 //           <div className="my-4 text-left text-sm text-foreground">
-//             By clicking Allow, you permit Blocks Cloud to use your information in accordance with
+//             By clicking Allow, you permit Blocks IAM to use your information in accordance with
 //             its{" "}
 //             <Link
 //               to="https://selisegroup.com/software-development-terms/"

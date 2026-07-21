@@ -98,6 +98,8 @@ namespace Api.Controllers
             return Ok(result);
         }
 
+        [HttpPost("refresh-tokens/{tokenId}/revoke")]
+        // Deprecated: use "refresh-tokens/{tokenId}/revoke". Old shape kept as a compatibility alias.
         [HttpPost("revoke/refresh-tokens/{tokenId}")]
         [ProtectedEndPoint("blocks-iam::iam::mutate-security-audit")]
         public async Task<IActionResult> RevokeRefreshToken(

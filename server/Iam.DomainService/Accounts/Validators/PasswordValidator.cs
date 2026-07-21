@@ -11,13 +11,11 @@ namespace Iam.DomainService.Accounts
         protected readonly ITenants _tenants;
         protected readonly IIdentityAccessManagementRepository _identityAccessManagementRepository;
         private readonly IIamConfigurationRepository _configurationRepository;
-        protected readonly BlocksContext? _securityContext;
 
         protected PasswordValidator(IIdentityAccessManagementRepository identityAccessManagementRepository, IIamConfigurationRepository configurationRepository)
         {
             _identityAccessManagementRepository = identityAccessManagementRepository;
             _configurationRepository = configurationRepository;
-            _securityContext = BlocksContext.GetContext();
         }
 
         protected async Task<bool> BeAStrongPassword(string password, CancellationToken cancellationToken)
@@ -40,7 +38,8 @@ namespace Iam.DomainService.Accounts
 
         protected async Task<bool> CheckBlackListPassword(string password, CancellationToken cancellationToken)
         {
-            var isExist = await _identityAccessManagementRepository.CheckPasswordBlackListedAsync(password, _securityContext?.TenantId);
+            var tenantId = BlocksContext.GetContext()?.TenantId;
+            var isExist = await _identityAccessManagementRepository.CheckPasswordBlackListedAsync(password, tenantId);
             return !isExist;
         }
     }

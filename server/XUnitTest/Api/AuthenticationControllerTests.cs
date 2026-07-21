@@ -668,7 +668,7 @@ namespace XUnitTest.ApiTests
             var sentinel = new OkObjectResult("config");
             _configService.Setup(c => c.GetAuthenticationConfigAsync()).ReturnsAsync(sentinel);
 
-            var result = await CreateController().Get(new GetAuthenticationConfigurationRequest());
+            var result = await CreateController().GetAuthenticationConfiguration();
 
             result.Should().BeSameAs(sentinel);
         }
@@ -680,7 +680,7 @@ namespace XUnitTest.ApiTests
             _configService.Setup(c => c.UpdateAuthenticationConfigAsync(It.IsAny<UpdateAuthenticationConfigurationRequest>()))
                 .ReturnsAsync(response);
 
-            var result = await CreateController().Update(new UpdateAuthenticationConfigurationRequest());
+            var result = await CreateController().UpdateAuthenticationConfiguration(new UpdateAuthenticationConfigurationRequest());
 
             result.Should().BeSameAs(response);
         }
@@ -744,7 +744,7 @@ namespace XUnitTest.ApiTests
             var list = new List<ClientCredential>();
             _authRepo.Setup(r => r.GetClientCredentialsAsync()).ReturnsAsync(list);
 
-            var result = await CreateController().GetClientCredentials(new GetAllClientCredentialsRequest());
+            var result = await CreateController().GetClientCredentials();
 
             result.Should().BeSameAs(list);
         }
