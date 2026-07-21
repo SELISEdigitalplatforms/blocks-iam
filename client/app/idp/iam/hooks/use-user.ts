@@ -1,15 +1,22 @@
-import { useAuthStore } from "@/store/useAuthStore";
+import { normalizeSearchQueryText } from "@/lib/utils";
+import type {
+  IRevokeAccessPayload,
+  IUpdateUserAccessControlPayload,
+} from "@blocks-idp/iam/models/user";
 import {
   IGetUserByIdPayload,
   IGetUserRolesPayload,
   IGetUsersPayload,
+  IUpdateUserPayload,
 } from "@blocks-idp/iam/models/user";
 import { userService } from "@blocks-idp/iam/services/user.service";
-import { normalizeSearchQueryText } from "@/lib/utils";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useCallback, useMemo } from "react";
 
-export const useGetUsers = (option: IGetUsersPayload) => {
+export const useGetUsers = (
+  option: IGetUsersPayload,
+  queryOptions?: { enabled?: boolean },
+) => {
   const { page, pageSize, projectKey, filter, sort } = option;
 
   const payload = useMemo(() => {
@@ -28,29 +35,25 @@ export const useGetUsers = (option: IGetUsersPayload) => {
     };
   }, [
     page,
-    pageSize,
-    projectKey,
-    filter?.email,
-    filter?.name,
-    filter?.organizationId,
-    sort?.property,
-    sort?.isDescending,
+    pageSize,   
+    filter, 
+    sort,
   ]);
 
   return useQuery({
     queryKey: ["users", projectKey, payload],
     queryFn: () => userService.getUsers(payload),
-    enabled: !!projectKey,
+    enabled: !!projectKey && (queryOptions?.enabled ?? true),
   });
 };
 
 export const useGetUser = (options?: { enabled?: boolean }) => {
-  const authStore = useAuthStore();
+  // const authStore = useAuthStore();
   return useQuery({
     queryKey: ["userAPiNotinuse"],
     queryFn: async () => {
       const user = await userService.getUser();
-      authStore.setUser(user.data);
+      // authStore.setUser(user.data);
       return user;
     },
     staleTime: Infinity,
@@ -59,28 +62,52 @@ export const useGetUser = (options?: { enabled?: boolean }) => {
 };
 
 export const useGetMe = (options?: { enabled?: boolean }) => {
-  const authStore = useAuthStore();
-  return useQuery({
+  // const authStore = useAuthStore();
+  const query = useQuery({
     queryKey: ["user"],
     queryFn: async () => {
       const user = await userService.me();
-      if (user.data) authStore.setUser(user.data);
+      // if (user.data) authStore.setUser(user.data);
       return user;
     },
-    initialData: authStore.user ? { data: authStore.user } : undefined,
+    // initialData: authStore.user ? { data: authStore.user } : undefined,
     staleTime: Infinity,
     ...options,
   });
+
+  const userFound =
+    query.data?.data != null && Object.keys(query.data.data).length > 0;
+
+  return {
+    ...query,
+    userFound,
+  };
 };
 
 export const useGetUserById = (
   options: IGetUserByIdPayload,
-  queryOptions?: { enabled?: boolean },
+  queryOptions?: { enabled?: boolean; retry?: boolean },
 ) => {
   return useQuery({
     queryKey: ["user-by-id", options],
     queryFn: () => userService.getUserById(options),
-    ...queryOptions,
+    retry: queryOptions?.retry ?? false,
+    enabled: queryOptions?.enabled,
+  });
+};
+
+export const useCheckUserExists = (
+  email: string,
+  queryOptions?: { enabled?: boolean },
+) => {
+  const trimmed = email?.trim() ?? "";
+  const isValidEmail = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(trimmed);
+  return useQuery({
+    queryKey: ["user-exists", trimmed.toLowerCase()],
+    queryFn: () => userService.isUserExist(trimmed),
+    enabled: isValidEmail && (queryOptions?.enabled ?? true),
+    retry: false,
+    staleTime: 30_000,
   });
 };
 
@@ -91,7 +118,13 @@ export const useAddUser = () => {
     mutationFn: userService.addUser,
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["users"] });
+      queryClient.invalidateQueries({ queryKey: ["organizations"] });
+      queryClient.invalidateQueries({ queryKey: ["user-by-id"] });
+      queryClient.invalidateQueries({ queryKey: ["user"] });
+      queryClient.invalidateQueries({ queryKey: ["user-roles"] });
+      queryClient.invalidateQueries({ queryKey: ["user-permissions"] });
       queryClient.invalidateQueries({ queryKey: ["subscription-usage"] });
+      queryClient.invalidateQueries({ queryKey: ["organization"] });
     },
   });
 };
@@ -105,18 +138,30 @@ export const useUpdateUser = (options: {
   const { own = false, ...rest } = options;
   return useMutation({
     mutationKey: ["users", "update"],
-    mutationFn: userService.updateUser,
+    mutationFn: (payload: IUpdateUserPayload) =>
+      own ? userService.updateMe(payload) : userService.updateUser(payload),
     onSuccess: () => {
-      if (own) return queryClient.invalidateQueries({ queryKey: ["user"] });
-      queryClient.invalidateQueries({ queryKey: ["user-by-id", rest] });
+      // Always refresh the cached profile so pages like /app/profile show
+      // the updated name without a manual reload — `["user"]` is the query
+      // key for `useGetMe`, and `["user-by-id"]` covers the user-detail view.
+      queryClient.invalidateQueries({ queryKey: ["user"] });
+      queryClient.invalidateQueries({ queryKey: ["user-by-id"] });
+      // The users-list pages keep the user's record too.
+      queryClient.invalidateQueries({ queryKey: ["users"] });
+      if (!own) {
+        queryClient.invalidateQueries({ queryKey: ["user-by-id", rest] });
+      }
     },
   });
 };
 
-export const useGetSignUpSetting = (options?: { enabled?: boolean }) => {
+export const useGetSignUpSetting = (
+  tenantId?: string,
+  options?: { enabled?: boolean },
+) => {
   return useQuery({
-    queryKey: ["sign-up-setting"],
-    queryFn: () => userService.getSignUpSetting(),
+    queryKey: ["sign-up-setting", tenantId],
+    queryFn: () => userService.getSignUpSetting(tenantId),
     ...options,
   });
 };
@@ -162,8 +207,51 @@ export const useGetUserPermissions = (option: IGetUserRolesPayload) => {
   });
 };
 
+export const useUpdateUserAccessControl = (option: {
+  id: string;
+  projectKey: string;
+}) => {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationKey: ["user", "access-control", option],
+    mutationFn: (payload: Omit<IUpdateUserAccessControlPayload, "userId">) =>
+      userService.updateUserAccessControl({ ...payload, userId: option.id }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["users"] });
+      queryClient.invalidateQueries({ queryKey: ["user-by-id"] });
+      queryClient.invalidateQueries({ queryKey: ["user"] });
+      queryClient.invalidateQueries({ queryKey: ["user-roles"] });
+      queryClient.invalidateQueries({ queryKey: ["user-permissions"] });
+      queryClient.invalidateQueries({ queryKey: ["organizations"] });
+      queryClient.invalidateQueries({ queryKey: ["organization"] });
+    },
+  });
+};
+
+export const useRevokeAccess = (option: { id: string }) => {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationKey: ["user", "revoke-access", option],
+    mutationFn: (payload: Omit<IRevokeAccessPayload, "userId">) =>
+      userService.revokeAccess({ ...payload, userId: option.id }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["users"] });
+      queryClient.invalidateQueries({ queryKey: ["user-by-id"] });
+      queryClient.invalidateQueries({ queryKey: ["user"] });
+      queryClient.invalidateQueries({ queryKey: ["user-roles"] });
+      queryClient.invalidateQueries({ queryKey: ["user-permissions"] });
+      queryClient.invalidateQueries({ queryKey: ["organizations"] });
+      queryClient.invalidateQueries({ queryKey: ["organization"] });
+    },
+  });
+};
+
 export const useUserRoles = (option: { id: string; projectKey: string }) => {
-  const { isLoading: isUserLoading, isFetching, data: userData } = useGetUserById(option);
+  const {
+    isLoading: isUserLoading,
+    isFetching,
+    data: userData,
+  } = useGetUserById(option);
   const { isLoading: isRolesLoading, data: rolesData } = useGetUserRoles({
     userId: option.id,
   });
@@ -185,7 +273,7 @@ export const useUserRoles = (option: { id: string; projectKey: string }) => {
         permissions: Object.values(userData?.data?.permissions || {}).flat(),
       });
     },
-    [userData?.data, mutateAsync, option.id, option.projectKey, slugs],
+    [userData?.data, mutateAsync, option.id, slugs],
   );
 
   const deleteRoles = useCallback(
@@ -199,8 +287,10 @@ export const useUserRoles = (option: { id: string; projectKey: string }) => {
         permissions: Object.values(userData?.data?.permissions || {}).flat(),
       });
     },
-    [slugs, userData?.data, mutateAsync, option.projectKey, option.id],
+    [slugs, userData?.data, mutateAsync, option.id],
   );
+
+
 
   return {
     isLoading: isUserLoading || isFetching || isRolesLoading,
@@ -216,13 +306,18 @@ export const useUserPermissions = (option: {
   userId: string;
   projectKey: string;
 }) => {
-  const { isLoading: isUserLoading, isFetching, data: userData } = useGetUserById({
+  const {
+    isLoading: isUserLoading,
+    isFetching,
+    data: userData,
+  } = useGetUserById({
     id: option.userId,
     projectKey: option.projectKey,
   });
-  const { isLoading: isPermissionsLoading, data: permissionsData } = useGetUserPermissions({
-    userId: option.userId,
-  });
+  const { isLoading: isPermissionsLoading, data: permissionsData } =
+    useGetUserPermissions({
+      userId: option.userId,
+    });
   const { isPending, mutateAsync } = useUpdateUser({
     id: option.userId,
     projectKey: option.projectKey,
@@ -244,7 +339,7 @@ export const useUserPermissions = (option: {
         permissions: Array.from(totalResources),
       });
     },
-    [mutateAsync, option.userId, resources, option.projectKey, userData?.data],
+    [mutateAsync, option.userId, resources, userData?.data],
   );
 
   const deletePermissions = useCallback(
@@ -260,7 +355,7 @@ export const useUserPermissions = (option: {
         permissions: restResources,
       });
     },
-    [mutateAsync, option.userId, resources, option.projectKey, userData?.data],
+    [mutateAsync, option.userId, userData?.data,resources],
   );
 
   return {

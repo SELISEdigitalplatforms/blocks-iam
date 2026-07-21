@@ -76,7 +76,7 @@ describe("useSsoActivation", () => {
       }),
     );
     await waitFor(() => expect(mockSetAuthenticated).toHaveBeenCalled());
-    expect(mockPush).toHaveBeenCalledWith("/services/authentication/users");
+    expect(mockPush).toHaveBeenCalledWith("/app/console");
   });
 
   it("should redirect to MFA check when MFA is enabled", async () => {
@@ -108,7 +108,7 @@ describe("useSsoActivation", () => {
       wrapper: createWrapper(),
     });
 
-    await waitFor(() => expect(mockReplace).toHaveBeenCalledWith("/login"));
+    await waitFor(() => expect(mockPush).toHaveBeenCalledWith("/login"));
   });
 
   it("should return isPending state", () => {

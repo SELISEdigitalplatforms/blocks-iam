@@ -3,9 +3,14 @@ import { Badge } from "@/components/ui-kits/badge/badge";
 import { Card, CardContent } from "@/components/ui-kits/card/card";
 import { Skeleton } from "@/components/ui-kits/skeleton/skeleton";
 import { checkValidDate, cn, formatFullDate } from "@/lib/utils";
-import { UserCreationType } from "@blocks-idp/authentication/constants/authentication.constant";
 import { useGetUserById } from "@blocks-idp/iam/hooks/use-user";
 
+
+function getLoginCount(user?: { logInCount?: number; loginCount?: number }): number | null {
+  if (user?.logInCount != null) return user.logInCount;
+  if (user?.loginCount != null) return user.loginCount;
+  return null;
+}
 
 function getInitials(firstName?: string, lastName?: string): string {
   const f = firstName?.charAt(0) ?? "";
@@ -40,18 +45,20 @@ export const UserBasicInformation = ({
   detailsGridClassName = "",
   className = "",
   hideRedundantFields = false,
+  hideNameAndEmailOnMobile = false,
 }: {
   id: string;
   projectKey: string;
   detailsGridClassName?: string;
   className?: string;
   hideRedundantFields?: boolean;
+  hideNameAndEmailOnMobile?: boolean;
 }) => {
   const { isLoading, data } = useGetUserById({ id, projectKey });
 
   if (!isLoading && !data) return null;
   const user = data?.data;
-
+  const loginCount = getLoginCount(user);
   const initials = getInitials(user?.firstName, user?.lastName);
   const fullName =
     user?.firstName || user?.lastName
@@ -78,13 +85,23 @@ export const UserBasicInformation = ({
           ) : (
             <>
               {!hideRedundantFields && (
-                <p className="truncate text-base font-medium leading-tight text-foreground">
+                <p
+                  className={cn(
+                    "truncate text-base font-medium leading-tight text-foreground",
+                    hideNameAndEmailOnMobile && "hidden sm:block"
+                  )}
+                >
                   {fullName ?? "—"}
                 </p>
               )}
 
               {!hideRedundantFields && user?.email && (
-                <div className="mt-0.5 flex items-center gap-1.5">
+                <div
+                  className={cn(
+                    "mt-0.5 flex items-center gap-1.5",
+                    hideNameAndEmailOnMobile && "hidden sm:flex"
+                  )}
+                >
                   <CopyToClipboardButton textToCopy={user.email}>
                     <span className="truncate text-sm text-muted-foreground hover:text-foreground transition-colors">
                       {user.email}
@@ -133,27 +150,56 @@ export const UserBasicInformation = ({
         >
           {!hideRedundantFields && (
             <MetaItem label="Logins" isLoading={isLoading}>
-              {user?.logInCount ?? "—"}
+              {loginCount != null ? loginCount : "—"}
             </MetaItem>
           )}
 
           {!hideRedundantFields && (
-            <MetaItem label="Last login" isLoading={isLoading}>
-              {user?.lastLoggedInTime && checkValidDate(user.lastLoggedInTime)
-                ? formatFullDate(new Date(user.lastLoggedInTime))
+            <MetaItem label="Created" isLoading={isLoading}>
+              {user?.createdDate && checkValidDate(user.createdDate)
+                ? formatFullDate(new Date(user.createdDate))
                 : "—"}
             </MetaItem>
           )}
 
-          <MetaItem label="Signed up via" isLoading={isLoading}>
-            {user?.userCreationType &&
-            UserCreationType[user.userCreationType] ? (
-              <Badge variant="info" className="w-fit rounded-full px-2.5 py-0.5 text-xs">
-                {UserCreationType[user.userCreationType]}
-              </Badge>
-            ) : (
-              "—"
-            )}
+          {!hideRedundantFields && (
+            <MetaItem label="Last updated" isLoading={isLoading}>
+              {user?.lastUpdatedDate && checkValidDate(user.lastUpdatedDate)
+                ? formatFullDate(new Date(user.lastUpdatedDate))
+                : "—"}
+            </MetaItem>
+          )}
+
+          <MetaItem label="Language" isLoading={isLoading}>
+            {user?.language?.trim() ? user.language : "—"}
+          </MetaItem>
+
+          {user?.phoneNumber?.trim() ? (
+            <MetaItem label="Phone" isLoading={isLoading}>
+              <CopyToClipboardButton textToCopy={user.phoneNumber}>
+                <span className="hover:text-foreground transition-colors">
+                  {user.phoneNumber}
+                </span>
+              </CopyToClipboardButton>
+            </MetaItem>
+          ) : null}
+
+          <MetaItem label="Verified" isLoading={isLoading}>
+            <Badge
+              variant={user?.isVerified ? "success" : "secondary"}
+              className="w-fit rounded-full px-2.5 py-0.5 text-xs"
+            >
+              {user?.isVerified ? "Verified" : "Not verified"}
+            </Badge>
+          </MetaItem>
+
+          <MetaItem label="MFA" isLoading={isLoading}>
+            <Badge
+              variant={user?.mfaEnabled ? "success" : "secondary"}
+              className="w-fit rounded-full px-2.5 py-0.5 text-xs"
+            >
+              {user?.mfaEnabled ? "Enabled" : "Disabled"}
+            </Badge>
           </MetaItem>
 
           {hideRedundantFields && user?.userName && (

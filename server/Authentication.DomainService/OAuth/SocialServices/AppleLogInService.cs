@@ -1,5 +1,7 @@
 using Authentication.DomainService.Entities;
+using Iam.DomainService.Utilities;
 using Authentication.DomainService.Services;
+using Authentication.DomainService.Shared;
 using Blocks.Genesis;
 using Microsoft.Extensions.Logging;
 using Microsoft.IdentityModel.Tokens;
@@ -10,7 +12,7 @@ using System.Security.Cryptography;
 
 namespace Authentication.DomainService.OAuth.SocialServices
 {
-    public class AppleLogInService : ISocialLogInService
+    public sealed class AppleLogInService : ISocialLogInService
     {
         private readonly ILogger<AppleLogInService> _logger;
         private readonly IAuthenticationRepository _authenticationRepository;
@@ -44,7 +46,7 @@ namespace Authentication.DomainService.OAuth.SocialServices
                     { "client_id", identityProvider.ClientId },
                     { "client_secret",  GenerateClientSecret(identityProvider)},
                     { "redirect_uri", stateInfo.RedirectUri },
-                    { "grant_type", "authorization_code" }
+                    { "grant_type", GrantTypes.AuthCode }
                 };
 
             var (response, error) = await _httpService.SendFormUrlEncoded<SocialOauthAccessToken>(HttpMethod.Post, postData, identityProvider.TokenUrl);
@@ -59,11 +61,13 @@ namespace Authentication.DomainService.OAuth.SocialServices
             var jwtToken = handler.ReadJwtToken(response.IdToken);
             var payload = JsonConvert.SerializeObject(jwtToken.Payload);
             var deserializeAppleIdToken = JsonConvert.DeserializeObject<AppleIdToken>(payload);
-            var appleUserData = new AppleUserData();
-            appleUserData.Email = deserializeAppleIdToken.Email;
-            appleUserData.ExternalProviderUserId = deserializeAppleIdToken.ExternalProviderUserId;
-            appleUserData.Roles = identityProvider?.InitialRoles ?? [];
-            appleUserData.Platform = stateInfo.Provider;
+            var appleUserData = new AppleUserData
+            {
+                Email = deserializeAppleIdToken?.Email,
+                ExternalProviderUserId = deserializeAppleIdToken?.ExternalProviderUserId,
+                Roles = identityProvider?.InitialRoles ?? [],
+                Platform = stateInfo.Provider
+            };
             return new SocialCallbackResult
             {
                 ExternalUserData = appleUserData,
@@ -97,7 +101,7 @@ namespace Authentication.DomainService.OAuth.SocialServices
                 { "iss", teamId },
                 { "iat", now },
                 { "exp", now + 300 },
-                { "aud", identityProvider.AppleAudience ?? "https://appleid.apple.com" },
+                { "aud", identityProvider.AppleAudience ?? IdpConstants.AppleAuthUrl },
                 { "sub", clientId }
             };
             var header = new JwtHeader(signingCredentials);

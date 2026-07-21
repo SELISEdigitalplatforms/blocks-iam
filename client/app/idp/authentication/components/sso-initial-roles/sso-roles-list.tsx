@@ -12,6 +12,7 @@ import { useNavigate } from "react-router-dom";
 import { IRole } from "@blocks-idp/iam/models/role";
 import { Badge } from "@/components/ui-kits/badge/badge";
 import { DeleteSSORole } from "./delete-sso-role";
+import { useScopedPath } from "@/hooks/use-scoped-path";
 
 type SSORolesListProps = {
   roles: IRole[];
@@ -20,6 +21,7 @@ type SSORolesListProps = {
 
 export const SSORolesList = ({ roles, onDelete }: SSORolesListProps) => {
   const navigate = useNavigate();
+  const scoped = useScopedPath();
   const columns = useMemo<ColumnDef<IRole>[]>(
     () => [
       {
@@ -71,7 +73,7 @@ export const SSORolesList = ({ roles, onDelete }: SSORolesListProps) => {
   });
 
   const onRowClickHandler = (itemId: number | string) => {
-    navigate(`/services/iam/role-detail/${itemId}`);
+    navigate(scoped(`role-detail/${itemId}`));
   };
 
   return (

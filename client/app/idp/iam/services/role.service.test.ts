@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { mockHttpClientFactory } from "@/test-utils/__mocks__";
-import { http } from "@/lib/http-client";
+import { serviceInstances } from "@/lib/http-client";
 import { RoleService } from "./role.service";
 import { ROLE_ENDPOINTS } from "../constants/endpoint.constant";
 import {
@@ -36,7 +36,11 @@ describe("RoleService", () => {
 
       const result = await service.getRoles(mockGetRolesPayload);
 
-      expect(http.post).toHaveBeenCalledWith(ROLE_ENDPOINTS.GET_ROLES, mockGetRolesPayload);
+      const { projectKey, ...rest } = mockGetRolesPayload;
+      expect(http.post).toHaveBeenCalledWith(ROLE_ENDPOINTS.GET_ROLES, {
+        ...rest,
+        organizationId: projectKey,
+      });
       expect(result).toEqual(mockRolesResponse);
     });
 

@@ -1,5 +1,7 @@
 export interface ISignupByEmailPayload {
   email: string;
+  firstName: string;
+  lastName: string;
   captchaCode: string;
 }
 export interface ISignupByEmailResponse {
@@ -16,6 +18,7 @@ export interface ISigninByEmailPayload {
   nonce?: string;
   scope?: string;
   redirectUri?: string;
+  captchaCode?: string;
 }
 export interface ISigninByEmailResponse {
   access_token: string;
@@ -58,9 +61,8 @@ export interface LoginOption {
 export interface IActivateAccountPayload {
   code: string;
   password: string;
-  firstname?: string;
-  lastname?: string;
   captchaCode?: string;
+  mailPurpose?: string;
   preventPostEvent?: boolean;
 }
 

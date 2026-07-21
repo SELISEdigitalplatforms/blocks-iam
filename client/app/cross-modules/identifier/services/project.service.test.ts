@@ -18,7 +18,7 @@ import {
   mockGetSubscriptionUsageResponse,
   mockResource,
 } from "../test-utils/__mocks__";
-import { http } from "@/lib/http-client";
+import { serviceInstances } from "@/lib/http-client";
 import {
   PROJECT_ENDPOINTS,
   DOMAIN_ENDPOINTS,
@@ -35,6 +35,7 @@ describe("ProjectService", () => {
 
   beforeEach(() => {
     service = new ProjectService();
+    vi.clearAllMocks();
   });
 
   // ─── getProjects ────────────────────────────────────────────────────────────
@@ -47,6 +48,8 @@ describe("ProjectService", () => {
 
       expect(http.get).toHaveBeenCalledWith(
         `${PROJECT_ENDPOINTS.GETS}?page=1&pageSize=10&tenantGroupId=tenant-group-1`,
+        undefined,
+        { absoluteUrl: true },
       );
       expect(result).toEqual([mockProjectGroup]);
     });
@@ -58,6 +61,8 @@ describe("ProjectService", () => {
 
       expect(http.get).toHaveBeenCalledWith(
         `${PROJECT_ENDPOINTS.GETS}?page=3&pageSize=25&tenantGroupId=group-2`,
+        undefined,
+        { absoluteUrl: true },
       );
     });
 
@@ -78,6 +83,8 @@ describe("ProjectService", () => {
 
       expect(http.get).toHaveBeenCalledWith(
         `${PROJECT_ENDPOINTS.GET_ASSET}?TenantGroupId=tenant-group-1`,
+        undefined,
+        { absoluteUrl: true },
       );
       expect(result).toEqual(mockGetAssetsResponse);
     });
@@ -98,7 +105,9 @@ describe("ProjectService", () => {
       const payload = { tenantGroupId: "group-1", resource: mockResource };
       const result = await service.addAssets(payload);
 
-      expect(http.post).toHaveBeenCalledWith(PROJECT_ENDPOINTS.ADD_ASSET, payload);
+      expect(http.post).toHaveBeenCalledWith(PROJECT_ENDPOINTS.ADD_ASSET, payload, undefined, {
+        absoluteUrl: true,
+      });
       expect(result).toEqual(mockSuccessResponse);
     });
 
@@ -172,7 +181,9 @@ describe("ProjectService", () => {
 
       const result = await service.getProject({ projectId: "proj-123" });
 
-      expect(http.get).toHaveBeenCalledWith(`${PROJECT_ENDPOINTS.GET}?projectId=proj-123`);
+      expect(http.get).toHaveBeenCalledWith(`${PROJECT_ENDPOINTS.GET}?projectId=proj-123`, undefined, {
+        absoluteUrl: true,
+      });
       expect(result).toEqual(mockGetProjectResponse);
     });
 
@@ -199,7 +210,9 @@ describe("ProjectService", () => {
       };
       const result = await service.createProject(payload);
 
-      expect(http.post).toHaveBeenCalledWith(PROJECT_ENDPOINTS.CREATE, payload);
+      expect(http.post).toHaveBeenCalledWith(PROJECT_ENDPOINTS.CREATE, payload, undefined, {
+        absoluteUrl: true,
+      });
       expect(result).toEqual(mockCreateProjectResponse);
     });
 
@@ -254,7 +267,9 @@ describe("ProjectService", () => {
       };
       const result = await service.updateProject(payload);
 
-      expect(http.post).toHaveBeenCalledWith(PROJECT_ENDPOINTS.UPDATE, payload);
+      expect(http.post).toHaveBeenCalledWith(PROJECT_ENDPOINTS.UPDATE, payload, undefined, {
+        absoluteUrl: true,
+      });
       expect(result).toEqual(mockUpdateProjectResponse);
     });
 
@@ -276,7 +291,9 @@ describe("ProjectService", () => {
       const payload = { projectKey: "proj-key" };
       const result = await service.disableProject(payload);
 
-      expect(http.post).toHaveBeenCalledWith(PROJECT_ENDPOINTS.DISABLE, payload);
+      expect(http.post).toHaveBeenCalledWith(PROJECT_ENDPOINTS.DISABLE, payload, undefined, {
+        absoluteUrl: true,
+      });
       expect(result).toEqual(mockDisableProjectResponse);
     });
 
@@ -295,7 +312,9 @@ describe("ProjectService", () => {
 
       const result = await service.getProjectLoginOption();
 
-      expect(http.get).toHaveBeenCalledWith(PROJECT_ENDPOINTS.GET_LOGIN_OPTIONS);
+      expect(http.get).toHaveBeenCalledWith(PROJECT_ENDPOINTS.GET_LOGIN_OPTIONS, undefined, {
+        absoluteUrl: true,
+      });
       expect(result).toEqual(mockLoginOptionsResponse);
     });
 
@@ -363,21 +382,13 @@ describe("ProjectService", () => {
   // ─── getMigrationStatus ─────────────────────────────────────────────────────
 
   describe("getMigrationStatus", () => {
-    it("should call correct endpoint with tenantGroupId", async () => {
-      vi.mocked(http.get).mockResolvedValue(mockMigrationStatusResponse);
-
+    // The migration-status endpoint is currently disabled server-side; the
+    // method resolves an empty list client-side without any HTTP call.
+    it("should resolve an empty array without hitting the API", async () => {
       const result = await service.getMigrationStatus("group-1");
 
-      expect(http.get).toHaveBeenCalledWith(
-        `${MIGRATION_ENDPOINTS.GET_STATUS}?tenantGroupId=group-1`,
-      );
-      expect(result).toEqual(mockMigrationStatusResponse);
-    });
-
-    it("should handle API errors", async () => {
-      vi.mocked(http.get).mockRejectedValue(new Error("Migration status failed"));
-
-      await expect(service.getMigrationStatus("group")).rejects.toThrow("Migration status failed");
+      expect(http.get).not.toHaveBeenCalled();
+      expect(result).toEqual([]);
     });
   });
 
@@ -398,7 +409,9 @@ describe("ProjectService", () => {
       };
       const result = await service.savePublicCertificate(payload);
 
-      expect(http.post).toHaveBeenCalledWith(PROJECT_ENDPOINTS.UPDATE_TOKEN_VALIDATION, payload);
+      expect(http.post).toHaveBeenCalledWith(PROJECT_ENDPOINTS.UPDATE_TOKEN_VALIDATION, payload, undefined, {
+        absoluteUrl: true,
+      });
       expect(result).toEqual(mockUpdateProjectResponse);
     });
 
@@ -429,6 +442,8 @@ describe("ProjectService", () => {
 
       expect(http.get).toHaveBeenCalledWith(
         `${PROJECT_ENDPOINTS.GET_TOKEN_VALIDATION}?ProjectKey=proj-key-1`,
+        undefined,
+        { absoluteUrl: true },
       );
       expect(result).toEqual(mockPublicCertificateResponse);
     });
@@ -554,6 +569,8 @@ describe("ProjectService", () => {
 
       expect(http.get).toHaveBeenCalledWith(
         `${PROJECT_ENDPOINTS.GET_JWT_CLAIMS}?ProjectKey=proj-key&ItemId=item-1`,
+        undefined,
+        { absoluteUrl: true },
       );
       expect(result).toEqual(mockResponse);
     });
@@ -583,7 +600,9 @@ describe("ProjectService", () => {
       };
       const result = await service.addJwtClaim(payload);
 
-      expect(http.post).toHaveBeenCalledWith(PROJECT_ENDPOINTS.SAVE_JWT_CLAIMS, payload);
+      expect(http.post).toHaveBeenCalledWith(PROJECT_ENDPOINTS.SAVE_JWT_CLAIMS, payload, undefined, {
+        absoluteUrl: true,
+      });
       expect(result).toEqual(mockSuccessResponse);
     });
 

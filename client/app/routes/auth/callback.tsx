@@ -1,6 +1,6 @@
 import { useEffect, useRef } from "react";
 import { useSearchParams } from "react-router-dom";
-import { useAuthStore } from "@/store/useAuthStore";
+import { useAuthStore } from "@seliseblocks/blocks-kit";
 
 export default function LoginCallbackPage() {
   const [searchParams] = useSearchParams();
@@ -45,7 +45,7 @@ export default function LoginCallbackPage() {
       .then((res) => {
         if (res.ok) {
           setAuthenticated();
-          window.location.href = "/console";
+          window.location.href = "/app/console";
         } else {
           window.location.href = "/login?error=callback_failed";
         }

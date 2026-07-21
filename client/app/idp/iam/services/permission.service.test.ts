@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { mockHttpClientFactory } from "@/test-utils/__mocks__";
-import { http } from "@/lib/http-client";
+import { serviceInstances } from "@/lib/http-client";
 import { PermissionService } from "./permission.service";
 import { PERMISSION_ENDPOINTS } from "../constants/endpoint.constant";
 import {
@@ -36,10 +36,11 @@ describe("PermissionService", () => {
 
       const result = await service.getPermissions(mockGetPermissionsPayload);
 
-      expect(http.post).toHaveBeenCalledWith(
-        PERMISSION_ENDPOINTS.GET_PERMISSIONS,
-        mockGetPermissionsPayload,
-      );
+      const { projectKey, ...rest } = mockGetPermissionsPayload;
+      expect(http.post).toHaveBeenCalledWith(PERMISSION_ENDPOINTS.GET_PERMISSIONS, {
+        ...rest,
+        organizationId: projectKey,
+      });
       expect(result).toEqual(mockPermissionsResponse);
     });
 

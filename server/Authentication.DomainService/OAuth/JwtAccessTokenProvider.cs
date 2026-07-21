@@ -1,4 +1,5 @@
 using Blocks.Genesis;
+using Authentication.DomainService.Utilities;
 using Authentication.DomainService.Entities;
 using Iam.DomainService.Entities;
 using Microsoft.Extensions.Logging;
@@ -8,12 +9,12 @@ using System.Security.Claims;
 using System.Security.Cryptography;
 using System.Security.Cryptography.X509Certificates;
 using System.Text;
-using Authentication.DomainService.Utilities;
+using Iam.DomainService.Utilities;
 using Authentication.DomainService.OAuth.RequestModel;
 
 namespace Authentication.DomainService.OAuth
 {
-    public class JwtAccessTokenProvider : IJwtAccessTokenProvider
+    public sealed class JwtAccessTokenProvider : IJwtAccessTokenProvider
     {
         private readonly ILogger<JwtAccessTokenProvider> _logger;
         private readonly IDatabase _cacheDb;
@@ -40,21 +41,20 @@ namespace Authentication.DomainService.OAuth
         }
 
         public async Task<JwtAccessToken> GetJwtAccessToken(
-            AuthenticationConfiguration authenticationConfiguration,
+            IdentityConfiguration authenticationConfiguration,
             Tenant tenant,
             User user,
             TokenRequest tokenRequest,
-            StateInfo? state = null,
-            IEnumerable<string>? clientAllowedServiceAccessResources = null)
+            StateInfo? state = null)
         {
             _key = _cryptoService.Hash(Encoding.UTF8.GetBytes($"{tenant.TenantId}::{tenant.ItemId}"));
             var certificate = await GetOrRetrieveCertAsync(tenant);
             if (certificate == null) return new JwtAccessToken();
-            var resolvedClaims = await _authorizationClaimsResolver.ResolveAsync(user, tokenRequest.OrganizationId, state?.Scope, clientAllowedServiceAccessResources);
+            var resolvedClaims = await _authorizationClaimsResolver.ResolveAsync(user, tokenRequest.OrganizationId, state?.Scope);
             return MapJwtAccessToken(authenticationConfiguration, tenant, user, certificate, resolvedClaims, tokenRequest, stateInfo: state);
         }
 
-        public JwtAccessToken MapJwtAccessToken(AuthenticationConfiguration authenticationConfiguration, Tenant tenant, User user, byte[] certificate, ResolvedAuthorizationClaims resolvedClaims, TokenRequest tokenRequest, StateInfo? stateInfo = null)
+        public JwtAccessToken MapJwtAccessToken(IdentityConfiguration authenticationConfiguration, Tenant tenant, User user, byte[] certificate, ResolvedAuthorizationClaims resolvedClaims, TokenRequest tokenRequest, StateInfo? stateInfo = null)
         {
             var jwtAccessToken = new JwtAccessToken
             {
@@ -88,10 +88,6 @@ namespace Authentication.DomainService.OAuth
                 resolvedOrgId = tokenRequest.OrganizationId;
             }
             claimsIdentity.AddClaim(new Claim(BlocksContext.ORGANIZATION_ID_CLAIM, resolvedOrgId));
-            // claimsIdentity.AddClaim(new Claim(BlocksContext.EMAIL_CLAIM, user.Email ?? string.Empty));
-            // claimsIdentity.AddClaim(new Claim(BlocksContext.USER_NAME_CLAIM, user.UserName ?? string.Empty));
-            // claimsIdentity.AddClaim(new Claim(BlocksContext.DISPLAY_NAME_CLAIM, $"{user.FirstName ?? string.Empty} {user.LastName ?? string.Empty}".Trim()));
-            // claimsIdentity.AddClaim(new Claim(BlocksContext.PHONE_NUMBER_CLAIM, user.PhoneNumber ?? string.Empty));
             claimsIdentity.AddClaim(new Claim("token_version", user.TokenVersion.ToString(), ClaimValueTypes.Integer32));
             claimsIdentity.AddClaim(new Claim("security_stamp", user.SecurityStamp ?? string.Empty));
 
@@ -103,11 +99,6 @@ namespace Authentication.DomainService.OAuth
             foreach (var role in resolvedClaims.Roles)
             {
                 claimsIdentity.AddClaim(new Claim(BlocksContext.ROLES_CLAIM, role));
-            }
-
-            foreach (var resource in resolvedClaims.Resources)
-            {
-                claimsIdentity.AddClaim(new Claim(BlocksContext.SERVICE_ACCESS_CLAIM, resource));
             }
 
             foreach (var permission in resolvedClaims.Permissions)

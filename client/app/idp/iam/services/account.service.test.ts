@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { mockHttpClientFactory } from "@/test-utils/__mocks__";
-import { http } from "@/lib/http-client";
+import { serviceInstances } from "@/lib/http-client";
 import { UserAccountService } from "./account.service";
 import { ACCOUNT_ENDPOINTS } from "../constants/endpoint.constant";
 import {
@@ -9,7 +9,7 @@ import {
   mockAccountRecoverPayload,
   mockAccountResetPasswordPayload,
   mockActivationCodeValidationPayload,
-  mockActivationCodeExpirationResponse,
+  mockActivationCodeValidationResponse,
   mockSuccessResponse,
 } from "../../test-utils/__mocks__";
 
@@ -37,8 +37,24 @@ describe("UserAccountService", () => {
       expect(http.post).toHaveBeenCalledWith(
         ACCOUNT_ENDPOINTS.ACTIVATE,
         mockAccountActivationPayload,
+        {},
       );
       expect(result).toEqual(mockSuccessResponse);
+    });
+
+    it("should set X-Blocks-Key header when tenantId is provided", async () => {
+      vi.mocked(http.post).mockResolvedValue(mockSuccessResponse);
+
+      await service.accountActivation({
+        ...mockAccountActivationPayload,
+        tenantId: "f080a1bea04280a72149fd689d50a48c",
+      });
+
+      expect(http.post).toHaveBeenCalledWith(
+        ACCOUNT_ENDPOINTS.ACTIVATE,
+        expect.objectContaining({ tenantId: "f080a1bea04280a72149fd689d50a48c" }),
+        { "X-Blocks-Key": "f080a1bea04280a72149fd689d50a48c" },
+      );
     });
 
     it("should throw when the API call fails", async () => {
@@ -60,8 +76,24 @@ describe("UserAccountService", () => {
       expect(http.post).toHaveBeenCalledWith(
         ACCOUNT_ENDPOINTS.RESEND_ACTIVATION,
         mockResendActivationPayload,
+        {},
       );
       expect(result).toEqual(mockSuccessResponse);
+    });
+
+    it("should set X-Blocks-Key header when tenantId is provided", async () => {
+      vi.mocked(http.post).mockResolvedValue(mockSuccessResponse);
+
+      await service.accountResendActivation({
+        ...mockResendActivationPayload,
+        tenantId: "f080a1bea04280a72149fd689d50a48c",
+      });
+
+      expect(http.post).toHaveBeenCalledWith(
+        ACCOUNT_ENDPOINTS.RESEND_ACTIVATION,
+        expect.objectContaining({ tenantId: "f080a1bea04280a72149fd689d50a48c" }),
+        { "X-Blocks-Key": "f080a1bea04280a72149fd689d50a48c" },
+      );
     });
 
     it("should throw when the API call fails", async () => {
@@ -80,8 +112,27 @@ describe("UserAccountService", () => {
 
       const result = await service.accountRecover(mockAccountRecoverPayload);
 
-      expect(http.post).toHaveBeenCalledWith(ACCOUNT_ENDPOINTS.RECOVER, mockAccountRecoverPayload);
+      expect(http.post).toHaveBeenCalledWith(
+        ACCOUNT_ENDPOINTS.RECOVER,
+        mockAccountRecoverPayload,
+        {},
+      );
       expect(result).toEqual(mockSuccessResponse);
+    });
+
+    it("should set X-Blocks-Key header when tenantId is provided", async () => {
+      vi.mocked(http.post).mockResolvedValue(mockSuccessResponse);
+
+      await service.accountRecover({
+        ...mockAccountRecoverPayload,
+        tenantId: "f080a1bea04280a72149fd689d50a48c",
+      });
+
+      expect(http.post).toHaveBeenCalledWith(
+        ACCOUNT_ENDPOINTS.RECOVER,
+        expect.objectContaining({ tenantId: "f080a1bea04280a72149fd689d50a48c" }),
+        { "X-Blocks-Key": "f080a1bea04280a72149fd689d50a48c" },
+      );
     });
 
     it("should throw when the API call fails", async () => {
@@ -103,6 +154,7 @@ describe("UserAccountService", () => {
       expect(http.post).toHaveBeenCalledWith(
         ACCOUNT_ENDPOINTS.RESET_PASSWORD,
         mockAccountResetPasswordPayload,
+        {},
       );
       expect(result).toEqual(mockSuccessResponse);
     });
@@ -119,7 +171,7 @@ describe("UserAccountService", () => {
   // ─── checkActivationCodeExpiration ────────────────────────────────────────
   describe("checkActivationCodeExpiration", () => {
     it("should POST to the correct endpoint with payload", async () => {
-      vi.mocked(http.post).mockResolvedValue(mockActivationCodeExpirationResponse);
+      vi.mocked(http.post).mockResolvedValue(mockActivationCodeValidationResponse);
 
       const result = await service.checkActivationCodeExpiration(
         mockActivationCodeValidationPayload,
@@ -128,8 +180,24 @@ describe("UserAccountService", () => {
       expect(http.post).toHaveBeenCalledWith(
         ACCOUNT_ENDPOINTS.VALIDATE_ACTIVATION_CODE,
         mockActivationCodeValidationPayload,
+        {},
       );
-      expect(result).toEqual(mockActivationCodeExpirationResponse);
+      expect(result).toEqual(mockActivationCodeValidationResponse);
+    });
+
+    it("should set X-Blocks-Key header when tenantId is provided", async () => {
+      vi.mocked(http.post).mockResolvedValue(mockActivationCodeValidationResponse);
+
+      await service.checkActivationCodeExpiration({
+        ...mockActivationCodeValidationPayload,
+        tenantId: "f080a1bea04280a72149fd689d50a48c",
+      });
+
+      expect(http.post).toHaveBeenCalledWith(
+        ACCOUNT_ENDPOINTS.VALIDATE_ACTIVATION_CODE,
+        expect.objectContaining({ tenantId: "f080a1bea04280a72149fd689d50a48c" }),
+        { "X-Blocks-Key": "f080a1bea04280a72149fd689d50a48c" },
+      );
     });
 
     it("should throw when the API call fails", async () => {

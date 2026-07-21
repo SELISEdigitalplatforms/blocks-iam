@@ -7,6 +7,6 @@ namespace Authentication.DomainService.OAuth
 {
     public interface ITokenService
     {
-        Task<TokenResponse> AuthenticateAsync(TokenRequest request, AuthenticationConfiguration authenticationConfiguration, User? user = null);
+        Task<TokenResponse> AuthenticateAsync(TokenRequest request, IdentityConfiguration authenticationConfiguration, User? user = null);
     }
 }

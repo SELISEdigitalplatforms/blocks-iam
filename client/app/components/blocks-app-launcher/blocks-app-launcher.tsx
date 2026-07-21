@@ -23,6 +23,55 @@ interface BlocksApp {
   clientId: string;
   redirectUri: string;
 }
+
+export function BlocksOsIcon() {
+  return (
+    <svg viewBox="0 0 40 40" fill="none" xmlns="http://www.w3.org/2000/svg" className="h-9 w-9">
+      <rect width="40" height="40" rx="10" fill="#059669" />
+      <rect x="8" y="8" width="24" height="18" rx="2" stroke="white" strokeWidth="1.5" fill="none" />
+      <rect x="8" y="28" width="24" height="2" fill="white" opacity="0.8" />
+      <circle cx="15" cy="14" r="1.5" fill="white" opacity="0.7" />
+      <circle cx="20" cy="14" r="1.5" fill="white" opacity="0.7" />
+      <circle cx="25" cy="14" r="1.5" fill="white" opacity="0.7" />
+    </svg>
+  );
+}
+
+export const OS_APP: BlocksApp = {
+  key: "os",
+  label: "OS",
+  description: "Operating System",
+  url: getRuntimeEnv("BLOCKS_OS_BASE_URL"),
+  icon: <BlocksOsIcon />,
+  clientId: getRuntimeEnv("BLOCKS_OS_CLIENT_ID"),
+  redirectUri: getRuntimeEnv("BLOCKS_OS_CALLBACK_URL"),
+};
+
+export async function initiateAppLogin(
+  app: BlocksApp,
+  forwardedTo?: string,
+): Promise<void> {
+  const blocksKey = getRuntimeEnv("BLOCKS_X_BLOCKS_KEY");
+  const idpBaseUrl = getRuntimeEnv("BLOCKS_IAM_BASE_URL");
+  const params = new URLSearchParams({
+    "x-blocks-key": blocksKey ?? "",
+    clientId: app.clientId,
+    redirectUri: app.redirectUri,
+  });
+  if (forwardedTo) params.set("forwardedTo", forwardedTo);
+  const initiateUrl = `${idpBaseUrl}/api/idp/initiate?${params.toString()}`;
+  const headers: Record<string, string> = {};
+  if (blocksKey) headers["X-Blocks-Key"] = blocksKey;
+
+  const response = await fetch(initiateUrl, { headers });
+  const data = (await response.json()) as { redirect_uri?: string };
+
+  if (data.redirect_uri) {
+    window.location.href = data.redirect_uri;
+  } else {
+    throw new Error("Failed to get authorization URL");
+  }
+}
 function IdpIcon() {
   return (
     <svg viewBox="0 0 40 40" fill="none" xmlns="http://www.w3.org/2000/svg" className="h-9 w-9">
@@ -95,18 +144,6 @@ function DataGatewayIcon() {
         fill="none"
         opacity="0.6"
       />
-    </svg>
-  );
-}
-function BlocksOsIcon() {
-  return (
-    <svg viewBox="0 0 40 40" fill="none" xmlns="http://www.w3.org/2000/svg" className="h-9 w-9">
-      <rect width="40" height="40" rx="10" fill="#059669" />
-      <rect x="8" y="8" width="24" height="18" rx="2" stroke="white" strokeWidth="1.5" fill="none" />
-      <rect x="8" y="28" width="24" height="2" fill="white" opacity="0.8" />
-      <circle cx="15" cy="14" r="1.5" fill="white" opacity="0.7" />
-      <circle cx="20" cy="14" r="1.5" fill="white" opacity="0.7" />
-      <circle cx="25" cy="14" r="1.5" fill="white" opacity="0.7" />
     </svg>
   );
 }
@@ -200,15 +237,7 @@ const SELISE_APPS: BlocksApp[] = [
     clientId: getRuntimeEnv("BLOCKS_DATA_CLIENT_ID"),
     redirectUri: getRuntimeEnv("BLOCKS_DATA_CALLBACK_URL"),
   },
-  {
-    key: "os",
-    label: "OS",
-    description: "Operating System",
-    url: getRuntimeEnv("BLOCKS_OS_BASE_URL"),
-    icon: <BlocksOsIcon />,
-    clientId: getRuntimeEnv("BLOCKS_OS_CLIENT_ID"),
-    redirectUri: getRuntimeEnv("BLOCKS_OS_CALLBACK_URL"),
-  },
+  OS_APP,
   {
     key: "utilities",
     label: "Utilities",
@@ -346,21 +375,7 @@ export function BlocksAppLauncher() {
     if (loadingKey) return;
     try {
       setLoadingKey(app.key);
-      const blocksKey = getRuntimeEnv("BLOCKS_X_BLOCKS_KEY");
-      const idpBaseUrl = getRuntimeEnv("BLOCKS_IAM_BASE_URL");
-      const initiateUrl = `${idpBaseUrl}/api/idp/initiate?x-blocks-key=${blocksKey}&clientId=${app.clientId}&redirectUri=${app.redirectUri}`;
-      const headers: Record<string, string> = {};
-      if (blocksKey) headers["X-Blocks-Key"] = blocksKey;
-
-      const response = await fetch(initiateUrl, { headers });
-      const data = await response.json();
-
-      if (data.redirect_uri) {
-        window.location.href = data.redirect_uri as string;
-      } else {
-        showErrorToast({ errors: "Failed to get authorization URL" });
-        setLoadingKey(null);
-      }
+      await initiateAppLogin(app);
     } catch (error) {
       console.error("App login initiation error:", error);
       showErrorToast({ errors: "Unable to open app. Please try again." });

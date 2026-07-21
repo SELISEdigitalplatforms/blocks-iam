@@ -17,6 +17,7 @@ import { useNavigate } from "react-router-dom";
 import { IRole } from "@blocks-idp/iam/models/role";
 import { FilterControls, SortValue } from "@/components/filter-toolbar";
 import { useRolesSortQueryParams } from "./roles-filter-toolbar";
+import { useScopedPath } from "@/hooks/use-scoped-path";
 
 type RolesTableProps = {
   roles: IRole[];
@@ -35,6 +36,7 @@ export const RolesList = ({ roles, isLoading }: RolesTableProps) => {
   const { sortQueryParams, setSortQueryParams } = useRolesSortQueryParams();
   const [selectedRole, setSelectedRole] = useState<IRole | null>(null);
   const navigate = useNavigate();
+  const scoped = useScopedPath();
 
   const sortHandler = useCallback(
     (value: SortValue) => {
@@ -132,7 +134,7 @@ export const RolesList = ({ roles, isLoading }: RolesTableProps) => {
   });
 
   const onRowClickHandler = (itemId: number | string) => {
-    navigate(`/services/iam/role-detail/${itemId}`);
+    navigate(scoped(`role-detail/${itemId}`));
   };
 
   if (isLoading) return <LoadingSkelton />;

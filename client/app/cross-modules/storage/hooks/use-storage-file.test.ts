@@ -57,9 +57,7 @@ describe("Storage File Hooks", () => {
 
       await waitFor(() => expect(result.current.isSuccess).toBe(true));
 
-      expect(storageService.file.getPreSignedUrlForUpload).toHaveBeenCalledWith(
-        mockPreSignedUrlPayload,
-      );
+      expect(storageService.file.getPreSignedUrlForUpload).toHaveBeenCalledWith(mockPreSignedUrlPayload, expect.anything());
       expect(result.current.data).toEqual(mockPreSignedUrlResponse);
     });
 
@@ -124,9 +122,7 @@ describe("Storage File Hooks", () => {
 
       await waitFor(() => expect(result.current.isSuccess).toBe(true));
 
-      expect(storageService.uploadFile).toHaveBeenCalledWith(
-        expect.objectContaining({ url: "https://s3.amazonaws.com/bucket/upload.pdf?sig=abc" }),
-      );
+      expect(storageService.uploadFile).toHaveBeenCalledWith(expect.objectContaining({ url: "https://s3.amazonaws.com/bucket/upload.pdf?sig=abc" }), expect.anything());
     });
 
     it("should handle upload errors", async () => {
@@ -168,7 +164,7 @@ describe("Storage File Hooks", () => {
 
       await waitFor(() => expect(result.current.isSuccess).toBe(true));
 
-      expect(storageService.uploadFileToLocalStorage).toHaveBeenCalledWith(payload);
+      expect(storageService.uploadFileToLocalStorage).toHaveBeenCalledWith(payload, expect.anything());
     });
 
     it("should handle errors", async () => {
@@ -273,7 +269,7 @@ describe("Storage File Hooks", () => {
 
       await waitFor(() => expect(result.current.isSuccess).toBe(true));
 
-      expect(storageService.file.deleteFileByFileId).toHaveBeenCalledWith(mockDeleteFilePayload);
+      expect(storageService.file.deleteFileByFileId).toHaveBeenCalledWith(mockDeleteFilePayload, expect.anything());
     });
 
     it("should invalidate getFilesInfo query on success", async () => {
@@ -411,10 +407,7 @@ describe("Storage File Hooks", () => {
 
       await waitFor(() => expect(result.current.isSuccess).toBe(true));
 
-      expect(storageService.uploadPublicCertificateFile).toHaveBeenCalledWith({
-        TenantId: "tenant-1",
-        file,
-      });
+      expect(storageService.uploadPublicCertificateFile).toHaveBeenCalledWith({ TenantId: "tenant-1", file, }, expect.anything());
     });
 
     it("should handle errors", async () => {

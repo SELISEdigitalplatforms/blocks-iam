@@ -4,8 +4,8 @@ import { profileMfaContext } from "../../profile-mfa";
 import { Skeleton } from "@/components/ui-kits/skeleton/skeleton";
 
 export const ProfileMfaVerifyGuideLineTotp = () => {
-  const { userId, projectKey } = useContext(profileMfaContext);
-  const { data } = useGetTotp({ id: userId, projectKey });
+  const { userId } = useContext(profileMfaContext);
+  const { data } = useGetTotp({ id: userId });
   return (
     <div className="flex flex-col gap-4">
       <div className="flex gap-1">
@@ -25,7 +25,7 @@ export const ProfileMfaVerifyGuideLineTotp = () => {
         </div>
         <div className="text-center">
           <p className="text-medium-emphasis">Or enter this code manually in your app:</p>
-          <p className="mt-2 font-semibold">{data?.qrCode}</p>
+          <p className="mt-2 font-semibold">{data?.secret ?? data?.qrCode}</p>
         </div>
       </div>
       <div className="flex gap-1">

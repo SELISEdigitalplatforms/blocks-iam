@@ -1,4 +1,5 @@
 using Blocks.Genesis;
+using Iam.DomainService.Entities;
 using MongoDB.Bson.Serialization.Attributes;
 
 namespace Authentication.DomainService.Entities
@@ -11,8 +12,6 @@ namespace Authentication.DomainService.Entities
         public List<string> RedirectUris { get; set; } = new();
         public List<string> PostLogoutRedirectUris { get; set; } = new();
         public List<string> AllowedScopes { get; set; } = new();
-        public List<string> AllowedServiceAccessResources { get; set; } = new();
-        public List<string> AllowedGrantTypes { get; set; } = new();
         public List<string> AllowedResponseTypes { get; set; } = new() { "code" };
         public string? ClientName { get; set; }
         public string? LogoUri { get; set; }
@@ -28,13 +27,16 @@ namespace Authentication.DomainService.Entities
         public string? ClientType { get; set; }
         public string? UiBrandColor { get; set; }
         public bool UseTokensCookie { get; set; } = true; // Default: tokens in cookies
+        public bool RequireMfa { get; set; }
+        public List<UserMfaType>? AllowedMfaMethods { get; set; }
+        public bool IsDeviceFlowClient { get; set; } = false;
 
-        [BsonIgnore]
-        public string? RedirectUri
-        {
-            get => RedirectUris.FirstOrDefault();
-            set => RedirectUris = string.IsNullOrWhiteSpace(value) ? new() : new() { value };
-        }
+        //[BsonIgnore]
+        //public string? RedirectUri
+        //{
+        //    get => RedirectUris.FirstOrDefault();
+        //    set => RedirectUris = string.IsNullOrWhiteSpace(value) ? new() : new() { value };
+        //}
 
         [BsonIgnore]
         public string? Scope
@@ -45,13 +47,6 @@ namespace Authentication.DomainService.Entities
                 : value.Split([' ', ','], StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
                     .Distinct(StringComparer.OrdinalIgnoreCase)
                     .ToList();
-        }
-
-        [BsonIgnore]
-        public string? ServiceAccessResource
-        {
-            get => AllowedServiceAccessResources.FirstOrDefault();
-            set => AllowedServiceAccessResources = string.IsNullOrWhiteSpace(value) ? new() : new() { value };
         }
 
         [BsonIgnore]

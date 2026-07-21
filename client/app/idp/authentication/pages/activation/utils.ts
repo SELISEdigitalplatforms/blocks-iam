@@ -1,8 +1,6 @@
 import { z } from "zod";
 
 export const activationFormDefaultValue = {
-  firstname: "",
-  lastname: "",
   password: "",
   confirmPassword: "",
 };
@@ -20,9 +18,6 @@ const passwordSchema = z
   .transform((value) => value.trim());
 
 export const activationFormSchema = z.object({
-  firstname: z.string().min(1, "First name is required"),
-  lastname: z.string().min(1, "Last name is required"),
   password: passwordSchema,
   confirmPassword: passwordSchema,
 });
-

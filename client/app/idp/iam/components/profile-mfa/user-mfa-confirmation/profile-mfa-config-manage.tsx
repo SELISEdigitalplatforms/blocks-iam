@@ -12,17 +12,24 @@ import { showErrorToast } from "@/hooks/use-toast";
 import { useConfigureUserMFA } from "@blocks-idp/mfa/hooks/use-mfa-config";
 import { useContext, useEffect, useState } from "react";
 import { ProfileMFAMethodList } from "./profile-mfa-methods-list";
-import { useGetUserById } from "@blocks-idp/iam/hooks/use-user";
+import { useGetMe, useGetUserById } from "@blocks-idp/iam/hooks/use-user";
 import { isErrorWithErrors } from "@/lib/error";
 import { profileMfaContext } from "../profile-mfa";
 import { RefreshCcw } from "lucide-react";
 
 export const ProfileMFAConfigManage = () => {
-  const { projectKey, userId, showVerifyModal } = useContext(profileMfaContext);
+  const { projectKey, userId, own, showVerifyModal } = useContext(profileMfaContext);
   const [open, setOpen] = useState<boolean>(false);
   const [type, setType] = useState(0);
-  const { isPending, mutateAsync } = useConfigureUserMFA({ id: userId, projectKey });
-  const { data: userData, isLoading, isFetching } = useGetUserById({ id: userId, projectKey });
+  const { isPending, mutateAsync } = useConfigureUserMFA({ id: userId });
+  const { data: userByIdData, isLoading: isByIdLoading, isFetching: isByIdFetching } = useGetUserById(
+    { id: userId, projectKey },
+    { enabled: !own },
+  );
+  const { data: meData, isLoading: isMeLoading } = useGetMe();
+  const userData = own ? meData : userByIdData;
+  const isLoading = own ? isMeLoading : isByIdLoading;
+  const isFetching = own ? false : isByIdFetching;
   useEffect(() => {
     if (userData?.data.userMfaType) {
       setType(userData?.data.userMfaType);
@@ -40,11 +47,10 @@ export const ProfileMFAConfigManage = () => {
     try {
       const res = await mutateAsync({
         mfaEnabled: true,
-        projectKey,
         userId,
         userMfaType: type,
       });
-      if (!res.isSuccess) return showErrorToast({ errors: res.errors });
+      if (res?.isSuccess === false) return showErrorToast({ errors: res.errors });
       setOpen(false);
       showVerifyModal(type);
     } catch (error) {

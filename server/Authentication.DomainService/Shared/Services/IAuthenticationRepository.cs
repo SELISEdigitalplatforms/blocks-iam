@@ -18,16 +18,8 @@ namespace Authentication.DomainService.Services
         Task<User> GetUserByUsernameAsync(string username, string? organizationId = null);
         Task<User> GetUserByIdAsync(string itemId);
         Task<T> GetUserByIdAsync<T>(string itemId);
-        Task<bool> InsertIdentitySessionAsync(IdentitySession session);
-        Task<bool> InsertIdentityEventAsync(IdentityEvent identityEvent);
-        Task<bool> InsertUserAuthenticationTimelineAsync(UserAuthenticationTimeline userAuthenticationTimeline);
         Task<User?> IncrementFailedLoginAndApplyLockoutAsync(string userId, int lockThreshold, int lockDurationInMinutes, DateTime nowUtc);
-        Task<IEnumerable<IdentitySession>> GetActiveIdentitySessionByUserIdAsync(string userId);
-        Task<IdentitySession?> GetIdentitySessionByRefreshTokenAsync(string refreshToken);
-        Task<IEnumerable<IdentitySession>> GetActiveIdentitySessionBySessionIdAsync(string sessionId);
-        Task<bool> RevokeIdentitySessionsByRefreshTokensAsync(IEnumerable<string> refreshTokens);
-        Task<bool> UpdateSessionStatusForAllRefreshTokenAsync(List<string> refreshTokens);
-        Task<bool> RevokeIdentitySessionAsync(string refreshToken, string userId);
+        Task<User?> IncrementFailedMfaAndApplyLockoutAsync(string userId, int lockThreshold, int lockDurationInMinutes, DateTime nowUtc);
         Task UpdatePartialAsync<T>(string id, Dictionary<string, object> updates, string collectionName = "");
         Task<List<IdentityProvider>> GetIdentityProvidersAsync();
         Task<IdentityProvider?> GetIdentityProviderAsync(string provider);
@@ -38,8 +30,8 @@ namespace Authentication.DomainService.Services
         Task<IdentityProvider> CreateIdentityProviderAsync(IdentityProvider provider);
         Task<IdentityProvider> UpdateIdentityProviderAsync(IdentityProvider provider);
         Task DeleteIdentityProviderAsync(string id);
-        Task<AuthenticationConfiguration> GetAuthenticationConfigurationAsync();
-        Task UpdateAuthenticationConfigurationAsync(AuthenticationConfiguration authenticationConfiguration);
+        Task<IdentityConfiguration> GetAuthenticationConfigurationAsync();
+        Task UpdateAuthenticationConfigurationAsync(IdentityConfiguration authenticationConfiguration);
         Task<OidcClientRegistration> GetOidcClientRegistrationAsync(string clientId);
         Task<List<OidcClientRegistration>> GetOIDCCredentialsByTenantAsync();
         Task SaveOidcClientRegistrationAsync(OidcClientRegistration credential);
@@ -59,7 +51,5 @@ namespace Authentication.DomainService.Services
         Task<ImpersonationSession?> GetImpersonationSessionByIdAsync(string sessionId);
         Task<List<ImpersonationSession>> GetActiveImpersonationSessionsByUserIdAsync(string userId);
         Task<bool> UpdateImpersonationSessionAsync(string sessionId, Dictionary<string, object> updates);
-        Task<bool> RevokeIdentitySessionsByUserIdAsync(string userId);
-        Task<bool> RevokeIdentitySessionsBySessionIdsAsync(IEnumerable<string> sessionIds);
     }
 }

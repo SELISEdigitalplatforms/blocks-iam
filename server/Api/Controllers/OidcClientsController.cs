@@ -1,6 +1,7 @@
 using Authentication.DomainService.RequestModel;
 using Authentication.DomainService.Services;
-using Microsoft.AspNetCore.Authorization;
+using Authentication.DomainService.Shared.RequestModel;
+using Blocks.Genesis;
 using Microsoft.AspNetCore.Mvc;
 
 namespace Api.Controllers;
@@ -12,7 +13,6 @@ namespace Api.Controllers;
 /// </summary>
 [ApiController]
 [Route("oidc-clients")]
-[Authorize]
 public class OidcClientsController : ControllerBase
 {
     private readonly IAuthenticationDomainService _authenticationDomainService;
@@ -32,7 +32,8 @@ public class OidcClientsController : ControllerBase
     /// <response code="400">Invalid request parameters</response>
     /// <response code="401">Authentication required</response>
     [HttpGet]
-    public async Task<IActionResult> GetAll()
+    [ProtectedEndPoint("blocks-iam::iam::oidc-clients")]
+    public async Task<IActionResult> GetOidcClients()
     {
         var response = await _authenticationDomainService.GetOidcClientsAsync();
 
@@ -56,6 +57,7 @@ public class OidcClientsController : ControllerBase
     /// <response code="401">Authentication required</response>
     /// <response code="404">Client not found</response>
     [HttpGet("{clientId}")]
+    [ProtectedEndPoint("blocks-iam::iam::oidc-clients")]
     public async Task<IActionResult> GetByClientId([FromRoute] string clientId)
     {
         if (string.IsNullOrWhiteSpace(clientId))
@@ -90,7 +92,8 @@ public class OidcClientsController : ControllerBase
     /// <response code="400">Invalid request payload or validation failure</response>
     /// <response code="401">Authentication required</response>
     [HttpPost]
-    public async Task<IActionResult> Upsert([FromBody] SaveOIDCClientRequest request)
+    [ProtectedEndPoint("blocks-iam::iam::mutate-oidc-clients")]
+    public async Task<IActionResult> UpsertOidcClient([FromBody] SaveOIDCClientRequest request)
     {
         if (request == null)
         {
@@ -119,7 +122,8 @@ public class OidcClientsController : ControllerBase
     /// <response code="401">Authentication required</response>
     /// <response code="404">Client not found</response>
     [HttpDelete("{clientId}")]
-    public async Task<IActionResult> Delete([FromRoute] string clientId)
+    [ProtectedEndPoint("blocks-iam::iam::mutate-oidc-clients")]
+    public async Task<IActionResult> DeleteOidcClient([FromRoute] string clientId)
     {
         if (string.IsNullOrWhiteSpace(clientId))
         {
@@ -128,6 +132,34 @@ public class OidcClientsController : ControllerBase
 
         var request = new DeleteOIDCClientRequest { ItemId = clientId };
         var response = await _authenticationDomainService.DeleteOidcClientAsync(request);
+        if (!response.IsSuccess)
+        {
+            return BadRequest(response);
+        }
+
+        return Ok(response);
+    }
+
+    /// <summary>
+    /// Rotate OIDC client secret
+    /// Generates a new client_secret for the existing client and returns it exactly once.
+    /// The new secret is not stored anywhere else and subsequent GETs mask it as usual.
+    /// </summary>
+    /// <param name="clientId">OIDC client identifier</param>
+    /// <returns>The newly rotated client_secret (one-time disclosure)</returns>
+    /// <response code="200">Secret rotated; response contains the new client_secret</response>
+    /// <response code="400">clientId is required or client not found</response>
+    /// <response code="401">Authentication required</response>
+    [HttpPost("{clientId}/rotate-secret")]
+    [ProtectedEndPoint("blocks-iam::iam::mutate-oidc-clients")]
+    public async Task<IActionResult> RotateSecret([FromRoute] string clientId, [FromBody] RotateOidcClientSecretRequest? request = null)
+    {
+        if (string.IsNullOrWhiteSpace(clientId))
+        {
+            return BadRequest(new { error = "id_required", message = "clientId is required." });
+        }
+
+        var response = await _authenticationDomainService.RotateOidcClientSecretAsync(clientId);
         if (!response.IsSuccess)
         {
             return BadRequest(response);

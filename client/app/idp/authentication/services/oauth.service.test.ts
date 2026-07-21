@@ -1,5 +1,5 @@
 import { mockHttpClientFactory } from "@/test-utils/__mocks__";
-import { http } from "@/lib/http-client";
+import { serviceInstances } from "@/lib/http-client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   mockGetSocialLoginPayload,
@@ -32,7 +32,7 @@ describe("OAuthService", () => {
       const result = await service.getSocialLoginEndpoint(mockGetSocialLoginPayload);
 
       expect(http.post).toHaveBeenCalledWith(
-        AUTH_ENDPOINTS.GET_SOCIAL_LOGIN_ENDPOINT,
+        AUTH_ENDPOINTS.SOCIAL_AUTHORIZE,
         mockGetSocialLoginPayload,
       );
       expect(result).toEqual(mockGetSocialLoginResponse);
@@ -49,26 +49,23 @@ describe("OAuthService", () => {
 
   // ─── signinBySSO ──────────────────────────────────────────────────────────
   describe("signinBySSO", () => {
-    it("should POST form-encoded SSO data to TOKEN endpoint", async () => {
+    it("should POST SSO code/state as JSON to the social callback endpoint", async () => {
       vi.mocked(http.post).mockResolvedValue(mockSigninBySSOResponse);
 
       const result = await service.signinBySSO(mockSigninBySSOPayload);
 
       expect(http.post).toHaveBeenCalledWith(
-        AUTH_ENDPOINTS.TOKEN,
-        expect.any(URLSearchParams),
+        AUTH_ENDPOINTS.SOCIAL_LOGIN,
         {
-          "Content-Type": "application/x-www-form-urlencoded",
+          code: mockSigninBySSOPayload.code,
+          state: mockSigninBySSOPayload.state,
+          clientId: "",
         },
+        undefined,
         {
           skipTokenRotation: true,
         },
       );
-
-      const body = vi.mocked(http.post).mock.calls[0][1] as URLSearchParams;
-      expect(body.get("grant_type")).toBe("social");
-      expect(body.get("code")).toBe(mockSigninBySSOPayload.code);
-      expect(body.get("state")).toBe(mockSigninBySSOPayload.state);
       expect(result).toEqual(mockSigninBySSOResponse);
     });
 

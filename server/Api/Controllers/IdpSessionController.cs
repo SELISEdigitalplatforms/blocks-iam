@@ -1,5 +1,6 @@
 using Authentication.DomainService.Oidc.Services;
 using Authentication.DomainService.Utilities;
+using Iam.DomainService.Utilities;
 using Blocks.Genesis;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
@@ -18,13 +19,16 @@ namespace Blocks.Api.Controllers
     {
         private readonly IIdpSessionService _sessionService;
         private readonly ILogger<IdpSessionController> _logger;
+        private readonly ITenants _tenants;
 
         public IdpSessionController(
             IIdpSessionService sessionService,
-            ILogger<IdpSessionController> logger)
+            ILogger<IdpSessionController> logger,
+            ITenants tenants)
         {
             _sessionService = sessionService;
             _logger = logger;
+            _tenants = tenants;
         }
 
         /// <summary>
@@ -40,7 +44,7 @@ namespace Blocks.Api.Controllers
             try
             {
                 var bc = BlocksContext.GetContext();
-                var sessionCookieName = $"{IdpConstants.IdpSessionCookieName}_{bc.TenantId}";
+                var sessionCookieName = IdpConstants.BuildIdpSessionCookieKey(bc.TenantId);
                 var sessionId = GetSessionIdFromToken(sessionCookieName);
                 if (string.IsNullOrEmpty(sessionId))
                 {
@@ -100,7 +104,7 @@ namespace Blocks.Api.Controllers
             try
             {
                 var bc = BlocksContext.GetContext();
-                var sessionCookieName = $"{IdpConstants.IdpSessionCookieName}_{bc.TenantId}";
+                var sessionCookieName = IdpConstants.BuildIdpSessionCookieKey(bc.TenantId);
                 var sessionId = GetSessionIdFromToken(sessionCookieName);
                 if (string.IsNullOrEmpty(sessionId))
                 {
@@ -159,7 +163,7 @@ namespace Blocks.Api.Controllers
                     return StatusCode(403, new { error = "csrf_validation_failed" });
                 }
                 var bc = BlocksContext.GetContext();
-                var sessionCookieName = $"{IdpConstants.IdpSessionCookieName}_{request.TenantId ?? bc.TenantId}";
+                var sessionCookieName = IdpConstants.BuildIdpSessionCookieKey(request.TenantId ?? bc.TenantId);
 
                 var sessionId = GetSessionIdFromToken(sessionCookieName);
                 if (string.IsNullOrEmpty(sessionId))
@@ -180,7 +184,7 @@ namespace Blocks.Api.Controllers
 
                 await _sessionService.UpdateActivityAsync(sessionId);
                 var rotatedSessionId = await _sessionService.RotateSessionAsync(sessionId, "account_add") ?? sessionId;
-                Response.Cookies.Append(sessionCookieName, rotatedSessionId, CreateSessionCookieOptions());
+                Response.Cookies.Append(sessionCookieName, rotatedSessionId, CreateSessionCookieOptions(bc.TenantId));
                 return Ok(new AddAccountResponse { Success = true });
             }
             catch (Exception ex)
@@ -215,7 +219,7 @@ namespace Blocks.Api.Controllers
                 }
 
                 var bc = BlocksContext.GetContext();
-                var sessionCookieName = $"{IdpConstants.IdpSessionCookieName}_{bc.TenantId}";
+                var sessionCookieName = IdpConstants.BuildIdpSessionCookieKey(bc.TenantId);
                 var sessionId = GetSessionIdFromToken(sessionCookieName);
                 if (string.IsNullOrEmpty(sessionId))
                 {
@@ -230,7 +234,7 @@ namespace Blocks.Api.Controllers
 
                 await _sessionService.UpdateActivityAsync(sessionId);
                 var rotatedSessionId = await _sessionService.RotateSessionAsync(sessionId, "account_select") ?? sessionId;
-                Response.Cookies.Append(sessionCookieName, rotatedSessionId, CreateSessionCookieOptions());
+                Response.Cookies.Append(sessionCookieName, rotatedSessionId, CreateSessionCookieOptions(bc.TenantId));
                 return Ok(new SelectAccountResponse { Success = true, UserId = request.UserId });
             }
             catch (Exception ex)
@@ -264,7 +268,7 @@ namespace Blocks.Api.Controllers
                 }
 
                 var bc = BlocksContext.GetContext();
-                var sessionCookieName = $"{IdpConstants.IdpSessionCookieName}_{bc.TenantId}";
+                var sessionCookieName = IdpConstants.BuildIdpSessionCookieKey(bc.TenantId);
                 var sessionId = GetSessionIdFromToken(sessionCookieName);
                 if (string.IsNullOrEmpty(sessionId))
                 {
@@ -279,7 +283,7 @@ namespace Blocks.Api.Controllers
 
                 await _sessionService.UpdateActivityAsync(sessionId);
                 var rotatedSessionId = await _sessionService.RotateSessionAsync(sessionId, "account_remove") ?? sessionId;
-                Response.Cookies.Append(sessionCookieName, rotatedSessionId, CreateSessionCookieOptions());
+                Response.Cookies.Append(sessionCookieName, rotatedSessionId, CreateSessionCookieOptions(bc.TenantId));
                 return Ok(new { success = true });
             }
             catch (Exception ex)
@@ -308,7 +312,7 @@ namespace Blocks.Api.Controllers
                 }
 
                 var bc = BlocksContext.GetContext();
-                var sessionCookieName = $"{IdpConstants.IdpSessionCookieName}_{bc.TenantId}";
+                var sessionCookieName = IdpConstants.BuildIdpSessionCookieKey(bc.TenantId);
                 var sessionId = GetSessionIdFromToken(sessionCookieName);
                 if (string.IsNullOrEmpty(sessionId))
                 {
@@ -372,18 +376,18 @@ namespace Blocks.Api.Controllers
             return false;
         }
 
-        private CookieOptions CreateSessionCookieOptions()
+private CookieOptions CreateSessionCookieOptions(string tenantId)
         {
-            // need to fix cookie options to allow SameSite=None for local development, but use SameSite=Strict for production
-            var isLocal = DomainResolver.IsLocalhost();
-            return new CookieOptions
-            {
-                HttpOnly = true,
-                Secure = true,
-                SameSite = isLocal ? SameSiteMode.None : SameSiteMode.Strict,
-                Path = "/api/oidc",
-                Expires = DateTime.UtcNow.AddDays(30)
-            };
+            var expiresAt = DateTime.UtcNow.AddDays(30);
+            var tenant = _tenants.GetTenantByID(tenantId);
+            var (_, cookieDomain, isResolved) = DomainResolver.ResolveDomain(tenant, Request);
+            var resolvedDomain = isResolved ? cookieDomain : null;
+
+            var cookieOptions = DomainResolver.IsLocalhost()
+                ? DomainResolver.CreateLoopbackCookieOptions(resolvedDomain, expiresAt)
+                : DomainResolver.CreateProductionCookieOptions(resolvedDomain, expiresAt);
+            cookieOptions.Path = "/api/oidc";
+            return cookieOptions;
         }
     }
 

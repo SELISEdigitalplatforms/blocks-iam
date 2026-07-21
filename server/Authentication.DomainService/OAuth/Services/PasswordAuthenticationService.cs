@@ -1,10 +1,10 @@
 using Blocks.Genesis;
-using Authentication.DomainService.Dtos;
 using Authentication.DomainService.Entities;
 using Authentication.DomainService.OAuth.RequestModel;
 using Authentication.DomainService.OAuth.ResponseModel;
 using Authentication.DomainService.Services;
-using Authentication.DomainService.Utilities;
+using Iam.DomainService.Dtos;
+using Iam.DomainService.Services;
 using Iam.DomainService.Accounts;
 using Iam.DomainService.Entities;
 using Microsoft.Extensions.Logging;
@@ -12,7 +12,7 @@ using BCryptNet = BCrypt.Net.BCrypt;
 
 namespace Authentication.DomainService.OAuth
 {
-    public class PasswordAuthenticationService : ITokenService
+    public sealed class PasswordAuthenticationService : ITokenService
     {
         private readonly ILogger<PasswordAuthenticationService> _logger;
         private readonly IOAuthJwtAccessTokenManager _oAuthJwtAccessTokenManager;
@@ -20,8 +20,8 @@ namespace Authentication.DomainService.OAuth
         private readonly IAuthenticationRepository _oAuthRepository;
         private readonly ICryptoService _cryptoService;
         private readonly IAuthenticationDomainService _authenticationDomainService;
-        private readonly ICacheClient _cacheClient;
         private readonly IAccountService _accountService;
+        private readonly IUserActivityDispatcher _userActivityDispatcher;
 
         public PasswordAuthenticationService(
             ILogger<PasswordAuthenticationService> logger,
@@ -30,8 +30,8 @@ namespace Authentication.DomainService.OAuth
             ICryptoService cryptoService,
             IAuthenticationRepository oAuthRepository,
             IAuthenticationDomainService authenticationDomainService,
-            ICacheClient cacheClient,
-            IAccountService accountService
+            IAccountService accountService,
+            IUserActivityDispatcher userActivityDispatcher
         )
         {
             _logger = logger;
@@ -40,33 +40,20 @@ namespace Authentication.DomainService.OAuth
             _cryptoService = cryptoService;
             _oAuthRepository = oAuthRepository;
             _authenticationDomainService = authenticationDomainService;
-            _cacheClient = cacheClient;
             _accountService = accountService;
+            _userActivityDispatcher = userActivityDispatcher;
         }
-        public async Task<TokenResponse> AuthenticateAsync(TokenRequest request, AuthenticationConfiguration authenticationConfiguration, User? user = null)
+        public async Task<TokenResponse> AuthenticateAsync(TokenRequest request, IdentityConfiguration authenticationConfiguration, User? user = null)
         {
             _logger.LogInformation("Password Authentication start");
 
+            // INVARIANT: All login failure modes (user not found, inactive, not verified)
+            // MUST return the generic `OAuthError.InValidResponse(request)` shape. The client
+            // only ever sees `invalid_username_password` / 401. Do not leak discriminators
+            // such as "user is not active" or "user not verified" — see
+            // PasswordAuthenticationServiceInvariantTests for regression coverage.
             user ??= await _oAuthRepository.GetUserByUsernameAsync(request.Username, request.OrganizationId);
             if (!IsValidUser(user) || !IsUserActiveAndVerified(user!)) return OAuthError.InValidResponse(request);
-
-            // Check IP-based rate limiting
-            var clientIp = _authenticationDomainService.GetVisitorsIpAddresses(request.Request.HttpContext).FirstOrDefault();
-            if (!string.IsNullOrWhiteSpace(clientIp))
-            {
-                var ipRateLimitCheckResult = await CheckIpRateLimitAsync(clientIp, request.Username, authenticationConfiguration);
-                if (!ipRateLimitCheckResult.IsAllowed)
-                {
-                    _logger.LogWarning($"IP rate limit exceeded for {clientIp} attempting to login as {request.Username}. Limit: {ipRateLimitCheckResult.LimitType}");
-                    await SendTimelineEventAsync(request, user.ItemId, "failed_login_ip_rate_limited", "password_auth_ip_rate_limited");
-                    return new TokenResponse
-                    {
-                        Error = "ip_rate_limited",
-                        ErrorDescription = $"Too many login attempts from your IP address. Please try again later.",
-                        StatusCode = 429
-                    };
-                }
-            }
 
             if (user.LockoutUntilUtc.HasValue && user.LockoutUntilUtc.Value > DateTime.UtcNow)
             {
@@ -119,7 +106,16 @@ namespace Authentication.DomainService.OAuth
                 return new TokenResponse { Error = OAuthError.InValidUseNamePassword, ErrorDescription = "Invalid username or password", StatusCode = 401 };
             }
 
-            if (user.FailedLoginCount > 0 || user.LastFailedLoginUtc.HasValue || user.LockoutUntilUtc.HasValue)
+            request.OrganizationId = ResolveSignInOrganizationId(user, request.OrganizationId);
+            var tokenResponse = await _oAuthJwtAccessTokenManager.ManageTokenAsync(request, authenticationConfiguration, user);
+
+            if (tokenResponse != null
+                && string.IsNullOrWhiteSpace(tokenResponse.Error)
+                && (user.FailedLoginCount > 0
+                    || user.LastFailedLoginUtc.HasValue
+                    || user.FailedMfaCount > 0
+                    || user.LastFailedMfaUtc.HasValue
+                    || user.LockoutUntilUtc.HasValue))
             {
                 await _oAuthRepository.UpdatePartialAsync<User>(
                     user.ItemId,
@@ -127,15 +123,14 @@ namespace Authentication.DomainService.OAuth
                     {
                         { nameof(User.FailedLoginCount), 0 },
                         { nameof(User.LastFailedLoginUtc), null! },
+                        { nameof(User.FailedMfaCount), 0 },
+                        { nameof(User.LastFailedMfaUtc), null! },
                         { nameof(User.LockoutUntilUtc), null! },
                         { nameof(User.LockoutCount), 0 }, // Reset exponential backoff counter on successful login
                         { nameof(User.LastUpdatedDate), DateTime.UtcNow },
                         { nameof(User.LastUpdatedBy), user.ItemId }
                     });
             }
-
-            request.OrganizationId = ResolveSignInOrganizationId(user, request.OrganizationId);
-            var tokenResponse = await _oAuthJwtAccessTokenManager.ManageTokenAsync(request, authenticationConfiguration, user);
 
             if (tokenResponse != null
                 && string.IsNullOrWhiteSpace(tokenResponse.Error)
@@ -156,6 +151,12 @@ namespace Authentication.DomainService.OAuth
 
         }
 
+        // INVARIANT: Both `IsValidUser` and `IsUserActiveAndVerified` are combined in
+        // `AuthenticateAsync` to collapse "user not found", "inactive", and "not verified"
+        // into the same generic `OAuthError.InValidResponse`. Returning a different error
+        // for any of these branches leaks an account-state discriminator. The lockout path
+        // (returning 423) is an intentional, separate response and not a security leak
+        // because the user already knows whether their own account is locked.
         private static bool IsValidUser(User? user) =>
             user != null;
 
@@ -204,16 +205,20 @@ namespace Authentication.DomainService.OAuth
                 return;
             }
 
-            var timelineEvent = new UserAuthenticationTimelineEvent
+            await _userActivityDispatcher.SendUserActivityAsync(new UserActivityEvent
             {
                 UserId = userId,
+                Category = UserActivityCategory.Auth,
                 Event = eventName,
-                ActionBy = actionBy,
-                DeviceInformation = _authenticationDomainService.GetDeviceInfo(request.Request.Headers.UserAgent.ToString()),
-                IpAddresses = string.Join(",", _authenticationDomainService.GetVisitorsIpAddresses(request.Request.HttpContext))
-            };
-
-            await _authenticationDomainService.SendToQueueAsync(IdpConstants.AuthenticationQueue, timelineEvent);
+                Source = "auth-password",
+                Outcome = eventName.Contains("SUCCESS", StringComparison.OrdinalIgnoreCase) ? "success" : "failure",
+                Context = new ActivityContext
+                {
+                    IpAddress = string.Join(",", _authenticationDomainService.GetVisitorsIpAddresses(request.Request.HttpContext)),
+                    DeviceInformation = _authenticationDomainService.GetDeviceInfo(request.Request.Headers.UserAgent.ToString())
+                },
+                Metadata = new Dictionary<string, string> { { "actionBy", actionBy } }
+            });
         }
 
         private static string ResolveSignInOrganizationId(User user, string? requestedOrganizationId)
@@ -251,51 +256,5 @@ namespace Authentication.DomainService.OAuth
                 || user.Permissions.ContainsKey(organizationId);
         }
 
-        /// <summary>
-        /// Checks IP-based rate limiting for login attempts.
-        /// Tracks attempts per IP per hour and per day.
-        /// Returns IsAllowed=false if limit exceeded.
-        /// </summary>
-        private async Task<IpRateLimitResult> CheckIpRateLimitAsync(
-            string clientIp,
-            string username,
-            AuthenticationConfiguration config)
-        {
-            var now = DateTime.UtcNow;
-            
-            // Limit keys: "login_ip_hourly:{ip}:{date-hour}", "login_ip_daily:{ip}:{date}"
-            var hourlyKey = $"login_ip_hourly:{clientIp}:{now:yyyy-MM-dd-HH}";
-            var dailyKey = $"login_ip_daily:{clientIp}:{now:yyyy-MM-dd}";
-
-            // Check hourly limit (configurable, default 100 attempts)
-            var hourlyAttempts = await _cacheClient.GetStringValueAsync(hourlyKey);
-            var hourlyCount = !string.IsNullOrWhiteSpace(hourlyAttempts) ? int.Parse(hourlyAttempts) : 0;
-            
-            if (hourlyCount >= config.MaxLoginAttemptsPerIpPerHour)
-            {
-                return new IpRateLimitResult { IsAllowed = false, LimitType = "hourly" };
-            }
-
-            // Check daily limit (configurable, default 500 attempts)
-            var dailyAttempts = await _cacheClient.GetStringValueAsync(dailyKey);
-            var dailyCount = !string.IsNullOrWhiteSpace(dailyAttempts) ? int.Parse(dailyAttempts) : 0;
-
-            if (dailyCount >= config.MaxLoginAttemptsPerIpPerDay)
-            {
-                return new IpRateLimitResult { IsAllowed = false, LimitType = "daily" };
-            }
-
-            // Increment counters (expiry in seconds: 3600 = 1 hour, 86400 = 1 day)
-            await _cacheClient.AddStringValueAsync(hourlyKey, (hourlyCount + 1).ToString(), 3600);
-            await _cacheClient.AddStringValueAsync(dailyKey, (dailyCount + 1).ToString(), 86400);
-
-            return new IpRateLimitResult { IsAllowed = true };
-        }
-
-        private class IpRateLimitResult
-        {
-            public bool IsAllowed { get; set; }
-            public string LimitType { get; set; } = string.Empty;
-        }
     }
 }

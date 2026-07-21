@@ -5,11 +5,11 @@ namespace Mfa.DomainService.Services
 {
     public class MfaAuthenticationContext
     {
-        public string UserId { get; set; }
+        public string? UserId { get; set; }
 
-        public string MfaId { get; set; }
+        public string? MfaId { get; set; }
 
-        public string MfaCode { get; set; }
+        public string? MfaCode { get; set; }
 
         public static MfaAuthenticationContext Create(string mfaId, string userId)
         {
@@ -32,7 +32,7 @@ namespace Mfa.DomainService.Services
             var bytes = new byte[2];
             rng.GetBytes(bytes);
             int number = BitConverter.ToUInt16(bytes, 0) % 88889 + 11111;
-            return number.ToString();
+            return number.ToString(System.Globalization.CultureInfo.InvariantCulture);
         }
 
         public string Sterilize()
@@ -42,7 +42,8 @@ namespace Mfa.DomainService.Services
 
         public static MfaAuthenticationContext Deserialize(string json)
         {
-            return JsonSerializer.Deserialize<MfaAuthenticationContext>(json);
+            return JsonSerializer.Deserialize<MfaAuthenticationContext>(json)
+                ?? throw new ArgumentException("Invalid MfaAuthenticationContext payload", nameof(json));
         }
     }
 }

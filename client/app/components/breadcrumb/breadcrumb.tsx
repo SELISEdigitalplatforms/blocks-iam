@@ -8,18 +8,32 @@ import {
   BreadcrumbPage,
   BreadcrumbSeparator,
 } from "../ui-kits/breadcrumb/breadcrumb";
-import { Link } from "react-router-dom";
+import { Link, useParams } from "react-router-dom";
 import useRoutePathSegments from "@/hooks/use-path-segments";
 import {
   BREADCRUMB_CUSTOM_TITLES,
   BREADCRUMB_LINK_OVERRIDES,
 } from "@/constants/breadcrumb-custom-title";
+import { Skeleton } from "@/components/ui-kits/skeleton/skeleton";
 
-const PageBreadcrumb: React.FC<{ breadcrumbIndex?: number }> = ({ breadcrumbIndex }) => {
+const PageBreadcrumb: React.FC<{
+  breadcrumbIndex?: number;
+  isLoadingLastItem?: boolean;
+}> = ({ breadcrumbIndex, isLoadingLastItem }) => {
+  const { itemId } = useParams<{ itemId: string }>();
   let breadcrumbs = useRoutePathSegments();
   if (breadcrumbIndex && breadcrumbIndex > 0) {
     breadcrumbs = breadcrumbs.slice(breadcrumbIndex - 1);
   }
+
+  // BREADCRUMB_LINK_OVERRIDES targets are id-less (`/app/organizations`); inside
+  // the impersonated subtree they have to carry the project id.
+  const resolveHref = (key: string, href: string) => {
+    const override = BREADCRUMB_LINK_OVERRIDES[key];
+    if (!override) return href;
+    return itemId ? override.replace(/^\/app\//, `/app/${itemId}/`) : override;
+  };
+
   return (
     <Breadcrumb className="hidden md:flex">
       <BreadcrumbList>
@@ -28,15 +42,19 @@ const PageBreadcrumb: React.FC<{ breadcrumbIndex?: number }> = ({ breadcrumbInde
             <BreadcrumbItem>
               {index === breadcrumbs.length - 1 ? (
                 <BreadcrumbPage className="text-low-emphasis">
-                  {BREADCRUMB_CUSTOM_TITLES[breadcrumb.href] || breadcrumb.label}
+                  {isLoadingLastItem ? (
+                    <Skeleton className="h-4 w-32" aria-hidden="true" />
+                  ) : (
+                    BREADCRUMB_CUSTOM_TITLES[breadcrumb.key] || breadcrumb.label
+                  )}
                 </BreadcrumbPage>
               ) : (
                 <BreadcrumbLink asChild>
                   <Link
-                    to={BREADCRUMB_LINK_OVERRIDES[breadcrumb.href] ?? breadcrumb.href}
+                    to={resolveHref(breadcrumb.key, breadcrumb.href)}
                     className="text-foreground hover:text-foreground"
                   >
-                    {BREADCRUMB_CUSTOM_TITLES[breadcrumb.href] || breadcrumb.label}
+                    {BREADCRUMB_CUSTOM_TITLES[breadcrumb.key] || breadcrumb.label}
                   </Link>
                 </BreadcrumbLink>
               )}

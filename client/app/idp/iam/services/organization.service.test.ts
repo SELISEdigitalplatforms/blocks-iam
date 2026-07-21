@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { mockHttpClientFactory } from "@/test-utils/__mocks__";
-import { http } from "@/lib/http-client";
+import { serviceInstances } from "@/lib/http-client";
 import { OrganizationService } from "./organization.service";
 import { ORGANIZATION_ENDPOINTS } from "../constants/endpoint.constant";
 import {
@@ -37,7 +37,7 @@ describe("OrganizationService", () => {
       const result = await service.getOrganizations(mockGetOrganizationsPayload);
 
       expect(http.get).toHaveBeenCalledWith(
-        `${ORGANIZATION_ENDPOINTS.GET_ORGANIZATIONS}?projectKey=${mockGetOrganizationsPayload.projectKey}&page=${mockGetOrganizationsPayload.page}&pageSize=${mockGetOrganizationsPayload.pageSize}`,
+        `${ORGANIZATION_ENDPOINTS.GET_ORGANIZATIONS}?Page=${mockGetOrganizationsPayload.page}&PageSize=${mockGetOrganizationsPayload.pageSize}`,
       );
       expect(result).toEqual(mockOrganizationsResponse);
     });
@@ -59,7 +59,7 @@ describe("OrganizationService", () => {
       const result = await service.getOrganizationById(mockGetOrganizationByIdPayload);
 
       expect(http.get).toHaveBeenCalledWith(
-        `${ORGANIZATION_ENDPOINTS.GET_ORGANIZATION}?ProjectKey=${mockGetOrganizationByIdPayload.projectKey}&ItemId=${mockGetOrganizationByIdPayload.itemId}`,
+        `${ORGANIZATION_ENDPOINTS.GET_ORGANIZATION}/${mockGetOrganizationByIdPayload.itemId}`,
       );
       expect(result).toEqual(mockGetOrganizationByIdResponse);
     });
@@ -81,7 +81,7 @@ describe("OrganizationService", () => {
       const result = await service.saveOrganization(mockSaveOrganizationPayload);
 
       expect(http.post).toHaveBeenCalledWith(
-        ORGANIZATION_ENDPOINTS.SAVE_ORGANIZATION,
+        ORGANIZATION_ENDPOINTS.CREATE_ORGANIZATION,
         mockSaveOrganizationPayload,
       );
       expect(result).toEqual(mockSuccessResponse);
@@ -101,11 +101,9 @@ describe("OrganizationService", () => {
     it("should GET with correct query params", async () => {
       vi.mocked(http.get).mockResolvedValue(mockOrganizationConfigResponse);
 
-      const result = await service.getOrganizationConfig(TEST_PROJECT_KEY);
+      const result = await service.getOrganizationConfig();
 
-      expect(http.get).toHaveBeenCalledWith(
-        `${ORGANIZATION_ENDPOINTS.GET_ORGANIZATION_CONFIG}?projectKey=${TEST_PROJECT_KEY}`,
-      );
+      expect(http.get).toHaveBeenCalledWith(ORGANIZATION_ENDPOINTS.GET_ORGANIZATION_CONFIG);
       expect(result).toEqual(mockOrganizationConfigResponse);
     });
 

@@ -37,7 +37,7 @@ namespace Authentication.DomainService.Oidc.Repositories
         Task<IEnumerable<TokenRevocationModel>> GetRevocationHistoryAsync(string userId);
     }
 
-    public class TokenRevocationResult
+    public sealed class TokenRevocationResult
     {
         public bool Success { get; set; }
         public string? Error { get; set; }
@@ -47,7 +47,7 @@ namespace Authentication.DomainService.Oidc.Repositories
     /// <summary>
     /// RFC 7662 Token Introspection Response
     /// </summary>
-    public class TokenIntrospectionResult
+    public sealed class TokenIntrospectionResult
     {
         /// <summary>
         /// REQUIRED. Boolean indicator of whether or not the presented token is currently active.

@@ -46,7 +46,7 @@ describe("use-captcha-config hooks", () => {
 
       result.current.mutate(mockSaveCaptchaPayload);
       await waitFor(() => expect(result.current.isSuccess).toBe(true));
-      expect(captchaService.saveCaptcha).toHaveBeenCalledWith(mockSaveCaptchaPayload);
+      expect(captchaService.saveCaptcha).toHaveBeenCalledWith(mockSaveCaptchaPayload, expect.anything());
     });
   });
 
@@ -60,9 +60,7 @@ describe("use-captcha-config hooks", () => {
 
       result.current.mutate(mockUpdateCaptchaStatusPayload);
       await waitFor(() => expect(result.current.isSuccess).toBe(true));
-      expect(captchaService.updateCaptchaConfigStatus).toHaveBeenCalledWith(
-        mockUpdateCaptchaStatusPayload,
-      );
+      expect(captchaService.updateCaptchaConfigStatus).toHaveBeenCalledWith(mockUpdateCaptchaStatusPayload, expect.anything());
     });
   });
 });
