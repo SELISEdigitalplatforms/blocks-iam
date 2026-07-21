@@ -73,6 +73,7 @@ namespace Authentication.DomainService.OAuth.Services
             await _cacheClient.RemoveKeyAsync(request.State);
 
             NormalizeExternalUserEmail(externalUser);
+            externalUser.Email = NormalizeEmail(externalUser.Email);
 
             if (string.IsNullOrWhiteSpace(externalUser.Email))
             {
@@ -182,6 +183,11 @@ namespace Authentication.DomainService.OAuth.Services
             return user.OrganizationIds.Contains(organizationId)
                 || user.Roles.ContainsKey(organizationId)
                 || user.Permissions.ContainsKey(organizationId);
+        }
+
+        protected static string NormalizeEmail(string? email)
+        {
+            return string.IsNullOrWhiteSpace(email) ? string.Empty : email.Trim().ToLowerInvariant();
         }
     }
 }
