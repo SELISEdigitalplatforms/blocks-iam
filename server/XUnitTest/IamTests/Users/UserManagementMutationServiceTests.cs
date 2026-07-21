@@ -88,7 +88,7 @@ namespace XUnitTest.IamTests.Users
         [Fact]
         public async Task CreateUser_HappyPath_CreatesUser_SendsEvent()
         {
-            var result = await Create().CreateUserAsync(new CreateUserRequest { Email = "New@Test.com", Password = "pw" });
+            var result = await Create().CreateUserAsync(new CreateUserRequest { Email = " New@Test.com ", Password = "pw" });
 
             result.IsSuccess.Should().BeTrue();
             result.ItemId.Should().NotBeNullOrWhiteSpace();
@@ -138,11 +138,12 @@ namespace XUnitTest.IamTests.Users
         [Fact]
         public void MapUser_NoPassword_LeavesPasswordEmpty_AndPendingVerification()
         {
-            var user = Create().MapUser(new CreateUserRequest { Email = "Z@Test.com", Password = null, VerifiedType = UserVerifiedType.None });
+            var user = Create().MapUser(new CreateUserRequest { Email = " Z@Test.com ", Password = null, VerifiedType = UserVerifiedType.None });
 
             user.Password.Should().BeEmpty();
             user.Status.Should().Be(UserLifecycleStatus.PendingVerification);
             user.Email.Should().Be("z@test.com");
+            user.UserName.Should().Be("z@test.com");
         }
 
         [Fact]
@@ -450,6 +451,7 @@ namespace XUnitTest.IamTests.Users
             });
 
             ok.Should().BeTrue();
+            _userRepo.Verify(r => r.GetUserByUserNameOrgIdAsync("emailed@test.com", "default"), Times.Once);
             _userRepo.Verify(r => r.CreateUserAsync(It.IsAny<User>()), Times.Once);
         }
 
@@ -460,11 +462,11 @@ namespace XUnitTest.IamTests.Users
         {
             var result = await Create().CreateUserFromSsoAsync(new CreateUserViaSsoRequest
             {
-                Email = "Sso@Test.com", Platform = "google", OrganizationId = "default", ExternalUserId = "ext-1"
+                Email = " Sso@Test.com ", Platform = "google", OrganizationId = "default", ExternalUserId = "ext-1"
             });
 
             result.IsSuccess.Should().BeTrue();
-            _userRepo.Verify(r => r.CreateUserAsync(It.Is<User>(u => u.Email == "sso@test.com" && u.ProvisioningSource == UserProvisioningSource.Social)), Times.Once);
+            _userRepo.Verify(r => r.CreateUserAsync(It.Is<User>(u => u.Email == "sso@test.com" && u.UserName == "sso@test.com" && u.ProvisioningSource == UserProvisioningSource.Social)), Times.Once);
             _message.Verify(m => m.SendToConsumerAsync(It.IsAny<ConsumerMessage<CreateUserViaSsoEvent>>()), Times.Once);
         }
 
