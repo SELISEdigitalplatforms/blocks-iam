@@ -55,7 +55,7 @@ export const SSOSigninCard = ({
           code_challenge_method: oidcContext.code_challenge_method,
           tenantId: oidcContext.tenantId,
           provider_client_id: providerConfig.clientId,
-          provider_redirect_uri: `${iamBaseUrl}/oidc/microsoft/callback/${oidcContext.tenantId}`
+          provider_redirect_uri: `${iamBaseUrl}/oidc/${providerConfig.provider}/callback/${oidcContext.tenantId}`
         });
 
         if (res.error) return showErrorToast({ errors: res.error });
