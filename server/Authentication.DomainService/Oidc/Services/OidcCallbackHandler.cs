@@ -149,7 +149,7 @@ namespace Authentication.DomainService.Oidc.Services
                 }
 
                 // 5. Create or update Blocks user based on provider's user info
-                var ssoUser = await CreateOrUpdateUserFromExternalUserAsync(externalUserData, new List<string> { "user"}, new List<string>(), provider);
+                var ssoUser = await CreateOrUpdateUserFromExternalUserAsync(externalUserData, new List<string> { "clouduser"}, new List<string>(), provider);
 
                 if (string.IsNullOrWhiteSpace(ssoUser.userId))
                 {
@@ -203,8 +203,10 @@ namespace Authentication.DomainService.Oidc.Services
                 if (string.IsNullOrWhiteSpace(externalUserData.Email))
                     return (null, false); // Cannot create user without email
 
+                var normalizedEmail = NormalizeEmail(externalUserData.Email);
+
                 // Try to get existing user by email
-                var existingUser = await _userRepository.GetUserByEmailAsync(externalUserData.Email);
+                var existingUser = await _userRepository.GetUserByEmailAsync(normalizedEmail);
 
                 if (existingUser != null)
                 {
@@ -215,7 +217,8 @@ namespace Authentication.DomainService.Oidc.Services
                 var newUser = new Iam.DomainService.Entities.User
                 {
                     ItemId = Guid.NewGuid().ToString(),
-                    Email = externalUserData.Email,
+                    Email = normalizedEmail,
+                    UserName = normalizedEmail,
                     FirstName = externalUserData.FirstName ?? externalUserData.DisplayName,
                     LastName = externalUserData.LastName,
                     ProfileImageUrl = externalUserData.ProfileImageUrl,
@@ -257,6 +260,11 @@ namespace Authentication.DomainService.Oidc.Services
                 _logger.LogError(ex, "Error creating/updating user from token for provider {Provider}", provider);
                 return (null, false);
             }
+        }
+
+        private static string NormalizeEmail(string? email)
+        {
+            return string.IsNullOrWhiteSpace(email) ? string.Empty : email.Trim().ToLowerInvariant();
         }
     }
 }

@@ -36,7 +36,7 @@ export const SSOSigninCard = ({
 }: SSOSigninCardProps) => {
   const { resolvedTheme } = useTheme();
   const iamBaseUrl = getRuntimeEnv("BLOCKS_IAM_BASE_URL");
-
+    
   const onClickHandler = useCallback(async () => {
     try {
       if (!providerConfig.provider)
@@ -56,6 +56,7 @@ export const SSOSigninCard = ({
           tenantId: oidcContext.tenantId,
           provider_client_id: providerConfig.clientId,
           provider_redirect_uri: `${iamBaseUrl}/oidc/${providerConfig.provider}/callback/${oidcContext.tenantId}`
+          
         });
 
         if (res.error) return showErrorToast({ errors: res.error });

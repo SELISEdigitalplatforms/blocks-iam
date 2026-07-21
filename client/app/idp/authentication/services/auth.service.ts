@@ -167,6 +167,7 @@ export class AuthService {
     provider_redirect_uri: string;
   }): Promise<any> {
     const tenantId = payload.tenantId?.trim();
+    
     const headers: Record<string, string> = tenantId
       ? { "X-Blocks-Key": tenantId }
       : {};
@@ -184,6 +185,7 @@ export class AuthService {
         tenant_id: tenantId,
         provider_client_id: payload.provider_client_id,
         provider_redirect_uri: payload.provider_redirect_uri,
+
       },
       headers,
       {
@@ -234,7 +236,7 @@ export const authService = new AuthService();
 
 // import { serviceInstances } from "@/lib/http-client";
 // import { getRuntimeEnv } from "@/lib/runtime-env";
-// import { useAuthStore } from "@/store/useAuthStore";
+// import { useAuthStore } from "@seliseblocks/blocks-kit";
 // import {
 //   ISigninByEmailPayload,
 //   ISigninByEmailResponse,

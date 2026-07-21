@@ -1,4 +1,4 @@
-﻿using Blocks.Genesis;
+using Blocks.Genesis;
 using Iam.DomainService.Dtos;
 using Microsoft.Extensions.Logging;
 
@@ -22,7 +22,7 @@ namespace Iam.DomainService.Users
         {
             _logger.LogInformation("User existance search start");
 
-            var user = await _userRepository.GetUserByEmailAsync(query.Email.ToLower());
+            var user = await _userRepository.GetUserByEmailAsync(query.Email);
 
             _logger.LogInformation("User existance search end");
 
@@ -31,7 +31,7 @@ namespace Iam.DomainService.Users
 
         public async Task<IsUserExistResponse> IsUserExistAsync(string email)
         {
-            var user = await _userRepository.GetUserByEmailAsync(email.ToLower());
+            var user = await _userRepository.GetUserByEmailAsync(email);
 
             return new IsUserExistResponse
             {
@@ -119,7 +119,8 @@ namespace Iam.DomainService.Users
                 ["mfaEnabled"] = user.MfaEnabled,
                 ["lastLoggedInTime"] = user.LastLoggedInTime,
                 ["loginCount"] = user.LogInCount,
-                ["createdDate"] = user.CreatedDate
+                ["createdDate"] = user.CreatedDate,
+                ["roles"] = user.Roles
             };
         }
 
