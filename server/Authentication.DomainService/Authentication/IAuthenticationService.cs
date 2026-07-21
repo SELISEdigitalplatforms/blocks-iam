@@ -13,6 +13,7 @@ namespace Authentication.DomainService.Authentication
     {
         Task<IActionResult> BuildFlowResultAsync(AuthenticationFlowResult result, HttpContext httpContext);
         Task<bool> UpdateIdpSessionForLogoutAsync(HttpContext httpContext, ClaimsPrincipal user, bool isGlobalLogout);
+        Task<bool> UpdateIdpSessionForLogoutAsync(HttpContext httpContext, ClaimsPrincipal user, bool isGlobalLogout, IEnumerable<string>? fallbackSessionIds);
         void ClearIdpSessionCookie(HttpResponse response);
         Task<LogoutResponse> LogoutUser(string refreshToken, HttpRequest httpRequest);
         Task<LogoutResponse> LogoutAll(HttpRequest httpRequest);

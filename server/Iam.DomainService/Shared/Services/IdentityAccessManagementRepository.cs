@@ -24,8 +24,13 @@ namespace Iam.DomainService.Services
         public async Task<User> GetUserByEmailAsync(string email)
         {
             var collection = GetCollection<User>();
+            var options = new FindOptions<User>
+            {
+                Collation = new Collation("en", strength: CollationStrength.Secondary)
+            };
+            var filter = Builders<User>.Filter.Eq(x => x.Email, NormalizeEmail(email));
 
-            return await collection.Find(x => x.Email == email).FirstOrDefaultAsync();
+            return await (await collection.FindAsync(filter, options)).FirstOrDefaultAsync();
         }
 
         public async Task<User> GetUserByIdAsync(string itemId)
@@ -71,6 +76,7 @@ namespace Iam.DomainService.Services
 
         public async Task<bool> UpdateUserAsync(User user)
         {
+            NormalizeUserIdentity(user);
             var collection = GetCollection<User>();
             var result = await collection.ReplaceOneAsync(x => x.ItemId == user.ItemId, user);
 
@@ -146,6 +152,22 @@ namespace Iam.DomainService.Services
             var collection = GetCollection<TenantConfiguration>();
             var tenantConfiguration = await collection.Find(_ => true).FirstOrDefaultAsync();
             return tenantConfiguration;
+        }
+
+        private static void NormalizeUserIdentity(User user)
+        {
+            user.Email = NormalizeEmail(user.Email);
+            user.UserName = NormalizeIdentity(user.UserName);
+        }
+
+        private static string NormalizeEmail(string? email)
+        {
+            return string.IsNullOrWhiteSpace(email) ? string.Empty : email.Trim().ToLowerInvariant();
+        }
+
+        private static string NormalizeIdentity(string? value)
+        {
+            return string.IsNullOrWhiteSpace(value) ? string.Empty : value.Trim().ToLowerInvariant();
         }
     }
 }

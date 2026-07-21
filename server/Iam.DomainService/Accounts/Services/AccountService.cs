@@ -676,7 +676,7 @@ namespace Iam.DomainService.Accounts
                 },
                 Language = user.Language ?? "en-US",
                 Purpose = emailPurpose,
-                To = new string[] { user.Email.ToLower() }
+                To = new string[] { NormalizeEmail(user.Email) }
             };
 
             return await _identityAccessManagementService.SendEmailAsync(sendMailCommand);
@@ -1056,7 +1056,7 @@ namespace Iam.DomainService.Accounts
                     },
                     Language = user.Language ?? "en-US",
                     Purpose = "AccountLockedNotification",
-                    To = new[] { user.Email?.ToLower() ?? string.Empty }
+                    To = new[] { NormalizeEmail(user.Email) }
                 };
 
                 var recipientEmail = sendMailCommand.To.FirstOrDefault();
@@ -1092,7 +1092,7 @@ namespace Iam.DomainService.Accounts
                     },
                     Language = user.Language ?? "en-US",
                     Purpose = "AccountUnlockedNotification",
-                    To = new[] { user.Email?.ToLower() ?? string.Empty }
+                    To = new[] { NormalizeEmail(user.Email) }
                 };
 
                 var recipientEmail = sendMailCommand.To.FirstOrDefault();
@@ -1106,6 +1106,11 @@ namespace Iam.DomainService.Accounts
             {
                 _logger.LogWarning(ex, "Failed to send account unlocked notification for user: {UserId}", user.ItemId);
             }
+        }
+
+        private static string NormalizeEmail(string? email)
+        {
+            return string.IsNullOrWhiteSpace(email) ? string.Empty : email.Trim().ToLowerInvariant();
         }
     }
 }

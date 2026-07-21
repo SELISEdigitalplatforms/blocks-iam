@@ -24,8 +24,12 @@ namespace Authentication.DomainService.OAuth
                 .When(x => x.ClientId != null);
 
             RuleFor(x => x.WellKnownUrl)
+                .NotEmpty()
+                .When(x => x.ProviderType == "blocks-oidc");
+
+            RuleFor(x => x.WellKnownUrl)
                 .Must(BeAValidUrl)
-                .When(x => x.WellKnownUrl != null);
+                .When(x => x.ProviderType == "blocks-oidc" && !string.IsNullOrWhiteSpace(x.WellKnownUrl));
 
             RuleFor(x => x.AuthorizationUrl)
                 .Must(BeAValidUrl)
