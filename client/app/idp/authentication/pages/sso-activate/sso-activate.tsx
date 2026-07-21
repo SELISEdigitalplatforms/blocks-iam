@@ -123,7 +123,7 @@ export const SsoActivate = ({ oauthParams }: SsoActivateProps) => {
   return (
     <Card className="w-full rounded border-solid border-background shadow-none md:border-[#95ADC4] lg:max-w-md">
       <CardHeader className="text-center">
-        <CardTitle className="text-3xl leading-9">Blocks Cloud</CardTitle>
+        <CardTitle className="text-3xl leading-9">Blocks IAM</CardTitle>
       </CardHeader>
       <CardContent>
         {config && (

@@ -239,7 +239,7 @@ export const authService = new AuthService();
 
 // import { serviceInstances } from "@/lib/http-client";
 // import { getRuntimeEnv } from "@/lib/runtime-env";
-// import { useAuthStore } from "@/store/useAuthStore";
+// import { useAuthStore } from "@seliseblocks/blocks-kit";
 // import {
 //   ISigninByEmailPayload,
 //   ISigninByEmailResponse,

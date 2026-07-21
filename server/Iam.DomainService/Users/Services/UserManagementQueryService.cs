@@ -1,4 +1,4 @@
-﻿using Blocks.Genesis;
+using Blocks.Genesis;
 using Iam.DomainService.Dtos;
 using Microsoft.Extensions.Logging;
 
@@ -119,7 +119,8 @@ namespace Iam.DomainService.Users
                 ["mfaEnabled"] = user.MfaEnabled,
                 ["lastLoggedInTime"] = user.LastLoggedInTime,
                 ["loginCount"] = user.LogInCount,
-                ["createdDate"] = user.CreatedDate
+                ["createdDate"] = user.CreatedDate,
+                ["roles"] = user.Roles
             };
         }
 

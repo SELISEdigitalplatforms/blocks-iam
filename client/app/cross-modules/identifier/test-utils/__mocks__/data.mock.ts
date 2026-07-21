@@ -220,3 +220,29 @@ export const mockLoginOptionsResponse = {
   allowedGrantTypes: ["password"],
   ssoInfo: [],
 };
+
+// ─── Mock People ──────────────────────────────────────────────────────────────
+
+export const mockGetPeopleResponse = {
+  peoples: [],
+  totalCount: 0,
+  errors: null,
+  isSuccess: true,
+  isOwner: false,
+};
+
+export const mockPeopleAcceptInvitationResponse = {
+  isSuccess: true,
+  errors: null,
+};
+
+export const mockInvitePeopleResponse = {
+  isSuccess: true,
+  errors: null,
+};
+
+export const mockConfirmInvitationResponse = {
+  isSuccess: true,
+  errors: null,
+  activationKey: "mock-activation-key-456",
+};

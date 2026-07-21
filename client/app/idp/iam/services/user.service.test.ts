@@ -60,7 +60,9 @@ describe("UserService", () => {
 
       const result = await service.getUser();
 
-      expect(http.get).toHaveBeenCalledWith(USER_ENDPOINTS.GET_USER);
+      expect(http.get).toHaveBeenCalledWith(USER_ENDPOINTS.GET_USER, undefined, {
+        absoluteUrl: true,
+      });
       expect(result).toEqual(mockResponse);
     });
 
@@ -78,10 +80,10 @@ describe("UserService", () => {
 
       const result = await service.getUserById(payload);
 
-      expect(http.get).toHaveBeenCalledWith(
-        `${USER_ENDPOINTS.GET_USER}?id=${payload.id}&ProjectKey=${payload.projectKey}`,
-      );
-      expect(result).toEqual({ data: mockUser });
+      expect(http.get).toHaveBeenCalledWith(`${USER_ENDPOINTS.GET_USER}/${payload.id}`);
+      // Response goes through normalizeUserFromApi; core identity fields are preserved.
+      expect(result.data.itemId).toBe(MOCK_USER_ITEM_ID);
+      expect(result.data.email).toBe(mockUser.email);
     });
 
     it("should throw when the API call fails", async () => {
@@ -90,6 +92,29 @@ describe("UserService", () => {
       await expect(
         service.getUserById({ id: MOCK_USER_ITEM_ID, projectKey: TEST_PROJECT_KEY }),
       ).rejects.toThrow("Network error");
+    });
+
+    it("should normalize flat roles and permissions into per-organization maps", async () => {
+      const payload = { id: MOCK_USER_ITEM_ID, projectKey: TEST_PROJECT_KEY };
+      vi.mocked(http.get).mockResolvedValue({
+        data: {
+          itemId: MOCK_USER_ITEM_ID,
+          organizationIds: ["default"],
+          roles: ["test", "user"],
+          permissions: ["Change User Password", "View Client Credentials"],
+        },
+      });
+
+      const result = await service.getUserById(payload);
+
+      expect(result.data.roles).toEqual({ default: ["test", "user"] });
+      expect(result.data.permissions).toEqual({
+        default: ["Change User Password", "View Client Credentials"],
+      });
+      expect(result.data.OrganizationsRoles).toEqual({ default: ["test", "user"] });
+      expect(result.data.OrganizationsPermissions).toEqual({
+        default: ["Change User Password", "View Client Credentials"],
+      });
     });
   });
 
@@ -118,10 +143,12 @@ describe("UserService", () => {
       const result = await service.updateUser(mockUpdateUserPayload);
 
       const postedBody = vi.mocked(http.post).mock.calls[0][1] as Record<string, unknown>;
+      // payload only overrides firstName; every other field is merged from the
+      // freshly-fetched current record so the server doesn't wipe them.
       expect(postedBody).toMatchObject({
         itemId: mockUpdateUserPayload.itemId,
         firstName: mockUpdateUserPayload.firstName,
-        lastName: mockUpdateUserPayload.lastName,
+        lastName: mockUser.lastName,
         email: mockUser.email,
         active: mockUser.active,
         mfaEnabled: mockUser.mfaEnabled,
@@ -149,7 +176,11 @@ describe("UserService", () => {
 
       const result = await service.getSignUpSetting();
 
-      expect(http.get).toHaveBeenCalledWith(ORGANIZATION_ENDPOINTS.GET_SIGNUP_SETTING);
+      expect(http.get).toHaveBeenCalledWith(
+        ORGANIZATION_ENDPOINTS.GET_SIGNUP_SETTING,
+        {},
+        undefined,
+      );
       expect(result).toEqual(mockSignUpSettingResponse);
     });
 

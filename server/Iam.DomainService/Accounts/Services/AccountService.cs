@@ -506,8 +506,13 @@ namespace Iam.DomainService.Accounts
             user.IsVerified = true;
             user.Status = UserLifecycleStatus.Active;
             user.StatusReason = "email_verified";
-            user.FirstName = activateUserRequest.FirstName;
-            user.LastName = activateUserRequest.LastName;
+
+            // An invited user has no name until they set one here. Only fill an empty name so a
+            // user who already had one (e.g. normal signup) is never overwritten on activation.
+            if (string.IsNullOrWhiteSpace(user.FirstName) && !string.IsNullOrWhiteSpace(activateUserRequest.FirstName))
+                user.FirstName = activateUserRequest.FirstName.Trim();
+            if (string.IsNullOrWhiteSpace(user.LastName) && !string.IsNullOrWhiteSpace(activateUserRequest.LastName))
+                user.LastName = activateUserRequest.LastName.Trim();
 
             if (!string.IsNullOrWhiteSpace(activateUserRequest.Password))
             {
