@@ -8,6 +8,7 @@ import { useTheme } from "@/hooks/use-theme";
 import { useCallback, useMemo } from "react";
 import { sanitizeProviderUrl } from "@blocks-idp/authentication/utils/sanitize-provider-url.util";
 import { buildOIDCNavigationUrl } from "@blocks-idp/authentication/utils/oidc-utils";
+import { getRuntimeEnv } from "@/lib/runtime-env";
 
 type SSOSigninCardProps = {
   providerConfig: ISsoProviderConfigurationWithMeta;
@@ -34,6 +35,7 @@ export const SSOSigninCard = ({
   oidcContext,
 }: SSOSigninCardProps) => {
   const { resolvedTheme } = useTheme();
+  const iamBaseUrl = getRuntimeEnv("BLOCKS_IAM_BASE_URL");
 
   const onClickHandler = useCallback(async () => {
     try {
@@ -53,7 +55,7 @@ export const SSOSigninCard = ({
           code_challenge_method: oidcContext.code_challenge_method,
           tenantId: oidcContext.tenantId,
           provider_client_id: providerConfig.clientId,
-          provider_redirect_uri: providerConfig.redirectUrl
+          provider_redirect_uri: `${iamBaseUrl}/oidc/${providerConfig.provider}/callback/${oidcContext.tenantId}`
         });
 
         if (res.error) return showErrorToast({ errors: res.error });
