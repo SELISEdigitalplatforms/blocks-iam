@@ -270,7 +270,7 @@ namespace Authentication.DomainService.Authentication
                 return BuildCaptchaRequiredResult(captchaConfiguration.CaptchaKey);
             }
 
-            var verifyCaptchaResponse = await _captchaEvaluator.VerifyAsync(captchaCode);
+            var verifyCaptchaResponse = await _captchaEvaluator.VerifyAsync(captchaCode, captchaConfiguration.Provider);
 
             return (bool)verifyCaptchaResponse.GetType().GetProperty("Verified")!.GetValue(verifyCaptchaResponse)!
                 ? null

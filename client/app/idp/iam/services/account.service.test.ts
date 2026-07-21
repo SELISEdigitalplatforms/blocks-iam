@@ -154,6 +154,7 @@ describe("UserAccountService", () => {
       expect(http.post).toHaveBeenCalledWith(
         ACCOUNT_ENDPOINTS.RESET_PASSWORD,
         mockAccountResetPasswordPayload,
+        {},
       );
       expect(result).toEqual(mockSuccessResponse);
     });

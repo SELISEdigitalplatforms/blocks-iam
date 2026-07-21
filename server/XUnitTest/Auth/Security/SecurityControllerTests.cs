@@ -83,7 +83,7 @@ namespace XUnitTest.Auth.Security
             _securityQuery.Setup(s => s.GetSecuritySummaryAsync(ActorUserId, It.IsAny<CancellationToken>()))
                 .ReturnsAsync(summary);
 
-            var result = await CreateController().GetSummary(CancellationToken.None);
+            var result = await CreateController().GetSummary(null, CancellationToken.None);
 
             var ok = result.Should().BeOfType<OkObjectResult>().Subject;
             ok.Value.Should().BeSameAs(summary);
@@ -105,9 +105,9 @@ namespace XUnitTest.Auth.Security
             _securityQuery.Setup(s => s.GetUserSessionsAsync(ActorUserId, It.IsAny<CancellationToken>()))
                 .ReturnsAsync(sessions);
 
-            var result = await CreateController().GetUserSessions(CancellationToken.None);
+            var result = await CreateController().GetUserSessions(null, CancellationToken.None);
 
-            var ok = result.Should().BeOfType<OkObjectResult>().Subject;
+            var ok = result.Result.Should().BeOfType<OkObjectResult>().Subject;
             ok.Value.Should().BeSameAs(sessions);
         }
 
@@ -117,9 +117,9 @@ namespace XUnitTest.Auth.Security
             _securityQuery.Setup(s => s.GetSessionDetailsAsync(ActorUserId, "missing", It.IsAny<CancellationToken>()))
                 .ReturnsAsync(new SessionDetailsDto { Overview = null });
 
-            var result = await CreateController().GetSessionDetails("missing", CancellationToken.None);
+            var result = await CreateController().GetSessionDetails("missing", null, CancellationToken.None);
 
-            var notFound = result.Should().BeOfType<NotFoundObjectResult>().Subject;
+            var notFound = result.Result.Should().BeOfType<NotFoundObjectResult>().Subject;
             notFound.Value.Should().NotBeNull();
         }
 
@@ -135,9 +135,9 @@ namespace XUnitTest.Auth.Security
             _securityQuery.Setup(s => s.GetSessionDetailsAsync(ActorUserId, SessionId, It.IsAny<CancellationToken>()))
                 .ReturnsAsync(details);
 
-            var result = await CreateController().GetSessionDetails(SessionId, CancellationToken.None);
+            var result = await CreateController().GetSessionDetails(SessionId, null, CancellationToken.None);
 
-            result.Should().BeOfType<OkObjectResult>();
+            result.Result.Should().BeOfType<OkObjectResult>();
         }
 
         [Fact]
@@ -154,7 +154,7 @@ namespace XUnitTest.Auth.Security
             _revocation.Setup(r => r.RevokeSessionAsync(SessionId, ActorUserId, SessionId, null, It.IsAny<CancellationToken>()))
                 .ReturnsAsync(response);
 
-            var result = await CreateController().RevokeSession(SessionId, null, CancellationToken.None);
+            var result = await CreateController().RevokeSession(SessionId, new Authentication.DomainService.Security.Contracts.RevokeSessionRequest(), CancellationToken.None);
 
             var bad = result.Should().BeOfType<BadRequestObjectResult>().Subject;
             bad.Value.Should().NotBeNull();
@@ -216,18 +216,20 @@ namespace XUnitTest.Auth.Security
                 .ReturnsAsync(response);
 
             var result = await CreateController().GetActivity(
-                page: null,
-                pageSize: null,
-                sessionId: "session-1",
-                clientId: null,
-                eventName: "LOGIN_SUCCESS",
-                eventsCsv: "LOGIN_FAILURE,SESSION_REVOKED",
-                outcomesCsv: "Success",
-                categoriesCsv: "Auth",
-                from: null,
-                to: null,
-                search: "ip",
-                ct: CancellationToken.None);
+                new Api.Controllers.SecurityController.GetActivityPayload
+                {
+                    Page = null,
+                    PageSize = null,
+                    SessionId = "session-1",
+                    ClientId = null,
+                    Events = new List<string> { "LOGIN_SUCCESS", "LOGIN_FAILURE", "SESSION_REVOKED" },
+                    Outcomes = new List<string> { "Success" },
+                    Categories = new List<UserActivityCategory> { UserActivityCategory.Auth },
+                    From = null,
+                    To = null,
+                    Search = "ip",
+                },
+                CancellationToken.None);
 
             var ok = result.Should().BeOfType<OkObjectResult>().Subject;
             ok.Value.Should().BeSameAs(response);

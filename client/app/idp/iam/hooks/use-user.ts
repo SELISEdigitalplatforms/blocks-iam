@@ -155,10 +155,13 @@ export const useUpdateUser = (options: {
   });
 };
 
-export const useGetSignUpSetting = (options?: { enabled?: boolean }) => {
+export const useGetSignUpSetting = (
+  tenantId?: string,
+  options?: { enabled?: boolean },
+) => {
   return useQuery({
-    queryKey: ["sign-up-setting"],
-    queryFn: () => userService.getSignUpSetting(),
+    queryKey: ["sign-up-setting", tenantId],
+    queryFn: () => userService.getSignUpSetting(tenantId),
     ...options,
   });
 };

@@ -8,11 +8,9 @@ import {
 } from "@/components/ui-kits/table/table";
 import { ColumnDef, flexRender, getCoreRowModel, useReactTable } from "@tanstack/react-table";
 import { useMemo } from "react";
-import { useNavigate } from "react-router-dom";
 import { IRole } from "@blocks-idp/iam/models/role";
 import { Badge } from "@/components/ui-kits/badge/badge";
 import { DeleteOrganizationRole } from "./delete-organization-role";
-import { useScopedPath } from "@/hooks/use-scoped-path";
 
 type OrganizationRolesListProps = {
   roles: IRole[];
@@ -21,8 +19,6 @@ type OrganizationRolesListProps = {
 };
 
 export const OrganizationRolesList = ({ roles, onDelete, onSave }: OrganizationRolesListProps) => {
-  const navigate = useNavigate();
-  const scoped = useScopedPath();
   const columns = useMemo<ColumnDef<IRole>[]>(
     () => [
       {
@@ -75,10 +71,6 @@ export const OrganizationRolesList = ({ roles, onDelete, onSave }: OrganizationR
     getCoreRowModel: getCoreRowModel(),
   });
 
-  const onRowClickHandler = (itemId: number | string) => {
-    navigate(scoped(`role-detail/${itemId}`));
-  };
-
   return (
     <>
       <Table>
@@ -109,11 +101,7 @@ export const OrganizationRolesList = ({ roles, onDelete, onSave }: OrganizationR
             </TableRow>
           ) : (
             table.getRowModel().rows.map((row) => (
-              <TableRow
-                key={row.id}
-                className="cursor-pointer"
-                onClick={() => onRowClickHandler(row.original.itemId)}
-              >
+              <TableRow key={row.id}>
                 {row.getVisibleCells().map((cell) => (
                   <TableCell key={cell.id} className="px-4 py-3">
                     {flexRender(cell.column.columnDef.cell, cell.getContext())}

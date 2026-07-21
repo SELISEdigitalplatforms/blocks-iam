@@ -49,17 +49,22 @@ const normalizeUserFromApi = (raw: ApiUser): User => {
   const organizationIds =
     raw.organizationIds?.length > 0 ? raw.organizationIds : raw.OrganizationIds ?? [];
 
+  const roles = toScopedRecord(
+    organizationIds,
+    raw.roles as Record<string, string[]> | string[] | undefined,
+  );
+  const permissions = toScopedRecord(
+    organizationIds,
+    raw.permissions as Record<string, string[]> | string[] | undefined,
+  );
+
   return {
     ...raw,
     organizationIds,
-    roles: toScopedRecord(
-      organizationIds,
-      raw.roles as Record<string, string[]> | string[] | undefined,
-    ),
-    permissions: toScopedRecord(
-      organizationIds,
-      raw.permissions as Record<string, string[]> | string[] | undefined,
-    ),
+    roles,
+    permissions,
+    OrganizationsRoles: raw.OrganizationsRoles ?? roles,
+    OrganizationsPermissions: raw.OrganizationsPermissions ?? permissions,
   };
 };
 
@@ -134,8 +139,16 @@ export class UserService {
     return serviceInstances.idpService.post(USER_ENDPOINTS.UPDATE_ME, body);
   }
 
-  getSignUpSetting(): Promise<IGetSignUpSettingResponse> {
-    return serviceInstances.idpService.get(`${ORGANIZATION_ENDPOINTS.GET_SIGNUP_SETTING}`);
+  getSignUpSetting(tenantId?: string): Promise<IGetSignUpSettingResponse> {
+    const headers: Record<string, string> = {};
+    if (tenantId) {
+      headers["X-Blocks-Key"] = tenantId;
+    }
+    return serviceInstances.idpService.get(
+      `${ORGANIZATION_ENDPOINTS.GET_SIGNUP_SETTING}`,
+      headers,
+      tenantId ? { skipBlocksKey: true } : undefined,
+    );
   }
 
   saveSignUpSetting(

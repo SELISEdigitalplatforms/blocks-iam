@@ -149,7 +149,7 @@ namespace Authentication.DomainService.Oidc.Services
                 }
 
                 // 5. Create or update Blocks user based on provider's user info
-                var ssoUser = await CreateOrUpdateUserFromExternalUserAsync(externalUserData, new List<string> { "user"}, new List<string>(), provider);
+                var ssoUser = await CreateOrUpdateUserFromExternalUserAsync(externalUserData, new List<string> { "clouduser"}, new List<string>(), provider);
 
                 if (string.IsNullOrWhiteSpace(ssoUser.userId))
                 {
@@ -222,6 +222,10 @@ namespace Authentication.DomainService.Oidc.Services
                     PhoneNumber = externalUserData.PhoneNumber,
                     Platform = provider,
                     Active = true,
+                    IsVerified = true,
+                    Status = Iam.DomainService.Entities.UserLifecycleStatus.Active,
+                    StatusReason = "social_signup",
+                    ProvisioningSource = Iam.DomainService.Entities.UserProvisioningSource.Social,
 
                     Roles = new Dictionary<string, List<string>>
                     {

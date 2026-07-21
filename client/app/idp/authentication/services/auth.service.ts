@@ -90,11 +90,21 @@ export class AuthService {
 
   signupByEmail(
     payload: ISignupByEmailPayload,
+    tenantId?: string,
   ): Promise<ISignupByEmailResponse> {
-    return serviceInstances.idpService.post(AUTH_ENDPOINTS.SIGNUP, {
-      ...payload,
-      isSsoSignup: false,
-    });
+    const headers: Record<string, string> = {};
+    if (tenantId) {
+      headers["X-Blocks-Key"] = tenantId;
+    }
+    return serviceInstances.idpService.post(
+      AUTH_ENDPOINTS.SIGNUP,
+      {
+        ...payload,
+        isSsoSignup: false,
+      },
+      headers,
+      tenantId ? { skipBlocksKey: true } : undefined,
+    );
   }
 
   activateAccount(
@@ -157,6 +167,7 @@ export class AuthService {
     provider_redirect_uri: string;
   }): Promise<any> {
     const tenantId = payload.tenantId?.trim();
+    
     const headers: Record<string, string> = tenantId
       ? { "X-Blocks-Key": tenantId }
       : {};
@@ -174,6 +185,7 @@ export class AuthService {
         tenant_id: tenantId,
         provider_client_id: payload.provider_client_id,
         provider_redirect_uri: payload.provider_redirect_uri,
+
       },
       headers,
       {
@@ -224,7 +236,7 @@ export const authService = new AuthService();
 
 // import { serviceInstances } from "@/lib/http-client";
 // import { getRuntimeEnv } from "@/lib/runtime-env";
-// import { useAuthStore } from "@/store/useAuthStore";
+// import { useAuthStore } from "@seliseblocks/blocks-kit";
 // import {
 //   ISigninByEmailPayload,
 //   ISigninByEmailResponse,

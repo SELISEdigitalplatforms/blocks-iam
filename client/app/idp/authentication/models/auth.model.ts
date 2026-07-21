@@ -61,9 +61,8 @@ export interface LoginOption {
 export interface IActivateAccountPayload {
   code: string;
   password: string;
-  firstname?: string;
-  lastname?: string;
   captchaCode?: string;
+  mailPurpose?: string;
   preventPostEvent?: boolean;
 }
 
