@@ -94,18 +94,34 @@ namespace Authentication.DomainService.Authentication
             return await BuildTokenResponseAsync(result.TokenResponse, httpContext);
         }
 
-        public async Task<bool> UpdateIdpSessionForLogoutAsync(HttpContext httpContext, ClaimsPrincipal user, bool isGlobalLogout)
+        public Task<bool> UpdateIdpSessionForLogoutAsync(HttpContext httpContext, ClaimsPrincipal user, bool isGlobalLogout)
+        {
+            return UpdateIdpSessionForLogoutAsync(httpContext, user, isGlobalLogout, null);
+        }
+
+        public async Task<bool> UpdateIdpSessionForLogoutAsync(HttpContext httpContext, ClaimsPrincipal user, bool isGlobalLogout, IEnumerable<string>? fallbackSessionIds)
         {
             var bc = BlocksContext.GetContext();
             var sessionId = httpContext.Request.Cookies[IdpConstants.BuildIdpSessionCookieKey(bc!.TenantId)];
-            if (string.IsNullOrWhiteSpace(sessionId))
+            var sessionIds = !string.IsNullOrWhiteSpace(sessionId)
+                ? new List<string> { sessionId }
+                : fallbackSessionIds?
+                    .Where(id => !string.IsNullOrWhiteSpace(id))
+                    .Distinct(StringComparer.Ordinal)
+                    .ToList() ?? new List<string>();
+
+            if (sessionIds.Count == 0)
             {
                 return true;
             }
 
             if (isGlobalLogout)
             {
-                await _authSession.RevokeSessionAsync(sessionId, "logout_all");
+                foreach (var id in sessionIds)
+                {
+                    await _authSession.RevokeSessionAsync(id, "logout_all");
+                }
+
                 return true;
             }
 
@@ -116,8 +132,9 @@ namespace Authentication.DomainService.Authentication
                 return false;
             }
 
-            await _authSession.RemoveAccountAsync(sessionId, userId, bc.TenantId);
-            var session = await _authSession.GetSessionAsync(sessionId);
+            var selectedSessionId = sessionIds[0];
+            await _authSession.RemoveAccountAsync(selectedSessionId, userId, bc.TenantId);
+            var session = await _authSession.GetSessionAsync(selectedSessionId);
 
             if (session == null || session.RevokedAt.HasValue || session.IsExpired())
             {
@@ -137,36 +154,30 @@ namespace Authentication.DomainService.Authentication
         {
             _logger.LogInformation("Logout process start");
 
-            var result = await ProcessLogout(refreshToken, httpRequest);
+            var refreshTokenSession = await ReadRefreshTokenCacheAsync(refreshToken);
+            var result = await ProcessLogout(refreshToken, httpRequest, refreshTokenSession);
 
             await ProcessTimeline(httpRequest, false);
             return new LogoutResponse
             {
                 IsSuccess = result,
+                IdpSessionId = refreshTokenSession?.SessionId,
             };
 
         }
 
         public async Task<bool> ProcessLogout(string refreshToken, HttpRequest httpRequest)
         {
+            return await ProcessLogout(refreshToken, httpRequest, await ReadRefreshTokenCacheAsync(refreshToken));
+        }
+
+        private async Task<bool> ProcessLogout(string refreshToken, HttpRequest httpRequest, RefreshTokenCache? refreshTokenSession)
+        {
             var bc = BlocksContext.GetContext();
 
-            var refreshTokenCache = await _cacheClient.GetStringValueAsync(refreshToken);
-            if (string.IsNullOrWhiteSpace(refreshTokenCache))
+            if (refreshTokenSession == null)
             {
                 _logger.LogWarning("No active session found for refresh token during logout");
-                return false;
-            }
-
-            var refreshTokenSession = new RefreshTokenCache();
-
-            try
-            {
-                refreshTokenSession = JsonSerializer.Deserialize<RefreshTokenCache>(refreshTokenCache);
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, "Exception during refresh-token revocation in logout");
                 return false;
             }
 
@@ -184,6 +195,25 @@ namespace Authentication.DomainService.Authentication
             return true;
         }
 
+        private async Task<RefreshTokenCache?> ReadRefreshTokenCacheAsync(string refreshToken)
+        {
+            var refreshTokenCache = await _cacheClient.GetStringValueAsync(refreshToken);
+            if (string.IsNullOrWhiteSpace(refreshTokenCache))
+            {
+                return null;
+            }
+
+            try
+            {
+                return JsonSerializer.Deserialize<RefreshTokenCache>(refreshTokenCache);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Exception during refresh-token cache read");
+                return null;
+            }
+        }
+
         public async Task<LogoutResponse> LogoutAll(HttpRequest httpRequest)
         {
             var bc = BlocksContext.GetContext();
@@ -191,6 +221,12 @@ namespace Authentication.DomainService.Authentication
 
             var activeTokens = await _refreshTokenRepository.GetActiveTokensByUserAsync(userId);
             var refreshTokens = activeTokens.Select(t => t.TokenId).Where(id => !string.IsNullOrWhiteSpace(id)).ToList();
+            var sessionIds = activeTokens
+                .Select(t => t.SessionId)
+                .Where(id => !string.IsNullOrWhiteSpace(id))
+                .Distinct(StringComparer.Ordinal)
+                .Select(id => id!)
+                .ToList();
 
             var revokeTasks = refreshTokens.Select(async token =>
             {
@@ -209,6 +245,7 @@ namespace Authentication.DomainService.Authentication
             return new LogoutResponse
             {
                 IsSuccess = true,
+                IdpSessionIds = sessionIds,
             };
         }
 
