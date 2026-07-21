@@ -93,6 +93,14 @@ export default defineConfig(({ mode }) => {
           __dirname,
           "./app/test-utils/stubs/blocks-kit.tsx",
         ),
+        "@seliseblocks/blocks-kit/lib": path.resolve(
+          __dirname,
+          "./app/test-utils/stubs/blocks-kit.tsx",
+        ),
+        "@seliseblocks/blocks-kit/providers": path.resolve(
+          __dirname,
+          "./app/test-utils/stubs/blocks-kit.tsx",
+        ),
         "@": path.resolve(__dirname, "./app"),
         "@blocks-idp": path.resolve(__dirname, "./app/idp"),
         "@blocks-lmt": path.resolve(__dirname, "./app/cross-modules/lmt"),
