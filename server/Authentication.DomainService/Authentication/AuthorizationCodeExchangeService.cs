@@ -2,7 +2,6 @@ using Authentication.DomainService.Entities;
 using Authentication.DomainService.Utilities;
 using Authentication.DomainService.OAuth;
 using Authentication.DomainService.Oidc.Repositories;
-using Authentication.DomainService.Oidc.Services;
 using Authentication.DomainService.Services;
 using Iam.DomainService.Utilities;
 using Blocks.Genesis;
@@ -32,7 +31,6 @@ namespace Authentication.DomainService.Authentication
         private readonly IAuthorizationClaimsResolver _authorizationClaimsResolver;
         private readonly IAuthenticationRepository _authenticationRepository;
         private readonly ITenants _tenants;
-        private readonly IIdpSessionService _idpSessionService;
         private readonly ILogger<AuthorizationCodeExchangeService> _logger;
 
         public AuthorizationCodeExchangeService(
@@ -44,7 +42,6 @@ namespace Authentication.DomainService.Authentication
             IAuthorizationClaimsResolver authorizationClaimsResolver,
             IAuthenticationRepository authenticationRepository,
             ITenants tenants,
-            IIdpSessionService idpSessionService,
             ILogger<AuthorizationCodeExchangeService> logger)
         {
             _authCodeRepo = authCodeRepo;
@@ -55,7 +52,6 @@ namespace Authentication.DomainService.Authentication
             _authorizationClaimsResolver = authorizationClaimsResolver;
             _authenticationRepository = authenticationRepository;
             _tenants = tenants;
-            _idpSessionService = idpSessionService;
             _logger = logger;
         }
 
@@ -210,7 +206,13 @@ namespace Authentication.DomainService.Authentication
 
             var issuer = DomainResolver.GetIssuer(tenant);
 
-            var idpSessionId = await ResolveOrCreateIdpSessionAsync(request, authCode.UserId, effectiveTenantId!);
+            if (string.IsNullOrWhiteSpace(authCode.IdpSessionId))
+            {
+                _logger.LogWarning("Authorization code {Code} is missing IdP session id", code);
+                return OidcExchangeResult.FromError(new BadRequestObjectResult(new { error = "invalid_grant", error_description = "Authorization code is missing IdP session" }));
+            }
+
+            var idpSessionId = authCode.IdpSessionId;
 
             var idToken = await _tokenService.GenerateIdTokenAsync(claims, issuer, accessTokenLifetimeSeconds);
             var accessToken = await _tokenService.GenerateAccessTokenAsync(claims, issuer, accessTokenLifetimeSeconds);
@@ -318,18 +320,6 @@ namespace Authentication.DomainService.Authentication
             var effectiveTenantId = authCode.TenantId ?? tenantId ?? "default";
             return (null, authCode, user, effectiveTenantId);
         }
-
-        private Task<string> ResolveOrCreateIdpSessionAsync(HttpRequest request, string userId, string tenantId)
-        {
-            // Thin wrapper: cookie resolution + account-add + cookie-write are all handled inside the helper.
-            // Failure surfaces as an exception — caller maps the failure to invalid_grant.
-            return _idpSessionService.ResolveOrCreateAsync(
-                request.HttpContext,
-                userId,
-                tenantId,
-                OidcRedirectUrlBuilder.GetClientIpAddress(request));
-        }
-
         private static bool AppendAccessAndRefreshTokenCookies(
             HttpResponse response,
             string tokenDomain,
