@@ -1,7 +1,7 @@
 using Authentication.DomainService.Authentication;
 using Authentication.DomainService.OAuth.RequestModel;
 using Authentication.DomainService.OAuth.ResponseModel;
-using Blocks.Api.Controllers;
+using Api.Controllers;
 using Blocks.Genesis;
 using FluentAssertions;
 using Idp.DomainService.Oidc.Contracts;

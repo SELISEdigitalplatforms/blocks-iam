@@ -46,16 +46,17 @@ namespace Authentication.DomainService.OAuth
                 return new SocialCallbackResult { ExternalUserData = new BYOSsoUserData() };
             }
 
-            var result = await _httpService.Get<dynamic>(identityProvider.UserInfoUrl, new Dictionary<string, string> {
+            var result = await _httpService.Get<JsonDocument>(identityProvider.UserInfoUrl, new Dictionary<string, string> {
                 { "Authorization", $"bearer {response.AccessToken}"  } });
 
-            if (!string.IsNullOrWhiteSpace(result.Item2) || result.Item1 == null)
+            if (!string.IsNullOrWhiteSpace(result.Item2) || result.Item1 is null ||
+                result.Item1.RootElement.ValueKind is JsonValueKind.Undefined or JsonValueKind.Null)
             {
                 _logger.LogError("Error while getting user data: {Error}", result.Item2);
                 return new SocialCallbackResult { ExternalUserData = new BYOSsoUserData() };
             }
 
-            var payload = (JsonElement)result.Item1;
+            var payload = result.Item1.RootElement;
             var externalUser = new BYOSsoUserData();
             _mapperRegistry.Map(stateInfo.Provider, payload, externalUser);
             externalUser.Permissions = identityProvider?.InitialPermissions ?? [];

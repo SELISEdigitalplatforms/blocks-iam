@@ -5,5 +5,8 @@
         public string Key { get; set; }
         public string UserId { get; set; }
         public string EventType { get; set; }
+        public string TenantId { get; set; }
+        public bool ForceInvitation { get; set; }
+        public DateTime? KeyExpiresAtUtc { get; set; }
     }
 }

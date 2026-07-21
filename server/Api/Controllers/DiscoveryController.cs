@@ -1,4 +1,5 @@
 using Authentication.DomainService.Authentication;
+using Authentication.DomainService.OAuth;
 using Authentication.DomainService.OAuth.RequestModel;
 using Blocks.Genesis;
 using Idp.DomainService.Oidc.Contracts;
@@ -7,7 +8,7 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Serilog;
 
-namespace Blocks.Api.Controllers
+namespace Api.Controllers
 {
     /// <summary>
     /// OpenID Connect Discovery Endpoints
@@ -141,9 +142,17 @@ namespace Blocks.Api.Controllers
             return JwksJson();
         }
 
+        /// <summary>
+        /// Temporary anonymous password-login surface. The absolute route <c>/auth-login</c>
+        /// deliberately escapes the discovery prefix and mirrors <c>POST /api/auth/login</c>.
+        /// DEPRECATED: this is a temporary compatibility route pending the device-code flow
+        /// replacement and is slated for removal once that flow ships. Do not build new clients
+        /// against it.
+        /// </summary>
         [HttpPost("/auth-login")]
+        [AllowAnonymous]
         [Produces("application/json")]
-        [ProducesResponseType(typeof(JwksResponse), 200)]
+        [ProducesResponseType(typeof(OidcTokenEndpointResponse), 200)]
         public async Task<IActionResult> ExecutePasswordLogin([FromBody] EmbeddedLoginRequest request)
         {
             var section = _configuration.GetSection("FrontendRuntime");
