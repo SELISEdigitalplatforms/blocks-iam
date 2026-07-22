@@ -76,8 +76,12 @@ export const BlocksAppLayout = passthrough("BlocksAppLayout");
 export const TooltipProvider = passthrough("TooltipProvider");
 export const Tooltip = passthrough("Tooltip");
 export const TooltipTrigger = passthrough("TooltipTrigger");
-export const TooltipContent = ({ children }: PassthroughProps) =>
-  React.createElement("div", { role: "tooltip" }, children);
+export const TooltipContent = ({ children, className }: PassthroughProps) =>
+  React.createElement(
+    "div",
+    { role: "tooltip", className: className as string | undefined },
+    children,
+  );
 export const ConsoleLayout = passthrough("ConsoleLayout");
 export const ConsolePage = passthrough("ConsolePage");
 export const DashboardOverview = passthrough("DashboardOverview");

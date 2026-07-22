@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import { FilterControls } from "@/components/filter-toolbar";
 import { Badge } from "@/components/ui-kits/badge/badge";
 import { Button } from "@/components/ui-kits/button/button";
@@ -55,6 +55,7 @@ export const AddOrganizationRole = ({
   // so the picker doesn't fall back to `tenantId` between the time the page
   // mounts and the org data resolves.
   const scopeKey = organizationId || tenantId;
+  const dialogContentRef = useRef<HTMLDivElement>(null);
   const [open, setOpen] = useState<boolean>(false);
   const [selectedRoles, setSelectedRoles] = useState<IRole[]>([]);
   const [filter, setFilter] = useState({ page: 0, pageSize: 10, search: "" });
@@ -149,7 +150,15 @@ export const AddOrganizationRole = ({
           <span className="sr-only sm:not-sr-only">Manage Roles</span>
         </Button>
       </DialogTrigger>
-      <DialogContent>
+      <DialogContent
+        ref={dialogContentRef}
+        onOpenAutoFocus={(event) => {
+          event.preventDefault();
+          dialogContentRef.current
+            ?.querySelector<HTMLInputElement>("input")
+            ?.focus();
+        }}
+      >
         <DialogHeader>
           <div className="flex items-center gap-2">
             <DialogTitle className="text-left">Manage roles</DialogTitle>
@@ -164,7 +173,10 @@ export const AddOrganizationRole = ({
                     <Info className="h-4 w-4" aria-hidden />
                   </button>
                 </TooltipTrigger>
-                <TooltipContent side="top">
+                <TooltipContent
+                  side="top"
+                  className="max-w-[240px] whitespace-normal text-center"
+                >
                   {MINIMUM_ROLE_MESSAGE}
                 </TooltipContent>
               </Tooltip>
