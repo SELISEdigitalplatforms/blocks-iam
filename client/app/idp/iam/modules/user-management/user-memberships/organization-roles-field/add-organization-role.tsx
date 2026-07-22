@@ -1,7 +1,9 @@
+import { useMemo, useState } from "react";
 import { FilterControls } from "@/components/filter-toolbar";
 import { Badge } from "@/components/ui-kits/badge/badge";
 import { Button } from "@/components/ui-kits/button/button";
 import { Checkbox } from "@/components/ui-kits/checkbox/checkbox";
+import { showErrorToast } from "@/hooks/use-toast";
 import {
   Dialog,
   DialogClose,
@@ -13,18 +15,22 @@ import {
   DialogTrigger,
 } from "@/components/ui-kits/dialog/dialog";
 import { Pagination } from "@/components/ui-kits/pagination/pagination";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui-kits/tooltip/tooltip";
 import { useProjectStore } from "@seliseblocks/blocks-kit";
 import { useGetRoles } from "@blocks-idp/iam/hooks/use-roles";
 import { IRole } from "@blocks-idp/iam/models/role";
-import { Plus, ShieldCheck } from "lucide-react";
-import { useMemo, useState } from "react";
+import { Info, Plus, ShieldCheck } from "lucide-react";
+import { MINIMUM_ROLE_MESSAGE } from "./role-assignment.constants";
 
 type AddOrganizationRoleProps = {
   roles: IRole[];
-  /** Called with the picked new roles on confirm. */
-  onAdd: (data: IRole[]) => void;
-  /** Called when a role is deselected in the modal (for already-assigned roles). */
-  onRemove?: (data: IRole) => void;
+  /** Called with the complete role selection on confirm. */
+  onChange: (data: IRole[]) => void;
   onSave?: () => void;
   /**
    * Scope the picker to a specific organization — when provided, the role
@@ -37,8 +43,7 @@ type AddOrganizationRoleProps = {
 const MAX_ROLES_PER_USER = 5;
 
 export const AddOrganizationRole = ({
-  onAdd,
-  onRemove,
+  onChange,
   roles,
   onSave,
   organizationId,
@@ -80,23 +85,19 @@ export const AddOrganizationRole = ({
     [selectedRoles],
   );
 
-  const newlySelectedRoles = useMemo(
-    () => selectedRoles.filter((item) => !rolesSlug.includes(item.slug)),
-    [selectedRoles, rolesSlug],
-  );
-
-  const totalRoleCount = roles.length + newlySelectedRoles.length;
+  const totalRoleCount = selectedRoles.length;
   const isAtMaxRoles = totalRoleCount >= MAX_ROLES_PER_USER;
 
   const isRoleSelectedInModal = (slug: string) =>
-    rolesSlug.includes(slug) || selectedRolesSlug.includes(slug);
+    selectedRolesSlug.includes(slug);
+
+  const hasSelectionChanged =
+    selectedRolesSlug.length !== rolesSlug.length ||
+    selectedRolesSlug.some((slug) => !rolesSlug.includes(slug));
 
   const onCheckedChangeHandler = (checked: boolean, role: IRole) => {
     if (checked) {
-      if (
-        !rolesSlug.includes(role.slug) &&
-        totalRoleCount >= MAX_ROLES_PER_USER
-      ) {
+      if (totalRoleCount >= MAX_ROLES_PER_USER) {
         return;
       }
       return setSelectedRoles((currentRoles) =>
@@ -105,9 +106,9 @@ export const AddOrganizationRole = ({
           : [...currentRoles, role],
       );
     }
-    // When unchecking, if the role was already assigned (in rolesSlug), notify parent via onRemove
-    if (rolesSlug.includes(role.slug)) {
-      onRemove?.(role);
+    if (selectedRoles.length === 1 && selectedRolesSlug.includes(role.slug)) {
+      showErrorToast({ errors: MINIMUM_ROLE_MESSAGE });
+      return;
     }
     setSelectedRoles((currentRoles) =>
       currentRoles.filter((item) => item.slug !== role.slug),
@@ -126,7 +127,13 @@ export const AddOrganizationRole = ({
     <Dialog
       open={open}
       onOpenChange={(value) => {
-        if (!value) reset();
+        if (value) {
+          // Edit a local copy so Cancel never leaks partial role removals to
+          // the parent form and an existing role can be unchecked immediately.
+          setSelectedRoles(roles);
+        } else {
+          reset();
+        }
         setOpen(value);
       }}
     >
@@ -146,6 +153,22 @@ export const AddOrganizationRole = ({
         <DialogHeader>
           <div className="flex items-center gap-2">
             <DialogTitle className="text-left">Manage roles</DialogTitle>
+            <TooltipProvider>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <button
+                    type="button"
+                    aria-label="Role assignment requirement"
+                    className="inline-flex items-center justify-center text-muted-foreground transition-colors hover:text-foreground focus:outline-none"
+                  >
+                    <Info className="h-4 w-4" aria-hidden />
+                  </button>
+                </TooltipTrigger>
+                <TooltipContent side="top">
+                  {MINIMUM_ROLE_MESSAGE}
+                </TooltipContent>
+              </Tooltip>
+            </TooltipProvider>
             <Badge
               variant="success"
               className="font-normal"
@@ -192,6 +215,7 @@ export const AddOrganizationRole = ({
                 <Checkbox
                   checked={isRoleSelectedInModal(item.slug)}
                   disabled={!isRoleSelectedInModal(item.slug) && isAtMaxRoles}
+                  aria-label={`${isRoleSelectedInModal(item.slug) ? "Deselect" : "Select"} ${item.name}`}
                   onCheckedChange={(value) =>
                     onCheckedChangeHandler(!!value, item)
                   }
@@ -244,9 +268,9 @@ export const AddOrganizationRole = ({
           <Button
             type="button"
             size="default"
-            disabled={newlySelectedRoles.length === 0}
+            disabled={!hasSelectionChanged}
             onClick={() => {
-              onAdd(newlySelectedRoles);
+              onChange(selectedRoles);
               reset();
               setOpen(false);
               // Defer save so the parent React tree has time to commit the
