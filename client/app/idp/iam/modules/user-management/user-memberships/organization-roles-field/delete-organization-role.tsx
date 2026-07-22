@@ -14,7 +14,7 @@ import { useState } from "react";
 
 type DeleteOrganizationRoleProps = {
   role: IRole;
-  onDelete: (role: IRole) => void;
+  onDelete: (role: IRole) => boolean;
   onSave?: () => void;
 };
 
@@ -28,7 +28,13 @@ export const DeleteOrganizationRole = ({
   return (
     <Dialog open={open} onOpenChange={setOpen}>
       <DialogTrigger asChild>
-        <X className="h-4 w-4 cursor-pointer" />
+        <button
+          type="button"
+          aria-label={`Remove ${role.name}`}
+          className="inline-flex cursor-pointer items-center justify-center"
+        >
+          <X className="h-4 w-4" aria-hidden />
+        </button>
       </DialogTrigger>
       <DialogContent className="mr-4 w-full max-w-[425px] rounded-md">
         <DialogHeader>
@@ -46,8 +52,9 @@ export const DeleteOrganizationRole = ({
           <Button
             size="sm"
             onClick={() => {
-              onDelete(role);
+              const wasRemoved = onDelete(role);
               setOpen(false);
+              if (!wasRemoved) return;
               setTimeout(() => onSave?.(), 0);
             }}
           >

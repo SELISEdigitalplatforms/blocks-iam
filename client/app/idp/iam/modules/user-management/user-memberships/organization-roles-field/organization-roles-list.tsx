@@ -14,13 +14,13 @@ import { DeleteOrganizationRole } from "./delete-organization-role";
 
 type OrganizationRolesListProps = {
   roles: IRole[];
-  onDelete: (role: IRole) => void;
+  onDelete: (role: IRole) => boolean;
   onSave?: () => void;
 };
 
 export const OrganizationRolesList = ({ roles, onDelete, onSave }: OrganizationRolesListProps) => {
   const handleDelete = useCallback((role: IRole) => {
-    onDelete(role);
+    return onDelete(role);
   }, [onDelete]);
 
   const columns = useMemo<ColumnDef<IRole>[]>(
