@@ -36,17 +36,24 @@ export const OrganizationRolesField = ({
   };
 
   const slicedRoles =
-    roles.slice(filter.page * filter.pageSize, filter.page * filter.pageSize + filter.pageSize) ||
-    [];
+    roles.slice(
+      filter.page * filter.pageSize,
+      filter.page * filter.pageSize + filter.pageSize,
+    ) || [];
 
-  const onRemoveHandler = useCallback((role: IRole) => {
-    if (roles.length <= 1) {
-      showErrorToast({ errors: MINIMUM_ROLE_MESSAGE });
-      return false;
-    }
-    (onChange as unknown as (fn: (prev: IRole[]) => IRole[]) => void)((prevRoles) => prevRoles.filter((item) => item.slug !== role.slug));
-    return true;
-  }, [onChange, roles.length]);
+  const onRemoveHandler = useCallback(
+    (role: IRole) => {
+      if (roles.length <= 1) {
+        showErrorToast({ errors: MINIMUM_ROLE_MESSAGE });
+        return false;
+      }
+      (onChange as unknown as (fn: (prev: IRole[]) => IRole[]) => void)(
+        (prevRoles) => prevRoles.filter((item) => item.slug !== role.slug),
+      );
+      return true;
+    },
+    [onChange, roles.length],
+  );
 
   return (
     <div className="space-y-3">
@@ -70,7 +77,10 @@ export const OrganizationRolesField = ({
                     <Info className="h-4 w-4" aria-hidden />
                   </button>
                 </TooltipTrigger>
-                <TooltipContent side="top">
+                <TooltipContent
+                  side="top"
+                  className="max-w-[240px] whitespace-normal text-center"
+                >
                   {MINIMUM_ROLE_MESSAGE}
                 </TooltipContent>
               </Tooltip>
@@ -92,7 +102,9 @@ export const OrganizationRolesField = ({
           <div className="mx-auto flex h-10 w-10 items-center justify-center rounded-full bg-primary/10">
             <ShieldCheck className="h-5 w-5 text-primary" />
           </div>
-          <p className="mt-3 text-sm font-medium text-foreground">No roles added</p>
+          <p className="mt-3 text-sm font-medium text-foreground">
+            No roles added
+          </p>
           <p className="mt-1 text-xs text-muted-foreground">
             Add at least one role for this user
           </p>
@@ -110,7 +122,8 @@ export const OrganizationRolesField = ({
             <div className="flex items-center justify-between border-t pt-3">
               <p className="text-xs text-muted-foreground">
                 Showing {filter.page * filter.pageSize + 1} to{" "}
-                {Math.min((filter.page + 1) * filter.pageSize, roles.length)} of {roles.length} roles
+                {Math.min((filter.page + 1) * filter.pageSize, roles.length)} of{" "}
+                {roles.length} roles
               </p>
               <Pagination
                 page={filter.page}
