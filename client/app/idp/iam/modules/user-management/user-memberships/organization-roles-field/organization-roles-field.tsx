@@ -31,10 +31,6 @@ export const OrganizationRolesField = ({
     roles.slice(filter.page * filter.pageSize, filter.page * filter.pageSize + filter.pageSize) ||
     [];
 
-  const onAddHandler = useCallback((newRoles: IRole[]) => {
-    (onChange as unknown as (fn: (prev: IRole[]) => IRole[]) => void)((prevRoles) => [...prevRoles, ...newRoles]);
-  }, [onChange]);
-
   const onRemoveHandler = useCallback((role: IRole) => {
     (onChange as unknown as (fn: (prev: IRole[]) => IRole[]) => void)((prevRoles) => prevRoles.filter((item) => item.slug !== role.slug));
   }, [onChange]);
@@ -55,8 +51,7 @@ export const OrganizationRolesField = ({
         </div>
         <div className="shrink-0">
           <AddOrganizationRole
-            onAdd={onAddHandler}
-            onRemove={onRemoveHandler}
+            onChange={onChange}
             roles={roles}
             onSave={onSave}
             organizationId={organizationId}
