@@ -1,10 +1,18 @@
 import { useCallback, useState } from "react";
+import { showErrorToast } from "@/hooks/use-toast";
 import { Label } from "@/components/ui-kits/label/label";
 import { Pagination } from "@/components/ui-kits/pagination/pagination";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui-kits/tooltip/tooltip";
 import { IRole } from "@blocks-idp/iam/models/role";
-import { ShieldCheck } from "lucide-react";
+import { Info, ShieldCheck } from "lucide-react";
 import { AddOrganizationRole } from "./add-organization-role";
 import { OrganizationRolesList } from "./organization-roles-list";
+import { MINIMUM_ROLE_MESSAGE } from "./role-assignment.constants";
 
 type OrganizationRolesFieldProps = {
   roles: IRole[];
@@ -32,8 +40,13 @@ export const OrganizationRolesField = ({
     [];
 
   const onRemoveHandler = useCallback((role: IRole) => {
+    if (roles.length <= 1) {
+      showErrorToast({ errors: MINIMUM_ROLE_MESSAGE });
+      return false;
+    }
     (onChange as unknown as (fn: (prev: IRole[]) => IRole[]) => void)((prevRoles) => prevRoles.filter((item) => item.slug !== role.slug));
-  }, [onChange]);
+    return true;
+  }, [onChange, roles.length]);
 
   return (
     <div className="space-y-3">
@@ -46,6 +59,22 @@ export const OrganizationRolesField = ({
                 {roles.length}
               </span>
             )}
+            <TooltipProvider>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <button
+                    type="button"
+                    aria-label="Role assignment requirement"
+                    className="inline-flex items-center justify-center text-muted-foreground transition-colors hover:text-foreground focus:outline-none"
+                  >
+                    <Info className="h-4 w-4" aria-hidden />
+                  </button>
+                </TooltipTrigger>
+                <TooltipContent side="top">
+                  {MINIMUM_ROLE_MESSAGE}
+                </TooltipContent>
+              </Tooltip>
+            </TooltipProvider>
           </div>
           <p className="text-sm text-muted-foreground">{description}</p>
         </div>

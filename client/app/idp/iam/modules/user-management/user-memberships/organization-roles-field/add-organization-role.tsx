@@ -1,7 +1,9 @@
+import { useMemo, useState } from "react";
 import { FilterControls } from "@/components/filter-toolbar";
 import { Badge } from "@/components/ui-kits/badge/badge";
 import { Button } from "@/components/ui-kits/button/button";
 import { Checkbox } from "@/components/ui-kits/checkbox/checkbox";
+import { showErrorToast } from "@/hooks/use-toast";
 import {
   Dialog,
   DialogClose,
@@ -13,11 +15,17 @@ import {
   DialogTrigger,
 } from "@/components/ui-kits/dialog/dialog";
 import { Pagination } from "@/components/ui-kits/pagination/pagination";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui-kits/tooltip/tooltip";
 import { useProjectStore } from "@seliseblocks/blocks-kit";
 import { useGetRoles } from "@blocks-idp/iam/hooks/use-roles";
 import { IRole } from "@blocks-idp/iam/models/role";
-import { Plus, ShieldCheck } from "lucide-react";
-import { useMemo, useState } from "react";
+import { Info, Plus, ShieldCheck } from "lucide-react";
+import { MINIMUM_ROLE_MESSAGE } from "./role-assignment.constants";
 
 type AddOrganizationRoleProps = {
   roles: IRole[];
@@ -80,7 +88,8 @@ export const AddOrganizationRole = ({
   const totalRoleCount = selectedRoles.length;
   const isAtMaxRoles = totalRoleCount >= MAX_ROLES_PER_USER;
 
-  const isRoleSelectedInModal = (slug: string) => selectedRolesSlug.includes(slug);
+  const isRoleSelectedInModal = (slug: string) =>
+    selectedRolesSlug.includes(slug);
 
   const hasSelectionChanged =
     selectedRolesSlug.length !== rolesSlug.length ||
@@ -96,6 +105,10 @@ export const AddOrganizationRole = ({
           ? currentRoles
           : [...currentRoles, role],
       );
+    }
+    if (selectedRoles.length === 1 && selectedRolesSlug.includes(role.slug)) {
+      showErrorToast({ errors: MINIMUM_ROLE_MESSAGE });
+      return;
     }
     setSelectedRoles((currentRoles) =>
       currentRoles.filter((item) => item.slug !== role.slug),
@@ -140,6 +153,22 @@ export const AddOrganizationRole = ({
         <DialogHeader>
           <div className="flex items-center gap-2">
             <DialogTitle className="text-left">Manage roles</DialogTitle>
+            <TooltipProvider>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <button
+                    type="button"
+                    aria-label="Role assignment requirement"
+                    className="inline-flex items-center justify-center text-muted-foreground transition-colors hover:text-foreground focus:outline-none"
+                  >
+                    <Info className="h-4 w-4" aria-hidden />
+                  </button>
+                </TooltipTrigger>
+                <TooltipContent side="top">
+                  {MINIMUM_ROLE_MESSAGE}
+                </TooltipContent>
+              </Tooltip>
+            </TooltipProvider>
             <Badge
               variant="success"
               className="font-normal"
