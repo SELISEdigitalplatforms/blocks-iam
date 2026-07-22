@@ -44,14 +44,19 @@ describe("AddOrganizationRole", () => {
     );
 
     openDialog();
+    expect(await screen.findByPlaceholderText("Search by role name")).toHaveFocus();
+
     const infoButton = await screen.findByRole("button", {
       name: /role assignment requirement/i,
     });
+    expect(infoButton).not.toHaveFocus();
     fireEvent.mouseEnter(infoButton);
 
-    expect(await screen.findByRole("tooltip")).toHaveTextContent(
+    const tooltip = await screen.findByRole("tooltip");
+    expect(tooltip).toHaveTextContent(
       "At least one role must remain assigned to this user to access resources.",
     );
+    expect(tooltip).toHaveClass("max-w-[240px]");
   });
 
   it("prevents the final assigned role from being deselected", async () => {
@@ -173,9 +178,11 @@ describe("OrganizationRolesField", () => {
     });
     fireEvent.mouseEnter(infoButton);
 
-    expect(await screen.findByRole("tooltip")).toHaveTextContent(
+    const tooltip = await screen.findByRole("tooltip");
+    expect(tooltip).toHaveTextContent(
       "At least one role must remain assigned to this user to access resources.",
     );
+    expect(tooltip).toHaveClass("max-w-[240px]");
   });
 
   it("prevents removing the final table role and skips saving", async () => {
