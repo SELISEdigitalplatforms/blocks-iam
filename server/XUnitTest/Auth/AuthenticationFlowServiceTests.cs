@@ -146,7 +146,7 @@ namespace XUnitTest.Auth
             _repo.Setup(r => r.GetUserByUsernameAsync(It.IsAny<string>(), It.IsAny<string>()))
                 .ReturnsAsync(new User { ItemId = "user-1", FailedLoginCount = CaptchaGate.FailedAttemptsBeforeCaptcha });
             _captcha.Setup(c => c.GetConfigurationAsync()).ReturnsAsync(new CaptchaConfiguration { IsEnable = true, CaptchaKey = "site-key" });
-            _captcha.Setup(c => c.VerifyAsync("wrong")).ReturnsAsync((object)new { Verified = false });
+            _captcha.Setup(c => c.VerifyAsync("wrong", It.IsAny<string>())).ReturnsAsync((object)new { Verified = false });
 
             var result = await Create().ExecuteEmbeddedLoginAsync(new EmbeddedLoginRequest { Username = "u", Password = "p", CaptchaCode = "wrong" }, Req());
 

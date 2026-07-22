@@ -117,11 +117,72 @@ namespace XUnitTest.Auth
         }
 
         [Fact]
-        public async Task UpdateIdpSessionForLogout_NoUserId_ReturnsFalse()
+        public async Task UpdateIdpSessionForLogout_CookieWinsOverFallback()
+        {
+            var cookieKey = IdpConstants.BuildIdpSessionCookieKey(TenantId);
+            var ctx = HttpContextWithCookie(cookieKey, "sess-cookie");
+            _session.Setup(s => s.RevokeSessionAsync("sess-cookie", "logout_all")).ReturnsAsync(true);
+
+            var result = await Create().UpdateIdpSessionForLogoutAsync(
+                ctx,
+                new System.Security.Claims.ClaimsPrincipal(),
+                true,
+                new[] { "sess-fallback" });
+
+            result.Should().BeTrue();
+            _session.Verify(s => s.RevokeSessionAsync("sess-cookie", "logout_all"), Times.Once);
+            _session.Verify(s => s.RevokeSessionAsync("sess-fallback", "logout_all"), Times.Never);
+        }
+
+        [Fact]
+        public async Task UpdateIdpSessionForLogout_NoCookie_UsesFallbackSession()
+        {
+            var principal = new System.Security.Claims.ClaimsPrincipal(
+                new System.Security.Claims.ClaimsIdentity(new[]
+                {
+                    new System.Security.Claims.Claim("user_id", "actor-1")
+                }));
+            _session.Setup(s => s.RemoveAccountAsync("sess-fallback", "actor-1", TenantId)).ReturnsAsync(true);
+            _session.Setup(s => s.GetSessionAsync("sess-fallback")).ReturnsAsync((IdpSessionModel)null!);
+
+            var result = await Create().UpdateIdpSessionForLogoutAsync(
+                new DefaultHttpContext(),
+                principal,
+                false,
+                new[] { "sess-fallback" });
+
+            result.Should().BeTrue();
+            _session.Verify(s => s.RemoveAccountAsync("sess-fallback", "actor-1", TenantId), Times.Once);
+        }
+
+        [Fact]
+        public async Task UpdateIdpSessionForLogout_EmptyPrincipal_UsesContextUserId()
         {
             var cookieKey = IdpConstants.BuildIdpSessionCookieKey(TenantId);
             var ctx = HttpContextWithCookie(cookieKey, "sess-1");
+            _session.Setup(s => s.RemoveAccountAsync("sess-1", "actor-1", TenantId)).ReturnsAsync(true);
+            _session.Setup(s => s.GetSessionAsync("sess-1")).ReturnsAsync((IdpSessionModel)null!);
+
             var result = await Create().UpdateIdpSessionForLogoutAsync(ctx, new System.Security.Claims.ClaimsPrincipal(), false);
+
+            result.Should().BeTrue();
+            _session.Verify(s => s.RemoveAccountAsync("sess-1", "actor-1", TenantId), Times.Once);
+        }
+
+        [Fact]
+        public async Task UpdateIdpSessionForLogout_NoUserId_ReturnsFalse()
+        {
+            BlocksContext.SetContext(BlocksContext.Create(
+                tenantId: TenantId, roles: null, userId: "", impersonated: false,
+                isAuthenticated: true, requestUri: "https://test", organizationId: "default",
+                permissions: null, expireOn: DateTime.UtcNow.AddHours(1), email: "a@b.com",
+                userName: "tester", phoneNumber: null, displayName: "T", oauthToken: null,
+                originalTenantId: TenantId, impersonationSessionId: null, applicationDomain: "test"));
+
+            var cookieKey = IdpConstants.BuildIdpSessionCookieKey(TenantId);
+            var ctx = HttpContextWithCookie(cookieKey, "sess-1");
+            var result = await Create().UpdateIdpSessionForLogoutAsync(ctx, new System.Security.Claims.ClaimsPrincipal(), false);
+
             result.Should().BeFalse();
         }
 
@@ -131,8 +192,37 @@ namespace XUnitTest.Auth
         public async Task ProcessLogout_NoCache_ReturnsFalse()
         {
             _cache.Setup(c => c.GetStringValueAsync("rt-1")).ReturnsAsync((string)null!);
+            _refresh.Setup(r => r.GetByTokenIdAsync("rt-1")).ReturnsAsync((RefreshTokenModel)null!);
             var result = await Create().ProcessLogout("rt-1", new DefaultHttpContext().Request);
             result.Should().BeFalse();
+        }
+
+        [Fact]
+        public async Task LogoutUser_WhenCacheMissing_UsesPersistedRefreshTokenSessionId()
+        {
+            _cache.Setup(c => c.GetStringValueAsync("rt-1")).ReturnsAsync((string)null!);
+            _refresh.Setup(r => r.GetByTokenIdAsync("rt-1")).ReturnsAsync(new RefreshTokenModel
+            {
+                TokenId = "rt-1",
+                UserId = "actor-1",
+                TenantId = TenantId,
+                ClientId = "c1",
+                SessionId = "sess-from-mongo",
+                IssuedUtc = DateTime.UtcNow.AddMinutes(-5),
+                SlidingExpiry = DateTime.UtcNow.AddMinutes(10),
+                AbsoluteExpiry = DateTime.UtcNow.AddHours(1)
+            });
+            _session.Setup(s => s.RevokeTokenAsync("rt-1", GrantTypes.RefreshToken, "c1"))
+                .ReturnsAsync(new TokenRevocationResult { Success = true });
+            _cache.Setup(c => c.RemoveKeyAsync("rt-1")).ReturnsAsync(true);
+            _refresh.Setup(r => r.RevokeByTokenIdAsync("rt-1", "logout")).ReturnsAsync(true);
+            _domain.Setup(d => d.GetDeviceInfo(It.IsAny<string>())).Returns((DeviceInformation)null!);
+            _domain.Setup(d => d.GetVisitorsIpAddresses(It.IsAny<HttpContext>())).Returns(new List<string> { "1.2.3.4" });
+
+            var result = await Create().LogoutUser("rt-1", new DefaultHttpContext().Request);
+
+            result.IsSuccess.Should().BeTrue();
+            result.IdpSessionId.Should().Be("sess-from-mongo");
         }
 
         [Fact]
@@ -152,13 +242,31 @@ namespace XUnitTest.Auth
             _refresh.Verify(r => r.RevokeByTokenIdAsync("rt-1", "logout"), Times.Once);
         }
 
+        [Fact]
+        public async Task LogoutUser_ReturnsRefreshTokenSessionIdForFallback()
+        {
+            var cache = JsonSerializer.Serialize(new RefreshTokenCache { ClientId = "c1", RefreshToken = "rt-1", SessionId = "sess-1" });
+            _cache.Setup(c => c.GetStringValueAsync("rt-1")).ReturnsAsync(cache);
+            _session.Setup(s => s.RevokeTokenAsync("rt-1", GrantTypes.RefreshToken, "c1"))
+                .ReturnsAsync(new TokenRevocationResult { Success = true });
+            _cache.Setup(c => c.RemoveKeyAsync("rt-1")).ReturnsAsync(true);
+            _refresh.Setup(r => r.RevokeByTokenIdAsync("rt-1", "logout")).ReturnsAsync(true);
+            _domain.Setup(d => d.GetDeviceInfo(It.IsAny<string>())).Returns((DeviceInformation)null!);
+            _domain.Setup(d => d.GetVisitorsIpAddresses(It.IsAny<HttpContext>())).Returns(new List<string> { "1.2.3.4" });
+
+            var result = await Create().LogoutUser("rt-1", new DefaultHttpContext().Request);
+
+            result.IsSuccess.Should().BeTrue();
+            result.IdpSessionId.Should().Be("sess-1");
+        }
+
         // ---------- LogoutAll ----------
 
         [Fact]
         public async Task LogoutAll_RevokesActiveTokens_DispatchesTimeline()
         {
             _refresh.Setup(r => r.GetActiveTokensByUserAsync("actor-1"))
-                .ReturnsAsync(new List<RefreshTokenModel> { new() { TokenId = "rt-1" }, new() { TokenId = "rt-2" } });
+                .ReturnsAsync(new List<RefreshTokenModel> { new() { TokenId = "rt-1", SessionId = "sess-1" }, new() { TokenId = "rt-2", SessionId = "sess-2" } });
             _session.Setup(s => s.RevokeTokenAsync(It.IsAny<string>(), GrantTypes.RefreshToken, It.IsAny<string>()))
                 .ReturnsAsync(new TokenRevocationResult { Success = true });
             _cache.Setup(c => c.RemoveKeyAsync(It.IsAny<string>())).ReturnsAsync(true);
@@ -169,6 +277,7 @@ namespace XUnitTest.Auth
             var result = await Create().LogoutAll(new DefaultHttpContext().Request);
 
             result.IsSuccess.Should().BeTrue();
+            result.IdpSessionIds.Should().BeEquivalentTo(new[] { "sess-1", "sess-2" });
             _refresh.Verify(r => r.RevokeAllByTokenIdsAsync(It.IsAny<IEnumerable<string>>(), "logout_all"), Times.Once);
             _activity.Verify(a => a.SendUserActivityAsync(It.IsAny<UserActivityEvent>()), Times.Once);
         }
