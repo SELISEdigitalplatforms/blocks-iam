@@ -12,7 +12,7 @@ test.describe("Authentication", () => {
     }
   });
 
-  test("logs in through dev-iam and lands on the console", async ({ page }) => {
+  test("logs in through iam and lands on the console", async ({ page }) => {
     // Extend the test timeout to cover an optional inspection hold at the end.
     const holdMs = Number(process.env.E2E_HOLD_MS ?? 0);
     if (holdMs > 0) test.setTimeout(holdMs + 60_000);

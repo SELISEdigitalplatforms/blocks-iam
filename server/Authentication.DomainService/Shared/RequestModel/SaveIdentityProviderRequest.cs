@@ -6,6 +6,7 @@ namespace Authentication.DomainService.Shared.RequestModel
         public string? ProviderType { get; set; }
         public string? Protocol { get; set; }
         public string? ClientId { get; set; }
+        public string? ClientSecret { get; set; }
         public string? DisplayName { get; set; }
         public bool? IsActive { get; set; }
         public string? Issuer { get; set; }
