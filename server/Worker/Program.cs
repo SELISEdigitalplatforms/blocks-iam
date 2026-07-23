@@ -55,7 +55,7 @@ IHostBuilder CreateHostBuilder(string[] args) =>
         services.AddSingleton<IConsumer<PermissionMutationForTenantsEvent>, PermissionMutationForTenantsConsumer>();
         services.AddSingleton<IConsumer<PropagationRolePermissionUpdateEvent>, PropagationRolePermissionUpdateConsumer>();
 
-        services.AddHostedService<PeriodicPingBackgroundService>();
+      //  services.AddHostedService<PeriodicPingBackgroundService>();
 
         services.RegisterAllServices();
 
