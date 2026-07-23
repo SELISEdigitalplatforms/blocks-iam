@@ -1,0 +1,83 @@
+import { test } from "../../support/test-base";
+import { loginFresh } from "../../support/login-helper";
+import type { Page } from "@playwright/test";
+
+const baseUrl = process.env.E2E_BASE_URL ?? "https://iam.seliseblocks.com";
+
+async function enterUsers(page: Page) {
+  const environmentButton = page.getByRole("button", { name: "Testing" });
+  await Promise.all([
+    page.waitForURL(/\/app\/[^/]+\/dashboard$/),
+    environmentButton.first().click(),
+  ]);
+
+  await Promise.all([
+    page.waitForURL(/\/users$/),
+    page.getByRole("link", { name: /^Users$/ }).click(),
+  ]);
+}
+
+test.describe("Users", () => {
+  test.use({ storageState: { cookies: [], origins: [] } });
+
+  test("navigates from console to Users", async ({ page }) => {
+    test.setTimeout(180_000);
+    await loginFresh(page);
+    await enterUsers(page);
+  });
+
+  test("invites a new user", async ({ page }) => {
+    test.setTimeout(180_000);
+    await loginFresh(page);
+    await enterUsers(page);
+
+    await page.getByRole("button", { name: "Invite User" }).click();
+
+    const dialog = page.getByRole("dialog", { name: "Invite User" });
+    await dialog.getByRole("textbox", { name: "Email" }).fill(
+      `e2etest.user.${Date.now()}@yopmail.com`,
+    );
+    await dialog.getByRole("textbox", { name: "First name" }).fill("E2E User1");
+    await dialog.getByRole("textbox", { name: "Last name" }).fill("Test");
+
+    const submitButton = dialog.getByRole("button", { name: "Send invite" });
+    await submitButton.click({ timeout: 10_000 });
+  });
+
+  test("search-users-using-email", async ({ page }) => {
+    test.setTimeout(180_000);
+    await loginFresh(page);
+    await enterUsers(page);
+
+    await page.getByRole("combobox").filter({ hasText: /^$/ }).click();
+    await page.getByLabel("", { exact: true }).first().click();
+    await page
+      .getByRole("textbox", { name: "Minimum 3 characters…" })
+      .click();
+    await page
+      .getByRole("textbox", { name: "Minimum 3 characters…" })
+      .fill("e2eorg@yopm");
+    await page.goto(
+      "https://iam.seliseblocks.com/app/c65e8ca0-d761-4554-84e4-702a090a3e14/users?selected-filter=email&email=e2eorg@yopmail.com",
+    );
+    await page
+      .getByRole("textbox", { name: "Minimum 3 characters…" })
+      .fill("e2eorg@yopmail.com");
+  });
+
+  test("search-users-using-name", async ({ page }) => {
+    test.setTimeout(180_000);
+    await loginFresh(page);
+    await enterUsers(page);
+
+    await page
+      .getByRole("textbox", { name: "Minimum 3 characters…" })
+      .click();
+    await page
+      .getByRole("textbox", { name: "Minimum 3 characters…" })
+      .fill("org user");
+    await page.goto(
+      "https://iam.seliseblocks.com/app/c65e8ca0-d761-4554-84e4-702a090a3e14/users?name=org+user",
+    );
+  });
+});

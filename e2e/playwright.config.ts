@@ -72,23 +72,9 @@ export default defineConfig({
       }
     : {}),
   projects: [
-    // Setup: performs the real login once and saves the session to
-    // fixtures/auth.json (see login.spec.ts).
-    {
-      name: "setup",
-      testMatch: /auth[\\/]login\.spec\.ts/,
-      use: { ...devices["Desktop Chrome"] },
-    },
-    // All other tests run authenticated by reusing that saved session, and
-    // only after "setup" (login) has succeeded.
     {
       name: "chromium",
-      testIgnore: /auth[\\/]login\.spec\.ts/,
-      dependencies: ["setup"],
-      use: {
-        ...devices["Desktop Chrome"],
-        storageState: "fixtures/auth.json",
-      },
+      use: { ...devices["Desktop Chrome"] },
     },
   ],
 });

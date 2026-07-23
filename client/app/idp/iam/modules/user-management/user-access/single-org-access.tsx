@@ -114,11 +114,9 @@ export const SingleOrgAccess = ({ userId, projectKey }: SingleOrgAccessProps) =>
     if (!user) return;
 
     const hydrationKey = `${user.itemId}:${rolesData?.data?.length ?? 0}:${permissionsData?.data?.length ?? 0}`;
-    const selectionEmpty = selectedRoles.length === 0 && selectedPermissions.length === 0;
     const shouldHydrate =
       !isInitialized ||
-      hydrationKey !== hydratedKeyRef.current ||
-      (selectionEmpty && (roleSlugs.length > 0 || permissionNames.length > 0));
+      hydrationKey !== hydratedKeyRef.current;
 
     if (!shouldHydrate) return;
 
@@ -127,7 +125,7 @@ export const SingleOrgAccess = ({ userId, projectKey }: SingleOrgAccessProps) =>
     setSelectedPermissions(initialPermissions);
     setIsInitialized(true);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [user?.itemId, initialRoles, initialPermissions, rolesData?.data, permissionsData?.data, selectedRoles.length, selectedPermissions.length]);
+  }, [user?.itemId, initialRoles, initialPermissions, rolesData?.data, permissionsData?.data]);
 
   const onSave = async () => {
     try {
