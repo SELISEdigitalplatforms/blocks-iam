@@ -57,23 +57,24 @@ describe("InviteOrganizationUser", () => {
     expect(screen.getByPlaceholderText("name@company.com")).toBeInTheDocument();
   });
 
-  it("reveals the name fields once a valid email is entered", async () => {
+  it("does not collect the name — it is provided by the user at activation", async () => {
     const user = userEvent.setup();
     renderInvite();
     await user.click(screen.getByRole("button", { name: /invite member/i }));
     await user.type(screen.getByPlaceholderText("name@company.com"), "member@org.com");
-    expect(await screen.findByPlaceholderText("Enter first name")).toBeInTheDocument();
-    expect(screen.getByPlaceholderText("Enter last name")).toBeInTheDocument();
+    await waitFor(() =>
+      expect(screen.getByRole("button", { name: /send invite/i })).not.toBeDisabled(),
+    );
+    expect(screen.queryByPlaceholderText("Enter first name")).not.toBeInTheDocument();
+    expect(screen.queryByPlaceholderText("Enter last name")).not.toBeInTheDocument();
   });
 
-  it("invites a new member and shows a success toast", async () => {
+  it("invites a new member with empty names and shows a success toast", async () => {
     h.createUser.mockResolvedValue({ isSuccess: true });
     const user = userEvent.setup();
     renderInvite();
     await user.click(screen.getByRole("button", { name: /invite member/i }));
     await user.type(screen.getByPlaceholderText("name@company.com"), "member@org.com");
-    await user.type(await screen.findByPlaceholderText("Enter first name"), "Grace");
-    await user.type(screen.getByPlaceholderText("Enter last name"), "Hopper");
 
     const submit = screen.getByRole("button", { name: /send invite/i });
     await waitFor(() => expect(submit).not.toBeDisabled());
@@ -82,8 +83,8 @@ describe("InviteOrganizationUser", () => {
     await waitFor(() => expect(h.createUser).toHaveBeenCalled());
     expect(h.createUser.mock.calls[0][0]).toMatchObject({
       email: "member@org.com",
-      firstName: "Grace",
-      lastName: "Hopper",
+      firstName: "",
+      lastName: "",
       platform: "blocks_portal",
     });
     expect(h.showSuccessToast).toHaveBeenCalledWith({ description: "Invitation is sent" });

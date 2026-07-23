@@ -78,9 +78,8 @@ export const InviteUser = () => {
   }, [trimmedEmail]);
   const isEmailSettled = debouncedEmail === trimmedEmail;
 
-  // Check whether the email already maps to a user — drives whether the
-  // first/last name fields appear, which orgs to hide from the picker, and
-  // the loading/found indicator shown inside the email field.
+  // Check whether the email already maps to a user — drives which orgs to hide
+  // from the picker, and the loading/found indicator shown inside the email field.
   const { data: existsData, isFetching: isFetchingExists } = useCheckUserExists(debouncedEmail, {
     enabled: isValidEmailFormat && isEmailSettled,
   });
@@ -206,8 +205,9 @@ const orgOptions = useMemo(() => {
 
       const res = await createUser({
         ...values,
-        firstName: values.firstName ?? "",
-        lastName: values.lastName ?? "",
+        // Names are collected from the user on the activation form, not from the inviter.
+        firstName: "",
+        lastName: "",
         userPassType: 1,
         userCreationType: 1,
         platform: "blocks_portal",
@@ -237,8 +237,7 @@ const orgOptions = useMemo(() => {
   const isFormInvalid =
     !isValidEmailFormat ||
     isConfigLoading ||
-    (exists && !existingUserId) ||
-    (!exists && (!form.watch("firstName")?.trim() || !form.watch("lastName")?.trim()));
+    (exists && !existingUserId);
 
   // When multi-org is off, "grant access" is meaningless — there is no other
   // org to add the existing user to. Block submit and tell the user instead.
@@ -370,36 +369,6 @@ const orgOptions = useMemo(() => {
                 />
               )}
 
-              {!exists && isValidEmailFormat && (
-                <>
-                  <FormField
-                    control={form.control}
-                    name="firstName"
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel>First name</FormLabel>
-                        <FormControl>
-                          <Input placeholder="Enter first name" {...field} />
-                        </FormControl>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
-                  <FormField
-                    control={form.control}
-                    name="lastName"
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel>Last name</FormLabel>
-                        <FormControl>
-                          <Input placeholder="Enter last name" {...field} />
-                        </FormControl>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
-                </>
-              )}
             </div>
             <DialogFooter className="mt-6">
               <Button
