@@ -22,9 +22,10 @@ const LoadingSkelton = () => (
   </div>
 );
 
-const getInitials = (firstName?: string, lastName?: string) => {
+const getInitials = (firstName?: string, lastName?: string, email?: string) => {
   const initials = `${firstName?.trim()?.[0] ?? ""}${lastName?.trim()?.[0] ?? ""}`;
-  return initials.toUpperCase() || "?";
+  // A pending (not-yet-activated) user has no name; fall back to the email's first letter.
+  return initials.toUpperCase() || email?.trim()?.[0]?.toUpperCase() || "?";
 };
 
 export const UsersTable = ({ users, isLoading }: UserTableProps) => {
@@ -72,7 +73,12 @@ export const UsersTable = ({ users, isLoading }: UserTableProps) => {
         </div>
 
         {users.map((user) => {
-          const fullName = `${user.firstName || ""} ${user.lastName || ""}`.trim() || "-";
+          // Before activation a user has no name, so show the email's local part
+          // (the text before "@"), matching the project-people list.
+          const fullName =
+            `${user.firstName || ""} ${user.lastName || ""}`.trim() ||
+            user.email?.split("@")[0] ||
+            "-";
           const hasLastLogin = checkValidDate(user.lastLoggedInTime);
           const hasCreated = checkValidDate(user.createdDate);
           const hasUpdated = checkValidDate(user.lastUpdatedDate);
@@ -90,7 +96,7 @@ export const UsersTable = ({ users, isLoading }: UserTableProps) => {
             >
               <div className="flex min-w-0 items-center gap-3">
                 <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-primary/10 text-xs font-semibold text-primary">
-                  {getInitials(user.firstName, user.lastName)}
+                  {getInitials(user.firstName, user.lastName, user.email)}
                 </div>
                 <div className="min-w-0 flex-1">
                   <p className="truncate text-sm font-semibold text-high-emphasis">{fullName}</p>

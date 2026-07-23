@@ -58,23 +58,25 @@ describe("InviteUser", () => {
     expect(screen.getByPlaceholderText("name@company.com")).toBeInTheDocument();
   });
 
-  it("reveals the name fields once a valid email is entered", async () => {
+  it("does not collect the name — it is provided by the user at activation", async () => {
     const user = userEvent.setup();
     renderInvite();
     await user.click(screen.getByRole("button", { name: /invite user/i }));
     await user.type(screen.getByPlaceholderText("name@company.com"), "new@user.com");
-    expect(await screen.findByPlaceholderText("Enter first name")).toBeInTheDocument();
-    expect(screen.getByPlaceholderText("Enter last name")).toBeInTheDocument();
+    // The send button becomes enabled from the email alone, and no name inputs appear.
+    await waitFor(() =>
+      expect(screen.getByRole("button", { name: /send invite/i })).not.toBeDisabled(),
+    );
+    expect(screen.queryByPlaceholderText("Enter first name")).not.toBeInTheDocument();
+    expect(screen.queryByPlaceholderText("Enter last name")).not.toBeInTheDocument();
   });
 
-  it("creates a new user and shows a success toast", async () => {
+  it("creates a new user with empty names and shows a success toast", async () => {
     h.createUser.mockResolvedValue({ isSuccess: true });
     const user = userEvent.setup();
     renderInvite();
     await user.click(screen.getByRole("button", { name: /invite user/i }));
     await user.type(screen.getByPlaceholderText("name@company.com"), "new@user.com");
-    await user.type(await screen.findByPlaceholderText("Enter first name"), "Ada");
-    await user.type(screen.getByPlaceholderText("Enter last name"), "Lovelace");
 
     const submit = screen.getByRole("button", { name: /send invite/i });
     await waitFor(() => expect(submit).not.toBeDisabled());
@@ -84,8 +86,8 @@ describe("InviteUser", () => {
     const payload = h.createUser.mock.calls[0][0];
     expect(payload).toMatchObject({
       email: "new@user.com",
-      firstName: "Ada",
-      lastName: "Lovelace",
+      firstName: "",
+      lastName: "",
       userPassType: 1,
       userCreationType: 1,
       platform: "blocks_portal",
