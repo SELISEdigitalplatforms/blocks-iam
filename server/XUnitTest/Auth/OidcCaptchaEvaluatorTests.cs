@@ -93,7 +93,7 @@ namespace XUnitTest.Auth
             var user = new User { FailedLoginCount = 10 };
             captcha.Setup(c => c.GetConfigurationAsync())
                 .ReturnsAsync(new CaptchaConfiguration { IsEnable = true, CaptchaKey = "site-key" });
-            captcha.Setup(c => c.VerifyAsync("good-code"))
+            captcha.Setup(c => c.VerifyAsync("good-code", It.IsAny<string>()))
                 .ReturnsAsync(new { Verified = true });
 
             var result = await evaluator.EvaluateAsync(user, "good-code");
@@ -109,7 +109,7 @@ namespace XUnitTest.Auth
             var user = new User { FailedLoginCount = 10 };
             captcha.Setup(c => c.GetConfigurationAsync())
                 .ReturnsAsync(new CaptchaConfiguration { IsEnable = true, CaptchaKey = "site-key" });
-            captcha.Setup(c => c.VerifyAsync("bad-code"))
+            captcha.Setup(c => c.VerifyAsync("bad-code", It.IsAny<string>()))
                 .ReturnsAsync(new { Verified = false });
 
             var result = await evaluator.EvaluateAsync(user, "bad-code");

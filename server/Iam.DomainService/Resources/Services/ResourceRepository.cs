@@ -1,4 +1,4 @@
-﻿using Blocks.Genesis;
+using Blocks.Genesis;
 using Iam.DomainService.Entities;
 using Iam.DomainService.Enums;
 using Iam.DomainService.Resources.ResponseModel;
@@ -321,23 +321,19 @@ namespace Iam.DomainService.Resources
                 return [];
             }
 
-            var userCollection = _identityAccessManagementRepository.GetCollectionByName<BsonDocument>("Users");
-            var filter = Builders<BsonDocument>.Filter.Eq("ItemId", userId);
-            var projection = Builders<BsonDocument>.Projection.Include("OrganizationIds");
-            var user = await userCollection.Find(filter).Project(projection).FirstOrDefaultAsync();
+            var collection = _identityAccessManagementRepository.GetCollection<User>();
 
-            if (user == null || !user.TryGetValue("OrganizationIds", out var organizationIdsValue) || !organizationIdsValue.IsBsonArray)
-            {
-                return [];
-            }
+            var filter = Builders<User>.Filter.Eq(x => x.ItemId, userId);
 
-            return organizationIdsValue
-                .AsBsonArray
-                .Where(x => x.IsString)
-                .Select(x => x.AsString)
+            var organizationIds = await collection
+                .Find(filter)
+                .Project(x => x.OrganizationIds)
+                .FirstOrDefaultAsync();
+
+            return organizationIds?
                 .Where(x => !string.IsNullOrWhiteSpace(x))
                 .Distinct()
-                .ToList();
+                .ToList() ?? [];
         }
 
         public async Task<List<Organization>> GetOrganizationsByIdsAsync(List<string> organizationIds)
