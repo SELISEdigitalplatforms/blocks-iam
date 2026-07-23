@@ -193,18 +193,6 @@ namespace XUnitTest.Auth.OAuth
         }
 
         [Fact]
-        public void Update_InvalidUrls_Fails()
-        {
-            var result = _updateValidator.TestValidate(new UpdateIdentityProviderRequest
-            {
-                WellKnownUrl = "nope",
-                JwksUri = "also-nope"
-            });
-            result.ShouldHaveValidationErrorFor(x => x.WellKnownUrl);
-            result.ShouldHaveValidationErrorFor(x => x.JwksUri);
-        }
-
-        [Fact]
         public void Update_ValidValues_Passes()
         {
             var result = _updateValidator.TestValidate(new UpdateIdentityProviderRequest

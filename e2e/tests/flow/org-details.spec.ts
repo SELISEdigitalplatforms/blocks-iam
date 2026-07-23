@@ -5,9 +5,10 @@ import type { Page } from "@playwright/test";
 const baseUrl = process.env.E2E_BASE_URL ?? "https://iam.seliseblocks.com";
 
 async function enterOrganizations(page: Page) {
+  const environmentButton = page.getByRole("button", { name: "Testing" });
   await Promise.all([
     page.waitForURL(/\/app\/[^/]+\/dashboard$/),
-    page.getByRole("button", { name: "Testing" }).click(),
+    environmentButton.first().click(),
   ]);
 
   await Promise.all([
