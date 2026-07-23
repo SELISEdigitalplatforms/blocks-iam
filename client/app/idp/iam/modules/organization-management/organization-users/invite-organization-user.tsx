@@ -43,8 +43,6 @@ const DEFAULT_ORGANIZATION_ID = "default";
 
 const inviteOrganizationUserFormDefaultValue = {
   email: "",
-  firstName: "",
-  lastName: "",
 };
 
 const inviteOrganizationUserFormSchema = z.object({
@@ -53,16 +51,6 @@ const inviteOrganizationUserFormSchema = z.object({
     .trim()
     .min(1, "Email is required")
     .email({ message: "Please enter a valid email address" }),
-  firstName: z
-    .string()
-    .trim()
-    .max(150, "First name must be at most 150 characters")
-    .optional(),
-  lastName: z
-    .string()
-    .trim()
-    .max(150, "Last name must be at most 150 characters")
-    .optional(),
 });
 
 type InviteFormValues = z.infer<typeof inviteOrganizationUserFormSchema>;
@@ -137,9 +125,8 @@ export const InviteOrganizationUser = ({ organizationId }: InviteOrganizationUse
   }, [trimmedEmail]);
   const isEmailSettled = debouncedEmail === trimmedEmail;
 
-  // Check whether the email already maps to a user — drives whether the
-  // first/last name fields appear, which orgs to hide from the picker, and
-  // the loading/found indicator shown inside the email field.
+  // Check whether the email already maps to a user — drives which orgs to hide
+  // from the picker, and the loading/found indicator shown inside the email field.
   const { data: existsData, isFetching: isFetchingExists } = useCheckUserExists(debouncedEmail, {
     enabled: isValidEmailFormat && isEmailSettled,
   });
@@ -211,8 +198,7 @@ const orgOptions = useMemo(() => {
 
   const isFormInvalid =
     !isValidEmailFormat ||
-    (exists && !existingUserId) ||
-    (!exists && (!form.watch("firstName")?.trim() || !form.watch("lastName")?.trim()));
+    (exists && !existingUserId);
 
   const onSubmitHandler = async (values: InviteFormValues) => {
     try {
@@ -244,8 +230,9 @@ const orgOptions = useMemo(() => {
 
       const res = await createUser({
         ...values,
-        firstName: values.firstName ?? "",
-        lastName: values.lastName ?? "",
+        // Names are collected from the user on the activation form, not from the inviter.
+        firstName: "",
+        lastName: "",
         userPassType: 1,
         userCreationType: 1,
         platform: "blocks_portal",
@@ -384,36 +371,6 @@ const orgOptions = useMemo(() => {
                 </div>
               )}
 
-              {!exists && isValidEmailFormat && (
-                <>
-                  <FormField
-                    control={form.control}
-                    name="firstName"
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel>First name</FormLabel>
-                        <FormControl>
-                          <Input placeholder="Enter first name" {...field} />
-                        </FormControl>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
-                  <FormField
-                    control={form.control}
-                    name="lastName"
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel>Last name</FormLabel>
-                        <FormControl>
-                          <Input placeholder="Enter last name" {...field} />
-                        </FormControl>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
-                </>
-              )}
             </div>
             <DialogFooter className="shrink-0 pt-4">
               <Button

@@ -33,12 +33,23 @@ beforeEach(() => {
 });
 
 describe("ActivationForm", () => {
-  it("renders both password fields and a disabled activate button", () => {
+  it("renders the name and password fields and a disabled activate button", () => {
     const { container } = render(<ActivationForm code="activation-code" tenantId="tenant-1" />);
+    expect(screen.getByText("First Name")).toBeInTheDocument();
+    expect(screen.getByText("Last Name")).toBeInTheDocument();
     expect(screen.getByText("Password")).toBeInTheDocument();
     expect(screen.getByText("Confirm Password")).toBeInTheDocument();
     expect(passwordInputs(container)).toHaveLength(2);
     expect(screen.getByRole("button", { name: /activate/i })).toBeDisabled();
+  });
+
+  it("requires first and last name before the form is valid", async () => {
+    render(<ActivationForm code="activation-code" tenantId="tenant-1" />);
+    const firstName = screen.getByPlaceholderText("First name");
+    fireEvent.change(firstName, { target: { value: "   " } });
+
+    expect(await screen.findByText("First name is required")).toBeInTheDocument();
+    expect(h.mutateAsync).not.toHaveBeenCalled();
   });
 
   it("validates that the password may not contain whitespace", async () => {
