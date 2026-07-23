@@ -191,12 +191,8 @@ export const MultiOrgAccess = ({ userId, projectKey }: MultiOrgAccessProps) => {
     const orgId = selectedOrgId || organizationRows[0]?.organizationId;
     if (!orgId || !userData?.data) return;
 
-    const { roleSlugs, permissionNames } = getExistingSelection(orgId);
     const hydrationKey = `${userData.data.itemId}:${orgId}:${rolesData?.data?.length ?? 0}:${permissionsData?.data?.length ?? 0}`;
-    const selectionEmpty = selectedRoles.length === 0 && selectedPermissions.length === 0;
-    const shouldHydrate =
-      hydrationKey !== hydratedKeyRef.current ||
-      (selectionEmpty && (roleSlugs.length > 0 || permissionNames.length > 0));
+    const shouldHydrate = hydrationKey !== hydratedKeyRef.current;
 
     if (!shouldHydrate) return;
 
@@ -212,8 +208,6 @@ export const MultiOrgAccess = ({ userId, projectKey }: MultiOrgAccessProps) => {
     permissionsData?.data,
     roleBySlug,
     permissionByName,
-    selectedRoles.length,
-    selectedPermissions.length,
   ]);
 
   // Refs so the deferred `onSave` callback always reads the latest selection
