@@ -9,7 +9,7 @@ test.describe("Dashboard IAM", () => {
 
     await page.goto("https://iam.seliseblocks.com/app/console");
 
-    await page.getByRole("button", { name: "Testing" }).click();
+    await page.getByRole("button", { name: "Testing" }).first().click();
 
     await page.getByRole("button", { name: "Authentication" }).click();
 
