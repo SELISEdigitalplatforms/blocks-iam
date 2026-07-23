@@ -217,6 +217,9 @@ export const status = [
 export interface IAccountActivationPayload {
   code: string;
   password: string;
+  /** Supplied by invited users who were created without a name. Ignored server-side if the account already has one. */
+  firstName?: string;
+  lastName?: string;
   captchaCode?: string;
   mailPurpose?: string;
   preventPostEvent: boolean;
