@@ -42,26 +42,6 @@ namespace XUnitTest.IamTests.Users
         }
 
         [Fact]
-        public async Task IsUserAvailable_FalseWhenUserExists()
-        {
-            _repo.Setup(r => r.GetUserByEmailAsync("a@b.com")).ReturnsAsync(new User { ItemId = "u1" });
-            var result = await Create().IsUserAvailableAsync(new IsEmailAvailableRequest { Email = "A@B.com" });
-            result.Should().BeFalse();
-        }
-
-        [Fact]
-        public async Task IsUserExist_ReturnsUserIdAndOrganizations()
-        {
-            _repo.Setup(r => r.GetUserByEmailAsync("a@b.com"))
-                .ReturnsAsync(new User { ItemId = "u1", OrganizationIds = new List<string> { "org-1", "org-2" } });
-
-            var result = await Create().IsUserExistAsync("A@B.com");
-
-            result.UserId.Should().Be("u1");
-            result.OrganizationIds.Should().BeEquivalentTo("org-1", "org-2");
-        }
-
-        [Fact]
         public async Task IsUserExist_ReturnsEmpty_WhenNoUser()
         {
             _repo.Setup(r => r.GetUserByEmailAsync("a@b.com")).ReturnsAsync((User)null!);

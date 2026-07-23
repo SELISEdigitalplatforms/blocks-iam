@@ -9,12 +9,13 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Authentication.DomainServic
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Captcha.Driver", "Captcha.Driver\Captcha.Driver.csproj", "{C3D4E5F6-A7B8-49CA-D1E2-F3A4B5C6D7E8}"
 EndProject
-
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Iam.DomainService", "Iam.DomainService\Iam.DomainService.csproj", "{D4E5F6A7-B8C9-4ACB-E2F3-A4B5C6D7E8F9}"
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Mfa.DomainService", "Mfa.DomainService\Mfa.DomainService.csproj", "{F6A7B8C9-DAEB-4CED-A4B5-C6D7E8F9A0B1}"
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Worker", "Worker\Worker.csproj", "{A7B8C9DA-EBFC-4DFE-B5C6-D7E8F9A0B1C2}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "XUnitTest", "XUnitTest\XUnitTest.csproj", "{5949EAE5-2BF2-F16B-F237-6550F6F74BCC}"
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
@@ -46,6 +47,10 @@ Global
 		{A7B8C9DA-EBFC-4DFE-B5C6-D7E8F9A0B1C2}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{A7B8C9DA-EBFC-4DFE-B5C6-D7E8F9A0B1C2}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{A7B8C9DA-EBFC-4DFE-B5C6-D7E8F9A0B1C2}.Release|Any CPU.Build.0 = Release|Any CPU
+		{5949EAE5-2BF2-F16B-F237-6550F6F74BCC}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{5949EAE5-2BF2-F16B-F237-6550F6F74BCC}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{5949EAE5-2BF2-F16B-F237-6550F6F74BCC}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{5949EAE5-2BF2-F16B-F237-6550F6F74BCC}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE

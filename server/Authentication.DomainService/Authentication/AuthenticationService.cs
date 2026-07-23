@@ -125,7 +125,9 @@ namespace Authentication.DomainService.Authentication
                 return true;
             }
 
-            var userId = user.FindFirst(bc?.UserId)?.Value ?? user.FindFirst("user_id")?.Value;
+            var userId = user.FindFirst(BlocksContext.USER_ID_CLAIM)?.Value
+                ?? user.FindFirst(ClaimTypes.NameIdentifier)?.Value
+                ?? bc?.UserId;
 
             if (string.IsNullOrWhiteSpace(userId))
             {
@@ -147,7 +149,15 @@ namespace Authentication.DomainService.Authentication
         public void ClearIdpSessionCookie(HttpResponse response)
         {
             var bc = BlocksContext.GetContext();
-            response.Cookies.Delete(IdpConstants.BuildIdpSessionCookieKey(bc!.TenantId));
+            var cookieKey = IdpConstants.BuildIdpSessionCookieKey(bc!.TenantId);
+            response.Cookies.Delete(cookieKey);
+
+            var tenant = _tenants.GetTenantByID(bc.TenantId);
+            var (_, cookieDomain, isResolved) = DomainResolver.ResolveDomain(tenant, response.HttpContext.Request);
+            if (isResolved)
+            {
+                response.Cookies.Delete(cookieKey, CreateCookieOptions(cookieDomain, DateTime.UtcNow.AddDays(-1)));
+            }
         }
 
         public async Task<LogoutResponse> LogoutUser(string refreshToken, HttpRequest httpRequest)
@@ -200,7 +210,25 @@ namespace Authentication.DomainService.Authentication
             var refreshTokenCache = await _cacheClient.GetStringValueAsync(refreshToken);
             if (string.IsNullOrWhiteSpace(refreshTokenCache))
             {
-                return null;
+                var persistedToken = await _refreshTokenRepository.GetByTokenIdAsync(refreshToken);
+                return persistedToken == null
+                    ? null
+                    : new RefreshTokenCache
+                    {
+                        RefreshToken = persistedToken.TokenId,
+                        TenantId = persistedToken.TenantId,
+                        OrganizationId = persistedToken.OrganizationId,
+                        ClientId = persistedToken.ClientId,
+                        SessionId = persistedToken.SessionId ?? string.Empty,
+                        IssuedUtc = persistedToken.IssuedUtc,
+                        ExpiresUtc = persistedToken.SlidingExpiry,
+                        AbsoluteExpiresUtc = persistedToken.AbsoluteExpiry,
+                        UserId = persistedToken.UserId,
+                        IpAddresses = persistedToken.IpAddress,
+                        Scope = persistedToken.Scope,
+                        Impersonated = persistedToken.Impersonated,
+                        ImpersonationId = persistedToken.ImpersonationId
+                    };
             }
 
             try
