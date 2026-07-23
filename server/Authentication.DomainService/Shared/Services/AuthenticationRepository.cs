@@ -13,6 +13,7 @@ namespace Authentication.DomainService.Services
     public sealed class AuthenticationRepository : IAuthenticationRepository
     {
         private const string OidcClientRegistrationsCollectionName = "OidcClientRegistrations";
+        private const string SocialLoginScopes = "openid profile email";
 
         private readonly IDbContextProvider _dbContextProvider;
         private readonly OidcDiscoveryClient _oidcDiscoveryClient;
@@ -340,9 +341,11 @@ namespace Authentication.DomainService.Services
             {
                 var socialMetadata = GetSocialMetadata(provider.Provider);
 
-                provider.WellKnownUrl ??= socialMetadata?.WellKnownUrl;
-                provider.AuthorizationUrl ??= socialMetadata?.AuthorizationUrl;
-                provider.TokenUrl ??= socialMetadata?.TokenUrl;
+                provider.WellKnownUrl = socialMetadata?.WellKnownUrl;
+                provider.AuthorizationUrl = socialMetadata?.AuthorizationUrl;
+                provider.TokenUrl = socialMetadata?.TokenUrl;
+                provider.UserInfoUrl = socialMetadata?.UserInfoUri;
+                provider.Scope = SocialLoginScopes;
             }
         }
 
@@ -360,16 +363,19 @@ namespace Authentication.DomainService.Services
                 var value when value.Contains("google") => new SocialMetadata(
                     "https://accounts.google.com/.well-known/openid-configuration",
                     "https://accounts.google.com/o/oauth2/v2/auth",
-                    "https://oauth2.googleapis.com/token"),
+                    "https://oauth2.googleapis.com/token",
+                    "https://www.googleapis.com/oauth2/v1/userinfo?access_token={0}"
+                    ),
                 var value when value.Contains("microsoft") => new SocialMetadata(
                     "https://login.microsoftonline.com/common/v2.0/.well-known/openid-configuration",
                     "https://login.microsoftonline.com/common/oauth2/v2.0/authorize",
-                    "https://login.microsoftonline.com/common/oauth2/v2.0/token"),
+                    "https://login.microsoftonline.com/common/oauth2/v2.0/token",
+                    "https://graph.microsoft.com/v1.0/me"),
                 _ => null
             };
         }
 
-        private sealed record SocialMetadata(string WellKnownUrl, string AuthorizationUrl, string TokenUrl);
+        private sealed record SocialMetadata(string WellKnownUrl, string AuthorizationUrl, string TokenUrl, string UserInfoUri);
 
         public async Task<IdentityProvider> UpdateIdentityProviderAsync(IdentityProvider provider)
         {
