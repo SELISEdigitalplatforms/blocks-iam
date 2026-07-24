@@ -66,10 +66,6 @@ export default defineConfig(({ mode }) => {
       environment: "jsdom",
       globals: true,
       setupFiles: ["./app/test-utils/vitest.setup.ts"],
-      // Heavy Radix-based dialog components can take several seconds to mount
-      // on a loaded machine when the whole suite runs in parallel, so the 5s
-      // default is not enough for the first interaction in those files.
-      testTimeout: 30000,
       coverage: {
         all: true,
         provider: "v8",
