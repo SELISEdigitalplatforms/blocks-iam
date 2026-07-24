@@ -58,6 +58,20 @@ namespace XUnitTest.TestSupport
                 .ReturnsAsync(() => Cursor(list));
         }
 
+        /// <summary>Wire <c>FindOneAndUpdateAsync</c> to return <paramref name="results"/> in order across calls.</summary>
+        public static void SetupFindOneAndUpdate<T>(Mock<IMongoCollection<T>> col, params T?[] results)
+        {
+            var seq = col.SetupSequence(c => c.FindOneAndUpdateAsync(
+                It.IsAny<FilterDefinition<T>>(),
+                It.IsAny<UpdateDefinition<T>>(),
+                It.IsAny<FindOneAndUpdateOptions<T, T>>(),
+                It.IsAny<CancellationToken>()));
+            foreach (var r in results)
+            {
+                seq = seq.ReturnsAsync(r!);
+            }
+        }
+
         public static void SetupCount<T>(Mock<IMongoCollection<T>> col, long count)
         {
             col.Setup(c => c.CountDocumentsAsync(
