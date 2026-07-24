@@ -144,4 +144,88 @@ describe("oidc-utils", () => {
       expect(params.toString()).toBe("brandColor=%23124091");
     });
   });
+
+  // ─── hash param extraction (color + &-prefixed params) ──────────────────────
+  describe("extractOIDCParams - full hash payload", () => {
+    const setLocation = (search: string, hash: string) => {
+      const href = `http://localhost:3000/oidc/login${search}${hash}`;
+      Object.defineProperty(window, "location", {
+        value: { search, hash, href },
+        writable: true,
+        configurable: true,
+      });
+    };
+
+    it("extracts every param from an &-prefixed hash payload", () => {
+      setLocation(
+        "",
+        "#00AABB&x-blocks-key=hk&client_id=hc&userName=hu&state=hs&nonce=hn&scope=hsc&redirect_uri=hr&tenant_id=ht&logoUrl=https%3A%2F%2Fcdn%2Flogo.png",
+      );
+      const p = extractOIDCParams();
+      expect(p.themeColor).toBe("#00AABB");
+      expect(p.projectKey).toBe("hk");
+      expect(p.clientId).toBe("hc");
+      expect(p.userName).toBe("hu");
+      expect(p.state).toBe("hs");
+      expect(p.nonce).toBe("hn");
+      expect(p.scope).toBe("hsc");
+      expect(p.redirectUri).toBe("hr");
+      expect(p.tenantId).toBe("ht");
+      expect(p.logoUrl).toBe("https://cdn/logo.png");
+    });
+
+    it("parses a hash payload that is not &-prefixed after the color", () => {
+      setLocation("", "#124091clientId=nc&state=ns");
+      const p = extractOIDCParams();
+      // Color still recognised from the leading hex.
+      expect(p.themeColor).toBe("#124091");
+    });
+
+    it("recovers brandColor from the full URL when the query value is empty", () => {
+      setLocation("?brandColor=", "");
+      Object.defineProperty(window, "location", {
+        value: {
+          search: "?brandColor=",
+          hash: "",
+          href: "http://localhost:3000/oidc/login?brandColor=00FF00&next=1",
+        },
+        writable: true,
+        configurable: true,
+      });
+      const p = extractOIDCParams();
+      expect(p.themeColor).toBe("#00FF00");
+    });
+
+    it("recovers logoUrl from the full URL and fully decodes it", () => {
+      Object.defineProperty(window, "location", {
+        value: {
+          search: "",
+          hash: "",
+          href: "http://localhost:3000/oidc/login&logoUrl=https%253A%252F%252Fcdn%252Flogo.png",
+        },
+        writable: true,
+        configurable: true,
+      });
+      const p = extractOIDCParams();
+      expect(p.logoUrl).toBe("https://cdn/logo.png");
+    });
+
+    it("falls back to the default color for an invalid brandColor", () => {
+      setLocation("?brandColor=notacolor", "");
+      const p = extractOIDCParams();
+      expect(p.themeColor).toBe("#124091");
+    });
+
+    it("normalises a bare 6-hex brandColor to #RRGGBB", () => {
+      setLocation("?brandColor=ABCDEF", "");
+      const p = extractOIDCParams();
+      expect(p.themeColor).toBe("#ABCDEF");
+    });
+
+    it("returns the default color object when window is treated as undefined-safe", () => {
+      // Sanity: the pure default path still yields the fallback color.
+      setLocation("", "");
+      expect(extractOIDCParams(true).themeColor).toBe("#124091");
+    });
+  });
 });
