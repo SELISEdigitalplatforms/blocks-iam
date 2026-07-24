@@ -47,3 +47,54 @@ describe("BlocksLoginPage", () => {
     expect(screen.getByRole("button", { name: "Enter" })).toBeInTheDocument();
   });
 });
+
+describe("BlocksLoginPage atmospheric canvas", () => {
+  const make2dCtx = () => ({
+    setTransform: vi.fn(),
+    clearRect: vi.fn(),
+    fillRect: vi.fn(),
+    createRadialGradient: vi.fn(() => ({ addColorStop: vi.fn() })),
+    fillStyle: "",
+  });
+
+  beforeEach(() => {
+    // Fake timers stay active (set by the outer hook); we just drive the
+    // animation frame synchronously. Run each top-level frame callback once.
+    let depth = 0;
+    vi.spyOn(window, "requestAnimationFrame").mockImplementation(
+      (cb: FrameRequestCallback) => {
+        if (depth === 0) {
+          depth++;
+          cb(0);
+          depth--;
+        }
+        return 1;
+      },
+    );
+    vi.spyOn(window, "cancelAnimationFrame").mockImplementation(() => {});
+  });
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  it("runs the gradient draw loop when a 2d context is available", () => {
+    const ctx = make2dCtx();
+    vi.spyOn(HTMLCanvasElement.prototype, "getContext").mockImplementation(
+      ((type: string) =>
+        type === "2d"
+          ? (ctx as unknown as CanvasRenderingContext2D)
+          : null) as typeof HTMLCanvasElement.prototype.getContext,
+    );
+
+    render(<BlocksLoginPage name="blocks-iam" onLogin={vi.fn()} />);
+    expect(ctx.setTransform).toHaveBeenCalled();
+    expect(ctx.createRadialGradient).toHaveBeenCalledTimes(3);
+    expect(ctx.fillRect).toHaveBeenCalled();
+
+    // A resize re-computes the canvas dimensions.
+    ctx.setTransform.mockClear();
+    window.dispatchEvent(new Event("resize"));
+    expect(ctx.setTransform).toHaveBeenCalled();
+  });
+});
