@@ -53,7 +53,10 @@ export const ActivationForm = ({ code, tenantId }: ActivationFormProps) => {
   }, [captchaCode, requirementsMet, resetCaptcha]);
 
   useEffect(() => {
-    if (!code) return navigate("/login");
+    if (!code) {
+      navigate("/login");
+      return;
+    }
   }, [code, navigate]);
 
   const password = form.watch("password");
