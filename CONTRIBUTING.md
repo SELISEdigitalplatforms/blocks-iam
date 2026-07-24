@@ -7,6 +7,49 @@ Those start at **warning** severity so the build stays green today; the plan is 
 ratchet toward **error** over time. Do not turn on `TreatWarningsAsErrors` until the warning
 backlog is cleared.
 
+## Branch model
+
+- `main`: production-ready code (protected)
+- `dev`: integration branch (protected); all pull requests target `dev`
+- `inception`: the working branch; day-to-day work happens here
+
+Never commit directly to `dev` or `main`. Work on `inception` and open a pull request from
+`inception` into `dev`. Do not force-push and do not rewrite published history.
+
+## Commit conventions
+
+Match the style already in the log. Most commits use Conventional Commits (`type(scope): subject`,
+for example `test(client): cover mfa verify form and user PAT list`); a plain imperative subject is
+also used for straightforward changes. Keep the subject concise and explain the what and the why in
+the body when it is not obvious.
+
+## Test gates
+
+Run these from the repository root before opening a pull request; they must pass, and your change
+must not reduce coverage:
+
+```bash
+dotnet test server/XUnitTest/XUnitTest.csproj   # backend unit tests
+npm --prefix client run test                    # frontend unit tests
+npm --prefix e2e run test                       # e2e (needs e2e/.env.e2e, see e2e/README.md)
+```
+
+Security scanning gates (SAST, dependency and secret scanning via `scripts/scan.sh` where the
+scanning environment is available) must report no new findings. Fix findings in real code or real
+dependency versions; do not suppress rules, lower thresholds or delete tests to make a scan pass.
+
+## Review expectations
+
+- Keep pull requests small and focused; describe what changed, why, and how it was tested.
+- CI runs the build, tests and scans on every pull request into `dev`.
+- At least one maintainer must approve before merge.
+- Update `README.md` and any affected docs in the same pull request.
+
+## Reporting a security issue
+
+Do not open a public issue for a suspected vulnerability. Follow the private disclosure process in
+[SECURITY.md](SECURITY.md).
+
 ## Product naming
 
 - The product is **Blocks IAM**. Use that name on every user-facing surface (sign-in, consent,
@@ -38,7 +81,7 @@ backlog is cleared.
 ## Response envelope
 
 - Application endpoints return a typed `Task<ActionResult<TResponse>>` using the shared response
-  envelope. The success flag is **`IsSuccess`** — never `Success`. Do not introduce new anonymous
+  envelope. The success flag is **`IsSuccess`**: never `Success`. Do not introduce new anonymous
   error shapes or `Dictionary<string, object>` responses; model an explicit DTO instead.
 - OAuth/OIDC endpoints are a documented exception: they keep the RFC `{ error, error_description }`
   shape. Keep those isolated from the application envelope.
@@ -57,7 +100,7 @@ backlog is cleared.
 - The area segment should match the owning controller (`mfa`, `security`, `oidc-clients`), not a
   catch-all `iam`, unless an exception is explicitly documented.
 - **Scopes are IAM-grant-breaking.** Changing a scope string can revoke access. A scope change is
-  a data/rollout change (permission seeding, role-template updates, frontend checks) — never a
+  a data/rollout change (permission seeding, role-template updates, frontend checks); never a
   silent code edit. Coordinate before touching one.
 
 ## C# specifics
@@ -75,5 +118,5 @@ backlog is cleared.
 
 ## Cross-repo alignment
 
-These conventions are intended to be shared across the five Blocks repos. When you change a
+These conventions are intended to be shared across the Blocks repos. When you change a
 convention here, raise the matching change in the sibling repos so the standard does not fork.
