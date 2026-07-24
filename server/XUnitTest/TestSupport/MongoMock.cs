@@ -25,6 +25,39 @@ namespace XUnitTest.TestSupport
             return col;
         }
 
+        /// <summary>A mock <see cref="IMongoDatabase"/>. Register collections on it with <see cref="OnDatabase"/>.</summary>
+        public static Mock<IMongoDatabase> Database() => new();
+
+        /// <summary>Register <paramref name="col"/> under <paramref name="name"/> on the database mock.</summary>
+        public static void OnDatabase<T>(Mock<IMongoDatabase> db, string name, Mock<IMongoCollection<T>> col)
+        {
+            db.Setup(d => d.GetCollection<T>(name, It.IsAny<MongoCollectionSettings>())).Returns(col.Object);
+        }
+
+        /// <summary>Wire the sync <c>Aggregate</c> pipeline overload to yield <paramref name="results"/>.</summary>
+        public static void SetupAggregate<T, TResult>(Mock<IMongoCollection<T>> col, IEnumerable<TResult> results)
+        {
+            var list = results.ToList();
+            col.Setup(c => c.Aggregate(
+                    It.IsAny<PipelineDefinition<T, TResult>>(),
+                    It.IsAny<AggregateOptions>(),
+                    It.IsAny<CancellationToken>()))
+                .Returns(() => Cursor(list));
+        }
+
+        /// <summary>Give the collection a no-op index manager so <c>Indexes.CreateOne/ManyAsync</c> succeed.</summary>
+        public static void SetupIndexes<T>(Mock<IMongoCollection<T>> col)
+        {
+            var indexes = new Mock<IMongoIndexManager<T>>();
+            indexes.Setup(i => i.CreateOneAsync(
+                    It.IsAny<CreateIndexModel<T>>(), It.IsAny<CreateOneIndexOptions>(), It.IsAny<CancellationToken>()))
+                .ReturnsAsync("ix");
+            indexes.Setup(i => i.CreateManyAsync(
+                    It.IsAny<IEnumerable<CreateIndexModel<T>>>(), It.IsAny<CancellationToken>()))
+                .ReturnsAsync(new[] { "ix" });
+            col.Setup(c => c.Indexes).Returns(indexes.Object);
+        }
+
         /// <summary>A fresh cursor over <paramref name="items"/>. A new one is returned per read so repeated reads work.</summary>
         public static IAsyncCursor<T> Cursor<T>(IEnumerable<T> items)
         {
