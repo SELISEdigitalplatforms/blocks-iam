@@ -100,4 +100,40 @@ describe("NewNotificationConfiguration", () => {
     fireEvent.click(screen.getByRole("button", { name: "Save" }));
     await waitFor(() => expect(h.showError).toHaveBeenCalledWith({ errors: { name: "taken" } }));
   });
+
+  it("trims the name and notify method on blur", () => {
+    renderModal({});
+    const name = screen.getByPlaceholderText("Enter name") as HTMLInputElement;
+    fireEvent.change(name, { target: { value: "  Padded  " } });
+    fireEvent.blur(name);
+    const method = screen.getByPlaceholderText("Enter notify method") as HTMLInputElement;
+    fireEvent.change(method, { target: { value: "  hook  " } });
+    fireEvent.blur(method);
+    expect(name.value).toBe("Padded");
+    expect(method.value).toBe("hook");
+  });
+
+  it("shows the mapped error toast when the save throws structured errors", async () => {
+    h.save.mockRejectedValue({ errors: { name: "thrown" } });
+    renderModal({});
+    fireEvent.input(screen.getByPlaceholderText("Enter name"), { target: { value: "My Config" } });
+    fireEvent.input(screen.getByPlaceholderText("Enter notify method"), {
+      target: { value: "webhook" },
+    });
+    await waitFor(() => expect(screen.getByRole("button", { name: "Save" })).toBeEnabled());
+    fireEvent.click(screen.getByRole("button", { name: "Save" }));
+    await waitFor(() => expect(h.showError).toHaveBeenCalledWith({ errors: { name: "thrown" } }));
+  });
+
+  it("shows a generic error toast when the save throws a plain value", async () => {
+    h.save.mockRejectedValue("boom");
+    renderModal({});
+    fireEvent.input(screen.getByPlaceholderText("Enter name"), { target: { value: "My Config" } });
+    fireEvent.input(screen.getByPlaceholderText("Enter notify method"), {
+      target: { value: "webhook" },
+    });
+    await waitFor(() => expect(screen.getByRole("button", { name: "Save" })).toBeEnabled());
+    fireEvent.click(screen.getByRole("button", { name: "Save" }));
+    await waitFor(() => expect(h.showError).toHaveBeenCalledWith({ errors: "Something went wrong" }));
+  });
 });
