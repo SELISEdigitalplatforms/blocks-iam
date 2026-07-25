@@ -91,4 +91,43 @@ describe("OrganizationUsersTable", () => {
     await waitFor(() => expect(h.mutateAsync).toHaveBeenCalledWith({ organizationId: "org-1" }));
     await waitFor(() => expect(h.showSuccess).toHaveBeenCalled());
   });
+
+  it("renders the loading skeleton while loading", () => {
+    const { container } = renderTable({ isLoading: true });
+    expect(container.querySelectorAll(".rounded-xl").length).toBeGreaterThan(0);
+    expect(screen.queryByText("Ada Lovelace")).not.toBeInTheDocument();
+  });
+
+  it("navigates when a row receives an Enter keypress", () => {
+    renderTable({ users: [user({ itemId: "uk" })] });
+    fireEvent.keyDown(screen.getByText("Ada Lovelace").closest('[role="button"]')!, { key: "Enter" });
+    expect(h.navigate).toHaveBeenCalledWith("/base/user-detail/uk");
+  });
+
+  it("shows an error toast when the revoke response is not successful", async () => {
+    h.mutateAsync.mockResolvedValue({ isSuccess: false, errors: { m: "no" } });
+    renderTable({ users: [user()] });
+    fireEvent.click(screen.getAllByLabelText("Revoke from organization")[0]);
+    await waitFor(() => expect(screen.getByText("Revoke access")).toBeInTheDocument());
+    fireEvent.click(screen.getByRole("button", { name: "Revoke" }));
+    await waitFor(() => expect(h.showError).toHaveBeenCalledWith({ errors: { m: "no" } }));
+    expect(h.showSuccess).not.toHaveBeenCalled();
+  });
+
+  it("shows an error toast when the revoke mutation throws", async () => {
+    h.mutateAsync.mockRejectedValue({ errors: "boom" });
+    renderTable({ users: [user()] });
+    fireEvent.click(screen.getAllByLabelText("Revoke from organization")[0]);
+    await waitFor(() => expect(screen.getByText("Revoke access")).toBeInTheDocument());
+    fireEvent.click(screen.getByRole("button", { name: "Revoke" }));
+    await waitFor(() => expect(h.showError).toHaveBeenCalledWith({ errors: "boom" }));
+  });
+
+  it("closes the revoke dialog when cancel is clicked", async () => {
+    renderTable({ users: [user()] });
+    fireEvent.click(screen.getAllByLabelText("Revoke from organization")[0]);
+    await waitFor(() => expect(screen.getByText("Revoke access")).toBeInTheDocument());
+    fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
+    await waitFor(() => expect(screen.queryByText("Revoke access")).not.toBeInTheDocument());
+  });
 });

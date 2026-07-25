@@ -227,5 +227,73 @@ describe("oidc-utils", () => {
       setLocation("", "");
       expect(extractOIDCParams(true).themeColor).toBe("#124091");
     });
+
+    it("parses clean keys from a hash that is hex-prefixed but not &-prefixed", () => {
+      setLocation(
+        "?brandColor=%23999999",
+        "#aabbcc=1&logoUrl=http%3A%2F%2Fl&x-blocks-key=k&client_id=c&userName=u&state=s&nonce=n&scope=sc&redirect_uri=r&tenant_id=t",
+      );
+      const p = extractOIDCParams();
+      expect(p.projectKey).toBe("k");
+      expect(p.clientId).toBe("c");
+      expect(p.userName).toBe("u");
+      expect(p.state).toBe("s");
+      expect(p.nonce).toBe("n");
+      expect(p.scope).toBe("sc");
+      expect(p.redirectUri).toBe("r");
+      expect(p.tenantId).toBe("t");
+      expect(p.logoUrl).toBe("http://l");
+    });
+
+    it("falls back to the default color when brandColor decoding throws", () => {
+      setLocation("?brandColor=%25", "");
+      const p = extractOIDCParams();
+      expect(p.themeColor).toBe("#124091");
+    });
+  });
+
+  describe("navigation helpers - full param set", () => {
+    const fullSearch =
+      "?x-blocks-key=k&userName=u&clientId=c&logoUrl=http%3A%2F%2Fl&brandColor=%23FF0000&state=s&nonce=n&scope=sc&redirect_uri=r&tenant_id=t";
+
+    beforeEach(() => {
+      Object.defineProperty(window, "location", {
+        value: {
+          search: fullSearch,
+          hash: "",
+          href: `http://localhost:3000/oidc/login${fullSearch}`,
+        },
+        writable: true,
+        configurable: true,
+      });
+    });
+
+    it("buildOIDCNavigationUrl includes every param", () => {
+      const url = buildOIDCNavigationUrl("/oidc/consent");
+      expect(url).toContain("x-blocks-key=k");
+      expect(url).toContain("userName=u");
+      expect(url).toContain("clientId=c");
+      expect(url).toContain("logoUrl=");
+      expect(url).toContain("brandColor=");
+      expect(url).toContain("state=s");
+      expect(url).toContain("nonce=n");
+      expect(url).toContain("scope=sc");
+      expect(url).toContain("redirect_uri=r");
+      expect(url).toContain("tenant_id=t");
+    });
+
+    it("getCurrentOIDCParams includes every param", () => {
+      const p = getCurrentOIDCParams();
+      expect(p.get("x-blocks-key")).toBe("k");
+      expect(p.get("userName")).toBe("u");
+      expect(p.get("clientId")).toBe("c");
+      expect(p.get("logoUrl")).toBe("http://l");
+      expect(p.get("state")).toBe("s");
+      expect(p.get("nonce")).toBe("n");
+      expect(p.get("scope")).toBe("sc");
+      expect(p.get("redirect_uri")).toBe("r");
+      expect(p.get("tenant_id")).toBe("t");
+      expect(p.get("brandColor")).toBe("#FF0000");
+    });
   });
 });
