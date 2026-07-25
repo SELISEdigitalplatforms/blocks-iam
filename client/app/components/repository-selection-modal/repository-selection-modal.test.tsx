@@ -194,6 +194,38 @@ describe("RepositorySelectionModal", () => {
     );
   });
 
+  it("resets to an empty list when the items payload is not an array", async () => {
+    const user = userEvent.setup();
+    setHook({ data: { data: { items: null as unknown as IRepository[], total_count: 5 } } });
+    renderModal();
+    await user.click(screen.getByRole("combobox"));
+    expect(await screen.findByText("No repositories found.")).toBeInTheDocument();
+  });
+
+  it("resets to an empty list when an empty first page is returned with a count", async () => {
+    const user = userEvent.setup();
+    setHook({ data: reposResponse([], 5) });
+    renderModal();
+    await user.click(screen.getByRole("combobox"));
+    expect(await screen.findByText("No repositories found.")).toBeInTheDocument();
+  });
+
+  it("clears its internal state when the modal is closed", async () => {
+    const { rerender } = renderModal();
+    rerender(
+      <RepositorySelectionModal open={false} onOpenChange={vi.fn()} onSelectRepository={vi.fn()} />,
+    );
+    await waitFor(() => expect(screen.queryByText("Select repository")).toBeNull());
+  });
+
+  it("closes the revoke dialog via its onOpenChange when dismissed", async () => {
+    renderModal();
+    fireEvent.click(screen.getByText("Revoke repository access"));
+    await screen.findByText("Revoke Access");
+    fireEvent.keyDown(document.body, { key: "Escape" });
+    await waitFor(() => expect(screen.queryByText("Revoke Access")).toBeNull());
+  });
+
   it("loads the next page when the list is scrolled to the bottom", async () => {
     const firstPage = Array.from({ length: 10 }, (_, i) => repo(i + 1, `org/repo-${i + 1}`));
     const secondPage = Array.from({ length: 10 }, (_, i) => repo(i + 11, `org/repo-${i + 11}`));
