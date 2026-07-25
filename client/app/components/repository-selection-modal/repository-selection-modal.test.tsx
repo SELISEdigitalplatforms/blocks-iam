@@ -148,4 +148,76 @@ describe("RepositorySelectionModal", () => {
 
     await waitFor(() => expect(h.revokeAccess).toHaveBeenCalledTimes(1));
   });
+
+  it("logs and recovers when revoking GitHub access fails", async () => {
+    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+    h.revokeAccess.mockRejectedValue(new Error("revoke failed"));
+    renderModal();
+
+    fireEvent.click(screen.getByText("Revoke repository access"));
+    const revokeTitle = await screen.findByText("Revoke Access");
+    const dialog = revokeTitle.closest("[role='dialog']") as HTMLElement;
+    fireEvent.click(within(dialog).getByRole("button", { name: "Confirm" }));
+
+    await waitFor(() =>
+      expect(errorSpy).toHaveBeenCalledWith("Error revoking GitHub access:", expect.any(Error)),
+    );
+    await waitFor(() => expect(screen.queryByText("Revoke Access")).toBeNull());
+    errorSpy.mockRestore();
+  });
+
+  it("closes the revoke dialog from its Cancel button", async () => {
+    renderModal();
+    fireEvent.click(screen.getByText("Revoke repository access"));
+    const revokeTitle = await screen.findByText("Revoke Access");
+    const dialog = revokeTitle.closest("[role='dialog']") as HTMLElement;
+
+    fireEvent.click(within(dialog).getByRole("button", { name: "Cancel" }));
+    await waitFor(() => expect(screen.queryByText("Revoke Access")).toBeNull());
+    expect(h.revokeAccess).not.toHaveBeenCalled();
+  });
+
+  it("refetches with the search term after the debounce", async () => {
+    const user = userEvent.setup();
+    renderModal();
+    await user.click(screen.getByRole("combobox"));
+
+    const searchInput = await screen.findByPlaceholderText("Search repositories...");
+    fireEvent.change(searchInput, { target: { value: "alpha" } });
+
+    await waitFor(
+      () =>
+        expect(
+          h.useGetGithubRepos.mock.calls.some((c) => c[1] === "alpha"),
+        ).toBe(true),
+      { timeout: 2000 },
+    );
+  });
+
+  it("loads the next page when the list is scrolled to the bottom", async () => {
+    const firstPage = Array.from({ length: 10 }, (_, i) => repo(i + 1, `org/repo-${i + 1}`));
+    const secondPage = Array.from({ length: 10 }, (_, i) => repo(i + 11, `org/repo-${i + 11}`));
+    // Stable references per page so the accumulation effect only reruns when the
+    // page actually changes (a fresh object every render would loop forever).
+    const firstResp = { data: reposResponse(firstPage, 25), isLoading: false, isFetching: false };
+    const secondResp = { data: reposResponse(secondPage, 25), isLoading: false, isFetching: false };
+    h.useGetGithubRepos.mockImplementation(
+      (_open: boolean, _search: string | undefined, page: number) =>
+        page >= 2 ? secondResp : firstResp,
+    );
+
+    const user = userEvent.setup();
+    renderModal();
+    await user.click(screen.getByRole("combobox"));
+
+    const list = (await screen.findByText("org/repo-1")).closest(
+      '[class*="overflow-y-auto"]',
+    ) as HTMLElement;
+    fireEvent.wheel(list, { deltaY: 200 });
+    fireEvent.scroll(list);
+
+    await waitFor(() =>
+      expect(h.useGetGithubRepos.mock.calls.some((c) => c[2] === 2)).toBe(true),
+    );
+  });
 });
