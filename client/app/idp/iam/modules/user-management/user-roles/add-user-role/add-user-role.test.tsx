@@ -87,4 +87,57 @@ describe("AddUserRole", () => {
     fireEvent.click(screen.getByRole("button", { name: "Include" }));
     await waitFor(() => expect(h.showError).toHaveBeenCalledWith({ errors: "bad" }));
   });
+
+  it("shows the mapped error toast when assigning throws structured errors", async () => {
+    h.addRoles.mockRejectedValue({ errors: { role: "thrown" } });
+    renderCmp();
+    fireEvent.click(screen.getByText("Assign Role"));
+    await waitFor(() => expect(screen.getByText("Admin")).toBeInTheDocument());
+    fireEvent.click(screen.getAllByRole("checkbox")[0]);
+    fireEvent.click(screen.getByRole("button", { name: "Include" }));
+    await waitFor(() => expect(h.showError).toHaveBeenCalledWith({ errors: { role: "thrown" } }));
+  });
+
+  it("shows a generic error toast when assigning throws a plain value", async () => {
+    h.addRoles.mockRejectedValue("nope");
+    renderCmp();
+    fireEvent.click(screen.getByText("Assign Role"));
+    await waitFor(() => expect(screen.getByText("Admin")).toBeInTheDocument());
+    fireEvent.click(screen.getAllByRole("checkbox")[0]);
+    fireEvent.click(screen.getByRole("button", { name: "Include" }));
+    await waitFor(() => expect(h.showError).toHaveBeenCalledWith({ errors: "Something went wrong" }));
+  });
+
+  it("toggles a role selection off when unchecked", async () => {
+    renderCmp();
+    fireEvent.click(screen.getByText("Assign Role"));
+    await waitFor(() => expect(screen.getByText("Admin")).toBeInTheDocument());
+    const checkbox = screen.getAllByRole("checkbox")[0];
+    fireEvent.click(checkbox);
+    fireEvent.click(checkbox);
+    // Include should be disabled again once nothing is selected.
+    await waitFor(() =>
+      expect(screen.getByRole("button", { name: "Include" })).toBeDisabled(),
+    );
+  });
+
+  it("prevents selecting beyond the five-role maximum", async () => {
+    h.slugs = ["a", "b", "c", "d"];
+    renderCmp();
+    fireEvent.click(screen.getByText("Assign Role"));
+    await waitFor(() => expect(screen.getByText("Admin")).toBeInTheDocument());
+    const boxes = screen.getAllByRole("checkbox");
+    fireEvent.click(boxes[0]);
+    fireEvent.click(boxes[1]);
+    // The second selection is blocked by the max-role guard.
+    expect(boxes[1].getAttribute("aria-checked")).toBe("false");
+  });
+
+  it("resets its state when the dialog is closed", async () => {
+    renderCmp();
+    fireEvent.click(screen.getByText("Assign Role"));
+    await waitFor(() => expect(screen.getByText("Admin")).toBeInTheDocument());
+    fireEvent.keyDown(document.body, { key: "Escape" });
+    await waitFor(() => expect(screen.queryByText("Admin")).not.toBeInTheDocument());
+  });
 });
