@@ -9,6 +9,15 @@ const h = vi.hoisted(() => ({
   setTokens: vi.fn(),
   showErrorToast: vi.fn(),
   getSocialLoginEndpoint: vi.fn(),
+  iamBaseUrl: "https://dev-iam.test",
+}));
+
+vi.mock("@/lib/runtime-env", () => ({
+  getRuntimeEnv: (key: string) =>
+    key === "BLOCKS_IAM_BASE_URL" ? h.iamBaseUrl : "blocks-key",
+}));
+vi.mock("@/lib/get-api-path", () => ({
+  getApiUrl: (base: string, path: string) => `https://api.test/${base}/${path}`,
 }));
 
 vi.mock("react-router-dom", async (importOriginal) => {
@@ -70,5 +79,51 @@ describe("SsoActivate", () => {
     );
 
     vi.unstubAllGlobals();
+  });
+
+  beforeEach(() => {
+    sessionStorage.clear();
+    h.iamBaseUrl = "https://dev-iam.test";
+  });
+
+  it("authenticates and navigates to the console on a successful token exchange", async () => {
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({ access_token: "at", refresh_token: "rt" }),
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    renderComp();
+    fireEvent.click(screen.getByRole("checkbox"));
+    fireEvent.click(screen.getByRole("button", { name: /continue/i }));
+    await waitFor(() => expect(h.setAuthenticated).toHaveBeenCalled());
+    expect(h.navigateMock).toHaveBeenCalledWith("/app/console");
+    expect(h.setTokens).not.toHaveBeenCalled();
+    vi.unstubAllGlobals();
+  });
+
+  it("stores tokens for a localhost base url", async () => {
+    h.iamBaseUrl = "http://localhost:4000";
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({ access_token: "at", refresh_token: "rt" }),
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    renderComp();
+    fireEvent.click(screen.getByRole("checkbox"));
+    fireEvent.click(screen.getByRole("button", { name: /continue/i }));
+    await waitFor(() => expect(h.setTokens).toHaveBeenCalledWith("at", "rt"));
+    vi.unstubAllGlobals();
+  });
+
+  it("shows the provider block and redirects when using a different account", async () => {
+    sessionStorage.setItem("clicked_sso_provider", "google");
+    sessionStorage.setItem("clicked_sso_audience", "https://aud.test");
+    h.getSocialLoginEndpoint.mockResolvedValue({ providerUrl: "https://google.test/auth" });
+    const replace = { href: "" };
+    Object.defineProperty(window, "location", { value: replace, configurable: true });
+    renderComp();
+    const useDifferent = await screen.findByText(/Use a different Google account/);
+    fireEvent.click(useDifferent);
+    await waitFor(() => expect(h.getSocialLoginEndpoint).toHaveBeenCalled());
   });
 });
