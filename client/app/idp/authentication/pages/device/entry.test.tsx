@@ -238,4 +238,34 @@ describe("DeviceEntryPage", () => {
     await waitFor(() => expect(h.verify).toHaveBeenCalledWith("ABCD-EFGH", "tenant-1"));
     expect(await screen.findByText("Authorize this device?")).toBeInTheDocument();
   });
+
+  it("redirects to a constructed login url when no returnUrl is provided", async () => {
+    h.verify.mockResolvedValue({ status: "login_required" });
+    renderPage();
+    fireEvent.change(screen.getByLabelText("Verification Code"), { target: { value: "ABCDEFGH" } });
+    fireEvent.click(screen.getByRole("button", { name: /continue/i }));
+    await waitFor(() =>
+      expect(assignSpy).toHaveBeenCalledWith(expect.stringContaining("/oidc/login?returnUrl=")),
+    );
+  });
+
+  it("shows an unexpected-response error for an unknown status", async () => {
+    h.verify.mockResolvedValue({ status: "something_else" });
+    renderPage();
+    fireEvent.change(screen.getByLabelText("Verification Code"), { target: { value: "ABCDEFGH" } });
+    fireEvent.click(screen.getByRole("button", { name: /continue/i }));
+    expect(await screen.findByText("Unexpected response from server.")).toBeInTheDocument();
+  });
+
+  it("shows a generic error when recording the decision fails unexpectedly", async () => {
+    h.verify.mockResolvedValue({ status: "ready", payload: readyPayload });
+    h.decide.mockRejectedValue({ errors: { error: "server_error" } });
+    renderPage();
+    fireEvent.change(screen.getByLabelText("Verification Code"), { target: { value: "ABCDEFGH" } });
+    fireEvent.click(screen.getByRole("button", { name: /continue/i }));
+    fireEvent.click(await screen.findByRole("button", { name: "Allow" }));
+    expect(
+      await screen.findByText("We could not record your decision. Please try again."),
+    ).toBeInTheDocument();
+  });
 });
