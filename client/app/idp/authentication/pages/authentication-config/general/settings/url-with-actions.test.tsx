@@ -52,4 +52,26 @@ describe("UrlWithActions", () => {
     await waitFor(() => expect(createObjectURL).toHaveBeenCalledWith(blob));
     await waitFor(() => expect(revokeObjectURL).toHaveBeenCalled());
   });
+
+  it("falls back to execCommand when the clipboard API is unavailable", async () => {
+    Object.defineProperty(navigator, "clipboard", { value: undefined, configurable: true });
+    Object.defineProperty(window, "isSecureContext", { value: false, configurable: true });
+    const execCommand = vi.fn();
+    Object.defineProperty(document, "execCommand", { value: execCommand, configurable: true });
+
+    render(<UrlWithActions url="https://files.test/cert.pem" />);
+    fireEvent.click(screen.getByTitle("Copy URL"));
+    await waitFor(() => expect(execCommand).toHaveBeenCalledWith("copy"));
+    // The button flips to the copied state.
+    expect(screen.getByTitle("Copied!")).toBeInTheDocument();
+  });
+
+  it("logs an error when the download fails", async () => {
+    global.fetch = vi.fn().mockRejectedValue(new Error("network"));
+    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+    render(<UrlWithActions url="https://files.test/cert.pem" />);
+    fireEvent.click(screen.getByTitle("Download certificate"));
+    await waitFor(() => expect(errorSpy).toHaveBeenCalled());
+    errorSpy.mockRestore();
+  });
 });
