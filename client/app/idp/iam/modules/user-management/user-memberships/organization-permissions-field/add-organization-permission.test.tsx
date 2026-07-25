@@ -129,6 +129,22 @@ describe("AddOrganizationPermission UI", () => {
     });
   });
 
+  it("adds the newly selected permissions and triggers onSave", async () => {
+    const onAdd = vi.fn();
+    const onSave = vi.fn();
+    render(
+      <AddOrganizationPermission permissions={[]} onAdd={onAdd} onSave={onSave} />,
+      { wrapper: createWrapper() },
+    );
+    openDialog();
+    fireEvent.click(await screen.findByRole("checkbox", { name: /select permission 1/i }));
+    fireEvent.click(screen.getByRole("button", { name: /^add$/i }));
+    expect(onAdd).toHaveBeenCalledWith(
+      expect.arrayContaining([expect.objectContaining({ itemId: "perm-1" })]),
+    );
+    await waitFor(() => expect(onSave).toHaveBeenCalled());
+  });
+
   it("TC-07: keeps selections when paginating", async () => {
     render(<AddOrganizationPermission permissions={[]} onAdd={vi.fn()} />, {
       wrapper: createWrapper(),
