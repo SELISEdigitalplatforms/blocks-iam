@@ -87,4 +87,72 @@ describe("AddUserPermission", () => {
     fireEvent.click(screen.getByRole("button", { name: "Include" }));
     await waitFor(() => expect(h.showError).toHaveBeenCalledWith({ errors: "nope" }));
   });
+
+  it("includes multiple selected permissions with a plural success toast", async () => {
+    h.addPermissions.mockResolvedValue({ isSuccess: true });
+    renderCmp();
+    fireEvent.click(screen.getByText("Assign Permissions"));
+    await waitFor(() => expect(screen.getByText("Include Permissions")).toBeInTheDocument());
+    const boxes = screen.getAllByRole("checkbox");
+    fireEvent.click(boxes[0]);
+    fireEvent.click(boxes[1]);
+    fireEvent.click(screen.getByRole("button", { name: "Include" }));
+    await waitFor(() =>
+      expect(h.addPermissions).toHaveBeenCalledWith(["users:read", "users:edit"]),
+    );
+    await waitFor(() =>
+      expect(h.showSuccess).toHaveBeenCalledWith({ description: "New permissions added" }),
+    );
+  });
+
+  it("shows the mapped error toast when include throws structured errors", async () => {
+    h.addPermissions.mockRejectedValue({ errors: { p: "thrown" } });
+    renderCmp();
+    fireEvent.click(screen.getByText("Assign Permissions"));
+    await waitFor(() => expect(screen.getByText("Include Permissions")).toBeInTheDocument());
+    fireEvent.click(screen.getAllByRole("checkbox")[0]);
+    fireEvent.click(screen.getByRole("button", { name: "Include" }));
+    await waitFor(() => expect(h.showError).toHaveBeenCalledWith({ errors: { p: "thrown" } }));
+  });
+
+  it("shows a generic error toast when include throws a plain value", async () => {
+    h.addPermissions.mockRejectedValue("boom");
+    renderCmp();
+    fireEvent.click(screen.getByText("Assign Permissions"));
+    await waitFor(() => expect(screen.getByText("Include Permissions")).toBeInTheDocument());
+    fireEvent.click(screen.getAllByRole("checkbox")[0]);
+    fireEvent.click(screen.getByRole("button", { name: "Include" }));
+    await waitFor(() => expect(h.showError).toHaveBeenCalledWith({ errors: "Something went wrong" }));
+  });
+
+  it("toggles a permission off when unchecked", async () => {
+    renderCmp();
+    fireEvent.click(screen.getByText("Assign Permissions"));
+    await waitFor(() => expect(screen.getByText("Include Permissions")).toBeInTheDocument());
+    const checkbox = screen.getAllByRole("checkbox")[0];
+    fireEvent.click(checkbox);
+    fireEvent.click(checkbox);
+    await waitFor(() =>
+      expect(screen.getByRole("button", { name: "Include" })).toBeDisabled(),
+    );
+  });
+
+  it("prevents selecting beyond the five-permission maximum", async () => {
+    h.resources = ["a", "b", "c", "d"];
+    renderCmp();
+    fireEvent.click(screen.getByText("Assign Permissions"));
+    await waitFor(() => expect(screen.getByText("Include Permissions")).toBeInTheDocument());
+    const boxes = screen.getAllByRole("checkbox");
+    fireEvent.click(boxes[0]);
+    fireEvent.click(boxes[1]);
+    expect(boxes[1].getAttribute("aria-checked")).toBe("false");
+  });
+
+  it("resets its filter when the dialog is closed", async () => {
+    renderCmp();
+    fireEvent.click(screen.getByText("Assign Permissions"));
+    await waitFor(() => expect(screen.getByText("Include Permissions")).toBeInTheDocument());
+    fireEvent.keyDown(document.body, { key: "Escape" });
+    await waitFor(() => expect(screen.queryByText("Include Permissions")).not.toBeInTheDocument());
+  });
 });
