@@ -137,4 +137,43 @@ describe("ResetPasswordForm", () => {
     renderForm();
     expect(setPanelIdleSlot).toHaveBeenCalled();
   });
+
+  const fillValidPasswords = (container: HTMLElement) => {
+    const [password, confirm] = passwordInputs(container);
+    fireEvent.change(password, { target: { value: "Passw0rd!" } });
+    fireEvent.change(confirm, { target: { value: "Passw0rd!" } });
+  };
+
+  it("submits the reset and navigates to the success page", async () => {
+    h.mutateAsync.mockResolvedValue({ isSuccess: true });
+    const { container } = renderForm();
+    fillValidPasswords(container);
+    fireEvent.submit(container.querySelector("form") as HTMLFormElement);
+    await vi.waitFor(() =>
+      expect(h.mutateAsync).toHaveBeenCalledWith(
+        expect.objectContaining({ code: "reset-code", password: "Passw0rd!", tenantId: "tenant-1" }),
+      ),
+    );
+    await vi.waitFor(() =>
+      expect(h.navigateMock).toHaveBeenCalledWith("/reset-password-success"),
+    );
+  });
+
+  it("shows the server error and resets the captcha when the reset fails", async () => {
+    h.mutateAsync.mockResolvedValue({ isSuccess: false, errors: "Reset link expired" });
+    const { container } = renderForm();
+    fillValidPasswords(container);
+    fireEvent.submit(container.querySelector("form") as HTMLFormElement);
+    expect(await screen.findByText("Reset link expired")).toBeInTheDocument();
+    expect(h.resetCaptcha).toHaveBeenCalled();
+    expect(h.navigateMock).not.toHaveBeenCalled();
+  });
+
+  it("surfaces a mapped error when the mutation throws", async () => {
+    h.mutateAsync.mockRejectedValue({ errors: { password: "Too weak" } });
+    const { container } = renderForm();
+    fillValidPasswords(container);
+    fireEvent.submit(container.querySelector("form") as HTMLFormElement);
+    expect(await screen.findByText("Too weak")).toBeInTheDocument();
+  });
 });
