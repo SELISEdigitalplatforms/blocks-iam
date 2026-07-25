@@ -126,4 +126,81 @@ describe("SsoActivate", () => {
     fireEvent.click(useDifferent);
     await waitFor(() => expect(h.getSocialLoginEndpoint).toHaveBeenCalled());
   });
+
+  it("errors when using a different account without an audience", async () => {
+    sessionStorage.setItem("clicked_sso_provider", "google");
+    renderComp();
+    fireEvent.click(await screen.findByText(/Use a different Google account/));
+    await waitFor(() =>
+      expect(h.showErrorToast).toHaveBeenCalledWith({ errors: "Something went wrong" }),
+    );
+  });
+
+  it("surfaces the endpoint error when the social login lookup fails", async () => {
+    sessionStorage.setItem("clicked_sso_provider", "google");
+    sessionStorage.setItem("clicked_sso_audience", "https://aud.test");
+    h.getSocialLoginEndpoint.mockResolvedValue({ error: "endpoint down" });
+    renderComp();
+    fireEvent.click(await screen.findByText(/Use a different Google account/));
+    await waitFor(() => expect(h.showErrorToast).toHaveBeenCalledWith({ errors: "endpoint down" }));
+  });
+
+  it("errors when the social login lookup returns no url", async () => {
+    sessionStorage.setItem("clicked_sso_provider", "google");
+    sessionStorage.setItem("clicked_sso_audience", "https://aud.test");
+    h.getSocialLoginEndpoint.mockResolvedValue({});
+    renderComp();
+    fireEvent.click(await screen.findByText(/Use a different Google account/));
+    await waitFor(() =>
+      expect(h.showErrorToast).toHaveBeenCalledWith({ errors: "No redirect URL provided." }),
+    );
+  });
+
+  it("shows a generic error when the social login lookup throws", async () => {
+    sessionStorage.setItem("clicked_sso_provider", "google");
+    sessionStorage.setItem("clicked_sso_audience", "https://aud.test");
+    h.getSocialLoginEndpoint.mockRejectedValue(new Error("network"));
+    renderComp();
+    fireEvent.click(await screen.findByText(/Use a different Google account/));
+    await waitFor(() =>
+      expect(h.showErrorToast).toHaveBeenCalledWith({ errors: "Something went wrong" }),
+    );
+  });
+
+  it("errors when activating without a code", async () => {
+    render(
+      <MemoryRouter>
+        <SsoActivate oauthParams={{ username: "jane@company.com" } as never} />
+      </MemoryRouter>,
+    );
+    fireEvent.click(screen.getByRole("checkbox"));
+    fireEvent.click(screen.getByRole("button", { name: /continue/i }));
+    await waitFor(() => expect(h.showErrorToast).toHaveBeenCalledWith({ errors: "Code is missing" }));
+  });
+
+  it("shows a session-expired error when the token exchange throws expire", async () => {
+    const fetchMock = vi.fn().mockRejectedValue({ message: "token expired" });
+    vi.stubGlobal("fetch", fetchMock);
+    renderComp();
+    fireEvent.click(screen.getByRole("checkbox"));
+    fireEvent.click(screen.getByRole("button", { name: /continue/i }));
+    await waitFor(() =>
+      expect(h.showErrorToast).toHaveBeenCalledWith({
+        errors: "Your session has expired. Please try again.",
+      }),
+    );
+    vi.unstubAllGlobals();
+  });
+
+  it("shows a generic error when the token exchange throws otherwise", async () => {
+    const fetchMock = vi.fn().mockRejectedValue("weird");
+    vi.stubGlobal("fetch", fetchMock);
+    renderComp();
+    fireEvent.click(screen.getByRole("checkbox"));
+    fireEvent.click(screen.getByRole("button", { name: /continue/i }));
+    await waitFor(() =>
+      expect(h.showErrorToast).toHaveBeenCalledWith({ errors: "Something went wrong" }),
+    );
+    vi.unstubAllGlobals();
+  });
 });
