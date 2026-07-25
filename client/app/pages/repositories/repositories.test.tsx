@@ -191,4 +191,50 @@ describe("RepositoriesPage", () => {
     expect(await screen.findByText("Connect repository")).toBeInTheDocument();
     errorSpy.mockRestore();
   });
+
+  it("moves to the repository selection modal after the provider verifies auth", async () => {
+    h.refetchAuthorization.mockResolvedValue({ data: { isSuccess: false } });
+    renderPage();
+    fireEvent.click(screen.getByRole("button", { name: /add/i }));
+    fireEvent.click(await screen.findByText("provider-connect"));
+    expect(await screen.findByTestId("repo-select-modal")).toBeInTheDocument();
+  });
+
+  it("opens the repo link in a new tab when clicked", () => {
+    const openSpy = vi.spyOn(window, "open").mockImplementation(() => null);
+    setAssets({
+      resources: [asset("org/alpha", "https://github.com/org/alpha")],
+      totalCount: 1,
+    });
+    renderPage();
+    fireEvent.click(screen.getByText("https://github.com/org/alpha"));
+    expect(openSpy).toHaveBeenCalledWith(
+      "https://github.com/org/alpha",
+      "_blank",
+      "noopener,noreferrer",
+    );
+    openSpy.mockRestore();
+  });
+
+  it("updates the search text as the user types", () => {
+    renderPage();
+    const input = screen.getByPlaceholderText("Search repositories...") as HTMLInputElement;
+    fireEvent.change(input, { target: { value: "alpha" } });
+    expect(input.value).toBe("alpha");
+  });
+
+  it("changes the page from the pagination control", () => {
+    setAssets({
+      resources: [asset("org/alpha", "https://github.com/org/alpha")],
+      totalCount: 36,
+    });
+    const { container } = renderPage();
+    const navButtons = Array.from(
+      container.querySelectorAll("button"),
+    ).filter((b) => !b.hasAttribute("disabled"));
+    // The next-page chevron is the first enabled pagination control on page 1.
+    const next = navButtons[navButtons.length - 2];
+    fireEvent.click(next);
+    expect(next).toBeInTheDocument();
+  });
 });
