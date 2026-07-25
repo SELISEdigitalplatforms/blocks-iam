@@ -6,6 +6,7 @@ const h = vi.hoisted(() => ({
   toast: vi.fn(),
   projectStore: { selectedProject: { tenantId: "t1", itemId: "p1" } },
   authStore: { user: { sub: "u1" } },
+  lastPayload: null as unknown,
 }));
 
 vi.mock("@blocks-utilities/hooks/use-magic-url", () => ({
@@ -179,5 +180,74 @@ describe("MagicUrlDialog", () => {
 
     fireEvent.click(screen.getByRole("switch", { name: /Set Auto Expiry Date/i }));
     expect(screen.getByText("Pick a date")).toBeInTheDocument();
+  });
+
+  it("edits action-type textareas, encoded query and client credential", () => {
+    render(
+      <MagicUrlDialog
+        open
+        onOpenChange={vi.fn()}
+        initialData={{
+          uri: "https://act.example.com",
+          name: "Action Link",
+          type: "0",
+          requestMethod: "POST",
+          usageLimit: 0,
+        } as never}
+      />,
+    );
+
+    const payload = document.querySelector("#payload") as HTMLTextAreaElement;
+    const headers = document.querySelector("#headers") as HTMLTextAreaElement;
+    const encoded = document.querySelector("#encodedQuery") as HTMLInputElement;
+    const cred = document.querySelector("#clientCred") as HTMLInputElement;
+
+    fireEvent.change(payload, { target: { value: "{\"a\":1}" } });
+    fireEvent.change(headers, { target: { value: "{\"h\":\"v\"}" } });
+    fireEvent.change(encoded, { target: { value: "q=1" } });
+    fireEvent.change(cred, { target: { value: "secret" } });
+
+    expect(payload.value).toBe("{\"a\":1}");
+    expect(headers.value).toBe("{\"h\":\"v\"}");
+    expect(encoded.value).toBe("q=1");
+    expect(cred.value).toBe("secret");
+  });
+
+  it("updates the usage-limit value once the switch is on", () => {
+    render(<MagicUrlDialog open onOpenChange={vi.fn()} />);
+    fireEvent.click(screen.getByRole("switch", { name: /Set Usage Limit/i }));
+    const input = screen.getByPlaceholderText("Enter usage limit") as HTMLInputElement;
+    fireEvent.change(input, { target: { value: "25" } });
+    expect(input.value).toBe("25");
+  });
+
+  it("opens the calendar, picks a future date and computes an expiry lifespan", async () => {
+    h.createMagicUrl.mockImplementation((payload: { expiryLifeSpan?: number }) => {
+      h.lastPayload = payload;
+    });
+    render(<MagicUrlDialog open onOpenChange={vi.fn()} />);
+
+    fireEvent.change(document.querySelector("#url") as HTMLInputElement, {
+      target: { value: "example.com" },
+    });
+    fireEvent.change(document.querySelector("#name") as HTMLInputElement, {
+      target: { value: "My Link" },
+    });
+
+    fireEvent.click(screen.getByRole("switch", { name: /Set Auto Expiry Date/i }));
+    fireEvent.click(screen.getByText("Pick a date"));
+
+    // The calendar renders day buttons; the disabled predicate runs per day.
+    const enabled = Array.from(document.querySelectorAll("button"))
+      .filter((b) => /^\d{1,2}$/.test(b.textContent || ""))
+      .filter((b) => !b.hasAttribute("disabled"));
+    expect(enabled.length).toBeGreaterThan(0);
+    fireEvent.click(enabled[enabled.length - 1]);
+    expect(screen.queryByText("Pick a date")).not.toBeInTheDocument();
+
+    const createBtn = screen.getByRole("button", { name: "Create" });
+    await waitFor(() => expect(createBtn).toBeEnabled());
+    fireEvent.click(createBtn);
+    expect(typeof (h.lastPayload as { expiryLifeSpan?: number }).expiryLifeSpan).toBe("number");
   });
 });

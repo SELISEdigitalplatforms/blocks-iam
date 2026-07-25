@@ -321,6 +321,103 @@ describe("AddEditProviderModal", () => {
     await waitFor(() => expect(h.showSuccessToast).toHaveBeenCalled());
   });
 
+  it("resets the form when the dialog is closed via Cancel", async () => {
+    render(<AddEditProviderModal />);
+    fireEvent.click(screen.getByRole("button", { name: /^add$/i }));
+    await screen.findByText("Add provider");
+    fireEvent.change(screen.getByLabelText("URL"), { target: { value: "https://x.example.com" } });
+
+    fireEvent.click(screen.getAllByRole("button", { name: /cancel/i })[0]);
+    await waitFor(() => expect(screen.queryByText("Add provider")).not.toBeInTheDocument());
+  });
+
+  it("resets the certificate method when switching away from Others", async () => {
+    const user = userEvent.setup();
+    render(<AddEditProviderModal />);
+    fireEvent.click(screen.getByRole("button", { name: /^add$/i }));
+    await screen.findByText("Add provider");
+
+    await user.click(screen.getByLabelText("Others"));
+    await user.click(screen.getByLabelText("Upload file"));
+    expect(await screen.findByText("Click to upload or drag and drop")).toBeInTheDocument();
+
+    // Switching back to a non-Others provider forces public-url and clears files.
+    await user.click(screen.getByLabelText("Keycloak"));
+    await waitFor(() => expect(screen.getByLabelText("URL")).toBeInTheDocument());
+  });
+
+  it("splits comma-separated audiences into a list when saving", async () => {
+    h.validateJwksUrl.mockResolvedValue({ isValid: true });
+    h.savePublicCertificates.mockResolvedValue({ isSuccess: true });
+    render(<AddEditProviderModal />);
+    fireEvent.click(screen.getByRole("button", { name: /^add$/i }));
+    await screen.findByText("Add provider");
+
+    fireEvent.change(screen.getByLabelText("URL"), {
+      target: { value: "https://idp.example.com/jwks" },
+    });
+    fireEvent.change(screen.getByLabelText(/Audience/), {
+      target: { value: "aud-1, aud-2 , " },
+    });
+    const save = screen.getByRole("button", { name: /save/i });
+    await waitFor(() => expect(save).not.toBeDisabled());
+    fireEvent.click(save);
+
+    await waitFor(() => expect(h.savePublicCertificates).toHaveBeenCalled());
+    expect(h.savePublicCertificates.mock.calls[0][0].audiences).toEqual(["aud-1", "aud-2"]);
+  });
+
+  it("shows an error toast when the upload-file save is unsuccessful", async () => {
+    const user = userEvent.setup();
+    h.uploadFile.mockResolvedValue({ downloadUrl: "https://cdn.example.com/cert.crt" });
+    h.savePublicCertificates.mockResolvedValue({ isSuccess: false, errors: "denied" });
+
+    render(<AddEditProviderModal />);
+    fireEvent.click(screen.getByRole("button", { name: /^add$/i }));
+    await screen.findByText("Add provider");
+    await user.click(screen.getByLabelText("Others"));
+    fireEvent.change(screen.getByLabelText(/Issuer/), { target: { value: "iss" } });
+    await user.click(screen.getByLabelText("Upload file"));
+
+    await waitFor(() => expect(document.querySelector('input[type="file"]')).not.toBeNull());
+    const fileInput = document.querySelector('input[type="file"]') as HTMLInputElement;
+    const file = new File(["b"], "server.crt", { type: "application/x-x509-ca-cert" });
+    fireEvent.change(fileInput, { target: { files: [file] } });
+    await screen.findByText("server.crt");
+
+    const save = screen.getByRole("button", { name: /save/i });
+    await waitFor(() => expect(save).not.toBeDisabled());
+    fireEvent.click(save);
+
+    await waitFor(() => expect(h.showErrorToast).toHaveBeenCalledWith({ errors: "denied" }));
+  });
+
+  it("surfaces an error toast when the upload-file save throws", async () => {
+    const user = userEvent.setup();
+    h.uploadFile.mockResolvedValue({ downloadUrl: "https://cdn.example.com/cert.crt" });
+    h.savePublicCertificates.mockRejectedValue(new Error("upload-boom"));
+
+    render(<AddEditProviderModal />);
+    fireEvent.click(screen.getByRole("button", { name: /^add$/i }));
+    await screen.findByText("Add provider");
+    await user.click(screen.getByLabelText("Others"));
+    fireEvent.change(screen.getByLabelText(/Issuer/), { target: { value: "iss" } });
+    await user.click(screen.getByLabelText("Upload file"));
+
+    await waitFor(() => expect(document.querySelector('input[type="file"]')).not.toBeNull());
+    const fileInput = document.querySelector('input[type="file"]') as HTMLInputElement;
+    const file = new File(["b"], "server.crt", { type: "application/x-x509-ca-cert" });
+    fireEvent.change(fileInput, { target: { files: [file] } });
+    await screen.findByText("server.crt");
+
+    const save = screen.getByRole("button", { name: /save/i });
+    await waitFor(() => expect(save).not.toBeDisabled());
+    fireEvent.click(save);
+
+    await waitFor(() => expect(h.showErrorToast).toHaveBeenCalled());
+    expect(h.uploadFile).toHaveBeenCalled();
+  });
+
   it("shows an error when the upload response has no download url", async () => {
     const user = userEvent.setup();
     h.uploadFile.mockResolvedValue({});
