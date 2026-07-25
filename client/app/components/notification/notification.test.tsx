@@ -128,4 +128,75 @@ describe("Notification", () => {
 
     expect(h.markAllAsRead.mutate).toHaveBeenCalled();
   });
+
+  it("shows the empty state when there are no notifications", async () => {
+    h.notificationsResult = {
+      data: { notifications: [], unReadNotificationsCount: 0, totalNotificationsCount: 0 },
+      isLoading: false,
+      isFetching: false,
+    };
+    render(<Notification />, { wrapper: createWrapper() });
+    fireEvent.click(screen.getByTestId("notification-bell"));
+    expect(await screen.findByText("No notifications")).toBeInTheDocument();
+  });
+
+  it("marks a notification as read on hover", async () => {
+    h.notificationsResult = {
+      data: {
+        notifications: [makeNotification({ isRead: false })],
+        unReadNotificationsCount: 1,
+        totalNotificationsCount: 1,
+      },
+      isLoading: false,
+      isFetching: false,
+    };
+    render(<Notification />, { wrapper: createWrapper() });
+    fireEvent.click(screen.getByTestId("notification-bell"));
+    const row = (await screen.findByText("Hello World")).closest("div.cursor-pointer") as HTMLElement;
+    fireEvent.mouseEnter(row);
+    expect(h.markAsRead.mutate).toHaveBeenCalledWith("n1", expect.any(Object));
+  });
+
+  it("formats the KB meta description with status and kb id", async () => {
+    h.notificationsResult = {
+      data: {
+        notifications: [
+          makeNotification({
+            denormalizedPayload: JSON.stringify({
+              title: "agent_kb_processing_status",
+              description: "fallback",
+              redirectPath: "",
+              toastable: false,
+              meta: JSON.stringify({ status: "processing", kb_id: "abcd1234-xyz" }),
+            }),
+          }),
+        ],
+        unReadNotificationsCount: 1,
+        totalNotificationsCount: 1,
+      },
+      isLoading: false,
+      isFetching: false,
+    };
+    render(<Notification />, { wrapper: createWrapper() });
+    fireEvent.click(screen.getByTestId("notification-bell"));
+    expect(await screen.findByText("AI Agent Knowledge Update Status")).toBeInTheDocument();
+    expect(screen.getByText("Status: Processing | KB Id: abcd1234")).toBeInTheDocument();
+  });
+
+  it("registers realtime handlers and invalidates on a valid message", () => {
+    let handler: ((message: string) => void) | undefined;
+    h.configResult = { data: { configurations: [{ notifyMethod: "push" }] } };
+    h.client.connection.on = vi.fn((_event: string, cb: (m: string) => void) => {
+      handler = cb;
+    });
+    render(<Notification />, { wrapper: createWrapper() });
+    expect(h.client.connection.on).toHaveBeenCalledWith("push", expect.any(Function));
+    // Delivering a valid denormalized payload runs the parse + invalidate path.
+    handler?.(
+      JSON.stringify({
+        denormalizedPayload: JSON.stringify({ title: "T", description: "D" }),
+      }),
+    );
+    expect(h.service.getNotificationConfig).toHaveBeenCalled();
+  });
 });
