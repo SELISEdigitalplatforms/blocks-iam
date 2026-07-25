@@ -39,12 +39,22 @@ vi.mock("@/components/ui-kits/input-otp/input-otp", () => ({
 }));
 
 import { ProfileMfaVerifyForm } from "./profile-mfa-verify-form";
+import { profileMfaContext } from "../../profile-mfa";
 
 const renderForm = () =>
   render(
     <Dialog open onOpenChange={() => {}}>
       <ProfileMfaVerifyForm mfaId="mfa-1" />
     </Dialog>,
+  );
+
+const renderFormWith = (value: Record<string, unknown>) =>
+  render(
+    <profileMfaContext.Provider value={value as never}>
+      <Dialog open onOpenChange={() => {}}>
+        <ProfileMfaVerifyForm mfaId="mfa-1" />
+      </Dialog>
+    </profileMfaContext.Provider>,
   );
 
 const enterCode = () => fireEvent.change(screen.getByLabelText("otp"), { target: { value: "12345" } });
@@ -76,5 +86,39 @@ describe("ProfileMfaVerifyForm", () => {
     enterCode();
     fireEvent.click(screen.getByRole("button", { name: "Verify" }));
     await waitFor(() => expect(h.showError).toHaveBeenCalledWith({ errors: "Code is not valid" }));
+  });
+
+  it("shows an error toast when the OTP response is unsuccessful", async () => {
+    h.verifyOtp.mockResolvedValue({ isSuccess: false, errors: "server error" });
+    renderForm();
+    enterCode();
+    fireEvent.click(screen.getByRole("button", { name: "Verify" }));
+    await waitFor(() => expect(h.showError).toHaveBeenCalledWith({ errors: "server error" }));
+  });
+
+  it("shows a generic error toast when verification throws", async () => {
+    h.verifyOtp.mockRejectedValue("boom");
+    renderForm();
+    enterCode();
+    fireEvent.click(screen.getByRole("button", { name: "Verify" }));
+    await waitFor(() => expect(h.showError).toHaveBeenCalledWith({ errors: "Something went wrong" }));
+  });
+
+  it("verifies a TOTP setup code and shows a success toast", async () => {
+    h.verifyTotp.mockResolvedValue({ enabled: true });
+    renderFormWith({ setIsVerifyModalOpen: h.setIsVerifyModalOpen, mfaMethodType: 1, userId: "u1" });
+    fireEvent.change(screen.getByLabelText("otp"), { target: { value: "123456" } });
+    fireEvent.click(screen.getByRole("button", { name: "Verify" }));
+    await waitFor(() => expect(h.verifyTotp).toHaveBeenCalledWith({ code: "123456" }));
+    await waitFor(() => expect(h.showSuccess).toHaveBeenCalled());
+    expect(h.setIsVerifyModalOpen).toHaveBeenCalledWith(false);
+  });
+
+  it("shows an error toast when the TOTP setup code is invalid", async () => {
+    h.verifyTotp.mockResolvedValue({ enabled: false });
+    renderFormWith({ setIsVerifyModalOpen: h.setIsVerifyModalOpen, mfaMethodType: 1, userId: "u1" });
+    fireEvent.change(screen.getByLabelText("otp"), { target: { value: "123456" } });
+    fireEvent.click(screen.getByRole("button", { name: "Verify" }));
+    await waitFor(() => expect(h.showError).toHaveBeenCalledWith({ errors: "TOTP code is invalid" }));
   });
 });

@@ -94,4 +94,48 @@ describe("SigninForm", () => {
     fireEvent.click(screen.getByRole("button", { name: "Log in" }));
     await waitFor(() => expect(h.showError).toHaveBeenCalledWith({ errors: "Bad login" }));
   });
+
+  it("navigates to the oidc permission page on success in oidc mode", async () => {
+    h.mutateAsync.mockResolvedValue({ enable_mfa: false });
+    renderForm({ mode: "oidc", oidcContext: { clientId: "c1", scope: "openid" } });
+    fillCredentials();
+    fireEvent.click(screen.getByRole("button", { name: "Log in" }));
+    await waitFor(() => expect(h.setAuthenticated).toHaveBeenCalled());
+    await waitFor(() =>
+      expect(h.navigate).toHaveBeenCalledWith(
+        expect.stringContaining("/oidc/permission?"),
+      ),
+    );
+  });
+
+  it("redirects to the oidc mfa-check page in oidc mode", async () => {
+    h.mutateAsync.mockResolvedValue({ enable_mfa: true, mfaId: "m2", mfaType: "sms" });
+    renderForm({ mode: "oidc", oidcContext: { clientId: "c1" } });
+    fillCredentials();
+    fireEvent.click(screen.getByRole("button", { name: "Log in" }));
+    await waitFor(() =>
+      expect(h.navigate).toHaveBeenCalledWith(
+        expect.stringContaining("/oidc/mfa-check?mfa_id=m2&mfa_type=sms"),
+      ),
+    );
+  });
+
+  it("shows the captcha when the server requires it", async () => {
+    h.mutateAsync.mockRejectedValue({
+      errors: { error: "captcha_enabled", captcha_site_key: "sk-1", error_description: "Captcha needed" },
+    });
+    renderForm();
+    fillCredentials();
+    fireEvent.click(screen.getByRole("button", { name: "Log in" }));
+    await waitFor(() => expect(h.resetCaptcha).toHaveBeenCalled());
+    await waitFor(() => expect(screen.getByTestId("captcha")).toBeInTheDocument());
+  });
+
+  it("shows a generic error toast for a non-structured failure", async () => {
+    h.mutateAsync.mockRejectedValue("kaput");
+    renderForm();
+    fillCredentials();
+    fireEvent.click(screen.getByRole("button", { name: "Log in" }));
+    await waitFor(() => expect(h.showError).toHaveBeenCalledWith({ errors: "Something went wrong" }));
+  });
 });
