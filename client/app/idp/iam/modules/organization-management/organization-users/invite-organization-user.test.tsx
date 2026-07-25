@@ -202,4 +202,75 @@ describe("InviteOrganizationUser", () => {
       expect(screen.queryByText("Add a member to this organization.")).toBeNull(),
     );
   });
+
+  it("falls back to a generic error message when the invite fails with no errors", async () => {
+    h.createUser.mockResolvedValue({ isSuccess: false });
+    const user = userEvent.setup();
+    renderInvite();
+    await fillNewMember(user);
+
+    const submit = screen.getByRole("button", { name: /send invite/i });
+    await waitFor(() => expect(submit).not.toBeDisabled());
+    await user.click(submit);
+
+    await waitFor(() =>
+      expect(h.showErrorToast).toHaveBeenCalledWith({ errors: "Failed to invite member" }),
+    );
+  });
+
+  it("shows the organization picker and lets a real org be selected", async () => {
+    h.config = { data: { isMultiOrgEnabled: true }, isLoading: false };
+    h.orgs = {
+      data: {
+        organizations: [
+          { itemId: "org-1", name: "Acme", isDisabled: false },
+          { itemId: "org-2", name: "Beta", isDisabled: false },
+        ],
+      },
+      isLoading: false,
+    };
+    const user = userEvent.setup();
+    renderInvite();
+    await user.click(screen.getByRole("button", { name: /invite member/i }));
+    await user.type(screen.getByPlaceholderText("name@company.com"), "member@org.com");
+
+    const combobox = await screen.findByRole("combobox");
+    await user.click(combobox);
+    await user.click(await screen.findByText("Beta"));
+
+    await waitFor(() =>
+      expect(screen.getByRole("combobox")).toHaveTextContent("Beta"),
+    );
+  });
+
+  it("selects the default organization when the workspace has no real orgs", async () => {
+    h.config = { data: { isMultiOrgEnabled: true }, isLoading: false };
+    h.orgs = { data: { organizations: [] }, isLoading: false };
+    const user = userEvent.setup();
+    renderInvite();
+    await user.click(screen.getByRole("button", { name: /invite member/i }));
+    await user.type(screen.getByPlaceholderText("name@company.com"), "member@org.com");
+
+    const combobox = await screen.findByRole("combobox");
+    await waitFor(() => expect(combobox).toHaveTextContent("Default"));
+  });
+
+  it("drops the selection when the existing user already belongs to that org", async () => {
+    h.config = { data: { isMultiOrgEnabled: true }, isLoading: false };
+    h.orgs = {
+      data: { organizations: [{ itemId: "org-1", name: "Acme", isDisabled: false }] },
+      isLoading: false,
+    };
+    h.checkExists = {
+      data: { userId: "u1", organizationIds: ["org-1"] },
+      isFetching: false,
+    };
+    const user = userEvent.setup();
+    renderInvite();
+    await user.click(screen.getByRole("button", { name: /invite member/i }));
+    await user.type(screen.getByPlaceholderText("name@company.com"), "existing@org.com");
+
+    const combobox = await screen.findByRole("combobox");
+    await waitFor(() => expect(combobox).toHaveTextContent("Select organization"));
+  });
 });

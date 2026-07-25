@@ -101,4 +101,49 @@ describe("DashboardLayoutProvider", () => {
     });
     expect(screen.getByTestId("open")).toHaveTextContent("true");
   });
+
+  it("collapses the persisted sidebar on mobile at mount", () => {
+    h.isMobile = true;
+    act(() => {
+      renderProvider({ persist: true, storageKey: "sk", isOpen: true });
+    });
+    expect(screen.getByTestId("open")).toHaveTextContent("false");
+  });
+
+  it("restores a persisted sub-menu id from localStorage", () => {
+    localStorage.setItem("subMenuId", "services-9");
+    act(() => {
+      renderProvider();
+    });
+    expect(screen.getByTestId("submenu-id")).toHaveTextContent("services-9");
+  });
+
+  it("opens the sub-menu when on a /services route on desktop", () => {
+    h.pathname = "/services/foo";
+    localStorage.setItem("sk", "false");
+    act(() => {
+      renderProvider({ persist: true, storageKey: "sk", isOpen: false });
+    });
+    expect(screen.getByTestId("submenu-open")).toHaveTextContent("true");
+  });
+
+  it("persists a closed state to localStorage when closing with persist enabled", () => {
+    renderProvider({ persist: true, storageKey: "sk", isOpen: true });
+    fireEvent.click(screen.getByText("close"));
+    expect(localStorage.getItem("sk")).toBe("false");
+  });
+
+  it("provides no-op defaults when consumed without a provider", () => {
+    render(<Consumer />);
+    expect(screen.getByTestId("open")).toHaveTextContent("false");
+    // Invoking each default must not throw.
+    fireEvent.click(screen.getByText("toggle"));
+    fireEvent.click(screen.getByText("close"));
+    fireEvent.click(screen.getByText("close-np"));
+    fireEvent.click(screen.getByText("toggle-sub"));
+    fireEvent.click(screen.getByText("show-sub"));
+    fireEvent.click(screen.getByText("set-id"));
+    fireEvent.click(screen.getByText("set-search"));
+    expect(screen.getByTestId("submenu-id")).toHaveTextContent("none");
+  });
 });

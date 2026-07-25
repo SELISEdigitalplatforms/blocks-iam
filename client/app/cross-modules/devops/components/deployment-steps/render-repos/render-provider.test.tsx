@@ -20,9 +20,21 @@ vi.mock("@/cross-modules/devops/models/git-dummy", () => ({
   providers: [
     { id: "github", name: "GitHub", icon: "github", active: true },
     { id: "gitlab", name: "GitLab", icon: "gitlab", active: true },
+    { id: "bitbucket", name: "Bitbucket", icon: "bitbucket", active: true },
+    { id: "azure", name: "Azure", icon: "azure", active: true },
+    { id: "aws", name: "AWS", icon: "aws", active: true },
+    { id: "mystery", name: "Mystery", icon: "github", active: true },
   ],
 }));
-vi.mock("@/cross-modules/devops/models/github-info", () => ({ iconMap: { github: "/gh.svg", gitlab: "/gl.svg" } }));
+vi.mock("@/cross-modules/devops/models/github-info", () => ({
+  iconMap: {
+    github: "/gh.svg",
+    gitlab: "/gl.svg",
+    bitbucket: "/bb.svg",
+    azure: "/az.svg",
+    aws: "/aws.svg",
+  },
+}));
 vi.mock("@/cross-modules/devops/services/providers.service", () => ({
   authenticateWithGithub: (...a: unknown[]) => h.github(...a),
   authenticateWithGitlab: () => h.gitlab(),
@@ -78,5 +90,50 @@ describe("ProviderButtons", () => {
     renderButtons();
     fireEvent.click(screen.getByText("Continue with GitLab"));
     expect(h.gitlab).toHaveBeenCalled();
+  });
+
+  it("navigates to the destination when github is authorized and no onClose is given", () => {
+    h.verifyAuth = { isSuccess: true };
+    renderButtons();
+    fireEvent.click(screen.getByText("Continue with GitHub"));
+    expect(h.navigate).toHaveBeenCalledWith("/devops/configure");
+  });
+
+  it("closes via the storage reload listener after github authentication", () => {
+    const onClose = vi.fn();
+    renderButtons({ onClose });
+    fireEvent.click(screen.getByText("Continue with GitHub"));
+    expect(h.github).toHaveBeenCalled();
+
+    const event = new StorageEvent("storage", { key: "isReload", newValue: "true" });
+    window.dispatchEvent(event);
+
+    expect(localStorage.getItem("isReload")).toBe("false");
+    expect(onClose).toHaveBeenCalledWith(true);
+  });
+
+  it("triggers bitbucket, azure and aws flows", () => {
+    renderButtons();
+    fireEvent.click(screen.getByText("Continue with Bitbucket"));
+    expect(h.bitbucket).toHaveBeenCalled();
+    fireEvent.click(screen.getByText("Continue with Azure"));
+    expect(h.azure).toHaveBeenCalled();
+    fireEvent.click(screen.getByText("Continue with AWS"));
+    expect(h.aws).toHaveBeenCalled();
+  });
+
+  it("logs an error for an unknown provider", () => {
+    const spy = vi.spyOn(console, "error").mockImplementation(() => {});
+    renderButtons();
+    fireEvent.click(screen.getByText("Continue with Mystery"));
+    expect(spy).toHaveBeenCalledWith("Unknown provider:", "mystery");
+    spy.mockRestore();
+  });
+
+  it("calls onClose immediately when closeOnProviderSelect is set", () => {
+    const onClose = vi.fn();
+    renderButtons({ onClose, closeOnProviderSelect: true });
+    fireEvent.click(screen.getByText("Continue with GitLab"));
+    expect(onClose).toHaveBeenCalled();
   });
 });
