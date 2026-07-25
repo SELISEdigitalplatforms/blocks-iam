@@ -6,9 +6,8 @@ const h = vi.hoisted(() => {
   const React = require("react");
   // Each provider form is stubbed to a button that invokes the injected save
   // handler. Defined inside vi.hoisted so the mock factories can reference it.
-  const stubForm =
-    (label: string) =>
-    ({ save }: { save: (data: unknown) => void }) =>
+  const stubForm = (label: string) => {
+    const StubForm = ({ save }: { save: (data: unknown) => void }) =>
       React.createElement(
         "button",
         {
@@ -26,6 +25,9 @@ const h = vi.hoisted(() => {
         },
         `save-${label}`,
       );
+    StubForm.displayName = `StubForm(${label})`;
+    return StubForm;
+  };
   return {
     stubForm,
     useGetSsoCredentialById: vi.fn(),

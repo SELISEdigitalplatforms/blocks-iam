@@ -22,15 +22,15 @@ vi.mock("@blocks-communication/mail/hooks/use-email-template", () => ({
 vi.mock("@/components/breadcrumb/breadcrumb", () => ({ default: () => <nav data-testid="breadcrumb" /> }));
 vi.mock("@blocks-communication/mail/components/bee-plugin-starter/bee-plugin-starter", async () => {
   const React = await import("react");
-  return {
-    default: React.forwardRef(
-      (props: { onBeeSave: (d: { htmlFile: string; jsonFile: string }) => void }, ref) => {
-        h.lastOnBeeSave = props.onBeeSave;
-        React.useImperativeHandle(ref, () => h.beeHandle);
-        return <div data-testid="bee-plugin" />;
-      },
-    ),
-  };
+  const BeePluginStub = React.forwardRef(
+    (props: { onBeeSave: (d: { htmlFile: string; jsonFile: string }) => void }, ref) => {
+      h.lastOnBeeSave = props.onBeeSave;
+      React.useImperativeHandle(ref, () => h.beeHandle);
+      return <div data-testid="bee-plugin" />;
+    },
+  );
+  BeePluginStub.displayName = "BeePluginStub";
+  return { default: BeePluginStub };
 });
 
 import { EditEmailTemplate } from "./email-template-edit";

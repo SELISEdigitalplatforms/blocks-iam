@@ -4,10 +4,13 @@ import { describe, expect, it } from "vitest";
 import { useFilteredMenus } from "./use-filtered-menus";
 import type { Menu } from "@/models/menu-models";
 
-const wrapperAt = (path: string) =>
-  ({ children }: { children: React.ReactNode }) => (
+const wrapperAt = (path: string) => {
+  const Wrapper = ({ children }: { children: React.ReactNode }) => (
     <MemoryRouter initialEntries={[path]}>{children}</MemoryRouter>
   );
+  Wrapper.displayName = "RouterWrapper";
+  return Wrapper;
+};
 
 const menu = (partial: Partial<Menu> & { id?: string }): Menu =>
   ({ label: partial.id, ...partial }) as Menu;
