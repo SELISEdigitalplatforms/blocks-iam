@@ -109,4 +109,37 @@ describe("SignupForm", () => {
     fireEvent.click(screen.getByRole("button", { name: /Create Account/ }));
     await waitFor(() => expect(screen.getByText("Already exists")).toBeInTheDocument());
   });
+
+  it("shows the first error from an array error response", async () => {
+    h.mutateAsync.mockResolvedValue({ isSuccess: false, errors: ["Array error first"] });
+    renderForm();
+    fillForm();
+    await waitFor(() =>
+      expect(screen.getByRole("button", { name: /Create Account/ })).toBeEnabled(),
+    );
+    fireEvent.click(screen.getByRole("button", { name: /Create Account/ }));
+    await waitFor(() => expect(screen.getByText("Array error first")).toBeInTheDocument());
+  });
+
+  it("shows the mapped error when registration throws with structured errors", async () => {
+    h.mutateAsync.mockRejectedValue({ errors: { email: "Thrown object error" } });
+    renderForm();
+    fillForm();
+    await waitFor(() =>
+      expect(screen.getByRole("button", { name: /Create Account/ })).toBeEnabled(),
+    );
+    fireEvent.click(screen.getByRole("button", { name: /Create Account/ }));
+    await waitFor(() => expect(screen.getByText("Thrown object error")).toBeInTheDocument());
+  });
+
+  it("shows a generic error when registration throws a plain value", async () => {
+    h.mutateAsync.mockRejectedValue("plain failure");
+    renderForm();
+    fillForm();
+    await waitFor(() =>
+      expect(screen.getByRole("button", { name: /Create Account/ })).toBeEnabled(),
+    );
+    fireEvent.click(screen.getByRole("button", { name: /Create Account/ }));
+    await waitFor(() => expect(screen.getByText("Something went wrong")).toBeInTheDocument());
+  });
 });

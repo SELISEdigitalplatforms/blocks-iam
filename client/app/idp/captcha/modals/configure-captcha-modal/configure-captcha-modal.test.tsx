@@ -60,4 +60,17 @@ describe("ConfigureCaptchaModal", () => {
       expect(screen.getByText(/Edit Google reCAPTCHA/)).toBeInTheDocument(),
     );
   });
+
+  it("filters out already-configured providers from the select", async () => {
+    h.configsResult = {
+      data: { configurations: [{ provider: "recaptcha" }] },
+      isLoading: false,
+      isFetching: false,
+    };
+    renderModal();
+    fireEvent.click(screen.getByText("Open"));
+    await waitFor(() => expect(screen.getByText("Add Captcha Configuration")).toBeInTheDocument());
+    expect(screen.getByText("Captcha Provider")).toBeInTheDocument();
+  });
+
 });
