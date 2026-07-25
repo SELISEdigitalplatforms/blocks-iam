@@ -93,4 +93,41 @@ describe("GenerateTokenModal", () => {
     renderModal();
     expect(screen.getByText("Generating...")).toBeInTheDocument();
   });
+
+  it("logs an error when the mutation fails", () => {
+    const errSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+    h.mutate.mockImplementation((_payload, opts) => opts.onError(new Error("boom")));
+    renderModal();
+    fireEvent.change(screen.getByPlaceholderText("Write here ..."), { target: { value: "tok" } });
+    fireEvent.click(screen.getByRole("button", { name: "Generate" }));
+    expect(errSpy).toHaveBeenCalledWith("Failed to generate token:", expect.any(Error));
+    errSpy.mockRestore();
+  });
+
+  it("uses the dev-cloud client id when running on the dev host", () => {
+    vi.stubEnv("BLOCKS_APP_URL", "https://dev-cloud.seliseblocks.com");
+    renderModal();
+    fireEvent.change(screen.getByPlaceholderText("Write here ..."), { target: { value: "tok" } });
+    fireEvent.click(screen.getByRole("button", { name: "Generate" }));
+    expect(h.mutate.mock.calls[0][0].clientId).toBe("11640778-423d-41e6-acba-1cf947cecb54");
+    vi.unstubAllEnvs();
+  });
+
+  it("uses the staging client id when running on the staging host", () => {
+    vi.stubEnv("BLOCKS_APP_URL", "https://stg-cloud.seliseblocks.com");
+    renderModal();
+    fireEvent.change(screen.getByPlaceholderText("Write here ..."), { target: { value: "tok" } });
+    fireEvent.click(screen.getByRole("button", { name: "Generate" }));
+    expect(h.mutate.mock.calls[0][0].clientId).toBe("4fe41cda-cb8d-458e-8a95-010549bd6d7e");
+    vi.unstubAllEnvs();
+  });
+
+  it("uses the production client id when running on the production host", () => {
+    vi.stubEnv("BLOCKS_APP_URL", "https://cloud.seliseblocks.com");
+    renderModal();
+    fireEvent.change(screen.getByPlaceholderText("Write here ..."), { target: { value: "tok" } });
+    fireEvent.click(screen.getByRole("button", { name: "Generate" }));
+    expect(h.mutate.mock.calls[0][0].clientId).toBe("dce12fb6-3ed7-4704-9426-81d7d957dfb8");
+    vi.unstubAllEnvs();
+  });
 });
