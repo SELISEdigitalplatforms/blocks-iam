@@ -82,4 +82,49 @@ describe("CreateClientCredential", () => {
     fireEvent.click(screen.getByRole("button", { name: "Add" }));
     await waitFor(() => expect(h.showError).toHaveBeenCalledWith({ errors: "bad request" }));
   });
+
+  it("shows the mapped error toast when creation throws structured errors", async () => {
+    h.saveClient.mockRejectedValue({ errors: { name: "taken" } });
+    render(<CreateClientCredential />);
+    fireEvent.click(screen.getByText("Create"));
+    await waitFor(() => expect(screen.getByText("New Access Token")).toBeInTheDocument());
+    fillValidForm();
+    fireEvent.click(screen.getByRole("button", { name: "Add" }));
+    await waitFor(() => expect(h.showError).toHaveBeenCalledWith({ errors: { name: "taken" } }));
+  });
+
+  it("shows a generic error toast when creation throws a plain value", async () => {
+    h.saveClient.mockRejectedValue("boom");
+    render(<CreateClientCredential />);
+    fireEvent.click(screen.getByText("Create"));
+    await waitFor(() => expect(screen.getByText("New Access Token")).toBeInTheDocument());
+    fillValidForm();
+    fireEvent.click(screen.getByRole("button", { name: "Add" }));
+    await waitFor(() => expect(h.showError).toHaveBeenCalledWith({ errors: "Something went wrong" }));
+  });
+
+  it("selects and deselects a role and filters the role list by search", async () => {
+    render(<CreateClientCredential />);
+    fireEvent.click(screen.getByText("Create"));
+    await waitFor(() => expect(screen.getByText("admin")).toBeInTheDocument());
+
+    const checkbox = screen.getByRole("checkbox");
+    fireEvent.click(checkbox);
+    expect(checkbox.getAttribute("aria-checked")).toBe("true");
+    fireEvent.click(checkbox);
+    expect(checkbox.getAttribute("aria-checked")).toBe("false");
+
+    fireEvent.change(screen.getByPlaceholderText("Search by role name"), {
+      target: { value: "zzz" },
+    });
+    await waitFor(() => expect(screen.getByText("No roles found")).toBeInTheDocument());
+  });
+
+  it("resets the form when the dialog is closed", async () => {
+    render(<CreateClientCredential />);
+    fireEvent.click(screen.getByText("Create"));
+    await waitFor(() => expect(screen.getByText("New Access Token")).toBeInTheDocument());
+    fireEvent.keyDown(document.body, { key: "Escape" });
+    await waitFor(() => expect(screen.queryByText("New Access Token")).not.toBeInTheDocument());
+  });
 });
