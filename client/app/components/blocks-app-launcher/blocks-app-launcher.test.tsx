@@ -1,4 +1,4 @@
-import { render, screen, waitFor } from "@testing-library/react";
+import { render, screen, waitFor, fireEvent } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { MemoryRouter } from "react-router-dom";
 
@@ -73,5 +73,50 @@ describe("BlocksAppLauncher", () => {
     await waitFor(() => expect(screen.getByLabelText("SELISE Blocks apps")).toBeInTheDocument());
     // The launcher reads favourites from localStorage; default seed is iam + localization.
     expect(localStorage.getItem("blocks-app-favourites")).toBeNull();
+  });
+
+  const openLauncher = async () => {
+    render(
+      <MemoryRouter>
+        <BlocksAppLauncher />
+      </MemoryRouter>,
+    );
+    await waitFor(() => expect(screen.getByLabelText("SELISE Blocks apps")).toBeInTheDocument());
+    fireEvent.click(screen.getByLabelText("SELISE Blocks apps"));
+  };
+
+  it("shows favourite apps and the more-apps section when opened", async () => {
+    await openLauncher();
+    expect(screen.getByText("Your favourites")).toBeInTheDocument();
+    expect(screen.getByText("IAM")).toBeInTheDocument();
+    expect(screen.getByText("Localization")).toBeInTheDocument();
+    expect(screen.getByText("More from SELISE Blocks")).toBeInTheDocument();
+    // A non-favourite app appears in the more-apps grid.
+    expect(screen.getByText("Logic")).toBeInTheDocument();
+  });
+
+  it("shows an error toast when launching an app fails", async () => {
+    global.fetch = vi.fn().mockRejectedValue(new Error("network"));
+    await openLauncher();
+    fireEvent.click(screen.getByText("IAM"));
+    await waitFor(() =>
+      expect(showError).toHaveBeenCalledWith({ errors: "Unable to open app. Please try again." }),
+    );
+  });
+
+  it("toggles a favourite through the manage-favourites dialog", async () => {
+    await openLauncher();
+    fireEvent.click(screen.getByLabelText("Edit favourites"));
+    expect(await screen.findByText("Manage Favourites")).toBeInTheDocument();
+    // Logic starts as a non-favourite; toggling it adds it to the persisted set.
+    const logicButtons = screen
+      .getAllByText("Logic")
+      .map((el) => el.closest("button"))
+      .filter(Boolean) as HTMLButtonElement[];
+    fireEvent.click(logicButtons[logicButtons.length - 1]);
+    await waitFor(() => {
+      const stored = JSON.parse(localStorage.getItem("blocks-app-favourites") || "[]");
+      expect(stored).toContain("logic");
+    });
   });
 });
