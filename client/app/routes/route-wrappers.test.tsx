@@ -6,9 +6,13 @@ import { describe, expect, it, vi } from "vitest";
 // layout div and/or forwarding route params). We stub each page module so the
 // test asserts the wrapper wires the child in without pulling the heavy page
 // tree into the graph.
-const stub = (id: string) => ({ children }: { children?: React.ReactNode }) => (
-  <div data-testid={id}>{children}</div>
-);
+const stub = (id: string) => {
+  const Stub = ({ children }: { children?: React.ReactNode }) => (
+    <div data-testid={id}>{children}</div>
+  );
+  Stub.displayName = `Stub(${id})`;
+  return Stub;
+};
 
 vi.mock("@blocks-idp/authentication/pages/auth-logs", () => ({ AuthLogs: stub("auth-logs") }));
 vi.mock("@blocks-idp/authentication/pages/authentication-config", () => ({
