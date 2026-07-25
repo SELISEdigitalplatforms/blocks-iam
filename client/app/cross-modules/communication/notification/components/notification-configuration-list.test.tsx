@@ -1,4 +1,4 @@
-import { render, screen } from "@testing-library/react";
+import { render, screen, fireEvent, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const h = vi.hoisted(() => ({
@@ -82,5 +82,45 @@ describe("NotificationConfigurationList", () => {
     };
     render(<NotificationConfigurationList />);
     expect(screen.getByText("My Config")).toBeInTheDocument();
+  });
+
+  const openRowMenu = () => {
+    fireEvent.pointerDown(
+      screen.getByRole("button"),
+      { button: 0, ctrlKey: false, pointerType: "mouse" },
+    );
+  };
+
+  it("opens the edit dialog from the row menu", async () => {
+    render(<NotificationConfigurationList />);
+    // The always-mounted add dialog renders one modal stub before editing.
+    expect(screen.getAllByTestId("new-config-modal")).toHaveLength(1);
+    openRowMenu();
+    fireEvent.click(await screen.findByText("Edit"));
+    // Editing mounts a second modal stub for the selected configuration.
+    await waitFor(() => expect(screen.getAllByTestId("new-config-modal")).toHaveLength(2));
+  });
+
+  it("deletes a configuration and shows a success toast", async () => {
+    h.deleteConfig.mockResolvedValue({ isSuccess: true });
+    render(<NotificationConfigurationList />);
+    openRowMenu();
+    fireEvent.click(await screen.findByText("Delete"));
+    fireEvent.click(await screen.findByText("confirm-delete"));
+    await waitFor(() => expect(h.deleteConfig).toHaveBeenCalled());
+    await waitFor(() =>
+      expect(h.toast).toHaveBeenCalledWith(expect.objectContaining({ variant: "success" })),
+    );
+  });
+
+  it("shows an error toast when deletion fails", async () => {
+    h.deleteConfig.mockResolvedValue({ isSuccess: false, errors: "nope" });
+    render(<NotificationConfigurationList />);
+    openRowMenu();
+    fireEvent.click(await screen.findByText("Delete"));
+    fireEvent.click(await screen.findByText("confirm-delete"));
+    await waitFor(() =>
+      expect(h.toast).toHaveBeenCalledWith(expect.objectContaining({ variant: "destructive" })),
+    );
   });
 });
