@@ -1,4 +1,4 @@
-import { render, screen } from "@testing-library/react";
+import { render, screen, fireEvent, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { MemoryRouter } from "react-router-dom";
 
@@ -56,5 +56,78 @@ describe("UserDropdownMenu", () => {
       </MemoryRouter>,
     );
     expect(container.querySelector("svg")).not.toBeNull();
+  });
+
+  const openMenu = () =>
+    fireEvent.pointerDown(
+      screen.getByLabelText("Open user menu"),
+      { button: 0, ctrlKey: false, pointerType: "mouse" },
+    );
+
+  it("shows the profile header, roles and profile link when opened", async () => {
+    h.me = {
+      data: {
+        firstName: "Ada",
+        lastName: "Lovelace",
+        email: "ada@x.com",
+        roles: { o1: ["Admin"] },
+        lastUsedOrganizationId: "o1",
+      },
+    };
+    render(
+      <MemoryRouter>
+        <UserDropdownMenu />
+      </MemoryRouter>,
+    );
+    openMenu();
+    expect(await screen.findByText("Ada Lovelace")).toBeInTheDocument();
+    expect(screen.getByText("ada@x.com")).toBeInTheDocument();
+    expect(screen.getByText(/Admin/)).toBeInTheDocument();
+    expect(screen.getByText("My Profile").closest("a")).toHaveAttribute("href", "/profile");
+  });
+
+  it("lists organizations and marks the active one", async () => {
+    h.me = { data: { firstName: "Ada", roles: {}, lastUsedOrganizationId: "o1" } };
+    h.orgs = {
+      data: { organizations: [{ itemId: "o1", name: "Acme" }, { itemId: "o2", name: "Globex" }] },
+      isLoading: false,
+    };
+    render(
+      <MemoryRouter>
+        <UserDropdownMenu />
+      </MemoryRouter>,
+    );
+    openMenu();
+    expect(await screen.findByText("Acme")).toBeInTheDocument();
+    expect(screen.getByText("Globex")).toBeInTheDocument();
+  });
+
+  it("shows the empty organizations state", async () => {
+    h.orgs = { data: { organizations: [] }, isLoading: false };
+    render(
+      <MemoryRouter>
+        <UserDropdownMenu />
+      </MemoryRouter>,
+    );
+    openMenu();
+    expect(await screen.findByText("No organizations found.")).toBeInTheDocument();
+  });
+
+  it("logs out and redirects to login", async () => {
+    h.logout.mockResolvedValue(undefined);
+    const replace = vi.fn();
+    Object.defineProperty(window, "location", {
+      value: { origin: "http://localhost", replace },
+      configurable: true,
+    });
+    render(
+      <MemoryRouter>
+        <UserDropdownMenu />
+      </MemoryRouter>,
+    );
+    openMenu();
+    fireEvent.click(await screen.findByText("Log out"));
+    await waitFor(() => expect(h.logout).toHaveBeenCalled());
+    await waitFor(() => expect(replace).toHaveBeenCalledWith("http://localhost/login"));
   });
 });
