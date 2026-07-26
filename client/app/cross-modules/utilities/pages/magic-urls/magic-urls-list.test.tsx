@@ -89,4 +89,36 @@ describe("MagicUrlsList", () => {
       "/utilities/magic-url/details/mu1",
     );
   });
+
+  const openRowMenu = () => {
+    const buttons = screen.getAllByRole("button");
+    fireEvent.pointerDown(
+      buttons[buttons.length - 1],
+      { button: 0, ctrlKey: false, pointerType: "mouse" },
+    );
+  };
+
+  it("navigates to details from the row action menu", async () => {
+    renderList({ data: [row], isLoading: false });
+    openRowMenu();
+    fireEvent.click(await screen.findByText("View Details"));
+    expect(h.navigateMock).toHaveBeenCalledWith("/utilities/magic-url/details/mu1");
+  });
+
+  it("opens the short link in a new tab", async () => {
+    const openSpy = vi.spyOn(window, "open").mockImplementation(() => null);
+    renderList({ data: [row], isLoading: false });
+    openRowMenu();
+    fireEvent.click(await screen.findByText("Go to Link"));
+    expect(openSpy).toHaveBeenCalledWith("https://s.io/abc", "_blank");
+    openSpy.mockRestore();
+  });
+
+  it("deactivates a magic url after confirmation", async () => {
+    renderList({ data: [row], isLoading: false });
+    openRowMenu();
+    fireEvent.click(await screen.findByText("Deactivate"));
+    fireEvent.click(await screen.findByRole("button", { name: "Deactivate" }));
+    expect(h.deactivateMagicUrl).toHaveBeenCalledWith("mu1", "t1", expect.any(Function));
+  });
 });

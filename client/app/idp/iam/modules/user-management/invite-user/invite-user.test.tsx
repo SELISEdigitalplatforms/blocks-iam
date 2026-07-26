@@ -42,6 +42,8 @@ const renderInvite = () => render(<InviteUser />, { wrapper: createWrapper() });
 beforeEach(() => {
   vi.clearAllMocks();
   h.checkExists = { data: undefined, isFetching: false };
+  h.orgs = { data: { organizations: [] as unknown[] }, isLoading: false };
+  h.config = { data: { isMultiOrgEnabled: false }, isLoading: false };
 });
 
 describe("InviteUser", () => {
@@ -93,5 +95,131 @@ describe("InviteUser", () => {
       platform: "blocks_portal",
     });
     expect(h.showSuccessToast).toHaveBeenCalledWith({ description: "Invitation is sent" });
+  });
+
+  const fillNewUser = async (user: ReturnType<typeof userEvent.setup>) => {
+    await user.click(screen.getByRole("button", { name: /invite user/i }));
+    await user.type(screen.getByPlaceholderText("name@company.com"), "new@user.com");
+    await user.type(await screen.findByPlaceholderText("Enter first name"), "Ada");
+    await user.type(screen.getByPlaceholderText("Enter last name"), "Lovelace");
+  };
+
+  it("shows an error toast when user creation is unsuccessful", async () => {
+    h.createUser.mockResolvedValue({ isSuccess: false, errors: { email: "already invited" } });
+    const user = userEvent.setup();
+    renderInvite();
+    await fillNewUser(user);
+
+    const submit = screen.getByRole("button", { name: /send invite/i });
+    await waitFor(() => expect(submit).not.toBeDisabled());
+    await user.click(submit);
+
+    await waitFor(() => expect(h.showErrorToast).toHaveBeenCalledWith({ errors: "already invited" }));
+    expect(h.showSuccessToast).not.toHaveBeenCalled();
+  });
+
+  it("shows the mapped error toast when creation throws with errors", async () => {
+    h.createUser.mockRejectedValue({ errors: { email: "boom" } });
+    const user = userEvent.setup();
+    renderInvite();
+    await fillNewUser(user);
+
+    const submit = screen.getByRole("button", { name: /send invite/i });
+    await waitFor(() => expect(submit).not.toBeDisabled());
+    await user.click(submit);
+
+    await waitFor(() =>
+      expect(h.showErrorToast).toHaveBeenCalledWith({ errors: { email: "boom" } }),
+    );
+  });
+
+  it("shows a generic error toast when creation throws a plain error", async () => {
+    h.createUser.mockRejectedValue(new Error("network"));
+    const user = userEvent.setup();
+    renderInvite();
+    await fillNewUser(user);
+
+    const submit = screen.getByRole("button", { name: /send invite/i });
+    await waitFor(() => expect(submit).not.toBeDisabled());
+    await user.click(submit);
+
+    await waitFor(() =>
+      expect(h.showErrorToast).toHaveBeenCalledWith({ errors: "Something went wrong" }),
+    );
+  });
+
+  it("warns and blocks submit when an existing user is found with multi-org disabled", async () => {
+    h.checkExists = { data: { userId: "u1", organizationIds: [] }, isFetching: false };
+    const user = userEvent.setup();
+    renderInvite();
+    await user.click(screen.getByRole("button", { name: /invite user/i }));
+    await user.type(screen.getByPlaceholderText("name@company.com"), "existing@user.com");
+
+    expect(
+      await screen.findByText("A user with this email already exists in the system."),
+    ).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /grant access/i })).toBeDisabled();
+  });
+
+  it("grants an existing user access to a selected organization", async () => {
+    h.config = { data: { isMultiOrgEnabled: true }, isLoading: false };
+    h.orgs = {
+      data: { organizations: [{ itemId: "org-1", name: "Acme Org", isDisabled: false }] },
+      isLoading: false,
+    };
+    h.checkExists = { data: { userId: "u1", organizationIds: [] }, isFetching: false };
+    h.updateUserAccess.mockResolvedValue({ isSuccess: true });
+    const user = userEvent.setup();
+    renderInvite();
+    await user.click(screen.getByRole("button", { name: /invite user/i }));
+    await user.type(screen.getByPlaceholderText("name@company.com"), "existing@user.com");
+
+    await user.click(await screen.findByRole("combobox"));
+    await user.click(await screen.findByText("Acme Org"));
+
+    const submit = screen.getByRole("button", { name: /grant access/i });
+    await waitFor(() => expect(submit).not.toBeDisabled());
+    await user.click(submit);
+
+    await waitFor(() => expect(h.updateUserAccess).toHaveBeenCalled());
+    expect(h.updateUserAccess.mock.calls[0][0]).toMatchObject({ organizationId: "org-1" });
+    expect(h.showSuccessToast).toHaveBeenCalledWith({
+      description: "User granted access to the organization",
+    });
+  });
+
+  it("shows an error toast when granting access is unsuccessful", async () => {
+    h.config = { data: { isMultiOrgEnabled: true }, isLoading: false };
+    h.orgs = {
+      data: { organizations: [{ itemId: "org-1", name: "Acme Org", isDisabled: false }] },
+      isLoading: false,
+    };
+    h.checkExists = { data: { userId: "u1", organizationIds: [] }, isFetching: false };
+    h.updateUserAccess.mockResolvedValue({ isSuccess: false, errors: { org: "denied" } });
+    const user = userEvent.setup();
+    renderInvite();
+    await user.click(screen.getByRole("button", { name: /invite user/i }));
+    await user.type(screen.getByPlaceholderText("name@company.com"), "existing@user.com");
+
+    await user.click(await screen.findByRole("combobox"));
+    await user.click(await screen.findByText("Acme Org"));
+
+    const submit = screen.getByRole("button", { name: /grant access/i });
+    await waitFor(() => expect(submit).not.toBeDisabled());
+    await user.click(submit);
+
+    await waitFor(() => expect(h.showErrorToast).toHaveBeenCalledWith({ errors: "denied" }));
+  });
+
+  it("closes the dialog from the Cancel button", async () => {
+    const user = userEvent.setup();
+    renderInvite();
+    await user.click(screen.getByRole("button", { name: /invite user/i }));
+    await screen.findByText("Add a user to an organization.");
+
+    await user.click(screen.getByRole("button", { name: /cancel/i }));
+    await waitFor(() =>
+      expect(screen.queryByText("Add a user to an organization.")).toBeNull(),
+    );
   });
 });

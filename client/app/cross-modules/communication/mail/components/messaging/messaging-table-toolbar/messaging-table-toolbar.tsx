@@ -25,6 +25,27 @@ interface MessagingTableToolbarProps<TData> {
   table: Table<TData>;
 }
 
+function FilterContent<TData>({ table }: { table: Table<TData> }) {
+  return (
+    <>
+      {table.getColumn("configuration") && (
+        <DataTableFacetedFilter
+          column={table.getColumn("configuration")}
+          title="Configuration"
+          options={configurations}
+        />
+      )}
+      {table.getColumn("protocol") && (
+        <DataTableFacetedFilter
+          column={table.getColumn("protocol")}
+          title="Protocol"
+          options={protocols}
+        />
+      )}
+    </>
+  );
+}
+
 export function MessagingTableToolbar<TData>({ table }: MessagingTableToolbarProps<TData>) {
   const isMobile = useIsMobile();
   const isServiceBarOpen = useIsServiceBarOpenComm();
@@ -53,25 +74,6 @@ export function MessagingTableToolbar<TData>({ table }: MessagingTableToolbarPro
     setSearchValue("");
     table.resetColumnFilters();
   }
-
-  const FilterContent = () => (
-    <>
-      {table.getColumn("configuration") && (
-        <DataTableFacetedFilter
-          column={table.getColumn("configuration")}
-          title="Configuration"
-          options={configurations}
-        />
-      )}
-      {table.getColumn("protocol") && (
-        <DataTableFacetedFilter
-          column={table.getColumn("protocol")}
-          title="Protocol"
-          options={protocols}
-        />
-      )}
-    </>
-  );
 
   return (
     <div className="flex flex-col space-y-4 md:space-y-0">
@@ -102,7 +104,7 @@ export function MessagingTableToolbar<TData>({ table }: MessagingTableToolbarPro
               <SheetTitle className="mb-4">Filter</SheetTitle>
               <SheetDescription></SheetDescription>
               <div className="flex flex-col space-y-4">
-                <FilterContent />
+                <FilterContent table={table} />
                 <SheetClose asChild>
                   <Button className="mt-4" size="sm">
                     Show Results
@@ -130,7 +132,7 @@ export function MessagingTableToolbar<TData>({ table }: MessagingTableToolbarPro
           isVisible={isSearchVisible}
           setIsVisible={setIsSearchVisible}
         />
-        <FilterContent />
+        <FilterContent table={table} />
         {isFiltered && (
           <Button variant="outline" onClick={resetFilters} className="h-8 px-2 lg:px-3">
             Reset
