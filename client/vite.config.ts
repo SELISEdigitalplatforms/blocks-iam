@@ -69,6 +69,7 @@ export default defineConfig(({ mode }) => {
       coverage: {
         all: true,
         provider: "v8",
+        reporter: ["text", "json", "json-summary", "html"],
         include: ["app/**/*.{ts,tsx}"],
         exclude: [
           "app/**/*.test.*",

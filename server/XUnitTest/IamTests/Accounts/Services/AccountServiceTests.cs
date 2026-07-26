@@ -441,6 +441,171 @@ namespace XUnitTest.IamTests.Accounts.Services
             result.Errors.Should().ContainKey("Name");
         }
 
+        [Fact]
+        public async Task Signup_ExistingDisabledUser_ReturnsAccountDisabled()
+        {
+            var service = CreateService();
+            _repositoryMock.Setup(r => r.GetTenantConfigurationAsync())
+                .ReturnsAsync(TestDataBuilder.CreateTenantConfiguration());
+            var disabled = TestDataBuilder.CreateUser(active: false, isVerified: false);
+            disabled.Status = UserLifecycleStatus.Disabled;
+            _repositoryMock.Setup(r => r.GetUserByEmailAsync(It.IsAny<string>())).ReturnsAsync(disabled);
+
+            var result = await service.SignupAccountAsync(new SignupUserRequest { Email = "u@example.com" });
+
+            result.IsSuccess.Should().BeFalse();
+            result.Errors.Should().ContainKey("account_disabled");
+        }
+
+        [Fact]
+        public async Task Signup_ExistingInactiveUser_SsoLinkSucceeds_ReturnsSuccess()
+        {
+            var service = CreateService();
+            _repositoryMock.Setup(r => r.GetTenantConfigurationAsync())
+                .ReturnsAsync(TestDataBuilder.CreateTenantConfiguration(isSsoSignUpEnabled: true));
+            var existing = TestDataBuilder.CreateUser(itemId: "u-existing", active: false, isVerified: false);
+            _repositoryMock.Setup(r => r.GetUserByEmailAsync(It.IsAny<string>())).ReturnsAsync(existing);
+            _userMutationMock.Setup(m => m.ActivateAndLinkSocialIdentityAsync(It.IsAny<ActivateAndLinkSocialIdentityRequest>()))
+                .ReturnsAsync(new BaseMutationResponse { IsSuccess = true, ItemId = "u-existing" });
+
+            var result = await service.SignupAccountAsync(new SignupUserRequest
+            {
+                Email = "u@example.com",
+                IsSsoSignup = true,
+                Provider = "google",
+                ExternalUserId = "ext-1"
+            });
+
+            result.IsSuccess.Should().BeTrue();
+            result.ItemId.Should().Be("u-existing");
+        }
+
+        [Fact]
+        public async Task Signup_ExistingInactiveUser_SsoLinkFails_ReturnsLinkErrors()
+        {
+            var service = CreateService();
+            _repositoryMock.Setup(r => r.GetTenantConfigurationAsync())
+                .ReturnsAsync(TestDataBuilder.CreateTenantConfiguration(isSsoSignUpEnabled: true));
+            var existing = TestDataBuilder.CreateUser(itemId: "u-existing", active: false, isVerified: false);
+            _repositoryMock.Setup(r => r.GetUserByEmailAsync(It.IsAny<string>())).ReturnsAsync(existing);
+            _userMutationMock.Setup(m => m.ActivateAndLinkSocialIdentityAsync(It.IsAny<ActivateAndLinkSocialIdentityRequest>()))
+                .ReturnsAsync(new BaseMutationResponse
+                {
+                    IsSuccess = false,
+                    Errors = new Dictionary<string, string> { { "provider_conflict", "already linked" } }
+                });
+
+            var result = await service.SignupAccountAsync(new SignupUserRequest
+            {
+                Email = "u@example.com",
+                IsSsoSignup = true,
+                Provider = "google",
+                ExternalUserId = "ext-1"
+            });
+
+            result.IsSuccess.Should().BeFalse();
+            result.Errors.Should().ContainKey("provider_conflict");
+        }
+
+        [Fact]
+        public async Task Signup_ExistingInactiveUser_SsoLinkFailsWithoutErrors_ReturnsSocialLinkFailed()
+        {
+            var service = CreateService();
+            _repositoryMock.Setup(r => r.GetTenantConfigurationAsync())
+                .ReturnsAsync(TestDataBuilder.CreateTenantConfiguration(isSsoSignUpEnabled: true));
+            var existing = TestDataBuilder.CreateUser(itemId: "u-existing", active: false, isVerified: false);
+            _repositoryMock.Setup(r => r.GetUserByEmailAsync(It.IsAny<string>())).ReturnsAsync(existing);
+            _userMutationMock.Setup(m => m.ActivateAndLinkSocialIdentityAsync(It.IsAny<ActivateAndLinkSocialIdentityRequest>()))
+                .ReturnsAsync(new BaseMutationResponse { IsSuccess = false, Errors = null });
+
+            var result = await service.SignupAccountAsync(new SignupUserRequest
+            {
+                Email = "u@example.com",
+                IsSsoSignup = true,
+                Provider = "google",
+                ExternalUserId = "ext-1"
+            });
+
+            result.IsSuccess.Should().BeFalse();
+            result.Errors.Should().ContainKey("social_link_failed");
+        }
+
+        #endregion
+
+        #region ActivateAndLinkSocialIdentity
+
+        [Fact]
+        public async Task ActivateAndLink_NullRequest_ReturnsRequestError()
+        {
+            var service = CreateService();
+
+            var result = await service.ActivateAndLinkSocialIdentityAsync(null!);
+
+            result.IsSuccess.Should().BeFalse();
+            result.Errors.Should().ContainKey("request");
+        }
+
+        [Fact]
+        public async Task ActivateAndLink_MutationSucceeds_ReturnsSuccessWithItemId()
+        {
+            var service = CreateService();
+            _userMutationMock.Setup(m => m.ActivateAndLinkSocialIdentityAsync(It.IsAny<ActivateAndLinkSocialIdentityRequest>()))
+                .ReturnsAsync(new BaseMutationResponse { IsSuccess = true, ItemId = "u-1" });
+
+            var result = await service.ActivateAndLinkSocialIdentityAsync(new ActivateAndLinkSocialIdentityRequest
+            {
+                UserId = "u-1",
+                Provider = "google",
+                ProviderUserId = "ext-1",
+                Issuer = "google"
+            });
+
+            result.IsSuccess.Should().BeTrue();
+            result.ItemId.Should().Be("u-1");
+            result.Errors.Should().BeNull();
+        }
+
+        [Fact]
+        public async Task ActivateAndLink_MutationFailsWithErrors_PropagatesErrors()
+        {
+            var service = CreateService();
+            _userMutationMock.Setup(m => m.ActivateAndLinkSocialIdentityAsync(It.IsAny<ActivateAndLinkSocialIdentityRequest>()))
+                .ReturnsAsync(new BaseMutationResponse
+                {
+                    IsSuccess = false,
+                    ItemId = "u-1",
+                    Errors = new Dictionary<string, string> { { "provider_conflict", "already linked" } }
+                });
+
+            var result = await service.ActivateAndLinkSocialIdentityAsync(new ActivateAndLinkSocialIdentityRequest
+            {
+                UserId = "u-1",
+                Provider = "google",
+                ProviderUserId = "ext-1"
+            });
+
+            result.IsSuccess.Should().BeFalse();
+            result.Errors.Should().ContainKey("provider_conflict");
+        }
+
+        [Fact]
+        public async Task ActivateAndLink_MutationFailsWithoutErrors_ReturnsActivationFailed()
+        {
+            var service = CreateService();
+            _userMutationMock.Setup(m => m.ActivateAndLinkSocialIdentityAsync(It.IsAny<ActivateAndLinkSocialIdentityRequest>()))
+                .ReturnsAsync(new BaseMutationResponse { IsSuccess = false, Errors = null });
+
+            var result = await service.ActivateAndLinkSocialIdentityAsync(new ActivateAndLinkSocialIdentityRequest
+            {
+                UserId = "u-1",
+                Provider = "google",
+                ProviderUserId = "ext-1"
+            });
+
+            result.IsSuccess.Should().BeFalse();
+            result.Errors.Should().ContainKey("activation_failed");
+        }
+
         #endregion
 
         #region Activate / ProcessActivation

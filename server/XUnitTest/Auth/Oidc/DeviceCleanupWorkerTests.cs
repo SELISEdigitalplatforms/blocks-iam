@@ -15,16 +15,19 @@ namespace XUnitTest.Auth.Oidc
             var repo = new Mock<IDeviceAuthorizationRepository>();
             repo.Setup(r => r.GetExpiredIdsAsync(It.IsAny<DateTime>(), It.IsAny<int>(), It.IsAny<CancellationToken>()))
                 .ReturnsAsync(new List<string> { "a", "b" });
-            repo.Setup(r => r.MarkExpiredAsync(It.IsAny<IEnumerable<string>>(), It.IsAny<CancellationToken>()))
-                .ReturnsAsync(true);
             repo.Setup(r => r.EnsureIndexesAsync(It.IsAny<CancellationToken>()))
                 .Returns(Task.CompletedTask);
+
+            var markCalled = new TaskCompletionSource();
+            repo.Setup(r => r.MarkExpiredAsync(It.IsAny<IEnumerable<string>>(), It.IsAny<CancellationToken>()))
+                .ReturnsAsync(true)
+                .Callback(() => markCalled.TrySetResult());
 
             var worker = new DeviceCleanupWorker(repo.Object, NullLogger<DeviceCleanupWorker>.Instance);
 
             using var cts = new CancellationTokenSource();
             var execute = worker.StartAsync(cts.Token);
-            await Task.Delay(50);
+            await WaitOrTimeoutAsync(markCalled.Task);
             cts.Cancel();
             await execute;
 
@@ -37,8 +40,10 @@ namespace XUnitTest.Auth.Oidc
         public async Task ExecuteAsync_SkipsMarkExpired_WhenNoExpiredIds()
         {
             var repo = new Mock<IDeviceAuthorizationRepository>();
+            var sweepCalled = new TaskCompletionSource();
             repo.Setup(r => r.GetExpiredIdsAsync(It.IsAny<DateTime>(), It.IsAny<int>(), It.IsAny<CancellationToken>()))
-                .ReturnsAsync(new List<string>());
+                .ReturnsAsync(new List<string>())
+                .Callback(() => sweepCalled.TrySetResult());
             repo.Setup(r => r.EnsureIndexesAsync(It.IsAny<CancellationToken>()))
                 .Returns(Task.CompletedTask);
 
@@ -46,11 +51,17 @@ namespace XUnitTest.Auth.Oidc
 
             using var cts = new CancellationTokenSource();
             var execute = worker.StartAsync(cts.Token);
-            await Task.Delay(50);
+            await WaitOrTimeoutAsync(sweepCalled.Task);
             cts.Cancel();
             await execute;
 
             repo.Verify(r => r.MarkExpiredAsync(It.IsAny<IEnumerable<string>>(), It.IsAny<CancellationToken>()), Times.Never);
+        }
+
+        private static async Task WaitOrTimeoutAsync(Task task)
+        {
+            var completed = await Task.WhenAny(task, Task.Delay(TimeSpan.FromSeconds(10)));
+            completed.Should().Be(task, "the worker should perform its first sweep well within the timeout");
         }
     }
 }
