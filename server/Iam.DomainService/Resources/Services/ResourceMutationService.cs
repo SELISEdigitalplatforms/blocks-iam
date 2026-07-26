@@ -1130,7 +1130,7 @@ namespace Iam.DomainService.Resources
                     {
                         await _resourceRepository.RemoveRolePermissionByIdsAsync(
                             command.Slug,
-                            removePermissionIds);
+                            removePermissionIds,orgId);
                     }
                 }
             }
