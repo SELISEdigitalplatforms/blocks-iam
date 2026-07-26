@@ -236,6 +236,37 @@ namespace XUnitTest.IamTests.Resources
             _repo.Verify(r => r.UpdateRoleAsync(It.Is<Role>(x => x.Name == "New")), Times.Once);
         }
 
+        [Fact]
+        public async Task UpdateRole_WithParentSlug_ComputesAncestorsAndPropagatesMultiOrg()
+        {
+            _repo.Setup(r => r.GetRoleByIdAsync("r1"))
+                .ReturnsAsync(new Role { ItemId = "r1", Name = "old", Slug = "child", OrganizationId = "default" });
+            // Parent role has no further parent, so the ancestor walk terminates after one hop.
+            _repo.Setup(r => r.GetRoleBySlugAsync("parent", It.IsAny<string>()))
+                .ReturnsAsync(new Role { ItemId = "p1", Name = "Parent", Slug = "parent", OrganizationId = "default", ParentRoleSlug = null });
+            _repo.Setup(r => r.GetTenantConfigurationAsync())
+                .ReturnsAsync(new TenantConfiguration { IsMultiOrgEnabled = true });
+
+            var result = await Create().UpdateRoleAsync(
+                new UpdateRoleRequest { ItemId = "r1", Name = "New", ParentRoleSlug = "Parent", CanCreateOwn = true });
+
+            result.IsSuccess.Should().BeTrue();
+            _repo.Verify(r => r.UpdateRoleAsync(It.Is<Role>(x => x.ParentRoleSlug == "parent" && x.AncestorRoleSlugs.Contains("parent"))), Times.Once);
+            _iam.Verify(i => i.SendToQueueAsync(It.IsAny<string>(), It.IsAny<object>()), Times.AtLeastOnce);
+        }
+
+        [Fact]
+        public async Task UpdateRole_RepositoryFailure_ReturnsEmptyResponse()
+        {
+            _repo.Setup(r => r.GetRoleByIdAsync("r1"))
+                .ReturnsAsync(new Role { ItemId = "r1", Name = "old", Slug = "s", OrganizationId = "default" });
+            _repo.Setup(r => r.UpdateRoleAsync(It.IsAny<Role>())).ReturnsAsync(false);
+
+            var result = await Create().UpdateRoleAsync(new UpdateRoleRequest { ItemId = "r1", Name = "New" });
+
+            result.IsSuccess.Should().BeFalse();
+        }
+
         // ---------- SetRolesAsync ----------
 
         [Fact]

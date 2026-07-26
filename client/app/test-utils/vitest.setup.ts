@@ -145,3 +145,22 @@ if (typeof window !== "undefined" && typeof window.scrollTo !== "function") {
     value: () => {},
   });
 }
+
+// Radix UI and cmdk rely on Pointer Capture and scrollIntoView, neither of
+// which jsdom implements. Without these, opening a Popover/Select or navigating
+// a cmdk list throws. Only patch when absent so real browser-like environments
+// keep their native implementations.
+if (typeof Element !== "undefined") {
+  if (typeof Element.prototype.hasPointerCapture !== "function") {
+    Element.prototype.hasPointerCapture = () => false;
+  }
+  if (typeof Element.prototype.setPointerCapture !== "function") {
+    Element.prototype.setPointerCapture = () => {};
+  }
+  if (typeof Element.prototype.releasePointerCapture !== "function") {
+    Element.prototype.releasePointerCapture = () => {};
+  }
+  if (typeof Element.prototype.scrollIntoView !== "function") {
+    Element.prototype.scrollIntoView = () => {};
+  }
+}
