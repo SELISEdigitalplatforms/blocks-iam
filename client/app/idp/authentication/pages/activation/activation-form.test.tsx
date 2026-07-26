@@ -36,6 +36,8 @@ beforeEach(() => {
 });
 
 const fillValidPasswords = (container: HTMLElement) => {
+  fireEvent.change(screen.getByPlaceholderText("First name"), { target: { value: "Grace" } });
+  fireEvent.change(screen.getByPlaceholderText("Last name"), { target: { value: "Hopper" } });
   const [password, confirm] = passwordInputs(container);
   fireEvent.change(password, { target: { value: "Passw0rd!" } });
   fireEvent.change(confirm, { target: { value: "Passw0rd!" } });
@@ -81,7 +83,8 @@ describe("ActivationForm", () => {
     const { container } = render(<ActivationForm code="activation-code" />);
     const [showNew] = screen.getAllByRole("button", { name: "Show password" });
     fireEvent.click(showNew);
-    expect(container.querySelectorAll('input[type="text"]')).toHaveLength(1);
+    expect(container.querySelectorAll('input[autocomplete="new-password"][type="text"]')).toHaveLength(1);
+    expect(container.querySelectorAll('input[type="password"]')).toHaveLength(1);
   });
 
   it("activates the account and navigates to the success page", async () => {

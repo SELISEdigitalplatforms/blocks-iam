@@ -95,8 +95,6 @@ describe("InviteOrganizationUser", () => {
   const fillNewMember = async (user: ReturnType<typeof userEvent.setup>) => {
     await user.click(screen.getByRole("button", { name: /invite member/i }));
     await user.type(screen.getByPlaceholderText("name@company.com"), "member@org.com");
-    await user.type(await screen.findByPlaceholderText("Enter first name"), "Grace");
-    await user.type(screen.getByPlaceholderText("Enter last name"), "Hopper");
   };
 
   it("shows the first error message when the invite is unsuccessful", async () => {
