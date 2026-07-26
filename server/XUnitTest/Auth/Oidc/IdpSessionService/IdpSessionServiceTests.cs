@@ -112,6 +112,51 @@ namespace XUnitTest.Auth.Oidc.IdpSessionService
             sessionRepo.Verify(r => r.CreateAsync(It.IsAny<IdpSessionModel>()), Times.Once);
         }
 
+        [Fact]
+        public async Task ResolveOrCreateAsync_ExistingValidCookie_AccountNotInSession_AddsAccountAndReuses()
+        {
+            var service = CreateService(out var sessionRepo, out _, out _);
+
+            var existing = new IdpSessionModel
+            {
+                SessionId = "session-existing",
+                TenantId = "tenant-1",
+                Accounts = new List<IdpSessionAccount>
+                {
+                    new() { UserId = "other-user", TenantId = "tenant-1", LoginAt = DateTime.UtcNow }
+                },
+                CreatedAt = DateTime.UtcNow,
+                LastActivityAt = DateTime.UtcNow,
+                IdleExpiry = DateTime.UtcNow.AddHours(1),
+                AbsoluteExpiry = DateTime.UtcNow.AddDays(30)
+            };
+
+            sessionRepo.Setup(r => r.GetBySessionIdAsync("session-existing")).ReturnsAsync(existing);
+            sessionRepo.Setup(r => r.AddAccountAsync("session-existing", It.IsAny<IdpSessionAccount>())).ReturnsAsync(true);
+
+            var ctx = new DefaultHttpContext();
+            ctx.Request.Cookies = StubCookieCollection(("idp_session_id_tenant-1", "session-existing"));
+
+            var sessionId = await service.ResolveOrCreateAsync(ctx, "user-1", "tenant-1", "127.0.0.1");
+
+            sessionId.Should().Be("session-existing");
+            sessionRepo.Verify(r => r.AddAccountAsync("session-existing",
+                It.Is<IdpSessionAccount>(a => a.UserId == "user-1" && a.TenantId == "tenant-1")), Times.Once);
+            sessionRepo.Verify(r => r.CreateAsync(It.IsAny<IdpSessionModel>()), Times.Never);
+        }
+
+        [Theory]
+        [InlineData("", "tenant-1")]
+        [InlineData("user-1", "")]
+        public async Task ResolveOrCreateAsync_MissingUserOrTenant_Throws(string userId, string tenantId)
+        {
+            var service = CreateService(out _, out _, out _);
+
+            var act = async () => await service.ResolveOrCreateAsync(new DefaultHttpContext(), userId, tenantId, "127.0.0.1");
+
+            await act.Should().ThrowAsync<ArgumentException>();
+        }
+
         private static IRequestCookieCollection StubCookieCollection(params (string Key, string Value)[] entries)
         {
             var dict = new Dictionary<string, string>(StringComparer.Ordinal);

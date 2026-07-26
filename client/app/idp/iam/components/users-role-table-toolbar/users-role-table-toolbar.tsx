@@ -25,6 +25,32 @@ interface UsersRoleTableToolbarProps<TData> {
   table: Table<TData>;
 }
 
+function FilterContent<TData>({
+  table,
+  dateRange,
+  onDateChange,
+}: {
+  table: Table<TData>;
+  dateRange: DateRange | undefined;
+  onDateChange: React.Dispatch<React.SetStateAction<DateRange | undefined>>;
+}) {
+  return (
+    <>
+      {table.getColumn("lastLogin") && (
+        <DateRangeFilter
+          column={table.getColumn("lastLogin")}
+          title="Date added"
+          date={dateRange}
+          onDateChange={onDateChange}
+        />
+      )}
+      {table.getColumn("lastLogin") && (
+        <DataTableFacetedFilter column={table.getColumn("lastLogin")} title="Last login" options={translation} />
+      )}
+    </>
+  );
+}
+
 export function UsersRoleTableToolbar<TData>({ table }: UsersRoleTableToolbarProps<TData>) {
   const isMobile = useIsMobile();
   const isServiceBarOpen = useIsServiceBarOpenLocal();
@@ -55,22 +81,6 @@ export function UsersRoleTableToolbar<TData>({ table }: UsersRoleTableToolbarPro
     table.resetColumnFilters();
   }
 
-  const FilterContent = () => (
-    <>
-      {table.getColumn("lastLogin") && (
-        <DateRangeFilter
-          column={table.getColumn("lastLogin")}
-          title="Date added"
-          date={dateRange}
-          onDateChange={setDateRange}
-        />
-      )}
-      {table.getColumn("lastLogin") && (
-        <DataTableFacetedFilter column={table.getColumn("lastLogin")} title="Last login" options={translation} />
-      )}
-    </>
-  );
-
   return (
     <div className="flex flex-col space-y-4 md:space-y-0">
       {/* Mobile view */}
@@ -100,7 +110,7 @@ export function UsersRoleTableToolbar<TData>({ table }: UsersRoleTableToolbarPro
               <SheetTitle className="mb-4">Filter</SheetTitle>
               <SheetDescription />
               <div className="flex flex-col space-y-4">
-                <FilterContent />
+                <FilterContent table={table} dateRange={dateRange} onDateChange={setDateRange} />
                 <SheetClose asChild>
                   <Button className="mt-4" size="sm">
                     Show Results
@@ -128,7 +138,7 @@ export function UsersRoleTableToolbar<TData>({ table }: UsersRoleTableToolbarPro
           isVisible={isSearchVisible}
           setIsVisible={setIsSearchVisible}
         />
-        <FilterContent />
+        <FilterContent table={table} dateRange={dateRange} onDateChange={setDateRange} />
         {isFiltered && (
           <Button variant="outline" onClick={resetFilters} className="h-8 px-2 lg:px-3">
             Reset

@@ -99,7 +99,7 @@ const ChangePasswordDialog = ({ open, onOpenChange }: ChangePasswordDialogProps)
             <div>
               <DialogTitle>Change Password</DialogTitle>
               <DialogDescription className="mt-0.5">
-                Choose a strong password you don't use elsewhere.
+                Choose a strong password you don&apos;t use elsewhere.
               </DialogDescription>
             </div>
           </div>

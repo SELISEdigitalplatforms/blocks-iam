@@ -94,4 +94,27 @@ describe("PermissionsList", () => {
     fireEvent.click(screen.getByText("Delete Data"));
     expect(h.navigateMock).toHaveBeenCalledWith("/base/permission-detail/p9");
   });
+
+  it("renders a loading skeleton while loading", () => {
+    const { container } = renderList({ permissions: [], isLoading: true });
+    expect(container.querySelectorAll("[class*='animate-pulse']").length).toBeGreaterThan(0);
+  });
+
+  it("shows the first tag and an overflow count badge", () => {
+    renderList({ permissions: [perm({ itemId: "p1", tags: ["alpha", "beta", "gamma"] })] });
+    expect(screen.getByText("alpha")).toBeInTheDocument();
+    expect(screen.getByText("2+")).toBeInTheDocument();
+  });
+
+  it("renders an edit link only for custom permissions", () => {
+    renderList({
+      permissions: [
+        perm({ itemId: "custom", name: "Custom Perm", isBuiltIn: false }),
+        perm({ itemId: "builtin", name: "Builtin Perm", isBuiltIn: true }),
+      ],
+    });
+    const links = Array.from(document.querySelectorAll("a")).map((a) => a.getAttribute("href"));
+    expect(links).toContain("/base/permission-detail/custom");
+    expect(links).not.toContain("/base/permission-detail/builtin");
+  });
 });

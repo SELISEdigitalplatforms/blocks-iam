@@ -1,13 +1,13 @@
 # syntax=docker/dockerfile:1
 # =============================================================================
-# Blocks IDP Worker — background workers / consumers only (no HTTP host)
-# Build: docker build -f Dockerfile.worker -t blocks-idp-worker .
+# Blocks IAM Worker: background workers / consumers only (no HTTP host)
+# Build: docker build -f Dockerfile.worker -t blocks-iam-worker .
 # =============================================================================
 
 ARG DOTNET_PUBLISH_PLATFORM=linux/amd64
 
 # -----------------------------------------------------------------------------
-# Stage: publish — .NET SDK (glibc). Default platform linux/amd64 avoids Grpc.Tools
+# Stage: publish: .NET SDK (glibc). Default platform linux/amd64 avoids Grpc.Tools
 # protoc crashes on some arm64 build hosts; override if your CI publishes safely
 # on arm64: docker build --build-arg DOTNET_PUBLISH_PLATFORM=linux/arm64 .
 # -----------------------------------------------------------------------------
@@ -23,14 +23,14 @@ RUN dotnet publish server/Worker/Worker.csproj \
     -p:DebugType=None
 
 # -----------------------------------------------------------------------------
-# Stage: runtime — ASP.NET Core runtime on Alpine (Worker targets shared
+# Stage: runtime: ASP.NET Core runtime on Alpine (Worker targets shared
 # Microsoft.AspNetCore.App via the Worker SDK / dependencies.)
 # -----------------------------------------------------------------------------
 FROM mcr.microsoft.com/dotnet/aspnet:10.0-alpine AS final
 
 ARG BUILD_VERSION=0.0.0
-LABEL org.opencontainers.image.title="blocks-idp-worker" \
-    org.opencontainers.image.description="Blocks IDP background worker (Generic Host, message consumers)." \
+LABEL org.opencontainers.image.title="blocks-iam-worker" \
+    org.opencontainers.image.description="Blocks IAM background worker (Generic Host, message consumers)." \
     org.opencontainers.image.version="${BUILD_VERSION}"
 
 WORKDIR /app

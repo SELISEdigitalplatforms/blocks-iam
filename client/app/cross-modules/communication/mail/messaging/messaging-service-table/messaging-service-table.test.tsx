@@ -58,4 +58,17 @@ describe("MessagingServiceTable", () => {
       "/utilities/messaging/campaigns/1",
     );
   });
+
+  it("toggles sorting on each sortable column header", () => {
+    const { container } = renderTable();
+    const sortIcons = container.querySelectorAll("svg.lucide-arrow-up-down");
+    expect(sortIcons.length).toBeGreaterThan(0);
+    sortIcons.forEach((icon) => {
+      fireEvent.click(icon);
+      // Click a second time to exercise the ascending/descending toggle branch.
+      fireEvent.click(icon);
+    });
+    // The table still renders its rows after re-sorting.
+    expect(screen.getByText("Reset Password")).toBeInTheDocument();
+  });
 });

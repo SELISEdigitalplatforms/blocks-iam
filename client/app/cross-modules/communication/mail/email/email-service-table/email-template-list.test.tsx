@@ -100,4 +100,60 @@ describe("EmailTemplateList", () => {
     fireEvent.click(screen.getByText("Welcome Email"));
     expect(onRowClick).toHaveBeenCalledWith("tmpl-1");
   });
+
+  const openRowMenu = () => {
+    fireEvent.pointerDown(
+      screen.getByRole("button", { name: "Open menu" }),
+      { button: 0, ctrlKey: false, pointerType: "mouse" },
+    );
+  };
+
+  it("clones a template and navigates to the new template on success", async () => {
+    h.cloneTemplate.mockResolvedValue({ isSuccess: true, itemId: "new-id" });
+    renderList({ templates: [template], isLoading: false });
+    openRowMenu();
+    fireEvent.click(await screen.findByText("Clone Template"));
+    fireEvent.click(await screen.findByRole("button", { name: "Yes" }));
+    await vi.waitFor(() =>
+      expect(h.cloneTemplate).toHaveBeenCalledWith({ projectKey: "t1", itemId: "tmpl-1" }),
+    );
+    await vi.waitFor(() =>
+      expect(h.navigateMock).toHaveBeenCalledWith("/utilities/email/communications/new-id"),
+    );
+  });
+
+  it("shows an error toast when cloning fails", async () => {
+    h.cloneTemplate.mockResolvedValue({ isSuccess: false, errors: "nope" });
+    renderList({ templates: [template], isLoading: false });
+    openRowMenu();
+    fireEvent.click(await screen.findByText("Clone Template"));
+    fireEvent.click(await screen.findByRole("button", { name: "Yes" }));
+    await vi.waitFor(() =>
+      expect(h.toast).toHaveBeenCalledWith(expect.objectContaining({ variant: "destructive" })),
+    );
+  });
+
+  it("deletes a non-tenant template on confirmation", async () => {
+    h.deleteTemplate.mockResolvedValue({ isSuccess: true });
+    renderList({ templates: [template], isLoading: false });
+    openRowMenu();
+    fireEvent.click(await screen.findByText("Delete"));
+    fireEvent.click(await screen.findByRole("button", { name: "Yes" }));
+    await vi.waitFor(() =>
+      expect(h.deleteTemplate).toHaveBeenCalledWith({ projectKey: "t1", itemId: "tmpl-1" }),
+    );
+    await vi.waitFor(() =>
+      expect(h.toast).toHaveBeenCalledWith(expect.objectContaining({ variant: "success" })),
+    );
+  });
+
+  it("hides the delete action for tenant-generated templates", async () => {
+    renderList({
+      templates: [{ ...template, generatedBy: "Tenant" }],
+      isLoading: false,
+    });
+    openRowMenu();
+    expect(await screen.findByText("Clone Template")).toBeInTheDocument();
+    expect(screen.queryByText("Delete")).not.toBeInTheDocument();
+  });
 });
