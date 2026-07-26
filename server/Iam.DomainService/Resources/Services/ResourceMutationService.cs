@@ -1,4 +1,4 @@
-﻿using Blocks.Genesis;
+using Blocks.Genesis;
 using FluentValidation;
 using Iam.DomainService.Dtos;
 using Iam.DomainService.Entities;
@@ -1115,7 +1115,7 @@ namespace Iam.DomainService.Resources
                     {
                         await _resourceRepository.UpdateRolePermissionByIdsAsync(
                             command.Slug,
-                            addPermissionIds);
+                            addPermissionIds,orgId);
                     }
                 }
 
