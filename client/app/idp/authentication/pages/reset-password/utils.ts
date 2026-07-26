@@ -1,14 +1,16 @@
 import { z } from "zod";
-
-const passwordRegex =
-  /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[@$!%*?&;[\]{}|:(),.])[A-Za-z\d@$!%*?&;[\]{}|:(),.]{8,30}$/;
+import {
+  PASSWORD_COMPLEXITY_MESSAGE,
+  PASSWORD_COMPLEXITY_REGEX,
+} from "@blocks-idp/authentication/utils/password-strength.util";
 
 export const resetPasswordFormSchema = z
   .object({
     password: z
       .string()
       .min(8, "Password must be at least 8 characters long")
-      .regex(passwordRegex),
+      .max(30, "Password must be at most 30 characters long")
+      .regex(PASSWORD_COMPLEXITY_REGEX, PASSWORD_COMPLEXITY_MESSAGE),
     confirmPassword: z
       .string()
       .min(8, "Confirm password must be at least 8 characters long"),

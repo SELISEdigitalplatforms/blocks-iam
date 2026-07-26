@@ -1,3 +1,4 @@
+import { sanitizeInternalPath } from "@/lib/safe-navigation.util";
 import { providers } from "@/cross-modules/devops/models/git-dummy";
 import { useState } from "react";
 import {
@@ -32,7 +33,7 @@ const ProviderButtons = ({
   const { data: verifyAuth } = useValidateAuthorization();
   const [, setSelectedProvider] = useState<string | null>(null);
   
-  const targetDestination = destination || "/devops/configure";
+  const targetDestination = sanitizeInternalPath(destination || "/devops/configure", "/devops/configure");
   
   if (destination) {
     localStorage.setItem("destination", destination);
