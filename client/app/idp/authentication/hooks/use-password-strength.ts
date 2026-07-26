@@ -34,7 +34,7 @@ export const usePasswordStrength = (password: string) => {
   return {
     strength,
     checks,
-    allRequirementsMet: areAllRequirementsMet(checks),
+    allRequirementsMet: areAllRequirementsMet(checks, password),
     getStrengthColor: () => getStrengthColor(strength),
     requirements,
   };

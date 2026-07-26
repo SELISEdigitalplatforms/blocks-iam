@@ -7,7 +7,11 @@ const h = vi.hoisted(() => ({
 }));
 
 vi.mock("@blocks-idp/authentication/hooks/use-password-strength", () => ({
-  usePasswordStrength: () => ({ checks: h.checks, requirements: h.requirements }),
+  usePasswordStrength: () => ({
+    checks: h.checks,
+    requirements: h.requirements,
+    allRequirementsMet: Object.values(h.checks).every(Boolean),
+  }),
 }));
 
 import { PasswordStrengthChecker } from "./password-strength-checker";

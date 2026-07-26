@@ -100,8 +100,6 @@ describe("InviteUser", () => {
   const fillNewUser = async (user: ReturnType<typeof userEvent.setup>) => {
     await user.click(screen.getByRole("button", { name: /invite user/i }));
     await user.type(screen.getByPlaceholderText("name@company.com"), "new@user.com");
-    await user.type(await screen.findByPlaceholderText("Enter first name"), "Ada");
-    await user.type(screen.getByPlaceholderText("Enter last name"), "Lovelace");
   };
 
   it("shows an error toast when user creation is unsuccessful", async () => {
