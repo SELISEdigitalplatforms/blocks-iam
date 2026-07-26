@@ -118,6 +118,12 @@ describe("oidc-utils", () => {
       const url = buildOIDCNavigationUrl("/oidc/login");
       expect(url).toContain("/oidc/login");
     });
+
+    it("should reject unsafe navigation paths", () => {
+      const url = buildOIDCNavigationUrl("//evil.com");
+      expect(url.startsWith("/oidc/login")).toBe(true);
+      expect(url).not.toContain("evil.com");
+    });
   });
 
   // ─── getCurrentOIDCParams ───────────────────────────────────────────────────
