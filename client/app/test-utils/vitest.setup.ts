@@ -7,6 +7,7 @@
  * real browser-like environments and per-test overrides keep working.
  */
 import "@testing-library/jest-dom/vitest";
+import { beforeEach, vi } from "vitest";
 
 // Some third-party ESM deps (e.g. framer-motion's motion-utils, pulled in via
 // @seliseblocks/blocks-kit) read `process.env.NODE_ENV` at import time. Under the
@@ -95,6 +96,17 @@ if (typeof window !== "undefined") {
   };
 }
 
+// getRuntimeEnv() falls back to import.meta.env.BLOCKS_IAM_BASE_URL whenever
+// window.__BLOCKS_ENV__ doesn't carry it (see above), and Vite's envPrefix
+// loads that straight out of a developer's local client/.env — which is
+// gitignored and can legitimately point at a real dev backend. Stub it back
+// to empty before every test (not just once here) so a test file's own
+// `afterEach(() => vi.unstubAllEnvs())` can't undo this for later tests in
+// the same file — global beforeEach hooks re-run ahead of each test.
+beforeEach(() => {
+  vi.stubEnv("BLOCKS_IAM_BASE_URL", "");
+});
+
 if (typeof window !== "undefined" && typeof window.matchMedia !== "function") {
   Object.defineProperty(window, "matchMedia", {
     writable: true,
@@ -144,4 +156,23 @@ if (typeof window !== "undefined" && typeof window.scrollTo !== "function") {
     configurable: true,
     value: () => {},
   });
+}
+
+// Radix UI and cmdk rely on Pointer Capture and scrollIntoView, neither of
+// which jsdom implements. Without these, opening a Popover/Select or navigating
+// a cmdk list throws. Only patch when absent so real browser-like environments
+// keep their native implementations.
+if (typeof Element !== "undefined") {
+  if (typeof Element.prototype.hasPointerCapture !== "function") {
+    Element.prototype.hasPointerCapture = () => false;
+  }
+  if (typeof Element.prototype.setPointerCapture !== "function") {
+    Element.prototype.setPointerCapture = () => {};
+  }
+  if (typeof Element.prototype.releasePointerCapture !== "function") {
+    Element.prototype.releasePointerCapture = () => {};
+  }
+  if (typeof Element.prototype.scrollIntoView !== "function") {
+    Element.prototype.scrollIntoView = () => {};
+  }
 }

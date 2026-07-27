@@ -6,8 +6,10 @@ using Authentication.DomainService.Services;
 using Blocks.Genesis;
 using FluentAssertions;
 using Iam.DomainService.Accounts;
+using Iam.DomainService.Dtos;
 using Iam.DomainService.Entities;
 using Iam.DomainService.Services;
+using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.Logging.Abstractions;
 using Moq;
 
@@ -93,6 +95,64 @@ namespace XUnitTest.Auth.OAuth
 
             result.Error.Should().Be(OAuthError.AccountLocked);
             result.StatusCode.Should().Be(423);
+        }
+
+        private static TokenRequest RequestWithHttp(string user = "jane", string pass = "secret")
+        {
+            var req = Request(user, pass);
+            req.Request = new DefaultHttpContext().Request;
+            return req;
+        }
+
+        [Fact]
+        public async Task Authenticate_LockedUser_WithHttpContext_DispatchesTimelineEvent()
+        {
+            _repo.Setup(r => r.GetUserByUsernameAsync("jane", It.IsAny<string?>()))
+                .ReturnsAsync(new User
+                {
+                    ItemId = "u1", Active = true, IsVerified = true,
+                    LockoutUntilUtc = DateTime.UtcNow.AddMinutes(10)
+                });
+
+            var result = await Create().AuthenticateAsync(RequestWithHttp(), Config());
+
+            result.StatusCode.Should().Be(423);
+            _activity.Verify(a => a.SendUserActivityAsync(It.Is<UserActivityEvent>(
+                e => e.Event == "failed_login_account_locked" && e.UserId == "u1")), Times.Once);
+        }
+
+        [Fact]
+        public async Task Authenticate_WrongPassword_TriggersLockout_WithHttpContext_DispatchesLockedTimelineEvent()
+        {
+            var service = Create();
+            var hash = service.HashPassword("correct");
+            _repo.Setup(r => r.GetUserByUsernameAsync("jane", It.IsAny<string?>())).ReturnsAsync(ActiveUser(hash));
+            var lockedUser = new User { ItemId = "u1", LockoutUntilUtc = DateTime.UtcNow.AddMinutes(15) };
+            _repo.Setup(r => r.IncrementFailedLoginAndApplyLockoutAsync("u1", It.IsAny<int>(), It.IsAny<int>(), It.IsAny<DateTime>()))
+                .ReturnsAsync(lockedUser);
+            _account.Setup(a => a.SendAccountLockedNotificationAsync(lockedUser, It.IsAny<DateTime>())).Returns(Task.CompletedTask);
+
+            var result = await service.AuthenticateAsync(RequestWithHttp(pass: "wrong"), Config());
+
+            result.StatusCode.Should().Be(401);
+            _activity.Verify(a => a.SendUserActivityAsync(It.Is<UserActivityEvent>(
+                e => e.Event == "failed_login_and_account_locked")), Times.Once);
+        }
+
+        [Fact]
+        public async Task Authenticate_WrongPassword_NoLockout_WithHttpContext_DispatchesInvalidPasswordEvent()
+        {
+            var service = Create();
+            var hash = service.HashPassword("correct");
+            _repo.Setup(r => r.GetUserByUsernameAsync("jane", It.IsAny<string?>())).ReturnsAsync(ActiveUser(hash));
+            _repo.Setup(r => r.IncrementFailedLoginAndApplyLockoutAsync("u1", It.IsAny<int>(), It.IsAny<int>(), It.IsAny<DateTime>()))
+                .ReturnsAsync(new User { ItemId = "u1" }); // no lockout applied
+
+            var result = await service.AuthenticateAsync(RequestWithHttp(pass: "wrong"), Config());
+
+            result.StatusCode.Should().Be(401);
+            _activity.Verify(a => a.SendUserActivityAsync(It.Is<UserActivityEvent>(
+                e => e.Event == "failed_login_invalid_password")), Times.Once);
         }
 
         [Fact]
