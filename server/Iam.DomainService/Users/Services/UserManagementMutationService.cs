@@ -901,7 +901,7 @@ namespace Iam.DomainService.Users
                 EntityId = user.ItemId,
                 Metadata = new Dictionary<string, string>
                 {
-                    { "organizationId", organizationId ?? string.Empty }
+                    { "organizationId", organizationId }
                 }
             });
 

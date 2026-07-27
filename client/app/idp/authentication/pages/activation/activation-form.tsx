@@ -53,7 +53,10 @@ export const ActivationForm = ({ code, tenantId }: ActivationFormProps) => {
   }, [captchaCode, requirementsMet, resetCaptcha]);
 
   useEffect(() => {
-    if (!code) return navigate("/login");
+    if (!code) {
+      navigate("/login");
+      return;
+    }
   }, [code, navigate]);
 
   const password = form.watch("password");
@@ -94,6 +97,8 @@ export const ActivationForm = ({ code, tenantId }: ActivationFormProps) => {
       const res = await mutateAsync({
         code: code,
         preventPostEvent: true,
+        firstName: values.firstname,
+        lastName: values.lastname,
         password: values.password,
         captchaCode,
         tenantId,
@@ -136,6 +141,42 @@ export const ActivationForm = ({ code, tenantId }: ActivationFormProps) => {
       }}
       className="flex flex-col gap-5"
     >
+      <div className="flex flex-col gap-2">
+        <label className="oidc-sci-fi-label">First Name</label>
+        <input
+          type="text"
+          placeholder="First name"
+          autoComplete="given-name"
+          className="oidc-sci-fi-input"
+          aria-invalid={!!form.formState.errors.firstname}
+          disabled={isAuthenticating}
+          {...form.register("firstname")}
+        />
+        {form.formState.errors.firstname && (
+          <p className="text-xs" style={{ color: "var(--danger)" }}>
+            {form.formState.errors.firstname.message}
+          </p>
+        )}
+      </div>
+
+      <div className="flex flex-col gap-2">
+        <label className="oidc-sci-fi-label">Last Name</label>
+        <input
+          type="text"
+          placeholder="Last name"
+          autoComplete="family-name"
+          className="oidc-sci-fi-input"
+          aria-invalid={!!form.formState.errors.lastname}
+          disabled={isAuthenticating}
+          {...form.register("lastname")}
+        />
+        {form.formState.errors.lastname && (
+          <p className="text-xs" style={{ color: "var(--danger)" }}>
+            {form.formState.errors.lastname.message}
+          </p>
+        )}
+      </div>
+
       <div className="flex flex-col gap-2">
         <label className="oidc-sci-fi-label">Password</label>
         <div className="relative">

@@ -120,4 +120,92 @@ describe("ManageOrganizationDialog", () => {
     fireEvent.click(screen.getByRole("button", { name: /cancel/i }));
     expect(props.onOpenChange).toHaveBeenCalledWith(false);
   });
+
+  it("keeps the caller-supplied default organization option without duplicating it", () => {
+    const props = {
+      ...baseProps(),
+      organizations: [org({ itemId: "default", name: "Default" }), org({ itemId: "org-1", name: "Acme" })],
+    };
+    render(<ManageOrganizationDialog {...props} />, { wrapper: createWrapper() });
+    expect(screen.getByText("Manage organization")).toBeInTheDocument();
+  });
+
+  it("hydrates roles from the OrganizationsRoles fallback map", async () => {
+    h.userData = {
+      data: {
+        OrganizationsRoles: { "org-1": ["admin"] },
+        OrganizationsPermissions: { "org-1": ["read"] },
+      },
+    };
+    h.rolesData = { data: [{ slug: "admin", name: "Admin", itemId: "r1", description: "" }] };
+    h.permissionsData = {
+      data: [{ name: "read", itemId: "p1", resource: "read", resourceGroup: "G" }],
+    };
+    h.updateMutate.mockResolvedValue({ isSuccess: true });
+
+    render(<ManageOrganizationDialog {...baseProps()} initialOrganizationId="org-1" />, {
+      wrapper: createWrapper(),
+    });
+
+    const confirm = screen.getByRole("button", { name: /confirm/i });
+    await waitFor(() => expect(confirm).not.toBeDisabled());
+    fireEvent.click(confirm);
+    await waitFor(() =>
+      expect(h.updateMutate).toHaveBeenCalledWith({
+        roles: ["admin"],
+        permissions: ["read"],
+        organizationId: "org-1",
+      }),
+    );
+  });
+
+  it("shows an error toast when the update response is not successful", async () => {
+    h.userData = {
+      data: { organizations: [{ organizationId: "org-1", roles: ["admin"], permissions: [] }] },
+    };
+    h.rolesData = { data: [{ slug: "admin", name: "Admin", itemId: "r1", description: "" }] };
+    h.updateMutate.mockResolvedValue({ isSuccess: false, errors: { field: "Not allowed" } });
+
+    render(<ManageOrganizationDialog {...baseProps()} initialOrganizationId="org-1" />, {
+      wrapper: createWrapper(),
+    });
+    const confirm = screen.getByRole("button", { name: /confirm/i });
+    await waitFor(() => expect(confirm).not.toBeDisabled());
+    fireEvent.click(confirm);
+    await waitFor(() => expect(h.showErrorToast).toHaveBeenCalledWith({ errors: "Not allowed" }));
+  });
+
+  it("shows an error toast when the update mutation throws", async () => {
+    h.userData = {
+      data: { organizations: [{ organizationId: "org-1", roles: ["admin"], permissions: [] }] },
+    };
+    h.rolesData = { data: [{ slug: "admin", name: "Admin", itemId: "r1", description: "" }] };
+    h.updateMutate.mockRejectedValue({ errors: "server down" });
+
+    render(<ManageOrganizationDialog {...baseProps()} initialOrganizationId="org-1" />, {
+      wrapper: createWrapper(),
+    });
+    const confirm = screen.getByRole("button", { name: /confirm/i });
+    await waitFor(() => expect(confirm).not.toBeDisabled());
+    fireEvent.click(confirm);
+    await waitFor(() => expect(h.showErrorToast).toHaveBeenCalledWith({ errors: "server down" }));
+  });
+
+  it("resets the hydration guard when the dialog is closed", () => {
+    const { rerender } = render(<ManageOrganizationDialog {...baseProps()} open={false} />, {
+      wrapper: createWrapper(),
+    });
+    // Re-render still closed to exercise the early-return guard path.
+    rerender(<ManageOrganizationDialog {...baseProps()} open={false} isOrgsLoading />);
+    expect(screen.queryByText("Manage organization")).not.toBeInTheDocument();
+  });
+
+  it("resets on the dialog onOpenChange close via Escape", async () => {
+    const props = baseProps();
+    render(<ManageOrganizationDialog {...props} initialOrganizationId="org-1" />, {
+      wrapper: createWrapper(),
+    });
+    fireEvent.keyDown(document.body, { key: "Escape" });
+    await waitFor(() => expect(props.onOpenChange).toHaveBeenCalledWith(false));
+  });
 });

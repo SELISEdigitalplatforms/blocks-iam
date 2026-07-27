@@ -124,5 +124,96 @@ describe("oidc-navigation.util", () => {
       const url = buildNavigationUrl("/oidc/login");
       expect(url).toContain("/oidc/login?");
     });
+
+    it("parses a non-hex hash fragment as query params", () => {
+      Object.defineProperty(window, "location", {
+        value: {
+          search: "?x-blocks-key=test-key",
+          hash: "#name=val&extra=y",
+          href: "http://localhost:3000/oidc/login?x-blocks-key=test-key#name=val&extra=y",
+        },
+        writable: true,
+        configurable: true,
+      });
+
+      const url = buildNavigationUrl("/oidc/consent");
+      expect(url).toContain("name=val");
+      expect(url).toContain("extra=y");
+    });
+
+    it("recovers brandColor from the full URL when not present in params", () => {
+      Object.defineProperty(window, "location", {
+        value: {
+          search: "",
+          hash: "",
+          href: "http://localhost:3000/oidc/login?brandColor=00FF00",
+        },
+        writable: true,
+        configurable: true,
+      });
+
+      const url = buildNavigationUrl("/oidc/consent");
+      expect(url).toContain("brandColor=");
+    });
+
+    it("encodes a hash-style brandColor already present in params", () => {
+      Object.defineProperty(window, "location", {
+        value: {
+          search: "?brandColor=%23ABCDEF",
+          hash: "",
+          href: "http://localhost:3000/oidc/login?brandColor=%23ABCDEF",
+        },
+        writable: true,
+        configurable: true,
+      });
+
+      const url = buildNavigationUrl("/oidc/consent");
+      expect(url).toContain("brandColor=%2523ABCDEF");
+    });
+  });
+
+  describe("redirectToLogin - extra branches", () => {
+    it("parses a non-hex hash fragment as query params", () => {
+      Object.defineProperty(window, "location", {
+        value: {
+          search: "?x-blocks-key=test-key",
+          hash: "#name=val&extra=y",
+          href: "http://localhost:3000/oidc/consent?x-blocks-key=test-key#name=val&extra=y",
+        },
+        writable: true,
+        configurable: true,
+      });
+      Object.defineProperty(window.location, "href", {
+        set: hrefSetter as (v: string) => void,
+        get: () => "http://localhost:3000/oidc/consent",
+        configurable: true,
+      });
+
+      redirectToLogin();
+      const url = hrefSetter.mock.calls[0][0] as string;
+      expect(url).toContain("name=val");
+      expect(url).toContain("extra=y");
+    });
+
+    it("encodes a hash-style brandColor already present in query", () => {
+      Object.defineProperty(window, "location", {
+        value: {
+          search: "?brandColor=%23FF0000",
+          hash: "",
+          href: "http://localhost:3000/oidc/consent?brandColor=%23FF0000",
+        },
+        writable: true,
+        configurable: true,
+      });
+      Object.defineProperty(window.location, "href", {
+        set: hrefSetter as (v: string) => void,
+        get: () => "http://localhost:3000/oidc/consent",
+        configurable: true,
+      });
+
+      redirectToLogin();
+      const url = hrefSetter.mock.calls[0][0] as string;
+      expect(url).toContain("brandColor=%2523FF0000");
+    });
   });
 });
