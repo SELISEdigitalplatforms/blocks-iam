@@ -22,7 +22,7 @@ export function ProtectedGuard({ children }: { children: React.ReactNode }) {
 
   useEffect(() => {
     if (!isMounted) return;
-    if (!data || !userFound) return navigate(`/login`, { replace: true });
+    if (!data || !userFound) navigate(`/login`, { replace: true });
     // setUser(data.data);
   }, [data, userFound, navigate, setUser]);
   if (!isMounted || !data || !userFound) return null;
@@ -34,7 +34,8 @@ export const ImpersonationChecker = ({
 }: {
   children: React.ReactNode;
 }) => {
-  const { data, isLoading, isSuccess, isError } = useImpersonationStatusChecker();
+  const { data, isLoading, isSuccess, isError } =
+    useImpersonationStatusChecker();
   const { setImpersonation, isInitialized, setInitialized } =
     useImpersonateStore();
 
@@ -48,7 +49,8 @@ export const ImpersonationChecker = ({
     setInitialized(true);
   }, [data, setImpersonation, setInitialized]);
 
-  if (isLoading || (!isInitialized && !isSuccess && !isError)) return <LogoLoadingSpinner />;
+  if (isLoading || (!isInitialized && !isSuccess && !isError))
+    return <LogoLoadingSpinner />;
   return <>{children}</>;
 };
 
