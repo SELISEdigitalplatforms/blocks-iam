@@ -94,7 +94,36 @@ describe("InviteUser", () => {
       userCreationType: 1,
       platform: "blocks_portal",
     });
+    expect(payload).not.toHaveProperty("organizationIds");
     expect(h.showSuccessToast).toHaveBeenCalledWith({ description: "Invitation is sent" });
+  });
+
+  it("creates a new user with organizationId when multi-org is enabled", async () => {
+    h.config = { data: { isMultiOrgEnabled: true }, isLoading: false };
+    h.orgs = {
+      data: { organizations: [{ itemId: "org-1", name: "Acme Org", isDisabled: false }] },
+      isLoading: false,
+    };
+    h.createUser.mockResolvedValue({ isSuccess: true });
+    const user = userEvent.setup();
+    renderInvite();
+    await user.click(screen.getByRole("button", { name: /invite user/i }));
+    await user.type(screen.getByPlaceholderText("name@company.com"), "new@user.com");
+
+    await user.click(await screen.findByRole("combobox"));
+    await user.click(await screen.findByText("Acme Org"));
+
+    const submit = screen.getByRole("button", { name: /send invite/i });
+    await waitFor(() => expect(submit).not.toBeDisabled());
+    await user.click(submit);
+
+    await waitFor(() => expect(h.createUser).toHaveBeenCalled());
+    const payload = h.createUser.mock.calls[0][0];
+    expect(payload).toMatchObject({
+      email: "new@user.com",
+      organizationId: "org-1",
+    });
+    expect(payload).not.toHaveProperty("organizationIds");
   });
 
   const fillNewUser = async (user: ReturnType<typeof userEvent.setup>) => {

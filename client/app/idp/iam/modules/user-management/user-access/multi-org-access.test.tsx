@@ -196,4 +196,27 @@ describe("MultiOrgAccess", () => {
     (h.removeProps!.onOpenChange as (open: boolean) => void)(false);
     await waitFor(() => expect(screen.queryByTestId("remove-membership")).toBeNull());
   });
+
+  it("disables revoke access for the default organization", () => {
+    h.userResult = {
+      data: {
+        data: {
+          itemId: "u1",
+          organizationIds: ["default"],
+          organizations: [{ organizationId: "default", roles: [], permissions: [] }],
+        },
+      },
+      isLoading: false,
+    };
+    h.orgsResult = {
+      data: { organizations: [{ itemId: "default", name: "Default", isDisabled: false }] },
+      isLoading: false,
+    };
+    h.rolesResult = { data: { data: [] } };
+    h.permsResult = { data: { data: [] } };
+    render(<MultiOrgAccess userId="u1" projectKey="p1" />);
+    expect(
+      screen.getByLabelText(/Revoke user's access from Default/i),
+    ).toBeDisabled();
+  });
 });
