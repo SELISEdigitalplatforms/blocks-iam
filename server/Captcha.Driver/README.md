@@ -7,7 +7,7 @@
 A self-contained captcha driver for the **SELISE Blocks** platform. Provides the
 full Submit + Verify flow for captcha challenges (blocks, reCAPTCHA, and hCaptcha)
 along with configuration, processing, validation handlers, HTTP client, and
-MongoDB-backed secret storage — all in a single NuGet package.
+MongoDB-backed secret storage; all in a single NuGet package.
 
 ---
 
@@ -26,15 +26,15 @@ MongoDB-backed secret storage — all in a single NuGet package.
 
 ## Features
 
-- **Submit flow** — generate verification codes for captcha challenges.
-- **Verify flow** — validate verification codes against the configured provider.
-- **Multi-provider** — pluggable verification handlers for `bcaptcha` (Blocks),
+- **Submit flow**: generate verification codes for captcha challenges.
+- **Verify flow**: validate verification codes against the configured provider.
+- **Multi-provider**: pluggable verification handlers for `bcaptcha` (Blocks),
   `recaptcha`, and `hcaptcha`.
-- **MongoDB-backed secrets** — reads captcha configuration from the shared
+- **MongoDB-backed secrets**: reads captcha configuration from the shared
   `Secrets` collection.
-- **DI-friendly** — single extension method registers every dependency.
-- **Validated inputs** — `FluentValidation` rules for submit requests.
-- **Strongly-typed** — `System.Text.Json` deserialization for provider responses.
+- **DI-friendly**: single extension method registers every dependency.
+- **Validated inputs**: `FluentValidation` rules for submit requests.
+- **Strongly-typed**: `System.Text.Json` deserialization for provider responses.
 
 ---
 
@@ -159,8 +159,8 @@ The driver binds a `Captcha` configuration section. Override defaults per enviro
 }
 ```
 
-> The legacy layout — `KeyValuePairs` dictionary with camelCase keys
-> (`isEnable`, `provider`, `captchaKey`, `captchaSecret`) — is also supported.
+> The legacy layout; `KeyValuePairs` dictionary with camelCase keys
+> (`isEnable`, `provider`, `captchaKey`, `captchaSecret`); is also supported.
 
 ### Provider-specific configuration
 
@@ -207,9 +207,9 @@ The driver binds a `Captcha` configuration section. Override defaults per enviro
 | Type                                       | Purpose                                                  |
 | ------------------------------------------ | -------------------------------------------------------- |
 | `ICaptchaVerificationServiceProvider`      | Resolves the right handler by provider name.             |
-| `BlocksCaptchaVerificationService`         | `bcaptcha` — verifies via cached verification code.      |
-| `ReCaptchaVerificationService`             | `recaptcha` — verifies via Google siteverify endpoint.   |
-| `HCaptchaVerificationService`             | `hcaptcha` — verifies via hCaptcha siteverify endpoint.  |
+| `BlocksCaptchaVerificationService`         | `bcaptcha`: verifies via cached verification code.      |
+| `ReCaptchaVerificationService`             | `recaptcha`: verifies via Google siteverify endpoint.   |
+| `HCaptchaVerificationService`             | `hcaptcha`: verifies via hCaptcha siteverify endpoint.  |
 | `RecaptchaConfigFactory` / `IRecaptchaConfigFactory` | Picks DB or local config for reCAPTCHA.         |
 
 ---

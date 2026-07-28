@@ -429,5 +429,101 @@ namespace XUnitTest.Auth.Oidc.IdpSessionService
 
             await act.Should().ThrowAsync<Exception>();
         }
+
+        // ---------- catch/rethrow blocks ----------
+
+        [Fact]
+        public async Task AddAccountAsync_Rethrows_OnRepositoryError()
+        {
+            _sessionRepo.Setup(r => r.GetBySessionIdAsync("sess-1")).ThrowsAsync(new InvalidOperationException("db"));
+
+            var act = async () => await Create().AddAccountAsync("sess-1", "user-1", "tenant-1", "U");
+
+            await act.Should().ThrowAsync<InvalidOperationException>();
+        }
+
+        [Fact]
+        public async Task SelectAccountAsync_Rethrows_OnRepositoryError()
+        {
+            _sessionRepo.Setup(r => r.GetBySessionIdAsync("sess-1")).ThrowsAsync(new InvalidOperationException("db"));
+
+            var act = async () => await Create().SelectAccountAsync("sess-1", "user-1");
+
+            await act.Should().ThrowAsync<InvalidOperationException>();
+        }
+
+        [Fact]
+        public async Task RemoveAccountAsync_Rethrows_OnRepositoryError()
+        {
+            _sessionRepo.Setup(r => r.GetBySessionIdAsync("sess-1")).ThrowsAsync(new InvalidOperationException("db"));
+
+            var act = async () => await Create().RemoveAccountAsync("sess-1", "user-1");
+
+            await act.Should().ThrowAsync<InvalidOperationException>();
+        }
+
+        [Fact]
+        public async Task GetAccountsAsync_Rethrows_OnRepositoryError()
+        {
+            _sessionRepo.Setup(r => r.GetBySessionIdAsync("sess-1")).ThrowsAsync(new InvalidOperationException("db"));
+
+            var act = async () => await Create().GetAccountsAsync("sess-1");
+
+            await act.Should().ThrowAsync<InvalidOperationException>();
+        }
+
+        [Fact]
+        public async Task UpdateActivityAsync_Rethrows_OnRepositoryError()
+        {
+            _sessionRepo.Setup(r => r.GetBySessionIdAsync("sess-1")).ThrowsAsync(new InvalidOperationException("db"));
+
+            var act = async () => await Create().UpdateActivityAsync("sess-1");
+
+            await act.Should().ThrowAsync<InvalidOperationException>();
+        }
+
+        [Fact]
+        public async Task RotateSessionAsync_Rethrows_OnRepositoryError()
+        {
+            _sessionRepo.Setup(r => r.GetBySessionIdAsync("sess-1")).ThrowsAsync(new InvalidOperationException("db"));
+
+            var act = async () => await Create().RotateSessionAsync("sess-1", "reason");
+
+            await act.Should().ThrowAsync<InvalidOperationException>();
+        }
+
+        [Fact]
+        public async Task RevokeSessionAsync_Rethrows_OnRepositoryError()
+        {
+            _sessionRepo.Setup(r => r.GetBySessionIdAsync("sess-1")).ThrowsAsync(new InvalidOperationException("db"));
+
+            var act = async () => await Create().RevokeSessionAsync("sess-1", "reason");
+
+            await act.Should().ThrowAsync<InvalidOperationException>();
+        }
+
+        [Fact]
+        public async Task IsSessionActiveAsync_Rethrows_OnRepositoryError()
+        {
+            _sessionRepo.Setup(r => r.GetBySessionIdAsync("sess-1")).ThrowsAsync(new InvalidOperationException("db"));
+
+            var act = async () => await Create().IsSessionActiveAsync("sess-1");
+
+            await act.Should().ThrowAsync<InvalidOperationException>();
+        }
+
+        [Fact]
+        public async Task AddAccountAsync_SwallowsAuditFailure_AndStillReturnsTrue()
+        {
+            // LogSessionEvent must never fail the operation: when the activity dispatcher throws,
+            // the account add still succeeds. Exercises the LogSessionEvent catch block.
+            _sessionRepo.Setup(r => r.GetBySessionIdAsync("sess-1")).ReturnsAsync(ActiveSession());
+            _sessionRepo.Setup(r => r.AddAccountAsync("sess-1", It.IsAny<IdpSessionAccount>())).ReturnsAsync(true);
+            _activity.Setup(a => a.SendUserActivityAsync(It.IsAny<UserActivityEvent>())).ThrowsAsync(new Exception("audit down"));
+
+            var result = await Create().AddAccountAsync("sess-1", "user-2", "tenant-1", "U2");
+
+            result.Should().BeTrue();
+        }
     }
 }

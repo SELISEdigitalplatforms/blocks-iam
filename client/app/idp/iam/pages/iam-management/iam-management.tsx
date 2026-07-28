@@ -16,20 +16,8 @@ const AddPermissionButton = () => {
   );
 };
 
-const getActionComponents = (tab: string) => {
-  switch (tab) {
-    case "roles":
-      return AddRole;
-    case "permissions":
-      return AddPermissionButton;
-    default:
-      return () => null;
-  }
-};
-
 export const IamManagement = () => {
   const [tabId, setTabId] = useQueryState("tab", { defaultValue: "roles" });
-  const AddActionComponent = getActionComponents(tabId);
 
   return (
     <main className="flex flex-col">
@@ -51,7 +39,8 @@ export const IamManagement = () => {
             <TabsTrigger value="roles">Roles</TabsTrigger>
             <TabsTrigger value="permissions">Permissions</TabsTrigger>
           </TabsList>
-          <AddActionComponent />
+          {tabId === "roles" && <AddRole />}
+          {tabId === "permissions" && <AddPermissionButton />}
         </div>
         <TabsContent value="roles">
           <Roles />

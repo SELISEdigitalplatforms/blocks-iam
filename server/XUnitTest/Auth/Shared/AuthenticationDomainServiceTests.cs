@@ -147,6 +147,88 @@ namespace XUnitTest.Auth.Shared
             existing.IsActive.Should().BeFalse();
         }
 
+        [Fact]
+        public async Task UpdateIdp_ValidationFails_ReturnsErrors()
+        {
+            _updateIdpValidator.Setup(v => v.ValidateAsync(It.IsAny<UpdateIdentityProviderRequest>(), It.IsAny<CancellationToken>()))
+                .ReturnsAsync(new ValidationResult(new[] { new ValidationFailure("DisplayName", "required") }));
+            var result = await Create().UpdateIdentityProviderAsync("idp-1", new UpdateIdentityProviderRequest());
+            result.IsSuccess.Should().BeFalse();
+            result.Errors.Should().ContainKey("DisplayName");
+        }
+
+        [Fact]
+        public async Task UpdateIdp_ImmutableProviderType_ReturnsError()
+        {
+            _repo.Setup(r => r.GetIdentityProviderByIdAsync("idp-1")).ReturnsAsync(Idp());
+            var result = await Create().UpdateIdentityProviderAsync("idp-1", new UpdateIdentityProviderRequest { ProviderType = "enterprise" });
+            result.Errors.Should().ContainKey("immutable_field");
+        }
+
+        [Fact]
+        public async Task UpdateIdp_ImmutableProtocol_ReturnsError()
+        {
+            _repo.Setup(r => r.GetIdentityProviderByIdAsync("idp-1")).ReturnsAsync(Idp());
+            var result = await Create().UpdateIdentityProviderAsync("idp-1", new UpdateIdentityProviderRequest { Protocol = "saml" });
+            result.Errors.Should().ContainKey("immutable_field");
+        }
+
+        [Fact]
+        public async Task UpdateIdp_WellKnownUrlChanged_DiscoveryInvalid_ReturnsErrors()
+        {
+            _repo.Setup(r => r.GetIdentityProviderByIdAsync("idp-1")).ReturnsAsync(Idp());
+            _saveIdpValidator.Setup(v => v.ValidateAsync(It.IsAny<SaveIdentityProviderRequest>(), It.IsAny<CancellationToken>()))
+                .ReturnsAsync(new ValidationResult(new[] { new ValidationFailure("WellKnownUrl", "unreachable") }));
+
+            var result = await Create().UpdateIdentityProviderAsync("idp-1",
+                new UpdateIdentityProviderRequest { WellKnownUrl = "https://new.example/.well-known/openid-configuration" });
+
+            result.IsSuccess.Should().BeFalse();
+            result.Errors.Should().ContainKey("WellKnownUrl");
+        }
+
+        [Fact]
+        public async Task UpdateIdp_WellKnownUrlChanged_DiscoveryValid_MergesAllFields()
+        {
+            var existing = Idp();
+            _repo.Setup(r => r.GetIdentityProviderByIdAsync("idp-1")).ReturnsAsync(existing);
+            _repo.Setup(r => r.UpdateIdentityProviderAsync(It.IsAny<IdentityProvider>())).ReturnsAsync(existing);
+
+            var request = new UpdateIdentityProviderRequest
+            {
+                DisplayName = "Updated",
+                IsActive = true,
+                Issuer = "https://issuer",
+                AuthorizationUrl = "https://auth",
+                TokenUrl = "https://token",
+                UserInfoUrl = "https://userinfo",
+                JwksUri = "https://jwks",
+                WellKnownUrl = "https://new.example/.well-known/openid-configuration",
+                RedirectUris = new List<string> { "https://cb" },
+                Scope = "openid email",
+                ResponseType = "code",
+                GrantTypes = new List<string> { "authorization_code" },
+                RequirePkce = true,
+                TokenEndpointAuthMethod = "client_secret_basic",
+                InitialRoles = new List<string> { "role-1" },
+                InitialPermissions = new List<string> { "perm-1" },
+                Icon = "icon",
+                TeamId = "team",
+                KeyId = "key",
+                PrivateKey = "pk",
+                AppleAudience = "aud"
+            };
+
+            var result = await Create().UpdateIdentityProviderAsync("idp-1", request);
+
+            result.IsSuccess.Should().BeTrue();
+            existing.Issuer.Should().Be("https://issuer");
+            existing.WellKnownUrl.Should().Be("https://new.example/.well-known/openid-configuration");
+            existing.RequirePkce.Should().BeTrue();
+            existing.AppleAudience.Should().Be("aud");
+            existing.InitialRoles.Should().Contain("role-1");
+        }
+
         // ---------- DeleteIdentityProviderAsync ----------
 
         [Fact]
@@ -455,5 +537,49 @@ namespace XUnitTest.Auth.Shared
         }
 
         public sealed class TestPayload { public string Value { get; set; } = ""; }
+
+        // ---------- GetMetadataAsync ----------
+
+        [Fact]
+        public async Task GetMetadata_DeserializesDiscoveryDocument()
+        {
+            var httpClient = new HttpClient(new FakeHandler());
+            _httpFactory.Setup(f => f.CreateClient("oidc-discovery")).Returns(httpClient);
+
+            var result = await Create().GetMetadataAsync("https://test.com/.well-known/openid-configuration");
+
+            result.Should().NotBeNull();
+            result!.Issuer.Should().Be("https://test.com/");
+        }
+
+        // ---------- GetClientCredentialsAsync ----------
+
+        [Fact]
+        public async Task GetClientCredentials_ReturnsRepositoryResult()
+        {
+            var credentials = new List<ClientCredential> { new() { ItemId = "cc-1" } };
+            _repo.Setup(r => r.GetClientCredentialsAsync()).ReturnsAsync(credentials);
+
+            var result = await Create().GetClientCredentialsAsync(new GetAllClientCredentialsRequest());
+
+            result.Should().HaveCount(1);
+            result[0].ItemId.Should().Be("cc-1");
+        }
+
+        private sealed class FakeHandler : HttpMessageHandler
+        {
+            protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
+            {
+                const string json = @"{
+                    ""issuer"": ""https://test.com/"",
+                    ""authorization_endpoint"": ""https://test.com/auth"",
+                    ""token_endpoint"": ""https://test.com/token""
+                }";
+                return Task.FromResult(new HttpResponseMessage(System.Net.HttpStatusCode.OK)
+                {
+                    Content = new StringContent(json)
+                });
+            }
+        }
     }
 }
