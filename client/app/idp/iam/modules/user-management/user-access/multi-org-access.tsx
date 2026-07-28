@@ -34,6 +34,8 @@ type MultiOrgAccessProps = {
   projectKey: string;
 };
 
+const DEFAULT_ORGANIZATION_ID = "default";
+
 const encodeOrgSelection = (userId: string, orgId: string) => `${userId}:${orgId}`;
 const decodeOrgSelection = (value: string): { userId: string; orgId: string } | null => {
   const idx = value.indexOf(":");
@@ -251,6 +253,8 @@ export const MultiOrgAccess = ({ userId, projectKey }: MultiOrgAccessProps) => {
   };
 
   const selectedOrgRow = organizationRows.find((org) => org.organizationId === selectedOrgId);
+  const isDefaultOrganization =
+    selectedOrgRow?.organizationId === DEFAULT_ORGANIZATION_ID;
   const isLoading = isUserLoading || isOrgsLoading;
 
   return (
@@ -301,17 +305,24 @@ export const MultiOrgAccess = ({ userId, projectKey }: MultiOrgAccessProps) => {
               <TooltipProvider>
                 <Tooltip>
                   <TooltipTrigger asChild>
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      className="mt-6 h-8 w-8 shrink-0 bg-destructive/10 text-destructive hover:bg-destructive hover:text-destructive-foreground"
-                      onClick={() => setRevokeTarget(selectedOrgRow)}
-                      aria-label={`Revoke user's access from ${selectedOrgRow.name}`}
-                    >
-                      <UserMinus className="h-4 w-4" />
-                    </Button>
+                    <span className="mt-6 inline-flex shrink-0">
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="h-8 w-8 bg-destructive/10 text-destructive hover:bg-destructive hover:text-destructive-foreground disabled:pointer-events-none disabled:opacity-50"
+                        onClick={() => setRevokeTarget(selectedOrgRow)}
+                        disabled={isDefaultOrganization}
+                        aria-label={`Revoke user's access from ${selectedOrgRow.name}`}
+                      >
+                        <UserMinus className="h-4 w-4" />
+                      </Button>
+                    </span>
                   </TooltipTrigger>
-                  <TooltipContent side="left">Revoke user access</TooltipContent>
+                  <TooltipContent side="left">
+                    {isDefaultOrganization
+                      ? "Default organization access cannot be revoked"
+                      : "Revoke user access"}
+                  </TooltipContent>
                 </Tooltip>
               </TooltipProvider>
             )}
