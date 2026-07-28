@@ -452,7 +452,7 @@ namespace Authentication.DomainService.Oidc.Services
                 httpContext.Response.Cookies.Append(cookieKey, newId, new CookieOptions
                 {
                     HttpOnly = true,
-                    Secure = !DomainResolver.IsLocalhost(),
+                    Secure = true,
                     SameSite = SameSiteMode.Lax,
                     Expires = DateTime.UtcNow.AddDays(IdpConstants.IdpSessionCookieTtlDays)
                 });
