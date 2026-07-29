@@ -7,6 +7,7 @@ import {
   getPasswordRequirements,
   createInitialChecks,
   validatePasswordChecks,
+  matchesPasswordComplexity,
   calculateStrength,
   areAllRequirementsMet,
   getStrengthColor,
@@ -72,6 +73,7 @@ describe("password-strength.util", () => {
     it("should validate special characters", () => {
       expect(validatePasswordChecks("abc!").special).toBe(true);
       expect(validatePasswordChecks("abc@#$").special).toBe(true);
+      expect(validatePasswordChecks("abc_def").special).toBe(true);
       expect(validatePasswordChecks("abcdef").special).toBe(false);
     });
 
@@ -82,6 +84,33 @@ describe("password-strength.util", () => {
         number: true,
         special: true,
       });
+    });
+
+    it("should accept underscore as the special character (matches PASSWORD_COMPLEXITY_REGEX)", () => {
+      expect(validatePasswordChecks("Pass_word1")).toEqual({
+        length: true,
+        case: true,
+        number: true,
+        special: true,
+      });
+      expect(matchesPasswordComplexity("Pass_word1")).toBe(true);
+    });
+  });
+
+  // ─── matchesPasswordComplexity ──────────────────────────────────────────────
+  describe("matchesPasswordComplexity", () => {
+    it("should accept valid passwords", () => {
+      expect(matchesPasswordComplexity("Abcdef1!")).toBe(true);
+      expect(matchesPasswordComplexity("Pass_word1")).toBe(true);
+      expect(matchesPasswordComplexity("Test@1234")).toBe(true);
+    });
+
+    it("should reject passwords missing required classes", () => {
+      expect(matchesPasswordComplexity("abcdef1!")).toBe(false);
+      expect(matchesPasswordComplexity("ABCDEF1!")).toBe(false);
+      expect(matchesPasswordComplexity("Abcdefgh!")).toBe(false);
+      expect(matchesPasswordComplexity("Abcdef12")).toBe(false);
+      expect(matchesPasswordComplexity("Ab1!")).toBe(false);
     });
   });
 
@@ -118,6 +147,13 @@ describe("password-strength.util", () => {
       expect(
         areAllRequirementsMet({ length: true, case: true, number: true, special: false }),
       ).toBe(false);
+    });
+
+    it("should also require PASSWORD_COMPLEXITY_REGEX when password is provided", () => {
+      const checks = { length: true, case: true, number: true, special: true };
+      expect(areAllRequirementsMet(checks, "Test@1234")).toBe(true);
+      expect(areAllRequirementsMet(checks, "Pass_word1")).toBe(true);
+      expect(areAllRequirementsMet(checks, "short1!")).toBe(false);
     });
   });
 
@@ -161,9 +197,11 @@ describe("password-strength.util", () => {
       expect(REGEX_PATTERNS.DIGIT.test("a")).toBe(false);
     });
 
-    it("should match special characters", () => {
+    it("should match special characters including underscore", () => {
       expect(REGEX_PATTERNS.SPECIAL.test("!")).toBe(true);
+      expect(REGEX_PATTERNS.SPECIAL.test("_")).toBe(true);
       expect(REGEX_PATTERNS.SPECIAL.test("a")).toBe(false);
+      expect(REGEX_PATTERNS.SPECIAL.test("1")).toBe(false);
     });
   });
 });
