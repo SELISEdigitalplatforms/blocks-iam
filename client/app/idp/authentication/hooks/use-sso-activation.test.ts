@@ -135,7 +135,7 @@ describe("useSsoActivation", () => {
 
     await waitFor(() =>
       expect(mockPush).toHaveBeenCalledWith(
-        "/sso-activate?username=jane@x.com&code=sso-code",
+        "/sso-activate?username=jane%40x.com&code=sso-code",
       ),
     );
   });
