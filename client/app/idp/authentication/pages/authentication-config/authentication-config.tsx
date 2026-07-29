@@ -10,7 +10,7 @@ import { AddOrganization } from "@blocks-idp/iam/modules/organization-management
 import { useGetOrganizationConfig } from "@blocks-idp/iam/hooks/use-organization";
 import { InviteUser } from "@blocks-idp/iam/modules/user-management/invite-user/invite-user";
 import { Users } from "@blocks-idp/iam/modules/user-management/users";
-import { useProjectStore } from "@seliseblocks/blocks-kit";
+import { useProjectStore } from "@seliseblocks/genesis-os";
 import { Button } from "@/components/ui-kits/button/button";
 import { Settings2 } from "lucide-react";
 

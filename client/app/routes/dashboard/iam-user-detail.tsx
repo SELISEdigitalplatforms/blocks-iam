@@ -1,4 +1,4 @@
-import { useParams } from "react-router-dom";
+import { useParams } from "react-router";
 import { User } from "@blocks-idp/iam/modules/user-management";
 
 export default function IamUserDetailPage() {

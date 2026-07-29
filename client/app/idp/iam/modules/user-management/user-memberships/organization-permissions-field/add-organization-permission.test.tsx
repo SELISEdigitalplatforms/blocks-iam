@@ -39,7 +39,7 @@ vi.mock("@blocks-idp/iam/hooks/use-permission", () => ({
   },
 }));
 
-vi.mock("@seliseblocks/blocks-kit", () => ({
+vi.mock("@seliseblocks/genesis-os", () => ({
   useProjectStore: () => ({
     selectedProject: { tenantId: "default" },
   }),

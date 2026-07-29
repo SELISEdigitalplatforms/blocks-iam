@@ -6,7 +6,7 @@ import { useSsoActivation } from "./use-sso-activation";
 const mockPush = vi.fn();
 const mockReplace = vi.fn();
 const mockGet = vi.fn();
-vi.mock("react-router-dom", () => ({
+vi.mock("react-router", () => ({
   useNavigate: vi.fn(() => mockPush),
   useSearchParams: vi.fn(() => [{ get: mockGet }]),
 }));
@@ -135,7 +135,7 @@ describe("useSsoActivation", () => {
 
     await waitFor(() =>
       expect(mockPush).toHaveBeenCalledWith(
-        "/sso-activate?username=jane@x.com&code=sso-code",
+        "/sso-activate?username=jane%40x.com&code=sso-code",
       ),
     );
   });

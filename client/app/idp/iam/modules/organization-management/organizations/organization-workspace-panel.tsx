@@ -1,6 +1,6 @@
 import { useQueryState } from "nuqs";
 import { useGetOrganizationById } from "@blocks-idp/iam/hooks/use-organization";
-import { useProjectStore } from "@seliseblocks/blocks-kit";
+import { useProjectStore } from "@seliseblocks/genesis-os";
 import { Skeleton } from "@/components/ui-kits/skeleton/skeleton";
 import {
   Tabs,

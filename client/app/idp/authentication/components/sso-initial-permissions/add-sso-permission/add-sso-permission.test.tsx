@@ -3,7 +3,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const h = vi.hoisted(() => ({ permsResult: {} as Record<string, unknown> }));
 
-vi.mock("@seliseblocks/blocks-kit", async (importActual) => {
+vi.mock("@seliseblocks/genesis-os", async (importActual) => {
   const actual = await importActual<Record<string, unknown>>();
   return { ...actual, useProjectStore: () => ({ selectedProject: { tenantId: "tenant-1" } }) };
 });

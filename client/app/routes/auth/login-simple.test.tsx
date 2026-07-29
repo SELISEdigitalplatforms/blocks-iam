@@ -8,10 +8,10 @@ const h = vi.hoisted(() => ({
   authState: { isAuthenticated: false },
 }));
 
-vi.mock("react-router-dom", () => ({ useNavigate: () => h.navigate }));
+vi.mock("react-router", () => ({ useNavigate: () => h.navigate }));
 vi.mock("@/lib/runtime-env", () => ({ getRuntimeEnv: h.getRuntimeEnv }));
 vi.mock("@/hooks/use-toast", () => ({ showErrorToast: h.showErrorToast }));
-vi.mock("@seliseblocks/blocks-kit", () => ({
+vi.mock("@seliseblocks/genesis-os", () => ({
   useAuthStore: () => h.authState,
 }));
 vi.mock("@/components/blocks-login-page", () => ({

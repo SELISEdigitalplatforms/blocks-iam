@@ -4,4 +4,4 @@ D:\Selise Work\Back end\github\blocks\blocks-idp\server\Cloud.DomainService\Clou
 D:\Selise Work\Back end\github\blocks\blocks-idp\server\Cloud.DomainService\Cloud.DomainService.csproj:7: <!-- <ProjectReference Include="K:\Selise_Projects\l0\blocks-genesis-net\src\Genesis\Blocks.Genesis.csproj" /> -->
 D:\Selise Work\Back end\github\blocks\blocks-idp\server\CloudConfiguration.DomainService\CloudConfiguration.DomainService.csproj:7: <ProjectReference Include="D:\Selise Work\Back end\github\blocks\blocks-genesis-net\src\Genesis\Blocks.Genesis.csproj" />
 D:\Selise Work\Back end\github\blocks\blocks-idp\server\CloudConfiguration.DomainService\CloudConfiguration.DomainService.csproj:8: <!-- <ProjectReference Include="K:\Selise_Projects\l0\blocks-genesis-net\src\Genesis\Blocks.Genesis.csproj" /> -->
-D:\Selise Work\Back end\github\blocks\blocks-idp\server\Directory.Packages.props:17: <PackageVersion Include="SeliseBlocks.Genesis" Version="9.0.48-preview.1" />
+D:\Selise Work\Back end\github\blocks\blocks-idp\server\Directory.Packages.props:17: <PackageVersion Include="SeliseBlocks.Genesis.OS" Version="4.0.2" />

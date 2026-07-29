@@ -21,8 +21,8 @@ import { useGetEmailTemplates } from "@blocks-communication/mail/hooks/use-email
 import { LogMenu } from "@blocks-lmt/components";
 import { useGetLanguages } from "@blocks-localization/hooks/use-language-manager";
 import { CirclePlus, Settings } from "lucide-react";
-import { Link } from "react-router-dom";
-import { useNavigate } from "react-router-dom";
+import { Link } from "react-router";
+import { useNavigate } from "react-router";
 import { useQueryState } from "nuqs";
 import { useMemo } from "react";
 import { EMAIL_TABS, EmailTabKey } from "../../constants/email-tabs";

@@ -1,5 +1,5 @@
 /**
- * Test-only stub for `@seliseblocks/blocks-kit`.
+ * Test-only stub for `@seliseblocks/genesis-os`.
  *
  * The real package's barrel eagerly imports framer-motion, whose `motion-utils`
  * reads `process.env.NODE_ENV` at import time and throws under the jsdom test

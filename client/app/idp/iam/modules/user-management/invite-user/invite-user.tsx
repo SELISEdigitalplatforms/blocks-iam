@@ -27,7 +27,7 @@ import {
   useUpdateUserAccessControl,
 } from "@blocks-idp/iam/hooks/use-user";
 import { z } from "zod";
-import { useProjectStore } from "@seliseblocks/blocks-kit";
+import { useProjectStore } from "@seliseblocks/genesis-os";
 import { useEffect, useMemo, useState } from "react";
 import { ChevronsUpDown, Check, Loader } from "lucide-react";
 import { isErrorWithErrors } from "@/lib/error";
