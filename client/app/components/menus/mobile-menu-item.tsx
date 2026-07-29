@@ -1,5 +1,5 @@
 import { useMemo } from "react";
-import { Link, useLocation } from "react-router-dom";
+import { Link, useLocation } from "react-router";
 import { ChevronRight, X } from "lucide-react";
 import { Badge } from "@/components/ui-kits/badge/badge";
 import { Separator } from "@/components/ui-kits/separator/separator";

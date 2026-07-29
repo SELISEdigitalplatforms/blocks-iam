@@ -1,6 +1,6 @@
 import { IOrganization } from "@blocks-idp/iam/models/organization";
 import { useGetRoles } from "@blocks-idp/iam/hooks/use-roles";
-import { useProjectStore } from "@seliseblocks/blocks-kit";
+import { useProjectStore } from "@seliseblocks/genesis-os";
 import { Card, CardContent } from "@/components/ui-kits/card/card";
 import {
   Calendar,

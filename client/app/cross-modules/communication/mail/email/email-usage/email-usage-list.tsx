@@ -28,7 +28,7 @@ import {
   EmailUsageFilterToolbar,
   useEmailUsageFilterQueryParams,
 } from "@blocks-communication/mail/email/email-usage/email-usage-filter-toolbar";
-import { Link } from "react-router-dom";
+import { Link } from "react-router";
 
 const LoadingSkeleton = () => (
   <div className="grid w-full gap-2">

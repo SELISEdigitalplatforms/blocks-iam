@@ -55,7 +55,7 @@ Install-Package SeliseBlocks.CaptchaDriver
 The package targets **.NET 10.0** and brings in its own transitive dependencies
 (`FluentValidation`, `Microsoft.Extensions.DependencyInjection.Abstractions`,
 `Microsoft.Extensions.Http`, `Microsoft.Extensions.Options.ConfigurationExtensions`,
-`MongoDB.Driver`, `SeliseBlocks.Genesis`).
+`MongoDB.Driver`, `SeliseBlocks.Genesis.OS`).
 
 ---
 
@@ -230,8 +230,8 @@ or, when omitted, defaults to `bcaptcha`.
 ## Requirements
 
 - **.NET 10.0** or later
-- **MongoDB** instance accessible via `IDbContextProvider` (provided by `SeliseBlocks.Genesis`)
-- **Cache** (e.g. Redis) accessible via `ICacheClient` (provided by `SeliseBlocks.Genesis`)
+- **MongoDB** instance accessible via `IDbContextProvider` (provided by `SeliseBlocks.Genesis.OS`)
+- **Cache** (e.g. Redis) accessible via `ICacheClient` (provided by `SeliseBlocks.Genesis.OS`)
 - `IConfiguration` bound if using `recaptcha` / `hcaptcha` providers
 
 ---

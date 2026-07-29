@@ -26,8 +26,8 @@ const h = vi.hoisted(() => ({
   projectStore: { selectedProject: null as null | { tenantId: string } },
 }));
 
-vi.mock("react-router-dom", async (importOriginal) => {
-  const actual = await importOriginal<typeof import("react-router-dom")>();
+vi.mock("react-router", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("react-router")>();
   return { ...actual, useNavigate: () => h.navigateMock };
 });
 vi.mock("./public-guard", () => ({ useAppState: vi.fn(() => h.appState) }));

@@ -1,4 +1,4 @@
-import { Outlet, useLocation, useSearchParams } from "react-router-dom";
+import { Outlet, useLocation, useSearchParams } from "react-router";
 import { createContext, useContext, useState, useEffect, ReactNode } from "react";
 import { Loader } from "lucide-react";
 import { extractOIDCParams } from "@blocks-idp/authentication/utils/oidc-utils";
@@ -123,7 +123,7 @@ export { OIDCProvider };
 
 
 
-// import { Outlet, useLocation, useSearchParams } from "react-router-dom";
+// import { Outlet, useLocation, useSearchParams } from "react-router";
 // import { createContext, useContext, useState, useEffect, ReactNode } from "react";
 // import { Logo } from "@/components/logo";
 // import { Loader } from "lucide-react";

@@ -28,7 +28,7 @@ import {
 import { z } from "zod";
 import { showErrorToast, showSuccessToast } from "@/hooks/use-toast";
 import { useSaveStorageConfiguration } from "@blocks-storage/hooks/use-storage-configuration";
-import { useProjectStore } from "@seliseblocks/blocks-kit";
+import { useProjectStore } from "@seliseblocks/genesis-os";
 import {
   IStorageConfiguration,
   STORAGE_STRATEGIES,

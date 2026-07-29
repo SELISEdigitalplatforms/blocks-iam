@@ -1,6 +1,6 @@
 import { render, screen } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { MemoryRouter } from "react-router-dom";
+import { MemoryRouter } from "react-router";
 
 const h = vi.hoisted(() => ({
   projectsResult: {} as Record<string, unknown>,
@@ -14,7 +14,7 @@ vi.mock("@/hooks/use-project", () => ({
   useGetProjects: () => h.projectsResult,
   useGetProject: () => h.projectResult,
 }));
-vi.mock("@seliseblocks/blocks-kit", () => ({
+vi.mock("@seliseblocks/genesis-os", () => ({
   useProjectStore: () => ({
     selectedProject: h.selectedProject,
     setSelectedProject: h.setSelectedProject,

@@ -1,4 +1,4 @@
-import { createBrowserRouter, Navigate, Outlet } from "react-router-dom";
+import { createBrowserRouter, Navigate, Outlet } from "react-router";
 
 import { AuthLayout } from "./layouts/auth-layout";
 import { OidcLayout } from "./layouts/oidc-layout";
@@ -60,7 +60,7 @@ import {
   ProtectedGuard,
   PublicGuard,
   TooltipProvider,
-} from "@seliseblocks/blocks-kit";
+} from "@seliseblocks/genesis-os";
 import { navigationMenus } from "./constants/navigation-menus";
 
 const redirectPaths: Record<string, string> = {

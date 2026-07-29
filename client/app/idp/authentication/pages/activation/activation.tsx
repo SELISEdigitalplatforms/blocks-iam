@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Link } from "react-router-dom";
+import { Link } from "react-router";
 import { AlertTriangle, CheckCircle2, Loader } from "lucide-react";
 import { ActivationForm } from "./activation-form";
 import { OidcAuthShell } from "../oidc/oidc-auth-shell";

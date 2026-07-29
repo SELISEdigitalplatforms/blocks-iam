@@ -236,7 +236,7 @@ export const authService = new AuthService();
 
 // import { serviceInstances } from "@/lib/http-client";
 // import { getRuntimeEnv } from "@/lib/runtime-env";
-// import { useAuthStore } from "@seliseblocks/blocks-kit";
+// import { useAuthStore } from "@seliseblocks/genesis-os";
 // import {
 //   ISigninByEmailPayload,
 //   ISigninByEmailResponse,

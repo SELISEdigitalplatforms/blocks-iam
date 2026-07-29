@@ -9,7 +9,7 @@ import {
 } from "@/components/ui-kits/dialog/dialog";
 import React from "react";
 import { toast } from "@/hooks/use-toast";
-import { useProjectStore } from "@seliseblocks/blocks-kit";
+import { useProjectStore } from "@seliseblocks/genesis-os";
 import { useDeleteEmailConfig } from "../../../../hooks/use-email-config";
 
 interface DeleteEmailConfigProps {

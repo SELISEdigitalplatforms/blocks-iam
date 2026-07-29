@@ -26,7 +26,7 @@ import {
 } from "@/components/ui-kits/form/form";
 import { z } from "zod";
 import { useSaveOrganization, useGetOrganizationConfig } from "@blocks-idp/iam/hooks/use-organization";
-import { useProjectStore } from "@seliseblocks/blocks-kit";
+import { useProjectStore } from "@seliseblocks/genesis-os";
 import { Plus } from "lucide-react";
 import {
   Tooltip,

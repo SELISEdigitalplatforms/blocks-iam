@@ -1,6 +1,6 @@
 import { render, screen, fireEvent } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { MemoryRouter } from "react-router-dom";
+import { MemoryRouter } from "react-router";
 
 const h = vi.hoisted(() => ({
   navigate: vi.fn(),
@@ -8,15 +8,15 @@ const h = vi.hoisted(() => ({
   tenantId: "tenant-1",
 }));
 
-vi.mock("react-router-dom", async (importOriginal) => {
-  const actual = await importOriginal<typeof import("react-router-dom")>();
+vi.mock("react-router", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("react-router")>();
   return { ...actual, useNavigate: () => h.navigate };
 });
 vi.mock("nuqs", () => ({
   parseAsInteger: { withDefault: (d: number) => ({ _d: d }) },
   useQueryStates: () => [{ page: 0, pageSize: 10 }, vi.fn()],
 }));
-vi.mock("@seliseblocks/blocks-kit", () => ({
+vi.mock("@seliseblocks/genesis-os", () => ({
   useProjectStore: () => ({ selectedProject: { tenantId: h.tenantId } }),
 }));
 vi.mock("@blocks-idp/iam/hooks/use-roles", () => ({

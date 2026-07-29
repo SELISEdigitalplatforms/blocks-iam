@@ -2,7 +2,7 @@ import { useState, useCallback, useEffect } from "react";
 import { getRuntimeEnv } from "@/lib/runtime-env";
 import { AnimatePresence, motion } from "framer-motion";
 import { Button } from "@/components/ui-kits/button/button";
-import { Link } from "react-router-dom";
+import { Link } from "react-router";
 import {
   Bot,
   ChevronLeft,
