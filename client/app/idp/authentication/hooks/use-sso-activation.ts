@@ -1,3 +1,4 @@
+import { sanitizeInternalNavigationTarget } from "@/lib/safe-navigation.util";
 import { showErrorToast } from "@/hooks/use-toast";
 import { isErrorWithErrors } from "@/lib/error";
 import { useAuthStore } from "@seliseblocks/blocks-kit";
@@ -54,7 +55,12 @@ function getSsoActivationPath(url: string): string | null {
   const username = params.get("username");
   const ssoCode = params.get("code");
 
-  return username && ssoCode ? `/sso-activate?username=${username}&code=${ssoCode}` : null;
+  if (!username || !ssoCode) return null;
+
+  return sanitizeInternalNavigationTarget(
+    `/sso-activate?username=${encodeURIComponent(username)}&code=${encodeURIComponent(ssoCode)}`,
+    "/login",
+  );
 }
 
 /**

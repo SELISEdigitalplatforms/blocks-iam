@@ -70,5 +70,7 @@ namespace Authentication.DomainService.Entities
             set => UiBrandColor = value;
         }
 
+        public bool RegisterAsIdentityProvider { get; set; }
+
     }
 }

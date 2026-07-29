@@ -1,3 +1,5 @@
+import { sanitizeInternalNavigationTarget } from "@/lib/safe-navigation.util";
+
 interface OIDCParams {
   projectKey?: string;
   userName?: string;
@@ -201,7 +203,8 @@ export const extractOIDCParams = (debug = false): OIDCParams => {
  * IMPORTANT: Only encodes values ONCE, even if called multiple times
  */
 export const buildOIDCNavigationUrl = (path: string): string => {
-  const params = extractOIDCParams(); 
+  const safePath = sanitizeInternalNavigationTarget(path, "/oidc/login");
+  const params = extractOIDCParams();
   const searchParams = new URLSearchParams();
 
   if (params.projectKey) searchParams.set("x-blocks-key", params.projectKey);
@@ -220,7 +223,7 @@ export const buildOIDCNavigationUrl = (path: string): string => {
   if (params.tenantId) searchParams.set("tenant_id", params.tenantId);
 
   const queryString = searchParams.toString();
-  return queryString ? `${path}?${queryString}` : path;
+  return queryString ? `${safePath}?${queryString}` : safePath;
 };
 
 /**
