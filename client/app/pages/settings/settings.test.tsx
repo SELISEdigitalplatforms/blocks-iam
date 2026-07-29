@@ -10,7 +10,7 @@ const h = vi.hoisted(() => ({
   setSelectedProject: vi.fn(),
 }));
 
-vi.mock("@seliseblocks/blocks-kit", async (importActual) => {
+vi.mock("@seliseblocks/genesis-os", async (importActual) => {
   const actual = await importActual<Record<string, unknown>>();
   return {
     ...actual,

@@ -2,7 +2,7 @@ import { Button } from "@/components/ui-kits/button/button";
 import { getRuntimeEnv } from "@/lib/runtime-env";
 import { BookOpenText } from "lucide-react";
 // import { BookOpenText, Component } from "lucide-react";
-import { Link } from "react-router-dom";
+import { Link } from "react-router";
 
 export const BlockInfo = () => {
   return (

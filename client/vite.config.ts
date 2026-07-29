@@ -90,15 +90,15 @@ export default defineConfig(({ mode }) => {
         // framer-motion, whose motion-utils reads `process.env.NODE_ENV` at load
         // time and crashes under jsdom. The stub also re-exports the local
         // stores so `vi.mock("@/store/...")` stays effective in hook tests.
-        "@seliseblocks/blocks-kit": path.resolve(
+        "@seliseblocks/genesis-os": path.resolve(
           __dirname,
           "./app/test-utils/stubs/blocks-kit.tsx",
         ),
-        "@seliseblocks/blocks-kit/lib": path.resolve(
+        "@seliseblocks/genesis-os/lib": path.resolve(
           __dirname,
           "./app/test-utils/stubs/blocks-kit.tsx",
         ),
-        "@seliseblocks/blocks-kit/providers": path.resolve(
+        "@seliseblocks/genesis-os/providers": path.resolve(
           __dirname,
           "./app/test-utils/stubs/blocks-kit.tsx",
         ),

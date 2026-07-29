@@ -5,6 +5,6 @@
 // A previous local ThemeProvider persisted to localStorage while the header
 // toggle wrote the cookie; on reload the two disagreed (toggle showed Dark but
 // the UI rendered Light). Consolidating on blocks-kit removes that split-brain.
-export { ThemeProvider } from "@seliseblocks/blocks-kit/providers";
-export { useTheme } from "@seliseblocks/blocks-kit/hooks";
-export type { Theme } from "@seliseblocks/blocks-kit/hooks";
+export { ThemeProvider } from "@seliseblocks/genesis-os/providers";
+export { useTheme } from "@seliseblocks/genesis-os/hooks";
+export type { Theme } from "@seliseblocks/genesis-os/hooks";

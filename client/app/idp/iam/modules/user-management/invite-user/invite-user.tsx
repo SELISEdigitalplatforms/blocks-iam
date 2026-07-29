@@ -27,7 +27,7 @@ import {
   useUpdateUserAccessControl,
 } from "@blocks-idp/iam/hooks/use-user";
 import { z } from "zod";
-import { useProjectStore } from "@seliseblocks/blocks-kit";
+import { useProjectStore } from "@seliseblocks/genesis-os";
 import { useEffect, useMemo, useState } from "react";
 import { ChevronsUpDown, Check, Loader } from "lucide-react";
 import { isErrorWithErrors } from "@/lib/error";
@@ -137,7 +137,7 @@ export const InviteUser = () => {
   }, [open, isMultiOrgEnabled, orgsData, hasNonDefaultOrgs, form]);
 
   // When multi-org is disabled the org picker is hidden, and we don't send
-  // organizationIds in the payload — the user is implicitly scoped to the
+  // organizationId in the payload — the user is implicitly scoped to the
   // built-in "default" org on the server side.
 
   // If the form's currently selected org becomes hidden because the existing
@@ -203,15 +203,16 @@ const orgOptions = useMemo(() => {
         return;
       }
 
+      const { organizationIds: _organizationIds, ...restValues } = values;
       const res = await createUser({
-        ...values,
+        ...restValues,
         // Names are collected from the user on the activation form, not from the inviter.
         firstName: "",
         lastName: "",
         userPassType: 1,
         userCreationType: 1,
         platform: "blocks_portal",
-        ...(isMultiOrgEnabled ? { organizationIds: values.organizationIds } : {}),
+        ...(isMultiOrgEnabled ? { organizationId: selectedOrgId } : {}),
       });
       if (!res.isSuccess) {
         const msg =

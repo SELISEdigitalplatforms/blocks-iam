@@ -5,7 +5,7 @@ import { SidebarContext, DashboardLayoutProvider } from "./dashboard-layout-prov
 
 const h = vi.hoisted(() => ({ isMobile: false, pathname: "/dashboard" }));
 
-vi.mock("react-router-dom", () => ({
+vi.mock("react-router", () => ({
   useLocation: () => ({ pathname: h.pathname }),
 }));
 vi.mock("@/hooks/use-is-mobile", () => ({ default: () => h.isMobile }));

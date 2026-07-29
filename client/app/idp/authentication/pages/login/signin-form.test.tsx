@@ -1,6 +1,6 @@
 import { render, screen, fireEvent, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { MemoryRouter } from "react-router-dom";
+import { MemoryRouter } from "react-router";
 
 const h = vi.hoisted(() => ({
   navigate: vi.fn(),
@@ -12,15 +12,15 @@ const h = vi.hoisted(() => ({
   showError: vi.fn(),
 }));
 
-vi.mock("react-router-dom", async (importOriginal) => {
-  const actual = await importOriginal<typeof import("react-router-dom")>();
+vi.mock("react-router", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("react-router")>();
   return { ...actual, useNavigate: () => h.navigate };
 });
 vi.mock("@/lib/runtime-env", () => ({ getRuntimeEnv: () => "site-key" }));
 vi.mock("@blocks-idp/authentication/hooks/use-auth", () => ({
   useSigninByEmail: () => ({ isPending: h.isPending, mutateAsync: h.mutateAsync }),
 }));
-vi.mock("@seliseblocks/blocks-kit", () => ({
+vi.mock("@seliseblocks/genesis-os", () => ({
   useAuthStore: () => ({ setAuthenticated: h.setAuthenticated, setTokens: h.setTokens }),
 }));
 vi.mock("@/hooks/use-toast", () => ({ showErrorToast: (a: unknown) => h.showError(a) }));

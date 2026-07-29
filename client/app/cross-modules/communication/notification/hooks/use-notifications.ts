@@ -1,6 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { notificationService } from "../services/notification.service";
-import { useProjectStore } from "@seliseblocks/blocks-kit";
+import { useProjectStore } from "@seliseblocks/genesis-os";
 
 export const useGetNotificationConfigs = (page: number = 0, pageSize: number = 10) => {
   const tenantId = useProjectStore()?.selectedProject?.tenantId || "";

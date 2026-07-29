@@ -1,6 +1,6 @@
 import { useEffect, useRef } from "react";
-import { useSearchParams } from "react-router-dom";
-import { useAuthStore } from "@seliseblocks/blocks-kit";
+import { useSearchParams } from "react-router";
+import { useAuthStore } from "@seliseblocks/genesis-os";
 
 export default function LoginCallbackPage() {
   const [searchParams] = useSearchParams();

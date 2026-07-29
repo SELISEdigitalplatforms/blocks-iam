@@ -11,7 +11,7 @@ import { showErrorToast } from "@/hooks/use-toast";
 import { GRANT_TYPES } from "@blocks-idp/authentication/constants/authentication.constant";
 import { useGetLoginOptions } from "@blocks-idp/authentication/hooks/use-auth";
 import { useGetSignUpSetting } from "@blocks-idp/iam/hooks/use-user";
-import { Link } from "react-router-dom";
+import { Link } from "react-router";
 import { useEffect } from "react";
 import { SigninForm } from "./signin-form";
 import { SsoSignin } from "./sso-signin";
@@ -156,7 +156,7 @@ export const Signin = ({ ssoError, mode = "default", oidcContext }: SigninProps)
 // import { GRANT_TYPES } from "@blocks-idp/authentication/constants/authentication.constant";
 // import { useGetLoginOptions } from "@blocks-idp/authentication/hooks/use-auth";
 // import { useGetSignUpSetting } from "@blocks-idp/iam/hooks/use-user";
-// import { Link } from "react-router-dom";
+// import { Link } from "react-router";
 // import { useEffect } from "react";
 // import { SigninForm } from "./signin-form";
 // import { SsoSignin } from "./sso-signin";

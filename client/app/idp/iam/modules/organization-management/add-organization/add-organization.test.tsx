@@ -11,7 +11,7 @@ const h = vi.hoisted(() => ({
 
 // The tooltip ui-kit re-exports Tooltip* from blocks-kit (aliased to the test
 // stub), so keep the stub's exports and only override useProjectStore.
-vi.mock("@seliseblocks/blocks-kit", async (importActual) => {
+vi.mock("@seliseblocks/genesis-os", async (importActual) => {
   const actual = await importActual<Record<string, unknown>>();
   return { ...actual, useProjectStore: () => ({ selectedProject: { tenantId: "tenant-1" } }) };
 });
