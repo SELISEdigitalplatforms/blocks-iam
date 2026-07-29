@@ -1,4 +1,4 @@
-import { useParams } from "react-router-dom";
+import { useParams } from "react-router";
 import { RoleDetails } from "@blocks-idp/iam/modules/role-management";
 
 export default function IamRoleDetailPage() {

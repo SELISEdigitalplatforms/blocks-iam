@@ -1,5 +1,5 @@
 import { CopyToClipboardButton } from "@/components/copy-to-clipboard-button";
-import { useNavigate } from "react-router-dom";
+import { useNavigate } from "react-router";
 import { getLogFormatTimestamp, getLogLevelClassName } from "@blocks-lmt/utils";
 import { ILog } from "../../models/log.model";
 

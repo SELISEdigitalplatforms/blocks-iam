@@ -1,11 +1,11 @@
 
 
 import { useState, useEffect, useMemo } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate } from "react-router";
 import { getApiUrl } from "@/lib/get-api-path";
 import { getRuntimeEnv } from "@/lib/runtime-env";
 import { showErrorToast } from "@/hooks/use-toast";
-import { useAuthStore } from "@seliseblocks/blocks-kit";
+import { useAuthStore } from "@seliseblocks/genesis-os";
 import { isErrorWithErrors } from "@/lib/error";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui-kits/card/card";
 import { Checkbox } from "@/components/ui-kits/checkbox/checkbox";
@@ -16,7 +16,7 @@ import {
 } from "@blocks-idp/authentication/constants/sso-providers.constant";
 import { oauthService } from "@blocks-idp/authentication/services/oauth.service";
 import { sanitizeProviderUrl } from "@blocks-idp/authentication/utils/sanitize-provider-url.util";
-import { Link } from "react-router-dom";
+import { Link } from "react-router";
 
 type SsoActivateProps = {
   oauthParams: { code: string; username: string };

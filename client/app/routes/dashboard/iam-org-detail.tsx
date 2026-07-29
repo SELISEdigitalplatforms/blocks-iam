@@ -1,4 +1,4 @@
-import { useParams } from "react-router-dom";
+import { useParams } from "react-router";
 import { OrganizationDetail } from "@blocks-idp/iam/pages/organization-detail/organization-detail";
 
 export default function IamOrgDetailPage() {

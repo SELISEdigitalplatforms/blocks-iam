@@ -15,8 +15,8 @@ import {
 } from "@blocks-idp/iam/models/permission";
 import { FilterControls } from "@/components/filter-toolbar";
 import { usePermissionsSortQuaryParams } from "./permissions-filter-toolbar";
-import { Link } from "react-router-dom";
-import { useNavigate } from "react-router-dom";
+import { Link } from "react-router";
+import { useNavigate } from "react-router";
 import { cn } from "@/lib/utils";
 import { ScrollArea, ScrollBar } from "@/components/ui-kits/scroll-area/scroll-area";
 import { useScopedPath } from "@/hooks/use-scoped-path";

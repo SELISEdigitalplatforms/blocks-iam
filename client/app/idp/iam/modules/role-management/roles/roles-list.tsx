@@ -13,7 +13,7 @@ import { ColumnDef, flexRender, getCoreRowModel, useReactTable } from "@tanstack
 import { Pencil } from "lucide-react";
 import { useCallback, useMemo, useState } from "react";
 import { UpdateRole } from "../update-role/update-role";
-import { useNavigate } from "react-router-dom";
+import { useNavigate } from "react-router";
 import { IRole } from "@blocks-idp/iam/models/role";
 import { FilterControls, SortValue } from "@/components/filter-toolbar";
 import { useRolesSortQueryParams } from "./roles-filter-toolbar";

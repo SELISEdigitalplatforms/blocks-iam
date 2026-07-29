@@ -1,10 +1,10 @@
 import { render } from "@testing-library/react";
-import { Routes, Route, MemoryRouter } from "react-router-dom";
+import { Routes, Route, MemoryRouter } from "react-router";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const h = vi.hoisted(() => ({ setAuthenticated: vi.fn(), getRuntimeEnv: vi.fn() }));
 
-vi.mock("@seliseblocks/blocks-kit", () => ({
+vi.mock("@seliseblocks/genesis-os", () => ({
   useAuthStore: () => ({ setAuthenticated: h.setAuthenticated }),
 }));
 vi.mock("@/lib/runtime-env", () => ({ getRuntimeEnv: h.getRuntimeEnv }));
