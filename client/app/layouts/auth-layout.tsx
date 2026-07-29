@@ -1,4 +1,4 @@
-import { Outlet } from "react-router-dom";
+import { Outlet } from "react-router";
 import { Suspense } from "react";
 import { PublicGuard } from "@/guards/public-guard";
 

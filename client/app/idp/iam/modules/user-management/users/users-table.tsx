@@ -2,7 +2,7 @@ import { CopyToClipboardButton } from "@/components/copy-to-clipboard-button";
 import { Badge } from "@/components/ui-kits/badge/badge";
 import { Skeleton } from "@/components/ui-kits/skeleton/skeleton";
 import { User } from "@blocks-idp/iam/models/user";
-import { useNavigate } from "react-router-dom";
+import { useNavigate } from "react-router";
 import { useUsersSortQueryParams } from "./users-filter-toolbar";
 import { FilterControls } from "@/components/filter-toolbar";
 import { useScopedPath } from "@/hooks/use-scoped-path";

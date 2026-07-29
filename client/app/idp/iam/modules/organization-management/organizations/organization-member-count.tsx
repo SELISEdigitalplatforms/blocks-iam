@@ -1,5 +1,5 @@
 import { useGetUsers } from "@blocks-idp/iam/hooks/use-user";
-import { useProjectStore } from "@seliseblocks/blocks-kit";
+import { useProjectStore } from "@seliseblocks/genesis-os";
 
 export const useOrganizationMemberCount = (organizationId: string) => {
   const tenantId = useProjectStore().selectedProject?.tenantId || "";

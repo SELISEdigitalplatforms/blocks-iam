@@ -1,5 +1,5 @@
 import { AlertTriangle } from "lucide-react";
-import { Link } from "react-router-dom";
+import { Link } from "react-router";
 import { OidcAuthShell } from "../oidc/oidc-auth-shell";
 import { RESET_PASSWORD_PANEL } from "../oidc/oidc-panel-config";
 import { ResetPasswordForm } from "./reset-password-form";

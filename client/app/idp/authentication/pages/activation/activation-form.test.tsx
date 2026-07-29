@@ -9,7 +9,7 @@ const h = vi.hoisted(() => ({
   animCtx: null as Record<string, unknown> | null,
 }));
 
-vi.mock("react-router-dom", () => ({ useNavigate: () => h.navigateMock }));
+vi.mock("react-router", () => ({ useNavigate: () => h.navigateMock }));
 vi.mock("@/components/captcha", () => ({ Captcha: () => null }));
 vi.mock("@blocks-idp/iam/hooks/use-account", () => ({
   useAccountActivation: vi.fn(() => ({ isPending: false, mutateAsync: h.mutateAsync })),

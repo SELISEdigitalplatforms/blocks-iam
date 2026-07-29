@@ -4,7 +4,7 @@ import { Button } from "@/components/ui-kits/button/button";
 import { showErrorToast } from "@/hooks/use-toast";
 import { Settings2 } from "lucide-react";
 import { OS_APP, initiateAppLogin } from "@/components/blocks-app-launcher/blocks-app-launcher";
-import { useProjectStore } from "@seliseblocks/blocks-kit";
+import { useProjectStore } from "@seliseblocks/genesis-os";
 
 interface OrganizationConfigProps {
   trigger?: ReactNode;

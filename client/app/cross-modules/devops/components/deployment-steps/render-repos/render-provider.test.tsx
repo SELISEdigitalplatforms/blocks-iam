@@ -1,6 +1,6 @@
 import { render, screen, fireEvent } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { MemoryRouter } from "react-router-dom";
+import { MemoryRouter } from "react-router";
 
 const h = vi.hoisted(() => ({
   navigate: vi.fn(),
@@ -12,8 +12,8 @@ const h = vi.hoisted(() => ({
   aws: vi.fn(),
 }));
 
-vi.mock("react-router-dom", async (importOriginal) => {
-  const actual = await importOriginal<typeof import("react-router-dom")>();
+vi.mock("react-router", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("react-router")>();
   return { ...actual, useNavigate: () => h.navigate };
 });
 vi.mock("@/cross-modules/devops/models/git-dummy", () => ({
@@ -45,7 +45,7 @@ vi.mock("@/cross-modules/devops/services/providers.service", () => ({
 vi.mock("@/cross-modules/devops/hooks/github-info", () => ({
   useValidateAuthorization: () => ({ data: h.verifyAuth }),
 }));
-vi.mock("@seliseblocks/blocks-kit", async (importActual) => {
+vi.mock("@seliseblocks/genesis-os", async (importActual) => {
   const actual = await importActual<Record<string, unknown>>();
   return { ...actual, useProjectStore: () => ({ selectedProject: { tenantId: "tenant-1" } }) };
 });

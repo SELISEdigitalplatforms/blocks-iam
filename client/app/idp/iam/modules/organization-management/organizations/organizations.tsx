@@ -5,7 +5,7 @@ import { Button } from "@/components/ui-kits/button/button";
 import { cn, normalizeSearchQueryText } from "@/lib/utils";
 import { useGetOrganizationConfig, useGetOrganizations } from "@blocks-idp/iam/hooks/use-organization";
 import { IOrganization } from "@blocks-idp/iam/models/organization";
-import { useProjectStore } from "@seliseblocks/blocks-kit";
+import { useProjectStore } from "@seliseblocks/genesis-os";
 import { useOrganizationsSortQueryParams } from "./organizations-filter-toolbar";
 import { OrganizationConfig } from "../organization-config";
 import { OrganizationsSidebarList } from "./organizations-sidebar-list";

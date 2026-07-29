@@ -23,7 +23,7 @@ import { IPermission } from "@blocks-idp/iam/models/permission";
 import { useGetRoles } from "@blocks-idp/iam/hooks/use-roles";
 import { useGetPermissions } from "@blocks-idp/iam/hooks/use-permission";
 import { useGetUserById, useUpdateUserAccessControl } from "@blocks-idp/iam/hooks/use-user";
-import { useProjectStore } from "@seliseblocks/blocks-kit";
+import { useProjectStore } from "@seliseblocks/genesis-os";
 import { OrganizationRolesField } from "./organization-roles-field";
 import { OrganizationPermissionsField } from "./organization-permissions-field";
 

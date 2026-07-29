@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
-import { useNavigate } from "react-router-dom";
-import { useAuthStore } from "@seliseblocks/blocks-kit";
+import { useNavigate } from "react-router";
+import { useAuthStore } from "@seliseblocks/genesis-os";
 import {
   useImpersonationStatusChecker,
   useStartImpersonation,
@@ -9,7 +9,7 @@ import {
 import { useAppState } from "./public-guard";
 import { useGetMe } from "@/idp/iam/hooks/use-user";
 import { useImpersonateStore } from "@/store/impersonate-store";
-import { useProjectStore } from "@seliseblocks/blocks-kit";
+import { useProjectStore } from "@seliseblocks/genesis-os";
 import { ImpersonationRequest } from "@/services/impersonation.service";
 import { getRuntimeEnv } from "@/lib/runtime-env";
 import LogoLoadingSpinner from "@/components/loader-spinner/loader-spinner";

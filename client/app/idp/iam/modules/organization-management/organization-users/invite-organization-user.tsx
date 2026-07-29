@@ -28,7 +28,7 @@ import {
 } from "@blocks-idp/iam/hooks/use-user";
 import { useGetOrganizationConfig, useGetOrganizations } from "@blocks-idp/iam/hooks/use-organization";
 import { z } from "zod";
-import { useProjectStore } from "@seliseblocks/blocks-kit";
+import { useProjectStore } from "@seliseblocks/genesis-os";
 import { ChevronsUpDown, Check, Loader, Plus } from "lucide-react";
 import { isErrorWithErrors } from "@/lib/error";
 import { cn } from "@/lib/utils";

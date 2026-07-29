@@ -1,6 +1,6 @@
 import React from "react";
 import { UserBasicInformation } from "../user-basic-information";
-import { useProjectStore } from "@seliseblocks/blocks-kit";
+import { useProjectStore } from "@seliseblocks/genesis-os";
 import { ProfileImageUploader } from "../profile-image-uploader";
 import { useGetUserById } from "@blocks-idp/iam/hooks/use-user";
 import { CopyToClipboardButton } from "@/components/copy-to-clipboard-button";

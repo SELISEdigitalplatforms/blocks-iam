@@ -11,7 +11,7 @@ import { checkValidDate, formatDate, parseDateString } from "@/lib/utils";
 import { UserMinus, Users as UsersIcon } from "lucide-react";
 import { useOrganizationUsersSortQueryParams } from "./organization-users-filter-toolbar";
 import { FilterControls } from "@/components/filter-toolbar";
-import { useNavigate } from "react-router-dom";
+import { useNavigate } from "react-router";
 import { useScopedPath } from "@/hooks/use-scoped-path";
 
 type OrganizationUsersTableProps = {

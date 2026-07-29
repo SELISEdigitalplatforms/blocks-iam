@@ -3,7 +3,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui-kits/t
 import { clearQueryString } from "@/lib/utils";
 import { Permissions } from "@blocks-idp/iam/modules/permission-management";
 import { AddRole, Roles } from "@blocks-idp/iam/modules/role-management";
-import { Link } from "react-router-dom";
+import { Link } from "react-router";
 import { useQueryState } from "nuqs";
 import { useScopedPath } from "@/hooks/use-scoped-path";
 

@@ -1,5 +1,5 @@
 import { render, screen, fireEvent } from "@testing-library/react";
-import { MemoryRouter } from "react-router-dom";
+import { MemoryRouter } from "react-router";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 // ─── Mocks ───────────────────────────────────────────────────────────────────
@@ -10,8 +10,8 @@ const h = vi.hoisted(() => ({
   animCtx: null as Record<string, unknown> | null,
 }));
 
-vi.mock("react-router-dom", async (importOriginal) => {
-  const actual = await importOriginal<typeof import("react-router-dom")>();
+vi.mock("react-router", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("react-router")>();
   return { ...actual, useNavigate: () => h.navigateMock };
 });
 vi.mock("@/components/captcha", () => ({ Captcha: () => null }));
