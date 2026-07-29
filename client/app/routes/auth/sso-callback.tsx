@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef } from "react";
-import { useParams, useSearchParams } from "react-router-dom";
-import { useAuthStore } from "@seliseblocks/blocks-kit";
+import { useParams, useSearchParams } from "react-router";
+import { useAuthStore } from "@seliseblocks/genesis-os";
 import { getRuntimeEnv } from "@/lib/runtime-env";
 import { getCurrentOIDCParams } from "@blocks-idp/authentication/utils/oidc-utils";
 

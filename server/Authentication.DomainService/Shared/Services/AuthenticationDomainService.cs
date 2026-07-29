@@ -192,11 +192,7 @@ namespace Authentication.DomainService.Services
                             IsActive = credential.IsActive,
                             ClientId = credential.ClientId,
                             ClientSecret = credential.ClientSecret,
-                            Issuer = credential.ExternalDiscoveryEndpoint,
                             WellKnownUrl = credential.ExternalDiscoveryEndpoint,
-                            AuthorizationUrl = credential.ExternalDiscoveryEndpoint ?? "",
-                            TokenUrl = credential.ExternalDiscoveryEndpoint ?? "",
-                            UserInfoUrl = credential.ExternalDiscoveryEndpoint ?? "",
                             RedirectUris = credential.RedirectUris ?? new List<string>(),
                             Scope = credential.Scope,
                             ResponseType = "code",
@@ -217,11 +213,6 @@ namespace Authentication.DomainService.Services
                         existingProvider.ClientId = credential.ClientId;
                         existingProvider.ClientSecret = credential.ClientSecret;
                         existingProvider.DisplayName = request.ClientDisplayName ?? credential.ClientId;
-                        existingProvider.Issuer = credential.ExternalDiscoveryEndpoint;
-                        existingProvider.WellKnownUrl = credential.ExternalDiscoveryEndpoint;
-                        existingProvider.AuthorizationUrl = credential.ExternalDiscoveryEndpoint ?? "";
-                        existingProvider.TokenUrl = credential.ExternalDiscoveryEndpoint ?? "";
-                        existingProvider.UserInfoUrl = credential.ExternalDiscoveryEndpoint ?? "";
                         existingProvider.RedirectUris = credential.RedirectUris ?? new List<string>();
                         existingProvider.Scope = credential.Scope;
                         existingProvider.GrantTypes = ["authorization_code", "refresh_token"];
@@ -312,6 +303,7 @@ namespace Authentication.DomainService.Services
             credential.ClientName = request.ClientDisplayName;
             credential.UiBrandColor = request.ClientBrandColor;
             credential.IsDeviceFlowClient = request.IsDeviceFlowClient;
+            credential.RegisterAsIdentityProvider = request.RegisterAsIdentityProvider;
         }
 
         public async Task<GetOIDCClientResponse> GetOidcClientAsync(string tenantId)

@@ -6,7 +6,7 @@ import BeePluginStarter from "@blocks-communication/mail/components/bee-plugin-s
 import { useState, useEffect, useRef } from "react";
 import PageBreadcrumb from "@/components/breadcrumb/breadcrumb";
 import { IEmailTemplate } from "@blocks-communication/mail/models/email";
-import { useNavigate } from "react-router-dom";
+import { useNavigate } from "react-router";
 import {
   useGetEmailTemplate,
   useSaveEmailTemplate,
@@ -18,7 +18,9 @@ export function EditEmailTemplate({ params }: { params: { id: string } }) {
   const { isLoading, isFetching, data } = useGetEmailTemplate(id);
   const [emailDetails, setEmailDetails] = useState<IEmailTemplate | null>(null);
   const { saveEmailTemplate, isPending } = useSaveEmailTemplate();
-  const beeRef = useRef<{ submit: () => void; preview: () => void; reset: () => void }>();
+  const beeRef = useRef<
+    { submit: () => void; preview: () => void; reset: () => void } | undefined
+  >(undefined);
   const [, setTemplateData] = useState<IEmailTemplate>({
     itemId: "",
   });

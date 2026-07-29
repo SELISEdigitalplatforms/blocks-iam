@@ -1,4 +1,4 @@
-﻿using Blocks.Genesis;
+using Blocks.Genesis;
 using DomainService.Storage;
 using FluentValidation;
 using Mfa.DomainService.Entities;
@@ -62,7 +62,8 @@ namespace Mfa.DomainService.TOTP
 
             if (userInfo is null) { return new SetUpUserTotpResponse { Errors = new Dictionary<string, string> { { "user_not_exist", $"No user exist with useId: {userId}" } } }; }
 
-            var secret = ExtractUserSecret(Guid.NewGuid().ToString());
+            //var secret = ExtractUserSecret(Guid.NewGuid().ToString());
+            var secret = Base32Encoding.ToString(KeyGeneration.GenerateRandomKey(20));
             var existingOtpInfo = await GetExistingOtpInfoAsync(userId);
 
             if (existingOtpInfo is not null && !string.IsNullOrWhiteSpace(existingOtpInfo.ImageUri))

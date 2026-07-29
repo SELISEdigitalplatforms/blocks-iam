@@ -1,5 +1,5 @@
 import { Building2, Check, LogOut, UserRound } from "lucide-react";
-import { Link } from "react-router-dom";
+import { Link } from "react-router";
 import { Button } from "@/components/ui-kits/button/button";
 import {
   DropdownMenu,
@@ -14,9 +14,9 @@ import { Skeleton } from "@/components/ui-kits/skeleton/skeleton";
 import { useGetMe } from "@/idp/iam/hooks/use-user";
 import { useGetMyOrganizations } from "@/idp/iam/hooks/use-organization";
 import { useLogout } from "@/idp/authentication/hooks/use-auth";
-import { useAuthStore } from "@seliseblocks/blocks-kit";
+import { useAuthStore } from "@seliseblocks/genesis-os";
 import { useLanguageViewStore } from "@/cross-modules/localization/store/use-language-view-store";
-import { useProjectStore } from "@seliseblocks/blocks-kit";
+import { useProjectStore } from "@seliseblocks/genesis-os";
 import { getQueryClient } from "@/providers/query-provider";
 import { cn } from "@/lib/utils";
 

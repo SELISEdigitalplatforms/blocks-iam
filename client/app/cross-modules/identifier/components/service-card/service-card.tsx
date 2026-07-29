@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { getRuntimeEnv } from "@/lib/runtime-env";
-import { useNavigate } from "react-router-dom";
+import { useNavigate } from "react-router";
 import { RegisteredService } from "@blocks-identifier/models/service.model";
 import { Button } from "@/components/ui-kits/button/button";
 import {

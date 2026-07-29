@@ -1,12 +1,12 @@
 import { render, screen, fireEvent } from "@testing-library/react";
-import { MemoryRouter } from "react-router-dom";
+import { MemoryRouter } from "react-router";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { IRole } from "@blocks-idp/iam/models/role";
 
 const h = vi.hoisted(() => ({ navigate: vi.fn() }));
 
-vi.mock("react-router-dom", async (importOriginal) => {
-  const actual = await importOriginal<typeof import("react-router-dom")>();
+vi.mock("react-router", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("react-router")>();
   return { ...actual, useNavigate: () => h.navigate };
 });
 vi.mock("@/hooks/use-scoped-path", () => ({ useScopedPath: () => (p: string) => `/scoped/${p}` }));

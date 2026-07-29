@@ -16,7 +16,7 @@ vi.mock("../constants/notification.constant", () => ({
   channelsToNotify: [{ value: 1, label: "Email" }],
   notificationTypes: [{ value: 2, label: "Alert" }],
 }));
-vi.mock("@seliseblocks/blocks-kit", () => ({
+vi.mock("@seliseblocks/genesis-os", () => ({
   useProjectStore: () => ({ selectedProject: { tenantId: "tenant-1" } }),
 }));
 vi.mock("@/hooks/use-toast", () => ({

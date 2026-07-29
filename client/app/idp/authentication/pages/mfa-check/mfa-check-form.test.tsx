@@ -8,7 +8,7 @@ const h = vi.hoisted(() => ({
   resend: vi.fn(),
 }));
 
-vi.mock("react-router-dom", () => ({ useNavigate: () => h.navigateMock }));
+vi.mock("react-router", () => ({ useNavigate: () => h.navigateMock }));
 vi.mock("nuqs", () => ({
   useQueryStates: () => [{ mfa_id: "mfa-1", mfa_type: 2 }],
   parseAsString: { withDefault: () => ({}) },
