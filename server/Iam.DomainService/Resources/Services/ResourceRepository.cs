@@ -451,44 +451,54 @@ namespace Iam.DomainService.Resources
         }
 
 
+        //private async Task<long> CountRoleUsageAcrossOrganizationAsync(string slug, string organizationId)
+        //{
+        //    var collection = _identityAccessManagementRepository.GetCollectionByName<Permission>("Permissions");
+        //    var docs = await collection
+        //        .Find(Builders<Permission>.Filter.Exists("Roles"))
+        //        .Project(Builders<Permission>.Projection.Include("Roles"))
+        //        .ToListAsync();
+
+        //    var count = 0L;
+        //    foreach (var doc in docs)
+        //    {
+        //        if (!doc.TryGetValue("Roles", out var rolesValue))
+        //        {
+        //            continue;
+        //        }
+
+        //        var matched = false;
+        //        if (rolesValue.IsBsonArray)
+        //        {
+        //            matched = string.Equals(organizationId, "default", StringComparison.OrdinalIgnoreCase)
+        //                && rolesValue.AsBsonArray.Any(role => role.IsString && string.Equals(role.AsString, slug, StringComparison.OrdinalIgnoreCase));
+        //        }
+        //        else if (rolesValue.IsBsonDocument)
+        //        {
+        //            if (rolesValue.AsBsonDocument.TryGetValue(organizationId, out var orgRolesValue)
+        //                && orgRolesValue.IsBsonArray)
+        //            {
+        //                matched = orgRolesValue.AsBsonArray.Any(role => role.IsString && string.Equals(role.AsString, slug, StringComparison.OrdinalIgnoreCase));
+        //            }
+        //        }
+
+        //        if (matched)
+        //        {
+        //            count++;
+        //        }
+        //    }
+
+        //    return count;
+        //}
+
         private async Task<long> CountRoleUsageAcrossOrganizationAsync(string slug, string organizationId)
         {
-            var collection = _identityAccessManagementRepository.GetCollectionByName<BsonDocument>("Permissions");
-            var docs = await collection
-                .Find(Builders<BsonDocument>.Filter.Exists("Roles"))
-                .Project(Builders<BsonDocument>.Projection.Include("Roles"))
-                .ToListAsync();
+            var collection = _identityAccessManagementRepository.GetCollectionByName<Permission>("Permissions");
 
-            var count = 0L;
-            foreach (var doc in docs)
-            {
-                if (!doc.TryGetValue("Roles", out var rolesValue))
-                {
-                    continue;
-                }
+            var filter = Builders<Permission>.Filter.AnyEq(r=>r.Roles, slug) &
+                         Builders<Permission>.Filter.Eq(r => r.OrganizationId, organizationId);
 
-                var matched = false;
-                if (rolesValue.IsBsonArray)
-                {
-                    matched = string.Equals(organizationId, "default", StringComparison.OrdinalIgnoreCase)
-                        && rolesValue.AsBsonArray.Any(role => role.IsString && string.Equals(role.AsString, slug, StringComparison.OrdinalIgnoreCase));
-                }
-                else if (rolesValue.IsBsonDocument)
-                {
-                    if (rolesValue.AsBsonDocument.TryGetValue(organizationId, out var orgRolesValue)
-                        && orgRolesValue.IsBsonArray)
-                    {
-                        matched = orgRolesValue.AsBsonArray.Any(role => role.IsString && string.Equals(role.AsString, slug, StringComparison.OrdinalIgnoreCase));
-                    }
-                }
-
-                if (matched)
-                {
-                    count++;
-                }
-            }
-
-            return count;
+            return await collection.CountDocumentsAsync(filter);
         }
 
         public async Task<bool> UpdateAllSamePermissionAsync(Permission permission)
