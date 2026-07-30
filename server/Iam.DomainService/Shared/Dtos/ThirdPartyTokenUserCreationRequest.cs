@@ -1,19 +1,20 @@
-﻿
-namespace Iam.DomainService.Dtos
-{
-    public class ThirdPartyTokenUserCreationRequest
-    {
-        public string UserId { get; set; }
-        public string? Language { get; set; } 
-        public required string Email { get; set; }
-        public string? PhoneNumber { get; set; }
-        public string? Salutation { get; set; }
-        public string? FirstName { get; set; }
-        public string? LastName { get; set; }
-        public bool SendWelcomeMail { get; set; }
-        public List<string> Roles { get; set; }
-        public List<string> Permissions { get; set; }
-        public bool Active { get; set; }
-        public bool IsVerified { get; set; } 
-    }
-}
+// DEADCODE 2026-07-29: type(s) unreferenced anywhere in server or XUnitTest; whole file commented pending review
+// ﻿
+// namespace Iam.DomainService.Dtos
+// {
+//     public class ThirdPartyTokenUserCreationRequest
+//     {
+//         public string UserId { get; set; }
+//         public string? Language { get; set; } 
+//         public required string Email { get; set; }
+//         public string? PhoneNumber { get; set; }
+//         public string? Salutation { get; set; }
+//         public string? FirstName { get; set; }
+//         public string? LastName { get; set; }
+//         public bool SendWelcomeMail { get; set; }
+//         public List<string> Roles { get; set; }
+//         public List<string> Permissions { get; set; }
+//         public bool Active { get; set; }
+//         public bool IsVerified { get; set; } 
+//     }
+// }
