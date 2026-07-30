@@ -1,5 +1,5 @@
 import { Menu } from "@/models/menu-models";
-import { Home, Building2,  Package, Users } from "lucide-react";
+import { Home, Package } from "lucide-react";
 
 export const navigationMenus: Menu[] = [
   {
@@ -41,24 +41,9 @@ export const navigationMenus: Menu[] = [
   //   path: "/project-overview/settings",
   //   icon: Settings,
   // },
-  {
-    type: "separator",
-    id: "separator-identity",
-  },
-  {
-    type: "menu",
-    id: "service-identity__authentication-users",
-    name: "Users",
-    path: "/app/users",
-    icon: Users,
-  },
-  {
-    type: "menu",
-    id: "service-identity__authentication-organizations",
-    name: "Organizations",
-    path: "/app/organizations",
-    icon: Building2,
-  },
+  // Users and Organizations moved to the OS frontend under Identity & Access
+  // (blocks-os#359). The identity separator goes with them: nothing follows it
+  // here any more.
   // {
   //   type: "menu",
   //   id: "service-identity__authentication-client-credential",
