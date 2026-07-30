@@ -64,7 +64,17 @@ export const OrganizationConfig = ({ trigger }: OrganizationConfigProps) => {
     });
   }
   return (
-    <span onClick={handleRedirectToOs} role="button" tabIndex={0}>
+    <span
+      onClick={handleRedirectToOs}
+      onKeyDown={(e) => {
+        if (e.key === "Enter" || e.key === " ") {
+          e.preventDefault();
+          handleRedirectToOs();
+        }
+      }}
+      role="button"
+      tabIndex={0}
+    >
       {node}
     </span>
   );

@@ -91,13 +91,16 @@ export const ChooseEmailTemplate = ({ open, setOpen }: ChooseEmailTemplateProps)
           ) : (
             <>
               <div
+                role="button"
+                tabIndex={0}
                 className={`w-[150px]`}
-                onClick={() =>
-                  setSelectedTemplate({
-                    itemId: "",
-                    name: "",
-                  })
-                }
+                onClick={() => setSelectedTemplate({ itemId: "", name: "" })}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" || e.key === " ") {
+                    e.preventDefault();
+                    setSelectedTemplate({ itemId: "", name: "" });
+                  }
+                }}
               >
                 <div
                   className={`relative h-[200px] w-full border ${seletedTemplate?.itemId === "" ? "border border-primary" : " "}`}
@@ -111,7 +114,19 @@ export const ChooseEmailTemplate = ({ open, setOpen }: ChooseEmailTemplateProps)
                 <div className="mt-2 flex items-center justify-between text-sm">Default</div>
               </div>
               {data?.templates?.map((template) => (
-                <div className={`w-[150px]`} key={template.itemId} onClick={() => setSelectedTemplate(template)}>
+                <div
+                  role="button"
+                  tabIndex={0}
+                  className={`w-[150px]`}
+                  key={template.itemId}
+                  onClick={() => setSelectedTemplate(template)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter" || e.key === " ") {
+                      e.preventDefault();
+                      setSelectedTemplate(template);
+                    }
+                  }}
+                >
                   <div
                     className={`relative h-[200px] w-full border ${seletedTemplate?.itemId === template.itemId ? "border border-primary" : " "}`}
                   >

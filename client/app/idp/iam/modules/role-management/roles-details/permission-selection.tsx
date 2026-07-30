@@ -429,7 +429,7 @@ export const PermissionSelection = forwardRef(function PermissionSelection(
                                   <label htmlFor={`perm-${dep.itemId}`} className="cursor-pointer">
                                     {dep.name}
                                   </label>
-                                  {dep.type && (
+                                  {!!dep.type && (
                                     <span className="ml-2 rounded border bg-muted px-2 py-0.5 text-xs">
                                       {ResourceType[dep.type]}
                                     </span>
@@ -454,7 +454,7 @@ export const PermissionSelection = forwardRef(function PermissionSelection(
                           >
                             {perm.name}
                           </label>
-                          {perm.type && (
+                          {!!perm.type && (
                             <span className="ml-2 rounded border bg-muted px-2 py-0.5 text-xs">
                               {ResourceType[perm.type]}
                             </span>
