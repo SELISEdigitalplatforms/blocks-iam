@@ -107,4 +107,18 @@ describe("PermissionGroupSection", () => {
     renderSection(group);
     expect(document.getElementById("group-Users")).toBeDisabled();
   });
+
+  it.each([["Enter"], [" "]])("invokes onTrigger when %s is pressed on the header", (key) => {
+    const onTrigger = renderSection(group);
+    const header = screen.getByText("Users").closest('[role="button"]') as HTMLElement;
+    fireEvent.keyDown(header, { key });
+    expect(onTrigger).toHaveBeenCalled();
+  });
+
+  it("ignores other keys on the header", () => {
+    const onTrigger = renderSection(group);
+    const header = screen.getByText("Users").closest('[role="button"]') as HTMLElement;
+    fireEvent.keyDown(header, { key: "Escape" });
+    expect(onTrigger).not.toHaveBeenCalled();
+  });
 });

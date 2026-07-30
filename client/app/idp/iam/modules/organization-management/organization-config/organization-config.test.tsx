@@ -57,4 +57,24 @@ describe("OrganizationConfig", () => {
     fireEvent.click(screen.getByRole("button", { name: "Custom Trigger" }));
     await waitFor(() => expect(h.initiateAppLogin).toHaveBeenCalled());
   });
+
+  // A non-element trigger (plain text) is the one path that gets wrapped in a span
+  // rather than cloned, so it is the wrapper that needs its own keyboard handling.
+  it.each([["Enter"], [" "]])("initiates the OS login when %s is pressed on a text trigger", async (key) => {
+    h.initiateAppLogin.mockResolvedValue(undefined);
+    render(<OrganizationConfig trigger="Open OS config" />);
+
+    fireEvent.keyDown(screen.getByRole("button", { name: "Open OS config" }), { key });
+
+    await waitFor(() => expect(h.initiateAppLogin).toHaveBeenCalled());
+  });
+
+  it("ignores other keys on a text trigger", () => {
+    h.initiateAppLogin.mockResolvedValue(undefined);
+    render(<OrganizationConfig trigger="Open OS config" />);
+
+    fireEvent.keyDown(screen.getByRole("button", { name: "Open OS config" }), { key: "Escape" });
+
+    expect(h.initiateAppLogin).not.toHaveBeenCalled();
+  });
 });
