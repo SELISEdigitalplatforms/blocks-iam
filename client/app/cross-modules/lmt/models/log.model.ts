@@ -1,19 +1,3 @@
-// export interface ILog {
-//   Timestamp: string;
-//   TenantId: string;
-//   ServiceName: string;
-//   _id: string;
-//   Level: string;
-//   SpanId: string;
-//   EnvironmentName: string;
-//   Exception: string;
-//   SourceContext: string;
-//   Message: string;
-//   MessageTemplate: string;
-//   TraceId: string;
-//   ParentSpanId: string;
-//   Recipients?: string;
-// }
 
 export interface ILog {
   timestamp: string;

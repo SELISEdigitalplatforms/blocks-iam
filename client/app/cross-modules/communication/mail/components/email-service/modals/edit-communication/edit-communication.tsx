@@ -45,7 +45,6 @@ interface EditCommunicationProps {
 
 const EditCommunication = (props: EditCommunicationProps) => {
   const { isLoading, data } = useGetEmailConfigs(0, 100);
-  // const { saveEmailTemplate, isPending } = useSaveEmailTemplate();
   const { isPending: isSaveTemplateLoading, mutateAsync: saveTemplate } = useSaveMailTemplate();
   const { isLoading: isLanguageListLoading, data: languageListData } = useGetLanguages();
   const schema = z.object({

@@ -61,7 +61,6 @@ describe("ConfigureMFA", () => {
     render(<ConfigureMFA />);
     expect(screen.getByText("Email")).toBeInTheDocument();
     expect(screen.getByText("Authenticator app")).toBeInTheDocument();
-    // Email (type 2) is allowed -> Enabled; authenticator (type 1) -> Disabled.
     expect(screen.getByText("Enabled")).toBeInTheDocument();
     expect(screen.getByText("Disabled")).toBeInTheDocument();
   });

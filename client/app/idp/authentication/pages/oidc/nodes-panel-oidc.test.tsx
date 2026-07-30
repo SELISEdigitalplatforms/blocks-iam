@@ -13,7 +13,6 @@ const config: OidcPanelConfig = OIDC_LOGIN_PANEL;
 
 describe("nodes-panel-oidc timing helpers", () => {
   it("computes the success duration from node count", () => {
-    // NODE_START_DELAY_MS (600) + count * NODE_STEP_MS (1400) + SUCCESS_DWELL_MS (1600)
     expect(successDurationMs(0)).toBe(600 + 1600);
     expect(successDurationMs(3)).toBe(600 + 3 * 1400 + 1600);
   });

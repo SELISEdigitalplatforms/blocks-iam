@@ -48,12 +48,10 @@ export const useGetUsers = (
 };
 
 export const useGetUser = (options?: { enabled?: boolean }) => {
-  // const authStore = useAuthStore();
   return useQuery({
     queryKey: ["userAPiNotinuse"],
     queryFn: async () => {
       const user = await userService.getUser();
-      // authStore.setUser(user.data);
       return user;
     },
     staleTime: Infinity,
@@ -62,12 +60,10 @@ export const useGetUser = (options?: { enabled?: boolean }) => {
 };
 
 export const useGetMe = (options?: { enabled?: boolean }) => {
-  // const authStore = useAuthStore();
   const query = useQuery({
     queryKey: ["user"],
     queryFn: async () => {
       const user = await userService.me();
-      // if (user.data) authStore.setUser(user.data);
       return user;
     },
     // initialData: authStore.user ? { data: authStore.user } : undefined,
