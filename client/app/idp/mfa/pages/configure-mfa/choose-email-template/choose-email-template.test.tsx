@@ -75,4 +75,23 @@ describe("ChooseEmailTemplate", () => {
       ),
     );
   });
+
+  it.each([["Enter"], [" "]])("selects a fetched template when %s is pressed on its card", async (key) => {
+    render(<ChooseEmailTemplate open setOpen={vi.fn()} />);
+    expect(screen.getByRole("button", { name: "Choose" })).toBeDisabled();
+
+    const card = screen.getByText("Welcome").closest('[role="button"]') as HTMLElement;
+    fireEvent.keyDown(card, { key });
+
+    await waitFor(() => expect(screen.getByRole("button", { name: "Choose" })).toBeEnabled());
+  });
+
+  it.each([["Enter"], [" "]])("selects the default template when %s is pressed on its card", async (key) => {
+    render(<ChooseEmailTemplate open setOpen={vi.fn()} />);
+
+    const card = screen.getByText("Default").closest('[role="button"]') as HTMLElement;
+    fireEvent.keyDown(card, { key });
+
+    await waitFor(() => expect(screen.getByRole("button", { name: "Choose" })).toBeEnabled());
+  });
 });
