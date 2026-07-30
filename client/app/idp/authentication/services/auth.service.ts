@@ -299,9 +299,6 @@ export const authService = new AuthService();
 //     );
 //   }
 
-//   signupByEmail(payload: ISignupByEmailPayload): Promise<ISignupByEmailResponse> {
-//     return serviceInstances.idpService.post(PEOPLE_ENDPOINTS.SIGNUP, payload);
-//   }
 
 //   getLoginOptions(): Promise<any> {
 //     return serviceInstances.idpService.get(AUTH_ENDPOINTS.GET_LOGIN_OPTIONS);
@@ -315,4 +312,3 @@ export const authService = new AuthService();
 //   }
 // }
 
-// export const authService = new AuthService();

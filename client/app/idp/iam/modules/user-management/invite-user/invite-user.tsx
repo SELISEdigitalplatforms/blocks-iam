@@ -99,8 +99,6 @@ export const InviteUser = () => {
 
   const isPending = isCreatingUser || isGrantingAccess;
 
-  // Treat a missing/undefined isDisabled as enabled — only explicitly disabled
-  // orgs (isDisabled === true) should be excluded from the picker.
   const enabledOrgs = useMemo(
     () => (orgsData?.organizations ?? []).filter((org) => org.isDisabled !== true),
     [orgsData?.organizations],

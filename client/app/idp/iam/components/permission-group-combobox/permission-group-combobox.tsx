@@ -46,9 +46,6 @@ export function PermissionGroupCombobox({ value, onChange, disabled }: Permissio
               onValueChange={(v) => {
                 setInputValue(v);
               }}
-              // onKeyDown={(e) => {
-              //   if (e.key !== "Enter") return;
-              // }}
             />
             <Button
               className="absolute right-1 top-1.5 h-8 w-8 rounded-full p-0.5"

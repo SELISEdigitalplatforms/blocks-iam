@@ -134,8 +134,6 @@ export class ProjectService {
   }
 
   getMigrationStatus(_tenantGroupId: string): Promise<IMigrationStatusResponse> {
-    // const url = `${MIGRATION_ENDPOINTS.GET_STATUS}?tenantGroupId=${_tenantGroupId}`;
-    // return serviceInstances.idpService.get(url);
     return Promise.resolve([]);
   }
 

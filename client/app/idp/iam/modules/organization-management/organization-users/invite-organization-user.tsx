@@ -98,8 +98,6 @@ export const InviteOrganizationUser = ({ organizationId }: InviteOrganizationUse
     [orgsData?.organizations],
   );
 
-  // Treat a missing/undefined isDisabled as enabled — only explicitly disabled
-  // orgs (isDisabled === true) should be excluded from the picker.
   const enabledOrgs = useMemo(
     () => (orgsData?.organizations ?? []).filter((org) => org.isDisabled !== true),
     [orgsData?.organizations],

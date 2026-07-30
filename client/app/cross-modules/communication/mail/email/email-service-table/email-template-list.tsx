@@ -189,7 +189,6 @@ export const EmailTemplateList = ({
         id: "actions",
         enableHiding: false,
         cell: ({ row, table }) => {
-          // const meta = table.options.meta as ExtendedMeta;
           return (
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
