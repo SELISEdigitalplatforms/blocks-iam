@@ -1,4 +1,4 @@
-import React, { useRef } from "react";
+import React from "react";
 import { cn } from "@/lib/utils";
 
 interface ColorSwatchProps {
@@ -14,12 +14,6 @@ export const ColorSwatch: React.FC<ColorSwatchProps> = ({
   className = "",
   hasError = false,
 }) => {
-  const colorInputRef = useRef<HTMLInputElement>(null);
-
-  const handleColorPickerClick = () => {
-    colorInputRef.current?.click();
-  };
-
   const handleTextInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     let newValue = e.target.value.toUpperCase();
     newValue = newValue.replace(/[^#0-9A-F]/g, "");
@@ -43,12 +37,13 @@ export const ColorSwatch: React.FC<ColorSwatchProps> = ({
         <div
           className="relative h-6 min-h-6 w-6 min-w-6 cursor-pointer rounded-sm border"
           style={{ backgroundColor: value }}
-          onClick={handleColorPickerClick}
-          title="Pick a color"
         >
+          {/* The transparent input covers the whole swatch, so it takes the
+              click itself and stays reachable by keyboard. */}
           <input
-            ref={colorInputRef}
             type="color"
+            aria-label="Pick a color"
+            title="Pick a color"
             value={value}
             onChange={handleColorPickerChange}
             className="absolute inset-0 h-6 w-6 cursor-pointer opacity-0"

@@ -105,7 +105,18 @@ export const MagicUrlConfigDialog = ({
   return (
     <>
       {trigger && (
-        <div onClick={() => handleOpenChange(true)} className="cursor-pointer">
+        <div
+          role="button"
+          tabIndex={0}
+          onClick={() => handleOpenChange(true)}
+          onKeyDown={(e) => {
+            if (e.key === "Enter" || e.key === " ") {
+              e.preventDefault();
+              handleOpenChange(true);
+            }
+          }}
+          className="cursor-pointer"
+        >
           {trigger}
         </div>
       )}

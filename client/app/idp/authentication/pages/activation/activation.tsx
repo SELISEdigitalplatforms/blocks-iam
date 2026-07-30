@@ -107,7 +107,7 @@ export const Activation = ({ code, tenantId }: ActivationProps) => {
         ? "Link Expired"
         : "Activate Your Account";
 
-  const headingDimFirst = activationError ? 2 : 2;
+  const headingDimFirst = 2;
 
   return (
     <OidcAuthShell

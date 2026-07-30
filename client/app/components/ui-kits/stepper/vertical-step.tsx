@@ -127,9 +127,21 @@ const VerticalStep = React.forwardRef<HTMLDivElement, VerticalStepProps>((props,
       data-active={active}
       data-clickable={clickable || !!onClickStep}
       data-invalid={localIsError}
+      role={clickable || onClickStep ? "button" : undefined}
+      tabIndex={clickable || onClickStep ? 0 : undefined}
       onClick={() =>
         onClickStep?.(index || 0, setStep) || onClickStepGeneral?.(index || 0, setStep)
       }
+      onKeyDown={(e) => {
+        if (e.key === "Enter" || e.key === " ") {
+          e.preventDefault();
+          if (onClickStep) {
+            onClickStep(index || 0, setStep);
+          } else {
+            onClickStepGeneral?.(index || 0, setStep);
+          }
+        }
+      }}
     >
       <div
         data-vertical={true}
