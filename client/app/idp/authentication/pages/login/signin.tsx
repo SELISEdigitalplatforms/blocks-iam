@@ -144,14 +144,3 @@ export const Signin = ({ ssoError, mode = "default", oidcContext }: SigninProps)
   );
 };
 
-// type SigninProps = {
-//   ssoError?: string;
-// };
-
-
-
-
-
-
-
-
