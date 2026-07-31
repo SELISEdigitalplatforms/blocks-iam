@@ -27,6 +27,7 @@ import {
   useUpdateUserAccessControl,
 } from "@blocks-idp/iam/hooks/use-user";
 import { useGetOrganizationConfig, useGetOrganizations } from "@blocks-idp/iam/hooks/use-organization";
+import { isValidEmailFormat as isEmailFormatValid } from "@blocks-idp/iam/utils/email";
 import { z } from "zod";
 import { useProjectStore } from "@seliseblocks/genesis-os";
 import { ChevronsUpDown, Check, Loader, Plus } from "lucide-react";
@@ -111,7 +112,7 @@ export const InviteOrganizationUser = ({ organizationId }: InviteOrganizationUse
 
   const emailValue = form.watch("email") ?? "";
   const trimmedEmail = emailValue.trim();
-  const isValidEmailFormat = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(trimmedEmail);
+  const isValidEmailFormat = isEmailFormatValid(trimmedEmail);
 
   // Debounce the value driving the existence check so it doesn't refire on
   // every keystroke — this also keeps the pending state visible long enough

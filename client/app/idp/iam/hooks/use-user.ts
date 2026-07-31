@@ -10,6 +10,7 @@ import {
   IUpdateUserPayload,
 } from "@blocks-idp/iam/models/user";
 import { userService } from "@blocks-idp/iam/services/user.service";
+import { isValidEmailFormat } from "@blocks-idp/iam/utils/email";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useCallback, useMemo } from "react";
 
@@ -97,7 +98,7 @@ export const useCheckUserExists = (
   queryOptions?: { enabled?: boolean },
 ) => {
   const trimmed = email?.trim() ?? "";
-  const isValidEmail = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(trimmed);
+  const isValidEmail = isValidEmailFormat(trimmed);
   return useQuery({
     queryKey: ["user-exists", trimmed.toLowerCase()],
     queryFn: () => userService.isUserExist(trimmed),
