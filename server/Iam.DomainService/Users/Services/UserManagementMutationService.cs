@@ -1,4 +1,4 @@
-﻿using Blocks.Genesis;
+using Blocks.Genesis;
 using FluentValidation;
 using Iam.DomainService.Dtos;
 using Iam.DomainService.Entities;
@@ -718,8 +718,8 @@ namespace Iam.DomainService.Users
                 };
             }
 
-            user.Roles ??= new Dictionary<string, List<string>>();
-            user.Permissions ??= new Dictionary<string, List<string>>();
+            user.Roles = new Dictionary<string, List<string>>();
+            user.Permissions = new Dictionary<string, List<string>>();
 
             var isAddToOrganization = !user.OrganizationIds.Contains(organizationId);
             if (isAddToOrganization)
@@ -738,7 +738,6 @@ namespace Iam.DomainService.Users
                     ? command.Permissions
                     : user.Permissions.GetValueOrDefault(organizationId, new List<string>());
             }
-
             user.LastUpdatedDate = DateTime.UtcNow;
             user.LastUpdatedBy = blocksContext?.UserId ?? user.ItemId;
 

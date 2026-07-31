@@ -53,8 +53,19 @@ namespace XUnitTest.IamTests.Resources
 
         private static Permission Perm(string id, string resource = "res", string org = "default",
             PermissionSeverity severity = PermissionSeverity.Low, ResourceType type = ResourceType.Endpoint,
-            string? group = "grp") =>
-            new() { ItemId = id, Resource = resource, OrganizationId = org, PermissionSeverity = severity, Type = type, ResourceGroup = group, Name = "n-" + id, Description = "d" };
+            string? group = "grp", List<string>? roles = null) =>
+            new()
+            {
+                ItemId = id,
+                Resource = resource,
+                OrganizationId = org,
+                PermissionSeverity = severity,
+                Type = type,
+                ResourceGroup = group,
+                Name = "n-" + id,
+                Description = "d",
+                Roles = roles ?? new List<string>()
+            };
 
         private static Role RoleE(string id, string slug = "slug", string org = "default") =>
             new() { ItemId = id, Slug = slug, OrganizationId = org, Name = "role-" + id, Description = "d" };
@@ -182,6 +193,27 @@ namespace XUnitTest.IamTests.Resources
             Register(new[] { Perm("p1") });
             var (items, _) = await Sut().GetPermissionsAsync(new GetPermissionsRequest());
             items.Should().HaveCount(1);
+        }
+
+        [Fact]
+        public async Task GetPermissionsAsync_FiltersByRoles()
+        {
+            var col = Register(new[]
+            {
+                Perm("p1", roles: new List<string> { "admin" })
+            });
+            MongoMock.SetupCount(col, 1);
+
+            var query = new GetPermissionsRequest
+            {
+                Roles = new List<string> { "admin" }
+            };
+
+            var (items, count) = await Sut().GetPermissionsAsync(query, "default");
+
+            count.Should().Be(1);
+            items.Should().HaveCount(1);
+            items.Single().ItemId.Should().Be("p1");
         }
 
         [Fact]
