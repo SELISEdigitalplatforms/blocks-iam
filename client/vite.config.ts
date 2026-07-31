@@ -90,15 +90,23 @@ export default defineConfig(({ mode }) => {
         // framer-motion, whose motion-utils reads `process.env.NODE_ENV` at load
         // time and crashes under jsdom. The stub also re-exports the local
         // stores so `vi.mock("@/store/...")` stays effective in hook tests.
-        "@seliseblocks/genesis-os": path.resolve(
-          __dirname,
-          "./app/test-utils/stubs/blocks-kit.tsx",
-        ),
+        // Subpaths first: Vite substitutes string aliases by prefix in insertion
+        // order, so a bare "@seliseblocks/genesis-os" key placed above these would
+        // rewrite ".../genesis-os/providers" to ".../blocks-kit.tsx/providers" and
+        // the subpath entries would never match.
         "@seliseblocks/genesis-os/lib": path.resolve(
           __dirname,
           "./app/test-utils/stubs/blocks-kit.tsx",
         ),
         "@seliseblocks/genesis-os/providers": path.resolve(
+          __dirname,
+          "./app/test-utils/stubs/blocks-kit.tsx",
+        ),
+        "@seliseblocks/genesis-os/hooks": path.resolve(
+          __dirname,
+          "./app/test-utils/stubs/blocks-kit.tsx",
+        ),
+        "@seliseblocks/genesis-os": path.resolve(
           __dirname,
           "./app/test-utils/stubs/blocks-kit.tsx",
         ),
