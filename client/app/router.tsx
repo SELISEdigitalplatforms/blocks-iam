@@ -175,10 +175,6 @@ export const router = createBrowserRouter([
                   { path: "/sso-activate", element: <SsoActivatePage /> },
                 ],
               },
-              // {
-              //   element: <PublicLayout />,
-              //   children: [
-              //     // { path: "/activate", element: <ActivatePage /> },
 
               //     // { path: "/forgot-password", element: <ForgotPasswordPage /> },
 

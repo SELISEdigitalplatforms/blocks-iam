@@ -248,12 +248,6 @@ export const authService = new AuthService();
 // import { AUTH_ENDPOINTS } from "../constants/endpoint.constant";
 // import { PEOPLE_ENDPOINTS } from "@blocks-identifier/constants/endpoint.constant";
 
-// export class AuthService {
-//   signinByEmail(payload: ISigninByEmailPayload): Promise<ISigninByEmailResponse> {
-//     const body = new URLSearchParams();
-//     body.append("grant_type", "password");
-//     body.append("username", payload.username);
-//     body.append("password", payload.password);
 
 //     return serviceInstances.idpService.post(
 //       AUTH_ENDPOINTS.TOKEN,
@@ -267,23 +261,6 @@ export const authService = new AuthService();
 //     );
 //   }
 
-//   verifyMfa(payload: IVerifyMfaPayload): Promise<IVerifyMfaResponse> {
-//     const body = new URLSearchParams();
-//     body.append("grant_type", "mfa_code");
-//     body.append("code", payload.code);
-//     body.append("mfa_id", payload.mfa_id);
-//     body.append("mfa_type", payload.mfa_type.toString());
-//     return serviceInstances.idpService.post(AUTH_ENDPOINTS.TOKEN, body, {
-//       "Content-Type": "application/x-www-form-urlencoded",
-//     });
-//   }
-
-//   verifyOidc(payload: { code: string; state: string }): Promise<any> {
-//     const body = new URLSearchParams();
-//     body.append("grant_type", "authorization_code");
-//     body.append("code", payload.code);
-//     body.append("state", payload.state);
-//     body.append("client_secret", "***REMOVED***");
 
 //     return serviceInstances.idpService.post(
 //       `https://dev-idp.blocksdevelopers.com${AUTH_ENDPOINTS.TOKEN}`,
@@ -294,21 +271,4 @@ export const authService = new AuthService();
 //       },
 //       {
 //         absoluteUrl: true,
-
-//       },
-//     );
-//   }
-
-
-//   getLoginOptions(): Promise<any> {
-//     return serviceInstances.idpService.get(AUTH_ENDPOINTS.GET_LOGIN_OPTIONS);
-//   }
-
-//   logout() {
-//     // For localhost, send actual refresh token; for remote, send empty (uses cookie)
-//     const isLocalhost = getRuntimeEnv("BLOCKS_IAM_BASE_URL")?.includes("localhost");
-//     const refreshToken = isLocalhost ? (useAuthStore.getState().refreshToken || "") : "";
-//     return serviceInstances.idpService.post(AUTH_ENDPOINTS.LOGOUT, { refreshToken });
-//   }
-// }
 

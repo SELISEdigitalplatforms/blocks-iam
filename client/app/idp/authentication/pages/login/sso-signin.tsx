@@ -75,33 +75,3 @@ export const SsoSignin = ({
   );
 };
 
-
-// type SsoSigninProps = {
-//   loginOption: LoginOption;
-// };
-
-
-
-
-
-
-//   return (
-//     <>
-//       <div className={cn("grid gap-2", providers.length > 2 && gridColsClass)}>
-//         {providers.map((item) => (
-//           <SSOSigninCard
-//             providerConfig={item}
-//             key={item.provider}
-//             withLabel={providers.length < 3}
-//           />
-//         ))}
-//       </div>
-
-//       {isPending && (
-//         <div className="fixed bottom-0 left-0 right-0 top-0 flex items-center justify-center bg-muted opacity-70">
-//           <LoadingSpinner size={48} color="text-primary" />
-//         </div>
-//       )}
-//     </>
-//   );
-// };
