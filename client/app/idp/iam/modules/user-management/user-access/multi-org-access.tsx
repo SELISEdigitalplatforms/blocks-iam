@@ -254,7 +254,8 @@ export const MultiOrgAccess = ({ userId, projectKey }: MultiOrgAccessProps) => {
 
   const selectedOrgRow = organizationRows.find((org) => org.organizationId === selectedOrgId);
   const isDefaultOrganization =
-    selectedOrgRow?.organizationId === DEFAULT_ORGANIZATION_ID;
+    selectedOrgRow?.organizationId === DEFAULT_ORGANIZATION_ID || organizationRows.length === 1;
+
   const isLoading = isUserLoading || isOrgsLoading;
 
   return (
@@ -320,7 +321,7 @@ export const MultiOrgAccess = ({ userId, projectKey }: MultiOrgAccessProps) => {
                   </TooltipTrigger>
                   <TooltipContent side="left">
                     {isDefaultOrganization
-                      ? "Default organization access cannot be revoked"
+                      ? "At least one organization is required"
                       : "Revoke user access"}
                   </TooltipContent>
                 </Tooltip>
