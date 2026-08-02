@@ -89,7 +89,7 @@ describe("DeviceEntryPage", () => {
     renderPage();
     expect(screen.getByLabelText("Verification Code")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /continue/i })).toBeInTheDocument();
-    expect(screen.getByText("tenant-1")).toBeInTheDocument();
+    expect(screen.queryByText("tenant-1")).not.toBeInTheDocument();
   });
 
   it("rejects an invalid code without calling the service", async () => {

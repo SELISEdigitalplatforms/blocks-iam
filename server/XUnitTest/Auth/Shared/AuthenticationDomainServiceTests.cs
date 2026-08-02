@@ -493,6 +493,67 @@ namespace XUnitTest.Auth.Shared
         }
 
         [Fact]
+        public async Task SaveOIDCClient_DeviceFlowClient_WithoutClientType_DefaultsToPublic()
+        {
+            // The FE registration form never sends ClientType at all, so this is the real-world
+            // payload shape for a device-flow client. It must not fall back to confidential,
+            // otherwise the CLI's secret-less device-code token exchange is rejected.
+            OidcClientRegistration? saved = null;
+            _repo.Setup(r => r.GetOidcClientRegistrationAsync(It.IsAny<string>())).ReturnsAsync((OidcClientRegistration)null!);
+            _repo.Setup(r => r.SaveOidcClientRegistrationAsync(It.IsAny<OidcClientRegistration>()))
+                .Callback<OidcClientRegistration>(credential => saved = credential)
+                .Returns(Task.CompletedTask);
+            _repo.Setup(r => r.GetIdentityProviderByClientIdAsync(It.IsAny<string>())).ReturnsAsync((IdentityProvider)null!);
+
+            var result = await Create().SaveOIDCClientAsync(new SaveOIDCClientRequest
+            {
+                IsDeviceFlowClient = true,
+                AllowedScopes = new() { "openid" },
+                RegisterAsIdentityProvider = false
+            });
+
+            result.IsSuccess.Should().BeTrue();
+            saved.Should().NotBeNull();
+            saved!.ClientType.Should().Be("public");
+            saved.TokenEndpointAuthMethod.Should().Be("none");
+        }
+
+        [Fact]
+        public async Task SaveOIDCClient_EditingDeviceFlowClient_CorrectsStaleConfidentialType()
+        {
+            // Simulates re-saving a client that was previously persisted as confidential
+            // (the bug this test guards against) via the same edit path the admin UI uses.
+            var existing = new OidcClientRegistration
+            {
+                ItemId = "item-1",
+                ClientId = "client-1",
+                ClientSecret = "existing-secret",
+                IsDeviceFlowClient = true,
+                ClientType = "confidential",
+                TokenEndpointAuthMethod = "client_secret_post"
+            };
+            OidcClientRegistration? saved = null;
+            _repo.Setup(r => r.GetOidcClientRegistrationAsync("item-1")).ReturnsAsync(existing);
+            _repo.Setup(r => r.SaveOidcClientRegistrationAsync(It.IsAny<OidcClientRegistration>()))
+                .Callback<OidcClientRegistration>(credential => saved = credential)
+                .Returns(Task.CompletedTask);
+            _repo.Setup(r => r.GetIdentityProviderByClientIdAsync(It.IsAny<string>())).ReturnsAsync((IdentityProvider)null!);
+
+            var result = await Create().SaveOIDCClientAsync(new SaveOIDCClientRequest
+            {
+                ItemId = "item-1",
+                IsDeviceFlowClient = true,
+                AllowedScopes = new() { "openid" },
+                RegisterAsIdentityProvider = false
+            });
+
+            result.IsSuccess.Should().BeTrue();
+            saved.Should().NotBeNull();
+            saved!.ClientType.Should().Be("public");
+            saved.TokenEndpointAuthMethod.Should().Be("none");
+        }
+
+        [Fact]
         public async Task SaveOIDCClient_RegisterAsProvider_CreatesProvider()
         {
             _repo.Setup(r => r.GetOidcClientRegistrationAsync(It.IsAny<string>())).ReturnsAsync((OidcClientRegistration)null!);

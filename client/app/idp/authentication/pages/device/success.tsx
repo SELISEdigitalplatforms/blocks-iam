@@ -1,5 +1,5 @@
 import { useMemo } from "react";
-import { Link, useParams, useSearchParams } from "react-router";
+import { useSearchParams } from "react-router";
 
 import { OidcAuthShell } from "@blocks-idp/authentication/pages/oidc/oidc-auth-shell";
 import { DEVICE_CONSENT_PANEL } from "./panel-config";
@@ -14,9 +14,7 @@ function resolveOutcome(raw: string | null): Outcome {
 }
 
 export function DeviceSuccessPage() {
-  const params = useParams<{ tenantId: string }>();
   const [searchParams] = useSearchParams();
-  const tenantId = (params.tenantId ?? "").trim();
   const outcome = useMemo<Outcome>(
     () => resolveOutcome(searchParams.get("outcome")),
     [searchParams],
@@ -26,23 +24,23 @@ export function DeviceSuccessPage() {
     switch (outcome) {
       case "approved":
         return {
-          successTitle: "Device Authorized",
-          successSubtitle: "You can return to your device — it has been authorized.",
+          successTitle: "Success",
+          successSubtitle: "Your device has been authorized. You can close this window.",
         };
       case "denied":
         return {
           successTitle: "Authorization Declined",
-          successSubtitle: "The device was not authorized. You can close this tab.",
+          successSubtitle: "The device was not authorized. You can close this window.",
         };
       case "expired":
         return {
           successTitle: "Session Expired",
-          successSubtitle: "The device code expired before approval. Restart the flow on your device.",
+          successSubtitle: "The device code expired before approval. You can close this window.",
         };
       default:
         return {
-          successTitle: "You may close this tab",
-          successSubtitle: "Device flow finished. You can return to your device.",
+          successTitle: "Success",
+          successSubtitle: "Device flow finished. You can close this window.",
         };
     }
   }, [outcome]);
@@ -55,30 +53,10 @@ export function DeviceSuccessPage() {
       showCorners={false}
       successTitle={copy.successTitle}
       successSubtitle={copy.successSubtitle}
-      footerNote={
-        <p className="text-xs oidc-font-rajdhani" style={{ color: "var(--muted)" }}>
-          {tenantId ? (
-            <>
-              Tenant:&nbsp;
-              <span className="oidc-sci-fi-badge" style={{ marginLeft: 4 }}>
-                {tenantId}
-              </span>
-            </>
-          ) : null}
-        </p>
-      }
     >
-      <div className="flex flex-col gap-4">
-        <Link to={`/device/${tenantId}`} className="oidc-sci-fi-btn w-full text-center">
-          Use another code
-        </Link>
-        <p
-          className="text-xs oidc-font-rajdhani text-center"
-          style={{ color: "var(--muted)" }}
-        >
-          You can safely close this window.
-        </p>
-      </div>
+      <p className="text-sm oidc-font-rajdhani text-center" style={{ color: "var(--muted)" }}>
+        You can safely close this window.
+      </p>
     </OidcAuthShell>
   );
 }
