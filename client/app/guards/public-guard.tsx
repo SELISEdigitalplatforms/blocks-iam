@@ -22,7 +22,7 @@ export function PublicGuard({ children }: { children: React.ReactNode }) {
     if (!isMounted) return;
     if (isSSOCallback) return;
     if (isAuthenticated) {
-      navigate("/app/console", { replace: true });
+      navigate("/app/profile", { replace: true });
       return;
     }
   }, [isAuthenticated, isMounted, isSSOCallback, navigate]);
