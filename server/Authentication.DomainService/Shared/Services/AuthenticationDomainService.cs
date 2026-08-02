@@ -1,15 +1,10 @@
 using Blocks.Genesis;
 using Authentication.DomainService.Utilities;
 using DeviceDetectorNET;
-using Authentication.DomainService.Dtos;
 using Authentication.DomainService.Entities;
 using Authentication.DomainService.RequestModel;
-using Authentication.DomainService.ResponseModel;
-using Authentication.DomainService.Shared;
 using Iam.DomainService.Utilities;
-using Iam.DomainService.Users;
 using Microsoft.AspNetCore.Http;
-using Microsoft.Extensions.Configuration;
 using Microsoft.IdentityModel.Protocols.OpenIdConnect;
 using System.Text.Json;
 using Authentication.DomainService.Shared.ResponseModel;
@@ -24,9 +19,6 @@ namespace Authentication.DomainService.Services
     {
         private readonly IMessageClient _messageClient;
         private readonly IAuthenticationRepository _authenticationRepository;
-        private readonly IConfiguration _configuration;
-        private readonly IUserRepository _userRepository;
-        private readonly IValidator<SaveSsoCredentialRequest> _validator;
         private readonly IValidator<SaveOIDCClientRequest> _oidcClientValidator;
         private readonly IValidator<SaveIdentityProviderRequest> _saveIdpValidator;
         private readonly IValidator<UpdateIdentityProviderRequest> _updateIdpValidator;
@@ -40,9 +32,6 @@ namespace Authentication.DomainService.Services
 
         public AuthenticationDomainService(IMessageClient messageClient,
                                            IAuthenticationRepository authenticationRepository,
-                                           IConfiguration configuration,
-                                           IUserRepository userRepository,
-                                           IValidator<SaveSsoCredentialRequest> validator,
                                            IValidator<SaveOIDCClientRequest> oidcClientValidator,
                                            IValidator<SaveIdentityProviderRequest> saveIdpValidator,
                                            IValidator<UpdateIdentityProviderRequest> updateIdpValidator,
@@ -51,9 +40,6 @@ namespace Authentication.DomainService.Services
         {
             _messageClient = messageClient;
             _authenticationRepository = authenticationRepository;
-            _configuration = configuration;
-            _userRepository = userRepository;
-            _validator = validator;
             _oidcClientValidator = oidcClientValidator;
             _saveIdpValidator = saveIdpValidator;
             _updateIdpValidator = updateIdpValidator;
@@ -264,7 +250,9 @@ namespace Authentication.DomainService.Services
                 allowedScopes = request.Scope.Split(' ', StringSplitOptions.RemoveEmptyEntries).Distinct(StringComparer.OrdinalIgnoreCase).ToList();
             }
 
-            var redirectUris = request.RedirectUris.Where(x => !string.IsNullOrWhiteSpace(x)).Distinct(StringComparer.OrdinalIgnoreCase).ToList();
+            var redirectUris = request.IsDeviceFlowClient
+                ? []
+                : request.RedirectUris.Where(x => !string.IsNullOrWhiteSpace(x)).Distinct(StringComparer.OrdinalIgnoreCase).ToList();
 
             credential.AllowedScopes = allowedScopes;
             credential.Scope = string.Join(' ', allowedScopes);
@@ -272,8 +260,10 @@ namespace Authentication.DomainService.Services
             credential.RedirectUris = redirectUris;
            // credential.RedirectUri = redirectUris.FirstOrDefault();
 
-            credential.AllowedResponseTypes = request.AllowedResponseTypes.Where(x => !string.IsNullOrWhiteSpace(x)).Distinct(StringComparer.OrdinalIgnoreCase).ToList();
-            if (credential.AllowedResponseTypes.Count == 0)
+            credential.AllowedResponseTypes = request.IsDeviceFlowClient
+                ? []
+                : request.AllowedResponseTypes.Where(x => !string.IsNullOrWhiteSpace(x)).Distinct(StringComparer.OrdinalIgnoreCase).ToList();
+            if (!request.IsDeviceFlowClient && credential.AllowedResponseTypes.Count == 0)
             {
                 credential.AllowedResponseTypes = ["code"];
             }

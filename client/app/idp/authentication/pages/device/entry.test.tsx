@@ -44,6 +44,9 @@ const readyPayload = {
   scopes: ["openid", "email"],
   tenant: "tenant-1",
   userCode: "ABCD-EFGH",
+  requestIpAddress: "203.0.113.10",
+  requestUserAgent: "DeviceClient/1.0",
+  approvalToken: "approval-token",
 };
 
 let assignSpy: ReturnType<typeof vi.fn>;
@@ -114,6 +117,8 @@ describe("DeviceEntryPage", () => {
     expect(await screen.findByText("Authorize this device?")).toBeInTheDocument();
     expect(h.verify).toHaveBeenCalledWith("ABCD-EFGH", "tenant-1");
     expect(screen.getByText("Acme CLI")).toBeInTheDocument();
+    expect(screen.getByText("203.0.113.10")).toBeInTheDocument();
+    expect(screen.getByText("DeviceClient/1.0")).toBeInTheDocument();
     // scope descriptions
     expect(
       screen.getByText("Authenticate you with your Blocks account"),
@@ -159,7 +164,7 @@ describe("DeviceEntryPage", () => {
     });
     fireEvent.click(screen.getByRole("button", { name: /continue/i }));
 
-    expect(await screen.findByText("Invalid or expired code.")).toBeInTheDocument();
+    expect(await screen.findByText("Invalid code, wrong tenant, or already used.")).toBeInTheDocument();
   });
 
   it("renders the tenant-mismatch screen when the payload tenant differs", async () => {
@@ -191,7 +196,7 @@ describe("DeviceEntryPage", () => {
     fireEvent.click(allow);
 
     await waitFor(() =>
-      expect(h.decide).toHaveBeenCalledWith("ABCD-EFGH", "allow", "tenant-1"),
+      expect(h.decide).toHaveBeenCalledWith("ABCD-EFGH", "allow", "tenant-1", "approval-token"),
     );
     await waitFor(() =>
       expect(assignSpy).toHaveBeenCalledWith("https://app.example.com/done"),
@@ -212,7 +217,7 @@ describe("DeviceEntryPage", () => {
     fireEvent.click(deny);
 
     await waitFor(() =>
-      expect(h.decide).toHaveBeenCalledWith("ABCD-EFGH", "deny", "tenant-1"),
+      expect(h.decide).toHaveBeenCalledWith("ABCD-EFGH", "deny", "tenant-1", "approval-token"),
     );
   });
 
