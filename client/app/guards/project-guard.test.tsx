@@ -41,10 +41,10 @@ beforeEach(() => {
 });
 
 describe("ProjectGuard", () => {
-  it("redirects to /app/users and renders nothing when no project is selected", async () => {
+  it("redirects to /app/dashboard and renders nothing when no project is selected", async () => {
     renderGuard();
     await waitFor(() =>
-      expect(navigateMock).toHaveBeenCalledWith("/app/users", { replace: true }),
+      expect(navigateMock).toHaveBeenCalledWith("/app/dashboard", { replace: true }),
     );
     expect(screen.queryByText("project-child")).not.toBeInTheDocument();
   });
@@ -62,7 +62,7 @@ describe("ProjectGuard", () => {
     getProjectsResult.data = [];
     renderGuard();
     await waitFor(() =>
-      expect(navigateMock).toHaveBeenCalledWith("/app/users", { replace: true }),
+      expect(navigateMock).toHaveBeenCalledWith("/app/dashboard", { replace: true }),
     );
   });
 });

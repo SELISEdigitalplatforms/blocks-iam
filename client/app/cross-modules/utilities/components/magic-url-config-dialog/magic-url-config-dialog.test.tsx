@@ -220,4 +220,23 @@ describe("MagicUrlConfigDialog", () => {
     fireEvent.click(screen.getByText("open-config"));
     expect(onOpenChange).toHaveBeenCalledWith(true);
   });
+
+  it.each([["Enter"], [" "]])("opens the dialog when %s is pressed on the trigger wrapper", (key) => {
+    h.configResult = { data: { config: null }, isLoading: false };
+    const onOpenChange = vi.fn();
+    render(
+      <MagicUrlConfigDialog
+        open={false}
+        onOpenChange={onOpenChange}
+        projectKey="p1"
+        trigger={<span>Open config</span>}
+      />,
+      { wrapper: createWrapper() },
+    );
+
+    const wrapper = screen.getByText("Open config").closest('[role="button"]') as HTMLElement;
+    fireEvent.keyDown(wrapper, { key });
+
+    expect(onOpenChange).toHaveBeenCalledWith(true);
+  });
 });

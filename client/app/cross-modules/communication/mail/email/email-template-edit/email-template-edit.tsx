@@ -1,7 +1,6 @@
 
 
 import { Button } from "@/components/ui-kits/button/button";
-// import BeePlugin from "@blocks-communication/mail/components/bee-plugin-starter/bee-plugin";
 import BeePluginStarter from "@blocks-communication/mail/components/bee-plugin-starter/bee-plugin-starter";
 import { useState, useEffect, useRef } from "react";
 import PageBreadcrumb from "@/components/breadcrumb/breadcrumb";

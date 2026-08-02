@@ -28,7 +28,6 @@ export class PeopleService {
     filter: string;
     projectGroupId: string;
   }): Promise<GetPeopleResponse> {
-    // return serviceInstances.idpService.post<GetPeopleResponse>(PEOPLE_ENDPOINTS.GETS, _payload);
     return Promise.resolve({ peoples: [], totalCount: 0, errors: null, isSuccess: true, isOwner: false });
   }
 
@@ -72,48 +71,10 @@ export class PeopleService {
     return serviceInstances.idpService.post(PEOPLE_ENDPOINTS.TRANSFER_OWNERSHIP, payload);
   }
 
-  // getUserById(id: string, projectKey: string): Promise<{ data: IdentityUserData }> {
-  //   return serviceInstances.idpService.get(`/idp/v1/Iam/GetUser?id=${id}&ProjectKey=${projectKey}`);
-  // }
 
-  // saveRolesAndPermissions(
-  //   paylaod: ISaveRolesAndPermissionsPayload,
-  // ): Promise<ISaveRolesAndPermissionsResponse> {
-  //   return serviceInstances.idpService.post(`/idp/v1/Iam/SaveRolesAndPermissions`, paylaod);
-  // }
 
-  // async getSessions(payload: IGetSessionPayload): Promise<IDeviceSessionResponse> {
-  //   const res = await serviceInstances.idpService.get<{ data: string[]; errors: unknown; totalCount: number }>(
-  //     `/idp/v1/Iam/GetSessions?page=${payload.page}&pageSize=${payload.pageSize}&projectkey=${payload.projectKey}&filter.userId=${payload.filter.UserId}`,
-  //   );
-  //   return {
-  //     data: res.data.map((item) => JSON.parse(parseMongoDBJson(item))),
-  //     totalCount: res.totalCount,
-  //     errors: res.errors,
-  //   };
-  // }
 
-  // async getHistories(payload: IGetHistoriesPayload): Promise<IHistoriesResponse> {
-  //   const res = await serviceInstances.idpService.get<{ data: string[]; errors: unknown; totalCount: number }>(
-  //     `/idp/v1/Iam/GetHistories?page=${payload.page}&pageSize=${payload.pageSize}&projectkey=${payload.projectKey}&filter.userId=${payload.filter.UserId}`,
-  //   );
-  //   return {
-  //     data: res.data.map((item) => JSON.parse(parseMongoDBJson(item))),
-  //     totalCount: res.totalCount,
-  //     errors: res.errors,
-  //   };
-  // }
 
-  // getUserRoles(payload: IGetUserRolesPayload): Promise<IGetUserRolesResponse> {
-  //   return serviceInstances.idpService.get(
-  //     `/idp/v1/Iam/GetUserRoles?Id=${payload.userId}&ProjectKey=${payload.projectKey}`,
-  //   );
-  // }
-  // getUserPermissions(payload: IGetUserPermissionsPayload): Promise<IGetUserPermissionsResponse> {
-  //   return serviceInstances.idpService.get(
-  //     `/idp/v1/Iam/GetUserPermissions?Id=${payload.userId}&ProjectKey=${payload.projectKey}`,
-  //   );
-  // }
 }
 
 export const peopleService = new PeopleService();

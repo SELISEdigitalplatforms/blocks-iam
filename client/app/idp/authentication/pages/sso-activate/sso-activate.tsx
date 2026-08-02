@@ -137,12 +137,13 @@ export const SsoActivate = ({ oauthParams }: SsoActivateProps) => {
                 <span className="font-bold underline">{oauthParams.username}</span>)
               </span>
             </div>
-            <div
+            <button
+              type="button"
               onClick={handleUseDifferentAccount}
-              className="mb-8 cursor-pointer text-base font-semibold text-primary hover:underline"
+              className="mb-8 cursor-pointer text-left text-base font-semibold text-primary hover:underline"
             >
               Use a different {providerLabel} account
-            </div>
+            </button>
           </>
         )}
 

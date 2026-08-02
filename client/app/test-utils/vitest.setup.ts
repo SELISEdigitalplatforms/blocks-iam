@@ -96,13 +96,6 @@ if (typeof window !== "undefined") {
   };
 }
 
-// getRuntimeEnv() falls back to import.meta.env.BLOCKS_IAM_BASE_URL whenever
-// window.__BLOCKS_ENV__ doesn't carry it (see above), and Vite's envPrefix
-// loads that straight out of a developer's local client/.env — which is
-// gitignored and can legitimately point at a real dev backend. Stub it back
-// to empty before every test (not just once here) so a test file's own
-// `afterEach(() => vi.unstubAllEnvs())` can't undo this for later tests in
-// the same file — global beforeEach hooks re-run ahead of each test.
 beforeEach(() => {
   vi.stubEnv("BLOCKS_IAM_BASE_URL", "");
 });

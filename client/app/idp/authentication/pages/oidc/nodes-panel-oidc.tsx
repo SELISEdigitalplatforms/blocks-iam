@@ -157,7 +157,6 @@ function NodeCard({
   const description = isFailed
     ? (node.failLabel ?? "Step failed — see details below")
     : isDone   ? node.successLabel
-    : isActive ? node.activeLabel
     : node.activeLabel;
 
   const IconComp = ICON_MAP[node.icon] ?? KeyRound;

@@ -13,16 +13,7 @@ export default function SSOCallbackPage() {
   const code = searchParams.get("code");
   const state = searchParams.get("state");
   const error = searchParams.get("error");
-  // const queryTenantId = searchParams.get("tenant_id");
 
-  // Resolve tenant the same way as login-options / oidc flow:
-  // query param → x-blocks-key query → hash param → runtime env fallback
-  // const oidcParams = useMemo(() => getCurrentOIDCParams(), []);
-  // const tenantId =
-  //   queryTenantId ||
-  //   oidcParams.get("x-blocks-key") ||
-  //   getRuntimeEnv("BLOCKS_X_BLOCKS_KEY") ||
-  //   "";
 
   useEffect(() => {
     if (hasProcessed.current) return;

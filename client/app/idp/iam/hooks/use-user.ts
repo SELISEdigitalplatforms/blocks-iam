@@ -10,6 +10,7 @@ import {
   IUpdateUserPayload,
 } from "@blocks-idp/iam/models/user";
 import { userService } from "@blocks-idp/iam/services/user.service";
+import { isValidEmailFormat } from "@blocks-idp/iam/utils/email";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useCallback, useMemo } from "react";
 
@@ -48,12 +49,10 @@ export const useGetUsers = (
 };
 
 export const useGetUser = (options?: { enabled?: boolean }) => {
-  // const authStore = useAuthStore();
   return useQuery({
     queryKey: ["userAPiNotinuse"],
     queryFn: async () => {
       const user = await userService.getUser();
-      // authStore.setUser(user.data);
       return user;
     },
     staleTime: Infinity,
@@ -62,12 +61,10 @@ export const useGetUser = (options?: { enabled?: boolean }) => {
 };
 
 export const useGetMe = (options?: { enabled?: boolean }) => {
-  // const authStore = useAuthStore();
   const query = useQuery({
     queryKey: ["user"],
     queryFn: async () => {
       const user = await userService.me();
-      // if (user.data) authStore.setUser(user.data);
       return user;
     },
     // initialData: authStore.user ? { data: authStore.user } : undefined,
@@ -101,7 +98,7 @@ export const useCheckUserExists = (
   queryOptions?: { enabled?: boolean },
 ) => {
   const trimmed = email?.trim() ?? "";
-  const isValidEmail = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(trimmed);
+  const isValidEmail = isValidEmailFormat(trimmed);
   return useQuery({
     queryKey: ["user-exists", trimmed.toLowerCase()],
     queryFn: () => userService.isUserExist(trimmed),
