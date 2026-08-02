@@ -18,9 +18,6 @@ vi.mock("@blocks-idp/authentication/pages/auth-logs", () => ({ AuthLogs: stub("a
 vi.mock("@blocks-idp/authentication/pages/authentication-config", () => ({
   AuthenticationConfig: stub("authentication-config"),
 }));
-vi.mock("@blocks-idp/captcha/pages/configure-captcha", () => ({
-  ConfigureCaptcha: stub("configure-captcha"),
-}));
 vi.mock("@blocks-idp/iam/modules/permission-management", () => ({
   AddPermission: stub("add-permission"),
 }));
@@ -28,9 +25,6 @@ vi.mock("@blocks-idp/iam/modules/user-management", () => ({
   Configure: stub("configure"),
   IamLogs: stub("iam-logs"),
   User: stub("user"),
-}));
-vi.mock("@blocks-idp/iam/pages/organization-detail/organization-detail", () => ({
-  OrganizationDetail: stub("organization-detail"),
 }));
 vi.mock("@blocks-idp/iam/modules/permission-management/permission-details", () => ({
   PermissionDetails: stub("permission-details"),
@@ -41,9 +35,6 @@ vi.mock("@blocks-idp/iam/modules/role-management", () => ({
 vi.mock("@blocks-idp/iam/pages/iam-management", () => ({ IamManagement: stub("iam-management") }));
 vi.mock("@blocks-identifier/pages/services/managed-services", () => ({
   ManagedServices: stub("managed-services"),
-}));
-vi.mock("@blocks-idp/mfa/pages/configure-mfa/configure-mfa", () => ({
-  ConfigureMFA: stub("configure-mfa"),
 }));
 vi.mock("@blocks-idp/iam/modules/user-management/profile", () => ({ Profile: stub("profile") }));
 vi.mock("@blocks-idp/authentication/pages/sso-configuration", () => ({
@@ -74,9 +65,6 @@ vi.mock("@blocks-idp/authentication/pages/signup-email-sent", () => ({
 vi.mock("@blocks-idp/authentication/pages/signup", () => ({ Signup: stub("signup") }));
 vi.mock("@blocks-idp/authentication/pages/sso-activate", () => ({
   SsoActivate: stub("sso-activate"),
-}));
-vi.mock("@blocks-idp/authentication/pages/oidc/email-sent-confirmation/email-sent-confirmation", () => ({
-  OidcEmailConfirmation: stub("oidc-email-confirmation"),
 }));
 vi.mock("@blocks-idp/authentication/pages/oidc/error-screen", () => ({
   OIDCErrorScreen: stub("oidc-error-screen"),
@@ -109,13 +97,11 @@ describe("dashboard route wrappers", () => {
   it.each([
     ["./dashboard/auth-logs", "auth-logs"],
     ["./dashboard/authentication-config", "authentication-config"],
-    ["./dashboard/captcha-config", "configure-captcha"],
     ["./dashboard/iam-add-permission", "add-permission"],
     ["./dashboard/iam-configure", "configure"],
     ["./dashboard/iam-logs", "iam-logs"],
     ["./dashboard/iam", "iam-management"],
     ["./dashboard/managed-services", "managed-services"],
-    ["./dashboard/mfa-config", "configure-mfa"],
     ["./dashboard/profile", "profile"],
     ["./dashboard/sso-configuration", "sso-configuration"],
   ])("renders %s", async (path, testId) => {
@@ -165,7 +151,6 @@ describe("auth / oidc / device route wrappers", () => {
     ["./auth/resetpassword", "reset-password"],
     ["./auth/signup-email-sent", "signup-email-sent"],
     ["./auth/signup", "signup"],
-    ["./oidc/email-sent-confirmation", "oidc-email-confirmation"],
     ["./oidc/error", "oidc-error-screen"],
     ["./oidc/login", "oidc-signin"],
     ["./oidc/permission", "oidc-permission-wrapper"],
