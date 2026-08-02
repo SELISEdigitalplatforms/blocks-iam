@@ -274,8 +274,13 @@ namespace Authentication.DomainService.Services
             credential.PostLogoutRedirectUris = request.PostLogoutRedirectUris.Where(x => !string.IsNullOrWhiteSpace(x)).Distinct(StringComparer.OrdinalIgnoreCase).ToList();
             credential.ExternalDiscoveryEndpoint = request.ExternalDiscoveryEndpoint;
             credential.LoginMode = request.LoginMode;
-            credential.ClientType = request.ClientType;
-            credential.TokenEndpointAuthMethod = string.Equals(request.ClientType, "public", StringComparison.OrdinalIgnoreCase)
+            // Device-flow clients (RFC 8628) are inherently public/native clients — they cannot hold a
+            // secret safely, and the FE registration form has no way to opt them into "confidential".
+            // Force public here so this stays in sync with OidcClientValidator.IsPublicClient, which
+            // already treats every device-flow client as public regardless of ClientType.
+            credential.ClientType = request.IsDeviceFlowClient ? "public" : request.ClientType;
+            credential.TokenEndpointAuthMethod = request.IsDeviceFlowClient
+                || string.Equals(request.ClientType, "public", StringComparison.OrdinalIgnoreCase)
                 ? "none"
                 : "client_secret_post";
             credential.RequirePkce = request.RequirePkce;

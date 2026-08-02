@@ -314,10 +314,6 @@ export function DeviceEntryPage() {
                 )}
               </div>
 
-              <div className="text-xs oidc-font-rajdhani" style={{ color: "var(--muted)" }}>
-                Tenant: <span style={{ color: "var(--fg)" }}>{payload.tenant || tenantId}</span>
-              </div>
-
               {(payload.requestIpAddress || payload.requestUserAgent || payload.deviceName || payload.deviceInfo) && (
                 <div
                   className="rounded-md p-3 text-xs oidc-font-rajdhani"
@@ -469,13 +465,6 @@ export function DeviceEntryPage() {
             className="oidc-sci-fi-input"
             style={{ letterSpacing: "0.18em", textTransform: "uppercase" }}
           />
-        </div>
-
-        <div className="flex items-center gap-2">
-          <span className="oidc-sci-fi-label" style={{ marginBottom: 0 }}>
-            Tenant
-          </span>
-          <span className="oidc-sci-fi-badge">{tenantId}</span>
         </div>
 
         {serverError && (

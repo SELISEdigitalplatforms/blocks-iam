@@ -8,19 +8,16 @@ vi.mock("@blocks-idp/authentication/pages/oidc/oidc-auth-shell", () => ({
     heading,
     successTitle,
     successSubtitle,
-    footerNote,
   }: {
     children: React.ReactNode;
     heading: string;
     successTitle: string;
     successSubtitle: string;
-    footerNote: React.ReactNode;
   }) => (
     <div>
       <h1>{heading}</h1>
       <p>{successTitle}</p>
       <p>{successSubtitle}</p>
-      <div>{footerNote}</div>
       {children}
     </div>
   ),
@@ -41,9 +38,11 @@ const renderAt = (path: string) =>
 describe("DeviceSuccessPage", () => {
   it("shows the approved copy", () => {
     renderAt("/device/t1/success?outcome=approved");
-    expect(screen.getByText("Device Authorized")).toBeInTheDocument();
+    expect(screen.getByText("Success")).toBeInTheDocument();
     expect(screen.getByText("Device Flow Complete")).toBeInTheDocument();
-    expect(screen.getByText("t1")).toBeInTheDocument();
+    expect(
+      screen.getByText("Your device has been authorized. You can close this window."),
+    ).toBeInTheDocument();
   });
 
   it("shows the denied copy and heading", () => {
@@ -58,14 +57,11 @@ describe("DeviceSuccessPage", () => {
 
   it("shows the neutral copy when the outcome is unknown", () => {
     renderAt("/device/t1/success?outcome=whatever");
-    expect(screen.getByText("You may close this tab")).toBeInTheDocument();
+    expect(screen.getByText("Success")).toBeInTheDocument();
   });
 
-  it("renders the use-another-code link to the device route", () => {
+  it("does not render a use-another-code link", () => {
     renderAt("/device/t1/success");
-    expect(screen.getByRole("link", { name: "Use another code" })).toHaveAttribute(
-      "href",
-      "/device/t1",
-    );
+    expect(screen.queryByRole("link", { name: "Use another code" })).not.toBeInTheDocument();
   });
 });
