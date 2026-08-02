@@ -27,7 +27,7 @@ export const LogsListHeader = () => {
       </div>
       <div className="flex items-center justify-between">
         <Tabs defaultValue={tab} onValueChange={setTab}>
-          {services.length && (
+          {services.length > 0 && (
             <TabsList>
               {services.map((item) => (
                 <TabsTrigger key={item.id} value={item.serviceName} className="w-fit">

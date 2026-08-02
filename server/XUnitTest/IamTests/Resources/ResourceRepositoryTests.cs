@@ -53,19 +53,8 @@ namespace XUnitTest.IamTests.Resources
 
         private static Permission Perm(string id, string resource = "res", string org = "default",
             PermissionSeverity severity = PermissionSeverity.Low, ResourceType type = ResourceType.Endpoint,
-            string? group = "grp", List<string>? roles = null) =>
-            new()
-            {
-                ItemId = id,
-                Resource = resource,
-                OrganizationId = org,
-                PermissionSeverity = severity,
-                Type = type,
-                ResourceGroup = group,
-                Name = "n-" + id,
-                Description = "d",
-                Roles = roles ?? new List<string>()
-            };
+            string? group = "grp", IEnumerable<string>? roles = null) =>
+            new() { ItemId = id, Resource = resource, OrganizationId = org, PermissionSeverity = severity, Type = type, ResourceGroup = group, Name = "n-" + id, Description = "d", Roles = (roles ?? Enumerable.Empty<string>()).ToList() };
 
         private static Role RoleE(string id, string slug = "slug", string org = "default") =>
             new() { ItemId = id, Slug = slug, OrganizationId = org, Name = "role-" + id, Description = "d" };
@@ -289,32 +278,79 @@ namespace XUnitTest.IamTests.Resources
             (await Sut().RemoveRolePermissionByIdsAsync("admin", new List<string> { "p1" }, "default")).Should().BeTrue();
         }
 
-        [Fact]
-        public async Task UpdateRolesCountAsync_CountsUsageAndUpdates()
+        /// <summary>
+        /// The usage count now comes from a server-side <c>CountDocumentsAsync</c> over a typed
+        /// <see cref="Permission"/> collection, so the permissions registered here are what the count
+        /// reflects. <see cref="MongoMock.Collection{T}"/> answers the count with the list length.
+        /// </summary>
+        private Mock<IMongoCollection<Permission>> RegisterPermissionsNamed(params Permission[] permissions)
         {
-            var docs = new List<BsonDocument>
-            {
-                new() { { "Roles", new BsonArray { "admin" } } },
-                new() { { "Roles", new BsonArray { "other" } } },
-                new() { { "NoRoles", 1 } }
-            };
-            _iam.Setup(r => r.GetCollectionByName<BsonDocument>("Permissions"))
-                .Returns(MongoMock.Collection(docs).Object);
-            Register<Role>();
-            (await Sut().UpdateRolesCountAsync("admin", "default")).Should().BeTrue();
+            var col = MongoMock.Collection(permissions.AsEnumerable());
+            _iam.Setup(r => r.GetCollectionByName<Permission>("Permissions")).Returns(col.Object);
+            return col;
         }
 
         [Fact]
-        public async Task UpdateRolesCountAsync_OrgScopedRolesDocument()
+        public async Task UpdateRolesCountAsync_CountsRoleUsageAndWritesItToTheRole()
         {
-            var docs = new List<BsonDocument>
-            {
-                new() { { "Roles", new BsonDocument { { "org1", new BsonArray { "admin" } } } } }
-            };
-            _iam.Setup(r => r.GetCollectionByName<BsonDocument>("Permissions"))
-                .Returns(MongoMock.Collection(docs).Object);
+            var permissions = RegisterPermissionsNamed(
+                Perm("p1", roles: new[] { "admin" }),
+                Perm("p2", roles: new[] { "admin" }));
+            var roles = Register<Role>();
+
+            (await Sut().UpdateRolesCountAsync("admin", "default")).Should().BeTrue();
+
+            permissions.Verify(c => c.CountDocumentsAsync(
+                It.IsAny<FilterDefinition<Permission>>(), It.IsAny<CountOptions>(), It.IsAny<CancellationToken>()),
+                Times.Once);
+            roles.Verify(c => c.UpdateOneAsync(
+                It.IsAny<FilterDefinition<Role>>(), It.IsAny<UpdateDefinition<Role>>(),
+                It.IsAny<UpdateOptions>(), It.IsAny<CancellationToken>()),
+                Times.Once);
+        }
+
+        [Fact]
+        public async Task UpdateRolesCountAsync_CountsZeroWhenNoPermissionReferencesTheRole()
+        {
+            RegisterPermissionsNamed();
+            var roles = Register<Role>();
+
+            (await Sut().UpdateRolesCountAsync("admin", "default")).Should().BeTrue();
+
+            // The role is still written, so a role that lost its last permission is reset to 0
+            // rather than keeping a stale count.
+            roles.Verify(c => c.UpdateOneAsync(
+                It.IsAny<FilterDefinition<Role>>(), It.IsAny<UpdateDefinition<Role>>(),
+                It.IsAny<UpdateOptions>(), It.IsAny<CancellationToken>()),
+                Times.Once);
+        }
+
+        [Fact]
+        public async Task UpdateRolesCountAsync_ScopesTheCountToTheGivenOrganization()
+        {
+            // The count filter pairs the role slug with the organization, so an explicit org id has
+            // to reach the query rather than falling back to the ambient one.
+            var permissions = RegisterPermissionsNamed(Perm("p1", org: "org1", roles: new[] { "admin" }));
             Register<Role>();
+
             (await Sut().UpdateRolesCountAsync("admin", "org1")).Should().BeTrue();
+
+            permissions.Verify(c => c.CountDocumentsAsync(
+                It.IsAny<FilterDefinition<Permission>>(), It.IsAny<CountOptions>(), It.IsAny<CancellationToken>()),
+                Times.Once);
+        }
+
+        [Fact]
+        public async Task UpdateRolesCountAsync_ReturnsFalseWhenTheRoleUpdateIsNotAcknowledged()
+        {
+            RegisterPermissionsNamed(Perm("p1", roles: new[] { "admin" }));
+            var roles = Register<Role>();
+            roles.Setup(c => c.UpdateOneAsync(
+                    It.IsAny<FilterDefinition<Role>>(), It.IsAny<UpdateDefinition<Role>>(),
+                    It.IsAny<UpdateOptions>(), It.IsAny<CancellationToken>()))
+                .ReturnsAsync(UpdateResult.Unacknowledged.Instance);
+
+            (await Sut().UpdateRolesCountAsync("admin", "default")).Should().BeFalse();
         }
 
         [Fact]

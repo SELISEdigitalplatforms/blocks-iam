@@ -53,8 +53,6 @@ const BasicInformation = forwardRef(function Inner(
   const { isLoading: isLanguageListLoading, data: languageListData } = useGetLanguages();
   const [filterData] = useState({ pageNumber: 0, pageSize: 10 });
   const { isLoading, data } = useGetEmailConfigs(filterData.pageNumber, filterData.pageSize);
-  // const { getEmailConfigs, isPending } = useGetEmailConfigs();
-  // const [mailConfigs, setData] = useState<IEmailConfig[]>([]);
 
   const form = useForm<IEmailTemplate>({
     defaultValues: {
@@ -78,32 +76,12 @@ const BasicInformation = forwardRef(function Inner(
   useImperativeHandle(ref, () => {
     return {
       submit() {
-        // console.log("submit");
         form.handleSubmit(onSubmit)();
       },
       isValid: form.formState.isValid,
     };
   }, [form.formState.isValid]);
 
-  // useEffect(() => {
-  //   const fetchData = async () => {
-  //     try {
-  //       const response = await getEmailConfigs();
-  //       setData(response);
-  //       console.log(mailConfigs);
-  //     }
-  //     catch (err) {
-  //       console.error("Fetch error:", err);
-  //       //setError(err instanceof Error ? err.message : "An error occurred while fetching data");
-  //     }
-  //     // finally {
-  //     //   setLoading(false);
-  //     // }
-  //   };
-  //   if (tenantId && tenantId !== "") {
-  //     fetchData();
-  //   }
-  // }, [tenantId]);
 
   return (
     <main className="mt-[20%] text-left sm:mt-[10%]">

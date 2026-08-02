@@ -125,7 +125,6 @@ const NewConfiguration: React.FC<NewConfigurationProps> = ({
   previousData,
   isEdit,
 }) => {
-  // const { saveEmailConfig, isPending } = useSaveEmailConfig();
   const tenantId = useProjectStore()?.selectedProject?.tenantId || "";
   const { isPending, mutateAsync } = useSaveEmailConfig();
 

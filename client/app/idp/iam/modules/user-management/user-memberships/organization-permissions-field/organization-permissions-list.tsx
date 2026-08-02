@@ -61,6 +61,9 @@ export const OrganizationPermissionsList = ({
             onClick={(e) => {
               e.stopPropagation();
             }}
+            onKeyDown={(e) => {
+              e.stopPropagation();
+            }}
           >
             <DeleteOrganizationPermission
               permission={row.original}

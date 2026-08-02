@@ -17,8 +17,6 @@ export function useFilteredMenus(menus: Menu[]): Menu[] {
     ]);
     const nonProjectMenuIds = new Set([
       "overview-project",
-      "service-identity__authentication-users",
-      "service-identity__authentication-organizations",
       "service-identity__authentication-client-credential",
       "service-identity__authorization",
       "service-identity__api-settings",

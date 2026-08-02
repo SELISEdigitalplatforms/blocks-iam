@@ -55,7 +55,6 @@ export const ProfileImageUploader = ({
   const uploadImage = async (file: File) => {
     try {
       setIsProfileImageUploading(true);
-      // const profileImageId = "BLK-" + new Date().getTime().toString();
       const res = await mutateAsync({
         itemId: "",
         accessModifier: "Public",

@@ -18,7 +18,18 @@ export const LogItem = ({ log }: { log: ILog }) => {
             {log.level}
           </span>
         </div>
-        <div onClick={() => onItemClickHandler(log.traceId)} className="flex h-6 items-center">
+        <div
+          role="button"
+          tabIndex={0}
+          onClick={() => onItemClickHandler(log.traceId)}
+          onKeyDown={(e) => {
+            if (e.key === "Enter" || e.key === " ") {
+              e.preventDefault();
+              onItemClickHandler(log.traceId);
+            }
+          }}
+          className="flex h-6 items-center"
+        >
           <CopyToClipboardButton textToCopy={log.traceId} isHoverable>
             <span className="cursor-pointer text-warning-700">[{log.traceId}]</span>
           </CopyToClipboardButton>

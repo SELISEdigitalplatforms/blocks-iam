@@ -37,10 +37,8 @@ import IamPage from "./routes/dashboard/iam";
 import IamAddPermissionPage from "./routes/dashboard/iam-add-permission";
 import IamConfigurePage from "./routes/dashboard/iam-configure";
 import IamLogsPage from "./routes/dashboard/iam-logs";
-import IamOrgDetailPage from "./routes/dashboard/iam-org-detail";
 import IamPermissionDetailPage from "./routes/dashboard/iam-permission-detail";
 import IamRoleDetailPage from "./routes/dashboard/iam-role-detail";
-import IamUserDetailPage from "./routes/dashboard/iam-user-detail";
 import ManagedServicesPage from "./routes/dashboard/managed-services";
 import MfaLogsPage from "./routes/dashboard/mfa-logs";
 import ProfilePage from "./routes/dashboard/profile";
@@ -64,9 +62,7 @@ import {
 import { navigationMenus } from "./constants/navigation-menus";
 
 const redirectPaths: Record<string, string> = {
-  "/app/user-detail/*": "/app/iam",
   "/app/role-detail/*": "/app/iam?tab=roles",
-  "/app/organization-detail/*": "/app/authentication/organizations",
   "/app/permission-detail/*": "/app/iam?tab=permissions",
   "/app/sso-configuration": "/app/authentication?tab=social",
 };
@@ -179,10 +175,6 @@ export const router = createBrowserRouter([
                   { path: "/sso-activate", element: <SsoActivatePage /> },
                 ],
               },
-              // {
-              //   element: <PublicLayout />,
-              //   children: [
-              //     // { path: "/activate", element: <ActivatePage /> },
 
               //     // { path: "/forgot-password", element: <ForgotPasswordPage /> },
 
@@ -237,24 +229,6 @@ export const router = createBrowserRouter([
                   { path: "profile", element: <ProfilePage /> },
                 ],
               },
-              // ── Project overview group (impersonation terminated) ──
-              // {
-              //   path: "project/:tenantGroupId",
-              //   element: (
-              //     <ProjectOverviewRoute
-              //       redirectPaths={redirectPaths}
-              //       navigationMenus={navigationMenus}
-              //     />
-              //   ),
-              //   children: [
-              //     { index: true, element: <Navigate to="environments" replace /> },
-              //     {
-              //       path: "environments",
-              //       element: <EnvironmentsPage />,
-              //     },
-              //   ],
-              // },
-              // ── Dashboard group (impersonation synchronized) ──
               {
                 path: ":itemId",
                 element: (
@@ -268,10 +242,6 @@ export const router = createBrowserRouter([
                   { index: true, element: <Navigate to="dashboard" replace /> },
                   { path: "iam", element: <IamPage /> },
                   {
-                    path: "user-detail/:id",
-                    element: <IamUserDetailPage />,
-                  },
-                  {
                     path: "role-detail/:id",
                     element: <IamRoleDetailPage />,
                   },
@@ -283,27 +253,19 @@ export const router = createBrowserRouter([
                     path: "permission-detail/:id",
                     element: <IamPermissionDetailPage />,
                   },
-                  {
-                    path: "organization-detail/:orgId",
-                    element: <IamOrgDetailPage />,
-                  },
                   { path: "iam/logs", element: <IamLogsPage /> },
                   {
                     path: "iam/configure",
                     element: <IamConfigurePage />,
                   },
+                  // Users and Organizations moved to the OS frontend under
+                  // /app/iam/*. This path stays registered because it is an
+                  // existing redirect target, and now serves the one section
+                  // this frontend still owns.
                   {
                     path: "authentication",
-                    element: <AuthenticationConfigPage section="users" />,
-                  },
-                  {
-                    path: "users",
-                    element: <AuthenticationConfigPage section="users" />,
-                  },
-                  {
-                    path: "organizations",
                     element: (
-                      <AuthenticationConfigPage section="organizations" />
+                      <AuthenticationConfigPage section="client-credential" />
                     ),
                   },
                   {
