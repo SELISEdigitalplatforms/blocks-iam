@@ -61,7 +61,6 @@ vi.mock("@blocks-idp/authentication/pages/forgot-email-sent", () => ({
 vi.mock("@/idp/authentication/pages/oidc-forgot-password", () => ({
   OIDCForgotPassword: stub("oidc-forgot-password"),
 }));
-vi.mock("@blocks-idp/authentication/pages/login", () => ({ Signin: stub("signin") }));
 vi.mock("@blocks-idp/authentication/pages/mfa-check", () => ({ MfaCheck: stub("mfa-check") }));
 vi.mock("@blocks-idp/authentication/pages/reset-password-success", () => ({
   ResetPasswordSuccess: stub("reset-password-success"),
@@ -161,7 +160,6 @@ describe("auth / oidc / device route wrappers", () => {
     ["./auth/activate", "activation"],
     ["./auth/forgot-email-sent", "forgot-email-sent"],
     ["./auth/forgot-password", "oidc-forgot-password"],
-    ["./auth/login", "signin"],
     ["./auth/mfa-check", "mfa-check"],
     ["./auth/reset-password-success", "reset-password-success"],
     ["./auth/resetpassword", "reset-password"],
