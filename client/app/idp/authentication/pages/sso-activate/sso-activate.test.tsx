@@ -86,7 +86,7 @@ describe("SsoActivate", () => {
     h.iamBaseUrl = "https://dev-iam.test";
   });
 
-  it("authenticates and navigates to the console on a successful token exchange", async () => {
+  it("authenticates and navigates to the profile page on a successful token exchange", async () => {
     const fetchMock = vi.fn().mockResolvedValue({
       ok: true,
       json: async () => ({ access_token: "at", refresh_token: "rt" }),
@@ -96,7 +96,7 @@ describe("SsoActivate", () => {
     fireEvent.click(screen.getByRole("checkbox"));
     fireEvent.click(screen.getByRole("button", { name: /continue/i }));
     await waitFor(() => expect(h.setAuthenticated).toHaveBeenCalled());
-    expect(h.navigateMock).toHaveBeenCalledWith("/app/console");
+    expect(h.navigateMock).toHaveBeenCalledWith("/app/profile");
     expect(h.setTokens).not.toHaveBeenCalled();
     vi.unstubAllGlobals();
   });

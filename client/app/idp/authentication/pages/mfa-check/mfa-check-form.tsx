@@ -99,7 +99,7 @@ export const MfaCheckFrom = () => {
           return;
         }
         await animCtx?.succeedAnimation();
-        navigate("/app/console");
+        navigate("/app/profile");
         return;
       }
 

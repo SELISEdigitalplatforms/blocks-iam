@@ -77,7 +77,7 @@ describe("MfaCheckFrom", () => {
     fireEvent.click(verify);
   };
 
-  it("authenticates and navigates to the console on success without a redirect", async () => {
+  it("authenticates and navigates to the profile page on success without a redirect", async () => {
     const fetchMock = vi.fn().mockResolvedValue({
       ok: true,
       headers: { get: () => "application/json" },
@@ -87,7 +87,7 @@ describe("MfaCheckFrom", () => {
     const { container } = render(<MfaCheckFrom />);
     await submitCode(container);
     await waitFor(() => expect(h.setAuthenticated).toHaveBeenCalled());
-    expect(h.navigateMock).toHaveBeenCalledWith("/app/console");
+    expect(h.navigateMock).toHaveBeenCalledWith("/app/profile");
     vi.unstubAllGlobals();
   });
 
