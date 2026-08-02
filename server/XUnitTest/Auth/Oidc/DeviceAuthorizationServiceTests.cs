@@ -7,6 +7,7 @@ using FluentAssertions;
 using Idp.DomainService.Oidc.Contracts;
 using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.Logging.Abstractions;
+using Microsoft.Extensions.Options;
 using Moq;
 
 namespace XUnitTest.Auth.Oidc
@@ -58,6 +59,7 @@ namespace XUnitTest.Auth.Oidc
                 new DeviceCodeGenerator(),
                 authRepo.Object,
                 tenants.Object,
+                Options.Create(new DeviceFlowOptions()),
                 NullLogger<DeviceAuthorizationService>.Instance);
         }
 
@@ -107,6 +109,7 @@ namespace XUnitTest.Auth.Oidc
                 new DeviceCodeGenerator(),
                 authRepo.Object,
                 tenants.Object,
+                Options.Create(new DeviceFlowOptions()),
                 NullLogger<DeviceAuthorizationService>.Instance);
 
             var act = async () => await service.RequestAsync(new DeviceAuthorizationRequest { ClientId = "cli" }, new DefaultHttpContext().Request);

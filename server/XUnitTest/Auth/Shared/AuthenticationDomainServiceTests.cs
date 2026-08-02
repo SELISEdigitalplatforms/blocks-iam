@@ -7,8 +7,6 @@ using Blocks.Genesis;
 using FluentAssertions;
 using FluentValidation;
 using FluentValidation.Results;
-using Iam.DomainService.Users;
-using Microsoft.Extensions.Configuration;
 using Moq;
 using System.Net.Http;
 
@@ -18,9 +16,6 @@ namespace XUnitTest.Auth.Shared
     {
         private readonly Mock<IMessageClient> _message = new();
         private readonly Mock<IAuthenticationRepository> _repo = new();
-        private readonly Mock<IConfiguration> _config = new();
-        private readonly Mock<IUserRepository> _userRepo = new();
-        private readonly Mock<IValidator<SaveSsoCredentialRequest>> _ssoValidator = new();
         private readonly Mock<IValidator<SaveOIDCClientRequest>> _oidcValidator = new();
         private readonly Mock<IValidator<SaveIdentityProviderRequest>> _saveIdpValidator = new();
         private readonly Mock<IValidator<UpdateIdentityProviderRequest>> _updateIdpValidator = new();
@@ -48,7 +43,7 @@ namespace XUnitTest.Auth.Shared
         }
 
         private AuthenticationDomainService Create() =>
-            new(_message.Object, _repo.Object, _config.Object, _userRepo.Object, _ssoValidator.Object,
+            new(_message.Object, _repo.Object,
                 _oidcValidator.Object, _saveIdpValidator.Object, _updateIdpValidator.Object, _tenants.Object, _httpFactory.Object);
 
         private static IdentityProvider Idp(string provider = "google", string clientId = "cid", string id = "idp-1") => new()
@@ -468,6 +463,33 @@ namespace XUnitTest.Auth.Shared
             result.IsSuccess.Should().BeTrue();
             _repo.Verify(r => r.SaveOidcClientRegistrationAsync(It.IsAny<OidcClientRegistration>()), Times.Once);
             _repo.Verify(r => r.CreateIdentityProviderAsync(It.IsAny<IdentityProvider>()), Times.Never);
+        }
+
+        [Fact]
+        public async Task SaveOIDCClient_DeviceFlowClient_ClearsAuthCodeMetadata()
+        {
+            OidcClientRegistration? saved = null;
+            _repo.Setup(r => r.GetOidcClientRegistrationAsync(It.IsAny<string>())).ReturnsAsync((OidcClientRegistration)null!);
+            _repo.Setup(r => r.SaveOidcClientRegistrationAsync(It.IsAny<OidcClientRegistration>()))
+                .Callback<OidcClientRegistration>(credential => saved = credential)
+                .Returns(Task.CompletedTask);
+            _repo.Setup(r => r.GetIdentityProviderByClientIdAsync(It.IsAny<string>())).ReturnsAsync((IdentityProvider)null!);
+
+            var result = await Create().SaveOIDCClientAsync(new SaveOIDCClientRequest
+            {
+                IsDeviceFlowClient = true,
+                RedirectUris = new() { "https://app/cb" },
+                AllowedResponseTypes = new() { "code" },
+                AllowedScopes = new() { "openid" },
+                ClientType = "public",
+                RegisterAsIdentityProvider = false
+            });
+
+            result.IsSuccess.Should().BeTrue();
+            saved.Should().NotBeNull();
+            saved!.IsDeviceFlowClient.Should().BeTrue();
+            saved.RedirectUris.Should().BeEmpty();
+            saved.AllowedResponseTypes.Should().BeEmpty();
         }
 
         [Fact]

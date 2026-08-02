@@ -3,6 +3,7 @@ using Authentication.DomainService.Oidc.Services;
 using FluentAssertions;
 using Idp.DomainService.Oidc.Contracts;
 using Microsoft.Extensions.Logging.Abstractions;
+using Microsoft.Extensions.Options;
 using Moq;
 
 namespace XUnitTest.Auth.Oidc
@@ -23,7 +24,10 @@ namespace XUnitTest.Auth.Oidc
                 .ReturnsAsync(true)
                 .Callback(() => markCalled.TrySetResult());
 
-            var worker = new DeviceCleanupWorker(repo.Object, NullLogger<DeviceCleanupWorker>.Instance);
+            var worker = new DeviceCleanupWorker(
+                repo.Object,
+                Options.Create(new DeviceFlowOptions { CleanupSweepIntervalSeconds = 1 }),
+                NullLogger<DeviceCleanupWorker>.Instance);
 
             using var cts = new CancellationTokenSource();
             var execute = worker.StartAsync(cts.Token);
@@ -47,7 +51,10 @@ namespace XUnitTest.Auth.Oidc
             repo.Setup(r => r.EnsureIndexesAsync(It.IsAny<CancellationToken>()))
                 .Returns(Task.CompletedTask);
 
-            var worker = new DeviceCleanupWorker(repo.Object, NullLogger<DeviceCleanupWorker>.Instance);
+            var worker = new DeviceCleanupWorker(
+                repo.Object,
+                Options.Create(new DeviceFlowOptions { CleanupSweepIntervalSeconds = 1 }),
+                NullLogger<DeviceCleanupWorker>.Instance);
 
             using var cts = new CancellationTokenSource();
             var execute = worker.StartAsync(cts.Token);

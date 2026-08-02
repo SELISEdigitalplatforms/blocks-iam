@@ -27,6 +27,7 @@ namespace Idp.DomainService.Oidc.Contracts
         public string? UserAgent { get; set; }
         public string? DeviceName { get; set; }
         public string? DeviceInfo { get; set; }
+        public string? ApprovalTokenHash { get; set; }
     }
 
     public static class DeviceAuthorizationStatus
@@ -117,6 +118,21 @@ namespace Idp.DomainService.Oidc.Contracts
 
         [JsonPropertyName("userCode")]
         public string UserCode { get; set; } = string.Empty;
+
+        [JsonPropertyName("requestIpAddress")]
+        public string? RequestIpAddress { get; set; }
+
+        [JsonPropertyName("requestUserAgent")]
+        public string? RequestUserAgent { get; set; }
+
+        [JsonPropertyName("deviceName")]
+        public string? DeviceName { get; set; }
+
+        [JsonPropertyName("deviceInfo")]
+        public string? DeviceInfo { get; set; }
+
+        [JsonPropertyName("approvalToken")]
+        public string ApprovalToken { get; set; } = string.Empty;
     }
 
     /// <summary>
@@ -130,6 +146,9 @@ namespace Idp.DomainService.Oidc.Contracts
 
         [Required]
         public string Decision { get; set; } = "allow";
+
+        [JsonPropertyName("approvalToken")]
+        public string ApprovalToken { get; set; } = string.Empty;
     }
 
     public sealed class DeviceApproveResponse
@@ -172,5 +191,11 @@ namespace Authentication.DomainService.Oidc.Contracts
 
         public static IActionResult SlowDown(string description, int interval) =>
             new BadRequestObjectResult(new { error = "slow_down", error_description = description, interval });
+
+        public static IActionResult InvalidClient(string description) =>
+            new ObjectResult(new { error = "invalid_client", error_description = description })
+            {
+                StatusCode = 401
+            };
     }
 }

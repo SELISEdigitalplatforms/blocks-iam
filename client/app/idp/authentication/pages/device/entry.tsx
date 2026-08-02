@@ -70,9 +70,7 @@ export function DeviceEntryPage() {
     } catch (err: unknown) {
       shake(formRef.current);
       const errCode = readErrorCode(err);
-      const msg = errCode === "expired_token"
-        ? "This device code has expired."
-        : "Invalid or expired code.";
+      const msg = verifyErrorMessage(errCode);
       if (errCode === "expired_token") {
         setFlow({ kind: "expired" });
       } else {
@@ -119,7 +117,12 @@ export function DeviceEntryPage() {
     setDecision(choice);
     animCtx?.startAnimation();
     try {
-      const res = await deviceService.decide(flow.payload.userCode, choice, tenantId);
+      const res = await deviceService.decide(
+        flow.payload.userCode,
+        choice,
+        tenantId,
+        flow.payload.approvalToken,
+      );
       await animCtx?.succeedAnimation();
       window.location.assign(res.redirect);
     } catch (err: unknown) {
@@ -127,6 +130,10 @@ export function DeviceEntryPage() {
       const code = readErrorCode(err);
       if (code === "request_not_pending" || code === "expired_token") {
         setFlow({ kind: "expired" });
+      } else if (code === "login_required") {
+        setServerError("Your sign-in session expired. Sign in again and retry this code.");
+      } else if (code === "slow_down") {
+        setServerError("Too many attempts. Wait a moment, then try again.");
       } else {
         setServerError("We could not record your decision. Please try again.");
       }
@@ -140,6 +147,13 @@ export function DeviceEntryPage() {
       (err as { errors?: { error?: string } })?.errors?.error ??
       (err as { error?: string })?.error
     );
+  }
+
+  function verifyErrorMessage(code?: string): string {
+    if (code === "expired_token") return "This device code has expired.";
+    if (code === "slow_down") return "Too many attempts. Wait a moment, then try again.";
+    if (code === "invalid_grant") return "Invalid code, wrong tenant, or already used.";
+    return "Invalid or expired code.";
   }
 
   function onSubmit(e: React.FormEvent) {
@@ -303,6 +317,34 @@ export function DeviceEntryPage() {
               <div className="text-xs oidc-font-rajdhani" style={{ color: "var(--muted)" }}>
                 Tenant: <span style={{ color: "var(--fg)" }}>{payload.tenant || tenantId}</span>
               </div>
+
+              {(payload.requestIpAddress || payload.requestUserAgent || payload.deviceName || payload.deviceInfo) && (
+                <div
+                  className="rounded-md p-3 text-xs oidc-font-rajdhani"
+                  style={{ background: "var(--panel)", border: "1px solid var(--border)", color: "var(--muted)" }}
+                >
+                  {payload.deviceName && (
+                    <p>
+                      Device: <span style={{ color: "var(--fg)" }}>{payload.deviceName}</span>
+                    </p>
+                  )}
+                  {payload.requestIpAddress && (
+                    <p>
+                      Request IP: <span style={{ color: "var(--fg)" }}>{payload.requestIpAddress}</span>
+                    </p>
+                  )}
+                  {payload.requestUserAgent && (
+                    <p className="break-words">
+                      Browser: <span style={{ color: "var(--fg)" }}>{payload.requestUserAgent}</span>
+                    </p>
+                  )}
+                  {payload.deviceInfo && (
+                    <p className="break-words">
+                      Details: <span style={{ color: "var(--fg)" }}>{payload.deviceInfo}</span>
+                    </p>
+                  )}
+                </div>
+              )}
 
               {serverError && (
                 <p

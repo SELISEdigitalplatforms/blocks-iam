@@ -13,6 +13,7 @@ const mockVerifyResponse = {
     scopes: ["openid"],
     tenant: "tenant-1",
     userCode: "ABCD-1234",
+    approvalToken: "approval-token",
   },
 };
 
@@ -66,11 +67,11 @@ describe("deviceService", () => {
     it("should POST the decision with the tenant header", async () => {
       vi.mocked(http.post).mockResolvedValue(mockApproveResponse);
 
-      const result = await deviceService.decide("ABCD-1234", "allow", "tenant-1");
+      const result = await deviceService.decide("ABCD-1234", "allow", "tenant-1", "approval-token");
 
       expect(http.post).toHaveBeenCalledWith(
         DEVICE_ENDPOINTS.DECISION,
-        { user_code: "ABCD-1234", decision: "allow" },
+        { user_code: "ABCD-1234", decision: "allow", approvalToken: "approval-token" },
         { "X-Blocks-Key": "tenant-1" },
       );
       expect(result).toEqual(mockApproveResponse);
@@ -79,11 +80,11 @@ describe("deviceService", () => {
     it("should forward a deny decision", async () => {
       vi.mocked(http.post).mockResolvedValue({ ...mockApproveResponse, status: "Denied" });
 
-      await deviceService.decide("ABCD-1234", "deny", "tenant-1");
+      await deviceService.decide("ABCD-1234", "deny", "tenant-1", "approval-token");
 
       expect(http.post).toHaveBeenCalledWith(
         DEVICE_ENDPOINTS.DECISION,
-        { user_code: "ABCD-1234", decision: "deny" },
+        { user_code: "ABCD-1234", decision: "deny", approvalToken: "approval-token" },
         { "X-Blocks-Key": "tenant-1" },
       );
     });
@@ -91,7 +92,7 @@ describe("deviceService", () => {
     it("should throw when the API call fails", async () => {
       vi.mocked(http.post).mockRejectedValue(new Error("Network error"));
 
-      await expect(deviceService.decide("ABCD-1234", "allow", "tenant-1")).rejects.toThrow(
+      await expect(deviceService.decide("ABCD-1234", "allow", "tenant-1", "approval-token")).rejects.toThrow(
         "Network error",
       );
     });

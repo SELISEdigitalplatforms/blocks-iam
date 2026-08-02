@@ -7,6 +7,11 @@ export interface DeviceConsentPayload {
   scopes: string[];
   tenant: string;
   userCode: string;
+  requestIpAddress?: string | null;
+  requestUserAgent?: string | null;
+  deviceName?: string | null;
+  deviceInfo?: string | null;
+  approvalToken: string;
 }
 
 export interface DeviceVerifyResponse {
@@ -46,10 +51,11 @@ export const deviceService = {
     userCode: string,
     decision: "allow" | "deny",
     tenantId: string,
+    approvalToken: string,
   ): Promise<DeviceApproveResponse> {
     return http.post<DeviceApproveResponse>(
       DEVICE_ENDPOINTS.DECISION,
-      { user_code: userCode, decision },
+      { user_code: userCode, decision, approvalToken },
       tenantHeaders(tenantId),
     ) as Promise<DeviceApproveResponse>;
   },

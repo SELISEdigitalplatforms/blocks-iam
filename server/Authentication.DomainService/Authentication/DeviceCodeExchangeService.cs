@@ -1,17 +1,23 @@
+using Authentication.DomainService.Entities;
+using Authentication.DomainService.OAuth;
 using Authentication.DomainService.Oidc.Contracts;
 using Authentication.DomainService.Oidc.Repositories;
 using Authentication.DomainService.Oidc.Services;
+using Authentication.DomainService.Shared.Services;
 using Authentication.DomainService.Services;
 using Iam.DomainService.Users;
 using Idp.DomainService.Oidc.Contracts;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Options;
+using System.Security.Cryptography;
+using System.Text;
 
 namespace Authentication.DomainService.Authentication
 {
     /// <summary>
-    /// Handles the RFC 8628 §3.4 <c>urn:ietf:params:oauth:grant-type:device_code</c> grant.
+    /// Handles the RFC 8628 section 3.4 <c>urn:ietf:params:oauth:grant-type:device_code</c> grant.
     /// Dispatched from <see cref="OidcTokenEndpoint"/> when the token endpoint sees that grant type.
     /// Returns the standard RFC 6749 token JSON on success, or one of:
     /// <c>authorization_pending</c>, <c>slow_down</c>, <c>access_denied</c>, <c>expired_token</c>,
@@ -24,6 +30,7 @@ namespace Authentication.DomainService.Authentication
         private readonly IOidcTokenMintService _mintService;
         private readonly IAuthenticationRepository _authenticationRepository;
         private readonly IUserRepository _userRepository;
+        private readonly IOptions<DeviceFlowOptions> _options;
         private readonly ILogger<DeviceCodeExchangeService> _logger;
 
         public DeviceCodeExchangeService(
@@ -32,6 +39,7 @@ namespace Authentication.DomainService.Authentication
             IOidcTokenMintService mintService,
             IAuthenticationRepository authenticationRepository,
             IUserRepository userRepository,
+            IOptions<DeviceFlowOptions> options,
             ILogger<DeviceCodeExchangeService> logger)
         {
             _repository = repository;
@@ -39,6 +47,7 @@ namespace Authentication.DomainService.Authentication
             _mintService = mintService;
             _authenticationRepository = authenticationRepository;
             _userRepository = userRepository;
+            _options = options;
             _logger = logger;
         }
 
@@ -46,10 +55,20 @@ namespace Authentication.DomainService.Authentication
         {
             var deviceCode = request.Form["device_code"].ToString();
             var clientId = request.Form["client_id"].ToString();
+            var clientSecret = request.Form["client_secret"].ToString();
 
-            if (string.IsNullOrWhiteSpace(clientId))
+            if (string.IsNullOrWhiteSpace(clientId) || string.IsNullOrWhiteSpace(clientSecret))
             {
-                OidcRedirectUrlBuilder.TryReadBasicClientAuthentication(request, out clientId, out _);
+                OidcRedirectUrlBuilder.TryReadBasicClientAuthentication(request, out var basicClientId, out var basicSecret);
+                if (string.IsNullOrWhiteSpace(clientId))
+                {
+                    clientId = basicClientId;
+                }
+
+                if (string.IsNullOrWhiteSpace(clientSecret))
+                {
+                    clientSecret = basicSecret;
+                }
             }
 
             if (string.IsNullOrWhiteSpace(deviceCode) || string.IsNullOrWhiteSpace(clientId))
@@ -70,6 +89,17 @@ namespace Authentication.DomainService.Authentication
                 return DeviceEndpointErrors.InvalidGrant("client_id does not match device_code");
             }
 
+            var client = await _authenticationRepository.GetOidcClientRegistrationAsync(entity.ClientId);
+            if (!OidcClientValidator.IsGrantAllowed(client, GrantTypes.DeviceCode))
+            {
+                return DeviceEndpointErrors.InvalidClient("client is not authorized for the device_code grant");
+            }
+
+            if (RequiresClientAuthentication(client) && !SecretsMatch(clientSecret, client!.ClientSecret))
+            {
+                return DeviceEndpointErrors.InvalidClient("invalid client authentication");
+            }
+
             var cookieTenantId = ResolveTenantIdFromRequest(request);
             if (!string.IsNullOrWhiteSpace(cookieTenantId)
                 && !string.Equals(cookieTenantId, entity.TenantId, StringComparison.OrdinalIgnoreCase))
@@ -87,7 +117,7 @@ namespace Authentication.DomainService.Authentication
                     return DeviceEndpointErrors.ExpiredToken("device_code has expired");
 
                 case DeviceAuthorizationStatus.Consumed:
-                    return DeviceEndpointErrors.AccessDenied("device_code already used");
+                    return DeviceEndpointErrors.InvalidGrant("device_code already used");
 
                 case DeviceAuthorizationStatus.Pending:
                     return await HandlePendingAsync(entity, ct);
@@ -111,11 +141,25 @@ namespace Authentication.DomainService.Authentication
             var elapsedSinceLastPoll = now - entity.LastPollAt;
             if (elapsedSinceLastPoll.TotalSeconds < Math.Max(entity.PollIntervalSeconds - 1, 0))
             {
-                var newInterval = await _repository.BumpPollIntervalAsync(entity.Id, entity.PollIntervalSeconds, ct);
+                var newInterval = await _repository.BumpPollIntervalAsync(
+                    entity.Id,
+                    entity.PollIntervalSeconds,
+                    _options.Value.NormalizedSlowDownIncrementSeconds,
+                    ct);
                 return DeviceEndpointErrors.SlowDown($"polling too frequently; interval is now {newInterval}s", newInterval);
             }
 
-            await _repository.UpdatePollAsync(entity.Id, now, entity.PollsObserved + 1, ct);
+            var recorded = await _repository.TryRecordPollAsync(entity.Id, entity.LastPollAt, now, entity.PollsObserved + 1, ct);
+            if (!recorded)
+            {
+                var newInterval = await _repository.BumpPollIntervalAsync(
+                    entity.Id,
+                    entity.PollIntervalSeconds,
+                    _options.Value.NormalizedSlowDownIncrementSeconds,
+                    ct);
+                return DeviceEndpointErrors.SlowDown($"polling too frequently; interval is now {newInterval}s", newInterval);
+            }
+
             return DeviceEndpointErrors.AuthorizationPending("user has not yet approved the request");
         }
 
@@ -190,6 +234,35 @@ namespace Authentication.DomainService.Authentication
             return scope
                 .Split([' ', ','], StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
                 .Any(s => string.Equals(s, "offline_access", StringComparison.OrdinalIgnoreCase));
+        }
+
+        private static bool RequiresClientAuthentication(OidcClientRegistration? client)
+        {
+            if (client == null)
+            {
+                return false;
+            }
+
+            if (string.Equals(client.ClientType, "public", StringComparison.OrdinalIgnoreCase))
+            {
+                return false;
+            }
+
+            return !string.IsNullOrWhiteSpace(client.TokenEndpointAuthMethod)
+                && !string.Equals(client.TokenEndpointAuthMethod, "none", StringComparison.OrdinalIgnoreCase);
+        }
+
+        private static bool SecretsMatch(string? presentedSecret, string? registeredSecret)
+        {
+            if (string.IsNullOrEmpty(presentedSecret) || string.IsNullOrEmpty(registeredSecret))
+            {
+                return false;
+            }
+
+            var presented = Encoding.UTF8.GetBytes(presentedSecret);
+            var registered = Encoding.UTF8.GetBytes(registeredSecret);
+            return presented.Length == registered.Length
+                && CryptographicOperations.FixedTimeEquals(presented, registered);
         }
 
         private static string? ResolveTenantIdFromRequest(HttpRequest request)

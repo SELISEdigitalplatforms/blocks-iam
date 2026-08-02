@@ -8,7 +8,7 @@ using Microsoft.Extensions.Logging;
 namespace Authentication.DomainService.Authentication
 {
     /// <summary>
-    /// Orchestrator for the RFC 8628 §3.1 device authorization endpoint. Wraps
+    /// Orchestrator for the RFC 8628 section 3.1 device authorization endpoint. Wraps
     /// <see cref="IDeviceAuthorizationService"/> with HTTP-friendly error mapping.
     /// </summary>
     public sealed class DeviceAuthorizationEndpoint
@@ -29,6 +29,8 @@ namespace Authentication.DomainService.Authentication
 
         public async Task<IActionResult> HandleAsync(HttpRequest request, CancellationToken ct = default)
         {
+            SetNoStoreHeaders(request.HttpContext);
+
             if (!string.Equals(request.Method, "POST", StringComparison.OrdinalIgnoreCase))
             {
                 return new BadRequestObjectResult(new { error = "invalid_request", error_description = "POST required" });
@@ -49,12 +51,7 @@ namespace Authentication.DomainService.Authentication
             try
             {
                 var response = await _service.RequestAsync(dto, request, ct);
-                var http = _httpContextAccessor.HttpContext;
-                if (http != null)
-                {
-                    http.Response.Headers["Cache-Control"] = "no-store";
-                    http.Response.Headers["Pragma"] = "no-cache";
-                }
+                SetNoStoreHeaders(_httpContextAccessor.HttpContext);
                 return new OkObjectResult(response);
             }
             catch (DeviceAuthorizationException ex)
@@ -67,6 +64,17 @@ namespace Authentication.DomainService.Authentication
                 _logger.LogError(ex, "Device authorization failed unexpectedly");
                 return new ObjectResult(new { error = "server_error" }) { StatusCode = StatusCodes.Status500InternalServerError };
             }
+        }
+
+        private static void SetNoStoreHeaders(HttpContext? http)
+        {
+            if (http == null)
+            {
+                return;
+            }
+
+            http.Response.Headers["Cache-Control"] = "no-store";
+            http.Response.Headers["Pragma"] = "no-cache";
         }
     }
 }

@@ -145,6 +145,17 @@ namespace Authentication.DomainService.Oidc.Repositories
             return result.ModifiedCount > 0;
         }
 
+        public async Task<bool> SetApprovalTokenHashAsync(string id, string approvalTokenHash, CancellationToken ct = default)
+        {
+            var filter = Builders<DeviceAuthorizationRequestModel>.Filter.And(
+                Builders<DeviceAuthorizationRequestModel>.Filter.Eq(x => x.Id, id),
+                Builders<DeviceAuthorizationRequestModel>.Filter.Eq(x => x.Status, DeviceAuthorizationStatus.Pending));
+
+            var update = Builders<DeviceAuthorizationRequestModel>.Update.Set(x => x.ApprovalTokenHash, approvalTokenHash);
+            var result = await Collection().UpdateOneAsync(filter, update, cancellationToken: ct);
+            return result.ModifiedCount > 0;
+        }
+
         public async Task<bool> UpdatePollAsync(string id, DateTime lastPollAt, int pollsObserved, CancellationToken ct = default)
         {
             var filter = Builders<DeviceAuthorizationRequestModel>.Filter.Eq(x => x.Id, id);
@@ -156,10 +167,31 @@ namespace Authentication.DomainService.Oidc.Repositories
             return result.ModifiedCount > 0;
         }
 
-        public async Task<int> BumpPollIntervalAsync(string id, int currentInterval, CancellationToken ct = default)
+        public async Task<bool> TryRecordPollAsync(string id, DateTime previousLastPollAt, DateTime newLastPollAt, int pollsObserved, CancellationToken ct = default)
         {
-            var newInterval = currentInterval + 5;
-            var filter = Builders<DeviceAuthorizationRequestModel>.Filter.Eq(x => x.Id, id);
+            var filter = Builders<DeviceAuthorizationRequestModel>.Filter.And(
+                Builders<DeviceAuthorizationRequestModel>.Filter.Eq(x => x.Id, id),
+                Builders<DeviceAuthorizationRequestModel>.Filter.Eq(x => x.Status, DeviceAuthorizationStatus.Pending),
+                Builders<DeviceAuthorizationRequestModel>.Filter.Eq(x => x.LastPollAt, previousLastPollAt));
+
+            var update = Builders<DeviceAuthorizationRequestModel>.Update
+                .Set(x => x.LastPollAt, newLastPollAt)
+                .Set(x => x.PollsObserved, pollsObserved);
+
+            var result = await Collection().UpdateOneAsync(filter, update, cancellationToken: ct);
+            return result.ModifiedCount > 0;
+        }
+
+        public async Task<int> BumpPollIntervalAsync(string id, int currentInterval, CancellationToken ct = default)
+            => await BumpPollIntervalAsync(id, currentInterval, 5, ct);
+
+        public async Task<int> BumpPollIntervalAsync(string id, int currentInterval, int incrementSeconds, CancellationToken ct = default)
+        {
+            var newInterval = currentInterval + Math.Max(1, incrementSeconds);
+            var filter = Builders<DeviceAuthorizationRequestModel>.Filter.And(
+                Builders<DeviceAuthorizationRequestModel>.Filter.Eq(x => x.Id, id),
+                Builders<DeviceAuthorizationRequestModel>.Filter.Eq(x => x.Status, DeviceAuthorizationStatus.Pending),
+                Builders<DeviceAuthorizationRequestModel>.Filter.Eq(x => x.PollIntervalSeconds, currentInterval));
             var update = Builders<DeviceAuthorizationRequestModel>.Update.Set(x => x.PollIntervalSeconds, newInterval);
             var result = await Collection().UpdateOneAsync(filter, update, cancellationToken: ct);
             return result.ModifiedCount > 0 ? newInterval : currentInterval;
