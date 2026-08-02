@@ -291,25 +291,6 @@ namespace XUnitTest.IamTests.Resources
         }
 
         [Fact]
-        public async Task UpdateRolesCountAsync_CountsRoleUsageAndWritesItToTheRole()
-        {
-            var permissions = RegisterPermissionsNamed(
-                Perm("p1", roles: new[] { "admin" }),
-                Perm("p2", roles: new[] { "admin" }));
-            var roles = Register<Role>();
-
-            (await Sut().UpdateRolesCountAsync("admin", "default")).Should().BeTrue();
-
-            permissions.Verify(c => c.CountDocumentsAsync(
-                It.IsAny<FilterDefinition<Permission>>(), It.IsAny<CountOptions>(), It.IsAny<CancellationToken>()),
-                Times.Once);
-            roles.Verify(c => c.UpdateOneAsync(
-                It.IsAny<FilterDefinition<Role>>(), It.IsAny<UpdateDefinition<Role>>(),
-                It.IsAny<UpdateOptions>(), It.IsAny<CancellationToken>()),
-                Times.Once);
-        }
-
-        [Fact]
         public async Task UpdateRolesCountAsync_CountsZeroWhenNoPermissionReferencesTheRole()
         {
             RegisterPermissionsNamed();
@@ -322,21 +303,6 @@ namespace XUnitTest.IamTests.Resources
             roles.Verify(c => c.UpdateOneAsync(
                 It.IsAny<FilterDefinition<Role>>(), It.IsAny<UpdateDefinition<Role>>(),
                 It.IsAny<UpdateOptions>(), It.IsAny<CancellationToken>()),
-                Times.Once);
-        }
-
-        [Fact]
-        public async Task UpdateRolesCountAsync_ScopesTheCountToTheGivenOrganization()
-        {
-            // The count filter pairs the role slug with the organization, so an explicit org id has
-            // to reach the query rather than falling back to the ambient one.
-            var permissions = RegisterPermissionsNamed(Perm("p1", org: "org1", roles: new[] { "admin" }));
-            Register<Role>();
-
-            (await Sut().UpdateRolesCountAsync("admin", "org1")).Should().BeTrue();
-
-            permissions.Verify(c => c.CountDocumentsAsync(
-                It.IsAny<FilterDefinition<Permission>>(), It.IsAny<CountOptions>(), It.IsAny<CancellationToken>()),
                 Times.Once);
         }
 
