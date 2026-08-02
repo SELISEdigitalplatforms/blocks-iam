@@ -80,6 +80,7 @@ namespace Idp.DomainService.Oidc.Contracts
     public sealed class DeviceVerifyRequest
     {
         [Required]
+        [JsonPropertyName("user_code")]
         public string UserCode { get; set; } = string.Empty;
     }
 
@@ -142,9 +143,11 @@ namespace Idp.DomainService.Oidc.Contracts
     public sealed class DeviceDecisionRequest
     {
         [Required]
+        [JsonPropertyName("user_code")]
         public string UserCode { get; set; } = string.Empty;
 
         [Required]
+        [JsonPropertyName("decision")]
         public string Decision { get; set; } = "allow";
 
         [JsonPropertyName("approvalToken")]
