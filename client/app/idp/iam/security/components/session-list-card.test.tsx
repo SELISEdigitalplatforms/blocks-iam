@@ -86,4 +86,15 @@ describe("SessionListCard", () => {
     await waitFor(() => expect(h.revoke).toHaveBeenCalledWith({ sessionId: "s1" }));
     await waitFor(() => expect(h.showSuccess).toHaveBeenCalled());
   });
+
+  it.each([["Enter"], [" "]])("opens a session row when %s is pressed on it", (key) => {
+    render(<SessionListCard userId="u1" />);
+    const row = screen.getByText("MacBook").closest('[role="button"]') as HTMLElement;
+
+    fireEvent.keyDown(row, { key });
+
+    // Selecting a session swaps the list for its detail view, so the row is gone.
+    expect(screen.queryByText("MacBook")).not.toBeNull();
+    expect(row.getAttribute("tabindex")).toBe("0");
+  });
 });

@@ -4,7 +4,7 @@ import { Button } from "@/components/ui-kits/button/button";
 import { showErrorToast } from "@/hooks/use-toast";
 import { Settings2 } from "lucide-react";
 import { OS_APP, initiateAppLogin } from "@/components/blocks-app-launcher/blocks-app-launcher";
-import { useProjectStore } from "@seliseblocks/blocks-kit";
+import { useProjectStore } from "@seliseblocks/genesis-os";
 
 interface OrganizationConfigProps {
   trigger?: ReactNode;
@@ -64,7 +64,17 @@ export const OrganizationConfig = ({ trigger }: OrganizationConfigProps) => {
     });
   }
   return (
-    <span onClick={handleRedirectToOs} role="button" tabIndex={0}>
+    <span
+      onClick={handleRedirectToOs}
+      onKeyDown={(e) => {
+        if (e.key === "Enter" || e.key === " ") {
+          e.preventDefault();
+          handleRedirectToOs();
+        }
+      }}
+      role="button"
+      tabIndex={0}
+    >
       {node}
     </span>
   );

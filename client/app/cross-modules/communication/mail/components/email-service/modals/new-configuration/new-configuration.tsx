@@ -32,7 +32,7 @@ import {
 } from "@/components/ui-kits/select/select";
 import { Checkbox } from "@/components/ui-kits/checkbox/checkbox";
 import { showErrorToast, toast } from "@/hooks/use-toast";
-import { useProjectStore } from "@seliseblocks/blocks-kit";
+import { useProjectStore } from "@seliseblocks/genesis-os";
 import { isErrorWithErrors } from "@/lib/error";
 
 interface NewConfigurationProps {
@@ -125,7 +125,6 @@ const NewConfiguration: React.FC<NewConfigurationProps> = ({
   previousData,
   isEdit,
 }) => {
-  // const { saveEmailConfig, isPending } = useSaveEmailConfig();
   const tenantId = useProjectStore()?.selectedProject?.tenantId || "";
   const { isPending, mutateAsync } = useSaveEmailConfig();
 

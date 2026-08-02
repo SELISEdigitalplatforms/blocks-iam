@@ -1,4 +1,4 @@
-import { useProjectStore } from "@seliseblocks/blocks-kit";
+import { useProjectStore } from "@seliseblocks/genesis-os";
 import { useGetAssets, useAddAssets } from "@/hooks/use-project";
 import { Plus, Github } from "lucide-react";
 import { Button } from "@/components/ui-kits/button/button";
@@ -152,12 +152,14 @@ export const RepositoriesPage = () => {
         ),
         cell: (repos) => (
           <div className="truncate">
-            <span
-              onClick={() => window.open(repos.row.original.link, "_blank", "noopener,noreferrer")}
+            <a
+              href={repos.row.original.link}
+              target="_blank"
+              rel="noopener noreferrer"
               className="cursor-pointer text-blue-600 hover:underline"
             >
               {repos.row.original.link}
-            </span>
+            </a>
           </div>
         ),
       },

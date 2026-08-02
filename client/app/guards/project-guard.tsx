@@ -1,6 +1,6 @@
 import { useEffect } from "react";
-import { useNavigate } from "react-router-dom";
-import { useProjectStore } from "@seliseblocks/blocks-kit";
+import { useNavigate } from "react-router";
+import { useProjectStore } from "@seliseblocks/genesis-os";
 import { useGetProjects } from "@/hooks/use-project";
 
 export function ProjectGuard({ children }: { children: React.ReactNode }) {
@@ -10,7 +10,7 @@ export function ProjectGuard({ children }: { children: React.ReactNode }) {
 
   useEffect(() => {
     if (!selectedProject || (environmentList && environmentList.length === 0)) {
-      navigate("/app/users", { replace: true });
+      navigate("/app/dashboard", { replace: true });
     }
   }, [selectedProject, navigate, environmentList]);
 

@@ -149,6 +149,19 @@ namespace Iam.DomainService.Resources
                 }
             }
 
+            if (query.Roles != null && query.Roles.Count > 0)
+            {
+                var normalizedRoles = query.Roles
+                    .Where(r => !string.IsNullOrWhiteSpace(r))
+                    .Distinct(StringComparer.OrdinalIgnoreCase)
+                    .ToList();
+
+                if (normalizedRoles.Count > 0)
+                {
+                    filter &= Builders<Permission>.Filter.AnyIn(x => x.Roles, normalizedRoles);
+                }
+            }
+
             if (query.Sort != null)
             {
                 sort = query.Sort.IsDescending ? Builders<Permission>.Sort.Descending(query.Sort.Property) : Builders<Permission>.Sort.Ascending(query.Sort.Property);
@@ -268,7 +281,15 @@ namespace Iam.DomainService.Resources
         public async Task<bool> UpdateRolesCountAsync(string slug, string? organizationId = null)
         {
             var resolvedOrgId = ResolveOrganizationId(organizationId);
-            var count = await CountRoleUsageAcrossOrganizationAsync(slug, resolvedOrgId);
+            long count;
+            try
+            {
+                count = await CountRoleUsageAcrossOrganizationAsync(slug, resolvedOrgId);
+            }
+            catch
+            {
+                count = 0;
+            }
 
             var update = Builders<Role>.Update.Set(x => x.Count, count);
             var result = await _identityAccessManagementRepository.GetCollection<Role>()
@@ -454,37 +475,58 @@ namespace Iam.DomainService.Resources
         private async Task<long> CountRoleUsageAcrossOrganizationAsync(string slug, string organizationId)
         {
             var collection = _identityAccessManagementRepository.GetCollectionByName<BsonDocument>("Permissions");
-            var docs = await collection
-                .Find(Builders<BsonDocument>.Filter.Exists("Roles"))
-                .Project(Builders<BsonDocument>.Projection.Include("Roles"))
-                .ToListAsync();
 
-            var count = 0L;
+            var cursor = await collection.FindAsync(Builders<BsonDocument>.Filter.Empty);
+            var docs = cursor.ToList();
+
+            long count = 0;
             foreach (var doc in docs)
             {
-                if (!doc.TryGetValue("Roles", out var rolesValue))
+                try
                 {
-                    continue;
-                }
+                    if (doc == null) continue;
 
-                var matched = false;
-                if (rolesValue.IsBsonArray)
-                {
-                    matched = string.Equals(organizationId, "default", StringComparison.OrdinalIgnoreCase)
-                        && rolesValue.AsBsonArray.Any(role => role.IsString && string.Equals(role.AsString, slug, StringComparison.OrdinalIgnoreCase));
-                }
-                else if (rolesValue.IsBsonDocument)
-                {
-                    if (rolesValue.AsBsonDocument.TryGetValue(organizationId, out var orgRolesValue)
-                        && orgRolesValue.IsBsonArray)
+                    if (!doc.TryGetValue("Roles", out var rolesValue) || rolesValue == null || rolesValue.IsBsonNull)
                     {
-                        matched = orgRolesValue.AsBsonArray.Any(role => role.IsString && string.Equals(role.AsString, slug, StringComparison.OrdinalIgnoreCase));
+                        continue;
+                    }
+
+                    var matched = false;
+
+                    if (rolesValue.IsBsonArray)
+                    {
+                        var array = rolesValue.AsBsonArray ?? new BsonArray();
+                        if (array.Any(role => role.IsString && string.Equals(role.AsString, slug, StringComparison.OrdinalIgnoreCase)))
+                        {
+                            if (doc.TryGetValue("OrganizationId", out var orgVal) && orgVal != null && !orgVal.IsBsonNull && orgVal.IsString)
+                            {
+                                matched = string.Equals(orgVal.AsString, organizationId, StringComparison.OrdinalIgnoreCase);
+                            }
+                            else
+                            {
+                                matched = string.Equals(organizationId, "default", StringComparison.OrdinalIgnoreCase);
+                            }
+                        }
+                    }
+                    else if (rolesValue.IsBsonDocument)
+                    {
+                        var rolesDoc = rolesValue.AsBsonDocument;
+                        if (rolesDoc != null && rolesDoc.TryGetValue(organizationId, out var orgRolesValue) && orgRolesValue != null && !orgRolesValue.IsBsonNull && orgRolesValue.IsBsonArray)
+                        {
+                            var orgArray = orgRolesValue.AsBsonArray ?? new BsonArray();
+                            matched = orgArray.Any(role => role.IsString && string.Equals(role.AsString, slug, StringComparison.OrdinalIgnoreCase));
+                        }
+                    }
+
+                    if (matched)
+                    {
+                        count++;
                     }
                 }
-
-                if (matched)
+                catch
                 {
-                    count++;
+                    // ignore malformed documents or unexpected shapes
+                    continue;
                 }
             }
 

@@ -2,9 +2,6 @@ import { render, screen, fireEvent } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { Table } from "@tanstack/react-table";
 
-// Stub the heavy filter children + the responsive hooks. The toolbar's own
-// logic (search -> column.setFilterValue, reset -> table.resetColumnFilters)
-// is what we exercise here.
 vi.mock("@/components/data-table-faceted-filter/data-table-faceted-filter", () => ({
   DataTableFacetedFilter: () => <div data-testid="faceted-filter" />,
 }));

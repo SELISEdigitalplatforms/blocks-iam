@@ -137,7 +137,7 @@ export function getNormalizeUsageMetricsData(
       const totalSuccess =
         transformedData.Status1xx + transformedData.Status2xx + transformedData.Status3xx;
       const totalError = transformedData.Status4xx + transformedData.Status5xx;
-      const totalRequests = Number(transformedData.TotalRequests) ?? 0;
+      const totalRequests = Number(transformedData.TotalRequests) || 0;
       return {
         ...transformedData,
         totalSuccess,

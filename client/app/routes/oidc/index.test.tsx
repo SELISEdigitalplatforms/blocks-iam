@@ -1,5 +1,5 @@
 import { render, screen } from "@testing-library/react";
-import { MemoryRouter } from "react-router-dom";
+import { MemoryRouter } from "react-router";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const h = vi.hoisted(() => ({
@@ -10,7 +10,7 @@ const h = vi.hoisted(() => ({
   getRuntimeEnv: vi.fn(),
 }));
 
-vi.mock("react-router-dom", async (orig) => {
+vi.mock("react-router", async (orig) => {
   const actual = (await orig()) as Record<string, unknown>;
   return { ...actual, useNavigate: () => h.navigate };
 });
@@ -23,7 +23,7 @@ vi.mock("@blocks-idp/authentication/pages/oidc/oidc-signin", () => ({
 vi.mock("@blocks-idp/authentication/services/auth.service", () => ({
   authService: { verifyOidc: h.verifyOidc },
 }));
-vi.mock("@seliseblocks/blocks-kit", () => ({
+vi.mock("@seliseblocks/genesis-os", () => ({
   useAuthStore: () => ({ setAuthenticated: h.setAuthenticated, setTokens: h.setTokens }),
 }));
 vi.mock("@/lib/runtime-env", () => ({ getRuntimeEnv: h.getRuntimeEnv }));

@@ -21,7 +21,7 @@ import { Label } from "@/components/ui-kits/label/label";
 import { RadioGroup, RadioGroupItem } from "@/components/ui-kits/radio-group/radio-group";
 import { showErrorToast, showSuccessToast } from "@/hooks/use-toast";
 import { IGetPublicCertificateResponse } from "@blocks-identifier/models/project.model";
-import { useProjectStore } from "@seliseblocks/blocks-kit";
+import { useProjectStore } from "@seliseblocks/genesis-os";
 import { providers } from "@blocks-idp/authentication/constants/authentication.constant";
 import {
   useSavePublicCertificates,
@@ -330,34 +330,30 @@ export const AddEditProviderModal = ({ existingData }: AddEditProviderModalProps
             </Label>
             <RadioGroup value={certificateMethod} onValueChange={setCertificateMethod}>
               <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 sm:gap-4">
-                <div
+                <Label
+                  htmlFor="public-url"
                   className={`flex cursor-pointer items-center space-x-2 rounded-md border p-3 ${
                     certificateMethod === "public-url"
                       ? "border-primary bg-primary/5"
                       : "border-input"
                   }`}
-                  onClick={() => setCertificateMethod("public-url")}
                 >
                   <RadioGroupItem value="public-url" id="public-url" />
-                  <Label htmlFor="public-url" className="cursor-pointer text-sm sm:text-base">
-                    Public URL
-                  </Label>
-                </div>
+                  <span className="text-sm sm:text-base">Public URL</span>
+                </Label>
 
                 {selectedProvider == "Others" && (
-                  <div
+                  <Label
+                    htmlFor="upload-file"
                     className={`flex cursor-pointer items-center space-x-2 rounded-md border p-3 ${
                       certificateMethod === "upload-file"
                         ? "border-primary bg-primary/5"
                         : "border-input"
                     }`}
-                    onClick={() => setCertificateMethod("upload-file")}
                   >
                     <RadioGroupItem value="upload-file" id="upload-file" />
-                    <Label htmlFor="upload-file" className="cursor-pointer text-sm sm:text-base">
-                      Upload file
-                    </Label>
-                  </div>
+                    <span className="text-sm sm:text-base">Upload file</span>
+                  </Label>
                 )}
               </div>
             </RadioGroup>

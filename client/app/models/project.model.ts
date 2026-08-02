@@ -4,7 +4,7 @@ export type {
   IProjectGroup,
   IGetProjectResponse,
   IEnvRepository,
-} from "@seliseblocks/blocks-kit/models";
+} from "@seliseblocks/genesis-os/models";
 
 export interface IGetProjectPayload {
   tenantId?: string;

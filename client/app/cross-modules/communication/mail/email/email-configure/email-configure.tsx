@@ -36,38 +36,7 @@ export function EmailConfiguration({ addConfigOpen, onAddConfigOpenChange }: Ema
   const [filterData] = useState({ pageNumber: 0, pageSize: 10 });
   const { isLoading, data } = useGetEmailConfigs(filterData.pageNumber, filterData.pageSize);
 
-  // const [loading, setLoading] = useState(true);
-  // const [error, setError] = useState<string | null>(null);
 
-  // useEffect(() => {
-  //   const fetchData = async () => {
-  //     try {
-  //       // setLoading(true);
-  //       // setError(null);
-  //       // const response = await fetch(
-  //       //   `/cloudconfiguration/v1/Mail/Get?ProjectKey=${tenantId}&configurationName=Default`,
-  //       // );
-  //       // if (!response.ok) {
-  //       //   throw new Error(`HTTP error! status: ${response.status}`);
-  //       // }
-  //       // const result = await response.json();
-  //       // const configs = Array.isArray(result) ? result : [result];
-  //       // setData(configs);
-  //       const response = await getEmailConfigs();
-  //       setData(response);
-  //       console.log(data);
-  //     } catch (err) {
-  //       console.error("Fetch error:", err);
-  //       //setError(err instanceof Error ? err.message : "An error occurred while fetching data");
-  //     }
-  //     // finally {
-  //     //   setLoading(false);
-  //     // }
-  //   };
-  //   if (tenantId && tenantId !== "") {
-  //     fetchData();
-  //   }
-  // }, [tenantId]);
 
   if (isLoading) {
     return (
@@ -79,16 +48,6 @@ export function EmailConfiguration({ addConfigOpen, onAddConfigOpenChange }: Ema
     );
   }
 
-  // if (error) {
-  //   return (
-  //     <div className="p-4">
-  //       <div className="rounded border border-red-200 bg-red-50 p-4">
-  //         <h2 className="font-medium text-red-800">Error</h2>
-  //         <p className="text-red-600">{error}</p>
-  //       </div>
-  //     </div>
-  //   );
-  // }
 
   return (
     <div>

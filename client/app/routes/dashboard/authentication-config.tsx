@@ -1,6 +1,6 @@
 import { AuthenticationConfig } from "@blocks-idp/authentication/pages/authentication-config";
 
-type AuthenticationSection = "users" | "organizations" | "client-credential";
+type AuthenticationSection = "client-credential";
 
 interface AuthenticationConfigPageProps {
 	section: AuthenticationSection;

@@ -13,7 +13,7 @@ import { useSignupByEmail } from "@blocks-idp/authentication/hooks/use-auth";
 import { LoginOption } from "@blocks-idp/authentication/models/auth.model";
 import { useCaptcha } from "@blocks-idp/captcha/hooks/use-captcha";
 import { zodResolver } from "@hookform/resolvers/zod";
-import { Link, useNavigate } from "react-router-dom";
+import { Link, useNavigate } from "react-router";
 import React, { useEffect, useRef, useState } from "react";
 import { useForm } from "react-hook-form";
 import { z } from "zod";

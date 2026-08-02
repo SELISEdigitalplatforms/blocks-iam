@@ -1,6 +1,6 @@
 import { render, screen, fireEvent, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { MemoryRouter } from "react-router-dom";
+import { MemoryRouter } from "react-router";
 
 const h = vi.hoisted(() => ({
   me: { data: { firstName: "Ada", lastName: "Lovelace", email: "ada@x.com", roles: {} } } as unknown,
@@ -16,7 +16,7 @@ vi.mock("@/idp/iam/hooks/use-organization", () => ({
 vi.mock("@/idp/authentication/hooks/use-auth", () => ({
   useLogout: () => ({ isPending: h.isPending, mutateAsync: h.logout }),
 }));
-vi.mock("@seliseblocks/blocks-kit", async (importActual) => {
+vi.mock("@seliseblocks/genesis-os", async (importActual) => {
   const actual = await importActual<Record<string, unknown>>();
   return {
     ...actual,

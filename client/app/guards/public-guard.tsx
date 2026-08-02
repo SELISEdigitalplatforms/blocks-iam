@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
-import { useNavigate, useSearchParams } from "react-router-dom";
-import { useAuthStore } from "@seliseblocks/blocks-kit";
+import { useNavigate, useSearchParams } from "react-router";
+import { useAuthStore } from "@seliseblocks/genesis-os";
 export const useAppState = () => {
   const [isMounted, setIsMounted] = useState(false);
   useEffect(() => {

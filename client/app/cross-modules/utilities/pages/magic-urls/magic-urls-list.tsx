@@ -23,9 +23,9 @@ import {
 } from "@/components/ui-kits/dropdown-menu/dropdown-menu";
 import { EllipsisVertical, CircleSlash, Eye, ExternalLink } from "lucide-react";
 import { MagicUrlStatusBadge } from "./magic-url-status-badge";
-import { useNavigate } from "react-router-dom";
+import { useNavigate } from "react-router";
 import { CopyToClipboardButton } from "@/components/copy-to-clipboard-button";
-import { useProjectStore } from "@seliseblocks/blocks-kit";
+import { useProjectStore } from "@seliseblocks/genesis-os";
 import { useDeactivateMagicUrl } from "@blocks-utilities/hooks/use-deactivate-magic-url";
 import ConfirmationModal from "@/components/confirmation-modal/confirmation-modal";
 import { Dialog } from "@/components/ui-kits/dialog/dialog";
@@ -167,7 +167,7 @@ export function MagicUrlsList({ data, isLoading }: MagicUrlsListProps) {
         id: "actions",
         enableHiding: false,
         cell: ({ row }) => (
-          <div onClick={(e) => e.stopPropagation()}>
+          <div onClick={(e) => e.stopPropagation()} onKeyDown={(e) => e.stopPropagation()}>
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
                 <Button variant="ghost" className="h-5 w-5 p-0" disabled={isRemoving}>

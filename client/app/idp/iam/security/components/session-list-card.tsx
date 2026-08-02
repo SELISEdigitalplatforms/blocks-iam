@@ -133,8 +133,16 @@ export const SessionListCard = ({ showSignOut = true, userId }: SessionListCardP
               return (
                 <li
                   key={card.id}
+                  role="button"
+                  tabIndex={0}
                   className="flex cursor-pointer items-center justify-between gap-3 px-4 py-3 hover:bg-muted/30"
                   onClick={() => setSelectedSessionId(card.id)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter" || e.key === " ") {
+                      e.preventDefault();
+                      setSelectedSessionId(card.id);
+                    }
+                  }}
                 >
                   <div className="flex min-w-0 items-center gap-3">
                     <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary">
@@ -152,7 +160,11 @@ export const SessionListCard = ({ showSignOut = true, userId }: SessionListCardP
                       </p>
                     </div>
                   </div>
-                  <div className="flex shrink-0 items-center gap-2" onClick={(e) => e.stopPropagation()}>
+                  <div
+                    className="flex shrink-0 items-center gap-2"
+                    onClick={(e) => e.stopPropagation()}
+                    onKeyDown={(e) => e.stopPropagation()}
+                  >
                     {card.isCurrent ? (
                       <span className="rounded-full bg-blue-50 px-2 py-0.5 text-xs text-blue-700">
                         This device
