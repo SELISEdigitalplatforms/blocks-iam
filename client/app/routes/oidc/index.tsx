@@ -28,7 +28,7 @@ export default function OidcIndexPage() {
         }
         setAuthenticated();
 
-        window.location.href = `${window.location.origin}/console`;
+        window.location.href = `${window.location.origin}/app/profile`;
       })
       .catch(() => {
         navigate("/oidc/error");

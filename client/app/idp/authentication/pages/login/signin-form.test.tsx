@@ -63,7 +63,7 @@ describe("SigninForm", () => {
     expect(screen.getByText("Forgot password?")).toBeInTheDocument();
   });
 
-  it("signs in and navigates to the console on success", async () => {
+  it("signs in and navigates to the profile page on success", async () => {
     h.mutateAsync.mockResolvedValue({ enable_mfa: false });
     renderForm();
     fillCredentials();
@@ -74,7 +74,7 @@ describe("SigninForm", () => {
       ),
     );
     await waitFor(() => expect(h.setAuthenticated).toHaveBeenCalled());
-    await waitFor(() => expect(h.navigate).toHaveBeenCalledWith("/app/console"));
+    await waitFor(() => expect(h.navigate).toHaveBeenCalledWith("/app/profile"));
   });
 
   it("redirects to the mfa-check page when mfa is required", async () => {
