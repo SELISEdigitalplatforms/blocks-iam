@@ -7,6 +7,7 @@ using Iam.DomainService.Resources;
 using Iam.DomainService.Services;
 using Iam.DomainService.Shared.Entities;
 using MongoDB.Bson;
+using MongoDB.Bson.Serialization;
 using MongoDB.Driver;
 using Moq;
 using XUnitTest.TestSupport;
@@ -279,41 +280,98 @@ namespace XUnitTest.IamTests.Resources
         }
 
         /// <summary>
-        /// The usage count now comes from a server-side <c>CountDocumentsAsync</c> over a typed
-        /// <see cref="Permission"/> collection, so the permissions registered here are what the count
-        /// reflects. <see cref="MongoMock.Collection{T}"/> answers the count with the list length.
+        /// The usage count is derived by reading the raw <c>Permissions</c> collection and matching the
+        /// role slug per document, so the documents are registered as <see cref="BsonDocument"/> in the
+        /// two shapes the repository understands: see <see cref="PermDoc"/> and <see cref="PermDocByOrg"/>.
         /// </summary>
-        private Mock<IMongoCollection<Permission>> RegisterPermissionsNamed(params Permission[] permissions)
+        private Mock<IMongoCollection<BsonDocument>> RegisterPermissionDocuments(params BsonDocument[] documents)
         {
-            var col = MongoMock.Collection(permissions.AsEnumerable());
-            _iam.Setup(r => r.GetCollectionByName<Permission>("Permissions")).Returns(col.Object);
+            var col = MongoMock.Collection(documents.AsEnumerable());
+            _iam.Setup(r => r.GetCollectionByName<BsonDocument>("Permissions")).Returns(col.Object);
             return col;
+        }
+
+        /// <summary>A permission whose <c>Roles</c> is a flat array, owned by a single organization.</summary>
+        private static BsonDocument PermDoc(string id, string org, params string[] roles) =>
+            new() { { "_id", id }, { "OrganizationId", org }, { "Roles", new BsonArray(roles) } };
+
+        /// <summary>A permission whose <c>Roles</c> is a map of organization id to the roles granted there.</summary>
+        private static BsonDocument PermDocByOrg(string id, params (string Org, string[] Roles)[] rolesByOrg)
+        {
+            var map = new BsonDocument();
+            foreach (var (org, roles) in rolesByOrg)
+            {
+                map.Add(org, new BsonArray(roles));
+            }
+            return new BsonDocument { { "_id", id }, { "Roles", map } };
+        }
+
+        /// <summary>Capture the <c>Count</c> the repository writes, so the tests assert the tallied value.</summary>
+        private static long CapturedCount(UpdateDefinition<Role>? update)
+        {
+            update.Should().NotBeNull();
+            var registry = BsonSerializer.SerializerRegistry;
+            var rendered = update!.Render(new RenderArgs<Role>(registry.GetSerializer<Role>(), registry));
+            return rendered["$set"]["Count"].ToInt64();
+        }
+
+        private static Mock<IMongoCollection<Role>> CaptureRoleUpdate(
+            Mock<IMongoCollection<Role>> roles, Action<UpdateDefinition<Role>> capture)
+        {
+            roles.Setup(c => c.UpdateOneAsync(
+                    It.IsAny<FilterDefinition<Role>>(), It.IsAny<UpdateDefinition<Role>>(),
+                    It.IsAny<UpdateOptions>(), It.IsAny<CancellationToken>()))
+                .Callback<FilterDefinition<Role>, UpdateDefinition<Role>, UpdateOptions, CancellationToken>(
+                    (_, update, _, _) => capture(update))
+                .ReturnsAsync(new UpdateResult.Acknowledged(1, 1, null));
+            return roles;
         }
 
         [Fact]
         public async Task UpdateRolesCountAsync_CountsRoleUsageAndWritesItToTheRole()
         {
-            var permissions = RegisterPermissionsNamed(
-                Perm("p1", roles: new[] { "admin" }),
-                Perm("p2", roles: new[] { "admin" }));
-            var roles = Register<Role>();
+            var permissions = RegisterPermissionDocuments(
+                PermDoc("p1", "default", "admin"),
+                PermDoc("p2", "default", "admin"),
+                PermDoc("p3", "default", "viewer"));
+            UpdateDefinition<Role>? written = null;
+            var roles = CaptureRoleUpdate(Register<Role>(), u => written = u);
 
             (await Sut().UpdateRolesCountAsync("admin", "default")).Should().BeTrue();
 
-            permissions.Verify(c => c.CountDocumentsAsync(
-                It.IsAny<FilterDefinition<Permission>>(), It.IsAny<CountOptions>(), It.IsAny<CancellationToken>()),
+            permissions.Verify(c => c.FindAsync(
+                It.IsAny<FilterDefinition<BsonDocument>>(), It.IsAny<FindOptions<BsonDocument, BsonDocument>>(),
+                It.IsAny<CancellationToken>()),
                 Times.Once);
             roles.Verify(c => c.UpdateOneAsync(
                 It.IsAny<FilterDefinition<Role>>(), It.IsAny<UpdateDefinition<Role>>(),
                 It.IsAny<UpdateOptions>(), It.IsAny<CancellationToken>()),
                 Times.Once);
+            // Only the two permissions that name the role are tallied.
+            CapturedCount(written).Should().Be(2);
+        }
+
+        [Fact]
+        public async Task UpdateRolesCountAsync_CountsRoleUsageFromThePerOrganizationRolesMap()
+        {
+            // Older permissions store Roles as a map keyed by organization id rather than a flat array.
+            RegisterPermissionDocuments(
+                PermDocByOrg("p1", ("org1", new[] { "admin" })),
+                PermDocByOrg("p2", ("org2", new[] { "admin" })));
+            UpdateDefinition<Role>? written = null;
+            CaptureRoleUpdate(Register<Role>(), u => written = u);
+
+            (await Sut().UpdateRolesCountAsync("admin", "org1")).Should().BeTrue();
+
+            CapturedCount(written).Should().Be(1);
         }
 
         [Fact]
         public async Task UpdateRolesCountAsync_CountsZeroWhenNoPermissionReferencesTheRole()
         {
-            RegisterPermissionsNamed();
-            var roles = Register<Role>();
+            RegisterPermissionDocuments();
+            UpdateDefinition<Role>? written = null;
+            var roles = CaptureRoleUpdate(Register<Role>(), u => written = u);
 
             (await Sut().UpdateRolesCountAsync("admin", "default")).Should().BeTrue();
 
@@ -323,27 +381,29 @@ namespace XUnitTest.IamTests.Resources
                 It.IsAny<FilterDefinition<Role>>(), It.IsAny<UpdateDefinition<Role>>(),
                 It.IsAny<UpdateOptions>(), It.IsAny<CancellationToken>()),
                 Times.Once);
+            CapturedCount(written).Should().Be(0);
         }
 
         [Fact]
         public async Task UpdateRolesCountAsync_ScopesTheCountToTheGivenOrganization()
         {
-            // The count filter pairs the role slug with the organization, so an explicit org id has
-            // to reach the query rather than falling back to the ambient one.
-            var permissions = RegisterPermissionsNamed(Perm("p1", org: "org1", roles: new[] { "admin" }));
-            Register<Role>();
+            // The role slug is paired with the organization the permission belongs to, so an explicit
+            // org id has to reach the tally rather than falling back to the ambient one.
+            RegisterPermissionDocuments(
+                PermDoc("p1", "org1", "admin"),
+                PermDoc("p2", "org2", "admin"));
+            UpdateDefinition<Role>? written = null;
+            CaptureRoleUpdate(Register<Role>(), u => written = u);
 
             (await Sut().UpdateRolesCountAsync("admin", "org1")).Should().BeTrue();
 
-            permissions.Verify(c => c.CountDocumentsAsync(
-                It.IsAny<FilterDefinition<Permission>>(), It.IsAny<CountOptions>(), It.IsAny<CancellationToken>()),
-                Times.Once);
+            CapturedCount(written).Should().Be(1);
         }
 
         [Fact]
         public async Task UpdateRolesCountAsync_ReturnsFalseWhenTheRoleUpdateIsNotAcknowledged()
         {
-            RegisterPermissionsNamed(Perm("p1", roles: new[] { "admin" }));
+            RegisterPermissionDocuments(PermDoc("p1", "default", "admin"));
             var roles = Register<Role>();
             roles.Setup(c => c.UpdateOneAsync(
                     It.IsAny<FilterDefinition<Role>>(), It.IsAny<UpdateDefinition<Role>>(),
