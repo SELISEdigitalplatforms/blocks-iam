@@ -2,13 +2,6 @@
 
 import React, { forwardRef, useEffect, useImperativeHandle, useMemo, useState } from "react";
 import BeefreeSDK from "@beefree.io/sdk";
-// import Bee from "@mailupinc/bee-plugin";
-// import {
-//   IBeeConfig,
-//   //   IMergeContent,
-//   IMergeTag,
-//   ISpecialLink,
-// } from "@mailupinc/bee-plugin/dist/types/bee";
 import { blankTemplate } from "@blocks-communication/mail/constants/email-template";
 import {
   IBeeConfig,
@@ -17,7 +10,6 @@ import {
   IEntityContentJson,
 } from "@beefree.io/sdk/dist/types/bee";
 import Bee from "@beefree.io/sdk";
-// const BEE_TEMPLATE_URL = "https://rsrc.getbee.io/api/templates/m-bee";
 const BEEJS_URL = "https://app-rsrc.getbee.io/plugin/BeePlugin.js";
 const API_AUTH_URL = "https://auth.getbee.io/loginV2";
 
@@ -66,15 +58,12 @@ const BeePluginStarter = forwardRef(function Inner(
       specialLinks,
       mergeTags,
       onSave: (jsonFile, htmlFile) => {
-        // console.log("beeConfig onSave");
         onBeeSave({ jsonFile, htmlFile });
       },
       onLoad: () => {
-        // console.warn("*** [integration] loading a new template...");
         onBeeTemplateLoad?.(true);
       },
       onAutoSave: (jsonFile) => {
-        // console.log(`${new Date().toISOString()} autosaving...,`, jsonFile);
       },
       onSend: (htmlFile) => console.log("onSend"),
       onError: (errorMessage) => console.log("onError ", errorMessage),
@@ -89,7 +78,6 @@ const BeePluginStarter = forwardRef(function Inner(
   useEffect(() => {
     const clientId = "de2d39d8-2380-419f-914b-eafb504e060b";
     const clientSecret = "***REMOVED***";
-    // const token = new BeefreeSDK.UNSAFE_getToken({ clientId, clientSecret });
     let beeInstance: BeefreeSDK | null = null;
     new BeefreeSDK()
       .UNSAFE_getToken(clientId, clientSecret, "selise-ecap-bee-plugin-uid-dev-stg")
@@ -99,44 +87,21 @@ const BeePluginStarter = forwardRef(function Inner(
       })
       .then((template) => beeInstance?.start(beeConfig, template))
       .then((instance) => {
-        // console.log("*** [integration] --> (start) ", instance);
         setBee(instance as Bee);
       })
       .catch((error) => console.error("error during iniziatialization --> ", error));
 
-    // const beeTest = new Bee();
-    // const conf = { authUrl: API_AUTH_URL, beePluginUrl: BEEJS_URL };
-    // console.log(jsonFile);
-    // beeTest
-    //   .getToken(
-    //     "de2d39d8-2380-419f-914b-eafb504e060b",
-    //     "***REMOVED***",
-    //     conf,
-    //   )
-    //   .then(() => jsonFile)
-    //   .then((template) => {
-    //     beeTest
-    //       .start(beeConfig, template, "", { shared: false })
-    //       .then((instance) => {
-    //         console.log("*** [integration] --> (start) ", instance);
-    //         setIsBeeStarted(true);
-    //       });
-    //   })
-    //   .catch((error) => console.error("error during iniziatialization --> ", error));
   }, [beeConfig, jsonFile]);
 
   useImperativeHandle(ref, () => {
     return {
       submit() {
-        // console.log("submit");
         bee?.save();
       },
       preview() {
-        // console.log("preview");
         bee?.preview();
       },
       reset() {
-        // console.log("reset");
         bee?.load(jsonFile as IEntityContentJson);
       },
     };

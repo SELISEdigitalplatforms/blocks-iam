@@ -1,5 +1,5 @@
 import { render, screen, fireEvent, waitFor } from "@testing-library/react";
-import { MemoryRouter } from "react-router-dom";
+import { MemoryRouter } from "react-router";
 import { beforeEach, afterEach, describe, expect, it, vi } from "vitest";
 
 const h = vi.hoisted(() => ({

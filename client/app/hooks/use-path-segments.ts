@@ -1,4 +1,4 @@
-import { useLocation, useParams } from "react-router-dom";
+import { useLocation, useParams } from "react-router";
 
 export type RouteBreadcrumb = {
   /** Real, navigable path, including the project id segment. */

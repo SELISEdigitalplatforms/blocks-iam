@@ -1,6 +1,6 @@
 import { useQuery } from "@tanstack/react-query";
 import { emailService } from "@blocks-communication/mail/services/email.services";
-import { useProjectStore } from "@seliseblocks/blocks-kit";
+import { useProjectStore } from "@seliseblocks/genesis-os";
 import { EMAIL_USAGE_REFETCH_INTERVAL } from "@blocks-communication/mail/constants/email-usage";
 
 export const useGetEmailUsage = (

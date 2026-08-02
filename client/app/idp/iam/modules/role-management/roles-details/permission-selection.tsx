@@ -2,7 +2,7 @@
 import { useEffect, useState, forwardRef, useImperativeHandle } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { permissionService } from "@blocks-idp/iam/services/permission.service";
-import { useProjectStore } from "@seliseblocks/blocks-kit";
+import { useProjectStore } from "@seliseblocks/genesis-os";
 import {
   Accordion,
   AccordionContent,
@@ -429,7 +429,7 @@ export const PermissionSelection = forwardRef(function PermissionSelection(
                                   <label htmlFor={`perm-${dep.itemId}`} className="cursor-pointer">
                                     {dep.name}
                                   </label>
-                                  {dep.type && (
+                                  {!!dep.type && (
                                     <span className="ml-2 rounded border bg-muted px-2 py-0.5 text-xs">
                                       {ResourceType[dep.type]}
                                     </span>
@@ -454,7 +454,7 @@ export const PermissionSelection = forwardRef(function PermissionSelection(
                           >
                             {perm.name}
                           </label>
-                          {perm.type && (
+                          {!!perm.type && (
                             <span className="ml-2 rounded border bg-muted px-2 py-0.5 text-xs">
                               {ResourceType[perm.type]}
                             </span>

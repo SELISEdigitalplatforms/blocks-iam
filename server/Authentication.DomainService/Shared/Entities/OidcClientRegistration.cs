@@ -31,12 +31,6 @@ namespace Authentication.DomainService.Entities
         public List<UserMfaType>? AllowedMfaMethods { get; set; }
         public bool IsDeviceFlowClient { get; set; } = false;
 
-        //[BsonIgnore]
-        //public string? RedirectUri
-        //{
-        //    get => RedirectUris.FirstOrDefault();
-        //    set => RedirectUris = string.IsNullOrWhiteSpace(value) ? new() : new() { value };
-        //}
 
         [BsonIgnore]
         public string? Scope

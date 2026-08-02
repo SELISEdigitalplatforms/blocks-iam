@@ -1,5 +1,5 @@
 import { render, screen, waitFor } from "@testing-library/react";
-import { MemoryRouter } from "react-router-dom";
+import { MemoryRouter } from "react-router";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const { navigateMock, projectStore, getProjectsResult } = vi.hoisted(() => ({
@@ -11,8 +11,8 @@ const { navigateMock, projectStore, getProjectsResult } = vi.hoisted(() => ({
   getProjectsResult: { data: undefined as unknown },
 }));
 
-vi.mock("react-router-dom", async (importOriginal) => {
-  const actual = await importOriginal<typeof import("react-router-dom")>();
+vi.mock("react-router", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("react-router")>();
   return { ...actual, useNavigate: () => navigateMock };
 });
 vi.mock("@/store/useProjectStore", () => ({
@@ -41,10 +41,10 @@ beforeEach(() => {
 });
 
 describe("ProjectGuard", () => {
-  it("redirects to /app/users and renders nothing when no project is selected", async () => {
+  it("redirects to /app/dashboard and renders nothing when no project is selected", async () => {
     renderGuard();
     await waitFor(() =>
-      expect(navigateMock).toHaveBeenCalledWith("/app/users", { replace: true }),
+      expect(navigateMock).toHaveBeenCalledWith("/app/dashboard", { replace: true }),
     );
     expect(screen.queryByText("project-child")).not.toBeInTheDocument();
   });
@@ -62,7 +62,7 @@ describe("ProjectGuard", () => {
     getProjectsResult.data = [];
     renderGuard();
     await waitFor(() =>
-      expect(navigateMock).toHaveBeenCalledWith("/app/users", { replace: true }),
+      expect(navigateMock).toHaveBeenCalledWith("/app/dashboard", { replace: true }),
     );
   });
 });

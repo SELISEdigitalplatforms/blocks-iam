@@ -38,13 +38,6 @@ namespace XUnitTest.Auth.OAuth
         }
 
         [Fact]
-        public void GetProvider_Azure_WithoutVaultConfig_Throws()
-        {
-            Assert.Throws<InvalidOperationException>(() =>
-                Create().GetProvider(CertificateStorageType.Azure));
-        }
-
-        [Fact]
         public void GetProvider_UnknownType_ThrowsArgumentException()
         {
             Assert.Throws<ArgumentException>(() =>

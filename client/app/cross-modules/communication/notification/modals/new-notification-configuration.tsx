@@ -6,7 +6,7 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { channelsToNotify, notificationTypes } from "../constants/notification.constant";
 import { Checkbox } from "@/components/ui-kits/checkbox/checkbox";
 import { useEffect } from "react";
-import { useProjectStore } from "@seliseblocks/blocks-kit";
+import { useProjectStore } from "@seliseblocks/genesis-os";
 import { showErrorToast, toast } from "@/hooks/use-toast";
 import { isErrorWithErrors } from "@/lib/error";
 import {

@@ -2,7 +2,7 @@ import { ServiceCard } from "@blocks-identifier/components/service-card/service-
 import { Skeleton } from "@/components/ui-kits/skeleton/skeleton";
 import { Card, CardContent } from "@/components/ui-kits/card/card";
 import { useGetAllServices } from "@blocks-identifier/hooks/use-services";
-import { useProjectStore } from "@seliseblocks/blocks-kit";
+import { useProjectStore } from "@seliseblocks/genesis-os";
 import { Pagination } from "@/components/ui-kits/pagination/pagination";
 import { parseAsInteger, useQueryStates } from "nuqs";
 import { Accordion, AccordionItem } from "@/components/ui-kits/accordion/accordion";

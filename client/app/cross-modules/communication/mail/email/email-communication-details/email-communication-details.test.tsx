@@ -23,8 +23,8 @@ vi.mock("@/hooks/use-toast", () => ({ toast: h.toast }));
 vi.mock("@/store/useProjectStore", () => ({
   useProjectStore: vi.fn(() => ({ selectedProject: { tenantId: "tenant-1" } })),
 }));
-vi.mock("react-router-dom", async (importOriginal) => {
-  const actual = await importOriginal<typeof import("react-router-dom")>();
+vi.mock("react-router", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("react-router")>();
   return { ...actual, useNavigate: () => h.navigate };
 });
 vi.mock("@/components/breadcrumb/breadcrumb", () => ({

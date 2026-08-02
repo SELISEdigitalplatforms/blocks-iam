@@ -11,7 +11,7 @@ const h = vi.hoisted(() => ({
   showSuccess: vi.fn(),
 }));
 
-vi.mock("@seliseblocks/blocks-kit", () => ({
+vi.mock("@seliseblocks/genesis-os", () => ({
   useProjectStore: () => ({ selectedProject: { tenantId: "tenant-1" } }),
 }));
 vi.mock("@blocks-idp/authentication/hooks/use-jwt-claim", () => ({

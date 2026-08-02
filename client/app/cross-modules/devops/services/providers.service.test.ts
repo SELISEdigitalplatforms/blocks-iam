@@ -8,8 +8,6 @@ import {
   authenticateWithAws,
 } from "./providers.service";
 
-// Shim crypto.getRandomValues if the environment does not provide it, so
-// generateRandomState() works deterministically under jsdom.
 if (
   typeof globalThis.crypto === "undefined" ||
   typeof globalThis.crypto.getRandomValues !== "function"
@@ -48,7 +46,6 @@ describe("providers.service", () => {
       expect(localStorage.getItem("github_auth_destination")).toBe("/");
       expect(localStorage.getItem("github_auth_project_key")).toBeNull();
 
-      // window.open called with a github authorize URL
       expect(openSpy).toHaveBeenCalledTimes(1);
       const [url, target, features] = openSpy.mock.calls[0];
       expect(typeof url).toBe("string");

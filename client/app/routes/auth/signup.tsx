@@ -1,4 +1,4 @@
-import { useParams } from "react-router-dom";
+import { useParams } from "react-router";
 import { Signup } from "@blocks-idp/authentication/pages/signup";
 
 export default function SignupPage() {

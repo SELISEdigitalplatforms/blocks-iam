@@ -28,7 +28,7 @@ export const magicUrlSchema = z.object({
   uri: z
     .string()
     .min(1, "URI is required")
-    .regex(/^(https?:\/\/)?([\da-z.-]+)\.([a-z.]{2,6})([/\w .-]*)*\/?$/, "Please enter a valid URI")
+    .regex(/^(https?:\/\/)?([\da-z.-]+)\.([a-z.]{2,6})([/\w .-]*)\/?$/, "Please enter a valid URI")
     .refine(
       (val) => {
         try {

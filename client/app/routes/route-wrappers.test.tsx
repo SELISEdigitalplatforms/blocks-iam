@@ -1,5 +1,5 @@
 import { render, screen } from "@testing-library/react";
-import { MemoryRouter } from "react-router-dom";
+import { MemoryRouter } from "react-router";
 import { describe, expect, it, vi } from "vitest";
 
 // Every route wrapper simply renders a page component (sometimes inside a
@@ -123,11 +123,11 @@ describe("dashboard route wrappers", () => {
     await renderRoute(path, testId);
   });
 
+  // iam-org-detail and iam-user-detail were removed with the Users and
+  // Organizations routes, which the OS frontend now owns (blocks-os#359).
   it.each([
-    ["./dashboard/iam-org-detail", "organization-detail"],
     ["./dashboard/iam-permission-detail", "permission-details"],
     ["./dashboard/iam-role-detail", "role-details"],
-    ["./dashboard/iam-user-detail", "user"],
   ])("renders param route %s", async (path, testId) => {
     await renderRoute(path, testId, ["/x/abc"]);
   });

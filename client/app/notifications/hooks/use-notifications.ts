@@ -1,6 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { notificationService } from "../services/notification.service";
-import { useProjectStore } from "@seliseblocks/blocks-kit";
+import { useProjectStore } from "@seliseblocks/genesis-os";
 import { getRuntimeEnv } from "@/lib/runtime-env";
 
 export const useGetNotifications = (pageNumber: number, pageSize: number) => {

@@ -1,4 +1,4 @@
-import { useProjectStore } from "@seliseblocks/blocks-kit";
+import { useProjectStore } from "@seliseblocks/genesis-os";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { emailService } from "@blocks-communication/mail/services/email.services";
 

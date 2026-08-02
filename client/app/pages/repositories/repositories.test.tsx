@@ -200,20 +200,19 @@ describe("RepositoriesPage", () => {
     expect(await screen.findByTestId("repo-select-modal")).toBeInTheDocument();
   });
 
-  it("opens the repo link in a new tab when clicked", () => {
-    const openSpy = vi.spyOn(window, "open").mockImplementation(() => null);
+  it("renders the repo link as a safe new-tab anchor", () => {
     setAssets({
       resources: [asset("org/alpha", "https://github.com/org/alpha")],
       totalCount: 1,
     });
     renderPage();
-    fireEvent.click(screen.getByText("https://github.com/org/alpha"));
-    expect(openSpy).toHaveBeenCalledWith(
-      "https://github.com/org/alpha",
-      "_blank",
-      "noopener,noreferrer",
-    );
-    openSpy.mockRestore();
+
+    // A real anchor rather than window.open, so the link is keyboard reachable
+    // and supports middle-click and ctrl-click like any other link.
+    const link = screen.getByRole("link", { name: "https://github.com/org/alpha" });
+    expect(link).toHaveAttribute("href", "https://github.com/org/alpha");
+    expect(link).toHaveAttribute("target", "_blank");
+    expect(link).toHaveAttribute("rel", "noopener noreferrer");
   });
 
   it("updates the search text as the user types", () => {

@@ -27,10 +27,11 @@ import {
   useUpdateUserAccessControl,
 } from "@blocks-idp/iam/hooks/use-user";
 import { z } from "zod";
-import { useProjectStore } from "@seliseblocks/blocks-kit";
+import { useProjectStore } from "@seliseblocks/genesis-os";
 import { useEffect, useMemo, useState } from "react";
 import { ChevronsUpDown, Check, Loader } from "lucide-react";
 import { isErrorWithErrors } from "@/lib/error";
+import { isValidEmailFormat as isEmailFormatValid } from "@blocks-idp/iam/utils/email";
 import { PrimaryButton } from "@/components/action-buttons/primary-button";
 import { cn } from "@/lib/utils";
 import { useGetOrganizationConfig, useGetOrganizations } from "@blocks-idp/iam/hooks/use-organization";
@@ -66,7 +67,7 @@ export const InviteUser = () => {
   const emailValue = form.watch("email") ?? "";
   const trimmedEmail = emailValue.trim();
   const selectedOrgId = form.watch("organizationIds")?.[0] ?? "";
-  const isValidEmailFormat = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(trimmedEmail);
+  const isValidEmailFormat = isEmailFormatValid(trimmedEmail);
 
   // Debounce the value driving the existence check so it doesn't refire on
   // every keystroke — this also keeps the pending state visible long enough
@@ -99,8 +100,6 @@ export const InviteUser = () => {
 
   const isPending = isCreatingUser || isGrantingAccess;
 
-  // Treat a missing/undefined isDisabled as enabled — only explicitly disabled
-  // orgs (isDisabled === true) should be excluded from the picker.
   const enabledOrgs = useMemo(
     () => (orgsData?.organizations ?? []).filter((org) => org.isDisabled !== true),
     [orgsData?.organizations],

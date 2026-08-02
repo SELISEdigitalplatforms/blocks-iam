@@ -1,10 +1,10 @@
 import { getRuntimeEnv } from "@/lib/runtime-env";
-import { Link } from "react-router-dom";
+import { Link } from "react-router";
 import { useForm } from "react-hook-form";
 import { forgotPasswordFormSchema, forgotPasswordFormDefaultValue } from "./utils";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
-import { useNavigate } from "react-router-dom";
+import { useNavigate } from "react-router";
 import { Captcha } from "@/components/captcha";
 import { useEffect, useState } from "react";
 import { useAccountRecover } from "@blocks-idp/iam/hooks/use-account";

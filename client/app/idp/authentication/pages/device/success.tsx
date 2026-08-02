@@ -1,5 +1,5 @@
 import { useMemo } from "react";
-import { Link, useParams, useSearchParams } from "react-router-dom";
+import { Link, useParams, useSearchParams } from "react-router";
 
 import { OidcAuthShell } from "@blocks-idp/authentication/pages/oidc/oidc-auth-shell";
 import { DEVICE_CONSENT_PANEL } from "./panel-config";

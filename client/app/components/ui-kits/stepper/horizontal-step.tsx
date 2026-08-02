@@ -70,7 +70,15 @@ const HorizontalStep = React.forwardRef<HTMLDivElement, StepSharedProps>(
 				data-active={active}
 				data-invalid={localIsError}
 				data-clickable={clickable}
+				role={clickable ? "button" : undefined}
+				tabIndex={clickable ? 0 : undefined}
 				onClick={() => onClickStep?.(index || 0, setStep)}
+				onKeyDown={(e) => {
+					if (e.key === "Enter" || e.key === " ") {
+						e.preventDefault();
+						onClickStep?.(index || 0, setStep);
+					}
+				}}
 				ref={ref}
 			>
 				<div

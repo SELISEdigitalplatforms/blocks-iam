@@ -1,5 +1,5 @@
 import { useMemo } from "react";
-import { useLocation } from "react-router-dom";
+import { useLocation } from "react-router";
 import { Menu } from "@/models/menu-models";
 
 export function useFilteredMenus(menus: Menu[]): Menu[] {
@@ -17,8 +17,6 @@ export function useFilteredMenus(menus: Menu[]): Menu[] {
     ]);
     const nonProjectMenuIds = new Set([
       "overview-project",
-      "service-identity__authentication-users",
-      "service-identity__authentication-organizations",
       "service-identity__authentication-client-credential",
       "service-identity__authorization",
       "service-identity__api-settings",

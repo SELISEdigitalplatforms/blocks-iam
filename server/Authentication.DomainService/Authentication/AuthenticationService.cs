@@ -993,7 +993,6 @@ namespace Authentication.DomainService.Authentication
         }
 
 
-
         private async Task EnsureIdpSessionForLoginAsync(TokenResponse tokenResponse, HttpContext httpContext)
         {
             if (string.IsNullOrWhiteSpace(tokenResponse.AccessToken))
@@ -1307,8 +1306,6 @@ namespace Authentication.DomainService.Authentication
 
                 // var sessionCookieOptions = DomainResolver.CreateCookieOptions(rootCookieDomain, rootRefreshCache.ExpiresUtc);
 
-                //  httpResponse.Cookies.Delete(IdpConstants.ImpersonationIdCookieName, sessionCookieOptions);
-                //  httpResponse.Cookies.Append(IdpConstants.ImpersonationIdCookieName, sessionId, sessionCookieOptions);
 
                 return new OkObjectResult(new ImpersonateResponse { impersonation_mode = true });
             }
