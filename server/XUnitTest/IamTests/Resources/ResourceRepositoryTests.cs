@@ -185,6 +185,27 @@ namespace XUnitTest.IamTests.Resources
         }
 
         [Fact]
+        public async Task GetPermissionsAsync_FiltersByRoles()
+        {
+            var col = Register(new[]
+            {
+                Perm("p1", roles: new List<string> { "admin" })
+            });
+            MongoMock.SetupCount(col, 1);
+
+            var query = new GetPermissionsRequest
+            {
+                Roles = new List<string> { "admin" }
+            };
+
+            var (items, count) = await Sut().GetPermissionsAsync(query, "default");
+
+            count.Should().Be(1);
+            items.Should().HaveCount(1);
+            items.Single().ItemId.Should().Be("p1");
+        }
+
+        [Fact]
         public async Task GetRoleBySlugAsync_ReturnsMatch()
         {
             Register(new[] { RoleE("r1", "admin") });
