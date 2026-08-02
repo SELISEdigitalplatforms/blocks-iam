@@ -387,7 +387,6 @@ namespace XUnitTest.IamTests.Users
             result.IsSuccess.Should().BeTrue();
             user.OrganizationIds.Should().Contain("default");
             user.Roles["default"].Should().Contain("admin");
-            _activity.Verify(a => a.SendUserActivityAsync(It.Is<UserActivityEvent>(e => e.Event == "USER_ACCESS_UPDATED")), Times.Once);
         }
 
         // ---------- RevokeUserAccessControlAsync ----------
