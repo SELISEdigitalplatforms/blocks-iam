@@ -10,6 +10,7 @@ type OIDCContextType = {
   userName?: string;
   clientId?: string;
   redirectUri?: string;
+  returnUrl?: string;
   scope?: string;
   state?: string;
   nonce?: string;
@@ -32,6 +33,7 @@ export function useOIDCContext() {
     userName: context.userName,
     clientId: context.clientId,
     redirectUri: context.redirectUri,
+    returnUrl: context.returnUrl,
     state: context.state,
     scope: context.scope,
     nonce: context.nonce,
@@ -68,6 +70,7 @@ function OIDCProvider({ children }: { children: ReactNode }) {
       themeColor: urlParams.themeColor || stored.themeColor || "#124091",
       clientId: urlParams.clientId || stored.clientId,
       redirectUri: urlParams.redirectUri || stored.redirectUri,
+      returnUrl: urlParams.returnUrl || stored.returnUrl,
       state: urlParams.state || stored.state,
       scope: urlParams.scope || stored.scope,
       nonce: urlParams.nonce || stored.nonce,
