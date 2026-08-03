@@ -17,6 +17,7 @@ type SsoSigninProps = {
     code_challenge?: string;
     code_challenge_method?: string;
     tenantId?: string;
+    returnUrl?: string;
   };
 };
 
