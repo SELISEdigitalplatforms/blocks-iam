@@ -583,6 +583,7 @@ shake();
             code_challenge: activeCodeChallenge,
             code_challenge_method: activeCodeChallengeMethod,
             tenantId,
+            returnUrl,
           }}
         />
       )}
