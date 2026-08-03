@@ -1,5 +1,11 @@
 import { sanitizeInternalNavigationTarget } from "@/lib/safe-navigation.util";
 
+// Social login round-trips to an external provider and back, so the device-flow
+// returnUrl (device verification page) can't be kept in React state like it is
+// for password login — it's stashed here before the provider redirect and read
+// back by the callback page once the provider sends the browser back to us.
+export const OIDC_DEVICE_RETURN_URL_STORAGE_KEY = "oidc-device-return-url";
+
 interface OIDCParams {
   projectKey?: string;
   userName?: string;

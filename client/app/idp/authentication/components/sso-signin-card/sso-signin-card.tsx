@@ -7,7 +7,10 @@ import { authService } from "@blocks-idp/authentication/services/auth.service";
 import { useTheme } from "@/hooks/use-theme";
 import { useCallback, useMemo } from "react";
 import { sanitizeProviderUrl } from "@blocks-idp/authentication/utils/sanitize-provider-url.util";
-import { buildOIDCNavigationUrl } from "@blocks-idp/authentication/utils/oidc-utils";
+import {
+  buildOIDCNavigationUrl,
+  OIDC_DEVICE_RETURN_URL_STORAGE_KEY,
+} from "@blocks-idp/authentication/utils/oidc-utils";
 import { getRuntimeEnv } from "@/lib/runtime-env";
 
 type SSOSigninCardProps = {
@@ -24,6 +27,9 @@ type SSOSigninCardProps = {
     code_challenge?: string;
     code_challenge_method?: string;
     tenantId?: string;
+    // Device-flow (RFC 8628) logins have no redirect_uri — this is the device
+    // verification page to send the browser back to once the provider returns.
+    returnUrl?: string;
   };
 };
 
@@ -63,8 +69,12 @@ export const SSOSigninCard = ({
         if (!res.authorizationUrl)
           return showErrorToast({ errors: "No authorization URL provided." });
 
-        console.log(res.authorizationUrl);
-        // return;
+        if (oidcContext.returnUrl) {
+          sessionStorage.setItem(
+            OIDC_DEVICE_RETURN_URL_STORAGE_KEY,
+            oidcContext.returnUrl,
+          );
+        }
         window.location.href = sanitizeProviderUrl(res.authorizationUrl);
         return;
       }
