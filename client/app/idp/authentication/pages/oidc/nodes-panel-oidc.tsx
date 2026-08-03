@@ -69,6 +69,8 @@ interface NodesPanelOidcProps {
   phase: OidcAnimPhase;
   errorMessage?: string | null;
   idleContent?: React.ReactNode;
+  /** Skip the staggered cascade/typing timers and render the final phase state right away. */
+  instant?: boolean;
 }
 
 type NodeState = "idle" | "active" | "complete" | "failed";
@@ -234,7 +236,7 @@ function IdleCard({ icon, title, description, badge }: {
 }
 
 /* ── Main panel ─────────────────────────────────────────────── */
-export function NodesPanelOidc({ config, phase, errorMessage, idleContent }: NodesPanelOidcProps) {
+export function NodesPanelOidc({ config, phase, errorMessage, idleContent, instant }: NodesPanelOidcProps) {
   type VisibleNode =
     | { kind: "validating"; state: NodeState }
     | { kind: "success"; index: number; state: NodeState };
@@ -249,6 +251,25 @@ export function NodesPanelOidc({ config, phase, errorMessage, idleContent }: Nod
     if (phase === "submitting") {
       setVisible([{ kind: "validating", state: "active" }]);
       setTerminalLines([]);
+      return;
+    }
+
+    if (instant && phase === "succeeded") {
+      setVisible([
+        { kind: "validating", state: "complete" },
+        ...config.successNodes.map((_, i) => ({ kind: "success" as const, index: i, state: "complete" as const })),
+      ]);
+      setTerminalLines(config.terminalMessages);
+      return;
+    }
+
+    if (instant && phase === "failed") {
+      setVisible([{ kind: "validating", state: "failed" }]);
+      setTerminalLines([
+        ...(config.errorTerminalPrefix ?? [{ text: "$ verifying...", color: "var(--fg)" }]),
+        { text: `  > error: ${errorMessage ?? "request failed"}`, color: "var(--danger)" },
+        { text: "  > status: aborted", color: "var(--muted)" },
+      ]);
       return;
     }
 
@@ -311,7 +332,7 @@ export function NodesPanelOidc({ config, phase, errorMessage, idleContent }: Nod
 
       return () => { cancelled = true; timers.forEach(clearTimeout); };
     }
-  }, [phase, config, errorMessage]);
+  }, [phase, config, errorMessage, instant]);
 
   const badgeStyle: React.CSSProperties =
     phase === "submitting" ? { background: "var(--warn-soft)",    borderColor: "var(--warn-border)",    color: "var(--warn)"    }
