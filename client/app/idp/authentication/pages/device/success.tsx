@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef } from "react";
+import { useLayoutEffect, useMemo, useRef } from "react";
 import { useSearchParams } from "react-router";
 import { XCircle } from "lucide-react";
 
@@ -15,22 +15,22 @@ function resolveOutcome(raw: string | null): Outcome {
 }
 
 /* Rendered as the shell's children, so it sits below the anim Provider and can
-   actually see the context — replays the pipeline animation to match the panel's
-   terminal log, then settles into a state matching the real outcome. */
+   actually see the context. The decision already happened on the previous screen,
+   so this jumps straight to the final panel/card state instead of replaying the
+   multi-second "simulated request" cascade — nothing here is still in flight. */
 function DeviceSuccessBody({ outcome }: { outcome: Outcome }) {
   const animCtx = useOidcAuthAnimation();
   const startedRef = useRef(false);
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     if (startedRef.current) return;
     startedRef.current = true;
-    animCtx?.startAnimation();
     if (outcome === "denied") {
-      void animCtx?.failAnimation("Authorization declined");
+      void animCtx?.failAnimation("Authorization declined", { instant: true });
     } else if (outcome === "expired") {
-      void animCtx?.failAnimation("Device code expired");
+      void animCtx?.failAnimation("Device code expired", { instant: true });
     } else {
-      void animCtx?.succeedAnimation();
+      void animCtx?.succeedAnimation({ instant: true });
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
