@@ -255,6 +255,11 @@ namespace Authentication.DomainService.Services
                 allowedScopes = request.Scope.Split(' ', StringSplitOptions.RemoveEmptyEntries).Distinct(StringComparer.OrdinalIgnoreCase).ToList();
             }
 
+            if (!allowedScopes.Any(scope => string.Equals(scope, "offline_access", StringComparison.OrdinalIgnoreCase)))
+            {
+                allowedScopes.Add("offline_access");
+            }
+
             var redirectUris = request.IsDeviceFlowClient
                 ? []
                 : request.RedirectUris.Where(x => !string.IsNullOrWhiteSpace(x)).Distinct(StringComparer.OrdinalIgnoreCase).ToList();

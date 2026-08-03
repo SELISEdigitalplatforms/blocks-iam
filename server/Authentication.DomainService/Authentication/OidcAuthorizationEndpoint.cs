@@ -123,6 +123,8 @@ namespace Authentication.DomainService.Authentication
                     });
                 }
 
+                scope = EnsureOfflineAccess(scope);
+
                 var effectiveSessionId = request.Cookies[IdpConstants.BuildIdpSessionCookieKey(tenant_id)];
 
                 string? resolvedUserId = blocksUserId;
@@ -333,6 +335,21 @@ namespace Authentication.DomainService.Authentication
             }
 
             return amr;
+        }
+
+        private static string EnsureOfflineAccess(string scope)
+        {
+            var scopes = (scope ?? string.Empty)
+                .Split([' ', ','], StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .ToList();
+
+            if (!scopes.Any(s => string.Equals(s, "offline_access", StringComparison.OrdinalIgnoreCase)))
+            {
+                scopes.Add("offline_access");
+            }
+
+            return string.Join(' ', scopes);
         }
 
         private async Task<string> EnsureIdpSessionAsync(HttpRequest request, HttpResponse response, string? currentSessionId, string userId, string? tenantId)

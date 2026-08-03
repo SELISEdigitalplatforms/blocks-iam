@@ -21,6 +21,13 @@ vi.mock("@blocks-idp/authentication/pages/oidc/oidc-auth-shell", () => ({
       {children}
     </div>
   ),
+  useOidcAuthAnimation: () => ({
+    phase: "idle" as const,
+    startAnimation: () => {},
+    succeedAnimation: async () => {},
+    failAnimation: async () => {},
+    resetAnimation: () => {},
+  }),
 }));
 vi.mock("./panel-config", () => ({ DEVICE_CONSENT_PANEL: {} }));
 

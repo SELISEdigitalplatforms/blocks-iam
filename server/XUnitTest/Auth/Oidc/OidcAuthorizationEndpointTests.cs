@@ -367,6 +367,7 @@ namespace XUnitTest.Auth.Oidc
                 m.Code == "authcode123"
                 && m.ClientId == "client-1"
                 && m.UserId == "user-1"
+                && m.Scope == "openid profile offline_access"
                 && !string.IsNullOrWhiteSpace(m.IdpSessionId))), Times.Once);
         }
 
