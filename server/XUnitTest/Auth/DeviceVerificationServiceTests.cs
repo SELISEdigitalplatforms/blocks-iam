@@ -8,6 +8,7 @@ using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.Logging.Abstractions;
 using Moq;
+using System.Security.Cryptography;
 
 namespace XUnitTest.Auth
 {
@@ -38,6 +39,13 @@ namespace XUnitTest.Auth
             return ctx;
         }
 
+        private static HttpContext ContextWithTenant(string tenantId, string? cookieHeader = null)
+        {
+            var ctx = Context(cookieHeader);
+            ctx.Request.Headers["X-Blocks-Key"] = tenantId;
+            return ctx;
+        }
+
         private static string SessionCookie(string sessionId, string tenantId = TenantId) =>
             $"idp_session_id_{tenantId}={sessionId}";
 
@@ -50,6 +58,7 @@ namespace XUnitTest.Auth
             RequestedScopes = "openid profile",
             Status = DeviceAuthorizationStatus.Pending,
             ExpiresAt = DateTime.UtcNow.AddMinutes(10),
+            ApprovalTokenHash = ApprovalTokenHash("approval-token"),
         };
 
         private static IdpSessionModel ValidSession(string tenantId = TenantId, string userId = "user-1") => new()
@@ -63,6 +72,9 @@ namespace XUnitTest.Auth
                 new() { UserId = userId, TenantId = tenantId, DisplayName = "User One" }
             }
         };
+
+        private static string ApprovalTokenHash(string token) =>
+            Convert.ToHexString(SHA256.HashData(System.Text.Encoding.UTF8.GetBytes(token))).ToLowerInvariant();
 
         // ---------- VerifyAsync ----------
 
@@ -161,6 +173,20 @@ namespace XUnitTest.Auth
         }
 
         [Fact]
+        public async Task VerifyAsync_ReturnsInvalidGrant_WhenPresentedTenantDoesNotMatchCodeTenant()
+        {
+            var entity = PendingEntity();
+            _repo.Setup(r => r.GetByUserCodeAsync(It.IsAny<string>(), It.IsAny<CancellationToken>())).ReturnsAsync(entity);
+
+            var result = await Create().VerifyAsync(
+                new DeviceVerifyRequest { UserCode = entity.UserCode },
+                ContextWithTenant("other-tenant"));
+
+            var bad = result.Should().BeOfType<BadRequestObjectResult>().Subject;
+            Prop(bad.Value, "error").Should().Be("invalid_grant");
+        }
+
+        [Fact]
         public async Task VerifyAsync_ReturnsLoginRequired_WhenSessionNotFound()
         {
             var entity = PendingEntity();
@@ -211,6 +237,8 @@ namespace XUnitTest.Auth
             var entity = PendingEntity();
             _repo.Setup(r => r.GetByUserCodeAsync(It.IsAny<string>(), It.IsAny<CancellationToken>())).ReturnsAsync(entity);
             _sessionRepo.Setup(s => s.GetBySessionIdAsync(It.IsAny<string>())).ReturnsAsync(ValidSession());
+            _repo.Setup(r => r.SetApprovalTokenHashAsync(entity.Id, It.IsAny<string>(), It.IsAny<CancellationToken>()))
+                .ReturnsAsync(true);
             _authRepo.Setup(a => a.GetOidcClientRegistrationAsync("client-1"))
                 .ReturnsAsync(new OidcClientRegistration { ClientId = "client-1", ClientName = "My App" });
 
@@ -224,6 +252,27 @@ namespace XUnitTest.Auth
             body.Payload!.ClientName.Should().Be("My App");
             body.Payload.Scopes.Should().BeEquivalentTo(new[] { "openid", "profile" });
             body.Payload.Tenant.Should().Be(TenantId);
+            body.Payload.ApprovalToken.Should().NotBeNullOrWhiteSpace();
+        }
+
+        [Fact]
+        public async Task VerifyAsync_ReturnsReady_WithRequestContext()
+        {
+            var entity = PendingEntity();
+            entity.IpAddress = "203.0.113.10";
+            entity.UserAgent = "DeviceClient/1.0";
+            _repo.Setup(r => r.GetByUserCodeAsync(It.IsAny<string>(), It.IsAny<CancellationToken>())).ReturnsAsync(entity);
+            _sessionRepo.Setup(s => s.GetBySessionIdAsync(It.IsAny<string>())).ReturnsAsync(ValidSession());
+            _repo.Setup(r => r.SetApprovalTokenHashAsync(entity.Id, It.IsAny<string>(), It.IsAny<CancellationToken>()))
+                .ReturnsAsync(true);
+
+            var result = await Create().VerifyAsync(new DeviceVerifyRequest { UserCode = entity.UserCode },
+                Context(SessionCookie("session-1")));
+
+            var ok = result.Should().BeOfType<OkObjectResult>().Subject;
+            var body = ok.Value.Should().BeOfType<DeviceVerifyResponse>().Subject;
+            body.Payload!.RequestIpAddress.Should().Be("203.0.113.10");
+            body.Payload.RequestUserAgent.Should().Be("DeviceClient/1.0");
         }
 
         [Fact]
@@ -232,6 +281,8 @@ namespace XUnitTest.Auth
             var entity = PendingEntity();
             _repo.Setup(r => r.GetByUserCodeAsync(It.IsAny<string>(), It.IsAny<CancellationToken>())).ReturnsAsync(entity);
             _sessionRepo.Setup(s => s.GetBySessionIdAsync(It.IsAny<string>())).ReturnsAsync(ValidSession());
+            _repo.Setup(r => r.SetApprovalTokenHashAsync(entity.Id, It.IsAny<string>(), It.IsAny<CancellationToken>()))
+                .ReturnsAsync(true);
             _authRepo.Setup(a => a.GetOidcClientRegistrationAsync(It.IsAny<string>()))
                 .ReturnsAsync((OidcClientRegistration)null!);
 
@@ -260,7 +311,7 @@ namespace XUnitTest.Auth
                 .ReturnsAsync((DeviceAuthorizationRequestModel)null!);
 
             var result = await Create().DecisionAsync(
-                new DeviceDecisionRequest { UserCode = "ABCD-1234", Decision = "allow" }, Context());
+                new DeviceDecisionRequest { UserCode = "ABCD-1234", Decision = "allow", ApprovalToken = "approval-token" }, Context());
 
             var obj = result.Should().BeOfType<ObjectResult>().Subject;
             obj.StatusCode.Should().Be(StatusCodes.Status400BadRequest);
@@ -316,7 +367,7 @@ namespace XUnitTest.Auth
                 .ReturnsAsync(PendingEntity());
 
             var result = await Create().DecisionAsync(
-                new DeviceDecisionRequest { UserCode = "ABCD-1234", Decision = "allow" }, Context());
+                new DeviceDecisionRequest { UserCode = "ABCD-1234", Decision = "allow", ApprovalToken = "approval-token" }, Context());
 
             var obj = result.Should().BeOfType<ObjectResult>().Subject;
             obj.StatusCode.Should().Be(StatusCodes.Status401Unauthorized);
@@ -332,11 +383,30 @@ namespace XUnitTest.Auth
                 .ReturnsAsync(ValidSession(tenantId: "other-tenant"));
 
             var result = await Create().DecisionAsync(
-                new DeviceDecisionRequest { UserCode = "ABCD-1234", Decision = "allow" },
+                new DeviceDecisionRequest { UserCode = "ABCD-1234", Decision = "allow", ApprovalToken = "approval-token" },
                 Context(SessionCookie("session-1")));
 
             var obj = result.Should().BeOfType<ObjectResult>().Subject;
             obj.StatusCode.Should().Be(StatusCodes.Status401Unauthorized);
+        }
+
+        [Fact]
+        public async Task DecisionAsync_Returns401_WhenSessionRevoked()
+        {
+            var session = ValidSession();
+            session.RevokedAt = DateTime.UtcNow;
+            _repo.Setup(r => r.GetByUserCodeAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()))
+                .ReturnsAsync(PendingEntity());
+            _sessionRepo.Setup(s => s.GetBySessionIdAsync(It.IsAny<string>()))
+                .ReturnsAsync(session);
+
+            var result = await Create().DecisionAsync(
+                new DeviceDecisionRequest { UserCode = "ABCD-1234", Decision = "allow", ApprovalToken = "approval-token" },
+                Context(SessionCookie("session-1")));
+
+            var obj = result.Should().BeOfType<ObjectResult>().Subject;
+            obj.StatusCode.Should().Be(StatusCodes.Status401Unauthorized);
+            _repo.Verify(r => r.MarkApprovedAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<DateTime>(), It.IsAny<CancellationToken>()), Times.Never);
         }
 
         [Fact]
@@ -350,7 +420,7 @@ namespace XUnitTest.Auth
                 .ReturnsAsync(true);
 
             var result = await Create().DecisionAsync(
-                new DeviceDecisionRequest { UserCode = entity.UserCode, Decision = "allow" },
+                new DeviceDecisionRequest { UserCode = entity.UserCode, Decision = "allow", ApprovalToken = "approval-token" },
                 Context(SessionCookie("session-1")));
 
             var ok = result.Should().BeOfType<OkObjectResult>().Subject;
@@ -370,7 +440,7 @@ namespace XUnitTest.Auth
                 .ReturnsAsync(true);
 
             var result = await Create().DecisionAsync(
-                new DeviceDecisionRequest { UserCode = entity.UserCode, Decision = "DENY" },
+                new DeviceDecisionRequest { UserCode = entity.UserCode, Decision = "DENY", ApprovalToken = "approval-token" },
                 Context(SessionCookie("session-1")));
 
             var ok = result.Should().BeOfType<OkObjectResult>().Subject;
@@ -390,7 +460,7 @@ namespace XUnitTest.Auth
                 .ReturnsAsync(false);
 
             var result = await Create().DecisionAsync(
-                new DeviceDecisionRequest { UserCode = entity.UserCode, Decision = "allow" },
+                new DeviceDecisionRequest { UserCode = entity.UserCode, Decision = "allow", ApprovalToken = "approval-token" },
                 Context(SessionCookie("session-1")));
 
             var obj = result.Should().BeOfType<ObjectResult>().Subject;
