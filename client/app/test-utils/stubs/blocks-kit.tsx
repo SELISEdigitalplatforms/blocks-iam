@@ -1,5 +1,5 @@
 /**
- * Test-only stub for `@seliseblocks/blocks-kit`.
+ * Test-only stub for `@seliseblocks/genesis-os`.
  *
  * The real package's barrel eagerly imports framer-motion, whose `motion-utils`
  * reads `process.env.NODE_ENV` at import time and throws under the jsdom test
@@ -91,3 +91,15 @@ export const CallbackPage = passthrough("CallbackPage");
 export const AuthResolver = passthrough("AuthResolver");
 export const ProtectedGuard = passthrough("ProtectedGuard");
 export const PublicGuard = passthrough("PublicGuard");
+export const ThemeProvider = passthrough("ThemeProvider");
+
+// Hooks reached through the "@seliseblocks/genesis-os/hooks" subpath. They are
+// stubbed here rather than resolved from the real package for the same reason as
+// the components above: the package barrel pulls framer-motion, which crashes
+// under jsdom at load time.
+export const useTheme = () => ({
+  theme: "light",
+  resolvedTheme: "light",
+  setTheme: () => {},
+});
+export const useScopedPath = () => (segment: string) => `/app/:itemId/${segment}`;

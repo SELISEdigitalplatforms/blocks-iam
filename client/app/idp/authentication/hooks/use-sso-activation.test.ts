@@ -6,7 +6,7 @@ import { useSsoActivation } from "./use-sso-activation";
 const mockPush = vi.fn();
 const mockReplace = vi.fn();
 const mockGet = vi.fn();
-vi.mock("react-router-dom", () => ({
+vi.mock("react-router", () => ({
   useNavigate: vi.fn(() => mockPush),
   useSearchParams: vi.fn(() => [{ get: mockGet }]),
 }));
@@ -56,7 +56,7 @@ describe("useSsoActivation", () => {
     expect(mockMutateAsync).not.toHaveBeenCalled();
   });
 
-  it("should call signinBySSO and redirect to console on success", async () => {
+  it("should call signinBySSO and redirect to the profile page on success", async () => {
     mockGet.mockImplementation((key: string) =>
       key === "code" ? "auth-code" : key === "state" ? "state-token" : null,
     );
@@ -76,7 +76,7 @@ describe("useSsoActivation", () => {
       }),
     );
     await waitFor(() => expect(mockSetAuthenticated).toHaveBeenCalled());
-    expect(mockPush).toHaveBeenCalledWith("/app/console");
+    expect(mockPush).toHaveBeenCalledWith("/app/profile");
   });
 
   it("should redirect to MFA check when MFA is enabled", async () => {
@@ -121,5 +121,41 @@ describe("useSsoActivation", () => {
     });
 
     expect(result.current).toHaveProperty("isPending");
+  });
+
+  it("redirects to the sso-activate page when a user redirect url is returned", async () => {
+    mockGet.mockImplementation((key: string) =>
+      key === "code" ? "auth-code" : key === "state" ? "redir-state" : null,
+    );
+    mockMutateAsync.mockResolvedValue({
+      sso_user_redirect_url: "https://iam.test/activate?username=jane@x.com&code=sso-code",
+    });
+
+    renderHook(() => useSsoActivation(), { wrapper: createWrapper() });
+
+    await waitFor(() =>
+      expect(mockPush).toHaveBeenCalledWith(
+        "/sso-activate?username=jane%40x.com&code=sso-code",
+      ),
+    );
+  });
+
+  it("shows a no-account message for a user_not_found error", async () => {
+    const { showErrorToast } = await import("@/hooks/use-toast");
+    mockGet.mockImplementation((key: string) =>
+      key === "code" ? "auth-code" : key === "state" ? "nf-state" : null,
+    );
+    mockMutateAsync.mockRejectedValue({
+      error: { description: "jane@x.com user_not_found" },
+    });
+
+    renderHook(() => useSsoActivation(), { wrapper: createWrapper() });
+
+    await waitFor(() =>
+      expect(showErrorToast).toHaveBeenCalledWith({
+        errors: "There is no account with this email (jane@x.com).",
+      }),
+    );
+    expect(mockPush).toHaveBeenCalledWith("/login");
   });
 });

@@ -5,7 +5,6 @@ import { Shield, Smartphone, Clock } from "lucide-react";
 import { getRuntimeEnv } from "@/lib/runtime-env";
 import { ProfileDetails } from "@blocks-idp/iam/components/profile-details";
 import { UserHistories } from "../user-histories";
-// import { UserPats } from "../user-pat";
 import { UserDevices } from "../user-devices";
 
 const x_blocks_key = getRuntimeEnv("BLOCKS_X_BLOCKS_KEY") || "";

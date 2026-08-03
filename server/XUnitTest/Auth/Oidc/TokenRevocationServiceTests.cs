@@ -260,5 +260,71 @@ namespace XUnitTest.Auth.Oidc
 
             result.Should().BeEquivalentTo(history);
         }
+
+        // ---- error / edge branches ----
+
+        [Fact]
+        public async Task Revoke_RepositoryThrows_ReturnsServerError()
+        {
+            _refreshRepo.Setup(r => r.GetByTokenIdAsync("rt-1")).ThrowsAsync(new InvalidOperationException("db down"));
+
+            var result = await Create().RevokeTokenAsync("rt-1", "refresh_token", "client-1");
+
+            result.Success.Should().BeFalse();
+            result.Error.Should().Be("server_error");
+        }
+
+        [Fact]
+        public async Task Introspect_RepositoryThrows_ReturnsServerError()
+        {
+            var jwt = BuildJwt("jti-err", "client-1");
+            _revocationRepo.Setup(r => r.IsRevokedAsync("jti-err")).ThrowsAsync(new InvalidOperationException("db down"));
+
+            var result = await Create().IntrospectTokenAsync(jwt, "access_token", "client-1");
+
+            result.Active.Should().BeFalse();
+            result.Error.Should().Be("server_error");
+        }
+
+        [Fact]
+        public async Task RevokeAllUserTokens_Rethrows_OnRepositoryError()
+        {
+            _refreshRepo.Setup(r => r.GetByUserAsync("user-1", "tenant-1")).ThrowsAsync(new InvalidOperationException("db"));
+
+            var act = async () => await Create().RevokeAllUserTokensAsync("user-1", "tenant-1", "logout");
+
+            await act.Should().ThrowAsync<InvalidOperationException>();
+        }
+
+        [Fact]
+        public async Task RevokeAllUserTokens_NoTokens_SkipsSessionSync_ReturnsTrue()
+        {
+            _refreshRepo.Setup(r => r.GetByUserAsync("user-1", "tenant-1")).ReturnsAsync(new List<RefreshTokenModel>());
+
+            var ok = await Create().RevokeAllUserTokensAsync("user-1", "tenant-1", "logout");
+
+            ok.Should().BeTrue();
+            _refreshRepo.Verify(r => r.RevokeAllByTokenIdsAsync(It.IsAny<IEnumerable<string>>(), It.IsAny<string>()), Times.Never);
+        }
+
+        [Fact]
+        public async Task RevokeUserClientTokens_Rethrows_OnRepositoryError()
+        {
+            _refreshRepo.Setup(r => r.GetByUserAsync("user-1", "")).ThrowsAsync(new InvalidOperationException("db"));
+
+            var act = async () => await Create().RevokeUserClientTokensAsync("user-1", "client-1", "reason");
+
+            await act.Should().ThrowAsync<InvalidOperationException>();
+        }
+
+        [Fact]
+        public async Task GetRevocationHistory_Rethrows_OnRepositoryError()
+        {
+            _revocationRepo.Setup(r => r.GetRevokedTokensByUserAsync("user-1")).ThrowsAsync(new InvalidOperationException("db"));
+
+            var act = async () => await Create().GetRevocationHistoryAsync("user-1");
+
+            await act.Should().ThrowAsync<InvalidOperationException>();
+        }
     }
 }

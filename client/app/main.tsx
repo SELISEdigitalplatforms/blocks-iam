@@ -1,14 +1,14 @@
-import "@seliseblocks/blocks-kit/lib";
+import "@seliseblocks/genesis-os/lib";
 import "@/styles/globals.css";
 import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
-import { RouterProvider } from "react-router-dom";
-import { NuqsAdapter } from "nuqs/adapters/react-router/v6";
+import { RouterProvider } from "react-router/dom";
+import { NuqsAdapter } from "nuqs/adapters/react-router/v8";
 import { Toaster } from "./components/ui-kits/toaster/toaster";
 import { TooltipProvider } from "./components/ui-kits/tooltip/tooltip";
 import QueryProvider from "./providers/query-provider";
 import { router } from "./router";
-import { BlocksAppLayout } from "@seliseblocks/blocks-kit/providers";
+import { BlocksAppLayout } from "@seliseblocks/genesis-os/providers";
 import { ThemeProvider } from "./hooks/use-theme";
 
 createRoot(document.getElementById("root")!).render(

@@ -39,7 +39,7 @@ vi.mock("@blocks-idp/iam/hooks/use-permission", () => ({
   },
 }));
 
-vi.mock("@seliseblocks/blocks-kit", () => ({
+vi.mock("@seliseblocks/genesis-os", () => ({
   useProjectStore: () => ({
     selectedProject: { tenantId: "default" },
   }),
@@ -127,6 +127,22 @@ describe("AddOrganizationPermission UI", () => {
     await waitFor(() => {
       expect(screen.getByRole("button", { name: /^add$/i })).toBeEnabled();
     });
+  });
+
+  it("adds the newly selected permissions and triggers onSave", async () => {
+    const onAdd = vi.fn();
+    const onSave = vi.fn();
+    render(
+      <AddOrganizationPermission permissions={[]} onAdd={onAdd} onSave={onSave} />,
+      { wrapper: createWrapper() },
+    );
+    openDialog();
+    fireEvent.click(await screen.findByRole("checkbox", { name: /select permission 1/i }));
+    fireEvent.click(screen.getByRole("button", { name: /^add$/i }));
+    expect(onAdd).toHaveBeenCalledWith(
+      expect.arrayContaining([expect.objectContaining({ itemId: "perm-1" })]),
+    );
+    await waitFor(() => expect(onSave).toHaveBeenCalled());
   });
 
   it("TC-07: keeps selections when paginating", async () => {

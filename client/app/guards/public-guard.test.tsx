@@ -1,5 +1,5 @@
 import { render, screen, waitFor } from "@testing-library/react";
-import { MemoryRouter } from "react-router-dom";
+import { MemoryRouter } from "react-router";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const { navigateMock, authStore } = vi.hoisted(() => ({
@@ -7,8 +7,8 @@ const { navigateMock, authStore } = vi.hoisted(() => ({
   authStore: { isAuthenticated: false },
 }));
 
-vi.mock("react-router-dom", async (importOriginal) => {
-  const actual = await importOriginal<typeof import("react-router-dom")>();
+vi.mock("react-router", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("react-router")>();
   return { ...actual, useNavigate: () => navigateMock };
 });
 vi.mock("@/store/useAuthStore", () => ({
@@ -38,11 +38,11 @@ describe("PublicGuard", () => {
     expect(navigateMock).not.toHaveBeenCalled();
   });
 
-  it("redirects an authenticated visitor to the console", async () => {
+  it("redirects an authenticated visitor to the profile page", async () => {
     authStore.isAuthenticated = true;
     renderAt("/login");
     await waitFor(() =>
-      expect(navigateMock).toHaveBeenCalledWith("/app/console", { replace: true }),
+      expect(navigateMock).toHaveBeenCalledWith("/app/profile", { replace: true }),
     );
     expect(screen.queryByText("public-child")).not.toBeInTheDocument();
   });

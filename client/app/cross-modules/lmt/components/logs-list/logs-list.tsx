@@ -12,7 +12,8 @@ import { ILog } from "../../models/log.model";
 
 // UI: New Data Available Indicator
 const NewDataAvailableIndicator = ({ onBottomClick }: { onBottomClick: () => void }) => (
-  <div
+  <button
+    type="button"
     className="absolute bottom-4 left-1/2 inline-flex h-9 -translate-x-1/2 cursor-pointer items-center justify-center whitespace-nowrap rounded-sm bg-primary px-4 py-2 text-sm font-medium text-primary-foreground ring-offset-background transition-colors hover:bg-primary/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
     onClick={(e) => {
       e.stopPropagation();
@@ -20,7 +21,7 @@ const NewDataAvailableIndicator = ({ onBottomClick }: { onBottomClick: () => voi
     }}
   >
     New logs available
-  </div>
+  </button>
 );
 
 // UI: Loading Indicator for Older Data

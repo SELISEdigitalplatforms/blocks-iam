@@ -118,6 +118,12 @@ describe("oidc-utils", () => {
       const url = buildOIDCNavigationUrl("/oidc/login");
       expect(url).toContain("/oidc/login");
     });
+
+    it("should reject unsafe navigation paths", () => {
+      const url = buildOIDCNavigationUrl("//evil.com");
+      expect(url.startsWith("/oidc/login")).toBe(true);
+      expect(url).not.toContain("evil.com");
+    });
   });
 
   // ─── getCurrentOIDCParams ───────────────────────────────────────────────────
@@ -142,6 +148,158 @@ describe("oidc-utils", () => {
     it("should return empty URLSearchParams when no params exist", () => {
       const params = getCurrentOIDCParams();
       expect(params.toString()).toBe("brandColor=%23124091");
+    });
+  });
+
+  // ─── hash param extraction (color + &-prefixed params) ──────────────────────
+  describe("extractOIDCParams - full hash payload", () => {
+    const setLocation = (search: string, hash: string) => {
+      const href = `http://localhost:3000/oidc/login${search}${hash}`;
+      Object.defineProperty(window, "location", {
+        value: { search, hash, href },
+        writable: true,
+        configurable: true,
+      });
+    };
+
+    it("extracts every param from an &-prefixed hash payload", () => {
+      setLocation(
+        "",
+        "#00AABB&x-blocks-key=hk&client_id=hc&userName=hu&state=hs&nonce=hn&scope=hsc&redirect_uri=hr&tenant_id=ht&logoUrl=https%3A%2F%2Fcdn%2Flogo.png",
+      );
+      const p = extractOIDCParams();
+      expect(p.themeColor).toBe("#00AABB");
+      expect(p.projectKey).toBe("hk");
+      expect(p.clientId).toBe("hc");
+      expect(p.userName).toBe("hu");
+      expect(p.state).toBe("hs");
+      expect(p.nonce).toBe("hn");
+      expect(p.scope).toBe("hsc");
+      expect(p.redirectUri).toBe("hr");
+      expect(p.tenantId).toBe("ht");
+      expect(p.logoUrl).toBe("https://cdn/logo.png");
+    });
+
+    it("parses a hash payload that is not &-prefixed after the color", () => {
+      setLocation("", "#124091clientId=nc&state=ns");
+      const p = extractOIDCParams();
+      // Color still recognised from the leading hex.
+      expect(p.themeColor).toBe("#124091");
+    });
+
+    it("recovers brandColor from the full URL when the query value is empty", () => {
+      setLocation("?brandColor=", "");
+      Object.defineProperty(window, "location", {
+        value: {
+          search: "?brandColor=",
+          hash: "",
+          href: "http://localhost:3000/oidc/login?brandColor=00FF00&next=1",
+        },
+        writable: true,
+        configurable: true,
+      });
+      const p = extractOIDCParams();
+      expect(p.themeColor).toBe("#00FF00");
+    });
+
+    it("recovers logoUrl from the full URL and fully decodes it", () => {
+      Object.defineProperty(window, "location", {
+        value: {
+          search: "",
+          hash: "",
+          href: "http://localhost:3000/oidc/login&logoUrl=https%253A%252F%252Fcdn%252Flogo.png",
+        },
+        writable: true,
+        configurable: true,
+      });
+      const p = extractOIDCParams();
+      expect(p.logoUrl).toBe("https://cdn/logo.png");
+    });
+
+    it("falls back to the default color for an invalid brandColor", () => {
+      setLocation("?brandColor=notacolor", "");
+      const p = extractOIDCParams();
+      expect(p.themeColor).toBe("#124091");
+    });
+
+    it("normalises a bare 6-hex brandColor to #RRGGBB", () => {
+      setLocation("?brandColor=ABCDEF", "");
+      const p = extractOIDCParams();
+      expect(p.themeColor).toBe("#ABCDEF");
+    });
+
+    it("returns the default color object when window is treated as undefined-safe", () => {
+      // Sanity: the pure default path still yields the fallback color.
+      setLocation("", "");
+      expect(extractOIDCParams(true).themeColor).toBe("#124091");
+    });
+
+    it("parses clean keys from a hash that is hex-prefixed but not &-prefixed", () => {
+      setLocation(
+        "?brandColor=%23999999",
+        "#aabbcc=1&logoUrl=http%3A%2F%2Fl&x-blocks-key=k&client_id=c&userName=u&state=s&nonce=n&scope=sc&redirect_uri=r&tenant_id=t",
+      );
+      const p = extractOIDCParams();
+      expect(p.projectKey).toBe("k");
+      expect(p.clientId).toBe("c");
+      expect(p.userName).toBe("u");
+      expect(p.state).toBe("s");
+      expect(p.nonce).toBe("n");
+      expect(p.scope).toBe("sc");
+      expect(p.redirectUri).toBe("r");
+      expect(p.tenantId).toBe("t");
+      expect(p.logoUrl).toBe("http://l");
+    });
+
+    it("falls back to the default color when brandColor decoding throws", () => {
+      setLocation("?brandColor=%25", "");
+      const p = extractOIDCParams();
+      expect(p.themeColor).toBe("#124091");
+    });
+  });
+
+  describe("navigation helpers - full param set", () => {
+    const fullSearch =
+      "?x-blocks-key=k&userName=u&clientId=c&logoUrl=http%3A%2F%2Fl&brandColor=%23FF0000&state=s&nonce=n&scope=sc&redirect_uri=r&tenant_id=t";
+
+    beforeEach(() => {
+      Object.defineProperty(window, "location", {
+        value: {
+          search: fullSearch,
+          hash: "",
+          href: `http://localhost:3000/oidc/login${fullSearch}`,
+        },
+        writable: true,
+        configurable: true,
+      });
+    });
+
+    it("buildOIDCNavigationUrl includes every param", () => {
+      const url = buildOIDCNavigationUrl("/oidc/consent");
+      expect(url).toContain("x-blocks-key=k");
+      expect(url).toContain("userName=u");
+      expect(url).toContain("clientId=c");
+      expect(url).toContain("logoUrl=");
+      expect(url).toContain("brandColor=");
+      expect(url).toContain("state=s");
+      expect(url).toContain("nonce=n");
+      expect(url).toContain("scope=sc");
+      expect(url).toContain("redirect_uri=r");
+      expect(url).toContain("tenant_id=t");
+    });
+
+    it("getCurrentOIDCParams includes every param", () => {
+      const p = getCurrentOIDCParams();
+      expect(p.get("x-blocks-key")).toBe("k");
+      expect(p.get("userName")).toBe("u");
+      expect(p.get("clientId")).toBe("c");
+      expect(p.get("logoUrl")).toBe("http://l");
+      expect(p.get("state")).toBe("s");
+      expect(p.get("nonce")).toBe("n");
+      expect(p.get("scope")).toBe("sc");
+      expect(p.get("redirect_uri")).toBe("r");
+      expect(p.get("tenant_id")).toBe("t");
+      expect(p.get("brandColor")).toBe("#FF0000");
     });
   });
 });

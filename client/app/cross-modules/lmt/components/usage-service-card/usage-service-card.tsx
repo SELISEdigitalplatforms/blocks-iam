@@ -12,7 +12,7 @@ import {
 } from "@/components/ui-kits/tooltip/tooltip";
 import { cn } from "@/lib/utils";
 import { Activity, Cpu, Info, Logs } from "lucide-react";
-import { Link } from "react-router-dom";
+import { Link } from "react-router";
 
 interface ServiceCardProps {
   isLoading: boolean;

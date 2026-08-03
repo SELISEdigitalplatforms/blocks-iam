@@ -7,7 +7,7 @@ const routerState: { pathname: string; params: Record<string, string | undefined
   params: {},
 };
 
-vi.mock("react-router-dom", () => ({
+vi.mock("react-router", () => ({
   useLocation: () => ({ pathname: routerState.pathname }),
   useParams: () => routerState.params,
 }));

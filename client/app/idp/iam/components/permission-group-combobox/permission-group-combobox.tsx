@@ -1,7 +1,7 @@
 import { Button } from "@/components/ui-kits/button/button";
 import { Command, CommandInput, CommandItem, CommandList } from "@/components/ui-kits/command/command";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui-kits/popover/popover";
-import { useProjectStore } from "@seliseblocks/blocks-kit";
+import { useProjectStore } from "@seliseblocks/genesis-os";
 import { useGetResourceGroup } from "@blocks-idp/iam/hooks/use-permission";
 import { Plus } from "lucide-react";
 import { useMemo, useState } from "react";
@@ -46,9 +46,6 @@ export function PermissionGroupCombobox({ value, onChange, disabled }: Permissio
               onValueChange={(v) => {
                 setInputValue(v);
               }}
-              // onKeyDown={(e) => {
-              //   if (e.key !== "Enter") return;
-              // }}
             />
             <Button
               className="absolute right-1 top-1.5 h-8 w-8 rounded-full p-0.5"

@@ -16,7 +16,7 @@ import { iamConfigFormDefaultValues, iamConfigFormSchema } from "./utils";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { Skeleton } from "@/components/ui-kits/skeleton/skeleton";
 import { showErrorToast, showSuccessToast } from "@/hooks/use-toast";
-import { useProjectStore } from "@seliseblocks/blocks-kit";
+import { useProjectStore } from "@seliseblocks/genesis-os";
 import {
   useGetIamConfiguration,
   useSaveIamConfiguration,

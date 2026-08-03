@@ -5,13 +5,13 @@ import { signinFormDefaultValue, signinFormSchema } from "./schema";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { Input } from "@/components/ui-kits/input/input";
 import { PasswordInput } from "@/components/password-input";
-import { Link } from "react-router-dom";
+import { Link } from "react-router";
 import { Button } from "@/components/ui-kits/button/button";
 import { z } from "zod";
 import { useSigninByEmail } from "@blocks-idp/authentication/hooks/use-auth";
-import { useAuthStore } from "@seliseblocks/blocks-kit";
+import { useAuthStore } from "@seliseblocks/genesis-os";
 import { showErrorToast } from "@/hooks/use-toast";
-import { useNavigate } from "react-router-dom";
+import { useNavigate } from "react-router";
 import { useState } from "react";
 import { Captcha } from "@/components/captcha";
 import { useCaptcha } from "@blocks-idp/captcha/hooks/use-captcha";
@@ -82,7 +82,7 @@ export const SigninForm = ({ mode = "default", oidcContext }: SigninFormProps) =
         params.set("userName", values.username);
         navigate(`/oidc/permission?${params.toString()}`);
       } else {
-        navigate("/app/console");
+        navigate("/app/profile");
       }
     } catch (error: unknown) {
       if (isErrorWithErrors(error)) {

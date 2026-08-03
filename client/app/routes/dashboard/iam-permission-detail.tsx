@@ -1,4 +1,4 @@
-import { useParams } from "react-router-dom";
+import { useParams } from "react-router";
 import { PermissionDetails } from "@blocks-idp/iam/modules/permission-management/permission-details";
 
 export default function IamPermissionDetailPage() {

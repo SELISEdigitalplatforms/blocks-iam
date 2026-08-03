@@ -256,4 +256,93 @@ describe("UserService", () => {
       );
     });
   });
+
+  describe("simple read endpoints", () => {
+    it("me() reads the current user with an absolute url", async () => {
+      vi.mocked(http.get).mockResolvedValue({ data: mockUser });
+      const result = await service.me();
+      expect(http.get).toHaveBeenCalledWith(USER_ENDPOINTS.ME, undefined, { absoluteUrl: true });
+      expect(result).toEqual({ data: mockUser });
+    });
+
+    it("getUserInfo() reads the auth user info", async () => {
+      vi.mocked(http.get).mockResolvedValue(mockUser);
+      await service.getUserInfo();
+      expect(http.get).toHaveBeenCalled();
+    });
+
+    it("isUserExist() encodes the email in the query", async () => {
+      vi.mocked(http.get).mockResolvedValue({ userId: "u1" });
+      await service.isUserExist("a+b@test.com");
+      expect(http.get).toHaveBeenCalledWith(expect.stringContaining("a%2Bb%40test.com"));
+    });
+
+    it("getUserRoles() requests the roles for a user id", async () => {
+      vi.mocked(http.get).mockResolvedValue({ data: [] });
+      await service.getUserRoles({ userId: "u1", projectKey: "p1" });
+      expect(http.get).toHaveBeenCalledWith(expect.stringContaining("Id=u1"));
+    });
+
+    it("getUserPermissions() requests the permissions for a user id", async () => {
+      vi.mocked(http.get).mockResolvedValue({ data: [] });
+      await service.getUserPermissions({ userId: "u1", projectKey: "p1" });
+      expect(http.get).toHaveBeenCalledWith(expect.stringContaining("Id=u1"));
+    });
+  });
+
+  describe("write endpoints", () => {
+    it("updateUserAccessControl() posts to the access-control endpoint", async () => {
+      vi.mocked(http.post).mockResolvedValue(mockSuccessResponse);
+      await service.updateUserAccessControl({ itemId: "u1" } as never);
+      expect(http.post).toHaveBeenCalledWith(USER_ENDPOINTS.ACCESS_CONTROL, { itemId: "u1" });
+    });
+
+    it("revokeAccess() posts to the revoke-access endpoint", async () => {
+      vi.mocked(http.post).mockResolvedValue(mockSuccessResponse);
+      await service.revokeAccess({ userId: "u1", organizationId: "o1" } as never);
+      expect(http.post).toHaveBeenCalledWith(USER_ENDPOINTS.REVOKE_ACCESS, {
+        userId: "u1",
+        organizationId: "o1",
+      });
+    });
+  });
+
+  describe("getUserById normalization", () => {
+    it("scopes array roles and permissions across the user's organizations", async () => {
+      vi.mocked(http.get).mockResolvedValue({
+        data: {
+          itemId: "u1",
+          organizationIds: ["o1", "o2"],
+          roles: ["admin"],
+          permissions: ["read"],
+        },
+      });
+      const result = await service.getUserById({ id: "u1", projectKey: "" });
+      expect(result.data.roles).toEqual({ o1: ["admin"], o2: ["admin"] });
+      expect(result.data.permissions).toEqual({ o1: ["read"], o2: ["read"] });
+    });
+
+    it("falls back to the PascalCase OrganizationIds field", async () => {
+      vi.mocked(http.get).mockResolvedValue({
+        data: { itemId: "u1", OrganizationIds: ["o9"], roles: ["viewer"] },
+      });
+      const result = await service.getUserById({ id: "u1", projectKey: "" });
+      expect(result.data.organizationIds).toEqual(["o9"]);
+      expect(result.data.roles).toEqual({ o9: ["viewer"] });
+    });
+  });
+
+  describe("updateMe", () => {
+    it("merges the current record with the payload and posts to update-me", async () => {
+      vi.mocked(http.get).mockResolvedValue({
+        data: { itemId: "u1", firstName: "Ada", organizationIds: ["o1"], roles: { o1: ["admin"] } },
+      });
+      vi.mocked(http.post).mockResolvedValue(mockSuccessResponse);
+      await service.updateMe({ itemId: "u1", lastName: "Lovelace" } as never);
+      const [endpoint, body] = vi.mocked(http.post).mock.calls[0];
+      expect(endpoint).toBe(USER_ENDPOINTS.UPDATE_ME);
+      // Untouched fields survive, requested changes and flattened roles applied.
+      expect(body).toMatchObject({ firstName: "Ada", lastName: "Lovelace", roles: ["admin"] });
+    });
+  });
 });
