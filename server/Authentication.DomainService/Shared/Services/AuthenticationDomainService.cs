@@ -161,7 +161,7 @@ namespace Authentication.DomainService.Services
                     ? await _authenticationRepository.GetIdentityProviderByClientIdAsync(credential.ClientId)
                     : null;
 
-                if (request.RegisterAsIdentityProvider)
+                if (credential.RegisterAsIdentityProvider)
                 {
                     var providerName = !string.IsNullOrWhiteSpace(request.ClientDisplayName)
                         ? request.ClientDisplayName.ToLower().Replace(" ", "-")
@@ -235,9 +235,14 @@ namespace Authentication.DomainService.Services
             credential.ItemId = clientId;
             credential.ClientId = clientId;
             // ClientSecret rule: BE-generated on create only; preserved (never overwritten) on update.
-            credential.ClientSecret = string.IsNullOrWhiteSpace(credential.ClientSecret)
-                ? GenerateClientSecret()
-                : credential.ClientSecret;
+            // Device-flow clients are always public (TokenEndpointAuthMethod "none") and never
+            // authenticate with a secret, so none is generated — and any secret left over from
+            // before the client became device-flow-only is cleared.
+            credential.ClientSecret = request.IsDeviceFlowClient
+                ? null
+                : string.IsNullOrWhiteSpace(credential.ClientSecret)
+                    ? GenerateClientSecret()
+                    : credential.ClientSecret;
 
             return credential;
         }
@@ -272,7 +277,10 @@ namespace Authentication.DomainService.Services
         private static void ApplyOidcClientOptions(OidcClientRegistration credential, SaveOIDCClientRequest request)
         {
             credential.PostLogoutRedirectUris = request.PostLogoutRedirectUris.Where(x => !string.IsNullOrWhiteSpace(x)).Distinct(StringComparer.OrdinalIgnoreCase).ToList();
-            credential.ExternalDiscoveryEndpoint = request.ExternalDiscoveryEndpoint;
+            // ExternalDiscoveryEndpoint only feeds the RegisterAsIdentityProvider branch's
+            // WellKnownUrl, which is itself forced off for device-flow clients below — so it
+            // can never take effect for one. Force off here for the same reason.
+            credential.ExternalDiscoveryEndpoint = request.IsDeviceFlowClient ? null : request.ExternalDiscoveryEndpoint;
             credential.LoginMode = request.LoginMode;
             // Device-flow clients (RFC 8628) are inherently public/native clients — they cannot hold a
             // secret safely, and the FE registration form has no way to opt them into "confidential".
@@ -283,9 +291,15 @@ namespace Authentication.DomainService.Services
                 || string.Equals(request.ClientType, "public", StringComparison.OrdinalIgnoreCase)
                 ? "none"
                 : "client_secret_post";
-            credential.RequirePkce = request.RequirePkce;
+            // PKCE (RFC 7636) has no meaning for device flow (RFC 8628) — there is no browser
+            // redirect/authorize step to protect. Force it off server-side rather than trusting
+            // whatever the FE form happens to submit.
+            credential.RequirePkce = !request.IsDeviceFlowClient && request.RequirePkce;
             credential.RequireConsent = request.RequireConsent;
-            credential.FrontChannelLogoutUri = request.FrontChannelLogoutUri;
+            // Front-channel logout redirects the browser back to the client's logout endpoint —
+            // device-flow clients have no browser session to redirect. Back-channel logout is a
+            // server-to-server call and still applies, so it's left alone.
+            credential.FrontChannelLogoutUri = request.IsDeviceFlowClient ? null : request.FrontChannelLogoutUri;
             credential.BackChannelLogoutUri = request.BackChannelLogoutUri;
             credential.IsActive = request.IsActive;
             credential.IsAutoRedirect = request.IsAutoRedirect;
@@ -298,7 +312,10 @@ namespace Authentication.DomainService.Services
             credential.ClientName = request.ClientDisplayName;
             credential.UiBrandColor = request.ClientBrandColor;
             credential.IsDeviceFlowClient = request.IsDeviceFlowClient;
-            credential.RegisterAsIdentityProvider = request.RegisterAsIdentityProvider;
+            // Federating this client as an upstream IdentityProvider hardcodes the
+            // authorization_code grant and reuses RedirectUris, which device-flow clients
+            // never have — the two features are incompatible. Force off for device flow.
+            credential.RegisterAsIdentityProvider = !request.IsDeviceFlowClient && request.RegisterAsIdentityProvider;
         }
 
         public async Task<GetOIDCClientResponse> GetOidcClientAsync(string tenantId)
@@ -663,6 +680,11 @@ namespace Authentication.DomainService.Services
             var credential = await _authenticationRepository.GetOidcClientRegistrationAsync(itemId);
             if (credential == null)
                 return new RotateOidcClientSecretResponse { IsSuccess = false, Errors = new Dictionary<string, string> { { "not_found", $"OIDC client '{itemId}' not found." } } };
+
+            // Device-flow clients are always public (TokenEndpointAuthMethod "none") and never
+            // hold a secret — reject rotation rather than silently reintroducing one.
+            if (credential.IsDeviceFlowClient)
+                return new RotateOidcClientSecretResponse { IsSuccess = false, Errors = new Dictionary<string, string> { { "not_supported", "Device-flow clients do not use a client secret." } } };
 
             var blocksContext = BlocksContext.GetContext();
             var rotatedAt = DateTime.UtcNow;
