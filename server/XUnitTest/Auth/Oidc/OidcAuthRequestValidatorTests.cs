@@ -18,10 +18,10 @@ namespace XUnitTest.Auth.Oidc
             typeof(AuthorizeRequest).Assembly.GetType(
                 "Authentication.DomainService.Authentication.OidcAuthRequestValidator", throwOnError: true)!;
 
-        private static AuthorizeValidationResult Validate(AuthorizeRequest request)
+        private static AuthorizeValidationResult Validate(AuthorizeRequest request, bool isDeviceFlowClient = false)
         {
             var method = ValidatorType.GetMethod("Validate", BindingFlags.Public | BindingFlags.Static)!;
-            return (AuthorizeValidationResult)method.Invoke(null, new object[] { request })!;
+            return (AuthorizeValidationResult)method.Invoke(null, new object[] { request, isDeviceFlowClient })!;
         }
 
         private static bool ValidatePkceFormat(string challenge)

@@ -1,8 +1,9 @@
+import { sanitizeInternalNavigationTarget } from "@/lib/safe-navigation.util";
 import { showErrorToast } from "@/hooks/use-toast";
 import { isErrorWithErrors } from "@/lib/error";
-import { useAuthStore } from "@seliseblocks/blocks-kit";
+import { useAuthStore } from "@seliseblocks/genesis-os";
 import { useSigninBySSO } from "@blocks-idp/authentication/hooks/use-auth";
-import { useNavigate, useSearchParams } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router";
 import { useEffect, useRef } from "react";
 
 const SSO_GUARD_PREFIX = "sso_activated_";
@@ -54,7 +55,12 @@ function getSsoActivationPath(url: string): string | null {
   const username = params.get("username");
   const ssoCode = params.get("code");
 
-  return username && ssoCode ? `/sso-activate?username=${username}&code=${ssoCode}` : null;
+  if (!username || !ssoCode) return null;
+
+  return sanitizeInternalNavigationTarget(
+    `/sso-activate?username=${encodeURIComponent(username)}&code=${encodeURIComponent(ssoCode)}`,
+    "/login",
+  );
 }
 
 /**
@@ -92,7 +98,7 @@ export function useSsoActivation() {
         if (res.enable_mfa) return navigate(`/mfa-check?mfa_id=${res.mfaId}&mfa_type=${res.mfaType}`);
 
         setAuthenticated();
-        navigate("/app/console");
+        navigate("/app/profile");
       } catch (error) {
         releaseGuard(state as string);
         reset();

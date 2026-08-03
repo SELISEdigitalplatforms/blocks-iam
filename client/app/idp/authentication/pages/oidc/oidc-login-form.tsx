@@ -8,7 +8,7 @@ import {
 import { getRuntimeEnv } from "@/lib/runtime-env";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
-import { Link, useNavigate } from "react-router-dom";
+import { Link, useNavigate } from "react-router";
 import { z } from "zod";
 import { authService } from "@blocks-idp/authentication/services/auth.service";
 import { AUTH_ENDPOINTS } from "@blocks-idp/authentication/constants/endpoint.constant";
@@ -24,7 +24,7 @@ import {
 import { useGetLoginOptions } from "@blocks-idp/authentication/hooks/use-auth";
 import { useGetSignUpSetting } from "@blocks-idp/iam/hooks/use-user";
 import { SsoSignin } from "@blocks-idp/authentication/pages/login/sso-signin";
-import { useAuthStore } from "@seliseblocks/blocks-kit";
+import { useAuthStore } from "@seliseblocks/genesis-os";
 import { sha256 } from "js-sha256";
 import { OidcAccountInfo, OidcAccountSelector } from "./oidc-account-selector";
 import { useOidcAuthAnimation } from "./oidc-auth-shell";
@@ -71,6 +71,10 @@ type OidcLoginFormValues = z.infer<typeof oidcLoginFormSchema>;
 interface OidcLoginFormProps {
   clientId: string;
   redirectUri: string;
+  // Device-flow (RFC 8628) logins have no redirect_uri — the backend login call
+  // completes with `{ success: true }` instead of a redirect_uri, and returnUrl
+  // (the device verification page) is where the browser goes next.
+  returnUrl?: string;
   scope?: string;
   state?: string;
   nonce?: string;
@@ -82,6 +86,7 @@ interface OidcLoginFormProps {
 export const OidcLoginForm = ({
   clientId,
   redirectUri,
+  returnUrl,
   scope,
   state,
   nonce,
@@ -243,7 +248,13 @@ export const OidcLoginForm = ({
         }
 
         await animCtx?.succeedAnimation();
-        window.location.href = data.redirect_uri;
+        // The backend response is the authoritative signal, not the returnUrl prop
+        // (which — like every other OIDC param — gets persisted to localStorage by
+        // OIDCProvider and could still be stale from an earlier device-flow attempt
+        // in this browser). Normal flow always gets `redirect_uri` back; only device
+        // flow (RFC 8628) completes with `{ success: true }` and no redirect_uri, so
+        // returnUrl is only ever used as a fallback, never preferred over it.
+        window.location.href = data.redirect_uri || returnUrl;
       }
 
       

@@ -113,4 +113,41 @@ describe("RoleDetailsContainer", () => {
       description: "Role permissions updated successfully",
     });
   });
+
+  it("does not call the mutation when there are no permission changes", () => {
+    h.state.isEditMode = true;
+    h.state.permissionMap = new Map<string, unknown>([
+      ["c", { itemId: "c", modified: false, changeState: "none", permissionSeverity: 1 }],
+    ]);
+    renderContainer();
+    fireEvent.click(screen.getByRole("button", { name: /save changes/i }));
+    expect(h.setRolesMutate).not.toHaveBeenCalled();
+  });
+
+  it("ignores a modified permission with an unrecognised change state", async () => {
+    h.state.isEditMode = true;
+    h.state.permissionMap = new Map<string, unknown>([
+      ["a", { itemId: "a", modified: true, changeState: "added", permissionSeverity: 1 }],
+      ["x", { itemId: "x", modified: true, changeState: "weird", permissionSeverity: 2 }],
+    ]);
+    h.setRolesMutate.mockResolvedValue({ isSuccess: true });
+    renderContainer();
+    fireEvent.click(screen.getByRole("button", { name: /save changes/i }));
+    await waitFor(() =>
+      expect(h.setRolesMutate).toHaveBeenCalledWith(
+        expect.objectContaining({ addPermissions: ["a"], removePermissions: [] }),
+      ),
+    );
+  });
+
+  it("shows an error toast when saving the permissions throws", async () => {
+    h.state.isEditMode = true;
+    h.state.permissionMap = new Map<string, unknown>([
+      ["a", { itemId: "a", modified: true, changeState: "added", permissionSeverity: 1 }],
+    ]);
+    h.setRolesMutate.mockRejectedValue({ errors: "save failed" });
+    renderContainer();
+    fireEvent.click(screen.getByRole("button", { name: /save changes/i }));
+    await waitFor(() => expect(h.showErrorToast).toHaveBeenCalledWith({ errors: "save failed" }));
+  });
 });

@@ -1,7 +1,7 @@
 import ConfirmationModal from "@/components/confirmation-modal/confirmation-modal";
 import { Dialog } from "@/components/ui-kits/dialog/dialog";
 import { toast } from "@/hooks/use-toast";
-import { useProjectStore } from "@seliseblocks/blocks-kit";
+import { useProjectStore } from "@seliseblocks/genesis-os";
 import { useAccountResendActivation } from "@blocks-idp/iam/hooks/use-account";
 
 type UserResendActivationMailProps = {

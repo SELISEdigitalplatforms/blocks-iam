@@ -18,6 +18,8 @@ using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.Logging.Abstractions;
 using Moq;
+using System.IdentityModel.Tokens.Jwt;
+using System.Security.Claims;
 using System.Text.Json;
 
 namespace XUnitTest.Auth
@@ -487,6 +489,217 @@ namespace XUnitTest.Auth
         {
             var result = await Create().EnsureIdpSessionForOidcCallbackAsync(new DefaultHttpContext(), "", "tenant-1");
             result.Should().BeFalse();
+        }
+
+        // ---------- BuildTokenResponse / ResolveUseTokensCookie / EnsureIdpSessionForLogin ----------
+
+        private const string AppOrigin = "https://app.example.com";
+
+        private static string BuildJwt(string? clientId, string userId, string tenantId)
+        {
+            var claims = new List<Claim>
+            {
+                new(BlocksContext.USER_ID_CLAIM, userId),
+                new(BlocksContext.TENANT_ID_CLAIM, tenantId)
+            };
+            if (clientId != null)
+            {
+                claims.Add(new Claim("client_id", clientId));
+            }
+
+            var token = new JwtSecurityToken(claims: claims);
+            return new JwtSecurityTokenHandler().WriteToken(token);
+        }
+
+        private static Tenant TenantWithApps() => new()
+        {
+            TenantId = TenantId,
+            IsRootTenant = true,
+            DbConnectionString = string.Empty,
+            JwtTokenParameters = new JwtTokenParameters { PrivateCertificatePassword = string.Empty, IssueDate = DateTime.UtcNow },
+            Applications = new List<Applications> { new() { Domain = AppOrigin, CookieDomain = ".example.com" } }
+        };
+
+        private static TokenResponse ValidTokenResponse(string accessToken) => new()
+        {
+            AccessToken = accessToken,
+            RefreshToken = "refresh-token",
+            TokenType = "Bearer",
+            ExpiresIn = 3600,
+            Scope = "openid email",
+            IdToken = "id-token",
+            ExpiresUtc = DateTime.UtcNow.AddHours(1),
+            RefreshExpiresUtc = DateTime.UtcNow.AddHours(2)
+        };
+
+        [Fact]
+        public async Task BuildFlowResult_TokenResponseHasError_ReturnsErrorStatus()
+        {
+            var result = await Create().BuildFlowResultAsync(new AuthenticationFlowResult
+            {
+                TokenResponse = new TokenResponse { Error = "invalid_grant", ErrorDescription = "bad", StatusCode = 403 }
+            }, new DefaultHttpContext());
+
+            result.Should().BeOfType<ObjectResult>().Which.StatusCode.Should().Be(403);
+        }
+
+        [Fact]
+        public async Task BuildFlowResult_TokenResponseErrorWithoutStatus_DefaultsToBadRequest()
+        {
+            var result = await Create().BuildFlowResultAsync(new AuthenticationFlowResult
+            {
+                TokenResponse = new TokenResponse { Error = "invalid_grant", StatusCode = 0 }
+            }, new DefaultHttpContext());
+
+            result.Should().BeOfType<ObjectResult>().Which.StatusCode.Should().Be(StatusCodes.Status400BadRequest);
+        }
+
+        [Fact]
+        public async Task BuildFlowResult_ClientPrefersBody_ReturnsTokensInBodyAndCreatesSession()
+        {
+            var jwt = BuildJwt("client-1", "user-1", TenantId);
+            _repo.Setup(r => r.GetOidcClientRegistrationAsync("client-1"))
+                .ReturnsAsync(new OidcClientRegistration { ItemId = "client-1", ClientId = "client-1", UseTokensCookie = false });
+            _session.Setup(s => s.CreateSessionAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>())).ReturnsAsync("sess-1");
+
+            var ctx = new DefaultHttpContext();
+            var result = await Create().BuildFlowResultAsync(new AuthenticationFlowResult { TokenResponse = ValidTokenResponse(jwt) }, ctx);
+
+            var ok = result.Should().BeOfType<OkObjectResult>().Subject;
+            ok.Value.Should().NotBeNull();
+            ok.Value!.GetType().GetProperty("access_token").Should().NotBeNull();
+            _session.Verify(s => s.CreateSessionAsync("user-1", TenantId, It.IsAny<string>()), Times.Once);
+        }
+
+        [Fact]
+        public async Task BuildFlowResult_NoClientId_UsesCookies_WhenDomainResolves()
+        {
+            var jwt = BuildJwt(null, "user-1", TenantId);
+            _tenants.Setup(t => t.GetTenantByID(TenantId)).Returns(TenantWithApps());
+            _session.Setup(s => s.CreateSessionAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>())).ReturnsAsync("sess-1");
+
+            var ctx = new DefaultHttpContext();
+            ctx.Request.Headers["Origin"] = AppOrigin;
+
+            var result = await Create().BuildFlowResultAsync(new AuthenticationFlowResult { TokenResponse = ValidTokenResponse(jwt) }, ctx);
+
+            result.Should().BeOfType<OkObjectResult>();
+            ctx.Response.Headers.Should().ContainKey("Set-Cookie");
+        }
+
+        [Fact]
+        public async Task BuildFlowResult_ExistingValidSession_WithMatchingAccount_UpdatesActivityAndRotates()
+        {
+            var jwt = BuildJwt("client-1", "user-1", TenantId);
+            _repo.Setup(r => r.GetOidcClientRegistrationAsync("client-1"))
+                .ReturnsAsync(new OidcClientRegistration { ItemId = "client-1", ClientId = "client-1", UseTokensCookie = false });
+
+            var cookieKey = IdpConstants.BuildIdpSessionCookieKey(TenantId);
+            var ctx = HttpContextWithCookie(cookieKey, "sess-existing");
+
+            _session.Setup(s => s.GetSessionAsync("sess-existing")).ReturnsAsync(new IdpSessionModel
+            {
+                SessionId = "sess-existing",
+                Accounts = new List<IdpSessionAccount> { new() { UserId = "user-1", TenantId = TenantId } },
+                IdleExpiry = DateTime.UtcNow.AddHours(1),
+                AbsoluteExpiry = DateTime.UtcNow.AddHours(2)
+            });
+            _session.Setup(s => s.UpdateActivityAsync("sess-existing")).ReturnsAsync(true);
+            _session.Setup(s => s.RotateSessionAsync("sess-existing", It.IsAny<string>())).ReturnsAsync("sess-rotated");
+
+            var result = await Create().BuildFlowResultAsync(new AuthenticationFlowResult { TokenResponse = ValidTokenResponse(jwt) }, ctx);
+
+            result.Should().BeOfType<OkObjectResult>();
+            _session.Verify(s => s.UpdateActivityAsync("sess-existing"), Times.Once);
+            _session.Verify(s => s.RotateSessionAsync("sess-existing", It.IsAny<string>()), Times.Once);
+            _session.Verify(s => s.CreateSessionAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>()), Times.Never);
+        }
+
+        [Fact]
+        public async Task BuildFlowResult_ExistingValidSession_WithoutMatchingAccount_AddsAccount()
+        {
+            var jwt = BuildJwt("client-1", "user-1", TenantId);
+            _repo.Setup(r => r.GetOidcClientRegistrationAsync("client-1"))
+                .ReturnsAsync(new OidcClientRegistration { ItemId = "client-1", ClientId = "client-1", UseTokensCookie = false });
+
+            var cookieKey = IdpConstants.BuildIdpSessionCookieKey(TenantId);
+            var ctx = HttpContextWithCookie(cookieKey, "sess-existing");
+
+            _session.Setup(s => s.GetSessionAsync("sess-existing")).ReturnsAsync(new IdpSessionModel
+            {
+                SessionId = "sess-existing",
+                Accounts = new List<IdpSessionAccount> { new() { UserId = "other-user", TenantId = TenantId } },
+                IdleExpiry = DateTime.UtcNow.AddHours(1),
+                AbsoluteExpiry = DateTime.UtcNow.AddHours(2)
+            });
+            _session.Setup(s => s.AddAccountAsync("sess-existing", "user-1", TenantId, "user-1")).ReturnsAsync(true);
+            _session.Setup(s => s.RotateSessionAsync("sess-existing", It.IsAny<string>())).ReturnsAsync("sess-rotated");
+
+            var result = await Create().BuildFlowResultAsync(new AuthenticationFlowResult { TokenResponse = ValidTokenResponse(jwt) }, ctx);
+
+            result.Should().BeOfType<OkObjectResult>();
+            _session.Verify(s => s.AddAccountAsync("sess-existing", "user-1", TenantId, "user-1"), Times.Once);
+        }
+
+        [Fact]
+        public async Task BuildFlowResult_ExistingRevokedSession_CreatesNewSession()
+        {
+            var jwt = BuildJwt("client-1", "user-1", TenantId);
+            _repo.Setup(r => r.GetOidcClientRegistrationAsync("client-1"))
+                .ReturnsAsync(new OidcClientRegistration { ItemId = "client-1", ClientId = "client-1", UseTokensCookie = false });
+
+            var cookieKey = IdpConstants.BuildIdpSessionCookieKey(TenantId);
+            var ctx = HttpContextWithCookie(cookieKey, "sess-existing");
+
+            _session.Setup(s => s.GetSessionAsync("sess-existing")).ReturnsAsync(new IdpSessionModel
+            {
+                SessionId = "sess-existing",
+                RevokedAt = DateTime.UtcNow,
+                IdleExpiry = DateTime.UtcNow.AddHours(1),
+                AbsoluteExpiry = DateTime.UtcNow.AddHours(2)
+            });
+            _session.Setup(s => s.CreateSessionAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>())).ReturnsAsync("sess-new");
+
+            var result = await Create().BuildFlowResultAsync(new AuthenticationFlowResult { TokenResponse = ValidTokenResponse(jwt) }, ctx);
+
+            result.Should().BeOfType<OkObjectResult>();
+            _session.Verify(s => s.CreateSessionAsync("user-1", TenantId, It.IsAny<string>()), Times.Once);
+        }
+
+        [Fact]
+        public async Task BuildFlowResult_AccessTokenMissingClaims_SkipsSessionEnsure()
+        {
+            // Token with no user_id/tenant_id claims: EnsureIdpSessionForLoginAsync returns before touching the session store.
+            var token = new JwtSecurityTokenHandler().WriteToken(new JwtSecurityToken(claims: new[] { new Claim("client_id", "client-1") }));
+            _repo.Setup(r => r.GetOidcClientRegistrationAsync("client-1"))
+                .ReturnsAsync(new OidcClientRegistration { ItemId = "client-1", ClientId = "client-1", UseTokensCookie = false });
+
+            var result = await Create().BuildFlowResultAsync(new AuthenticationFlowResult { TokenResponse = ValidTokenResponse(token) }, new DefaultHttpContext());
+
+            result.Should().BeOfType<OkObjectResult>();
+            _session.Verify(s => s.CreateSessionAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>()), Times.Never);
+        }
+
+        // ---------- GetPrincipalFromTokenAsync ----------
+
+        [Fact]
+        public async Task GetPrincipalFromToken_TenantNotFound_ReturnsNull()
+        {
+            _tenants.Setup(t => t.GetTenantByID("missing")).Returns((Tenant)null!);
+
+            var result = await Create().GetPrincipalFromTokenAsync(new DefaultHttpContext().Request, "missing");
+
+            result.Should().BeNull();
+        }
+
+        [Fact]
+        public async Task GetPrincipalFromToken_NoToken_ReturnsNull()
+        {
+            _tenants.Setup(t => t.GetTenantByID(TenantId)).Returns(TenantWithApps());
+
+            var result = await Create().GetPrincipalFromTokenAsync(new DefaultHttpContext().Request, TenantId);
+
+            result.Should().BeNull();
         }
     }
 }

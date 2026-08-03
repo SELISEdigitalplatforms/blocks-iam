@@ -1,9 +1,9 @@
-import { useEffect, useState } from "react";
-import { useSearchParams, useNavigate } from "react-router-dom";
+import { useEffect } from "react";
+import { useSearchParams, useNavigate } from "react-router";
 import { OIDCPermissionWrapper } from "@blocks-idp/authentication/pages/oidc/permission-wrapper";
 import { OIDCSignin } from "@blocks-idp/authentication/pages/oidc/oidc-signin";
 import { authService } from "@blocks-idp/authentication/services/auth.service";
-import { useAuthStore } from "@seliseblocks/blocks-kit";
+import { useAuthStore } from "@seliseblocks/genesis-os";
 import { getRuntimeEnv } from "@/lib/runtime-env";
 import { Loader } from "lucide-react";
 
@@ -11,7 +11,6 @@ export default function OidcIndexPage() {
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
   const { setAuthenticated, setTokens } = useAuthStore();
-  const [isExchanging, setIsExchanging] = useState(false);
 
   const code = searchParams.get("code");
   const state = searchParams.get("state");
@@ -20,7 +19,6 @@ export default function OidcIndexPage() {
   useEffect(() => {
     if (!code || !state) return;
 
-    setIsExchanging(true);
     authService.verifyOidc({ code, state })
       .then((res) => {
         const isLocalhost = getRuntimeEnv("BLOCKS_IAM_BASE_URL")?.includes("localhost");
@@ -30,12 +28,11 @@ export default function OidcIndexPage() {
         }
         setAuthenticated();
 
-        window.location.href = `${window.location.origin}/console`;
+        window.location.href = `${window.location.origin}/app/profile`;
       })
       .catch(() => {
         navigate("/oidc/error");
-      })
-      .finally(() => setIsExchanging(false));
+      });
   }, [code, state]);
 
   if (code && state) {

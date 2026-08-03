@@ -43,10 +43,19 @@ export const PermissionGroupSection = ({ group, onTrigger }: PermissionGroupSect
       className="mb-4 overflow-hidden rounded-sm border bg-background"
     >
       <div
+        role="button"
+        tabIndex={0}
         className="bg-primary/5 px-4 py-3 hover:no-underline focus:no-underline dark:bg-gray-900 [&>svg]:hidden"
         onClick={(e) => {
           e.stopPropagation();
           onTrigger();
+        }}
+        onKeyDown={(e) => {
+          if (e.key === "Enter" || e.key === " ") {
+            e.preventDefault();
+            e.stopPropagation();
+            onTrigger();
+          }
         }}
       >
         <div className="flex w-full items-start justify-between gap-3">

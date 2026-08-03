@@ -60,6 +60,9 @@ export const OrganizationRolesList = ({ roles, onDelete, onSave }: OrganizationR
             onClick={(e) => {
               e.stopPropagation();
             }}
+            onKeyDown={(e) => {
+              e.stopPropagation();
+            }}
           >
             <DeleteOrganizationRole role={row.original} onDelete={handleDelete} onSave={onSave} />
           </div>
