@@ -39,9 +39,13 @@ const getFormSchema = (type: number) =>
 export const MfaCheckFrom = () => {
   const navigate = useNavigate();
   const animCtx = useOidcAuthAnimation();
-  const [{ mfa_id, mfa_type }] = useQueryStates({
+  const [{ mfa_id, mfa_type, returnUrl }] = useQueryStates({
     mfa_id: parseAsString.withDefault(""),
     mfa_type: parseAsInteger.withDefault(0),
+    // Carried through from a device-flow (RFC 8628) login that required MFA — the
+    // backend's post-MFA response has no redirect_uri for a device-flow client, so
+    // this is where the browser goes back to instead.
+    returnUrl: parseAsString.withDefault(""),
   });
   const [isLoading, setIsLoading] = useState(false);
   const [serverError, setServerError] = useState<string | null>(null);
@@ -96,6 +100,11 @@ export const MfaCheckFrom = () => {
         if (redirectUrl) {
           await animCtx?.succeedAnimation();
           window.location.href = redirectUrl;
+          return;
+        }
+        if (returnUrl) {
+          await animCtx?.succeedAnimation();
+          window.location.href = returnUrl;
           return;
         }
         await animCtx?.succeedAnimation();
