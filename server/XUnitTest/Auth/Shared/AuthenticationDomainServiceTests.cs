@@ -448,8 +448,11 @@ namespace XUnitTest.Auth.Shared
         [Fact]
         public async Task SaveOIDCClient_HappyPath_SavesAndDoesNotRegisterProvider()
         {
+            OidcClientRegistration? saved = null;
             _repo.Setup(r => r.GetOidcClientRegistrationAsync(It.IsAny<string>())).ReturnsAsync((OidcClientRegistration)null!);
-            _repo.Setup(r => r.SaveOidcClientRegistrationAsync(It.IsAny<OidcClientRegistration>())).Returns(Task.CompletedTask);
+            _repo.Setup(r => r.SaveOidcClientRegistrationAsync(It.IsAny<OidcClientRegistration>()))
+                .Callback<OidcClientRegistration>(credential => saved = credential)
+                .Returns(Task.CompletedTask);
             _repo.Setup(r => r.GetIdentityProviderByClientIdAsync(It.IsAny<string>())).ReturnsAsync((IdentityProvider)null!);
 
             var result = await Create().SaveOIDCClientAsync(new SaveOIDCClientRequest
@@ -461,6 +464,8 @@ namespace XUnitTest.Auth.Shared
             });
 
             result.IsSuccess.Should().BeTrue();
+            saved.Should().NotBeNull();
+            saved!.AllowedScopes.Should().Contain("offline_access");
             _repo.Verify(r => r.SaveOidcClientRegistrationAsync(It.IsAny<OidcClientRegistration>()), Times.Once);
             _repo.Verify(r => r.CreateIdentityProviderAsync(It.IsAny<IdentityProvider>()), Times.Never);
         }
@@ -490,6 +495,7 @@ namespace XUnitTest.Auth.Shared
             saved!.IsDeviceFlowClient.Should().BeTrue();
             saved.RedirectUris.Should().BeEmpty();
             saved.AllowedResponseTypes.Should().BeEmpty();
+            saved.AllowedScopes.Should().Contain("offline_access");
         }
 
         [Fact]
@@ -516,6 +522,7 @@ namespace XUnitTest.Auth.Shared
             saved.Should().NotBeNull();
             saved!.ClientType.Should().Be("public");
             saved.TokenEndpointAuthMethod.Should().Be("none");
+            saved.AllowedScopes.Should().Contain("offline_access");
         }
 
         [Fact]
@@ -551,6 +558,8 @@ namespace XUnitTest.Auth.Shared
             saved.Should().NotBeNull();
             saved!.ClientType.Should().Be("public");
             saved.TokenEndpointAuthMethod.Should().Be("none");
+            saved.ClientSecret.Should().BeNull();
+            saved.AllowedScopes.Should().Contain("offline_access");
         }
 
         [Fact]

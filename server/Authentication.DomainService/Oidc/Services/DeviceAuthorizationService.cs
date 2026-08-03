@@ -91,6 +91,12 @@ namespace Authentication.DomainService.Oidc.Services
                 throw new DeviceAuthorizationException("invalid_scope", "no requested scope is allowed for this client");
             }
 
+            var requestedScopes = resolvedScopes.ToList();
+            if (!requestedScopes.Any(scope => string.Equals(scope, "offline_access", StringComparison.OrdinalIgnoreCase)))
+            {
+                requestedScopes.Add("offline_access");
+            }
+
             var options = _options.Value;
             DeviceAuthorizationRequestModel entity;
             string deviceCode;
@@ -107,7 +113,7 @@ namespace Authentication.DomainService.Oidc.Services
                     UserCode = userCode,
                     ClientId = request.ClientId,
                     TenantId = blocksContext.TenantId,
-                    RequestedScopes = string.Join(' ', resolvedScopes),
+                    RequestedScopes = string.Join(' ', requestedScopes),
                     Status = DeviceAuthorizationStatus.Pending,
                     CreatedAt = now,
                     ExpiresAt = now.Add(options.Expiration),
