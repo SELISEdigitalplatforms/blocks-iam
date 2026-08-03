@@ -56,7 +56,7 @@ describe("useSsoActivation", () => {
     expect(mockMutateAsync).not.toHaveBeenCalled();
   });
 
-  it("should call signinBySSO and redirect to console on success", async () => {
+  it("should call signinBySSO and redirect to the profile page on success", async () => {
     mockGet.mockImplementation((key: string) =>
       key === "code" ? "auth-code" : key === "state" ? "state-token" : null,
     );
@@ -76,7 +76,7 @@ describe("useSsoActivation", () => {
       }),
     );
     await waitFor(() => expect(mockSetAuthenticated).toHaveBeenCalled());
-    expect(mockPush).toHaveBeenCalledWith("/app/console");
+    expect(mockPush).toHaveBeenCalledWith("/app/profile");
   });
 
   it("should redirect to MFA check when MFA is enabled", async () => {

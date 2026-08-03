@@ -66,7 +66,7 @@ describe("OidcIndexPage", () => {
     expect(screen.getByTestId("permission-wrapper")).toBeInTheDocument();
   });
 
-  it("exchanges the code, stores localhost tokens and redirects to console", async () => {
+  it("exchanges the code, stores localhost tokens and redirects to the profile page", async () => {
     h.verifyOidc.mockResolvedValue({
       access_token: "at",
       refresh_token: "rt",
@@ -76,7 +76,7 @@ describe("OidcIndexPage", () => {
     await vi.waitFor(() => expect(h.setAuthenticated).toHaveBeenCalled());
     expect(h.verifyOidc).toHaveBeenCalledWith({ code: "c1", state: "s1" });
     expect(h.setTokens).toHaveBeenCalledWith("at", "rt");
-    expect(window.location.href).toBe("http://localhost/console");
+    expect(window.location.href).toBe("http://localhost/app/profile");
   });
 
   it("navigates to the error route when the exchange fails", async () => {

@@ -172,6 +172,8 @@ namespace XUnitTest.Auth.Oidc
             metadata.Should().NotBeNull();
             metadata.AuthorizationEndpoint.Should().Contain("oidc/authorize");
             metadata.TokenEndpoint.Should().Contain("oidc/token");
+            metadata.DeviceAuthorizationEndpoint.Should().Contain("oidc/device_authorization");
+            metadata.DeviceAuthorizationEndpoint.Should().NotContain("oauth/device_authorization");
             metadata.JwksUri.Should().Contain("jwks.json");
         }
 
@@ -181,6 +183,8 @@ namespace XUnitTest.Auth.Oidc
             var metadata = await CreateDiscovery().GetAuthorizationServerMetadataAsync();
             metadata.Should().NotBeNull();
             metadata.TokenEndpoint.Should().Contain("oidc/token");
+            metadata.DeviceAuthorizationEndpoint.Should().Contain("oidc/device_authorization");
+            metadata.DeviceAuthorizationEndpoint.Should().NotContain("oauth/device_authorization");
             metadata.RevocationEndpoint.Should().Contain("oidc/revoke");
             metadata.IntrospectionEndpoint.Should().Contain("oidc/introspect");
         }

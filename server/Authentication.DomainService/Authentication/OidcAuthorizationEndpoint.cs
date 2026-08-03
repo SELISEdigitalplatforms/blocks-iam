@@ -89,7 +89,16 @@ namespace Authentication.DomainService.Authentication
                     Prompt = prompt
                 };
 
-                var validationResult = OidcAuthRequestValidator.Validate(authorizeRequest);
+                // A tentative lookup, only to learn whether this is a device-flow client before
+                // validating — deliberately NOT short-circuited on a missing/unknown client here,
+                // so request-shape validation errors keep taking precedence over "unknown client"
+                // exactly as before. The authoritative lookup (with its own null-check) still
+                // happens below, at its original place in the flow. Skipped entirely when
+                // client_id itself is blank, so invalid input still fails validation without
+                // touching any dependency, same as before this lookup existed.
+                var isDeviceFlowClient = !string.IsNullOrWhiteSpace(client_id)
+                    && ((await _authenticationRepository.GetOidcClientRegistrationAsync(client_id))?.IsDeviceFlowClient ?? false);
+                var validationResult = OidcAuthRequestValidator.Validate(authorizeRequest, isDeviceFlowClient);
 
                 if (!validationResult.IsValid)
                 {
@@ -113,6 +122,8 @@ namespace Authentication.DomainService.Authentication
                         error_description = string.Join("; ", validationResult.Errors)
                     });
                 }
+
+                scope = EnsureOfflineAccess(scope);
 
                 var effectiveSessionId = request.Cookies[IdpConstants.BuildIdpSessionCookieKey(tenant_id)];
 
@@ -165,6 +176,16 @@ namespace Authentication.DomainService.Authentication
                 {
                     _logger.LogWarning("Unknown client: {ClientId}", client_id);
                     return new BadRequestObjectResult(new { error = "invalid_client" });
+                }
+
+                if (client.IsDeviceFlowClient)
+                {
+                    // Device flow (RFC 8628): this call's only job was to authenticate the user
+                    // and establish the IdP session above — there is no redirect_uri to validate
+                    // and no authorization code to mint. The SPA already knows to return to the
+                    // device verification page (returnUrl) on success.
+                    _logger.LogInformation("Device-flow login completed for user {UserId}, client {ClientId}", resolvedUserId, client_id);
+                    return new OkObjectResult(new { success = true });
                 }
 
                 if (!client.RedirectUris.Contains(redirect_uri))
@@ -314,6 +335,21 @@ namespace Authentication.DomainService.Authentication
             }
 
             return amr;
+        }
+
+        private static string EnsureOfflineAccess(string scope)
+        {
+            var scopes = (scope ?? string.Empty)
+                .Split([' ', ','], StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .ToList();
+
+            if (!scopes.Any(s => string.Equals(s, "offline_access", StringComparison.OrdinalIgnoreCase)))
+            {
+                scopes.Add("offline_access");
+            }
+
+            return string.Join(' ', scopes);
         }
 
         private async Task<string> EnsureIdpSessionAsync(HttpRequest request, HttpResponse response, string? currentSessionId, string userId, string? tenantId)

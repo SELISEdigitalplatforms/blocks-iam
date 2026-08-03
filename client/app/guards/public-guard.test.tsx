@@ -38,11 +38,11 @@ describe("PublicGuard", () => {
     expect(navigateMock).not.toHaveBeenCalled();
   });
 
-  it("redirects an authenticated visitor to the console", async () => {
+  it("redirects an authenticated visitor to the profile page", async () => {
     authStore.isAuthenticated = true;
     renderAt("/login");
     await waitFor(() =>
-      expect(navigateMock).toHaveBeenCalledWith("/app/console", { replace: true }),
+      expect(navigateMock).toHaveBeenCalledWith("/app/profile", { replace: true }),
     );
     expect(screen.queryByText("public-child")).not.toBeInTheDocument();
   });

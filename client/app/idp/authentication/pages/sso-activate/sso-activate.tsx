@@ -103,7 +103,7 @@ export const SsoActivate = ({ oauthParams }: SsoActivateProps) => {
         }
         
         setAuthenticated();
-        navigate("/app/console");
+        navigate("/app/profile");
       } else {
         showErrorToast({ errors: data.errors || "Something went wrong" });
       }

@@ -462,7 +462,7 @@ public sealed class DiscoveryService : IDiscoveryService
         var userInfoEndpoint = BuildUrl(apiBase, [apiPrefix, "auth", "userinfo"]) + tenantQuery;
         var revocationEndpoint = BuildUrl(apiBase, [apiPrefix, "oidc", "revoke"]) + tenantQuery;
         var introspectionEndpoint = BuildUrl(apiBase, [apiPrefix, "oidc", "introspect"]) + tenantQuery;
-        var deviceAuthorizationEndpoint = BuildUrl(apiBase, [apiPrefix, "oauth", "device_authorization"]) + tenantQuery;
+        var deviceAuthorizationEndpoint = BuildUrl(apiBase, [apiPrefix, "oidc", "device_authorization"]) + tenantQuery;
 
         return new ResolvedOidcEndpoints
         {

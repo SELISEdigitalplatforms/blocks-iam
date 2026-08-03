@@ -166,12 +166,19 @@ namespace Authentication.DomainService.Authentication
                 return (new BadRequestObjectResult(new { error = "invalid_client", error_description = "client_id is required" }), null, null, null);
             }
 
-            if (string.IsNullOrWhiteSpace(request.RedirectUri))
+            var oidcClient = await _authenticationRepository.GetOidcClientRegistrationAsync(request.ClientId);
+
+            // Device-flow clients (RFC 8628) have no redirect_uri — this call only needs to
+            // authenticate the user and establish the IdP session; the SPA already knows to
+            // return to the device verification page (returnUrl) afterward. Checked ahead of the
+            // "client not found" error below (same precedence as before this exemption existed)
+            // so an unrelated bad client_id still surfaces as a redirect_uri error, unchanged.
+            if (!(oidcClient?.IsDeviceFlowClient ?? false) && string.IsNullOrWhiteSpace(request.RedirectUri))
             {
                 return (new BadRequestObjectResult(new { error = "invalid_request", error_description = "redirect_uri is required" }), null, null, null);
             }
 
-            if (!await HasOidcClientConfigurationAsync(request.ClientId))
+            if (oidcClient == null)
             {
                 return (new BadRequestObjectResult(new { error = "invalid_client", error_description = $"OIDC client '{request.ClientId}' not found or not configured" }), null, null, null);
             }
@@ -411,17 +418,6 @@ namespace Authentication.DomainService.Authentication
                     { nameof(User.LastUpdatedDate), DateTime.UtcNow },
                     { nameof(User.LastUpdatedBy), user.ItemId }
                 });
-        }
-
-        private async Task<bool> HasOidcClientConfigurationAsync(string clientId)
-        {
-            if (string.IsNullOrWhiteSpace(clientId))
-            {
-                return false;
-            }
-
-            var oidcClient = await _authenticationRepository.GetOidcClientRegistrationAsync(clientId);
-            return oidcClient != null;
         }
 
         internal sealed class OidcMfaLoginContext

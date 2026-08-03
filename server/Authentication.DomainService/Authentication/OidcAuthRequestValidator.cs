@@ -11,7 +11,7 @@ namespace Authentication.DomainService.Authentication
     /// </summary>
     internal static class OidcAuthRequestValidator
     {
-        public static AuthorizeValidationResult Validate(AuthorizeRequest request)
+        public static AuthorizeValidationResult Validate(AuthorizeRequest request, bool isDeviceFlowClient = false)
         {
             var errors = new List<string>();
 
@@ -29,7 +29,9 @@ namespace Authentication.DomainService.Authentication
                 errors.Add("response_type must be 'code'");
             }
 
-            if (string.IsNullOrWhiteSpace(request.RedirectUri))
+            // Device-flow clients (RFC 8628) have no browser redirect step, so redirect_uri
+            // doesn't apply to them — skip this rule when the caller identifies one.
+            if (!isDeviceFlowClient && string.IsNullOrWhiteSpace(request.RedirectUri))
             {
                 errors.Add("redirect_uri is required");
             }

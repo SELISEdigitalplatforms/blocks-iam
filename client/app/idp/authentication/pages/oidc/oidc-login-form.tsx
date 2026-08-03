@@ -71,6 +71,10 @@ type OidcLoginFormValues = z.infer<typeof oidcLoginFormSchema>;
 interface OidcLoginFormProps {
   clientId: string;
   redirectUri: string;
+  // Device-flow (RFC 8628) logins have no redirect_uri — the backend login call
+  // completes with `{ success: true }` instead of a redirect_uri, and returnUrl
+  // (the device verification page) is where the browser goes next.
+  returnUrl?: string;
   scope?: string;
   state?: string;
   nonce?: string;
@@ -82,6 +86,7 @@ interface OidcLoginFormProps {
 export const OidcLoginForm = ({
   clientId,
   redirectUri,
+  returnUrl,
   scope,
   state,
   nonce,
@@ -243,7 +248,13 @@ export const OidcLoginForm = ({
         }
 
         await animCtx?.succeedAnimation();
-        window.location.href = data.redirect_uri;
+        // The backend response is the authoritative signal, not the returnUrl prop
+        // (which — like every other OIDC param — gets persisted to localStorage by
+        // OIDCProvider and could still be stale from an earlier device-flow attempt
+        // in this browser). Normal flow always gets `redirect_uri` back; only device
+        // flow (RFC 8628) completes with `{ success: true }` and no redirect_uri, so
+        // returnUrl is only ever used as a fallback, never preferred over it.
+        window.location.href = data.redirect_uri || returnUrl;
       }
 
       

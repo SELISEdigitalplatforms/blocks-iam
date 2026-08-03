@@ -2,6 +2,7 @@ using Authentication.DomainService.Oidc.Repositories;
 using Idp.DomainService.Oidc.Contracts;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Options;
 
 namespace Authentication.DomainService.Oidc.Services
 {
@@ -12,17 +13,17 @@ namespace Authentication.DomainService.Oidc.Services
     /// </summary>
     public sealed class DeviceCleanupWorker : BackgroundService
     {
-        private static readonly TimeSpan SweepInterval = TimeSpan.FromMinutes(5);
-        private const int BatchLimit = 500;
-
         private readonly IDeviceAuthorizationRepository _repository;
+        private readonly IOptions<DeviceFlowOptions> _options;
         private readonly ILogger<DeviceCleanupWorker> _logger;
 
         public DeviceCleanupWorker(
             IDeviceAuthorizationRepository repository,
+            IOptions<DeviceFlowOptions> options,
             ILogger<DeviceCleanupWorker> logger)
         {
             _repository = repository;
+            _options = options;
             _logger = logger;
         }
 
@@ -54,7 +55,7 @@ namespace Authentication.DomainService.Oidc.Services
 
                 try
                 {
-                    await Task.Delay(SweepInterval, stoppingToken);
+                    await Task.Delay(_options.Value.CleanupSweepInterval, stoppingToken);
                 }
                 catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
                 {
@@ -66,7 +67,7 @@ namespace Authentication.DomainService.Oidc.Services
         private async Task SweepOnceAsync(CancellationToken ct)
         {
             var now = DateTime.UtcNow;
-            var ids = await _repository.GetExpiredIdsAsync(now, BatchLimit, ct);
+            var ids = await _repository.GetExpiredIdsAsync(now, _options.Value.NormalizedCleanupBatchLimit, ct);
             if (ids.Count == 0)
             {
                 return;
