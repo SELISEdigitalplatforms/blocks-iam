@@ -1,4 +1,4 @@
-import { useScopedPath } from "@seliseblocks/blocks-kit/hooks";
+import { useScopedPath } from "@seliseblocks/genesis-os/hooks";
 
 export { useScopedPath };
 

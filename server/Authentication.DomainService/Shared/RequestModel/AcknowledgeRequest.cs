@@ -1,13 +1,14 @@
-namespace Authentication.DomainService.Shared.RequestModel
-{
-    public sealed class AcknowledgeRequest
-    {
-        public string? ClientId { get; set; }
-        public string? RedirectUri { get; set; }
-        public string? Scope { get; set; }
-        public string? State { get; set; }
-        public string? Nonce { get; set; }
-        public bool IsAcknowledged { get; set; }
-        public string? Username { get; set; }
-    }
-}
+// DEADCODE 2026-07-29: type(s) unreferenced anywhere in server or XUnitTest; whole file commented pending review
+// namespace Authentication.DomainService.Shared.RequestModel
+// {
+//     public sealed class AcknowledgeRequest
+//     {
+//         public string? ClientId { get; set; }
+//         public string? RedirectUri { get; set; }
+//         public string? Scope { get; set; }
+//         public string? State { get; set; }
+//         public string? Nonce { get; set; }
+//         public bool IsAcknowledged { get; set; }
+//         public string? Username { get; set; }
+//     }
+// }

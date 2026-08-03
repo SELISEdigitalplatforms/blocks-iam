@@ -4,7 +4,7 @@ import { activationFormDefaultValue, activationFormSchema } from "./utils";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { Captcha } from "@/components/captcha";
-import { useNavigate } from "react-router-dom";
+import { useNavigate } from "react-router";
 import { useEffect, useRef, useState } from "react";
 import { useAccountActivation } from "@blocks-idp/iam/hooks/use-account";
 import { isErrorWithErrors } from "@/lib/error";
@@ -56,7 +56,10 @@ export const ActivationForm = ({ code, tenantId }: ActivationFormProps) => {
   }, [captchaCode, requirementsMet, resetCaptcha]);
 
   useEffect(() => {
-    if (!code) navigate("/login");
+    if (!code) {
+      navigate("/login");
+      return;
+    }
   }, [code, navigate]);
 
   const password = form.watch("password");

@@ -98,6 +98,7 @@ namespace Authentication.DomainService.Utilities
             serviceCollection.AddSingleton<ISocialLogInServiceProvider, SocialLogInServiceProvider>();
 
             // RFC 8628 Device Authorization Grant
+            serviceCollection.AddOptions<DeviceFlowOptions>();
             serviceCollection.AddSingleton<DeviceCodeGenerator>();
             serviceCollection.AddSingleton<IDeviceAuthorizationRepository, DeviceAuthorizationRepository>();
             serviceCollection.AddSingleton<IDeviceAuthorizationService, DeviceAuthorizationService>();

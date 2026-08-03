@@ -7,6 +7,7 @@ using FluentAssertions;
 using Idp.DomainService.Oidc.Contracts;
 using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.Logging.Abstractions;
+using Microsoft.Extensions.Options;
 using Moq;
 
 namespace XUnitTest.Auth.Oidc
@@ -58,6 +59,7 @@ namespace XUnitTest.Auth.Oidc
                 new DeviceCodeGenerator(),
                 authRepo.Object,
                 tenants.Object,
+                Options.Create(new DeviceFlowOptions()),
                 NullLogger<DeviceAuthorizationService>.Instance);
         }
 
@@ -107,6 +109,7 @@ namespace XUnitTest.Auth.Oidc
                 new DeviceCodeGenerator(),
                 authRepo.Object,
                 tenants.Object,
+                Options.Create(new DeviceFlowOptions()),
                 NullLogger<DeviceAuthorizationService>.Instance);
 
             var act = async () => await service.RequestAsync(new DeviceAuthorizationRequest { ClientId = "cli" }, new DefaultHttpContext().Request);
@@ -153,7 +156,7 @@ namespace XUnitTest.Auth.Oidc
         public async Task RequestAsync_ReturnsStandardRfc8628Payload_OnSuccess()
         {
             SetContext("t1");
-            var client = new OidcClientRegistration { ClientId = "c1", IsDeviceFlowClient = true, IsActive = true, AllowedScopes = new List<string> { "openid", "profile" } };
+            var client = new OidcClientRegistration { ClientId = "c1", IsDeviceFlowClient = true, IsActive = true, AllowedScopes = new List<string> { "openid", "profile", "offline_access" } };
             var repo = new Mock<IDeviceAuthorizationRepository>();
             repo.Setup(r => r.CreateAsync(It.IsAny<DeviceAuthorizationRequestModel>(), It.IsAny<CancellationToken>())).Returns(Task.CompletedTask);
             repo.Setup(r => r.GetByUserCodeAsync(It.IsAny<string>(), It.IsAny<CancellationToken>())).ReturnsAsync((DeviceAuthorizationRequestModel?)null);
@@ -180,6 +183,7 @@ namespace XUnitTest.Auth.Oidc
                 m.ClientId == "c1"
                 && m.TenantId == "t1"
                 && m.Status == DeviceAuthorizationStatus.Pending
+                && m.RequestedScopes == "openid profile offline_access"
                 && !string.IsNullOrEmpty(m.DeviceCodeHash)
                 && !string.IsNullOrEmpty(m.UserCode)
             ), It.IsAny<CancellationToken>()), Times.Once);

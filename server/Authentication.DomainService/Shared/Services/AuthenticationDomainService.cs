@@ -1,15 +1,10 @@
 using Blocks.Genesis;
 using Authentication.DomainService.Utilities;
 using DeviceDetectorNET;
-using Authentication.DomainService.Dtos;
 using Authentication.DomainService.Entities;
 using Authentication.DomainService.RequestModel;
-using Authentication.DomainService.ResponseModel;
-using Authentication.DomainService.Shared;
 using Iam.DomainService.Utilities;
-using Iam.DomainService.Users;
 using Microsoft.AspNetCore.Http;
-using Microsoft.Extensions.Configuration;
 using Microsoft.IdentityModel.Protocols.OpenIdConnect;
 using System.Text.Json;
 using Authentication.DomainService.Shared.ResponseModel;
@@ -24,9 +19,6 @@ namespace Authentication.DomainService.Services
     {
         private readonly IMessageClient _messageClient;
         private readonly IAuthenticationRepository _authenticationRepository;
-        private readonly IConfiguration _configuration;
-        private readonly IUserRepository _userRepository;
-        private readonly IValidator<SaveSsoCredentialRequest> _validator;
         private readonly IValidator<SaveOIDCClientRequest> _oidcClientValidator;
         private readonly IValidator<SaveIdentityProviderRequest> _saveIdpValidator;
         private readonly IValidator<UpdateIdentityProviderRequest> _updateIdpValidator;
@@ -40,9 +32,6 @@ namespace Authentication.DomainService.Services
 
         public AuthenticationDomainService(IMessageClient messageClient,
                                            IAuthenticationRepository authenticationRepository,
-                                           IConfiguration configuration,
-                                           IUserRepository userRepository,
-                                           IValidator<SaveSsoCredentialRequest> validator,
                                            IValidator<SaveOIDCClientRequest> oidcClientValidator,
                                            IValidator<SaveIdentityProviderRequest> saveIdpValidator,
                                            IValidator<UpdateIdentityProviderRequest> updateIdpValidator,
@@ -51,9 +40,6 @@ namespace Authentication.DomainService.Services
         {
             _messageClient = messageClient;
             _authenticationRepository = authenticationRepository;
-            _configuration = configuration;
-            _userRepository = userRepository;
-            _validator = validator;
             _oidcClientValidator = oidcClientValidator;
             _saveIdpValidator = saveIdpValidator;
             _updateIdpValidator = updateIdpValidator;
@@ -175,7 +161,7 @@ namespace Authentication.DomainService.Services
                     ? await _authenticationRepository.GetIdentityProviderByClientIdAsync(credential.ClientId)
                     : null;
 
-                if (request.RegisterAsIdentityProvider)
+                if (credential.RegisterAsIdentityProvider)
                 {
                     var providerName = !string.IsNullOrWhiteSpace(request.ClientDisplayName)
                         ? request.ClientDisplayName.ToLower().Replace(" ", "-")
@@ -249,9 +235,14 @@ namespace Authentication.DomainService.Services
             credential.ItemId = clientId;
             credential.ClientId = clientId;
             // ClientSecret rule: BE-generated on create only; preserved (never overwritten) on update.
-            credential.ClientSecret = string.IsNullOrWhiteSpace(credential.ClientSecret)
-                ? GenerateClientSecret()
-                : credential.ClientSecret;
+            // Device-flow clients are always public (TokenEndpointAuthMethod "none") and never
+            // authenticate with a secret, so none is generated — and any secret left over from
+            // before the client became device-flow-only is cleared.
+            credential.ClientSecret = request.IsDeviceFlowClient
+                ? null
+                : string.IsNullOrWhiteSpace(credential.ClientSecret)
+                    ? GenerateClientSecret()
+                    : credential.ClientSecret;
 
             return credential;
         }
@@ -264,7 +255,14 @@ namespace Authentication.DomainService.Services
                 allowedScopes = request.Scope.Split(' ', StringSplitOptions.RemoveEmptyEntries).Distinct(StringComparer.OrdinalIgnoreCase).ToList();
             }
 
-            var redirectUris = request.RedirectUris.Where(x => !string.IsNullOrWhiteSpace(x)).Distinct(StringComparer.OrdinalIgnoreCase).ToList();
+            if (!allowedScopes.Any(scope => string.Equals(scope, "offline_access", StringComparison.OrdinalIgnoreCase)))
+            {
+                allowedScopes.Add("offline_access");
+            }
+
+            var redirectUris = request.IsDeviceFlowClient
+                ? []
+                : request.RedirectUris.Where(x => !string.IsNullOrWhiteSpace(x)).Distinct(StringComparer.OrdinalIgnoreCase).ToList();
 
             credential.AllowedScopes = allowedScopes;
             credential.Scope = string.Join(' ', allowedScopes);
@@ -272,8 +270,10 @@ namespace Authentication.DomainService.Services
             credential.RedirectUris = redirectUris;
            // credential.RedirectUri = redirectUris.FirstOrDefault();
 
-            credential.AllowedResponseTypes = request.AllowedResponseTypes.Where(x => !string.IsNullOrWhiteSpace(x)).Distinct(StringComparer.OrdinalIgnoreCase).ToList();
-            if (credential.AllowedResponseTypes.Count == 0)
+            credential.AllowedResponseTypes = request.IsDeviceFlowClient
+                ? []
+                : request.AllowedResponseTypes.Where(x => !string.IsNullOrWhiteSpace(x)).Distinct(StringComparer.OrdinalIgnoreCase).ToList();
+            if (!request.IsDeviceFlowClient && credential.AllowedResponseTypes.Count == 0)
             {
                 credential.AllowedResponseTypes = ["code"];
             }
@@ -282,15 +282,29 @@ namespace Authentication.DomainService.Services
         private static void ApplyOidcClientOptions(OidcClientRegistration credential, SaveOIDCClientRequest request)
         {
             credential.PostLogoutRedirectUris = request.PostLogoutRedirectUris.Where(x => !string.IsNullOrWhiteSpace(x)).Distinct(StringComparer.OrdinalIgnoreCase).ToList();
-            credential.ExternalDiscoveryEndpoint = request.ExternalDiscoveryEndpoint;
+            // ExternalDiscoveryEndpoint only feeds the RegisterAsIdentityProvider branch's
+            // WellKnownUrl, which is itself forced off for device-flow clients below — so it
+            // can never take effect for one. Force off here for the same reason.
+            credential.ExternalDiscoveryEndpoint = request.IsDeviceFlowClient ? null : request.ExternalDiscoveryEndpoint;
             credential.LoginMode = request.LoginMode;
-            credential.ClientType = request.ClientType;
-            credential.TokenEndpointAuthMethod = string.Equals(request.ClientType, "public", StringComparison.OrdinalIgnoreCase)
+            // Device-flow clients (RFC 8628) are inherently public/native clients — they cannot hold a
+            // secret safely, and the FE registration form has no way to opt them into "confidential".
+            // Force public here so this stays in sync with OidcClientValidator.IsPublicClient, which
+            // already treats every device-flow client as public regardless of ClientType.
+            credential.ClientType = request.IsDeviceFlowClient ? "public" : request.ClientType;
+            credential.TokenEndpointAuthMethod = request.IsDeviceFlowClient
+                || string.Equals(request.ClientType, "public", StringComparison.OrdinalIgnoreCase)
                 ? "none"
                 : "client_secret_post";
-            credential.RequirePkce = request.RequirePkce;
+            // PKCE (RFC 7636) has no meaning for device flow (RFC 8628) — there is no browser
+            // redirect/authorize step to protect. Force it off server-side rather than trusting
+            // whatever the FE form happens to submit.
+            credential.RequirePkce = !request.IsDeviceFlowClient && request.RequirePkce;
             credential.RequireConsent = request.RequireConsent;
-            credential.FrontChannelLogoutUri = request.FrontChannelLogoutUri;
+            // Front-channel logout redirects the browser back to the client's logout endpoint —
+            // device-flow clients have no browser session to redirect. Back-channel logout is a
+            // server-to-server call and still applies, so it's left alone.
+            credential.FrontChannelLogoutUri = request.IsDeviceFlowClient ? null : request.FrontChannelLogoutUri;
             credential.BackChannelLogoutUri = request.BackChannelLogoutUri;
             credential.IsActive = request.IsActive;
             credential.IsAutoRedirect = request.IsAutoRedirect;
@@ -303,7 +317,10 @@ namespace Authentication.DomainService.Services
             credential.ClientName = request.ClientDisplayName;
             credential.UiBrandColor = request.ClientBrandColor;
             credential.IsDeviceFlowClient = request.IsDeviceFlowClient;
-            credential.RegisterAsIdentityProvider = request.RegisterAsIdentityProvider;
+            // Federating this client as an upstream IdentityProvider hardcodes the
+            // authorization_code grant and reuses RedirectUris, which device-flow clients
+            // never have — the two features are incompatible. Force off for device flow.
+            credential.RegisterAsIdentityProvider = !request.IsDeviceFlowClient && request.RegisterAsIdentityProvider;
         }
 
         public async Task<GetOIDCClientResponse> GetOidcClientAsync(string tenantId)
@@ -668,6 +685,11 @@ namespace Authentication.DomainService.Services
             var credential = await _authenticationRepository.GetOidcClientRegistrationAsync(itemId);
             if (credential == null)
                 return new RotateOidcClientSecretResponse { IsSuccess = false, Errors = new Dictionary<string, string> { { "not_found", $"OIDC client '{itemId}' not found." } } };
+
+            // Device-flow clients are always public (TokenEndpointAuthMethod "none") and never
+            // hold a secret — reject rotation rather than silently reintroducing one.
+            if (credential.IsDeviceFlowClient)
+                return new RotateOidcClientSecretResponse { IsSuccess = false, Errors = new Dictionary<string, string> { { "not_supported", "Device-flow clients do not use a client secret." } } };
 
             var blocksContext = BlocksContext.GetContext();
             var rotatedAt = DateTime.UtcNow;

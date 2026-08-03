@@ -1,3 +1,4 @@
+import { sanitizeInternalPath } from "@/lib/safe-navigation.util";
 import { providers } from "@/cross-modules/devops/models/git-dummy";
 import { useState } from "react";
 import {
@@ -9,10 +10,10 @@ import {
 } from "@/cross-modules/devops/services/providers.service";
 import { iconMap } from "@/cross-modules/devops/models/github-info";
 import { Button } from "@/components/ui-kits/button/button";
-import { useNavigate } from "react-router-dom";
+import { useNavigate } from "react-router";
 import { useValidateAuthorization } from "@/cross-modules/devops/hooks/github-info";
 import { IProviderDestination } from "@/cross-modules/devops/models/utils";
-import { useProjectStore } from "@seliseblocks/blocks-kit";
+import { useProjectStore } from "@seliseblocks/genesis-os";
 
 interface ProviderButtonsProps extends IProviderDestination {
   onClose?: (verifyAuth?: boolean) => void | Promise<void>;
@@ -32,7 +33,7 @@ const ProviderButtons = ({
   const { data: verifyAuth } = useValidateAuthorization();
   const [, setSelectedProvider] = useState<string | null>(null);
   
-  const targetDestination = destination || "/devops/configure";
+  const targetDestination = sanitizeInternalPath(destination || "/devops/configure", "/devops/configure");
   
   if (destination) {
     localStorage.setItem("destination", destination);

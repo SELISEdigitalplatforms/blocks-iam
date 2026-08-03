@@ -7,9 +7,7 @@ using Blocks.Genesis;
 using FluentAssertions;
 using FluentValidation;
 using FluentValidation.Results;
-using Iam.DomainService.Users;
 using Microsoft.AspNetCore.Http;
-using Microsoft.Extensions.Configuration;
 using Moq;
 using System.Net;
 
@@ -22,9 +20,6 @@ namespace XUnitTest.Auth.Shared
     {
         private readonly Mock<IMessageClient> _message = new();
         private readonly Mock<IAuthenticationRepository> _repo = new();
-        private readonly Mock<IConfiguration> _config = new();
-        private readonly Mock<IUserRepository> _userRepo = new();
-        private readonly Mock<IValidator<SaveSsoCredentialRequest>> _ssoValidator = new();
         private readonly Mock<IValidator<SaveOIDCClientRequest>> _oidcValidator = new();
         private readonly Mock<IValidator<SaveIdentityProviderRequest>> _saveIdpValidator = new();
         private readonly Mock<IValidator<UpdateIdentityProviderRequest>> _updateIdpValidator = new();
@@ -50,7 +45,7 @@ namespace XUnitTest.Auth.Shared
         }
 
         private AuthenticationDomainService Create() =>
-            new(_message.Object, _repo.Object, _config.Object, _userRepo.Object, _ssoValidator.Object,
+            new(_message.Object, _repo.Object,
                 _oidcValidator.Object, _saveIdpValidator.Object, _updateIdpValidator.Object, _tenants.Object, _httpFactory.Object);
 
         private static IdentityProvider Idp(string provider = "google", string clientId = "cid", string id = "idp-1") => new()

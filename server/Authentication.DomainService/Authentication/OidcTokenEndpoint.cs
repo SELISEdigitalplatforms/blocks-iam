@@ -38,6 +38,9 @@ namespace Authentication.DomainService.Authentication
 
         public async Task<IActionResult> TokenAsync(string grantType, HttpRequest request)
         {
+            request.HttpContext.Response.Headers["Cache-Control"] = "no-store";
+            request.HttpContext.Response.Headers["Pragma"] = "no-cache";
+
             try
             {
                 if (grantType == GrantTypes.AuthCode)

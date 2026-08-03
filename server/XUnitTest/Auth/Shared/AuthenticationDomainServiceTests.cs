@@ -7,8 +7,6 @@ using Blocks.Genesis;
 using FluentAssertions;
 using FluentValidation;
 using FluentValidation.Results;
-using Iam.DomainService.Users;
-using Microsoft.Extensions.Configuration;
 using Moq;
 using System.Net.Http;
 
@@ -18,9 +16,6 @@ namespace XUnitTest.Auth.Shared
     {
         private readonly Mock<IMessageClient> _message = new();
         private readonly Mock<IAuthenticationRepository> _repo = new();
-        private readonly Mock<IConfiguration> _config = new();
-        private readonly Mock<IUserRepository> _userRepo = new();
-        private readonly Mock<IValidator<SaveSsoCredentialRequest>> _ssoValidator = new();
         private readonly Mock<IValidator<SaveOIDCClientRequest>> _oidcValidator = new();
         private readonly Mock<IValidator<SaveIdentityProviderRequest>> _saveIdpValidator = new();
         private readonly Mock<IValidator<UpdateIdentityProviderRequest>> _updateIdpValidator = new();
@@ -48,7 +43,7 @@ namespace XUnitTest.Auth.Shared
         }
 
         private AuthenticationDomainService Create() =>
-            new(_message.Object, _repo.Object, _config.Object, _userRepo.Object, _ssoValidator.Object,
+            new(_message.Object, _repo.Object,
                 _oidcValidator.Object, _saveIdpValidator.Object, _updateIdpValidator.Object, _tenants.Object, _httpFactory.Object);
 
         private static IdentityProvider Idp(string provider = "google", string clientId = "cid", string id = "idp-1") => new()
@@ -145,6 +140,88 @@ namespace XUnitTest.Auth.Shared
             result.IsSuccess.Should().BeTrue();
             existing.DisplayName.Should().Be("New Name");
             existing.IsActive.Should().BeFalse();
+        }
+
+        [Fact]
+        public async Task UpdateIdp_ValidationFails_ReturnsErrors()
+        {
+            _updateIdpValidator.Setup(v => v.ValidateAsync(It.IsAny<UpdateIdentityProviderRequest>(), It.IsAny<CancellationToken>()))
+                .ReturnsAsync(new ValidationResult(new[] { new ValidationFailure("DisplayName", "required") }));
+            var result = await Create().UpdateIdentityProviderAsync("idp-1", new UpdateIdentityProviderRequest());
+            result.IsSuccess.Should().BeFalse();
+            result.Errors.Should().ContainKey("DisplayName");
+        }
+
+        [Fact]
+        public async Task UpdateIdp_ImmutableProviderType_ReturnsError()
+        {
+            _repo.Setup(r => r.GetIdentityProviderByIdAsync("idp-1")).ReturnsAsync(Idp());
+            var result = await Create().UpdateIdentityProviderAsync("idp-1", new UpdateIdentityProviderRequest { ProviderType = "enterprise" });
+            result.Errors.Should().ContainKey("immutable_field");
+        }
+
+        [Fact]
+        public async Task UpdateIdp_ImmutableProtocol_ReturnsError()
+        {
+            _repo.Setup(r => r.GetIdentityProviderByIdAsync("idp-1")).ReturnsAsync(Idp());
+            var result = await Create().UpdateIdentityProviderAsync("idp-1", new UpdateIdentityProviderRequest { Protocol = "saml" });
+            result.Errors.Should().ContainKey("immutable_field");
+        }
+
+        [Fact]
+        public async Task UpdateIdp_WellKnownUrlChanged_DiscoveryInvalid_ReturnsErrors()
+        {
+            _repo.Setup(r => r.GetIdentityProviderByIdAsync("idp-1")).ReturnsAsync(Idp());
+            _saveIdpValidator.Setup(v => v.ValidateAsync(It.IsAny<SaveIdentityProviderRequest>(), It.IsAny<CancellationToken>()))
+                .ReturnsAsync(new ValidationResult(new[] { new ValidationFailure("WellKnownUrl", "unreachable") }));
+
+            var result = await Create().UpdateIdentityProviderAsync("idp-1",
+                new UpdateIdentityProviderRequest { WellKnownUrl = "https://new.example/.well-known/openid-configuration" });
+
+            result.IsSuccess.Should().BeFalse();
+            result.Errors.Should().ContainKey("WellKnownUrl");
+        }
+
+        [Fact]
+        public async Task UpdateIdp_WellKnownUrlChanged_DiscoveryValid_MergesAllFields()
+        {
+            var existing = Idp();
+            _repo.Setup(r => r.GetIdentityProviderByIdAsync("idp-1")).ReturnsAsync(existing);
+            _repo.Setup(r => r.UpdateIdentityProviderAsync(It.IsAny<IdentityProvider>())).ReturnsAsync(existing);
+
+            var request = new UpdateIdentityProviderRequest
+            {
+                DisplayName = "Updated",
+                IsActive = true,
+                Issuer = "https://issuer",
+                AuthorizationUrl = "https://auth",
+                TokenUrl = "https://token",
+                UserInfoUrl = "https://userinfo",
+                JwksUri = "https://jwks",
+                WellKnownUrl = "https://new.example/.well-known/openid-configuration",
+                RedirectUris = new List<string> { "https://cb" },
+                Scope = "openid email",
+                ResponseType = "code",
+                GrantTypes = new List<string> { "authorization_code" },
+                RequirePkce = true,
+                TokenEndpointAuthMethod = "client_secret_basic",
+                InitialRoles = new List<string> { "role-1" },
+                InitialPermissions = new List<string> { "perm-1" },
+                Icon = "icon",
+                TeamId = "team",
+                KeyId = "key",
+                PrivateKey = "pk",
+                AppleAudience = "aud"
+            };
+
+            var result = await Create().UpdateIdentityProviderAsync("idp-1", request);
+
+            result.IsSuccess.Should().BeTrue();
+            existing.Issuer.Should().Be("https://issuer");
+            existing.WellKnownUrl.Should().Be("https://new.example/.well-known/openid-configuration");
+            existing.RequirePkce.Should().BeTrue();
+            existing.AppleAudience.Should().Be("aud");
+            existing.InitialRoles.Should().Contain("role-1");
         }
 
         // ---------- DeleteIdentityProviderAsync ----------
@@ -371,8 +448,11 @@ namespace XUnitTest.Auth.Shared
         [Fact]
         public async Task SaveOIDCClient_HappyPath_SavesAndDoesNotRegisterProvider()
         {
+            OidcClientRegistration? saved = null;
             _repo.Setup(r => r.GetOidcClientRegistrationAsync(It.IsAny<string>())).ReturnsAsync((OidcClientRegistration)null!);
-            _repo.Setup(r => r.SaveOidcClientRegistrationAsync(It.IsAny<OidcClientRegistration>())).Returns(Task.CompletedTask);
+            _repo.Setup(r => r.SaveOidcClientRegistrationAsync(It.IsAny<OidcClientRegistration>()))
+                .Callback<OidcClientRegistration>(credential => saved = credential)
+                .Returns(Task.CompletedTask);
             _repo.Setup(r => r.GetIdentityProviderByClientIdAsync(It.IsAny<string>())).ReturnsAsync((IdentityProvider)null!);
 
             var result = await Create().SaveOIDCClientAsync(new SaveOIDCClientRequest
@@ -384,8 +464,102 @@ namespace XUnitTest.Auth.Shared
             });
 
             result.IsSuccess.Should().BeTrue();
+            saved.Should().NotBeNull();
+            saved!.AllowedScopes.Should().Contain("offline_access");
             _repo.Verify(r => r.SaveOidcClientRegistrationAsync(It.IsAny<OidcClientRegistration>()), Times.Once);
             _repo.Verify(r => r.CreateIdentityProviderAsync(It.IsAny<IdentityProvider>()), Times.Never);
+        }
+
+        [Fact]
+        public async Task SaveOIDCClient_DeviceFlowClient_ClearsAuthCodeMetadata()
+        {
+            OidcClientRegistration? saved = null;
+            _repo.Setup(r => r.GetOidcClientRegistrationAsync(It.IsAny<string>())).ReturnsAsync((OidcClientRegistration)null!);
+            _repo.Setup(r => r.SaveOidcClientRegistrationAsync(It.IsAny<OidcClientRegistration>()))
+                .Callback<OidcClientRegistration>(credential => saved = credential)
+                .Returns(Task.CompletedTask);
+            _repo.Setup(r => r.GetIdentityProviderByClientIdAsync(It.IsAny<string>())).ReturnsAsync((IdentityProvider)null!);
+
+            var result = await Create().SaveOIDCClientAsync(new SaveOIDCClientRequest
+            {
+                IsDeviceFlowClient = true,
+                RedirectUris = new() { "https://app/cb" },
+                AllowedResponseTypes = new() { "code" },
+                AllowedScopes = new() { "openid" },
+                ClientType = "public",
+                RegisterAsIdentityProvider = false
+            });
+
+            result.IsSuccess.Should().BeTrue();
+            saved.Should().NotBeNull();
+            saved!.IsDeviceFlowClient.Should().BeTrue();
+            saved.RedirectUris.Should().BeEmpty();
+            saved.AllowedResponseTypes.Should().BeEmpty();
+            saved.AllowedScopes.Should().Contain("offline_access");
+        }
+
+        [Fact]
+        public async Task SaveOIDCClient_DeviceFlowClient_WithoutClientType_DefaultsToPublic()
+        {
+            // The FE registration form never sends ClientType at all, so this is the real-world
+            // payload shape for a device-flow client. It must not fall back to confidential,
+            // otherwise the CLI's secret-less device-code token exchange is rejected.
+            OidcClientRegistration? saved = null;
+            _repo.Setup(r => r.GetOidcClientRegistrationAsync(It.IsAny<string>())).ReturnsAsync((OidcClientRegistration)null!);
+            _repo.Setup(r => r.SaveOidcClientRegistrationAsync(It.IsAny<OidcClientRegistration>()))
+                .Callback<OidcClientRegistration>(credential => saved = credential)
+                .Returns(Task.CompletedTask);
+            _repo.Setup(r => r.GetIdentityProviderByClientIdAsync(It.IsAny<string>())).ReturnsAsync((IdentityProvider)null!);
+
+            var result = await Create().SaveOIDCClientAsync(new SaveOIDCClientRequest
+            {
+                IsDeviceFlowClient = true,
+                AllowedScopes = new() { "openid" },
+                RegisterAsIdentityProvider = false
+            });
+
+            result.IsSuccess.Should().BeTrue();
+            saved.Should().NotBeNull();
+            saved!.ClientType.Should().Be("public");
+            saved.TokenEndpointAuthMethod.Should().Be("none");
+            saved.AllowedScopes.Should().Contain("offline_access");
+        }
+
+        [Fact]
+        public async Task SaveOIDCClient_EditingDeviceFlowClient_CorrectsStaleConfidentialType()
+        {
+            // Simulates re-saving a client that was previously persisted as confidential
+            // (the bug this test guards against) via the same edit path the admin UI uses.
+            var existing = new OidcClientRegistration
+            {
+                ItemId = "item-1",
+                ClientId = "client-1",
+                ClientSecret = "existing-secret",
+                IsDeviceFlowClient = true,
+                ClientType = "confidential",
+                TokenEndpointAuthMethod = "client_secret_post"
+            };
+            OidcClientRegistration? saved = null;
+            _repo.Setup(r => r.GetOidcClientRegistrationAsync("item-1")).ReturnsAsync(existing);
+            _repo.Setup(r => r.SaveOidcClientRegistrationAsync(It.IsAny<OidcClientRegistration>()))
+                .Callback<OidcClientRegistration>(credential => saved = credential)
+                .Returns(Task.CompletedTask);
+            _repo.Setup(r => r.GetIdentityProviderByClientIdAsync(It.IsAny<string>())).ReturnsAsync((IdentityProvider)null!);
+
+            var result = await Create().SaveOIDCClientAsync(new SaveOIDCClientRequest
+            {
+                ItemId = "item-1",
+                IsDeviceFlowClient = true,
+                AllowedScopes = new() { "openid" },
+                RegisterAsIdentityProvider = false
+            });
+
+            result.IsSuccess.Should().BeTrue();
+            saved.Should().NotBeNull();
+            saved!.ClientType.Should().Be("public");
+            saved.TokenEndpointAuthMethod.Should().Be("none");
+            saved.ClientSecret.Should().BeNull();
+            saved.AllowedScopes.Should().Contain("offline_access");
         }
 
         [Fact]
@@ -455,5 +629,49 @@ namespace XUnitTest.Auth.Shared
         }
 
         public sealed class TestPayload { public string Value { get; set; } = ""; }
+
+        // ---------- GetMetadataAsync ----------
+
+        [Fact]
+        public async Task GetMetadata_DeserializesDiscoveryDocument()
+        {
+            var httpClient = new HttpClient(new FakeHandler());
+            _httpFactory.Setup(f => f.CreateClient("oidc-discovery")).Returns(httpClient);
+
+            var result = await Create().GetMetadataAsync("https://test.com/.well-known/openid-configuration");
+
+            result.Should().NotBeNull();
+            result!.Issuer.Should().Be("https://test.com/");
+        }
+
+        // ---------- GetClientCredentialsAsync ----------
+
+        [Fact]
+        public async Task GetClientCredentials_ReturnsRepositoryResult()
+        {
+            var credentials = new List<ClientCredential> { new() { ItemId = "cc-1" } };
+            _repo.Setup(r => r.GetClientCredentialsAsync()).ReturnsAsync(credentials);
+
+            var result = await Create().GetClientCredentialsAsync(new GetAllClientCredentialsRequest());
+
+            result.Should().HaveCount(1);
+            result[0].ItemId.Should().Be("cc-1");
+        }
+
+        private sealed class FakeHandler : HttpMessageHandler
+        {
+            protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
+            {
+                const string json = @"{
+                    ""issuer"": ""https://test.com/"",
+                    ""authorization_endpoint"": ""https://test.com/auth"",
+                    ""token_endpoint"": ""https://test.com/token""
+                }";
+                return Task.FromResult(new HttpResponseMessage(System.Net.HttpStatusCode.OK)
+                {
+                    Content = new StringContent(json)
+                });
+            }
+        }
     }
 }

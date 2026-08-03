@@ -1,8 +1,8 @@
 import { useEffect, useMemo, useState } from "react";
-import { useNavigate, useSearchParams } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router";
 import { Loader } from "lucide-react";
 import { showErrorToast } from "@/hooks/use-toast";
-import { useAuthStore } from "@seliseblocks/blocks-kit";
+import { useAuthStore } from "@seliseblocks/genesis-os";
 import { Signin } from "@blocks-idp/authentication/pages/login";
 import { oauthService } from "@blocks-idp/authentication/services/oauth.service";
 import { useOIDCContext } from "@/layouts/oidc-layout";
@@ -37,6 +37,11 @@ export const OIDCSignin = () => {
   const isOidcPasswordFlow = window.location.pathname.includes("/oidc/login");
   const urlClientId = searchParams.get("client_id");
   const urlRedirectUri = searchParams.get("redirect_uri");
+  // Device flow (RFC 8628) logins have no redirect_uri — the IAM's device verification
+  // page passes `returnUrl` instead, so the OIDC-aware login form still renders (and its
+  // post-login redirect uses returnUrl in place of the usual redirect_uri).
+  const urlReturnUrl = searchParams.get("returnUrl");
+  const effectiveReturnUrl = oidcContext.returnUrl || urlReturnUrl || undefined;
   const effectiveClientId =  urlClientId || "";
 
   useEffect(() => {
@@ -90,8 +95,13 @@ export const OIDCSignin = () => {
       </div>
     );
   }
-  // Pure OIDC password/email flow — sci-fi shell with nodes panel
-  if (isOidcPasswordFlow && (oidcContext.clientId || urlClientId) && (oidcContext.redirectUri || urlRedirectUri)) {
+  // Pure OIDC password/email flow — sci-fi shell with nodes panel. Also covers the
+  // device-flow return trip, which has returnUrl instead of redirect_uri.
+  if (
+    isOidcPasswordFlow &&
+    (oidcContext.clientId || urlClientId) &&
+    (oidcContext.redirectUri || urlRedirectUri || effectiveReturnUrl)
+  ) {
     return (
       <OidcAuthShell
         panelConfig={OIDC_LOGIN_PANEL}
@@ -107,6 +117,7 @@ export const OIDCSignin = () => {
         <OidcLoginForm
           clientId={effectiveClientId}
           redirectUri={oidcContext.redirectUri || urlRedirectUri || ""}
+          returnUrl={effectiveReturnUrl}
           scope={oidcContext.scope || searchParams.get("scope") || undefined}
           state={oidcContext.state || searchParams.get("state") || undefined}
           nonce={oidcContext.nonce || searchParams.get("nonce") || undefined}

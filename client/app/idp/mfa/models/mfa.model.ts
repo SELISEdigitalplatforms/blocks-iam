@@ -8,7 +8,7 @@ export interface IMFAConfiguration {
   allowBackupCodes: boolean;
   backupCodesCount: number;
 }
-export interface IGetConfigurationPayload {}
+export type IGetConfigurationPayload = Record<string, unknown>;
 
 export interface IMFAConfigurationSavePayload {
   enableMfa: boolean;

@@ -3,7 +3,7 @@ import { Separator } from "@/components/ui-kits/separator/separator"
 import { SuccessConfirmationCardHeader } from "@blocks-idp/authentication/components/success-confirmation-card-header"
 import { SuccessConfirmationIcon } from "@blocks-idp/authentication/components/success-confirmation-icon"
 import { ChevronRight, HelpCircle, Mail, RotateCw } from "lucide-react"
-import { Link } from "react-router-dom"
+import { Link } from "react-router"
 
 type SignupEmailSentProps = {
   email: string

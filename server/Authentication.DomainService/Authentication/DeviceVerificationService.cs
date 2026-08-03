@@ -1,5 +1,6 @@
 using Authentication.DomainService.Oidc.Contracts;
 using Authentication.DomainService.Oidc.Repositories;
+using Authentication.DomainService.Oidc.Services;
 using Authentication.DomainService.Services;
 using Blocks.Genesis;
 using Iam.DomainService.Utilities;
@@ -7,6 +8,7 @@ using Idp.DomainService.Oidc.Contracts;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.Logging;
+using System.Security.Cryptography;
 
 namespace Authentication.DomainService.Authentication
 {
@@ -59,6 +61,12 @@ namespace Authentication.DomainService.Authentication
                 return DeviceEndpointErrors.InvalidGrant("user_code not found");
             }
 
+            if (!RequestTenantMatches(httpContext.Request, entity.TenantId))
+            {
+                _logger.LogWarning("Device verify tenant mismatch for request {RequestId}", entity.Id);
+                return DeviceEndpointErrors.InvalidGrant("user_code not found");
+            }
+
             if (entity.Status == DeviceAuthorizationStatus.Expired
                 || entity.ExpiresAt <= DateTime.UtcNow)
             {
@@ -79,10 +87,7 @@ namespace Authentication.DomainService.Authentication
                 ? await _sessionRepository.GetBySessionIdAsync(sessionId)
                 : null;
 
-            var sessionValid = session != null
-                && !session.RevokedAt.HasValue
-                && !session.IsExpired()
-                && session.Accounts.Any(a => string.Equals(a.TenantId, tenantId, StringComparison.OrdinalIgnoreCase));
+            var sessionValid = IsValidTenantSession(session, tenantId);
 
             if (!sessionValid)
             {
@@ -104,6 +109,16 @@ namespace Authentication.DomainService.Authentication
             }
 
             var client = await _authenticationRepository.GetOidcClientRegistrationAsync(entity.ClientId);
+            var approvalToken = CreateApprovalToken();
+            var approvalTokenHash = HashApprovalToken(approvalToken);
+            var tokenStored = await _repository.SetApprovalTokenHashAsync(entity.Id, approvalTokenHash, ct);
+            if (!tokenStored)
+            {
+                return new ObjectResult(new { error = "request_not_pending", error_description = "device authorization request is no longer pending" })
+                {
+                    StatusCode = StatusCodes.Status410Gone
+                };
+            }
 
             return new OkObjectResult(new DeviceVerifyResponse
             {
@@ -117,6 +132,11 @@ namespace Authentication.DomainService.Authentication
                         .ToList(),
                     Tenant = tenantId,
                     UserCode = entity.UserCode,
+                    RequestIpAddress = entity.IpAddress,
+                    RequestUserAgent = entity.UserAgent,
+                    DeviceName = entity.DeviceName,
+                    DeviceInfo = entity.DeviceInfo,
+                    ApprovalToken = approvalToken,
                 },
             });
         }
@@ -143,6 +163,15 @@ namespace Authentication.DomainService.Authentication
                 };
             }
 
+            if (!RequestTenantMatches(httpContext.Request, entity.TenantId))
+            {
+                _logger.LogWarning("Device decision tenant mismatch for request {RequestId}", entity.Id);
+                return new ObjectResult(new { error = "invalid_grant", error_description = "user_code not found" })
+                {
+                    StatusCode = StatusCodes.Status400BadRequest
+                };
+            }
+
             var decision = (request.Decision ?? string.Empty).Trim().ToLowerInvariant();
             if (decision != "allow" && decision != "deny")
             {
@@ -163,6 +192,12 @@ namespace Authentication.DomainService.Authentication
                 };
             }
 
+            if (string.IsNullOrWhiteSpace(request.ApprovalToken)
+                || !ApprovalTokenMatches(request.ApprovalToken, entity.ApprovalTokenHash))
+            {
+                return DeviceEndpointErrors.InvalidRequest("approval token is invalid");
+            }
+
             var tenantId = entity.TenantId;
             var apiBase = $"{httpContext.Request.Scheme}://{httpContext.Request.Host.Value}";
             var sessionId = httpContext.Request.Cookies[IdpConstants.BuildIdpSessionCookieKey(tenantId)];
@@ -172,6 +207,11 @@ namespace Authentication.DomainService.Authentication
             }
 
             var session = await _sessionRepository.GetBySessionIdAsync(sessionId);
+            if (!IsValidTenantSession(session, tenantId))
+            {
+                return new ObjectResult(new { error = "login_required" }) { StatusCode = StatusCodes.Status401Unauthorized };
+            }
+
             var approver = session?.Accounts.FirstOrDefault(a =>
                 string.Equals(a.TenantId, tenantId, StringComparison.OrdinalIgnoreCase));
             if (approver == null)
@@ -217,6 +257,67 @@ namespace Authentication.DomainService.Authentication
             }
 
             return new OkObjectResult(new { redirect = "/device" });
+        }
+
+        private static bool IsValidTenantSession(IdpSessionModel? session, string tenantId)
+        {
+            return session != null
+                && !session.RevokedAt.HasValue
+                && !session.IsExpired()
+                && session.Accounts.Any(a => string.Equals(a.TenantId, tenantId, StringComparison.OrdinalIgnoreCase));
+        }
+
+        private static bool RequestTenantMatches(HttpRequest request, string tenantId)
+        {
+            var presentedTenant = ResolvePresentedTenant(request);
+            return string.IsNullOrWhiteSpace(presentedTenant)
+                || string.Equals(presentedTenant, tenantId, StringComparison.OrdinalIgnoreCase);
+        }
+
+        private static string? ResolvePresentedTenant(HttpRequest request)
+        {
+            if (request.Headers.TryGetValue("X-Blocks-Key", out var headerTenant)
+                && !string.IsNullOrWhiteSpace(headerTenant.ToString()))
+            {
+                return headerTenant.ToString();
+            }
+
+            var queryTenant = request.Query["tenant_id"].ToString();
+            return string.IsNullOrWhiteSpace(queryTenant) ? null : queryTenant;
+        }
+
+        private static string CreateApprovalToken()
+        {
+            var bytes = RandomNumberGenerator.GetBytes(32);
+            return Base64UrlEncode(bytes);
+        }
+
+        private static string HashApprovalToken(string token)
+        {
+            var bytes = System.Text.Encoding.UTF8.GetBytes(token);
+            return Convert.ToHexString(SHA256.HashData(bytes)).ToLowerInvariant();
+        }
+
+        private static bool ApprovalTokenMatches(string token, string? expectedHash)
+        {
+            if (string.IsNullOrWhiteSpace(expectedHash))
+            {
+                return false;
+            }
+
+            var actualHash = HashApprovalToken(token);
+            var actualBytes = System.Text.Encoding.UTF8.GetBytes(actualHash);
+            var expectedBytes = System.Text.Encoding.UTF8.GetBytes(expectedHash);
+            return actualBytes.Length == expectedBytes.Length
+                && CryptographicOperations.FixedTimeEquals(actualBytes, expectedBytes);
+        }
+
+        private static string Base64UrlEncode(byte[] bytes)
+        {
+            return Convert.ToBase64String(bytes)
+                .TrimEnd('=')
+                .Replace('+', '-')
+                .Replace('/', '_');
         }
 
         private static string NormalizeUserCode(string input)

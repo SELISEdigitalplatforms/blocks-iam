@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
-import { useNavigate, useSearchParams } from "react-router-dom";
-import { useAuthStore } from "@seliseblocks/blocks-kit";
+import { useNavigate, useSearchParams } from "react-router";
+import { useAuthStore } from "@seliseblocks/genesis-os";
 export const useAppState = () => {
   const [isMounted, setIsMounted] = useState(false);
   useEffect(() => {
@@ -23,7 +23,10 @@ export function PublicGuard({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     if (!isMounted) return;
     if (isSSOCallback) return;
-    if (isAuthenticated) navigate("/app/console", { replace: true });
+    if (isAuthenticated) {
+      navigate("/app/profile", { replace: true });
+      return;
+    }
   }, [isAuthenticated, isMounted, isSSOCallback, navigate]);
   if (!isMounted || (isAuthenticated && !isSSOCallback)) return null;
   return <>{children}</>;

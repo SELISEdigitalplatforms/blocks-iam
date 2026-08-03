@@ -1,4 +1,4 @@
-﻿using Blocks.Genesis;
+using Blocks.Genesis;
 using DomainService.Storage;
 using FluentValidation;
 using Mfa.DomainService.Entities;
@@ -62,7 +62,8 @@ namespace Mfa.DomainService.TOTP
 
             if (userInfo is null) { return new SetUpUserTotpResponse { Errors = new Dictionary<string, string> { { "user_not_exist", $"No user exist with useId: {userId}" } } }; }
 
-            var secret = ExtractUserSecret(Guid.NewGuid().ToString());
+            //var secret = ExtractUserSecret(Guid.NewGuid().ToString());
+            var secret = Base32Encoding.ToString(KeyGeneration.GenerateRandomKey(20));
             var existingOtpInfo = await GetExistingOtpInfoAsync(userId);
 
             if (existingOtpInfo is not null && !string.IsNullOrWhiteSpace(existingOtpInfo.ImageUri))
@@ -120,8 +121,6 @@ namespace Mfa.DomainService.TOTP
                 AccessModifier = "Public"
             };
 
-            //var response = await SendAuthorizedRequestAsync(HttpMethod.Post, url ?? string.Empty, requestBody);
-            //return response.GetProperty("uploadUrl").GetString() ?? string.Empty;
 
             var presignedUrlResponse = await _storageDriverService.GetPerSignedUrlForUploadAsync(requestBody);
             return presignedUrlResponse.UploadUrl;
@@ -129,9 +128,6 @@ namespace Mfa.DomainService.TOTP
 
         private async Task<string> GetFileUriAsync(string fileId)
         {
-            //var url = $"{_configuration["GetFileEnpPoint"]}{fileId}";
-            //var response = await SendAuthorizedRequestAsync(HttpMethod.Get, url);
-            //return response.GetProperty("url").GetString() ?? string.Empty;
 
             var fileUriResponse = await _storageDriverService.GetUrlForDownloadFileAsync(new GetFileRequest { FileId = fileId });
             return fileUriResponse.Url;

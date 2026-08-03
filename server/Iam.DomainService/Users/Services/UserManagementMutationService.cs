@@ -742,6 +742,24 @@ namespace Iam.DomainService.Users
                 return new BaseMutationResponse();
             }
 
+            //await SendEvent(user.ItemId, MutationEventType.Update);
+
+            //await _userActivityDispatcher.SendUserActivityAsync(new UserActivityEvent
+            //{
+            //    UserId = user.ItemId,
+            //    Category = UserActivityCategory.Resource,
+            //    Event = isAddToOrganization ? "USER_ACCESS_UPDATED" : "USER_ACCESS_REVOKED",
+            //    Source = "iam-user-access-control",
+            //    Entity = "User",
+            //    EntityId = user.ItemId,
+            //    Metadata = new Dictionary<string, string>
+            //    {
+            //        { "organizationId", organizationId ?? string.Empty },
+            //        { "rolesAdded", string.Join(",", command.Roles ?? new List<string>()) },
+            //        { "permissionsAdded", string.Join(",", command.Permissions ?? new List<string>()) }
+            //    }
+            //});
+
             _logger.LogInformation("Update User Access Control end -- Success");
 
             return new BaseMutationResponse
@@ -877,7 +895,7 @@ namespace Iam.DomainService.Users
                 EntityId = user.ItemId,
                 Metadata = new Dictionary<string, string>
                 {
-                    { "organizationId", organizationId ?? string.Empty }
+                    { "organizationId", organizationId }
                 }
             });
 

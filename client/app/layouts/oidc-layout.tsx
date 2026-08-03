@@ -1,4 +1,4 @@
-import { Outlet, useLocation, useSearchParams } from "react-router-dom";
+import { Outlet, useLocation, useSearchParams } from "react-router";
 import { createContext, useContext, useState, useEffect, ReactNode } from "react";
 import { Loader } from "lucide-react";
 import { extractOIDCParams } from "@blocks-idp/authentication/utils/oidc-utils";
@@ -10,6 +10,7 @@ type OIDCContextType = {
   userName?: string;
   clientId?: string;
   redirectUri?: string;
+  returnUrl?: string;
   scope?: string;
   state?: string;
   nonce?: string;
@@ -32,6 +33,7 @@ export function useOIDCContext() {
     userName: context.userName,
     clientId: context.clientId,
     redirectUri: context.redirectUri,
+    returnUrl: context.returnUrl,
     state: context.state,
     scope: context.scope,
     nonce: context.nonce,
@@ -68,6 +70,7 @@ function OIDCProvider({ children }: { children: ReactNode }) {
       themeColor: urlParams.themeColor || stored.themeColor || "#124091",
       clientId: urlParams.clientId || stored.clientId,
       redirectUri: urlParams.redirectUri || stored.redirectUri,
+      returnUrl: urlParams.returnUrl || stored.returnUrl,
       state: urlParams.state || stored.state,
       scope: urlParams.scope || stored.scope,
       nonce: urlParams.nonce || stored.nonce,
@@ -122,34 +125,8 @@ export function OidcLayout() {
 export { OIDCProvider };
 
 
-
-// import { Outlet, useLocation, useSearchParams } from "react-router-dom";
-// import { createContext, useContext, useState, useEffect, ReactNode } from "react";
-// import { Logo } from "@/components/logo";
-// import { Loader } from "lucide-react";
-// import { extractOIDCParams } from "@blocks-idp/authentication/utils/oidc-utils";
-
-// type OIDCContextType = {
-//   logoUrl?: string;
-//   themeColor?: string;
-//   projectKey?: string;
-//   userName?: string;
-//   clientId?: string;
-//   redirectUri?: string;
-//   scope?: string;
-//   state?: string;
-//   nonce?: string;
-//   isLoading?: boolean;
-// };
-
 // const OIDCContext = createContext<OIDCContextType | undefined>(undefined);
 
-// export function useOIDCContext() {
-//   const context = useContext(OIDCContext);
-
-//   if (!context) {
-//     throw new Error("useOIDCContext must be used within OIDCProvider");
-//   }
 
 //   return {
 //     logoUrl: context.logoUrl,
@@ -165,27 +142,12 @@ export { OIDCProvider };
 //   };
 // }
 
-// function OIDCProvider({ children }: { children: ReactNode }) {
-//   const location = useLocation();
-//   const [searchParams] = useSearchParams();
 
 //   const [params, setParams] = useState<OIDCContextType>({
 //     themeColor: "#124091",
 //     isLoading: true,
 //   });
 
-//   useEffect(() => {
-//     const urlParams = extractOIDCParams(true);
-
-//     let stored: OIDCContextType = {};
-//     try {
-//       const storedStr = localStorage.getItem("oidc-flow-params");
-//       if (storedStr) {
-//         stored = JSON.parse(storedStr);
-//       }
-//     } catch (e) {
-//       console.error("Failed to parse stored params:", e);
-//     }
 
 //     const mergedParams: OIDCContextType = {
 //       projectKey: urlParams.projectKey || stored.projectKey,
@@ -200,30 +162,6 @@ export { OIDCProvider };
 //       isLoading: false,
 //     };
 
-//     const hasAnyParams = Object.values(mergedParams).some(
-//       (value) => value && value !== "#124091",
-//     );
-
-//     if (hasAnyParams) {
-//       localStorage.setItem("oidc-flow-params", JSON.stringify(mergedParams));
-//     }
-
-//     setParams(mergedParams);
-//   }, [location.pathname, searchParams]);
-
-//   return <OIDCContext.Provider value={params}>{children}</OIDCContext.Provider>;
-// }
-
-// function OidcLayoutContent({ children }: { children: ReactNode }) {
-//   const { logoUrl, themeColor, isLoading } = useOIDCContext();
-
-//   if (isLoading) {
-//     return (
-//       <div className="flex min-h-screen items-center justify-center">
-//         <Loader className="h-12 w-12 animate-spin text-gray-500" />
-//       </div>
-//     );
-//   }
 
 //   return (
 //     <div
@@ -248,14 +186,5 @@ export { OIDCProvider };
 //   );
 // }
 
-// export function OidcLayout() {
-//   return (
-//     <OIDCProvider>
-//       <OidcLayoutContent>
-//         <Outlet />
-//       </OidcLayoutContent>
-//     </OIDCProvider>
-//   );
-// }
 
 // export { OIDCProvider };

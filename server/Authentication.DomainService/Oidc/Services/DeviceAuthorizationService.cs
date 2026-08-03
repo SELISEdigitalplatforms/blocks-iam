@@ -8,11 +8,13 @@ using Iam.DomainService.Services;
 using Idp.DomainService.Oidc.Contracts;
 using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Options;
+using MongoDB.Driver;
 
 namespace Authentication.DomainService.Oidc.Services
 {
     /// <summary>
-    /// Handles POST /oauth/device_authorization (RFC 8628 §3.1).
+    /// Handles POST /api/oidc/device_authorization (RFC 8628 section 3.1).
     /// Validates the client (must be <c>IsDeviceFlowClient=true</c> and active), the tenant,
     /// and the requested scope; mints a fresh <c>device_code</c> + <c>user_code</c>; persists
     /// the request; and returns the standard RFC 8628 JSON envelope.
@@ -24,13 +26,11 @@ namespace Authentication.DomainService.Oidc.Services
 
     public sealed class DeviceAuthorizationService : IDeviceAuthorizationService
     {
-        private const int DefaultExpirationSeconds = 600;
-        private const int DefaultPollIntervalSeconds = 5;
-
         private readonly IDeviceAuthorizationRepository _repository;
         private readonly DeviceCodeGenerator _codeGenerator;
         private readonly IAuthenticationRepository _authenticationRepository;
         private readonly ITenants _tenants;
+        private readonly IOptions<DeviceFlowOptions> _options;
         private readonly ILogger<DeviceAuthorizationService> _logger;
 
         public DeviceAuthorizationService(
@@ -38,12 +38,14 @@ namespace Authentication.DomainService.Oidc.Services
             DeviceCodeGenerator codeGenerator,
             IAuthenticationRepository authenticationRepository,
             ITenants tenants,
+            IOptions<DeviceFlowOptions> options,
             ILogger<DeviceAuthorizationService> logger)
         {
             _repository = repository;
             _codeGenerator = codeGenerator;
             _authenticationRepository = authenticationRepository;
             _tenants = tenants;
+            _options = options;
             _logger = logger;
         }
 
@@ -89,27 +91,48 @@ namespace Authentication.DomainService.Oidc.Services
                 throw new DeviceAuthorizationException("invalid_scope", "no requested scope is allowed for this client");
             }
 
-            var deviceCode = _codeGenerator.GenerateDeviceCode();
-            var userCode = await GenerateUniqueUserCodeAsync(ct);
-            var deviceCodeHash = _codeGenerator.HashDeviceCode(deviceCode);
-
-            var entity = new DeviceAuthorizationRequestModel
+            var requestedScopes = resolvedScopes.ToList();
+            if (!requestedScopes.Any(scope => string.Equals(scope, "offline_access", StringComparison.OrdinalIgnoreCase)))
             {
-                DeviceCodeHash = deviceCodeHash,
-                UserCode = userCode,
-                ClientId = request.ClientId,
-                TenantId = blocksContext.TenantId,
-                RequestedScopes = string.Join(' ', resolvedScopes),
-                Status = DeviceAuthorizationStatus.Pending,
-                CreatedAt = DateTime.UtcNow,
-                ExpiresAt = DateTime.UtcNow.AddSeconds(DefaultExpirationSeconds),
-                LastPollAt = DateTime.UtcNow,
-                PollIntervalSeconds = DefaultPollIntervalSeconds,
-                IpAddress = OidcRedirectUrlBuilder.GetClientIpAddress(httpRequest),
-                UserAgent = httpRequest.Headers.UserAgent.ToString()
-            };
+                requestedScopes.Add("offline_access");
+            }
 
-            await _repository.CreateAsync(entity, ct);
+            var options = _options.Value;
+            DeviceAuthorizationRequestModel entity;
+            string deviceCode;
+            string userCode;
+            for (var attempt = 0; ; attempt++)
+            {
+                deviceCode = _codeGenerator.GenerateDeviceCode();
+                userCode = await GenerateUniqueUserCodeAsync(ct);
+                var now = DateTime.UtcNow;
+
+                entity = new DeviceAuthorizationRequestModel
+                {
+                    DeviceCodeHash = _codeGenerator.HashDeviceCode(deviceCode),
+                    UserCode = userCode,
+                    ClientId = request.ClientId,
+                    TenantId = blocksContext.TenantId,
+                    RequestedScopes = string.Join(' ', requestedScopes),
+                    Status = DeviceAuthorizationStatus.Pending,
+                    CreatedAt = now,
+                    ExpiresAt = now.Add(options.Expiration),
+                    LastPollAt = now,
+                    PollIntervalSeconds = (int)options.PollInterval.TotalSeconds,
+                    IpAddress = OidcRedirectUrlBuilder.GetClientIpAddress(httpRequest),
+                    UserAgent = httpRequest.Headers.UserAgent.ToString()
+                };
+
+                try
+                {
+                    await _repository.CreateAsync(entity, ct);
+                    break;
+                }
+                catch (MongoWriteException ex) when (ex.WriteError?.Category == ServerErrorCategory.DuplicateKey && attempt < 4)
+                {
+                    _logger.LogWarning(ex, "Device authorization code collision while creating request; retrying.");
+                }
+            }
 
             var apiBase = $"{httpRequest.Scheme}://{httpRequest.Host.Value}";
             var verificationUri = OidcRedirectUrlBuilder.BuildVerificationUri(apiBase, null, blocksContext.TenantId);
@@ -123,8 +146,8 @@ namespace Authentication.DomainService.Oidc.Services
                 UserCode = userCode,
                 VerificationUri = verificationUri,
                 VerificationUriComplete = verificationUriComplete,
-                ExpiresIn = DefaultExpirationSeconds,
-                Interval = DefaultPollIntervalSeconds
+                ExpiresIn = (int)options.Expiration.TotalSeconds,
+                Interval = (int)options.PollInterval.TotalSeconds
             };
         }
 

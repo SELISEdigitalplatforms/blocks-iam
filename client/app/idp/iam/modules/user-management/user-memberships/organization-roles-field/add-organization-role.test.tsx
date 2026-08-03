@@ -22,8 +22,8 @@ vi.mock("@blocks-idp/iam/hooks/use-roles", () => ({
   }),
 }));
 
-vi.mock("@seliseblocks/blocks-kit", async (importOriginal) => ({
-  ...(await importOriginal<typeof import("@seliseblocks/blocks-kit")>()),
+vi.mock("@seliseblocks/genesis-os", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@seliseblocks/genesis-os")>()),
   useProjectStore: () => ({ selectedProject: { tenantId: "default" } }),
 }));
 
