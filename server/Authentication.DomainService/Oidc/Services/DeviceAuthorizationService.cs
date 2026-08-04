@@ -153,7 +153,7 @@ namespace Authentication.DomainService.Oidc.Services
 
         private async Task<string> GenerateUniqueUserCodeAsync(CancellationToken ct)
         {
-            const int maxAttempts = 3;
+            const int maxAttempts = 8;
             for (var attempt = 0; attempt < maxAttempts; attempt++)
             {
                 var candidate = _codeGenerator.GenerateUserCode();
@@ -164,8 +164,8 @@ namespace Authentication.DomainService.Oidc.Services
                 }
             }
 
-            _logger.LogWarning("DeviceCodeGenerator: exhausted retries when generating a unique user code; returning last attempt.");
-            return _codeGenerator.GenerateUserCode();
+            _logger.LogError("DeviceCodeGenerator: exhausted {MaxAttempts} attempts generating a unique user code.", maxAttempts);
+            throw new DeviceAuthorizationException("server_error", "Failed to generate a unique device verification code");
         }
     }
 

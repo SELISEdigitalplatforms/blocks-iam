@@ -93,7 +93,7 @@ namespace Authentication.DomainService.Oidc.Repositories
         Task<DeviceAuthorizationRequestModel?> GetByDeviceCodeHashAsync(string hash, CancellationToken ct = default);
         Task<DeviceAuthorizationRequestModel?> GetByUserCodeAsync(string userCode, CancellationToken ct = default);
         Task<DeviceAuthorizationRequestModel?> GetByIdAsync(string id, CancellationToken ct = default);
-        Task<bool> MarkApprovedAsync(string id, string userId, DateTime at, CancellationToken ct = default);
+        Task<bool> MarkApprovedAsync(string id, string userId, DateTime at, CancellationToken ct = default, string? organizationId = null);
         Task<bool> MarkDeniedAsync(string id, DateTime at, CancellationToken ct = default);
         Task<bool> MarkConsumedAsync(string id, DateTime at, CancellationToken ct = default);
         Task<bool> MarkExpiredAsync(IEnumerable<string> ids, CancellationToken ct = default);

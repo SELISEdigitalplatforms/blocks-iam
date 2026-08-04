@@ -1614,6 +1614,9 @@ namespace Authentication.DomainService.Authentication
                     access_token = newTokenResponse.AccessToken,
                     refresh_token = newTokenResponse.RefreshToken,
                     token_type = newTokenResponse.TokenType,
+                    expires_in = newTokenResponse.ExpiresIn,
+                    refresh_expires_utc = newTokenResponse.RefreshExpiresUtc,
+                    id_token = newTokenResponse.IdToken,
                     cookie_set = false
                 });
             }

@@ -1076,11 +1076,8 @@ namespace Iam.DomainService.Resources
 
         private async Task<bool> PropagateSetPermissionsAsync(ResourceSetToPermissionMutationEvent command)
         {
-            var orgIds = (await _resourceRepository.GetOrganizationsAsync(new GetOrganizationsRequest()))
-                ?.Organizations?
-                .Select(x => x.ItemId)
-                .ToList() ?? new List<string>();
-
+            var orgIds = await _resourceRepository.GetAllOrgIdsAsync();
+                
             if (!orgIds.Any())
             {
                 _logger.LogWarning("Organizations are empty");
