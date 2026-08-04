@@ -260,26 +260,11 @@ namespace Authentication.DomainService.Authentication
                 var cookiesSet = CookieHelper.AppendCookies(response, request.HttpContext.Response, domain);
                 if (cookiesSet)
                 {
-                    return new OkObjectResult(new
-                    {
-                        token_type = response.TokenType,
-                        expires_in = response.ExpiresIn,
-                        scope = response.Scope,
-                        cookie_set = true
-                    });
+                    return new OkObjectResult(TokenResponsePayload.Build(response, cookiesSet: true));
                 }
             }
 
-            return new OkObjectResult(new
-            {
-                access_token = response.AccessToken,
-                refresh_token = response.RefreshToken,
-                token_type = response.TokenType,
-                expires_in = response.ExpiresIn,
-                scope = response.Scope,
-                id_token = response.IdToken,
-                cookie_set = false
-            });
+            return new OkObjectResult(TokenResponsePayload.Build(response, cookiesSet: false));
         }
     }
 }
