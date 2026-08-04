@@ -385,6 +385,14 @@ namespace Iam.DomainService.Resources
             await collection.ReplaceOneAsync(r=>r.ItemId == organization.ItemId, organization, new ReplaceOptions { IsUpsert = true });
         }
 
+        public async Task<List<string>> GetAllOrgIdsAsync()
+        {
+            var collection = _identityAccessManagementRepository.GetCollection<Organization>();
+            var orgIds = await collection.Find(Builders<Organization>.Filter.Empty).Project(x => x.ItemId).ToListAsync();
+
+            return orgIds;
+        }
+
         public async Task<GetOrganizationsResponse> GetOrganizationsAsync(GetOrganizationsRequest request)
         {
             var collection = _identityAccessManagementRepository.GetCollection<Organization>();
