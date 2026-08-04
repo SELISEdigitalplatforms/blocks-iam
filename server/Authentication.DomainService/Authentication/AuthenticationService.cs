@@ -839,28 +839,7 @@ namespace Authentication.DomainService.Authentication
 
             await EnsureIdpSessionForLoginAsync(response, httpContext);
 
-            if (cookiesSet)
-            {
-                return new OkObjectResult(new
-                {
-                    token_type = response.TokenType,
-                    expires_in = response.ExpiresIn,
-                    scope = response.Scope,
-                    id_token = response.IdToken
-                });
-            }
-
-            return new OkObjectResult(new
-            {
-                access_token = response.AccessToken,
-                refresh_token = response.RefreshToken,
-                token_type = response.TokenType,
-                expires_in = response.ExpiresIn,
-                expires_utc = response.ExpiresUtc,
-                refresh_expires_utc = response.RefreshExpiresUtc,
-                scope = response.Scope,
-                id_token = response.IdToken
-            });
+            return new OkObjectResult(TokenResponsePayload.Build(response, cookiesSet));
         }
 
         private async Task<bool> ResolveUseTokensCookieAsync(string? clientId)
@@ -1288,26 +1267,14 @@ namespace Authentication.DomainService.Authentication
                 await _authSession.RevokeRefreshToken(rootRefreshToken);
                 var cookiesSet = AppendCookies(tokenResponse, httpResponse, rootDomain);
 
+                var impersonationPayload = TokenResponsePayload.Build(tokenResponse, cookiesSet);
+                impersonationPayload["impersonation_mode"] = true;
                 if (!cookiesSet)
                 {
-                    return new OkObjectResult(new
-                    {
-                        impersonation_mode = true,
-                        access_token = tokenResponse.AccessToken,
-                        refresh_token = tokenResponse.RefreshToken,
-                        token_type = tokenResponse.TokenType,
-                        expires_in = tokenResponse.ExpiresIn,
-                        scope = tokenResponse.Scope,
-                        id_token = tokenResponse.IdToken,
-                        cookie_set = false,
-                        impersonation_session_id = sessionId
-                    });
+                    impersonationPayload["impersonation_session_id"] = sessionId;
                 }
 
-                // var sessionCookieOptions = DomainResolver.CreateCookieOptions(rootCookieDomain, rootRefreshCache.ExpiresUtc);
-
-
-                return new OkObjectResult(new ImpersonateResponse { impersonation_mode = true });
+                return new OkObjectResult(impersonationPayload);
             }
             catch (Exception ex)
             {
@@ -1604,21 +1571,12 @@ namespace Authentication.DomainService.Authentication
                 if (cookiesSet)
                 {
                     _logger.LogInformation("Organization switched by user {UserId} in impersonation session {SessionId} to org {OrgId} with new tokens", bcUserId, existingSessionId, request.OrganizationId);
-                    return new OkObjectResult(new ImpersonateResponse { impersonation_mode = true, org_switched = true });
                 }
 
-                return new OkObjectResult(new
-                {
-                    impersonation_mode = true,
-                    org_switched = true,
-                    access_token = newTokenResponse.AccessToken,
-                    refresh_token = newTokenResponse.RefreshToken,
-                    token_type = newTokenResponse.TokenType,
-                    expires_in = newTokenResponse.ExpiresIn,
-                    refresh_expires_utc = newTokenResponse.RefreshExpiresUtc,
-                    id_token = newTokenResponse.IdToken,
-                    cookie_set = false
-                });
+                var orgSwitchPayload = TokenResponsePayload.Build(newTokenResponse, cookiesSet);
+                orgSwitchPayload["impersonation_mode"] = true;
+                orgSwitchPayload["org_switched"] = true;
+                return new OkObjectResult(orgSwitchPayload);
             }
             catch (Exception ex)
             {
