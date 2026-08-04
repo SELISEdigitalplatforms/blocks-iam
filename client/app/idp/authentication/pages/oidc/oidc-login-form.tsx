@@ -248,16 +248,21 @@ export const OidcLoginForm = ({
         }
 
         await animCtx?.succeedAnimation();
-        // The backend response is the authoritative signal, not the returnUrl prop
-        // (which — like every other OIDC param — gets persisted to localStorage by
-        // OIDCProvider and could still be stale from an earlier device-flow attempt
-        // in this browser). Normal flow always gets `redirect_uri` back; only device
-        // flow (RFC 8628) completes with `{ success: true }` and no redirect_uri, so
-        // returnUrl is only ever used as a fallback, never preferred over it.
-        window.location.href = data.redirect_uri || returnUrl;
+        // Normal flow always gets `redirect_uri` back; only device flow (RFC 8628)
+        // completes with `{ success: true }` and no redirect_uri, so returnUrl is
+        // only ever used as a fallback for that case, never preferred over it.
+        const target = data.redirect_uri || returnUrl;
+        if (!target) {
+          const errMsg = "Login succeeded but no redirect target was provided";
+          shake();
+          setServerError(errMsg);
+          await animCtx?.failAnimation(errMsg);
+          setIsLoading(false);
+          return;
+        }
+        window.location.href = target;
+        return;
       }
-
-      
 
       let data;
       try {
