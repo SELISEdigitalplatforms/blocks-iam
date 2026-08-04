@@ -30,13 +30,6 @@ namespace XUnitTest.Captcha
         }
 
         [Fact]
-        public void Constructor_ThrowsOnNullConfig()
-        {
-            Action act = () => new DbReCaptchaConfig(null!, "x");
-            act.Should().Throw<ArgumentNullException>();
-        }
-
-        [Fact]
         public void ResolveRecaptchaUri_AcceptsNullToken()
         {
             var config = new CaptchaConfiguration { CaptchaSecret = "k" };

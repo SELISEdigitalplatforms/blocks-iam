@@ -2,6 +2,7 @@ using Authentication.DomainService.Oidc.Contracts;
 using Authentication.DomainService.Oidc.Repositories;
 using Authentication.DomainService.Oidc.Services;
 using Authentication.DomainService.Services;
+using Authentication.DomainService.Utilities;
 using Blocks.Genesis;
 using Iam.DomainService.Utilities;
 using Idp.DomainService.Oidc.Contracts;
@@ -224,7 +225,15 @@ namespace Authentication.DomainService.Authentication
             string newStatus;
             if (decision == "allow")
             {
-                ok = await _repository.MarkApprovedAsync(entity.Id, approver.UserId, now, ct);
+                // Resolve the same effective org a normal authorization_code login would use
+                // (OidcAuthorizationEndpoint), so a device-flow token carries the org the user
+                // actually has access to instead of minting with no OrganizationId at all.
+                var approvingUser = await _authenticationRepository.GetUserByIdAsync(approver.UserId);
+                var organizationId = approvingUser != null
+                    ? OrganizationAccessResolver.ResolveEffectiveOrganizationId(approvingUser)
+                    : null;
+
+                ok = await _repository.MarkApprovedAsync(entity.Id, approver.UserId, now, ct, organizationId);
                 newStatus = DeviceAuthorizationStatus.Approved;
             }
             else

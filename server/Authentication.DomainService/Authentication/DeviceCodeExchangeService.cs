@@ -201,6 +201,7 @@ namespace Authentication.DomainService.Authentication
             {
                 User = user,
                 TenantId = entity.TenantId,
+                OrganizationId = entity.OrganizationId,
                 Scope = entity.RequestedScopes,
                 ClientId = entity.ClientId,
                 Amr = new List<string> { "device_code" },

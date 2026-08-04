@@ -123,7 +123,7 @@ namespace XUnitTest.Auth.OAuth
             result.Error.Should().BeNullOrEmpty();
             result.RefreshToken.Should().Be("new-refresh-token");
             result.RefreshExpiresUtc.Should().Be(expiry);
-            result.ExpiresIn.Should().Be(42);
+            result.ExpiresIn.Should().Be(42 * 60);
             result.AccessToken.Should().NotBeNullOrWhiteSpace();
 
             // Access token is a well-formed JWT carrying the subject claim.

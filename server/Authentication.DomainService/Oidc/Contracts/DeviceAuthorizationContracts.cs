@@ -15,6 +15,7 @@ namespace Idp.DomainService.Oidc.Contracts
         public string RequestedScopes { get; set; } = string.Empty;
         public string Status { get; set; } = DeviceAuthorizationStatus.Pending;
         public string? UserId { get; set; }
+        public string? OrganizationId { get; set; }
         public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
         public DateTime ExpiresAt { get; set; }
         public DateTime? ApprovedAt { get; set; }

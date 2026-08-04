@@ -35,13 +35,15 @@ namespace XUnitTest.Auth.Oidc
         }
 
         [Fact]
-        public void DeviceFlowClient_OnlyAllowsDeviceCode()
+        public void DeviceFlowClient_AllowsDeviceCodeAndRefreshToken_ButNotAuthCodeOrClientCredential()
         {
             var client = Build(isDeviceFlow: true);
 
+            // RFC 8628 device clients mint their initial token via device_code, but must still be
+            // able to refresh like any other client — refresh_token is not authorization_code.
             OidcClientValidator.IsGrantAllowed(client, GrantTypes.DeviceCode).Should().BeTrue();
             OidcClientValidator.IsGrantAllowed(client, GrantTypes.AuthCode).Should().BeFalse();
-            OidcClientValidator.IsGrantAllowed(client, GrantTypes.RefreshToken).Should().BeFalse();
+            OidcClientValidator.IsGrantAllowed(client, GrantTypes.RefreshToken).Should().BeTrue();
             OidcClientValidator.IsGrantAllowed(client, GrantTypes.ClientCredential).Should().BeFalse();
         }
 

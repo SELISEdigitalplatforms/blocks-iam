@@ -66,7 +66,7 @@ namespace Authentication.DomainService.OAuth.Services
             return new TokenResponse
             {
                 AccessToken = accessToken,
-                ExpiresIn = lifetimeMinutes,
+                ExpiresIn = Math.Max(lifetimeMinutes * IdpConstants.SecondsPerMinute, IdpConstants.MinAccessTokenLifetimeSeconds),
                 ExpiresUtc = jwtToken.Expires,
                 TokenType = "Bearer",
                 StatusCode = 200
