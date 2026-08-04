@@ -1,4 +1,4 @@
-﻿using Iam.DomainService.Entities;
+using Iam.DomainService.Entities;
 using Iam.DomainService.Resources.ResponseModel;
 using Iam.DomainService.Shared.Entities;
 
@@ -57,5 +57,6 @@ namespace Iam.DomainService.Resources
         Task<List<Role>> GetRolesBySlugAsync(string slug);
         Task<bool> UpdatePermissionsAsync(List<Permission> permissions);
         Task<bool> UpdateRolesAsync(List<Role> roles);
+        Task<List<string>> GetAllOrgIdsAsync();
     }
 }
