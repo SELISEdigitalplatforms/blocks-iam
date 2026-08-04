@@ -63,26 +63,38 @@ function OIDCProvider({ children }: { children: ReactNode }) {
       console.error("Failed to parse stored params:", e);
     }
 
+    // Only branding/context fields are safe to persist across page loads and reused
+    // as a fallback. clientId/redirectUri/returnUrl/state/scope/nonce are single-flow
+    // values: every in-flow navigation already re-supplies them via the URL (see
+    // buildOIDCNavigationUrl), so falling back to a stored copy only risks replaying
+    // a stale, unrelated flow (e.g. an old device-flow returnUrl) into a new login.
     const mergedParams: OIDCContextType = {
       tenantId: urlParams.tenantId || stored.tenantId,
       userName: urlParams.userName || stored.userName,
       logoUrl: urlParams.logoUrl || stored.logoUrl,
       themeColor: urlParams.themeColor || stored.themeColor || "#124091",
-      clientId: urlParams.clientId || stored.clientId,
-      redirectUri: urlParams.redirectUri || stored.redirectUri,
-      returnUrl: urlParams.returnUrl || stored.returnUrl,
-      state: urlParams.state || stored.state,
-      scope: urlParams.scope || stored.scope,
-      nonce: urlParams.nonce || stored.nonce,
+      clientId: urlParams.clientId,
+      redirectUri: urlParams.redirectUri,
+      returnUrl: urlParams.returnUrl,
+      state: urlParams.state,
+      scope: urlParams.scope,
+      nonce: urlParams.nonce,
       isLoading: false,
     };
 
-    const hasAnyParams = Object.values(mergedParams).some(
+    const persistableParams = {
+      tenantId: mergedParams.tenantId,
+      userName: mergedParams.userName,
+      logoUrl: mergedParams.logoUrl,
+      themeColor: mergedParams.themeColor,
+    };
+
+    const hasAnyPersistableParams = Object.values(persistableParams).some(
       (value) => value && value !== "#124091",
     );
 
-    if (hasAnyParams) {
-      localStorage.setItem("oidc-flow-params", JSON.stringify(mergedParams));
+    if (hasAnyPersistableParams) {
+      localStorage.setItem("oidc-flow-params", JSON.stringify(persistableParams));
     }
 
     setParams(mergedParams);

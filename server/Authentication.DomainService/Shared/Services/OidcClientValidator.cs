@@ -24,10 +24,17 @@ namespace Authentication.DomainService.Shared.Services
                 return client.IsDeviceFlowClient;
             }
 
-            if (string.Equals(grantType, GrantTypes.AuthCode, StringComparison.OrdinalIgnoreCase)
-                || string.Equals(grantType, GrantTypes.RefreshToken, StringComparison.OrdinalIgnoreCase))
+            if (string.Equals(grantType, GrantTypes.AuthCode, StringComparison.OrdinalIgnoreCase))
             {
                 return !client.IsDeviceFlowClient;
+            }
+
+            // Device clients mint their initial token via the device_code grant, but RFC 8628
+            // still expects them to refresh like any other client — refresh_token is not
+            // authorization_code and must not be gated on IsDeviceFlowClient.
+            if (string.Equals(grantType, GrantTypes.RefreshToken, StringComparison.OrdinalIgnoreCase))
+            {
+                return true;
             }
 
             if (string.Equals(grantType, GrantTypes.ClientCredential, StringComparison.OrdinalIgnoreCase))

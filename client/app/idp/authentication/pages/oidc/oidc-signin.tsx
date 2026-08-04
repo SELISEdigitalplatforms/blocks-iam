@@ -99,7 +99,7 @@ export const OIDCSignin = () => {
   // device-flow return trip, which has returnUrl instead of redirect_uri.
   if (
     isOidcPasswordFlow &&
-    (oidcContext.clientId || urlClientId) &&
+    effectiveClientId &&
     (oidcContext.redirectUri || urlRedirectUri || effectiveReturnUrl)
   ) {
     return (

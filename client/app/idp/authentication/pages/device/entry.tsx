@@ -13,7 +13,6 @@ import {
   deviceService,
   type DeviceConsentPayload,
 } from "@blocks-idp/authentication/services/device.service";
-import { buildOIDCNavigationUrl } from "@blocks-idp/authentication/utils/oidc-utils";
 
 type FlowState =
   | { kind: "idle" }
@@ -25,7 +24,7 @@ type FlowState =
 
 export function DeviceEntryPage() {
   const params = useParams<{ tenantId: string }>();
-  const [searchParams] = useSearchParams();
+  const [searchParams, setSearchParams] = useSearchParams();
   const tenantId = (params.tenantId ?? "").trim();
   const animCtx = useOidcAuthAnimation();
 
@@ -45,6 +44,14 @@ export function DeviceEntryPage() {
 
   const invalidTenant = !tenantId;
 
+  // The device page's own URL never carries client_id/scope (only user_code, via a
+  // path param tenantId) — buildOIDCNavigationUrl() would read those off this page's
+  // params and get nothing meaningful. tenantId is the only real context this page
+  // has pre-verification, since a device code hasn't been resolved to a client yet.
+  const backToSignInUrl = tenantId
+    ? `/oidc/login?tenant_id=${encodeURIComponent(tenantId)}`
+    : "/oidc/login";
+
   function shake(el: HTMLElement | null) {
     if (!el) return;
     el.classList.remove("oidc-animate-shake");
@@ -56,11 +63,11 @@ export function DeviceEntryPage() {
     if (invalidTenant || !initialCode || autoSubmittedRef.current) return;
     if (!isValidUserCode(initialCode)) return;
     autoSubmittedRef.current = true;
-    void runSubmit(normalizeUserCode(initialCode));
+    void runSubmit(normalizeUserCode(initialCode), true);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [initialCode, invalidTenant]);
 
-  async function runSubmit(code: string) {
+  async function runSubmit(code: string, isAutoSubmit = false) {
     setServerError(null);
     setIsSubmitting(true);
     animCtx?.startAnimation();
@@ -71,7 +78,19 @@ export function DeviceEntryPage() {
       shake(formRef.current);
       const errCode = readErrorCode(err);
       const msg = verifyErrorMessage(errCode);
-      if (errCode === "expired_token") {
+      if (errCode === "expired_token" && isAutoSubmit) {
+        // A code auto-submitted from the URL (refresh, back button, bookmark) is
+        // dead by definition of the user never having typed it — drop to a clean
+        // entry form instead of the terminal "expired" screen, and strip user_code
+        // so a future refresh of this page doesn't just re-trigger the same dead end.
+        setSearchParams((prev) => {
+          const next = new URLSearchParams(prev);
+          next.delete("user_code");
+          return next;
+        });
+        setValue("");
+        setServerError("That code has expired. Enter the fresh code shown on your device.");
+      } else if (errCode === "expired_token") {
         setFlow({ kind: "expired" });
       } else {
         setServerError(msg);
@@ -183,7 +202,7 @@ export function DeviceEntryPage() {
         showCorners={false}
         footerNote={
           <p className="text-xs oidc-font-rajdhani" style={{ color: "var(--muted)" }}>
-            <Link to={buildOIDCNavigationUrl("/oidc/login")} className="oidc-sci-fi-link">
+            <Link to={backToSignInUrl} className="oidc-sci-fi-link">
               Back to sign-in
             </Link>
           </p>
@@ -494,7 +513,7 @@ export function DeviceEntryPage() {
 
         <p className="text-xs oidc-font-rajdhani" style={{ color: "var(--muted)" }}>
           Not the right tenant?{" "}
-          <Link to={buildOIDCNavigationUrl("/oidc/login")} className="oidc-sci-fi-link">
+          <Link to={backToSignInUrl} className="oidc-sci-fi-link">
             Back to sign-in
           </Link>
         </p>
