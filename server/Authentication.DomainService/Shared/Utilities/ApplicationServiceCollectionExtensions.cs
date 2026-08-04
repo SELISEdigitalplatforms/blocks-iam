@@ -28,7 +28,9 @@ using Mfa.DomainService.Services;
 using Mfa.DomainService.Shared;
 using Mfa.DomainService.TOTP;
 using Mfa.DomainService.Validators;
+using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Options;
 using Storage.DomainService.Shared.Services;
 using Storage.DomainService.Storage;
 using Storage.DomainService.Storage.Validators;
@@ -98,7 +100,10 @@ namespace Authentication.DomainService.Utilities
             serviceCollection.AddSingleton<ISocialLogInServiceProvider, SocialLogInServiceProvider>();
 
             // RFC 8628 Device Authorization Grant
-            serviceCollection.AddOptions<DeviceFlowOptions>();
+            serviceCollection.AddOptions<DeviceFlowOptions>()
+                .Configure<IConfiguration>((options, configuration) =>
+                    configuration.GetSection(DeviceFlowOptions.SectionName).Bind(options))
+                .ValidateOnStart();
             serviceCollection.AddSingleton<DeviceCodeGenerator>();
             serviceCollection.AddSingleton<IDeviceAuthorizationRepository, DeviceAuthorizationRepository>();
             serviceCollection.AddSingleton<IDeviceAuthorizationService, DeviceAuthorizationService>();

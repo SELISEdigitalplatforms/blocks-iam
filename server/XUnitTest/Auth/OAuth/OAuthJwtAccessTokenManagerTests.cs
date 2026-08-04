@@ -221,7 +221,7 @@ namespace XUnitTest.Auth.OAuth
 
             result.StatusCode.Should().Be(200);
             result.Error.Should().BeNullOrEmpty();
-            result.ExpiresIn.Should().Be(15);
+            result.ExpiresIn.Should().Be(15 * 60);
             result.AccessToken.Should().NotBeNullOrWhiteSpace();
             result.RefreshToken.Should().NotBeNullOrWhiteSpace();
             new JwtSecurityTokenHandler().ReadJwtToken(result.AccessToken).Should().NotBeNull();

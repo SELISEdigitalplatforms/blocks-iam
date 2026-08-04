@@ -94,10 +94,14 @@ namespace Authentication.DomainService.OAuth
             var (refreshToken, refreshValidity) = await ManageRefreshTokenAsync(tokenRequest, jwtAccessToken, authenticationConfiguration, tenant, user);
             var (_, cookieDomain, _) = DomainResolver.ResolveDomain(tenant, tokenRequest.Request);
 
+            var accessTokenLifetimeSeconds = Math.Max(
+                authenticationConfiguration.AccessTokenValidForNumberMinutes * IdpConstants.SecondsPerMinute,
+                IdpConstants.MinAccessTokenLifetimeSeconds);
+
             return new TokenResponse
             {
                 AccessToken = accessToken,
-                ExpiresIn = authenticationConfiguration.AccessTokenValidForNumberMinutes,
+                ExpiresIn = accessTokenLifetimeSeconds,
                 ExpiresUtc = jwtAccessToken.Expires,
                 RefreshToken = refreshToken,
                 RefreshExpiresUtc = refreshValidity,

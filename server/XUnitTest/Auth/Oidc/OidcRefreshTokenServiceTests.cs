@@ -4,6 +4,7 @@ using Authentication.DomainService.Entities;
 using Authentication.DomainService.OAuth;
 using Authentication.DomainService.OAuth.RequestModel;
 using Authentication.DomainService.OAuth.ResponseModel;
+using Authentication.DomainService.Oidc.Repositories;
 using Authentication.DomainService.Services;
 using Blocks.Genesis;
 using FluentAssertions;
@@ -24,6 +25,7 @@ namespace XUnitTest.Auth.Oidc
         private readonly Mock<ICacheClient> _cache = new();
         private readonly Mock<ITenants> _tenants = new();
         private readonly Mock<IAuthenticationService> _authService = new();
+        private readonly Mock<IRefreshTokenRepository> _refreshTokenRepo = new();
 
         // Inner (real) RefreshTokenAuthenticationService dependencies.
         private readonly Mock<IJwtAccessTokenProvider> _innerJwt = new();
@@ -52,7 +54,7 @@ namespace XUnitTest.Auth.Oidc
             new(NullLogger<RefreshTokenAuthenticationService>.Instance, _innerJwt.Object, _innerTenants.Object, _innerTokenMgr.Object, _innerAuthRepo.Object);
 
         private OidcRefreshTokenService Create() =>
-            new(_authRepo.Object, _cache.Object, _tenants.Object, BuildInner(), _authService.Object, NullLogger<OidcRefreshTokenService>.Instance);
+            new(_authRepo.Object, _cache.Object, _tenants.Object, BuildInner(), _authService.Object, _refreshTokenRepo.Object, NullLogger<OidcRefreshTokenService>.Instance);
 
         private static HttpRequest MakeRequest(Dictionary<string, string>? form = null)
         {
