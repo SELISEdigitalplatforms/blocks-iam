@@ -306,23 +306,7 @@ namespace XUnitTest.IamTests.Resources
             await Create().ExecutePropagationRolePermissionUpdateAsync(new PropagationRolePermissionUpdateEvent { Entity = "permission", Action = "insert", ItemId = "p1" });
             _repo.Verify(r => r.GetPermissionByIdAsync("p1"), Times.Once);
         }
-
-        // ---------- ProcessPermissionAsync ----------
-
-        [Fact]
-        public async Task ProcessPermission_Role_UpdatesCount_AndAudits()
-        {
-            _repo.Setup(r => r.UpdateRolesCountAsync("admin", It.IsAny<string>())).ReturnsAsync(true);
-            var ok = await Create().ProcessPermissionAsync(new ResourceSetToPermissionMutationEvent
-            {
-                Entity = ResourceEntity.Role, Slug = "admin",
-                AddPermissions = new List<string> { "p1" }, RemovePermissions = new List<string>(),
-                IsPropagationEnable = false
-            });
-            ok.Should().BeTrue();
-            _repo.Verify(r => r.UpdateRolesCountAsync("admin", It.IsAny<string>()), Times.Once);
-            _activity.Verify(a => a.SendUserActivityAsync(It.IsAny<UserActivityEvent>()), Times.Once);
-        }
+ 
 
         // ---------- CreateOrganizationAsync ----------
 

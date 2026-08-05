@@ -517,8 +517,6 @@ namespace Iam.DomainService.Resources
             {
                 await _resourceRepository.RemoveRolePermissionByIdsAsync(command.Slug, command.RemovePermissions, currentOrganizationId);
             }
-            
-            var tenantConfig = await _resourceRepository.GetTenantConfigurationAsync();
 
             await SendResourceSetToPermissionMutationEventAsync(
                 new ResourceSetToPermissionMutationEvent
@@ -527,8 +525,7 @@ namespace Iam.DomainService.Resources
                     AddPermissions = command.AddPermissions,
                     RemovePermissions = command.RemovePermissions,
                     Slug = command.Slug,
-                    IsPropagationEnable = tenantConfig.IsMultiOrgEnabled && IsDefaultOrgScope(currentOrganizationId)
-                    && (command.AddPermissions.Any() || command.RemovePermissions.Any()),
+                    OrganizationId = currentOrganizationId
                 });
 
             _logger.LogInformation("SetRole end");
@@ -1038,6 +1035,7 @@ namespace Iam.DomainService.Resources
             _logger.LogInformation("Processing permission timeline for ResourceMutationEvent.");
             var actorUserId = BlocksContext.GetContext()?.UserId ?? string.Empty;
             var eventName = command.Entity == ResourceEntity.Role ? "ROLE_PERMISSIONS_UPDATED" : "GROUP_PERMISSIONS_UPDATED";
+
             foreach (var itemId in command.AddPermissions.Union(command.RemovePermissions))
             {
                 await _userActivityDispatcher.SendUserActivityAsync(new UserActivityEvent
@@ -1053,12 +1051,7 @@ namespace Iam.DomainService.Resources
 
             if (command.Entity == ResourceEntity.Role)
             {
-                await _resourceRepository.UpdateRolesCountAsync(command.Slug);
-            }
-
-            if (command.IsPropagationEnable)
-            {
-                await PropagateSetPermissionsAsync(command);
+                await _resourceRepository.UpdateRolesCountAsync(command.Slug, command.OrganizationId);
             }
 
             return true;

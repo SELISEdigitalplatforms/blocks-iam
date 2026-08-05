@@ -1,4 +1,4 @@
-﻿using Iam.DomainService.Enums;
+using Iam.DomainService.Enums;
 
 namespace Iam.DomainService.Dtos
 {
@@ -8,6 +8,7 @@ namespace Iam.DomainService.Dtos
         public List<string> RemovePermissions { get; set; } = new List<string>();
         public required string Slug { get; set; }
         public required ResourceEntity Entity { get; set; }
-        public bool IsPropagationEnable { get; set; } = false;
+        public string OrganizationId { get; set; }
+       
     }
 }
