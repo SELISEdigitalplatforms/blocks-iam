@@ -479,6 +479,7 @@ namespace Iam.DomainService.Resources
         public async Task<SetRolesResponse> SetRolesAsync(SetRolesRequest command)
         {
             _logger.LogInformation("SetRole start");
+
             if (string.IsNullOrWhiteSpace(command.Slug))
             {
                 _logger.LogError("Slug should not be empty or null");
@@ -491,7 +492,8 @@ namespace Iam.DomainService.Resources
                 };
             }
 
-            var isExist = await _resourceRepository.GetRoleBySlugAsync(command.Slug);
+            var currentOrganizationId = ResolveOrganizationId(command?.OrganizationId ?? "");
+            var isExist = await _resourceRepository.GetRoleBySlugAsync(command.Slug, currentOrganizationId);
 
             if (isExist == null)
             {
@@ -504,19 +506,7 @@ namespace Iam.DomainService.Resources
                     }
                 };
             }
-
-            if (isExist.CreatedFromDefault)
-            {
-                _logger.LogWarning("SetRole forbidden for default-derived role slug {Slug}", command.Slug);
-                return new SetRolesResponse
-                {
-                    Errors = new Dictionary<string, string>
-                    {
-                        { "forbidden", "Can_Not_Change_Default_role" }
-                    }
-                };
-            }
-            var currentOrganizationId = ResolveOrganizationId(command?.OragnizationId ?? "");
+           
 
             if (command.AddPermissions.Any())
             {

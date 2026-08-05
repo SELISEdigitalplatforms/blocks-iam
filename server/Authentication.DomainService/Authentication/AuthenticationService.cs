@@ -698,23 +698,32 @@ namespace Authentication.DomainService.Authentication
 
         public async Task<ClaimsPrincipal?> GetPrincipalFromTokenAsync(HttpRequest request, string tenantId, bool IsUserInfoGetRequest = false)
         {
-            var (token, _) = TokenHelper.GetToken(request, _tenants);
-            var tenant = _tenants.GetTenantByID(tenantId);
-            if (tenant == null)
+            try
             {
-                return null;
+                var (token, _) = TokenHelper.GetToken(request, _tenants);
+                var tenant = _tenants.GetTenantByID(tenantId);
+                if (tenant == null)
+                {
+                    return null;
+                }
+
+                if (!string.IsNullOrEmpty(token))
+                {
+                    var tokenHandler = new JwtSecurityTokenHandler();
+                    string cacheKey = $"{PublicCertCachePrefix}{tenant.TenantId}";
+                    var certificateData = await _cacheClient.CacheDatabase().StringGetAsync(cacheKey);
+                    var validationParams = tenant.JwtTokenParameters;
+                    var publicCert = X509CertificateLoader.LoadPkcs12(certificateData, validationParams.PublicCertificatePassword);
+                    var tokenValidationParameters = !IsUserInfoGetRequest ? new TokenValidationParameters { ValidateLifetime = true, ClockSkew = TimeSpan.Zero, IssuerSigningKey = new X509SecurityKey(publicCert), ValidateIssuerSigningKey = true, ValidateIssuer = true, ValidIssuer = validationParams?.Issuer, ValidAudience = DomainResolver.GetAudience(tenant), ValidateAudience = true, SaveSigninToken = true } :
+                                                                          new TokenValidationParameters { ValidateLifetime = true, ClockSkew = TimeSpan.Zero, IssuerSigningKey = new X509SecurityKey(publicCert), ValidateIssuerSigningKey = true, ValidateIssuer = false, ValidateAudience = false, SaveSigninToken = true };
+                    return tokenHandler.ValidateToken(token, tokenValidationParameters, out _);
+                }
             }
 
-            if (!string.IsNullOrEmpty(token))
+            catch (Exception ex)
             {
-                var tokenHandler = new JwtSecurityTokenHandler();
-                string cacheKey = $"{PublicCertCachePrefix}{tenant.TenantId}";
-                var certificateData = await _cacheClient.CacheDatabase().StringGetAsync(cacheKey);
-                var validationParams = tenant.JwtTokenParameters;
-                var publicCert = X509CertificateLoader.LoadPkcs12(certificateData, validationParams.PublicCertificatePassword);
-                var tokenValidationParameters = !IsUserInfoGetRequest ? new TokenValidationParameters { ValidateLifetime = true, ClockSkew = TimeSpan.Zero, IssuerSigningKey = new X509SecurityKey(publicCert), ValidateIssuerSigningKey = true, ValidateIssuer = true, ValidIssuer = validationParams?.Issuer, ValidAudience = DomainResolver.GetAudience(tenant), ValidateAudience = true, SaveSigninToken = true } :
-                                                                      new TokenValidationParameters { ValidateLifetime = true, ClockSkew = TimeSpan.Zero, IssuerSigningKey = new X509SecurityKey(publicCert), ValidateIssuerSigningKey = true, ValidateIssuer = false, ValidateAudience = false, SaveSigninToken = true };
-                return tokenHandler.ValidateToken(token, tokenValidationParameters, out _);
+                _logger.LogError(ex, "Unexpected error while validating JWT token. TenantId: {TenantId}", tenantId);
+                
             }
 
             return null;
