@@ -520,7 +520,7 @@ namespace Iam.DomainService.Resources
 
             if (command.AddPermissions.Any())
             {
-                await _resourceRepository.UpdateRolePermissionByIdsAsync(command.Slug, command.AddPermissions);
+                await _resourceRepository.UpdateRolePermissionByIdsAsync(command.Slug, command.AddPermissions, currentOrganizationId);
             }
 
             if (command.RemovePermissions.Any())
