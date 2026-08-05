@@ -698,23 +698,32 @@ namespace Authentication.DomainService.Authentication
 
         public async Task<ClaimsPrincipal?> GetPrincipalFromTokenAsync(HttpRequest request, string tenantId, bool IsUserInfoGetRequest = false)
         {
-            var (token, _) = TokenHelper.GetToken(request, _tenants);
-            var tenant = _tenants.GetTenantByID(tenantId);
-            if (tenant == null)
+            try
             {
-                return null;
+                var (token, _) = TokenHelper.GetToken(request, _tenants);
+                var tenant = _tenants.GetTenantByID(tenantId);
+                if (tenant == null)
+                {
+                    return null;
+                }
+
+                if (!string.IsNullOrEmpty(token))
+                {
+                    var tokenHandler = new JwtSecurityTokenHandler();
+                    string cacheKey = $"{PublicCertCachePrefix}{tenant.TenantId}";
+                    var certificateData = await _cacheClient.CacheDatabase().StringGetAsync(cacheKey);
+                    var validationParams = tenant.JwtTokenParameters;
+                    var publicCert = X509CertificateLoader.LoadPkcs12(certificateData, validationParams.PublicCertificatePassword);
+                    var tokenValidationParameters = !IsUserInfoGetRequest ? new TokenValidationParameters { ValidateLifetime = true, ClockSkew = TimeSpan.Zero, IssuerSigningKey = new X509SecurityKey(publicCert), ValidateIssuerSigningKey = true, ValidateIssuer = true, ValidIssuer = validationParams?.Issuer, ValidAudience = DomainResolver.GetAudience(tenant), ValidateAudience = true, SaveSigninToken = true } :
+                                                                          new TokenValidationParameters { ValidateLifetime = true, ClockSkew = TimeSpan.Zero, IssuerSigningKey = new X509SecurityKey(publicCert), ValidateIssuerSigningKey = true, ValidateIssuer = false, ValidateAudience = false, SaveSigninToken = true };
+                    return tokenHandler.ValidateToken(token, tokenValidationParameters, out _);
+                }
             }
 
-            if (!string.IsNullOrEmpty(token))
+            catch (Exception ex)
             {
-                var tokenHandler = new JwtSecurityTokenHandler();
-                string cacheKey = $"{PublicCertCachePrefix}{tenant.TenantId}";
-                var certificateData = await _cacheClient.CacheDatabase().StringGetAsync(cacheKey);
-                var validationParams = tenant.JwtTokenParameters;
-                var publicCert = X509CertificateLoader.LoadPkcs12(certificateData, validationParams.PublicCertificatePassword);
-                var tokenValidationParameters = !IsUserInfoGetRequest ? new TokenValidationParameters { ValidateLifetime = true, ClockSkew = TimeSpan.Zero, IssuerSigningKey = new X509SecurityKey(publicCert), ValidateIssuerSigningKey = true, ValidateIssuer = true, ValidIssuer = validationParams?.Issuer, ValidAudience = DomainResolver.GetAudience(tenant), ValidateAudience = true, SaveSigninToken = true } :
-                                                                      new TokenValidationParameters { ValidateLifetime = true, ClockSkew = TimeSpan.Zero, IssuerSigningKey = new X509SecurityKey(publicCert), ValidateIssuerSigningKey = true, ValidateIssuer = false, ValidateAudience = false, SaveSigninToken = true };
-                return tokenHandler.ValidateToken(token, tokenValidationParameters, out _);
+                _logger.LogError(ex, "Unexpected error while validating JWT token. TenantId: {TenantId}", tenantId);
+                
             }
 
             return null;
@@ -839,28 +848,7 @@ namespace Authentication.DomainService.Authentication
 
             await EnsureIdpSessionForLoginAsync(response, httpContext);
 
-            if (cookiesSet)
-            {
-                return new OkObjectResult(new
-                {
-                    token_type = response.TokenType,
-                    expires_in = response.ExpiresIn,
-                    scope = response.Scope,
-                    id_token = response.IdToken
-                });
-            }
-
-            return new OkObjectResult(new
-            {
-                access_token = response.AccessToken,
-                refresh_token = response.RefreshToken,
-                token_type = response.TokenType,
-                expires_in = response.ExpiresIn,
-                expires_utc = response.ExpiresUtc,
-                refresh_expires_utc = response.RefreshExpiresUtc,
-                scope = response.Scope,
-                id_token = response.IdToken
-            });
+            return new OkObjectResult(TokenResponsePayload.Build(response, cookiesSet));
         }
 
         private async Task<bool> ResolveUseTokensCookieAsync(string? clientId)
@@ -1288,26 +1276,14 @@ namespace Authentication.DomainService.Authentication
                 await _authSession.RevokeRefreshToken(rootRefreshToken);
                 var cookiesSet = AppendCookies(tokenResponse, httpResponse, rootDomain);
 
+                var impersonationPayload = TokenResponsePayload.Build(tokenResponse, cookiesSet);
+                impersonationPayload["impersonation_mode"] = true;
                 if (!cookiesSet)
                 {
-                    return new OkObjectResult(new
-                    {
-                        impersonation_mode = true,
-                        access_token = tokenResponse.AccessToken,
-                        refresh_token = tokenResponse.RefreshToken,
-                        token_type = tokenResponse.TokenType,
-                        expires_in = tokenResponse.ExpiresIn,
-                        scope = tokenResponse.Scope,
-                        id_token = tokenResponse.IdToken,
-                        cookie_set = false,
-                        impersonation_session_id = sessionId
-                    });
+                    impersonationPayload["impersonation_session_id"] = sessionId;
                 }
 
-                // var sessionCookieOptions = DomainResolver.CreateCookieOptions(rootCookieDomain, rootRefreshCache.ExpiresUtc);
-
-
-                return new OkObjectResult(new ImpersonateResponse { impersonation_mode = true });
+                return new OkObjectResult(impersonationPayload);
             }
             catch (Exception ex)
             {
@@ -1604,21 +1580,12 @@ namespace Authentication.DomainService.Authentication
                 if (cookiesSet)
                 {
                     _logger.LogInformation("Organization switched by user {UserId} in impersonation session {SessionId} to org {OrgId} with new tokens", bcUserId, existingSessionId, request.OrganizationId);
-                    return new OkObjectResult(new ImpersonateResponse { impersonation_mode = true, org_switched = true });
                 }
 
-                return new OkObjectResult(new
-                {
-                    impersonation_mode = true,
-                    org_switched = true,
-                    access_token = newTokenResponse.AccessToken,
-                    refresh_token = newTokenResponse.RefreshToken,
-                    token_type = newTokenResponse.TokenType,
-                    expires_in = newTokenResponse.ExpiresIn,
-                    refresh_expires_utc = newTokenResponse.RefreshExpiresUtc,
-                    id_token = newTokenResponse.IdToken,
-                    cookie_set = false
-                });
+                var orgSwitchPayload = TokenResponsePayload.Build(newTokenResponse, cookiesSet);
+                orgSwitchPayload["impersonation_mode"] = true;
+                orgSwitchPayload["org_switched"] = true;
+                return new OkObjectResult(orgSwitchPayload);
             }
             catch (Exception ex)
             {

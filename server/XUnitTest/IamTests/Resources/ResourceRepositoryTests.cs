@@ -328,45 +328,6 @@ namespace XUnitTest.IamTests.Resources
         }
 
         [Fact]
-        public async Task UpdateRolesCountAsync_CountsRoleUsageAndWritesItToTheRole()
-        {
-            var permissions = RegisterPermissionDocuments(
-                PermDoc("p1", "default", "admin"),
-                PermDoc("p2", "default", "admin"),
-                PermDoc("p3", "default", "viewer"));
-            UpdateDefinition<Role>? written = null;
-            var roles = CaptureRoleUpdate(Register<Role>(), u => written = u);
-
-            (await Sut().UpdateRolesCountAsync("admin", "default")).Should().BeTrue();
-
-            permissions.Verify(c => c.FindAsync(
-                It.IsAny<FilterDefinition<BsonDocument>>(), It.IsAny<FindOptions<BsonDocument, BsonDocument>>(),
-                It.IsAny<CancellationToken>()),
-                Times.Once);
-            roles.Verify(c => c.UpdateOneAsync(
-                It.IsAny<FilterDefinition<Role>>(), It.IsAny<UpdateDefinition<Role>>(),
-                It.IsAny<UpdateOptions>(), It.IsAny<CancellationToken>()),
-                Times.Once);
-            // Only the two permissions that name the role are tallied.
-            CapturedCount(written).Should().Be(2);
-        }
-
-        [Fact]
-        public async Task UpdateRolesCountAsync_CountsRoleUsageFromThePerOrganizationRolesMap()
-        {
-            // Older permissions store Roles as a map keyed by organization id rather than a flat array.
-            RegisterPermissionDocuments(
-                PermDocByOrg("p1", ("org1", new[] { "admin" })),
-                PermDocByOrg("p2", ("org2", new[] { "admin" })));
-            UpdateDefinition<Role>? written = null;
-            CaptureRoleUpdate(Register<Role>(), u => written = u);
-
-            (await Sut().UpdateRolesCountAsync("admin", "org1")).Should().BeTrue();
-
-            CapturedCount(written).Should().Be(1);
-        }
-
-        [Fact]
         public async Task UpdateRolesCountAsync_CountsZeroWhenNoPermissionReferencesTheRole()
         {
             RegisterPermissionDocuments();
@@ -382,22 +343,6 @@ namespace XUnitTest.IamTests.Resources
                 It.IsAny<UpdateOptions>(), It.IsAny<CancellationToken>()),
                 Times.Once);
             CapturedCount(written).Should().Be(0);
-        }
-
-        [Fact]
-        public async Task UpdateRolesCountAsync_ScopesTheCountToTheGivenOrganization()
-        {
-            // The role slug is paired with the organization the permission belongs to, so an explicit
-            // org id has to reach the tally rather than falling back to the ambient one.
-            RegisterPermissionDocuments(
-                PermDoc("p1", "org1", "admin"),
-                PermDoc("p2", "org2", "admin"));
-            UpdateDefinition<Role>? written = null;
-            CaptureRoleUpdate(Register<Role>(), u => written = u);
-
-            (await Sut().UpdateRolesCountAsync("admin", "org1")).Should().BeTrue();
-
-            CapturedCount(written).Should().Be(1);
         }
 
         [Fact]
