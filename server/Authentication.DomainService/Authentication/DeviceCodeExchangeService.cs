@@ -210,13 +210,20 @@ namespace Authentication.DomainService.Authentication
 
             var includeRefreshToken = ContainsOfflineAccess(entity.RequestedScopes);
 
+            // Same field set/names as every other token-issuing endpoint (TokenResponsePayload) —
+            // device flow never uses cookies, so cookie_set is always false and access_token is
+            // always present; refresh_token stays explicitly scope-gated rather than just
+            // "non-empty", since the underlying mint always produces one regardless of scope.
             var response = new Dictionary<string, object?>
             {
                 ["access_token"] = mintResult.AccessToken,
                 ["id_token"] = mintResult.IdToken,
                 ["token_type"] = "Bearer",
                 ["expires_in"] = mintResult.ExpiresIn,
-                ["scope"] = mintResult.Scope
+                ["expires_utc"] = mintResult.AccessExpiry,
+                ["refresh_expires_utc"] = mintResult.RefreshExpiry,
+                ["scope"] = mintResult.Scope,
+                ["cookie_set"] = false
             };
             if (includeRefreshToken && !string.IsNullOrWhiteSpace(mintResult.RefreshToken))
             {

@@ -308,8 +308,10 @@ namespace XUnitTest.Auth
             var result = await Create().ExecuteImpersonateAsync(req, HttpContext().Request, HttpContext().Response);
 
             var ok = result.Should().BeOfType<OkObjectResult>().Subject;
-            var sessionId = ok.Value!.GetType().GetProperty("impersonation_session_id")?.GetValue(ok.Value) as string;
-            sessionId.Should().Be("sess-new");
+            var payload = ok.Value.Should().BeAssignableTo<IDictionary<string, object?>>().Subject;
+            payload["impersonation_session_id"].Should().Be("sess-new");
+            payload["cookie_set"].Should().Be(false);
+            payload["access_token"].Should().Be("at");
             _session.Verify(s => s.CreateAndBackupImpersonationSessionAsync(ActorId, TenantId, TargetTenantId, "c1", "default"), Times.Once);
             _session.Verify(s => s.RevokeRefreshToken("root-rt"), Times.Once);
         }
@@ -331,7 +333,11 @@ namespace XUnitTest.Auth
 
             var result = await Create().ExecuteImpersonateAsync(req, ctx.Request, ctx.Response);
 
-            result.Should().BeOfType<OkObjectResult>().Which.Value.Should().BeOfType<ImpersonateResponse>();
+            var ok = result.Should().BeOfType<OkObjectResult>().Subject;
+            var payload = ok.Value.Should().BeAssignableTo<IDictionary<string, object?>>().Subject;
+            payload["impersonation_mode"].Should().Be(true);
+            payload["cookie_set"].Should().Be(true);
+            payload.Should().NotContainKey("access_token");
             ctx.Response.Headers.Should().ContainKey("Set-Cookie");
         }
 

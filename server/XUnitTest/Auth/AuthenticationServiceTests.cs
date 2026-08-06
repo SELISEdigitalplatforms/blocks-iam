@@ -567,7 +567,8 @@ namespace XUnitTest.Auth
 
             var ok = result.Should().BeOfType<OkObjectResult>().Subject;
             ok.Value.Should().NotBeNull();
-            ok.Value!.GetType().GetProperty("access_token").Should().NotBeNull();
+            var payload = ok.Value.Should().BeAssignableTo<IDictionary<string, object?>>().Subject;
+            payload.Should().ContainKey("access_token");
             _session.Verify(s => s.CreateSessionAsync("user-1", TenantId, It.IsAny<string>()), Times.Once);
         }
 
