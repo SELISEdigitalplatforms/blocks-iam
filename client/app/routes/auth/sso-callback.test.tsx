@@ -1,4 +1,4 @@
-import { render } from "@testing-library/react";
+import { render, waitFor } from "@testing-library/react";
 import { Routes, Route, MemoryRouter } from "react-router";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -10,6 +10,7 @@ vi.mock("@seliseblocks/genesis-os", () => ({
 vi.mock("@/lib/runtime-env", () => ({ getRuntimeEnv: h.getRuntimeEnv }));
 vi.mock("@blocks-idp/authentication/utils/oidc-utils", () => ({
   getCurrentOIDCParams: () => new URLSearchParams(),
+  OIDC_DEVICE_RETURN_URL_STORAGE_KEY: "oidc-device-return-url",
 }));
 
 import SSOCallbackPage from "./sso-callback";
@@ -39,6 +40,8 @@ afterEach(() => {
     writable: true,
     value: originalLocation,
   });
+  sessionStorage.clear();
+  vi.unstubAllGlobals();
 });
 
 describe("SSOCallbackPage", () => {
@@ -54,5 +57,44 @@ describe("SSOCallbackPage", () => {
   it("renders nothing when code and state are missing", () => {
     const { container } = renderAt("/sso/tenant-1/callback");
     expect(container.querySelector("img")).toBeNull();
+  });
+
+  describe("device flow (RFC 8628)", () => {
+    const deviceReturnUrl = "https://iam.example.com/oidc/device/entry?client_id=dev1";
+
+    beforeEach(() => {
+      sessionStorage.setItem("oidc-device-return-url", deviceReturnUrl);
+    });
+
+    it("fetches the callback instead of navigating, then redirects to the stashed returnUrl", async () => {
+      const fetchMock = vi.fn().mockResolvedValue({
+        ok: true,
+        json: () => Promise.resolve({ success: true }),
+      });
+      vi.stubGlobal("fetch", fetchMock);
+
+      renderAt("/sso/tenant-1/callback?code=c1&state=s1");
+
+      await waitFor(() => expect(fetchMock).toHaveBeenCalled());
+      expect(fetchMock.mock.calls[0][0]).toContain("/api/oidc/callback");
+      await waitFor(() =>
+        expect(window.location.href).toBe(deviceReturnUrl),
+      );
+      expect(sessionStorage.getItem("oidc-device-return-url")).toBeNull();
+    });
+
+    it("falls back to the stashed returnUrl when the callback fails", async () => {
+      const fetchMock = vi.fn().mockResolvedValue({
+        ok: false,
+        json: () => Promise.resolve({ error_description: "boom" }),
+      });
+      vi.stubGlobal("fetch", fetchMock);
+
+      renderAt("/sso/tenant-1/callback?code=c1&state=s1");
+
+      await waitFor(() =>
+        expect(window.location.href).toBe(deviceReturnUrl),
+      );
+    });
   });
 });

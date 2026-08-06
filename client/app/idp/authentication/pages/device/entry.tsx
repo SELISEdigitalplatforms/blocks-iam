@@ -13,7 +13,6 @@ import {
   deviceService,
   type DeviceConsentPayload,
 } from "@blocks-idp/authentication/services/device.service";
-import { buildOIDCNavigationUrl } from "@blocks-idp/authentication/utils/oidc-utils";
 
 type FlowState =
   | { kind: "idle" }
@@ -25,7 +24,7 @@ type FlowState =
 
 export function DeviceEntryPage() {
   const params = useParams<{ tenantId: string }>();
-  const [searchParams] = useSearchParams();
+  const [searchParams, setSearchParams] = useSearchParams();
   const tenantId = (params.tenantId ?? "").trim();
   const animCtx = useOidcAuthAnimation();
 
@@ -45,6 +44,14 @@ export function DeviceEntryPage() {
 
   const invalidTenant = !tenantId;
 
+  // The device page's own URL never carries client_id/scope (only user_code, via a
+  // path param tenantId) — buildOIDCNavigationUrl() would read those off this page's
+  // params and get nothing meaningful. tenantId is the only real context this page
+  // has pre-verification, since a device code hasn't been resolved to a client yet.
+  const backToSignInUrl = tenantId
+    ? `/oidc/login?tenant_id=${encodeURIComponent(tenantId)}`
+    : "/oidc/login";
+
   function shake(el: HTMLElement | null) {
     if (!el) return;
     el.classList.remove("oidc-animate-shake");
@@ -56,11 +63,11 @@ export function DeviceEntryPage() {
     if (invalidTenant || !initialCode || autoSubmittedRef.current) return;
     if (!isValidUserCode(initialCode)) return;
     autoSubmittedRef.current = true;
-    void runSubmit(normalizeUserCode(initialCode));
+    void runSubmit(normalizeUserCode(initialCode), true);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [initialCode, invalidTenant]);
 
-  async function runSubmit(code: string) {
+  async function runSubmit(code: string, isAutoSubmit = false) {
     setServerError(null);
     setIsSubmitting(true);
     animCtx?.startAnimation();
@@ -70,10 +77,20 @@ export function DeviceEntryPage() {
     } catch (err: unknown) {
       shake(formRef.current);
       const errCode = readErrorCode(err);
-      const msg = errCode === "expired_token"
-        ? "This device code has expired."
-        : "Invalid or expired code.";
-      if (errCode === "expired_token") {
+      const msg = verifyErrorMessage(errCode);
+      if (errCode === "expired_token" && isAutoSubmit) {
+        // A code auto-submitted from the URL (refresh, back button, bookmark) is
+        // dead by definition of the user never having typed it — drop to a clean
+        // entry form instead of the terminal "expired" screen, and strip user_code
+        // so a future refresh of this page doesn't just re-trigger the same dead end.
+        setSearchParams((prev) => {
+          const next = new URLSearchParams(prev);
+          next.delete("user_code");
+          return next;
+        });
+        setValue("");
+        setServerError("That code has expired. Enter the fresh code shown on your device.");
+      } else if (errCode === "expired_token") {
         setFlow({ kind: "expired" });
       } else {
         setServerError(msg);
@@ -119,7 +136,12 @@ export function DeviceEntryPage() {
     setDecision(choice);
     animCtx?.startAnimation();
     try {
-      const res = await deviceService.decide(flow.payload.userCode, choice, tenantId);
+      const res = await deviceService.decide(
+        flow.payload.userCode,
+        choice,
+        tenantId,
+        flow.payload.approvalToken,
+      );
       await animCtx?.succeedAnimation();
       window.location.assign(res.redirect);
     } catch (err: unknown) {
@@ -127,6 +149,10 @@ export function DeviceEntryPage() {
       const code = readErrorCode(err);
       if (code === "request_not_pending" || code === "expired_token") {
         setFlow({ kind: "expired" });
+      } else if (code === "login_required") {
+        setServerError("Your sign-in session expired. Sign in again and retry this code.");
+      } else if (code === "slow_down") {
+        setServerError("Too many attempts. Wait a moment, then try again.");
       } else {
         setServerError("We could not record your decision. Please try again.");
       }
@@ -140,6 +166,13 @@ export function DeviceEntryPage() {
       (err as { errors?: { error?: string } })?.errors?.error ??
       (err as { error?: string })?.error
     );
+  }
+
+  function verifyErrorMessage(code?: string): string {
+    if (code === "expired_token") return "This device code has expired.";
+    if (code === "slow_down") return "Too many attempts. Wait a moment, then try again.";
+    if (code === "invalid_grant") return "Invalid code, wrong tenant, or already used.";
+    return "Invalid or expired code.";
   }
 
   function onSubmit(e: React.FormEvent) {
@@ -169,7 +202,7 @@ export function DeviceEntryPage() {
         showCorners={false}
         footerNote={
           <p className="text-xs oidc-font-rajdhani" style={{ color: "var(--muted)" }}>
-            <Link to={buildOIDCNavigationUrl("/oidc/login")} className="oidc-sci-fi-link">
+            <Link to={backToSignInUrl} className="oidc-sci-fi-link">
               Back to sign-in
             </Link>
           </p>
@@ -300,9 +333,33 @@ export function DeviceEntryPage() {
                 )}
               </div>
 
-              <div className="text-xs oidc-font-rajdhani" style={{ color: "var(--muted)" }}>
-                Tenant: <span style={{ color: "var(--fg)" }}>{payload.tenant || tenantId}</span>
-              </div>
+              {(payload.requestIpAddress || payload.requestUserAgent || payload.deviceName || payload.deviceInfo) && (
+                <div
+                  className="rounded-md p-3 text-xs oidc-font-rajdhani"
+                  style={{ background: "var(--panel)", border: "1px solid var(--border)", color: "var(--muted)" }}
+                >
+                  {payload.deviceName && (
+                    <p>
+                      Device: <span style={{ color: "var(--fg)" }}>{payload.deviceName}</span>
+                    </p>
+                  )}
+                  {payload.requestIpAddress && (
+                    <p>
+                      Request IP: <span style={{ color: "var(--fg)" }}>{payload.requestIpAddress}</span>
+                    </p>
+                  )}
+                  {payload.requestUserAgent && (
+                    <p className="break-words">
+                      Browser: <span style={{ color: "var(--fg)" }}>{payload.requestUserAgent}</span>
+                    </p>
+                  )}
+                  {payload.deviceInfo && (
+                    <p className="break-words">
+                      Details: <span style={{ color: "var(--fg)" }}>{payload.deviceInfo}</span>
+                    </p>
+                  )}
+                </div>
+              )}
 
               {serverError && (
                 <p
@@ -429,13 +486,6 @@ export function DeviceEntryPage() {
           />
         </div>
 
-        <div className="flex items-center gap-2">
-          <span className="oidc-sci-fi-label" style={{ marginBottom: 0 }}>
-            Tenant
-          </span>
-          <span className="oidc-sci-fi-badge">{tenantId}</span>
-        </div>
-
         {serverError && (
           <p
             aria-live="polite"
@@ -463,7 +513,7 @@ export function DeviceEntryPage() {
 
         <p className="text-xs oidc-font-rajdhani" style={{ color: "var(--muted)" }}>
           Not the right tenant?{" "}
-          <Link to={buildOIDCNavigationUrl("/oidc/login")} className="oidc-sci-fi-link">
+          <Link to={backToSignInUrl} className="oidc-sci-fi-link">
             Back to sign-in
           </Link>
         </p>

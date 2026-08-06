@@ -385,6 +385,14 @@ namespace Iam.DomainService.Resources
             await collection.ReplaceOneAsync(r=>r.ItemId == organization.ItemId, organization, new ReplaceOptions { IsUpsert = true });
         }
 
+        public async Task<List<string>> GetAllOrgIdsAsync()
+        {
+            var collection = _identityAccessManagementRepository.GetCollection<Organization>();
+            var orgIds = await collection.Find(Builders<Organization>.Filter.Empty).Project(x => x.ItemId).ToListAsync();
+
+            return orgIds;
+        }
+
         public async Task<GetOrganizationsResponse> GetOrganizationsAsync(GetOrganizationsRequest request)
         {
             var collection = _identityAccessManagementRepository.GetCollection<Organization>();
@@ -474,63 +482,11 @@ namespace Iam.DomainService.Resources
 
         private async Task<long> CountRoleUsageAcrossOrganizationAsync(string slug, string organizationId)
         {
-            var collection = _identityAccessManagementRepository.GetCollectionByName<BsonDocument>("Permissions");
+            var collection = _identityAccessManagementRepository.GetCollectionByName<Permission>("Permissions");
+            var filter = Builders<Permission>.Filter.AnyEq(r => r.Roles, slug) &
+                         Builders<Permission>.Filter.Eq(r => r.OrganizationId, organizationId);
 
-            var cursor = await collection.FindAsync(Builders<BsonDocument>.Filter.Empty);
-            var docs = cursor.ToList();
-
-            long count = 0;
-            foreach (var doc in docs)
-            {
-                try
-                {
-                    if (doc == null) continue;
-
-                    if (!doc.TryGetValue("Roles", out var rolesValue) || rolesValue == null || rolesValue.IsBsonNull)
-                    {
-                        continue;
-                    }
-
-                    var matched = false;
-
-                    if (rolesValue.IsBsonArray)
-                    {
-                        var array = rolesValue.AsBsonArray ?? new BsonArray();
-                        if (array.Any(role => role.IsString && string.Equals(role.AsString, slug, StringComparison.OrdinalIgnoreCase)))
-                        {
-                            if (doc.TryGetValue("OrganizationId", out var orgVal) && orgVal != null && !orgVal.IsBsonNull && orgVal.IsString)
-                            {
-                                matched = string.Equals(orgVal.AsString, organizationId, StringComparison.OrdinalIgnoreCase);
-                            }
-                            else
-                            {
-                                matched = string.Equals(organizationId, "default", StringComparison.OrdinalIgnoreCase);
-                            }
-                        }
-                    }
-                    else if (rolesValue.IsBsonDocument)
-                    {
-                        var rolesDoc = rolesValue.AsBsonDocument;
-                        if (rolesDoc != null && rolesDoc.TryGetValue(organizationId, out var orgRolesValue) && orgRolesValue != null && !orgRolesValue.IsBsonNull && orgRolesValue.IsBsonArray)
-                        {
-                            var orgArray = orgRolesValue.AsBsonArray ?? new BsonArray();
-                            matched = orgArray.Any(role => role.IsString && string.Equals(role.AsString, slug, StringComparison.OrdinalIgnoreCase));
-                        }
-                    }
-
-                    if (matched)
-                    {
-                        count++;
-                    }
-                }
-                catch
-                {
-                    // ignore malformed documents or unexpected shapes
-                    continue;
-                }
-            }
-
-            return count;
+            return await collection.CountDocumentsAsync(filter);
         }
 
         public async Task<bool> UpdateAllSamePermissionAsync(Permission permission)

@@ -479,6 +479,7 @@ namespace Iam.DomainService.Resources
         public async Task<SetRolesResponse> SetRolesAsync(SetRolesRequest command)
         {
             _logger.LogInformation("SetRole start");
+
             if (string.IsNullOrWhiteSpace(command.Slug))
             {
                 _logger.LogError("Slug should not be empty or null");
@@ -491,7 +492,8 @@ namespace Iam.DomainService.Resources
                 };
             }
 
-            var isExist = await _resourceRepository.GetRoleBySlugAsync(command.Slug);
+            var currentOrganizationId = ResolveOrganizationId(command?.OrganizationId ?? "");
+            var isExist = await _resourceRepository.GetRoleBySlugAsync(command.Slug, currentOrganizationId);
 
             if (isExist == null)
             {
@@ -504,31 +506,17 @@ namespace Iam.DomainService.Resources
                     }
                 };
             }
-
-            if (isExist.CreatedFromDefault)
-            {
-                _logger.LogWarning("SetRole forbidden for default-derived role slug {Slug}", command.Slug);
-                return new SetRolesResponse
-                {
-                    Errors = new Dictionary<string, string>
-                    {
-                        { "forbidden", "Can_Not_Change_Default_role" }
-                    }
-                };
-            }
-            var currentOrganizationId = ResolveOrganizationId(command?.OragnizationId ?? "");
+           
 
             if (command.AddPermissions.Any())
             {
-                await _resourceRepository.UpdateRolePermissionByIdsAsync(command.Slug, command.AddPermissions);
+                await _resourceRepository.UpdateRolePermissionByIdsAsync(command.Slug, command.AddPermissions, currentOrganizationId);
             }
 
             if (command.RemovePermissions.Any())
             {
                 await _resourceRepository.RemoveRolePermissionByIdsAsync(command.Slug, command.RemovePermissions, currentOrganizationId);
             }
-            
-            var tenantConfig = await _resourceRepository.GetTenantConfigurationAsync();
 
             await SendResourceSetToPermissionMutationEventAsync(
                 new ResourceSetToPermissionMutationEvent
@@ -537,8 +525,7 @@ namespace Iam.DomainService.Resources
                     AddPermissions = command.AddPermissions,
                     RemovePermissions = command.RemovePermissions,
                     Slug = command.Slug,
-                    IsPropagationEnable = tenantConfig.IsMultiOrgEnabled && IsDefaultOrgScope(currentOrganizationId)
-                    && (command.AddPermissions.Any() || command.RemovePermissions.Any()),
+                    OrganizationId = currentOrganizationId
                 });
 
             _logger.LogInformation("SetRole end");
@@ -1048,6 +1035,7 @@ namespace Iam.DomainService.Resources
             _logger.LogInformation("Processing permission timeline for ResourceMutationEvent.");
             var actorUserId = BlocksContext.GetContext()?.UserId ?? string.Empty;
             var eventName = command.Entity == ResourceEntity.Role ? "ROLE_PERMISSIONS_UPDATED" : "GROUP_PERMISSIONS_UPDATED";
+
             foreach (var itemId in command.AddPermissions.Union(command.RemovePermissions))
             {
                 await _userActivityDispatcher.SendUserActivityAsync(new UserActivityEvent
@@ -1063,12 +1051,7 @@ namespace Iam.DomainService.Resources
 
             if (command.Entity == ResourceEntity.Role)
             {
-                await _resourceRepository.UpdateRolesCountAsync(command.Slug);
-            }
-
-            if (command.IsPropagationEnable)
-            {
-                await PropagateSetPermissionsAsync(command);
+                await _resourceRepository.UpdateRolesCountAsync(command.Slug, command.OrganizationId);
             }
 
             return true;
@@ -1076,11 +1059,8 @@ namespace Iam.DomainService.Resources
 
         private async Task<bool> PropagateSetPermissionsAsync(ResourceSetToPermissionMutationEvent command)
         {
-            var orgIds = (await _resourceRepository.GetOrganizationsAsync(new GetOrganizationsRequest()))
-                ?.Organizations?
-                .Select(x => x.ItemId)
-                .ToList() ?? new List<string>();
-
+            var orgIds = await _resourceRepository.GetAllOrgIdsAsync();
+                
             if (!orgIds.Any())
             {
                 _logger.LogWarning("Organizations are empty");

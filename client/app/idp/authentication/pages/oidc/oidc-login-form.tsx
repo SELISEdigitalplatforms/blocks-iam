@@ -71,6 +71,10 @@ type OidcLoginFormValues = z.infer<typeof oidcLoginFormSchema>;
 interface OidcLoginFormProps {
   clientId: string;
   redirectUri: string;
+  // Device-flow (RFC 8628) logins have no redirect_uri — the backend login call
+  // completes with `{ success: true }` instead of a redirect_uri, and returnUrl
+  // (the device verification page) is where the browser goes next.
+  returnUrl?: string;
   scope?: string;
   state?: string;
   nonce?: string;
@@ -82,6 +86,7 @@ interface OidcLoginFormProps {
 export const OidcLoginForm = ({
   clientId,
   redirectUri,
+  returnUrl,
   scope,
   state,
   nonce,
@@ -243,10 +248,21 @@ export const OidcLoginForm = ({
         }
 
         await animCtx?.succeedAnimation();
-        window.location.href = data.redirect_uri;
+        // Normal flow always gets `redirect_uri` back; only device flow (RFC 8628)
+        // completes with `{ success: true }` and no redirect_uri, so returnUrl is
+        // only ever used as a fallback for that case, never preferred over it.
+        const target = data.redirect_uri || returnUrl;
+        if (!target) {
+          const errMsg = "Login succeeded but no redirect target was provided";
+          shake();
+          setServerError(errMsg);
+          await animCtx?.failAnimation(errMsg);
+          setIsLoading(false);
+          return;
+        }
+        window.location.href = target;
+        return;
       }
-
-      
 
       let data;
       try {
@@ -572,6 +588,7 @@ shake();
             code_challenge: activeCodeChallenge,
             code_challenge_method: activeCodeChallengeMethod,
             tenantId,
+            returnUrl,
           }}
         />
       )}

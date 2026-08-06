@@ -15,8 +15,8 @@ import "./sci-fi-oidc.css";
 export interface OidcAuthAnimContextValue {
   phase: OidcAnimPhase;
   startAnimation:   () => void;
-  succeedAnimation: () => Promise<void>;
-  failAnimation:    (message?: string) => Promise<void>;
+  succeedAnimation: (opts?: { instant?: boolean }) => Promise<void>;
+  failAnimation:    (message?: string, opts?: { instant?: boolean }) => Promise<void>;
   resetAnimation:   () => void;
   setPanelIdleSlot?: (node: React.ReactNode) => void;
 }
@@ -139,6 +139,7 @@ export function OidcAuthShell({
   const [phase, setPhase] = useState<OidcAnimPhase>("idle");
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [cascadeDone, setCascadeDone] = useState(false);
+  const [instant, setInstant] = useState(false);
   const [panelIdleSlot, setPanelIdleSlotState] = useState<React.ReactNode>(null);
   const setPanelIdleSlot = useCallback((node: React.ReactNode) => {
     setPanelIdleSlotState(node);
@@ -161,12 +162,18 @@ export function OidcAuthShell({
     startAnimation: () => {
       setErrorMessage(null);
       setCascadeDone(false);
+      setInstant(false);
       setPhase("submitting");
     },
-    succeedAnimation: () => {
+    succeedAnimation: (opts) => {
       setErrorMessage(null);
-      setCascadeDone(false);
+      setInstant(!!opts?.instant);
       setPhase("succeeded");
+      if (opts?.instant) {
+        setCascadeDone(true);
+        return Promise.resolve();
+      }
+      setCascadeDone(false);
       const duration = panelVisibleRef.current
         ? successDurationMs(panelConfig.successNodes.length)
         : 400;
@@ -174,10 +181,12 @@ export function OidcAuthShell({
         setTimeout(() => { setCascadeDone(true); resolve(); }, duration);
       });
     },
-    failAnimation: (message) => {
+    failAnimation: (message, opts) => {
       setErrorMessage(message ?? null);
       setCascadeDone(false);
+      setInstant(!!opts?.instant);
       setPhase("failed");
+      if (opts?.instant) return Promise.resolve();
       const prefixLines = panelConfig.errorTerminalPrefix?.length ?? 1;
       const duration = panelVisibleRef.current
         ? failureDurationMs(prefixLines)
@@ -187,6 +196,7 @@ export function OidcAuthShell({
     resetAnimation: () => {
       setErrorMessage(null);
       setCascadeDone(false);
+      setInstant(false);
       setPhase("idle");
     },
     setPanelIdleSlot,
@@ -257,6 +267,7 @@ export function OidcAuthShell({
                 phase={phase}
                 errorMessage={errorMessage}
                 idleContent={panelIdleSlot}
+                instant={instant}
               />
           </div>
         </main>

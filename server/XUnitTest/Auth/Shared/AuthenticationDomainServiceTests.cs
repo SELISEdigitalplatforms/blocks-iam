@@ -7,8 +7,6 @@ using Blocks.Genesis;
 using FluentAssertions;
 using FluentValidation;
 using FluentValidation.Results;
-using Iam.DomainService.Users;
-using Microsoft.Extensions.Configuration;
 using Moq;
 using System.Net.Http;
 
@@ -18,9 +16,6 @@ namespace XUnitTest.Auth.Shared
     {
         private readonly Mock<IMessageClient> _message = new();
         private readonly Mock<IAuthenticationRepository> _repo = new();
-        private readonly Mock<IConfiguration> _config = new();
-        private readonly Mock<IUserRepository> _userRepo = new();
-        private readonly Mock<IValidator<SaveSsoCredentialRequest>> _ssoValidator = new();
         private readonly Mock<IValidator<SaveOIDCClientRequest>> _oidcValidator = new();
         private readonly Mock<IValidator<SaveIdentityProviderRequest>> _saveIdpValidator = new();
         private readonly Mock<IValidator<UpdateIdentityProviderRequest>> _updateIdpValidator = new();
@@ -48,7 +43,7 @@ namespace XUnitTest.Auth.Shared
         }
 
         private AuthenticationDomainService Create() =>
-            new(_message.Object, _repo.Object, _config.Object, _userRepo.Object, _ssoValidator.Object,
+            new(_message.Object, _repo.Object,
                 _oidcValidator.Object, _saveIdpValidator.Object, _updateIdpValidator.Object, _tenants.Object, _httpFactory.Object);
 
         private static IdentityProvider Idp(string provider = "google", string clientId = "cid", string id = "idp-1") => new()
@@ -453,8 +448,11 @@ namespace XUnitTest.Auth.Shared
         [Fact]
         public async Task SaveOIDCClient_HappyPath_SavesAndDoesNotRegisterProvider()
         {
+            OidcClientRegistration? saved = null;
             _repo.Setup(r => r.GetOidcClientRegistrationAsync(It.IsAny<string>())).ReturnsAsync((OidcClientRegistration)null!);
-            _repo.Setup(r => r.SaveOidcClientRegistrationAsync(It.IsAny<OidcClientRegistration>())).Returns(Task.CompletedTask);
+            _repo.Setup(r => r.SaveOidcClientRegistrationAsync(It.IsAny<OidcClientRegistration>()))
+                .Callback<OidcClientRegistration>(credential => saved = credential)
+                .Returns(Task.CompletedTask);
             _repo.Setup(r => r.GetIdentityProviderByClientIdAsync(It.IsAny<string>())).ReturnsAsync((IdentityProvider)null!);
 
             var result = await Create().SaveOIDCClientAsync(new SaveOIDCClientRequest
@@ -466,8 +464,102 @@ namespace XUnitTest.Auth.Shared
             });
 
             result.IsSuccess.Should().BeTrue();
+            saved.Should().NotBeNull();
+            saved!.AllowedScopes.Should().Contain("offline_access");
             _repo.Verify(r => r.SaveOidcClientRegistrationAsync(It.IsAny<OidcClientRegistration>()), Times.Once);
             _repo.Verify(r => r.CreateIdentityProviderAsync(It.IsAny<IdentityProvider>()), Times.Never);
+        }
+
+        [Fact]
+        public async Task SaveOIDCClient_DeviceFlowClient_ClearsAuthCodeMetadata()
+        {
+            OidcClientRegistration? saved = null;
+            _repo.Setup(r => r.GetOidcClientRegistrationAsync(It.IsAny<string>())).ReturnsAsync((OidcClientRegistration)null!);
+            _repo.Setup(r => r.SaveOidcClientRegistrationAsync(It.IsAny<OidcClientRegistration>()))
+                .Callback<OidcClientRegistration>(credential => saved = credential)
+                .Returns(Task.CompletedTask);
+            _repo.Setup(r => r.GetIdentityProviderByClientIdAsync(It.IsAny<string>())).ReturnsAsync((IdentityProvider)null!);
+
+            var result = await Create().SaveOIDCClientAsync(new SaveOIDCClientRequest
+            {
+                IsDeviceFlowClient = true,
+                RedirectUris = new() { "https://app/cb" },
+                AllowedResponseTypes = new() { "code" },
+                AllowedScopes = new() { "openid" },
+                ClientType = "public",
+                RegisterAsIdentityProvider = false
+            });
+
+            result.IsSuccess.Should().BeTrue();
+            saved.Should().NotBeNull();
+            saved!.IsDeviceFlowClient.Should().BeTrue();
+            saved.RedirectUris.Should().BeEmpty();
+            saved.AllowedResponseTypes.Should().BeEmpty();
+            saved.AllowedScopes.Should().Contain("offline_access");
+        }
+
+        [Fact]
+        public async Task SaveOIDCClient_DeviceFlowClient_WithoutClientType_DefaultsToPublic()
+        {
+            // The FE registration form never sends ClientType at all, so this is the real-world
+            // payload shape for a device-flow client. It must not fall back to confidential,
+            // otherwise the CLI's secret-less device-code token exchange is rejected.
+            OidcClientRegistration? saved = null;
+            _repo.Setup(r => r.GetOidcClientRegistrationAsync(It.IsAny<string>())).ReturnsAsync((OidcClientRegistration)null!);
+            _repo.Setup(r => r.SaveOidcClientRegistrationAsync(It.IsAny<OidcClientRegistration>()))
+                .Callback<OidcClientRegistration>(credential => saved = credential)
+                .Returns(Task.CompletedTask);
+            _repo.Setup(r => r.GetIdentityProviderByClientIdAsync(It.IsAny<string>())).ReturnsAsync((IdentityProvider)null!);
+
+            var result = await Create().SaveOIDCClientAsync(new SaveOIDCClientRequest
+            {
+                IsDeviceFlowClient = true,
+                AllowedScopes = new() { "openid" },
+                RegisterAsIdentityProvider = false
+            });
+
+            result.IsSuccess.Should().BeTrue();
+            saved.Should().NotBeNull();
+            saved!.ClientType.Should().Be("public");
+            saved.TokenEndpointAuthMethod.Should().Be("none");
+            saved.AllowedScopes.Should().Contain("offline_access");
+        }
+
+        [Fact]
+        public async Task SaveOIDCClient_EditingDeviceFlowClient_CorrectsStaleConfidentialType()
+        {
+            // Simulates re-saving a client that was previously persisted as confidential
+            // (the bug this test guards against) via the same edit path the admin UI uses.
+            var existing = new OidcClientRegistration
+            {
+                ItemId = "item-1",
+                ClientId = "client-1",
+                ClientSecret = "existing-secret",
+                IsDeviceFlowClient = true,
+                ClientType = "confidential",
+                TokenEndpointAuthMethod = "client_secret_post"
+            };
+            OidcClientRegistration? saved = null;
+            _repo.Setup(r => r.GetOidcClientRegistrationAsync("item-1")).ReturnsAsync(existing);
+            _repo.Setup(r => r.SaveOidcClientRegistrationAsync(It.IsAny<OidcClientRegistration>()))
+                .Callback<OidcClientRegistration>(credential => saved = credential)
+                .Returns(Task.CompletedTask);
+            _repo.Setup(r => r.GetIdentityProviderByClientIdAsync(It.IsAny<string>())).ReturnsAsync((IdentityProvider)null!);
+
+            var result = await Create().SaveOIDCClientAsync(new SaveOIDCClientRequest
+            {
+                ItemId = "item-1",
+                IsDeviceFlowClient = true,
+                AllowedScopes = new() { "openid" },
+                RegisterAsIdentityProvider = false
+            });
+
+            result.IsSuccess.Should().BeTrue();
+            saved.Should().NotBeNull();
+            saved!.ClientType.Should().Be("public");
+            saved.TokenEndpointAuthMethod.Should().Be("none");
+            saved.ClientSecret.Should().BeNull();
+            saved.AllowedScopes.Should().Contain("offline_access");
         }
 
         [Fact]

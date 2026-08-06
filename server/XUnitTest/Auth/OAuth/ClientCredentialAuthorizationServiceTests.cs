@@ -89,7 +89,7 @@ namespace XUnitTest.Auth.OAuth
             result.Error.Should().BeNull();
             result.TokenType.Should().Be("Bearer");
             result.StatusCode.Should().Be(200);
-            result.ExpiresIn.Should().Be(15);
+            result.ExpiresIn.Should().Be(15 * 60);
             result.AccessToken.Should().NotBeNullOrWhiteSpace();
         }
 

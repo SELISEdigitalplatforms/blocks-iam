@@ -1,5 +1,11 @@
 import { sanitizeInternalNavigationTarget } from "@/lib/safe-navigation.util";
 
+// Social login round-trips to an external provider and back, so the device-flow
+// returnUrl (device verification page) can't be kept in React state like it is
+// for password login — it's stashed here before the provider redirect and read
+// back by the callback page once the provider sends the browser back to us.
+export const OIDC_DEVICE_RETURN_URL_STORAGE_KEY = "oidc-device-return-url";
+
 interface OIDCParams {
   projectKey?: string;
   userName?: string;
@@ -10,6 +16,7 @@ interface OIDCParams {
   nonce?: string;
   scope?: string;
   redirectUri?: string;
+  returnUrl?: string;
   tenantId?: string;
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   [key: string]: string | undefined;
@@ -79,6 +86,7 @@ export const extractOIDCParams = (debug = false): OIDCParams => {
   let nonce = searchParams.get("nonce") || undefined;
   let scope = searchParams.get("scope") || undefined;
   let redirectUri = searchParams.get("redirect_uri") || undefined;
+  let returnUrl = searchParams.get("returnUrl") || undefined;
   let tenantId = searchParams.get("tenant_id") || searchParams.get("tenantId") || undefined;
 
 
@@ -127,6 +135,9 @@ export const extractOIDCParams = (debug = false): OIDCParams => {
         if (!redirectUri) {
           redirectUri = hashParams.get("redirect_uri") || undefined;
         }
+        if (!returnUrl) {
+          returnUrl = hashParams.get("returnUrl") || undefined;
+        }
         if (!tenantId) {
           tenantId = hashParams.get("tenant_id") || hashParams.get("tenantId") || undefined;
         }
@@ -161,6 +172,9 @@ export const extractOIDCParams = (debug = false): OIDCParams => {
           if (!redirectUri && hashParams.has("redirect_uri")) {
             redirectUri = hashParams.get("redirect_uri") || undefined;
           }
+          if (!returnUrl && hashParams.has("returnUrl")) {
+            returnUrl = hashParams.get("returnUrl") || undefined;
+          }
           if (!tenantId && (hashParams.has("tenant_id") || hashParams.has("tenantId"))) {
             tenantId = hashParams.get("tenant_id") || hashParams.get("tenantId") || undefined;
           }
@@ -192,6 +206,7 @@ export const extractOIDCParams = (debug = false): OIDCParams => {
     nonce,
     scope,
     redirectUri,
+    returnUrl,
     tenantId,
   };
 
@@ -220,6 +235,7 @@ export const buildOIDCNavigationUrl = (path: string): string => {
   if (params.nonce) searchParams.set("nonce", params.nonce);
   if (params.scope) searchParams.set("scope", params.scope);
   if (params.redirectUri) searchParams.set("redirect_uri", params.redirectUri);
+  if (params.returnUrl) searchParams.set("returnUrl", params.returnUrl);
   if (params.tenantId) searchParams.set("tenant_id", params.tenantId);
 
   const queryString = searchParams.toString();
@@ -241,6 +257,7 @@ export const getCurrentOIDCParams = (): URLSearchParams => {
   if(params.nonce) searchParams.set("nonce", params.nonce);
   if(params.scope) searchParams.set("scope", params.scope);
   if(params.redirectUri) searchParams.set("redirect_uri", params.redirectUri);
+  if (params.returnUrl) searchParams.set("returnUrl", params.returnUrl);
   if (params.tenantId) searchParams.set("tenant_id", params.tenantId);
 
   if (params.themeColor) {

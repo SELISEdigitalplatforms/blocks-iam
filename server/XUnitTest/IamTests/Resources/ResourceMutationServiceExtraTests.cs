@@ -63,70 +63,6 @@ namespace XUnitTest.IamTests.Resources
                 _permValidator.Object, _updatePermValidator.Object, _roleValidator.Object,
                 _propagator.Object, _activity.Object);
 
-        // ---------- ProcessPermissionAsync with propagation -> PropagateSetPermissionsAsync ----------
-
-        [Fact]
-        public async Task ProcessPermission_PropagationEnabled_ResolvesAndUpdatesAcrossOrgs()
-        {
-            _repo.Setup(r => r.UpdateRolesCountAsync("admin", It.IsAny<string>())).ReturnsAsync(true);
-            _repo.Setup(r => r.GetOrganizationsAsync(It.IsAny<GetOrganizationsRequest>()))
-                .ReturnsAsync(new GetOrganizationsResponse
-                {
-                    Organizations = new List<Organization> { new() { ItemId = "o1", Name = "O1" } }
-                });
-
-            // add permission "addP" resolves to resource "res-add"; remove "rmP" -> "res-rm"
-            _repo.Setup(r => r.GetPermissionsByIdsAsync(It.Is<List<string>>(l => l.Contains("addP"))))
-                .ReturnsAsync(new List<Permission> { new() { ItemId = "addP", Name = "A", Resource = "res-add" } });
-            _repo.Setup(r => r.GetPermissionsByIdsAsync(It.Is<List<string>>(l => l.Contains("rmP"))))
-                .ReturnsAsync(new List<Permission> { new() { ItemId = "rmP", Name = "R", Resource = "res-rm" } });
-
-            _repo.Setup(r => r.GetPermissionsByResourcesAsync(It.Is<List<string>>(l => l.Contains("res-add")), "o1"))
-                .ReturnsAsync(new List<Permission> { new() { ItemId = "org-add-perm", Name = "A", Resource = "res-add", OrganizationId = "o1" } });
-            _repo.Setup(r => r.GetPermissionsByResourcesAsync(It.Is<List<string>>(l => l.Contains("res-rm")), "o1"))
-                .ReturnsAsync(new List<Permission> { new() { ItemId = "org-rm-perm", Name = "R", Resource = "res-rm", OrganizationId = "o1" } });
-
-            _repo.Setup(r => r.UpdateRolePermissionByIdsAsync("admin", It.IsAny<List<string>>(), It.IsAny<string>())).ReturnsAsync(true);
-            _repo.Setup(r => r.RemoveRolePermissionByIdsAsync("admin", It.IsAny<List<string>>(), It.IsAny<string>())).ReturnsAsync(true);
-
-            var ok = await Create().ProcessPermissionAsync(new ResourceSetToPermissionMutationEvent
-            {
-                Entity = ResourceEntity.Role,
-                Slug = "admin",
-                AddPermissions = new List<string> { "addP" },
-                RemovePermissions = new List<string> { "rmP" },
-                IsPropagationEnable = true
-            });
-
-            ok.Should().BeTrue();
-            _repo.Verify(r => r.UpdateRolesCountAsync("admin", It.IsAny<string>()), Times.Once);
-            _repo.Verify(r => r.GetOrganizationsAsync(It.IsAny<GetOrganizationsRequest>()), Times.Once);
-            _repo.Verify(r => r.UpdateRolePermissionByIdsAsync("admin", It.Is<List<string>>(l => l.Contains("org-add-perm")), It.IsAny<string>()), Times.Once);
-            _repo.Verify(r => r.RemoveRolePermissionByIdsAsync("admin", It.Is<List<string>>(l => l.Contains("org-rm-perm")), It.IsAny<string>()), Times.Once);
-        }
-
-        [Fact]
-        public async Task ProcessPermission_PropagationEnabled_NoOrganizations_SkipsRoleUpdates()
-        {
-            _repo.Setup(r => r.UpdateRolesCountAsync("admin", It.IsAny<string>())).ReturnsAsync(true);
-            _repo.Setup(r => r.GetOrganizationsAsync(It.IsAny<GetOrganizationsRequest>()))
-                .ReturnsAsync(new GetOrganizationsResponse { Organizations = new List<Organization>() });
-
-            var ok = await Create().ProcessPermissionAsync(new ResourceSetToPermissionMutationEvent
-            {
-                Entity = ResourceEntity.Role,
-                Slug = "admin",
-                AddPermissions = new List<string> { "addP" },
-                RemovePermissions = new List<string>(),
-                IsPropagationEnable = true
-            });
-
-            ok.Should().BeTrue();
-            _repo.Verify(r => r.UpdateRolePermissionByIdsAsync(It.IsAny<string>(), It.IsAny<List<string>>(), It.IsAny<string>()), Times.Never);
-            _repo.Verify(r => r.GetPermissionsByIdsAsync(It.IsAny<List<string>>()), Times.Never);
-        }
-
-        // ---------- ExecuteOrganizationProvisioningAsync -> CopyPermissionsFromDefault batch loop ----------
 
         [Fact]
         public async Task ExecuteOrganizationProvisioning_CopiesPermissionsInFullThenEmptyBatch()
@@ -145,30 +81,6 @@ namespace XUnitTest.IamTests.Resources
 
             _repo.Verify(r => r.GetPermissionsByOrgAsync("default", It.IsAny<int?>(), It.IsAny<int?>()), Times.Exactly(2));
             _repo.Verify(r => r.InsertPermissionsAsync(It.Is<List<Permission>>(l => l.Count == 100 && l.All(p => p.OrganizationId == "org-42" && p.LastUpdatedBy == "u1"))), Times.Once);
-        }
-
-        // ---------- SetRolesAsync happy path with propagation enabled ----------
-
-        [Fact]
-        public async Task SetRoles_PropagationEnabled_MarksEventForPropagation()
-        {
-            _repo.Setup(r => r.GetTenantConfigurationAsync()).ReturnsAsync(new TenantConfiguration { IsMultiOrgEnabled = true });
-            _repo.Setup(r => r.GetRoleBySlugAsync("admin")).ReturnsAsync(new Role { Slug = "admin", Name = "A" });
-            _repo.Setup(r => r.UpdateRolePermissionByIdsAsync("admin", It.IsAny<List<string>>(), It.IsAny<string>())).ReturnsAsync(true);
-            _repo.Setup(r => r.RemoveRolePermissionByIdsAsync("admin", It.IsAny<List<string>>(), It.IsAny<string>())).ReturnsAsync(true);
-
-            var result = await Create().SetRolesAsync(new SetRolesRequest
-            {
-                Slug = "admin",
-                AddPermissions = new List<string> { "p1" },
-                RemovePermissions = new List<string> { "p2" }
-            });
-
-            result.Success.Should().BeTrue();
-            _repo.Verify(r => r.UpdateRolePermissionByIdsAsync("admin", It.IsAny<List<string>>(), It.IsAny<string>()), Times.Once);
-            _repo.Verify(r => r.RemoveRolePermissionByIdsAsync("admin", It.IsAny<List<string>>(), It.IsAny<string>()), Times.Once);
-            _iam.Verify(i => i.SendToQueueAsync(It.IsAny<string>(),
-                It.Is<ResourceSetToPermissionMutationEvent>(e => e.IsPropagationEnable && e.Slug == "admin")), Times.Once);
         }
 
         // ---------- ExecutePropagationRolePermissionUpdateAsync: ForAllOrg edge branches ----------

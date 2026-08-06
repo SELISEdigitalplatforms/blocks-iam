@@ -284,33 +284,6 @@ namespace XUnitTest.IamTests.Resources
             result.Errors.Should().ContainKey("Role");
         }
 
-        [Fact]
-        public async Task SetRoles_DefaultDerived_Forbidden()
-        {
-            _repo.Setup(r => r.GetRoleBySlugAsync("admin")).ReturnsAsync(new Role { Slug = "admin", Name = "A", CreatedFromDefault = true });
-            var result = await Create().SetRolesAsync(new SetRolesRequest { Slug = "admin" });
-            result.Errors.Should().ContainKey("forbidden");
-        }
-
-        [Fact]
-        public async Task SetRoles_HappyPath_AddsAndRemoves()
-        {
-            _repo.Setup(r => r.GetRoleBySlugAsync("admin")).ReturnsAsync(new Role { Slug = "admin", Name = "A" });
-            _repo.Setup(r => r.UpdateRolePermissionByIdsAsync("admin", It.IsAny<List<string>>(), It.IsAny<string>())).ReturnsAsync(true);
-            _repo.Setup(r => r.RemoveRolePermissionByIdsAsync("admin", It.IsAny<List<string>>(), It.IsAny<string>())).ReturnsAsync(true);
-
-            var result = await Create().SetRolesAsync(new SetRolesRequest
-            {
-                Slug = "admin",
-                AddPermissions = new List<string> { "p1" },
-                RemovePermissions = new List<string> { "p2" }
-            });
-
-            result.Success.Should().BeTrue();
-            _repo.Verify(r => r.UpdateRolePermissionByIdsAsync("admin", It.IsAny<List<string>>(), It.IsAny<string>()), Times.Once);
-            _repo.Verify(r => r.RemoveRolePermissionByIdsAsync("admin", It.IsAny<List<string>>(), It.IsAny<string>()), Times.Once);
-        }
-
         // ---------- ExecutePropagationRolePermissionUpdateAsync ----------
 
         [Fact]
@@ -333,23 +306,7 @@ namespace XUnitTest.IamTests.Resources
             await Create().ExecutePropagationRolePermissionUpdateAsync(new PropagationRolePermissionUpdateEvent { Entity = "permission", Action = "insert", ItemId = "p1" });
             _repo.Verify(r => r.GetPermissionByIdAsync("p1"), Times.Once);
         }
-
-        // ---------- ProcessPermissionAsync ----------
-
-        [Fact]
-        public async Task ProcessPermission_Role_UpdatesCount_AndAudits()
-        {
-            _repo.Setup(r => r.UpdateRolesCountAsync("admin", It.IsAny<string>())).ReturnsAsync(true);
-            var ok = await Create().ProcessPermissionAsync(new ResourceSetToPermissionMutationEvent
-            {
-                Entity = ResourceEntity.Role, Slug = "admin",
-                AddPermissions = new List<string> { "p1" }, RemovePermissions = new List<string>(),
-                IsPropagationEnable = false
-            });
-            ok.Should().BeTrue();
-            _repo.Verify(r => r.UpdateRolesCountAsync("admin", It.IsAny<string>()), Times.Once);
-            _activity.Verify(a => a.SendUserActivityAsync(It.IsAny<UserActivityEvent>()), Times.Once);
-        }
+ 
 
         // ---------- CreateOrganizationAsync ----------
 

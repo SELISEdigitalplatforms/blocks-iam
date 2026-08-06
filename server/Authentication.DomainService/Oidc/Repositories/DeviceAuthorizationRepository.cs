@@ -37,15 +37,17 @@ namespace Authentication.DomainService.Oidc.Repositories
                     new CreateIndexModel<DeviceAuthorizationRequestModel>(
                         keys.Ascending(x => x.DeviceCodeHash),
                         new CreateIndexOptions<DeviceAuthorizationRequestModel> { Name = "ix_device_code_hash_unique", Unique = true }),
+                    // Terminal rows (Denied/Expired/Consumed) are never deleted — they're kept as an
+                    // RFC 8628 §6.5 audit trail — so the index must cover every status, not just
+                    // Pending/Approved, or a collision against a terminal row would slip past this
+                    // unique constraint and rely solely on the in-process pre-check in
+                    // DeviceAuthorizationService.GenerateUniqueUserCodeAsync.
                     new CreateIndexModel<DeviceAuthorizationRequestModel>(
                         keys.Ascending(x => x.UserCode),
                         new CreateIndexOptions<DeviceAuthorizationRequestModel>
                         {
-                            Name = "ix_user_code_unique_pending",
-                            Unique = true,
-                            PartialFilterExpression = Builders<DeviceAuthorizationRequestModel>.Filter.In(
-                                x => x.Status,
-                                new[] { DeviceAuthorizationStatus.Pending, DeviceAuthorizationStatus.Approved })
+                            Name = "ix_user_code_unique",
+                            Unique = true
                         }),
                     new CreateIndexModel<DeviceAuthorizationRequestModel>(
                         keys.Ascending(x => x.ExpiresAt),
@@ -72,8 +74,13 @@ namespace Authentication.DomainService.Oidc.Repositories
 
         public async Task<DeviceAuthorizationRequestModel?> GetByUserCodeAsync(string userCode, CancellationToken ct = default)
         {
+            // The unique index makes a live duplicate impossible going forward, but this stays
+            // defensive against any pre-existing duplicate rows: newest-first so the row actually
+            // relevant to the caller — not whatever order the storage engine happens to return —
+            // is the one picked.
             var filter = Builders<DeviceAuthorizationRequestModel>.Filter.Eq(x => x.UserCode, userCode);
-            return await Collection().Find(filter).FirstOrDefaultAsync(ct);
+            var sort = Builders<DeviceAuthorizationRequestModel>.Sort.Descending(x => x.CreatedAt);
+            return await Collection().Find(filter).Sort(sort).FirstOrDefaultAsync(ct);
         }
 
         public async Task<DeviceAuthorizationRequestModel?> GetByIdAsync(string id, CancellationToken ct = default)
@@ -82,7 +89,7 @@ namespace Authentication.DomainService.Oidc.Repositories
             return await Collection().Find(filter).FirstOrDefaultAsync(ct);
         }
 
-        public async Task<bool> MarkApprovedAsync(string id, string userId, DateTime at, CancellationToken ct = default)
+        public async Task<bool> MarkApprovedAsync(string id, string userId, DateTime at, CancellationToken ct = default, string? organizationId = null)
         {
             var filter = Builders<DeviceAuthorizationRequestModel>.Filter.And(
                 Builders<DeviceAuthorizationRequestModel>.Filter.Eq(x => x.Id, id),
@@ -91,7 +98,8 @@ namespace Authentication.DomainService.Oidc.Repositories
             var update = Builders<DeviceAuthorizationRequestModel>.Update
                 .Set(x => x.Status, DeviceAuthorizationStatus.Approved)
                 .Set(x => x.UserId, userId)
-                .Set(x => x.ApprovedAt, at);
+                .Set(x => x.ApprovedAt, at)
+                .Set(x => x.OrganizationId, organizationId);
 
             var result = await Collection().UpdateOneAsync(filter, update, cancellationToken: ct);
             return result.ModifiedCount > 0;
@@ -145,6 +153,17 @@ namespace Authentication.DomainService.Oidc.Repositories
             return result.ModifiedCount > 0;
         }
 
+        public async Task<bool> SetApprovalTokenHashAsync(string id, string approvalTokenHash, CancellationToken ct = default)
+        {
+            var filter = Builders<DeviceAuthorizationRequestModel>.Filter.And(
+                Builders<DeviceAuthorizationRequestModel>.Filter.Eq(x => x.Id, id),
+                Builders<DeviceAuthorizationRequestModel>.Filter.Eq(x => x.Status, DeviceAuthorizationStatus.Pending));
+
+            var update = Builders<DeviceAuthorizationRequestModel>.Update.Set(x => x.ApprovalTokenHash, approvalTokenHash);
+            var result = await Collection().UpdateOneAsync(filter, update, cancellationToken: ct);
+            return result.ModifiedCount > 0;
+        }
+
         public async Task<bool> UpdatePollAsync(string id, DateTime lastPollAt, int pollsObserved, CancellationToken ct = default)
         {
             var filter = Builders<DeviceAuthorizationRequestModel>.Filter.Eq(x => x.Id, id);
@@ -156,10 +175,31 @@ namespace Authentication.DomainService.Oidc.Repositories
             return result.ModifiedCount > 0;
         }
 
-        public async Task<int> BumpPollIntervalAsync(string id, int currentInterval, CancellationToken ct = default)
+        public async Task<bool> TryRecordPollAsync(string id, DateTime previousLastPollAt, DateTime newLastPollAt, int pollsObserved, CancellationToken ct = default)
         {
-            var newInterval = currentInterval + 5;
-            var filter = Builders<DeviceAuthorizationRequestModel>.Filter.Eq(x => x.Id, id);
+            var filter = Builders<DeviceAuthorizationRequestModel>.Filter.And(
+                Builders<DeviceAuthorizationRequestModel>.Filter.Eq(x => x.Id, id),
+                Builders<DeviceAuthorizationRequestModel>.Filter.Eq(x => x.Status, DeviceAuthorizationStatus.Pending),
+                Builders<DeviceAuthorizationRequestModel>.Filter.Eq(x => x.LastPollAt, previousLastPollAt));
+
+            var update = Builders<DeviceAuthorizationRequestModel>.Update
+                .Set(x => x.LastPollAt, newLastPollAt)
+                .Set(x => x.PollsObserved, pollsObserved);
+
+            var result = await Collection().UpdateOneAsync(filter, update, cancellationToken: ct);
+            return result.ModifiedCount > 0;
+        }
+
+        public async Task<int> BumpPollIntervalAsync(string id, int currentInterval, CancellationToken ct = default)
+            => await BumpPollIntervalAsync(id, currentInterval, 5, ct);
+
+        public async Task<int> BumpPollIntervalAsync(string id, int currentInterval, int incrementSeconds, CancellationToken ct = default)
+        {
+            var newInterval = currentInterval + Math.Max(1, incrementSeconds);
+            var filter = Builders<DeviceAuthorizationRequestModel>.Filter.And(
+                Builders<DeviceAuthorizationRequestModel>.Filter.Eq(x => x.Id, id),
+                Builders<DeviceAuthorizationRequestModel>.Filter.Eq(x => x.Status, DeviceAuthorizationStatus.Pending),
+                Builders<DeviceAuthorizationRequestModel>.Filter.Eq(x => x.PollIntervalSeconds, currentInterval));
             var update = Builders<DeviceAuthorizationRequestModel>.Update.Set(x => x.PollIntervalSeconds, newInterval);
             var result = await Collection().UpdateOneAsync(filter, update, cancellationToken: ct);
             return result.ModifiedCount > 0 ? newInterval : currentInterval;
