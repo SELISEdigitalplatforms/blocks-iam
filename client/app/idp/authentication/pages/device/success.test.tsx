@@ -59,7 +59,12 @@ describe("DeviceSuccessPage", () => {
 
   it("shows the expired copy", () => {
     renderAt("/device/t1/success?outcome=expired");
-    expect(screen.getByText("Session Expired")).toBeInTheDocument();
+    // The shell renders the outcome twice, as the heading and as the success
+    // title, the same way it does for the declined outcome above.
+    expect(screen.getAllByText("Session Expired").length).toBeGreaterThan(0);
+    expect(
+      screen.getByText("The device code expired before approval. You can close this window."),
+    ).toBeInTheDocument();
   });
 
   it("shows the neutral copy when the outcome is unknown", () => {

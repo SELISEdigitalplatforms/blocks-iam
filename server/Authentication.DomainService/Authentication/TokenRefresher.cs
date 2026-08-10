@@ -30,6 +30,9 @@ namespace Authentication.DomainService.Authentication
         public Task<string> GetCacheValueAsync(string key)
             => _cacheClient.GetStringValueAsync(key);
 
+        public Task SetCacheValueAsync(string key, string value, int expiryInSeconds)
+            => _cacheClient.AddStringValueAsync(key, value, expiryInSeconds);
+
         public Task RemoveKeyAsync(string key)
             => _cacheClient.RemoveKeyAsync(key);
 

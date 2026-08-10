@@ -80,7 +80,7 @@ namespace Authentication.DomainService.Authentication
             }
 
             var tenantId = entity.TenantId;
-            var apiBase = $"{httpContext.Request.Scheme}://{httpContext.Request.Host.Value}";
+            var apiBase = OidcRedirectUrlBuilder.ResolvePublicBaseUrl(httpContext.Request);
             var currentUrl = $"{apiBase}/device/{Uri.EscapeDataString(tenantId)}?user_code={Uri.EscapeDataString(entity.UserCode)}";
 
             var sessionId = httpContext.Request.Cookies[IdpConstants.BuildIdpSessionCookieKey(tenantId)];
@@ -200,7 +200,7 @@ namespace Authentication.DomainService.Authentication
             }
 
             var tenantId = entity.TenantId;
-            var apiBase = $"{httpContext.Request.Scheme}://{httpContext.Request.Host.Value}";
+            var apiBase = OidcRedirectUrlBuilder.ResolvePublicBaseUrl(httpContext.Request);
             var sessionId = httpContext.Request.Cookies[IdpConstants.BuildIdpSessionCookieKey(tenantId)];
             if (string.IsNullOrWhiteSpace(sessionId))
             {
