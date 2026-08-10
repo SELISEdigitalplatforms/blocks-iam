@@ -134,7 +134,7 @@ namespace Authentication.DomainService.Oidc.Services
                 }
             }
 
-            var apiBase = $"{httpRequest.Scheme}://{httpRequest.Host.Value}";
+            var apiBase = OidcRedirectUrlBuilder.ResolvePublicBaseUrl(httpRequest); 
             var verificationUri = OidcRedirectUrlBuilder.BuildVerificationUri(apiBase, null, blocksContext.TenantId);
             var verificationUriComplete = OidcRedirectUrlBuilder.BuildVerificationUriComplete(apiBase, userCode, blocksContext.TenantId);
 
