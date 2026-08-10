@@ -14,6 +14,7 @@ namespace Authentication.DomainService.Authentication
     public interface ITokenRefresher
     {
         Task<string> GetCacheValueAsync(string key);
+        Task SetCacheValueAsync(string key, string value, int expiryInSeconds);
         Task RemoveKeyAsync(string key);
         Task<Tenant?> GetTenantByIDAsync(string tenantId);
         Task<TokenResponse> AuthenticateAsync(TokenRequest tokenRequest, IdentityConfiguration authConfiguration, User user);

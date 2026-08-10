@@ -20,6 +20,9 @@ namespace Authentication.DomainService.Authentication
 {
     public sealed class AuthenticationFlowService : IAuthenticationFlowService
     {
+        /// <summary>Must match the reason UnifiedTokenSessionService writes when it rotates a token.</summary>
+        private const string SupersededByRotationReason = "superseded_by_rotation";
+
         private readonly IAuthenticationRepository _authenticationRepository;
         private readonly IAuthStrategy _authStrategy;
         private readonly ITokenRefresher _tokenRefresher;
@@ -463,13 +466,13 @@ namespace Authentication.DomainService.Authentication
             }
 
             var cachedRefreshToken = await _tokenRefresher.GetCacheValueAsync(refreshToken);
-            if (string.IsNullOrWhiteSpace(cachedRefreshToken))
-            {
-                await HandlePotentialRefreshTokenReuseAsync(refreshToken);
-                return new BadRequestObjectResult(new { error = OAuthError.InvalidRefreshToken, error_description = "Refresh token is invalid or expired" });
-            }
 
-            var tokenCache = JsonSerializer.Deserialize<RefreshTokenCache>(cachedRefreshToken);
+            // A cache miss is not evidence of replay: Redis only holds the sliding window, so a session
+            // idle past it looks identical to a reused token. The persisted record decides which it was.
+            var tokenCache = string.IsNullOrWhiteSpace(cachedRefreshToken)
+                ? await RehydrateRefreshTokenAsync(refreshToken, configuration)
+                : JsonSerializer.Deserialize<RefreshTokenCache>(cachedRefreshToken);
+
             if (tokenCache == null || string.IsNullOrWhiteSpace(tokenCache.UserId))
             {
                 return new BadRequestObjectResult(new { error = OAuthError.InvalidRefreshToken, error_description = "Refresh token is invalid or expired" });
@@ -539,6 +542,84 @@ namespace Authentication.DomainService.Authentication
                 id_token = response.IdToken,
                 cookie_set = true
             });
+        }
+
+        /// <summary>
+        /// Recovers a refresh token that is absent from the cache. Redis only holds the sliding window,
+        /// while MongoDB is the system of record and keeps the real absolute lifetime, so a session idle
+        /// past the sliding window must still be able to refresh. Returns null when the token genuinely
+        /// cannot be used, having first revoked it if — and only if — this looks like replay.
+        /// </summary>
+        private async Task<RefreshTokenCache?> RehydrateRefreshTokenAsync(string refreshToken, IdentityConfiguration configuration)
+        {
+            var tokenFingerprint = TruncateToken(refreshToken);
+            var persisted = await _refreshTokenRepository.GetByTokenIdAsync(refreshToken);
+
+            if (persisted == null)
+            {
+                _logger.LogWarning("Refresh token {TokenFingerprint} is present in neither the cache nor the store.", tokenFingerprint);
+                return null;
+            }
+
+            if (persisted.IsRevoked)
+            {
+                // Presenting a token that was already rotated away is the only genuine reuse signal
+                // available here. Every other revocation (logout, impersonation transition) is expected
+                // and must not escalate into a reuse response.
+                if (string.Equals(persisted.RevokeReason, SupersededByRotationReason, StringComparison.Ordinal))
+                {
+                    await HandlePotentialRefreshTokenReuseAsync(refreshToken);
+                }
+                else
+                {
+                    _logger.LogInformation(
+                        "Refresh token {TokenFingerprint} was already revoked ({RevokeReason}).",
+                        tokenFingerprint,
+                        persisted.RevokeReason ?? "unspecified");
+                }
+
+                return null;
+            }
+
+            if (persisted.AbsoluteExpiry <= DateTime.UtcNow)
+            {
+                _logger.LogInformation("Refresh token {TokenFingerprint} is past its absolute expiry.", tokenFingerprint);
+                return null;
+            }
+
+            var tokenCache = new RefreshTokenCache
+            {
+                RefreshToken = persisted.TokenId,
+                TenantId = persisted.TenantId,
+                OrganizationId = persisted.OrganizationId,
+                ClientId = persisted.ClientId,
+                SessionId = persisted.SessionId ?? string.Empty,
+                IssuedUtc = persisted.IssuedUtc,
+                ExpiresUtc = persisted.SlidingExpiry,
+                AbsoluteExpiresUtc = persisted.AbsoluteExpiry,
+                UserId = persisted.UserId,
+                IpAddresses = persisted.IpAddress,
+                Scope = persisted.Scope,
+                Impersonated = persisted.Impersonated,
+                ImpersonationId = persisted.ImpersonationId
+            };
+
+            var slidingMinutes = configuration.RefreshTokenValidForNumberMinutes > 0
+                ? configuration.RefreshTokenValidForNumberMinutes
+                : IdentityConfiguration.DefaultRefreshTokenValidForNumberMinutes;
+            var remainingAbsoluteSeconds = (int)Math.Max(1, (persisted.AbsoluteExpiry - DateTime.UtcNow).TotalSeconds);
+            var ttlSeconds = Math.Min(slidingMinutes * 60, remainingAbsoluteSeconds);
+
+            // The rotation that follows reads this entry back out of the cache to supersede it, so the
+            // entry has to be written here rather than merely returned to the caller.
+            await _tokenRefresher.SetCacheValueAsync(refreshToken, JsonSerializer.Serialize(tokenCache), ttlSeconds);
+
+            _logger.LogInformation(
+                "Rehydrated refresh token {TokenFingerprint} from the store after a cache miss; absolute expiry {AbsoluteExpiry:o}.",
+                tokenFingerprint,
+                persisted.AbsoluteExpiry);
+
+            return tokenCache;
         }
 
         private async Task HandlePotentialRefreshTokenReuseAsync(string refreshToken)

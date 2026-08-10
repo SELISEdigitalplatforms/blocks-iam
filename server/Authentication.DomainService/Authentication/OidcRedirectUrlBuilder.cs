@@ -10,6 +10,14 @@ namespace Authentication.DomainService.Authentication
     /// </summary>
     public static class OidcRedirectUrlBuilder
     {
+        /// <summary>
+        /// Returns the base URL (scheme + host) used when building device-flow
+        /// verification URIs.
+        /// </summary>
+        public static string ResolvePublicBaseUrl(HttpRequest request)
+        {
+            return $"{request.Scheme}://{request.Host.Value}";
+        }
         public static string BuildRedirectUri(string baseUri, IDictionary<string, string> parameters)
         {
             var sb = new StringBuilder(baseUri);
