@@ -1,12 +1,14 @@
 using Authentication.DomainService.Authentication;
 using Authentication.DomainService.Entities;
 using Authentication.DomainService.Oidc.Repositories;
+using Authentication.DomainService.Oidc.Services;
 using Authentication.DomainService.Services;
 using FluentAssertions;
 using Idp.DomainService.Oidc.Contracts;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.Logging.Abstractions;
+using Microsoft.Extensions.Options;
 using Moq;
 using System.Security.Cryptography;
 
@@ -20,8 +22,9 @@ namespace XUnitTest.Auth
 
         private const string TenantId = "tenant-1";
 
-        private DeviceVerificationService Create() =>
+        private DeviceVerificationService Create(DeviceFlowOptions? options = null) =>
             new(_repo.Object, _sessionRepo.Object, _authRepo.Object,
+                Options.Create(options ?? new DeviceFlowOptions()),
                 NullLogger<DeviceVerificationService>.Instance);
 
         private static object? Prop(object? value, string name) =>

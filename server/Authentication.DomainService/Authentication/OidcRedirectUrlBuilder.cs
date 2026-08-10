@@ -10,6 +10,22 @@ namespace Authentication.DomainService.Authentication
     /// </summary>
     public static class OidcRedirectUrlBuilder
     {
+        /// <summary>
+        /// Returns the public-facing base URL (scheme + host, optional trailing path)
+        /// to use when building device-flow verification URIs. Prefers an explicitly
+        /// configured <paramref name="publicBaseUrl"/> so the scheme is not pinned to
+        /// the internal transport (e.g. gRPC). Falls back to the current request's
+        /// scheme/host otherwise.
+        /// </summary>
+        public static string ResolvePublicBaseUrl(HttpRequest request, string? publicBaseUrl)
+        {
+            if (!string.IsNullOrWhiteSpace(publicBaseUrl))
+            {
+                return publicBaseUrl.TrimEnd('/');
+            }
+
+            return $"{request.Scheme}://{request.Host.Value}";
+        }
         public static string BuildRedirectUri(string baseUri, IDictionary<string, string> parameters)
         {
             var sb = new StringBuilder(baseUri);

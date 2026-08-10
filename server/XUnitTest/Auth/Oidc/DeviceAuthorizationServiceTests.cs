@@ -47,7 +47,8 @@ namespace XUnitTest.Auth.Oidc
             Mock<IDeviceAuthorizationRepository> repo,
             Mock<IAuthenticationRepository> authRepo,
             OidcClientRegistration? client = null,
-            Tenant? tenant = null)
+            Tenant? tenant = null,
+            DeviceFlowOptions? options = null)
         {
             var tenants = new Mock<Blocks.Genesis.ITenants>();
             tenants.Setup(t => t.GetTenantByID(It.IsAny<string>())).Returns(tenant ?? BuildTenant("tenant-1"));
@@ -59,7 +60,7 @@ namespace XUnitTest.Auth.Oidc
                 new DeviceCodeGenerator(),
                 authRepo.Object,
                 tenants.Object,
-                Options.Create(new DeviceFlowOptions()),
+                Options.Create(options ?? new DeviceFlowOptions()),
                 NullLogger<DeviceAuthorizationService>.Instance);
         }
 
@@ -187,6 +188,29 @@ namespace XUnitTest.Auth.Oidc
                 && !string.IsNullOrEmpty(m.DeviceCodeHash)
                 && !string.IsNullOrEmpty(m.UserCode)
             ), It.IsAny<CancellationToken>()), Times.Once);
+        }
+
+        [Fact]
+        public async Task RequestAsync_UsesPublicBaseUrl_WhenConfigured_EvenOverHttp()
+        {
+            SetContext("t1");
+            var client = new OidcClientRegistration { ClientId = "c1", IsDeviceFlowClient = true, IsActive = true, AllowedScopes = new List<string> { "openid" } };
+            var repo = new Mock<IDeviceAuthorizationRepository>();
+            repo.Setup(r => r.CreateAsync(It.IsAny<DeviceAuthorizationRequestModel>(), It.IsAny<CancellationToken>())).Returns(Task.CompletedTask);
+            repo.Setup(r => r.GetByUserCodeAsync(It.IsAny<string>(), It.IsAny<CancellationToken>())).ReturnsAsync((DeviceAuthorizationRequestModel?)null);
+
+            var authRepo = new Mock<IAuthenticationRepository>();
+            var service = CreateService(repo, authRepo, client,
+                options: new DeviceFlowOptions { PublicBaseUrl = "https://iam.seliseblocks.com" });
+
+            var ctx = new DefaultHttpContext();
+            ctx.Request.Scheme = "http";
+            ctx.Request.Host = new HostString("internal.svc.cluster.local");
+
+            var response = await service.RequestAsync(new DeviceAuthorizationRequest { ClientId = "c1" }, ctx.Request);
+
+            response.VerificationUri.Should().Be("https://iam.seliseblocks.com/device/t1");
+            response.VerificationUriComplete.Should().StartWith("https://iam.seliseblocks.com/device/t1?user_code=");
         }
     }
 }
