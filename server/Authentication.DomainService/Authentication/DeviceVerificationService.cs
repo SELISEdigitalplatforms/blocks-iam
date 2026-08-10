@@ -29,20 +29,17 @@ namespace Authentication.DomainService.Authentication
         private readonly IDeviceAuthorizationRepository _repository;
         private readonly IIdpSessionRepository _sessionRepository;
         private readonly IAuthenticationRepository _authenticationRepository;
-        private readonly string? _publicBaseUrl;
         private readonly ILogger<DeviceVerificationService> _logger;
 
         public DeviceVerificationService(
             IDeviceAuthorizationRepository repository,
             IIdpSessionRepository sessionRepository,
             IAuthenticationRepository authenticationRepository,
-            ILogger<DeviceVerificationService> logger,
-            string? publicBaseUrl = null)
+            ILogger<DeviceVerificationService> logger)
         {
             _repository = repository;
             _sessionRepository = sessionRepository;
             _authenticationRepository = authenticationRepository;
-            _publicBaseUrl = publicBaseUrl;
             _logger = logger;
         }
 
@@ -83,7 +80,7 @@ namespace Authentication.DomainService.Authentication
             }
 
             var tenantId = entity.TenantId;
-            var apiBase = OidcRedirectUrlBuilder.ResolvePublicBaseUrl(httpContext.Request, _publicBaseUrl);
+            var apiBase = OidcRedirectUrlBuilder.ResolvePublicBaseUrl(httpContext.Request);
             var currentUrl = $"{apiBase}/device/{Uri.EscapeDataString(tenantId)}?user_code={Uri.EscapeDataString(entity.UserCode)}";
 
             var sessionId = httpContext.Request.Cookies[IdpConstants.BuildIdpSessionCookieKey(tenantId)];
@@ -203,7 +200,7 @@ namespace Authentication.DomainService.Authentication
             }
 
             var tenantId = entity.TenantId;
-            var apiBase = OidcRedirectUrlBuilder.ResolvePublicBaseUrl(httpContext.Request, _publicBaseUrl);
+            var apiBase = OidcRedirectUrlBuilder.ResolvePublicBaseUrl(httpContext.Request);
             var sessionId = httpContext.Request.Cookies[IdpConstants.BuildIdpSessionCookieKey(tenantId)];
             if (string.IsNullOrWhiteSpace(sessionId))
             {

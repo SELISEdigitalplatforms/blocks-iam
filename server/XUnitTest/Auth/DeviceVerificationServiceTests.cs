@@ -20,10 +20,9 @@ namespace XUnitTest.Auth
 
         private const string TenantId = "tenant-1";
 
-        private DeviceVerificationService Create(string? publicBaseUrl = null) =>
+        private DeviceVerificationService Create() =>
             new(_repo.Object, _sessionRepo.Object, _authRepo.Object,
-                NullLogger<DeviceVerificationService>.Instance,
-                publicBaseUrl);
+                NullLogger<DeviceVerificationService>.Instance);
 
         private static object? Prop(object? value, string name) =>
             value?.GetType().GetProperty(name)?.GetValue(value);
