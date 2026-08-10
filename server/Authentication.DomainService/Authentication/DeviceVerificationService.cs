@@ -9,7 +9,6 @@ using Idp.DomainService.Oidc.Contracts;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.Logging;
-using Microsoft.Extensions.Options;
 using System.Security.Cryptography;
 
 namespace Authentication.DomainService.Authentication
@@ -30,20 +29,20 @@ namespace Authentication.DomainService.Authentication
         private readonly IDeviceAuthorizationRepository _repository;
         private readonly IIdpSessionRepository _sessionRepository;
         private readonly IAuthenticationRepository _authenticationRepository;
-        private readonly IOptions<DeviceFlowOptions> _options;
+        private readonly string? _publicBaseUrl;
         private readonly ILogger<DeviceVerificationService> _logger;
 
         public DeviceVerificationService(
             IDeviceAuthorizationRepository repository,
             IIdpSessionRepository sessionRepository,
             IAuthenticationRepository authenticationRepository,
-            IOptions<DeviceFlowOptions> options,
-            ILogger<DeviceVerificationService> logger)
+            ILogger<DeviceVerificationService> logger,
+            string? publicBaseUrl = null)
         {
             _repository = repository;
             _sessionRepository = sessionRepository;
             _authenticationRepository = authenticationRepository;
-            _options = options;
+            _publicBaseUrl = publicBaseUrl;
             _logger = logger;
         }
 
@@ -84,7 +83,7 @@ namespace Authentication.DomainService.Authentication
             }
 
             var tenantId = entity.TenantId;
-            var apiBase = OidcRedirectUrlBuilder.ResolvePublicBaseUrl(httpContext.Request, _options.Value.PublicBaseUrl);
+            var apiBase = OidcRedirectUrlBuilder.ResolvePublicBaseUrl(httpContext.Request, _publicBaseUrl);
             var currentUrl = $"{apiBase}/device/{Uri.EscapeDataString(tenantId)}?user_code={Uri.EscapeDataString(entity.UserCode)}";
 
             var sessionId = httpContext.Request.Cookies[IdpConstants.BuildIdpSessionCookieKey(tenantId)];
@@ -204,7 +203,7 @@ namespace Authentication.DomainService.Authentication
             }
 
             var tenantId = entity.TenantId;
-            var apiBase = OidcRedirectUrlBuilder.ResolvePublicBaseUrl(httpContext.Request, _options.Value.PublicBaseUrl);
+            var apiBase = OidcRedirectUrlBuilder.ResolvePublicBaseUrl(httpContext.Request, _publicBaseUrl);
             var sessionId = httpContext.Request.Cookies[IdpConstants.BuildIdpSessionCookieKey(tenantId)];
             if (string.IsNullOrWhiteSpace(sessionId))
             {

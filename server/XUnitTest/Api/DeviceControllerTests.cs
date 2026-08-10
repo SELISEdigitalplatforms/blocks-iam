@@ -1,14 +1,12 @@
 using Api.Controllers;
 using Authentication.DomainService.Authentication;
 using Authentication.DomainService.Oidc.Repositories;
-using Authentication.DomainService.Oidc.Services;
 using Authentication.DomainService.Services;
 using FluentAssertions;
 using Idp.DomainService.Oidc.Contracts;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.Logging.Abstractions;
-using Microsoft.Extensions.Options;
 using Moq;
 
 namespace XUnitTest.ApiTests
@@ -31,7 +29,6 @@ namespace XUnitTest.ApiTests
                 _deviceRepo.Object,
                 _sessionRepo.Object,
                 _authRepo.Object,
-                Options.Create(new DeviceFlowOptions()),
                 NullLogger<DeviceVerificationService>.Instance);
 
             var controller = new DeviceController(verification);

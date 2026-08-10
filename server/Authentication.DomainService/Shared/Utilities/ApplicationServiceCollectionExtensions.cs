@@ -30,6 +30,7 @@ using Mfa.DomainService.TOTP;
 using Mfa.DomainService.Validators;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using Storage.DomainService.Shared.Services;
 using Storage.DomainService.Storage;
@@ -109,7 +110,12 @@ namespace Authentication.DomainService.Utilities
             serviceCollection.AddSingleton<IDeviceAuthorizationService, DeviceAuthorizationService>();
             serviceCollection.AddSingleton<IOidcTokenMintService, OidcTokenMintService>();
             serviceCollection.AddSingleton<DeviceAuthorizationEndpoint>();
-            serviceCollection.AddSingleton<DeviceVerificationService>();
+            serviceCollection.AddSingleton<DeviceVerificationService>(sp => new DeviceVerificationService(
+                sp.GetRequiredService<IDeviceAuthorizationRepository>(),
+                sp.GetRequiredService<IIdpSessionRepository>(),
+                sp.GetRequiredService<IAuthenticationRepository>(),
+                sp.GetRequiredService<ILogger<DeviceVerificationService>>(),
+                sp.GetRequiredService<IOptions<DeviceFlowOptions>>().Value.PublicBaseUrl));
             serviceCollection.AddSingleton<DeviceCodeExchangeService>();
             serviceCollection.AddHostedService<DeviceCleanupWorker>();
             serviceCollection.AddSingleton<IdpTokenExchangeClient>();
