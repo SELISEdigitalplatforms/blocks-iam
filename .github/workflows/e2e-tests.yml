@@ -1,0 +1,130 @@
+name: Reusable - E2E Tests (Playwright)
+
+on:
+  workflow_call:
+    inputs:
+      BASE_URL:
+        description: "Deployed host to run the E2E suite against"
+        required: true
+        type: string
+
+      NODE_VERSION:
+        description: "Node.js version to use"
+        required: false
+        type: string
+        default: "22"
+
+      HEALTHCHECK_RETRIES:
+        description: "Number of health-check polls before giving up on the rollout"
+        required: false
+        type: number
+        default: 30
+
+      HEALTHCHECK_INTERVAL_SECONDS:
+        description: "Seconds to wait between health-check polls"
+        required: false
+        type: number
+        default: 10
+
+      CONTINUE_ON_FAILURE:
+        description: "Report results without failing the calling workflow (bake-in period)"
+        required: false
+        type: boolean
+        default: true
+
+    secrets:
+      E2E_USERNAME:
+        required: true
+        description: "Dev-IAM test account username"
+      E2E_PASSWORD:
+        required: true
+        description: "Dev-IAM test account password"
+
+jobs:
+  e2e:
+    name: E2E Tests
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Wait for deployment to become healthy
+        run: |
+          echo "Polling ${{ inputs.BASE_URL }} for up to $(( ${{ inputs.HEALTHCHECK_RETRIES }} * ${{ inputs.HEALTHCHECK_INTERVAL_SECONDS }} ))s ..."
+          for i in $(seq 1 ${{ inputs.HEALTHCHECK_RETRIES }}); do
+            code=$(curl -s -o /dev/null -w '%{http_code}' --max-time 15 "${{ inputs.BASE_URL }}" || echo "000")
+            echo "  attempt $i/${{ inputs.HEALTHCHECK_RETRIES }}: HTTP $code"
+            if [ "$code" -ge 200 ] && [ "$code" -lt 500 ]; then
+              echo "Host is responding."
+              exit 0
+            fi
+            sleep ${{ inputs.HEALTHCHECK_INTERVAL_SECONDS }}
+          done
+          echo "::error::${{ inputs.BASE_URL }} never became healthy after the GitOps deploy — skipping E2E run."
+          exit 1
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ inputs.NODE_VERSION }}
+          cache: npm
+          cache-dependency-path: e2e/package-lock.json
+
+      - name: Install dependencies
+        working-directory: e2e
+        run: npm ci --no-audit --no-fund
+
+      - name: Install Playwright browsers
+        working-directory: e2e
+        run: npx playwright install --with-deps chromium
+
+      - name: Write .env.e2e
+        working-directory: e2e
+        env:
+          E2E_USERNAME: ${{ secrets.E2E_USERNAME }}
+          E2E_PASSWORD: ${{ secrets.E2E_PASSWORD }}
+        run: |
+          cat > .env.e2e <<EOF
+          E2E_BASE_URL=${{ inputs.BASE_URL }}
+          E2E_USERNAME=$E2E_USERNAME
+          E2E_PASSWORD=$E2E_PASSWORD
+          E2E_NO_WEBSERVER=1
+          EOF
+
+      - name: Run Playwright tests
+        id: run_tests
+        working-directory: e2e
+        continue-on-error: ${{ inputs.CONTINUE_ON_FAILURE }}
+        run: npm test
+
+      - name: Upload Playwright report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-report
+          path: |
+            e2e/playwright-report/
+            e2e/test-results/
+          retention-days: 14
+          if-no-files-found: ignore
+
+      - name: Summary
+        if: always()
+        run: |
+          {
+            echo "### 🎭 E2E Tests (Playwright)"
+            echo ""
+            echo "- Target: \`${{ inputs.BASE_URL }}\`"
+            echo "- Result: \`${{ steps.run_tests.outcome }}\`"
+            if [ "${{ steps.run_tests.outcome }}" = "failure" ] && [ "${{ inputs.CONTINUE_ON_FAILURE }}" = "true" ]; then
+              echo "- Note: non-blocking bake-in period — this failure did not fail the pipeline."
+            fi
+            echo "- Report: see the \`playwright-report\` artifact on this run."
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Fail if tests failed and not in bake-in mode
+        if: steps.run_tests.outcome == 'failure' && inputs.CONTINUE_ON_FAILURE != true
+        run: exit 1
