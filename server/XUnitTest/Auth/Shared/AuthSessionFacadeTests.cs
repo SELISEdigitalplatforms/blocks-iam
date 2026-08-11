@@ -25,7 +25,8 @@ namespace XUnitTest.Auth.Shared
                 impersonation.Object,
                 revocation.Object,
                 null!,
-                jwt.Object);
+                jwt.Object,
+                new Mock<IRefreshSessionResolver>().Object);
 
             var result = await facade.CreateSessionAsync("u", "t", "ip");
 
@@ -45,7 +46,8 @@ namespace XUnitTest.Auth.Shared
                 Mock.Of<IImpersonationFlowHelper>(),
                 Mock.Of<ITokenRevocationService>(),
                 null!,
-                Mock.Of<global::Authentication.DomainService.OAuth.IOAuthJwtAccessTokenManager>());
+                Mock.Of<global::Authentication.DomainService.OAuth.IOAuthJwtAccessTokenManager>(),
+                Mock.Of<IRefreshSessionResolver>());
 
             var result = await facade.GetSessionAsync("s1");
 
@@ -63,7 +65,8 @@ namespace XUnitTest.Auth.Shared
                 Mock.Of<IImpersonationFlowHelper>(),
                 Mock.Of<ITokenRevocationService>(),
                 null!,
-                Mock.Of<global::Authentication.DomainService.OAuth.IOAuthJwtAccessTokenManager>());
+                Mock.Of<global::Authentication.DomainService.OAuth.IOAuthJwtAccessTokenManager>(),
+                Mock.Of<IRefreshSessionResolver>());
 
             var result = await facade.AddAccountAsync("s1", "u", "t", "name");
 
@@ -81,7 +84,8 @@ namespace XUnitTest.Auth.Shared
                 Mock.Of<IImpersonationFlowHelper>(),
                 Mock.Of<ITokenRevocationService>(),
                 null!,
-                Mock.Of<global::Authentication.DomainService.OAuth.IOAuthJwtAccessTokenManager>());
+                Mock.Of<global::Authentication.DomainService.OAuth.IOAuthJwtAccessTokenManager>(),
+                Mock.Of<IRefreshSessionResolver>());
 
             var result = await facade.UpdateActivityAsync("s1");
 
@@ -100,7 +104,8 @@ namespace XUnitTest.Auth.Shared
                 impersonation.Object,
                 Mock.Of<ITokenRevocationService>(),
                 null!,
-                Mock.Of<global::Authentication.DomainService.OAuth.IOAuthJwtAccessTokenManager>());
+                Mock.Of<global::Authentication.DomainService.OAuth.IOAuthJwtAccessTokenManager>(),
+                Mock.Of<IRefreshSessionResolver>());
 
             var result = await facade.CreateAndBackupImpersonationSessionAsync("u", "root", "target", "client", "org");
 
@@ -120,7 +125,8 @@ namespace XUnitTest.Auth.Shared
                 Mock.Of<IImpersonationFlowHelper>(),
                 revocation.Object,
                 null!,
-                Mock.Of<global::Authentication.DomainService.OAuth.IOAuthJwtAccessTokenManager>());
+                Mock.Of<global::Authentication.DomainService.OAuth.IOAuthJwtAccessTokenManager>(),
+                Mock.Of<IRefreshSessionResolver>());
 
             var result = await facade.RevokeTokenAsync("token", "refresh_token", "client");
 

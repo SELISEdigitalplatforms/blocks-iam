@@ -5,6 +5,7 @@ using Authentication.DomainService.OAuth;
 using Authentication.DomainService.OAuth.RequestModel;
 using Authentication.DomainService.OAuth.ResponseModel;
 using Authentication.DomainService.Oidc.Repositories;
+using Authentication.DomainService.Shared.Services;
 using Authentication.DomainService.Services;
 using Blocks.Genesis;
 using FluentAssertions;
@@ -26,6 +27,7 @@ namespace XUnitTest.Auth.Oidc
         private readonly Mock<ITenants> _tenants = new();
         private readonly Mock<IAuthenticationService> _authService = new();
         private readonly Mock<IRefreshTokenRepository> _refreshTokenRepo = new();
+        private readonly Mock<IRefreshSessionResolver> _sessionResolver = new();
 
         // Inner (real) RefreshTokenAuthenticationService dependencies.
         private readonly Mock<IJwtAccessTokenProvider> _innerJwt = new();
@@ -54,7 +56,7 @@ namespace XUnitTest.Auth.Oidc
             new(NullLogger<RefreshTokenAuthenticationService>.Instance, _innerJwt.Object, _innerTenants.Object, _innerTokenMgr.Object, _innerAuthRepo.Object);
 
         private OidcRefreshTokenService Create() =>
-            new(_authRepo.Object, _cache.Object, _tenants.Object, BuildInner(), _authService.Object, _refreshTokenRepo.Object, NullLogger<OidcRefreshTokenService>.Instance);
+            new(_authRepo.Object, _cache.Object, _tenants.Object, BuildInner(), _authService.Object, _refreshTokenRepo.Object, _sessionResolver.Object, NullLogger<OidcRefreshTokenService>.Instance);
 
         private static HttpRequest MakeRequest(Dictionary<string, string>? form = null)
         {
@@ -71,7 +73,7 @@ namespace XUnitTest.Auth.Oidc
         private void SetupValidRefreshToken(RefreshTokenCache tokenCache, User user)
         {
             _authRepo.Setup(r => r.GetAuthenticationConfigurationAsync()).ReturnsAsync(new IdentityConfiguration());
-            _cache.Setup(c => c.GetStringValueAsync(It.IsAny<string>())).ReturnsAsync(SerializeCache(tokenCache));
+            _sessionResolver.Setup(r => r.TryResolveRefreshSessionAsync(It.IsAny<string>(), It.IsAny<IdentityConfiguration>())).ReturnsAsync(tokenCache);
             _authRepo.Setup(r => r.GetOidcClientRegistrationAsync(tokenCache.ClientId!))
                 .ReturnsAsync(new OidcClientRegistration { ClientId = tokenCache.ClientId!, UseTokensCookie = false });
             _authRepo.Setup(r => r.GetUserByIdAsync(tokenCache.UserId!)).ReturnsAsync(user);
@@ -145,7 +147,7 @@ namespace XUnitTest.Auth.Oidc
         {
             SetupClient();
             _authRepo.Setup(r => r.GetAuthenticationConfigurationAsync()).ReturnsAsync(new IdentityConfiguration());
-            _cache.Setup(c => c.GetStringValueAsync(It.IsAny<string>())).ReturnsAsync((string)null!);
+            _sessionResolver.Setup(r => r.TryResolveRefreshSessionAsync(It.IsAny<string>(), It.IsAny<IdentityConfiguration>())).ReturnsAsync((RefreshTokenCache?)null);
 
             var result = await Create().RotateAsync(MakeRequest(FormWithToken()));
 
@@ -158,8 +160,8 @@ namespace XUnitTest.Auth.Oidc
         {
             SetupClient();
             _authRepo.Setup(r => r.GetAuthenticationConfigurationAsync()).ReturnsAsync(new IdentityConfiguration());
-            _cache.Setup(c => c.GetStringValueAsync(It.IsAny<string>()))
-                .ReturnsAsync(SerializeCache(new RefreshTokenCache { UserId = "", ClientId = "c1", TenantId = "tenant-1" }));
+            _sessionResolver.Setup(r => r.TryResolveRefreshSessionAsync(It.IsAny<string>(), It.IsAny<IdentityConfiguration>()))
+                .ReturnsAsync(new RefreshTokenCache { UserId = "", ClientId = "c1", TenantId = "tenant-1" });
 
             var result = await Create().RotateAsync(MakeRequest(FormWithToken()));
 
@@ -172,8 +174,8 @@ namespace XUnitTest.Auth.Oidc
             SetupClient();
             _authRepo.Setup(r => r.GetAuthenticationConfigurationAsync()).ReturnsAsync(new IdentityConfiguration());
             // The token's client id resolves to no registration.
-            _cache.Setup(c => c.GetStringValueAsync(It.IsAny<string>()))
-                .ReturnsAsync(SerializeCache(new RefreshTokenCache { UserId = "u1", ClientId = "missing-client", TenantId = "tenant-1" }));
+            _sessionResolver.Setup(r => r.TryResolveRefreshSessionAsync(It.IsAny<string>(), It.IsAny<IdentityConfiguration>()))
+                .ReturnsAsync(new RefreshTokenCache { UserId = "u1", ClientId = "missing-client", TenantId = "tenant-1" });
             _authRepo.Setup(r => r.GetOidcClientRegistrationAsync("missing-client")).ReturnsAsync((OidcClientRegistration)null!);
 
             var result = await Create().RotateAsync(MakeRequest(FormWithToken()));
@@ -187,8 +189,8 @@ namespace XUnitTest.Auth.Oidc
         {
             SetupClient();
             _authRepo.Setup(r => r.GetAuthenticationConfigurationAsync()).ReturnsAsync(new IdentityConfiguration());
-            _cache.Setup(c => c.GetStringValueAsync(It.IsAny<string>()))
-                .ReturnsAsync(SerializeCache(new RefreshTokenCache { UserId = "u1", ClientId = "c1", TenantId = "other-tenant" }));
+            _sessionResolver.Setup(r => r.TryResolveRefreshSessionAsync(It.IsAny<string>(), It.IsAny<IdentityConfiguration>()))
+                .ReturnsAsync(new RefreshTokenCache { UserId = "u1", ClientId = "c1", TenantId = "other-tenant" });
             _authRepo.Setup(r => r.GetOidcClientRegistrationAsync("c1"))
                 .ReturnsAsync(new OidcClientRegistration { ClientId = "c1", UseTokensCookie = false });
 
@@ -203,8 +205,8 @@ namespace XUnitTest.Auth.Oidc
         {
             SetupClient();
             _authRepo.Setup(r => r.GetAuthenticationConfigurationAsync()).ReturnsAsync(new IdentityConfiguration());
-            _cache.Setup(c => c.GetStringValueAsync(It.IsAny<string>()))
-                .ReturnsAsync(SerializeCache(new RefreshTokenCache { UserId = "u1", ClientId = "c1", TenantId = "tenant-1" }));
+            _sessionResolver.Setup(r => r.TryResolveRefreshSessionAsync(It.IsAny<string>(), It.IsAny<IdentityConfiguration>()))
+                .ReturnsAsync(new RefreshTokenCache { UserId = "u1", ClientId = "c1", TenantId = "tenant-1" });
             _authRepo.Setup(r => r.GetOidcClientRegistrationAsync("c1"))
                 .ReturnsAsync(new OidcClientRegistration { ClientId = "c1", UseTokensCookie = false });
             _authRepo.Setup(r => r.GetUserByIdAsync("u1")).ReturnsAsync((User)null!);

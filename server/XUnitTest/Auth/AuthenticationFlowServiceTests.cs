@@ -5,6 +5,7 @@ using Authentication.DomainService.OAuth;
 using Authentication.DomainService.OAuth.RequestModel;
 using Authentication.DomainService.OAuth.ResponseModel;
 using Authentication.DomainService.Oidc.Repositories;
+using Authentication.DomainService.Shared.Services;
 using Authentication.DomainService.Services;
 using Authentication.DomainService.Shared.RequestModel;
 using Blocks.Genesis;
@@ -31,6 +32,7 @@ namespace XUnitTest.Auth
         private readonly Mock<Authentication.DomainService.Authentication.IAuthenticationService> _authService = new();
         private readonly Mock<ICaptchaEvaluator> _captcha = new();
         private readonly Mock<IRefreshTokenRepository> _refreshRepo = new();
+        private readonly Mock<IRefreshSessionResolver> _sessionResolver = new();
         private readonly Mock<IAuthenticationDomainService> _authDomain = new();
         private readonly Mock<IUserActivityDispatcher> _activity = new();
         private readonly OidcLoginAuditWriter _auditWriter;
@@ -62,7 +64,7 @@ namespace XUnitTest.Auth
 
         private AuthenticationFlowService Create() =>
             new(_repo.Object, _strategy.Object, _refresher.Object, _authService.Object, _captcha.Object,
-                _auditWriter, NullLogger<AuthenticationFlowService>.Instance, _refreshRepo.Object);
+                _auditWriter, NullLogger<AuthenticationFlowService>.Instance, _refreshRepo.Object, _sessionResolver.Object);
 
         private static HttpRequest Req() => new DefaultHttpContext().Request;
 
@@ -385,90 +387,47 @@ namespace XUnitTest.Auth
             Prop(bad.Value, "error").Should().Be(OAuthError.InvalidRefreshToken);
         }
 
-        private static RefreshTokenModel Persisted(
-            bool isRevoked = false,
-            string? revokeReason = null,
-            DateTime? absoluteExpiry = null,
-            string userId = "user-1",
-            string? tenantId = TenantId) => new()
+        /// <summary>
+        /// Seeds the shared validity check with the session it should resolve for "rt".
+        /// </summary>
+        private void Resolves(RefreshTokenCache? resolved) =>
+            _sessionResolver
+                .Setup(r => r.TryResolveRefreshSessionAsync("rt", It.IsAny<IdentityConfiguration>()))
+                .ReturnsAsync(resolved);
+
+        private static RefreshTokenCache Session(string tokenId = "rt", string userId = "user-1", string? tenantId = TenantId) =>
+            new()
             {
-                TokenId = "rt",
+                RefreshToken = tokenId,
                 UserId = userId,
                 TenantId = tenantId,
                 OrganizationId = "default",
                 ClientId = "client-1",
                 SessionId = "session-1",
+                RefreshTokenSessionId = "lineage-1",
                 IssuedUtc = DateTime.UtcNow.AddHours(-2),
-                SlidingExpiry = DateTime.UtcNow.AddHours(-1),
-                AbsoluteExpiry = absoluteExpiry ?? DateTime.UtcNow.AddDays(6),
-                IsRevoked = isRevoked,
-                RevokeReason = revokeReason
+                ExpiresUtc = DateTime.UtcNow.AddMinutes(30),
+                AbsoluteExpiresUtc = DateTime.UtcNow.AddDays(6)
             };
 
         [Fact]
-        public async Task Refresh_CacheMiss_TokenNotPersisted_DoesNotRevoke_ReturnsBadRequest()
+        public async Task Refresh_SharedCheckRejects_ReturnsBadRequestAndClearsCookies()
         {
-            _refresher.Setup(r => r.GetCacheValueAsync("rt")).ReturnsAsync((string)null!);
-            _refreshRepo.Setup(r => r.GetByTokenIdAsync("rt")).ReturnsAsync((RefreshTokenModel)null!);
+            Resolves(null);
+            _refresher.Setup(r => r.GetTenantByIDAsync(It.IsAny<string>())).ReturnsAsync((Tenant)null!);
             var ctx = new DefaultHttpContext();
 
             var result = await Create().ExecuteRefreshAsync(new RefreshRequest { RefreshToken = "rt" }, Principal(), ctx.Request, ctx.Response);
 
             var bad = result.Should().BeOfType<BadRequestObjectResult>().Subject;
             Prop(bad.Value, "error").Should().Be(OAuthError.InvalidRefreshToken);
-            _refreshRepo.Verify(r => r.RevokeByTokenIdAsync(It.IsAny<string>(), It.IsAny<string>()), Times.Never);
+            _refresher.Verify(r => r.AuthenticateAsync(It.IsAny<TokenRequest>(), It.IsAny<IdentityConfiguration>(), It.IsAny<User>()), Times.Never);
         }
 
         [Fact]
-        public async Task Refresh_CacheMiss_SupersededToken_RevokesForReuse_ReturnsBadRequest()
+        public async Task Refresh_SharedCheckAccepts_RotatesNormally()
         {
-            _refresher.Setup(r => r.GetCacheValueAsync("rt")).ReturnsAsync((string)null!);
-            _refreshRepo.Setup(r => r.GetByTokenIdAsync("rt"))
-                .ReturnsAsync(Persisted(isRevoked: true, revokeReason: "superseded_by_rotation"));
-            _refreshRepo.Setup(r => r.RevokeByTokenIdAsync("rt", "potential_reuse")).ReturnsAsync(true);
-            _refresher.Setup(r => r.RemoveKeyAsync("rt")).Returns(Task.CompletedTask);
-            var ctx = new DefaultHttpContext();
-
-            var result = await Create().ExecuteRefreshAsync(new RefreshRequest { RefreshToken = "rt" }, Principal(), ctx.Request, ctx.Response);
-
-            result.Should().BeOfType<BadRequestObjectResult>();
-            _refreshRepo.Verify(r => r.RevokeByTokenIdAsync("rt", "potential_reuse"), Times.Once);
-            _refresher.Verify(r => r.RemoveKeyAsync("rt"), Times.Once);
-        }
-
-        [Fact]
-        public async Task Refresh_CacheMiss_RevokedForAnotherReason_DoesNotRevoke_ReturnsBadRequest()
-        {
-            _refresher.Setup(r => r.GetCacheValueAsync("rt")).ReturnsAsync((string)null!);
-            _refreshRepo.Setup(r => r.GetByTokenIdAsync("rt")).ReturnsAsync(Persisted(isRevoked: true));
-            var ctx = new DefaultHttpContext();
-
-            var result = await Create().ExecuteRefreshAsync(new RefreshRequest { RefreshToken = "rt" }, Principal(), ctx.Request, ctx.Response);
-
-            result.Should().BeOfType<BadRequestObjectResult>();
-            _refreshRepo.Verify(r => r.RevokeByTokenIdAsync(It.IsAny<string>(), It.IsAny<string>()), Times.Never);
-        }
-
-        [Fact]
-        public async Task Refresh_CacheMiss_PastAbsoluteExpiry_DoesNotRevoke_ReturnsBadRequest()
-        {
-            _refresher.Setup(r => r.GetCacheValueAsync("rt")).ReturnsAsync((string)null!);
-            _refreshRepo.Setup(r => r.GetByTokenIdAsync("rt"))
-                .ReturnsAsync(Persisted(absoluteExpiry: DateTime.UtcNow.AddMinutes(-1)));
-            var ctx = new DefaultHttpContext();
-
-            var result = await Create().ExecuteRefreshAsync(new RefreshRequest { RefreshToken = "rt" }, Principal(), ctx.Request, ctx.Response);
-
-            result.Should().BeOfType<BadRequestObjectResult>();
-            _refreshRepo.Verify(r => r.RevokeByTokenIdAsync(It.IsAny<string>(), It.IsAny<string>()), Times.Never);
-        }
-
-        [Fact]
-        public async Task Refresh_CacheMiss_WithinAbsoluteLifetime_RehydratesCacheAndRefreshes()
-        {
-            _refresher.Setup(r => r.GetCacheValueAsync("rt")).ReturnsAsync((string)null!);
-            _refreshRepo.Setup(r => r.GetByTokenIdAsync("rt")).ReturnsAsync(Persisted());
-            _refresher.Setup(r => r.SetCacheValueAsync("rt", It.IsAny<string>(), It.IsAny<int>())).Returns(Task.CompletedTask);
+            Resolves(Session());
             _repo.Setup(r => r.GetUserByIdAsync("user-1")).ReturnsAsync(new User { ItemId = "user-1" });
             _refresher.Setup(r => r.AuthenticateAsync(It.IsAny<TokenRequest>(), It.IsAny<IdentityConfiguration>(), It.IsAny<User>()))
                 .ReturnsAsync(new TokenResponse { AccessToken = "new-at", RefreshToken = "new-rt", TokenType = "Bearer", ExpiresIn = 3600 });
@@ -478,35 +437,37 @@ namespace XUnitTest.Auth
             var result = await Create().ExecuteRefreshAsync(new RefreshRequest { RefreshToken = "rt" }, Principal(), ctx.Request, ctx.Response);
 
             result.Should().BeOfType<OkObjectResult>();
-            _refreshRepo.Verify(r => r.RevokeByTokenIdAsync(It.IsAny<string>(), It.IsAny<string>()), Times.Never);
-            _refresher.Verify(r => r.SetCacheValueAsync("rt", It.IsAny<string>(), It.IsAny<int>()), Times.Once);
+            // Not a replay: no grace token id is carried into the rotation.
+            _refresher.Verify(r => r.AuthenticateAsync(
+                It.Is<TokenRequest>(t => t.GraceReplayTokenId == null), It.IsAny<IdentityConfiguration>(), It.IsAny<User>()), Times.Once);
         }
 
         [Fact]
-        public async Task Refresh_CacheMiss_RehydratedTtlNeverExceedsRemainingAbsoluteLifetime()
+        public async Task Refresh_GraceWindowReplay_PassesSuccessorThroughWithoutRotating()
         {
-            var ttl = -1;
-            _refresher.Setup(r => r.GetCacheValueAsync("rt")).ReturnsAsync((string)null!);
-            _refreshRepo.Setup(r => r.GetByTokenIdAsync("rt"))
-                .ReturnsAsync(Persisted(absoluteExpiry: DateTime.UtcNow.AddSeconds(45)));
-            _refresher.Setup(r => r.SetCacheValueAsync("rt", It.IsAny<string>(), It.IsAny<int>()))
-                .Callback<string, string, int>((_, _, seconds) => ttl = seconds)
-                .Returns(Task.CompletedTask);
+            // The shared check resolved the presented token onto its rotation successor.
+            var successor = Session(tokenId: "successor-rt");
+            Resolves(successor);
             _repo.Setup(r => r.GetUserByIdAsync("user-1")).ReturnsAsync(new User { ItemId = "user-1" });
             _refresher.Setup(r => r.AuthenticateAsync(It.IsAny<TokenRequest>(), It.IsAny<IdentityConfiguration>(), It.IsAny<User>()))
-                .ReturnsAsync(new TokenResponse { AccessToken = "new-at", RefreshToken = "new-rt" });
+                .ReturnsAsync(new TokenResponse { AccessToken = "new-at", RefreshToken = "successor-rt", TokenType = "Bearer", ExpiresIn = 3600 });
             _refresher.Setup(r => r.GetTenantByIDAsync(It.IsAny<string>())).ReturnsAsync((Tenant)null!);
             var ctx = new DefaultHttpContext();
 
-            await Create().ExecuteRefreshAsync(new RefreshRequest { RefreshToken = "rt" }, Principal(), ctx.Request, ctx.Response);
+            var result = await Create().ExecuteRefreshAsync(new RefreshRequest { RefreshToken = "rt" }, Principal(), ctx.Request, ctx.Response);
 
-            ttl.Should().BeInRange(1, 45);
+            var ok = result.Should().BeOfType<OkObjectResult>().Subject;
+            Prop(ok.Value, "refresh_token").Should().Be("successor-rt");
+            _refresher.Verify(r => r.AuthenticateAsync(
+                It.Is<TokenRequest>(t => t.GraceReplayTokenId == "successor-rt"
+                                      && t.GraceReplayAbsoluteExpiry == successor.AbsoluteExpiresUtc),
+                It.IsAny<IdentityConfiguration>(), It.IsAny<User>()), Times.Once);
         }
 
         [Fact]
         public async Task Refresh_TokenCacheMissingUserId_ReturnsBadRequest()
         {
-            _refresher.Setup(r => r.GetCacheValueAsync("rt")).ReturnsAsync("{}");
+            Resolves(new RefreshTokenCache { RefreshToken = "rt" });
             var ctx = new DefaultHttpContext();
 
             var result = await Create().ExecuteRefreshAsync(new RefreshRequest { RefreshToken = "rt" }, Principal(), ctx.Request, ctx.Response);
@@ -518,8 +479,7 @@ namespace XUnitTest.Auth
         [Fact]
         public async Task Refresh_TenantMismatch_ReturnsBadRequest()
         {
-            var cache = JsonSerializer.Serialize(new RefreshTokenCache { UserId = "user-1", TenantId = "tenant-other" });
-            _refresher.Setup(r => r.GetCacheValueAsync("rt")).ReturnsAsync(cache);
+            Resolves(Session(tenantId: "tenant-other"));
             var ctx = new DefaultHttpContext();
 
             var result = await Create().ExecuteRefreshAsync(new RefreshRequest { RefreshToken = "rt" }, Principal(), ctx.Request, ctx.Response);
@@ -531,8 +491,7 @@ namespace XUnitTest.Auth
         [Fact]
         public async Task Refresh_UserNotFound_ReturnsUnauthorized()
         {
-            var cache = JsonSerializer.Serialize(new RefreshTokenCache { UserId = "user-1", TenantId = TenantId });
-            _refresher.Setup(r => r.GetCacheValueAsync("rt")).ReturnsAsync(cache);
+            Resolves(Session());
             _repo.Setup(r => r.GetUserByIdAsync("user-1")).ReturnsAsync((User)null!);
             var ctx = new DefaultHttpContext();
 
@@ -545,8 +504,7 @@ namespace XUnitTest.Auth
         [Fact]
         public async Task Refresh_UserLocked_Returns423()
         {
-            var cache = JsonSerializer.Serialize(new RefreshTokenCache { UserId = "user-1", TenantId = TenantId });
-            _refresher.Setup(r => r.GetCacheValueAsync("rt")).ReturnsAsync(cache);
+            Resolves(Session());
             _repo.Setup(r => r.GetUserByIdAsync("user-1")).ReturnsAsync(new User { ItemId = "user-1", LockoutUntilUtc = DateTime.UtcNow.AddMinutes(10) });
             var ctx = new DefaultHttpContext();
 
@@ -559,8 +517,7 @@ namespace XUnitTest.Auth
         [Fact]
         public async Task Refresh_AuthenticateReturnsError_ReturnsObjectResultWithStatus()
         {
-            var cache = JsonSerializer.Serialize(new RefreshTokenCache { UserId = "user-1", TenantId = TenantId });
-            _refresher.Setup(r => r.GetCacheValueAsync("rt")).ReturnsAsync(cache);
+            Resolves(Session());
             _repo.Setup(r => r.GetUserByIdAsync("user-1")).ReturnsAsync(new User { ItemId = "user-1" });
             _refresher.Setup(r => r.AuthenticateAsync(It.IsAny<TokenRequest>(), It.IsAny<IdentityConfiguration>(), It.IsAny<User>()))
                 .ReturnsAsync(new TokenResponse { Error = "invalid_grant", ErrorDescription = "nope", StatusCode = 400 });
@@ -576,8 +533,7 @@ namespace XUnitTest.Auth
         [Fact]
         public async Task Refresh_HappyPath_ReturnsOkWithTokens()
         {
-            var cache = JsonSerializer.Serialize(new RefreshTokenCache { UserId = "user-1", TenantId = TenantId, OrganizationId = "default" });
-            _refresher.Setup(r => r.GetCacheValueAsync("rt")).ReturnsAsync(cache);
+            Resolves(Session());
             _repo.Setup(r => r.GetUserByIdAsync("user-1")).ReturnsAsync(new User { ItemId = "user-1" });
             _refresher.Setup(r => r.AuthenticateAsync(It.IsAny<TokenRequest>(), It.IsAny<IdentityConfiguration>(), It.IsAny<User>()))
                 .ReturnsAsync(new TokenResponse { AccessToken = "new-at", RefreshToken = "new-rt", TokenType = "Bearer", ExpiresIn = 3600 });

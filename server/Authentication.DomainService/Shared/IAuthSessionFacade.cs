@@ -1,4 +1,5 @@
 using Authentication.DomainService.Authentication;
+using Authentication.DomainService.Dtos;
 using Authentication.DomainService.Entities;
 using Authentication.DomainService.OAuth;
 using Authentication.DomainService.OAuth.RequestModel;
@@ -37,5 +38,11 @@ namespace Authentication.DomainService.Shared
 
         // Token issuance
         Task<TokenResponse> ManageTokenAsync(TokenRequest tokenRequest, IdentityConfiguration authConfiguration, User? user);
+
+        /// <summary>
+        /// The shared refresh-token validity check. Returns null when the presented token cannot be used;
+        /// a result carrying a different token id is a grace-window replay onto the rotation successor.
+        /// </summary>
+        Task<RefreshTokenCache?> TryResolveRefreshSessionAsync(string presentedTokenId, IdentityConfiguration configuration);
     }
 }

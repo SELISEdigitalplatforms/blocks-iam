@@ -211,6 +211,7 @@ namespace Authentication.DomainService.Utilities
             serviceCollection.RegisterBlocksCaptchaService();
 
             serviceCollection.AddSingleton<UnifiedTokenSessionService, UnifiedTokenSessionService>();
+            serviceCollection.AddSingleton<IRefreshSessionResolver, RefreshSessionResolver>();
             serviceCollection.AddSingleton<IImpersonationFlowHelper, ImpersonationFlowHelper>();
 
             // Drivers

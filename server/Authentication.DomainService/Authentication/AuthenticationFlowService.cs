@@ -7,7 +7,9 @@ using Authentication.DomainService.OAuth.ResponseModel;
 using Authentication.DomainService.Oidc.Repositories;
 using Authentication.DomainService.Services;
 using Authentication.DomainService.Shared.RequestModel;
+using Authentication.DomainService.Shared.Services;
 using Blocks.Genesis;
+using Iam.DomainService.Utilities;
 using Iam.DomainService.Entities;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
@@ -20,9 +22,6 @@ namespace Authentication.DomainService.Authentication
 {
     public sealed class AuthenticationFlowService : IAuthenticationFlowService
     {
-        /// <summary>Must match the reason UnifiedTokenSessionService writes when it rotates a token.</summary>
-        private const string SupersededByRotationReason = "superseded_by_rotation";
-
         private readonly IAuthenticationRepository _authenticationRepository;
         private readonly IAuthStrategy _authStrategy;
         private readonly ITokenRefresher _tokenRefresher;
@@ -31,6 +30,7 @@ namespace Authentication.DomainService.Authentication
         private readonly OidcLoginAuditWriter _auditWriter;
         private readonly ILogger<AuthenticationFlowService> _logger;
         private readonly IRefreshTokenRepository _refreshTokenRepository;
+        private readonly IRefreshSessionResolver _refreshSessionResolver;
 
         public AuthenticationFlowService(
             IAuthenticationRepository authenticationRepository,
@@ -40,7 +40,8 @@ namespace Authentication.DomainService.Authentication
             ICaptchaEvaluator captchaEvaluator,
             OidcLoginAuditWriter auditWriter,
             ILogger<AuthenticationFlowService> logger,
-            IRefreshTokenRepository refreshTokenRepository)
+            IRefreshTokenRepository refreshTokenRepository,
+            IRefreshSessionResolver refreshSessionResolver)
         {
             _authenticationRepository = authenticationRepository;
             _authStrategy = authStrategy;
@@ -50,6 +51,7 @@ namespace Authentication.DomainService.Authentication
             _auditWriter = auditWriter;
             _logger = logger;
             _refreshTokenRepository = refreshTokenRepository;
+            _refreshSessionResolver = refreshSessionResolver;
         }
 
         public async Task<AuthenticationFlowResult> ExecuteEmbeddedLoginAsync(EmbeddedLoginRequest request, HttpRequest httpRequest)
@@ -465,18 +467,22 @@ namespace Authentication.DomainService.Authentication
                 return new BadRequestObjectResult(new { error = OAuthError.InvalidRefreshToken, error_description = "Refresh token is required" });
             }
 
-            var cachedRefreshToken = await _tokenRefresher.GetCacheValueAsync(refreshToken);
-
-            // A cache miss is not evidence of replay: Redis only holds the sliding window, so a session
-            // idle past it looks identical to a reused token. The persisted record decides which it was.
-            var tokenCache = string.IsNullOrWhiteSpace(cachedRefreshToken)
-                ? await RehydrateRefreshTokenAsync(refreshToken, configuration)
-                : JsonSerializer.Deserialize<RefreshTokenCache>(cachedRefreshToken);
+            // One shared check decides validity: unrevoked, inside the sliding window and inside the
+            // absolute cap. A cache miss is not evidence of replay, and a token rotated away moments ago
+            // resolves to its successor rather than failing.
+            var tokenCache = await _refreshSessionResolver.TryResolveRefreshSessionAsync(refreshToken, configuration);
 
             if (tokenCache == null || string.IsNullOrWhiteSpace(tokenCache.UserId))
             {
+                // The browser must stop retrying a credential that can never work again.
+                ClearSessionCookies(httpRequest, httpResponse);
                 return new BadRequestObjectResult(new { error = OAuthError.InvalidRefreshToken, error_description = "Refresh token is invalid or expired" });
             }
+
+            // A resolved token id that differs from the presented one is a grace-window replay.
+            var graceReplayTokenId = string.Equals(tokenCache.RefreshToken, refreshToken, StringComparison.Ordinal)
+                ? null
+                : tokenCache.RefreshToken;
 
             var currentTenantId = BlocksContext.GetContext()?.TenantId;
 
@@ -508,7 +514,9 @@ namespace Authentication.DomainService.Authentication
                 GrantType = GrantTypes.RefreshToken,
                 OrganizationId = string.IsNullOrWhiteSpace(tokenCache.OrganizationId) ? "default" : tokenCache.OrganizationId,
                 RefreshToken = refreshToken,
-                Request = httpRequest
+                Request = httpRequest,
+                GraceReplayTokenId = graceReplayTokenId,
+                GraceReplayAbsoluteExpiry = graceReplayTokenId == null ? null : tokenCache.AbsoluteExpiresUtc
             };
 
             var response = await _tokenRefresher.AuthenticateAsync(tokenRequest, configuration, user);
@@ -545,96 +553,29 @@ namespace Authentication.DomainService.Authentication
         }
 
         /// <summary>
-        /// Recovers a refresh token that is absent from the cache. Redis only holds the sliding window,
-        /// while MongoDB is the system of record and keeps the real absolute lifetime, so a session idle
-        /// past the sliding window must still be able to refresh. Returns null when the token genuinely
-        /// cannot be used, having first revoked it if — and only if — this looks like replay.
+        /// Clears the access and refresh cookies after an unresolvable refresh, so the browser stops
+        /// replaying a permanently dead credential on every subsequent 401.
         /// </summary>
-        private async Task<RefreshTokenCache?> RehydrateRefreshTokenAsync(string refreshToken, IdentityConfiguration configuration)
+        private void ClearSessionCookies(HttpRequest httpRequest, HttpResponse httpResponse)
         {
-            var tokenFingerprint = TruncateToken(refreshToken);
-            var persisted = await _refreshTokenRepository.GetByTokenIdAsync(refreshToken);
-
-            if (persisted == null)
+            try
             {
-                _logger.LogWarning("Refresh token {TokenFingerprint} is present in neither the cache nor the store.", tokenFingerprint);
-                return null;
-            }
-
-            if (persisted.IsRevoked)
-            {
-                // Presenting a token that was already rotated away is the only genuine reuse signal
-                // available here. Every other revocation (logout, impersonation transition) is expected
-                // and must not escalate into a reuse response.
-                if (string.Equals(persisted.RevokeReason, SupersededByRotationReason, StringComparison.Ordinal))
+                var tenantId = BlocksContext.GetContext()?.TenantId ?? "default";
+                var tenant = _tokenRefresher.GetTenantByIDAsync(tenantId).GetAwaiter().GetResult();
+                var (domain, cookieDomain, isResolved) = DomainResolver.ResolveDomain(tenant, httpRequest);
+                if (!isResolved || string.IsNullOrWhiteSpace(domain))
                 {
-                    await HandlePotentialRefreshTokenReuseAsync(refreshToken);
-                }
-                else
-                {
-                    _logger.LogInformation(
-                        "Refresh token {TokenFingerprint} was already revoked ({RevokeReason}).",
-                        tokenFingerprint,
-                        persisted.RevokeReason ?? "unspecified");
+                    return;
                 }
 
-                return null;
+                var cookieOptions = DomainResolver.CreateCookieOptions(cookieDomain, DateTime.UtcNow.AddDays(-1));
+                httpResponse.Cookies.Delete($"{domain}", cookieOptions);
+                httpResponse.Cookies.Delete($"{IdpConstants.RefreshTokenCookieName}_{domain}", cookieOptions);
             }
-
-            if (persisted.AbsoluteExpiry <= DateTime.UtcNow)
+            catch (Exception ex)
             {
-                _logger.LogInformation("Refresh token {TokenFingerprint} is past its absolute expiry.", tokenFingerprint);
-                return null;
+                _logger.LogWarning(ex, "Failed to clear session cookies after an unresolvable refresh token.");
             }
-
-            var tokenCache = new RefreshTokenCache
-            {
-                RefreshToken = persisted.TokenId,
-                TenantId = persisted.TenantId,
-                OrganizationId = persisted.OrganizationId,
-                ClientId = persisted.ClientId,
-                SessionId = persisted.SessionId ?? string.Empty,
-                IssuedUtc = persisted.IssuedUtc,
-                ExpiresUtc = persisted.SlidingExpiry,
-                AbsoluteExpiresUtc = persisted.AbsoluteExpiry,
-                UserId = persisted.UserId,
-                IpAddresses = persisted.IpAddress,
-                Scope = persisted.Scope,
-                Impersonated = persisted.Impersonated,
-                ImpersonationId = persisted.ImpersonationId
-            };
-
-            var slidingMinutes = configuration.RefreshTokenValidForNumberMinutes > 0
-                ? configuration.RefreshTokenValidForNumberMinutes
-                : IdentityConfiguration.DefaultRefreshTokenValidForNumberMinutes;
-            var remainingAbsoluteSeconds = (int)Math.Max(1, (persisted.AbsoluteExpiry - DateTime.UtcNow).TotalSeconds);
-            var ttlSeconds = Math.Min(slidingMinutes * 60, remainingAbsoluteSeconds);
-
-            // The rotation that follows reads this entry back out of the cache to supersede it, so the
-            // entry has to be written here rather than merely returned to the caller.
-            await _tokenRefresher.SetCacheValueAsync(refreshToken, JsonSerializer.Serialize(tokenCache), ttlSeconds);
-
-            _logger.LogInformation(
-                "Rehydrated refresh token {TokenFingerprint} from the store after a cache miss; absolute expiry {AbsoluteExpiry:o}.",
-                tokenFingerprint,
-                persisted.AbsoluteExpiry);
-
-            return tokenCache;
-        }
-
-        private async Task HandlePotentialRefreshTokenReuseAsync(string refreshToken)
-        {
-            await _refreshTokenRepository.RevokeByTokenIdAsync(refreshToken, "potential_reuse");
-
-            await _tokenRefresher.RemoveKeyAsync(refreshToken);
-            var tokenFingerprint = TruncateToken(refreshToken);
-            _logger.LogWarning("Potential refresh token reuse detected for token {TokenFingerprint}. Existing session revoked.", tokenFingerprint);
-        }
-
-        private static string TruncateToken(string token)
-        {
-            const int visibleLength = 8;
-            return token.Length <= visibleLength ? token : string.Concat(token.AsSpan(0, visibleLength), "...");
         }
 
         private static bool AppendCookies(TokenResponse response, HttpResponse httpResponse, string domain)

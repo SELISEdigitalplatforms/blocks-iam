@@ -92,6 +92,19 @@ namespace Authentication.DomainService.OAuth
 
             var accessToken = CreateJwtAccessToken(jwtAccessToken);
             var (refreshToken, refreshValidity) = await ManageRefreshTokenAsync(tokenRequest, jwtAccessToken, authenticationConfiguration, tenant, user);
+
+            // An empty token id means the rotation could not resolve its predecessor. Failing here is
+            // deliberate: starting a fresh lineage instead would silently re-anchor the absolute cap.
+            if (string.IsNullOrEmpty(refreshToken))
+            {
+                return new TokenResponse
+                {
+                    Error = OAuthError.InvalidRefreshToken,
+                    ErrorDescription = "Refresh token is invalid or expired",
+                    StatusCode = 400
+                };
+            }
+
             var (_, cookieDomain, _) = DomainResolver.ResolveDomain(tenant, tokenRequest.Request);
 
             var accessTokenLifetimeSeconds = Math.Max(
@@ -226,9 +239,23 @@ namespace Authentication.DomainService.OAuth
 
         public async Task<(string, DateTime)> ManageRefreshTokenAsync(TokenRequest tokenRequest, JwtAccessToken jwtAccessToken, IdentityConfiguration authenticationConfiguration, Tenant tenant, User user)
         {
+            // A grace-window replay is not an issuance. The successor already exists and has already had
+            // its rotation counted, so it is handed straight back: no new document, no advanced clock.
+            if (!string.IsNullOrWhiteSpace(tokenRequest.GraceReplayTokenId))
+            {
+                return (tokenRequest.GraceReplayTokenId!, tokenRequest.GraceReplayAbsoluteExpiry ?? default);
+            }
+
             var visitorsIpAddresses = _authenticationDomainService.GetVisitorsIpAddresses(tokenRequest.Request.HttpContext) ?? new List<string>();
-            // Unify both initial and rotation flows
-            if (tokenRequest.GrantType == GrantTypes.RefreshToken || tokenRequest.GrantType == GrantTypes.SwitchOrganization)
+
+            // Unify both initial and rotation flows. Impersonation start, impersonation stop and
+            // switch-organization are rotations of the same lineage — the absolute cap is inherited, not
+            // reset, and they do not count as logins.
+            var isRotation = tokenRequest.GrantType == GrantTypes.RefreshToken
+                             || tokenRequest.GrantType == GrantTypes.SwitchOrganization
+                             || tokenRequest.GrantType == GrantTypes.ImpersonationCloud;
+
+            if (isRotation && !string.IsNullOrWhiteSpace(tokenRequest.RefreshToken))
             {
                 // Rotation: fetch old token from cache
                 var oldRefreshTokenCacheStr = await _cacheClient.GetStringValueAsync(tokenRequest.RefreshToken);
@@ -237,7 +264,8 @@ namespace Authentication.DomainService.OAuth
                 {
                     oldRefreshTokenCache = JsonSerializer.Deserialize<RefreshTokenCache>(oldRefreshTokenCacheStr);
                 }
-                return await _unifiedTokenSessionService.CreateOrRotateRefreshToken(
+
+                var rotated = await _unifiedTokenSessionService.CreateOrRotateRefreshToken(
                     tokenRequest.RefreshToken,
                     oldRefreshTokenCache,
                     tokenRequest,
@@ -247,21 +275,23 @@ namespace Authentication.DomainService.OAuth
                     visitorsIpAddresses,
                     tokenRequest.IsImpersonation
                 );
+
+                return (rotated.RefreshToken, rotated.AbsoluteExpiry);
             }
-            else
-            {
-                // Initial auth flow: no old token
-                return await _unifiedTokenSessionService.CreateOrRotateRefreshToken(
-                    null,
-                    null,
-                    tokenRequest,
-                    authenticationConfiguration,
-                    tenant,
-                    user,
-                    visitorsIpAddresses,
-                    tokenRequest.IsImpersonation
-                );
-            }
+
+            // Initial auth flow: no old token
+            var issued = await _unifiedTokenSessionService.CreateOrRotateRefreshToken(
+                null,
+                null,
+                tokenRequest,
+                authenticationConfiguration,
+                tenant,
+                user,
+                visitorsIpAddresses,
+                tokenRequest.IsImpersonation
+            );
+
+            return (issued.RefreshToken, issued.AbsoluteExpiry);
         }
 
     }

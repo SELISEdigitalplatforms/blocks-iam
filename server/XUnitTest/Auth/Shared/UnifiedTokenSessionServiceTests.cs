@@ -103,7 +103,7 @@ namespace XUnitTest.Auth.Shared
                 impersoanted: false);
 
             result.RefreshToken.Should().NotBeNullOrEmpty();
-            refreshRepo.Verify(r => r.RevokeByTokenIdAsync("old-token", "superseded_by_rotation"), Times.Once);
+            refreshRepo.Verify(r => r.RevokeByTokenIdAsync("old-token", "superseded_by_rotation", It.IsAny<string>()), Times.Once);
             refreshRepo.Verify(r => r.DeleteAsync(It.IsAny<string>()), Times.Never);
             cache.Verify(c => c.RemoveKeyAsync("old-token"), Times.Once);
         }
