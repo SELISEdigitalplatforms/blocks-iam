@@ -17,8 +17,12 @@ namespace Authentication.DomainService.Authentication
         void ClearIdpSessionCookie(HttpResponse response);
         Task<LogoutResponse> LogoutUser(string refreshToken, HttpRequest httpRequest);
         Task<LogoutResponse> LogoutAll(HttpRequest httpRequest);
+        Task<LogoutResponse> LogoutUserFromAllSites(HttpRequest httpRequest);
+        Task<LogoutFlowResult> ExecuteLogoutAsync(LogoutRequest request, HttpContext httpContext);
         string CookieToken(HttpRequest request);
         bool DeleteCookie(HttpRequest request);
+        bool DeleteAllCookies(HttpRequest request);
+        Task AppendSessionCookies(HttpContext httpContext, string? accessToken, string? refreshToken, DateTime? accessExpiresUtc = null, DateTime? refreshExpiresUtc = null);
         Task<IActionResult> GetLoginOptionsAsync();
         Task<IActionResult> GetSocialAuthorizationUrlAsync(string clientId, string redirectUri);
         Task<IActionResult> GetOidcSocialAuthorizationUrlAsync(string providerClientId, string oidcState, string providerRedirectUri);
@@ -38,5 +42,13 @@ namespace Authentication.DomainService.Authentication
         Task<RotateOidcClientSecretResponse> RotateOidcClientSecretAsync(string itemId);
         Task<IActionResult> ExecuteImpersonateAsync(ImpersonateRequest request, HttpRequest httpRequest, HttpResponse httpResponse);
         Task<IActionResult> ExecuteStopImpersonationAsync(StopImpersonationRequest request, HttpRequest httpRequest, HttpResponse httpResponse);
+    }
+
+public sealed class LogoutFlowResult
+    {
+        public LogoutResponse? LogoutResponse { get; set; }
+        public int StatusCode { get; set; } = StatusCodes.Status400BadRequest;
+        public string? Error { get; set; }
+        public string? ErrorDescription { get; set; }
     }
 }

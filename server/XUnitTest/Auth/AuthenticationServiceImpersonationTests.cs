@@ -554,6 +554,64 @@ namespace XUnitTest.Auth
             ctx.Response.Headers.Should().ContainKey("Set-Cookie");
         }
 
+        // ============ DeleteAllCookies ============
+
+        [Fact]
+        public void DeleteAllCookies_ResolvedDomain_DeletesEveryRequestCookie()
+        {
+            _tenants.Setup(t => t.GetTenantByID(TenantId)).Returns(RootTenant(withApps: true));
+            var ctx = HttpContext(
+                origin: AppOrigin,
+                cookieHeader: "alpha=1; bravo=2; charlie=3");
+
+            var result = Create().DeleteAllCookies(ctx.Request);
+
+            result.Should().BeTrue();
+            var setCookie = ctx.Response.Headers["Set-Cookie"].ToString();
+            setCookie.Should().Contain("alpha=");
+            setCookie.Should().Contain("bravo=");
+            setCookie.Should().Contain("charlie=");
+            setCookie.Should().Contain("expires=");
+        }
+
+        [Fact]
+        public void DeleteAllCookies_NoRequestCookies_ReturnsTrue_AndWritesNothing()
+        {
+            _tenants.Setup(t => t.GetTenantByID(TenantId)).Returns(RootTenant(withApps: true));
+            var ctx = HttpContext(origin: AppOrigin);
+
+            var result = Create().DeleteAllCookies(ctx.Request);
+
+            result.Should().BeTrue();
+            ctx.Response.Headers.Should().NotContainKey("Set-Cookie");
+        }
+
+        // ============ AppendSessionCookies ============
+
+        [Fact]
+        public async Task AppendSessionCookies_UnresolvedDomain_WritesNoCookies()
+        {
+            _tenants.Setup(t => t.GetTenantByID(TenantId)).Returns(RootTenant()); // no apps
+            var ctx = HttpContext(origin: AppOrigin);
+
+            await Create().AppendSessionCookies(ctx, "at", "rt");
+
+            ctx.Response.Headers.Should().NotContainKey("Set-Cookie");
+        }
+
+        [Fact]
+        public async Task AppendSessionCookies_ResolvedDomain_WritesCookies()
+        {
+            _tenants.Setup(t => t.GetTenantByID(TenantId)).Returns(RootTenant(withApps: true));
+            _repo.Setup(r => r.GetAuthenticationConfigurationAsync())
+                .ReturnsAsync(new IdentityConfiguration { AccessTokenValidForNumberMinutes = 15, AbsoluteRefreshTokenValidForNumberMinutes = 60 });
+            var ctx = HttpContext(origin: AppOrigin);
+
+            await Create().AppendSessionCookies(ctx, "at", "rt");
+
+            ctx.Response.Headers.Should().ContainKey("Set-Cookie");
+        }
+
         // ============ ClearIdpSessionCookie ============
 
         [Fact]
@@ -591,6 +649,63 @@ namespace XUnitTest.Auth
 
             result.Should().BeTrue();
             _activity.Verify(a => a.SendUserActivityAsync(It.Is<UserActivityEvent>(e => e.Event == "LOGOUT_ALL")), Times.Once);
+        }
+
+        // ============ LogoutUserFromAllSites ============
+
+        [Fact]
+        public async Task LogoutUserFromAllSites_NoRtCookies_ReturnsTrue_AndDispatchesTimelineOnce()
+        {
+            _domain.Setup(d => d.GetDeviceInfo(It.IsAny<string>())).Returns((DeviceInformation)null!);
+            _domain.Setup(d => d.GetVisitorsIpAddresses(It.IsAny<HttpContext>())).Returns(new List<string> { "1.2.3.4" });
+
+            var ctx = HttpContext(cookieHeader: $"{IdpCookieKey}=sess-1; alpha=1");
+
+            var result = await Create().LogoutUserFromAllSites(ctx.Request);
+
+            result.IsSuccess.Should().BeTrue();
+            result.IdpSessionIds.Should().BeEmpty();
+            _activity.Verify(a => a.SendUserActivityAsync(It.IsAny<UserActivityEvent>()), Times.Once);
+        }
+
+        [Fact]
+        public async Task LogoutUserFromAllSites_ProcessesAllRtPrefixedCookies()
+        {
+            var sessionFor = new Dictionary<string, string>
+            {
+                ["token-a"] = "idp-sess-a",
+                ["token-b"] = "idp-sess-b"
+            };
+
+            _cache.Setup(c => c.GetStringValueAsync(It.IsAny<string>()))
+                .ReturnsAsync((string key) => key switch
+                {
+                    var k when sessionFor.ContainsKey(k) => JsonSerializer.Serialize(new RefreshTokenCache
+                    {
+                        RefreshToken = k,
+                        TenantId = TenantId,
+                        SessionId = sessionFor[k],
+                        ClientId = "client-1"
+                    }),
+                    _ => null!
+                });
+            _session.Setup(s => s.RevokeTokenAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>()))
+                .ReturnsAsync(new TokenRevocationResult { Success = true });
+            _domain.Setup(d => d.GetDeviceInfo(It.IsAny<string>())).Returns((DeviceInformation)null!);
+            _domain.Setup(d => d.GetVisitorsIpAddresses(It.IsAny<HttpContext>())).Returns(new List<string> { "1.2.3.4" });
+
+            var ctx = HttpContext(cookieHeader: "rt_a.com=token-a; rt_b.com=token-b; rt_c.com=; other=skip");
+
+            var result = await Create().LogoutUserFromAllSites(ctx.Request);
+
+            // Two non-empty rt_* cookies should be processed; empty one is skipped; "other" is skipped.
+            _session.Verify(s => s.RevokeTokenAsync("token-a", It.IsAny<string>(), It.IsAny<string>()), Times.Once);
+            _session.Verify(s => s.RevokeTokenAsync("token-b", It.IsAny<string>(), It.IsAny<string>()), Times.Once);
+            _refresh.Verify(r => r.RevokeByTokenIdAsync("token-a", "logout"), Times.Once);
+            _refresh.Verify(r => r.RevokeByTokenIdAsync("token-b", "logout"), Times.Once);
+            result.IsSuccess.Should().BeTrue();
+            result.IdpSessionIds.Should().BeEquivalentTo(new[] { "idp-sess-a", "idp-sess-b" });
+            _activity.Verify(a => a.SendUserActivityAsync(It.IsAny<UserActivityEvent>()), Times.Once);
         }
 
         // ============ EnsureIdpSessionForOidcCallbackAsync — happy paths ============

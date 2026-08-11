@@ -247,43 +247,23 @@ public class AuthenticationController : ControllerBase
     [Authorize]
     public async Task<IActionResult> ExecuteLogout([FromBody] LogoutRequest request)
     {
-        DomainResolver.ResetToOriginalBlocksContextForImpersonation();
+        var result = await _authenticationService.ExecuteLogoutAsync(request ?? new LogoutRequest(), HttpContext);
 
-        var refreshToken = string.IsNullOrWhiteSpace(request.RefreshToken)
-            ? _authenticationService.CookieToken(Request)
-            : request.RefreshToken;
-
-        if (string.IsNullOrWhiteSpace(refreshToken))
+        if (!string.IsNullOrWhiteSpace(result.Error))
         {
             return BadRequest(new
             {
-                error = "invalid_request",
-                error_description = "Refresh token is required for logout"
+                error = result.Error,
+                error_description = result.ErrorDescription
             });
         }
 
-        var logoutResult = await _authenticationService.LogoutUser(refreshToken, Request);
-        if (!logoutResult.IsSuccess)
+        if (result.StatusCode != StatusCodes.Status200OK && result.LogoutResponse is not null)
         {
-            return BadRequest(logoutResult);
+            return BadRequest(result.LogoutResponse);
         }
 
-        _authenticationService.DeleteCookie(Request);
-
-        // Keep a single logout contract for both embedded and OIDC flows.
-        // For embedded flows this is effectively a no-op (no idp_session_id cookie).
-        // For OIDC flows this removes current account from IDP session and clears cookie when session becomes empty.
-        var shouldClearIdpSessionCookie = await _authenticationService.UpdateIdpSessionForLogoutAsync(
-            HttpContext,
-            User,
-            isGlobalLogout: false,
-            new[] { logoutResult.IdpSessionId });
-        if (shouldClearIdpSessionCookie)
-        {
-            _authenticationService.ClearIdpSessionCookie(Response);
-        }
-
-        return Ok(logoutResult);
+        return Ok(result.LogoutResponse);
     }
 
     /// <summary>
