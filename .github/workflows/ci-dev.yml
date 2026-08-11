@@ -181,7 +181,7 @@ jobs:
       JAVA_VERSION: "17" # Java for SonarScanner
       # Optional: Skip quality gate check (default: false)
       HAS_SUBMODULES: ${{ needs.initialization.outputs.has_submodules == 'true' }}
-      SKIP_QUALITY_GATE: true
+      SKIP_QUALITY_GATE: false
       # Optional: Custom NuGet sources (defaults to NuGet.org + nuget.selise.biz)
       # Only specify if you need additional sources (comma-separated)
       # NUGET_SOURCES: "https://api.nuget.org/v3/index.json,https://nuget.selise.biz/nuget,https://custom-feed.com"
@@ -243,7 +243,7 @@ jobs:
       NODE_VERSION: "22"
       JAVA_VERSION: "17"
       HAS_SUBMODULES: ${{ needs.initialization.outputs.has_submodules == 'true' }}
-      SKIP_QUALITY_GATE: true
+      SKIP_QUALITY_GATE: false
     secrets:
       SONAR_TOKEN: ${{ secrets.SONAR_TOKEN_GLOBAL }}
       SELISE_GITHUB_PAT: ${{ secrets.SELISE_GITHUB_PAT }}
