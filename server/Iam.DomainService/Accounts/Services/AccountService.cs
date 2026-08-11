@@ -47,6 +47,8 @@ namespace Iam.DomainService.Accounts
     /// </summary>
     public class AccountService : IAccountService
     {
+        private const string DefaultOrganizationId = "default";
+
         private readonly ILogger<AccountService> _logger;
         private readonly IIdentityAccessManagementRepository _repository;
         private readonly IIdentityAccessManagementService _identityAccessManagementService;
@@ -134,7 +136,7 @@ namespace Iam.DomainService.Accounts
             }
 
             var normalizedEmail = signupUserRequest.Email.Trim().ToLowerInvariant();
-            var existingHandlingResult = await HandleExistingSignupUserAsync(signupUserRequest, normalizedEmail);
+            var existingHandlingResult = await HandleExistingSignupUserAsync(signupUserRequest, tenantConfiguration, normalizedEmail);
             if (existingHandlingResult != null)
             {
                 return existingHandlingResult;
@@ -143,7 +145,7 @@ namespace Iam.DomainService.Accounts
             // Generate user id first so org creation can receive creator id in the same signup flow.
             var signupUserId = Guid.NewGuid().ToString();
 
-            var organizationId = "default";
+            var organizationId = DefaultOrganizationId;
             if (signupUserRequest.CreateOrganizationDuringSignup)
             {
                 var orgResult = await CreateOrganizationForSignupAsync(signupUserRequest, signupUserId);
@@ -152,12 +154,46 @@ namespace Iam.DomainService.Accounts
                     return orgResult;
                 }
 
-                organizationId = orgResult.ItemId ?? "default";
+                organizationId = orgResult.ItemId ?? DefaultOrganizationId;
             }
 
-            return signupUserRequest.IsSsoSignup
+            var createdOrganizationId = organizationId == DefaultOrganizationId ? null : organizationId;
+
+            var result = signupUserRequest.IsSsoSignup
                 ? await CreateSsoSignupUserAsync(signupUserRequest, tenantConfiguration, normalizedEmail, signupUserId, organizationId)
                 : await CreateEmailSignupUserAsync(signupUserRequest, tenantConfiguration, normalizedEmail, signupUserId, organizationId);
+
+            // Compensate a failed user creation: without this the org survives with no
+            // members and permanently reserves the name, so the user's retry fails with
+            // "name_already_exists" against their own abandoned org.
+            if (!result.IsSuccess && createdOrganizationId != null)
+            {
+                await RollbackSignupOrganizationAsync(createdOrganizationId, normalizedEmail);
+            }
+
+            return result;
+        }
+
+        private async Task RollbackSignupOrganizationAsync(string organizationId, string email)
+        {
+            try
+            {
+                await _resourceMutationService.DeleteOrganizationAsync(organizationId);
+                _logger.LogInformation(
+                    "Rolled back organization {OrganizationId} after failed signup for {Email}",
+                    organizationId,
+                    email);
+            }
+            catch (Exception ex)
+            {
+                // The signup already failed; a failed cleanup must not change what the
+                // caller sees, so log and move on.
+                _logger.LogError(
+                    ex,
+                    "Failed to roll back organization {OrganizationId} after failed signup for {Email}",
+                    organizationId,
+                    email);
+            }
         }
 
         private static BaseAccountResponse? ValidateSignupRequest(SignupUserRequest signupUserRequest)
@@ -230,7 +266,7 @@ namespace Iam.DomainService.Accounts
             return null;
         }
 
-        private async Task<BaseAccountResponse?> HandleExistingSignupUserAsync(SignupUserRequest signupUserRequest, string normalizedEmail)
+        private async Task<BaseAccountResponse?> HandleExistingSignupUserAsync(SignupUserRequest signupUserRequest, TenantConfiguration tenantConfiguration, string normalizedEmail)
         {
             var existingUser = await _repository.GetUserByEmailAsync(normalizedEmail);
             if (existingUser == null)
@@ -298,6 +334,25 @@ namespace Iam.DomainService.Accounts
                 };
             }
 
+            // The account exists but was never activated, so this is effectively a repeat
+            // signup. Honour the organization the user asked for here too — otherwise the
+            // name they typed is silently discarded and they activate into "default".
+            if (signupUserRequest.CreateOrganizationDuringSignup)
+            {
+                var pendingOrgResult = await AttachOrganizationToPendingUserAsync(
+                    signupUserRequest,
+                    tenantConfiguration,
+                    existingUser);
+
+                // Org failures (name taken, creation disabled) are returned as-is: a brand
+                // new signup with the same name gets the identical error, so this leaks
+                // nothing about whether the account already existed.
+                if (pendingOrgResult != null)
+                {
+                    return pendingOrgResult;
+                }
+            }
+
             var reactivationSent = await SendReActivationAsync(existingUser);
             return new BaseAccountResponse
             {
@@ -310,6 +365,64 @@ namespace Iam.DomainService.Accounts
                         { "reactivation_failed", "Failed to send activation email." }
                     }
             };
+        }
+
+        /// <summary>
+        /// Creates the requested organization for an existing but unactivated account and
+        /// moves that account into it. Returns a response only on failure; null means the
+        /// caller should carry on with the normal reactivation path.
+        /// </summary>
+        private async Task<BaseAccountResponse?> AttachOrganizationToPendingUserAsync(
+            SignupUserRequest signupUserRequest,
+            TenantConfiguration tenantConfiguration,
+            User existingUser)
+        {
+            // A previous attempt already placed them in a real org; creating a second one
+            // would orphan the first and burn another name.
+            var alreadyInNonDefaultOrg = existingUser.OrganizationIds?
+                .Any(id => !string.IsNullOrWhiteSpace(id) && id != DefaultOrganizationId) ?? false;
+
+            if (alreadyInNonDefaultOrg)
+            {
+                return null;
+            }
+
+            var orgResult = await CreateOrganizationForSignupAsync(signupUserRequest, existingUser.ItemId);
+            if (!orgResult.IsSuccess)
+            {
+                return orgResult;
+            }
+
+            var organizationId = orgResult.ItemId;
+            if (string.IsNullOrWhiteSpace(organizationId))
+            {
+                return null;
+            }
+
+            var roles = tenantConfiguration.DefaultRolesForNewUserOnSignUp ?? new List<string>();
+            var permissions = tenantConfiguration.DefaultPermissionsForNewUserOnSignUp ?? new List<string>();
+
+            existingUser.OrganizationIds = new List<string> { organizationId };
+            existingUser.Roles = new Dictionary<string, List<string>> { [organizationId] = roles };
+            existingUser.Permissions = new Dictionary<string, List<string>> { [organizationId] = permissions };
+            existingUser.LastUpdatedDate = DateTime.UtcNow;
+            existingUser.LastUpdatedBy = existingUser.ItemId;
+
+            var updated = await _repository.UpdateUserAsync(existingUser);
+            if (!updated)
+            {
+                await RollbackSignupOrganizationAsync(organizationId, existingUser.Email ?? string.Empty);
+                return new BaseAccountResponse
+                {
+                    IsSuccess = false,
+                    Errors = new Dictionary<string, string>
+                    {
+                        { "organization_creation_failed", "Organization creation failed during signup." }
+                    }
+                };
+            }
+
+            return null;
         }
 
         private async Task<BaseAccountResponse> CreateOrganizationForSignupAsync(SignupUserRequest signupUserRequest, string creatorUserId)

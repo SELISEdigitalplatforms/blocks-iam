@@ -1,6 +1,7 @@
 import { SignupForm } from "./signup-form";
 import { useGetLoginOptions } from "@blocks-idp/authentication/hooks/use-auth";
 import { useGetSignUpSetting } from "@blocks-idp/iam/hooks/use-user";
+import { useGetSignupOrganizationConfig } from "@blocks-idp/iam/hooks/use-organization";
 import { Skeleton } from "@/components/ui-kits/skeleton/skeleton";
 import { Link } from "react-router";
 import { OidcAuthShell } from "@blocks-idp/authentication/pages/oidc/oidc-auth-shell";
@@ -20,12 +21,23 @@ export const Signup = ({ tenantId }: { tenantId?: string } = {}) => {
   );
   const hasSsoProviders = (loginOption?.ssoInfo?.length ?? 0) > 0;
 
+  const { data: orgConfig, isLoading: isOrgConfigLoading } =
+    useGetSignupOrganizationConfig(tenantId, { enabled: isSignUpEnabled });
+
+  // The server requires both flags before it will create an org from signup
+  // (CreateOrganizationAsync), so asking for a name without both would collect
+  // input the backend then rejects.
+  const collectOrganizationName =
+    (orgConfig?.allowOrgCreationFromSignup ?? false) &&
+    (orgConfig?.isMultiOrgEnabled ?? false);
+
   const showEmailSignup = isSignUpEnabled && emailSignUpEnabled;
   const showSsoSignup = isSignUpEnabled && ssoSignUpEnabled && hasSsoProviders;
   const showSignupForm = showEmailSignup || showSsoSignup;
 
   const isLoading =
     isSignUpSettingLoading ||
+    (isSignUpEnabled && isOrgConfigLoading) ||
     (ssoSignUpEnabled && isLoginOptionLoading);
 
   return (
@@ -56,6 +68,7 @@ export const Signup = ({ tenantId }: { tenantId?: string } = {}) => {
           emailSignUpEnabled={showEmailSignup}
           ssoSignUpEnabled={showSsoSignup}
           tenantId={tenantId}
+          collectOrganizationName={collectOrganizationName}
         />
       ) : null}
     </OidcAuthShell>

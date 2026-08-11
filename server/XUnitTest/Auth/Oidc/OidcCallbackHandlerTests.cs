@@ -6,6 +6,7 @@ using Authentication.DomainService.Shared.Dtos;
 using Blocks.Genesis;
 using FluentAssertions;
 using Iam.DomainService.Entities;
+using Iam.DomainService.Resources;
 using Iam.DomainService.Users;
 using Microsoft.Extensions.Logging.Abstractions;
 using Moq;
@@ -20,14 +21,28 @@ namespace XUnitTest.Auth.Oidc
             out Mock<IUserRepository> userRepo,
             out Mock<ISocialLogInServiceProvider> socialProvider)
         {
+            return Create(out authRepo, out cache, out userRepo, out socialProvider, out _, out _);
+        }
+
+        private static OidcCallbackHandler Create(
+            out Mock<IAuthenticationRepository> authRepo,
+            out Mock<ICacheClient> cache,
+            out Mock<IUserRepository> userRepo,
+            out Mock<ISocialLogInServiceProvider> socialProvider,
+            out Mock<IResourceMutationService> resourceMutation,
+            out Mock<IResourceRepository> resourceRepo)
+        {
             authRepo = new Mock<IAuthenticationRepository>();
             cache = new Mock<ICacheClient>();
             userRepo = new Mock<IUserRepository>();
             socialProvider = new Mock<ISocialLogInServiceProvider>();
+            resourceMutation = new Mock<IResourceMutationService>();
+            resourceRepo = new Mock<IResourceRepository>();
 
             return new OidcCallbackHandler(
                 NullLogger<OidcCallbackHandler>.Instance,
-                authRepo.Object, cache.Object, userRepo.Object, socialProvider.Object);
+                authRepo.Object, cache.Object, userRepo.Object, socialProvider.Object,
+                resourceMutation.Object, resourceRepo.Object);
         }
 
         [Fact]

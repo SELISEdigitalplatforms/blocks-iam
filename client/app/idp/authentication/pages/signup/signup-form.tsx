@@ -19,19 +19,31 @@ import { useForm } from "react-hook-form";
 import { z } from "zod";
 import { ArrowRight, Loader } from "lucide-react";
 import { SsoSignin } from "../login/sso-signin";
-import { signupFormDefaultValue, signupFormSchema } from "./utils";
+import { buildSignupFormSchema, signupFormDefaultValue } from "./utils";
 import { useOidcAuthAnimation } from "@blocks-idp/authentication/pages/oidc/oidc-auth-shell";
+
+// Server-side org failures that belong on the organization field rather than in
+// the generic error banner.
+const ORG_ERROR_KEYS = [
+  "organizationname",
+  "name_already_exists",
+  "org_creation_disabled",
+  "multi_org_disabled",
+  "organization_creation_failed",
+];
 
 export const SignupForm = ({
   loginOption,
   emailSignUpEnabled,
   ssoSignUpEnabled,
   tenantId,
+  collectOrganizationName = false,
 }: {
   loginOption?: LoginOption;
   emailSignUpEnabled: boolean;
   ssoSignUpEnabled: boolean;
   tenantId?: string;
+  collectOrganizationName?: boolean;
 }) => {
   const [isChecked, setIsChecked] = useState(false);
   const [serverError, setServerError] = useState<string | null>(null);
@@ -41,7 +53,7 @@ export const SignupForm = ({
 
   const form = useForm({
     defaultValues: signupFormDefaultValue,
-    resolver: zodResolver(signupFormSchema),
+    resolver: zodResolver(buildSignupFormSchema(collectOrganizationName)),
   });
   const { isPending, mutateAsync } = useSignupByEmail();
   const { data: oidcUiConfig, captchaEnabled } = useOidcUiConfig(tenantId);
@@ -74,6 +86,20 @@ export const SignupForm = ({
     formRef.current.classList.add("oidc-animate-shake");
   }
 
+  // Surfaces org failures on the organization input; returns true when handled
+  // so the caller can skip the generic banner.
+  const applyOrganizationError = (errors: unknown): boolean => {
+    if (!collectOrganizationName || !errors || typeof errors !== "object" || Array.isArray(errors)) {
+      return false;
+    }
+    const entry = Object.entries(errors as Record<string, string>).find(([key]) =>
+      ORG_ERROR_KEYS.includes(key.toLowerCase()),
+    );
+    if (!entry) return false;
+    form.setError("organizationName", { type: "server", message: entry[1] });
+    return true;
+  };
+
   const onSubmitHandler = async (values: z.infer<typeof signupFormSchema>) => {
     setServerError(null);
     animCtx?.startAnimation();
@@ -82,6 +108,8 @@ export const SignupForm = ({
         ...values,
         captchaCode,
         tenantId,
+        createOrganizationDuringSignup: collectOrganizationName,
+        organizationName: collectOrganizationName ? values.organizationName : undefined,
       });
       if (!res.isSuccess) {
         resetCaptcha();
@@ -90,7 +118,8 @@ export const SignupForm = ({
           : res.errors && typeof res.errors === "object"
           ? (Object.values(res.errors as Record<string, string>)[0] ?? "Registration failed")
           : (res.errors as string) || "Registration failed";
-        setServerError(msg);
+        const handledOnField = applyOrganizationError(res.errors);
+        if (!handledOnField) setServerError(msg);
         shake();
         await animCtx?.failAnimation(msg);
         return;
@@ -106,7 +135,8 @@ export const SignupForm = ({
           : error.errors && typeof error.errors === "object"
           ? (Object.values(error.errors as Record<string, string>)[0] ?? "Something went wrong")
           : (error.errors as unknown as string) || "Something went wrong";
-        setServerError(msg);
+        const handledOnField = applyOrganizationError(error.errors);
+        if (!handledOnField) setServerError(msg);
         await animCtx?.failAnimation(msg);
       } else {
         const msg = "Something went wrong";
@@ -219,6 +249,36 @@ export const SignupForm = ({
                 </FormItem>
               )}
             />
+
+            {/* Organization name — only when the tenant allows org creation from signup */}
+            {collectOrganizationName && (
+              <FormField
+                control={form.control}
+                name="organizationName"
+                render={({ field }) => (
+                  <FormItem>
+                    <div className="flex flex-col gap-2">
+                      <label htmlFor="signup-organization-name" className="oidc-sci-fi-label">
+                        Organization Name
+                      </label>
+                      <FormControl>
+                        <input
+                          id="signup-organization-name"
+                          type="text"
+                          autoComplete="organization"
+                          placeholder="Acme Inc."
+                          className="oidc-sci-fi-input"
+                          aria-invalid={!!form.formState.errors.organizationName}
+                          disabled={isAuthenticating}
+                          {...field}
+                        />
+                      </FormControl>
+                      <FormMessage className="text-xs oidc-font-rajdhani" style={{ color: "var(--danger)" }} />
+                    </div>
+                  </FormItem>
+                )}
+              />
+            )}
 
             {/* CAPTCHA (shown when captcha is enabled and form is valid) */}
             {captchaEnabled && isValid && (

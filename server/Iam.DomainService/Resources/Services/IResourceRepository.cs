@@ -37,6 +37,7 @@ namespace Iam.DomainService.Resources
         Task<List<string>> GetOrganizationIdsByUserIdAsync(string userId);
         Task<List<Organization>> GetOrganizationsByIdsAsync(List<string> organizationIds);
         Task SaveOrganizationAsync(Organization organization);
+        Task DeleteOrganizationAsync(string organizationId);
         Task<GetOrganizationsResponse> GetOrganizationsAsync(GetOrganizationsRequest request);
         Task SaveOrganizationConfig(TenantConfiguration tenantConfiguration);
         Task<List<PermissionGroupBySeverityResponse>> GetPermissionsGroupBySeverityAsync(string? orgainzationId = null);

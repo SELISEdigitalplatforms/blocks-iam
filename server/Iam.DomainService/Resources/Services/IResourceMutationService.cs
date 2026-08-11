@@ -15,6 +15,12 @@ namespace Iam.DomainService.Resources
         Task<bool> ProcessPermissionAsync(ResourceSetToPermissionMutationEvent command);
         Task<BaseMutationResponse> CreateOrganizationAsync(CreateOrganizationRequest request, string? creatorId = null);
         Task<BaseResponse> UpdateOrganizationAsync(string id, SaveOrganizationRequest request);
+
+        /// <summary>
+        /// Removes an organization outright. Used to compensate a failed signup so a
+        /// half-created org does not permanently reserve the name the user chose.
+        /// </summary>
+        Task DeleteOrganizationAsync(string organizationId);
         Task<GetOrganizationsResponse> GetOrganizationsAsync(GetOrganizationsRequest request);
         Task<GetOrganizationResponse> GetOrganizationAsync(string id);
         Task<GetMyOrganizationsResponse> GetMyOrganizationAsync();

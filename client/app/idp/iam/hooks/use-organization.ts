@@ -66,6 +66,20 @@ export const useGetOrganizationConfig = (projectId?: string) => {
   });
 };
 
+// Signup runs anonymously and must scope the read to the tenant from the OIDC
+// request, so it always fires — unlike the admin hook above, which gates on a
+// selected project.
+export const useGetSignupOrganizationConfig = (
+  tenantId?: string,
+  options?: { enabled?: boolean },
+) => {
+  return useQuery({
+    queryKey: ["organization", "config", "signup", tenantId],
+    queryFn: () => iamService.organization.getOrganizationConfig(tenantId),
+    ...options,
+  });
+};
+
 export const useGetMyOrganizations = () => {
   return useQuery({
     queryKey: ["organizations", "my"],

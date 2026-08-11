@@ -144,8 +144,11 @@ export class UserService {
     if (tenantId) {
       headers["X-Blocks-Key"] = tenantId;
     }
+    const url = tenantId
+      ? `${ORGANIZATION_ENDPOINTS.GET_SIGNUP_SETTING}?tenantId=${encodeURIComponent(tenantId)}`
+      : ORGANIZATION_ENDPOINTS.GET_SIGNUP_SETTING;
     return serviceInstances.idpService.get(
-      `${ORGANIZATION_ENDPOINTS.GET_SIGNUP_SETTING}`,
+      url,
       headers,
       tenantId ? { skipBlocksKey: true } : undefined,
     );

@@ -96,11 +96,17 @@ export class AuthService {
     if (tenantId) {
       headers["X-Blocks-Key"] = tenantId;
     }
+    const { createOrganizationDuringSignup, organizationName, ...rest } = payload;
     return serviceInstances.idpService.post(
       AUTH_ENDPOINTS.SIGNUP,
       {
-        ...payload,
+        ...rest,
         isSsoSignup: false,
+        // Only sent when the tenant asked for an org name — the server rejects
+        // the flag without a name, so never send a half-filled pair.
+        ...(createOrganizationDuringSignup && organizationName
+          ? { createOrganizationDuringSignup: true, organizationName }
+          : {}),
       },
       headers,
       tenantId ? { skipBlocksKey: true } : undefined,
