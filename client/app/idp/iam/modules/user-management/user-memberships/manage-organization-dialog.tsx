@@ -174,7 +174,7 @@ export const ManageOrganizationDialog = ({
     try {
       const res = await mutateAsync({
         roles: selectedRoles.map((role) => role.slug),
-        permissions: selectedPermissions.map((permission) => permission.name),
+        permissions: selectedPermissions.map((permission) => permission.resource),
         organizationId: selectedOrgId,
       });
       if (!res.isSuccess) {

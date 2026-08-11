@@ -228,7 +228,7 @@ export const MultiOrgAccess = ({ userId, projectKey }: MultiOrgAccessProps) => {
     try {
       const res = await mutateAsync({
         roles: selectedRolesRef.current.map((role) => role.slug),
-        permissions: selectedPermissionsRef.current.map((permission) => permission.name),
+        permissions: selectedPermissionsRef.current.map((permission) => permission.resource),
         organizationId: selectedOrgId,
       });
       if (!res.isSuccess) {
