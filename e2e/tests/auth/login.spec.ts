@@ -19,9 +19,7 @@ test.describe("Authentication", () => {
 
     // 1. Blocks IAM login page — a single CTA that starts the OIDC flow.
     await page.goto("/login");
-    await page
-      .getByRole("button", { name: "Log in to your account" })
-      .click();
+    await page.getByRole("button", { name: "Log in to your account" }).click();
 
     // 2. Redirected to the OIDC login page (/oidc/login). This repo *is* dev-iam,
     //    so unlike the sibling apps that hop cross-origin, the redirect stays on
@@ -45,16 +43,16 @@ test.describe("Authentication", () => {
     // }
 
     // 4. Back on Blocks IAM, authenticated → console.
-    await page.waitForURL("**/app/console", { timeout: 45_000 });
-    await expect(page).toHaveURL(/\/app\/console/);
+    await page.waitForURL("**/app/profile", { timeout: 45_000 });
+    await expect(page).toHaveURL(/\/app\/profile/);
 
     // Assert the console actually rendered — not just that the route changed.
     // This repo renders <ConsolePage /> without `canCreateProject`, and the kit
     // defaults it to false, so the "Welcome to SELISE Blocks" empty state is
     // unreachable here. Only "Your Blocks Projects" can appear.
-    await expect(
-      page.getByRole("heading", { name: "Your Blocks Projects" }),
-    ).toBeVisible({ timeout: 20_000 });
+    await expect(page.getByRole("heading", { name: "Multi-factor Authentication" })).toBeVisible({
+      timeout: 20_000,
+    });
 
     // Persist the authenticated session for future specs to reuse.
     await page.context().storageState({ path: "fixtures/auth.json" });

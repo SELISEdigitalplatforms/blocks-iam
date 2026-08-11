@@ -31,8 +31,8 @@ export async function loginFresh(page: Page) {
   await page.locator("#oidc-password").fill(password!);
   await page.getByRole("button", { name: "Login", exact: true }).click();
 
-  await page.waitForURL(/\/app\/console/, { timeout: 45_000 });
-  await expect(
-    page.getByRole("heading", { name: "Your Blocks Projects" }),
-  ).toBeVisible({ timeout: 20_000 });
+  await page.waitForURL(/\/app\/profile/, { timeout: 45_000 });
+  await expect(page.getByRole("heading", { name: "Multi-factor Authentication" })).toBeVisible({
+    timeout: 20_000,
+  });
 }
