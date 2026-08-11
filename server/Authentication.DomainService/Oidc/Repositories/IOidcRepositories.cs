@@ -30,10 +30,27 @@ namespace Authentication.DomainService.Oidc.Repositories
         Task<IReadOnlyList<RefreshTokenModel>> GetActiveTokensByUserAsync(string userId);
         Task<IEnumerable<RefreshTokenModel>> GetRotationHistoryAsync(string sessionId);
         Task<IEnumerable<RefreshTokenModel>> GetByUserAsync(string userId, string tenantId);
-        Task<bool> RevokeByTokenIdAsync(string tokenId, string reason);
+        /// <summary>
+        /// Revokes a single token. When <paramref name="supersededByTokenId"/> is supplied it is written
+        /// in the same update, so a request still carrying the predecessor can be replayed onto its
+        /// successor inside the rotation grace period.
+        /// </summary>
+        Task<bool> RevokeByTokenIdAsync(string tokenId, string reason, string? supersededByTokenId = null);
         Task<int> RevokeAllByTokenIdsAsync(IEnumerable<string> tokenIds, string reason);
         Task<int> RevokeAllBySessionIdAsync(string sessionId, string reason);
-        Task<bool> UpdateSlidingExpiryAsync(string tokenId);
+
+        /// <summary>
+        /// Revokes every still-unrevoked token in one refresh-token lineage. Reuse detection is scoped
+        /// here rather than to <c>SessionId</c>, because one IdP session can span several logins.
+        /// </summary>
+        Task<int> RevokeAllByRefreshTokenSessionIdAsync(string refreshTokenSessionId, string reason);
+
+        /// <summary>
+        /// Revokes the still-usable tokens left behind by a previous login in the same browser and
+        /// application, excluding the lineage just created. Returns the number of documents revoked.
+        /// </summary>
+        Task<int> RevokeSupersededLoginLineagesAsync(string sessionId, string userId, string clientId, string exceptRefreshTokenSessionId, string reason);
+
         Task<bool> DeleteAsync(string tokenId);
         Task<IEnumerable<RefreshTokenModel>> GetExpiredAsync();
     }

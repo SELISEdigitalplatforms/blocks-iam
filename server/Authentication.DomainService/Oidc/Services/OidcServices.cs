@@ -117,7 +117,7 @@ public sealed class OidcSigningKeyMaterial
             };
             var visitorsIpAddresses = new List<string> { _httpContextAccessor.HttpContext?.Connection?.RemoteIpAddress?.ToString() ?? string.Empty };
             var userAgent = _httpContextAccessor.HttpContext?.Request?.Headers?["User-Agent"].ToString() ?? string.Empty;
-            var (refreshToken, expiresUtc) = await _unifiedTokenSessionService.CreateOrRotateRefreshToken(
+            var (refreshToken, slidingExpiry, absoluteExpiry, refreshTokenSessionId) = await _unifiedTokenSessionService.CreateOrRotateRefreshToken(
                 null,
                 null,
                 tokenRequest,
@@ -135,12 +135,13 @@ public sealed class OidcSigningKeyMaterial
                 OrganizationId = claims.OrgId,
                 ClientId = claims.ClientId,
                 SessionId = idpSessionId,
+                RefreshTokenSessionId = refreshTokenSessionId,
                 Audience = claims.Audience,
                 Scope = claims.Scope,
                 GrantType = "authorization_code",
                 IssuedUtc = DateTime.UtcNow,
-                SlidingExpiry = expiresUtc,
-                AbsoluteExpiry = expiresUtc,
+                SlidingExpiry = slidingExpiry,
+                AbsoluteExpiry = absoluteExpiry,
                 IpAddress = visitorsIpAddresses.FirstOrDefault() ?? string.Empty,
                 UserAgent = userAgent
             };

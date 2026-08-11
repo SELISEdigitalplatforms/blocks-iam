@@ -1,3 +1,4 @@
+using Authentication.DomainService.Dtos;
 using Authentication.DomainService.Entities;
 using Authentication.DomainService.OAuth;
 using Authentication.DomainService.OAuth.RequestModel;
@@ -17,19 +18,22 @@ namespace Authentication.DomainService.Shared
         private readonly ITokenRevocationService _tokenRevocationService;
         private readonly UnifiedTokenSessionService _unifiedTokenSessionService;
         private readonly IOAuthJwtAccessTokenManager _oAuthJwtAccessTokenManager;
+        private readonly IRefreshSessionResolver _refreshSessionResolver;
 
         public AuthSessionFacade(
             IIdpSessionService idpSessionService,
             IImpersonationFlowHelper impersonationFlowHelper,
             ITokenRevocationService tokenRevocationService,
             UnifiedTokenSessionService unifiedTokenSessionService,
-            IOAuthJwtAccessTokenManager oAuthJwtAccessTokenManager)
+            IOAuthJwtAccessTokenManager oAuthJwtAccessTokenManager,
+            IRefreshSessionResolver refreshSessionResolver)
         {
             _idpSessionService = idpSessionService;
             _impersonationFlowHelper = impersonationFlowHelper;
             _tokenRevocationService = tokenRevocationService;
             _unifiedTokenSessionService = unifiedTokenSessionService;
             _oAuthJwtAccessTokenManager = oAuthJwtAccessTokenManager;
+            _refreshSessionResolver = refreshSessionResolver;
         }
 
         public Task<string> CreateSessionAsync(string userId, string tenantId, string ipAddress)
@@ -67,5 +71,8 @@ namespace Authentication.DomainService.Shared
 
         public Task<TokenResponse> ManageTokenAsync(TokenRequest tokenRequest, IdentityConfiguration authConfiguration, User? user)
             => _oAuthJwtAccessTokenManager.ManageTokenAsync(tokenRequest, authConfiguration, user);
+
+        public Task<RefreshTokenCache?> TryResolveRefreshSessionAsync(string presentedTokenId, IdentityConfiguration configuration)
+            => _refreshSessionResolver.TryResolveRefreshSessionAsync(presentedTokenId, configuration);
     }
 }
