@@ -6,6 +6,7 @@ using Authentication.DomainService.Oidc.Repositories;
 using Authentication.DomainService.Services;
 using Authentication.DomainService.Shared;
 using Authentication.DomainService.Shared.RequestModel;
+using Authentication.DomainService.Shared.Services;
 using Iam.DomainService.Utilities;
 using Blocks.CaptchaDriver;
 using Blocks.Genesis;
@@ -174,7 +175,10 @@ namespace Authentication.DomainService.Authentication
                 var resolvedTenantId = flowContext!.TenantId ?? blocksContext?.TenantId ?? string.Empty;
                 var authConfiguration = await _authenticationRepository.GetAuthenticationConfigurationAsync();
                 var configuredAccessLifetimeSeconds = Math.Max((authConfiguration?.AccessTokenValidForNumberMinutes ?? IdentityConfiguration.DefaultAccessTokenValidForNumberMinutes) * IdpConstants.SecondsPerMinute, IdpConstants.MinAccessTokenLifetimeSeconds);
-                var configuredRefreshLifetimeMinutes = Math.Max(authConfiguration?.AbsoluteRefreshTokenValidForNumberMinutes ?? IdentityConfiguration.DefaultRememberMeRefreshTokenValidForNumberMinutes, IdpConstants.MinTokenLifetimeMinutes);
+                // One resolver decides the lifetimes for cookie, Redis TTL and MongoDB alike, so no path
+                // can disagree with another.
+                var (_, resolvedAbsoluteMinutes) = RefreshTokenLifetimeResolver.Resolve(authConfiguration, _logger);
+                var configuredRefreshLifetimeMinutes = Math.Max(resolvedAbsoluteMinutes, IdpConstants.MinTokenLifetimeMinutes);
                 var resolvedAccessLifetimeSeconds = tokenResponse!.ExpiresIn.HasValue
                     ? Math.Max(tokenResponse.ExpiresIn.Value, IdpConstants.MinAccessTokenLifetimeSeconds)
                     : configuredAccessLifetimeSeconds;

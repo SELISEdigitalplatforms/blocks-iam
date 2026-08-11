@@ -31,5 +31,18 @@ namespace Authentication.DomainService.OAuth.RequestModel
         public string? ImpersonationSessionId { get; set; }
         public string? IdpSessionId { get; set; }
 
+        /// <summary>
+        /// Set when the presented refresh token was superseded by rotation inside the grace window and
+        /// has been resolved to the successor named here. The successor is returned as-is: a retry is a
+        /// replay of an issuance that already happened, so it must not consume another rotation or
+        /// advance any clock.
+        /// </summary>
+        public string? GraceReplayTokenId { get; set; }
+
+        /// <summary>
+        /// The absolute expiry of <see cref="GraceReplayTokenId"/>, so a replay can write the same cookie
+        /// the original issuance did.
+        /// </summary>
+        public DateTime? GraceReplayAbsoluteExpiry { get; set; }
     }
 }

@@ -8,6 +8,7 @@ using Authentication.DomainService.Oidc.Repositories;
 using Authentication.DomainService.Services;
 using Authentication.DomainService.Shared;
 using Authentication.DomainService.Shared.RequestModel;
+using Authentication.DomainService.Shared.Services;
 using Iam.DomainService.Utilities;
 using Blocks.Genesis;
 using Iam.DomainService.Entities;
@@ -32,6 +33,7 @@ namespace Authentication.DomainService.Authentication
         private readonly RefreshTokenAuthenticationService _refreshTokenAuthenticationService;
         private readonly IAuthenticationService _authenticationService;
         private readonly IRefreshTokenRepository _refreshTokenRepository;
+        private readonly IRefreshSessionResolver _refreshSessionResolver;
         private readonly ILogger<OidcRefreshTokenService> _logger;
 
         public OidcRefreshTokenService(
@@ -41,6 +43,7 @@ namespace Authentication.DomainService.Authentication
             RefreshTokenAuthenticationService refreshTokenAuthenticationService,
             IAuthenticationService authenticationService,
             IRefreshTokenRepository refreshTokenRepository,
+            IRefreshSessionResolver refreshSessionResolver,
             ILogger<OidcRefreshTokenService> logger)
         {
             _authenticationRepository = authenticationRepository;
@@ -49,6 +52,7 @@ namespace Authentication.DomainService.Authentication
             _refreshTokenAuthenticationService = refreshTokenAuthenticationService;
             _authenticationService = authenticationService;
             _refreshTokenRepository = refreshTokenRepository;
+            _refreshSessionResolver = refreshSessionResolver;
             _logger = logger;
         }
 
@@ -78,13 +82,21 @@ namespace Authentication.DomainService.Authentication
                 return validation;
             }
 
+            // A resolved token id that differs from the presented one is a grace-window replay: the
+            // successor is returned as-is, without consuming another rotation.
+            var graceReplayTokenId = string.Equals(tokenCache!.RefreshToken, refreshToken, StringComparison.Ordinal)
+                ? null
+                : tokenCache.RefreshToken;
+
             var tokenRequest = new TokenRequest
             {
                 GrantType = GrantTypes.RefreshToken,
-                OrganizationId = string.IsNullOrWhiteSpace(tokenCache!.OrganizationId) ? "default" : tokenCache.OrganizationId,
+                OrganizationId = string.IsNullOrWhiteSpace(tokenCache.OrganizationId) ? "default" : tokenCache.OrganizationId,
                 ClientId = tokenCache.ClientId,
                 RefreshToken = refreshToken,
-                Request = request
+                Request = request,
+                GraceReplayTokenId = graceReplayTokenId,
+                GraceReplayAbsoluteExpiry = graceReplayTokenId == null ? null : tokenCache.AbsoluteExpiresUtc
             };
 
             var response = await _refreshTokenAuthenticationService.AuthenticateAsync(tokenRequest, configuration!, user!);
@@ -142,19 +154,10 @@ namespace Authentication.DomainService.Authentication
                 return (new BadRequestObjectResult(new { error = OAuthError.AuthConfigMissing }), null, null, null);
             }
 
-            var cachedRefreshToken = await _cacheClient.GetStringValueAsync(refreshToken);
-            RefreshTokenCache? tokenCache;
-            if (string.IsNullOrWhiteSpace(cachedRefreshToken))
-            {
-                // Redis only holds a 30-min sliding window; Mongo is the system of record with the
-                // real (default 7-day) AbsoluteExpiry. A session idle past the sliding window but
-                // still within its absolute lifetime must still be able to refresh.
-                tokenCache = await RehydrateFromPersistedTokenAsync(refreshToken, configuration);
-            }
-            else
-            {
-                tokenCache = JsonSerializer.Deserialize<RefreshTokenCache>(cachedRefreshToken);
-            }
+            // One shared check decides validity for every refresh consumer: unrevoked, inside the sliding
+            // window and inside the absolute cap, with a rotation superseded moments ago resolving to its
+            // successor instead of failing.
+            var tokenCache = await _refreshSessionResolver.TryResolveRefreshSessionAsync(refreshToken, configuration);
 
             if (tokenCache == null || string.IsNullOrWhiteSpace(tokenCache.UserId))
             {
@@ -191,42 +194,6 @@ namespace Authentication.DomainService.Authentication
             }
 
             return (null, configuration, tokenCache, user);
-        }
-
-        private async Task<RefreshTokenCache?> RehydrateFromPersistedTokenAsync(string refreshToken, IdentityConfiguration configuration)
-        {
-            var persisted = await _refreshTokenRepository.GetByTokenIdAsync(refreshToken);
-            if (persisted == null || persisted.IsRevoked || persisted.AbsoluteExpiry <= DateTime.UtcNow)
-            {
-                return null;
-            }
-
-            var tokenCache = new RefreshTokenCache
-            {
-                RefreshToken = persisted.TokenId,
-                TenantId = persisted.TenantId,
-                OrganizationId = persisted.OrganizationId,
-                ClientId = persisted.ClientId,
-                SessionId = persisted.SessionId ?? string.Empty,
-                IssuedUtc = persisted.IssuedUtc,
-                ExpiresUtc = persisted.SlidingExpiry,
-                AbsoluteExpiresUtc = persisted.AbsoluteExpiry,
-                UserId = persisted.UserId,
-                IpAddresses = persisted.IpAddress,
-                Scope = persisted.Scope,
-                Impersonated = persisted.Impersonated,
-                ImpersonationId = persisted.ImpersonationId
-            };
-
-            var slidingSeconds = configuration.RefreshTokenValidForNumberMinutes > 0
-                ? configuration.RefreshTokenValidForNumberMinutes * 60
-                : 15 * 60;
-            var remainingAbsoluteSeconds = (int)Math.Max(1, (persisted.AbsoluteExpiry - DateTime.UtcNow).TotalSeconds);
-            var ttlSeconds = Math.Min(slidingSeconds, remainingAbsoluteSeconds);
-
-            await _cacheClient.AddStringValueAsync(refreshToken, JsonSerializer.Serialize(tokenCache), ttlSeconds);
-
-            return tokenCache;
         }
 
         private async Task<IActionResult> BuildRefreshTokenResponseAsync(

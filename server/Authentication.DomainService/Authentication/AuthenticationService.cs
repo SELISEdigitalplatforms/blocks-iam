@@ -338,34 +338,6 @@ namespace Authentication.DomainService.Authentication
             return true;
         }
 
-        public async Task AppendSessionCookies(HttpContext httpContext, string? accessToken, string? refreshToken, DateTime? accessExpiresUtc = null, DateTime? refreshExpiresUtc = null)
-        {
-            var bc = BlocksContext.GetContext();
-            var tenantId = bc?.TenantId ?? "default";
-            var tenant = _tenants.GetTenantByID(tenantId);
-            var (domain, cookieDomain, isResolved) = DomainResolver.ResolveDomain(tenant, httpContext.Request);
-            if (!isResolved || string.IsNullOrWhiteSpace(domain))
-            {
-                return;
-            }
-            var authConfiguration = await _authenticationRepository.GetAuthenticationConfigurationAsync();
-            var accessLifetimeMinutes = Math.Max(authConfiguration?.AccessTokenValidForNumberMinutes ?? IdentityConfiguration.DefaultAccessTokenValidForNumberMinutes, 1);
-            var refreshLifetimeMinutes = Math.Max(authConfiguration?.AbsoluteRefreshTokenValidForNumberMinutes ?? IdentityConfiguration.DefaultRememberMeRefreshTokenValidForNumberMinutes, 1);
-
-            var accessCookieOptions = CreateCookieOptions(cookieDomain, accessExpiresUtc ?? DateTime.UtcNow.AddMinutes(accessLifetimeMinutes));
-            var refreshCookieOptions = CreateCookieOptions(cookieDomain, refreshExpiresUtc ?? DateTime.UtcNow.AddMinutes(refreshLifetimeMinutes));
-
-            if (!string.IsNullOrWhiteSpace(accessToken))
-            {
-                httpContext.Response.Cookies.Append($"{domain}", accessToken, accessCookieOptions);
-            }
-
-            if (!string.IsNullOrWhiteSpace(refreshToken))
-            {
-                httpContext.Response.Cookies.Append($"{IdpConstants.RefreshTokenCookieName}_{domain}", refreshToken, refreshCookieOptions);
-            }
-        }
-
         public async Task<IActionResult> GetLoginOptionsAsync()
         {
             var identityProviders = await _authenticationRepository.GetIdentityProvidersAsync();
@@ -1182,17 +1154,19 @@ namespace Authentication.DomainService.Authentication
                 return new UnauthorizedObjectResult(new { error = OAuthError.SessionExpired });
             }
 
-            var rootRefreshCacheRaw = await _cacheClient.GetStringValueAsync(rootRefreshToken);
-            var rootRefreshCache = string.IsNullOrWhiteSpace(rootRefreshCacheRaw)
-                ? null
-                : JsonSerializer.Deserialize<RefreshTokenCache>(rootRefreshCacheRaw);
+            var authConfiguration = await _authenticationRepository.GetAuthenticationConfigurationAsync();
 
-            if (rootRefreshCache == null || rootRefreshCache.ExpiresUtc <= DateTime.UtcNow)
+            // The same validity check every refresh consumer runs, so impersonation cannot start from a
+            // session the refresh endpoint would already reject.
+            var rootRefreshCache = await _authSession.TryResolveRefreshSessionAsync(rootRefreshToken, authConfiguration);
+
+            if (rootRefreshCache == null)
             {
                 return new UnauthorizedObjectResult(new { error = OAuthError.SessionExpired });
             }
 
-            var authConfiguration = await _authenticationRepository.GetAuthenticationConfigurationAsync();
+            // A grace-window replay resolves to the successor; that is the token impersonation rotates.
+            rootRefreshToken = rootRefreshCache.RefreshToken ?? rootRefreshToken;
             // Check for organization switch within existing impersonation
             var existingSessionId = string.IsNullOrWhiteSpace(bc.ImpersonationSessionId) ? request.ImpersonationId : bc.ImpersonationSessionId;
 
@@ -1269,11 +1243,18 @@ namespace Authentication.DomainService.Authentication
                     TargetTenantId = request.TargetTenantId,
                     ImpersonatorUserId = userId,
                     ImpersonationSessionId = sessionId,
-                    Request = httpRequest
+                    Request = httpRequest,
+                    // Impersonation is a rotation of the root lineage: the cap is inherited, not reset,
+                    // the predecessor is superseded by the normal rotation path, and no login is counted.
+                    RefreshToken = rootRefreshToken
                 };
 
                 var tokenResponse = await _authSession.ManageTokenAsync(tokenRequest, authConfiguration, user);
-                await _authSession.RevokeRefreshToken(rootRefreshToken);
+                if (!string.IsNullOrWhiteSpace(tokenResponse.Error))
+                {
+                    return new BadRequestObjectResult(new { error = tokenResponse.Error, error_description = tokenResponse.ErrorDescription });
+                }
+
                 var cookiesSet = AppendCookies(tokenResponse, httpResponse, rootDomain);
 
                 var impersonationPayload = TokenResponsePayload.Build(tokenResponse, cookiesSet);
@@ -1380,17 +1361,17 @@ namespace Authentication.DomainService.Authentication
                 return new UnauthorizedObjectResult(new { error = "invalid_refresh_token" });
             }
 
-            var rootRefreshCacheRaw = await _cacheClient.GetStringValueAsync(refreshToken);
-            var rootRefreshCache = string.IsNullOrWhiteSpace(rootRefreshCacheRaw)
-                ? null
-                : JsonSerializer.Deserialize<RefreshTokenCache>(rootRefreshCacheRaw);
+            var configuration = await _authenticationRepository.GetAuthenticationConfigurationAsync();
+
+            var rootRefreshCache = await _authSession.TryResolveRefreshSessionAsync(refreshToken, configuration);
 
             if (rootRefreshCache == null || !rootRefreshCache.Impersonated)
             {
                 return new UnauthorizedObjectResult(new { error = "invalid_refresh_token" });
             }
 
-            var configuration = await _authenticationRepository.GetAuthenticationConfigurationAsync();
+            // A grace-window replay resolves to the successor; that is the token to rotate away from.
+            refreshToken = rootRefreshCache.RefreshToken ?? refreshToken;
 
             var tokenRequest = new TokenRequest
             {
@@ -1401,7 +1382,9 @@ namespace Authentication.DomainService.Authentication
                 OriginalTenantId = session.RootTenantId,
                 TargetTenantId = session.TargetTenantId,
                 ImpersonatorUserId = bc.UserId,
-                Request = httpRequest
+                Request = httpRequest,
+                // Stopping impersonation rotates the same lineage back to the root user.
+                RefreshToken = refreshToken
             };
 
             // Get root user
@@ -1437,8 +1420,6 @@ namespace Authentication.DomainService.Authentication
             }
 
             await WriteImpersonationAuditEventAsync(httpRequest, LoginAuditEvents.ImpersonationStopped, bc!.UserId, session.TargetTenantId, IdpConstants.SeverityInfo, IdpConstants.StatusSuccess, rootTenant.TenantId);
-
-            await _authSession.RevokeRefreshToken(refreshToken);
 
             var cookiesSet = AppendCookies(tokenResponse, httpResponse, rootDomain);
             if (!cookiesSet)
@@ -1561,6 +1542,9 @@ namespace Authentication.DomainService.Authentication
                     ImpersonatorUserId = userId,
                     Request = httpRequest,
                     ImpersonationSessionId = existingSessionId,
+                    // Switching organization rotates the lineage rather than starting a new one, so the
+                    // absolute cap carries forward untouched.
+                    RefreshToken = rootRefreshCache?.RefreshToken
                 };
 
                 var newTokenResponse = await _authSession.ManageTokenAsync(newTokenRequest, authConfiguration, user);
