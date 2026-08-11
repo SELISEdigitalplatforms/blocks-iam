@@ -176,6 +176,102 @@ namespace Authentication.DomainService.Authentication
 
         }
 
+        public async Task<LogoutResponse> LogoutUserFromAllSites(HttpRequest httpRequest)
+        {
+            _logger.LogInformation("Logout from all sites process start");
+
+            var refreshTokenCookiePrefix = $"{IdpConstants.RefreshTokenCookieName}_";
+            var idpSessionIds = new List<string>();
+            var processedAny = false;
+            var anySuccess = false;
+
+            foreach (var cookie in httpRequest.Cookies)
+            {
+                if (string.IsNullOrWhiteSpace(cookie.Key) ||
+                    !cookie.Key.StartsWith(refreshTokenCookiePrefix, StringComparison.Ordinal))
+                {
+                    continue;
+                }
+
+                var refreshToken = cookie.Value;
+                if (string.IsNullOrWhiteSpace(refreshToken))
+                {
+                    continue;
+                }
+
+                processedAny = true;
+
+                var refreshTokenSession = await ReadRefreshTokenCacheAsync(refreshToken);
+                var result = await ProcessLogout(refreshToken, httpRequest, refreshTokenSession);
+
+                if (result && !string.IsNullOrWhiteSpace(refreshTokenSession?.SessionId) && !idpSessionIds.Contains(refreshTokenSession?.SessionId))
+                {
+                    idpSessionIds.Add(refreshTokenSession!.SessionId!);
+                }
+
+                anySuccess |= result;
+
+                _logger.LogInformation(
+                    "Logout from all sites processed cookie {CookieKey} (success={Success})",
+                    cookie.Key,
+                    result);
+            }
+
+            await ProcessTimeline(httpRequest, false);
+
+            return new LogoutResponse
+            {
+                IsSuccess = anySuccess || !processedAny,
+                IdpSessionIds = idpSessionIds,
+            };
+        }
+
+        public async Task<LogoutFlowResult> ExecuteLogoutAsync(LogoutRequest request, HttpContext httpContext)
+        {
+            _logger.LogInformation("Logout flow start");
+
+            DomainResolver.ResetToOriginalBlocksContextForImpersonation();
+            var refreshToken = string.IsNullOrWhiteSpace(request?.RefreshToken)? CookieToken(httpContext.Request) : request!.RefreshToken;
+
+            if (string.IsNullOrWhiteSpace(refreshToken))
+            {
+                return new LogoutFlowResult
+                {
+                    StatusCode = StatusCodes.Status400BadRequest,
+                    Error = "invalid_request",
+                    ErrorDescription = "Refresh token is required for logout"
+                };
+            }
+
+            var tenant = _tenants.GetTenantByID(BlocksContext.GetContext()?.TenantId ?? "");
+            var logoutResult = tenant.IsRootTenant?
+                               await LogoutUserFromAllSites(httpContext.Request):
+                               await LogoutUser(refreshToken, httpContext.Request);
+
+            if (!logoutResult.IsSuccess)
+            {
+                return new LogoutFlowResult
+                {
+                    StatusCode = StatusCodes.Status400BadRequest,
+                    LogoutResponse = logoutResult
+                };
+            }
+
+            var isCookieDeleted = tenant.IsRootTenant? DeleteAllCookies(httpContext.Request) : DeleteCookie(httpContext.Request);
+            var shouldClearIdpSessionCookie = await UpdateIdpSessionForLogoutAsync(httpContext, httpContext.User, isGlobalLogout: false, logoutResult.IdpSessionIds );
+
+            if (shouldClearIdpSessionCookie)
+            {
+                ClearIdpSessionCookie(httpContext.Response);
+            }
+
+            return new LogoutFlowResult
+            {
+                StatusCode = StatusCodes.Status200OK,
+                LogoutResponse = logoutResult
+            };
+        }
+
         public async Task<bool> ProcessLogout(string refreshToken, HttpRequest httpRequest)
         {
             return await ProcessLogout(refreshToken, httpRequest, await ReadRefreshTokenCacheAsync(refreshToken));
@@ -335,6 +431,44 @@ namespace Authentication.DomainService.Authentication
             request.HttpContext.Response.Cookies.Delete($"{IdpConstants.RefreshTokenCookieName}_{domain}", cookieOptions);
             request.HttpContext.Response.Cookies.Delete($"{domain}", cookieOptions);
             // request.HttpContext.Response.Cookies.Delete(IdpConstants.ImpersonationIdCookieName, cookieOptions);
+            return true;
+        }
+
+        public bool DeleteAllCookies(HttpRequest request)
+        {
+            var bc = BlocksContext.GetContext();
+            var tenantId = bc?.TenantId ?? "default";
+            var tenant = _tenants.GetTenantByID(tenantId);
+            var (_, cookieDomain, isResolved) = DomainResolver.ResolveDomain(tenant, request);
+            var cookieOptions = isResolved
+                ? CreateCookieOptions(cookieDomain, DateTime.UtcNow.AddDays(-1))
+                : null;
+
+            var cookies = request.HttpContext.Request.Cookies;
+
+            if (cookies.Count == 0)
+            {
+                return true;
+            }
+
+            foreach (var key in cookies.Keys)
+            {
+                if (string.IsNullOrWhiteSpace(key))
+                {
+                    continue;
+                }
+
+                if (cookieOptions is not null)
+                {
+                    request.HttpContext.Response.Cookies.Delete(key, cookieOptions);
+                }
+                else
+                {
+                    request.HttpContext.Response.Cookies.Delete(key);
+                }
+            }
+
+            _logger.LogInformation("Deleted {Count} cookie(s) from request during logout for tenant {TenantId}", cookies.Count, tenantId);
             return true;
         }
 
