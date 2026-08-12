@@ -2,8 +2,9 @@ import { Button } from "@/components/ui-kits/button/button"
 import { Separator } from "@/components/ui-kits/separator/separator"
 import { SuccessConfirmationCardHeader } from "@blocks-idp/authentication/components/success-confirmation-card-header"
 import { SuccessConfirmationIcon } from "@blocks-idp/authentication/components/success-confirmation-icon"
+import { buildOIDCNavigationUrl, extractOIDCParams } from "@blocks-idp/authentication/utils/oidc-utils"
 import { ChevronRight, HelpCircle, Mail, RotateCw } from "lucide-react"
-import { Link } from "react-router"
+import { Link, useLocation } from "react-router"
 
 type SignupEmailSentProps = {
   email: string
@@ -12,10 +13,28 @@ type SignupEmailSentProps = {
 const SUPPORT_URL = "https://docs.seliseblocks.com/"
 
 export const SignupEmailSent = ({ email }: SignupEmailSentProps) => {
-  const signupUrl = (() => {
-    if (!email) return "/signup"
+  const location = useLocation()
+  const isOidc = location.pathname.startsWith("/oidc")
+  const { tenantId } = extractOIDCParams()
 
-    return `/signup?email=${encodeURIComponent(email)}`
+  // Signing in has to re-enter the OIDC flow the user came from, otherwise they
+  // land on the IAM login with no clientId/redirect_uri and never get back to
+  // the application that sent them here.
+  const loginUrl = isOidc ? buildOIDCNavigationUrl("/oidc/login") : "/login"
+
+  // Resending means going back to the signup form, which lives at
+  // /oidc/signup/:tenantId — tenantId is a path segment, not a query param.
+  const signupUrl = (() => {
+    if (!isOidc) return email ? `/signup?email=${encodeURIComponent(email)}` : "/signup"
+
+    const query = buildOIDCNavigationUrl("/oidc/signup").split("?")[1] ?? ""
+    const basePath = tenantId ? `/oidc/signup/${encodeURIComponent(tenantId)}` : "/oidc/signup"
+    const baseUrl = query ? `${basePath}?${query}` : basePath
+
+    if (!email) return baseUrl
+
+    const separator = baseUrl.includes("?") ? "&" : "?"
+    return `${baseUrl}${separator}email=${encodeURIComponent(email)}`
   })()
 
   return (
@@ -80,7 +99,7 @@ export const SignupEmailSent = ({ email }: SignupEmailSentProps) => {
             <div>
               <p className="text-sm text-muted-foreground">Already have an account?</p>
               <Link
-                to="/login"
+                to={loginUrl}
                 className="mt-2 inline-flex min-h-11 items-center justify-center gap-0.5 text-sm font-semibold text-primary transition-colors hover:text-primary/80 md:min-h-0"
               >
                 Go to login

@@ -251,8 +251,18 @@
         <member name="M:Api.Controllers.IamController.GetOrganizationConfig">
             <summary>
             Anonymous: the public signup page reads this before rendering, to decide
-            whether to ask for an organization name. Tenant is resolved from the
-            X-Blocks-Key header, as with the signup-settings endpoint below.
+            whether to ask for an organization name. Tenant comes from the X-Blocks-Key
+            header, or from the token when the caller is impersonating — same resolution
+            as signup-settings below.
+            </summary>
+        </member>
+        <member name="M:Api.Controllers.IamController.ApplyImpersonatedTenantContextAsync">
+            <summary>
+            Re-points BlocksContext at the impersonated tenant when the caller presents an
+            impersonation token. The middleware builds the context from X-Blocks-Key, which
+            for an impersonating caller is the *root* tenant — so without this, these
+            endpoints answer for the wrong tenant. Anonymous callers have no token and are
+            left on the header-derived context.
             </summary>
         </member>
         <member name="T:Api.Controllers.IdpController">
