@@ -240,7 +240,13 @@ namespace Authentication.DomainService.Security.Repositories
                     Builders<RefreshTokenModel>.IndexKeys
                         .Ascending(x => x.SessionId)
                         .Descending(x => x.AbsoluteExpiry),
-                    new CreateIndexOptions { Name = "ix_session_absolute_expiry" })
+                    new CreateIndexOptions { Name = "ix_session_absolute_expiry" }),
+                // Family revocation filters on exactly these two fields.
+                new CreateIndexModel<RefreshTokenModel>(
+                    Builders<RefreshTokenModel>.IndexKeys
+                        .Ascending(x => x.RefreshTokenSessionId)
+                        .Ascending(x => x.IsRevoked),
+                    new CreateIndexOptions { Name = "ix_refresh_token_session_id" })
             }, ct);
 
             await ImpersonationSessions().Indexes.CreateOneAsync(

@@ -76,8 +76,12 @@ const SigninSkeleton = () => (
 );
 
 export const Signin = ({ ssoError, mode = "default", oidcContext }: SigninProps) => {
+  // Signup settings are tenant-scoped: without the tenant from the OIDC request
+  // this reads the default tenant's config instead of the one being signed into.
+  const { tenantId: oidcTenantId } = extractOIDCParams();
   const { data: loginOption, isLoading: isLoginOptionLoading } = useGetLoginOptions();
-  const { data: signUpSetting, isLoading: isSignUpSettingLoading } = useGetSignUpSetting();
+  const { data: signUpSetting, isLoading: isSignUpSettingLoading } =
+    useGetSignUpSetting(oidcTenantId);
 
   useEffect(() => {
     if (ssoError) {
@@ -97,7 +101,6 @@ export const Signin = ({ ssoError, mode = "default", oidcContext }: SigninProps)
     (loginOption?.allowedGrantTypes?.includes(GRANT_TYPES.password) ||
       loginOption?.allowedGrantTypes?.includes(GRANT_TYPES.social));
 
-  const { tenantId: oidcTenantId } = extractOIDCParams();
   const oidcQuery = oidcTenantId
     ? buildOIDCNavigationUrl("/oidc/signup").split("?")[1] || ""
     : "";

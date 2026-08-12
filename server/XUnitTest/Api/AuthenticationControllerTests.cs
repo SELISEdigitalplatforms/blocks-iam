@@ -321,19 +321,28 @@ namespace XUnitTest.ApiTests
         [Fact]
         public async Task ExecuteLogout_NoRefreshToken_ReturnsBadRequest()
         {
-            _authService.Setup(s => s.CookieToken(It.IsAny<HttpRequest>())).Returns(string.Empty);
+            _authService.Setup(s => s.ExecuteLogoutAsync(It.IsAny<LogoutRequest>(), It.IsAny<HttpContext>()))
+                .ReturnsAsync(new LogoutFlowResult
+                {
+                    StatusCode = StatusCodes.Status400BadRequest,
+                    Error = "invalid_request",
+                    ErrorDescription = "Refresh token is required for logout"
+                });
 
             var result = await CreateController().ExecuteLogout(new LogoutRequest { RefreshToken = "" });
 
             result.Should().BeOfType<BadRequestObjectResult>();
-            _authService.Verify(s => s.LogoutUser(It.IsAny<string>(), It.IsAny<HttpRequest>()), Times.Never);
         }
 
         [Fact]
         public async Task ExecuteLogout_ServiceFails_ReturnsBadRequest()
         {
-            _authService.Setup(s => s.LogoutUser("rt", It.IsAny<HttpRequest>()))
-                .ReturnsAsync(new LogoutResponse { IsSuccess = false });
+            _authService.Setup(s => s.ExecuteLogoutAsync(It.IsAny<LogoutRequest>(), It.IsAny<HttpContext>()))
+                .ReturnsAsync(new LogoutFlowResult
+                {
+                    StatusCode = StatusCodes.Status400BadRequest,
+                    LogoutResponse = new LogoutResponse { IsSuccess = false }
+                });
 
             var result = await CreateController().ExecuteLogout(new LogoutRequest { RefreshToken = "rt" });
 
@@ -341,19 +350,18 @@ namespace XUnitTest.ApiTests
         }
 
         [Fact]
-        public async Task ExecuteLogout_Success_ClearsCookieAndReturnsOk()
+        public async Task ExecuteLogout_Success_ReturnsOk()
         {
-            _authService.Setup(s => s.LogoutUser("rt", It.IsAny<HttpRequest>()))
-                .ReturnsAsync(new LogoutResponse { IsSuccess = true, IdpSessionId = "sess-1" });
-            _authService.Setup(s => s.UpdateIdpSessionForLogoutAsync(It.IsAny<HttpContext>(),
-                    It.IsAny<System.Security.Claims.ClaimsPrincipal>(), false, It.IsAny<IEnumerable<string>>()))
-                .ReturnsAsync(true);
+            _authService.Setup(s => s.ExecuteLogoutAsync(It.IsAny<LogoutRequest>(), It.IsAny<HttpContext>()))
+                .ReturnsAsync(new LogoutFlowResult
+                {
+                    StatusCode = StatusCodes.Status200OK,
+                    LogoutResponse = new LogoutResponse { IsSuccess = true, IdpSessionId = "sess-1" }
+                });
 
             var result = await CreateController().ExecuteLogout(new LogoutRequest { RefreshToken = "rt" });
 
             result.Should().BeOfType<OkObjectResult>();
-            _authService.Verify(s => s.DeleteCookie(It.IsAny<HttpRequest>()), Times.Once);
-            _authService.Verify(s => s.ClearIdpSessionCookie(It.IsAny<HttpResponse>()), Times.Once);
         }
 
         // ---------- SwitchOrganizationContext ----------

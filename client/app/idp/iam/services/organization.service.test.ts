@@ -103,7 +103,24 @@ describe("OrganizationService", () => {
 
       const result = await service.getOrganizationConfig();
 
-      expect(http.get).toHaveBeenCalledWith(ORGANIZATION_ENDPOINTS.GET_ORGANIZATION_CONFIG);
+      expect(http.get).toHaveBeenCalledWith(
+        ORGANIZATION_ENDPOINTS.GET_ORGANIZATION_CONFIG,
+        {},
+        undefined,
+      );
+      expect(result).toEqual(mockOrganizationConfigResponse);
+    });
+
+    it("should GET with the tenant key when a tenantId is supplied", async () => {
+      vi.mocked(http.get).mockResolvedValue(mockOrganizationConfigResponse);
+
+      const result = await service.getOrganizationConfig(TEST_PROJECT_KEY);
+
+      expect(http.get).toHaveBeenCalledWith(
+        `${ORGANIZATION_ENDPOINTS.GET_ORGANIZATION_CONFIG}?tenantId=${encodeURIComponent(TEST_PROJECT_KEY)}`,
+        { "X-Blocks-Key": TEST_PROJECT_KEY },
+        { skipBlocksKey: true },
+      );
       expect(result).toEqual(mockOrganizationConfigResponse);
     });
 

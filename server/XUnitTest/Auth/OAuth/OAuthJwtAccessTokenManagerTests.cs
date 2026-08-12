@@ -92,6 +92,99 @@ namespace XUnitTest.Auth.OAuth
                 });
         }
 
+        // ---------- SPEC2 H4 / SPEC1 H3: cookie expiry and grace replay ----------
+
+        [Fact]
+        public async Task ManageRefreshToken_NewLineage_ReturnsTheAbsoluteExpiryForTheCookie()
+        {
+            var request = MakeRequest(GrantTypes.Password);
+
+            var (token, cookieExpiry) = await Create().ManageRefreshTokenAsync(
+                request,
+                RefreshTokenAuthenticationServiceTests.MakeJwtAccessToken(),
+                new IdentityConfiguration { RefreshTokenValidForNumberMinutes = 60, AbsoluteRefreshTokenValidForNumberMinutes = 10080 },
+                RefreshTokenAuthenticationServiceTests.MakeTenant(),
+                new User { ItemId = "u1" });
+
+            token.Should().NotBeNullOrWhiteSpace();
+            // The cookie carries the lineage's absolute cap, not the sliding window.
+            cookieExpiry.Should().BeCloseTo(DateTime.UtcNow.AddMinutes(10080), TimeSpan.FromMinutes(1));
+        }
+
+        [Fact]
+        public async Task ManageRefreshToken_Rotation_KeepsTheCookieExpiryOnTheInheritedCap()
+        {
+            var cap = DateTime.UtcNow.AddDays(6);
+            var oldCache = new Authentication.DomainService.Dtos.RefreshTokenCache
+            {
+                RefreshToken = "old-token",
+                UserId = "u1",
+                TenantId = "tenant-1",
+                ClientId = "client-1",
+                RefreshTokenSessionId = "lineage-1",
+                ExpiresUtc = DateTime.UtcNow.AddMinutes(30),
+                AbsoluteExpiresUtc = cap
+            };
+            _cache.Setup(c => c.GetStringValueAsync("old-token"))
+                .ReturnsAsync(System.Text.Json.JsonSerializer.Serialize(oldCache));
+            _cache.Setup(c => c.RemoveKeyAsync(It.IsAny<string>())).ReturnsAsync(true);
+
+            var request = MakeRequest(GrantTypes.RefreshToken);
+            request.RefreshToken = "old-token";
+
+            var (_, cookieExpiry) = await Create().ManageRefreshTokenAsync(
+                request,
+                RefreshTokenAuthenticationServiceTests.MakeJwtAccessToken(),
+                new IdentityConfiguration { RefreshTokenValidForNumberMinutes = 60 },
+                RefreshTokenAuthenticationServiceTests.MakeTenant(),
+                new User { ItemId = "u1" });
+
+            cookieExpiry.Should().Be(cap, "every issuance in one lineage writes the same cookie Expires");
+        }
+
+        [Fact]
+        public async Task ManageRefreshToken_GraceReplay_ReturnsTheSuccessorAndMintsNothing()
+        {
+            var cap = DateTime.UtcNow.AddDays(6);
+            var request = MakeRequest(GrantTypes.RefreshToken);
+            request.RefreshToken = "A";
+            request.GraceReplayTokenId = "B";
+            request.GraceReplayAbsoluteExpiry = cap;
+
+            var (token, cookieExpiry) = await Create().ManageRefreshTokenAsync(
+                request,
+                RefreshTokenAuthenticationServiceTests.MakeJwtAccessToken(),
+                new IdentityConfiguration { RefreshTokenValidForNumberMinutes = 60 },
+                RefreshTokenAuthenticationServiceTests.MakeTenant(),
+                new User { ItemId = "u1" });
+
+            token.Should().Be("B");
+            cookieExpiry.Should().Be(cap);
+            // A replay must not consume another rotation.
+            _refreshRepo.Verify(r => r.CreateAsync(It.IsAny<Idp.DomainService.Oidc.Contracts.RefreshTokenModel>()), Times.Never);
+            _refreshRepo.Verify(r => r.RevokeByTokenIdAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>()), Times.Never);
+        }
+
+        [Fact]
+        public async Task ManageRefreshToken_RotationWithUnresolvablePredecessor_ReturnsEmptyToken()
+        {
+            _cache.Setup(c => c.GetStringValueAsync("ghost")).ReturnsAsync((string)null!);
+            _refreshRepo.Setup(r => r.GetByTokenIdAsync("ghost")).ReturnsAsync((Idp.DomainService.Oidc.Contracts.RefreshTokenModel)null!);
+
+            var request = MakeRequest(GrantTypes.RefreshToken);
+            request.RefreshToken = "ghost";
+
+            var (token, _) = await Create().ManageRefreshTokenAsync(
+                request,
+                RefreshTokenAuthenticationServiceTests.MakeJwtAccessToken(),
+                new IdentityConfiguration { RefreshTokenValidForNumberMinutes = 60 },
+                RefreshTokenAuthenticationServiceTests.MakeTenant(),
+                new User { ItemId = "u1" });
+
+            token.Should().BeEmpty();
+            _refreshRepo.Verify(r => r.CreateAsync(It.IsAny<Idp.DomainService.Oidc.Contracts.RefreshTokenModel>()), Times.Never);
+        }
+
         // ---------- CreateJwtAccessToken (static) ----------
 
         [Fact]
@@ -255,7 +348,12 @@ namespace XUnitTest.Auth.OAuth
                 RefreshToken = "old-token",
                 UserId = "u1",
                 TenantId = "tenant-1",
-                ClientId = "client-1"
+                ClientId = "client-1",
+                // Rotation inherits the lineage and its cap from the predecessor, so the cached entry
+                // has to carry both for the rotation to be resolvable.
+                RefreshTokenSessionId = "lineage-1",
+                ExpiresUtc = DateTime.UtcNow.AddMinutes(30),
+                AbsoluteExpiresUtc = DateTime.UtcNow.AddDays(7)
             };
             _cache.Setup(c => c.GetStringValueAsync("old-token"))
                 .ReturnsAsync(System.Text.Json.JsonSerializer.Serialize(oldCache));
@@ -274,7 +372,7 @@ namespace XUnitTest.Auth.OAuth
             token.Should().NotBeNullOrWhiteSpace();
             _cache.Verify(c => c.GetStringValueAsync("old-token"), Times.Once);
             _cache.Verify(c => c.RemoveKeyAsync("old-token"), Times.Once);
-            _refreshRepo.Verify(r => r.RevokeByTokenIdAsync("old-token", It.IsAny<string>()), Times.Once);
+            _refreshRepo.Verify(r => r.RevokeByTokenIdAsync("old-token", "superseded_by_rotation", It.IsAny<string>()), Times.Once);
         }
     }
 }

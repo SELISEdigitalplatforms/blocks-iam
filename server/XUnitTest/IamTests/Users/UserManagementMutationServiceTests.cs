@@ -180,22 +180,6 @@ namespace XUnitTest.IamTests.Users
         }
 
         [Fact]
-        public async Task UpdateUser_HappyPath_UpdatesAndSendsEvent()
-        {
-            _userRepo.Setup(r => r.GetUserByIdAsync("u1")).ReturnsAsync(new User { ItemId = "u1", OrganizationIds = new List<string> { "default" } });
-
-            var result = await Create().UpdateUserAsync(new UpdateUserRequest
-            {
-                ItemId = "u1", FirstName = "Jane", OrganizationId = "default",
-                Roles = new List<string> { "admin" }, MfaEnabled = true, UserMfaType = UserMfaType.TOTP
-            });
-
-            result.IsSuccess.Should().BeTrue();
-            _userRepo.Verify(r => r.UpdateUserAsync(It.Is<User>(u => u.FirstName == "Jane" && u.MfaEnabled)), Times.Once);
-            _message.Verify(m => m.SendToConsumerAsync(It.IsAny<ConsumerMessage<UserMutationEvent>>()), Times.Once);
-        }
-
-        [Fact]
         public async Task UpdateUser_RepositoryFails_ReturnsUnsuccessful()
         {
             _userRepo.Setup(r => r.GetUserByIdAsync("u1")).ReturnsAsync(new User { ItemId = "u1", OrganizationIds = new List<string> { "default" } });

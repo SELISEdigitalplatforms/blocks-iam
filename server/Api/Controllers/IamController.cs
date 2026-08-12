@@ -300,8 +300,13 @@ namespace Api.Controllers
             return await _resourceMutationService.SaveOrganizationConfigAsync(request);
         }
 
+        /// <summary>
+        /// Anonymous: the public signup page reads this before rendering, to decide
+        /// whether to ask for an organization name. Tenant is resolved from the
+        /// X-Blocks-Key header, as with the signup-settings endpoint below.
+        /// </summary>
         [HttpGet("organizations/config")]
-        [ProtectedEndPoint("blocks-iam::iam::tenant-configs")]
+        [AllowAnonymous]
         public async Task<Dictionary<string, object>> GetOrganizationConfig()
         {
             return await _resourceMutationService.GetOrganizationConfigAsync();

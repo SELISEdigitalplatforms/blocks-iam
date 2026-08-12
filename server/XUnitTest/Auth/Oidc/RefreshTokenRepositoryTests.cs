@@ -21,7 +21,7 @@ namespace XUnitTest.Auth.Oidc
         private const string CollectionName = "IdpRefreshTokens";
 
         private readonly Mock<IDbContextProvider> _db = new();
-        private readonly Mock<IAuthenticationRepository> _authRepo = new();
+        private readonly Mock<ICacheClient> _cache = new();
         private readonly Mock<IMongoDatabase> _database = MongoMock.Database();
 
         private Mock<IMongoCollection<RefreshTokenModel>> Register(IEnumerable<RefreshTokenModel>? items = null)
@@ -33,7 +33,7 @@ namespace XUnitTest.Auth.Oidc
         }
 
         private RefreshTokenRepository Sut() =>
-            new(_db.Object, _authRepo.Object, NullLogger<RefreshTokenRepository>.Instance);
+            new(_db.Object, _cache.Object, NullLogger<RefreshTokenRepository>.Instance);
 
         private static RefreshTokenModel Token(string id = "t1", string user = "u1", string tenant = "tenant1", string session = "s1") =>
             new()
@@ -195,22 +195,111 @@ namespace XUnitTest.Auth.Oidc
             (await Sut().RevokeAllBySessionIdAsync("s1", "logout")).Should().Be(2);
         }
 
+        // ==================== SPEC1 H1 — the successor pointer rides the revocation ====================
+
         [Fact]
-        public async Task UpdateSlidingExpiryAsync_UsesConfig_ReturnsTrue()
+        public async Task RevokeByTokenIdAsync_WithSuccessor_WritesTheSupersededPointerInTheSameUpdate()
         {
-            Register();
-            _authRepo.Setup(a => a.GetAuthenticationConfigurationAsync())
-                .ReturnsAsync(new IdentityConfiguration { RefreshTokenValidForNumberMinutes = 60 });
-            (await Sut().UpdateSlidingExpiryAsync("t1")).Should().BeTrue();
+            var col = Register();
+            UpdateDefinition<RefreshTokenModel>? captured = null;
+            col.Setup(c => c.UpdateOneAsync(
+                    It.IsAny<FilterDefinition<RefreshTokenModel>>(),
+                    It.IsAny<UpdateDefinition<RefreshTokenModel>>(),
+                    It.IsAny<UpdateOptions>(),
+                    It.IsAny<CancellationToken>()))
+                .Callback<FilterDefinition<RefreshTokenModel>, UpdateDefinition<RefreshTokenModel>, UpdateOptions, CancellationToken>(
+                    (_, u, _, _) => captured = u)
+                .ReturnsAsync(new UpdateResult.Acknowledged(1, 1, null));
+
+            (await Sut().RevokeByTokenIdAsync("t1", "superseded_by_rotation", "t2")).Should().BeTrue();
+
+            Rendered(captured!).Should().Contain("SupersededByTokenId").And.Contain("t2");
         }
 
         [Fact]
-        public async Task UpdateSlidingExpiryAsync_NullConfig_UsesDefault()
+        public async Task RevokeByTokenIdAsync_WithoutSuccessor_LeavesTheSupersededPointerAlone()
+        {
+            var col = Register();
+            UpdateDefinition<RefreshTokenModel>? captured = null;
+            col.Setup(c => c.UpdateOneAsync(
+                    It.IsAny<FilterDefinition<RefreshTokenModel>>(),
+                    It.IsAny<UpdateDefinition<RefreshTokenModel>>(),
+                    It.IsAny<UpdateOptions>(),
+                    It.IsAny<CancellationToken>()))
+                .Callback<FilterDefinition<RefreshTokenModel>, UpdateDefinition<RefreshTokenModel>, UpdateOptions, CancellationToken>(
+                    (_, u, _, _) => captured = u)
+                .ReturnsAsync(new UpdateResult.Acknowledged(1, 1, null));
+
+            (await Sut().RevokeByTokenIdAsync("t1", "logout")).Should().BeTrue();
+
+            Rendered(captured!).Should().NotContain("SupersededByTokenId");
+        }
+
+        // ==================== SPEC2 C4 — reuse revokes the lineage ====================
+
+        [Fact]
+        public async Task RevokeAllByRefreshTokenSessionIdAsync_Empty_ReturnsZero()
         {
             Register();
-            _authRepo.Setup(a => a.GetAuthenticationConfigurationAsync()).ReturnsAsync((IdentityConfiguration)null!);
-            (await Sut().UpdateSlidingExpiryAsync("t1")).Should().BeTrue();
+            (await Sut().RevokeAllByRefreshTokenSessionIdAsync("", "token_reuse_detected")).Should().Be(0);
         }
+
+        [Fact]
+        public async Task RevokeAllByRefreshTokenSessionIdAsync_Valid_ReturnsModifiedCount()
+        {
+            Register();
+            (await Sut().RevokeAllByRefreshTokenSessionIdAsync("lineage-1", "token_reuse_detected")).Should().Be(2);
+        }
+
+        // ==================== SPEC3 H1, H2, C4 — re-login supersession ====================
+
+        [Fact]
+        public async Task RevokeSupersededLoginLineagesAsync_MissingScope_ReturnsZeroWithoutQuerying()
+        {
+            var col = Register();
+
+            (await Sut().RevokeSupersededLoginLineagesAsync("", "u1", "c1", "lineage-2", "superseded_by_login")).Should().Be(0);
+            (await Sut().RevokeSupersededLoginLineagesAsync("s1", "", "c1", "lineage-2", "superseded_by_login")).Should().Be(0);
+            (await Sut().RevokeSupersededLoginLineagesAsync("s1", "u1", "", "lineage-2", "superseded_by_login")).Should().Be(0);
+
+            col.Verify(c => c.UpdateManyAsync(
+                It.IsAny<FilterDefinition<RefreshTokenModel>>(),
+                It.IsAny<UpdateDefinition<RefreshTokenModel>>(),
+                It.IsAny<UpdateOptions>(),
+                It.IsAny<CancellationToken>()), Times.Never);
+        }
+
+        [Fact]
+        public async Task RevokeSupersededLoginLineagesAsync_NoCandidates_ReturnsZeroAndRewritesNothing()
+        {
+            var col = Register(Array.Empty<RefreshTokenModel>());
+
+            (await Sut().RevokeSupersededLoginLineagesAsync("s1", "u1", "c1", "lineage-2", "superseded_by_login")).Should().Be(0);
+
+            col.Verify(c => c.UpdateManyAsync(
+                It.IsAny<FilterDefinition<RefreshTokenModel>>(),
+                It.IsAny<UpdateDefinition<RefreshTokenModel>>(),
+                It.IsAny<UpdateOptions>(),
+                It.IsAny<CancellationToken>()), Times.Never);
+            _cache.Verify(c => c.RemoveKeyAsync(It.IsAny<string>()), Times.Never);
+        }
+
+        [Fact]
+        public async Task RevokeSupersededLoginLineagesAsync_RemovesCachedEntriesForEveryRevokedToken()
+        {
+            Register(new[] { Token("t1"), Token("t2") });
+            _cache.Setup(c => c.RemoveKeyAsync(It.IsAny<string>())).ReturnsAsync(true);
+
+            (await Sut().RevokeSupersededLoginLineagesAsync("s1", "u1", "c1", "lineage-2", "superseded_by_login")).Should().Be(2);
+
+            _cache.Verify(c => c.RemoveKeyAsync("t1"), Times.Once);
+            _cache.Verify(c => c.RemoveKeyAsync("t2"), Times.Once);
+        }
+
+        private static string Rendered(UpdateDefinition<RefreshTokenModel> update) =>
+            update.Render(new RenderArgs<RefreshTokenModel>(
+                MongoDB.Bson.Serialization.BsonSerializer.SerializerRegistry.GetSerializer<RefreshTokenModel>(),
+                MongoDB.Bson.Serialization.BsonSerializer.SerializerRegistry)).ToString()!;
 
         [Fact]
         public async Task DeleteAsync_ReturnsTrue()

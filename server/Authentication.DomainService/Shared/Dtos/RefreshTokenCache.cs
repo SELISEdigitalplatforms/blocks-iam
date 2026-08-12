@@ -7,6 +7,12 @@ namespace Authentication.DomainService.Dtos
         public string? OrganizationId { get; set; }
         public string? ClientId { get; set; }
         public string SessionId { get; set; } = string.Empty;
+
+        /// <summary>
+        /// The refresh-token lineage this entry belongs to. Carried through Redis so rotation can copy
+        /// it without a MongoDB read. Null on entries written before lineage tracking shipped.
+        /// </summary>
+        public string? RefreshTokenSessionId { get; set; }
         public DateTime IssuedUtc { get; set; }
         public DateTime ExpiresUtc { get; set; }
         public DateTime AbsoluteExpiresUtc { get; set; }

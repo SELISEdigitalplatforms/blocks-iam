@@ -32,7 +32,7 @@ namespace XUnitTest.Auth
     /// Covers the impersonation, cookie, session-cookie and pass-through methods of
     /// <see cref="AuthenticationService"/> that <c>AuthenticationServiceTests</c> does not touch:
     /// ExecuteImpersonateAsync (+ org-switch), ExecuteStopImpersonationAsync, CookieToken,
-    /// DeleteCookie, AppendSessionCookies, ClearIdpSessionCookie, LogoutUser, ProcessTimeline,
+    /// DeleteCookie, ClearIdpSessionCookie, LogoutUser, ProcessTimeline,
     /// EnsureIdpSessionForOidcCallbackAsync happy paths, identity-provider create/update/rotate
     /// pass-throughs, and TriggerBackchannelLogoutAllAsync with a configured (unreachable) URI.
     /// </summary>
@@ -234,7 +234,7 @@ namespace XUnitTest.Auth
         public async Task ExecuteImpersonate_RefreshCacheMissing_ReturnsSessionExpired()
         {
             SetupValidationPasses(RootTenant());
-            _cache.Setup(c => c.GetStringValueAsync("root-rt")).ReturnsAsync((string)null!);
+            _session.Setup(a => a.TryResolveRefreshSessionAsync("root-rt", It.IsAny<IdentityConfiguration>())).ReturnsAsync((RefreshTokenCache?)null);
             var req = new ImpersonateRequest { TargetTenantId = TargetTenantId, RefreshToken = "root-rt" };
 
             var result = await Create().ExecuteImpersonateAsync(req, HttpContext().Request, HttpContext().Response);
@@ -247,9 +247,8 @@ namespace XUnitTest.Auth
         public async Task ExecuteImpersonate_RefreshCacheExpired_ReturnsSessionExpired()
         {
             SetupValidationPasses(RootTenant());
-            var expired = ValidRootCache();
-            expired.ExpiresUtc = DateTime.UtcNow.AddMinutes(-5);
-            _cache.Setup(c => c.GetStringValueAsync("root-rt")).ReturnsAsync(JsonSerializer.Serialize(expired));
+            // The shared validity check owns expiry now: an idled-out session simply does not resolve.
+            _session.Setup(a => a.TryResolveRefreshSessionAsync("root-rt", It.IsAny<IdentityConfiguration>())).ReturnsAsync((RefreshTokenCache?)null);
             var req = new ImpersonateRequest { TargetTenantId = TargetTenantId, RefreshToken = "root-rt" };
 
             var result = await Create().ExecuteImpersonateAsync(req, HttpContext().Request, HttpContext().Response);
@@ -262,7 +261,7 @@ namespace XUnitTest.Auth
         public async Task ExecuteImpersonate_InvalidClient_ReturnsUnauthorized()
         {
             SetupValidationPasses(RootTenant());
-            _cache.Setup(c => c.GetStringValueAsync("root-rt")).ReturnsAsync(JsonSerializer.Serialize(ValidRootCache()));
+            _session.Setup(a => a.TryResolveRefreshSessionAsync("root-rt", It.IsAny<IdentityConfiguration>())).ReturnsAsync(ValidRootCache());
             _repo.Setup(r => r.GetAuthenticationConfigurationAsync()).ReturnsAsync(new IdentityConfiguration());
             _repo.Setup(r => r.GetOidcClientRegistrationAsync("c1")).ReturnsAsync((OidcClientRegistration)null!);
             var req = new ImpersonateRequest { TargetTenantId = TargetTenantId, RefreshToken = "root-rt" };
@@ -278,7 +277,7 @@ namespace XUnitTest.Auth
         public async Task ExecuteImpersonate_SessionCreationThrows_ReturnsServerError()
         {
             SetupValidationPasses(RootTenant());
-            _cache.Setup(c => c.GetStringValueAsync("root-rt")).ReturnsAsync(JsonSerializer.Serialize(ValidRootCache()));
+            _session.Setup(a => a.TryResolveRefreshSessionAsync("root-rt", It.IsAny<IdentityConfiguration>())).ReturnsAsync(ValidRootCache());
             _repo.Setup(r => r.GetAuthenticationConfigurationAsync()).ReturnsAsync(new IdentityConfiguration());
             _repo.Setup(r => r.GetOidcClientRegistrationAsync("c1")).ReturnsAsync(new OidcClientRegistration { ItemId = "c1", ClientId = "c1" });
             _session.Setup(s => s.CreateAndBackupImpersonationSessionAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>()))
@@ -296,7 +295,7 @@ namespace XUnitTest.Auth
         public async Task ExecuteImpersonate_HappyPath_NoCookies_ReturnsTokens()
         {
             SetupValidationPasses(RootTenant()); // no apps => AppendCookies returns false
-            _cache.Setup(c => c.GetStringValueAsync("root-rt")).ReturnsAsync(JsonSerializer.Serialize(ValidRootCache()));
+            _session.Setup(a => a.TryResolveRefreshSessionAsync("root-rt", It.IsAny<IdentityConfiguration>())).ReturnsAsync(ValidRootCache());
             _repo.Setup(r => r.GetAuthenticationConfigurationAsync()).ReturnsAsync(new IdentityConfiguration());
             _repo.Setup(r => r.GetOidcClientRegistrationAsync("c1")).ReturnsAsync(new OidcClientRegistration { ItemId = "c1", ClientId = "c1" });
             _session.Setup(s => s.CreateAndBackupImpersonationSessionAsync(ActorId, TenantId, TargetTenantId, "c1", "default"))
@@ -313,14 +312,18 @@ namespace XUnitTest.Auth
             payload["cookie_set"].Should().Be(false);
             payload["access_token"].Should().Be("at");
             _session.Verify(s => s.CreateAndBackupImpersonationSessionAsync(ActorId, TenantId, TargetTenantId, "c1", "default"), Times.Once);
-            _session.Verify(s => s.RevokeRefreshToken("root-rt"), Times.Once);
+            // The root token is carried in as the rotation predecessor and superseded by that path,
+            // so there is no separate revocation any more.
+            _session.Verify(s => s.ManageTokenAsync(
+                It.Is<TokenRequest>(t => t.RefreshToken == "root-rt"), It.IsAny<IdentityConfiguration>(), It.IsAny<User>()), Times.Once);
+            _session.Verify(s => s.RevokeRefreshToken(It.IsAny<string>()), Times.Never);
         }
 
         [Fact]
         public async Task ExecuteImpersonate_HappyPath_WithResolvedDomain_SetsCookies()
         {
             SetupValidationPasses(RootTenant(withApps: true)); // apps + Origin => AppendCookies true
-            _cache.Setup(c => c.GetStringValueAsync("root-rt")).ReturnsAsync(JsonSerializer.Serialize(ValidRootCache()));
+            _session.Setup(a => a.TryResolveRefreshSessionAsync("root-rt", It.IsAny<IdentityConfiguration>())).ReturnsAsync(ValidRootCache());
             _repo.Setup(r => r.GetAuthenticationConfigurationAsync()).ReturnsAsync(new IdentityConfiguration());
             _repo.Setup(r => r.GetOidcClientRegistrationAsync("c1")).ReturnsAsync(new OidcClientRegistration { ItemId = "c1", ClientId = "c1" });
             _session.Setup(s => s.CreateAndBackupImpersonationSessionAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>()))
@@ -347,7 +350,7 @@ namespace XUnitTest.Auth
         public async Task ExecuteImpersonate_OrgSwitch_Success_ReturnsOk()
         {
             SetupValidationPasses(RootTenant());
-            _cache.Setup(c => c.GetStringValueAsync("root-rt")).ReturnsAsync(JsonSerializer.Serialize(ValidRootCache()));
+            _session.Setup(a => a.TryResolveRefreshSessionAsync("root-rt", It.IsAny<IdentityConfiguration>())).ReturnsAsync(ValidRootCache());
             _repo.Setup(r => r.GetAuthenticationConfigurationAsync()).ReturnsAsync(new IdentityConfiguration());
             _repo.Setup(r => r.GetImpersonationSessionByIdAsync("imp-1"))
                 .ReturnsAsync(new ImpersonationSession { Id = "imp-1", Status = "active", TargetTenantId = TargetTenantId });
@@ -367,7 +370,7 @@ namespace XUnitTest.Auth
         public async Task ExecuteImpersonate_OrgSwitch_TokenError_ReturnsServerError()
         {
             SetupValidationPasses(RootTenant());
-            _cache.Setup(c => c.GetStringValueAsync("root-rt")).ReturnsAsync(JsonSerializer.Serialize(ValidRootCache()));
+            _session.Setup(a => a.TryResolveRefreshSessionAsync("root-rt", It.IsAny<IdentityConfiguration>())).ReturnsAsync(ValidRootCache());
             _repo.Setup(r => r.GetAuthenticationConfigurationAsync()).ReturnsAsync(new IdentityConfiguration());
             _repo.Setup(r => r.GetImpersonationSessionByIdAsync("imp-1"))
                 .ReturnsAsync(new ImpersonationSession { Id = "imp-1", Status = "active", TargetTenantId = TargetTenantId });
@@ -385,7 +388,7 @@ namespace XUnitTest.Auth
         public async Task ExecuteImpersonate_OrgSwitch_TargetMismatch_FallsThroughToMainPath()
         {
             SetupValidationPasses(RootTenant());
-            _cache.Setup(c => c.GetStringValueAsync("root-rt")).ReturnsAsync(JsonSerializer.Serialize(ValidRootCache()));
+            _session.Setup(a => a.TryResolveRefreshSessionAsync("root-rt", It.IsAny<IdentityConfiguration>())).ReturnsAsync(ValidRootCache());
             _repo.Setup(r => r.GetAuthenticationConfigurationAsync()).ReturnsAsync(new IdentityConfiguration());
             // Existing session targets a DIFFERENT tenant => TrySwitch returns null and flow continues to main impersonation.
             _repo.Setup(r => r.GetImpersonationSessionByIdAsync("imp-1"))
@@ -439,7 +442,7 @@ namespace XUnitTest.Auth
             _tenants.Setup(t => t.GetTenantByID(TenantId)).Returns(RootTenant());
             _repo.Setup(r => r.GetImpersonationSessionByIdAsync("imp-1"))
                 .ReturnsAsync(new ImpersonationSession { Id = "imp-1", Status = "active", ClientId = "c1", OrganizationId = "org", RootTenantId = TenantId, TargetTenantId = TargetTenantId });
-            _cache.Setup(c => c.GetStringValueAsync("imp-rt")).ReturnsAsync(JsonSerializer.Serialize(new RefreshTokenCache { Impersonated = false }));
+            _session.Setup(a => a.TryResolveRefreshSessionAsync("imp-rt", It.IsAny<IdentityConfiguration>())).ReturnsAsync(new RefreshTokenCache { Impersonated = false });
             var req = new StopImpersonationRequest { ImpersonationId = "imp-1", RefreshToken = "imp-rt" };
 
             var result = await Create().ExecuteStopImpersonationAsync(req, HttpContext().Request, HttpContext().Response);
@@ -454,7 +457,7 @@ namespace XUnitTest.Auth
             _tenants.Setup(t => t.GetTenantByID(TenantId)).Returns(RootTenant());
             _repo.Setup(r => r.GetImpersonationSessionByIdAsync("imp-1"))
                 .ReturnsAsync(new ImpersonationSession { Id = "imp-1", Status = "active", ClientId = "c1", OrganizationId = "org", RootTenantId = TenantId, TargetTenantId = TargetTenantId });
-            _cache.Setup(c => c.GetStringValueAsync("imp-rt")).ReturnsAsync(JsonSerializer.Serialize(new RefreshTokenCache { Impersonated = true, ClientId = "c1" }));
+            _session.Setup(a => a.TryResolveRefreshSessionAsync("imp-rt", It.IsAny<IdentityConfiguration>())).ReturnsAsync(new RefreshTokenCache { Impersonated = true, ClientId = "c1" });
             _repo.Setup(r => r.GetAuthenticationConfigurationAsync()).ReturnsAsync(new IdentityConfiguration());
             _repo.Setup(r => r.GetUserByIdAsync(ActorId)).ReturnsAsync((User)null!);
             var req = new StopImpersonationRequest { ImpersonationId = "imp-1", RefreshToken = "imp-rt" };
@@ -470,7 +473,7 @@ namespace XUnitTest.Auth
             _tenants.Setup(t => t.GetTenantByID(TenantId)).Returns(RootTenant());
             _repo.Setup(r => r.GetImpersonationSessionByIdAsync("imp-1"))
                 .ReturnsAsync(new ImpersonationSession { Id = "imp-1", Status = "active", ClientId = "c1", OrganizationId = "org", RootTenantId = TenantId, TargetTenantId = TargetTenantId });
-            _cache.Setup(c => c.GetStringValueAsync("imp-rt")).ReturnsAsync(JsonSerializer.Serialize(new RefreshTokenCache { Impersonated = true, ClientId = "c1" }));
+            _session.Setup(a => a.TryResolveRefreshSessionAsync("imp-rt", It.IsAny<IdentityConfiguration>())).ReturnsAsync(new RefreshTokenCache { Impersonated = true, ClientId = "c1" });
             _repo.Setup(r => r.GetAuthenticationConfigurationAsync()).ReturnsAsync(new IdentityConfiguration());
             _repo.Setup(r => r.GetUserByIdAsync(ActorId)).ReturnsAsync(new User { ItemId = ActorId });
             _session.Setup(s => s.ManageTokenAsync(It.IsAny<TokenRequest>(), It.IsAny<IdentityConfiguration>(), It.IsAny<User>()))
@@ -489,7 +492,7 @@ namespace XUnitTest.Auth
             _tenants.Setup(t => t.GetTenantByID(TenantId)).Returns(RootTenant());
             _repo.Setup(r => r.GetImpersonationSessionByIdAsync("imp-1"))
                 .ReturnsAsync(new ImpersonationSession { Id = "imp-1", Status = "active", ClientId = "c1", OrganizationId = "org", RootTenantId = TenantId, TargetTenantId = TargetTenantId });
-            _cache.Setup(c => c.GetStringValueAsync("imp-rt")).ReturnsAsync(JsonSerializer.Serialize(new RefreshTokenCache { Impersonated = true, ClientId = "c1" }));
+            _session.Setup(a => a.TryResolveRefreshSessionAsync("imp-rt", It.IsAny<IdentityConfiguration>())).ReturnsAsync(new RefreshTokenCache { Impersonated = true, ClientId = "c1" });
             _repo.Setup(r => r.GetAuthenticationConfigurationAsync()).ReturnsAsync(new IdentityConfiguration());
             _repo.Setup(r => r.GetUserByIdAsync(ActorId)).ReturnsAsync(new User { ItemId = ActorId });
             _repo.Setup(r => r.UpdateImpersonationSessionAsync("imp-1", It.IsAny<Dictionary<string, object>>())).ReturnsAsync(true);
@@ -501,7 +504,11 @@ namespace XUnitTest.Auth
 
             result.Should().BeOfType<OkObjectResult>();
             _repo.Verify(r => r.UpdateImpersonationSessionAsync("imp-1", It.IsAny<Dictionary<string, object>>()), Times.Once);
-            _session.Verify(s => s.RevokeRefreshToken("imp-rt"), Times.Once);
+            // Stopping impersonation rotates the same lineage, so the impersonated token is superseded
+            // by the rotation rather than revoked on its own.
+            _session.Verify(s => s.ManageTokenAsync(
+                It.Is<TokenRequest>(t => t.RefreshToken == "imp-rt"), It.IsAny<IdentityConfiguration>(), It.IsAny<User>()), Times.Once);
+            _session.Verify(s => s.RevokeRefreshToken(It.IsAny<string>()), Times.Never);
         }
 
         // ============ CookieToken ============
@@ -545,6 +552,38 @@ namespace XUnitTest.Auth
 
             result.Should().BeTrue();
             ctx.Response.Headers.Should().ContainKey("Set-Cookie");
+        }
+
+        // ============ DeleteAllCookies ============
+
+        [Fact]
+        public void DeleteAllCookies_ResolvedDomain_DeletesEveryRequestCookie()
+        {
+            _tenants.Setup(t => t.GetTenantByID(TenantId)).Returns(RootTenant(withApps: true));
+            var ctx = HttpContext(
+                origin: AppOrigin,
+                cookieHeader: "alpha=1; bravo=2; charlie=3");
+
+            var result = Create().DeleteAllCookies(ctx.Request);
+
+            result.Should().BeTrue();
+            var setCookie = ctx.Response.Headers["Set-Cookie"].ToString();
+            setCookie.Should().Contain("alpha=");
+            setCookie.Should().Contain("bravo=");
+            setCookie.Should().Contain("charlie=");
+            setCookie.Should().Contain("expires=");
+        }
+
+        [Fact]
+        public void DeleteAllCookies_NoRequestCookies_ReturnsTrue_AndWritesNothing()
+        {
+            _tenants.Setup(t => t.GetTenantByID(TenantId)).Returns(RootTenant(withApps: true));
+            var ctx = HttpContext(origin: AppOrigin);
+
+            var result = Create().DeleteAllCookies(ctx.Request);
+
+            result.Should().BeTrue();
+            ctx.Response.Headers.Should().NotContainKey("Set-Cookie");
         }
 
         // ============ AppendSessionCookies ============
@@ -610,6 +649,63 @@ namespace XUnitTest.Auth
 
             result.Should().BeTrue();
             _activity.Verify(a => a.SendUserActivityAsync(It.Is<UserActivityEvent>(e => e.Event == "LOGOUT_ALL")), Times.Once);
+        }
+
+        // ============ LogoutUserFromAllSites ============
+
+        [Fact]
+        public async Task LogoutUserFromAllSites_NoRtCookies_ReturnsTrue_AndDispatchesTimelineOnce()
+        {
+            _domain.Setup(d => d.GetDeviceInfo(It.IsAny<string>())).Returns((DeviceInformation)null!);
+            _domain.Setup(d => d.GetVisitorsIpAddresses(It.IsAny<HttpContext>())).Returns(new List<string> { "1.2.3.4" });
+
+            var ctx = HttpContext(cookieHeader: $"{IdpCookieKey}=sess-1; alpha=1");
+
+            var result = await Create().LogoutUserFromAllSites(ctx.Request);
+
+            result.IsSuccess.Should().BeTrue();
+            result.IdpSessionIds.Should().BeEmpty();
+            _activity.Verify(a => a.SendUserActivityAsync(It.IsAny<UserActivityEvent>()), Times.Once);
+        }
+
+        [Fact]
+        public async Task LogoutUserFromAllSites_ProcessesAllRtPrefixedCookies()
+        {
+            var sessionFor = new Dictionary<string, string>
+            {
+                ["token-a"] = "idp-sess-a",
+                ["token-b"] = "idp-sess-b"
+            };
+
+            _cache.Setup(c => c.GetStringValueAsync(It.IsAny<string>()))
+                .ReturnsAsync((string key) => key switch
+                {
+                    var k when sessionFor.ContainsKey(k) => JsonSerializer.Serialize(new RefreshTokenCache
+                    {
+                        RefreshToken = k,
+                        TenantId = TenantId,
+                        SessionId = sessionFor[k],
+                        ClientId = "client-1"
+                    }),
+                    _ => null!
+                });
+            _session.Setup(s => s.RevokeTokenAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>()))
+                .ReturnsAsync(new TokenRevocationResult { Success = true });
+            _domain.Setup(d => d.GetDeviceInfo(It.IsAny<string>())).Returns((DeviceInformation)null!);
+            _domain.Setup(d => d.GetVisitorsIpAddresses(It.IsAny<HttpContext>())).Returns(new List<string> { "1.2.3.4" });
+
+            var ctx = HttpContext(cookieHeader: "rt_a.com=token-a; rt_b.com=token-b; rt_c.com=; other=skip");
+
+            var result = await Create().LogoutUserFromAllSites(ctx.Request);
+
+            // Two non-empty rt_* cookies should be processed; empty one is skipped; "other" is skipped.
+            _session.Verify(s => s.RevokeTokenAsync("token-a", It.IsAny<string>(), It.IsAny<string>()), Times.Once);
+            _session.Verify(s => s.RevokeTokenAsync("token-b", It.IsAny<string>(), It.IsAny<string>()), Times.Once);
+            _refresh.Verify(r => r.RevokeByTokenIdAsync("token-a", "logout"), Times.Once);
+            _refresh.Verify(r => r.RevokeByTokenIdAsync("token-b", "logout"), Times.Once);
+            result.IsSuccess.Should().BeTrue();
+            result.IdpSessionIds.Should().BeEquivalentTo(new[] { "idp-sess-a", "idp-sess-b" });
+            _activity.Verify(a => a.SendUserActivityAsync(It.IsAny<UserActivityEvent>()), Times.Once);
         }
 
         // ============ EnsureIdpSessionForOidcCallbackAsync — happy paths ============

@@ -3,6 +3,8 @@ export interface ISignupByEmailPayload {
   firstName: string;
   lastName: string;
   captchaCode: string;
+  createOrganizationDuringSignup?: boolean;
+  organizationName?: string;
 }
 export interface ISignupByEmailResponse {
   itemId: string | null;

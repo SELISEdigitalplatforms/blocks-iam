@@ -300,7 +300,6 @@ namespace Iam.DomainService.Users
                 return new BaseMutationResponse();
             }
 
-            await SendEvent(user.ItemId, MutationEventType.Update);
             _logger.LogInformation("User update end -- Success");
 
             return new BaseMutationResponse
@@ -337,9 +336,6 @@ namespace Iam.DomainService.Users
                     IsActive = false
                 }
             }));
-
-            await SendEvent(user.ItemId, MutationEventType.Delete);
-
             return new BaseResponse { IsSuccess = true };
         }
 
