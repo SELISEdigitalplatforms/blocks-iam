@@ -248,6 +248,13 @@
             against it.
             </summary>
         </member>
+        <member name="M:Api.Controllers.IamController.GetOrganizationConfig">
+            <summary>
+            Anonymous: the public signup page reads this before rendering, to decide
+            whether to ask for an organization name. Tenant is resolved from the
+            X-Blocks-Key header, as with the signup-settings endpoint below.
+            </summary>
+        </member>
         <member name="T:Api.Controllers.IdpController">
             <summary>
             IDP Controller

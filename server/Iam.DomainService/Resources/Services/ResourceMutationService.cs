@@ -1258,6 +1258,17 @@ namespace Iam.DomainService.Resources
         }
 
 
+        public async Task DeleteOrganizationAsync(string organizationId)
+        {
+            if (string.IsNullOrWhiteSpace(organizationId) || organizationId == DefaultOrganizationId)
+            {
+                return;
+            }
+
+            await _resourceRepository.DeleteOrganizationAsync(organizationId);
+        }
+
+
         public async Task ExecuteOrganizationProvisioningAsync(OrganizationProvisioningEvent command)
         {
             _logger.LogInformation("Organization provisioning start for OrganizationId: {OrganizationId}", command.OrganizationId);
