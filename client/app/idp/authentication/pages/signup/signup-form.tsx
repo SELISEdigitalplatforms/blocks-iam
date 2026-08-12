@@ -21,6 +21,7 @@ import { ArrowRight, Loader } from "lucide-react";
 import { SsoSignin } from "../login/sso-signin";
 import { buildSignupFormSchema, signupFormDefaultValue, signupFormSchema } from "./utils";
 import { useOidcAuthAnimation } from "@blocks-idp/authentication/pages/oidc/oidc-auth-shell";
+import { buildOIDCNavigationUrl } from "@blocks-idp/authentication/utils/oidc-utils";
 
 // Server-side org failures that belong on the organization field rather than in
 // the generic error banner.
@@ -125,7 +126,12 @@ export const SignupForm = ({
         return;
       }
       await animCtx?.succeedAnimation();
-      navigate(`/signup-email-sent?email=${values.email}`);
+      // Stay inside the OIDC flow: the confirmation page needs clientId, state,
+      // redirect_uri and friends so "Go to login" can hand the user back to the
+      // application they started from instead of stranding them on the IAM login.
+      const emailSentUrl = buildOIDCNavigationUrl("/oidc/signup-email-sent");
+      const separator = emailSentUrl.includes("?") ? "&" : "?";
+      navigate(`${emailSentUrl}${separator}email=${encodeURIComponent(values.email)}`);
     } catch (error) {
       resetCaptcha();
       shake();
