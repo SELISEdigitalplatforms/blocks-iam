@@ -35,14 +35,18 @@ export const OIDCSignin = () => {
   );
 
   const isOidcPasswordFlow = window.location.pathname.includes("/oidc/login");
-  const urlClientId = searchParams.get("client_id");
+  // The client id arrives as `client_id` from the authorize endpoint but as
+  // `clientId` from in-app navigation (buildOIDCNavigationUrl). Reading only the
+  // snake_case form drops the OIDC flow and falls back to the plain login card,
+  // so accept both — same tolerance extractOIDCParams already applies.
+  const urlClientId = searchParams.get("client_id") || searchParams.get("clientId");
   const urlRedirectUri = searchParams.get("redirect_uri");
   // Device flow (RFC 8628) logins have no redirect_uri — the IAM's device verification
   // page passes `returnUrl` instead, so the OIDC-aware login form still renders (and its
   // post-login redirect uses returnUrl in place of the usual redirect_uri).
   const urlReturnUrl = searchParams.get("returnUrl");
   const effectiveReturnUrl = oidcContext.returnUrl || urlReturnUrl || undefined;
-  const effectiveClientId =  urlClientId || "";
+  const effectiveClientId = urlClientId || oidcContext.clientId || "";
 
   useEffect(() => {
     if (!code || !state) {
