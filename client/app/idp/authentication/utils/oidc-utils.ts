@@ -243,6 +243,30 @@ export const buildOIDCNavigationUrl = (path: string): string => {
 };
 
 /**
+ * The origin of the application a `redirect_uri` belongs to, or undefined if it isn't
+ * a usable http(s) URL.
+ *
+ * Used by the activation and recovery confirmation pages. Those are reached from an
+ * emailed link, which carries clientId and redirect_uri but can never carry `state`,
+ * `nonce` or a PKCE verifier — those are minted per-request by the application when it
+ * starts a flow. Sending the user to IAM's login from there produces an authorization
+ * code for a flow the application never began, and its callback correctly rejects the
+ * response as missing `state`. So we hand the user back to the application itself and
+ * let it start a complete, valid OIDC request of its own.
+ */
+export const getApplicationOrigin = (redirectUri?: string): string | undefined => {
+  if (!redirectUri) return undefined;
+
+  try {
+    const url = new URL(redirectUri);
+    if (url.protocol !== "https:" && url.protocol !== "http:") return undefined;
+    return url.origin;
+  } catch {
+    return undefined;
+  }
+};
+
+/**
  * Adds `tenant_id` to a URL built by buildOIDCNavigationUrl.
  *
  * Needed on the activation and recovery pages, where the tenant arrives as a path

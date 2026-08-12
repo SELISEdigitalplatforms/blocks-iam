@@ -2,7 +2,11 @@ import { Button } from "@/components/ui-kits/button/button"
 import { Separator } from "@/components/ui-kits/separator/separator"
 import { SuccessConfirmationCardHeader } from "@blocks-idp/authentication/components/success-confirmation-card-header"
 import { SuccessConfirmationIcon } from "@blocks-idp/authentication/components/success-confirmation-icon"
-import { buildOIDCNavigationUrl } from "@blocks-idp/authentication/utils/oidc-utils"
+import {
+  buildOIDCNavigationUrl,
+  extractOIDCParams,
+  getApplicationOrigin,
+} from "@blocks-idp/authentication/utils/oidc-utils"
 import { HelpCircle, LogIn } from "lucide-react"
 import { Link, useLocation } from "react-router"
 
@@ -11,6 +15,11 @@ const SUPPORT_URL = "https://docs.seliseblocks.com/"
 export const ResetPasswordSuccess = () => {
   const location = useLocation()
   const isOidc = location.pathname.startsWith("/oidc")
+  const { redirectUri } = extractOIDCParams()
+
+  // See getApplicationOrigin: a recovery link cannot carry `state`, so IAM must not
+  // start the flow — the application does, on its own entry point.
+  const applicationOrigin = getApplicationOrigin(redirectUri)
   const loginUrl = isOidc ? buildOIDCNavigationUrl("/oidc/login") : "/login"
 
   return (
@@ -55,14 +64,25 @@ export const ResetPasswordSuccess = () => {
               className="h-11 w-full shrink-0 rounded-full border border-primary bg-transparent px-5 text-sm font-semibold text-primary shadow-none hover:bg-primary/5 hover:text-primary md:h-10 md:w-auto md:px-6"
               asChild
             >
-              <Link
-                to={loginUrl}
-                aria-label="Go to login"
-                className="inline-flex w-full items-center justify-center gap-2 md:w-auto"
-              >
-                <LogIn className="h-4 w-4 shrink-0" aria-hidden />
-                Log in
-              </Link>
+              {applicationOrigin ? (
+                <a
+                  href={applicationOrigin}
+                  aria-label="Go to login"
+                  className="inline-flex w-full items-center justify-center gap-2 md:w-auto"
+                >
+                  <LogIn className="h-4 w-4 shrink-0" aria-hidden />
+                  Log in
+                </a>
+              ) : (
+                <Link
+                  to={loginUrl}
+                  aria-label="Go to login"
+                  className="inline-flex w-full items-center justify-center gap-2 md:w-auto"
+                >
+                  <LogIn className="h-4 w-4 shrink-0" aria-hidden />
+                  Log in
+                </Link>
+              )}
             </Button>
           </div>
 
