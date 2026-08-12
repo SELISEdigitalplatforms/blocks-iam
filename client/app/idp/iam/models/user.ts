@@ -283,6 +283,10 @@ export interface IActivationCodeValidationResponse {
   errors: unknown | null;
   isSuccess: boolean;
   userId: string | null;
+  // Present when the account already has them (self-service signup); empty for
+  // invited users, who are asked on the activation form.
+  firstName?: string;
+  lastName?: string;
 }
 
 export interface ISaveSignUpSettingPayload {

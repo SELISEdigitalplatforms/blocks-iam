@@ -1067,12 +1067,20 @@ namespace Iam.DomainService.Accounts
                 return new ActivationCodeValidationResponse { IsSuccess = false };
 
             var userId = await _repository.GetUserIdFromKeyMapByKeyAsync(validateActivationCodeRequest.ActivationCode);
+            var isValid = !string.IsNullOrWhiteSpace(userId);
+
+            // A self-service signup already gave a name; returning it lets the activation
+            // form prefill instead of asking twice. Holding the code already grants the
+            // right to set this account's password, so the name is no new exposure.
+            var user = isValid ? await _repository.GetUserByIdAsync(userId) : null;
 
             return new ActivationCodeValidationResponse
             {
                 UserId = userId,
-                IsSuccess = !string.IsNullOrWhiteSpace(userId),
-                Errors = !string.IsNullOrWhiteSpace(userId) ? null : new Dictionary<string, string>
+                FirstName = user?.FirstName ?? string.Empty,
+                LastName = user?.LastName ?? string.Empty,
+                IsSuccess = isValid,
+                Errors = isValid ? null : new Dictionary<string, string>
                 {
                     { "ActivationCode", "Invalid_ActivationCode" }
                 }

@@ -18,9 +18,17 @@ import { appendTenantId, buildOIDCNavigationUrl } from "@blocks-idp/authenticati
 type ActivationFormProps = {
   code: string;
   tenantId?: string;
+  /** Prefilled from the account when it already has them — see validate-activation. */
+  firstName?: string;
+  lastName?: string;
 };
 
-export const ActivationForm = ({ code, tenantId }: ActivationFormProps) => {
+export const ActivationForm = ({
+  code,
+  tenantId,
+  firstName,
+  lastName,
+}: ActivationFormProps) => {
   const navigate = useNavigate();
   const animCtx = useOidcAuthAnimation();
   const formRef = useRef<HTMLFormElement>(null);
@@ -29,7 +37,14 @@ export const ActivationForm = ({ code, tenantId }: ActivationFormProps) => {
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
 
   const form = useForm({
-    defaultValues: activationFormDefaultValue,
+    // The parent only renders this form once validate-activation has resolved, so these
+    // are already settled on first render — no reset needed. They stay editable, and
+    // whatever is submitted here wins over what the account currently holds.
+    defaultValues: {
+      ...activationFormDefaultValue,
+      firstname: firstName || activationFormDefaultValue.firstname,
+      lastname: lastName || activationFormDefaultValue.lastname,
+    },
     mode: "all",
     reValidateMode: "onChange",
     resolver: zodResolver(activationFormSchema),
