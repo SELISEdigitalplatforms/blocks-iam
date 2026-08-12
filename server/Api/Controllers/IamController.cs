@@ -302,13 +302,15 @@ namespace Api.Controllers
 
         /// <summary>
         /// Anonymous: the public signup page reads this before rendering, to decide
-        /// whether to ask for an organization name. Tenant is resolved from the
-        /// X-Blocks-Key header, as with the signup-settings endpoint below.
+        /// whether to ask for an organization name. Tenant comes from the X-Blocks-Key
+        /// header, or from the token when the caller is impersonating — same resolution
+        /// as signup-settings below.
         /// </summary>
         [HttpGet("organizations/config")]
         [AllowAnonymous]
         public async Task<Dictionary<string, object>> GetOrganizationConfig()
         {
+            await ApplyImpersonatedTenantContextAsync();
             return await _resourceMutationService.GetOrganizationConfigAsync();
         }
 
@@ -323,20 +325,39 @@ namespace Api.Controllers
         [AllowAnonymous]
         public async Task<Dictionary<string, object>> GetSignUpSetting()
         {
-            var userPrincipal = await _authenticationService.GetPrincipalFromTokenAsync(Request, BlocksContext.GetContext()?.TenantId ?? "", IsUserInfoGetRequest: false);
-
-            if (userPrincipal != null)
-            {
-                bool.TryParse(userPrincipal?.FindFirst("impersonated")?.Value, out bool impersonated);
-
-                if(impersonated)
-                {
-                    var claimUserId = userPrincipal?.FindFirst("user_id")?.Value;
-                    var claimTenantId = userPrincipal?.FindFirst("tenant_id")?.Value;
-                    BlocksContext.SetContext(BlocksContext.Create(claimTenantId, [], claimUserId, true, string.Empty, string.Empty, DateTime.MinValue, string.Empty, [], string.Empty, string.Empty, string.Empty, string.Empty, string.Empty));
-                }
-            }
+            await ApplyImpersonatedTenantContextAsync();
             return await _accountService.GetSignUpSettingAsync();
+        }
+
+        /// <summary>
+        /// Re-points BlocksContext at the impersonated tenant when the caller presents an
+        /// impersonation token. The middleware builds the context from X-Blocks-Key, which
+        /// for an impersonating caller is the *root* tenant — so without this, these
+        /// endpoints answer for the wrong tenant. Anonymous callers have no token and are
+        /// left on the header-derived context.
+        /// </summary>
+        private async Task ApplyImpersonatedTenantContextAsync()
+        {
+            var userPrincipal = await _authenticationService.GetPrincipalFromTokenAsync(
+                Request,
+                BlocksContext.GetContext()?.TenantId ?? "",
+                IsUserInfoGetRequest: false);
+
+            if (userPrincipal == null)
+            {
+                return;
+            }
+
+            bool.TryParse(userPrincipal.FindFirst("impersonated")?.Value, out bool impersonated);
+
+            if (!impersonated)
+            {
+                return;
+            }
+
+            var claimUserId = userPrincipal.FindFirst("user_id")?.Value;
+            var claimTenantId = userPrincipal.FindFirst("tenant_id")?.Value;
+            BlocksContext.SetContext(BlocksContext.Create(claimTenantId, [], claimUserId, true, string.Empty, string.Empty, DateTime.MinValue, string.Empty, [], string.Empty, string.Empty, string.Empty, string.Empty, string.Empty));
         }
 
         #endregion
