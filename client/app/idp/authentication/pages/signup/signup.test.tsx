@@ -7,6 +7,8 @@ const h = vi.hoisted(() => ({
   isSignUpSettingLoading: false,
   loginOption: undefined as { ssoInfo?: unknown[] } | undefined,
   isLoginOptionLoading: false,
+  orgConfig: undefined as Record<string, boolean> | undefined,
+  isOrgConfigLoading: false,
 }));
 
 vi.mock("@blocks-idp/authentication/hooks/use-auth", () => ({
@@ -14,6 +16,9 @@ vi.mock("@blocks-idp/authentication/hooks/use-auth", () => ({
 }));
 vi.mock("@blocks-idp/iam/hooks/use-user", () => ({
   useGetSignUpSetting: () => ({ data: h.signUpSetting, isLoading: h.isSignUpSettingLoading }),
+}));
+vi.mock("@blocks-idp/iam/hooks/use-organization", () => ({
+  useGetSignupOrganizationConfig: () => ({ data: h.orgConfig, isLoading: h.isOrgConfigLoading }),
 }));
 vi.mock("./signup-form", () => ({ SignupForm: () => <div data-testid="signup-form" /> }));
 vi.mock("@blocks-idp/authentication/pages/oidc/oidc-auth-shell", () => ({
@@ -41,6 +46,8 @@ beforeEach(() => {
   h.isSignUpSettingLoading = false;
   h.loginOption = undefined;
   h.isLoginOptionLoading = false;
+  h.orgConfig = undefined;
+  h.isOrgConfigLoading = false;
 });
 
 describe("Signup", () => {

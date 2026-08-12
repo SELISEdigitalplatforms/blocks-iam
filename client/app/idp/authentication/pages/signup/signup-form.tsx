@@ -19,7 +19,7 @@ import { useForm } from "react-hook-form";
 import { z } from "zod";
 import { ArrowRight, Loader } from "lucide-react";
 import { SsoSignin } from "../login/sso-signin";
-import { buildSignupFormSchema, signupFormDefaultValue } from "./utils";
+import { buildSignupFormSchema, signupFormDefaultValue, signupFormSchema } from "./utils";
 import { useOidcAuthAnimation } from "@blocks-idp/authentication/pages/oidc/oidc-auth-shell";
 
 // Server-side org failures that belong on the organization field rather than in
