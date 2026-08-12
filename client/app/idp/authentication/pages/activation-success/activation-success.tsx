@@ -2,12 +2,21 @@ import { Button } from "@/components/ui-kits/button/button"
 import { Separator } from "@/components/ui-kits/separator/separator"
 import { SuccessConfirmationCardHeader } from "@blocks-idp/authentication/components/success-confirmation-card-header"
 import { SuccessConfirmationIcon } from "@blocks-idp/authentication/components/success-confirmation-icon"
+import { buildOIDCNavigationUrl } from "@blocks-idp/authentication/utils/oidc-utils"
 import { HelpCircle, LogIn } from "lucide-react"
-import { Link } from "react-router"
+import { Link, useLocation } from "react-router"
 
 const SUPPORT_URL = "https://docs.seliseblocks.com/"
 
 export const ActivationSuccess = () => {
+  const location = useLocation()
+  const isOidc = location.pathname.startsWith("/oidc")
+
+  // Re-enter the OIDC flow the activation link came from. Without client_id and
+  // redirect_uri the login page falls back to the IAM root card, where a tenant
+  // user's credentials will not work.
+  const loginUrl = isOidc ? buildOIDCNavigationUrl("/oidc/login") : "/login"
+
   return (
     <div className="min-h-dvh overflow-x-hidden bg-surface-app">
       <main className="flex min-h-dvh w-full items-center justify-center px-4 py-6 pb-[max(1.5rem,env(safe-area-inset-bottom))] pt-[max(1.5rem,env(safe-area-inset-top))] sm:px-6 sm:py-8 md:py-10">
@@ -51,7 +60,7 @@ export const ActivationSuccess = () => {
               asChild
             >
               <Link
-                to="/login"
+                to={loginUrl}
                 aria-label="Go to login"
                 className="inline-flex w-full items-center justify-center gap-2 md:w-auto"
               >

@@ -102,6 +102,17 @@ export const router = createBrowserRouter([
             path: "signup-email-sent",
             element: <SignupEmailSentPage />,
           },
+          // OIDC-scoped confirmation pages: these keep the originating application's
+          // clientId/redirect_uri in the URL so their "Log in" link can re-enter the
+          // flow instead of dropping the user on the IAM root login.
+          {
+            path: "activate-success",
+            element: <ActivateSuccessPage />,
+          },
+          {
+            path: "reset-password-success",
+            element: <ResetPasswordSuccessPage />,
+          },
           { path: "mfa-check", element: <MfaCheckPage /> },
           { path: ":provider/callback/:tenantId", element: <SSOCallbackPage  /> },
         ],

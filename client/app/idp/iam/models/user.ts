@@ -243,6 +243,10 @@ export interface IAccountRecoverPayload {
   email: string;
   captchaCode?: string;
   tenantId?: string;
+  // Carried into the recovery email so the post-reset "log in" returns the user to
+  // the application that sent them, not the IAM root login.
+  clientId?: string;
+  redirectUri?: string;
 }
 export interface IAccountRecoverResponse {
   errors: unknown | null;

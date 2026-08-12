@@ -63,6 +63,7 @@ namespace Iam.DomainService.Accounts
         private readonly IDbContextProvider _dbContextProvider;
         private readonly IHttpContextAccessor? _httpContextAccessor;
         private readonly IUserActivityDispatcher _userActivityDispatcher;
+        private readonly IDefaultOidcClientResolver? _defaultOidcClientResolver;
 
         public AccountService(
             ILogger<AccountService> logger,
@@ -78,7 +79,8 @@ namespace Iam.DomainService.Accounts
             ICaptchaService captchaService,
             IDbContextProvider dbContextProvider,
             IUserActivityDispatcher userActivityDispatcher,
-            IHttpContextAccessor? httpContextAccessor = null)
+            IHttpContextAccessor? httpContextAccessor = null,
+            IDefaultOidcClientResolver? defaultOidcClientResolver = null)
         {
             _logger = logger;
             _repository = repository;
@@ -94,6 +96,7 @@ namespace Iam.DomainService.Accounts
             _dbContextProvider = dbContextProvider;
             _userActivityDispatcher = userActivityDispatcher;
             _httpContextAccessor = httpContextAccessor;
+            _defaultOidcClientResolver = defaultOidcClientResolver;
         }
 
         public async Task<BaseAccountResponse> SignupAccountAsync(SignupUserRequest signupUserRequest)
@@ -353,7 +356,12 @@ namespace Iam.DomainService.Accounts
                 }
             }
 
-            var reactivationSent = await SendReActivationAsync(existingUser);
+            // Direct call, not a queue hop — the signup request's OIDC context is still in
+            // hand here, so a resend returns the user to the same application.
+            var reactivationSent = await SendReActivationAsync(
+                existingUser,
+                signupUserRequest.ClientId,
+                signupUserRequest.RedirectUri);
             return new BaseAccountResponse
             {
                 IsSuccess = reactivationSent,
@@ -474,7 +482,10 @@ namespace Iam.DomainService.Accounts
                 Permissions = tenantConfiguration.DefaultPermissionsForNewUserOnSignUp ?? new List<string> { },
                 FirstName = signupUserRequest.FirstName,
                 LastName = signupUserRequest.LastName,
-                PhoneNumber = signupUserRequest.PhoneNumber
+                PhoneNumber = signupUserRequest.PhoneNumber,
+                // Rides the user-mutation event through to the activation email builder.
+                ClientId = signupUserRequest.ClientId,
+                RedirectUri = signupUserRequest.RedirectUri
             };
 
             var result = await _userManagementMutationService.CreateUserAsync(createUserRequest);
@@ -724,12 +735,19 @@ namespace Iam.DomainService.Accounts
 
             if (user.Active)
             {
-                await ProcessRecoverAccountAsync(user, AccountMailPurposes.RecoverAccount);
+                await ProcessRecoverAccountAsync(
+                    user,
+                    AccountMailPurposes.RecoverAccount,
+                    recoveryRequest.ClientId,
+                    recoveryRequest.RedirectUri);
             }
             else
             {
                 _logger.LogInformation("Forgot-password routed to activation for inactive user {UserId}", user.ItemId);
-                await ProcessInactiveAccountRecoveryAsync(user);
+                await ProcessInactiveAccountRecoveryAsync(
+                    user,
+                    recoveryRequest.ClientId,
+                    recoveryRequest.RedirectUri);
             }
 
             return new BaseAccountResponse
@@ -738,17 +756,27 @@ namespace Iam.DomainService.Accounts
             };
         }
 
-        private async Task ProcessInactiveAccountRecoveryAsync(User user)
+        private async Task ProcessInactiveAccountRecoveryAsync(User user, string? clientId = null, string? redirectUri = null)
         {
-            await SendReActivationAsync(user);
+            await SendReActivationAsync(user, clientId, redirectUri);
         }
 
-        public async Task<bool> ProcessRecoverAccountAsync(User user, string emailPurpose)
+        public async Task<bool> ProcessRecoverAccountAsync(
+            User user,
+            string emailPurpose,
+            string? clientId = null,
+            string? redirectUri = null)
         {
             var config = await _repository.GetIamConfigurationAsync();
             var key = Guid.NewGuid().ToString("n");
             var bc = BlocksContext.GetContext();
             var path = $"{(config.IsOidcEnabled ? IdpConstants.OidcRecoverRoute + bc.TenantId : config.RecoverAccountPath)}?code={key}&lang={user.Language}";
+
+            if (config.IsOidcEnabled)
+            {
+                path = await IamHelper.AppendOidcReturnContextAsync(path, clientId, redirectUri, _defaultOidcClientResolver);
+            }
+
             if (!IamHelper.TryBuildUserActionUrl(config, path, out var recoverAccountUrl, _httpContextAccessor, logger: _logger))
             {
                 _logger.LogWarning("Recover account URL could not be built for user {UserId}", user.ItemId);
@@ -946,12 +974,18 @@ namespace Iam.DomainService.Accounts
             };
         }
 
-        public async Task<bool> SendReActivationAsync(User user)
+        public async Task<bool> SendReActivationAsync(User user, string? clientId = null, string? redirectUri = null)
         {
             var config = await _repository.GetIamConfigurationAsync();
             var key = Guid.NewGuid().ToString("n");
             var bc = BlocksContext.GetContext();
             var path = $"{(config.IsOidcEnabled ? IdpConstants.OidcActivateRoute + bc.TenantId : config.AccountActivationPath)}?code={key}&lang={user.Language}";
+
+            if (config.IsOidcEnabled)
+            {
+                path = await IamHelper.AppendOidcReturnContextAsync(path, clientId, redirectUri, _defaultOidcClientResolver);
+            }
+
             if (!IamHelper.TryBuildUserActionUrl(config, path, out var accountActivationUri, _httpContextAccessor, logger: _logger))
             {
                 _logger.LogWarning("Activation URL could not be built for user {UserId}", user.ItemId);

@@ -243,6 +243,21 @@ export const buildOIDCNavigationUrl = (path: string): string => {
 };
 
 /**
+ * Adds `tenant_id` to a URL built by buildOIDCNavigationUrl.
+ *
+ * Needed on the activation and recovery pages, where the tenant arrives as a path
+ * segment (`/oidc/activate/:tenantId`) rather than a query parameter — so
+ * extractOIDCParams, which only reads the query string, never sees it. Without this
+ * the next page falls back to the default tenant.
+ */
+export const appendTenantId = (url: string, tenantId?: string): string => {
+  if (!tenantId || /[?&]tenant_id=/.test(url)) return url;
+
+  const separator = url.includes("?") ? "&" : "?";
+  return `${url}${separator}tenant_id=${encodeURIComponent(tenantId)}`;
+};
+
+/**
  * Gets current params as URLSearchParams for redirects
  */
 export const getCurrentOIDCParams = (): URLSearchParams => {

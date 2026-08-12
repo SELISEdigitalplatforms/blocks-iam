@@ -18,6 +18,12 @@ namespace Iam.DomainService.Accounts
         public string? LastName { get; set; }
         public string? PhoneNumber { get; set; }
 
+        // OIDC context of the application the user signed up from. Carried into the
+        // activation email so the "log in" step returns them to that application
+        // instead of the IAM root login. Absent for portal-initiated invites.
+        public string? ClientId { get; set; }
+        public string? RedirectUri { get; set; }
+
         // Optional org creation during signup
         public bool CreateOrganizationDuringSignup { get; set; }
         public string? OrganizationName { get; set; }

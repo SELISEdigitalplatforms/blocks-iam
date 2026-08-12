@@ -5,6 +5,10 @@ export interface ISignupByEmailPayload {
   captchaCode: string;
   createOrganizationDuringSignup?: boolean;
   organizationName?: string;
+  // Carried into the activation email so the user returns to the application they
+  // signed up from rather than the IAM root login.
+  clientId?: string;
+  redirectUri?: string;
 }
 export interface ISignupByEmailResponse {
   itemId: string | null;

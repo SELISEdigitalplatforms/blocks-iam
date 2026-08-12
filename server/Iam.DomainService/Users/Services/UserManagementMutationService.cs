@@ -31,6 +31,7 @@ namespace Iam.DomainService.Users
         private readonly ITenants _tenants;
         private readonly IHttpContextAccessor? _httpContextAccessor;
         private readonly IUserActivityDispatcher _userActivityDispatcher;
+        private readonly IDefaultOidcClientResolver? _defaultOidcClientResolver;
         public UserManagementMutationService(
             ILogger<UserManagementMutationService> logger,
             IValidator<CreateUserRequest> createValidator,
@@ -43,7 +44,8 @@ namespace Iam.DomainService.Users
             IUserActivityDispatcher userActivityDispatcher,
             IIdentityAccessManagementRepository? identityAccessManagementRepository = null,
             IResourceRepository? resourceRepository = null,
-            IHttpContextAccessor? httpContextAccessor = null
+            IHttpContextAccessor? httpContextAccessor = null,
+            IDefaultOidcClientResolver? defaultOidcClientResolver = null
         )
         {
             _logger = logger;
@@ -58,6 +60,7 @@ namespace Iam.DomainService.Users
             _identityAccessManagementRepository = identityAccessManagementRepository;
             _resourceRepository = resourceRepository;
             _httpContextAccessor = httpContextAccessor;
+            _defaultOidcClientResolver = defaultOidcClientResolver;
         }
 
         public async Task<BaseMutationResponse> CreateUserAsync(CreateUserRequest command)
@@ -88,7 +91,7 @@ namespace Iam.DomainService.Users
                 };
             }
 
-            await SendEvent(itemId, MutationEventType.Create);
+            await SendEvent(itemId, MutationEventType.Create, command.ClientId, command.RedirectUri);
             var bc = BlocksContext.GetContext();
 
             _logger.LogInformation("User creation end -- Success");
@@ -99,7 +102,11 @@ namespace Iam.DomainService.Users
             };
         }
 
-        private async Task SendEvent(string itemId, MutationEventType mutationEventType)
+        private async Task SendEvent(
+            string itemId,
+            MutationEventType mutationEventType,
+            string? clientId = null,
+            string? redirectUri = null)
         {
             _logger.LogInformation("User mutation event -- initiate");
             await _messageClient.SendToConsumerAsync(
@@ -109,7 +116,11 @@ namespace Iam.DomainService.Users
                     Payload = new UserMutationEvent
                     {
                         ItemId = itemId,
-                        Action = mutationEventType
+                        Action = mutationEventType,
+                        // The email is built by the consumer, which only loads the User —
+                        // so the originating app's OIDC context has to travel on the message.
+                        ClientId = clientId,
+                        RedirectUri = redirectUri
                     }
                 }
             );
@@ -600,17 +611,25 @@ namespace Iam.DomainService.Users
 
             var user = await _userRepository.GetUserByIdAsync(command.ItemId);
 
-            await SendActivationAsync(user);
+            await SendActivationAsync(user, command.ClientId, command.RedirectUri);
             await PublishUserActivityAsync(user, command.Action);
         }
 
-        private async Task<bool> SendActivationAsync(User user)
+        private async Task<bool> SendActivationAsync(User user, string? clientId = null, string? redirectUri = null)
         {
             _logger.LogInformation("Send Activation for {Id}", user.ItemId);
             var config = await _userRepository.GetIamConfigurationAsync();
             var key = Guid.NewGuid().ToString("n");
             var bc = BlocksContext.GetContext();
             var path = $"{(config.IsOidcEnabled ? IdpConstants.OidcActivateRoute + bc.TenantId : config.AccountActivationPath)}?code={key}&lang={user.Language}";
+
+            // Only the OIDC flow has a client to return to; the legacy activation path is
+            // left exactly as it was.
+            if (config.IsOidcEnabled)
+            {
+                path = await IamHelper.AppendOidcReturnContextAsync(path, clientId, redirectUri, _defaultOidcClientResolver);
+            }
+
             if (!IamHelper.TryBuildUserActionUrl(config, path, out var accountActivationUri, _httpContextAccessor, logger: _logger))
             {
                 _logger.LogWarning("Activation URL could not be built for user {Id}", user.ItemId);

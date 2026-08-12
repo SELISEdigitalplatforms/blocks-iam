@@ -13,6 +13,7 @@ import { useOidcUiConfig } from "@blocks-idp/authentication/hooks/use-oidc-ui-co
 import { PasswordStrengthChecker } from "../../components/password-strength-checker/password-strength-checker";
 import { ArrowRight, Eye, EyeOff, Loader } from "lucide-react";
 import { useOidcAuthAnimation } from "../oidc/oidc-auth-shell";
+import { appendTenantId, buildOIDCNavigationUrl } from "@blocks-idp/authentication/utils/oidc-utils";
 
 type ActivationFormProps = {
   code: string;
@@ -115,7 +116,10 @@ export const ActivationForm = ({ code, tenantId }: ActivationFormProps) => {
         return;
       }
       await animCtx?.succeedAnimation();
-      navigate("/activate-success");
+      // The activation link carries the originating app's clientId/redirect_uri; keep
+      // them so the success page's "Log in" re-enters that OIDC flow. tenantId is a
+      // path segment here, which buildOIDCNavigationUrl cannot see, so add it by hand.
+      navigate(appendTenantId(buildOIDCNavigationUrl("/oidc/activate-success"), tenantId));
     } catch (error: unknown) {
       resetCaptcha();
       shake();
