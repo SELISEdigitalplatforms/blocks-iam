@@ -55,22 +55,19 @@ export class OrganizationService {
     });
   };
 
-  // `tenantId` is only supplied by the anonymous signup page, which has no
-  // session to resolve the tenant from and must read the config of the tenant
-  // named in the OIDC request. Authenticated callers omit it and fall back to
-  // the http client's default Blocks key.
+  // `tenantId` is only supplied by the anonymous signup page, which has no session
+  // to resolve the tenant from and must name it explicitly — on the query string as
+  // well as the header, matching how signup-settings is called. Authenticated
+  // callers omit it and keep the http client's default Blocks key.
   getOrganizationConfig(tenantId?: string): Promise<IOrganizationConfigResponse | null> {
-    const headers: Record<string, string> = {};
-    if (tenantId) {
-      headers["X-Blocks-Key"] = tenantId;
+    if (!tenantId) {
+      return serviceInstances.idpService.get(`${ORGANIZATION_ENDPOINTS.GET_ORGANIZATION_CONFIG}`);
     }
-    const url = tenantId
-      ? `${ORGANIZATION_ENDPOINTS.GET_ORGANIZATION_CONFIG}?tenantId=${encodeURIComponent(tenantId)}`
-      : ORGANIZATION_ENDPOINTS.GET_ORGANIZATION_CONFIG;
+
     return serviceInstances.idpService.get(
-      url,
-      headers,
-      tenantId ? { skipBlocksKey: true } : undefined,
+      `${ORGANIZATION_ENDPOINTS.GET_ORGANIZATION_CONFIG}?tenantId=${encodeURIComponent(tenantId)}`,
+      { "X-Blocks-Key": tenantId },
+      { skipBlocksKey: true },
     );
   }
 
