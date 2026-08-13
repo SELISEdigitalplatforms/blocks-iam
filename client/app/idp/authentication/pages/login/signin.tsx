@@ -75,6 +75,25 @@ const SigninSkeleton = () => (
   </Card>
 );
 
+const SigninUnavailable = () => (
+  <Card className="flex h-full flex-col rounded border-solid border-background shadow-none md:min-w-[448px] md:border-[#95ADC4] lg:max-w-md">
+    <CardHeader className="text-center">
+      <CardTitle className="text-3xl">Blocks IAM</CardTitle>
+      <CardDescription className="text-xl text-foreground">Log in</CardDescription>
+    </CardHeader>
+    <CardContent className="flex flex-1 flex-col justify-center gap-3 text-center">
+      <p className="text-medium-emphasis">
+        This sign-in link is missing the application it belongs to, so there is nothing to
+        sign in to from here.
+      </p>
+      <p className="text-sm text-low-emphasis">
+        Open the application you were invited to and sign in from there, or contact your
+        administrator.
+      </p>
+    </CardContent>
+  </Card>
+);
+
 export const Signin = ({ ssoError, mode = "default", oidcContext }: SigninProps) => {
   // Signup settings are tenant-scoped: without the tenant from the OIDC request
   // this reads the default tenant's config instead of the one being signed into.
@@ -94,13 +113,19 @@ export const Signin = ({ ssoError, mode = "default", oidcContext }: SigninProps)
     return <SigninSkeleton />;
   }
 
-  if (!loginOption || loginOption.allowedGrantTypes?.length < 1) return null;
+  const hasPassword = !!loginOption?.allowedGrantTypes?.includes(GRANT_TYPES.password);
+  const hasSocial = !!loginOption?.allowedGrantTypes?.includes(GRANT_TYPES.social);
+
+  // A tenant configured only for authorization_code / client_credential has nothing
+  // this card can render. Rendering it anyway produced a header over an empty body —
+  // the dead end an invitee hits when a confirmation page falls back to /oidc/login
+  // with no client to authorize against. Say so instead of showing a blank card.
+  if (!loginOption || !(hasPassword || hasSocial)) {
+    return <SigninUnavailable />;
+  }
 
   const showSignUp =
-    (signUpSetting?.isSignUpEnable ?? false) &&
-    mode !== "oidc" &&
-    (loginOption?.allowedGrantTypes?.includes(GRANT_TYPES.password) ||
-      loginOption?.allowedGrantTypes?.includes(GRANT_TYPES.social));
+    (signUpSetting?.isSignUpEnable ?? false) && mode !== "oidc" && (hasPassword || hasSocial);
 
   const oidcQuery = oidcTenantId
     ? buildOIDCNavigationUrl("/oidc/signup").split("?")[1] || ""
@@ -118,20 +143,15 @@ export const Signin = ({ ssoError, mode = "default", oidcContext }: SigninProps)
       </CardHeader>
       <CardContent className="flex flex-1 flex-col justify-between">
         <div className="flex flex-1 flex-col justify-center">
-          {loginOption?.allowedGrantTypes.includes(GRANT_TYPES.password) && (
-            <SigninForm mode={mode} oidcContext={oidcContext} />
-          )}
-          {loginOption?.allowedGrantTypes.includes(GRANT_TYPES.password) &&
-            loginOption?.allowedGrantTypes.includes(GRANT_TYPES.social) && (
+          {hasPassword && <SigninForm mode={mode} oidcContext={oidcContext} />}
+          {hasPassword && hasSocial && (
             <div className="my-2 mt-4 flex items-center">
               <hr className="flex-grow border" />
               <span className="mx-2 text-xs text-low-emphasis">OR</span>
               <hr className="flex-grow border" />
             </div>
           )}
-          {loginOption?.allowedGrantTypes.includes(GRANT_TYPES.social) && (
-            <SsoSignin loginOption={loginOption} mode={mode} />
-          )}
+          {hasSocial && <SsoSignin loginOption={loginOption} mode={mode} />}
         </div>
         {showSignUp && (
           <div className="flex items-center justify-center">

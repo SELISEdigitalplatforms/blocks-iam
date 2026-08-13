@@ -96,12 +96,15 @@ export class AuthService {
     if (tenantId) {
       headers["X-Blocks-Key"] = tenantId;
     }
-    const { createOrganizationDuringSignup, organizationName, ...rest } = payload;
+    const { createOrganizationDuringSignup, organizationName, clientId, redirectUri, ...rest } =
+      payload;
     return serviceInstances.idpService.post(
       AUTH_ENDPOINTS.SIGNUP,
       {
         ...rest,
         isSsoSignup: false,
+        ...(clientId ? { clientId } : {}),
+        ...(redirectUri ? { redirectUri } : {}),
         // Only sent when the tenant asked for an org name — the server rejects
         // the flag without a name, so never send a half-filled pair.
         ...(createOrganizationDuringSignup && organizationName

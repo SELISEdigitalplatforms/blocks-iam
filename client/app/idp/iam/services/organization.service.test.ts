@@ -103,11 +103,8 @@ describe("OrganizationService", () => {
 
       const result = await service.getOrganizationConfig();
 
-      expect(http.get).toHaveBeenCalledWith(
-        ORGANIZATION_ENDPOINTS.GET_ORGANIZATION_CONFIG,
-        {},
-        undefined,
-      );
+      // Authenticated callers name no tenant and keep the http client's default key.
+      expect(http.get).toHaveBeenCalledWith(ORGANIZATION_ENDPOINTS.GET_ORGANIZATION_CONFIG);
       expect(result).toEqual(mockOrganizationConfigResponse);
     });
 

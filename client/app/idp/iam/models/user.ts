@@ -243,6 +243,10 @@ export interface IAccountRecoverPayload {
   email: string;
   captchaCode?: string;
   tenantId?: string;
+  // Carried into the recovery email so the post-reset "log in" returns the user to
+  // the application that sent them, not the IAM root login.
+  clientId?: string;
+  redirectUri?: string;
 }
 export interface IAccountRecoverResponse {
   errors: unknown | null;
@@ -279,6 +283,10 @@ export interface IActivationCodeValidationResponse {
   errors: unknown | null;
   isSuccess: boolean;
   userId: string | null;
+  // Present when the account already has them (self-service signup); empty for
+  // invited users, who are asked on the activation form.
+  firstName?: string;
+  lastName?: string;
 }
 
 export interface ISaveSignUpSettingPayload {

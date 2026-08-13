@@ -98,7 +98,7 @@ describe("ActivationForm", () => {
       ),
     );
     await vi.waitFor(() =>
-      expect(h.navigateMock).toHaveBeenCalledWith("/activate-success"),
+      expect(h.navigateMock).toHaveBeenCalledWith(expect.stringContaining("/oidc/activate-success")),
     );
   });
 
@@ -118,6 +118,6 @@ describe("ActivationForm", () => {
     fireEvent.submit(container.querySelector("form") as HTMLFormElement);
     await vi.waitFor(() => expect(failAnimation).toHaveBeenCalledWith("Bad code"));
     expect(h.resetCaptcha).toHaveBeenCalled();
-    expect(h.navigateMock).not.toHaveBeenCalledWith("/activate-success");
+    expect(h.navigateMock).not.toHaveBeenCalledWith(expect.stringContaining("/oidc/activate-success"));
   });
 });

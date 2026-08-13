@@ -4,6 +4,11 @@ import { describe, expect, it, vi } from "vitest";
 
 vi.mock("@blocks-idp/authentication/utils/oidc-utils", () => ({
   buildOIDCNavigationUrl: (path: string) => `${path}?tenant=t1`,
+  // Used by LoginReturnLink, which this page renders for "Go to login".
+  resolveLoginReturnTarget: (isOidc: boolean) => ({
+    href: isOidc ? "/oidc/login?tenant=t1" : "/login",
+    external: false,
+  }),
 }));
 vi.mock("@blocks-idp/authentication/components/success-confirmation-card-header", () => ({
   SuccessConfirmationCardHeader: () => <div data-testid="card-header" />,

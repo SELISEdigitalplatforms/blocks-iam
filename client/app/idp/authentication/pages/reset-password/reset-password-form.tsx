@@ -1,5 +1,5 @@
 import { getRuntimeEnv } from "@/lib/runtime-env";
-import { Link } from "react-router";
+import { LoginReturnLink } from "@blocks-idp/authentication/components/login-return-link";
 import { useForm } from "react-hook-form";
 import {
   resetPasswordFormSchema,
@@ -18,6 +18,7 @@ import { PasswordStrengthChecker } from "@blocks-idp/authentication/components/p
 import { Switch } from "@/components/ui-kits/switch/switch";
 import { ArrowRight, Eye, EyeOff, Loader } from "lucide-react";
 import { useOidcAuthAnimation } from "../oidc/oidc-auth-shell";
+import { appendTenantId, buildOIDCNavigationUrl } from "@blocks-idp/authentication/utils/oidc-utils";
 
 type ResetPasswordFormProps = { code: string; tenantId?: string };
 
@@ -106,7 +107,9 @@ export const ResetPasswordForm = ({ code, tenantId }: ResetPasswordFormProps) =>
         return;
       }
       await animCtx?.succeedAnimation();
-      navigate("/reset-password-success");
+      // Same as activation: keep the recovery link's OIDC context so "Log in" returns
+      // the user to the application that sent them here.
+      navigate(appendTenantId(buildOIDCNavigationUrl("/oidc/reset-password-success"), tenantId));
     } catch (error) {
       resetCaptcha();
       shake();
@@ -229,9 +232,9 @@ export const ResetPasswordForm = ({ code, tenantId }: ResetPasswordFormProps) =>
         </button>
       </form>
 
-      <Link to="/login" className="oidc-sci-fi-link text-sm text-center">
+      <LoginReturnLink className="oidc-sci-fi-link text-sm text-center">
         Back to login
-      </Link>
+      </LoginReturnLink>
     </div>
   );
 };

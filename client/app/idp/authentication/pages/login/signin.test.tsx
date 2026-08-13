@@ -49,11 +49,20 @@ describe("Signin", () => {
     expect(screen.queryByTestId("signin-form")).not.toBeInTheDocument();
   });
 
-  it("renders nothing when there are no allowed grant types", () => {
+  it("explains the dead end when there are no allowed grant types", () => {
     h.loginOption = { allowedGrantTypes: [] };
     const { container } = renderSignin();
     expect(container.querySelector('[class*="animate-pulse"]')).toBeNull();
     expect(screen.queryByTestId("signin-form")).not.toBeInTheDocument();
+    expect(screen.getByText(/missing the application it belongs to/i)).toBeInTheDocument();
+  });
+
+  it("explains the dead end when the tenant allows no interactive grant type", () => {
+    h.loginOption = { allowedGrantTypes: ["authorization_code", "client_credential"] };
+    renderSignin();
+    expect(screen.queryByTestId("signin-form")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("sso-signin")).not.toBeInTheDocument();
+    expect(screen.getByText(/missing the application it belongs to/i)).toBeInTheDocument();
   });
 
   it("renders the password form, SSO block and OR divider", () => {

@@ -155,7 +155,9 @@ describe("ResetPasswordForm", () => {
       ),
     );
     await vi.waitFor(() =>
-      expect(h.navigateMock).toHaveBeenCalledWith("/reset-password-success"),
+      expect(h.navigateMock).toHaveBeenCalledWith(
+        expect.stringContaining("/oidc/reset-password-success"),
+      ),
     );
   });
 

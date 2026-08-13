@@ -243,6 +243,75 @@ export const buildOIDCNavigationUrl = (path: string): string => {
 };
 
 /**
+ * The origin of the application a `redirect_uri` belongs to, or undefined if it isn't
+ * a usable http(s) URL.
+ *
+ * Used by the activation and recovery confirmation pages. Those are reached from an
+ * emailed link, which carries clientId and redirect_uri but can never carry `state`,
+ * `nonce` or a PKCE verifier — those are minted per-request by the application when it
+ * starts a flow. Sending the user to IAM's login from there produces an authorization
+ * code for a flow the application never began, and its callback correctly rejects the
+ * response as missing `state`. So we hand the user back to the application itself and
+ * let it start a complete, valid OIDC request of its own.
+ */
+export const getApplicationOrigin = (redirectUri?: string): string | undefined => {
+  if (!redirectUri) return undefined;
+
+  try {
+    const url = new URL(redirectUri);
+    if (url.protocol !== "https:" && url.protocol !== "http:") return undefined;
+    return url.origin;
+  } catch {
+    return undefined;
+  }
+};
+
+/**
+ * Where a "back to login" / "log in" control should send the user.
+ *
+ * `external` targets are the originating application's origin and need a real document
+ * navigation (`<a href>`); internal ones stay inside IAM and can use react-router.
+ *
+ * Every page reached from an emailed activation or recovery link can end in a state
+ * whose only way out is a login link — invalid code, expired code, success. A bare
+ * `/login` there drops a tenant user on IAM's own card, where their credentials do not
+ * belong and, for an authorization_code-only tenant, no form renders at all. When the
+ * link carried the application's `redirect_uri` we know where the user actually came
+ * from, so send them back there and let the application open its own OIDC request —
+ * see getApplicationOrigin for why IAM must not start one on its behalf.
+ */
+export const resolveLoginReturnTarget = (
+  isOidc: boolean,
+): { href: string; external: boolean } => {
+  const { redirectUri } = extractOIDCParams();
+  const applicationOrigin = getApplicationOrigin(redirectUri);
+
+  if (applicationOrigin) {
+    return { href: applicationOrigin, external: true };
+  }
+
+  return {
+    href: isOidc ? buildOIDCNavigationUrl("/oidc/login") : "/login",
+    external: false,
+  };
+};
+
+/**
+ * Adds `tenant_id` to a URL built by buildOIDCNavigationUrl.
+ *
+ * Needed on the activation and recovery pages, where the tenant arrives as a path
+ * segment (`/oidc/activate/:tenantId`) rather than a query parameter — so
+ * extractOIDCParams, which only reads the query string, never sees it. Without this
+ * the next page falls back to the default tenant.
+ */
+export const appendTenantId = (url: string, tenantId?: string): string => {
+  if (!tenantId || /[?&]tenant_id=/.test(url)) return url;
+
+  const separator = url.includes("?") ? "&" : "?";
+  return `${url}${separator}tenant_id=${encodeURIComponent(tenantId)}`;
+};
+
+/**
  * Gets current params as URLSearchParams for redirects
  */
 export const getCurrentOIDCParams = (): URLSearchParams => {

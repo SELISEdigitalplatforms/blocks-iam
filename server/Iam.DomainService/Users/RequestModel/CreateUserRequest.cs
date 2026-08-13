@@ -28,6 +28,11 @@ namespace Iam.DomainService.Users
         public List<string> Permissions { get; set; } = new();
         public string? OrganizationId { get; set; } = "default";
         public Dictionary<string, object> Attributes { get; set; } = new Dictionary<string, object>(); // For any additional info that doesn't fit into existing properties
+
+        // OIDC context of the originating application, forwarded onto the user-mutation
+        // event so the activation email can link back to it. Not persisted on the user.
+        public string? ClientId { get; set; }
+        public string? RedirectUri { get; set; }
     }
 
 }

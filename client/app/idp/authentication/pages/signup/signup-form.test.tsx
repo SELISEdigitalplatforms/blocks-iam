@@ -95,7 +95,9 @@ describe("SignupForm", () => {
       ),
     );
     await waitFor(() =>
-      expect(h.navigate).toHaveBeenCalledWith("/signup-email-sent?email=jane@example.com"),
+      expect(h.navigate).toHaveBeenCalledWith(
+        expect.stringContaining("/oidc/signup-email-sent"),
+      ),
     );
   });
 
