@@ -1,5 +1,5 @@
 import { getRuntimeEnv } from "@/lib/runtime-env";
-import { Link } from "react-router";
+import { LoginReturnLink } from "@blocks-idp/authentication/components/login-return-link";
 import { useForm } from "react-hook-form";
 import {
   resetPasswordFormSchema,
@@ -232,9 +232,9 @@ export const ResetPasswordForm = ({ code, tenantId }: ResetPasswordFormProps) =>
         </button>
       </form>
 
-      <Link to="/login" className="oidc-sci-fi-link text-sm text-center">
+      <LoginReturnLink className="oidc-sci-fi-link text-sm text-center">
         Back to login
-      </Link>
+      </LoginReturnLink>
     </div>
   );
 };

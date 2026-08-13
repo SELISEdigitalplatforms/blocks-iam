@@ -267,6 +267,36 @@ export const getApplicationOrigin = (redirectUri?: string): string | undefined =
 };
 
 /**
+ * Where a "back to login" / "log in" control should send the user.
+ *
+ * `external` targets are the originating application's origin and need a real document
+ * navigation (`<a href>`); internal ones stay inside IAM and can use react-router.
+ *
+ * Every page reached from an emailed activation or recovery link can end in a state
+ * whose only way out is a login link — invalid code, expired code, success. A bare
+ * `/login` there drops a tenant user on IAM's own card, where their credentials do not
+ * belong and, for an authorization_code-only tenant, no form renders at all. When the
+ * link carried the application's `redirect_uri` we know where the user actually came
+ * from, so send them back there and let the application open its own OIDC request —
+ * see getApplicationOrigin for why IAM must not start one on its behalf.
+ */
+export const resolveLoginReturnTarget = (
+  isOidc: boolean,
+): { href: string; external: boolean } => {
+  const { redirectUri } = extractOIDCParams();
+  const applicationOrigin = getApplicationOrigin(redirectUri);
+
+  if (applicationOrigin) {
+    return { href: applicationOrigin, external: true };
+  }
+
+  return {
+    href: isOidc ? buildOIDCNavigationUrl("/oidc/login") : "/login",
+    external: false,
+  };
+};
+
+/**
  * Adds `tenant_id` to a URL built by buildOIDCNavigationUrl.
  *
  * Needed on the activation and recovery pages, where the tenant arrives as a path

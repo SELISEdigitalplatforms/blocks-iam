@@ -5,6 +5,7 @@ import { SuccessConfirmationCardHeader } from "@blocks-idp/authentication/compon
 import { SuccessConfirmationIcon } from "@blocks-idp/authentication/components/success-confirmation-icon"
 import { ChevronRight, HelpCircle, Mail, RotateCw } from "lucide-react"
 import { Link, useLocation } from "react-router"
+import { LoginReturnLink } from "@blocks-idp/authentication/components/login-return-link"
 
 type ForgotEmailSentProps = {
   email: string
@@ -88,13 +89,10 @@ export const ForgotEmailSent = ({ email }: ForgotEmailSentProps) => {
           <div className="space-y-5 text-center sm:space-y-6">
             <div>
               <p className="text-sm text-muted-foreground">Remember your password?</p>
-              <Link
-                to="/login"
-                className="mt-2 inline-flex min-h-11 items-center justify-center gap-0.5 text-sm font-semibold text-primary transition-colors hover:text-primary/80 md:min-h-0"
-              >
+              <LoginReturnLink className="mt-2 inline-flex min-h-11 items-center justify-center gap-0.5 text-sm font-semibold text-primary transition-colors hover:text-primary/80 md:min-h-0">
                 Go to login
                 <ChevronRight className="h-4 w-4" aria-hidden />
-              </Link>
+              </LoginReturnLink>
             </div>
 
             <p className="flex flex-col items-center justify-center gap-1 text-sm text-muted-foreground sm:flex-row sm:flex-wrap sm:gap-1.5">

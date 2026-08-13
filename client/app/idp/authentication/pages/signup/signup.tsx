@@ -3,7 +3,7 @@ import { useGetLoginOptions } from "@blocks-idp/authentication/hooks/use-auth";
 import { useGetSignUpSetting } from "@blocks-idp/iam/hooks/use-user";
 import { useGetSignupOrganizationConfig } from "@blocks-idp/iam/hooks/use-organization";
 import { Skeleton } from "@/components/ui-kits/skeleton/skeleton";
-import { Link } from "react-router";
+import { LoginReturnLink } from "@blocks-idp/authentication/components/login-return-link";
 import { OidcAuthShell } from "@blocks-idp/authentication/pages/oidc/oidc-auth-shell";
 import { SIGNUP_PANEL } from "@blocks-idp/authentication/pages/oidc/oidc-panel-config";
 
@@ -51,7 +51,7 @@ export const Signup = ({ tenantId }: { tenantId?: string } = {}) => {
       footerNote={
         <p className="text-xs" style={{ color: "var(--muted)", fontFamily: "system-ui, sans-serif" }}>
           Already a member?{" "}
-          <Link to="/login" className="oidc-sci-fi-link">Sign in</Link>
+          <LoginReturnLink className="oidc-sci-fi-link">Sign in</LoginReturnLink>
         </p>
       }
     >
