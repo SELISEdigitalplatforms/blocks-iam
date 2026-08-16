@@ -5,6 +5,7 @@ using Iam.DomainService.Services;
 using Iam.DomainService.Shared.Entities;
 using MongoDB.Bson;
 using MongoDB.Driver;
+using System.Text.RegularExpressions;
 
 namespace Iam.DomainService.Users
 {
@@ -177,8 +178,11 @@ namespace Iam.DomainService.Users
 
             if (!string.IsNullOrWhiteSpace(filter.Name))
             {
+                // searchTerm stays unescaped: the Contains below is a literal
+                // comparison, so backslashes would have to be typed to match.
+                // Only the regex form of the term is escaped.
                 var searchTerm = filter.Name.Trim().ToLower();
-                var regex = new BsonRegularExpression(searchTerm, "i");
+                var regex = new BsonRegularExpression(Regex.Escape(searchTerm), "i");
 
                 var orFilters = new List<FilterDefinition<User>>
                 {
@@ -191,7 +195,14 @@ namespace Iam.DomainService.Users
             }
 
             if (!string.IsNullOrWhiteSpace(filter.Email))
-                filters.Add(builder.Eq(u => u.Email, NormalizeEmail(filter.Email)));
+            {
+                // Substring match, so a partial address finds a user the same way
+                // the Name filter above already does. Exact-match email lookups
+                // (GetUserByEmailAsync, login) go through a different path and are
+                // unaffected.
+                var emailTerm = NormalizeEmail(filter.Email);
+                filters.Add(builder.Regex(u => u.Email, new BsonRegularExpression(Regex.Escape(emailTerm), "i")));
+            }
 
             if (filter.Status?.Active == true)
                 filters.Add(builder.Eq(u => u.Active, true));
