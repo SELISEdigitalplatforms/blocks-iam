@@ -23,6 +23,20 @@ namespace Authentication.DomainService.Authentication
     /// </summary>
     public sealed class OidcLoginOrchestrator
     {
+        private const string DefaultScope = "openid profile email offline_access";
+
+        /// <summary>
+        /// Falls back to the default scope when the caller supplies none.
+        ///
+        /// Deliberately whitespace-aware rather than a null check: the login form posts
+        /// `scope: ""` when it has no scope in the URL, and an empty string slips past `??`
+        /// only to be rejected downstream by OidcAuthRequestValidator as "scope is
+        /// required". That happens whenever the login page is reached other than through a
+        /// full authorize request — e.g. the "log in" link on an activation email.
+        /// </summary>
+        private static string ResolveScope(string? scope) =>
+            string.IsNullOrWhiteSpace(scope) ? DefaultScope : scope;
+
         private readonly IAuthenticationRepository _authenticationRepository;
         private readonly IMfaChallengeIssuer _mfaChallengeIssuer;
         private readonly IAuthenticationService _authenticationService;
@@ -136,7 +150,7 @@ namespace Authentication.DomainService.Authentication
                 request.ClientId ?? string.Empty,
                 "code",
                 request.RedirectUri ?? string.Empty,
-                request.Scope ?? "openid profile email offline_access",
+                ResolveScope(request.Scope),
                 request.State ?? string.Empty,
                 request.Nonce ?? string.Empty,
                 request.CodeChallenge ?? string.Empty,
@@ -263,7 +277,7 @@ namespace Authentication.DomainService.Authentication
                 UserId = user.ItemId,
                 ClientId = request.ClientId ?? string.Empty,
                 RedirectUri = request.RedirectUri ?? string.Empty,
-                Scope = request.Scope ?? "openid profile email offline_access",
+                Scope = ResolveScope(request.Scope),
                 State = request.State ?? string.Empty,
                 Nonce = request.Nonce ?? string.Empty,
                 CodeChallenge = request.CodeChallenge ?? string.Empty,
@@ -376,7 +390,7 @@ namespace Authentication.DomainService.Authentication
                 mfaContext.ClientId ?? string.Empty,
                 "code",
                 mfaContext.RedirectUri ?? string.Empty,
-                mfaContext.Scope ?? "openid profile email offline_access",
+                ResolveScope(mfaContext.Scope),
                 mfaContext.State ?? string.Empty,
                 mfaContext.Nonce ?? string.Empty,
                 mfaContext.CodeChallenge ?? string.Empty,

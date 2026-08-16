@@ -13,13 +13,22 @@ import { useOidcUiConfig } from "@blocks-idp/authentication/hooks/use-oidc-ui-co
 import { PasswordStrengthChecker } from "../../components/password-strength-checker/password-strength-checker";
 import { ArrowRight, Eye, EyeOff, Loader } from "lucide-react";
 import { useOidcAuthAnimation } from "../oidc/oidc-auth-shell";
+import { appendTenantId, buildOIDCNavigationUrl } from "@blocks-idp/authentication/utils/oidc-utils";
 
 type ActivationFormProps = {
   code: string;
   tenantId?: string;
+  /** Prefilled from the account when it already has them — see validate-activation. */
+  firstName?: string;
+  lastName?: string;
 };
 
-export const ActivationForm = ({ code, tenantId }: ActivationFormProps) => {
+export const ActivationForm = ({
+  code,
+  tenantId,
+  firstName,
+  lastName,
+}: ActivationFormProps) => {
   const navigate = useNavigate();
   const animCtx = useOidcAuthAnimation();
   const formRef = useRef<HTMLFormElement>(null);
@@ -28,7 +37,14 @@ export const ActivationForm = ({ code, tenantId }: ActivationFormProps) => {
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
 
   const form = useForm({
-    defaultValues: activationFormDefaultValue,
+    // The parent only renders this form once validate-activation has resolved, so these
+    // are already settled on first render — no reset needed. They stay editable, and
+    // whatever is submitted here wins over what the account currently holds.
+    defaultValues: {
+      ...activationFormDefaultValue,
+      firstname: firstName || activationFormDefaultValue.firstname,
+      lastname: lastName || activationFormDefaultValue.lastname,
+    },
     mode: "all",
     reValidateMode: "onChange",
     resolver: zodResolver(activationFormSchema),
@@ -121,7 +137,10 @@ export const ActivationForm = ({ code, tenantId }: ActivationFormProps) => {
         return;
       }
       await animCtx?.succeedAnimation();
-      navigate("/activate-success");
+      // The activation link carries the originating app's clientId/redirect_uri; keep
+      // them so the success page's "Log in" re-enters that OIDC flow. tenantId is a
+      // path segment here, which buildOIDCNavigationUrl cannot see, so add it by hand.
+      navigate(appendTenantId(buildOIDCNavigationUrl("/oidc/activate-success"), tenantId));
     } catch (error: unknown) {
       resetCaptcha();
       shake();

@@ -49,6 +49,10 @@ namespace Authentication.DomainService.Utilities
             serviceCollection.AddSingleton<IAuthenticationDomainService, AuthenticationDomainService>();
             serviceCollection.AddSingleton<IAuthenticationRepository, AuthenticationRepository>();
 
+            // Satisfies Iam.DomainService's account-action email builders, which need the
+            // tenant's default OIDC client but cannot reference this assembly.
+            serviceCollection.AddSingleton<IDefaultOidcClientResolver, DefaultOidcClientResolver>();
+
             serviceCollection.AddSingleton<IOAuthJwtAccessTokenManager, OAuthJwtAccessTokenManager>();
             serviceCollection.AddSingleton<IJwtAccessTokenProvider, JwtAccessTokenProvider>();
 

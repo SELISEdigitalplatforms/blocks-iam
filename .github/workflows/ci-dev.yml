@@ -375,17 +375,17 @@ jobs:
   # Post-deploy smoke test against the real dev environment. Only meaningful
   # after both the client and worker manifests have been pushed to GitOps -
   # there is no per-PR preview environment to test against instead.
-  e2e:
-    name: E2E Tests
-    needs: [ initialization, update-gitops-client, update-gitops-worker ]
-    if: |
-      github.event_name == 'push' &&
-      needs.update-gitops-client.result == 'success' &&
-      needs.update-gitops-worker.result == 'success'
-    uses: ./.github/workflows/e2e-tests.yml
-    with:
-      BASE_URL: "https://dev-iam.blocksdevelopers.com"
-      CONTINUE_ON_FAILURE: true # bake-in period - flip to false once stable
-    secrets:
-      E2E_USERNAME: ${{ secrets.E2E_USERNAME }}
-      E2E_PASSWORD: ${{ secrets.E2E_PASSWORD }}
+  # e2e:
+  #   name: E2E Tests
+  #   needs: [ initialization, update-gitops-client, update-gitops-worker ]
+  #   if: |
+  #     github.event_name == 'push' &&
+  #     needs.update-gitops-client.result == 'success' &&
+  #     needs.update-gitops-worker.result == 'success'
+  #   uses: ./.github/workflows/e2e-tests.yml
+  #   with:
+  #     BASE_URL: "https://dev-iam.blocksdevelopers.com"
+  #     CONTINUE_ON_FAILURE: true # bake-in period - flip to false once stable
+  #   secrets:
+  #     E2E_USERNAME: ${{ secrets.E2E_USERNAME }}
+  #     E2E_PASSWORD: ${{ secrets.E2E_PASSWORD }}

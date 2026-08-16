@@ -210,7 +210,10 @@ export const OidcLoginForm = ({
         password: values.password,
         client_id: clientId,
         redirect_uri: redirectUri,
-        scope: scope || "",
+        // Omitted rather than sent empty when the page was reached without a full
+        // authorize request (e.g. the "log in" link on an activation email) — an empty
+        // scope is rejected as missing, whereas an absent one takes the server default.
+        ...(scope ? { scope } : {}),
         state: state || "",
         nonce: nonce || "",
         code_challenge: effectiveCodeChallenge,

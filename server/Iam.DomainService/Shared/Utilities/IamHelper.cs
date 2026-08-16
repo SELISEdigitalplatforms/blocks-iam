@@ -1,4 +1,5 @@
 using Iam.DomainService.Dtos;
+using Iam.DomainService.Services;
 using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.Logging;
 
@@ -30,6 +31,41 @@ namespace Iam.DomainService.Utilities
             return TryGetBaseUrl(request.Headers["Origin"].ToString())
                    ?? TryGetBaseUrl(request.Headers["Referer"].ToString())
                    ?? string.Empty;
+        }
+
+        /// <summary>
+        /// Appends the originating application's OIDC context to an activation or recovery
+        /// path, so the confirmation page can hand the user back to that application
+        /// instead of the IAM root login.
+        ///
+        /// Falls back to the tenant's default client when the caller had no context of its
+        /// own (portal invites). Returns the path unchanged when neither is available —
+        /// a context-free link is still a working link, just one that lands on IAM.
+        /// </summary>
+        public static async Task<string> AppendOidcReturnContextAsync(
+            string path,
+            string? clientId,
+            string? redirectUri,
+            IDefaultOidcClientResolver? defaultClientResolver)
+        {
+            if (string.IsNullOrWhiteSpace(clientId) || string.IsNullOrWhiteSpace(redirectUri))
+            {
+                var fallback = defaultClientResolver == null
+                    ? null
+                    : await defaultClientResolver.GetDefaultClientAsync();
+
+                if (fallback == null)
+                {
+                    return path;
+                }
+
+                clientId = fallback.ClientId;
+                redirectUri = fallback.RedirectUri;
+            }
+
+            var separator = path.Contains('?', StringComparison.Ordinal) ? "&" : "?";
+            return $"{path}{separator}clientId={Uri.EscapeDataString(clientId)}"
+                   + $"&redirect_uri={Uri.EscapeDataString(redirectUri)}";
         }
 
         public static bool TryBuildUserActionUrl(

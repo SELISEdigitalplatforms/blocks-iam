@@ -2,8 +2,8 @@ import { Button } from "@/components/ui-kits/button/button"
 import { Separator } from "@/components/ui-kits/separator/separator"
 import { SuccessConfirmationCardHeader } from "@blocks-idp/authentication/components/success-confirmation-card-header"
 import { SuccessConfirmationIcon } from "@blocks-idp/authentication/components/success-confirmation-icon"
+import { LoginReturnLink } from "@blocks-idp/authentication/components/login-return-link"
 import { HelpCircle, LogIn } from "lucide-react"
-import { Link } from "react-router"
 
 const SUPPORT_URL = "https://docs.seliseblocks.com/"
 
@@ -50,14 +50,13 @@ export const ResetPasswordSuccess = () => {
               className="h-11 w-full shrink-0 rounded-full border border-primary bg-transparent px-5 text-sm font-semibold text-primary shadow-none hover:bg-primary/5 hover:text-primary md:h-10 md:w-auto md:px-6"
               asChild
             >
-              <Link
-                to="/login"
+              <LoginReturnLink
                 aria-label="Go to login"
                 className="inline-flex w-full items-center justify-center gap-2 md:w-auto"
               >
                 <LogIn className="h-4 w-4 shrink-0" aria-hidden />
                 Log in
-              </Link>
+              </LoginReturnLink>
             </Button>
           </div>
 

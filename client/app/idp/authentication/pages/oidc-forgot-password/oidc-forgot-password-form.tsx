@@ -1,5 +1,6 @@
 import { getRuntimeEnv } from "@/lib/runtime-env";
-import { Link, useSearchParams } from "react-router";
+import { useSearchParams } from "react-router";
+import { LoginReturnLink } from "@blocks-idp/authentication/components/login-return-link";
 import { useForm } from "react-hook-form";
 import { forgotPasswordFormSchema, forgotPasswordFormDefaultValue } from "./utils";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -11,6 +12,7 @@ import { useAccountRecover } from "@blocks-idp/iam/hooks/use-account";
 import { isErrorWithErrors } from "@/lib/error";
 import { useCaptcha } from "@blocks-idp/captcha/hooks/use-captcha";
 import { useOidcUiConfig } from "@blocks-idp/authentication/hooks/use-oidc-ui-config";
+import { extractOIDCParams } from "@blocks-idp/authentication/utils/oidc-utils";
 import { ArrowRight } from "lucide-react";
 import { Skeleton } from "@/components/ui-kits/skeleton/skeleton";
 import {
@@ -51,7 +53,10 @@ export const OIDCForgotPasswordForm = () => {
   const onSubmitHandler = async (values: z.infer<typeof forgotPasswordFormSchema>) => {
     setServerError(null);
     try {
-      const res = await mutateAsync({ ...values, captchaCode, tenantId });
+      // Named here because the recovery email is built server-side, after this page
+      // is gone — same reason as signup.
+      const { clientId, redirectUri } = extractOIDCParams();
+      const res = await mutateAsync({ ...values, captchaCode, tenantId, clientId, redirectUri });
       if (!res.isSuccess) {
         resetCaptcha();
         const msg = Array.isArray(res.errors)
@@ -138,9 +143,9 @@ export const OIDCForgotPasswordForm = () => {
         </form>
       </Form>
 
-      <Link to="/login" className="oidc-sci-fi-link text-sm text-center">
+      <LoginReturnLink className="oidc-sci-fi-link text-sm text-center">
         Back to login
-      </Link>
+      </LoginReturnLink>
     </div>
   );
 };

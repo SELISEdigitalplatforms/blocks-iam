@@ -21,7 +21,7 @@ import { ArrowRight, Loader } from "lucide-react";
 import { SsoSignin } from "../login/sso-signin";
 import { buildSignupFormSchema, signupFormDefaultValue, signupFormSchema } from "./utils";
 import { useOidcAuthAnimation } from "@blocks-idp/authentication/pages/oidc/oidc-auth-shell";
-import { buildOIDCNavigationUrl } from "@blocks-idp/authentication/utils/oidc-utils";
+import { buildOIDCNavigationUrl, extractOIDCParams } from "@blocks-idp/authentication/utils/oidc-utils";
 
 // Server-side org failures that belong on the organization field rather than in
 // the generic error banner.
@@ -105,10 +105,15 @@ export const SignupForm = ({
     setServerError(null);
     animCtx?.startAnimation();
     try {
+      // The activation email is built server-side, long after this page is gone, so the
+      // originating application has to be named here for the user to get back to it.
+      const { clientId, redirectUri } = extractOIDCParams();
       const res = await mutateAsync({
         ...values,
         captchaCode,
         tenantId,
+        clientId,
+        redirectUri,
         createOrganizationDuringSignup: collectOrganizationName,
         organizationName: collectOrganizationName ? values.organizationName : undefined,
       });

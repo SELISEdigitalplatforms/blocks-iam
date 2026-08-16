@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
-import { Link } from "react-router";
 import { AlertTriangle, CheckCircle2, Loader } from "lucide-react";
+import { LoginReturnLink } from "@blocks-idp/authentication/components/login-return-link";
 import { ActivationForm } from "./activation-form";
 import { OidcAuthShell } from "../oidc/oidc-auth-shell";
 import { ACTIVATE_PANEL } from "../oidc/oidc-panel-config";
@@ -23,6 +23,10 @@ export const Activation = ({ code, tenantId }: ActivationProps) => {
   const [isValidCode, setIsValidCode] = useState<boolean | null>(null);
   const [activationError, setActivationError] = useState<"invalid" | "expired" | null>(null);
   const [activationUserId, setActivationUserId] = useState<string | null>(null);
+  const [knownName, setKnownName] = useState<{ firstName: string; lastName: string }>({
+    firstName: "",
+    lastName: "",
+  });
   const [resendMessage, setResendMessage] = useState<string | null>(null);
   const [resendSuccess, setResendSuccess] = useState(false);
 
@@ -48,6 +52,11 @@ export const Activation = ({ code, tenantId }: ActivationProps) => {
           setActivationUserId(null);
           setResendMessage(null);
           setResendSuccess(false);
+          // Self-service signups already supplied these; invites return them empty.
+          setKnownName({
+            firstName: res.firstName ?? "",
+            lastName: res.lastName ?? "",
+          });
         } else if (res.errors) {
           setActivationError("invalid");
           setActivationUserId(null);
@@ -124,7 +133,12 @@ export const Activation = ({ code, tenantId }: ActivationProps) => {
           <Loader size={28} className="animate-spin" style={{ color: "var(--accent)" }} />
         </div>
       ) : activationError === null ? (
-        <ActivationForm code={code ?? ""} tenantId={tenantId} />
+        <ActivationForm
+          code={code ?? ""}
+          tenantId={tenantId}
+          firstName={knownName.firstName}
+          lastName={knownName.lastName}
+        />
       ) : activationError === "invalid" ? (
         <div className="flex flex-col items-center gap-3 py-2 text-center">
           <div
@@ -137,13 +151,9 @@ export const Activation = ({ code, tenantId }: ActivationProps) => {
             The activation code is invalid. Please check the link or request a
             new activation email from your administrator.
           </p>
-          <Link
-            to="/login"
-            className="oidc-sci-fi-btn"
-            style={{ textDecoration: "none", display: "inline-block", textAlign: "center", padding: "10px 20px" }}
-          >
+          <LoginReturnLink className="oidc-sci-fi-btn inline-block px-5 py-2.5 text-center no-underline">
             Back to login
-          </Link>
+          </LoginReturnLink>
         </div>
       ) : (
         <div className="flex flex-col items-center gap-3 py-2 text-center">
