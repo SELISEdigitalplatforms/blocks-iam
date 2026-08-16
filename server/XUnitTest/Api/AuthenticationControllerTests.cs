@@ -356,7 +356,7 @@ namespace XUnitTest.ApiTests
                 .ReturnsAsync(new LogoutFlowResult
                 {
                     StatusCode = StatusCodes.Status200OK,
-                    LogoutResponse = new LogoutResponse { IsSuccess = true, IdpSessionId = "sess-1" }
+                    LogoutResponse = new LogoutResponse { IsSuccess = true, IdpSessionIds = new[] { "sess-1" } }
                 });
 
             var result = await CreateController().ExecuteLogout(new LogoutRequest { RefreshToken = "rt" });

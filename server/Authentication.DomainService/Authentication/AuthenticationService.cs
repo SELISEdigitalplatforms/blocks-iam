@@ -168,10 +168,12 @@ namespace Authentication.DomainService.Authentication
             var result = await ProcessLogout(refreshToken, httpRequest, refreshTokenSession);
 
             await ProcessTimeline(httpRequest, false);
+
+            var idpSessionId = refreshTokenSession?.SessionId;
             return new LogoutResponse
             {
                 IsSuccess = result,
-                IdpSessionId = refreshTokenSession?.SessionId,
+                IdpSessionIds = string.IsNullOrWhiteSpace(idpSessionId) ? [] : [idpSessionId]
             };
 
         }
