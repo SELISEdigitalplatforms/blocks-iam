@@ -224,7 +224,7 @@ namespace XUnitTest.Auth
             var result = await Create().LogoutUser("rt-1", new DefaultHttpContext().Request);
 
             result.IsSuccess.Should().BeTrue();
-            result.IdpSessionId.Should().Be("sess-from-mongo");
+            result.IdpSessionIds.Should().BeEquivalentTo(new[] { "sess-from-mongo" });
         }
 
         [Fact]
@@ -259,7 +259,7 @@ namespace XUnitTest.Auth
             var result = await Create().LogoutUser("rt-1", new DefaultHttpContext().Request);
 
             result.IsSuccess.Should().BeTrue();
-            result.IdpSessionId.Should().Be("sess-1");
+            result.IdpSessionIds.Should().BeEquivalentTo(new[] { "sess-1" });
         }
 
         // ---------- LogoutAll ----------

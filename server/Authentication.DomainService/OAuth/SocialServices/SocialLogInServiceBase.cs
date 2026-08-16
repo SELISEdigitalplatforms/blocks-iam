@@ -1,3 +1,4 @@
+using Authentication.DomainService.Entities;
 using Authentication.DomainService.Services;
 using Iam.DomainService.Utilities;
 using Authentication.DomainService.Shared;
@@ -16,6 +17,14 @@ namespace Authentication.DomainService.OAuth
         protected readonly IHttpService _httpService;
         private const string GoogleProvider = "google";
         private const string MicrosoftProvider = "microsoft";
+
+        // department and employeeId are directory-only attributes. Personal Microsoft accounts
+        // cannot expose them, and Graph rejects the whole projection with 403 rather than
+        // returning them as null, so the consumer-safe set omits both.
+        private const string MicrosoftDirectoryProfileSelect =
+            "displayName,mail,department,employeeId,givenName,userPrincipalName,surname,officeLocation,preferredLanguage,mobilePhone,id";
+        private const string MicrosoftConsumerProfileSelect =
+            "displayName,mail,givenName,userPrincipalName,surname,officeLocation,preferredLanguage,mobilePhone,id";
 
         protected SocialLogInServiceBase(
             ILogger logger,
@@ -59,7 +68,7 @@ namespace Authentication.DomainService.OAuth
             var externalUser = stateInfo.Provider switch
             {
                 GoogleProvider => await GetGoogleProfileVerification(identityProvider.UserInfoUrl, response.AccessToken),
-                MicrosoftProvider => await GetMicrosoftProfileVerification(identityProvider.UserInfoUrl, response.AccessToken, response.IdToken),
+                MicrosoftProvider => await GetMicrosoftProfileVerification(identityProvider, response.AccessToken, response.IdToken),
                 _ => CreateEmptyUserData()
             };
 
@@ -104,24 +113,170 @@ namespace Authentication.DomainService.OAuth
 
             return externalUser;
         }
-        private async Task<IExternalUserData> GetMicrosoftProfileVerification(string profileURL, string accessToken, string idToken)
+        private async Task<IExternalUserData> GetMicrosoftProfileVerification(IdentityProvider identityProvider, string accessToken, string idToken)
         {
-            var queryPram = "$select=displayName,mail,department,employeeId,givenName,userPrincipalName,surname,officeLocation,preferredLanguage,mobilePhone,id";
-            profileURL = $"{profileURL}?{queryPram}";
+            var headers = new Dictionary<string, string> { { "Authorization", $"bearer {accessToken}" } };
 
-            var (externalUser, error) = await _httpService.Get<MicrosoftUserData>(profileURL, new Dictionary<string, string> {
-                { "Authorization", $"bearer {accessToken}"  }
-            });
+            var externalUser = await GetMicrosoftGraphProfile(identityProvider.UserInfoUrl, headers) ?? CreateEmptyUserData();
 
-            if (!string.IsNullOrWhiteSpace(error) || externalUser == null)
-            {
-                _logger.LogError("Error while getting microsoft user data: {Error}", error);
-                return CreateEmptyUserData();
-            }
+            // Graph is best-effort for Microsoft: personal accounts can fail it outright. The
+            // id_token from the token exchange carries the same identity, so fill the gaps from
+            // there rather than rejecting the login for a missing email.
+            ApplyMicrosoftIdTokenFallbacks(externalUser, idToken, identityProvider);
 
-            externalUser.Roles = ExtractRolesFromJwt(idToken);
+            externalUser.Roles = ExtractRolesFromJwtOrEmpty(idToken);
 
             return externalUser;
+        }
+
+        private async Task<IExternalUserData?> GetMicrosoftGraphProfile(string profileURL, Dictionary<string, string> headers)
+        {
+            var (externalUser, error) = await _httpService.Get<MicrosoftUserData>(
+                $"{profileURL}?$select={MicrosoftDirectoryProfileSelect}", headers);
+
+            if (string.IsNullOrWhiteSpace(error) && externalUser != null)
+            {
+                return externalUser;
+            }
+
+            // Retry without the directory-only attributes before giving up on Graph. Organizational
+            // accounts never reach this, so they keep their single round trip and their
+            // department/employeeId values.
+            _logger.LogWarning("Microsoft profile fetch failed, retrying without directory-only attributes: {Error}", error);
+
+            (externalUser, error) = await _httpService.Get<MicrosoftUserData>(
+                $"{profileURL}?$select={MicrosoftConsumerProfileSelect}", headers);
+
+            if (string.IsNullOrWhiteSpace(error) && externalUser != null)
+            {
+                return externalUser;
+            }
+
+            _logger.LogError("Error while getting microsoft user data: {Error}", error);
+            return null;
+        }
+
+        private void ApplyMicrosoftIdTokenFallbacks(IExternalUserData externalUser, string idToken, IdentityProvider identityProvider)
+        {
+            var token = ReadTrustedIdToken(idToken, identityProvider);
+
+            if (token == null)
+            {
+                return;
+            }
+
+            if (string.IsNullOrWhiteSpace(externalUser.Email) && string.IsNullOrWhiteSpace(externalUser.UserPrincipalName))
+            {
+                SetIfEmpty(FirstClaim(token, "preferred_username", "email", "upn"), v => externalUser.Email = v);
+            }
+
+            if (string.IsNullOrWhiteSpace(externalUser.ExternalProviderUserId))
+            {
+                SetIfEmpty(FirstClaim(token, "oid", "sub"), v => externalUser.ExternalProviderUserId = v);
+            }
+
+            if (string.IsNullOrWhiteSpace(externalUser.DisplayName))
+            {
+                SetIfEmpty(FirstClaim(token, "name"), v => externalUser.DisplayName = v);
+            }
+
+            if (string.IsNullOrWhiteSpace(externalUser.FirstName))
+            {
+                SetIfEmpty(FirstClaim(token, "given_name"), v => externalUser.FirstName = v);
+            }
+
+            if (string.IsNullOrWhiteSpace(externalUser.LastName))
+            {
+                SetIfEmpty(FirstClaim(token, "family_name"), v => externalUser.LastName = v);
+            }
+        }
+
+        /// <summary>
+        /// Reads the id_token without validating its signature — it arrives back-channel over TLS
+        /// straight from the configured token endpoint (OIDC Core 3.1.3.7). aud and iss are still
+        /// checked, because these claims decide which user is signed in rather than merely what
+        /// roles they receive.
+        /// </summary>
+        private JwtSecurityToken? ReadTrustedIdToken(string idToken, IdentityProvider identityProvider)
+        {
+            if (string.IsNullOrWhiteSpace(idToken))
+            {
+                return null;
+            }
+
+            JwtSecurityToken token;
+
+            try
+            {
+                token = new JwtSecurityTokenHandler().ReadJwtToken(idToken);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "Microsoft id_token could not be parsed, skipping claim fallback");
+                return null;
+            }
+
+            if (!token.Audiences.Contains(identityProvider.ClientId, StringComparer.OrdinalIgnoreCase))
+            {
+                _logger.LogWarning("Microsoft id_token audience does not match the configured client, skipping claim fallback");
+                return null;
+            }
+
+            if (!IssuerMatchesTokenEndpoint(token.Issuer, identityProvider.TokenUrl))
+            {
+                _logger.LogWarning("Microsoft id_token issuer {Issuer} does not match the configured token endpoint, skipping claim fallback", token.Issuer);
+                return null;
+            }
+
+            return token;
+        }
+
+        private static bool IssuerMatchesTokenEndpoint(string issuer, string tokenUrl)
+        {
+            return Uri.TryCreate(issuer, UriKind.Absolute, out var issuerUri)
+                && Uri.TryCreate(tokenUrl, UriKind.Absolute, out var tokenUri)
+                && string.Equals(issuerUri.Host, tokenUri.Host, StringComparison.OrdinalIgnoreCase);
+        }
+
+        private static string FirstClaim(JwtSecurityToken token, params string[] claimTypes)
+        {
+            foreach (var claimType in claimTypes)
+            {
+                var value = token.Claims.FirstOrDefault(c => c.Type == claimType)?.Value;
+
+                if (!string.IsNullOrWhiteSpace(value))
+                {
+                    return value;
+                }
+            }
+
+            return string.Empty;
+        }
+
+        private static void SetIfEmpty(string value, Action<string> assign)
+        {
+            if (!string.IsNullOrWhiteSpace(value))
+            {
+                assign(value);
+            }
+        }
+
+        private List<string> ExtractRolesFromJwtOrEmpty(string jwt)
+        {
+            if (string.IsNullOrWhiteSpace(jwt))
+            {
+                return [];
+            }
+
+            try
+            {
+                return ExtractRolesFromJwt(jwt);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "Microsoft id_token roles could not be read");
+                return [];
+            }
         }
 
 

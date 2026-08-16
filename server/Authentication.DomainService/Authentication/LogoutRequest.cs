@@ -17,9 +17,6 @@ namespace Authentication.DomainService.Authentication
         public bool IsSuccess { get; set; }
 
         [JsonIgnore]
-        public string? IdpSessionId { get; set; }
-
-        [JsonIgnore]
         public IReadOnlyList<string> IdpSessionIds { get; set; } = Array.Empty<string>();
     }
 }
