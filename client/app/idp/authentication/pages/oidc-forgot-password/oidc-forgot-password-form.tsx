@@ -1,5 +1,6 @@
 import { getRuntimeEnv } from "@/lib/runtime-env";
-import { Link, useSearchParams } from "react-router";
+import { useSearchParams } from "react-router";
+import { LoginReturnLink } from "@blocks-idp/authentication/components/login-return-link";
 import { useForm } from "react-hook-form";
 import { forgotPasswordFormSchema, forgotPasswordFormDefaultValue } from "./utils";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -142,9 +143,9 @@ export const OIDCForgotPasswordForm = () => {
         </form>
       </Form>
 
-      <Link to="/login" className="oidc-sci-fi-link text-sm text-center">
+      <LoginReturnLink className="oidc-sci-fi-link text-sm text-center">
         Back to login
-      </Link>
+      </LoginReturnLink>
     </div>
   );
 };

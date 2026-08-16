@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
-import { Link } from "react-router";
 import { AlertTriangle, CheckCircle2, Loader } from "lucide-react";
+import { LoginReturnLink } from "@blocks-idp/authentication/components/login-return-link";
 import { ActivationForm } from "./activation-form";
 import { OidcAuthShell } from "../oidc/oidc-auth-shell";
 import { ACTIVATE_PANEL } from "../oidc/oidc-panel-config";
@@ -151,13 +151,9 @@ export const Activation = ({ code, tenantId }: ActivationProps) => {
             The activation code is invalid. Please check the link or request a
             new activation email from your administrator.
           </p>
-          <Link
-            to="/login"
-            className="oidc-sci-fi-btn"
-            style={{ textDecoration: "none", display: "inline-block", textAlign: "center", padding: "10px 20px" }}
-          >
+          <LoginReturnLink className="oidc-sci-fi-btn inline-block px-5 py-2.5 text-center no-underline">
             Back to login
-          </Link>
+          </LoginReturnLink>
         </div>
       ) : (
         <div className="flex flex-col items-center gap-3 py-2 text-center">
