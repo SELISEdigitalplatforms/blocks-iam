@@ -47,15 +47,8 @@ E2E_NO_WEBSERVER=1
 ```
 
 `E2E_NO_WEBSERVER=1` is required here, otherwise Playwright runs `bash run.sh -b`
-to boot a local API first. You will see this warning on every remote run; it is
-correct behaviour, not a fault:
-
-```
-[e2e] index.html not found at ...server/Api/wwwroot/index.html — skipping BLOCKS_IAM_BASE_URL patch.
-```
-
-`global-setup.ts` only repoints a locally built SPA; against remote dev there is
-nothing to patch.
+to boot a local API first. `global-setup.ts` only repoints a locally built SPA;
+against a remote host there is nothing to patch, so it stays quiet.
 
 > Remote dev is shared infrastructure. The login spec is effectively read-only,
 > but anything that mutates data acts on **real dev records**.
@@ -109,9 +102,13 @@ npm run codegen -- <E2E_BASE_URL>/login
 
 ```
 e2e/
-  tests/auth/login.spec.ts   # login through dev-iam -> /app/console
+  tests/auth/login.spec.ts   # setup project: login once -> fixtures/auth.json
+  tests/iam.spec.ts          # authenticated suite (reuses the saved session)
+  support/env.ts             # required E2E_* helpers
+  support/login-helper.ts    # OIDC login + ensureAuthenticated
   support/test-base.ts       # shared test/expect with the headed pause
-  fixtures/                  # auth storage state (gitignored; live token)
-  playwright.config.ts       # baseURL + creds from .env.e2e
+  fixtures/auth.json         # auth storage state (gitignored; live token)
+  fixtures/images/           # avatar upload fixtures (not env — drop files here)
+  playwright.config.ts       # setup + chromium projects, creds from .env.e2e
   global-setup.ts            # repoints BLOCKS_IAM_BASE_URL for local builds
 ```

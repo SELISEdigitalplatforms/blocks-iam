@@ -1,8 +1,12 @@
-import path from "path";
-import { test, expect } from "@playwright/test";
-import { loginFresh } from "../support/login-helper";
+import type { Page } from "@playwright/test";
+import { test, expect } from "../support/test-base";
+import { ensureAuthenticated } from "../support/login-helper";
+import { e2eBaseUrl, e2eCredentials } from "../support/env";
+import { AVATAR_OVER_5MB, AVATAR_VALID } from "../support/images";
 
-const ORIGINAL_PASSWORD = "Meraj2000@";
+const ORIGINAL_PASSWORD = e2eCredentials().password;
+// Temporary password used only during the positive change-password step.
+const TEMP_PASSWORD = "123@Test";
 // Tracks the account's real current password across the test and its
 // afterEach hook. "Saving a valid password change" actually rotates the real
 // backend password; if anything later in the test throws, afterEach below
@@ -11,50 +15,67 @@ const ORIGINAL_PASSWORD = "Meraj2000@";
 // password had been.
 let currentPassword = ORIGINAL_PASSWORD;
 
-// const revertPasswordIfChanged = async (page: Page) => {
-//   if (currentPassword === ORIGINAL_PASSWORD) return;
-//   try {
-//     const updateButton = page.getByRole("button", { name: "Update Password" });
-//     if (!(await updateButton.isVisible({ timeout: 5000 }).catch(() => false))) {
-//       return;
-//     }
-//     await updateButton.click();
-//     await page
-//       .getByPlaceholder("Enter your current password")
-//       .fill(currentPassword);
-//     await page
-//       .getByPlaceholder("Enter your new password")
-//       .fill(ORIGINAL_PASSWORD);
-//     await page
-//       .getByPlaceholder("Confirm your new password")
-//       .fill(ORIGINAL_PASSWORD);
-//
-//     const saveButton = page.getByRole("button", { name: /save changes/i });
-//     if (await saveButton.isEnabled().catch(() => false)) {
-//       await saveButton.click();
-//       await expect(page.getByText("Password updated").first()).toBeVisible({
-//         timeout: 15000,
-//       });
-//       currentPassword = ORIGINAL_PASSWORD;
-//     }
-//   } catch {
-//     // Best-effort: if the page/dialog is already broken from an earlier
-//     // failure, there's nothing more we can safely do here.
-//   }
-// };
+const revertPasswordIfChanged = async (page: Page) => {
+  if (currentPassword === ORIGINAL_PASSWORD) return;
+  try {
+    await page.goto(`${e2eBaseUrl()}/app/profile`);
+    await expect(page.getByText("Account details")).toBeVisible({ timeout: 15000 });
+
+    const updateButton = page.getByRole("button", { name: "Update Password" });
+    if (!(await updateButton.isVisible({ timeout: 5000 }).catch(() => false))) {
+      return;
+    }
+    await updateButton.click();
+    await page
+      .getByPlaceholder("Enter your current password")
+      .fill(currentPassword);
+    await page
+      .getByPlaceholder("Enter your new password")
+      .fill(ORIGINAL_PASSWORD);
+    await page
+      .getByPlaceholder("Confirm your new password")
+      .fill(ORIGINAL_PASSWORD);
+
+    const saveButton = page.getByRole("button", { name: /save changes/i });
+    if (await saveButton.isEnabled().catch(() => false)) {
+      await saveButton.click();
+      await expect(page.getByText("Password updated").first()).toBeVisible({
+        timeout: 15000,
+      });
+      currentPassword = ORIGINAL_PASSWORD;
+    }
+  } catch {
+    // Best-effort: if the page/dialog is already broken from an earlier
+    // failure, there's nothing more we can safely do here.
+  }
+};
+
+/** MFA Cancel is a DialogTrigger inside an open dialog: the click unmounts
+ *  the button, so a default locator.click() retries until the test timeout.
+ *  Force the close, and fall back to Escape if the node is already gone. */
+const dismissVerifyDialog = async (page: Page) => {
+  const dialog = page.getByRole("dialog");
+  if (!(await dialog.isVisible().catch(() => false))) return;
+
+  await dialog
+    .getByRole("button", { name: "Cancel" })
+    .click({ force: true, timeout: 5_000 })
+    .catch(async () => {
+      await page.keyboard.press("Escape");
+    });
+  await expect(dialog).toHaveCount(0, { timeout: 10_000 });
+};
 
 test.describe("profile", () => {
-  // test.afterEach(async ({ page }) => {
-  //   await revertPasswordIfChanged(page);
-  // });
+  test.afterEach(async ({ page }) => {
+    await revertPasswordIfChanged(page);
+  });
 
   test.beforeEach(async ({ page }) => {
-    await loginFresh(page);
+    await ensureAuthenticated(page);
 
-    await expect(page).toHaveURL(/\/app\/profile/, { timeout: 30000 });
-    await expect(page.getByText("Account details")).toBeVisible({
-      timeout: 15000,
-    });
+    await expect(page).toHaveURL(/\/app\/profile/);
+    await expect(page.getByRole("heading", { name: "Account details" })).toBeVisible();
   });
 
   test("Profile — header, account details, security (MFA + change password), sessions, and history", async ({
@@ -168,28 +189,24 @@ test.describe("profile", () => {
       }
     });
 
-    // await test.step("[Positive] Avatar upload accepts a valid image and shows it immediately via local preview", async () => {
-    //   const avatarButton = page.locator("button:has(svg.lucide-camera)").first();
-    //   const fileInput = page.locator('input[type="file"]');
+    await test.step("[Positive] Avatar upload accepts a valid image and shows it immediately via local preview", async () => {
+      const fileInput = page.locator('input[type="file"]');
+      await fileInput.setInputFiles(AVATAR_VALID);
 
-    //   await fileInput.setInputFiles(path.join(__dirname, "..", "..", "fixtures", "pikachu.png"));
+      await expect(page.getByAltText("Profile Image")).toHaveAttribute("src", /^blob:/);
+      await expect(page.getByText("Profile pic updated successfully").first()).toBeVisible({
+        timeout: 15000,
+      });
+    });
 
-    //   await expect(page.getByText("Profile pic updated successfully").first()).toBeVisible({
-    //     timeout: 15000,
-    //   });
-    // });
+    await test.step("[Negative] Avatar upload rejects a file larger than 5MB", async () => {
+      const fileInput = page.locator('input[type="file"]');
+      await fileInput.setInputFiles(AVATAR_OVER_5MB);
 
-    // await test.step("[Negative] Avatar upload rejects a file larger than 5MB", async () => {
-    //   const fileInput = page.locator('input[type="file"]');
-
-    //   await fileInput.setInputFiles(
-    //     path.join(__dirname, "..", "..", "fixtures", "thumbnail-2.png"),
-    //   );
-
-    //   await expect(page.getByText("File size must be less than 5MB").first()).toBeVisible({
-    //     timeout: 10000,
-    //   });
-    // });
+      await expect(page.getByText("File size must be less than 5MB").first()).toBeVisible({
+        timeout: 10000,
+      });
+    });
 
     await test.step("[Security] Avatar file picker only accepts image files", async () => {
       const fileInput = page.locator('input[type="file"]');
@@ -342,10 +359,7 @@ test.describe("profile", () => {
         await expect(page.getByText("Email sent").first()).toBeVisible({
           timeout: 15000,
         });
-        // input-otp's keydown handling can swallow Escape before it reaches
-        // Radix's dialog handler, so close via the form's own Cancel button.
-        await page.getByRole("button", { name: "Cancel" }).click();
-        await expect(page.getByRole("dialog")).toHaveCount(0);
+        await dismissVerifyDialog(page);
       }
     });
 
@@ -362,8 +376,7 @@ test.describe("profile", () => {
         const accessibleName = await dialog.getAttribute("aria-label");
         expect(accessibleName ?? "").not.toContain("Email sent");
         await expect(page.getByText("Email sent").first()).toBeVisible();
-        await page.getByRole("button", { name: "Cancel" }).click();
-        await expect(page.getByRole("dialog")).toHaveCount(0);
+        await dismissVerifyDialog(page);
       }
     });
 
@@ -378,8 +391,7 @@ test.describe("profile", () => {
           page.getByText(/We.ve sent a verification key to your registered email address/),
         ).toBeVisible({ timeout: 15000 });
         await expect(page.getByRole("button", { name: /resend/i })).toBeVisible();
-        await page.getByRole("button", { name: "Cancel" }).click();
-        await expect(page.getByRole("dialog")).toHaveCount(0);
+        await dismissVerifyDialog(page);
       }
     });
 
@@ -395,8 +407,7 @@ test.describe("profile", () => {
           await resendButton.click();
           await expect(page.getByRole("button", { name: /resend in \(/i })).toBeDisabled();
         }
-        await page.getByRole("button", { name: "Cancel" }).click();
-        await expect(page.getByRole("dialog")).toHaveCount(0);
+        await dismissVerifyDialog(page);
       }
     });
 
@@ -419,13 +430,7 @@ test.describe("profile", () => {
             .toBeVisible({ timeout: 15000 })
             .catch(() => {});
         }
-        const cancelButton = page.getByRole("button", { name: "Cancel" });
-        if (await cancelButton.isVisible({ timeout: 3000 }).catch(() => false)) {
-          await cancelButton.click();
-        } else {
-          await page.keyboard.press("Escape");
-        }
-        await expect(page.getByRole("dialog")).toHaveCount(0);
+        await dismissVerifyDialog(page);
       }
     });
 
@@ -448,8 +453,7 @@ test.describe("profile", () => {
           page.getByRole("heading", { name: "Set up your authenticator app" }),
         ).toBeVisible();
         await expect(page.getByText("Please follow the instructions below.")).toBeVisible();
-        await page.getByRole("button", { name: "Cancel" }).click();
-        await expect(page.getByRole("dialog")).toHaveCount(0);
+        await dismissVerifyDialog(page);
       }
     });
 
@@ -465,8 +469,7 @@ test.describe("profile", () => {
         // via maxlength rather than element count.
         const otpInput = page.locator('input[inputmode="numeric"]');
         await expect(otpInput).toHaveAttribute("maxlength", "6");
-        await page.getByRole("button", { name: "Cancel" }).click();
-        await expect(page.getByRole("dialog")).toHaveCount(0);
+        await dismissVerifyDialog(page);
       }
     });
 
@@ -485,13 +488,7 @@ test.describe("profile", () => {
             timeout: 15000,
           });
         }
-        const cancelButton = page.getByRole("button", { name: "Cancel" });
-        if (await cancelButton.isVisible({ timeout: 3000 }).catch(() => false)) {
-          await cancelButton.click();
-        } else {
-          await page.keyboard.press("Escape");
-        }
-        await expect(page.getByRole("dialog")).toHaveCount(0);
+        await dismissVerifyDialog(page);
       }
     });
 
@@ -613,33 +610,32 @@ test.describe("profile", () => {
       await expect(page.getByRole("dialog")).toHaveCount(0);
     });
 
-    // await test.step("[Positive] Saving a valid password change shows a titled success toast and closes the dialog", async () => {
-    //   await page.getByRole("button", { name: "Update Password" }).click();
-    //   await page
-    //     .getByPlaceholder("Enter your current password")
-    //     .fill(currentPassword);
-    //   const newPassword = `NewPass${Date.now()}!`;
-    //   await page.getByPlaceholder("Enter your new password").fill(newPassword);
-    //   await page
-    //     .getByPlaceholder("Confirm your new password")
-    //     .fill(newPassword);
+    await test.step("[Positive] Saving a valid password change shows a titled success toast and closes the dialog", async () => {
+      await page.getByRole("button", { name: "Update Password" }).click();
+      await page
+        .getByPlaceholder("Enter your current password")
+        .fill(currentPassword);
+      await page.getByPlaceholder("Enter your new password").fill(TEMP_PASSWORD);
+      await page
+        .getByPlaceholder("Confirm your new password")
+        .fill(TEMP_PASSWORD);
 
-    //   const saveButton = page.getByRole("button", { name: /save changes/i });
-    //   if (await saveButton.isEnabled().catch(() => false)) {
-    //     await saveButton.click();
-    //     await expect(page.getByText("Password updated").first()).toBeVisible({
-    //       timeout: 15000,
-    //     });
-    //     await expect(
-    //       page
-    //         .getByText("Your password has been changed successfully.")
-    //         .first(),
-    //     ).toBeVisible();
-    //     // Track the change so later steps (and the afterEach revert hook at
-    //     // the top of this file) know the account's current real password.
-    //     currentPassword = newPassword;
-    //   }
-    // });
+      const saveButton = page.getByRole("button", { name: /save changes/i });
+      if (await saveButton.isEnabled().catch(() => false)) {
+        await saveButton.click();
+        await expect(page.getByText("Password updated").first()).toBeVisible({
+          timeout: 15000,
+        });
+        await expect(
+          page
+            .getByText("Your password has been changed successfully.")
+            .first(),
+        ).toBeVisible();
+        // Track the change so later steps (and the afterEach revert hook at
+        // the top of this file) know the account's current real password.
+        currentPassword = TEMP_PASSWORD;
+      }
+    });
 
     await test.step("[Negative] An incorrect Current Password shows a specific failure toast and keeps the dialog open", async () => {
       await page.getByRole("button", { name: "Update Password" }).click();
@@ -868,12 +864,19 @@ test.describe("profile", () => {
           .click();
 
         await expect(
-          page.getByRole("alert").or(page.getByText(/something went wrong/i)),
+          page.getByText("Something went wrong").first(),
         ).toBeVisible({
           timeout: 15000,
         });
-        await page.keyboard.press("Escape");
-        await expect(page.getByRole("dialog")).toHaveCount(0);
+
+        // Escape hits the toast, not the confirmation dialog. Cancel is the
+        // control that actually sets open=false (session-list-card.tsx).
+        const confirm = page.getByRole("dialog").filter({
+          has: page.getByRole("heading", { name: "Sign out of this device?" }),
+        });
+        await confirm.getByRole("button", { name: "Cancel" }).click();
+        await expect(confirm).toHaveCount(0);
+        await expect(signOutButton).toBeVisible();
       }
       await page.unroute("**/api/**session**revoke**");
     });
@@ -887,13 +890,14 @@ test.describe("profile", () => {
         .first();
       if (await firstRow.isVisible({ timeout: 8000 }).catch(() => false)) {
         await firstRow.click();
-        await expect(page.getByText("Session ID:")).toBeVisible();
-        await expect(page.getByText("IP Address")).toBeVisible();
-        await expect(page.getByText("Started")).toBeVisible();
-        await expect(page.getByText("Browser / OS")).toBeVisible();
-        await expect(page.getByText("Expires")).toBeVisible();
+        const drawer = page.getByRole("dialog");
+        await expect(drawer.getByText("Session ID:")).toBeVisible();
+        await expect(drawer.getByText("IP Address", { exact: true })).toBeVisible();
+        await expect(drawer.getByText("Started", { exact: true })).toBeVisible();
+        await expect(drawer.getByText("Browser / OS")).toBeVisible();
+        await expect(drawer.getByText("Expires", { exact: true })).toBeVisible();
         await page.keyboard.press("Escape");
-        await expect(page.getByRole("dialog")).toHaveCount(0);
+        await expect(drawer).toHaveCount(0);
       }
     });
 
