@@ -10,6 +10,7 @@ using Iam.DomainService.Resources.ResponseModel;
 using Iam.DomainService.Resources.TenantPropagation;
 using Iam.DomainService.Services;
 using Iam.DomainService.Shared.Entities;
+using Iam.DomainService.Utilities;
 using Microsoft.Extensions.Logging.Abstractions;
 using Moq;
 
@@ -668,6 +669,330 @@ namespace XUnitTest.IamTests.Resources
             await Create().ExecutePermissionMutationForTenantsAsync(new PermissionMutationForTenantsEvent { ItemId = "p1", Action = MutationEventType.Update });
 
             _activity.Verify(a => a.SendUserActivityAsync(It.Is<UserActivityEvent>(e => e.Outcome == "partial_failure")), Times.Once);
+        }
+
+        // ---------- ArchivePermissionAsync ----------
+
+        private static readonly DateTime StaleTimestamp = new(2020, 1, 1, 0, 0, 0, DateTimeKind.Unspecified);
+
+        /// <summary>
+        /// Every field carries a distinguishable, non-default value. An accidental assignment that
+        /// reset a field to its default -- clearing DependentPermissions, say -- would be invisible
+        /// against an empty fixture, and UpdateAllSamePermissionAsync would then push that reset
+        /// onto every other organization's copy of the permission.
+        /// </summary>
+        private static Permission ArchiveTarget(bool isBuiltIn = false, bool isArchived = false, string orgId = "default") => new()
+        {
+            ItemId = "p1",
+            Name = "Reports Export",
+            Description = "Export reports",
+            Resource = "reports::export",
+            ResourceGroup = "reports",
+            Type = ResourceType.Endpoint,
+            PermissionSeverity = PermissionSeverity.High,
+            Tags = new List<string> { "reporting" },
+            DependentPermissions = new List<string> { "reports::read" },
+            Roles = new List<string> { "admin" },
+            OrganizationId = orgId,
+            IsBuiltIn = isBuiltIn,
+            IsArchived = isArchived,
+            CreatedBy = "creator-1",
+            CreatedDate = StaleTimestamp,
+            LastUpdatedDate = StaleTimestamp,
+            LastUpdatedBy = "someone-else"
+        };
+
+        private void GivenPermission(Permission permission) =>
+            _repo.Setup(r => r.GetPermissionByIdAsync(permission.ItemId)).ReturnsAsync(permission);
+
+        /// <summary>
+        /// Every rejection path must be silent as well as wrong-free: an archive endpoint that
+        /// returns the right error while still writing or emitting a delete event would satisfy a
+        /// looser assertion and still be broken.
+        /// </summary>
+        private void VerifyNothingHappened()
+        {
+            _repo.Verify(r => r.UpdatePermissionAsync(It.IsAny<Permission>()), Times.Never);
+            _repo.Verify(r => r.UpdateAllSamePermissionAsync(It.IsAny<Permission>()), Times.Never);
+            _iam.Verify(i => i.SendToQueueAsync(It.IsAny<string>(), It.IsAny<ResourceMutationEvent>()), Times.Never);
+            _iam.Verify(i => i.SendToQueueAsync(It.IsAny<string>(), It.IsAny<PropagationRolePermissionUpdateEvent>()), Times.Never);
+        }
+
+        [Fact]
+        public async Task ArchivePermission_CustomPermission_ArchivesAndReturnsItemId()
+        {
+            var permission = ArchiveTarget();
+            GivenPermission(permission);
+
+            var result = await Create().ArchivePermissionAsync("p1");
+
+            result.IsSuccess.Should().BeTrue();
+            result.ItemId.Should().Be("p1");
+            _repo.Verify(r => r.UpdatePermissionAsync(It.Is<Permission>(p => p.ItemId == "p1" && p.IsArchived && p.LastUpdatedBy == "actor-1")), Times.Once);
+        }
+
+        [Fact]
+        public async Task ArchivePermission_TouchesOnlyTheArchiveFlagAndAuditStamp()
+        {
+            Permission? persisted = null;
+            GivenPermission(ArchiveTarget());
+            _repo.Setup(r => r.UpdatePermissionAsync(It.IsAny<Permission>()))
+                .Callback<Permission>(p => persisted = p)
+                .ReturnsAsync(true);
+
+            await Create().ArchivePermissionAsync("p1");
+
+            persisted.Should().NotBeNull();
+            persisted!.IsArchived.Should().BeTrue();
+            persisted.LastUpdatedBy.Should().Be("actor-1");
+            persisted.LastUpdatedDate.Should().BeAfter(StaleTimestamp);
+
+            // This is an archive, not an update: nothing descriptive may be rewritten. The record
+            // is also handed to UpdateAllSamePermissionAsync, whose $set pushes these very fields
+            // onto every other organization's copy, so a stray assignment here would leak.
+            var pristine = ArchiveTarget();
+            persisted.Should().BeEquivalentTo(pristine, options => options
+                .Excluding(p => p.IsArchived)
+                .Excluding(p => p.LastUpdatedBy)
+                .Excluding(p => p.LastUpdatedDate));
+        }
+
+        [Fact]
+        public async Task ArchivePermission_BuiltInAsRoot_Succeeds()
+        {
+            GivenPermission(ArchiveTarget(isBuiltIn: true));
+            _iam.Setup(i => i.IsRoot()).Returns(true);
+
+            var result = await Create().ArchivePermissionAsync("p1");
+
+            result.IsSuccess.Should().BeTrue();
+            _repo.Verify(r => r.UpdatePermissionAsync(It.Is<Permission>(p => p.IsArchived)), Times.Once);
+        }
+
+        [Fact]
+        public async Task ArchivePermission_Success_SendsDeleteMutationEventToResourceQueue()
+        {
+            GivenPermission(ArchiveTarget());
+
+            await Create().ArchivePermissionAsync("p1");
+
+            _iam.Verify(i => i.SendToQueueAsync(
+                IdpConstants.IamResourceQueue,
+                It.Is<ResourceMutationEvent>(e =>
+                    e.Action == MutationEventType.Delete &&
+                    e.Entity == ResourceEntity.Permission &&
+                    e.ItemId == "p1")), Times.Once);
+        }
+
+        [Fact]
+        public async Task ArchivePermission_Success_PropagatesToOtherOrgsSynchronously()
+        {
+            GivenPermission(ArchiveTarget());
+
+            await Create().ArchivePermissionAsync("p1");
+
+            _repo.Verify(r => r.UpdateAllSamePermissionAsync(It.Is<Permission>(p => p.Resource == "reports::export" && p.IsArchived)), Times.Once);
+        }
+
+        [Fact]
+        public async Task ArchivePermission_MultiOrgEnabled_QueuesPropagationEvent()
+        {
+            GivenPermission(ArchiveTarget());
+            _repo.Setup(r => r.GetTenantConfigurationAsync()).ReturnsAsync(new TenantConfiguration { IsMultiOrgEnabled = true });
+
+            await Create().ArchivePermissionAsync("p1");
+
+            _iam.Verify(i => i.SendToQueueAsync(
+                IdpConstants.IamOrgQueue,
+                It.Is<PropagationRolePermissionUpdateEvent>(e =>
+                    e.Entity == "permission" && e.Action == "delete" && e.ItemId == "p1")), Times.Once);
+        }
+
+        [Fact]
+        public async Task ArchivePermission_MultiOrgDisabled_StillWritesCrossOrgButQueuesNoPropagationEvent()
+        {
+            GivenPermission(ArchiveTarget());
+            _repo.Setup(r => r.GetTenantConfigurationAsync()).ReturnsAsync(new TenantConfiguration { IsMultiOrgEnabled = false });
+
+            await Create().ArchivePermissionAsync("p1");
+
+            // The asymmetry is deliberate and pre-existing (spec A3): the synchronous cross-org
+            // write is unconditional, only the queued event is gated on multi-org.
+            _repo.Verify(r => r.UpdateAllSamePermissionAsync(It.IsAny<Permission>()), Times.Once);
+            _iam.Verify(i => i.SendToQueueAsync(It.IsAny<string>(), It.IsAny<PropagationRolePermissionUpdateEvent>()), Times.Never);
+        }
+
+        [Fact]
+        public async Task ArchivePermission_NoTenantConfiguration_StillSucceeds()
+        {
+            GivenPermission(ArchiveTarget());
+            _repo.Setup(r => r.GetTenantConfigurationAsync()).ReturnsAsync((TenantConfiguration)null!);
+
+            var result = await Create().ArchivePermissionAsync("p1");
+
+            // The config is read after the archive has committed, so a null must not turn a
+            // successful archive into a 500 that the client cannot safely retry.
+            result.IsSuccess.Should().BeTrue();
+            _iam.Verify(i => i.SendToQueueAsync(It.IsAny<string>(), It.IsAny<PropagationRolePermissionUpdateEvent>()), Times.Never);
+        }
+
+        [Fact]
+        public async Task ArchivePermission_CustomPermissionNonRootCaller_StillSucceeds()
+        {
+            GivenPermission(ArchiveTarget());
+            _iam.Setup(i => i.IsRoot()).Returns(false);
+
+            var result = await Create().ArchivePermissionAsync("p1");
+
+            result.IsSuccess.Should().BeTrue();
+        }
+
+        [Fact]
+        public async Task ArchivePermission_NonDefaultOrgCaller_ForbiddenAndTouchesNothing()
+        {
+            InstallContext(orgId: "acme");
+            GivenPermission(ArchiveTarget());
+
+            var result = await Create().ArchivePermissionAsync("p1");
+
+            result.IsSuccess.Should().BeFalse();
+            result.Errors["forbidden"].Should().Be("Not_Allowed_To_Archive_Permission_Outside_Default_Organization");
+            _repo.Verify(r => r.GetPermissionByIdAsync(It.IsAny<string>()), Times.Never);
+            _iam.Verify(i => i.IsRoot(), Times.Never);
+            VerifyNothingHappened();
+        }
+
+        [Fact]
+        public async Task ArchivePermission_NotFound_ReturnsNotFoundAndTouchesNothing()
+        {
+            _repo.Setup(r => r.GetPermissionByIdAsync("does-not-exist")).ReturnsAsync((Permission)null!);
+
+            var result = await Create().ArchivePermissionAsync("does-not-exist");
+
+            result.IsSuccess.Should().BeFalse();
+            result.Errors["ItemId"].Should().Be("Permission_Not_Found");
+            VerifyNothingHappened();
+        }
+
+        [Fact]
+        public async Task ArchivePermission_RecordBelongsToAnotherOrg_ForbiddenAndTouchesNothing()
+        {
+            GivenPermission(ArchiveTarget(orgId: "acme"));
+
+            var result = await Create().ArchivePermissionAsync("p1");
+
+            result.IsSuccess.Should().BeFalse();
+            result.Errors["forbidden"].Should().Be("Permission_Not_A_Default_Organization_Record");
+            _iam.Verify(i => i.IsRoot(), Times.Never);
+            VerifyNothingHappened();
+        }
+
+        [Fact]
+        public async Task ArchivePermission_AlreadyArchived_ReturnsErrorAndTouchesNothing()
+        {
+            GivenPermission(ArchiveTarget(isArchived: true));
+
+            var result = await Create().ArchivePermissionAsync("p1");
+
+            result.IsSuccess.Should().BeFalse();
+            result.Errors["archived"].Should().Be("Permission_Already_Archived");
+            _iam.Verify(i => i.IsRoot(), Times.Never);
+            VerifyNothingHappened();
+        }
+
+        [Fact]
+        public async Task ArchivePermission_BuiltInNonRoot_ForbiddenAndTouchesNothing()
+        {
+            GivenPermission(ArchiveTarget(isBuiltIn: true));
+            _iam.Setup(i => i.IsRoot()).Returns(false);
+
+            var result = await Create().ArchivePermissionAsync("p1");
+
+            result.IsSuccess.Should().BeFalse();
+            result.Errors["forbidden"].Should().Be("Only_Root_Tenant_Can_Archive_Built_In_Permission");
+            VerifyNothingHappened();
+        }
+
+        [Fact]
+        public async Task ArchivePermission_RepositoryWriteFails_ReturnsGenericFailureAndSendsNoEvents()
+        {
+            GivenPermission(ArchiveTarget());
+            _repo.Setup(r => r.UpdatePermissionAsync(It.IsAny<Permission>())).ReturnsAsync(false);
+            _repo.Setup(r => r.GetTenantConfigurationAsync()).ReturnsAsync(new TenantConfiguration { IsMultiOrgEnabled = true });
+
+            var result = await Create().ArchivePermissionAsync("p1");
+
+            result.IsSuccess.Should().BeFalse();
+            _repo.Verify(r => r.UpdateAllSamePermissionAsync(It.IsAny<Permission>()), Times.Never);
+            _iam.Verify(i => i.SendToQueueAsync(It.IsAny<string>(), It.IsAny<ResourceMutationEvent>()), Times.Never);
+            _iam.Verify(i => i.SendToQueueAsync(It.IsAny<string>(), It.IsAny<PropagationRolePermissionUpdateEvent>()), Times.Never);
+        }
+
+        // ---------- Guard precedence (spec A4) ----------
+        // Each of these rows fails more than one guard. They pin which error wins, so a plausible
+        // reordering -- checking built-in first as the "most important" rule, say -- fails loudly
+        // instead of silently changing the contract the ticket's examples specify.
+
+        [Fact]
+        public async Task ArchivePermission_NonDefaultCallerTargetingBuiltIn_ReportsCallerOrgFirst()
+        {
+            InstallContext(orgId: "acme");
+            GivenPermission(ArchiveTarget(isBuiltIn: true));
+            _iam.Setup(i => i.IsRoot()).Returns(false);
+
+            var result = await Create().ArchivePermissionAsync("p1");
+
+            result.Errors["forbidden"].Should().Be("Not_Allowed_To_Archive_Permission_Outside_Default_Organization");
+        }
+
+        [Fact]
+        public async Task ArchivePermission_NonDefaultCallerTargetingMissingId_ReportsCallerOrgNotNotFound()
+        {
+            InstallContext(orgId: "acme");
+            _repo.Setup(r => r.GetPermissionByIdAsync("nope")).ReturnsAsync((Permission)null!);
+
+            var result = await Create().ArchivePermissionAsync("nope");
+
+            result.Errors.Should().NotContainKey("ItemId");
+            result.Errors["forbidden"].Should().Be("Not_Allowed_To_Archive_Permission_Outside_Default_Organization");
+        }
+
+        [Fact]
+        public async Task ArchivePermission_ForeignOrgRecordAlreadyArchived_ReportsOrgMismatchFirst()
+        {
+            GivenPermission(ArchiveTarget(isArchived: true, orgId: "acme"));
+
+            var result = await Create().ArchivePermissionAsync("p1");
+
+            result.Errors.Should().NotContainKey("archived");
+            result.Errors["forbidden"].Should().Be("Permission_Not_A_Default_Organization_Record");
+        }
+
+        [Fact]
+        public async Task ArchivePermission_ForeignOrgBuiltInRecordNonRoot_ReportsOrgMismatchFirst()
+        {
+            GivenPermission(ArchiveTarget(isBuiltIn: true, orgId: "acme"));
+            _iam.Setup(i => i.IsRoot()).Returns(false);
+
+            var result = await Create().ArchivePermissionAsync("p1");
+
+            result.Errors["forbidden"].Should().Be("Permission_Not_A_Default_Organization_Record");
+            // Asserting the winning error alone would still pass if the built-in check ran first
+            // and merely lost the race to report. The earlier guard must short-circuit.
+            _iam.Verify(i => i.IsRoot(), Times.Never);
+        }
+
+        [Fact]
+        public async Task ArchivePermission_ArchivedBuiltInNonRoot_ReportsAlreadyArchivedFirst()
+        {
+            GivenPermission(ArchiveTarget(isBuiltIn: true, isArchived: true));
+            _iam.Setup(i => i.IsRoot()).Returns(false);
+
+            var result = await Create().ArchivePermissionAsync("p1");
+
+            result.Errors.Should().NotContainKey("forbidden");
+            result.Errors["archived"].Should().Be("Permission_Already_Archived");
+            _iam.Verify(i => i.IsRoot(), Times.Never);
         }
     }
 }

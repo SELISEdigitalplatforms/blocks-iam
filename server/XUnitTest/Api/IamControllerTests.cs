@@ -12,6 +12,7 @@ using Iam.DomainService.Users.ResponseModel;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Moq;
+using System.Reflection;
 
 namespace XUnitTest.ApiTests
 {
@@ -108,6 +109,61 @@ namespace XUnitTest.ApiTests
             var result = await CreateController().UpdatePermission("p-1", new UpdatePermissionRequest());
 
             result.Should().BeOfType<BadRequestObjectResult>();
+        }
+
+        [Fact]
+        public async Task ArchivePermission_Success_ReturnsOk()
+        {
+            _resourceMutation.Setup(s => s.ArchivePermissionAsync("p-1"))
+                .ReturnsAsync(new BaseMutationResponse { IsSuccess = true, ItemId = "p-1" });
+
+            var result = await CreateController().ArchivePermission("p-1");
+
+            result.Should().BeOfType<OkObjectResult>();
+            _resourceMutation.Verify(s => s.ArchivePermissionAsync("p-1"), Times.Once);
+        }
+
+        [Fact]
+        public async Task ArchivePermission_Failure_ReturnsBadRequest()
+        {
+            _resourceMutation.Setup(s => s.ArchivePermissionAsync(It.IsAny<string>()))
+                .ReturnsAsync(new BaseMutationResponse { IsSuccess = false });
+
+            var result = await CreateController().ArchivePermission("p-1");
+
+            result.Should().BeOfType<BadRequestObjectResult>();
+        }
+
+        /// <summary>
+        /// Covers C7. Calling the action directly never exercises routing or authorization, so the
+        /// two things that actually define this endpoint -- the permission string it is guarded by
+        /// and the verb/template it answers on -- are asserted by reflection instead.
+        /// </summary>
+        [Fact]
+        public void ArchivePermission_IsGuardedByMutatePermissionsOnDeleteRoute()
+        {
+            var method = typeof(IamController).GetMethod(nameof(IamController.ArchivePermission));
+            method.Should().NotBeNull();
+
+            var guard = method!.GetCustomAttribute<ProtectedEndPointAttribute>();
+            guard.Should().NotBeNull("the archive route must be protected by the same permission as create/update");
+            guard!.ResourceName.Should().Be("blocks-iam::iam::mutate-permissions");
+
+            var route = method.GetCustomAttribute<HttpDeleteAttribute>();
+            route.Should().NotBeNull("the spec defines the archive route as DELETE");
+            route!.Template.Should().Be("permissions/{id}");
+        }
+
+        [Fact]
+        public void ArchivePermission_UsesTheSamePermissionStringAsCreateAndUpdate()
+        {
+            static string? PermissionOf(string methodName) =>
+                typeof(IamController).GetMethod(methodName)!
+                    .GetCustomAttribute<ProtectedEndPointAttribute>()?.ResourceName;
+
+            PermissionOf(nameof(IamController.ArchivePermission))
+                .Should().Be(PermissionOf(nameof(IamController.CreatePermission)))
+                .And.Be(PermissionOf(nameof(IamController.UpdatePermission)));
         }
 
         [Fact]

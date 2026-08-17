@@ -8,6 +8,14 @@ namespace Iam.DomainService.Resources
     {
         Task<BaseMutationResponse> CreatePermissionAsync(CreatePermissionRequest command);
         Task<BaseMutationResponse> UpdatePermissionAsync(string id, UpdatePermissionRequest command);
+
+        /// <summary>
+        /// Archives a permission. Soft delete only — the document is never removed, so audit
+        /// history survives. Only a default-organization caller may archive, only a default
+        /// -organization record may be archived, and built-in permissions additionally require
+        /// root-tenant access.
+        /// </summary>
+        Task<BaseMutationResponse> ArchivePermissionAsync(string id);
         Task<BaseMutationResponse> CreateRoleAsync(CreateRoleRequest command);
         Task<BaseMutationResponse> UpdateRoleAsync(UpdateRoleRequest command);
         Task<SetRolesResponse> SetRolesAsync(SetRolesRequest command);
