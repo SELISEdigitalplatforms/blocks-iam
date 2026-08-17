@@ -9,6 +9,7 @@ using Iam.DomainService.Services;
 using Iam.DomainService.Shared.Entities;
 using Iam.DomainService.Utilities;
 using Microsoft.Extensions.Logging;
+using System.Runtime.CompilerServices;
 
 namespace Iam.DomainService.Resources
 {
@@ -84,8 +85,7 @@ namespace Iam.DomainService.Resources
             );
 
 
-            var tenantConfig = await _resourceRepository.GetTenantConfigurationAsync();
-            if (tenantConfig.IsMultiOrgEnabled && IsDefaultOrgScope(blocksContext?.OrganizationId))
+            if (await IsMultiOrgEnabledAsync() && IsDefaultOrgScope(blocksContext?.OrganizationId))
             {
                 await _identityAccessManagementService.SendToQueueAsync(
                     IdpConstants.IamOrgQueue,
@@ -172,9 +172,7 @@ namespace Iam.DomainService.Resources
                 }
             );
 
-            var tenantConfig = await _resourceRepository.GetTenantConfigurationAsync();
-
-            if (IsDefaultOrgScope(blocksContext?.OrganizationId) && (tenantConfig?.IsMultiOrgEnabled ?? false))
+            if (IsDefaultOrgScope(blocksContext?.OrganizationId) && await IsMultiOrgEnabledAsync())
             {
                 await _identityAccessManagementService.SendToQueueAsync(
                     IdpConstants.IamOrgQueue,
@@ -323,8 +321,7 @@ namespace Iam.DomainService.Resources
                 }
             );
 
-            var tenantConfig = await _resourceRepository.GetTenantConfigurationAsync();
-            if (tenantConfig.IsMultiOrgEnabled && IsDefaultOrgScope(blocksContext?.OrganizationId))
+            if (await IsMultiOrgEnabledAsync() && IsDefaultOrgScope(blocksContext?.OrganizationId))
             {
                 await _identityAccessManagementService.SendToQueueAsync(
                     IdpConstants.IamOrgQueue,
@@ -384,7 +381,9 @@ namespace Iam.DomainService.Resources
             }
 
             permission.IsArchived = true;
-            permission.LastUpdatedDate = DateTime.Now;
+            // UTC so this record's stamp is comparable with the copies archived by
+            // DeletePermissionForAllOrg, which already writes UtcNow.
+            permission.LastUpdatedDate = DateTime.UtcNow;
             permission.LastUpdatedBy = blocksContext?.UserId;
 
             var result = await _resourceRepository.UpdatePermissionAsync(permission);
@@ -395,7 +394,19 @@ namespace Iam.DomainService.Resources
                 return new BaseMutationResponse();
             }
 
-            await _resourceRepository.UpdateAllSamePermissionAsync(permission);
+            // The cross-organization write is best-effort: the archive of the default-org record
+            // has already committed, so a failure here must not fail the request. It is logged
+            // rather than swallowed, because the observable result is copies still active in other
+            // organizations -- otherwise invisible until someone notices the permission still works.
+            var propagated = await _resourceRepository.UpdateAllSamePermissionAsync(permission);
+
+            if (!propagated)
+            {
+                _logger.LogWarning(
+                    "Permission archive: cross-organization propagation was not acknowledged for resource '{Resource}' (ItemId {ItemId}). The default-organization record is archived, but copies in other organizations may still be active and need manual review.",
+                    permission.Resource,
+                    permission.ItemId);
+            }
 
             await SendResourceMutationEventAsync(
                 new ResourceMutationEvent
@@ -406,12 +417,10 @@ namespace Iam.DomainService.Resources
                 }
             );
 
-            // Null-tolerant on purpose: the config is read with FirstOrDefaultAsync, so a tenant
-            // with no configuration document yields null. By this point the archive has already
-            // committed, so dereferencing would return 500 for a request that succeeded -- and the
-            // retry would then be rejected as already-archived. Absent config means single-org.
-            var tenantConfig = await _resourceRepository.GetTenantConfigurationAsync();
-            if ((tenantConfig?.IsMultiOrgEnabled ?? false) && IsDefaultOrgScope(blocksContext?.OrganizationId))
+            // Null-tolerant on purpose -- the archive has already committed by this point. See
+            // IsMultiOrgEnabledAsync for why dereferencing the configuration here would be a 500
+            // on a request that actually succeeded.
+            if (await IsMultiOrgEnabledAsync() && IsDefaultOrgScope(blocksContext?.OrganizationId))
             {
                 await _identityAccessManagementService.SendToQueueAsync(
                     IdpConstants.IamOrgQueue,
@@ -540,8 +549,7 @@ namespace Iam.DomainService.Resources
                 }
             );
 
-            var tenantConfig = await _resourceRepository.GetTenantConfigurationAsync();
-            if (tenantConfig.IsMultiOrgEnabled && IsDefaultOrgScope(blocksContext?.OrganizationId))
+            if (await IsMultiOrgEnabledAsync() && IsDefaultOrgScope(blocksContext?.OrganizationId))
             {
                 await _identityAccessManagementService.SendToQueueAsync(
                     IdpConstants.IamOrgQueue,
@@ -1221,9 +1229,12 @@ namespace Iam.DomainService.Resources
 
         public async Task<BaseMutationResponse> CreateOrganizationAsync(CreateOrganizationRequest request, string? creatorId = null)
         {
+            // Read once and reuse: the AllowOrgCreationFrom* flags below need the object itself.
+            // The guard below is what keeps those dereferences safe -- a tenant with no
+            // configuration document returns here and never reaches them.
             var tenantConfig = await _resourceRepository.GetTenantConfigurationAsync();
 
-            if (!tenantConfig.IsMultiOrgEnabled)
+            if (!IsMultiOrgEnabled(tenantConfig))
             {
                 return new BaseMutationResponse
                 {
@@ -1436,8 +1447,7 @@ namespace Iam.DomainService.Resources
 
         public async Task<BaseResponse> UpdateOrganizationAsync(string id, SaveOrganizationRequest request)
         {
-            var tenantConfig = await _resourceRepository.GetTenantConfigurationAsync();
-            if (!tenantConfig.IsMultiOrgEnabled)
+            if (!await IsMultiOrgEnabledAsync())
             {
                 return new GetOrganizationsResponse
                 {
@@ -1511,8 +1521,7 @@ namespace Iam.DomainService.Resources
 
         public async Task<GetOrganizationsResponse> GetOrganizationsAsync(GetOrganizationsRequest request)
         {
-            var tenantConfig = await _resourceRepository.GetTenantConfigurationAsync();
-            if (!tenantConfig.IsMultiOrgEnabled)
+            if (!await IsMultiOrgEnabledAsync())
             {
                 return new GetOrganizationsResponse
                 {
@@ -1530,8 +1539,7 @@ namespace Iam.DomainService.Resources
 
         public async Task<GetOrganizationResponse> GetOrganizationAsync(string id)
         {
-            var tenantConfig = await _resourceRepository.GetTenantConfigurationAsync();
-            if (!tenantConfig.IsMultiOrgEnabled)
+            if (!await IsMultiOrgEnabledAsync())
             {
                 return new GetOrganizationResponse
                 {
@@ -1561,8 +1569,7 @@ namespace Iam.DomainService.Resources
 
         public async Task<GetMyOrganizationsResponse> GetMyOrganizationAsync()
         {
-            var tenantConfig = await _resourceRepository.GetTenantConfigurationAsync();
-            if (!tenantConfig.IsMultiOrgEnabled)
+            if (!await IsMultiOrgEnabledAsync())
             {
                 return new GetMyOrganizationsResponse
                 {
@@ -1678,6 +1685,45 @@ namespace Iam.DomainService.Resources
         private static bool IsDefaultOrgScope(string? organizationId)
         {
             return organizationId == DefaultOrganizationId;
+        }
+
+        /// <summary>
+        /// Reads tenant configuration and reports whether multi-organization mode is on, treating a
+        /// missing configuration document as "off".
+        /// </summary>
+        /// <remarks>
+        /// The configuration is fetched with FirstOrDefaultAsync, so it is null for any tenant that
+        /// has never saved one -- a freshly provisioned tenant, or one seeded without it. Callers
+        /// must never dereference it directly. On the mutation paths the read happens *after* the
+        /// write has already committed, so a NullReferenceException there returns HTTP 500 for an
+        /// operation that actually succeeded; the client's retry then trips that operation's own
+        /// already-applied guard (Permission_Already_Archived, and so on), leaving no sequence of
+        /// calls that ever returns success. Absent configuration means single-organization, which
+        /// is also the correct answer: a tenant with no configuration has not enabled multi-org.
+        /// </remarks>
+        private async Task<bool> IsMultiOrgEnabledAsync([CallerMemberName] string operation = "")
+        {
+            var tenantConfig = await _resourceRepository.GetTenantConfigurationAsync();
+
+            return IsMultiOrgEnabled(tenantConfig, operation);
+        }
+
+        /// <summary>
+        /// Overload for callers that need the configuration object itself afterwards, so it is read
+        /// once rather than twice. Same null semantics as <see cref="IsMultiOrgEnabledAsync"/>.
+        /// </summary>
+        private bool IsMultiOrgEnabled(TenantConfiguration? tenantConfig, [CallerMemberName] string operation = "")
+        {
+            if (tenantConfig is not null)
+            {
+                return tenantConfig.IsMultiOrgEnabled;
+            }
+
+            _logger.LogWarning(
+                "{Operation}: no tenant configuration document exists for this tenant, so multi-organization mode is treated as disabled and cross-organization propagation is skipped. Save the organization configuration to enable it.",
+                operation);
+
+            return false;
         }
     }
 }
