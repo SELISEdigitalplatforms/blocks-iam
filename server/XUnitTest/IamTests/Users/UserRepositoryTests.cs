@@ -1,4 +1,4 @@
-using Blocks.Genesis;
+﻿using Blocks.Genesis;
 using FluentAssertions;
 using Iam.DomainService.Dtos;
 using Iam.DomainService.Entities;
@@ -51,8 +51,8 @@ namespace XUnitTest.IamTests.Users
         [Fact]
         public async Task CheckPasswordBlackListedAsync_Delegates()
         {
-            _iam.Setup(r => r.CheckPasswordBlackListedAsync("pw", "t1")).ReturnsAsync(true);
-            (await Sut().CheckPasswordBlackListedAsync("pw", "t1")).Should().BeTrue();
+            _iam.Setup(r => r.CheckPasswordBlackListedAsync("pw")).ReturnsAsync(true);
+            (await Sut().CheckPasswordBlackListedAsync("pw")).Should().BeTrue();
         }
 
         [Fact]
@@ -511,3 +511,4 @@ namespace XUnitTest.IamTests.Users
         }
     }
 }
+

@@ -116,6 +116,7 @@ namespace Authentication.DomainService.Utilities
             serviceCollection.AddSingleton<DeviceVerificationService>();
             serviceCollection.AddSingleton<DeviceCodeExchangeService>();
             serviceCollection.AddHostedService<DeviceCleanupWorker>();
+            serviceCollection.AddHostedService<BlacklistIndexWorker>();
             serviceCollection.AddSingleton<IdpTokenExchangeClient>();
             serviceCollection.AddSingleton<IAuthSessionFacade, AuthSessionFacade>();
             serviceCollection.AddSingleton<IAuthStrategy, AuthStrategy>();

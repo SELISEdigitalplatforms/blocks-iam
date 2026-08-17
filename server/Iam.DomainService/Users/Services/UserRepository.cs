@@ -18,9 +18,9 @@ namespace Iam.DomainService.Users
             _identityAccessManagementRepository = identityAccessManagementRepository;
         }
 
-        public async Task<bool> CheckPasswordBlackListedAsync(string password, string tenantId)
+        public async Task<bool> CheckPasswordBlackListedAsync(string password)
         {
-            return await _identityAccessManagementRepository.CheckPasswordBlackListedAsync(password, tenantId);
+            return await _identityAccessManagementRepository.CheckPasswordBlackListedAsync(password);
         }
 
         public async Task<bool> CreateUserAsync(User user)

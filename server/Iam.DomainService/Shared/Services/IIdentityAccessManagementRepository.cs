@@ -15,7 +15,10 @@ namespace Iam.DomainService.Services
         Task<User> GetUserByIdAsync(string itemId);
         Task<T> GetUserByIdAsync<T>(string itemId);
         Task<IamConfiguration> GetIamConfigurationAsync();
-        Task<bool> CheckPasswordBlackListedAsync(string password, string tenantId);
+        Task<bool> CheckPasswordBlackListedAsync(string password);
+
+        /// <summary>Idempotently ensures the (Key, Value) index on the root blacklist collection.</summary>
+        Task EnsureIndexesAsync(CancellationToken ct = default);
         Task<bool> InsertUserKeyMapAsync(UserKeyMap userKeyMap);
         Task<bool> UpdateUserKeyMapActivationAsync(string userId);
         Task<List<UserKeyMap>> GetActiveUserKeyMapAsync(string userId);
@@ -25,3 +28,4 @@ namespace Iam.DomainService.Services
         Task<TenantConfiguration> GetTenantConfigurationAsync();
     }
 }
+

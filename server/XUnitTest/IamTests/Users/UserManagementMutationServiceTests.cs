@@ -73,6 +73,21 @@ namespace XUnitTest.IamTests.Users
         // ---------- CreateUserAsync ----------
 
         [Fact]
+        public async Task CreateUser_ValidatorThrows_FailsTheRequestRatherThanAllowingIt()
+        {
+            // This service mocks its validator, so the assertion here is narrow but still worth
+            // pinning: whatever escapes validation must fail the request rather than be converted
+            // into a success or an ordinary validation error. The blacklist lookup itself is
+            // exercised against the real validator in CreateUserValidatorTests.
+            _createValidator.Setup(v => v.ValidateAsync(It.IsAny<CreateUserRequest>(), It.IsAny<CancellationToken>()))
+                .ThrowsAsync(new TimeoutException("root database unreachable"));
+
+            var act = async () => await Create().CreateUserAsync(new CreateUserRequest { Email = "a@b.com", Password = "Passw0rd!" });
+
+            await act.Should().ThrowAsync<TimeoutException>();
+        }
+
+        [Fact]
         public async Task CreateUser_ValidationFails_ReturnsErrors()
         {
             _createValidator.Setup(v => v.ValidateAsync(It.IsAny<CreateUserRequest>(), It.IsAny<CancellationToken>()))
