@@ -345,6 +345,102 @@ namespace Iam.DomainService.Resources
             };
         }
 
+        public async Task<BaseMutationResponse> ArchivePermissionAsync(string id)
+        {
+            var blocksContext = BlocksContext.GetContext();
+            if (!IsDefaultOrgScope(blocksContext?.OrganizationId))
+            {
+                return Failure("forbidden", "Not_Allowed_To_Archive_Permission_Outside_Default_Organization");
+            }
+
+            _logger.LogInformation("Permission archive start");
+
+            var permission = await _resourceRepository.GetPermissionByIdAsync(id);
+            if (permission == null)
+            {
+                _logger.LogInformation("Permission archive end -- Not Found");
+                return Failure("ItemId", "Permission_Not_Found");
+            }
+
+            // GetPermissionByIdAsync matches on ItemId alone, so a default-org caller can reach a
+            // copied organization's record directly. Archiving it here would bypass the
+            // propagation-driven archive of copies, so it is refused.
+            if (!IsDefaultOrgScope(permission.OrganizationId))
+            {
+                _logger.LogInformation("Permission archive end -- Not A Default Organization Record");
+                return Failure("forbidden", "Permission_Not_A_Default_Organization_Record");
+            }
+
+            if (permission.IsArchived)
+            {
+                _logger.LogInformation("Permission archive end -- Already Archived");
+                return Failure("archived", "Permission_Already_Archived");
+            }
+
+            if (permission.IsBuiltIn && !_identityAccessManagementService.IsRoot())
+            {
+                _logger.LogInformation("Permission archive end -- Built In Requires Root Tenant");
+                return Failure("forbidden", "Only_Root_Tenant_Can_Archive_Built_In_Permission");
+            }
+
+            permission.IsArchived = true;
+            permission.LastUpdatedDate = DateTime.Now;
+            permission.LastUpdatedBy = blocksContext?.UserId;
+
+            var result = await _resourceRepository.UpdatePermissionAsync(permission);
+
+            if (!result)
+            {
+                _logger.LogInformation("Permission archive end -- Error");
+                return new BaseMutationResponse();
+            }
+
+            await _resourceRepository.UpdateAllSamePermissionAsync(permission);
+
+            await SendResourceMutationEventAsync(
+                new ResourceMutationEvent
+                {
+                    Action = MutationEventType.Delete,
+                    ItemId = permission.ItemId,
+                    Entity = ResourceEntity.Permission
+                }
+            );
+
+            // Null-tolerant on purpose: the config is read with FirstOrDefaultAsync, so a tenant
+            // with no configuration document yields null. By this point the archive has already
+            // committed, so dereferencing would return 500 for a request that succeeded -- and the
+            // retry would then be rejected as already-archived. Absent config means single-org.
+            var tenantConfig = await _resourceRepository.GetTenantConfigurationAsync();
+            if ((tenantConfig?.IsMultiOrgEnabled ?? false) && IsDefaultOrgScope(blocksContext?.OrganizationId))
+            {
+                await _identityAccessManagementService.SendToQueueAsync(
+                    IdpConstants.IamOrgQueue,
+                    new PropagationRolePermissionUpdateEvent
+                    {
+                        Entity = "permission",
+                        ItemId = permission.ItemId,
+                        Action = "delete"
+                    }
+                );
+            }
+
+            _logger.LogInformation("Permission archive end -- Success");
+            return new BaseMutationResponse
+            {
+                IsSuccess = true,
+                ItemId = permission.ItemId
+            };
+        }
+
+        private static BaseMutationResponse Failure(string key, string message)
+        {
+            return new BaseMutationResponse
+            {
+                IsSuccess = false,
+                Errors = new Dictionary<string, string> { { key, message } }
+            };
+        }
+
         public async Task<BaseMutationResponse> UpdateRoleAsync(UpdateRoleRequest command)
         {
             _logger.LogInformation("Role update start");
