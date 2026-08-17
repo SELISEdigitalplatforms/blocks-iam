@@ -58,7 +58,21 @@ namespace XUnitTest.Auth.Shared
         {
             var services = Registered();
 
-            services.Should().Contain(d => d.ServiceType == typeof(Microsoft.Extensions.Hosting.IHostedService));
+            // Assert the specific worker, not merely that some IHostedService exists: with two
+            // hosted services registered, the weaker check passes even if one is missing entirely.
+            services.Should().Contain(d =>
+                d.ServiceType == typeof(Microsoft.Extensions.Hosting.IHostedService) &&
+                d.ImplementationType == typeof(Authentication.DomainService.Oidc.Services.DeviceCleanupWorker));
+        }
+
+        [Fact]
+        public void RegisterAllServices_RegistersBlacklistIndexHostedService()
+        {
+            var services = Registered();
+
+            services.Should().Contain(d =>
+                d.ServiceType == typeof(Microsoft.Extensions.Hosting.IHostedService) &&
+                d.ImplementationType == typeof(Authentication.DomainService.Oidc.Services.BlacklistIndexWorker));
         }
 
         [Fact]

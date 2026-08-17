@@ -1,4 +1,4 @@
-using Blocks.Genesis;
+﻿using Blocks.Genesis;
 using FluentAssertions;
 using FluentValidation.TestHelper;
 using Iam.DomainService.Configurations;
@@ -30,7 +30,7 @@ namespace XUnitTest.IamTests.Users
             // Defaults: unique username/email, no blacklist, no password regex, single-org tenant.
             _userRepo.Setup(r => r.GetUserByUserNameOrgIdAsync(It.IsAny<string>(), It.IsAny<string>()))
                 .ReturnsAsync((User?)null!);
-            _userRepo.Setup(r => r.CheckPasswordBlackListedAsync(It.IsAny<string>(), It.IsAny<string>()))
+            _userRepo.Setup(r => r.CheckPasswordBlackListedAsync(It.IsAny<string>()))
                 .ReturnsAsync(false);
             _configRepo.Setup(c => c.GetConfigurationAsync())
                 .ReturnsAsync(new IamConfiguration { PasswordStrengthCheckerRegex = string.Empty });
@@ -166,12 +166,28 @@ namespace XUnitTest.IamTests.Users
         [Fact]
         public async Task Password_Blacklisted_Fails()
         {
-            _userRepo.Setup(r => r.CheckPasswordBlackListedAsync("Password1!", It.IsAny<string>()))
+            _userRepo.Setup(r => r.CheckPasswordBlackListedAsync("Password1!"))
                 .ReturnsAsync(true);
             var req = ValidRequest();
             req.Password = "Password1!";
             var result = await Create().TestValidateAsync(req);
             result.ShouldHaveValidationErrorFor(x => x.Password);
+        }
+
+        [Fact]
+        public async Task Password_BlacklistLookupFails_PropagatesInsteadOfAllowing()
+        {
+            // Fail closed. If the root database cannot be reached the validator must not decide the
+            // password is fine; the exception has to escape and fail the request. This runs the real
+            // validator, so it would fail if the lookup were ever wrapped in a catch.
+            _userRepo.Setup(r => r.CheckPasswordBlackListedAsync(It.IsAny<string>()))
+                .ThrowsAsync(new TimeoutException("root database unreachable"));
+            var req = ValidRequest();
+            req.Password = "Password1!";
+
+            var act = async () => await Create().ValidateAsync(req);
+
+            await act.Should().ThrowAsync<TimeoutException>();
         }
 
         [Fact]
@@ -211,3 +227,4 @@ namespace XUnitTest.IamTests.Users
         }
     }
 }
+

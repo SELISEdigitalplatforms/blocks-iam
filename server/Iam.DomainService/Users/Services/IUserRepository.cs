@@ -7,7 +7,7 @@ namespace Iam.DomainService.Users
     public interface IUserRepository
     {
         Task<User> GetUserByUserNameOrgIdAsync(string userName, string organizatoinId = "");
-        Task<bool> CheckPasswordBlackListedAsync(string password, string tenantId);
+        Task<bool> CheckPasswordBlackListedAsync(string password);
         Task<User> GetUserByEmailAsync(string email);
         Task<bool> CreateUserAsync(User user);
         Task<User> GetUserByIdAsync(string itemId);
@@ -24,3 +24,4 @@ namespace Iam.DomainService.Users
         Task<string> GetProjectIdFromProjectPeopleAsync(string userId);
     }
 }
+

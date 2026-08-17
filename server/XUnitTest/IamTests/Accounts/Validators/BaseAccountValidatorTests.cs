@@ -1,4 +1,4 @@
-using Blocks.CaptchaDriver;
+﻿using Blocks.CaptchaDriver;
 using Blocks.Genesis;
 using FluentAssertions;
 using Iam.DomainService.Accounts;
@@ -32,7 +32,7 @@ namespace XUnitTest.IamTests.Accounts.Validators
             _cache.Setup(c => c.KeyExistsAsync(It.IsAny<string>())).ReturnsAsync(true);
             _configRepo.Setup(c => c.GetConfigurationAsync())
                 .ReturnsAsync(new IamConfiguration { PasswordStrengthCheckerRegex = string.Empty });
-            _iamRepo.Setup(r => r.CheckPasswordBlackListedAsync(It.IsAny<string>(), It.IsAny<string>()))
+            _iamRepo.Setup(r => r.CheckPasswordBlackListedAsync(It.IsAny<string>()))
                 .ReturnsAsync(false);
             _dbContext.Setup(d => d.GetCollection<Secret>("Secrets")).Returns(EmptySecrets());
         }
@@ -106,13 +106,27 @@ namespace XUnitTest.IamTests.Accounts.Validators
         [Fact]
         public async Task Password_Blacklisted_Fails()
         {
-            _iamRepo.Setup(r => r.CheckPasswordBlackListedAsync(It.IsAny<string>(), It.IsAny<string>()))
+            _iamRepo.Setup(r => r.CheckPasswordBlackListedAsync(It.IsAny<string>()))
                 .ReturnsAsync(true);
 
             var result = await Create().ValidateAsync(new BaseAccountRequest { Code = "valid-code", Password = "Str0ng!Passw0rd" });
 
             result.IsValid.Should().BeFalse();
             result.Errors.Should().Contain(e => e.ErrorMessage == "This password can not be used.");
+        }
+
+        [Fact]
+        public async Task Password_BlacklistLookupFails_PropagatesInsteadOfAllowing()
+        {
+            // Fail closed on the account flows too: a root-database outage must fail the request
+            // rather than let an unchecked password through.
+            _iamRepo.Setup(r => r.CheckPasswordBlackListedAsync(It.IsAny<string>()))
+                .ThrowsAsync(new TimeoutException("root database unreachable"));
+
+            var act = async () => await Create().ValidateAsync(
+                new BaseAccountRequest { Code = "valid-code", Password = "Str0ng!Passw0rd" });
+
+            await act.Should().ThrowAsync<TimeoutException>();
         }
 
         [Fact]
@@ -146,3 +160,4 @@ namespace XUnitTest.IamTests.Accounts.Validators
         }
     }
 }
+

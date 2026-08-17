@@ -38,8 +38,9 @@ namespace Iam.DomainService.Accounts
 
         protected async Task<bool> CheckBlackListPassword(string password, CancellationToken cancellationToken)
         {
-            var tenantId = BlocksContext.GetContext()?.TenantId;
-            var isExist = await _identityAccessManagementRepository.CheckPasswordBlackListedAsync(password, tenantId);
+            // No tenant is read: the blacklist is global, so the check must run even on paths that
+            // have no tenant context rather than treating the password as safe.
+            var isExist = await _identityAccessManagementRepository.CheckPasswordBlackListedAsync(password);
             return !isExist;
         }
     }
