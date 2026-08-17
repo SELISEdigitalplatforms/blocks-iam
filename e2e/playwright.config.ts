@@ -24,8 +24,8 @@ export default defineConfig({
   fullyParallel: true,
   forbidOnly: !!process.env.CI,
   retries: process.env.CI ? 2 : 0,
-  // Serial: these tests mutate shared backend state (create/delete real
-  // projects on dev), so running them in parallel would race.
+  // Serial: these tests mutate shared backend state on the live account,
+  // so running them in parallel would race.
   workers: 1,
   reporter: [["html", { open: "never" }], ["list"]],
   // Playwright's 30s default is shorter than the waits the specs themselves
@@ -34,7 +34,7 @@ export default defineConfig({
   // that callback settles in ~35-40s, so 30s failed on timing alone.
   timeout: 120_000,
   // Patches the served index.html so BLOCKS_IAM_BASE_URL points at the local
-  // :5000 host (E2E_BASE_URL) instead of the remote dev server.
+  // :5001 host (E2E_BASE_URL) instead of the remote host.
   globalSetup: "./global-setup.ts",
   use: {
     baseURL,
@@ -64,7 +64,7 @@ export default defineConfig({
           stderr: "pipe" as const,
           // Documented override (Program.cs): FrontendRuntime__BLOCKS_* env vars
           // win over the Mongo secret. Ensures a fresh build (run.sh -a) also
-          // bakes the local :5000 host. No-op for -b (no placeholder left).
+          // bakes the local :5001 host. No-op for -b (no placeholder left).
           env: {
             FrontendRuntime__BLOCKS_IAM_BASE_URL: baseURL,
           },
@@ -72,9 +72,24 @@ export default defineConfig({
       }
     : {}),
   projects: [
+    // Setup: performs the real login once and saves the session to
+    // fixtures/auth.json (see login.spec.ts).
+    {
+      name: "setup",
+      testMatch: /auth[\\/]login\.spec\.ts/,
+      timeout: 120_000,
+      use: { ...devices["Desktop Chrome"] },
+    },
+    // All other tests run authenticated by reusing that saved session, and
+    // only after "setup" (login) has succeeded.
     {
       name: "chromium",
-      use: { ...devices["Desktop Chrome"] },
+      testIgnore: /auth[\\/]login\.spec\.ts/,
+      dependencies: ["setup"],
+      use: {
+        ...devices["Desktop Chrome"],
+        storageState: "fixtures/auth.json",
+      },
     },
   ],
 });
