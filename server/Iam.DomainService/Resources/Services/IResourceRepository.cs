@@ -48,6 +48,18 @@ namespace Iam.DomainService.Resources
         Task<List<Permission>> GetPermissionsByOrgAsync(string organizationId, int? pageNumber = null, int? pageSize = null);
         Task<bool> AddRoleToPermissionsByResourcesAsync(string slug, List<string> resources, string organizationId);
         Task<bool> RemoveRoleFromPermissionsByResourcesAsync(string slug, List<string> resources, string organizationId);
+
+        /// <summary>True when a non-archived role in the organization has this slug as its parent.</summary>
+        Task<bool> HasChildRolesAsync(string slug, string organizationId);
+
+        /// <summary>True when an active user in the organization still holds this role.</summary>
+        Task<bool> HasUserAssignmentsAsync(string slug, string organizationId);
+
+        /// <summary>Removes the slug from every permission in the organization that references it.</summary>
+        Task<bool> RemoveRoleFromAllPermissionsAsync(string slug, string organizationId);
+
+        /// <summary>Removes the slug from the organization's bucket in every user holding it.</summary>
+        Task<bool> RemoveRoleFromAllUsersAsync(string slug, string organizationId);
         Task<List<Permission>> GetPermissionsByRoleAsync(string roleSlug, string organizationId);
         Task<List<Permission>> GetPermissionsByRolesAsync(List<string> roleSlugs, string organizationId, int pageNumber = 1, int pageSize = 10);
         Task<List<Permission>> GetPermissionsByGroupsAsync(List<string> groups, string organizationId, int pageNumber = 1, int pageSize = 10);

@@ -87,6 +87,14 @@ namespace Api.Controllers
             return result.IsSuccess ? Ok(result) : BadRequest(result);
         }
 
+        [HttpDelete("roles/{id}")]
+        [ProtectedEndPoint("blocks-iam::iam::mutate-roles")]
+        public async Task<IActionResult> ArchiveRole([FromRoute] string id)
+        {
+            var result = await _resourceMutationService.ArchiveRoleAsync(id);
+            return result.IsSuccess ? Ok(result) : BadRequest(result);
+        }
+
         [HttpPost("permissions")]
         [ProtectedEndPoint("blocks-iam::iam::permissions")]
         public async Task<GetPermissionsResponse> GetPermissions([FromBody] GetPermissionsRequest query)

@@ -16,6 +16,14 @@ namespace Iam.DomainService.Resources
         /// root-tenant access.
         /// </summary>
         Task<BaseMutationResponse> ArchivePermissionAsync(string id);
+
+        /// <summary>
+        /// Archives a role. Soft delete only. Blocks rather than guesses when the role is unsafe to
+        /// retire: a role with child roles or active user assignments is refused outright, and a
+        /// copy created from the default organization can only be archived via propagation from its
+        /// master record.
+        /// </summary>
+        Task<BaseMutationResponse> ArchiveRoleAsync(string id);
         Task<BaseMutationResponse> CreateRoleAsync(CreateRoleRequest command);
         Task<BaseMutationResponse> UpdateRoleAsync(UpdateRoleRequest command);
         Task<SetRolesResponse> SetRolesAsync(SetRolesRequest command);

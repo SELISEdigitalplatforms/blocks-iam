@@ -188,7 +188,11 @@ namespace Iam.DomainService.Resources
             var collection = _identityAccessManagementRepository.GetCollection<Role>();
             var resolvedOrgId = ResolveOrganizationId(organizationId);
 
-            var filter = Builders<Role>.Filter.Eq(x => x.OrganizationId, resolvedOrgId);
+            // Ne(..., true), never Eq(..., false): IsArchived is newer than the role documents, and
+            // a missing field does not match false. Eq would return nothing for pre-existing roles
+            // and empty this list -- and GetAssignableRolesAsync with it -- for every tenant.
+            var filter = Builders<Role>.Filter.Eq(x => x.OrganizationId, resolvedOrgId)
+                & Builders<Role>.Filter.Ne(x => x.IsArchived, true);
             SortDefinition<Role>? sort = null;
 
             if (query.Filter is not null)
@@ -248,8 +252,113 @@ namespace Iam.DomainService.Resources
         public async Task<List<Role>> GetRolesByOrgAsync(string organizationId)
         {
             var collection = _identityAccessManagementRepository.GetCollection<Role>();
-            var filter = Builders<Role>.Filter.Eq(x => x.OrganizationId, organizationId);
+            // Archived roles are excluded here too, because this feeds CopyRoleFromDefault: without
+            // it, archiving a default-organization role would still clone it into every
+            // organization provisioned afterwards, resurrecting it unarchived. Same Ne(..., true)
+            // reasoning as GetRolesAsync.
+            var filter = Builders<Role>.Filter.Eq(x => x.OrganizationId, organizationId)
+                & Builders<Role>.Filter.Ne(x => x.IsArchived, true);
             return await collection.Find(filter).ToListAsync();
+        }
+
+        /// <summary>
+        /// True when any role in the organization names this slug as its parent. Archived children
+        /// do not count: archiving is a soft delete, so an archived child keeps its ParentRoleSlug,
+        /// and counting it would make a parent permanently unarchivable once its children are gone.
+        /// </summary>
+        public async Task<bool> HasChildRolesAsync(string slug, string organizationId)
+        {
+            if (string.IsNullOrWhiteSpace(slug) || string.IsNullOrWhiteSpace(organizationId))
+            {
+                return false;
+            }
+
+            var collection = _identityAccessManagementRepository.GetCollection<Role>();
+            var filter = Builders<Role>.Filter.Eq(x => x.OrganizationId, organizationId)
+                & Builders<Role>.Filter.Eq(x => x.ParentRoleSlug, slug)
+                & Builders<Role>.Filter.Ne(x => x.IsArchived, true);
+
+            return await collection.CountDocumentsAsync(filter) > 0;
+        }
+
+        /// <summary>
+        /// True when a genuinely active user in the organization still holds this role.
+        /// </summary>
+        /// <remarks>
+        /// A missing Status is treated as Active, matching both the C# initialiser on
+        /// <see cref="User.Status"/> and the in-memory predicate used elsewhere for "truly active".
+        /// Status was added after user documents already existed, and this is the first
+        /// database-level filter on it, so Eq alone would let a legacy holder slip through and be
+        /// silently scrubbed instead of blocking the archive. A missing Active needs no such
+        /// handling: it deserialises to false, which already excludes the user.
+        /// </remarks>
+        public async Task<bool> HasUserAssignmentsAsync(string slug, string organizationId)
+        {
+            if (string.IsNullOrWhiteSpace(slug) || string.IsNullOrWhiteSpace(organizationId))
+            {
+                return false;
+            }
+
+            var collection = _identityAccessManagementRepository.GetCollection<User>();
+            var filter = Builders<User>.Filter.AnyEq($"Roles.{organizationId}", slug)
+                & Builders<User>.Filter.Eq(x => x.Active, true)
+                & (Builders<User>.Filter.Eq(x => x.Status, UserLifecycleStatus.Active)
+                    | Builders<User>.Filter.Exists(x => x.Status, false));
+
+            return await collection.CountDocumentsAsync(filter) > 0;
+        }
+
+        /// <summary>
+        /// Removes the slug from every permission in the organization that references it. Unlike
+        /// <see cref="RemoveRoleFromPermissionsByResourcesAsync"/> this is not scoped to a list of
+        /// resources, and it deliberately does not skip archived permissions: the invariant wanted
+        /// is that no permission in the organization still names an archived role.
+        /// </summary>
+        public async Task<bool> RemoveRoleFromAllPermissionsAsync(string slug, string organizationId)
+        {
+            if (string.IsNullOrWhiteSpace(slug) || string.IsNullOrWhiteSpace(organizationId))
+            {
+                return true;
+            }
+
+            var collection = _identityAccessManagementRepository.GetCollection<Permission>();
+            var filter = Builders<Permission>.Filter.AnyEq(x => x.Roles, slug)
+                & Builders<Permission>.Filter.Eq(x => x.OrganizationId, organizationId);
+
+            var update = Builders<Permission>.Update.Pull(x => x.Roles, slug);
+            var result = await collection.UpdateManyAsync(filter, update);
+
+            // IsAcknowledged, not ModifiedCount > 0: a role referenced by no permission matches
+            // nothing, which is an acknowledged write of zero documents and a perfectly normal
+            // archive, not a failure.
+            return result?.IsAcknowledged ?? false;
+        }
+
+        /// <summary>
+        /// Removes the slug from the given organization's bucket in every user holding it.
+        /// </summary>
+        /// <remarks>
+        /// User.Roles is a Dictionary&lt;string, List&lt;string&gt;&gt;, which BSON-serialises as a
+        /// subdocument, so the bucket is addressed by the dotted path Roles.{organizationId} and
+        /// filter and update must name the same path. Scoping matters: the same slug under a
+        /// different organization key belongs to that organization's copy of the role and is left
+        /// alone.
+        /// </remarks>
+        public async Task<bool> RemoveRoleFromAllUsersAsync(string slug, string organizationId)
+        {
+            if (string.IsNullOrWhiteSpace(slug) || string.IsNullOrWhiteSpace(organizationId))
+            {
+                return true;
+            }
+
+            var collection = _identityAccessManagementRepository.GetCollection<User>();
+            var orgBucket = $"Roles.{organizationId}";
+
+            var filter = Builders<User>.Filter.AnyEq(orgBucket, slug);
+            var update = Builders<User>.Update.Pull(orgBucket, slug);
+            var result = await collection.UpdateManyAsync(filter, update);
+
+            return result?.IsAcknowledged ?? false;
         }
 
         public async Task<bool> UpdateRolePermissionByIdsAsync(string slug, List<string> permissions, string? organizationId = null)
