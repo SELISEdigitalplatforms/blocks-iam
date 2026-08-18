@@ -45,7 +45,7 @@ jobs:
         id: vars
         run: |
           PR="${{ github.event.pull_request.number }}"
-          HOST="dev--${SERVICE}-${PR}.blocksdevelopers.com"
+          HOST="dev-${SERVICE}-${PR}.blocksdevelopers.com"
           RELEASE="pr-${PR}-blocks-iam"
           IMAGE_TAG="pr-${PR}-${{ github.event.pull_request.head.sha }}"
           echo "pr=${PR}"               >> "$GITHUB_OUTPUT"
