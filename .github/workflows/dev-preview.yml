@@ -152,8 +152,7 @@ jobs:
   destroy-preview:
     if: |
       github.event.action == 'closed' ||
-      (github.event.action == 'unlabeled' && github.event.label.name == 'deploy-preview') ||
-      (github.event.action == 'labeled' && github.event.label.name == 'destroy-preview')
+      (github.event.action == 'unlabeled' && github.event.label.name == 'deploy-preview')
     runs-on: ubuntu-latest
     permissions:
       contents: read
