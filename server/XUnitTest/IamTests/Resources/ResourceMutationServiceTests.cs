@@ -11,6 +11,7 @@ using Iam.DomainService.Resources.TenantPropagation;
 using Iam.DomainService.Services;
 using Iam.DomainService.Shared.Entities;
 using Iam.DomainService.Utilities;
+using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 using Moq;
 
@@ -38,6 +39,11 @@ namespace XUnitTest.IamTests.Resources
             _repo.Setup(r => r.InsertRoleAsync(It.IsAny<Role>())).ReturnsAsync(true);
             _repo.Setup(r => r.UpdatePermissionAsync(It.IsAny<Permission>())).ReturnsAsync(true);
             _repo.Setup(r => r.UpdateRoleAsync(It.IsAny<Role>())).ReturnsAsync(true);
+            _repo.Setup(r => r.UpdateRolesAsync(It.IsAny<List<Role>>())).ReturnsAsync(true);
+            _repo.Setup(r => r.HasChildRolesAsync(It.IsAny<string>(), It.IsAny<string>())).ReturnsAsync(false);
+            _repo.Setup(r => r.HasUserAssignmentsAsync(It.IsAny<string>(), It.IsAny<string>())).ReturnsAsync(false);
+            _repo.Setup(r => r.RemoveRoleFromAllPermissionsAsync(It.IsAny<string>(), It.IsAny<string>())).ReturnsAsync(true);
+            _repo.Setup(r => r.RemoveRoleFromAllUsersAsync(It.IsAny<string>(), It.IsAny<string>())).ReturnsAsync(true);
             _repo.Setup(r => r.UpdateAllSamePermissionAsync(It.IsAny<Permission>())).ReturnsAsync(true);
             _iam.Setup(i => i.SendToQueueAsync(It.IsAny<string>(), It.IsAny<object>())).Returns(Task.CompletedTask);
             _activity.Setup(a => a.SendUserActivityAsync(It.IsAny<UserActivityEvent>())).Returns(Task.CompletedTask);
@@ -63,6 +69,29 @@ namespace XUnitTest.IamTests.Resources
             new(NullLogger<ResourceMutationService>.Instance, _repo.Object, _iam.Object,
                 _permValidator.Object, _updatePermValidator.Object, _roleValidator.Object,
                 _propagator.Object, _activity.Object);
+
+        private ResourceMutationService Create(ILogger<ResourceMutationService> logger) =>
+            new(logger, _repo.Object, _iam.Object,
+                _permValidator.Object, _updatePermValidator.Object, _roleValidator.Object,
+                _propagator.Object, _activity.Object);
+
+        /// <summary>
+        /// Captures warning-level messages, so tests can assert that a failure the caller cannot
+        /// see was at least reported. Used where the only observable outcome is a log line.
+        /// </summary>
+        private static Mock<ILogger<ResourceMutationService>> WarningCapture(List<string> sink)
+        {
+            var logger = new Mock<ILogger<ResourceMutationService>>();
+            logger.Setup(l => l.Log(
+                    It.IsAny<LogLevel>(), It.IsAny<EventId>(), It.IsAny<It.IsAnyType>(),
+                    It.IsAny<Exception>(), It.IsAny<Func<It.IsAnyType, Exception?, string>>()))
+                .Callback(new InvocationAction(invocation =>
+                {
+                    if ((LogLevel)invocation.Arguments[0] != LogLevel.Warning) return;
+                    sink.Add(invocation.Arguments[2]?.ToString() ?? string.Empty);
+                }));
+            return logger;
+        }
 
         private static CreatePermissionRequest PermReq() => new()
         {
@@ -993,6 +1022,602 @@ namespace XUnitTest.IamTests.Resources
             result.Errors.Should().NotContainKey("forbidden");
             result.Errors["archived"].Should().Be("Permission_Already_Archived");
             _iam.Verify(i => i.IsRoot(), Times.Never);
+        }
+
+        // ---------- ArchiveRoleAsync (#456) ----------
+
+        private static Role ArchiveRoleTarget(
+            string org = "default", bool createdFromDefault = false, bool isArchived = false) => new()
+            {
+                ItemId = "r1",
+                Slug = "manager",
+                Name = "Manager",
+                Description = "d",
+                OrganizationId = org,
+                CreatedFromDefault = createdFromDefault,
+                IsArchived = isArchived,
+                LastUpdatedDate = new DateTime(2020, 1, 1, 0, 0, 0, DateTimeKind.Utc),
+                LastUpdatedBy = "someone-else"
+            };
+
+        private void GivenRole(Role role) =>
+            _repo.Setup(r => r.GetRoleByIdAsync(role.ItemId)).ReturnsAsync(role);
+
+        private void VerifyRoleUntouched()
+        {
+            _repo.Verify(r => r.UpdateRoleAsync(It.IsAny<Role>()), Times.Never);
+            _repo.Verify(r => r.RemoveRoleFromAllPermissionsAsync(It.IsAny<string>(), It.IsAny<string>()), Times.Never);
+            _repo.Verify(r => r.RemoveRoleFromAllUsersAsync(It.IsAny<string>(), It.IsAny<string>()), Times.Never);
+            _iam.Verify(i => i.SendToQueueAsync(It.IsAny<string>(), It.IsAny<ResourceMutationEvent>()), Times.Never);
+            _iam.Verify(i => i.SendToQueueAsync(It.IsAny<string>(), It.IsAny<PropagationRolePermissionUpdateEvent>()), Times.Never);
+        }
+
+        [Fact]
+        public async Task ArchiveRole_OrgOwnedRole_ArchivesAndStampsAudit()
+        {
+            InstallContext(orgId: "acme");
+            Role? persisted = null;
+            GivenRole(ArchiveRoleTarget(org: "acme"));
+            _repo.Setup(r => r.UpdateRoleAsync(It.IsAny<Role>()))
+                .Callback<Role>(r => persisted = r)
+                .ReturnsAsync(true);
+
+            var result = await Create().ArchiveRoleAsync("r1");
+
+            result.IsSuccess.Should().BeTrue();
+            result.ItemId.Should().Be("r1");
+            persisted!.IsArchived.Should().BeTrue();
+            // The copies inherit the source's LastUpdatedBy, so a stale stamp here would attribute
+            // the archive to whoever last edited the role, in every organization.
+            persisted.LastUpdatedBy.Should().Be("actor-1");
+            persisted.LastUpdatedDate.Should().BeAfter(new DateTime(2020, 1, 1, 0, 0, 0, DateTimeKind.Utc));
+            persisted.LastUpdatedDate.Kind.Should().Be(DateTimeKind.Utc);
+        }
+
+        [Fact]
+        public async Task ArchiveRole_CleansPermissionsAndUsersBeforePersisting()
+        {
+            InstallContext(orgId: "acme");
+            var order = new List<string>();
+            GivenRole(ArchiveRoleTarget(org: "acme"));
+            _repo.Setup(r => r.RemoveRoleFromAllPermissionsAsync("manager", "acme"))
+                .Callback(() => order.Add("permissions")).ReturnsAsync(true);
+            _repo.Setup(r => r.RemoveRoleFromAllUsersAsync("manager", "acme"))
+                .Callback(() => order.Add("users")).ReturnsAsync(true);
+            _repo.Setup(r => r.UpdateRoleAsync(It.IsAny<Role>()))
+                .Callback(() => order.Add("persist")).ReturnsAsync(true);
+
+            await Create().ArchiveRoleAsync("r1");
+
+            // Verifying that all three happened says nothing about order, and the ordering is the
+            // whole point of A2 -- so assert the sequence itself.
+            order.Should().Equal("permissions", "users", "persist");
+        }
+
+        [Fact]
+        public async Task ArchiveRole_DefaultOrgMasterRole_Succeeds()
+        {
+            GivenRole(ArchiveRoleTarget());
+
+            var result = await Create().ArchiveRoleAsync("r1");
+
+            result.IsSuccess.Should().BeTrue();
+        }
+
+        [Fact]
+        public async Task ArchiveRole_Success_SendsDeleteMutationEvent()
+        {
+            GivenRole(ArchiveRoleTarget());
+
+            await Create().ArchiveRoleAsync("r1");
+
+            _iam.Verify(i => i.SendToQueueAsync(
+                IdpConstants.IamResourceQueue,
+                It.Is<ResourceMutationEvent>(e =>
+                    e.Action == MutationEventType.Delete &&
+                    e.Entity == ResourceEntity.Role &&
+                    e.ItemId == "r1")), Times.Once);
+        }
+
+        [Fact]
+        public async Task ArchiveRole_MultiOrgEnabled_QueuesRolePropagationEvent()
+        {
+            GivenRole(ArchiveRoleTarget());
+            _repo.Setup(r => r.GetTenantConfigurationAsync()).ReturnsAsync(new TenantConfiguration { IsMultiOrgEnabled = true });
+
+            await Create().ArchiveRoleAsync("r1");
+
+            _iam.Verify(i => i.SendToQueueAsync(
+                IdpConstants.IamOrgQueue,
+                It.Is<PropagationRolePermissionUpdateEvent>(e =>
+                    e.Entity == "role" && e.Action == "delete" && e.ItemId == "r1")), Times.Once);
+        }
+
+        [Fact]
+        public async Task ArchiveRole_MultiOrgDisabled_QueuesNoPropagationEvent()
+        {
+            GivenRole(ArchiveRoleTarget());
+            _repo.Setup(r => r.GetTenantConfigurationAsync()).ReturnsAsync(new TenantConfiguration { IsMultiOrgEnabled = false });
+
+            await Create().ArchiveRoleAsync("r1");
+
+            _iam.Verify(i => i.SendToQueueAsync(It.IsAny<string>(), It.IsAny<PropagationRolePermissionUpdateEvent>()), Times.Never);
+        }
+
+        /// <summary>
+        /// The guards resolve a blank organization to "default", so a caller in that state can
+        /// archive the master record. The propagation gate must resolve it the same way, or the
+        /// master is archived while every copy in every other organization stays active. Every
+        /// other test here installs a literal "default", so this is the only one that would notice.
+        /// </summary>
+        [Fact]
+        public async Task ArchiveRole_BlankContextOrganization_StillQueuesPropagation()
+        {
+            InstallContext(orgId: "");
+            GivenRole(ArchiveRoleTarget());
+            _repo.Setup(r => r.GetTenantConfigurationAsync()).ReturnsAsync(new TenantConfiguration { IsMultiOrgEnabled = true });
+
+            var result = await Create().ArchiveRoleAsync("r1");
+
+            result.IsSuccess.Should().BeTrue();
+            _iam.Verify(i => i.SendToQueueAsync(
+                IdpConstants.IamOrgQueue,
+                It.Is<PropagationRolePermissionUpdateEvent>(e => e.Entity == "role" && e.Action == "delete")), Times.Once);
+        }
+
+        [Fact]
+        public async Task ArchiveRole_NoTenantConfiguration_StillSucceeds()
+        {
+            GivenRole(ArchiveRoleTarget());
+            _repo.Setup(r => r.GetTenantConfigurationAsync()).ReturnsAsync((TenantConfiguration)null!);
+
+            var result = await Create().ArchiveRoleAsync("r1");
+
+            result.IsSuccess.Should().BeTrue();
+            _iam.Verify(i => i.SendToQueueAsync(It.IsAny<string>(), It.IsAny<PropagationRolePermissionUpdateEvent>()), Times.Never);
+        }
+
+        /// <summary>
+        /// The events are published after the archive has committed, and a retry cannot republish
+        /// them because it stops at Role_Already_Archived. Letting the exception escape would
+        /// return 500 for a write that succeeded and still leave the same gap, so the failure is
+        /// logged instead — loudly enough to drive the reconciliation pass, since for roles this
+        /// queue message is the only cross-organization channel there is.
+        /// </summary>
+        [Fact]
+        public async Task ArchiveRole_EventPublishingThrows_StillReportsSuccessAndLogsTheGap()
+        {
+            var warnings = new List<string>();
+            var logger = new Mock<ILogger<ResourceMutationService>>();
+            var errors = new List<string>();
+            logger.Setup(l => l.Log(
+                    It.IsAny<LogLevel>(), It.IsAny<EventId>(), It.IsAny<It.IsAnyType>(),
+                    It.IsAny<Exception>(), It.IsAny<Func<It.IsAnyType, Exception?, string>>()))
+                .Callback(new InvocationAction(inv =>
+                {
+                    if ((LogLevel)inv.Arguments[0] == LogLevel.Error) errors.Add(inv.Arguments[2]?.ToString() ?? "");
+                }));
+
+            GivenRole(ArchiveRoleTarget());
+            _iam.Setup(i => i.SendToQueueAsync(It.IsAny<string>(), It.IsAny<ResourceMutationEvent>()))
+                .ThrowsAsync(new InvalidOperationException("queue down"));
+
+            var result = await Create(logger.Object).ArchiveRoleAsync("r1");
+
+            result.IsSuccess.Should().BeTrue("the archive itself committed");
+            _repo.Verify(r => r.UpdateRoleAsync(It.Is<Role>(x => x.IsArchived)), Times.Once);
+            errors.Should().ContainSingle(e => e.Contains("manager") && e.Contains("reconciliation"));
+            warnings.Should().BeEmpty();
+        }
+
+        [Fact]
+        public async Task ArchiveRole_NotFound_ReturnsErrorAndTouchesNothing()
+        {
+            _repo.Setup(r => r.GetRoleByIdAsync("nope")).ReturnsAsync((Role)null!);
+
+            var result = await Create().ArchiveRoleAsync("nope");
+
+            result.Errors["ItemId"].Should().Be("Role_Not_Found");
+            VerifyRoleUntouched();
+        }
+
+        [Fact]
+        public async Task ArchiveRole_DefaultCopiedRole_ForbiddenAndTouchesNothing()
+        {
+            InstallContext(orgId: "acme");
+            GivenRole(ArchiveRoleTarget(org: "acme", createdFromDefault: true));
+
+            var result = await Create().ArchiveRoleAsync("r1");
+
+            result.Errors["forbidden"].Should().Be("Can_Not_Archive_Default_Copied_Role");
+            VerifyRoleUntouched();
+        }
+
+        [Fact]
+        public async Task ArchiveRole_RoleFromAnotherOrganization_ForbiddenAndTouchesNothing()
+        {
+            InstallContext(orgId: "acme");
+            GivenRole(ArchiveRoleTarget(org: "globex"));
+
+            var result = await Create().ArchiveRoleAsync("r1");
+
+            result.Errors["forbidden"].Should().Be("Not_Allowed_To_Archive_Role_From_Another_Organization");
+            VerifyRoleUntouched();
+        }
+
+        /// <summary>
+        /// The organization comparison applies to default-org callers too. GetRoleByIdAsync has no
+        /// organization scope and the copied-role guard only catches CreatedFromDefault records, so
+        /// restricting this check to non-default callers would let a default-org admin archive
+        /// another organization's own role by id.
+        /// </summary>
+        [Fact]
+        public async Task ArchiveRole_DefaultOrgCallerTargetingAnotherOrgsOwnRole_IsStillForbidden()
+        {
+            GivenRole(ArchiveRoleTarget(org: "acme", createdFromDefault: false));
+
+            var result = await Create().ArchiveRoleAsync("r1");
+
+            result.Errors["forbidden"].Should().Be("Not_Allowed_To_Archive_Role_From_Another_Organization");
+            VerifyRoleUntouched();
+        }
+
+        [Fact]
+        public async Task ArchiveRole_AlreadyArchived_ReturnsErrorAndTouchesNothing()
+        {
+            GivenRole(ArchiveRoleTarget(isArchived: true));
+
+            var result = await Create().ArchiveRoleAsync("r1");
+
+            result.Errors["archived"].Should().Be("Role_Already_Archived");
+            VerifyRoleUntouched();
+            _repo.Verify(r => r.HasChildRolesAsync(It.IsAny<string>(), It.IsAny<string>()), Times.Never);
+        }
+
+        [Fact]
+        public async Task ArchiveRole_HasChildRoles_BlockedAndTouchesNothing()
+        {
+            GivenRole(ArchiveRoleTarget());
+            _repo.Setup(r => r.HasChildRolesAsync("manager", "default")).ReturnsAsync(true);
+
+            var result = await Create().ArchiveRoleAsync("r1");
+
+            result.Errors["dependency"].Should().Be("Role_Has_Child_Roles");
+            VerifyRoleUntouched();
+        }
+
+        [Fact]
+        public async Task ArchiveRole_HasActiveUserAssignments_BlockedAndTouchesNothing()
+        {
+            GivenRole(ArchiveRoleTarget());
+            _repo.Setup(r => r.HasUserAssignmentsAsync("manager", "default")).ReturnsAsync(true);
+
+            var result = await Create().ArchiveRoleAsync("r1");
+
+            result.Errors["dependency"].Should().Be("Role_Has_Active_User_Assignments");
+            VerifyRoleUntouched();
+        }
+
+        [Fact]
+        public async Task ArchiveRole_WriteFails_CleanupStillRanButNoEventsSent()
+        {
+            GivenRole(ArchiveRoleTarget());
+            _repo.Setup(r => r.UpdateRoleAsync(It.IsAny<Role>())).ReturnsAsync(false);
+
+            var result = await Create().ArchiveRoleAsync("r1");
+
+            result.IsSuccess.Should().BeFalse();
+            // Not "nothing happened": cleanup deliberately precedes the write, and A2 accepts that
+            // half-state as the safer one. What must not happen is announcing the archive.
+            _repo.Verify(r => r.RemoveRoleFromAllPermissionsAsync("manager", "default"), Times.Once);
+            _repo.Verify(r => r.RemoveRoleFromAllUsersAsync("manager", "default"), Times.Once);
+            _iam.Verify(i => i.SendToQueueAsync(It.IsAny<string>(), It.IsAny<ResourceMutationEvent>()), Times.Never);
+            _iam.Verify(i => i.SendToQueueAsync(It.IsAny<string>(), It.IsAny<PropagationRolePermissionUpdateEvent>()), Times.Never);
+        }
+
+        [Fact]
+        public async Task ArchiveRole_PermissionCleanupUnacknowledged_DoesNotArchive()
+        {
+            GivenRole(ArchiveRoleTarget());
+            _repo.Setup(r => r.RemoveRoleFromAllPermissionsAsync("manager", "default")).ReturnsAsync(false);
+
+            var result = await Create().ArchiveRoleAsync("r1");
+
+            // Archiving anyway would leave the state A2 calls unsafe: an archived role still
+            // referenced by permissions.
+            result.IsSuccess.Should().BeFalse();
+            _repo.Verify(r => r.UpdateRoleAsync(It.IsAny<Role>()), Times.Never);
+            _iam.Verify(i => i.SendToQueueAsync(It.IsAny<string>(), It.IsAny<ResourceMutationEvent>()), Times.Never);
+        }
+
+        [Fact]
+        public async Task ArchiveRole_UserCleanupUnacknowledged_DoesNotArchive()
+        {
+            GivenRole(ArchiveRoleTarget());
+            _repo.Setup(r => r.RemoveRoleFromAllUsersAsync("manager", "default")).ReturnsAsync(false);
+
+            var result = await Create().ArchiveRoleAsync("r1");
+
+            result.IsSuccess.Should().BeFalse();
+            _repo.Verify(r => r.UpdateRoleAsync(It.IsAny<Role>()), Times.Never);
+        }
+
+        // ---------- Guard precedence ----------
+
+        [Fact]
+        public async Task ArchiveRole_ArchivedDefaultCopy_ReportsCopyGuardFirst()
+        {
+            InstallContext(orgId: "acme");
+            GivenRole(ArchiveRoleTarget(org: "acme", createdFromDefault: true, isArchived: true));
+
+            var result = await Create().ArchiveRoleAsync("r1");
+
+            result.Errors.Should().NotContainKey("archived");
+            result.Errors["forbidden"].Should().Be("Can_Not_Archive_Default_Copied_Role");
+        }
+
+        [Fact]
+        public async Task ArchiveRole_ForeignOrgRoleWithChildren_ReportsOrgGuardFirst()
+        {
+            InstallContext(orgId: "acme");
+            GivenRole(ArchiveRoleTarget(org: "globex"));
+            _repo.Setup(r => r.HasChildRolesAsync(It.IsAny<string>(), It.IsAny<string>())).ReturnsAsync(true);
+
+            var result = await Create().ArchiveRoleAsync("r1");
+
+            result.Errors.Should().NotContainKey("dependency");
+            result.Errors["forbidden"].Should().Be("Not_Allowed_To_Archive_Role_From_Another_Organization");
+            _repo.Verify(r => r.HasChildRolesAsync(It.IsAny<string>(), It.IsAny<string>()), Times.Never);
+        }
+
+        // ---------- Guarding the archived state elsewhere ----------
+        //
+        // Archiving is only meaningful if the rest of the service respects it. Both paths below
+        // resolve roles through the deliberately unfiltered slug lookup, so without these guards an
+        // archived role stays fully reachable and this ticket's own invariants come undone.
+
+        [Fact]
+        public async Task SetRoles_ArchivedRole_IsRefusedSoCleanupIsNotUndone()
+        {
+            _repo.Setup(r => r.GetRoleBySlugAsync("manager", "default"))
+                .ReturnsAsync(ArchiveRoleTarget(isArchived: true));
+
+            var result = await Create().SetRolesAsync(new SetRolesRequest
+            {
+                Slug = "manager",
+                AddPermissions = new List<string> { "p1" },
+                RemovePermissions = new List<string>()
+            });
+
+            // Archiving pulls the slug from every permission in the org; allowing this call would
+            // put it straight back.
+            result.Errors.Should().ContainKey("archived");
+            _repo.Verify(r => r.UpdateRolePermissionByIdsAsync(It.IsAny<string>(), It.IsAny<List<string>>(), It.IsAny<string>()), Times.Never);
+        }
+
+        [Fact]
+        public async Task SetRoles_ActiveRole_StillProceeds()
+        {
+            _repo.Setup(r => r.GetRoleBySlugAsync("manager", "default"))
+                .ReturnsAsync(ArchiveRoleTarget());
+
+            var result = await Create().SetRolesAsync(new SetRolesRequest
+            {
+                Slug = "manager",
+                AddPermissions = new List<string> { "p1" },
+                RemovePermissions = new List<string>()
+            });
+
+            result.Errors.Should().NotContainKey("archived");
+            _repo.Verify(r => r.UpdateRolePermissionByIdsAsync("manager", It.IsAny<List<string>>(), "default"), Times.Once);
+        }
+
+        [Fact]
+        public async Task CreateRole_UnderArchivedParent_IsRefused()
+        {
+            _repo.Setup(r => r.GetRoleBySlugAsync("manager")).ReturnsAsync(ArchiveRoleTarget(isArchived: true));
+
+            var result = await Create().CreateRoleAsync(RoleReq("lead", "manager"));
+
+            // A live role hanging off a parent that no roles list shows is exactly the hierarchy
+            // corruption the ticket's "block rather than guess" priority is about.
+            result.IsSuccess.Should().BeFalse();
+            result.Errors["ParentRoleSlug"].Should().Be("Parent_Role_Is_Archived");
+            _repo.Verify(r => r.InsertRoleAsync(It.IsAny<Role>()), Times.Never);
+        }
+
+        [Fact]
+        public async Task CreateRole_UnderActiveParent_StillSucceeds()
+        {
+            _repo.Setup(r => r.GetRoleBySlugAsync("manager"))
+                .ReturnsAsync(new Role { Slug = "manager", Name = "M", Description = "d", ParentRoleSlug = null });
+
+            var result = await Create().CreateRoleAsync(RoleReq("lead", "manager"));
+
+            result.IsSuccess.Should().BeTrue();
+        }
+
+        // ---------- DeleteRoleForAllOrg, via the propagation consumer (H7, C9, C10) ----------
+
+        private static Role Copy(string id, string org, bool isArchived = false) => new()
+        {
+            ItemId = id,
+            Slug = "manager",
+            Name = "Manager",
+            Description = "d",
+            OrganizationId = org,
+            CreatedFromDefault = true,
+            IsArchived = isArchived
+        };
+
+        private Task PropagateRoleDelete(string itemId = "r1") =>
+            Create().ExecutePropagationRolePermissionUpdateAsync(
+                new PropagationRolePermissionUpdateEvent { Entity = "role", Action = "delete", ItemId = itemId });
+
+        private void GivenSourceAndCopies(params Role[] copies)
+        {
+            var source = ArchiveRoleTarget();
+            source.LastUpdatedBy = "archiver-1";
+            GivenRole(source);
+            _repo.Setup(r => r.GetRolesBySlugAsync("manager"))
+                .ReturnsAsync(new List<Role>(copies) { source });
+        }
+
+        [Fact]
+        public async Task PropagateRoleDelete_ArchivesEveryCopyInOneBulkWriteExcludingTheSource()
+        {
+            List<Role>? written = null;
+            GivenSourceAndCopies(Copy("c-acme", "acme"), Copy("c-globex", "globex"));
+            _repo.Setup(r => r.UpdateRolesAsync(It.IsAny<List<Role>>()))
+                .Callback<List<Role>>(x => written = x).ReturnsAsync(true);
+
+            await PropagateRoleDelete();
+
+            _repo.Verify(r => r.UpdateRolesAsync(It.IsAny<List<Role>>()), Times.Once);
+            written!.Select(x => x.ItemId).Should().BeEquivalentTo(new[] { "c-acme", "c-globex" });
+            written.Should().OnlyContain(x => x.IsArchived);
+            // The source is written by ArchiveRoleAsync; including it here would write it twice.
+            written.Should().NotContain(x => x.ItemId == "r1");
+            written.Should().OnlyContain(x => x.LastUpdatedBy == "archiver-1");
+
+            _repo.Verify(r => r.RemoveRoleFromAllPermissionsAsync("manager", "acme"), Times.Once);
+            _repo.Verify(r => r.RemoveRoleFromAllPermissionsAsync("manager", "globex"), Times.Once);
+            _repo.Verify(r => r.RemoveRoleFromAllUsersAsync("manager", "acme"), Times.Once);
+            _repo.Verify(r => r.RemoveRoleFromAllUsersAsync("manager", "globex"), Times.Once);
+        }
+
+        [Fact]
+        public async Task PropagateRoleDelete_LeavesNonCopiesSharingTheSlugAlone()
+        {
+            List<Role>? written = null;
+            var independent = Copy("c-other", "globex");
+            independent.CreatedFromDefault = false;
+            GivenSourceAndCopies(Copy("c-acme", "acme"), independent);
+            _repo.Setup(r => r.UpdateRolesAsync(It.IsAny<List<Role>>()))
+                .Callback<List<Role>>(x => written = x).ReturnsAsync(true);
+
+            await PropagateRoleDelete();
+
+            written!.Select(x => x.ItemId).Should().Equal("c-acme");
+        }
+
+        [Fact]
+        public async Task PropagateRoleDelete_SkipsCopyWithActiveAssignmentsButArchivesTheRest()
+        {
+            List<Role>? written = null;
+            GivenSourceAndCopies(Copy("c-acme", "acme"), Copy("c-globex", "globex"));
+            _repo.Setup(r => r.HasUserAssignmentsAsync("manager", "globex")).ReturnsAsync(true);
+            _repo.Setup(r => r.UpdateRolesAsync(It.IsAny<List<Role>>()))
+                .Callback<List<Role>>(x => written = x).ReturnsAsync(true);
+
+            await PropagateRoleDelete();
+
+            // Partial propagation is the specified outcome: one busy organization must not veto a
+            // platform-wide retirement, and must not have a live assignment orphaned either.
+            written!.Select(x => x.ItemId).Should().Equal("c-acme");
+            // A skipped copy is left completely untouched, not half-cleaned.
+            _repo.Verify(r => r.RemoveRoleFromAllPermissionsAsync("manager", "globex"), Times.Never);
+            _repo.Verify(r => r.RemoveRoleFromAllUsersAsync("manager", "globex"), Times.Never);
+        }
+
+        [Fact]
+        public async Task PropagateRoleDelete_SkipsCopyWithChildRolesButArchivesTheRest()
+        {
+            List<Role>? written = null;
+            GivenSourceAndCopies(Copy("c-acme", "acme"), Copy("c-globex", "globex"));
+            _repo.Setup(r => r.HasChildRolesAsync("manager", "acme")).ReturnsAsync(true);
+            _repo.Setup(r => r.UpdateRolesAsync(It.IsAny<List<Role>>()))
+                .Callback<List<Role>>(x => written = x).ReturnsAsync(true);
+
+            await PropagateRoleDelete();
+
+            written!.Select(x => x.ItemId).Should().Equal("c-globex");
+            _repo.Verify(r => r.RemoveRoleFromAllPermissionsAsync("manager", "acme"), Times.Never);
+        }
+
+        [Fact]
+        public async Task PropagateRoleDelete_SkipsCopyWhosePermissionCleanupIsUnacknowledged()
+        {
+            List<Role>? written = null;
+            GivenSourceAndCopies(Copy("c-acme", "acme"), Copy("c-globex", "globex"));
+            _repo.Setup(r => r.RemoveRoleFromAllPermissionsAsync("manager", "acme")).ReturnsAsync(false);
+            _repo.Setup(r => r.UpdateRolesAsync(It.IsAny<List<Role>>()))
+                .Callback<List<Role>>(x => written = x).ReturnsAsync(true);
+
+            await PropagateRoleDelete();
+
+            written!.Select(x => x.ItemId).Should().Equal("c-globex");
+        }
+
+        [Fact]
+        public async Task PropagateRoleDelete_SkipsCopyWhoseUserCleanupIsUnacknowledged()
+        {
+            List<Role>? written = null;
+            GivenSourceAndCopies(Copy("c-acme", "acme"), Copy("c-globex", "globex"));
+            _repo.Setup(r => r.RemoveRoleFromAllUsersAsync("manager", "globex")).ReturnsAsync(false);
+            _repo.Setup(r => r.UpdateRolesAsync(It.IsAny<List<Role>>()))
+                .Callback<List<Role>>(x => written = x).ReturnsAsync(true);
+
+            await PropagateRoleDelete();
+
+            written!.Select(x => x.ItemId).Should().Equal("c-acme");
+        }
+
+        [Fact]
+        public async Task PropagateRoleDelete_AlreadyArchivedCopiesAreNotRewritten()
+        {
+            GivenSourceAndCopies(Copy("c-acme", "acme", isArchived: true));
+
+            await PropagateRoleDelete();
+
+            // A redelivered queue message must not rewrite settled copies.
+            _repo.Verify(r => r.UpdateRolesAsync(It.IsAny<List<Role>>()), Times.Never);
+        }
+
+        [Fact]
+        public async Task PropagateRoleDelete_NoCopies_WritesNothing()
+        {
+            GivenSourceAndCopies();
+
+            await PropagateRoleDelete();
+
+            _repo.Verify(r => r.UpdateRolesAsync(It.IsAny<List<Role>>()), Times.Never);
+        }
+
+        /// <summary>
+        /// The consumer awaits this and ignores the result, and the ticket states events are never
+        /// replayed, so an unacknowledged propagation write is not retried — a gap is repaired by a
+        /// reconciliation pass, not by the queue. That makes the warning the only trace it leaves,
+        /// so the test asserts the warning names the slug and the affected organization rather than
+        /// merely asserting nothing was thrown, which would read as endorsing the silence.
+        /// </summary>
+        [Fact]
+        public async Task PropagateRoleDelete_BulkWriteUnacknowledged_WarnsWithSlugAndOrganization()
+        {
+            var warnings = new List<string>();
+            GivenSourceAndCopies(Copy("c-acme", "acme"));
+            _repo.Setup(r => r.UpdateRolesAsync(It.IsAny<List<Role>>())).ReturnsAsync(false);
+
+            await Create(WarningCapture(warnings).Object).ExecutePropagationRolePermissionUpdateAsync(
+                new PropagationRolePermissionUpdateEvent { Entity = "role", Action = "delete", ItemId = "r1" });
+
+            _repo.Verify(r => r.UpdateRolesAsync(It.IsAny<List<Role>>()), Times.Once);
+            warnings.Should().ContainSingle(w => w.Contains("manager") && w.Contains("acme"));
+        }
+
+        [Fact]
+        public async Task PropagateRoleDelete_SkippedCopy_WarnsWithSlugAndOrganization()
+        {
+            var warnings = new List<string>();
+            GivenSourceAndCopies(Copy("c-acme", "acme"), Copy("c-globex", "globex"));
+            _repo.Setup(r => r.HasUserAssignmentsAsync("manager", "globex")).ReturnsAsync(true);
+
+            await Create(WarningCapture(warnings).Object).ExecutePropagationRolePermissionUpdateAsync(
+                new PropagationRolePermissionUpdateEvent { Entity = "role", Action = "delete", ItemId = "r1" });
+
+            // C9 makes the warning log the interface for reviewing skipped copies, so it has to
+            // identify which copy in which organization was left behind.
+            warnings.Should().ContainSingle(w => w.Contains("manager") && w.Contains("globex"));
         }
     }
 }

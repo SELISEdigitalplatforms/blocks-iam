@@ -167,6 +167,61 @@ namespace XUnitTest.ApiTests
         }
 
         [Fact]
+        public async Task ArchiveRole_Success_ReturnsOk()
+        {
+            _resourceMutation.Setup(s => s.ArchiveRoleAsync("r-1"))
+                .ReturnsAsync(new BaseMutationResponse { IsSuccess = true, ItemId = "r-1" });
+
+            var result = await CreateController().ArchiveRole("r-1");
+
+            result.Should().BeOfType<OkObjectResult>();
+            _resourceMutation.Verify(s => s.ArchiveRoleAsync("r-1"), Times.Once);
+        }
+
+        [Fact]
+        public async Task ArchiveRole_Failure_ReturnsBadRequest()
+        {
+            _resourceMutation.Setup(s => s.ArchiveRoleAsync(It.IsAny<string>()))
+                .ReturnsAsync(new BaseMutationResponse { IsSuccess = false });
+
+            var result = await CreateController().ArchiveRole("r-1");
+
+            result.Should().BeOfType<BadRequestObjectResult>();
+        }
+
+        /// <summary>
+        /// Covers C8. Invoking the action directly exercises neither routing nor authorization, so
+        /// the permission string and the verb/template are asserted by reflection instead — the
+        /// same pair used for ArchivePermission.
+        /// </summary>
+        [Fact]
+        public void ArchiveRole_IsGuardedByMutateRolesOnDeleteRoute()
+        {
+            var method = typeof(IamController).GetMethod(nameof(IamController.ArchiveRole));
+            method.Should().NotBeNull();
+
+            var guard = method!.GetCustomAttribute<ProtectedEndPointAttribute>();
+            guard.Should().NotBeNull("the archive route must be protected by the same permission as create/update");
+            guard!.ResourceName.Should().Be("blocks-iam::iam::mutate-roles");
+
+            var route = method.GetCustomAttribute<HttpDeleteAttribute>();
+            route.Should().NotBeNull("the spec defines the archive route as DELETE");
+            route!.Template.Should().Be("roles/{id}");
+        }
+
+        [Fact]
+        public void ArchiveRole_UsesTheSamePermissionStringAsCreateAndUpdate()
+        {
+            static string? PermissionOf(string methodName) =>
+                typeof(IamController).GetMethod(methodName)!
+                    .GetCustomAttribute<ProtectedEndPointAttribute>()?.ResourceName;
+
+            PermissionOf(nameof(IamController.ArchiveRole))
+                .Should().Be(PermissionOf(nameof(IamController.CreateRole)))
+                .And.Be(PermissionOf(nameof(IamController.UpdateRole)));
+        }
+
+        [Fact]
         public async Task GetPermissions_DelegatesToQueryService()
         {
             var response = new GetPermissionsResponse();

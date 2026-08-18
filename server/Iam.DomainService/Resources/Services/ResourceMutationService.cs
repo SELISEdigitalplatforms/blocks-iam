@@ -161,6 +161,25 @@ namespace Iam.DomainService.Resources
                 };
             }
 
+            // An archived parent is still resolvable by slug -- deliberately, since the duplicate
+            // check during organization provisioning depends on that. Hanging a live role off one
+            // would build a hierarchy whose parent is hidden from every roles list.
+            if (!string.IsNullOrWhiteSpace(command.ParentRoleSlug))
+            {
+                var parent = await _resourceRepository.GetRoleBySlugAsync(command.ParentRoleSlug.ToLower());
+                if (parent?.IsArchived == true)
+                {
+                    _logger.LogInformation("Role creation end -- Parent Role Archived");
+                    return new BaseMutationResponse
+                    {
+                        Errors = new Dictionary<string, string>
+                        {
+                            { "ParentRoleSlug", "Parent_Role_Is_Archived" }
+                        }
+                    };
+                }
+            }
+
             var itemId = await ProcessRoleAsync(command);
 
             await SendResourceMutationEventAsync(
@@ -450,6 +469,140 @@ namespace Iam.DomainService.Resources
             };
         }
 
+        public async Task<BaseMutationResponse> ArchiveRoleAsync(string id)
+        {
+            var blocksContext = BlocksContext.GetContext();
+            var callerOrganizationId = ResolveOrganizationId(blocksContext?.OrganizationId ?? string.Empty);
+
+            _logger.LogInformation("Role archive start");
+
+            var role = await _resourceRepository.GetRoleByIdAsync(id);
+            if (role == null)
+            {
+                _logger.LogInformation("Role archive end -- Not Found");
+                return Failure("ItemId", "Role_Not_Found");
+            }
+
+            // Copies are retired by propagating the archive of their master record, never directly.
+            // Same condition UpdateRoleAsync already uses to protect them.
+            if (role.CreatedFromDefault && !IsDefaultOrgScope(role.OrganizationId))
+            {
+                _logger.LogInformation("Role archive end -- Default Copied Role");
+                return Failure("forbidden", "Can_Not_Archive_Default_Copied_Role");
+            }
+
+            // Compared for every caller, including default-organization ones. GetRoleByIdAsync has
+            // no organization scope, so a default-org caller could otherwise archive another
+            // organization's own role by id -- the guard above only catches copies.
+            if (role.OrganizationId != callerOrganizationId)
+            {
+                _logger.LogInformation("Role archive end -- Role Belongs To Another Organization");
+                return Failure("forbidden", "Not_Allowed_To_Archive_Role_From_Another_Organization");
+            }
+
+            if (role.IsArchived)
+            {
+                _logger.LogInformation("Role archive end -- Already Archived");
+                return Failure("archived", "Role_Already_Archived");
+            }
+
+            if (await _resourceRepository.HasChildRolesAsync(role.Slug, role.OrganizationId))
+            {
+                _logger.LogInformation("Role archive end -- Has Child Roles");
+                return Failure("dependency", "Role_Has_Child_Roles");
+            }
+
+            if (await _resourceRepository.HasUserAssignmentsAsync(role.Slug, role.OrganizationId))
+            {
+                _logger.LogInformation("Role archive end -- Has Active User Assignments");
+                return Failure("dependency", "Role_Has_Active_User_Assignments");
+            }
+
+            // Cleanup precedes the archive deliberately. If the archive write then fails, a slug
+            // removed from permissions without the role being archived is the safer half-state and
+            // a retry converges. The reverse -- an archived role still referenced -- is not, so an
+            // unacknowledged cleanup stops here rather than archiving anyway.
+            var permissionsCleaned = await _resourceRepository.RemoveRoleFromAllPermissionsAsync(role.Slug, role.OrganizationId);
+            var usersCleaned = await _resourceRepository.RemoveRoleFromAllUsersAsync(role.Slug, role.OrganizationId);
+
+            if (!permissionsCleaned || !usersCleaned)
+            {
+                _logger.LogWarning(
+                    "Role archive aborted for '{Slug}' in organization '{OrganizationId}': reference cleanup was not acknowledged (permissions: {PermissionsCleaned}, users: {UsersCleaned}). The role is left active so a retry can complete it.",
+                    role.Slug,
+                    role.OrganizationId,
+                    permissionsCleaned,
+                    usersCleaned);
+
+                return new BaseMutationResponse();
+            }
+
+            role.IsArchived = true;
+            role.LastUpdatedDate = DateTime.UtcNow;
+            role.LastUpdatedBy = blocksContext?.UserId;
+
+            var result = await _resourceRepository.UpdateRoleAsync(role);
+
+            if (!result)
+            {
+                _logger.LogInformation("Role archive end -- Error");
+                return new BaseMutationResponse();
+            }
+
+            // Both sends happen after the archive has committed, and a retry cannot republish them
+            // because it stops at Role_Already_Archived. Letting an exception escape would return
+            // 500 for a write that succeeded and still leave the gap, so the failure is reported
+            // here instead, named clearly enough to drive the reconciliation pass the ticket
+            // describes. This matters more for roles than for permissions: the permission path
+            // updates other organizations' copies synchronously before publishing, whereas for
+            // roles this queue message is the only cross-organization channel there is, so losing
+            // it leaves every copy active.
+            try
+            {
+                await SendResourceMutationEventAsync(
+                    new ResourceMutationEvent
+                    {
+                        Action = MutationEventType.Delete,
+                        ItemId = role.ItemId,
+                        Entity = ResourceEntity.Role
+                    }
+                );
+
+                // Gated on the same resolved organization the guards used: reading the raw context
+                // value here instead would let a caller whose context carries no organization
+                // archive the master record (resolved to default) while silently skipping
+                // propagation, leaving every copy active.
+                if (await IsMultiOrgEnabledAsync() && IsDefaultOrgScope(callerOrganizationId))
+                {
+                    await _identityAccessManagementService.SendToQueueAsync(
+                        IdpConstants.IamOrgQueue,
+                        new PropagationRolePermissionUpdateEvent
+                        {
+                            Entity = "role",
+                            ItemId = role.ItemId,
+                            Action = "delete"
+                        }
+                    );
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(
+                    ex,
+                    "Role '{Slug}' (ItemId {ItemId}) in organization '{OrganizationId}' was archived, but publishing its events failed. The archive itself is committed and will not be retried -- copies in other organizations may still be active and need a reconciliation pass.",
+                    role.Slug,
+                    role.ItemId,
+                    role.OrganizationId);
+            }
+
+            _logger.LogInformation("Role archive end -- Success");
+            return new BaseMutationResponse
+            {
+                IsSuccess = true,
+                ItemId = role.ItemId
+            };
+        }
+
         public async Task<BaseMutationResponse> UpdateRoleAsync(UpdateRoleRequest command)
         {
             _logger.LogInformation("Role update start");
@@ -610,7 +763,22 @@ namespace Iam.DomainService.Resources
                     }
                 };
             }
-           
+
+            // Archiving pulls the slug out of every permission in the organization. Without this
+            // guard the next assign-permissions call would put it straight back, quietly undoing
+            // that cleanup and leaving permissions pointing at a retired role.
+            if (isExist.IsArchived)
+            {
+                _logger.LogWarning("Refusing to change permissions for archived role '{Slug}' in organization '{OrganizationId}'", command.Slug, currentOrganizationId);
+                return new SetRolesResponse
+                {
+                    Errors = new Dictionary<string, string>
+                    {
+                        { "archived", "Role_Already_Archived" }
+                    }
+                };
+            }
+
 
             if (command.AddPermissions.Any())
             {
@@ -998,10 +1166,81 @@ namespace Iam.DomainService.Resources
                 return true;
             }
 
-            _logger.LogWarning(
-                "Role deletion propagation received for '{Slug}' across {Count} organizations, but no role-delete repository API exists yet. Manual cleanup required.",
+            var archived = new List<Role>();
+
+            foreach (var orgRole in orphaned)
+            {
+                // A redelivered queue message must not rewrite copies that are already settled.
+                if (orgRole.IsArchived)
+                {
+                    continue;
+                }
+
+                // The same rules that hard-block a direct archive apply per organization: retiring
+                // a role platform-wide must not orphan a live assignment in one of them. Checked
+                // before any cleanup, so a skipped copy is left completely untouched rather than
+                // half-cleaned.
+                if (await _resourceRepository.HasChildRolesAsync(orgRole.Slug, orgRole.OrganizationId))
+                {
+                    _logger.LogWarning(
+                        "Role archive propagation skipped '{Slug}' in organization '{OrganizationId}': the copy still has child roles there. Every other organization is unaffected. This message is not replayed and re-archiving the source returns Role_Already_Archived, so retire the children and then archive this copy through a reconciliation pass.",
+                        orgRole.Slug,
+                        orgRole.OrganizationId);
+                    continue;
+                }
+
+                if (await _resourceRepository.HasUserAssignmentsAsync(orgRole.Slug, orgRole.OrganizationId))
+                {
+                    _logger.LogWarning(
+                        "Role archive propagation skipped '{Slug}' in organization '{OrganizationId}': the copy is still assigned to an active user there. Every other organization is unaffected. This message is not replayed and re-archiving the source returns Role_Already_Archived, so remove the assignment and then archive this copy through a reconciliation pass.",
+                        orgRole.Slug,
+                        orgRole.OrganizationId);
+                    continue;
+                }
+
+                var permissionsCleaned = await _resourceRepository.RemoveRoleFromAllPermissionsAsync(orgRole.Slug, orgRole.OrganizationId);
+                var usersCleaned = await _resourceRepository.RemoveRoleFromAllUsersAsync(orgRole.Slug, orgRole.OrganizationId);
+
+                if (!permissionsCleaned || !usersCleaned)
+                {
+                    _logger.LogWarning(
+                        "Role archive propagation skipped '{Slug}' in organization '{OrganizationId}': reference cleanup was not acknowledged (permissions: {PermissionsCleaned}, users: {UsersCleaned}). The copy is left active rather than archived with dangling references.",
+                        orgRole.Slug,
+                        orgRole.OrganizationId,
+                        permissionsCleaned,
+                        usersCleaned);
+                    continue;
+                }
+
+                orgRole.IsArchived = true;
+                orgRole.LastUpdatedDate = DateTime.UtcNow;
+                orgRole.LastUpdatedBy = role.LastUpdatedBy;
+                archived.Add(orgRole);
+            }
+
+            if (archived.Count == 0)
+            {
+                return true;
+            }
+
+            // Only the copies that were actually archived: the source role is written by
+            // ArchiveRoleAsync and must never appear in this bulk write.
+            var persisted = await _resourceRepository.UpdateRolesAsync(archived);
+
+            if (!persisted)
+            {
+                _logger.LogWarning(
+                    "Role archive propagation for '{Slug}' was not acknowledged for organizations {Organizations}. Those copies may still be active and need manual review.",
+                    role.Slug,
+                    string.Join(", ", archived.Select(x => x.OrganizationId)));
+
+                return false;
+            }
+
+            _logger.LogInformation(
+                "Archived role '{Slug}' for {Count} organizations",
                 role.Slug,
-                orphaned.Count);
+                archived.Count);
 
             return true;
         }
