@@ -2,6 +2,7 @@
 using Iam.DomainService.Entities;
 using Iam.DomainService.Enums;
 using Iam.DomainService.Resources.ResponseModel;
+using Iam.DomainService.Utilities;
 using Microsoft.Extensions.Logging;
 
 namespace Iam.DomainService.Resources
@@ -191,6 +192,108 @@ namespace Iam.DomainService.Resources
             };
         }
 
+        public async Task<RoleArchiveImpactResponse> GetRoleArchiveImpactAsync(string id)
+        {
+            _logger.LogInformation("Role archive impact start");
 
+            var role = await _resourceRepository.GetRoleByIdAsync(id);
+            if (role == null)
+            {
+                _logger.LogInformation("Role archive impact end -- Not Found");
+                return new RoleArchiveImpactResponse
+                {
+                    IsSuccess = false,
+                    Errors = new Dictionary<string, string> { { "ItemId", "Role_Not_Found" } }
+                };
+            }
+
+            var isMultiOrgEnabled = MultiOrgMode.IsEnabled(
+                await _resourceRepository.GetTenantConfigurationAsync(), _logger);
+
+            // Only copies the archive would actually reach: already-archived ones are skipped by the
+            // propagation, so counting them here would overstate the blast radius and make the
+            // preview disagree with what happens next.
+            var otherOrgIds = isMultiOrgEnabled
+                ? (await _resourceRepository.GetNonArchivedRolesBySlugAsync(role.Slug))
+                    .Where(x => x.ItemId != role.ItemId
+                        && !string.Equals(x.OrganizationId, role.OrganizationId, StringComparison.OrdinalIgnoreCase))
+                    .Select(x => x.OrganizationId)
+                    .Distinct(StringComparer.OrdinalIgnoreCase)
+                    .ToList()
+                : [];
+
+            // The target's own organization is always counted for users, never for organizations:
+            // "2 other organizations" and "3 users" are answers to different questions.
+            var userScopeOrgIds = otherOrgIds.Append(role.OrganizationId).ToList();
+
+            var hasChildRoles = await _resourceRepository.HasChildRolesAsync(role.Slug, role.OrganizationId);
+
+            _logger.LogInformation("Role archive impact end");
+
+            return new RoleArchiveImpactResponse
+            {
+                IsSuccess = true,
+                Slug = role.Slug,
+                Name = role.Name,
+                IsMultiOrgEnabled = isMultiOrgEnabled,
+                OrganizationCount = otherOrgIds.Count,
+                AffectedUserCount = (int)await _resourceRepository.CountUsersWithRoleAsync(role.Slug, userScopeOrgIds, activeOnly: false),
+                ActiveUserCount = (int)await _resourceRepository.CountUsersWithRoleAsync(role.Slug, userScopeOrgIds, activeOnly: true),
+                Blocked = hasChildRoles,
+                BlockingReason = hasChildRoles ? "Role_Has_Child_Roles" : null
+            };
+        }
+
+        public async Task<PermissionArchiveImpactResponse> GetPermissionArchiveImpactAsync(string id)
+        {
+            _logger.LogInformation("Permission archive impact start");
+
+            var permission = await _resourceRepository.GetPermissionByIdAsync(id);
+            if (permission == null)
+            {
+                _logger.LogInformation("Permission archive impact end -- Not Found");
+                return new PermissionArchiveImpactResponse
+                {
+                    IsSuccess = false,
+                    Errors = new Dictionary<string, string> { { "ItemId", "Permission_Not_Found" } }
+                };
+            }
+
+            var isMultiOrgEnabled = MultiOrgMode.IsEnabled(
+                await _resourceRepository.GetTenantConfigurationAsync(), _logger);
+
+            // Unlike Role, IsArchived has always existed on Permission and is present on every
+            // document, so filtering it in memory here is safe.
+            var otherOrgIds = isMultiOrgEnabled
+                ? (await _resourceRepository.GetPermissionsByResourceAsync(permission.Resource))
+                    .Where(x => !x.IsArchived
+                        && x.ItemId != permission.ItemId
+                        && !string.Equals(x.OrganizationId, permission.OrganizationId, StringComparison.OrdinalIgnoreCase))
+                    .Select(x => x.OrganizationId)
+                    .Distinct(StringComparer.OrdinalIgnoreCase)
+                    .ToList()
+                : [];
+
+            var scopeOrgIds = otherOrgIds.Append(permission.OrganizationId).ToList();
+
+            _logger.LogInformation("Permission archive impact end");
+
+            return new PermissionArchiveImpactResponse
+            {
+                IsSuccess = true,
+                Resource = permission.Resource,
+                Name = permission.Name,
+                IsMultiOrgEnabled = isMultiOrgEnabled,
+                OrganizationCount = otherOrgIds.Count,
+                // The direct User.Permissions grant -- the one that actually mints a permission
+                // claim -- and the role bindings are separate populations and are reported apart.
+                AffectedUserCount = (int)await _resourceRepository.CountUsersWithPermissionAsync(permission.Resource, scopeOrgIds),
+                RoleBindingCount = (int)await _resourceRepository.CountRoleBindingsForResourceAsync(permission.Resource, scopeOrgIds),
+                // Permissions have no dependency that can hard-block an archive. Kept on the
+                // envelope so both dialogs render from one shape.
+                Blocked = false,
+                BlockingReason = null
+            };
+        }
     }
 }

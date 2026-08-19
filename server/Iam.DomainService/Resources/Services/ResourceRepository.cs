@@ -361,6 +361,158 @@ namespace Iam.DomainService.Resources
             return result?.IsAcknowledged ?? false;
         }
 
+        /// <summary>
+        /// Removes the permission resource from the given organization's bucket in every user
+        /// holding it directly.
+        /// </summary>
+        /// <remarks>
+        /// The permission-side twin of <see cref="RemoveRoleFromAllUsersAsync"/>, and the one that
+        /// actually matters for access: <c>User.Permissions[orgId]</c> is what
+        /// AuthorizationClaimsResolver reads to mint permission claims, whereas the
+        /// <c>Permission.Roles</c> array the archive already cleans grants nothing by itself.
+        /// Same dotted-path mechanics -- <c>User.Permissions</c> is a
+        /// Dictionary&lt;string, List&lt;string&gt;&gt; and BSON-serialises as a subdocument, so
+        /// filter and update must name the same path. Scoped to one organization: the same
+        /// resource under a different organization key belongs to that organization's copy.
+        /// </remarks>
+        public async Task<bool> RemovePermissionFromAllUsersAsync(string resource, string organizationId)
+        {
+            if (string.IsNullOrWhiteSpace(resource) || string.IsNullOrWhiteSpace(organizationId))
+            {
+                return true;
+            }
+
+            var collection = _identityAccessManagementRepository.GetCollection<User>();
+            var orgBucket = $"Permissions.{organizationId}";
+
+            var filter = Builders<User>.Filter.AnyEq(orgBucket, resource);
+            var update = Builders<User>.Update.Pull(orgBucket, resource);
+            var result = await collection.UpdateManyAsync(filter, update);
+
+            // IsAcknowledged, not ModifiedCount > 0: a permission nobody holds directly matches
+            // nothing, which is an acknowledged write of zero documents and a normal archive.
+            return result?.IsAcknowledged ?? false;
+        }
+
+        /// <summary>
+        /// Counts DISTINCT users holding this role slug in ANY of the given organizations.
+        /// </summary>
+        /// <remarks>
+        /// Distinct matters: a user can hold the same slug under several organization keys, and the
+        /// archive dialog reports "how many people lose this", not "how many assignments vanish".
+        /// One query with an Or over the org buckets does the de-duplication in the server rather
+        /// than summing per-organization counts, which would double-count that user.
+        /// When <paramref name="activeOnly"/> is set the predicate is the SAME one
+        /// <see cref="HasUserAssignmentsAsync"/> uses -- including treating a missing Status as
+        /// Active -- so the preview can never disagree with the guard it is previewing.
+        /// </remarks>
+        public async Task<long> CountUsersWithRoleAsync(string slug, IEnumerable<string> organizationIds, bool activeOnly)
+        {
+            var orgIds = organizationIds?.Where(x => !string.IsNullOrWhiteSpace(x)).Distinct().ToList() ?? [];
+
+            if (string.IsNullOrWhiteSpace(slug) || orgIds.Count == 0)
+            {
+                return 0;
+            }
+
+            var collection = _identityAccessManagementRepository.GetCollection<User>();
+
+            var filter = Builders<User>.Filter.Or(
+                orgIds.Select(orgId => Builders<User>.Filter.AnyEq($"Roles.{orgId}", slug)));
+
+            if (activeOnly)
+            {
+                filter &= Builders<User>.Filter.Eq(x => x.Active, true)
+                    & (Builders<User>.Filter.Eq(x => x.Status, UserLifecycleStatus.Active)
+                        | Builders<User>.Filter.Exists(x => x.Status, false));
+            }
+
+            return await collection.CountDocumentsAsync(filter);
+        }
+
+        /// <summary>
+        /// Counts DISTINCT users holding this permission resource DIRECTLY in any of the given
+        /// organizations.
+        /// </summary>
+        /// <remarks>
+        /// This reads <c>User.Permissions</c>, the per-user grant dictionary -- NOT
+        /// <c>Permission.Roles</c>. The two are unrelated grant paths and both have to be reported:
+        /// only this one is read by AuthorizationClaimsResolver when minting the permission claims
+        /// into an access token, so it is the binding that actually decides access.
+        /// No active-only variant exists because the permission archive has no active-user guard to
+        /// mirror.
+        /// </remarks>
+        public async Task<long> CountUsersWithPermissionAsync(string resource, IEnumerable<string> organizationIds)
+        {
+            var orgIds = organizationIds?.Where(x => !string.IsNullOrWhiteSpace(x)).Distinct().ToList() ?? [];
+
+            if (string.IsNullOrWhiteSpace(resource) || orgIds.Count == 0)
+            {
+                return 0;
+            }
+
+            var collection = _identityAccessManagementRepository.GetCollection<User>();
+
+            var filter = Builders<User>.Filter.Or(
+                orgIds.Select(orgId => Builders<User>.Filter.AnyEq($"Permissions.{orgId}", resource)));
+
+            return await collection.CountDocumentsAsync(filter);
+        }
+
+        /// <summary>
+        /// Every non-archived role carrying this slug, across all organizations.
+        /// </summary>
+        /// <remarks>
+        /// Deliberately distinct from <see cref="GetRolesBySlugAsync"/>, which returns archived
+        /// copies too and must keep doing so -- InsertRoleForAllOrg relies on finding an archived
+        /// copy to avoid creating a duplicate alongside it. The preview needs the opposite: an
+        /// already-archived copy is one the archive will skip, so counting it would overstate the
+        /// blast radius. Ne(..., true) rather than Eq(..., false) because IsArchived is newer than
+        /// the role documents and is absent from every pre-existing one.
+        /// </remarks>
+        public async Task<List<Role>> GetNonArchivedRolesBySlugAsync(string slug)
+        {
+            if (string.IsNullOrWhiteSpace(slug))
+            {
+                return [];
+            }
+
+            var collection = _identityAccessManagementRepository.GetCollection<Role>();
+            var filter = Builders<Role>.Filter.Eq(x => x.Slug, slug)
+                & Builders<Role>.Filter.Ne(x => x.IsArchived, true);
+
+            return await collection.Find(filter).ToListAsync();
+        }
+
+        /// <summary>
+        /// Counts DISTINCT role slugs referencing this permission resource across the given
+        /// organizations.
+        /// </summary>
+        public async Task<long> CountRoleBindingsForResourceAsync(string resource, IEnumerable<string> organizationIds)
+        {
+            var orgIds = organizationIds?.Where(x => !string.IsNullOrWhiteSpace(x)).Distinct().ToList() ?? [];
+
+            if (string.IsNullOrWhiteSpace(resource) || orgIds.Count == 0)
+            {
+                return 0;
+            }
+
+            var collection = _identityAccessManagementRepository.GetCollection<Permission>();
+            var filter = Builders<Permission>.Filter.Eq(x => x.Resource, resource)
+                & Builders<Permission>.Filter.In(x => x.OrganizationId, orgIds);
+
+            var permissions = await collection.Find(filter).Project(x => x.Roles).ToListAsync();
+
+            // Counted in memory: the same slug appears in every organization's copy of the
+            // permission, and the answer wanted is "how many distinct roles reference this", not
+            // "how many documents mention it".
+            return permissions
+                .Where(x => x != null)
+                .SelectMany(x => x!)
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .LongCount();
+        }
+
         public async Task<bool> UpdateRolePermissionByIdsAsync(string slug, List<string> permissions, string? organizationId = null)
         {
             var collection = _identityAccessManagementRepository.GetCollectionByName<BsonDocument>("Permissions");

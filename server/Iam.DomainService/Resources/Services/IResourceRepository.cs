@@ -60,6 +60,21 @@ namespace Iam.DomainService.Resources
 
         /// <summary>Removes the slug from the organization's bucket in every user holding it.</summary>
         Task<bool> RemoveRoleFromAllUsersAsync(string slug, string organizationId);
+
+        /// <summary>Removes the resource from the organization's bucket in every user holding it directly.</summary>
+        Task<bool> RemovePermissionFromAllUsersAsync(string resource, string organizationId);
+
+        /// <summary>DISTINCT users holding this role slug in any of the given organizations.</summary>
+        Task<long> CountUsersWithRoleAsync(string slug, IEnumerable<string> organizationIds, bool activeOnly);
+
+        /// <summary>DISTINCT users holding this permission resource directly (User.Permissions).</summary>
+        Task<long> CountUsersWithPermissionAsync(string resource, IEnumerable<string> organizationIds);
+
+        /// <summary>Non-archived roles carrying this slug, across all organizations.</summary>
+        Task<List<Role>> GetNonArchivedRolesBySlugAsync(string slug);
+
+        /// <summary>DISTINCT role slugs referencing this resource across the given organizations.</summary>
+        Task<long> CountRoleBindingsForResourceAsync(string resource, IEnumerable<string> organizationIds);
         Task<List<Permission>> GetPermissionsByRoleAsync(string roleSlug, string organizationId);
         Task<List<Permission>> GetPermissionsByRolesAsync(List<string> roleSlugs, string organizationId, int pageNumber = 1, int pageSize = 10);
         Task<List<Permission>> GetPermissionsByGroupsAsync(List<string> groups, string organizationId, int pageNumber = 1, int pageSize = 10);

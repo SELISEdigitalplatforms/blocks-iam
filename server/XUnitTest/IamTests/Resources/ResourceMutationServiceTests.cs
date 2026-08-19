@@ -44,6 +44,7 @@ namespace XUnitTest.IamTests.Resources
             _repo.Setup(r => r.HasUserAssignmentsAsync(It.IsAny<string>(), It.IsAny<string>())).ReturnsAsync(false);
             _repo.Setup(r => r.RemoveRoleFromAllPermissionsAsync(It.IsAny<string>(), It.IsAny<string>())).ReturnsAsync(true);
             _repo.Setup(r => r.RemoveRoleFromAllUsersAsync(It.IsAny<string>(), It.IsAny<string>())).ReturnsAsync(true);
+            _repo.Setup(r => r.RemovePermissionFromAllUsersAsync(It.IsAny<string>(), It.IsAny<string>())).ReturnsAsync(true);
             _repo.Setup(r => r.UpdateAllSamePermissionAsync(It.IsAny<Permission>())).ReturnsAsync(true);
             _iam.Setup(i => i.SendToQueueAsync(It.IsAny<string>(), It.IsAny<object>())).Returns(Task.CompletedTask);
             _activity.Setup(a => a.SendUserActivityAsync(It.IsAny<UserActivityEvent>())).Returns(Task.CompletedTask);
@@ -1298,6 +1299,257 @@ namespace XUnitTest.IamTests.Resources
             VerifyRoleUntouched();
         }
 
+        // ---------- Consented archive (#465) ----------
+
+        [Fact]
+        public async Task ArchiveRole_WithConsent_ArchivesDespiteActiveHoldersAndScrubsThem()
+        {
+            GivenRole(ArchiveRoleTarget());
+            _repo.Setup(r => r.HasUserAssignmentsAsync("manager", "default")).ReturnsAsync(true);
+
+            var result = await Create().ArchiveRoleAsync("r1", confirmRevokeFromUsers: true);
+
+            result.IsSuccess.Should().BeTrue();
+            _repo.Verify(r => r.UpdateRoleAsync(It.Is<Role>(x => x.IsArchived)), Times.Once);
+            _repo.Verify(r => r.RemoveRoleFromAllUsersAsync("manager", "default"), Times.Once);
+        }
+
+        [Fact]
+        public async Task ArchiveRole_WithConsent_WarnsThatLiveAccessIsBeingRevoked()
+        {
+            var warnings = new List<string>();
+            GivenRole(ArchiveRoleTarget());
+            _repo.Setup(r => r.HasUserAssignmentsAsync("manager", "default")).ReturnsAsync(true);
+
+            await Create(WarningCapture(warnings).Object).ArchiveRoleAsync("r1", confirmRevokeFromUsers: true);
+
+            // Consent is exercised silently as far as the caller is concerned; this log is the only
+            // durable record that live access was revoked.
+            warnings.Should().ContainSingle(w => w.Contains("manager") && w.Contains("default"));
+        }
+
+        [Fact]
+        public async Task ArchiveRole_WithConsent_StillRefusesChildRoles()
+        {
+            GivenRole(ArchiveRoleTarget());
+            _repo.Setup(r => r.HasChildRolesAsync("manager", "default")).ReturnsAsync(true);
+
+            var result = await Create().ArchiveRoleAsync("r1", confirmRevokeFromUsers: true);
+
+            // Consent covers revocation, never structural corruption: a descendant left pointing at
+            // an archived parent has no repair path, because re-parenting is not implemented.
+            result.Errors["dependency"].Should().Be("Role_Has_Child_Roles");
+            VerifyRoleUntouched();
+        }
+
+        [Fact]
+        public async Task ArchiveRole_WithConsent_StillRefusesAnotherOrganizationsRole()
+        {
+            InstallContext(orgId: "acme");
+            GivenRole(ArchiveRoleTarget(org: "globex"));
+
+            var result = await Create().ArchiveRoleAsync("r1", confirmRevokeFromUsers: true);
+
+            // The consent gate sits BELOW authorization; it must never widen who may archive what.
+            result.Errors["forbidden"].Should().Be("Not_Allowed_To_Archive_Role_From_Another_Organization");
+            VerifyRoleUntouched();
+        }
+
+        [Fact]
+        public async Task ArchiveRole_WithConsent_AlreadyArchived_DoesNotScrubAnyone()
+        {
+            GivenRole(ArchiveRoleTarget(isArchived: true));
+
+            var result = await Create().ArchiveRoleAsync("r1", confirmRevokeFromUsers: true);
+
+            // A repeated consented call must not re-run a destructive scrub.
+            result.Errors["archived"].Should().Be("Role_Already_Archived");
+            VerifyRoleUntouched();
+        }
+
+        [Fact]
+        public async Task ArchiveRole_WithConsent_CarriesConsentOnThePropagationEvent()
+        {
+            InstallContext(orgId: "default");
+            GivenRole(ArchiveRoleTarget());
+            _repo.Setup(r => r.GetTenantConfigurationAsync())
+                .ReturnsAsync(new TenantConfiguration { IsMultiOrgEnabled = true });
+
+            await Create().ArchiveRoleAsync("r1", confirmRevokeFromUsers: true);
+
+            // Propagation runs later and cannot re-derive whether a human agreed, so the consent
+            // has to travel on the message.
+            _iam.Verify(i => i.SendToQueueAsync(
+                IdpConstants.IamOrgQueue,
+                It.Is<PropagationRolePermissionUpdateEvent>(e =>
+                    e.Entity == "role" && e.Action == "delete" && e.ConfirmRevokeFromUsers)), Times.Once);
+        }
+
+        [Fact]
+        public async Task ArchiveRole_WithoutConsent_PropagationEventCarriesFalse()
+        {
+            InstallContext(orgId: "default");
+            GivenRole(ArchiveRoleTarget());
+            _repo.Setup(r => r.GetTenantConfigurationAsync())
+                .ReturnsAsync(new TenantConfiguration { IsMultiOrgEnabled = true });
+
+            await Create().ArchiveRoleAsync("r1");
+
+            _iam.Verify(i => i.SendToQueueAsync(
+                IdpConstants.IamOrgQueue,
+                It.Is<PropagationRolePermissionUpdateEvent>(e => !e.ConfirmRevokeFromUsers)), Times.Once);
+        }
+
+        [Fact]
+        public async Task PropagateRoleDelete_WithConsent_ArchivesCopyWithActiveAssignments()
+        {
+            List<Role>? written = null;
+            GivenSourceAndCopies(Copy("c-acme", "acme"), Copy("c-globex", "globex"));
+            _repo.Setup(r => r.HasUserAssignmentsAsync("manager", "globex")).ReturnsAsync(true);
+            _repo.Setup(r => r.UpdateRolesAsync(It.IsAny<List<Role>>()))
+                .Callback<List<Role>>(x => written = x).ReturnsAsync(true);
+
+            await PropagateRoleDelete(confirmRevokeFromUsers: true);
+
+            // Leaving globex active would be the split-brain state this propagation exists to
+            // prevent: gone from the admin's list, still working there, and unarchivable directly.
+            written!.Select(x => x.ItemId).Should().Equal("c-acme", "c-globex");
+            _repo.Verify(r => r.RemoveRoleFromAllUsersAsync("manager", "globex"), Times.Once);
+        }
+
+        [Fact]
+        public async Task PropagateRoleDelete_WithConsent_StillSkipsCopyWithChildRoles()
+        {
+            List<Role>? written = null;
+            GivenSourceAndCopies(Copy("c-acme", "acme"), Copy("c-globex", "globex"));
+            _repo.Setup(r => r.HasChildRolesAsync("manager", "globex")).ReturnsAsync(true);
+            _repo.Setup(r => r.UpdateRolesAsync(It.IsAny<List<Role>>()))
+                .Callback<List<Role>>(x => written = x).ReturnsAsync(true);
+
+            await PropagateRoleDelete(confirmRevokeFromUsers: true);
+
+            written!.Select(x => x.ItemId).Should().Equal("c-acme");
+            _repo.Verify(r => r.RemoveRoleFromAllUsersAsync("manager", "globex"), Times.Never);
+        }
+
+        [Fact]
+        public async Task PropagateRoleDelete_EventWithoutConsent_AppliesThePreExistingSkip()
+        {
+            List<Role>? written = null;
+            GivenSourceAndCopies(Copy("c-acme", "acme"), Copy("c-globex", "globex"));
+            _repo.Setup(r => r.HasUserAssignmentsAsync("manager", "globex")).ReturnsAsync(true);
+            _repo.Setup(r => r.UpdateRolesAsync(It.IsAny<List<Role>>()))
+                .Callback<List<Role>>(x => written = x).ReturnsAsync(true);
+
+            // A message serialised before the consent field existed deserialises to false, so an
+            // old or replayed message can only ever be less destructive, never more.
+            await PropagateRoleDelete();
+
+            written!.Select(x => x.ItemId).Should().Equal("c-acme");
+        }
+
+        [Fact]
+        public async Task ArchivePermission_WithConsent_ScrubsDirectUserGrants()
+        {
+            InstallContext(orgId: "default");
+            GivenPermission(ArchiveTarget());
+
+            var result = await Create().ArchivePermissionAsync("p1", confirmRevokeFromUsers: true);
+
+            result.IsSuccess.Should().BeTrue();
+            // User.Permissions is the binding that actually mints a token claim; Permission.Roles
+            // grants nothing on its own, so without this an archived permission keeps working.
+            _repo.Verify(r => r.RemovePermissionFromAllUsersAsync("reports::export", "default"), Times.Once);
+        }
+
+        [Fact]
+        public async Task ArchivePermission_WithoutConsent_LeavesDirectUserGrantsAlone()
+        {
+            InstallContext(orgId: "default");
+            GivenPermission(ArchiveTarget());
+
+            var result = await Create().ArchivePermissionAsync("p1");
+
+            result.IsSuccess.Should().BeTrue();
+            _repo.Verify(r => r.RemovePermissionFromAllUsersAsync(It.IsAny<string>(), It.IsAny<string>()), Times.Never);
+        }
+
+        [Fact]
+        public async Task ArchivePermission_WithConsent_UserCleanupUnacknowledged_LeavesPermissionActive()
+        {
+            InstallContext(orgId: "default");
+            GivenPermission(ArchiveTarget());
+            _repo.Setup(r => r.RemovePermissionFromAllUsersAsync(It.IsAny<string>(), It.IsAny<string>()))
+                .ReturnsAsync(false);
+
+            var result = await Create().ArchivePermissionAsync("p1", confirmRevokeFromUsers: true);
+
+            result.IsSuccess.Should().BeFalse();
+            _repo.Verify(r => r.UpdatePermissionAsync(It.IsAny<Permission>()), Times.Never);
+        }
+
+        [Fact]
+        public async Task PropagatePermissionDelete_WithConsent_ScrubsDirectGrantsInEveryOrganization()
+        {
+            GivenPermission(ArchiveTarget());
+            _repo.Setup(r => r.GetPermissionsByResourceAsync("reports::export")).ReturnsAsync(new List<Permission>
+            {
+                ArchiveTarget(),
+                new() { ItemId = "p-acme", Resource = "reports::export", OrganizationId = "acme" },
+                new() { ItemId = "p-globex", Resource = "reports::export", OrganizationId = "globex" }
+            });
+            _repo.Setup(r => r.UpdatePermissionsAsync(It.IsAny<List<Permission>>())).ReturnsAsync(true);
+
+            await Create().ExecutePropagationRolePermissionUpdateAsync(
+                new PropagationRolePermissionUpdateEvent
+                {
+                    Entity = "permission",
+                    Action = "delete",
+                    ItemId = "p1",
+                    ConfirmRevokeFromUsers = true
+                });
+
+            // The invariant is per organization, not just the one the administrator was looking at:
+            // a direct grant left behind anywhere keeps minting a claim for an archived permission.
+            _repo.Verify(r => r.RemovePermissionFromAllUsersAsync("reports::export", "acme"), Times.Once);
+            _repo.Verify(r => r.RemovePermissionFromAllUsersAsync("reports::export", "globex"), Times.Once);
+            // The default-organization record is handled by ArchivePermissionAsync, never here.
+            _repo.Verify(r => r.RemovePermissionFromAllUsersAsync("reports::export", "default"), Times.Never);
+        }
+
+        [Fact]
+        public async Task PropagatePermissionDelete_WithoutConsent_LeavesDirectGrantsAlone()
+        {
+            GivenPermission(ArchiveTarget());
+            _repo.Setup(r => r.GetPermissionsByResourceAsync("reports::export")).ReturnsAsync(new List<Permission>
+            {
+                ArchiveTarget(),
+                new() { ItemId = "p-acme", Resource = "reports::export", OrganizationId = "acme" }
+            });
+            _repo.Setup(r => r.UpdatePermissionsAsync(It.IsAny<List<Permission>>())).ReturnsAsync(true);
+
+            await Create().ExecutePropagationRolePermissionUpdateAsync(
+                new PropagationRolePermissionUpdateEvent { Entity = "permission", Action = "delete", ItemId = "p1" });
+
+            _repo.Verify(r => r.RemovePermissionFromAllUsersAsync(It.IsAny<string>(), It.IsAny<string>()), Times.Never);
+        }
+
+        [Fact]
+        public async Task ArchivePermission_WithConsent_StillRefusesBuiltInForNonRoot()
+        {
+            InstallContext(orgId: "default");
+            var permission = ArchiveTarget();
+            permission.IsBuiltIn = true;
+            GivenPermission(permission);
+            _iam.Setup(i => i.IsRoot()).Returns(false);
+
+            var result = await Create().ArchivePermissionAsync("p1", confirmRevokeFromUsers: true);
+
+            // Consent is not authorization.
+            result.Errors["forbidden"].Should().Be("Only_Root_Tenant_Can_Archive_Built_In_Permission");
+            _repo.Verify(r => r.RemovePermissionFromAllUsersAsync(It.IsAny<string>(), It.IsAny<string>()), Times.Never);
+        }
+
         [Fact]
         public async Task ArchiveRole_WriteFails_CleanupStillRanButNoEventsSent()
         {
@@ -1450,9 +1702,15 @@ namespace XUnitTest.IamTests.Resources
             IsArchived = isArchived
         };
 
-        private Task PropagateRoleDelete(string itemId = "r1") =>
+        private Task PropagateRoleDelete(string itemId = "r1", bool confirmRevokeFromUsers = false) =>
             Create().ExecutePropagationRolePermissionUpdateAsync(
-                new PropagationRolePermissionUpdateEvent { Entity = "role", Action = "delete", ItemId = itemId });
+                new PropagationRolePermissionUpdateEvent
+                {
+                    Entity = "role",
+                    Action = "delete",
+                    ItemId = itemId,
+                    ConfirmRevokeFromUsers = confirmRevokeFromUsers
+                });
 
         private void GivenSourceAndCopies(params Role[] copies)
         {

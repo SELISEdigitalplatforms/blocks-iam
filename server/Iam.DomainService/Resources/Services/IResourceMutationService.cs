@@ -15,7 +15,7 @@ namespace Iam.DomainService.Resources
         /// -organization record may be archived, and built-in permissions additionally require
         /// root-tenant access.
         /// </summary>
-        Task<BaseMutationResponse> ArchivePermissionAsync(string id);
+        Task<BaseMutationResponse> ArchivePermissionAsync(string id, bool confirmRevokeFromUsers = false);
 
         /// <summary>
         /// Archives a role. Soft delete only. Blocks rather than guesses when the role is unsafe to
@@ -23,7 +23,7 @@ namespace Iam.DomainService.Resources
         /// copy created from the default organization can only be archived via propagation from its
         /// master record.
         /// </summary>
-        Task<BaseMutationResponse> ArchiveRoleAsync(string id);
+        Task<BaseMutationResponse> ArchiveRoleAsync(string id, bool confirmRevokeFromUsers = false);
         Task<BaseMutationResponse> CreateRoleAsync(CreateRoleRequest command);
         Task<BaseMutationResponse> UpdateRoleAsync(UpdateRoleRequest command);
         Task<SetRolesResponse> SetRolesAsync(SetRolesRequest command);

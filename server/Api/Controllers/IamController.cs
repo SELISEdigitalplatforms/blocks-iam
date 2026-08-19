@@ -65,9 +65,9 @@ namespace Api.Controllers
 
         [HttpDelete("permissions/{id}")]
         [ProtectedEndPoint("blocks-iam::iam::mutate-permissions")]
-        public async Task<IActionResult> ArchivePermission([FromRoute] string id)
+        public async Task<IActionResult> ArchivePermission([FromRoute] string id, [FromQuery] bool confirmRevokeFromUsers = false)
         {
-            var result = await _resourceMutationService.ArchivePermissionAsync(id);
+            var result = await _resourceMutationService.ArchivePermissionAsync(id, confirmRevokeFromUsers);
             return result.IsSuccess ? Ok(result) : BadRequest(result);
         }
 
@@ -89,9 +89,9 @@ namespace Api.Controllers
 
         [HttpDelete("roles/{id}")]
         [ProtectedEndPoint("blocks-iam::iam::mutate-roles")]
-        public async Task<IActionResult> ArchiveRole([FromRoute] string id)
+        public async Task<IActionResult> ArchiveRole([FromRoute] string id, [FromQuery] bool confirmRevokeFromUsers = false)
         {
-            var result = await _resourceMutationService.ArchiveRoleAsync(id);
+            var result = await _resourceMutationService.ArchiveRoleAsync(id, confirmRevokeFromUsers);
             return result.IsSuccess ? Ok(result) : BadRequest(result);
         }
 
@@ -128,6 +128,22 @@ namespace Api.Controllers
         public async Task<GetRoleResponse> GetRole([FromRoute] string id)
         {
             return await _resourceQueryService.GetRoleAsync(id);
+        }
+
+        [HttpGet("roles/{id}/archive-impact")]
+        [ProtectedEndPoint("blocks-iam::iam::roles")]
+        public async Task<IActionResult> GetRoleArchiveImpact([FromRoute] string id)
+        {
+            var result = await _resourceQueryService.GetRoleArchiveImpactAsync(id);
+            return result.IsSuccess ? Ok(result) : BadRequest(result);
+        }
+
+        [HttpGet("permissions/{id}/archive-impact")]
+        [ProtectedEndPoint("blocks-iam::iam::permissions")]
+        public async Task<IActionResult> GetPermissionArchiveImpact([FromRoute] string id)
+        {
+            var result = await _resourceQueryService.GetPermissionArchiveImpactAsync(id);
+            return result.IsSuccess ? Ok(result) : BadRequest(result);
         }
 
         [HttpPost("roles/assign-permissions")]

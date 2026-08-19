@@ -361,7 +361,7 @@ namespace Iam.DomainService.Resources
             };
         }
 
-        public async Task<BaseMutationResponse> ArchivePermissionAsync(string id)
+        public async Task<BaseMutationResponse> ArchivePermissionAsync(string id, bool confirmRevokeFromUsers = false)
         {
             var blocksContext = BlocksContext.GetContext();
             if (!IsDefaultOrgScope(blocksContext?.OrganizationId))
@@ -397,6 +397,29 @@ namespace Iam.DomainService.Resources
             {
                 _logger.LogInformation("Permission archive end -- Built In Requires Root Tenant");
                 return Failure("forbidden", "Only_Root_Tenant_Can_Archive_Built_In_Permission");
+            }
+
+            // Only User.Permissions is scrubbed here, and only under consent. Permission.Roles is
+            // cleaned by the archive itself, but it grants nobody anything on its own -- the direct
+            // per-user grant is the binding AuthorizationClaimsResolver turns into a token claim,
+            // so leaving it behind means an archived permission keeps working for that user
+            // indefinitely. Cleanup precedes the archive for the same reason the role path does it
+            // in that order: a resource pulled from users without the permission being archived is
+            // the safer half-state, and a retry converges.
+            if (confirmRevokeFromUsers)
+            {
+                var usersCleaned = await _resourceRepository.RemovePermissionFromAllUsersAsync(
+                    permission.Resource, permission.OrganizationId);
+
+                if (!usersCleaned)
+                {
+                    _logger.LogWarning(
+                        "Permission archive aborted for '{Resource}' in organization '{OrganizationId}': the direct user-grant cleanup was not acknowledged. The permission is left active so a retry can complete it.",
+                        permission.Resource,
+                        permission.OrganizationId);
+
+                    return new BaseMutationResponse();
+                }
             }
 
             permission.IsArchived = true;
@@ -447,7 +470,8 @@ namespace Iam.DomainService.Resources
                     {
                         Entity = "permission",
                         ItemId = permission.ItemId,
-                        Action = "delete"
+                        Action = "delete",
+                        ConfirmRevokeFromUsers = confirmRevokeFromUsers
                     }
                 );
             }
@@ -469,7 +493,7 @@ namespace Iam.DomainService.Resources
             };
         }
 
-        public async Task<BaseMutationResponse> ArchiveRoleAsync(string id)
+        public async Task<BaseMutationResponse> ArchiveRoleAsync(string id, bool confirmRevokeFromUsers = false)
         {
             var blocksContext = BlocksContext.GetContext();
             var callerOrganizationId = ResolveOrganizationId(blocksContext?.OrganizationId ?? string.Empty);
@@ -512,10 +536,25 @@ namespace Iam.DomainService.Resources
                 return Failure("dependency", "Role_Has_Child_Roles");
             }
 
+            // Consent turns a refusal into a recorded revocation. Without it the guard is exactly
+            // as it was: an active holder blocks the archive. With it the archive proceeds and the
+            // scrub below removes the slug from every user in the organization regardless of
+            // state -- which is why the warning is not optional. Revoking live access is the one
+            // effect of this endpoint invisible to the caller and impossible to undo (un-archiving
+            // is out of scope, so the assignment is gone, not hidden), and this log is its only
+            // durable trace.
             if (await _resourceRepository.HasUserAssignmentsAsync(role.Slug, role.OrganizationId))
             {
-                _logger.LogInformation("Role archive end -- Has Active User Assignments");
-                return Failure("dependency", "Role_Has_Active_User_Assignments");
+                if (!confirmRevokeFromUsers)
+                {
+                    _logger.LogInformation("Role archive end -- Has Active User Assignments");
+                    return Failure("dependency", "Role_Has_Active_User_Assignments");
+                }
+
+                _logger.LogWarning(
+                    "Archiving role '{Slug}' in organization '{OrganizationId}' with explicit consent while at least one active user still holds it. Their assignment is being removed and cannot be restored by un-archiving.",
+                    role.Slug,
+                    role.OrganizationId);
             }
 
             // Cleanup precedes the archive deliberately. If the archive write then fails, a slug
@@ -580,7 +619,10 @@ namespace Iam.DomainService.Resources
                         {
                             Entity = "role",
                             ItemId = role.ItemId,
-                            Action = "delete"
+                            Action = "delete",
+                            // Carried, not re-derived: the consumer runs later and has no way to
+                            // know a human agreed to revoke live assignments.
+                            ConfirmRevokeFromUsers = confirmRevokeFromUsers
                         }
                     );
                 }
@@ -797,7 +839,10 @@ namespace Iam.DomainService.Resources
                     AddPermissions = command.AddPermissions,
                     RemovePermissions = command.RemovePermissions,
                     Slug = command.Slug,
-                    OrganizationId = currentOrganizationId
+                    OrganizationId = currentOrganizationId,
+                    // Carried, not re-derived: the consumer runs later and cannot know what the
+                    // request asked for.
+                    PropagateToAllOrganizations = command.PropagateToAllOrganizations
                 });
 
             _logger.LogInformation("SetRole end");
@@ -828,7 +873,7 @@ namespace Iam.DomainService.Resources
                     await UpdatePermissionForAllOrg(command.ItemId);
                     break;
                 case ("permission", "delete"):
-                    await DeletePermissionForAllOrg(command.ItemId);
+                    await DeletePermissionForAllOrg(command.ItemId, command.ConfirmRevokeFromUsers);
                     break;
                 case ("role", "insert"):
                     await InsertRoleForAllOrg(command.ItemId);
@@ -837,7 +882,7 @@ namespace Iam.DomainService.Resources
                     await UpdateRoleForAllOrg(command.ItemId);
                     break;
                 case ("role", "delete"):
-                    await DeleteRoleForAllOrg(command.ItemId);
+                    await DeleteRoleForAllOrg(command.ItemId, command.ConfirmRevokeFromUsers);
                     break;
                 default:
                     _logger.LogWarning(
@@ -1091,7 +1136,7 @@ namespace Iam.DomainService.Resources
             return true;
         }
 
-        private async Task<bool> DeletePermissionForAllOrg(string itemId)
+        private async Task<bool> DeletePermissionForAllOrg(string itemId, bool confirmRevokeFromUsers = false)
         {
             var permission = await _resourceRepository.GetPermissionByIdAsync(itemId);
 
@@ -1121,6 +1166,24 @@ namespace Iam.DomainService.Resources
                     continue;
                 }
 
+                // Under consent the direct grants are scrubbed per organization too, so the
+                // "no user still holds an archived permission" invariant holds everywhere, not
+                // only in the organization the administrator was looking at.
+                if (confirmRevokeFromUsers)
+                {
+                    var usersCleaned = await _resourceRepository.RemovePermissionFromAllUsersAsync(
+                        orgPermission.Resource, orgPermission.OrganizationId);
+
+                    if (!usersCleaned)
+                    {
+                        _logger.LogWarning(
+                            "Permission archive propagation skipped '{Resource}' in organization '{OrganizationId}': the direct user-grant cleanup was not acknowledged. The copy is left active rather than archived with users still holding it.",
+                            orgPermission.Resource,
+                            orgPermission.OrganizationId);
+                        continue;
+                    }
+                }
+
                 orgPermission.IsArchived = true;
                 orgPermission.LastUpdatedDate = DateTime.UtcNow;
                 orgPermission.LastUpdatedBy = permission.LastUpdatedBy;
@@ -1140,7 +1203,7 @@ namespace Iam.DomainService.Resources
             return true;
         }
 
-        private async Task<bool> DeleteRoleForAllOrg(string itemId)
+        private async Task<bool> DeleteRoleForAllOrg(string itemId, bool confirmRevokeFromUsers = false)
         {
             var role = await _resourceRepository.GetRoleByIdAsync(itemId);
 
@@ -1189,13 +1252,26 @@ namespace Iam.DomainService.Resources
                     continue;
                 }
 
+                // Consent given in the default organization reaches every copy: leaving one active
+                // because someone there still holds it is exactly the split-brain state this
+                // propagation exists to prevent -- the role would vanish from the administrator's
+                // list and keep working in that organization, with no caller able to archive it
+                // (C2 refuses a CreatedFromDefault copy directly).
                 if (await _resourceRepository.HasUserAssignmentsAsync(orgRole.Slug, orgRole.OrganizationId))
                 {
+                    if (!confirmRevokeFromUsers)
+                    {
+                        _logger.LogWarning(
+                            "Role archive propagation skipped '{Slug}' in organization '{OrganizationId}': the copy is still assigned to an active user there. Every other organization is unaffected. This message is not replayed and re-archiving the source returns Role_Already_Archived, so remove the assignment and then archive this copy through a reconciliation pass.",
+                            orgRole.Slug,
+                            orgRole.OrganizationId);
+                        continue;
+                    }
+
                     _logger.LogWarning(
-                        "Role archive propagation skipped '{Slug}' in organization '{OrganizationId}': the copy is still assigned to an active user there. Every other organization is unaffected. This message is not replayed and re-archiving the source returns Role_Already_Archived, so remove the assignment and then archive this copy through a reconciliation pass.",
+                        "Role archive propagation is removing '{Slug}' from at least one active user in organization '{OrganizationId}', under the consent given with the original archive. Their assignment cannot be restored by un-archiving.",
                         orgRole.Slug,
                         orgRole.OrganizationId);
-                    continue;
                 }
 
                 var permissionsCleaned = await _resourceRepository.RemoveRoleFromAllPermissionsAsync(orgRole.Slug, orgRole.OrganizationId);
@@ -1397,6 +1473,19 @@ namespace Iam.DomainService.Resources
                 await _resourceRepository.UpdateRolesCountAsync(command.Slug, command.OrganizationId);
             }
 
+            // Runs last, after the activity records and the role count, so a propagation failure
+            // cannot suppress the audit trail of what the administrator actually did in their own
+            // organization. Gated on all three conditions: the caller opted in, the tenant is
+            // multi-org, and the caller is default-org scoped -- without the last, an
+            // organization-scoped admin could rewrite bindings platform-wide.
+            if (command.PropagateToAllOrganizations
+                && command.Entity == ResourceEntity.Role
+                && IsDefaultOrgScope(command.OrganizationId)
+                && await IsMultiOrgEnabledAsync())
+            {
+                await PropagateSetPermissionsAsync(command);
+            }
+
             return true;
         }
 
@@ -1427,6 +1516,23 @@ namespace Iam.DomainService.Resources
 
             foreach (var orgId in orgIds)
             {
+                // SetRoleAsync refuses to modify an archived role in the caller's organization, and
+                // propagation must not do through the back door what the synchronous path forbids.
+                // This matters more since archive propagation shipped: the two ride different
+                // queues (IamOrgQueue vs IamPermissionQueue) with no ordering guarantee, so a
+                // consented assignment and a consented archive issued close together can arrive in
+                // either order.
+                var orgRole = await _resourceRepository.GetRoleBySlugAsync(command.Slug, orgId);
+
+                if (orgRole == null || orgRole.IsArchived)
+                {
+                    _logger.LogWarning(
+                        "Role permission propagation skipped '{Slug}' in organization '{OrganizationId}': the copy is missing or archived there. Every other organization is unaffected.",
+                        command.Slug,
+                        orgId);
+                    continue;
+                }
+
                 if (addResources.Any())
                 {
                     var addPermissionIds =
@@ -1436,9 +1542,33 @@ namespace Iam.DomainService.Resources
 
                     if (addPermissionIds.Any())
                     {
-                        await _resourceRepository.UpdateRolePermissionByIdsAsync(
+                        // The result is inspected rather than discarded: an unacknowledged write
+                        // leaves this organization silently out of step with the rest, and the log
+                        // is the only place that becomes visible. One organization failing must
+                        // not abort the others, so this warns and carries on.
+                        var added = await _resourceRepository.UpdateRolePermissionByIdsAsync(
                             command.Slug,
                             addPermissionIds,orgId);
+
+                        if (!added)
+                        {
+                            _logger.LogWarning(
+                                "Role permission propagation was not acknowledged when adding permissions to role '{Slug}' in organization '{OrganizationId}'. That organization may still be missing {Resources} and needs manual review; every other organization is unaffected.",
+                                command.Slug,
+                                orgId,
+                                string.Join(", ", addResources));
+                        }
+                    }
+                    else
+                    {
+                        // Drift: this organization never received a copy of the permission, so
+                        // there is no id to bind. Logged rather than failed, because one
+                        // organization missing a document must not veto the rest.
+                        _logger.LogWarning(
+                            "Role permission propagation found no matching permissions to add for role '{Slug}' in organization '{OrganizationId}'. That organization may be missing copies of {Resources}.",
+                            command.Slug,
+                            orgId,
+                            string.Join(", ", addResources));
                     }
                 }
 
@@ -1451,9 +1581,26 @@ namespace Iam.DomainService.Resources
 
                     if (removePermissionIds.Any())
                     {
-                        await _resourceRepository.RemoveRolePermissionByIdsAsync(
+                        var removed = await _resourceRepository.RemoveRolePermissionByIdsAsync(
                             command.Slug,
                             removePermissionIds,orgId);
+
+                        if (!removed)
+                        {
+                            _logger.LogWarning(
+                                "Role permission propagation was not acknowledged when removing permissions from role '{Slug}' in organization '{OrganizationId}'. That organization may still grant {Resources} and needs manual review; every other organization is unaffected.",
+                                command.Slug,
+                                orgId,
+                                string.Join(", ", removeResources));
+                        }
+                    }
+                    else
+                    {
+                        _logger.LogWarning(
+                            "Role permission propagation found no matching permissions to remove for role '{Slug}' in organization '{OrganizationId}'. That organization may be missing copies of {Resources}.",
+                            command.Slug,
+                            orgId,
+                            string.Join(", ", removeResources));
                     }
                 }
             }

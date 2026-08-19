@@ -4,6 +4,7 @@ using Iam.DomainService.Entities;
 using Iam.DomainService.Enums;
 using Iam.DomainService.Resources;
 using Iam.DomainService.Resources.ResponseModel;
+using Iam.DomainService.Shared.Entities;
 using Microsoft.Extensions.Logging.Abstractions;
 using Moq;
 
@@ -344,6 +345,188 @@ namespace XUnitTest.IamTests.Resources
 
             result.Standalone.Should().BeEmpty();
             result.Hierarchy.Should().BeEmpty();
+        }
+
+        // ---------- Archive impact preview (#464) ----------
+
+        private static Role ImpactRole(string org = "default") => new()
+        {
+            ItemId = "r1", Slug = "manager", Name = "Manager", Description = "d", OrganizationId = org
+        };
+
+        private static Role ImpactCopy(string itemId, string org) => new()
+        {
+            ItemId = itemId, Slug = "manager", Name = "Manager", Description = "d",
+            OrganizationId = org, CreatedFromDefault = true
+        };
+
+        private void MultiOrg(bool enabled) =>
+            _repo.Setup(r => r.GetTenantConfigurationAsync())
+                .ReturnsAsync(enabled ? new TenantConfiguration { IsMultiOrgEnabled = true } : null!);
+
+        [Fact]
+        public async Task RoleArchiveImpact_NotFound_ReturnsErrorAndCountsNothing()
+        {
+            _repo.Setup(r => r.GetRoleByIdAsync("nope")).ReturnsAsync((Role)null!);
+
+            var result = await Create().GetRoleArchiveImpactAsync("nope");
+
+            result.IsSuccess.Should().BeFalse();
+            result.Errors!["ItemId"].Should().Be("Role_Not_Found");
+            _repo.Verify(r => r.CountUsersWithRoleAsync(It.IsAny<string>(), It.IsAny<IEnumerable<string>>(), It.IsAny<bool>()), Times.Never);
+        }
+
+        [Fact]
+        public async Task RoleArchiveImpact_CountsOtherOrganizationsAndUsers()
+        {
+            _repo.Setup(r => r.GetRoleByIdAsync("r1")).ReturnsAsync(ImpactRole());
+            MultiOrg(true);
+            _repo.Setup(r => r.GetNonArchivedRolesBySlugAsync("manager"))
+                .ReturnsAsync(new List<Role> { ImpactRole(), ImpactCopy("c-acme", "acme"), ImpactCopy("c-globex", "globex") });
+            _repo.Setup(r => r.CountUsersWithRoleAsync("manager", It.IsAny<IEnumerable<string>>(), false)).ReturnsAsync(3);
+            _repo.Setup(r => r.CountUsersWithRoleAsync("manager", It.IsAny<IEnumerable<string>>(), true)).ReturnsAsync(3);
+
+            var result = await Create().GetRoleArchiveImpactAsync("r1");
+
+            result.IsSuccess.Should().BeTrue();
+            result.Slug.Should().Be("manager");
+            result.IsMultiOrgEnabled.Should().BeTrue();
+            // "2 OTHER organizations" -- the target's own organization is never one of them.
+            result.OrganizationCount.Should().Be(2);
+            result.AffectedUserCount.Should().Be(3);
+            result.ActiveUserCount.Should().Be(3);
+            result.Blocked.Should().BeFalse();
+        }
+
+        [Fact]
+        public async Task RoleArchiveImpact_ArchivedCopyWidensNeitherCount()
+        {
+            IEnumerable<string>? scoped = null;
+            _repo.Setup(r => r.GetRoleByIdAsync("r1")).ReturnsAsync(ImpactRole());
+            MultiOrg(true);
+            // GetNonArchivedRolesBySlugAsync filters archived copies at the source, so globex is absent.
+            _repo.Setup(r => r.GetNonArchivedRolesBySlugAsync("manager"))
+                .ReturnsAsync(new List<Role> { ImpactRole(), ImpactCopy("c-acme", "acme") });
+            _repo.Setup(r => r.CountUsersWithRoleAsync("manager", It.IsAny<IEnumerable<string>>(), It.IsAny<bool>()))
+                .Callback<string, IEnumerable<string>, bool>((_, orgs, _) => scoped = orgs)
+                .ReturnsAsync(1);
+
+            var result = await Create().GetRoleArchiveImpactAsync("r1");
+
+            result.OrganizationCount.Should().Be(1);
+            // An archived organization must not widen the user scope either, or the preview would
+            // promise to revoke from users the archive will never reach.
+            scoped!.Should().BeEquivalentTo(new[] { "acme", "default" });
+        }
+
+        [Fact]
+        public async Task RoleArchiveImpact_SingleOrgTenant_ReportsNoOrganizationsAndDoesNotThrow()
+        {
+            _repo.Setup(r => r.GetRoleByIdAsync("r1")).ReturnsAsync(ImpactRole());
+            MultiOrg(false);
+            _repo.Setup(r => r.CountUsersWithRoleAsync("manager", It.IsAny<IEnumerable<string>>(), false)).ReturnsAsync(1);
+            _repo.Setup(r => r.CountUsersWithRoleAsync("manager", It.IsAny<IEnumerable<string>>(), true)).ReturnsAsync(0);
+
+            var result = await Create().GetRoleArchiveImpactAsync("r1");
+
+            // A null TenantConfiguration must read as "off" rather than throwing.
+            result.IsMultiOrgEnabled.Should().BeFalse();
+            result.OrganizationCount.Should().Be(0);
+            result.AffectedUserCount.Should().Be(1);
+            result.ActiveUserCount.Should().Be(0);
+            _repo.Verify(r => r.GetNonArchivedRolesBySlugAsync(It.IsAny<string>()), Times.Never);
+        }
+
+        [Fact]
+        public async Task RoleArchiveImpact_ChildRoles_BlocksButStillReportsCounts()
+        {
+            _repo.Setup(r => r.GetRoleByIdAsync("r1")).ReturnsAsync(ImpactRole());
+            MultiOrg(true);
+            _repo.Setup(r => r.GetNonArchivedRolesBySlugAsync("manager"))
+                .ReturnsAsync(new List<Role> { ImpactRole(), ImpactCopy("c-acme", "acme") });
+            _repo.Setup(r => r.HasChildRolesAsync("manager", "default")).ReturnsAsync(true);
+            _repo.Setup(r => r.CountUsersWithRoleAsync("manager", It.IsAny<IEnumerable<string>>(), It.IsAny<bool>())).ReturnsAsync(4);
+
+            var result = await Create().GetRoleArchiveImpactAsync("r1");
+
+            result.Blocked.Should().BeTrue();
+            result.BlockingReason.Should().Be("Role_Has_Child_Roles");
+            // Blocked is not an error: the dialog still needs the numbers to explain the refusal.
+            result.IsSuccess.Should().BeTrue();
+            result.OrganizationCount.Should().Be(1);
+            result.AffectedUserCount.Should().Be(4);
+        }
+
+        [Fact]
+        public async Task RoleArchiveImpact_NothingAffected_ReturnsZeros()
+        {
+            _repo.Setup(r => r.GetRoleByIdAsync("r1")).ReturnsAsync(ImpactRole());
+            MultiOrg(true);
+            _repo.Setup(r => r.GetNonArchivedRolesBySlugAsync("manager")).ReturnsAsync(new List<Role> { ImpactRole() });
+
+            var result = await Create().GetRoleArchiveImpactAsync("r1");
+
+            result.OrganizationCount.Should().Be(0);
+            result.AffectedUserCount.Should().Be(0);
+            result.Blocked.Should().BeFalse();
+        }
+
+        [Fact]
+        public async Task PermissionArchiveImpact_NotFound_ReturnsError()
+        {
+            _repo.Setup(r => r.GetPermissionByIdAsync("nope")).ReturnsAsync((Permission)null!);
+
+            var result = await Create().GetPermissionArchiveImpactAsync("nope");
+
+            result.IsSuccess.Should().BeFalse();
+            result.Errors!["ItemId"].Should().Be("Permission_Not_Found");
+        }
+
+        [Fact]
+        public async Task PermissionArchiveImpact_CountsDirectGrantsAndRoleBindingsSeparately()
+        {
+            var permission = new Permission { ItemId = "p1", Name = "Export", Resource = "reports::export", OrganizationId = "default" };
+            _repo.Setup(r => r.GetPermissionByIdAsync("p1")).ReturnsAsync(permission);
+            MultiOrg(true);
+            _repo.Setup(r => r.GetPermissionsByResourceAsync("reports::export")).ReturnsAsync(new List<Permission>
+            {
+                permission,
+                new() { ItemId = "p-acme", Resource = "reports::export", OrganizationId = "acme" },
+                new() { ItemId = "p-globex", Resource = "reports::export", OrganizationId = "globex" }
+            });
+            _repo.Setup(r => r.CountUsersWithPermissionAsync("reports::export", It.IsAny<IEnumerable<string>>())).ReturnsAsync(2);
+            _repo.Setup(r => r.CountRoleBindingsForResourceAsync("reports::export", It.IsAny<IEnumerable<string>>())).ReturnsAsync(3);
+
+            var result = await Create().GetPermissionArchiveImpactAsync("p1");
+
+            result.IsSuccess.Should().BeTrue();
+            result.Resource.Should().Be("reports::export");
+            result.OrganizationCount.Should().Be(2);
+            // Direct User.Permissions grants and Permission.Roles bindings are different
+            // populations. Only the first mints a token claim, so conflating them would misreport
+            // who actually loses access.
+            result.AffectedUserCount.Should().Be(2);
+            result.RoleBindingCount.Should().Be(3);
+            result.Blocked.Should().BeFalse();
+            result.BlockingReason.Should().BeNull();
+        }
+
+        [Fact]
+        public async Task PermissionArchiveImpact_ExcludesArchivedCopies()
+        {
+            var permission = new Permission { ItemId = "p1", Resource = "reports::export", OrganizationId = "default" };
+            _repo.Setup(r => r.GetPermissionByIdAsync("p1")).ReturnsAsync(permission);
+            MultiOrg(true);
+            _repo.Setup(r => r.GetPermissionsByResourceAsync("reports::export")).ReturnsAsync(new List<Permission>
+            {
+                permission,
+                new() { ItemId = "p-acme", Resource = "reports::export", OrganizationId = "acme" },
+                new() { ItemId = "p-globex", Resource = "reports::export", OrganizationId = "globex", IsArchived = true }
+            });
+
+            var result = await Create().GetPermissionArchiveImpactAsync("p1");
+
+            result.OrganizationCount.Should().Be(1);
         }
     }
 }

@@ -166,6 +166,80 @@ namespace XUnitTest.ApiTests
                 .And.Be(PermissionOf(nameof(IamController.UpdatePermission)));
         }
 
+        /// <summary>
+        /// The consent flag is a defaulted query parameter, so an existing client that omits it
+        /// keeps exactly today's behavior. Asserted by reflection because binding is the whole
+        /// contract here: a flag bound from the body instead would change the request shape for
+        /// every caller.
+        /// </summary>
+        [Theory]
+        [InlineData(nameof(IamController.ArchiveRole))]
+        [InlineData(nameof(IamController.ArchivePermission))]
+        public void Archive_TakesConsentAsAnOptionalQueryParameterDefaultingToFalse(string methodName)
+        {
+            var parameter = typeof(IamController).GetMethod(methodName)!
+                .GetParameters().SingleOrDefault(p => p.Name == "confirmRevokeFromUsers");
+
+            parameter.Should().NotBeNull("archive must accept explicit consent");
+            parameter!.ParameterType.Should().Be(typeof(bool));
+            parameter.HasDefaultValue.Should().BeTrue();
+            parameter.DefaultValue.Should().Be(false, "omitting the flag must preserve the pre-consent behavior");
+            parameter.GetCustomAttribute<FromQueryAttribute>()
+                .Should().NotBeNull("the flag is a query parameter, not a body field");
+        }
+
+        [Fact]
+        public async Task ArchiveRole_ForwardsConsentToTheService()
+        {
+            _resourceMutation.Setup(s => s.ArchiveRoleAsync("r-1", true))
+                .ReturnsAsync(new BaseMutationResponse { IsSuccess = true, ItemId = "r-1" });
+
+            await CreateController().ArchiveRole("r-1", confirmRevokeFromUsers: true);
+
+            _resourceMutation.Verify(s => s.ArchiveRoleAsync("r-1", true), Times.Once);
+        }
+
+        [Fact]
+        public async Task ArchivePermission_ForwardsConsentToTheService()
+        {
+            _resourceMutation.Setup(s => s.ArchivePermissionAsync("p-1", true))
+                .ReturnsAsync(new BaseMutationResponse { IsSuccess = true, ItemId = "p-1" });
+
+            await CreateController().ArchivePermission("p-1", confirmRevokeFromUsers: true);
+
+            _resourceMutation.Verify(s => s.ArchivePermissionAsync("p-1", true), Times.Once);
+        }
+
+        /// <summary>
+        /// The impact preview discloses counts about roles and permissions, so it must be guarded
+        /// by the same READ permission as the corresponding get endpoint -- not by the mutate one,
+        /// which would deny it to callers who are allowed to see the resource, and not by nothing,
+        /// which would leak organization and user counts to any authenticated caller.
+        /// </summary>
+        [Theory]
+        [InlineData(nameof(IamController.GetRoleArchiveImpact), nameof(IamController.GetRole), "blocks-iam::iam::roles", "roles/{id}/archive-impact")]
+        [InlineData(nameof(IamController.GetPermissionArchiveImpact), nameof(IamController.GetPermission), "blocks-iam::iam::permissions", "permissions/{id}/archive-impact")]
+        public void ArchiveImpact_IsGuardedByTheSameReadPermissionOnGetRoute(
+            string methodName, string readMethodName, string expectedPermission, string expectedTemplate)
+        {
+            var method = typeof(IamController).GetMethod(methodName);
+            method.Should().NotBeNull();
+
+            var guard = method!.GetCustomAttribute<ProtectedEndPointAttribute>();
+            guard.Should().NotBeNull("the impact preview discloses counts and must be protected");
+            guard!.ResourceName.Should().Be(expectedPermission);
+
+            // Same string as the plain read endpoint: no new permission resource is introduced,
+            // so nothing has to be seeded or propagated for this to work.
+            typeof(IamController).GetMethod(readMethodName)!
+                .GetCustomAttribute<ProtectedEndPointAttribute>()!.ResourceName
+                .Should().Be(expectedPermission);
+
+            var route = method.GetCustomAttribute<HttpGetAttribute>();
+            route.Should().NotBeNull("the impact preview is a read");
+            route!.Template.Should().Be(expectedTemplate);
+        }
+
         [Fact]
         public async Task ArchiveRole_Success_ReturnsOk()
         {
