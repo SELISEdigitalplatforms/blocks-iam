@@ -712,5 +712,30 @@ namespace XUnitTest.ApiTests
 
             result.Should().BeSameAs(response);
         }
+
+        // ---------------------------------------------------------------------------------
+        // #427 — C3: this phase must not change or weaken the existing authorization.
+        // ---------------------------------------------------------------------------------
+
+        [Theory]
+        [InlineData(nameof(IamController.GetUsers))]
+        [InlineData(nameof(IamController.GetUser))]
+        public void UsersEndpoints_StillRequireTheIamUsersPermission(string action)
+        {
+            // The two endpoints #427 touches must keep the permission they had. Adding response
+            // fields cannot weaken authz by itself, but the attribute is one careless edit away from
+            // the mapper work, and C3 is explicit that authorization is unchanged.
+            //
+            // Stated limit: this proves the ATTRIBUTE survived, not that an unauthorised caller gets
+            // the same status and body - that needs an HTTP boundary, which these tests do not have.
+            var method = typeof(IamController).GetMethod(action)!;
+
+            var attribute = method.GetCustomAttributes(typeof(ProtectedEndPointAttribute), true)
+                                  .Cast<ProtectedEndPointAttribute>()
+                                  .SingleOrDefault();
+
+            attribute.Should().NotBeNull($"{action} must stay behind an explicit permission");
+            attribute!.ResourceName.Should().Be("blocks-iam::iam::users");
+        }
     }
 }
