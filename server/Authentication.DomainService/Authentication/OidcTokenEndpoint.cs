@@ -11,6 +11,7 @@ namespace Authentication.DomainService.Authentication
     /// <item><c>authorization_code</c> → <see cref="AuthorizationCodeExchangeService"/></item>
     /// <item><c>refresh_token</c>      → <see cref="OidcRefreshTokenService"/></item>
     /// <item><c>client_credentials</c> → <see cref="ClientCredentialsTokenIssuer"/></item>
+    /// <item><c>urn:ietf:params:oauth:grant-type:token-exchange</c> → <see cref="DelegationTokenExchangeIssuer"/></item>
     /// </list>
     /// Replaces the giant <c>AuthorizationFlowService.TokenAsync</c> while keeping the contract intact.
     /// </summary>
@@ -20,6 +21,7 @@ namespace Authentication.DomainService.Authentication
         private readonly OidcRefreshTokenService _refreshService;
         private readonly ClientCredentialsTokenIssuer _clientCredentialsIssuer;
         private readonly DeviceCodeExchangeService _deviceCodeExchange;
+        private readonly DelegationTokenExchangeIssuer _delegationTokenExchangeIssuer;
         private readonly ILogger<OidcTokenEndpoint> _logger;
 
         public OidcTokenEndpoint(
@@ -27,12 +29,14 @@ namespace Authentication.DomainService.Authentication
             OidcRefreshTokenService refreshService,
             ClientCredentialsTokenIssuer clientCredentialsIssuer,
             DeviceCodeExchangeService deviceCodeExchange,
+            DelegationTokenExchangeIssuer delegationTokenExchangeIssuer,
             ILogger<OidcTokenEndpoint> logger)
         {
             _exchangeService = exchangeService;
             _refreshService = refreshService;
             _clientCredentialsIssuer = clientCredentialsIssuer;
             _deviceCodeExchange = deviceCodeExchange;
+            _delegationTokenExchangeIssuer = delegationTokenExchangeIssuer;
             _logger = logger;
         }
 
@@ -61,6 +65,11 @@ namespace Authentication.DomainService.Authentication
                 if (grantType == GrantTypes.DeviceCode)
                 {
                     return await _deviceCodeExchange.ExchangeAsync(request);
+                }
+
+                if (grantType == GrantTypes.TokenExchange)
+                {
+                    return await _delegationTokenExchangeIssuer.ExchangeAsync(request);
                 }
 
                 return new BadRequestObjectResult(new { error = "unsupported_grant_type", error_description = $"Grant type '{grantType}' not supported" });

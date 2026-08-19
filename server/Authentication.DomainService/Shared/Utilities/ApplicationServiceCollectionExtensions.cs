@@ -90,6 +90,10 @@ namespace Authentication.DomainService.Utilities
             serviceCollection.AddSingleton<IAuthorizationClaimsResolver, AuthorizationClaimsResolver>();
             serviceCollection.AddSingleton<ClientCredentialsTokenIssuer>();
 
+            // RFC 8693 token exchange for delegated access.
+            serviceCollection.AddSingleton<TokenExchangeAuthorizationService>();
+            serviceCollection.AddSingleton<DelegationTokenExchangeIssuer>();
+
             // Authorization flow split: lean orchestrator delegates to focused services.
             serviceCollection.AddSingleton<PasswordHasher>();
             serviceCollection.AddSingleton<OidcLoginAuditWriter>();
