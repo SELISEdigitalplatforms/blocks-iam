@@ -33,6 +33,13 @@ namespace Iam.DomainService.Dtos
         public UserCreationType UserCreationType { get; set; }
         public int LogInCount { get; set; }
         public DateTime LastLoggedInTime { get; set; }
+
+        /// <summary>
+        /// When the account's lockout expires, or null if it has never been locked out. Read-only
+        /// here: this DTO is a projection of User and nothing in the query path writes it.
+        /// LockoutCount and LastLockoutUtc are deliberately not projected - no consumer yet.
+        /// </summary>
+        public DateTime? LockoutUntilUtc { get; set; }
         public string LastLoggedInDeviceInfo { get; set; } = string.Empty;
         public Dictionary<string, object> Attributes { get; set; } = new Dictionary<string, object>();
     }
