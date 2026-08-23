@@ -4,7 +4,7 @@ namespace Blocks.CaptchaDriver;
 
 /// <summary>
 /// A captcha configuration as blocks-os stores it: one entry in the tenant's
-/// <c>keyValueStores</c> collection under the key <c>captcha_{Id}</c>.
+/// <c>keyValueStores</c> collection, all of them under the single key <c>captcha</c>.
 /// </summary>
 /// <remarks>
 /// Structurally mirrors blocks-os's <c>CaptchaConfigResult</c>, which is the exact shape persisted
@@ -17,7 +17,14 @@ namespace Blocks.CaptchaDriver;
 [BsonIgnoreExtraElements]
 public sealed class CaptchaConfigRecord
 {
-    /// <summary>Record id. The store key is <c>captcha_</c> + this value.</summary>
+    /// <summary>
+    /// Record id, stamped from the store entry's <c>ItemId</c> on read.
+    /// </summary>
+    /// <remarks>
+    /// blocks-os deliberately does not persist this inside the stored value — the store entry is
+    /// the identity, and keeping a copy in the payload would leave two things to hold in step.
+    /// So it is always absent in the document and always filled in by the repository.
+    /// </remarks>
     public string Id { get; set; } = string.Empty;
 
     public bool IsEnable { get; set; }

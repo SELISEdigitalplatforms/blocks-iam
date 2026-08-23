@@ -28,8 +28,17 @@ public sealed class CaptchaConfigurationRepository : ICaptchaConfigurationReposi
 {
     private const string LegacyCollectionName = "Secrets";
 
-    /// <summary>Key prefix blocks-os writes captcha configuration under.</summary>
-    internal const string StoreKeyPrefix = "captcha_";
+    /// <summary>
+    /// The single key every captcha configuration is stored under.
+    /// </summary>
+    /// <remarks>
+    /// Records are told apart by the store's own <c>ItemId</c>, not by the key, so the key
+    /// carries no identity and never varies. This mirrors blocks-os's writer, which uses the
+    /// multi-value side of <see cref="IKeyValueStore"/> (<c>AddAsync</c> / <c>GetAllAsync</c> /
+    /// the <c>*ById</c> methods). Reading with the single-value <c>GetAsync</c> would return an
+    /// arbitrary one of the records.
+    /// </remarks>
+    internal const string StoreKey = "captcha";
 
     private readonly IDbContextProvider _dbContextProvider;
     private readonly IKeyValueStore _keyValueStore;
@@ -93,13 +102,15 @@ public sealed class CaptchaConfigurationRepository : ICaptchaConfigurationReposi
     }
 
     /// <summary>
-    /// Reads every <c>captcha_*</c> record for the tenant, ordered deterministically.
+    /// Reads every captcha record for the tenant, ordered deterministically.
     /// </summary>
     /// <remarks>
-    /// Ordered by <c>Id</c>, which is equivalent to ordering by store key: the key is
-    /// <c>captcha_</c> + <c>Id</c> and the prefix is constant. blocks-os enforces no
-    /// single-enabled constraint, and <c>GetByPrefixAsync</c> applies no sort, so without this the
-    /// winner among several enabled records could change between calls.
+    /// Ordered by the store's <c>ItemId</c>. blocks-os enforces no single-enabled constraint and
+    /// <c>GetAllAsync</c> applies no sort, so without this the winner among several enabled
+    /// records could change between calls. <c>ItemId</c> is used rather than anything in the
+    /// payload because blocks-os deliberately does not persist an id inside the value — the store
+    /// entry is the identity — so every record's payload id would otherwise be empty and the
+    /// ordering would collapse back to Mongo's natural order.
     /// <para>
     /// Records are read as raw documents and converted one at a time so a single malformed entry —
     /// written by another service — is skipped rather than failing an anonymous request. A failure
@@ -108,13 +119,13 @@ public sealed class CaptchaConfigurationRepository : ICaptchaConfigurationReposi
     /// </remarks>
     private async Task<IReadOnlyList<CaptchaConfigRecord>> ReadStoreRecordsAsync()
     {
-        List<BsonDocument> documents;
+        IReadOnlyList<KeyValueItem<BsonDocument>> items;
 
         try
         {
-            documents = (await _keyValueStore
-                .GetByPrefixAsync<BsonDocument>(StoreKeyPrefix)
-                .ConfigureAwait(false)).ToList();
+            items = await _keyValueStore
+                .GetAllAsync<BsonDocument>(StoreKey)
+                .ConfigureAwait(false);
         }
         catch (Exception ex)
         {
@@ -122,13 +133,17 @@ public sealed class CaptchaConfigurationRepository : ICaptchaConfigurationReposi
             return [];
         }
 
-        var records = new List<CaptchaConfigRecord>(documents.Count);
+        var records = new List<CaptchaConfigRecord>(items.Count);
 
-        foreach (var document in documents)
+        foreach (var item in items.OrderBy(i => i.ItemId, StringComparer.Ordinal))
         {
             try
             {
-                records.Add(BsonSerializer.Deserialize<CaptchaConfigRecord>(document));
+                var record = BsonSerializer.Deserialize<CaptchaConfigRecord>(item.Value);
+
+                // The identity lives on the store entry, not in the stored payload.
+                record.Id = item.ItemId;
+                records.Add(record);
             }
             catch (Exception ex)
             {
@@ -136,6 +151,6 @@ public sealed class CaptchaConfigurationRepository : ICaptchaConfigurationReposi
             }
         }
 
-        return records.OrderBy(r => r.Id, StringComparer.Ordinal).ToList();
+        return records;
     }
 }
