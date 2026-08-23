@@ -1,5 +1,6 @@
 <!doctype html>
 <html lang="en">
+
   <head>
     <meta charset="UTF-8" />
     <link rel="icon" type="image/svg+xml" href="/Icon.svg" />
@@ -13,13 +14,12 @@
           var prefersDark = window.matchMedia("(prefers-color-scheme: dark)").matches;
           var isDark = stored === "dark" || (stored === "system" && prefersDark);
           if (isDark) document.documentElement.classList.add("dark");
-        } catch (_) {}
+        } catch (_) { }
       })();
     </script>
   </head>
-  <body
-    class="min-h-screen bg-background font-sans text-foreground antialiased"
-  >
+
+  <body class="min-h-screen bg-background font-sans text-foreground antialiased">
     <div id="root"></div>
     <div id="portal-root"></div>
 
@@ -35,7 +35,7 @@
         BLOCKS_IAM_CALLBACK_URL: "__BLOCKS_IAM_CALLBACK_URL__",
         BLOCKS_LOCALIZATION_BASE_URL: "__BLOCKS_LOCALIZATION_BASE_URL__",
         BLOCKS_LOCALIZATION_CALLBACK_URL:
-        "__BLOCKS_LOCALIZATION_CALLBACK_URL__",
+          "__BLOCKS_LOCALIZATION_CALLBACK_URL__",
         BLOCKS_AGENTS_BASE_URL: "__BLOCKS_AGENTS_BASE_URL__",
         BLOCKS_AGENTS_CALLBACK_URL: "__BLOCKS_AGENTS_CALLBACK_URL__",
         BLOCKS_DATA_BASE_URL: "__BLOCKS_DATA_BASE_URL__",
@@ -62,9 +62,12 @@
         BLOCKS_MONITOR_CLIENT_ID: "__BLOCKS_MONITOR_CLIENT_ID__",
         BLOCKS_RELEASE_CLIENT_ID: "__BLOCKS_RELEASE_CLIENT_ID__",
         BLOCKS_STUDIO_CLIENT_ID: "__BLOCKS_STUDIO_CLIENT_ID__",
+        BLOCKS_ALLOWED_SERVICES: "__BLOCKS_ALLOWED_SERVICES__",
+
       };
-  </script>
-   
+    </script>
+
     <script type="module" src="/app/main.tsx"></script>
   </body>
+
 </html>

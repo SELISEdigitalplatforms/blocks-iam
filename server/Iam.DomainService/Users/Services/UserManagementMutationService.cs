@@ -738,18 +738,13 @@ namespace Iam.DomainService.Users
             if (isAddToOrganization)
             {
                 user.OrganizationIds.Add(organizationId);
-                user.Roles[organizationId] = command.Roles?.Count > 0 ? command.Roles : new List<string>();
-                user.Permissions[organizationId] = command.Permissions ?? new List<string>();
+                user.Roles[organizationId] = command.Roles?.Count > 0 ? command.Roles : [];
+                user.Permissions[organizationId] = command.Permissions ?? [];
             }
             else
             {
-                user.Roles[organizationId] = command.Roles?.Count > 0
-                    ? command.Roles
-                    : user.Roles.GetValueOrDefault(organizationId, new List<string>());
-
-                user.Permissions[organizationId] = command.Permissions?.Count > 0
-                    ? command.Permissions
-                    : user.Permissions.GetValueOrDefault(organizationId, new List<string>());
+                user.Roles[organizationId] = command.Roles;
+                user.Permissions[organizationId] = command.Permissions;       
             }
 
             user.LastUpdatedDate = DateTime.UtcNow;
@@ -781,6 +776,7 @@ namespace Iam.DomainService.Users
             //});
 
             _logger.LogInformation("Update User Access Control end -- Success");
+
             return new BaseMutationResponse
             {
                 IsSuccess = true,

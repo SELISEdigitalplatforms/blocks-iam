@@ -59,7 +59,10 @@ export const ActivationForm = ({
     reset: resetCaptcha,
   } = useCaptcha({
     siteKey: googleSiteKey,
-    type: oidcUiConfig?.captcha?.provider === "hcaptcha" ? "hCaptcha" : "reCaptcha-v2-checkbox",
+    type:
+      oidcUiConfig?.captcha?.provider === "hcaptcha"
+        ? "hCaptcha"
+        : "reCaptcha-v2-checkbox",
     generator: oidcUiConfig?.captcha?.generator,
   });
   const { isPending, mutateAsync } = useAccountActivation();
@@ -107,7 +110,9 @@ export const ActivationForm = ({
     formRef.current.classList.add("oidc-animate-shake");
   }
 
-  const onSubmitHandler = async (values: z.infer<typeof activationFormSchema>) => {
+  const onSubmitHandler = async (
+    values: z.infer<typeof activationFormSchema>,
+  ) => {
     animCtx?.startAnimation();
     try {
       const res = await mutateAsync({
@@ -124,7 +129,8 @@ export const ActivationForm = ({
         const msg = Array.isArray(res.errors)
           ? res.errors[0]
           : res.errors && typeof res.errors === "object"
-            ? (Object.values(res.errors as Record<string, string>)[0] ?? "Activation failed")
+            ? (Object.values(res.errors as Record<string, string>)[0] ??
+              "Activation failed")
             : (res.errors as string) || "Activation failed";
         shake();
         await animCtx?.failAnimation(msg);
@@ -142,7 +148,8 @@ export const ActivationForm = ({
         const msg = Array.isArray(error.errors)
           ? (error.errors[0] as string)
           : error.errors && typeof error.errors === "object"
-            ? (Object.values(error.errors as Record<string, string>)[0] ?? "Something went wrong")
+            ? (Object.values(error.errors as Record<string, string>)[0] ??
+              "Something went wrong")
             : (error.errors as unknown as string) || "Something went wrong";
         await animCtx?.failAnimation(msg);
       } else {
@@ -158,8 +165,7 @@ export const ActivationForm = ({
       onInput={() => {
         if (animCtx?.phase === "failed") animCtx?.resetAnimation();
       }}
-      className="flex flex-col gap-5"
-    >
+      className="flex flex-col gap-5">
       <div className="flex flex-col gap-2">
         <label className="oidc-sci-fi-label">First Name</label>
         <input
@@ -214,9 +220,14 @@ export const ActivationForm = ({
             tabIndex={-1}
             onClick={() => setShowPassword((v) => !v)}
             className="absolute right-3 top-1/2 -translate-y-1/2"
-            style={{ color: "var(--muted)", background: "none", border: "none", cursor: "pointer", padding: 0 }}
-            aria-label={showPassword ? "Hide password" : "Show password"}
-          >
+            style={{
+              color: "var(--muted)",
+              background: "none",
+              border: "none",
+              cursor: "pointer",
+              padding: 0,
+            }}
+            aria-label={showPassword ? "Hide password" : "Show password"}>
             {showPassword ? <EyeOff size={16} /> : <Eye size={16} />}
           </button>
         </div>
@@ -245,9 +256,16 @@ export const ActivationForm = ({
             tabIndex={-1}
             onClick={() => setShowConfirmPassword((v) => !v)}
             className="absolute right-3 top-1/2 -translate-y-1/2"
-            style={{ color: "var(--muted)", background: "none", border: "none", cursor: "pointer", padding: 0 }}
-            aria-label={showConfirmPassword ? "Hide password" : "Show password"}
-          >
+            style={{
+              color: "var(--muted)",
+              background: "none",
+              border: "none",
+              cursor: "pointer",
+              padding: 0,
+            }}
+            aria-label={
+              showConfirmPassword ? "Hide password" : "Show password"
+            }>
             {showConfirmPassword ? <EyeOff size={16} /> : <Eye size={16} />}
           </button>
         </div>
@@ -268,11 +286,13 @@ export const ActivationForm = ({
           !requirementsMet ||
           !isValid
         }
-        className="oidc-sci-fi-btn mt-1 w-full flex items-center justify-center gap-2"
-      >
+        className="oidc-sci-fi-btn mt-1 w-full flex items-center justify-center gap-2">
         {isAuthenticating ? (
           <>
-            <Loader size={16} style={{ animation: "oidc-spin 1s linear infinite" }} />
+            <Loader
+              size={16}
+              style={{ animation: "oidc-spin 1s linear infinite" }}
+            />
             <span>Activating…</span>
           </>
         ) : (

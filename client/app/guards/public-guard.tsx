@@ -17,7 +17,9 @@ export function PublicGuard({ children }: { children: React.ReactNode }) {
   // the middleware converts it to a GET redirect with these params in the URL.
   // We must NOT redirect away while the token exchange is still in progress,
   // otherwise the guard loop: /login → /console → /login → ...
-  const isSSOCallback = !!(searchParams.get("code") && searchParams.get("state"));
+  const isSSOCallback = !!(
+    searchParams.get("code") && searchParams.get("state")
+  );
   useEffect(() => {
     if (!isMounted) return;
     if (isSSOCallback) return;
