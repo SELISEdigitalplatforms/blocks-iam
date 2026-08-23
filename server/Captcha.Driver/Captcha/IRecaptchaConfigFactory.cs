@@ -1,21 +1,21 @@
 namespace Blocks.CaptchaDriver;
 
 /// <summary>
-/// Resolves a reCAPTCHA configuration either from the secret store or local configuration.
+/// Builds the reCAPTCHA verification request for the tenant's active configuration.
 /// </summary>
 public interface IRecaptchaConfigFactory
 {
     /// <summary>
-    /// Returns a reCAPTCHA configuration for the supplied verification URI template and token.
+    /// Returns the configuration to verify with, or <c>null</c> when the tenant has a captcha
+    /// configuration whose secret cannot be obtained.
     /// </summary>
-    /// <param name="reCaptchaVerificationUriFormat">
-    /// A composite format string with a single <c>{0}</c> placeholder for the token (used for the local fallback path).
-    /// </param>
-    /// <param name="token">The captcha token being verified.</param>
-    Task<IRecaptchaConfig> GetRecaptchaConfig(string? reCaptchaVerificationUriFormat, string? token);
+    /// <remarks>
+    /// <c>null</c> means "do not call the provider" — verification fails closed. It is distinct
+    /// from a tenant with no configuration at all, which still yields a local config so existing
+    /// behaviour is unchanged.
+    /// </remarks>
+    Task<IRecaptchaConfig?> GetRecaptchaConfig(string? reCaptchaVerificationUriFormat, string? token);
 
-    /// <summary>
-    /// Reads the captcha configuration from the secret store, or returns <c>null</c> if none is configured.
-    /// </summary>
+    /// <summary>Returns the active captcha configuration from the store, if any.</summary>
     Task<CaptchaConfiguration?> GetConfigFromDb();
 }

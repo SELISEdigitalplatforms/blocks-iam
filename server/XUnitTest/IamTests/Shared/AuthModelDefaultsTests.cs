@@ -36,6 +36,13 @@ namespace XUnitTest.IamTests.Shared
             payload.UserSecret.Should().BeEmpty();
             payload.OrganizationId.Should().BeEmpty();
             payload.RememberMe.Should().BeFalse();
+
+            // RFC 8693 token exchange (delegated access).
+            payload.SubjectToken.Should().BeEmpty();
+            payload.SubjectTokenType.Should().BeEmpty();
+            payload.Nonce.Should().BeEmpty();
+            payload.Ts.Should().BeEmpty();
+            payload.Signature.Should().BeEmpty();
         }
 
         [Fact]
@@ -60,7 +67,12 @@ namespace XUnitTest.IamTests.Shared
                 ClientId = "cid",
                 ClientSecret = "secret",
                 UserSecret = "usercode",
-                OrganizationId = "org"
+                OrganizationId = "org",
+                SubjectToken = "dg_" + new string('a', 64),
+                SubjectTokenType = "urn:blocks:params:oauth:token-type:delegation-grant",
+                Nonce = "0f1e2d3c4b5a69788796a5b4c3d2e1f0",
+                Ts = "1739577600",
+                Signature = new string('c', 64)
             };
 
             payload.GrantType.Should().Be("password");
@@ -81,6 +93,11 @@ namespace XUnitTest.IamTests.Shared
             payload.ClientSecret.Should().Be("secret");
             payload.UserSecret.Should().Be("usercode");
             payload.OrganizationId.Should().Be("org");
+            payload.SubjectToken.Should().Be("dg_" + new string('a', 64));
+            payload.SubjectTokenType.Should().Be("urn:blocks:params:oauth:token-type:delegation-grant");
+            payload.Nonce.Should().Be("0f1e2d3c4b5a69788796a5b4c3d2e1f0");
+            payload.Ts.Should().Be("1739577600");
+            payload.Signature.Should().Be(new string('c', 64));
         }
 
         [Fact]

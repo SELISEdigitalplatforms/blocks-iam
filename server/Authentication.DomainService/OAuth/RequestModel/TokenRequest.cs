@@ -3,6 +3,19 @@ using Microsoft.AspNetCore.Http;
 
 namespace Authentication.DomainService.OAuth.RequestModel
 {
+    /// <summary>
+    /// The signed presentation of a delegation grant. Every field is caller-supplied and none of
+    /// it is trusted until the signature verifies against the tenant salt.
+    /// </summary>
+    public sealed class TokenExchangeRequest
+    {
+        public string? SubjectToken { get; init; }
+        public string? SubjectTokenType { get; init; }
+        public string? Nonce { get; init; }
+        public string? Ts { get; init; }
+        public string? Signature { get; init; }
+    }
+
     public sealed class TokenRequest
     {
         public string? GrantType { get; set; }
@@ -30,6 +43,11 @@ namespace Authentication.DomainService.OAuth.RequestModel
         public string? OriginalTenantId { get; set; }
         public string? ImpersonationSessionId { get; set; }
         public string? IdpSessionId { get; set; }
+
+        /// <summary>
+        /// RFC 8693 parameters, set only for <see cref="OAuth.GrantTypes.TokenExchange"/>.
+        /// </summary>
+        public TokenExchangeRequest? TokenExchange { get; set; }
 
         /// <summary>
         /// Set when the presented refresh token was superseded by rotation inside the grace window and

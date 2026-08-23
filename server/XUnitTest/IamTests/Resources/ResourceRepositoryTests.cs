@@ -636,5 +636,390 @@ namespace XUnitTest.IamTests.Resources
             (await Sut().UpdateRolesAsync(new List<Role> { RoleE("r1") })).Should().BeTrue();
             col.Verify(c => c.BulkWriteAsync(It.IsAny<IEnumerable<WriteModel<Role>>>(), It.IsAny<BulkWriteOptions>(), It.IsAny<CancellationToken>()), Times.Once);
         }
+
+        // ---------- Role archive (#456) ----------
+        //
+        // These assert the RENDERED filter/update rather than round-tripping rows, because the
+        // shared MongoMock returns every configured item for any find and a preset value for any
+        // count. A seeded-document test would therefore pass whatever the filter said -- including
+        // after the Eq/Ne mistake these tests exist to catch.
+
+        private static BsonDocument RenderFilter<T>(FilterDefinition<T>? filter)
+        {
+            filter.Should().NotBeNull();
+            var registry = BsonSerializer.SerializerRegistry;
+            return filter!.Render(new RenderArgs<T>(registry.GetSerializer<T>(), registry));
+        }
+
+        private static BsonDocument RenderUpdate<T>(UpdateDefinition<T>? update)
+        {
+            update.Should().NotBeNull();
+            var registry = BsonSerializer.SerializerRegistry;
+            return update!.Render(new RenderArgs<T>(registry.GetSerializer<T>(), registry)).AsBsonDocument;
+        }
+
+        [Fact]
+        public async Task GetRolesAsync_HidesArchivedRolesWithNeNotEq()
+        {
+            FilterDefinition<Role>? captured = null;
+            var col = Register(new[] { RoleE("r1") });
+            col.Setup(c => c.FindAsync(It.IsAny<FilterDefinition<Role>>(), It.IsAny<FindOptions<Role, Role>>(), It.IsAny<CancellationToken>()))
+                .Callback<FilterDefinition<Role>, FindOptions<Role, Role>, CancellationToken>((f, _, _) => captured = f)
+                .ReturnsAsync(MongoMock.Cursor(new[] { RoleE("r1") }));
+
+            await Sut().GetRolesAsync(new GetRolesRequest(), "default");
+
+            var rendered = RenderFilter(captured);
+            // $ne: true matches missing, null and false alike. $eq: false matches none of the role
+            // documents written before this field existed, which would empty the list for every
+            // tenant -- so its absence is the assertion that matters here.
+            rendered.ToString().Should().Contain("\"IsArchived\" : { \"$ne\" : true }");
+            rendered.ToString().Should().NotContain("\"IsArchived\" : false");
+        }
+
+        [Fact]
+        public async Task GetRolesByOrgAsync_HidesArchivedRolesWithNeNotEq()
+        {
+            FilterDefinition<Role>? captured = null;
+            var col = Register(new[] { RoleE("r1") });
+            col.Setup(c => c.FindAsync(It.IsAny<FilterDefinition<Role>>(), It.IsAny<FindOptions<Role, Role>>(), It.IsAny<CancellationToken>()))
+                .Callback<FilterDefinition<Role>, FindOptions<Role, Role>, CancellationToken>((f, _, _) => captured = f)
+                .ReturnsAsync(MongoMock.Cursor(new[] { RoleE("r1") }));
+
+            await Sut().GetRolesByOrgAsync("acme");
+
+            // This query feeds CopyRoleFromDefault, so without the clause an archived default role
+            // would be cloned into every organization provisioned afterwards.
+            var rendered = RenderFilter(captured).ToString();
+            rendered.Should().Contain("\"IsArchived\" : { \"$ne\" : true }");
+            rendered.Should().NotContain("\"IsArchived\" : false");
+        }
+
+        [Fact]
+        public async Task HasChildRolesAsync_FiltersOnParentOrgAndExcludesArchivedChildren()
+        {
+            FilterDefinition<Role>? captured = null;
+            var col = Register<Role>();
+            col.Setup(c => c.CountDocumentsAsync(It.IsAny<FilterDefinition<Role>>(), It.IsAny<CountOptions>(), It.IsAny<CancellationToken>()))
+                .Callback<FilterDefinition<Role>, CountOptions, CancellationToken>((f, _, _) => captured = f)
+                .ReturnsAsync(1);
+
+            (await Sut().HasChildRolesAsync("manager", "acme")).Should().BeTrue();
+
+            var rendered = RenderFilter(captured).ToString();
+            rendered.Should().Contain("\"ParentRoleSlug\" : \"manager\"");
+            rendered.Should().Contain("\"OrganizationId\" : \"acme\"");
+            // Without this an archived child keeps blocking, so a parent becomes permanently
+            // unarchivable once its children are retired.
+            rendered.Should().Contain("\"IsArchived\" : { \"$ne\" : true }");
+        }
+
+        [Fact]
+        public async Task HasChildRolesAsync_NoMatches_ReturnsFalse()
+        {
+            var col = Register<Role>();
+            col.Setup(c => c.CountDocumentsAsync(It.IsAny<FilterDefinition<Role>>(), It.IsAny<CountOptions>(), It.IsAny<CancellationToken>()))
+                .ReturnsAsync(0);
+
+            (await Sut().HasChildRolesAsync("manager", "acme")).Should().BeFalse();
+        }
+
+        [Fact]
+        public async Task HasUserAssignmentsAsync_ScopesToOrgBucketAndTreatsMissingStatusAsActive()
+        {
+            FilterDefinition<User>? captured = null;
+            var col = Register<User>();
+            col.Setup(c => c.CountDocumentsAsync(It.IsAny<FilterDefinition<User>>(), It.IsAny<CountOptions>(), It.IsAny<CancellationToken>()))
+                .Callback<FilterDefinition<User>, CountOptions, CancellationToken>((f, _, _) => captured = f)
+                .ReturnsAsync(1);
+
+            (await Sut().HasUserAssignmentsAsync("manager", "acme")).Should().BeTrue();
+
+            var filter = RenderFilter(captured);
+            var rendered = filter.ToString();
+            // The slug and the org bucket together: the mock counts whatever it is given, so
+            // without asserting the slug this would pass for a filter that looked up a different
+            // role entirely.
+            rendered.Should().Contain("Roles.acme").And.Contain("manager");
+            rendered.Should().Contain("\"Active\" : true");
+
+            // The two status branches must be joined by $or, not $and. Asserting only that both
+            // fragments appear would still pass for an $and -- which is unsatisfiable, since a user
+            // cannot both have Status == Active and lack the field, so no active holder would ever
+            // block an archive and every one of them would be silently scrubbed instead.
+            filter.Contains("$or").Should().BeTrue("the two status branches must be alternatives");
+            var statusClause = filter["$or"].AsBsonArray;
+
+            statusClause.Should().HaveCount(2);
+            statusClause.Select(x => x.AsBsonDocument["Status"].ToString())
+                .Should().Contain("1").And.Contain(b => b.Contains("$exists"));
+        }
+
+        [Fact]
+        public async Task RemoveRoleFromAllPermissionsAsync_PullsSlugScopedToOrganization()
+        {
+            FilterDefinition<Permission>? capturedFilter = null;
+            UpdateDefinition<Permission>? capturedUpdate = null;
+            var col = Register<Permission>();
+            col.Setup(c => c.UpdateManyAsync(It.IsAny<FilterDefinition<Permission>>(), It.IsAny<UpdateDefinition<Permission>>(), It.IsAny<UpdateOptions>(), It.IsAny<CancellationToken>()))
+                .Callback<FilterDefinition<Permission>, UpdateDefinition<Permission>, UpdateOptions, CancellationToken>(
+                    (f, u, _, _) => { capturedFilter = f; capturedUpdate = u; })
+                .ReturnsAsync(new UpdateResult.Acknowledged(2, 2, null));
+
+            (await Sut().RemoveRoleFromAllPermissionsAsync("manager", "acme")).Should().BeTrue();
+
+            RenderFilter(capturedFilter).ToString().Should().Contain("\"Roles\" : \"manager\"").And.Contain("\"OrganizationId\" : \"acme\"");
+
+            // Structural, so the assertion is about which field is pulled rather than about how
+            // the driver happens to format the document: a $pull aimed at the wrong field would
+            // acknowledge cleanly while leaving every reference in place.
+            var update = RenderUpdate(capturedUpdate);
+            update.Contains("$pull").Should().BeTrue();
+            update["$pull"].AsBsonDocument["Roles"].AsString.Should().Be("manager");
+        }
+
+        [Fact]
+        public async Task RemoveRoleFromAllUsersAsync_PullsFromOnlyThatOrganizationsBucket()
+        {
+            FilterDefinition<User>? capturedFilter = null;
+            UpdateDefinition<User>? capturedUpdate = null;
+            var col = Register<User>();
+            col.Setup(c => c.UpdateManyAsync(It.IsAny<FilterDefinition<User>>(), It.IsAny<UpdateDefinition<User>>(), It.IsAny<UpdateOptions>(), It.IsAny<CancellationToken>()))
+                .Callback<FilterDefinition<User>, UpdateDefinition<User>, UpdateOptions, CancellationToken>(
+                    (f, u, _, _) => { capturedFilter = f; capturedUpdate = u; })
+                .ReturnsAsync(new UpdateResult.Acknowledged(1, 1, null));
+
+            (await Sut().RemoveRoleFromAllUsersAsync("manager", "acme")).Should().BeTrue();
+
+            // Section 8 asks for proof that a different organization's bucket is untouched. The
+            // mock never mutates data, so the proof is that no definition mentions another bucket.
+            var filter = RenderFilter(capturedFilter);
+            var update = RenderUpdate(capturedUpdate);
+
+            // Filter and update must address the SAME bucket and the same slug. A filter that
+            // matched the right users while the update pulled from a different path would
+            // acknowledge happily and change nothing.
+            filter.ToString().Should().Contain("Roles.acme").And.Contain("manager").And.NotContain("Roles.globex");
+            update["$pull"].AsBsonDocument["Roles.acme"].AsString.Should().Be("manager");
+            update.ToString().Should().NotContain("Roles.globex");
+        }
+
+        [Fact]
+        public async Task RemoveRoleFromAllUsersAsync_AcknowledgedWithNoMatches_IsStillSuccess()
+        {
+            var col = Register<User>();
+            col.Setup(c => c.UpdateManyAsync(It.IsAny<FilterDefinition<User>>(), It.IsAny<UpdateDefinition<User>>(), It.IsAny<UpdateOptions>(), It.IsAny<CancellationToken>()))
+                .ReturnsAsync(new UpdateResult.Acknowledged(0, 0, null));
+
+            // Acknowledged-with-zero is not a failure: a role nobody holds is the ordinary case,
+            // and treating it as one would refuse to archive an unreferenced role.
+            (await Sut().RemoveRoleFromAllUsersAsync("manager", "acme")).Should().BeTrue();
+        }
+
+        [Fact]
+        public async Task RemoveRoleFromAllPermissionsAsync_AcknowledgedWithNoMatches_IsStillSuccess()
+        {
+            var col = Register<Permission>();
+            col.Setup(c => c.UpdateManyAsync(It.IsAny<FilterDefinition<Permission>>(), It.IsAny<UpdateDefinition<Permission>>(), It.IsAny<UpdateOptions>(), It.IsAny<CancellationToken>()))
+                .ReturnsAsync(new UpdateResult.Acknowledged(0, 0, null));
+
+            (await Sut().RemoveRoleFromAllPermissionsAsync("manager", "acme")).Should().BeTrue();
+        }
+
+        [Theory]
+        [InlineData("", "acme")]
+        [InlineData("manager", "")]
+        public async Task RoleArchiveHelpers_IgnoreBlankArguments(string slug, string org)
+        {
+            Register<Role>();
+            Register<User>();
+            Register<Permission>();
+
+            (await Sut().HasChildRolesAsync(slug, org)).Should().BeFalse();
+            (await Sut().HasUserAssignmentsAsync(slug, org)).Should().BeFalse();
+            (await Sut().RemoveRoleFromAllPermissionsAsync(slug, org)).Should().BeTrue();
+            (await Sut().RemoveRoleFromAllUsersAsync(slug, org)).Should().BeTrue();
+        }
+
+        // ---------- Direct permission-grant scrub (#465) ----------
+
+        [Fact]
+        public async Task RemovePermissionFromAllUsersAsync_PullsFromTheOrgBucketOnly()
+        {
+            FilterDefinition<User>? capturedFilter = null;
+            UpdateDefinition<User>? capturedUpdate = null;
+            var col = Register<User>();
+            col.Setup(c => c.UpdateManyAsync(It.IsAny<FilterDefinition<User>>(), It.IsAny<UpdateDefinition<User>>(), It.IsAny<UpdateOptions>(), It.IsAny<CancellationToken>()))
+                .Callback<FilterDefinition<User>, UpdateDefinition<User>, UpdateOptions, CancellationToken>((f, u, _, _) =>
+                {
+                    capturedFilter = f;
+                    capturedUpdate = u;
+                })
+                .ReturnsAsync(new UpdateResult.Acknowledged(1, 1, null));
+
+            (await Sut().RemovePermissionFromAllUsersAsync("reports::export", "acme")).Should().BeTrue();
+
+            var registry = BsonSerializer.SerializerRegistry;
+            var filter = RenderFilter(capturedFilter).ToString();
+            var update = capturedUpdate!.Render(new RenderArgs<User>(registry.GetSerializer<User>(), registry)).ToString();
+
+            // Filter and update must name the SAME dotted path, and it must be Permissions.{org}
+            // rather than Roles.{org} -- these are different grant dictionaries on the same
+            // document, and only this one mints a permission claim.
+            filter.Should().Contain("Permissions.acme").And.Contain("reports::export");
+            update.Should().Contain("Permissions.acme").And.Contain("reports::export");
+            // A user holding the same resource under a different organization key belongs to that
+            // organization's copy and must be left alone.
+            filter.Should().NotContain("Permissions.globex");
+            update.Should().NotContain("Permissions.globex");
+        }
+
+        [Fact]
+        public async Task RemovePermissionFromAllUsersAsync_MatchingNobodyIsSuccessNotFailure()
+        {
+            var col = Register<User>();
+            col.Setup(c => c.UpdateManyAsync(It.IsAny<FilterDefinition<User>>(), It.IsAny<UpdateDefinition<User>>(), It.IsAny<UpdateOptions>(), It.IsAny<CancellationToken>()))
+                .ReturnsAsync(new UpdateResult.Acknowledged(0, 0, null));
+
+            // IsAcknowledged, not ModifiedCount: a permission nobody holds directly is a perfectly
+            // normal archive, and treating it as a failure would abort the whole operation.
+            (await Sut().RemovePermissionFromAllUsersAsync("reports::export", "acme")).Should().BeTrue();
+        }
+
+        [Theory]
+        [InlineData("", "acme")]
+        [InlineData("reports::export", "")]
+        public async Task RemovePermissionFromAllUsersAsync_IgnoresBlankArguments(string resource, string org)
+        {
+            Register<User>();
+
+            (await Sut().RemovePermissionFromAllUsersAsync(resource, org)).Should().BeTrue();
+        }
+
+        // ---------- Archive impact counting (#464) ----------
+
+        [Fact]
+        public async Task CountUsersWithRoleAsync_OrsEveryOrgBucketInOneQuery()
+        {
+            FilterDefinition<User>? captured = null;
+            var col = Register<User>();
+            col.Setup(c => c.CountDocumentsAsync(It.IsAny<FilterDefinition<User>>(), It.IsAny<CountOptions>(), It.IsAny<CancellationToken>()))
+                .Callback<FilterDefinition<User>, CountOptions, CancellationToken>((f, _, _) => captured = f)
+                .ReturnsAsync(3);
+
+            (await Sut().CountUsersWithRoleAsync("manager", new[] { "acme", "globex" }, activeOnly: false)).Should().Be(3);
+
+            var rendered = RenderFilter(captured).ToString();
+            // One query with an Or, not a count per organization: a user holding the slug in both
+            // orgs must be counted once, and summing per-org counts would double them.
+            rendered.Should().Contain("Roles.acme").And.Contain("Roles.globex").And.Contain("manager");
+            rendered.Should().NotContain("\"Active\" : true");
+        }
+
+        [Fact]
+        public async Task CountUsersWithRoleAsync_ActiveOnly_UsesTheSamePredicateAsTheArchiveGuard()
+        {
+            FilterDefinition<User>? captured = null;
+            var col = Register<User>();
+            col.Setup(c => c.CountDocumentsAsync(It.IsAny<FilterDefinition<User>>(), It.IsAny<CountOptions>(), It.IsAny<CancellationToken>()))
+                .Callback<FilterDefinition<User>, CountOptions, CancellationToken>((f, _, _) => captured = f)
+                .ReturnsAsync(1);
+
+            await Sut().CountUsersWithRoleAsync("manager", new[] { "acme" }, activeOnly: true);
+
+            var rendered = RenderFilter(captured).ToString();
+            rendered.Should().Contain("\"Active\" : true");
+            // Missing Status counts as active, exactly as HasUserAssignmentsAsync treats it --
+            // otherwise the preview would disagree with the guard it previews.
+            rendered.Should().Contain("$exists");
+        }
+
+        [Fact]
+        public async Task CountUsersWithPermissionAsync_ReadsTheDirectGrantDictionary()
+        {
+            FilterDefinition<User>? captured = null;
+            var col = Register<User>();
+            col.Setup(c => c.CountDocumentsAsync(It.IsAny<FilterDefinition<User>>(), It.IsAny<CountOptions>(), It.IsAny<CancellationToken>()))
+                .Callback<FilterDefinition<User>, CountOptions, CancellationToken>((f, _, _) => captured = f)
+                .ReturnsAsync(2);
+
+            (await Sut().CountUsersWithPermissionAsync("reports::export", new[] { "acme" })).Should().Be(2);
+
+            var rendered = RenderFilter(captured).ToString();
+            // Permissions.{org}, NOT Roles.{org}: this is the binding that mints a token claim.
+            rendered.Should().Contain("Permissions.acme").And.Contain("reports::export");
+            rendered.Should().NotContain("Roles.acme");
+        }
+
+        [Fact]
+        public async Task GetNonArchivedRolesBySlugAsync_UsesNeTrueSoPreExistingRolesStillMatch()
+        {
+            FilterDefinition<Role>? captured = null;
+            var col = Register<Role>(new List<Role> { new() { ItemId = "r1", Slug = "manager" } });
+            col.Setup(c => c.FindAsync(It.IsAny<FilterDefinition<Role>>(), It.IsAny<FindOptions<Role, Role>>(), It.IsAny<CancellationToken>()))
+                .Callback<FilterDefinition<Role>, FindOptions<Role, Role>, CancellationToken>((f, _, _) => captured = f)
+                .ReturnsAsync(MongoMock.Cursor(new List<Role> { new() { ItemId = "r1", Slug = "manager" } }));
+
+            await Sut().GetNonArchivedRolesBySlugAsync("manager");
+
+            var rendered = RenderFilter(captured).ToString();
+            // Ne(..., true) and never Eq(..., false): IsArchived is newer than the role documents,
+            // so Eq would match zero pre-existing roles and report an empty blast radius.
+            rendered.Should().Contain("$ne").And.Contain("IsArchived");
+        }
+
+        [Theory]
+        [InlineData("", "acme")]
+        [InlineData("manager", null)]
+        public async Task ArchiveImpactCounters_ReturnZeroForBlankArguments(string slug, string? org)
+        {
+            Register<User>();
+            Register<Permission>();
+            Register<Role>();
+
+            var orgs = org == null ? Array.Empty<string>() : new[] { org };
+
+            (await Sut().CountUsersWithRoleAsync(slug, orgs, false)).Should().Be(0);
+            (await Sut().CountUsersWithPermissionAsync(slug, orgs)).Should().Be(0);
+            (await Sut().CountRoleBindingsForResourceAsync(slug, orgs)).Should().Be(0);
+            (await Sut().GetNonArchivedRolesBySlugAsync(string.Empty)).Should().BeEmpty();
+        }
+
+        /// <summary>
+        /// The tally behind Role.Count must ignore archived permissions.
+        /// </summary>
+        /// <remarks>
+        /// Archiving a permission deliberately leaves its Roles array intact -- that array IS the
+        /// binding, and pulling it would make the soft delete unrestorable -- so excluding archived
+        /// documents from the count is the only thing that stops a role advertising a permission it
+        /// no longer grants.
+        ///
+        /// Asserted on the rendered filter rather than on a tallied number, because the collection
+        /// mock returns a fixed count and never evaluates the predicate: the query shape is the only
+        /// thing this harness can actually observe.
+        /// </remarks>
+        [Fact]
+        public async Task UpdateRolesCountAsync_ExcludesArchivedPermissionsFromTheTally()
+        {
+            FilterDefinition<Permission>? countFilter = null;
+            var permissions = Register<Permission>();
+            permissions.Setup(c => c.CountDocumentsAsync(
+                    It.IsAny<FilterDefinition<Permission>>(), It.IsAny<CountOptions>(), It.IsAny<CancellationToken>()))
+                .Callback<FilterDefinition<Permission>, CountOptions, CancellationToken>((f, _, _) => countFilter = f)
+                .ReturnsAsync(1);
+            CaptureRoleUpdate(Register<Role>(), _ => { });
+
+            await Sut().UpdateRolesCountAsync("admin", "default");
+
+            var registry = BsonSerializer.SerializerRegistry;
+            var rendered = countFilter!.Render(new RenderArgs<Permission>(registry.GetSerializer<Permission>(), registry));
+
+            // Ne(true), not Eq(false): a document written before the field existed would not match
+            // Eq(false) and would drop out of the count even though it is active.
+            rendered["IsArchived"]["$ne"].AsBoolean.Should().BeTrue();
+            // The scope of the tally is unchanged -- this role, in this organization.
+            rendered["Roles"].AsString.Should().Be("admin");
+            rendered["OrganizationId"].AsString.Should().Be("default");
+        }
     }
 }

@@ -279,11 +279,21 @@ export const getApplicationOrigin = (redirectUri?: string): string | undefined =
  * link carried the application's `redirect_uri` we know where the user actually came
  * from, so send them back there and let the application open its own OIDC request —
  * see getApplicationOrigin for why IAM must not start one on its behalf.
+ *
+ * Order of preference:
+ *   1. the originating application's origin, when `redirect_uri` told us what it is;
+ *   2. `/oidc/login` with the OIDC params carried across, when we still hold a clientId;
+ *   3. IAM's own `/login`.
+ *
+ * Step 3 matters because `/oidc/login` without a clientId renders "this sign-in link is
+ * missing the application it belongs to" — a dead end. `/login` is a relative path, so it
+ * resolves against whichever IAM host is serving this bundle (dev-iam… on dev, stg-iam… on
+ * stg) with no environment lookup needed.
  */
 export const resolveLoginReturnTarget = (
   isOidc: boolean,
 ): { href: string; external: boolean } => {
-  const { redirectUri } = extractOIDCParams();
+  const { redirectUri, clientId } = extractOIDCParams();
   const applicationOrigin = getApplicationOrigin(redirectUri);
 
   if (applicationOrigin) {
@@ -291,7 +301,7 @@ export const resolveLoginReturnTarget = (
   }
 
   return {
-    href: isOidc ? buildOIDCNavigationUrl("/oidc/login") : "/login",
+    href: isOidc && clientId ? buildOIDCNavigationUrl("/oidc/login") : "/login",
     external: false,
   };
 };

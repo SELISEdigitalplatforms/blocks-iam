@@ -63,6 +63,15 @@ public sealed class ReCaptchaVerificationService : ICaptchaVerificationService
         try
         {
             var requestUri = await ResolveVerificationUri(token);
+
+            if (string.IsNullOrWhiteSpace(requestUri))
+            {
+                // The tenant is configured but its secret could not be resolved. Calling Google
+                // without it would be pointless and would leak the token to an unverifiable call.
+                _logger.LogError("reCAPTCHA verification skipped: no usable secret for this tenant.");
+                return new RecaptchaResponse { Success = false };
+            }
+
             var httpRequestMessage = new HttpRequestMessage(HttpMethod.Get, requestUri);
             var response = await _httpClientService.SendAsync(httpRequestMessage, LogContentType);
 
@@ -88,17 +97,22 @@ public sealed class ReCaptchaVerificationService : ICaptchaVerificationService
         }
     }
 
-    private async Task<string> ResolveVerificationUri(string token)
+    /// <summary>
+    /// Builds the siteverify URI, or returns <c>null</c> when the tenant's secret is unavailable.
+    /// </summary>
+    private async Task<string?> ResolveVerificationUri(string token)
     {
         try
         {
             var config = await _recaptchaConfigFactory.GetRecaptchaConfig(_recaptchaVerificationUrl, token);
-            return config.ResolveRecaptchaUri();
+            return config?.ResolveRecaptchaUri();
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Failed to build reCAPTCHA verification URI; using default endpoint");
-            return $"{_recaptchaVerificationUrl}?response={Uri.EscapeDataString(token)}";
+            // Fail closed rather than retrying against the default endpoint: that endpoint carries
+            // no secret, so the call could only ever come back unverified anyway.
+            _logger.LogError(ex, "Failed to build the reCAPTCHA verification URI.");
+            return null;
         }
     }
 }

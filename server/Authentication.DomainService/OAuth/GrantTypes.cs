@@ -14,5 +14,11 @@ namespace Authentication.DomainService.OAuth
         public const string SsoConsentCode = "sso_consent";
         public const string ImpersonationCloud = "impersonation_cloud";
         public const string DeviceCode = "urn:ietf:params:oauth:grant-type:device_code";
+
+        /// <summary>
+        /// RFC 8693. Used by background workers to redeem a delegation grant for a short-lived
+        /// access token carrying the originating user's context.
+        /// </summary>
+        public const string TokenExchange = "urn:ietf:params:oauth:grant-type:token-exchange";
     }
 }

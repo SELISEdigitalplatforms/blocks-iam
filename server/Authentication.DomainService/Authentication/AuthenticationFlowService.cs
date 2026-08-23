@@ -16,7 +16,6 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.Logging;
 using MongoDB.Driver;
 using System.Security.Claims;
-using System.Text.Json;
 
 namespace Authentication.DomainService.Authentication
 {
@@ -412,12 +411,16 @@ namespace Authentication.DomainService.Authentication
                 };
             }
 
-            var refreshCacheRaw = await _tokenRefresher.GetCacheValueAsync(refreshToken);
-            var refreshCache = string.IsNullOrWhiteSpace(refreshCacheRaw)
-                ? null
-                : JsonSerializer.Deserialize<RefreshTokenCache>(refreshCacheRaw);
+            // The same resolver the refresh grant uses, rather than a bare cache read: Redis first, then
+            // the persisted store. A cache miss is not evidence of an invalid session -- an eviction or a
+            // Redis restart drops the entry while the session is still live in the store -- and switching
+            // organization was the only rotation grant that failed closed on one. Resolving here also
+            // applies the absolute cap, which the raw read skipped, so a session past its lifetime can no
+            // longer switch organization while the sliding window happens to still be open. On a store
+            // hit the resolver rehydrates the cache, so the rotation further down finds its entry too.
+            var refreshCache = await _refreshSessionResolver.TryResolveRefreshSessionAsync(refreshToken, configuration);
 
-            if (refreshCache == null || refreshCache.ExpiresUtc <= DateTime.UtcNow)
+            if (refreshCache == null)
             {
                 return new AuthenticationFlowResult
                 {
@@ -429,6 +432,26 @@ namespace Authentication.DomainService.Authentication
             if (!string.Equals(refreshCache.TenantId, tenantId, StringComparison.OrdinalIgnoreCase)
                 || !string.Equals(refreshCache.UserId, userId, StringComparison.OrdinalIgnoreCase))
             {
+                return new AuthenticationFlowResult
+                {
+                    StatusCode = StatusCodes.Status401Unauthorized,
+                    Error = OAuthError.SessionExpired
+                };
+            }
+
+            // A resolved id that differs from the presented one is a grace-window replay. The refresh
+            // grant hands the successor straight back, but that is only safe when the organization is not
+            // changing: a replay short-circuits ManageRefreshTokenAsync before CreateOrRotateRefreshToken
+            // writes tokenRequest.OrganizationId onto the token, so the access token would carry the new
+            // organization while the refresh token stayed bound to the old one -- and the next refresh
+            // would silently revert the switch. Failing here instead costs one retry: the client refreshes,
+            // obtains the current token and switches with it.
+            if (!string.Equals(refreshCache.RefreshToken, refreshToken, StringComparison.Ordinal))
+            {
+                _logger.LogInformation(
+                    "Switch organization rejected a grace-window replay for user {UserId}: the presented refresh token has been rotated away. The client should refresh and retry.",
+                    userId);
+
                 return new AuthenticationFlowResult
                 {
                     StatusCode = StatusCodes.Status401Unauthorized,

@@ -35,7 +35,11 @@ namespace Authentication.DomainService.OAuth
             GrantTypes.ClientCredential,
             GrantTypes.RefreshToken,
             GrantTypes.SwitchOrganization,
-            GrantTypes.ImpersonationCloud
+            GrantTypes.ImpersonationCloud,
+            // A delegation grant was written while an already-authenticated user was in scope, so
+            // the MFA checkpoint was passed at that point. A background worker has no one to
+            // challenge, and re-challenging would strand every long-running job.
+            GrantTypes.TokenExchange
         };
 
         private static bool IsMfaCheckpointExempt(string? grantType) =>

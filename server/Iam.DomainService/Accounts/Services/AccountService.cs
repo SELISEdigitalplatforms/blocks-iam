@@ -1,4 +1,4 @@
-﻿
+
 #pragma warning disable CA1303
 
 using Blocks.CaptchaDriver;
@@ -60,6 +60,7 @@ namespace Iam.DomainService.Accounts
         private readonly IUserManagementMutationService _userManagementMutationService;
         private readonly IResourceMutationService _resourceMutationService;
         private readonly ICaptchaService _captchaService;
+        private readonly ICaptchaConfigurationService _captchaConfigurationService;
         private readonly IDbContextProvider _dbContextProvider;
         private readonly IHttpContextAccessor? _httpContextAccessor;
         private readonly IUserActivityDispatcher _userActivityDispatcher;
@@ -77,6 +78,7 @@ namespace Iam.DomainService.Accounts
             IUserManagementMutationService userManagementMutationService,
             IResourceMutationService resourceMutationService,
             ICaptchaService captchaService,
+            ICaptchaConfigurationService captchaConfigurationService,
             IDbContextProvider dbContextProvider,
             IUserActivityDispatcher userActivityDispatcher,
             IHttpContextAccessor? httpContextAccessor = null,
@@ -93,6 +95,7 @@ namespace Iam.DomainService.Accounts
             _userManagementMutationService = userManagementMutationService;
             _resourceMutationService = resourceMutationService;
             _captchaService = captchaService;
+            _captchaConfigurationService = captchaConfigurationService;
             _dbContextProvider = dbContextProvider;
             _userActivityDispatcher = userActivityDispatcher;
             _httpContextAccessor = httpContextAccessor;
@@ -560,10 +563,10 @@ namespace Iam.DomainService.Accounts
 
         private async Task<Dictionary<string, string>?> ValidateCaptchaAsync(string? captchaCode)
         {
-            var captchaConfigurationCollection = _dbContextProvider.GetCollection<CaptchaConfiguration>("CaptchaConfigurations");
-            var captchaConfiguration = await (await captchaConfigurationCollection
-                .FindAsync(Builders<CaptchaConfiguration>.Filter.Eq(mc => mc.IsEnable, true)))
-                .FirstOrDefaultAsync();
+            // Reads through the driver, which prefers the blocks-os key/value store and falls back
+            // to the legacy secret document. Previously this queried CaptchaConfigurations, a
+            // collection nothing writes any more, so signup silently skipped every captcha.
+            var captchaConfiguration = await _captchaConfigurationService.GetCaptchaConfigurationAsync();
 
             if (captchaConfiguration == null)
             {

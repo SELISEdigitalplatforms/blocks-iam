@@ -34,9 +34,16 @@ describe("LoginReturnLink", () => {
     expect(linkHref()).toBe("https://dzcvil-ehxqx.dev.slsblx.com");
   });
 
-  it("falls back to IAM's OIDC login when the link carried no redirect_uri", () => {
-    renderAt("/oidc/activate/tenant-1", "?code=abc");
+  it("keeps the user in the OIDC flow when the link still carries a clientId", () => {
+    renderAt("/oidc/activate/tenant-1", "?code=abc&clientId=client-1");
     expect(linkHref()).toContain("/oidc/login");
+  });
+
+  it("falls back to IAM's own login when there is no redirect_uri and no clientId", () => {
+    // /oidc/login without a clientId renders "this sign-in link is missing the
+    // application it belongs to" — a dead end, so send them somewhere usable.
+    renderAt("/oidc/activate/tenant-1", "?code=abc");
+    expect(linkHref()).toBe("/login");
   });
 
   it("falls back to the plain login outside the OIDC routes", () => {
@@ -46,7 +53,7 @@ describe("LoginReturnLink", () => {
 
   it("ignores a redirect_uri that is not an http(s) url", () => {
     renderAt("/oidc/activate/tenant-1", "?redirect_uri=javascript%3Aalert(1)");
-    expect(linkHref()).toContain("/oidc/login");
+    expect(linkHref()).toBe("/login");
   });
 
   it("passes className through so <Button asChild> keeps its styling", () => {

@@ -12,6 +12,7 @@ using Authentication.DomainService.Shared;
 using Authentication.DomainService.Shared.RequestModel;
 using Authentication.DomainService.Shared.Services;
 using Blocks.Extension.DependencyInjection;
+using Blocks.Secrets;
 using DomainService.Storage;
 using FluentValidation;
 using Iam.DomainService.Accounts;
@@ -90,6 +91,10 @@ namespace Authentication.DomainService.Utilities
             serviceCollection.AddSingleton<IAuthorizationClaimsResolver, AuthorizationClaimsResolver>();
             serviceCollection.AddSingleton<ClientCredentialsTokenIssuer>();
 
+            // RFC 8693 token exchange for delegated access.
+            serviceCollection.AddSingleton<TokenExchangeAuthorizationService>();
+            serviceCollection.AddSingleton<DelegationTokenExchangeIssuer>();
+
             // Authorization flow split: lean orchestrator delegates to focused services.
             serviceCollection.AddSingleton<PasswordHasher>();
             serviceCollection.AddSingleton<OidcLoginAuditWriter>();
@@ -116,6 +121,7 @@ namespace Authentication.DomainService.Utilities
             serviceCollection.AddSingleton<DeviceVerificationService>();
             serviceCollection.AddSingleton<DeviceCodeExchangeService>();
             serviceCollection.AddHostedService<DeviceCleanupWorker>();
+            serviceCollection.AddHostedService<BlacklistIndexWorker>();
             serviceCollection.AddSingleton<IdpTokenExchangeClient>();
             serviceCollection.AddSingleton<IAuthSessionFacade, AuthSessionFacade>();
             serviceCollection.AddSingleton<IAuthStrategy, AuthStrategy>();
@@ -212,6 +218,12 @@ namespace Authentication.DomainService.Utilities
 
             #endregion
 
+            // Kept beside RegisterBlocksCaptchaService deliberately: the captcha driver's secret
+            // resolver depends on ISecretService, and RegisterAllServices runs for both the Api and
+            // the Worker. Registering the secrets package only in Api/Program.cs would leave the
+            // Worker with a resolver whose dependency cannot be resolved. AddBlocksSecrets uses
+            // TryAdd throughout, so calling it here is idempotent.
+            serviceCollection.AddBlocksSecrets();
             serviceCollection.RegisterBlocksCaptchaService();
 
             serviceCollection.AddSingleton<UnifiedTokenSessionService, UnifiedTokenSessionService>();

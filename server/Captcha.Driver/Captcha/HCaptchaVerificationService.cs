@@ -15,17 +15,20 @@ public sealed class HCaptchaVerificationService : ICaptchaVerificationService
     private const string LogContentType = "application/x-www-form-urlencoded";
 
     private readonly ICaptchaConfigurationService _captchaConfigurationService;
+    private readonly ICaptchaSecretResolver _secretResolver;
     private readonly ILogger<HCaptchaVerificationService> _logger;
     private readonly IHttpClientService _httpClientService;
     private readonly string _verificationUrl;
 
     public HCaptchaVerificationService(
         ICaptchaConfigurationService captchaConfigurationService,
+        ICaptchaSecretResolver secretResolver,
         IOptions<CaptchaOptions> options,
         ILogger<HCaptchaVerificationService> logger,
         IHttpClientService httpClientService)
     {
         _captchaConfigurationService = captchaConfigurationService;
+        _secretResolver = secretResolver;
         _logger = logger;
         _httpClientService = httpClientService;
         _verificationUrl = options.Value.HcaptchaVerificationUrl;
@@ -68,10 +71,12 @@ public sealed class HCaptchaVerificationService : ICaptchaVerificationService
                 return new RecaptchaResponse { Success = false };
             }
 
-            var secretKey = dbConfig.CaptchaSecret;
+            // Either the inline legacy value or, for a blocks-os configuration, the plaintext
+            // behind SecretId. Unresolvable means fail closed, never fall back.
+            var secretKey = await dbConfig.ResolveSecretAsync(_secretResolver).ConfigureAwait(false);
             if (string.IsNullOrWhiteSpace(secretKey))
             {
-                _logger.LogError("hCaptcha verification: configured captcha secret is empty");
+                _logger.LogError("hCaptcha verification: no usable captcha secret for this tenant");
                 return new RecaptchaResponse { Success = false };
             }
 
