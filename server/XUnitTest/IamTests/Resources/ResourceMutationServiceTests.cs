@@ -45,6 +45,8 @@ namespace XUnitTest.IamTests.Resources
             _repo.Setup(r => r.RemoveRoleFromAllPermissionsAsync(It.IsAny<string>(), It.IsAny<string>())).ReturnsAsync(true);
             _repo.Setup(r => r.RemoveRoleFromAllUsersAsync(It.IsAny<string>(), It.IsAny<string>())).ReturnsAsync(true);
             _repo.Setup(r => r.RemovePermissionFromAllUsersAsync(It.IsAny<string>(), It.IsAny<string>())).ReturnsAsync(true);
+            _repo.Setup(r => r.RemoveRoleFromSignUpDefaultsAsync(It.IsAny<string>())).ReturnsAsync(true);
+            _repo.Setup(r => r.RemovePermissionFromSignUpDefaultsAsync(It.IsAny<string>())).ReturnsAsync(true);
             _repo.Setup(r => r.UpdateAllSamePermissionAsync(It.IsAny<Permission>())).ReturnsAsync(true);
             _iam.Setup(i => i.SendToQueueAsync(It.IsAny<string>(), It.IsAny<object>())).Returns(Task.CompletedTask);
             _activity.Setup(a => a.SendUserActivityAsync(It.IsAny<UserActivityEvent>())).Returns(Task.CompletedTask);
@@ -206,13 +208,64 @@ namespace XUnitTest.IamTests.Resources
         }
 
         [Fact]
-        public async Task UpdatePermission_Archived_SendsDeleteEvent()
+        public async Task UpdatePermission_ArchiveRequested_IsRefusedAndWritesNothing()
+        {
+            _repo.Setup(r => r.GetPermissionByIdAsync("p1")).ReturnsAsync(new Permission { ItemId = "p1", Name = "old", Resource = "old" });
+
+            var result = await Create().UpdatePermissionAsync("p1", new UpdatePermissionRequest { Name = "n", Resource = "r", ResourceGroup = "g", IsArchived = true });
+
+            // Archiving belongs to the delete endpoint alone. Refused rather than ignored so a
+            // caller aiming here is told, instead of getting a 200 for a delete that never ran.
+            result.IsSuccess.Should().BeFalse();
+            result.Errors.Should().ContainKey("IsArchived");
+            _repo.Verify(r => r.UpdatePermissionAsync(It.IsAny<Permission>()), Times.Never);
+        }
+
+        [Fact]
+        public async Task UpdatePermission_ArchivedPermission_CannotBeEdited()
+        {
+            _repo.Setup(r => r.GetPermissionByIdAsync("p1"))
+                .ReturnsAsync(new Permission { ItemId = "p1", Name = "old", Resource = "old", IsArchived = true });
+
+            var result = await Create().UpdatePermissionAsync("p1", new UpdatePermissionRequest { Name = "n", Resource = "r", ResourceGroup = "g" });
+
+            // Editing one used to resurrect it: UpdateAllSamePermissionAsync writes IsArchived to
+            // every organization's copy, so a name change revived it tenant-wide with its role
+            // bindings intact.
+            result.IsSuccess.Should().BeFalse();
+            result.Errors.Should().ContainKey("archived");
+            _repo.Verify(r => r.UpdatePermissionAsync(It.IsAny<Permission>()), Times.Never);
+        }
+
+        [Fact]
+        public async Task UpdatePermission_LeavesLifecycleFlagsAlone()
+        {
+            _repo.Setup(r => r.GetPermissionByIdAsync("p1"))
+                .ReturnsAsync(new Permission { ItemId = "p1", Name = "old", Resource = "old", IsBuiltIn = true });
+
+            // Both flags are non-nullable bools on the request, so this is also what a client that
+            // omits them sends. Applying them used to strip IsBuiltIn on an unrelated edit, which
+            // defeated the root-tenant guard in ArchivePermissionAsync.
+            var result = await Create().UpdatePermissionAsync("p1", new UpdatePermissionRequest { Name = "n", Resource = "r", ResourceGroup = "g", IsBuiltIn = false });
+
+            result.IsSuccess.Should().BeTrue();
+            _repo.Verify(r => r.UpdatePermissionAsync(It.Is<Permission>(p => p.IsBuiltIn && !p.IsArchived)), Times.Once);
+        }
+
+        [Fact]
+        public async Task UpdatePermission_PropagatesAsUpdateNeverAsDelete()
         {
             _repo.Setup(r => r.GetPermissionByIdAsync("p1")).ReturnsAsync(new Permission { ItemId = "p1", Name = "old", Resource = "old" });
             _repo.Setup(r => r.GetTenantConfigurationAsync()).ReturnsAsync(new TenantConfiguration { IsMultiOrgEnabled = true });
-            var result = await Create().UpdatePermissionAsync("p1", new UpdatePermissionRequest { Name = "n", Resource = "r", ResourceGroup = "g", IsArchived = true });
+
+            var result = await Create().UpdatePermissionAsync("p1", new UpdatePermissionRequest { Name = "n", Resource = "r", ResourceGroup = "g" });
+
             result.IsSuccess.Should().BeTrue();
-            _iam.Verify(i => i.SendToQueueAsync(It.IsAny<string>(), It.Is<PropagationRolePermissionUpdateEvent>(e => e.Action == "delete")), Times.Once);
+            // The "delete" action routed into DeletePermissionForAllOrg, which skips the default
+            // organization on the assumption the archive already handled it -- something this
+            // method never did, leaving the default organization's role counts stale.
+            _iam.Verify(i => i.SendToQueueAsync(It.IsAny<string>(), It.Is<PropagationRolePermissionUpdateEvent>(e => e.Action == "update")), Times.Once);
+            _iam.Verify(i => i.SendToQueueAsync(It.IsAny<string>(), It.Is<PropagationRolePermissionUpdateEvent>(e => e.Action == "delete")), Times.Never);
         }
 
         [Fact]
@@ -1099,6 +1152,36 @@ namespace XUnitTest.IamTests.Resources
         }
 
         [Fact]
+        public async Task ArchiveRole_RemovesTheSlugFromTheSignUpDefaults()
+        {
+            InstallContext(orgId: "acme");
+            GivenRole(ArchiveRoleTarget(org: "acme"));
+
+            var result = await Create().ArchiveRoleAsync("r1");
+
+            result.IsSuccess.Should().BeTrue();
+            // DefaultRolesForNewUserOnSignUp is copied verbatim onto every account created after
+            // this point, with no archived check on that path -- so a slug left here keeps being
+            // written into User.Roles for new signups. Tenant-wide, hence no organization argument.
+            _repo.Verify(r => r.RemoveRoleFromSignUpDefaultsAsync("manager"), Times.Once);
+        }
+
+        [Fact]
+        public async Task ArchiveRole_SignUpDefaultsCleanupUnacknowledged_LeavesRoleActive()
+        {
+            InstallContext(orgId: "acme");
+            GivenRole(ArchiveRoleTarget(org: "acme"));
+            _repo.Setup(r => r.RemoveRoleFromSignUpDefaultsAsync(It.IsAny<string>())).ReturnsAsync(false);
+
+            var result = await Create().ArchiveRoleAsync("r1");
+
+            // Same reasoning as the other reference cleanups: an archived role still being handed to
+            // every new signup is the worse half-state, so the archive waits for a retry.
+            result.IsSuccess.Should().BeFalse();
+            _repo.Verify(r => r.UpdateRoleAsync(It.IsAny<Role>()), Times.Never);
+        }
+
+        [Fact]
         public async Task ArchiveRole_DefaultOrgMasterRole_Succeeds()
         {
             GivenRole(ArchiveRoleTarget());
@@ -1478,6 +1561,35 @@ namespace XUnitTest.IamTests.Resources
         }
 
         [Fact]
+        public async Task ArchivePermission_RemovesTheResourceFromTheSignUpDefaults_WithoutConsent()
+        {
+            InstallContext(orgId: "default");
+            GivenPermission(ArchiveTarget());
+
+            var result = await Create().ArchivePermissionAsync("p1");
+
+            result.IsSuccess.Should().BeTrue();
+            // Deliberately NOT consent-gated: this pulls a dangling pointer out of configuration
+            // rather than revoking anyone's access. Left behind, it would keep handing every new
+            // signup a working grant on an archived permission, since
+            // DefaultPermissionsForNewUserOnSignUp lands in User.Permissions.
+            _repo.Verify(r => r.RemovePermissionFromSignUpDefaultsAsync("reports::export"), Times.Once);
+        }
+
+        [Fact]
+        public async Task ArchivePermission_SignUpDefaultsCleanupUnacknowledged_LeavesPermissionActive()
+        {
+            InstallContext(orgId: "default");
+            GivenPermission(ArchiveTarget());
+            _repo.Setup(r => r.RemovePermissionFromSignUpDefaultsAsync(It.IsAny<string>())).ReturnsAsync(false);
+
+            var result = await Create().ArchivePermissionAsync("p1");
+
+            result.IsSuccess.Should().BeFalse();
+            _repo.Verify(r => r.UpdatePermissionAsync(It.IsAny<Permission>()), Times.Never);
+        }
+
+        [Fact]
         public async Task ArchivePermission_WithConsent_UserCleanupUnacknowledged_LeavesPermissionActive()
         {
             InstallContext(orgId: "default");
@@ -1518,6 +1630,91 @@ namespace XUnitTest.IamTests.Resources
             _repo.Verify(r => r.RemovePermissionFromAllUsersAsync("reports::export", "globex"), Times.Once);
             // The default-organization record is handled by ArchivePermissionAsync, never here.
             _repo.Verify(r => r.RemovePermissionFromAllUsersAsync("reports::export", "default"), Times.Never);
+        }
+
+        [Fact]
+        public async Task PropagatePermissionDelete_WithConsent_CopiesAlreadyArchived_StillScrubsDirectGrants()
+        {
+            GivenPermission(ArchiveTarget());
+            // The state production actually reaches: ArchivePermissionAsync calls
+            // UpdateAllSamePermissionAsync, an UpdateMany filtered on Resource with no organization
+            // clause, so every copy is already archived before this consumer runs. While the scrub
+            // sat inside the archive loop it was skipped for all of them, and the direct grants --
+            // the binding that mints a token claim -- survived the archive in every organization.
+            _repo.Setup(r => r.GetPermissionsByResourceAsync("reports::export")).ReturnsAsync(new List<Permission>
+            {
+                ArchiveTarget(),
+                new() { ItemId = "p-acme", Resource = "reports::export", OrganizationId = "acme", IsArchived = true },
+                new() { ItemId = "p-globex", Resource = "reports::export", OrganizationId = "globex", IsArchived = true }
+            });
+
+            await Create().ExecutePropagationRolePermissionUpdateAsync(
+                new PropagationRolePermissionUpdateEvent
+                {
+                    Entity = "permission",
+                    Action = "delete",
+                    ItemId = "p1",
+                    ConfirmRevokeFromUsers = true
+                });
+
+            _repo.Verify(r => r.RemovePermissionFromAllUsersAsync("reports::export", "acme"), Times.Once);
+            _repo.Verify(r => r.RemovePermissionFromAllUsersAsync("reports::export", "globex"), Times.Once);
+            _repo.Verify(r => r.RemovePermissionFromAllUsersAsync("reports::export", "default"), Times.Never);
+            // Nothing left to archive, and the scrub still had to run.
+            _repo.Verify(r => r.UpdatePermissionsAsync(It.IsAny<List<Permission>>()), Times.Never);
+        }
+
+        [Fact]
+        public async Task PropagatePermissionDelete_WithConsent_UnacknowledgedScrub_StillScrubsTheRest()
+        {
+            GivenPermission(ArchiveTarget());
+            _repo.Setup(r => r.GetPermissionsByResourceAsync("reports::export")).ReturnsAsync(new List<Permission>
+            {
+                ArchiveTarget(),
+                new() { ItemId = "p-acme", Resource = "reports::export", OrganizationId = "acme" },
+                new() { ItemId = "p-globex", Resource = "reports::export", OrganizationId = "globex" }
+            });
+            _repo.Setup(r => r.UpdatePermissionsAsync(It.IsAny<List<Permission>>())).ReturnsAsync(true);
+            _repo.Setup(r => r.RemovePermissionFromAllUsersAsync("reports::export", "acme")).ReturnsAsync(false);
+
+            await Create().ExecutePropagationRolePermissionUpdateAsync(
+                new PropagationRolePermissionUpdateEvent
+                {
+                    Entity = "permission",
+                    Action = "delete",
+                    ItemId = "p1",
+                    ConfirmRevokeFromUsers = true
+                });
+
+            // Best-effort per organization: the archive has already committed, so one unacknowledged
+            // scrub is logged and must not stop the others being cleaned.
+            _repo.Verify(r => r.RemovePermissionFromAllUsersAsync("reports::export", "globex"), Times.Once);
+        }
+
+        [Fact]
+        public async Task PropagatePermissionDelete_WithConsent_DuplicateOrgCopies_ScrubbedOnce()
+        {
+            GivenPermission(ArchiveTarget());
+            _repo.Setup(r => r.GetPermissionsByResourceAsync("reports::export")).ReturnsAsync(new List<Permission>
+            {
+                ArchiveTarget(),
+                new() { ItemId = "p-acme", Resource = "reports::export", OrganizationId = "acme" },
+                new() { ItemId = "p-acme-dup", Resource = "reports::export", OrganizationId = "acme" }
+            });
+            _repo.Setup(r => r.UpdatePermissionsAsync(It.IsAny<List<Permission>>())).ReturnsAsync(true);
+
+            await Create().ExecutePropagationRolePermissionUpdateAsync(
+                new PropagationRolePermissionUpdateEvent
+                {
+                    Entity = "permission",
+                    Action = "delete",
+                    ItemId = "p1",
+                    ConfirmRevokeFromUsers = true
+                });
+
+            // One organization's grants are pulled by resource, so a second copy from data drift is
+            // wasted work rather than a wrong answer.
+            _repo.Verify(r => r.RemovePermissionFromAllUsersAsync("reports::export", "acme"), Times.Once);
         }
 
         [Fact]

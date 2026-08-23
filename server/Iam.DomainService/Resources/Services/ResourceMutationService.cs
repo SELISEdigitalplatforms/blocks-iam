@@ -304,6 +304,27 @@ namespace Iam.DomainService.Resources
                 };
             }
 
+            // Archiving is ArchivePermissionAsync's job alone. This endpoint used to accept it as a
+            // field, which made it a second, silent delete path: one that never refreshed the
+            // default organization's role counts and had no way to revoke the direct user grants.
+            // Refused rather than ignored so a caller aiming at the wrong endpoint is told, instead
+            // of getting a 200 for a delete that did not happen.
+            if (command.IsArchived)
+            {
+                _logger.LogInformation("Permission update end -- Archive Attempted Through Update");
+                return Failure("IsArchived", "Use_Delete_Endpoint_To_Archive_Permission");
+            }
+
+            // An archived permission is terminal. Editing one would resurrect it below --
+            // UpdateAllSamePermissionAsync writes IsArchived to every organization's copy, so a
+            // routine name change would revive the permission tenant-wide with all of its role
+            // bindings still attached, since the archive deliberately preserves Permission.Roles.
+            if (permission.IsArchived)
+            {
+                _logger.LogInformation("Permission update end -- Already Archived");
+                return Failure("archived", "Cannot_Update_Archived_Permission");
+            }
+
             permission.Name = command.Name;
             permission.Description = command.Description;
             permission.Type = command.Type;
@@ -311,8 +332,12 @@ namespace Iam.DomainService.Resources
             permission.LastUpdatedDate = DateTime.Now;
             permission.LastUpdatedBy = blocksContext?.UserId;
             permission.Tags = command.Tags;
-            permission.IsArchived = command.IsArchived;
-            permission.IsBuiltIn = command.IsBuiltIn;
+            // IsArchived and IsBuiltIn are deliberately NOT taken from the request. Both are
+            // lifecycle state rather than editable attributes, and both are non-nullable bools on
+            // the request, so a client that omits them sends `false` -- which used to un-archive
+            // the permission and strip its built-in flag on an unrelated edit. Clearing IsBuiltIn
+            // that way also defeated the root-tenant guard in ArchivePermissionAsync, letting any
+            // tenant edit a built-in permission and then archive it.
             permission.ResourceGroup = command.ResourceGroup;
             permission.DependentPermissions = command.DependentPermissions;
             permission.PermissionSeverity = command.PermissionSeverity;
@@ -327,14 +352,15 @@ namespace Iam.DomainService.Resources
 
             await _resourceRepository.UpdateAllSamePermissionAsync(permission);
 
-            var mutationAction = command.IsArchived
-                ? MutationEventType.Delete
-                : MutationEventType.Update;
-
+            // Always an update now. The delete variants of both events were only reachable through
+            // the archive-by-update path refused above, and the propagation "delete" they queued
+            // routed into DeletePermissionForAllOrg -- which skips the default organization on the
+            // assumption that ArchivePermissionAsync already handled it, something this method
+            // never did.
             await SendResourceMutationEventAsync(
                 new ResourceMutationEvent
                 {
-                    Action = mutationAction,
+                    Action = MutationEventType.Update,
                     ItemId = permission.ItemId,
                     Entity = ResourceEntity.Permission
                 }
@@ -348,7 +374,7 @@ namespace Iam.DomainService.Resources
                     {
                         Entity = "permission",
                         ItemId = permission.ItemId,
-                        Action = command.IsArchived ? "delete" : "update"
+                        Action = "update"
                     }
                 );
             }
@@ -420,6 +446,28 @@ namespace Iam.DomainService.Resources
 
                     return new BaseMutationResponse();
                 }
+            }
+
+            // Unconditional, unlike the scrub above: this pulls a dangling pointer out of
+            // configuration rather than revoking anyone's current access, so there is nothing for a
+            // human to consent to. It matters because DefaultPermissionsForNewUserOnSignUp is
+            // copied verbatim into User.Permissions for every account created afterwards, and that
+            // dictionary is exactly what AuthorizationClaimsResolver reads when minting claims --
+            // so a resource left here hands every new signup a working grant on an archived
+            // permission, while Signup Configuration goes on listing it as though it existed.
+            //
+            // Tenant-wide: TenantConfiguration is one document per tenant, so this covers every
+            // organization at once and needs no counterpart in DeletePermissionForAllOrg.
+            var signUpDefaultsCleaned = await _resourceRepository.RemovePermissionFromSignUpDefaultsAsync(
+                permission.Resource);
+
+            if (!signUpDefaultsCleaned)
+            {
+                _logger.LogWarning(
+                    "Permission archive aborted for '{Resource}': the signup-defaults cleanup was not acknowledged. The permission is left active so a retry can complete it, rather than archived while new signups still receive it.",
+                    permission.Resource);
+
+                return new BaseMutationResponse();
             }
 
             permission.IsArchived = true;
@@ -570,14 +618,26 @@ namespace Iam.DomainService.Resources
             var permissionsCleaned = await _resourceRepository.RemoveRoleFromAllPermissionsAsync(role.Slug, role.OrganizationId);
             var usersCleaned = await _resourceRepository.RemoveRoleFromAllUsersAsync(role.Slug, role.OrganizationId);
 
-            if (!permissionsCleaned || !usersCleaned)
+            // The signup defaults are the third reference, and the one that keeps acting after the
+            // archive: DefaultRolesForNewUserOnSignUp is copied verbatim onto every account created
+            // afterwards, with no archived check anywhere along that path. Left behind, an archived
+            // role goes on being written into User.Roles for every new signup -- and goes on being
+            // shown in Signup Configuration as though it still existed.
+            //
+            // Tenant-wide rather than per organization, because TenantConfiguration is a single
+            // document per tenant. Not gated on consent: this removes a dangling pointer from
+            // configuration, it does not revoke anyone's current access.
+            var signUpDefaultsCleaned = await _resourceRepository.RemoveRoleFromSignUpDefaultsAsync(role.Slug);
+
+            if (!permissionsCleaned || !usersCleaned || !signUpDefaultsCleaned)
             {
                 _logger.LogWarning(
-                    "Role archive aborted for '{Slug}' in organization '{OrganizationId}': reference cleanup was not acknowledged (permissions: {PermissionsCleaned}, users: {UsersCleaned}). The role is left active so a retry can complete it.",
+                    "Role archive aborted for '{Slug}' in organization '{OrganizationId}': reference cleanup was not acknowledged (permissions: {PermissionsCleaned}, users: {UsersCleaned}, signup defaults: {SignUpDefaultsCleaned}). The role is left active so a retry can complete it.",
                     role.Slug,
                     role.OrganizationId,
                     permissionsCleaned,
-                    usersCleaned);
+                    usersCleaned,
+                    signUpDefaultsCleaned);
 
                 return new BaseMutationResponse();
             }
@@ -1164,6 +1224,43 @@ namespace Iam.DomainService.Resources
                 return true;
             }
 
+            // Under consent the direct grants are scrubbed per organization too, so the
+            // "no user still holds an archived permission" invariant holds everywhere, not only in
+            // the organization the administrator was looking at.
+            //
+            // Deliberately OUTSIDE the archive loop below, and for the same reason the role-count
+            // refresh is: by the time this consumer runs, ArchivePermissionAsync's
+            // UpdateAllSamePermissionAsync has usually already flipped IsArchived on every copy --
+            // it filters on Resource with no organization clause -- so that loop's IsArchived skip
+            // fires for every copy. While this scrub sat inside it, it was unreachable in practice,
+            // and every non-default organization kept its direct grants after an archive the
+            // administrator had explicitly consented to. Those grants are what mint a token claim,
+            // so the permission went on working there indefinitely.
+            //
+            // Best-effort per organization: the archive has already committed, so an unacknowledged
+            // scrub is logged and the rest are still attempted. It can no longer hold back the
+            // copy's archive -- that write has usually happened already, so refusing here would
+            // protect nothing while skipping the remaining organizations.
+            if (confirmRevokeFromUsers)
+            {
+                foreach (var organizationId in permissions
+                    .Select(x => x.OrganizationId)
+                    .Where(x => !string.IsNullOrWhiteSpace(x) && x != DefaultOrganizationId)
+                    .Distinct(StringComparer.OrdinalIgnoreCase))
+                {
+                    var usersCleaned = await _resourceRepository.RemovePermissionFromAllUsersAsync(
+                        permission.Resource, organizationId);
+
+                    if (!usersCleaned)
+                    {
+                        _logger.LogWarning(
+                            "Permission archive propagation: the direct user-grant cleanup for '{Resource}' in organization '{OrganizationId}' was not acknowledged. Users there may still hold the archived permission and need manual review.",
+                            permission.Resource,
+                            organizationId);
+                    }
+                }
+            }
+
             var stale = 0;
             foreach (var orgPermission in permissions)
             {
@@ -1175,24 +1272,6 @@ namespace Iam.DomainService.Resources
                 if (orgPermission.IsArchived)
                 {
                     continue;
-                }
-
-                // Under consent the direct grants are scrubbed per organization too, so the
-                // "no user still holds an archived permission" invariant holds everywhere, not
-                // only in the organization the administrator was looking at.
-                if (confirmRevokeFromUsers)
-                {
-                    var usersCleaned = await _resourceRepository.RemovePermissionFromAllUsersAsync(
-                        orgPermission.Resource, orgPermission.OrganizationId);
-
-                    if (!usersCleaned)
-                    {
-                        _logger.LogWarning(
-                            "Permission archive propagation skipped '{Resource}' in organization '{OrganizationId}': the direct user-grant cleanup was not acknowledged. The copy is left active rather than archived with users still holding it.",
-                            orgPermission.Resource,
-                            orgPermission.OrganizationId);
-                        continue;
-                    }
                 }
 
                 orgPermission.IsArchived = true;
