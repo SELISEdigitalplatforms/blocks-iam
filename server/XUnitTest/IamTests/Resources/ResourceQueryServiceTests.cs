@@ -399,6 +399,50 @@ namespace XUnitTest.IamTests.Resources
         }
 
         [Fact]
+        public async Task RoleArchiveImpact_ReportsWhetherTheRoleIsASignUpDefault()
+        {
+            _repo.Setup(r => r.GetRoleByIdAsync("r1")).ReturnsAsync(ImpactRole());
+            _repo.Setup(r => r.GetTenantConfigurationAsync()).ReturnsAsync(new TenantConfiguration
+            {
+                DefaultRolesForNewUserOnSignUp = new List<string> { "viewer", "MANAGER" }
+            });
+
+            var result = await Create().GetRoleArchiveImpactAsync("r1");
+
+            // Case-insensitive: the signup list is stored as the client sent it and is not
+            // normalised on save, unlike the slug on the role itself.
+            result.IsSignUpDefault.Should().BeTrue();
+        }
+
+        [Fact]
+        public async Task RoleArchiveImpact_NotASignUpDefault_ReportsFalse()
+        {
+            _repo.Setup(r => r.GetRoleByIdAsync("r1")).ReturnsAsync(ImpactRole());
+            _repo.Setup(r => r.GetTenantConfigurationAsync()).ReturnsAsync(new TenantConfiguration
+            {
+                DefaultRolesForNewUserOnSignUp = new List<string> { "viewer" },
+                // The permission list must never answer the role question.
+                DefaultPermissionsForNewUserOnSignUp = new List<string> { "manager" }
+            });
+
+            var result = await Create().GetRoleArchiveImpactAsync("r1");
+
+            result.IsSignUpDefault.Should().BeFalse();
+        }
+
+        [Fact]
+        public async Task RoleArchiveImpact_NoTenantConfiguration_ReportsNotASignUpDefault()
+        {
+            _repo.Setup(r => r.GetRoleByIdAsync("r1")).ReturnsAsync(ImpactRole());
+            MultiOrg(false);
+
+            var result = await Create().GetRoleArchiveImpactAsync("r1");
+
+            // A null configuration document must read as "not a default" rather than throwing.
+            result.IsSignUpDefault.Should().BeFalse();
+        }
+
+        [Fact]
         public async Task RoleArchiveImpact_ArchivedCopyWidensNeitherCount()
         {
             IEnumerable<string>? scoped = null;
@@ -509,6 +553,35 @@ namespace XUnitTest.IamTests.Resources
             result.RoleBindingCount.Should().Be(3);
             result.Blocked.Should().BeFalse();
             result.BlockingReason.Should().BeNull();
+        }
+
+        [Fact]
+        public async Task PermissionArchiveImpact_ReportsWhetherThePermissionIsASignUpDefault()
+        {
+            var permission = new Permission { ItemId = "p1", Name = "Export", Resource = "reports::export", OrganizationId = "default" };
+            _repo.Setup(r => r.GetPermissionByIdAsync("p1")).ReturnsAsync(permission);
+            _repo.Setup(r => r.GetTenantConfigurationAsync()).ReturnsAsync(new TenantConfiguration
+            {
+                DefaultPermissionsForNewUserOnSignUp = new List<string> { "reports::export" },
+                // The role list must never answer the permission question.
+                DefaultRolesForNewUserOnSignUp = new List<string> { "manager" }
+            });
+
+            var result = await Create().GetPermissionArchiveImpactAsync("p1");
+
+            result.IsSignUpDefault.Should().BeTrue();
+        }
+
+        [Fact]
+        public async Task PermissionArchiveImpact_NotASignUpDefault_ReportsFalse()
+        {
+            var permission = new Permission { ItemId = "p1", Name = "Export", Resource = "reports::export", OrganizationId = "default" };
+            _repo.Setup(r => r.GetPermissionByIdAsync("p1")).ReturnsAsync(permission);
+            MultiOrg(false);
+
+            var result = await Create().GetPermissionArchiveImpactAsync("p1");
+
+            result.IsSignUpDefault.Should().BeFalse();
         }
 
         [Fact]

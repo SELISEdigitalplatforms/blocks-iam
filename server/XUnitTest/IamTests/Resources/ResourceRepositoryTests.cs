@@ -896,6 +896,71 @@ namespace XUnitTest.IamTests.Resources
             (await Sut().RemovePermissionFromAllUsersAsync(resource, org)).Should().BeTrue();
         }
 
+        // ---------- Signup-default scrub ----------
+
+        [Fact]
+        public async Task RemoveRoleFromSignUpDefaultsAsync_PullsTheSlugFromTheRolesListOnly()
+        {
+            UpdateDefinition<TenantConfiguration>? capturedUpdate = null;
+            var col = Register<TenantConfiguration>();
+            col.Setup(c => c.UpdateOneAsync(It.IsAny<FilterDefinition<TenantConfiguration>>(), It.IsAny<UpdateDefinition<TenantConfiguration>>(), It.IsAny<UpdateOptions>(), It.IsAny<CancellationToken>()))
+                .Callback<FilterDefinition<TenantConfiguration>, UpdateDefinition<TenantConfiguration>, UpdateOptions, CancellationToken>((_, u, _, _) => capturedUpdate = u)
+                .ReturnsAsync(new UpdateResult.Acknowledged(1, 1, null));
+
+            (await Sut().RemoveRoleFromSignUpDefaultsAsync("manager")).Should().BeTrue();
+
+            var registry = BsonSerializer.SerializerRegistry;
+            var update = capturedUpdate!.Render(new RenderArgs<TenantConfiguration>(registry.GetSerializer<TenantConfiguration>(), registry)).ToString();
+
+            // The roles list, not the permissions list: they are separate signup defaults and a
+            // slug must never be pulled from the one that holds permission resources.
+            update.Should().Contain("DefaultRolesForNewUserOnSignUp").And.Contain("manager");
+            update.Should().NotContain("DefaultPermissionsForNewUserOnSignUp");
+        }
+
+        [Fact]
+        public async Task RemovePermissionFromSignUpDefaultsAsync_PullsTheResourceFromThePermissionsListOnly()
+        {
+            UpdateDefinition<TenantConfiguration>? capturedUpdate = null;
+            var col = Register<TenantConfiguration>();
+            col.Setup(c => c.UpdateOneAsync(It.IsAny<FilterDefinition<TenantConfiguration>>(), It.IsAny<UpdateDefinition<TenantConfiguration>>(), It.IsAny<UpdateOptions>(), It.IsAny<CancellationToken>()))
+                .Callback<FilterDefinition<TenantConfiguration>, UpdateDefinition<TenantConfiguration>, UpdateOptions, CancellationToken>((_, u, _, _) => capturedUpdate = u)
+                .ReturnsAsync(new UpdateResult.Acknowledged(1, 1, null));
+
+            (await Sut().RemovePermissionFromSignUpDefaultsAsync("reports::export")).Should().BeTrue();
+
+            var registry = BsonSerializer.SerializerRegistry;
+            var update = capturedUpdate!.Render(new RenderArgs<TenantConfiguration>(registry.GetSerializer<TenantConfiguration>(), registry)).ToString();
+
+            update.Should().Contain("DefaultPermissionsForNewUserOnSignUp").And.Contain("reports::export");
+            update.Should().NotContain("DefaultRolesForNewUserOnSignUp");
+        }
+
+        [Fact]
+        public async Task RemoveFromSignUpDefaultsAsync_MatchingNothingIsSuccessNotFailure()
+        {
+            var col = Register<TenantConfiguration>();
+            col.Setup(c => c.UpdateOneAsync(It.IsAny<FilterDefinition<TenantConfiguration>>(), It.IsAny<UpdateDefinition<TenantConfiguration>>(), It.IsAny<UpdateOptions>(), It.IsAny<CancellationToken>()))
+                .ReturnsAsync(new UpdateResult.Acknowledged(0, 0, null));
+
+            // A role that was never a signup default -- or a tenant with no configuration document
+            // at all -- matches nothing. Treating that as a failure would abort every archive in
+            // any tenant that has never opened Signup Configuration.
+            (await Sut().RemoveRoleFromSignUpDefaultsAsync("manager")).Should().BeTrue();
+            (await Sut().RemovePermissionFromSignUpDefaultsAsync("reports::export")).Should().BeTrue();
+        }
+
+        [Theory]
+        [InlineData("")]
+        [InlineData("   ")]
+        public async Task RemoveFromSignUpDefaultsAsync_IgnoresBlankArguments(string value)
+        {
+            Register<TenantConfiguration>();
+
+            (await Sut().RemoveRoleFromSignUpDefaultsAsync(value)).Should().BeTrue();
+            (await Sut().RemovePermissionFromSignUpDefaultsAsync(value)).Should().BeTrue();
+        }
+
         // ---------- Archive impact counting (#464) ----------
 
         [Fact]

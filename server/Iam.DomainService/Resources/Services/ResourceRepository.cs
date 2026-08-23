@@ -395,6 +395,62 @@ namespace Iam.DomainService.Resources
         }
 
         /// <summary>
+        /// Removes a role slug from the tenant's signup defaults.
+        /// </summary>
+        /// <remarks>
+        /// TenantConfiguration is one document per tenant -- addressed by Filter.Empty, the same way
+        /// SaveSignUpSettingAsync and SaveOrganizationConfig address it -- so there is no
+        /// organization dimension here and one pull covers the whole tenant.
+        ///
+        /// This is not cosmetic cleanup of a stale list. DefaultRolesForNewUserOnSignUp is copied
+        /// verbatim onto every account created afterwards (AccountService, OidcCallbackHandler and
+        /// the user-creation consumer all read it, none of them filtering archived), so a slug left
+        /// here keeps being written into User.Roles for new users indefinitely.
+        ///
+        /// Exact match, like RemoveRoleFromAllUsersAsync: slugs are lower-cased when the role is
+        /// created and the signup list stores that same canonical value.
+        /// </remarks>
+        public async Task<bool> RemoveRoleFromSignUpDefaultsAsync(string slug)
+        {
+            if (string.IsNullOrWhiteSpace(slug))
+            {
+                return true;
+            }
+
+            var collection = _identityAccessManagementRepository.GetCollection<TenantConfiguration>();
+            var update = Builders<TenantConfiguration>.Update.Pull(t => t.DefaultRolesForNewUserOnSignUp, slug);
+            var result = await collection.UpdateOneAsync(Builders<TenantConfiguration>.Filter.Empty, update);
+
+            // IsAcknowledged, not ModifiedCount > 0: a role that was never a signup default -- or a
+            // tenant with no configuration document at all -- matches nothing, which is an
+            // acknowledged write of zero documents and a perfectly normal archive.
+            return result?.IsAcknowledged ?? false;
+        }
+
+        /// <summary>
+        /// Removes a permission resource from the tenant's signup defaults.
+        /// </summary>
+        /// <remarks>
+        /// The permission-side twin of <see cref="RemoveRoleFromSignUpDefaultsAsync"/>, and the more
+        /// consequential of the two: DefaultPermissionsForNewUserOnSignUp lands in
+        /// User.Permissions, which AuthorizationClaimsResolver reads directly when minting claims.
+        /// A resource left here grants every new account an archived permission that still works.
+        /// </remarks>
+        public async Task<bool> RemovePermissionFromSignUpDefaultsAsync(string resource)
+        {
+            if (string.IsNullOrWhiteSpace(resource))
+            {
+                return true;
+            }
+
+            var collection = _identityAccessManagementRepository.GetCollection<TenantConfiguration>();
+            var update = Builders<TenantConfiguration>.Update.Pull(t => t.DefaultPermissionsForNewUserOnSignUp, resource);
+            var result = await collection.UpdateOneAsync(Builders<TenantConfiguration>.Filter.Empty, update);
+
+            return result?.IsAcknowledged ?? false;
+        }
+
+        /// <summary>
         /// Counts DISTINCT users holding this role slug in ANY of the given organizations.
         /// </summary>
         /// <remarks>
