@@ -9,6 +9,8 @@ namespace Iam.DomainService.Resources
 {
     public class ResourceQueryService : IResourceQueryService
     {
+        private const string DefaultOrganizationId = "default";
+
         private readonly ILogger<ResourceQueryService> _logger;
         private readonly IResourceRepository _resourceRepository;
 
@@ -294,6 +296,136 @@ namespace Iam.DomainService.Resources
                 Blocked = false,
                 BlockingReason = null
             };
+        }
+
+        public async Task<RolePermissionChangeImpactResponse> GetRolePermissionChangeImpactAsync(
+            RolePermissionChangeImpactRequest request)
+        {
+            _logger.LogInformation("Role permission change impact start");
+
+            if (request == null || string.IsNullOrWhiteSpace(request.Slug))
+            {
+                _logger.LogInformation("Role permission change impact end -- Validation Error");
+                return new RolePermissionChangeImpactResponse
+                {
+                    IsSuccess = false,
+                    Errors = new Dictionary<string, string> { { "Slug", "Slug_Never_Empty" } }
+                };
+            }
+
+            // Deliberately the same resolution SetRolesAsync uses, not the stricter default-org-only
+            // idiom the list queries use. A preview scoped to a different organization than the
+            // write would describe a change that never happens.
+            var organizationId = ResolveOrganizationId(request.OrganizationId);
+
+            var role = await _resourceRepository.GetRoleBySlugAsync(request.Slug, organizationId);
+            if (role == null)
+            {
+                _logger.LogInformation("Role permission change impact end -- Not Found");
+                return new RolePermissionChangeImpactResponse
+                {
+                    IsSuccess = false,
+                    Errors = new Dictionary<string, string> { { "Role", "Role_Not_Found" } }
+                };
+            }
+
+            // SetRolesAsync refuses an archived role, so the preview has to refuse it too --
+            // otherwise the dialog offers a confirmation the save is guaranteed to reject.
+            if (role.IsArchived)
+            {
+                _logger.LogInformation("Role permission change impact end -- Archived");
+                return new RolePermissionChangeImpactResponse
+                {
+                    IsSuccess = false,
+                    Slug = role.Slug,
+                    Name = role.Name,
+                    Errors = new Dictionary<string, string> { { "archived", "Role_Already_Archived" } }
+                };
+            }
+
+            var isMultiOrgEnabled = MultiOrgMode.IsEnabled(
+                await _resourceRepository.GetTenantConfigurationAsync(), _logger);
+
+            // Both halves of the gate ProcessPermissionAsync enforces. Offering the option on the
+            // strength of multi-org alone would show an organization-scoped administrator a control
+            // the backend then ignores.
+            var canPropagate = isMultiOrgEnabled && organizationId == DefaultOrganizationId;
+
+            var addPermissions = request.AddPermissions.Any()
+                ? await _resourceRepository.GetPermissionsByIdsAsync(request.AddPermissions) ?? []
+                : [];
+
+            var removePermissions = request.RemovePermissions.Any()
+                ? await _resourceRepository.GetPermissionsByIdsAsync(request.RemovePermissions) ?? []
+                : [];
+
+            // Only the copies propagation would actually reach. Archived copies are skipped by
+            // PropagateSetPermissionsAsync, so counting them would overstate the blast radius and
+            // make the preview disagree with what happens next -- the same reasoning as the archive
+            // impact previews.
+            var otherOrgIds = canPropagate
+                ? (await _resourceRepository.GetNonArchivedRolesBySlugAsync(role.Slug))
+                    .Where(x => x.ItemId != role.ItemId
+                        && !string.Equals(x.OrganizationId, organizationId, StringComparison.OrdinalIgnoreCase))
+                    .Select(x => x.OrganizationId)
+                    .Distinct(StringComparer.OrdinalIgnoreCase)
+                    .ToList()
+                : [];
+
+            // Organizations that exist but hold no live copy of this role: propagation logs a
+            // warning and moves on for each of them. Reported so the administrator learns about the
+            // drift here rather than from a log nobody reads. It counts only the missing-or-archived
+            // role case; an organization that has the role but never received a copy of one of the
+            // permissions is resolved per-organization at write time and is not previewed, because
+            // that would cost one query per organization per resource.
+            var skippedOrganizationCount = 0;
+            if (canPropagate)
+            {
+                var reachedOrgIds = otherOrgIds
+                    .Append(organizationId)
+                    .ToHashSet(StringComparer.OrdinalIgnoreCase);
+
+                skippedOrganizationCount = (await _resourceRepository.GetAllOrgIdsAsync())
+                    .Count(x => !reachedOrgIds.Contains(x));
+            }
+
+            // The role's own organization is always counted for users, never for organizations:
+            // "2 other organizations" and "3 users" answer different questions.
+            var userScopeOrgIds = otherOrgIds.Append(organizationId).ToList();
+
+            _logger.LogInformation("Role permission change impact end");
+
+            return new RolePermissionChangeImpactResponse
+            {
+                IsSuccess = true,
+                Slug = role.Slug,
+                Name = role.Name,
+                IsMultiOrgEnabled = isMultiOrgEnabled,
+                CanPropagate = canPropagate,
+                // Resolved documents, not requested ids: an id with no document behind it binds
+                // nothing, and promising it in the preview would be a lie the save cannot keep.
+                AddCount = addPermissions.Count,
+                RemoveCount = removePermissions.Count,
+                OrganizationCount = otherOrgIds.Count,
+                SkippedOrganizationCount = skippedOrganizationCount,
+                AffectedUserCount = (int)await _resourceRepository.CountUsersWithRoleAsync(role.Slug, userScopeOrgIds, activeOnly: false),
+                ActiveUserCount = (int)await _resourceRepository.CountUsersWithRoleAsync(role.Slug, userScopeOrgIds, activeOnly: true)
+            };
+        }
+
+        /// <summary>
+        /// Mirrors the mutation side's resolution so a preview and the write it previews always
+        /// target the same organization.
+        /// </summary>
+        private static string ResolveOrganizationId(string? organizationId)
+        {
+            if (!string.IsNullOrWhiteSpace(organizationId))
+            {
+                return organizationId;
+            }
+
+            var contextOrgId = BlocksContext.GetContext()?.OrganizationId;
+            return string.IsNullOrWhiteSpace(contextOrgId) ? DefaultOrganizationId : contextOrgId;
         }
     }
 }

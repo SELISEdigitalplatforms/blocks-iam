@@ -248,6 +248,18 @@
             against it.
             </summary>
         </member>
+        <member name="M:Api.Controllers.IamController.GetRolePermissionChangeImpact(Iam.DomainService.Resources.RolePermissionChangeImpactRequest)">
+            <summary>
+            Previews what assigning or unassigning the given permissions would do, before the
+            caller commits to it.
+            </summary>
+            <remarks>
+            POST despite being a read: the diff is two id lists, which do not survive a query string
+            at realistic sizes. Guarded by the roles read permission, not mutate-roles -- it changes
+            nothing, and a reader who can open the role should be able to see the consequence of a
+            change before deciding to ask someone else to make it.
+            </remarks>
+        </member>
         <member name="M:Api.Controllers.IamController.GetOrganizationConfig">
             <summary>
             Anonymous: the public signup page reads this before rendering, to decide

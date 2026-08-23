@@ -1,4 +1,4 @@
-using Blocks.Genesis;
+﻿using Blocks.Genesis;
 using FluentValidation;
 using Iam.DomainService.Dtos;
 using Iam.DomainService.Entities;
@@ -1056,7 +1056,12 @@ namespace Iam.DomainService.Resources
                     ParentRoleSlug = role.ParentRoleSlug,
 
                     CanCreateOwn = role.CanCreateOwn,
-                    Count = role.Count,
+                    // Zero, never the source role's Count. Count means "permissions bound to this
+                    // slug IN THIS organization", and this copy is created with no bindings at all
+                    // -- the binding lives on each organization's own Permission documents, which
+                    // this insert does not touch. Copying the source's number would make every
+                    // propagated role advertise permissions it does not grant.
+                    Count = 0,
                     CreatedFromDefault = true,
 
                     OrganizationId = orgId,
@@ -1602,6 +1607,26 @@ namespace Iam.DomainService.Resources
                             orgId,
                             string.Join(", ", removeResources));
                     }
+                }
+
+                // Role.Count is a denormalised cache of "permissions bound to this slug in this
+                // organization", and it is recomputed from the Permissions collection rather than
+                // adjusted by a delta -- so it self-corrects even when one of the writes above was
+                // partially applied or the organization had already drifted.
+                //
+                // ProcessPermissionAsync only ever refreshed the caller's own organization, which
+                // left every propagated-to organization advertising a stale count next to bindings
+                // that had actually changed. Failures are logged and stepped over for the same
+                // reason as the binding writes: a wrong number in one organization must not stop
+                // the remaining organizations from being updated at all.
+                var counted = await _resourceRepository.UpdateRolesCountAsync(command.Slug, orgId);
+
+                if (!counted)
+                {
+                    _logger.LogWarning(
+                        "Role permission propagation could not refresh the permission count for role '{Slug}' in organization '{OrganizationId}'. The bindings there are correct but the displayed count is stale until the next change to this role; every other organization is unaffected.",
+                        command.Slug,
+                        orgId);
                 }
             }
 

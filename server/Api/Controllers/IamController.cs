@@ -146,6 +146,24 @@ namespace Api.Controllers
             return result.IsSuccess ? Ok(result) : BadRequest(result);
         }
 
+        /// <summary>
+        /// Previews what assigning or unassigning the given permissions would do, before the
+        /// caller commits to it.
+        /// </summary>
+        /// <remarks>
+        /// POST despite being a read: the diff is two id lists, which do not survive a query string
+        /// at realistic sizes. Guarded by the roles read permission, not mutate-roles -- it changes
+        /// nothing, and a reader who can open the role should be able to see the consequence of a
+        /// change before deciding to ask someone else to make it.
+        /// </remarks>
+        [HttpPost("roles/permission-change-impact")]
+        [ProtectedEndPoint("blocks-iam::iam::roles")]
+        public async Task<IActionResult> GetRolePermissionChangeImpact([FromBody] RolePermissionChangeImpactRequest command)
+        {
+            var result = await _resourceQueryService.GetRolePermissionChangeImpactAsync(command);
+            return result.IsSuccess ? Ok(result) : BadRequest(result);
+        }
+
         [HttpPost("roles/assign-permissions")]
         [ProtectedEndPoint("blocks-iam::iam::mutate-roles")]
         public async Task<IActionResult> AssignRolePermissions([FromBody] SetRolesRequest command)

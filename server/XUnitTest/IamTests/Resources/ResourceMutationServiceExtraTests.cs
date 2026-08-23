@@ -569,5 +569,132 @@ namespace XUnitTest.IamTests.Resources
 
             sent!.PropagateToAllOrganizations.Should().BeTrue();
         }
+
+        // ---------- Propagated permission counts ----------
+
+        /// <summary>
+        /// Role.Count is a denormalised "permissions bound to this slug in this organization".
+        /// Propagation used to rewrite the bindings in every organization while refreshing the
+        /// count in only the caller's, leaving every other organization advertising a number that
+        /// no longer described its own bindings.
+        /// </summary>
+        [Fact]
+        public async Task ProcessPermission_WithConsent_RefreshesTheCountInEveryOrganization()
+        {
+            GivenTwoOrgsHoldingTheSameResource();
+
+            await Create().ProcessPermissionAsync(SetPermissionsEvent(propagate: true));
+
+            _repo.Verify(r => r.UpdateRolesCountAsync("manager", "acme"), Times.Once);
+            _repo.Verify(r => r.UpdateRolesCountAsync("manager", "globex"), Times.Once);
+        }
+
+        [Fact]
+        public async Task ProcessPermission_WithConsent_RefreshesTheCountAfterRemovalsToo()
+        {
+            GivenTwoOrgsHoldingTheSameResource();
+
+            await Create().ProcessPermissionAsync(SetPermissionsEvent(
+                propagate: true,
+                add: new List<string>(),
+                remove: new List<string> { "p-default" }));
+
+            _repo.Verify(r => r.RemoveRolePermissionByIdsAsync("manager", It.IsAny<List<string>>(), "acme"), Times.Once);
+            _repo.Verify(r => r.UpdateRolesCountAsync("manager", "acme"), Times.Once);
+        }
+
+        /// <summary>
+        /// The count is recomputed from the Permissions collection, so it is the one write that can
+        /// repair an organization whose bindings were changed by an earlier partial propagation.
+        /// It therefore has to run even where this delta bound nothing.
+        /// </summary>
+        [Fact]
+        public async Task ProcessPermission_OrganizationMissingThePermissionCopy_StillRefreshesItsCount()
+        {
+            GivenTwoOrgsHoldingTheSameResource();
+            _repo.Setup(r => r.GetPermissionsByResourcesAsync(It.IsAny<List<string>>(), "globex"))
+                .ReturnsAsync(new List<Permission>());
+
+            await Create().ProcessPermissionAsync(SetPermissionsEvent(propagate: true));
+
+            _repo.Verify(r => r.UpdateRolePermissionByIdsAsync("manager", It.IsAny<List<string>>(), "globex"), Times.Never);
+            _repo.Verify(r => r.UpdateRolesCountAsync("manager", "globex"), Times.Once);
+        }
+
+        /// <summary>
+        /// An archived or missing copy is skipped entirely -- including its count. Refreshing it
+        /// would be the back door SetRolesAsync's archived-role guard exists to close.
+        /// </summary>
+        [Fact]
+        public async Task ProcessPermission_ArchivedCopy_IsSkippedIncludingItsCount()
+        {
+            GivenTwoOrgsHoldingTheSameResource();
+            _repo.Setup(r => r.GetRoleBySlugAsync("manager", "globex"))
+                .ReturnsAsync(new Role { ItemId = "r-globex", Slug = "manager", OrganizationId = "globex", IsArchived = true });
+
+            await Create().ProcessPermissionAsync(SetPermissionsEvent(propagate: true));
+
+            _repo.Verify(r => r.UpdateRolesCountAsync("manager", "globex"), Times.Never);
+            _repo.Verify(r => r.UpdateRolesCountAsync("manager", "acme"), Times.Once);
+        }
+
+        /// <summary>
+        /// One organization's stale count must not stop the others being corrected: the loop warns
+        /// and carries on, exactly as it does for an unacknowledged binding write.
+        /// </summary>
+        [Fact]
+        public async Task ProcessPermission_CountRefreshUnacknowledged_DoesNotStopTheRemainingOrganizations()
+        {
+            GivenTwoOrgsHoldingTheSameResource();
+            _repo.Setup(r => r.UpdateRolesCountAsync("manager", "acme")).ReturnsAsync(false);
+
+            await Create().ProcessPermissionAsync(SetPermissionsEvent(propagate: true));
+
+            _repo.Verify(r => r.UpdateRolesCountAsync("manager", "globex"), Times.Once);
+        }
+
+        [Fact]
+        public async Task ProcessPermission_WithoutConsent_RefreshesOnlyTheCallersOwnCount()
+        {
+            GivenTwoOrgsHoldingTheSameResource();
+
+            await Create().ProcessPermissionAsync(SetPermissionsEvent(propagate: false));
+
+            _repo.Verify(r => r.UpdateRolesCountAsync("manager", "default"), Times.Once);
+            _repo.Verify(r => r.UpdateRolesCountAsync("manager", "acme"), Times.Never);
+            _repo.Verify(r => r.UpdateRolesCountAsync("manager", "globex"), Times.Never);
+        }
+
+        /// <summary>
+        /// A propagated role copy carries no permission bindings -- those live on each
+        /// organization's own Permission documents, which the insert does not touch. Copying the
+        /// source role's Count would make every copy advertise permissions it does not grant.
+        /// </summary>
+        [Fact]
+        public async Task PropagateRoleInsert_CopiesStartWithNoPermissionCount()
+        {
+            List<Role>? inserted = null;
+            _repo.Setup(r => r.GetRoleByIdAsync("r1"))
+                .ReturnsAsync(new Role { ItemId = "r1", Slug = "manager", Name = "Manager", OrganizationId = "default", Count = 12 });
+            _repo.Setup(r => r.GetOrganizationsAsync(It.IsAny<GetOrganizationsRequest>()))
+                .ReturnsAsync(new GetOrganizationsResponse
+                {
+                    Organizations = new List<Organization> { new() { ItemId = "acme", Name = "Acme" } }
+                });
+            _repo.Setup(r => r.GetRoleBySlugAsync("manager", "acme")).ReturnsAsync((Role)null!);
+            _repo.Setup(r => r.InsertRolesAsync(It.IsAny<List<Role>>()))
+                .Callback<List<Role>>(x => inserted = x)
+                .ReturnsAsync(true);
+
+            await Create().ExecutePropagationRolePermissionUpdateAsync(new PropagationRolePermissionUpdateEvent
+            {
+                Entity = "role",
+                Action = "insert",
+                ItemId = "r1"
+            });
+
+            inserted.Should().ContainSingle();
+            inserted![0].Count.Should().Be(0);
+        }
     }
 }

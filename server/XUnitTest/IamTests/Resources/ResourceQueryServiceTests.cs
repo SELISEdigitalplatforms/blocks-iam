@@ -528,5 +528,181 @@ namespace XUnitTest.IamTests.Resources
 
             result.OrganizationCount.Should().Be(1);
         }
+
+        // ---------- GetRolePermissionChangeImpactAsync ----------
+
+        private static RolePermissionChangeImpactRequest ChangeRequest(
+            string org = "default", List<string>? add = null, List<string>? remove = null) => new()
+            {
+                Slug = "manager",
+                OrganizationId = org,
+                AddPermissions = add ?? new List<string> { "p-default" },
+                RemovePermissions = remove ?? new List<string>()
+            };
+
+        private void GivenRoleInEveryOrg(bool multiOrg = true)
+        {
+            SetContext();
+            MultiOrg(multiOrg);
+            _repo.Setup(r => r.GetRoleBySlugAsync("manager", It.IsAny<string>()))
+                .ReturnsAsync((string slug, string org) => new Role
+                {
+                    ItemId = "r-" + org, Slug = slug, Name = "Manager", Description = "d", OrganizationId = org
+                });
+            _repo.Setup(r => r.GetNonArchivedRolesBySlugAsync("manager"))
+                .ReturnsAsync(new List<Role>
+                {
+                    ImpactCopy("r-default", "default"), ImpactCopy("c-acme", "acme"), ImpactCopy("c-globex", "globex")
+                });
+            _repo.Setup(r => r.GetAllOrgIdsAsync())
+                .ReturnsAsync(new List<string> { "default", "acme", "globex" });
+            _repo.Setup(r => r.GetPermissionsByIdsAsync(It.IsAny<List<string>>()))
+                .ReturnsAsync(new List<Permission> { new() { ItemId = "p-default", Resource = "reports::export" } });
+            _repo.Setup(r => r.CountUsersWithRoleAsync("manager", It.IsAny<IEnumerable<string>>(), false)).ReturnsAsync(7);
+            _repo.Setup(r => r.CountUsersWithRoleAsync("manager", It.IsAny<IEnumerable<string>>(), true)).ReturnsAsync(4);
+        }
+
+        [Fact]
+        public async Task PermissionChangeImpact_EmptySlug_IsRejectedBeforeAnyLookup()
+        {
+            var result = await Create().GetRolePermissionChangeImpactAsync(
+                new RolePermissionChangeImpactRequest { Slug = "  " });
+
+            result.IsSuccess.Should().BeFalse();
+            result.Errors!["Slug"].Should().Be("Slug_Never_Empty");
+            _repo.Verify(r => r.GetRoleBySlugAsync(It.IsAny<string>(), It.IsAny<string>()), Times.Never);
+        }
+
+        [Fact]
+        public async Task PermissionChangeImpact_RoleNotFound_ReturnsErrorAndCountsNothing()
+        {
+            SetContext();
+            _repo.Setup(r => r.GetRoleBySlugAsync("manager", It.IsAny<string>())).ReturnsAsync((Role)null!);
+
+            var result = await Create().GetRolePermissionChangeImpactAsync(ChangeRequest());
+
+            result.IsSuccess.Should().BeFalse();
+            result.Errors!["Role"].Should().Be("Role_Not_Found");
+            _repo.Verify(r => r.CountUsersWithRoleAsync(It.IsAny<string>(), It.IsAny<IEnumerable<string>>(), It.IsAny<bool>()), Times.Never);
+        }
+
+        /// <summary>
+        /// SetRolesAsync refuses an archived role. A preview that happily described the change
+        /// would be offering a confirmation the save is guaranteed to reject.
+        /// </summary>
+        [Fact]
+        public async Task PermissionChangeImpact_ArchivedRole_IsRefusedLikeTheSaveWouldBe()
+        {
+            SetContext();
+            _repo.Setup(r => r.GetRoleBySlugAsync("manager", It.IsAny<string>()))
+                .ReturnsAsync(new Role
+                {
+                    ItemId = "r1", Slug = "manager", Name = "Manager", Description = "d",
+                    OrganizationId = "default", IsArchived = true
+                });
+
+            var result = await Create().GetRolePermissionChangeImpactAsync(ChangeRequest());
+
+            result.IsSuccess.Should().BeFalse();
+            result.Errors!["archived"].Should().Be("Role_Already_Archived");
+        }
+
+        [Fact]
+        public async Task PermissionChangeImpact_DefaultOrgMultiOrg_OffersPropagationWithCounts()
+        {
+            GivenRoleInEveryOrg();
+
+            var result = await Create().GetRolePermissionChangeImpactAsync(ChangeRequest());
+
+            result.IsSuccess.Should().BeTrue();
+            result.CanPropagate.Should().BeTrue();
+            // "2 OTHER organizations" -- the role's own is never one of them.
+            result.OrganizationCount.Should().Be(2);
+            result.AddCount.Should().Be(1);
+            result.RemoveCount.Should().Be(0);
+            result.AffectedUserCount.Should().Be(7);
+            result.ActiveUserCount.Should().Be(4);
+            result.SkippedOrganizationCount.Should().Be(0);
+        }
+
+        /// <summary>
+        /// The half of the gate that is easy to forget. ProcessPermissionAsync ignores the flag for
+        /// an organization-scoped caller, so the preview must not offer the option to one.
+        /// </summary>
+        [Fact]
+        public async Task PermissionChangeImpact_OrganizationScopedRole_DoesNotOfferPropagation()
+        {
+            GivenRoleInEveryOrg();
+
+            var result = await Create().GetRolePermissionChangeImpactAsync(ChangeRequest(org: "acme"));
+
+            result.IsSuccess.Should().BeTrue();
+            result.IsMultiOrgEnabled.Should().BeTrue();
+            result.CanPropagate.Should().BeFalse();
+            result.OrganizationCount.Should().Be(0);
+        }
+
+        [Fact]
+        public async Task PermissionChangeImpact_SingleOrgTenant_DoesNotOfferPropagation()
+        {
+            GivenRoleInEveryOrg(multiOrg: false);
+
+            var result = await Create().GetRolePermissionChangeImpactAsync(ChangeRequest());
+
+            result.IsSuccess.Should().BeTrue();
+            result.IsMultiOrgEnabled.Should().BeFalse();
+            result.CanPropagate.Should().BeFalse();
+            result.OrganizationCount.Should().Be(0);
+        }
+
+        /// <summary>
+        /// An organization with no live copy of the role is silently stepped over by the
+        /// propagation. Counting it here is what turns that silence into something the
+        /// administrator can see before agreeing.
+        /// </summary>
+        [Fact]
+        public async Task PermissionChangeImpact_OrganizationWithoutTheRole_IsReportedAsSkipped()
+        {
+            GivenRoleInEveryOrg();
+            _repo.Setup(r => r.GetNonArchivedRolesBySlugAsync("manager"))
+                .ReturnsAsync(new List<Role> { ImpactCopy("r-default", "default"), ImpactCopy("c-acme", "acme") });
+
+            var result = await Create().GetRolePermissionChangeImpactAsync(ChangeRequest());
+
+            result.OrganizationCount.Should().Be(1);
+            result.SkippedOrganizationCount.Should().Be(1);
+        }
+
+        /// <summary>
+        /// Counts come from resolved documents, not from the ids the caller sent: an id with no
+        /// document behind it binds nothing, and promising it would be a lie the save cannot keep.
+        /// </summary>
+        [Fact]
+        public async Task PermissionChangeImpact_UnresolvableIds_AreNotCounted()
+        {
+            GivenRoleInEveryOrg();
+            _repo.Setup(r => r.GetPermissionsByIdsAsync(It.IsAny<List<string>>()))
+                .ReturnsAsync(new List<Permission>());
+
+            var result = await Create().GetRolePermissionChangeImpactAsync(
+                ChangeRequest(add: new List<string> { "ghost-1", "ghost-2" }));
+
+            result.AddCount.Should().Be(0);
+        }
+
+        [Fact]
+        public async Task PermissionChangeImpact_Removals_CountTheUsersWhoWouldLoseThem()
+        {
+            GivenRoleInEveryOrg();
+
+            var result = await Create().GetRolePermissionChangeImpactAsync(ChangeRequest(
+                add: new List<string>(),
+                remove: new List<string> { "p-default" }));
+
+            result.RemoveCount.Should().Be(1);
+            result.AddCount.Should().Be(0);
+            result.AffectedUserCount.Should().Be(7);
+            result.ActiveUserCount.Should().Be(4);
+        }
     }
 }
