@@ -61,9 +61,42 @@ describe("OIDCForgotPasswordForm", () => {
       expect(screen.getByRole("button", { name: /Send Recovery Link/ })).toBeEnabled(),
     );
     fireEvent.submit(screen.getByRole("button", { name: /Send Recovery Link/ }).closest("form")!);
-    await waitFor(() =>
-      expect(h.navigate).toHaveBeenCalledWith("/oidc/forgot-email-sent?email=user@example.com"),
+    await waitFor(() => expect(h.navigate).toHaveBeenCalled());
+
+    const target = h.navigate.mock.calls[0][0] as string;
+    expect(target).toContain("/oidc/forgot-email-sent");
+    expect(target).toContain("email=user%40example.com");
+  });
+
+  /**
+   * The confirmation page's "Go to login" can only return the user to their application
+   * if the OIDC context survives this navigation. Rebuilding the path from scratch used
+   * to drop it, stranding the user on a login page with no application to sign in to.
+   */
+  it("carries the OIDC context across to the confirmation page", async () => {
+    window.history.replaceState(
+      {},
+      "",
+      "/oidc/forgot-password?clientId=client-1&redirect_uri=https%3A%2F%2Fapp.example.com%2Fcallback&state=st-1&tenant_id=tenant-1",
     );
+
+    h.mutateAsync.mockResolvedValue({ isSuccess: true });
+    renderForm();
+    fillEmail();
+    await waitFor(() =>
+      expect(screen.getByRole("button", { name: /Send Recovery Link/ })).toBeEnabled(),
+    );
+    fireEvent.submit(screen.getByRole("button", { name: /Send Recovery Link/ }).closest("form")!);
+    await waitFor(() => expect(h.navigate).toHaveBeenCalled());
+
+    const target = h.navigate.mock.calls[0][0] as string;
+    expect(target).toContain("clientId=client-1");
+    expect(target).toContain("redirect_uri=https%3A%2F%2Fapp.example.com%2Fcallback");
+    expect(target).toContain("state=st-1");
+    expect(target).toContain("tenant_id=tenant-1");
+    expect(target).toContain("email=user%40example.com");
+
+    window.history.replaceState({}, "", "/");
   });
 
   it("shows a server error when recovery fails", async () => {
