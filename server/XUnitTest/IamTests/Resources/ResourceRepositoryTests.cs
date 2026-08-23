@@ -984,5 +984,42 @@ namespace XUnitTest.IamTests.Resources
             (await Sut().CountRoleBindingsForResourceAsync(slug, orgs)).Should().Be(0);
             (await Sut().GetNonArchivedRolesBySlugAsync(string.Empty)).Should().BeEmpty();
         }
+
+        /// <summary>
+        /// The tally behind Role.Count must ignore archived permissions.
+        /// </summary>
+        /// <remarks>
+        /// Archiving a permission deliberately leaves its Roles array intact -- that array IS the
+        /// binding, and pulling it would make the soft delete unrestorable -- so excluding archived
+        /// documents from the count is the only thing that stops a role advertising a permission it
+        /// no longer grants.
+        ///
+        /// Asserted on the rendered filter rather than on a tallied number, because the collection
+        /// mock returns a fixed count and never evaluates the predicate: the query shape is the only
+        /// thing this harness can actually observe.
+        /// </remarks>
+        [Fact]
+        public async Task UpdateRolesCountAsync_ExcludesArchivedPermissionsFromTheTally()
+        {
+            FilterDefinition<Permission>? countFilter = null;
+            var permissions = Register<Permission>();
+            permissions.Setup(c => c.CountDocumentsAsync(
+                    It.IsAny<FilterDefinition<Permission>>(), It.IsAny<CountOptions>(), It.IsAny<CancellationToken>()))
+                .Callback<FilterDefinition<Permission>, CountOptions, CancellationToken>((f, _, _) => countFilter = f)
+                .ReturnsAsync(1);
+            CaptureRoleUpdate(Register<Role>(), _ => { });
+
+            await Sut().UpdateRolesCountAsync("admin", "default");
+
+            var registry = BsonSerializer.SerializerRegistry;
+            var rendered = countFilter!.Render(new RenderArgs<Permission>(registry.GetSerializer<Permission>(), registry));
+
+            // Ne(true), not Eq(false): a document written before the field existed would not match
+            // Eq(false) and would drop out of the count even though it is active.
+            rendered["IsArchived"]["$ne"].AsBoolean.Should().BeTrue();
+            // The scope of the tally is unchanged -- this role, in this organization.
+            rendered["Roles"].AsString.Should().Be("admin");
+            rendered["OrganizationId"].AsString.Should().Be("default");
+        }
     }
 }

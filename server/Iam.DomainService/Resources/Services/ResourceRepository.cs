@@ -1,4 +1,4 @@
-using Blocks.Genesis;
+﻿using Blocks.Genesis;
 using Iam.DomainService.Entities;
 using Iam.DomainService.Enums;
 using Iam.DomainService.Resources.ResponseModel;
@@ -755,8 +755,18 @@ namespace Iam.DomainService.Resources
         private async Task<long> CountRoleUsageAcrossOrganizationAsync(string slug, string organizationId)
         {
             var collection = _identityAccessManagementRepository.GetCollectionByName<Permission>("Permissions");
+            // Archived permissions are excluded: Count is what a role GRANTS, and an archived
+            // permission grants nothing. Without this an archived permission stayed inside every
+            // role that referenced it forever, because archiving only flips IsArchived -- the
+            // binding itself lives in this document's Roles array and is deliberately left intact
+            // so the soft delete stays restorable.
+            //
+            // Ne(true) rather than Eq(false): a document written without the field would not match
+            // Eq(false) and would silently drop out of the count even though it is active. Permission
+            // documents are believed to carry it universally, but the safe predicate costs nothing.
             var filter = Builders<Permission>.Filter.AnyEq(r => r.Roles, slug) &
-                         Builders<Permission>.Filter.Eq(r => r.OrganizationId, organizationId);
+                         Builders<Permission>.Filter.Eq(r => r.OrganizationId, organizationId) &
+                         Builders<Permission>.Filter.Ne(r => r.IsArchived, true);
 
             return await collection.CountDocumentsAsync(filter);
         }

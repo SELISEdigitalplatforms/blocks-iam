@@ -450,6 +450,12 @@ namespace Iam.DomainService.Resources
                     permission.ItemId);
             }
 
+            // Every role that referenced this permission now grants one fewer, and Role.Count is a
+            // cache that no longer says so. Only this organization is corrected here: the copies in
+            // other organizations are corrected by DeletePermissionForAllOrg, which a
+            // single-organization tenant never runs.
+            await RefreshRoleCountsAfterArchiveAsync(permission.Roles, permission.OrganizationId);
+
             await SendResourceMutationEventAsync(
                 new ResourceMutationEvent
                 {
@@ -1200,12 +1206,70 @@ namespace Iam.DomainService.Resources
                 await _resourceRepository.UpdatePermissionsAsync(permissions);
             }
 
+            // Deliberately outside the loop above and NOT gated on `stale`. By the time this
+            // consumer runs, ArchivePermissionAsync's UpdateAllSamePermissionAsync has usually
+            // already flipped IsArchived on every copy -- it filters on Resource with no
+            // organization clause -- so the loop above skips them and `stale` is often zero while
+            // the copies are very much archived. Their roles still advertise a permission that
+            // grants nothing, and this is the only place that corrects them.
+            //
+            // The default organization is skipped because ArchivePermissionAsync already refreshed
+            // it, synchronously and regardless of whether this propagation ever runs.
+            foreach (var orgPermission in permissions)
+            {
+                if (orgPermission.OrganizationId == DefaultOrganizationId)
+                {
+                    continue;
+                }
+
+                await RefreshRoleCountsAfterArchiveAsync(orgPermission.Roles, orgPermission.OrganizationId);
+            }
+
             _logger.LogInformation(
                 "Archived permission '{Resource}' for {Count} organizations",
                 permission.Resource,
                 stale);
 
             return true;
+        }
+
+        /// <summary>
+        /// Recomputes <see cref="Role.Count"/> for every role that referenced a permission which
+        /// has just been archived, in one organization.
+        /// </summary>
+        /// <remarks>
+        /// The slugs come from the archived permission's own Roles array, which the archive leaves
+        /// intact -- that array IS the binding, and pulling it would make the soft delete
+        /// unrestorable. What changes is that the count query no longer counts an archived
+        /// document, so the number has to be recomputed for each role that named it.
+        ///
+        /// Distinct slugs only: one organization's permission can list the same role twice through
+        /// data drift, and recounting it twice is wasted work rather than a wrong answer. Failures
+        /// are logged and stepped over, for the same reason the assignment propagation does it --
+        /// the archive has already committed, and one stale number must not stop the remaining
+        /// roles being corrected.
+        /// </remarks>
+        private async Task RefreshRoleCountsAfterArchiveAsync(IEnumerable<string>? slugs, string organizationId)
+        {
+            if (slugs == null)
+            {
+                return;
+            }
+
+            foreach (var slug in slugs
+                .Where(x => !string.IsNullOrWhiteSpace(x))
+                .Distinct(StringComparer.OrdinalIgnoreCase))
+            {
+                var counted = await _resourceRepository.UpdateRolesCountAsync(slug, organizationId);
+
+                if (!counted)
+                {
+                    _logger.LogWarning(
+                        "Permission archive: the permission count for role '{Slug}' in organization '{OrganizationId}' was not refreshed. That role still advertises the archived permission until its next change; every other role is unaffected.",
+                        slug,
+                        organizationId);
+                }
+            }
         }
 
         private async Task<bool> DeleteRoleForAllOrg(string itemId, bool confirmRevokeFromUsers = false)

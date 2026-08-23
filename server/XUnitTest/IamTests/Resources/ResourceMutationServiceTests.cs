@@ -1,4 +1,4 @@
-using Blocks.Genesis;
+﻿using Blocks.Genesis;
 using FluentAssertions;
 using FluentValidation;
 using FluentValidation.Results;
@@ -746,6 +746,9 @@ namespace XUnitTest.IamTests.Resources
             _repo.Verify(r => r.UpdateAllSamePermissionAsync(It.IsAny<Permission>()), Times.Never);
             _iam.Verify(i => i.SendToQueueAsync(It.IsAny<string>(), It.IsAny<ResourceMutationEvent>()), Times.Never);
             _iam.Verify(i => i.SendToQueueAsync(It.IsAny<string>(), It.IsAny<PropagationRolePermissionUpdateEvent>()), Times.Never);
+            // Nothing was archived, so no role's count has moved. Rewriting one here would leave a
+            // number that disagrees with a permission still very much in force.
+            _repo.Verify(r => r.UpdateRolesCountAsync(It.IsAny<string>(), It.IsAny<string>()), Times.Never);
         }
 
         [Fact]
@@ -1876,6 +1879,140 @@ namespace XUnitTest.IamTests.Resources
             // C9 makes the warning log the interface for reviewing skipped copies, so it has to
             // identify which copy in which organization was left behind.
             warnings.Should().ContainSingle(w => w.Contains("manager") && w.Contains("globex"));
+        }
+
+        // ---------- Role counts after a permission archive ----------
+
+        /// <summary>
+        /// Count is what a role GRANTS. Archiving a permission leaves the binding in place -- the
+        /// Roles array IS the binding and pulling it would make the soft delete unrestorable -- so
+        /// the number only becomes right again when it is recomputed.
+        /// </summary>
+        [Fact]
+        public async Task ArchivePermission_RefreshesTheCountOfEveryRoleThatUsedIt()
+        {
+            var permission = ArchiveTarget();
+            permission.Roles = new List<string> { "admin", "manager" };
+            GivenPermission(permission);
+            _repo.Setup(r => r.UpdateRolesCountAsync(It.IsAny<string>(), It.IsAny<string>())).ReturnsAsync(true);
+
+            await Create().ArchivePermissionAsync("p1");
+
+            _repo.Verify(r => r.UpdateRolesCountAsync("admin", "default"), Times.Once);
+            _repo.Verify(r => r.UpdateRolesCountAsync("manager", "default"), Times.Once);
+        }
+
+        [Fact]
+        public async Task ArchivePermission_DuplicateOrBlankSlugs_AreNotRecountedTwice()
+        {
+            var permission = ArchiveTarget();
+            permission.Roles = new List<string> { "admin", "ADMIN", "  ", "admin" };
+            GivenPermission(permission);
+            _repo.Setup(r => r.UpdateRolesCountAsync(It.IsAny<string>(), It.IsAny<string>())).ReturnsAsync(true);
+
+            await Create().ArchivePermissionAsync("p1");
+
+            _repo.Verify(r => r.UpdateRolesCountAsync(It.IsAny<string>(), It.IsAny<string>()), Times.Once);
+        }
+
+        /// <summary>
+        /// The archive has already committed by the time counts are refreshed, so a stale number
+        /// must neither fail the request nor stop the remaining roles being corrected.
+        /// </summary>
+        [Fact]
+        public async Task ArchivePermission_CountRefreshUnacknowledged_StillSucceedsAndCorrectsTheRest()
+        {
+            var permission = ArchiveTarget();
+            permission.Roles = new List<string> { "admin", "manager" };
+            GivenPermission(permission);
+            _repo.Setup(r => r.UpdateRolesCountAsync("admin", "default")).ReturnsAsync(false);
+            _repo.Setup(r => r.UpdateRolesCountAsync("manager", "default")).ReturnsAsync(true);
+
+            var result = await Create().ArchivePermissionAsync("p1");
+
+            result.IsSuccess.Should().BeTrue();
+            _repo.Verify(r => r.UpdateRolesCountAsync("manager", "default"), Times.Once);
+        }
+
+        [Fact]
+        public async Task ArchivePermission_NoRolesReferenceIt_RefreshesNothing()
+        {
+            var permission = ArchiveTarget();
+            permission.Roles = new List<string>();
+            GivenPermission(permission);
+
+            await Create().ArchivePermissionAsync("p1");
+
+            _repo.Verify(r => r.UpdateRolesCountAsync(It.IsAny<string>(), It.IsAny<string>()), Times.Never);
+        }
+
+        [Fact]
+        public async Task PropagatePermissionDelete_RefreshesRoleCountsInEveryOtherOrganization()
+        {
+            GivenPermission(ArchiveTarget());
+            _repo.Setup(r => r.GetPermissionsByResourceAsync("reports::export")).ReturnsAsync(new List<Permission>
+            {
+                ArchiveTarget(),
+                new() { ItemId = "p-acme", Resource = "reports::export", OrganizationId = "acme", Roles = new List<string> { "admin" } },
+                new() { ItemId = "p-globex", Resource = "reports::export", OrganizationId = "globex", Roles = new List<string> { "manager" } }
+            });
+            _repo.Setup(r => r.UpdatePermissionsAsync(It.IsAny<List<Permission>>())).ReturnsAsync(true);
+            _repo.Setup(r => r.UpdateRolesCountAsync(It.IsAny<string>(), It.IsAny<string>())).ReturnsAsync(true);
+
+            await Create().ExecutePropagationRolePermissionUpdateAsync(
+                new PropagationRolePermissionUpdateEvent { Entity = "permission", Action = "delete", ItemId = "p1" });
+
+            // Each organization is corrected against ITS OWN copy's Roles array: the same resource
+            // can be bound to different roles in different organizations.
+            _repo.Verify(r => r.UpdateRolesCountAsync("admin", "acme"), Times.Once);
+            _repo.Verify(r => r.UpdateRolesCountAsync("manager", "globex"), Times.Once);
+        }
+
+        /// <summary>
+        /// The case that makes this fix necessary rather than cosmetic. ArchivePermissionAsync
+        /// calls UpdateAllSamePermissionAsync, which filters on Resource with NO organization
+        /// clause, so by the time this consumer runs every copy is usually archived already and the
+        /// archive loop skips all of them. Their roles still advertise the permission, and this is
+        /// the only place that corrects them -- so the refresh must not be gated on having archived
+        /// anything here.
+        /// </summary>
+        [Fact]
+        public async Task PropagatePermissionDelete_CopiesAlreadyArchived_StillRefreshesTheirRoleCounts()
+        {
+            GivenPermission(ArchiveTarget());
+            _repo.Setup(r => r.GetPermissionsByResourceAsync("reports::export")).ReturnsAsync(new List<Permission>
+            {
+                ArchiveTarget(),
+                new() { ItemId = "p-acme", Resource = "reports::export", OrganizationId = "acme", IsArchived = true, Roles = new List<string> { "admin" } }
+            });
+            _repo.Setup(r => r.UpdateRolesCountAsync(It.IsAny<string>(), It.IsAny<string>())).ReturnsAsync(true);
+
+            await Create().ExecutePropagationRolePermissionUpdateAsync(
+                new PropagationRolePermissionUpdateEvent { Entity = "permission", Action = "delete", ItemId = "p1" });
+
+            // Nothing was archived by this run -- and the count still had to be corrected.
+            _repo.Verify(r => r.UpdatePermissionsAsync(It.IsAny<List<Permission>>()), Times.Never);
+            _repo.Verify(r => r.UpdateRolesCountAsync("admin", "acme"), Times.Once);
+        }
+
+        [Fact]
+        public async Task PropagatePermissionDelete_LeavesTheDefaultOrganizationsCountsToTheArchiveItself()
+        {
+            GivenPermission(ArchiveTarget());
+            _repo.Setup(r => r.GetPermissionsByResourceAsync("reports::export")).ReturnsAsync(new List<Permission>
+            {
+                ArchiveTarget(),
+                new() { ItemId = "p-acme", Resource = "reports::export", OrganizationId = "acme", Roles = new List<string> { "admin" } }
+            });
+            _repo.Setup(r => r.UpdatePermissionsAsync(It.IsAny<List<Permission>>())).ReturnsAsync(true);
+            _repo.Setup(r => r.UpdateRolesCountAsync(It.IsAny<string>(), It.IsAny<string>())).ReturnsAsync(true);
+
+            await Create().ExecutePropagationRolePermissionUpdateAsync(
+                new PropagationRolePermissionUpdateEvent { Entity = "permission", Action = "delete", ItemId = "p1" });
+
+            // ArchivePermissionAsync already did it, synchronously, and does so even for a
+            // single-organization tenant that never reaches this propagation at all.
+            _repo.Verify(r => r.UpdateRolesCountAsync(It.IsAny<string>(), "default"), Times.Never);
         }
     }
 }
