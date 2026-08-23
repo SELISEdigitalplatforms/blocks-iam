@@ -26,6 +26,10 @@ public static class CaptchaDriverServiceExtension
 
         services.AddTransient<IValidator<SubmitCaptchaRequest>, SubmitCaptchaCommandValidator>();
 
+        // Singleton over IServiceScopeFactory, never over ISecretService directly: AddBlocksSecrets
+        // registers that scoped, and capturing it here would pin one tenant's identity process-wide.
+        services.AddSingleton<ICaptchaSecretResolver, CaptchaSecretResolver>();
+
         services.AddSingleton<ICaptchaConfigurationRepository, CaptchaConfigurationRepository>();
         services.AddSingleton<ICaptchaConfigurationService, CaptchaConfigurationService>();
         services.AddSingleton<IRecaptchaConfigFactory, RecaptchaConfigFactory>();

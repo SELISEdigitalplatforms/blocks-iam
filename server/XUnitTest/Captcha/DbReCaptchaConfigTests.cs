@@ -8,8 +8,7 @@ namespace XUnitTest.Captcha
         [Fact]
         public void ResolveRecaptchaUri_EncodesSpecialCharsInSecret()
         {
-            var config = new CaptchaConfiguration { CaptchaSecret = "secret with space & #1" };
-            var target = new DbReCaptchaConfig(config, "token");
+            var target = new DbReCaptchaConfig("secret with space & #1", "token");
 
             var uri = target.ResolveRecaptchaUri();
 
@@ -21,8 +20,7 @@ namespace XUnitTest.Captcha
         [Fact]
         public void ResolveRecaptchaUri_TokenPlaceholderSubstituted()
         {
-            var config = new CaptchaConfiguration { CaptchaSecret = "k" };
-            var target = new DbReCaptchaConfig(config, "tok#2");
+            var target = new DbReCaptchaConfig("k", "tok#2");
 
             var uri = target.ResolveRecaptchaUri();
 
@@ -32,8 +30,7 @@ namespace XUnitTest.Captcha
         [Fact]
         public void ResolveRecaptchaUri_AcceptsNullToken()
         {
-            var config = new CaptchaConfiguration { CaptchaSecret = "k" };
-            var target = new DbReCaptchaConfig(config, null);
+            var target = new DbReCaptchaConfig("k", null);
 
             var uri = target.ResolveRecaptchaUri();
 

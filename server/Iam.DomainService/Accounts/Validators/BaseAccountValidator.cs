@@ -1,9 +1,8 @@
-﻿using Blocks.CaptchaDriver;
+using Blocks.CaptchaDriver;
 using Blocks.Genesis;
 using FluentValidation;
 using Iam.DomainService.Configurations;
 using Iam.DomainService.Services;
-using MongoDB.Driver;
 
 namespace Iam.DomainService.Accounts
 {
@@ -11,19 +10,19 @@ namespace Iam.DomainService.Accounts
     {
         private readonly ICacheClient _cacheClient;
         private readonly ICaptchaService _captchaService;
-        private readonly IDbContextProvider _dbContextProvider;
+        private readonly ICaptchaConfigurationService _captchaConfigurationService;
 
 
         public BaseAccountValidator(ICacheClient cacheClient,
                                     IIamConfigurationRepository configurationRepository,
                                     IIdentityAccessManagementRepository identityAccessManagementRepository,
                                     ICaptchaService captchaService,
-                                    IDbContextProvider dbContextProvider)
+                                    ICaptchaConfigurationService captchaConfigurationService)
             : base(identityAccessManagementRepository, configurationRepository)
         {
             _cacheClient = cacheClient;
             _captchaService = captchaService;
-            _dbContextProvider = dbContextProvider;
+            _captchaConfigurationService = captchaConfigurationService;
 
             RuleFor(u => u.Code)
                 .Cascade(CascadeMode.Stop)
@@ -58,14 +57,13 @@ namespace Iam.DomainService.Accounts
             return await _cacheClient.KeyExistsAsync(accountActivationCode);
         }
 
+        /// <summary>
+        /// Reads the active configuration through the driver, which prefers the blocks-os
+        /// key/value store and falls back to the legacy secret document.
+        /// </summary>
         private async Task<CaptchaConfiguration?> GetCaptchaConfig()
         {
-            var collection = _dbContextProvider.GetCollection<Secret>("Secrets");
-            var filter = Builders<Secret>.Filter.Eq(s => s.SecretKey, CaptchaSecretKeys.SecretKey);
-
-            var secrets = await (await collection.FindAsync(filter)).ToListAsync();
-
-            return secrets.Select(CaptchaConfigurationMapping.MapToCaptchaConfiguration).FirstOrDefault(configuration => configuration is { IsEnable: true });
+            return await _captchaConfigurationService.GetCaptchaConfigurationAsync();
         }
     }
 }

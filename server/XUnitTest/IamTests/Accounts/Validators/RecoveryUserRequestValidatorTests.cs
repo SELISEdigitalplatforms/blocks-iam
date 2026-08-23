@@ -1,8 +1,6 @@
 using Blocks.CaptchaDriver;
-using Blocks.Genesis;
 using FluentAssertions;
 using Iam.DomainService.Accounts;
-using MongoDB.Driver;
 using Moq;
 
 namespace XUnitTest.IamTests.Accounts.Validators
@@ -10,31 +8,18 @@ namespace XUnitTest.IamTests.Accounts.Validators
     public class RecoveryUserRequestValidatorTests
     {
         private readonly Mock<ICaptchaService> _captcha = new();
-        private readonly Mock<IDbContextProvider> _dbContext = new();
+        private readonly Mock<ICaptchaConfigurationService> _captchaConfig = new();
 
         public RecoveryUserRequestValidatorTests()
         {
-            _dbContext.Setup(d => d.GetCollection<Secret>("Secrets")).Returns(EmptySecrets());
+            // No configuration in either store. The validator only reads the provider name from
+            // it, so the captcha rule still runs and delegates to ICaptchaService.
+            _captchaConfig.Setup(c => c.GetCaptchaConfigurationAsync())
+                .ReturnsAsync((CaptchaConfiguration?)null);
         }
 
         private RecoveryUserRequestValidator Create() =>
-            new(_captcha.Object, _dbContext.Object);
-
-        private static IMongoCollection<Secret> EmptySecrets()
-        {
-            var cursor = new Mock<IAsyncCursor<Secret>>();
-            cursor.Setup(c => c.Current).Returns(new List<Secret>());
-            cursor.Setup(c => c.MoveNext(It.IsAny<CancellationToken>())).Returns(false);
-            cursor.Setup(c => c.MoveNextAsync(It.IsAny<CancellationToken>())).ReturnsAsync(false);
-
-            var collection = new Mock<IMongoCollection<Secret>>();
-            collection.Setup(m => m.FindAsync(
-                    It.IsAny<FilterDefinition<Secret>>(),
-                    It.IsAny<FindOptions<Secret, Secret>>(),
-                    It.IsAny<CancellationToken>()))
-                .ReturnsAsync(cursor.Object);
-            return collection.Object;
-        }
+            new(_captcha.Object, _captchaConfig.Object);
 
         [Fact]
         public async Task ValidEmail_NoCaptcha_Passes()

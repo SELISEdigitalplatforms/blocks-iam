@@ -32,6 +32,7 @@ namespace XUnitTest.Captcha
 
             return new HCaptchaVerificationService(
                 configService.Object,
+                PassThroughResolver(),
                 options,
                 NullLogger<HCaptchaVerificationService>.Instance,
                 httpClient.Object);
@@ -95,7 +96,7 @@ namespace XUnitTest.Captcha
 
             var options = Options.Create(new CaptchaOptions());
             var service = new HCaptchaVerificationService(
-                configService.Object, options,
+                configService.Object, PassThroughResolver(), options,
                 NullLogger<HCaptchaVerificationService>.Instance, httpClient.Object);
 
             var result = await service.VerifyAsync("captcha-token");
@@ -121,5 +122,11 @@ namespace XUnitTest.Captcha
             var service = CreateService(new Mock<ICaptchaConfigurationService>(), new Mock<IHttpClientService>());
             service.Provider.Should().Be("hcaptcha");
         }
-    }
+    
+        /// <summary>
+        /// A resolver that is never consulted: these tests use legacy configurations, whose secret
+        /// is inline rather than behind a SecretId.
+        /// </summary>
+        private static ICaptchaSecretResolver PassThroughResolver() => new Mock<ICaptchaSecretResolver>().Object;
+}
 }

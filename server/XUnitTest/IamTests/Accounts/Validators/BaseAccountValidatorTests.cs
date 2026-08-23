@@ -1,4 +1,4 @@
-﻿using Blocks.CaptchaDriver;
+using Blocks.CaptchaDriver;
 using Blocks.Genesis;
 using FluentAssertions;
 using Iam.DomainService.Accounts;
@@ -16,7 +16,7 @@ namespace XUnitTest.IamTests.Accounts.Validators
         private readonly Mock<IIamConfigurationRepository> _configRepo = new();
         private readonly Mock<IIdentityAccessManagementRepository> _iamRepo = new();
         private readonly Mock<ICaptchaService> _captcha = new();
-        private readonly Mock<IDbContextProvider> _dbContext = new();
+        private readonly Mock<ICaptchaConfigurationService> _captchaConfig = new();
 
         public BaseAccountValidatorTests()
         {
@@ -34,7 +34,10 @@ namespace XUnitTest.IamTests.Accounts.Validators
                 .ReturnsAsync(new IamConfiguration { PasswordStrengthCheckerRegex = string.Empty });
             _iamRepo.Setup(r => r.CheckPasswordBlackListedAsync(It.IsAny<string>()))
                 .ReturnsAsync(false);
-            _dbContext.Setup(d => d.GetCollection<Secret>("Secrets")).Returns(EmptySecrets());
+            // No captcha configuration in either store; the captcha rule still delegates to
+            // ICaptchaService, which the individual tests set up.
+            _captchaConfig.Setup(c => c.GetCaptchaConfigurationAsync())
+                .ReturnsAsync((CaptchaConfiguration?)null);
         }
 
         public void Dispose()
@@ -44,23 +47,8 @@ namespace XUnitTest.IamTests.Accounts.Validators
         }
 
         private BaseAccountValidator Create() =>
-            new(_cache.Object, _configRepo.Object, _iamRepo.Object, _captcha.Object, _dbContext.Object);
+            new(_cache.Object, _configRepo.Object, _iamRepo.Object, _captcha.Object, _captchaConfig.Object);
 
-        private static IMongoCollection<Secret> EmptySecrets()
-        {
-            var cursor = new Mock<IAsyncCursor<Secret>>();
-            cursor.Setup(c => c.Current).Returns(new List<Secret>());
-            cursor.Setup(c => c.MoveNext(It.IsAny<CancellationToken>())).Returns(false);
-            cursor.Setup(c => c.MoveNextAsync(It.IsAny<CancellationToken>())).ReturnsAsync(false);
-
-            var collection = new Mock<IMongoCollection<Secret>>();
-            collection.Setup(m => m.FindAsync(
-                    It.IsAny<FilterDefinition<Secret>>(),
-                    It.IsAny<FindOptions<Secret, Secret>>(),
-                    It.IsAny<CancellationToken>()))
-                .ReturnsAsync(cursor.Object);
-            return collection.Object;
-        }
 
         [Fact]
         public async Task Valid_Code_NoPassword_NoCaptcha_Passes()

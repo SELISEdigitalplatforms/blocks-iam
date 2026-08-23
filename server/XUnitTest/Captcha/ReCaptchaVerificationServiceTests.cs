@@ -136,6 +136,34 @@ namespace XUnitTest.Captcha
             service.Provider.Should().Be("recaptcha");
         }
 
+
+        /// <summary>
+        /// The tenant is configured but its secret could not be resolved. Calling Google without a
+        /// secret could only ever come back unverified, and would leak the token to a pointless
+        /// request, so the provider must not be called at all.
+        /// </summary>
+        [Fact]
+        public async Task VerifyAsync_WhenTheConfigFactoryCannotProduceASecret_FailsClosedWithoutCallingTheProvider()
+        {
+            var httpClient = new Mock<IHttpClientService>();
+            var configFactory = new Mock<IRecaptchaConfigFactory>();
+            configFactory
+                .Setup(f => f.GetRecaptchaConfig(It.IsAny<string?>(), It.IsAny<string?>()))
+                .ReturnsAsync((IRecaptchaConfig?)null);
+
+            var service = new ReCaptchaVerificationService(
+                httpClient.Object,
+                Options.Create(new CaptchaOptions()),
+                NullLogger<ReCaptchaVerificationService>.Instance,
+                configFactory.Object);
+
+            var result = await service.VerifyAsync("captcha-token");
+
+            result.Verified.Should().BeFalse();
+            httpClient.Verify(
+                h => h.SendAsync(It.IsAny<HttpRequestMessage>(), It.IsAny<string?>()), Times.Never);
+        }
+
         private sealed class StubRecaptchaConfig : IRecaptchaConfig
         {
             private readonly string _template;

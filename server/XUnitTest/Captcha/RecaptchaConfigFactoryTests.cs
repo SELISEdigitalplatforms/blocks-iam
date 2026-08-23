@@ -19,6 +19,7 @@ namespace XUnitTest.Captcha
             var factory = new RecaptchaConfigFactory(
                 Microsoft.Extensions.Logging.Abstractions.NullLogger<RecaptchaConfigFactory>.Instance,
                 configService.Object,
+                UnusedResolver(),
                 Opts());
 
             var result = await factory.GetRecaptchaConfig("https://x/{0}", "token-1");
@@ -37,6 +38,7 @@ namespace XUnitTest.Captcha
             var factory = new RecaptchaConfigFactory(
                 Microsoft.Extensions.Logging.Abstractions.NullLogger<RecaptchaConfigFactory>.Instance,
                 configService.Object,
+                UnusedResolver(),
                 Opts());
 
             var result = await factory.GetRecaptchaConfig("https://x/{0}", "token-1");
@@ -57,10 +59,17 @@ namespace XUnitTest.Captcha
             var factory = new RecaptchaConfigFactory(
                 Microsoft.Extensions.Logging.Abstractions.NullLogger<RecaptchaConfigFactory>.Instance,
                 configService.Object,
+                UnusedResolver(),
                 Opts());
 
             var result = await factory.GetRecaptchaConfig("https://x/{0}", "token-1");
             result.Should().BeOfType<LocalReCaptchaConfig>();
         }
-    }
+    
+        /// <summary>
+        /// These cases use legacy configurations (secret inline, no SecretId), so the vault
+        /// resolver is never reached.
+        /// </summary>
+        private static ICaptchaSecretResolver UnusedResolver() => new Mock<ICaptchaSecretResolver>().Object;
+}
 }
