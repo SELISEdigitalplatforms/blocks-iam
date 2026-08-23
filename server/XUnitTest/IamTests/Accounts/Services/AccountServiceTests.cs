@@ -77,9 +77,14 @@ namespace XUnitTest.IamTests.Accounts.Services
 
             // By default, signup test path consults the captcha configuration collection.
             // Returning an empty (disabled) collection disables captcha checks.
-            _dbContextProviderMock.Setup(d => d.GetCollection<CaptchaConfiguration>("CaptchaConfigurations"))
-                .Returns(MockMongoCollection(Array.Empty<CaptchaConfiguration>()).Object);
+            // Signup now reads the active configuration through the driver rather than the
+            // defunct CaptchaConfigurations collection. Null means "no captcha configured", which
+            // is what these tests assumed the empty collection meant.
+            _captchaConfigurationServiceMock.Setup(c => c.GetCaptchaConfigurationAsync())
+                .ReturnsAsync((CaptchaConfiguration?)null);
         }
+
+        private readonly Mock<ICaptchaConfigurationService> _captchaConfigurationServiceMock = new();
 
         private AccountService CreateService(IHttpContextAccessor? http = null) =>
             new(
@@ -94,6 +99,7 @@ namespace XUnitTest.IamTests.Accounts.Services
                 _userMutationMock.Object,
                 _resourceMutationMock.Object,
                 _captchaServiceMock.Object,
+                _captchaConfigurationServiceMock.Object,
                 _dbContextProviderMock.Object,
                 _userActivityDispatcherMock.Object,
                 http);
@@ -213,9 +219,8 @@ namespace XUnitTest.IamTests.Accounts.Services
             var service = CreateService();
             _repositoryMock.Setup(r => r.GetTenantConfigurationAsync())
                 .ReturnsAsync(TestDataBuilder.CreateTenantConfiguration());
-            var captchaColl = MockMongoCollection(new[] { new CaptchaConfiguration { IsEnable = true, Provider = "recaptcha" } });
-            _dbContextProviderMock.Setup(d => d.GetCollection<CaptchaConfiguration>("CaptchaConfigurations"))
-                .Returns(captchaColl.Object);
+            _captchaConfigurationServiceMock.Setup(c => c.GetCaptchaConfigurationAsync())
+                .ReturnsAsync(new CaptchaConfiguration { IsEnable = true, Provider = "recaptcha" });
 
             var result = await service.SignupAccountAsync(new SignupUserRequest { Email = "u@example.com", CaptchaCode = null });
 
@@ -229,9 +234,8 @@ namespace XUnitTest.IamTests.Accounts.Services
             var service = CreateService();
             _repositoryMock.Setup(r => r.GetTenantConfigurationAsync())
                 .ReturnsAsync(TestDataBuilder.CreateTenantConfiguration());
-            var captchaColl = MockMongoCollection(new[] { new CaptchaConfiguration { IsEnable = true, Provider = "recaptcha" } });
-            _dbContextProviderMock.Setup(d => d.GetCollection<CaptchaConfiguration>("CaptchaConfigurations"))
-                .Returns(captchaColl.Object);
+            _captchaConfigurationServiceMock.Setup(c => c.GetCaptchaConfigurationAsync())
+                .ReturnsAsync(new CaptchaConfiguration { IsEnable = true, Provider = "recaptcha" });
             _captchaServiceMock.Setup(c => c.VerifyCaptchaAsync(It.IsAny<VerifyCaptchaRequest>()))
                 .ReturnsAsync(new VerifyCaptchaRequestResponse { Verified = false });
 
@@ -250,9 +254,8 @@ namespace XUnitTest.IamTests.Accounts.Services
             _repositoryMock.Setup(r => r.GetUserByEmailAsync(It.IsAny<string>())).ReturnsAsync((User?)null);
             _repositoryMock.Setup(r => r.GetUserByIdAsync(It.IsAny<string>())).ReturnsAsync(TestDataBuilder.CreateUser());
 
-            var captchaColl = MockMongoCollection(Array.Empty<CaptchaConfiguration>());
-            _dbContextProviderMock.Setup(d => d.GetCollection<CaptchaConfiguration>("CaptchaConfigurations"))
-                .Returns(captchaColl.Object);
+            _captchaConfigurationServiceMock.Setup(c => c.GetCaptchaConfigurationAsync())
+                .ReturnsAsync((CaptchaConfiguration?)null);
 
             _userMutationMock.Setup(m => m.CreateUserAsync(It.IsAny<CreateUserRequest>()))
                 .ReturnsAsync(new BaseMutationResponse { ItemId = "u-new", IsSuccess = true });

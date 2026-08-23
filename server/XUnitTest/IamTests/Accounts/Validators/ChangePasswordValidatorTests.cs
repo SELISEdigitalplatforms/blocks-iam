@@ -1,4 +1,4 @@
-using Blocks.Genesis;
+﻿using Blocks.Genesis;
 using FluentAssertions;
 using Iam.DomainService.Accounts;
 using Iam.DomainService.Configurations;
@@ -26,7 +26,7 @@ namespace XUnitTest.IamTests.Accounts.Validators
             // Minimum-length regex: passwords of at least 8 chars are "strong".
             _config.Setup(c => c.GetConfigurationAsync())
                 .ReturnsAsync(new IamConfiguration { PasswordStrengthCheckerRegex = ".{8,}" });
-            _iamRepo.Setup(r => r.CheckPasswordBlackListedAsync(It.IsAny<string>(), It.IsAny<string>())).ReturnsAsync(false);
+            _iamRepo.Setup(r => r.CheckPasswordBlackListedAsync(It.IsAny<string>())).ReturnsAsync(false);
         }
 
         public void Dispose()
@@ -74,7 +74,7 @@ namespace XUnitTest.IamTests.Accounts.Validators
         [Fact]
         public async Task BlacklistedNewPassword_Fails()
         {
-            _iamRepo.Setup(r => r.CheckPasswordBlackListedAsync("NewPass123", It.IsAny<string>())).ReturnsAsync(true);
+            _iamRepo.Setup(r => r.CheckPasswordBlackListedAsync("NewPass123")).ReturnsAsync(true);
 
             var result = await Create().ValidateAsync(Req());
 
@@ -83,3 +83,4 @@ namespace XUnitTest.IamTests.Accounts.Validators
         }
     }
 }
+

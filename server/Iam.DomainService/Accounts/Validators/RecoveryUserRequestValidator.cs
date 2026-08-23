@@ -1,20 +1,18 @@
-﻿using Blocks.CaptchaDriver;
-using Blocks.Genesis;
+using Blocks.CaptchaDriver;
 using FluentValidation;
-using MongoDB.Driver;
 
 namespace Iam.DomainService.Accounts
 {
     public class RecoveryUserRequestValidator : AbstractValidator<RecoveryUserRequest>
     {
         private readonly ICaptchaService _captchaService;
-        private readonly IDbContextProvider _dbContextProvider;
+        private readonly ICaptchaConfigurationService _captchaConfigurationService;
 
         public RecoveryUserRequestValidator(ICaptchaService captchaService,
-                                            IDbContextProvider dbContextProvider)
+                                            ICaptchaConfigurationService captchaConfigurationService)
         {
             _captchaService = captchaService;
-            _dbContextProvider = dbContextProvider;
+            _captchaConfigurationService = captchaConfigurationService;
 
             RuleFor(x => x.Email)
                 .NotEmpty().WithMessage("Email is required.")
@@ -34,15 +32,13 @@ namespace Iam.DomainService.Accounts
             return verifyCaptchaQueryResponse.Verified;
         }
 
+        /// <summary>
+        /// Reads the active configuration through the driver, which prefers the blocks-os
+        /// key/value store and falls back to the legacy secret document.
+        /// </summary>
         public async Task<CaptchaConfiguration?> GetCaptchaConfig()
         {
-            var collection = _dbContextProvider.GetCollection<Secret>("Secrets");
-            var filter = Builders<Secret>.Filter.Eq(s => s.SecretKey, CaptchaSecretKeys.SecretKey);
-
-            var secrets = await (await collection.FindAsync(filter)).ToListAsync();
-
-            var configuration = secrets.Select(CaptchaConfigurationMapping.MapToCaptchaConfiguration).FirstOrDefault(configuration => configuration is { IsEnable: true });
-            return configuration;
+            return await _captchaConfigurationService.GetCaptchaConfigurationAsync();
         }
     }
 }

@@ -30,8 +30,10 @@ MongoDB-backed secret storage; all in a single NuGet package.
 - **Verify flow**: validate verification codes against the configured provider.
 - **Multi-provider**: pluggable verification handlers for `bcaptcha` (Blocks),
   `recaptcha`, and `hcaptcha`.
-- **MongoDB-backed secrets**: reads captcha configuration from the shared
-  `Secrets` collection.
+- **Two-source configuration**: reads from the blocks-os `keyValueStores` collection,
+  falling back to the legacy shared `Secrets` document.
+- **Key Vault backed secrets**: follows the stored `SecretId` into Azure Key Vault,
+  with a 30-minute cache and fail-closed behaviour.
 - **DI-friendly**: single extension method registers every dependency.
 - **Validated inputs**: `FluentValidation` rules for submit requests.
 - **Strongly-typed**: `System.Text.Json` deserialization for provider responses.
@@ -112,18 +114,62 @@ public sealed class SignupService
 
 ## Configuration
 
-Captcha settings are read from a MongoDB `Secrets` collection document whose
-`SecretKey` is `captcha`. Values live under `KeyValuePairs` (lookup is
-case-insensitive).
+The driver reads captcha configuration from two stores, in order.
 
-### Required keys
+### Source A — `keyValueStores` (current)
 
-| Key             | Type     | Description                                                    |
-| --------------- | -------- | -------------------------------------------------------------- |
-| `IsEnable`      | `bool`   | Whether captcha is enabled (`true`/`false`, case-insensitive). |
-| `Provider`      | `string` | Provider name: `bcaptcha`, `recaptcha`, or `hcaptcha`.         |
-| `CaptchaKey`    | `string` | Provider site/public key.                                      |
-| `CaptchaSecret` | `string` | Provider secret key.                                          |
+Written by **blocks-os**. One entry per configuration in the **tenant** database's
+`keyValueStores` collection, keyed `captcha_{id}`:
+
+```json
+{
+  "Key": "captcha_9f2a4c...",
+  "Value": {
+    "Id": "9f2a4c...",
+    "IsEnable": true,
+    "Provider": "recaptcha",
+    "CaptchaKey": "<site key>",
+    "CaptchaGenerator": "EasyCaptchaGenerator",
+    "SecretId": "<secret store item id>"
+  }
+}
+```
+
+The secret itself is **not** here. `SecretId` points at an entry in the secret store, whose
+value lives in Azure Key Vault and is read through `ICaptchaSecretResolver` at verification
+time. That resolver caches the plaintext for 30 minutes and fails closed — returning `null`,
+never an exception — when the value cannot be obtained.
+
+blocks-os enforces no single-enabled constraint, so when several records are enabled the driver
+picks the one whose id sorts first, deterministically on every call.
+
+Hosts must therefore register the secrets package alongside the driver:
+
+```csharp
+services.AddBlocksSecrets();          // SeliseBlocks.Secrets.OS
+services.RegisterBlocksCaptchaService();
+```
+
+and supply `KeyVault:KeyVaultUrl` plus an identity with **get** on that vault.
+
+### Source B — `Secrets` (legacy fallback)
+
+Used only when Source A holds no enabled record, so tenants configured before the move keep
+working unchanged. A single document in the tenant's `Secrets` collection whose `SecretKey` is
+`captcha`, with values under `KeyValuePairs` — all of them **strings**, and looked up
+**case-sensitively** (the map is deserialised with an ordinal comparer, so `IsEnable` and
+`isEnable` are not interchangeable).
+
+| Key                | Type     | Description                                                     |
+| ------------------ | -------- | --------------------------------------------------------------- |
+| `isEnable`         | `string` | Whether captcha is enabled — the string `"true"` or `"false"`.  |
+| `provider`         | `string` | Provider name: `bcaptcha`, `recaptcha`, or `hcaptcha`.          |
+| `captchaKey`       | `string` | Provider site/public key.                                        |
+| `captchaSecret`    | `string` | Provider secret key, stored inline.                              |
+| `captchaGenerator` | `string` | Generator identifier (optional).                                 |
+
+Source A wins outright when both are populated; the two are never merged, so a new site key can
+never be paired with a stale legacy secret.
 
 ### Application configuration (appsettings.json)
 

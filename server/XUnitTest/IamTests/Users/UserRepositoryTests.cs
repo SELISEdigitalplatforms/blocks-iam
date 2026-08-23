@@ -1,4 +1,4 @@
-using Blocks.Genesis;
+﻿using Blocks.Genesis;
 using FluentAssertions;
 using Iam.DomainService.Dtos;
 using Iam.DomainService.Entities;
@@ -6,6 +6,7 @@ using Iam.DomainService.Services;
 using Iam.DomainService.Shared.Entities;
 using Iam.DomainService.Users;
 using MongoDB.Bson;
+using MongoDB.Bson.Serialization;
 using MongoDB.Driver;
 using Moq;
 using XUnitTest.TestSupport;
@@ -50,8 +51,8 @@ namespace XUnitTest.IamTests.Users
         [Fact]
         public async Task CheckPasswordBlackListedAsync_Delegates()
         {
-            _iam.Setup(r => r.CheckPasswordBlackListedAsync("pw", "t1")).ReturnsAsync(true);
-            (await Sut().CheckPasswordBlackListedAsync("pw", "t1")).Should().BeTrue();
+            _iam.Setup(r => r.CheckPasswordBlackListedAsync("pw")).ReturnsAsync(true);
+            (await Sut().CheckPasswordBlackListedAsync("pw")).Should().BeTrue();
         }
 
         [Fact]
@@ -262,5 +263,252 @@ namespace XUnitTest.IamTests.Users
             Register(new[] { new ProjectPeople { ItemId = "pp1", UserId = "u1", TenantId = "tenant-9" } });
             (await Sut().GetProjectIdFromProjectPeopleAsync("u1")).Should().Be("tenant-9");
         }
+
+        // ---------------------------------------------------------------------
+        // User list filtering (issue #403)
+        //
+        // These assert the query the repository actually hands to the driver.
+        // MongoMock returns every seeded item whatever the filter, so counting
+        // rows would prove nothing; instead the FilterDefinition is captured on
+        // its way into FindAsync, rendered, and inspected. Where the ticket
+        // describes matching behaviour, the captured pattern is then run over the
+        // section 7 fixture addresses. That proves the semantics of the pattern
+        // the application sends -- MongoDB evaluates it with PCRE2 rather than
+        // .NET, so the end-to-end walkthrough is still worth doing, but for
+        // literal text and Regex.Escape output the two engines agree.
+        // ---------------------------------------------------------------------
+
+        private const string JohnDoe = "john.doe@yopmail.com";
+        private const string JaneRoe = "jane.roe@yopmail.com";
+        private const string JDoeSpecial = "j.doe@special.test";
+        private const string JxDoe = "jXdoe@yopmail.com";
+
+        /// <summary>
+        /// Run <paramref name="query"/> through the repository and hand back the filter it built.
+        /// The capturing setup supplies its own cursor: Moq prefers the newest matching setup, so
+        /// without one it would shadow <see cref="MongoMock.SetupFind"/> and leave FindAsync null.
+        /// </summary>
+        private async Task<BsonDocument> CaptureUserFilterAsync(GetUsersFilter? filter)
+        {
+            var col = Register(new[] { new User { ItemId = "u1" } });
+            MongoMock.SetupCount(col, 1);
+
+            FilterDefinition<User>? captured = null;
+            col.Setup(c => c.FindAsync(
+                    It.IsAny<FilterDefinition<User>>(),
+                    It.IsAny<FindOptions<User, User>>(),
+                    It.IsAny<CancellationToken>()))
+                .Callback<FilterDefinition<User>, FindOptions<User, User>, CancellationToken>(
+                    (f, _, _) => captured = f)
+                .ReturnsAsync(() => MongoMock.Cursor(new[] { new User { ItemId = "u1" } }));
+
+            await Sut().GetUsersAsync<User, BaseGetsRequest<GetUsersFilter>>(
+                new BaseGetsRequest<GetUsersFilter> { Filter = filter });
+
+            captured.Should().NotBeNull();
+            var registry = BsonSerializer.SerializerRegistry;
+            return captured!.Render(new RenderArgs<User>(registry.GetSerializer<User>(), registry));
+        }
+
+        /// <summary>
+        /// Find the clause for <paramref name="field"/> wherever the driver put it. Conjunctions may
+        /// be flattened or kept under $and, so both shapes are searched rather than assumed.
+        /// </summary>
+        private static BsonValue? Clause(BsonDocument rendered, string field)
+        {
+            if (rendered.TryGetValue(field, out var direct)) return direct;
+
+            foreach (var op in new[] { "$and", "$or", "$nor" })
+            {
+                if (!rendered.TryGetValue(op, out var branch)) continue;
+
+                foreach (var part in branch.AsBsonArray.OfType<BsonDocument>())
+                {
+                    var nested = Clause(part, field);
+                    if (nested is not null) return nested;
+                }
+            }
+            return null;
+        }
+
+        /// <summary>The regex a clause carries, as a value rather than a $regex sub-document.</summary>
+        private static BsonRegularExpression Regex(BsonDocument rendered, string field)
+        {
+            var clause = Clause(rendered, field);
+            clause.Should().NotBeNull($"the filter should constrain {field}");
+            return clause!.AsBsonRegularExpression;
+        }
+
+        /// <summary>Every string value anywhere in the rendered filter, regexes excluded.</summary>
+        private static IEnumerable<string> AllStrings(BsonValue value) => value switch
+        {
+            BsonDocument doc => doc.Elements.SelectMany(e => AllStrings(e.Value)),
+            BsonArray array => array.SelectMany(AllStrings),
+            BsonString s => new[] { s.AsString },
+            _ => Array.Empty<string>(),
+        };
+
+        /// <summary>
+        /// Run the captured pattern with the options the query itself carries, not a hardcoded
+        /// IgnoreCase - otherwise these checks would still pass if the repository stopped asking
+        /// for a case-insensitive match.
+        /// </summary>
+        private static bool Matches(BsonRegularExpression regex, string candidate)
+        {
+            var options = System.Text.RegularExpressions.RegexOptions.None;
+            if (regex.Options.Contains('i')) options |= System.Text.RegularExpressions.RegexOptions.IgnoreCase;
+            if (regex.Options.Contains('m')) options |= System.Text.RegularExpressions.RegexOptions.Multiline;
+            if (regex.Options.Contains('s')) options |= System.Text.RegularExpressions.RegexOptions.Singleline;
+            if (regex.Options.Contains('x')) options |= System.Text.RegularExpressions.RegexOptions.IgnorePatternWhitespace;
+
+            return new System.Text.RegularExpressions.Regex(regex.Pattern, options).IsMatch(candidate);
+        }
+
+        [Fact] // H1, C6
+        public async Task GetUsersAsync_EmailFilter_MatchesOnSubstringCaseInsensitively()
+        {
+            var rendered = await CaptureUserFilterAsync(new GetUsersFilter { Email = "doe" });
+            var regex = Regex(rendered, "Email");
+
+            regex.Pattern.Should().Be("doe", "plain text must not gain escapes");
+            regex.Options.Should().Contain("i");
+            Matches(regex, JohnDoe).Should().BeTrue();
+            Matches(regex, JaneRoe).Should().BeFalse();
+        }
+
+        [Fact] // H1, example 2 -- "DOE" finds the same user as "doe"
+        public async Task GetUsersAsync_EmailFilter_IsCaseInsensitiveAndTrimmed()
+        {
+            var rendered = await CaptureUserFilterAsync(new GetUsersFilter { Email = "  DOE  " });
+            var regex = Regex(rendered, "Email");
+
+            regex.Pattern.Should().Be("doe", "the term is trimmed and lowercased before it is escaped");
+            Matches(regex, JohnDoe).Should().BeTrue();
+            // Matches() honours the captured options, so this only passes while the query
+            // really does ask Mongo for a case-insensitive match.
+            Matches(regex, JohnDoe.ToUpperInvariant()).Should().BeTrue();
+        }
+
+        [Fact] // C1, example 3 -- the dot is literal, not "any character"
+        public async Task GetUsersAsync_EmailFilter_EscapesRegexSpecialCharacters()
+        {
+            var rendered = await CaptureUserFilterAsync(new GetUsersFilter { Email = "j.doe" });
+            var regex = Regex(rendered, "Email");
+
+            regex.Pattern.Should().Be(@"j\.doe");
+            Matches(regex, JDoeSpecial).Should().BeTrue();
+            Matches(regex, JxDoe).Should().BeFalse("an unescaped dot would have matched the X");
+        }
+
+        [Fact] // C1
+        public async Task GetUsersAsync_EmailFilter_EscapesQuantifiers()
+        {
+            var rendered = await CaptureUserFilterAsync(new GetUsersFilter { Email = "a+b" });
+            Regex(rendered, "Email").Pattern.Should().Be(@"a\+b");
+        }
+
+        // C2's "returns an empty list, not an error" is ultimately server behaviour; what is
+        // provable here is that the term still yields a well-formed clause and that the pattern
+        // matches none of the fixtures.
+        [Fact]
+        public async Task GetUsersAsync_EmailFilter_WithNoMatch_MatchesNoneOfTheFixtures()
+        {
+            var rendered = await CaptureUserFilterAsync(
+                new GetUsersFilter { Email = "nomatch@nowhere.test" });
+            var regex = Regex(rendered, "Email");
+
+            new[] { JohnDoe, JaneRoe, JDoeSpecial }
+                .Should().OnlyContain(email => !Matches(regex, email));
+        }
+
+        [Theory] // H6, C5
+        [InlineData(null)]
+        [InlineData("")]
+        [InlineData("   ")]
+        public async Task GetUsersAsync_BlankEmailFilter_AppliesNoEmailClause(string? email)
+        {
+            var rendered = await CaptureUserFilterAsync(new GetUsersFilter { Email = email });
+            Clause(rendered, "Email").Should().BeNull();
+        }
+
+        [Fact] // H5 -- the same escaping gap, closed for Name
+        public async Task GetUsersAsync_NameFilter_EscapesRegexSpecialCharacters()
+        {
+            var rendered = await CaptureUserFilterAsync(new GetUsersFilter { Name = "O.Brien" });
+
+            foreach (var field in new[] { "FirstName", "LastName" })
+            {
+                var regex = Regex(rendered, field);
+                regex.Pattern.Should().Be(@"o\.brien");
+                Matches(regex, "o'brien").Should().BeFalse();
+                Matches(regex, "o.brien").Should().BeTrue();
+            }
+        }
+
+        [Fact] // C6 -- plain names are untouched by the escaping fix
+        public async Task GetUsersAsync_NameFilter_LeavesPlainTextUnescaped()
+        {
+            var rendered = await CaptureUserFilterAsync(new GetUsersFilter { Name = "john" });
+            Regex(rendered, "FirstName").Pattern.Should().Be("john");
+        }
+
+        [Fact]
+        // The full-name clause compares a literal string, so the term it receives must stay
+        // unescaped even though the regex form of the same term is escaped. Escaping both is
+        // the obvious way to get this wrong, and it would silently break full-name search.
+        public async Task GetUsersAsync_NameFilter_KeepsTheFullNameComparisonUnescaped()
+        {
+            var rendered = await CaptureUserFilterAsync(new GetUsersFilter { Name = "o.brien" });
+
+            // The full-name clause carries the term as a plain string; the two regex clauses
+            // carry the escaped form as a regex pattern. Asserting on the string values keeps
+            // this independent of how the driver serialises either one.
+            var literals = AllStrings(rendered).ToList();
+            literals.Should().Contain("o.brien");
+            literals.Should().NotContain(@"o\.brien", "the literal Contains term must not be escaped");
+            Regex(rendered, "FirstName").Pattern.Should().Be(@"o\.brien");
+        }
+
+        [Fact] // C4, H3 -- organization scope survives alongside the email filter
+        public async Task GetUsersAsync_EmailFilter_StillRestrictsToTheOrganization()
+        {
+            var rendered = await CaptureUserFilterAsync(
+                new GetUsersFilter { Email = "doe", OrganizationId = "org-a" });
+
+            Clause(rendered, "OrganizationIds").Should().NotBeNull();
+            AllStrings(rendered).Should().Contain("org-a");
+            Regex(rendered, "Email").Pattern.Should().Be("doe");
+        }
+
+        [Fact] // H4 -- every other filter still lands, unchanged
+        public async Task GetUsersAsync_EmailFilter_CombinesWithEveryOtherFilter()
+        {
+            var rendered = await CaptureUserFilterAsync(new GetUsersFilter
+            {
+                Email = "doe",
+                Name = "john",
+                Status = new Status { Active = true },
+                Mfa = new MFA { Enabled = true },
+                JoinedOn = DateTime.UtcNow.AddDays(-10),
+                LastLogin = DateTime.UtcNow.AddDays(-1),
+                UserIds = new List<string> { "u1" },
+                OrganizationId = "org-a"
+            });
+
+            Regex(rendered, "Email").Pattern.Should().Be("doe");
+            Regex(rendered, "FirstName").Pattern.Should().Be("john");
+
+            // Assert the values too, not just that a clause exists: presence alone would still
+            // pass if a neighbouring filter started emitting the wrong comparison.
+            Clause(rendered, "Active")!.AsBoolean.Should().BeTrue();
+            Clause(rendered, "MfaEnabled")!.AsBoolean.Should().BeTrue();
+            Clause(rendered, "CreatedDate")!["$gte"].Should().NotBeNull();
+            Clause(rendered, "LastLoggedInTime")!["$gte"].Should().NotBeNull();
+            // ItemId is the entity's BSON id, so the driver renders the $in against _id.
+            Clause(rendered, "_id")!["$in"].AsBsonArray.Select(v => v.AsString).Should().Equal("u1");
+            Clause(rendered, "OrganizationIds").Should().NotBeNull();
+            AllStrings(rendered).Should().Contain("org-a");
+        }
     }
 }
+

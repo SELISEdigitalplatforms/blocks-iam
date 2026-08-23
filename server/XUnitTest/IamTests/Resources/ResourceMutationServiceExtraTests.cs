@@ -11,6 +11,7 @@ using Iam.DomainService.Resources.TenantPropagation;
 using Iam.DomainService.Services;
 using Iam.DomainService.Shared.Dtos;
 using Iam.DomainService.Shared.Entities;
+using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 using Moq;
 
@@ -62,6 +63,25 @@ namespace XUnitTest.IamTests.Resources
             new(NullLogger<ResourceMutationService>.Instance, _repo.Object, _iam.Object,
                 _permValidator.Object, _updatePermValidator.Object, _roleValidator.Object,
                 _propagator.Object, _activity.Object);
+
+        private ResourceMutationService Create(ILogger<ResourceMutationService> logger) =>
+            new(logger, _repo.Object, _iam.Object,
+                _permValidator.Object, _updatePermValidator.Object, _roleValidator.Object,
+                _propagator.Object, _activity.Object);
+
+        private static Mock<ILogger<ResourceMutationService>> WarningCapture(List<string> sink)
+        {
+            var logger = new Mock<ILogger<ResourceMutationService>>();
+            logger.Setup(l => l.Log(
+                    It.IsAny<LogLevel>(), It.IsAny<EventId>(), It.IsAny<It.IsAnyType>(),
+                    It.IsAny<Exception>(), It.IsAny<Func<It.IsAnyType, Exception?, string>>()))
+                .Callback(new InvocationAction(invocation =>
+                {
+                    if ((LogLevel)invocation.Arguments[0] != LogLevel.Warning) return;
+                    sink.Add(invocation.Arguments[2]?.ToString() ?? string.Empty);
+                }));
+            return logger;
+        }
 
 
         [Fact]
@@ -372,6 +392,309 @@ namespace XUnitTest.IamTests.Resources
             result.Organizations.Should().HaveCount(2);
             result.Organizations[0].ItemId.Should().Be("o2");
             result.Organizations[1].ItemId.Should().Be("o1");
+        }
+
+        // ---------- Consented assignment propagation (#466) ----------
+
+        /// <summary>
+        /// Wires a two-organization tenant where each organization holds its OWN permission id for
+        /// the same Resource. That difference is the point: an implementation that propagated the
+        /// caller's raw ItemIds would bind nothing, because a permission id is per-organization.
+        /// </summary>
+        private void GivenTwoOrgsHoldingTheSameResource(bool multiOrg = true)
+        {
+            _repo.Setup(r => r.GetTenantConfigurationAsync())
+                .ReturnsAsync(new TenantConfiguration { IsMultiOrgEnabled = multiOrg });
+            _repo.Setup(r => r.GetAllOrgIdsAsync()).ReturnsAsync(new List<string> { "acme", "globex" });
+            _repo.Setup(r => r.GetPermissionsByIdsAsync(It.IsAny<List<string>>()))
+                .ReturnsAsync(new List<Permission> { new() { ItemId = "p-default", Resource = "reports::export" } });
+            _repo.Setup(r => r.GetRoleBySlugAsync("manager", It.IsAny<string>()))
+                .ReturnsAsync((string slug, string org) => new Role { ItemId = "r-" + org, Slug = slug, OrganizationId = org });
+            _repo.Setup(r => r.GetPermissionsByResourcesAsync(It.IsAny<List<string>>(), "acme"))
+                .ReturnsAsync(new List<Permission> { new() { ItemId = "p-acme", Resource = "reports::export", OrganizationId = "acme" } });
+            _repo.Setup(r => r.GetPermissionsByResourcesAsync(It.IsAny<List<string>>(), "globex"))
+                .ReturnsAsync(new List<Permission> { new() { ItemId = "p-globex", Resource = "reports::export", OrganizationId = "globex" } });
+            _repo.Setup(r => r.UpdateRolePermissionByIdsAsync(It.IsAny<string>(), It.IsAny<List<string>>(), It.IsAny<string>())).ReturnsAsync(true);
+            _repo.Setup(r => r.RemoveRolePermissionByIdsAsync(It.IsAny<string>(), It.IsAny<List<string>>(), It.IsAny<string>())).ReturnsAsync(true);
+            _repo.Setup(r => r.UpdateRolesCountAsync(It.IsAny<string>(), It.IsAny<string>())).ReturnsAsync(true);
+        }
+
+        private static ResourceSetToPermissionMutationEvent SetPermissionsEvent(
+            bool propagate, string orgId = "default", List<string>? add = null, List<string>? remove = null) => new()
+            {
+                Entity = ResourceEntity.Role,
+                Slug = "manager",
+                OrganizationId = orgId,
+                AddPermissions = add ?? new List<string> { "p-default" },
+                RemovePermissions = remove ?? new List<string>(),
+                PropagateToAllOrganizations = propagate
+            };
+
+        [Fact]
+        public async Task ProcessPermission_WithConsent_BindsEachOrganizationsOwnPermissionId()
+        {
+            GivenTwoOrgsHoldingTheSameResource();
+
+            await Create().ProcessPermissionAsync(SetPermissionsEvent(propagate: true));
+
+            // Each organization gets ITS OWN id, resolved via the Resource string. The default
+            // organization's id does not exist in acme or globex, so passing it through would
+            // silently bind nothing.
+            _repo.Verify(r => r.UpdateRolePermissionByIdsAsync("manager", It.Is<List<string>>(x => x.Contains("p-acme")), "acme"), Times.Once);
+            _repo.Verify(r => r.UpdateRolePermissionByIdsAsync("manager", It.Is<List<string>>(x => x.Contains("p-globex")), "globex"), Times.Once);
+        }
+
+        [Fact]
+        public async Task ProcessPermission_WithoutConsent_PropagatesNothing()
+        {
+            GivenTwoOrgsHoldingTheSameResource();
+
+            await Create().ProcessPermissionAsync(SetPermissionsEvent(propagate: false));
+
+            // The regression guard for the whole phase: omitting the flag must behave exactly as
+            // the system did before it existed.
+            _repo.Verify(r => r.UpdateRolePermissionByIdsAsync(It.IsAny<string>(), It.IsAny<List<string>>(), It.IsAny<string>()), Times.Never);
+            _repo.Verify(r => r.GetAllOrgIdsAsync(), Times.Never);
+        }
+
+        [Fact]
+        public async Task ProcessPermission_MultiOrgDisabled_PropagatesNothingEvenWithConsent()
+        {
+            GivenTwoOrgsHoldingTheSameResource(multiOrg: false);
+
+            await Create().ProcessPermissionAsync(SetPermissionsEvent(propagate: true));
+
+            _repo.Verify(r => r.UpdateRolePermissionByIdsAsync(It.IsAny<string>(), It.IsAny<List<string>>(), It.IsAny<string>()), Times.Never);
+        }
+
+        [Fact]
+        public async Task ProcessPermission_NonDefaultOrgCaller_PropagatesNothingEvenWithConsent()
+        {
+            GivenTwoOrgsHoldingTheSameResource();
+
+            await Create().ProcessPermissionAsync(SetPermissionsEvent(propagate: true, orgId: "acme"));
+
+            // An organization-scoped caller must never be able to rewrite bindings platform-wide.
+            _repo.Verify(r => r.UpdateRolePermissionByIdsAsync(It.IsAny<string>(), It.IsAny<List<string>>(), It.IsAny<string>()), Times.Never);
+        }
+
+        [Fact]
+        public async Task ProcessPermission_WithConsent_RemovalsPropagateToo()
+        {
+            GivenTwoOrgsHoldingTheSameResource();
+
+            await Create().ProcessPermissionAsync(SetPermissionsEvent(
+                propagate: true, add: new List<string>(), remove: new List<string> { "p-default" }));
+
+            _repo.Verify(r => r.RemoveRolePermissionByIdsAsync("manager", It.Is<List<string>>(x => x.Contains("p-acme")), "acme"), Times.Once);
+            _repo.Verify(r => r.RemoveRolePermissionByIdsAsync("manager", It.Is<List<string>>(x => x.Contains("p-globex")), "globex"), Times.Once);
+        }
+
+        [Fact]
+        public async Task ProcessPermission_WithConsent_SkipsOrganizationWhoseCopyIsArchived()
+        {
+            GivenTwoOrgsHoldingTheSameResource();
+            _repo.Setup(r => r.GetRoleBySlugAsync("manager", "globex"))
+                .ReturnsAsync(new Role { ItemId = "r-globex", Slug = "manager", OrganizationId = "globex", IsArchived = true });
+
+            await Create().ProcessPermissionAsync(SetPermissionsEvent(propagate: true));
+
+            // Propagation must not repopulate bindings on a role that was retired there --
+            // SetRoleAsync refuses exactly this in the caller's own organization.
+            _repo.Verify(r => r.UpdateRolePermissionByIdsAsync("manager", It.IsAny<List<string>>(), "acme"), Times.Once);
+            _repo.Verify(r => r.UpdateRolePermissionByIdsAsync("manager", It.IsAny<List<string>>(), "globex"), Times.Never);
+        }
+
+        [Fact]
+        public async Task ProcessPermission_WithConsent_SkipsOrganizationMissingThePermissionCopy()
+        {
+            GivenTwoOrgsHoldingTheSameResource();
+            _repo.Setup(r => r.GetPermissionsByResourcesAsync(It.IsAny<List<string>>(), "globex"))
+                .ReturnsAsync(new List<Permission>());
+
+            await Create().ProcessPermissionAsync(SetPermissionsEvent(propagate: true));
+
+            // Drift in one organization must not veto the others.
+            _repo.Verify(r => r.UpdateRolePermissionByIdsAsync("manager", It.IsAny<List<string>>(), "acme"), Times.Once);
+            _repo.Verify(r => r.UpdateRolePermissionByIdsAsync("manager", It.IsAny<List<string>>(), "globex"), Times.Never);
+        }
+
+        [Fact]
+        public async Task ProcessPermission_StillWritesActivityAndRoleCount_WhetherOrNotItPropagates()
+        {
+            GivenTwoOrgsHoldingTheSameResource();
+
+            await Create().ProcessPermissionAsync(SetPermissionsEvent(propagate: true));
+
+            // Propagation runs last precisely so it cannot suppress the audit trail of what the
+            // administrator did in their own organization.
+            _activity.Verify(a => a.SendUserActivityAsync(It.Is<UserActivityEvent>(e => e.Event == "ROLE_PERMISSIONS_UPDATED")), Times.Once);
+            _repo.Verify(r => r.UpdateRolesCountAsync("manager", "default"), Times.Once);
+        }
+
+        [Fact]
+        public async Task ProcessPermission_UnacknowledgedWriteForOneOrg_WarnsAndStillProcessesTheRest()
+        {
+            var warnings = new List<string>();
+            GivenTwoOrgsHoldingTheSameResource();
+            _repo.Setup(r => r.UpdateRolePermissionByIdsAsync("manager", It.IsAny<List<string>>(), "acme"))
+                .ReturnsAsync(false);
+
+            await Create(WarningCapture(warnings).Object).ProcessPermissionAsync(SetPermissionsEvent(propagate: true));
+
+            // One organization failing must not abort the others, and the failure has to be
+            // visible: an unacknowledged write leaves that organization silently out of step and
+            // the log is the only place that surfaces.
+            warnings.Should().ContainSingle(w => w.Contains("manager") && w.Contains("acme"));
+            _repo.Verify(r => r.UpdateRolePermissionByIdsAsync("manager", It.IsAny<List<string>>(), "globex"), Times.Once);
+        }
+
+        [Fact]
+        public async Task SetRole_CarriesTheConsentFlagOntoTheEvent()
+        {
+            ResourceSetToPermissionMutationEvent? sent = null;
+            _repo.Setup(r => r.GetRoleBySlugAsync("manager", It.IsAny<string>()))
+                .ReturnsAsync(new Role { ItemId = "r1", Slug = "manager", OrganizationId = "default" });
+            _repo.Setup(r => r.UpdateRolePermissionByIdsAsync(It.IsAny<string>(), It.IsAny<List<string>>(), It.IsAny<string>())).ReturnsAsync(true);
+            _iam.Setup(i => i.SendToQueueAsync(It.IsAny<string>(), It.IsAny<ResourceSetToPermissionMutationEvent>()))
+                .Callback<string, ResourceSetToPermissionMutationEvent>((_, e) => sent = e)
+                .Returns(Task.CompletedTask);
+
+            await Create().SetRolesAsync(new SetRolesRequest
+            {
+                Slug = "manager",
+                AddPermissions = new List<string> { "p-default" },
+                PropagateToAllOrganizations = true
+            });
+
+            sent!.PropagateToAllOrganizations.Should().BeTrue();
+        }
+
+        // ---------- Propagated permission counts ----------
+
+        /// <summary>
+        /// Role.Count is a denormalised "permissions bound to this slug in this organization".
+        /// Propagation used to rewrite the bindings in every organization while refreshing the
+        /// count in only the caller's, leaving every other organization advertising a number that
+        /// no longer described its own bindings.
+        /// </summary>
+        [Fact]
+        public async Task ProcessPermission_WithConsent_RefreshesTheCountInEveryOrganization()
+        {
+            GivenTwoOrgsHoldingTheSameResource();
+
+            await Create().ProcessPermissionAsync(SetPermissionsEvent(propagate: true));
+
+            _repo.Verify(r => r.UpdateRolesCountAsync("manager", "acme"), Times.Once);
+            _repo.Verify(r => r.UpdateRolesCountAsync("manager", "globex"), Times.Once);
+        }
+
+        [Fact]
+        public async Task ProcessPermission_WithConsent_RefreshesTheCountAfterRemovalsToo()
+        {
+            GivenTwoOrgsHoldingTheSameResource();
+
+            await Create().ProcessPermissionAsync(SetPermissionsEvent(
+                propagate: true,
+                add: new List<string>(),
+                remove: new List<string> { "p-default" }));
+
+            _repo.Verify(r => r.RemoveRolePermissionByIdsAsync("manager", It.IsAny<List<string>>(), "acme"), Times.Once);
+            _repo.Verify(r => r.UpdateRolesCountAsync("manager", "acme"), Times.Once);
+        }
+
+        /// <summary>
+        /// The count is recomputed from the Permissions collection, so it is the one write that can
+        /// repair an organization whose bindings were changed by an earlier partial propagation.
+        /// It therefore has to run even where this delta bound nothing.
+        /// </summary>
+        [Fact]
+        public async Task ProcessPermission_OrganizationMissingThePermissionCopy_StillRefreshesItsCount()
+        {
+            GivenTwoOrgsHoldingTheSameResource();
+            _repo.Setup(r => r.GetPermissionsByResourcesAsync(It.IsAny<List<string>>(), "globex"))
+                .ReturnsAsync(new List<Permission>());
+
+            await Create().ProcessPermissionAsync(SetPermissionsEvent(propagate: true));
+
+            _repo.Verify(r => r.UpdateRolePermissionByIdsAsync("manager", It.IsAny<List<string>>(), "globex"), Times.Never);
+            _repo.Verify(r => r.UpdateRolesCountAsync("manager", "globex"), Times.Once);
+        }
+
+        /// <summary>
+        /// An archived or missing copy is skipped entirely -- including its count. Refreshing it
+        /// would be the back door SetRolesAsync's archived-role guard exists to close.
+        /// </summary>
+        [Fact]
+        public async Task ProcessPermission_ArchivedCopy_IsSkippedIncludingItsCount()
+        {
+            GivenTwoOrgsHoldingTheSameResource();
+            _repo.Setup(r => r.GetRoleBySlugAsync("manager", "globex"))
+                .ReturnsAsync(new Role { ItemId = "r-globex", Slug = "manager", OrganizationId = "globex", IsArchived = true });
+
+            await Create().ProcessPermissionAsync(SetPermissionsEvent(propagate: true));
+
+            _repo.Verify(r => r.UpdateRolesCountAsync("manager", "globex"), Times.Never);
+            _repo.Verify(r => r.UpdateRolesCountAsync("manager", "acme"), Times.Once);
+        }
+
+        /// <summary>
+        /// One organization's stale count must not stop the others being corrected: the loop warns
+        /// and carries on, exactly as it does for an unacknowledged binding write.
+        /// </summary>
+        [Fact]
+        public async Task ProcessPermission_CountRefreshUnacknowledged_DoesNotStopTheRemainingOrganizations()
+        {
+            GivenTwoOrgsHoldingTheSameResource();
+            _repo.Setup(r => r.UpdateRolesCountAsync("manager", "acme")).ReturnsAsync(false);
+
+            await Create().ProcessPermissionAsync(SetPermissionsEvent(propagate: true));
+
+            _repo.Verify(r => r.UpdateRolesCountAsync("manager", "globex"), Times.Once);
+        }
+
+        [Fact]
+        public async Task ProcessPermission_WithoutConsent_RefreshesOnlyTheCallersOwnCount()
+        {
+            GivenTwoOrgsHoldingTheSameResource();
+
+            await Create().ProcessPermissionAsync(SetPermissionsEvent(propagate: false));
+
+            _repo.Verify(r => r.UpdateRolesCountAsync("manager", "default"), Times.Once);
+            _repo.Verify(r => r.UpdateRolesCountAsync("manager", "acme"), Times.Never);
+            _repo.Verify(r => r.UpdateRolesCountAsync("manager", "globex"), Times.Never);
+        }
+
+        /// <summary>
+        /// A propagated role copy carries no permission bindings -- those live on each
+        /// organization's own Permission documents, which the insert does not touch. Copying the
+        /// source role's Count would make every copy advertise permissions it does not grant.
+        /// </summary>
+        [Fact]
+        public async Task PropagateRoleInsert_CopiesStartWithNoPermissionCount()
+        {
+            List<Role>? inserted = null;
+            _repo.Setup(r => r.GetRoleByIdAsync("r1"))
+                .ReturnsAsync(new Role { ItemId = "r1", Slug = "manager", Name = "Manager", OrganizationId = "default", Count = 12 });
+            _repo.Setup(r => r.GetOrganizationsAsync(It.IsAny<GetOrganizationsRequest>()))
+                .ReturnsAsync(new GetOrganizationsResponse
+                {
+                    Organizations = new List<Organization> { new() { ItemId = "acme", Name = "Acme" } }
+                });
+            _repo.Setup(r => r.GetRoleBySlugAsync("manager", "acme")).ReturnsAsync((Role)null!);
+            _repo.Setup(r => r.InsertRolesAsync(It.IsAny<List<Role>>()))
+                .Callback<List<Role>>(x => inserted = x)
+                .ReturnsAsync(true);
+
+            await Create().ExecutePropagationRolePermissionUpdateAsync(new PropagationRolePermissionUpdateEvent
+            {
+                Entity = "role",
+                Action = "insert",
+                ItemId = "r1"
+            });
+
+            inserted.Should().ContainSingle();
+            inserted![0].Count.Should().Be(0);
         }
     }
 }

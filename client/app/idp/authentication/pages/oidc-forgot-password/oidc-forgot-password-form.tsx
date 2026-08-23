@@ -12,7 +12,11 @@ import { useAccountRecover } from "@blocks-idp/iam/hooks/use-account";
 import { isErrorWithErrors } from "@/lib/error";
 import { useCaptcha } from "@blocks-idp/captcha/hooks/use-captcha";
 import { useOidcUiConfig } from "@blocks-idp/authentication/hooks/use-oidc-ui-config";
-import { extractOIDCParams } from "@blocks-idp/authentication/utils/oidc-utils";
+import {
+  appendTenantId,
+  buildOIDCNavigationUrl,
+  extractOIDCParams,
+} from "@blocks-idp/authentication/utils/oidc-utils";
 import { ArrowRight } from "lucide-react";
 import { Skeleton } from "@/components/ui-kits/skeleton/skeleton";
 import {
@@ -68,7 +72,15 @@ export const OIDCForgotPasswordForm = () => {
         return;
       }
       if (res?.isSuccess) {
-        navigate(`/oidc/forgot-email-sent?email=${values.email}`);
+        // Stay inside the OIDC flow: the confirmation page needs clientId, state,
+        // redirect_uri and friends so "Go to login" can hand the user back to the
+        // application they started from instead of stranding them on the IAM login.
+        const emailSentUrl = appendTenantId(
+          buildOIDCNavigationUrl("/oidc/forgot-email-sent"),
+          tenantId,
+        );
+        const separator = emailSentUrl.includes("?") ? "&" : "?";
+        navigate(`${emailSentUrl}${separator}email=${encodeURIComponent(values.email)}`);
         return;
       }
     } catch (error) {

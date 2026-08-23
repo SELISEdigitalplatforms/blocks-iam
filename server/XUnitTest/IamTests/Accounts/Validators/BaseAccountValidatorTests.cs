@@ -16,7 +16,7 @@ namespace XUnitTest.IamTests.Accounts.Validators
         private readonly Mock<IIamConfigurationRepository> _configRepo = new();
         private readonly Mock<IIdentityAccessManagementRepository> _iamRepo = new();
         private readonly Mock<ICaptchaService> _captcha = new();
-        private readonly Mock<IDbContextProvider> _dbContext = new();
+        private readonly Mock<ICaptchaConfigurationService> _captchaConfig = new();
 
         public BaseAccountValidatorTests()
         {
@@ -32,9 +32,12 @@ namespace XUnitTest.IamTests.Accounts.Validators
             _cache.Setup(c => c.KeyExistsAsync(It.IsAny<string>())).ReturnsAsync(true);
             _configRepo.Setup(c => c.GetConfigurationAsync())
                 .ReturnsAsync(new IamConfiguration { PasswordStrengthCheckerRegex = string.Empty });
-            _iamRepo.Setup(r => r.CheckPasswordBlackListedAsync(It.IsAny<string>(), It.IsAny<string>()))
+            _iamRepo.Setup(r => r.CheckPasswordBlackListedAsync(It.IsAny<string>()))
                 .ReturnsAsync(false);
-            _dbContext.Setup(d => d.GetCollection<Secret>("Secrets")).Returns(EmptySecrets());
+            // No captcha configuration in either store; the captcha rule still delegates to
+            // ICaptchaService, which the individual tests set up.
+            _captchaConfig.Setup(c => c.GetCaptchaConfigurationAsync())
+                .ReturnsAsync((CaptchaConfiguration?)null);
         }
 
         public void Dispose()
@@ -44,23 +47,8 @@ namespace XUnitTest.IamTests.Accounts.Validators
         }
 
         private BaseAccountValidator Create() =>
-            new(_cache.Object, _configRepo.Object, _iamRepo.Object, _captcha.Object, _dbContext.Object);
+            new(_cache.Object, _configRepo.Object, _iamRepo.Object, _captcha.Object, _captchaConfig.Object);
 
-        private static IMongoCollection<Secret> EmptySecrets()
-        {
-            var cursor = new Mock<IAsyncCursor<Secret>>();
-            cursor.Setup(c => c.Current).Returns(new List<Secret>());
-            cursor.Setup(c => c.MoveNext(It.IsAny<CancellationToken>())).Returns(false);
-            cursor.Setup(c => c.MoveNextAsync(It.IsAny<CancellationToken>())).ReturnsAsync(false);
-
-            var collection = new Mock<IMongoCollection<Secret>>();
-            collection.Setup(m => m.FindAsync(
-                    It.IsAny<FilterDefinition<Secret>>(),
-                    It.IsAny<FindOptions<Secret, Secret>>(),
-                    It.IsAny<CancellationToken>()))
-                .ReturnsAsync(cursor.Object);
-            return collection.Object;
-        }
 
         [Fact]
         public async Task Valid_Code_NoPassword_NoCaptcha_Passes()
@@ -106,13 +94,27 @@ namespace XUnitTest.IamTests.Accounts.Validators
         [Fact]
         public async Task Password_Blacklisted_Fails()
         {
-            _iamRepo.Setup(r => r.CheckPasswordBlackListedAsync(It.IsAny<string>(), It.IsAny<string>()))
+            _iamRepo.Setup(r => r.CheckPasswordBlackListedAsync(It.IsAny<string>()))
                 .ReturnsAsync(true);
 
             var result = await Create().ValidateAsync(new BaseAccountRequest { Code = "valid-code", Password = "Str0ng!Passw0rd" });
 
             result.IsValid.Should().BeFalse();
             result.Errors.Should().Contain(e => e.ErrorMessage == "This password can not be used.");
+        }
+
+        [Fact]
+        public async Task Password_BlacklistLookupFails_PropagatesInsteadOfAllowing()
+        {
+            // Fail closed on the account flows too: a root-database outage must fail the request
+            // rather than let an unchecked password through.
+            _iamRepo.Setup(r => r.CheckPasswordBlackListedAsync(It.IsAny<string>()))
+                .ThrowsAsync(new TimeoutException("root database unreachable"));
+
+            var act = async () => await Create().ValidateAsync(
+                new BaseAccountRequest { Code = "valid-code", Password = "Str0ng!Passw0rd" });
+
+            await act.Should().ThrowAsync<TimeoutException>();
         }
 
         [Fact]
@@ -146,3 +148,4 @@ namespace XUnitTest.IamTests.Accounts.Validators
         }
     }
 }
+

@@ -12,5 +12,17 @@ namespace Iam.DomainService.Resources
         Task<List<PermissionGroupBySeverityResponse>> GetPermissionsGroupBySeverityAsync();
         Task<List<GetFeResourceFeatureResponse>> GetFeResourceFeaturesAsync(GetFeResourceFeatureRequest request);
         Task<GetAssignableRolesResponse> GetAssignableRolesAsync();
+
+        /// <summary>What archiving this role would affect, across every organization.</summary>
+        Task<RoleArchiveImpactResponse> GetRoleArchiveImpactAsync(string id);
+
+        /// <summary>What archiving this permission would affect, across every organization.</summary>
+        Task<PermissionArchiveImpactResponse> GetPermissionArchiveImpactAsync(string id);
+
+        /// <summary>
+        /// What applying a pending permission diff to a role would affect, and whether propagating
+        /// it to every organization may be offered at all.
+        /// </summary>
+        Task<RolePermissionChangeImpactResponse> GetRolePermissionChangeImpactAsync(RolePermissionChangeImpactRequest request);
     }
 }

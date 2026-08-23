@@ -38,7 +38,7 @@ namespace XUnitTest.Auth
         public async Task TokenAsync_DelegatesToTokenEndpoint_UnsupportedGrant()
         {
             // Real OidcTokenEndpoint; the unsupported-grant branch never touches the inner issuers.
-            var tokenEndpoint = new OidcTokenEndpoint(null!, null!, null!, null!, NullLogger<OidcTokenEndpoint>.Instance);
+            var tokenEndpoint = new OidcTokenEndpoint(null!, null!, null!, null!, null!, NullLogger<OidcTokenEndpoint>.Instance);
             var flow = new AuthorizationFlowService(null!, null!, tokenEndpoint);
 
             var result = await flow.TokenAsync("totally_unsupported_grant", new DefaultHttpContext().Request);

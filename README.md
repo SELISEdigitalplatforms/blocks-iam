@@ -111,6 +111,53 @@ No Node process is required on the server at runtime.
 
 Controller route templates omit the `api` segment in code; `GlobalApiRoutePrefixConvention` in `Program.cs` prefixes `api` for all attribute-routed controllers. `/api` is reserved for the HTTP API; the React router redirects mistaken navigations to `/api` back home.
 
+## Delegated access (RFC 8693 token exchange)
+
+IAM lets a background worker redeem a **delegation grant** for a short-lived access token carrying the
+originating user's context — the grant is written to Redis by `blocks-genesis-*` at message-send time,
+and its opaque id travels in a message header.
+
+This is served by the **existing OIDC token endpoint**, `POST {api}/oidc/token`. No alias, no new
+route. Being under `/oidc` does not make it OIDC-only: it is a plain form POST that any service may
+call.
+
+```
+POST {api}/oidc/token            Content-Type: application/x-www-form-urlencoded
+x-blocks-key: {tenantId}
+
+grant_type=urn:ietf:params:oauth:grant-type:token-exchange
+subject_token={dg_...}           # the opaque grant id
+subject_token_type=urn:blocks:params:oauth:token-type:delegation-grant
+nonce={hex}&ts={unix seconds}&sig={hex HMAC-SHA256}
+```
+
+`sig` is HMAC-SHA256 over `{tenantId}|{delegationId}|{nonce}|{ts}`, keyed by the tenant salt.
+Success returns `access_token`, `token_type=Bearer`, `expires_in` — and deliberately **no refresh
+token**: a delegated token is renewed by redeeming the grant again, never by rotation.
+
+Validation runs in a fixed order (`TokenExchangeAuthorizationService`): clock window (±60s) → nonce
+replay → signature → grant lookup → tenant cross-check → rate cap → live user state
+(active, `token_version`, `security_stamp`) → mint. **A bad signature performs no Redis read.**
+
+Identity sourcing is non-negotiable: the **tenant** comes from `BlocksContext` (set by
+`TenantValidationMiddleware` from `x-blocks-key`, since this endpoint is `[AllowAnonymous]`), and the
+**user and organization come from the Redis record only** — never from anything the caller supplies.
+Roles and permissions are re-resolved live at mint time, so a permission revoked after the grant was
+written is absent from the token.
+
+Deployment: keep this endpoint on the **internal listener, not public ingress**, and verify **NTP** on
+all IAM nodes — the ±60s signature window makes clock drift a hard auth failure.
+
+> **Note on `DelegationPolicy.cs`.** The wire contract — key prefixes, grant id shape, subject-token
+> type, clock window, nonce TTL, the signature scheme, and `DelegationGrantRecord` — comes from
+> `DelegationConstants` / `DelegationSignature` in `SeliseBlocks.Genesis.OS` (4.0.8+). Do not restate
+> any of it in IAM: a second copy is a second thing to keep in sync with blocks-genesis-py.
+> `DelegationPolicy` holds only what the SDK does not publish and IAM is free to set — the redemption
+> rate limit (`RedemptionWindow`, `RedemptionsPerWindow`), the Redis key builders, and the grant-id
+> format check. `DelegationProtocolConformanceTests` asserts the published package against the same
+> fixed vector both Genesis SDKs assert, so a wire-contract change fails a test rather than a
+> production exchange.
+
 ## Local HTTPS
 
 Frontend dev server and backend API serve HTTPS on `dev-iam.blocksdevelopers.com` when the machine env vars `IAM_SSL_CERT` and `IAM_SSL_KEY` (mkcert PEM cert + key paths) are both set and both files exist; otherwise they fall back to HTTP (no crash). No cert path is committed, and the deployed Docker artifact is unaffected. One-time setup: generate a certificate for the named host with mkcert, add a hosts entry pointing it at `127.0.0.1`, and set the two environment variables.

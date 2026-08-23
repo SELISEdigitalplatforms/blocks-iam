@@ -63,6 +63,14 @@ namespace Api.Controllers
             return result.IsSuccess ? Ok(result) : BadRequest(result);
         }
 
+        [HttpDelete("permissions/{id}")]
+        [ProtectedEndPoint("blocks-iam::iam::mutate-permissions")]
+        public async Task<IActionResult> ArchivePermission([FromRoute] string id, [FromQuery] bool confirmRevokeFromUsers = false)
+        {
+            var result = await _resourceMutationService.ArchivePermissionAsync(id, confirmRevokeFromUsers);
+            return result.IsSuccess ? Ok(result) : BadRequest(result);
+        }
+
         [HttpPost("roles/create")]
         [ProtectedEndPoint("blocks-iam::iam::mutate-roles")]
         public async Task<IActionResult> CreateRole([FromBody] CreateRoleRequest command)
@@ -76,6 +84,14 @@ namespace Api.Controllers
         public async Task<IActionResult> UpdateRole([FromBody] UpdateRoleRequest command)
         {
             var result = await _resourceMutationService.UpdateRoleAsync(command);
+            return result.IsSuccess ? Ok(result) : BadRequest(result);
+        }
+
+        [HttpDelete("roles/{id}")]
+        [ProtectedEndPoint("blocks-iam::iam::mutate-roles")]
+        public async Task<IActionResult> ArchiveRole([FromRoute] string id, [FromQuery] bool confirmRevokeFromUsers = false)
+        {
+            var result = await _resourceMutationService.ArchiveRoleAsync(id, confirmRevokeFromUsers);
             return result.IsSuccess ? Ok(result) : BadRequest(result);
         }
 
@@ -112,6 +128,40 @@ namespace Api.Controllers
         public async Task<GetRoleResponse> GetRole([FromRoute] string id)
         {
             return await _resourceQueryService.GetRoleAsync(id);
+        }
+
+        [HttpGet("roles/{id}/archive-impact")]
+        [ProtectedEndPoint("blocks-iam::iam::roles")]
+        public async Task<IActionResult> GetRoleArchiveImpact([FromRoute] string id)
+        {
+            var result = await _resourceQueryService.GetRoleArchiveImpactAsync(id);
+            return result.IsSuccess ? Ok(result) : BadRequest(result);
+        }
+
+        [HttpGet("permissions/{id}/archive-impact")]
+        [ProtectedEndPoint("blocks-iam::iam::permissions")]
+        public async Task<IActionResult> GetPermissionArchiveImpact([FromRoute] string id)
+        {
+            var result = await _resourceQueryService.GetPermissionArchiveImpactAsync(id);
+            return result.IsSuccess ? Ok(result) : BadRequest(result);
+        }
+
+        /// <summary>
+        /// Previews what assigning or unassigning the given permissions would do, before the
+        /// caller commits to it.
+        /// </summary>
+        /// <remarks>
+        /// POST despite being a read: the diff is two id lists, which do not survive a query string
+        /// at realistic sizes. Guarded by the roles read permission, not mutate-roles -- it changes
+        /// nothing, and a reader who can open the role should be able to see the consequence of a
+        /// change before deciding to ask someone else to make it.
+        /// </remarks>
+        [HttpPost("roles/permission-change-impact")]
+        [ProtectedEndPoint("blocks-iam::iam::roles")]
+        public async Task<IActionResult> GetRolePermissionChangeImpact([FromBody] RolePermissionChangeImpactRequest command)
+        {
+            var result = await _resourceQueryService.GetRolePermissionChangeImpactAsync(command);
+            return result.IsSuccess ? Ok(result) : BadRequest(result);
         }
 
         [HttpPost("roles/assign-permissions")]

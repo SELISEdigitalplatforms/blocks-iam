@@ -57,5 +57,28 @@ namespace Authentication.DomainService.OAuth
 
         [FromForm(Name = "org_id")]
         public string OrganizationId { get; set; } = string.Empty;
+
+        #region RFC 8693 token exchange (delegated access)
+
+        /// <summary>The opaque delegation grant id: <c>dg_</c> plus 64 lowercase hex chars.</summary>
+        [FromForm(Name = "subject_token")]
+        public string SubjectToken { get; set; } = string.Empty;
+
+        [FromForm(Name = "subject_token_type")]
+        public string SubjectTokenType { get; set; } = string.Empty;
+
+        /// <summary>Single-use nonce, hex. Guards against replay of a captured exchange.</summary>
+        [FromForm(Name = "nonce")]
+        public string Nonce { get; set; } = string.Empty;
+
+        /// <summary>Unix seconds. Must be inside the accepted clock window.</summary>
+        [FromForm(Name = "ts")]
+        public string Ts { get; set; } = string.Empty;
+
+        /// <summary>HMAC-SHA256 over <c>{tenantId}|{id}|{nonce}|{ts}</c>, keyed by the tenant salt.</summary>
+        [FromForm(Name = "sig")]
+        public string Signature { get; set; } = string.Empty;
+
+        #endregion
     }
 }

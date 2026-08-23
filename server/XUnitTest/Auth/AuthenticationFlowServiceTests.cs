@@ -315,17 +315,38 @@ namespace XUnitTest.Auth
         }
 
         [Fact]
-        public async Task SwitchOrg_NoCachedRefresh_ReturnsSessionExpired()
+        public async Task SwitchOrg_SharedCheckRejects_ReturnsSessionExpired()
         {
             _repo.Setup(r => r.GetUserByIdAsync("user-1"))
                 .ReturnsAsync(new User { ItemId = "user-1", OrganizationIds = new() { "org-x" } });
             _authService.Setup(a => a.CookieToken(It.IsAny<HttpRequest>())).Returns("rt");
-            _refresher.Setup(r => r.GetCacheValueAsync("rt")).ReturnsAsync((string)null!);
+            Resolves(null);
 
             var result = await Create().ExecuteSwitchOrganizationAsync(
                 new SwitchOrganizationRequest { OrganizationId = "org-x" }, Principal(), Req());
 
             result.Error.Should().Be(OAuthError.SessionExpired);
+        }
+
+        [Fact]
+        public async Task SwitchOrg_ResolvesThroughSharedCheckRatherThanARawCacheRead()
+        {
+            _repo.Setup(r => r.GetUserByIdAsync("user-1"))
+                .ReturnsAsync(new User { ItemId = "user-1", OrganizationIds = new() { "org-x" } });
+            _authService.Setup(a => a.CookieToken(It.IsAny<HttpRequest>())).Returns("rt");
+            // Deliberately no GetCacheValueAsync stub: the session is reachable only through the
+            // resolver, which is what a Redis miss backed by a live store record looks like. Before
+            // the fallback existed this returned session_expired.
+            Resolves(Session());
+            _refresher.Setup(r => r.AuthenticateAsync(It.IsAny<TokenRequest>(), It.IsAny<IdentityConfiguration>(), It.IsAny<User>()))
+                .ReturnsAsync(new TokenResponse { AccessToken = "switch-at" });
+
+            var result = await Create().ExecuteSwitchOrganizationAsync(
+                new SwitchOrganizationRequest { OrganizationId = "org-x" }, Principal(), Req());
+
+            result.TokenResponse!.AccessToken.Should().Be("switch-at");
+            _sessionResolver.Verify(r => r.TryResolveRefreshSessionAsync("rt", It.IsAny<IdentityConfiguration>()), Times.Once);
+            _refresher.Verify(r => r.GetCacheValueAsync(It.IsAny<string>()), Times.Never);
         }
 
         [Fact]
@@ -334,8 +355,7 @@ namespace XUnitTest.Auth
             _repo.Setup(r => r.GetUserByIdAsync("user-1"))
                 .ReturnsAsync(new User { ItemId = "user-1", OrganizationIds = new() { "org-x" } });
             _authService.Setup(a => a.CookieToken(It.IsAny<HttpRequest>())).Returns("rt");
-            var cache = JsonSerializer.Serialize(new RefreshTokenCache { ExpiresUtc = DateTime.UtcNow.AddHours(1), TenantId = "tenant-other", UserId = "user-1" });
-            _refresher.Setup(r => r.GetCacheValueAsync("rt")).ReturnsAsync(cache);
+            Resolves(Session(tenantId: "tenant-other"));
 
             var result = await Create().ExecuteSwitchOrganizationAsync(
                 new SwitchOrganizationRequest { OrganizationId = "org-x" }, Principal(), Req());
@@ -344,13 +364,32 @@ namespace XUnitTest.Auth
         }
 
         [Fact]
+        public async Task SwitchOrg_GraceWindowReplay_ReturnsSessionExpiredWithoutRotating()
+        {
+            _repo.Setup(r => r.GetUserByIdAsync("user-1"))
+                .ReturnsAsync(new User { ItemId = "user-1", OrganizationIds = new() { "org-x" } });
+            _authService.Setup(a => a.CookieToken(It.IsAny<HttpRequest>())).Returns("rt");
+            // The presented "rt" resolved to its successor, so the cookie is one rotation behind.
+            Resolves(Session(tokenId: "rt-successor"));
+
+            var result = await Create().ExecuteSwitchOrganizationAsync(
+                new SwitchOrganizationRequest { OrganizationId = "org-x" }, Principal(), Req());
+
+            // Unlike the refresh grant, a replay must not be handed the successor here: that path
+            // skips the write that binds the new organization to the token, so the switch would be
+            // reverted by the next refresh. One retry is the cheaper failure.
+            result.StatusCode.Should().Be(StatusCodes.Status401Unauthorized);
+            result.Error.Should().Be(OAuthError.SessionExpired);
+            _refresher.Verify(r => r.AuthenticateAsync(It.IsAny<TokenRequest>(), It.IsAny<IdentityConfiguration>(), It.IsAny<User>()), Times.Never);
+        }
+
+        [Fact]
         public async Task SwitchOrg_HappyPath_CallsRefresher()
         {
             _repo.Setup(r => r.GetUserByIdAsync("user-1"))
                 .ReturnsAsync(new User { ItemId = "user-1", OrganizationIds = new() { "org-x" } });
             _authService.Setup(a => a.CookieToken(It.IsAny<HttpRequest>())).Returns("rt");
-            var cache = JsonSerializer.Serialize(new RefreshTokenCache { ExpiresUtc = DateTime.UtcNow.AddHours(1), TenantId = TenantId, UserId = "user-1" });
-            _refresher.Setup(r => r.GetCacheValueAsync("rt")).ReturnsAsync(cache);
+            Resolves(Session());
             _refresher.Setup(r => r.AuthenticateAsync(It.IsAny<TokenRequest>(), It.IsAny<IdentityConfiguration>(), It.IsAny<User>()))
                 .ReturnsAsync(new TokenResponse { AccessToken = "switch-at" });
 
@@ -358,7 +397,10 @@ namespace XUnitTest.Auth
                 new SwitchOrganizationRequest { OrganizationId = "org-x" }, Principal(), Req());
 
             result.TokenResponse!.AccessToken.Should().Be("switch-at");
-            _refresher.Verify(r => r.AuthenticateAsync(It.Is<TokenRequest>(t => t.GrantType == GrantTypes.SwitchOrganization), It.IsAny<IdentityConfiguration>(), It.IsAny<User>()), Times.Once);
+            _refresher.Verify(r => r.AuthenticateAsync(It.Is<TokenRequest>(t =>
+                t.GrantType == GrantTypes.SwitchOrganization
+                && t.OrganizationId == "org-x"
+                && t.RefreshToken == "rt"), It.IsAny<IdentityConfiguration>(), It.IsAny<User>()), Times.Once);
         }
 
         // ==================== ExecuteRefreshAsync ====================
