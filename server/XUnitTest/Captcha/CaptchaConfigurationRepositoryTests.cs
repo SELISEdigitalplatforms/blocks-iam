@@ -25,21 +25,27 @@ namespace XUnitTest.Captcha
         private CaptchaConfigurationRepository Create() =>
             new(_dbContext.Object, _store.Object, NullLogger<CaptchaConfigurationRepository>.Instance);
 
-        private void GivenStoreRecords(params BsonDocument[] documents) =>
-            _store.Setup(s => s.GetByPrefixAsync<BsonDocument>("captcha_", true, It.IsAny<CancellationToken>()))
-                  .ReturnsAsync(documents);
+        private void GivenStoreRecords(params KeyValueItem<BsonDocument>[] items) =>
+            _store.Setup(s => s.GetAllAsync<BsonDocument>("captcha", null, true, It.IsAny<CancellationToken>()))
+                  .ReturnsAsync(items);
 
-        private static BsonDocument Record(
-            string id, string provider, bool isEnable, string? secretId = "sec-1", string key = "site-key") =>
-            new CaptchaConfigRecord
+        /// <summary>
+        /// Builds a stored entry. `itemId` is the store's identity — blocks-os does not persist an
+        /// id inside the value, so the payload deliberately carries none.
+        /// </summary>
+        private static KeyValueItem<BsonDocument> Record(
+            string itemId, string provider, bool isEnable, string? secretId = "sec-1", string key = "site-key") =>
+            Entry(itemId, new CaptchaConfigRecord
             {
-                Id = id,
                 Provider = provider,
                 IsEnable = isEnable,
                 CaptchaKey = key,
                 CaptchaGenerator = "EasyCaptchaGenerator",
                 SecretId = secretId
-            }.ToBsonDocument();
+            }.ToBsonDocument());
+
+        private static KeyValueItem<BsonDocument> Entry(string itemId, BsonDocument value) =>
+            new(itemId, "captcha", value, [], DateTime.UtcNow, DateTime.UtcNow, null, null, "default");
 
         private void GivenLegacySecret(Secret? secret)
         {
@@ -91,7 +97,7 @@ namespace XUnitTest.Captcha
         }
 
         [Fact]
-        public async Task GetCaptchaConfigurationAsync_WithSeveralEnabled_PicksTheLowestIdDeterministically()
+        public async Task GetCaptchaConfigurationAsync_WithSeveralEnabled_PicksTheLowestItemIdDeterministically()
         {
             GivenStoreRecords(
                 Record("zzz", "hcaptcha", isEnable: true, key: "z-key"),
@@ -136,7 +142,7 @@ namespace XUnitTest.Captcha
         [Fact]
         public async Task GetCaptchaConfigurationAsync_SkipsAMalformedRecordAndKeepsGoing()
         {
-            var malformed = new BsonDocument { { "IsEnable", "not-a-bool" }, { "Id", 42 } };
+            var malformed = Entry("aaa", new BsonDocument { { "IsEnable", "not-a-bool" }, { "Provider", 42 } });
             GivenStoreRecords(malformed, Record("bbb", "recaptcha", isEnable: true));
 
             var result = await Create().GetCaptchaConfigurationAsync();
@@ -148,7 +154,7 @@ namespace XUnitTest.Captcha
         [Fact]
         public async Task GetCaptchaConfigurationAsync_WhenTheStoreReadThrows_FallsBackToLegacy()
         {
-            _store.Setup(s => s.GetByPrefixAsync<BsonDocument>("captcha_", true, It.IsAny<CancellationToken>()))
+            _store.Setup(s => s.GetAllAsync<BsonDocument>("captcha", null, true, It.IsAny<CancellationToken>()))
                   .ThrowsAsync(new InvalidOperationException("mongo down"));
             GivenLegacySecret(LegacySecret());
 
