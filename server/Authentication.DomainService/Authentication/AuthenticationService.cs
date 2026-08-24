@@ -104,21 +104,18 @@ namespace Authentication.DomainService.Authentication
             var bc = BlocksContext.GetContext();
             var sessionId = httpContext.Request.Cookies[IdpConstants.BuildIdpSessionCookieKey(bc!.TenantId)];
 
-            //var sessionIds = !string.IsNullOrWhiteSpace(sessionId)
-            //    ? new List<string> { sessionId }
-            //    : fallbackSessionIds?
-            //        .Where(id => !string.IsNullOrWhiteSpace(id))
-            //        .Distinct(StringComparer.Ordinal)
-            //        .ToList() ?? new List<string>();
-
-            fallbackSessionIds ??= [];
-
-            if(!string.IsNullOrWhiteSpace( sessionId))
-            {
-                fallbackSessionIds.Append(sessionId);
-            }
-
-            var sessionIds = fallbackSessionIds.Distinct().ToList();
+            // The cookie is authoritative when it carries a session: the fallback ids exist only to
+            // cover the case where the cookie is missing. Enumerable.Append was used here, which is
+            // a pure LINQ operator -- it returns a new sequence rather than mutating, so its result
+            // was discarded and the cookie's session id never reached the list. That left sessionIds
+            // empty on every cookie-based logout, so the method returned at the guard below without
+            // ever revoking the session or removing the account.
+            var sessionIds = !string.IsNullOrWhiteSpace(sessionId)
+                ? new List<string> { sessionId }
+                : fallbackSessionIds?
+                    .Where(id => !string.IsNullOrWhiteSpace(id))
+                    .Distinct(StringComparer.Ordinal)
+                    .ToList() ?? new List<string>();
 
             if (sessionIds.Count == 0)
             {
