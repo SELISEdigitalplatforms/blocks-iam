@@ -103,12 +103,22 @@ namespace Authentication.DomainService.Authentication
         {
             var bc = BlocksContext.GetContext();
             var sessionId = httpContext.Request.Cookies[IdpConstants.BuildIdpSessionCookieKey(bc!.TenantId)];
-            var sessionIds = !string.IsNullOrWhiteSpace(sessionId)
-                ? new List<string> { sessionId }
-                : fallbackSessionIds?
-                    .Where(id => !string.IsNullOrWhiteSpace(id))
-                    .Distinct(StringComparer.Ordinal)
-                    .ToList() ?? new List<string>();
+
+            //var sessionIds = !string.IsNullOrWhiteSpace(sessionId)
+            //    ? new List<string> { sessionId }
+            //    : fallbackSessionIds?
+            //        .Where(id => !string.IsNullOrWhiteSpace(id))
+            //        .Distinct(StringComparer.Ordinal)
+            //        .ToList() ?? new List<string>();
+
+            fallbackSessionIds ??= [];
+
+            if(!string.IsNullOrWhiteSpace( sessionId))
+            {
+                fallbackSessionIds.Append(sessionId);
+            }
+
+            var sessionIds = fallbackSessionIds.Distinct().ToList();
 
             if (sessionIds.Count == 0)
             {
