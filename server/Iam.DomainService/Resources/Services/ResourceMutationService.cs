@@ -16,6 +16,13 @@ namespace Iam.DomainService.Resources
     public class ResourceMutationService : IResourceMutationService
     {
         private const string DefaultOrganizationId = "default";
+
+        /// <summary>
+        /// Display name for the built-in "default" organization. Matches the label the
+        /// blocks-os organization pickers already show for the same sentinel, so the two
+        /// surfaces do not disagree about what it is called.
+        /// </summary>
+        private const string DefaultOrganizationName = "Default";
         private readonly ILogger<ResourceMutationService> _logger;
         private readonly IResourceRepository _resourceRepository;
         private readonly IIdentityAccessManagementService _identityAccessManagementService;
@@ -2160,6 +2167,10 @@ namespace Iam.DomainService.Resources
 
             var organizations = await _resourceRepository.GetOrganizationsByIdsAsync(organizationIds);
             var myOrganizations = organizations
+                // A disabled organization is not somewhere the member can currently act, so it does
+                // not belong in the list a switcher is built from. The assignment picker in blocks-os
+                // already filters the same way.
+                .Where(x => !x.IsDisabled)
                 .Select(x => new MyOrganizationInfo
                 {
                     ItemId = x.ItemId,
@@ -2168,6 +2179,21 @@ namespace Iam.DomainService.Resources
                 })
                 .OrderBy(x => organizationIds.IndexOf(x.ItemId))
                 .ToList();
+
+            // "default" is a scope sentinel, not a row in the organizations collection, so the id
+            // lookup above can never resolve it and it silently disappeared from the result -- a
+            // user whose only membership is "default" saw an empty list. Re-add it here, but ONLY
+            // when the user actually holds that membership: this endpoint reports where the caller
+            // belongs, so synthesising it unconditionally would claim a membership they lack.
+            if (organizationIds.Contains(DefaultOrganizationId, StringComparer.Ordinal))
+            {
+                myOrganizations.Insert(0, new MyOrganizationInfo
+                {
+                    ItemId = DefaultOrganizationId,
+                    Name = DefaultOrganizationName,
+                    CreatedDate = null
+                });
+            }
 
             return new GetMyOrganizationsResponse
             {

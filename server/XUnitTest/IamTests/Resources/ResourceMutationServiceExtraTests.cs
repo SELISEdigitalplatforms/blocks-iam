@@ -394,6 +394,95 @@ namespace XUnitTest.IamTests.Resources
             result.Organizations[1].ItemId.Should().Be("o1");
         }
 
+        /// <summary>
+        /// "default" is a scope sentinel, not a row in the organizations collection, so the id
+        /// lookup can never resolve it. Before this was handled, a member of "default" simply never
+        /// saw it -- and a user whose only membership was "default" got an empty list that was
+        /// indistinguishable from having no memberships at all.
+        /// </summary>
+        [Fact]
+        public async Task GetMyOrganization_MemberOfDefault_IncludesItFirst()
+        {
+            _repo.Setup(r => r.GetTenantConfigurationAsync()).ReturnsAsync(new TenantConfiguration { IsMultiOrgEnabled = true });
+            _repo.Setup(r => r.GetOrganizationIdsByUserIdAsync("actor-1")).ReturnsAsync(new List<string> { "o1", "default" });
+            _repo.Setup(r => r.GetOrganizationsByIdsAsync(It.IsAny<List<string>>())).ReturnsAsync(new List<Organization>
+            {
+                new() { ItemId = "o1", Name = "One" }
+            });
+
+            var result = await Create().GetMyOrganizationAsync();
+
+            result.Organizations.Select(x => x.ItemId).Should().ContainInOrder("default", "o1");
+            result.Organizations[0].Name.Should().Be("Default");
+            // No document backs the sentinel, so there is no creation date to report.
+            result.Organizations[0].CreatedDate.Should().BeNull();
+        }
+
+        [Fact]
+        public async Task GetMyOrganization_OnlyMemberOfDefault_ReturnsItRatherThanNothing()
+        {
+            _repo.Setup(r => r.GetTenantConfigurationAsync()).ReturnsAsync(new TenantConfiguration { IsMultiOrgEnabled = true });
+            _repo.Setup(r => r.GetOrganizationIdsByUserIdAsync("actor-1")).ReturnsAsync(new List<string> { "default" });
+            _repo.Setup(r => r.GetOrganizationsByIdsAsync(It.IsAny<List<string>>())).ReturnsAsync(new List<Organization>());
+
+            var result = await Create().GetMyOrganizationAsync();
+
+            result.IsSuccess.Should().BeTrue();
+            result.Organizations.Should().ContainSingle();
+            result.Organizations[0].ItemId.Should().Be("default");
+        }
+
+        /// <summary>
+        /// This endpoint reports where the caller belongs, so the sentinel is synthesised only for
+        /// an actual member. The blocks-os assignment picker adds it unconditionally, which is right
+        /// for choosing a target but would be a fabricated membership here.
+        /// </summary>
+        [Fact]
+        public async Task GetMyOrganization_NotAMemberOfDefault_DoesNotInventIt()
+        {
+            _repo.Setup(r => r.GetTenantConfigurationAsync()).ReturnsAsync(new TenantConfiguration { IsMultiOrgEnabled = true });
+            _repo.Setup(r => r.GetOrganizationIdsByUserIdAsync("actor-1")).ReturnsAsync(new List<string> { "o1" });
+            _repo.Setup(r => r.GetOrganizationsByIdsAsync(It.IsAny<List<string>>())).ReturnsAsync(new List<Organization>
+            {
+                new() { ItemId = "o1", Name = "One" }
+            });
+
+            var result = await Create().GetMyOrganizationAsync();
+
+            result.Organizations.Select(x => x.ItemId).Should().Equal("o1");
+        }
+
+        [Fact]
+        public async Task GetMyOrganization_DisabledOrganizations_AreExcluded()
+        {
+            _repo.Setup(r => r.GetTenantConfigurationAsync()).ReturnsAsync(new TenantConfiguration { IsMultiOrgEnabled = true });
+            _repo.Setup(r => r.GetOrganizationIdsByUserIdAsync("actor-1")).ReturnsAsync(new List<string> { "o1", "o2" });
+            _repo.Setup(r => r.GetOrganizationsByIdsAsync(It.IsAny<List<string>>())).ReturnsAsync(new List<Organization>
+            {
+                new() { ItemId = "o1", Name = "One" },
+                new() { ItemId = "o2", Name = "Two", IsDisabled = true }
+            });
+
+            var result = await Create().GetMyOrganizationAsync();
+
+            result.Organizations.Select(x => x.ItemId).Should().Equal("o1");
+        }
+
+        [Fact]
+        public async Task GetMyOrganization_DisabledOrganizations_DoNotDisturbTheDefaultEntry()
+        {
+            _repo.Setup(r => r.GetTenantConfigurationAsync()).ReturnsAsync(new TenantConfiguration { IsMultiOrgEnabled = true });
+            _repo.Setup(r => r.GetOrganizationIdsByUserIdAsync("actor-1")).ReturnsAsync(new List<string> { "default", "o2" });
+            _repo.Setup(r => r.GetOrganizationsByIdsAsync(It.IsAny<List<string>>())).ReturnsAsync(new List<Organization>
+            {
+                new() { ItemId = "o2", Name = "Two", IsDisabled = true }
+            });
+
+            var result = await Create().GetMyOrganizationAsync();
+
+            result.Organizations.Select(x => x.ItemId).Should().Equal("default");
+        }
+
         // ---------- Consented assignment propagation (#466) ----------
 
         /// <summary>
