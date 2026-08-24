@@ -66,6 +66,62 @@ namespace XUnitTest.Auth.OAuth
             identity.FindFirst(BlocksContext.ORGANIZATION_ID_CLAIM)!.Value.Should().Be("default");
         }
 
+        [Fact] // C4 -- switch-org authorises via Roles, so the claim must carry that organization
+        public void AddClaims_UsesRequestedOrg_WhenGrantedThroughRolesOnly()
+        {
+            var identity = new ClaimsIdentity("t");
+            var user = new User
+            {
+                ItemId = "u1",
+                OrganizationIds = new List<string> { "default" },
+                Roles = new Dictionary<string, List<string>> { ["org-a"] = new() { "admin" } }
+            };
+
+            JwtAccessTokenProvider.AddClaims(identity, BuildTenant(), user, Claims(),
+                new TokenRequest { OrganizationId = "org-a" });
+
+            // Before this guard was widened the claim silently fell back to "default", which put the
+            // user in the tenant-wide user-list scope instead of the organization they switched into.
+            identity.FindFirst(BlocksContext.ORGANIZATION_ID_CLAIM)!.Value.Should().Be("org-a");
+        }
+
+        [Fact] // C4 -- same, granted through Permissions
+        public void AddClaims_UsesRequestedOrg_WhenGrantedThroughPermissionsOnly()
+        {
+            var identity = new ClaimsIdentity("t");
+            var user = new User
+            {
+                ItemId = "u1",
+                OrganizationIds = new List<string> { "default" },
+                Permissions = new Dictionary<string, List<string>> { ["org-a"] = new() { "read" } }
+            };
+
+            JwtAccessTokenProvider.AddClaims(identity, BuildTenant(), user, Claims(),
+                new TokenRequest { OrganizationId = "org-a" });
+
+            identity.FindFirst(BlocksContext.ORGANIZATION_ID_CLAIM)!.Value.Should().Be("org-a");
+        }
+
+        [Fact] // C5 -- impersonation: the cloud user matches none of the three, so it stays "default"
+        public void AddClaims_Impersonation_StillResolvesToDefaultOrg()
+        {
+            var identity = new ClaimsIdentity("t");
+            var cloudUser = new User { ItemId = "cloud-1", OrganizationIds = new List<string> { "default" } };
+
+            JwtAccessTokenProvider.AddClaims(identity, BuildTenant(), cloudUser, Claims(),
+                new TokenRequest
+                {
+                    OrganizationId = "target-tenant-org",
+                    IsImpersonation = true,
+                    OriginalTenantId = "root-tenant",
+                    TargetTenantId = "target-tenant"
+                });
+
+            identity.FindFirst(BlocksContext.ORGANIZATION_ID_CLAIM)!.Value.Should().Be("default");
+            identity.FindFirst(BlocksContext.IMPERSONATED_CLAIM)!.Value.Should().Be("true");
+            identity.FindFirst(BlocksContext.TENANT_ID_CLAIM)!.Value.Should().Be("target-tenant");
+        }
+
         [Fact]
         public void AddClaims_AddsNonce_WhenStatePresent()
         {

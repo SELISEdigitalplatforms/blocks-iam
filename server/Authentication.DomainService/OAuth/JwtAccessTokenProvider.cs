@@ -82,8 +82,16 @@ namespace Authentication.DomainService.OAuth
             claimsIdentity.AddClaim(new Claim(BlocksContext.USER_ID_CLAIM, user.ItemId));
             claimsIdentity.AddClaim(new Claim(BlocksContext.ISSUED_AT_TIME_CLAIM, EpochTime.GetIntDate(DateTime.UtcNow).ToString(), ClaimValueTypes.Integer64));
             var resolvedOrgId = "default";
+            // The same three-way membership test that switch-org already authorises the switch with
+            // (AuthenticationFlowService.ExecuteSwitchOrganizationAsync). Accepting only
+            // OrganizationIds here let a switch granted through Roles or Permissions succeed while
+            // silently minting a "default" claim, dropping that user into the tenant-wide scope
+            // instead of the organization they switched into. Impersonation is unaffected: the cloud
+            // user matches none of the three, so its claim still resolves to "default".
             if (!string.IsNullOrWhiteSpace(tokenRequest.OrganizationId)
-                && user.OrganizationIds.Contains(tokenRequest.OrganizationId))
+                && (user.OrganizationIds.Contains(tokenRequest.OrganizationId)
+                    || user.Roles.ContainsKey(tokenRequest.OrganizationId)
+                    || user.Permissions.ContainsKey(tokenRequest.OrganizationId)))
             {
                 resolvedOrgId = tokenRequest.OrganizationId;
             }
