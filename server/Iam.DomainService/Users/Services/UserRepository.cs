@@ -1,4 +1,4 @@
-﻿using Blocks.Genesis;
+using Blocks.Genesis;
 using Iam.DomainService.Dtos;
 using Iam.DomainService.Entities;
 using Iam.DomainService.Services;
@@ -166,7 +166,7 @@ namespace Iam.DomainService.Users
             var filters = new List<FilterDefinition<User>>();
             var contextOrgId = ResolveOrganizationId(filter?.OrganizationId);
 
-            if(contextOrgId != "default")
+            if(!string.IsNullOrWhiteSpace(contextOrgId))
             {
                 filters.Add(builder.AnyEq(x => x.OrganizationIds, contextOrgId));
             }
