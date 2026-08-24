@@ -9,7 +9,7 @@
         public MFA? Mfa { get; set; }
         public DateTime? JoinedOn { get; set; }
         public DateTime? LastLogin { get; set; }
-        public string? OrganizationId {get; set;}
+        public List<string> OrganizationIds { get; set; } = [];
     }
 
     public class Status

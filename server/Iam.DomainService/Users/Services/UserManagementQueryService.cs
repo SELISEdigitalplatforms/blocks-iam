@@ -1,5 +1,6 @@
 using Blocks.Genesis;
 using Iam.DomainService.Dtos;
+using Iam.DomainService.Utilities;
 using Microsoft.Extensions.Logging;
 
 namespace Iam.DomainService.Users
@@ -53,7 +54,24 @@ namespace Iam.DomainService.Users
 
             query.Filter ??= new GetUsersFilter();
 
-            var (data, count) = await _userRepository.GetUsersAsync<GetAccounts, GetUsersRequest>(query);
+            var scope = UserListOrganizationScope.Resolve(
+                BlocksContext.GetContext()?.OrganizationId,
+                query.Filter.OrganizationIds);
+
+            // A token that names no organization is answered without touching the database at all:
+            // there is no organization to scope to, so there is nothing it may be shown.
+            if (scope.Kind == UserListScopeKind.Denied)
+            {
+                _logger.LogInformation("User get end -- denied, the token carries no organization");
+
+                return new GetUsersResponse
+                {
+                    Data = Enumerable.Empty<Dictionary<string, object>>().AsQueryable(),
+                    TotalCount = 0
+                };
+            }
+
+            var (data, count) = await _userRepository.GetUsersAsync<GetAccounts, GetUsersRequest>(query, scope);
 
             // One instant for the whole response, per the data contract's "server UTC time at
             // response construction" - so every item in a page is judged against the same moment.

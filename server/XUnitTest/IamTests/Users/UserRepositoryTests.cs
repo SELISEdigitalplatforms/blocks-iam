@@ -1,6 +1,7 @@
 ﻿using Blocks.Genesis;
 using FluentAssertions;
 using Iam.DomainService.Dtos;
+using Iam.DomainService.Utilities;
 using Iam.DomainService.Entities;
 using Iam.DomainService.Services;
 using Iam.DomainService.Shared.Entities;
@@ -40,6 +41,9 @@ namespace XUnitTest.IamTests.Users
         }
 
         private UserRepository Sut() => new(_iam.Object);
+
+        private static UserListScope Scope(params string[] organizationIds) =>
+            new(UserListScopeKind.Organizations, organizationIds);
 
         private Mock<IMongoCollection<T>> Register<T>(IEnumerable<T>? items = null)
         {
@@ -203,10 +207,10 @@ namespace XUnitTest.IamTests.Users
                     JoinedOn = DateTime.UtcNow.AddDays(-10),
                     LastLogin = DateTime.UtcNow.AddDays(-1),
                     UserIds = new List<string> { "u1" },
-                    OrganizationId = "org1"
+                    OrganizationIds = ["org1"]
                 }
             };
-            var (items, count) = await Sut().GetUsersAsync<User, BaseGetsRequest<GetUsersFilter>>(query);
+            var (items, count) = await Sut().GetUsersAsync<User, BaseGetsRequest<GetUsersFilter>>(query, Scope("org1"));
             count.Should().Be(2);
             items!.Should().HaveCount(2);
         }
@@ -216,8 +220,11 @@ namespace XUnitTest.IamTests.Users
         {
             var col = Register(new[] { new User { ItemId = "u1" } });
             MongoMock.SetupCount(col, 1);
+            // C7 -- a tenant-wide scope with a null filter leaves nothing to conjoin, so this is the
+            // case that would build a zero-clause $and if the early return skipped its guard.
             var (items, count) = await Sut().GetUsersAsync<User, BaseGetsRequest<GetUsersFilter>>(
-                new BaseGetsRequest<GetUsersFilter>());
+                new BaseGetsRequest<GetUsersFilter>(),
+                new UserListScope(UserListScopeKind.AllOrganizations, []));
             count.Should().Be(1);
             items!.Should().HaveCount(1);
         }
@@ -235,7 +242,7 @@ namespace XUnitTest.IamTests.Users
                     Mfa = new MFA { Disabled = true }
                 }
             };
-            var (_, count) = await Sut().GetUsersAsync<User, BaseGetsRequest<GetUsersFilter>>(query);
+            var (_, count) = await Sut().GetUsersAsync<User, BaseGetsRequest<GetUsersFilter>>(query, Scope("org1"));
             count.Should().Be(1);
         }
 
@@ -288,7 +295,7 @@ namespace XUnitTest.IamTests.Users
         /// The capturing setup supplies its own cursor: Moq prefers the newest matching setup, so
         /// without one it would shadow <see cref="MongoMock.SetupFind"/> and leave FindAsync null.
         /// </summary>
-        private async Task<BsonDocument> CaptureUserFilterAsync(GetUsersFilter? filter)
+        private async Task<BsonDocument> CaptureUserFilterAsync(GetUsersFilter? filter, UserListScope? scope = null)
         {
             var col = Register(new[] { new User { ItemId = "u1" } });
             MongoMock.SetupCount(col, 1);
@@ -303,7 +310,8 @@ namespace XUnitTest.IamTests.Users
                 .ReturnsAsync(() => MongoMock.Cursor(new[] { new User { ItemId = "u1" } }));
 
             await Sut().GetUsersAsync<User, BaseGetsRequest<GetUsersFilter>>(
-                new BaseGetsRequest<GetUsersFilter> { Filter = filter });
+                new BaseGetsRequest<GetUsersFilter> { Filter = filter },
+                scope ?? Scope("org-a"));
 
             captured.Should().NotBeNull();
             var registry = BsonSerializer.SerializerRegistry;
@@ -469,11 +477,95 @@ namespace XUnitTest.IamTests.Users
             Regex(rendered, "FirstName").Pattern.Should().Be(@"o\.brien");
         }
 
+        [Fact] // H1 -- a tenant-wide scope emits no organization clause at all
+        public async Task GetUsersAsync_AllOrganizationsScope_AppliesNoOrganizationClause()
+        {
+            var rendered = await CaptureUserFilterAsync(
+                new GetUsersFilter { Email = "doe" },
+                new UserListScope(UserListScopeKind.AllOrganizations, []));
+
+            Clause(rendered, "OrganizationIds").Should().BeNull();
+            Regex(rendered, "Email").Pattern.Should().Be("doe");
+        }
+
+        [Fact] // H2 -- a single-organization scope still constrains the query
+        public async Task GetUsersAsync_SingleOrganizationScope_RestrictsToThatOrganization()
+        {
+            var rendered = await CaptureUserFilterAsync(null, Scope("org-a"));
+
+            Clause(rendered, "OrganizationIds").Should().NotBeNull();
+            AllStrings(rendered).Should().Contain("org-a");
+        }
+
+        [Fact] // H3 -- several organizations become one union clause, not several clauses
+        public async Task GetUsersAsync_MultiOrganizationScope_MatchesAnyOfThem()
+        {
+            var rendered = await CaptureUserFilterAsync(null, Scope("org-a", "org-b"));
+
+            Clause(rendered, "OrganizationIds").Should().NotBeNull();
+            AllStrings(rendered).Should().Contain("org-a").And.Contain("org-b");
+        }
+
+        [Fact] // C2 -- the scope decides, so an id the caller asked for never reaches the query
+        public async Task GetUsersAsync_ScopeWins_OverAnythingLeftOnTheFilter()
+        {
+            var rendered = await CaptureUserFilterAsync(
+                new GetUsersFilter { OrganizationIds = ["org-b", "org-c"] },
+                Scope("org-a"));
+
+            AllStrings(rendered).Should().Contain("org-a");
+            AllStrings(rendered).Should().NotContain("org-b").And.NotContain("org-c");
+        }
+
+        [Fact] // C7 -- tenant-wide plus a null filter must not build a zero-clause conjunction
+        public async Task GetUsersAsync_AllOrganizationsScope_WithNullFilter_BuildsAnEmptyFilter()
+        {
+            var rendered = await CaptureUserFilterAsync(
+                null,
+                new UserListScope(UserListScopeKind.AllOrganizations, []));
+
+            rendered.ElementCount.Should().Be(0);
+        }
+
+        [Fact] // H6 -- the count and the page must be built from the same filter, multi-org included
+        public async Task GetUsersAsync_CountsWithTheSameFilterItPages()
+        {
+            var col = Register(new[] { new User { ItemId = "u1" } });
+            MongoMock.SetupCount(col, 1);
+
+            FilterDefinition<User>? counted = null;
+            FilterDefinition<User>? found = null;
+            col.Setup(c => c.CountDocumentsAsync(
+                    It.IsAny<FilterDefinition<User>>(),
+                    It.IsAny<CountOptions>(),
+                    It.IsAny<CancellationToken>()))
+                .Callback<FilterDefinition<User>, CountOptions, CancellationToken>((f, _, _) => counted = f)
+                .ReturnsAsync(1L);
+            col.Setup(c => c.FindAsync(
+                    It.IsAny<FilterDefinition<User>>(),
+                    It.IsAny<FindOptions<User, User>>(),
+                    It.IsAny<CancellationToken>()))
+                .Callback<FilterDefinition<User>, FindOptions<User, User>, CancellationToken>((f, _, _) => found = f)
+                .ReturnsAsync(() => MongoMock.Cursor(new[] { new User { ItemId = "u1" } }));
+
+            await Sut().GetUsersAsync<User, BaseGetsRequest<GetUsersFilter>>(
+                new BaseGetsRequest<GetUsersFilter> { Filter = new GetUsersFilter { Email = "doe" } },
+                Scope("org-a", "org-b"));
+
+            var registry = BsonSerializer.SerializerRegistry;
+            var args = new RenderArgs<User>(registry.GetSerializer<User>(), registry);
+            counted.Should().NotBeNull();
+            found.Should().NotBeNull();
+            // Compare the rendered documents, not the FilterDefinition instances: BsonDocument has
+            // value equality, but FluentAssertions resolves it as a collection of elements.
+            counted!.Render(args).ToJson().Should().Be(found!.Render(args).ToJson());
+        }
+
         [Fact] // C4, H3 -- organization scope survives alongside the email filter
         public async Task GetUsersAsync_EmailFilter_StillRestrictsToTheOrganization()
         {
             var rendered = await CaptureUserFilterAsync(
-                new GetUsersFilter { Email = "doe", OrganizationId = "org-a" });
+                new GetUsersFilter { Email = "doe" });
 
             Clause(rendered, "OrganizationIds").Should().NotBeNull();
             AllStrings(rendered).Should().Contain("org-a");
@@ -491,8 +583,7 @@ namespace XUnitTest.IamTests.Users
                 Mfa = new MFA { Enabled = true },
                 JoinedOn = DateTime.UtcNow.AddDays(-10),
                 LastLogin = DateTime.UtcNow.AddDays(-1),
-                UserIds = new List<string> { "u1" },
-                OrganizationId = "org-a"
+                UserIds = new List<string> { "u1" }
             });
 
             Regex(rendered, "Email").Pattern.Should().Be("doe");
