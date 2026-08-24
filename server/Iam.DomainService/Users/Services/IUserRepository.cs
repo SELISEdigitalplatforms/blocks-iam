@@ -1,5 +1,6 @@
 ﻿using Blocks.Genesis;
 using Iam.DomainService.Dtos;
+using Iam.DomainService.Utilities;
 using Iam.DomainService.Entities;
 
 namespace Iam.DomainService.Users
@@ -13,7 +14,7 @@ namespace Iam.DomainService.Users
         Task<User> GetUserByIdAsync(string itemId);
         Task<T> GetUserByIdAsync<T>(string itemId);
         Task<bool> UpdateUserAsync(User user);
-        Task<(IQueryable<T>?, long)> GetUsersAsync<T, R>(R query) where R : BaseGetsRequest<GetUsersFilter>;
+        Task<(IQueryable<T>?, long)> GetUsersAsync<T, R>(R query, UserListScope scope) where R : BaseGetsRequest<GetUsersFilter>;
         Task<IamConfiguration> GetIamConfigurationAsync();
         Task<bool> InsertUserKeyMapAsync(UserKeyMap userKeyMap);
         Task<List<GetUserPermission>> GetPermissionsByResourcesAsync(string id);

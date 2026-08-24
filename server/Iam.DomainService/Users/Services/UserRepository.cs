@@ -1,5 +1,6 @@
-﻿using Blocks.Genesis;
+using Blocks.Genesis;
 using Iam.DomainService.Dtos;
+using Iam.DomainService.Utilities;
 using Iam.DomainService.Entities;
 using Iam.DomainService.Services;
 using Iam.DomainService.Shared.Entities;
@@ -136,11 +137,11 @@ namespace Iam.DomainService.Users
             return user;
         }
 
-        public async Task<(IQueryable<T>?, long)> GetUsersAsync<T, R>(R query) where R : BaseGetsRequest<GetUsersFilter>
+        public async Task<(IQueryable<T>?, long)> GetUsersAsync<T, R>(R query, UserListScope scope) where R : BaseGetsRequest<GetUsersFilter>
         {
             var collection = _identityAccessManagementRepository.GetCollection<User>();
 
-            var filter = BuildUserFilter(query.Filter);
+            var filter = BuildUserFilter(query.Filter, scope);
             var sort = BuildSortDefinition(query.Sort);
             var projection = Builders<User>.Projection.As<T>();
 
@@ -160,20 +161,29 @@ namespace Iam.DomainService.Users
             return (data.AsQueryable(), totalCount);
         }
 
-        private static FilterDefinition<User> BuildUserFilter(GetUsersFilter? filter)
+        /// <summary>
+        /// Build the query for an already-resolved scope. The scope is decided by
+        /// <see cref="UserListOrganizationScope"/> upstream rather than here, so this stays a pure
+        /// translation of a decision into a filter and never re-reads the ambient context.
+        /// </summary>
+        private static FilterDefinition<User> BuildUserFilter(GetUsersFilter? filter, UserListScope scope)
         {
             var builder = Builders<User>.Filter;
             var filters = new List<FilterDefinition<User>>();
-            var contextOrgId = ResolveOrganizationId(filter?.OrganizationId);
 
-            if(contextOrgId != "default")
+            // AnyIn for every non-empty scope, single id included: one code path, and on an array
+            // field it means "belongs to any of these", which is the union the caller asked for.
+            if (scope.Kind == UserListScopeKind.Organizations)
             {
-                filters.Add(builder.AnyEq(x => x.OrganizationIds, contextOrgId));
+                filters.Add(builder.AnyIn(x => x.OrganizationIds, scope.OrganizationIds));
             }
 
             if (filter == null)
             {
-                return builder.And(filters);
+                // The organization clause is no longer guaranteed, so this early return needs the
+                // same emptiness guard as the one at the end of the method: a tenant-wide scope with
+                // no filter leaves nothing to conjoin.
+                return filters.Any() ? builder.And(filters) : builder.Empty;
             }
 
             if (!string.IsNullOrWhiteSpace(filter.Name))
@@ -226,12 +236,6 @@ namespace Iam.DomainService.Users
                 filters.Add(builder.In(u => u.ItemId, filter.UserIds));
 
             return filters.Any() ? builder.And(filters) : builder.Empty;
-        }
-
-        private static string ResolveOrganizationId(string? organizationId)
-        {
-            organizationId = !string.IsNullOrWhiteSpace(organizationId)? organizationId:  BlocksContext.GetContext()?.OrganizationId;
-            return string.IsNullOrWhiteSpace(organizationId) ? "default" : organizationId;
         }
 
         private static SortDefinition<User> BuildSortDefinition(BaseSortRequest? sortRequest)

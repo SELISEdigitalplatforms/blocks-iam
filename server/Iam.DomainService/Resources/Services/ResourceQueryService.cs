@@ -209,8 +209,10 @@ namespace Iam.DomainService.Resources
                 };
             }
 
-            var isMultiOrgEnabled = MultiOrgMode.IsEnabled(
-                await _resourceRepository.GetTenantConfigurationAsync(), _logger);
+            // One read, two answers: the configuration document carries both the multi-org flag and
+            // the signup defaults, so the signup check below costs no extra query.
+            var tenantConfiguration = await _resourceRepository.GetTenantConfigurationAsync();
+            var isMultiOrgEnabled = MultiOrgMode.IsEnabled(tenantConfiguration, _logger);
 
             // Only copies the archive would actually reach: already-archived ones are skipped by the
             // propagation, so counting them here would overstate the blast radius and make the
@@ -241,6 +243,8 @@ namespace Iam.DomainService.Resources
                 OrganizationCount = otherOrgIds.Count,
                 AffectedUserCount = (int)await _resourceRepository.CountUsersWithRoleAsync(role.Slug, userScopeOrgIds, activeOnly: false),
                 ActiveUserCount = (int)await _resourceRepository.CountUsersWithRoleAsync(role.Slug, userScopeOrgIds, activeOnly: true),
+                IsSignUpDefault = tenantConfiguration?.DefaultRolesForNewUserOnSignUp?
+                    .Any(x => string.Equals(x, role.Slug, StringComparison.OrdinalIgnoreCase)) ?? false,
                 Blocked = hasChildRoles,
                 BlockingReason = hasChildRoles ? "Role_Has_Child_Roles" : null
             };
@@ -261,8 +265,9 @@ namespace Iam.DomainService.Resources
                 };
             }
 
-            var isMultiOrgEnabled = MultiOrgMode.IsEnabled(
-                await _resourceRepository.GetTenantConfigurationAsync(), _logger);
+            // One read, two answers -- see GetRoleArchiveImpactAsync.
+            var tenantConfiguration = await _resourceRepository.GetTenantConfigurationAsync();
+            var isMultiOrgEnabled = MultiOrgMode.IsEnabled(tenantConfiguration, _logger);
 
             // Unlike Role, IsArchived has always existed on Permission and is present on every
             // document, so filtering it in memory here is safe.
@@ -291,6 +296,8 @@ namespace Iam.DomainService.Resources
                 // claim -- and the role bindings are separate populations and are reported apart.
                 AffectedUserCount = (int)await _resourceRepository.CountUsersWithPermissionAsync(permission.Resource, scopeOrgIds),
                 RoleBindingCount = (int)await _resourceRepository.CountRoleBindingsForResourceAsync(permission.Resource, scopeOrgIds),
+                IsSignUpDefault = tenantConfiguration?.DefaultPermissionsForNewUserOnSignUp?
+                    .Any(x => string.Equals(x, permission.Resource, StringComparison.OrdinalIgnoreCase)) ?? false,
                 // Permissions have no dependency that can hard-block an archive. Kept on the
                 // envelope so both dialogs render from one shape.
                 Blocked = false,
