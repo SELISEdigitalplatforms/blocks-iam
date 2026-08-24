@@ -27,6 +27,14 @@ namespace Iam.DomainService.Resources
         /// </summary>
         public int AffectedUserCount { get; set; }
 
+        /// <summary>
+        /// True when this role or permission is one of the tenant's signup defaults, so archiving it
+        /// also changes what every new account receives. Reported separately from the user count
+        /// because it is a different population: not people who hold it now, but everyone who would
+        /// have been given it from here on. Tenant-wide, so it is unaffected by organization scope.
+        /// </summary>
+        public bool IsSignUpDefault { get; set; }
+
         /// <summary>True when no consent can make the archive proceed.</summary>
         public bool Blocked { get; set; }
 

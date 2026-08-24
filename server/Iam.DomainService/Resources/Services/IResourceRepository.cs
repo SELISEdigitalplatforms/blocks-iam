@@ -64,6 +64,12 @@ namespace Iam.DomainService.Resources
         /// <summary>Removes the resource from the organization's bucket in every user holding it directly.</summary>
         Task<bool> RemovePermissionFromAllUsersAsync(string resource, string organizationId);
 
+        /// <summary>Removes the slug from the tenant's signup default roles. Tenant-wide, not org-scoped.</summary>
+        Task<bool> RemoveRoleFromSignUpDefaultsAsync(string slug);
+
+        /// <summary>Removes the resource from the tenant's signup default permissions. Tenant-wide, not org-scoped.</summary>
+        Task<bool> RemovePermissionFromSignUpDefaultsAsync(string resource);
+
         /// <summary>DISTINCT users holding this role slug in any of the given organizations.</summary>
         Task<long> CountUsersWithRoleAsync(string slug, IEnumerable<string> organizationIds, bool activeOnly);
 
