@@ -214,6 +214,29 @@ namespace XUnitTest.Auth
         }
 
         [Fact]
+        public async Task UpdateIdpSessionForLogout_MultipleFallbackSessions_RemovesAccountFromEach()
+        {
+            var principal = new System.Security.Claims.ClaimsPrincipal(
+                new System.Security.Claims.ClaimsIdentity(new[]
+                {
+                    new System.Security.Claims.Claim("user_id", "actor-1")
+                }));
+            _session.Setup(s => s.RemoveAccountAsync("sess-fallback-1", "actor-1", TenantId)).ReturnsAsync(true);
+            _session.Setup(s => s.RemoveAccountAsync("sess-fallback-2", "actor-1", TenantId)).ReturnsAsync(true);
+            _session.Setup(s => s.GetSessionAsync("sess-fallback-1")).ReturnsAsync((IdpSessionModel)null!);
+
+            var result = await Create().UpdateIdpSessionForLogoutAsync(
+                new DefaultHttpContext(),
+                principal,
+                false,
+                new[] { "sess-fallback-1", "sess-fallback-2" });
+
+            result.Should().BeTrue();
+            _session.Verify(s => s.RemoveAccountAsync("sess-fallback-1", "actor-1", TenantId), Times.Once);
+            _session.Verify(s => s.RemoveAccountAsync("sess-fallback-2", "actor-1", TenantId), Times.Once);
+        }
+
+        [Fact]
         public async Task UpdateIdpSessionForLogout_NoUserId_ReturnsFalse()
         {
             BlocksContext.SetContext(BlocksContext.Create(
