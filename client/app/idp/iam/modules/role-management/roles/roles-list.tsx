@@ -1,3 +1,4 @@
+import { Badge } from "@/components/ui-kits/badge/badge";
 import { Button } from "@/components/ui-kits/button/button";
 import { Dialog } from "@/components/ui-kits/dialog/dialog";
 import { Skeleton } from "@/components/ui-kits/skeleton/skeleton";
@@ -22,6 +23,12 @@ import { useScopedPath } from "@/hooks/use-scoped-path";
 type RolesTableProps = {
   roles: IRole[];
   isLoading: boolean;
+  /**
+   * Whether to mark roles that came from the default organization. Only meaningful in a
+   * multi-organization tenant — with one organization every role is local and the badge would
+   * label every row.
+   */
+  showDefaultOriginBadge?: boolean;
 };
 
 const LoadingSkelton = () => (
@@ -32,7 +39,7 @@ const LoadingSkelton = () => (
   </div>
 );
 
-export const RolesList = ({ roles, isLoading }: RolesTableProps) => {
+export const RolesList = ({ roles, isLoading, showDefaultOriginBadge = false }: RolesTableProps) => {
   const { sortQueryParams, setSortQueryParams } = useRolesSortQueryParams();
   const [selectedRole, setSelectedRole] = useState<IRole | null>(null);
   const navigate = useNavigate();
@@ -58,7 +65,18 @@ export const RolesList = ({ roles, isLoading }: RolesTableProps) => {
             onChange={sortHandler}
           />
         ),
-        cell: (roles) => <div className="w-[130px] truncate">{roles.row.original.name}</div>,
+        cell: (roles) => (
+          <div className="flex w-[130px] items-center gap-1.5">
+            <span className="truncate">{roles.row.original.name}</span>
+            {/* Undefined counts as false: role documents written before createdFromDefault
+                existed omit it, and labelling those as default-derived would be wrong. */}
+            {showDefaultOriginBadge && roles.row.original.createdFromDefault === true && (
+              <Badge variant="secondary" className="shrink-0 font-normal">
+                Default
+              </Badge>
+            )}
+          </div>
+        ),
       },
       {
         id: "slug",
@@ -124,7 +142,7 @@ export const RolesList = ({ roles, isLoading }: RolesTableProps) => {
         ),
       },
     ],
-    [sortHandler, sortQueryParams],
+    [sortHandler, sortQueryParams, showDefaultOriginBadge],
   );
 
   const table = useReactTable({

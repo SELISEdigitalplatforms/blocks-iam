@@ -26,11 +26,21 @@ describe("addRoleFormSchema", () => {
     const result = addRoleFormSchema.safeParse({ ...valid, slug: "an admin" });
     expect(result.success).toBe(false);
     if (!result.success) {
-      expect(result.error.issues.map((i) => i.message)).toContain("Slug can not contain spaces");
+      expect(result.error.issues.map((i) => i.message)).toContain("A slug cannot contain spaces.");
     }
   });
 
-  it("rejects a name longer than 50 characters", () => {
-    expect(addRoleFormSchema.safeParse({ ...valid, name: "x".repeat(51) }).success).toBe(false);
+  // The caps mirror the server (name 150, slug 200) so a value the API accepts is not blocked
+  // client-side and the server's own messages stay reachable.
+  it("accepts a name the server would accept", () => {
+    expect(addRoleFormSchema.safeParse({ ...valid, name: "x".repeat(150) }).success).toBe(true);
+  });
+
+  it("rejects a name longer than the server allows", () => {
+    expect(addRoleFormSchema.safeParse({ ...valid, name: "x".repeat(151) }).success).toBe(false);
+  });
+
+  it("rejects a slug longer than the server allows", () => {
+    expect(addRoleFormSchema.safeParse({ ...valid, slug: "x".repeat(201) }).success).toBe(false);
   });
 });

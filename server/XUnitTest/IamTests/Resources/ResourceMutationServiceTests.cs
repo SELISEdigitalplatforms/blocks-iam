@@ -145,13 +145,10 @@ namespace XUnitTest.IamTests.Resources
 
         // ---------- CreateRoleAsync ----------
 
-        [Fact]
-        public async Task CreateRole_NonDefaultOrg_Forbidden()
-        {
-            InstallContext(orgId: "org-9");
-            var result = await Create().CreateRoleAsync(RoleReq());
-            result.Errors.Should().ContainKey("forbidden");
-        }
+        // CreateRole_NonDefaultOrg_Forbidden was removed with SPEC11: a non-default caller may now
+        // create a role of its own. Its replacements -- that the role is stamped with the caller's
+        // organization, gets a suffixed slug, and propagates nowhere -- live in
+        // OrganizationSpecificRoleTests.
 
         [Fact]
         public async Task CreateRole_ValidationFails_ReturnsErrors()

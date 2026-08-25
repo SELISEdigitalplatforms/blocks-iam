@@ -1,4 +1,4 @@
-using Iam.DomainService.Entities;
+﻿using Iam.DomainService.Entities;
 using Iam.DomainService.Resources.ResponseModel;
 using Iam.DomainService.Shared.Entities;
 
@@ -89,6 +89,27 @@ namespace Iam.DomainService.Resources
         Task<List<Permission>> GetFeResourceFeaturesAsync(List<string> roleSlugs, List<string> permissionKeys, string? search = null, bool? isBuiltIn = null, string? orgainzationId = null);
         Task<List<Permission>> GetPermissionsByResourceAsync(string resource);
         Task<List<Role>> GetRolesBySlugAsync(string slug);
+
+        /// <summary>
+        /// Whether the organization already OWNS a live role carrying this name.
+        /// </summary>
+        /// <remarks>
+        /// "Owns" excludes default-derived copies deliberately, so an organization may hold the
+        /// default organization's "Manager" and still create one of its own -- a state propagation
+        /// produces on its own and the organization cannot repair, since it may neither rename nor
+        /// archive a copy. Archived rows are excluded too: a name is display-only, and blocking on
+        /// a row hidden from every list is a dead end. Comparison is case-insensitive and trimmed.
+        /// </remarks>
+        Task<bool> HasOwnedRoleWithNameAsync(string name, string organizationId, string? excludeItemId = null);
+
+        /// <summary>
+        /// Live roles carrying this name that OTHER organizations own, for the duplicate-name
+        /// advisory. Same exclusions as <see cref="HasOwnedRoleWithNameAsync"/> -- copies and
+        /// archived rows are not somebody's own live role -- with the caller's organization left out
+        /// so the count reads as "N other organizations". Returns the roles rather than a number
+        /// because the caller also needs to know which of them hold the slug being created.
+        /// </summary>
+        Task<List<Role>> GetOwnedRolesWithNameInOtherOrganizationsAsync(string name, string excludeOrganizationId);
         Task<bool> UpdatePermissionsAsync(List<Permission> permissions);
         Task<bool> UpdateRolesAsync(List<Role> roles);
         Task<List<string>> GetAllOrgIdsAsync();

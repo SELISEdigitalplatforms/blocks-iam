@@ -6,10 +6,14 @@ const h = vi.hoisted(() => ({
   isFetching: false,
   data: { data: [], totalCount: 0 } as { data: unknown[]; totalCount: number },
   listProps: null as Record<string, unknown> | null,
+  isMultiOrgEnabled: false,
 }));
 
 vi.mock("@blocks-idp/iam/hooks/use-roles", () => ({
   useGetRoles: () => ({ data: h.data, isLoading: h.isLoading, isFetching: h.isFetching }),
+}));
+vi.mock("@blocks-idp/iam/hooks/use-organization", () => ({
+  useGetOrganizationConfig: () => ({ data: { isMultiOrgEnabled: h.isMultiOrgEnabled } }),
 }));
 vi.mock("@/store/useProjectStore", () => ({
   useProjectStore: () => ({ selectedProject: { tenantId: "t1" } }),
