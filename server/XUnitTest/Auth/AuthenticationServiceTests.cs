@@ -118,12 +118,19 @@ namespace XUnitTest.Auth
             _session.Verify(s => s.RevokeSessionAsync("sess-1", "logout_all"), Times.Once);
         }
 
+        /// <summary>
+        /// Replaces UpdateIdpSessionForLogout_CookieWinsOverFallback, which asserted the opposite:
+        /// that a fallback session must NOT be revoked when a cookie is present. The cookie's
+        /// session is added to the fallbacks rather than replacing them, so a logout cannot leave a
+        /// session live merely because it was not the one carrying the cookie.
+        /// </summary>
         [Fact]
-        public async Task UpdateIdpSessionForLogout_CookieWinsOverFallback()
+        public async Task UpdateIdpSessionForLogout_RevokesTheCookieSessionAndEveryFallback()
         {
             var cookieKey = IdpConstants.BuildIdpSessionCookieKey(TenantId);
             var ctx = HttpContextWithCookie(cookieKey, "sess-cookie");
             _session.Setup(s => s.RevokeSessionAsync("sess-cookie", "logout_all")).ReturnsAsync(true);
+            _session.Setup(s => s.RevokeSessionAsync("sess-fallback", "logout_all")).ReturnsAsync(true);
 
             var result = await Create().UpdateIdpSessionForLogoutAsync(
                 ctx,
@@ -133,7 +140,42 @@ namespace XUnitTest.Auth
 
             result.Should().BeTrue();
             _session.Verify(s => s.RevokeSessionAsync("sess-cookie", "logout_all"), Times.Once);
-            _session.Verify(s => s.RevokeSessionAsync("sess-fallback", "logout_all"), Times.Never);
+            _session.Verify(s => s.RevokeSessionAsync("sess-fallback", "logout_all"), Times.Once);
+        }
+
+        [Fact]
+        public async Task UpdateIdpSessionForLogout_CookieAlsoListedAsFallback_IsRevokedOnce()
+        {
+            var cookieKey = IdpConstants.BuildIdpSessionCookieKey(TenantId);
+            var ctx = HttpContextWithCookie(cookieKey, "sess-shared");
+            _session.Setup(s => s.RevokeSessionAsync("sess-shared", "logout_all")).ReturnsAsync(true);
+
+            var result = await Create().UpdateIdpSessionForLogoutAsync(
+                ctx,
+                new System.Security.Claims.ClaimsPrincipal(),
+                true,
+                new[] { "sess-shared" });
+
+            result.Should().BeTrue();
+            _session.Verify(s => s.RevokeSessionAsync("sess-shared", "logout_all"), Times.Once);
+        }
+
+        [Fact]
+        public async Task UpdateIdpSessionForLogout_BlankFallbackEntries_AreIgnored()
+        {
+            var cookieKey = IdpConstants.BuildIdpSessionCookieKey(TenantId);
+            var ctx = HttpContextWithCookie(cookieKey, "sess-cookie");
+            _session.Setup(s => s.RevokeSessionAsync("sess-cookie", "logout_all")).ReturnsAsync(true);
+
+            var result = await Create().UpdateIdpSessionForLogoutAsync(
+                ctx,
+                new System.Security.Claims.ClaimsPrincipal(),
+                true,
+                new[] { "", "   " });
+
+            result.Should().BeTrue();
+            _session.Verify(s => s.RevokeSessionAsync("sess-cookie", "logout_all"), Times.Once);
+            _session.Verify(s => s.RevokeSessionAsync(It.Is<string>(id => string.IsNullOrWhiteSpace(id)), It.IsAny<string>()), Times.Never);
         }
 
         [Fact]

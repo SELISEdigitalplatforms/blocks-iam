@@ -104,21 +104,30 @@ namespace Authentication.DomainService.Authentication
             var bc = BlocksContext.GetContext();
             var sessionId = httpContext.Request.Cookies[IdpConstants.BuildIdpSessionCookieKey(bc!.TenantId)];
 
-            //var sessionIds = !string.IsNullOrWhiteSpace(sessionId)
-            //    ? new List<string> { sessionId }
-            //    : fallbackSessionIds?
-            //        .Where(id => !string.IsNullOrWhiteSpace(id))
-            //        .Distinct(StringComparer.Ordinal)
-            //        .ToList() ?? new List<string>();
-
+            // Logout covers every session it can identify: the fallback ids the caller resolved,
+            // plus the one named by the cookie. The cookie does not replace the fallbacks -- both
+            // are revoked -- so a logout cannot leave a session behind just because it was not the
+            // one carrying the cookie.
+            //
+            // The assignment below is load-bearing. Enumerable.Append is a pure LINQ operator: it
+            // returns a new sequence instead of mutating, so `fallbackSessionIds.Append(sessionId);`
+            // discarded its own result and the cookie's id never entered the list. That left
+            // sessionIds empty on every cookie-based logout -- the normal path -- and the method
+            // returned at the count guard below without revoking the session or removing the
+            // account, leaving the IdP session live after logout.
             fallbackSessionIds ??= [];
 
-            if(!string.IsNullOrWhiteSpace( sessionId))
+            if (!string.IsNullOrWhiteSpace(sessionId))
             {
-                fallbackSessionIds.Append(sessionId);
+                fallbackSessionIds = fallbackSessionIds.Append(sessionId);
             }
 
-            var sessionIds = fallbackSessionIds.Distinct().ToList();
+            // Blanks dropped and comparison made ordinal: a caller-supplied list can carry an empty
+            // entry, and revoking "" would be a wasted call against a session that cannot exist.
+            var sessionIds = fallbackSessionIds
+                .Where(id => !string.IsNullOrWhiteSpace(id))
+                .Distinct(StringComparer.Ordinal)
+                .ToList();
 
             if (sessionIds.Count == 0)
             {
