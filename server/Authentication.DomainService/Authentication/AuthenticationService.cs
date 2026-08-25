@@ -153,8 +153,12 @@ namespace Authentication.DomainService.Authentication
                 return false;
             }
 
+            foreach(var id in sessionIds)
+            {
+                await _authSession.RemoveAccountAsync(id, userId, bc.TenantId);
+            }
+
             var selectedSessionId = sessionIds[0];
-            await _authSession.RemoveAccountAsync(selectedSessionId, userId, bc.TenantId);
             var session = await _authSession.GetSessionAsync(selectedSessionId);
 
             if (session == null || session.RevokedAt.HasValue || session.IsExpired())
