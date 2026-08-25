@@ -1,11 +1,11 @@
 import { serviceInstances } from "@/lib/http-client";
 import {
   CreateRolePayload,
+  CreateRoleResponse,
   GetRolesPayload,
   GetRolesResponse,
   IGetRolePayload,
   IGetRoleResponse,
-  IRole,
   SetRoles,
   UpdateRolePayload,
 } from "@blocks-idp/iam/models/role";
@@ -24,7 +24,7 @@ export class RoleService {
     return serviceInstances.idpService.get(`${ROLE_ENDPOINTS.GET_ROLE}?projectKey=${payload.projectKey}&id=${payload.id}`);
   }
 
-  addRole(payload: CreateRolePayload): Promise<IRole> {
+  addRole(payload: CreateRolePayload): Promise<CreateRoleResponse> {
     return serviceInstances.idpService.post(ROLE_ENDPOINTS.CREATE_ROLE, payload);
   }
 
