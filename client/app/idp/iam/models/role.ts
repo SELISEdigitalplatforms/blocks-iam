@@ -5,6 +5,14 @@ export interface IRole {
   count?: number;
   slug: string;
   projectKey?: string;
+  /** The organization that owns this role. */
+  organizationId?: string;
+  /**
+   * True when this row is a copy of the default organization's role rather than one this
+   * organization created. Absent on documents written before the field existed, which is why every
+   * read treats undefined as false rather than defaulting the other way.
+   */
+  createdFromDefault?: boolean;
 }
 
 export interface GetRolesPayload {
@@ -40,6 +48,27 @@ export interface CreateRolePayload {
   description: string;
   slug: string;
   projectKey: string;
+  /**
+   * Acknowledges that other organizations already have a role with this name. Sent only on the
+   * second attempt, after the confirmation.
+   */
+  confirmDuplicateName?: boolean;
+}
+
+/**
+ * What `roles/create` returns. The advisory fields are present on every response; they carry
+ * counts only, never the names or ids of other organizations.
+ */
+export interface CreateRoleResponse {
+  isSuccess: boolean;
+  itemId?: string;
+  errors?: Record<string, string>;
+  /** True on the one refusal a second attempt can clear by confirming. */
+  requiresDuplicateNameConfirmation?: boolean;
+  /** Other organizations already using this name. */
+  duplicateNameOrganizationCount?: number;
+  /** Of those, the ones that will keep their own role instead of receiving this one. */
+  slugConflictOrganizationCount?: number;
 }
 export interface UpdateRolePayload extends Partial<Omit<CreateRolePayload, "slug">> {
   itemId: string;

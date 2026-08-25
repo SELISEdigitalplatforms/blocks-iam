@@ -6,13 +6,15 @@ export const addRoleFormDefaultValue = {
   description: "",
 };
 
+// Mirrors the server's limits deliberately, so a value the API would accept is not blocked here
+// and the server's own messages stay reachable: name 150, slug 200, description 150.
 export const addRoleFormSchema = z.object({
-  name: z.string().min(1, "Name is required").max(50, "Name must be at most 50 characters").trim(),
+  name: z.string().trim().min(1, "A role name is required.").max(150, "Use at most 150 characters."),
   slug: z
     .string()
-    .min(1, "Slug is required")
-    .max(50, "Slug must be at most 50 characters")
     .trim()
-    .refine((s) => !s.includes(" "), "Slug can not contain spaces"),
-  description: z.string().max(150, "Description must be at most 150 characters").trim().optional(),
+    .min(1, "A slug is required.")
+    .max(200, "Use at most 200 characters.")
+    .refine((s) => !s.includes(" "), "A slug cannot contain spaces."),
+  description: z.string().trim().max(150, "Use at most 150 characters.").optional(),
 });

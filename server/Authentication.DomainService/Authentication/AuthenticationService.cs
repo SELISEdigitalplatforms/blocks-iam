@@ -104,18 +104,30 @@ namespace Authentication.DomainService.Authentication
             var bc = BlocksContext.GetContext();
             var sessionId = httpContext.Request.Cookies[IdpConstants.BuildIdpSessionCookieKey(bc!.TenantId)];
 
-            // The cookie is authoritative when it carries a session: the fallback ids exist only to
-            // cover the case where the cookie is missing. Enumerable.Append was used here, which is
-            // a pure LINQ operator -- it returns a new sequence rather than mutating, so its result
-            // was discarded and the cookie's session id never reached the list. That left sessionIds
-            // empty on every cookie-based logout, so the method returned at the guard below without
-            // ever revoking the session or removing the account.
-            var sessionIds = !string.IsNullOrWhiteSpace(sessionId)
-                ? new List<string> { sessionId }
-                : fallbackSessionIds?
-                    .Where(id => !string.IsNullOrWhiteSpace(id))
-                    .Distinct(StringComparer.Ordinal)
-                    .ToList() ?? new List<string>();
+            // Logout covers every session it can identify: the fallback ids the caller resolved,
+            // plus the one named by the cookie. The cookie does not replace the fallbacks -- both
+            // are revoked -- so a logout cannot leave a session behind just because it was not the
+            // one carrying the cookie.
+            //
+            // The assignment below is load-bearing. Enumerable.Append is a pure LINQ operator: it
+            // returns a new sequence instead of mutating, so `fallbackSessionIds.Append(sessionId);`
+            // discarded its own result and the cookie's id never entered the list. That left
+            // sessionIds empty on every cookie-based logout -- the normal path -- and the method
+            // returned at the count guard below without revoking the session or removing the
+            // account, leaving the IdP session live after logout.
+            fallbackSessionIds ??= [];
+
+            if (!string.IsNullOrWhiteSpace(sessionId))
+            {
+                fallbackSessionIds = fallbackSessionIds.Append(sessionId);
+            }
+
+            // Blanks dropped and comparison made ordinal: a caller-supplied list can carry an empty
+            // entry, and revoking "" would be a wasted call against a session that cannot exist.
+            var sessionIds = fallbackSessionIds
+                .Where(id => !string.IsNullOrWhiteSpace(id))
+                .Distinct(StringComparer.Ordinal)
+                .ToList();
 
             if (sessionIds.Count == 0)
             {

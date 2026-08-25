@@ -217,9 +217,13 @@ namespace Iam.DomainService.Resources
             // Only copies the archive would actually reach: already-archived ones are skipped by the
             // propagation, so counting them here would overstate the blast radius and make the
             // preview disagree with what happens next.
+            // CreatedFromDefault is part of the filter because DeleteRoleForAllOrg only archives
+            // copies: an organization holding its own role under the same slug is skipped there, so
+            // counting it here would overstate the blast radius the confirmation reports.
             var otherOrgIds = isMultiOrgEnabled
                 ? (await _resourceRepository.GetNonArchivedRolesBySlugAsync(role.Slug))
                     .Where(x => x.ItemId != role.ItemId
+                        && x.CreatedFromDefault
                         && !string.Equals(x.OrganizationId, role.OrganizationId, StringComparison.OrdinalIgnoreCase))
                     .Select(x => x.OrganizationId)
                     .Distinct(StringComparer.OrdinalIgnoreCase)
@@ -322,8 +326,23 @@ namespace Iam.DomainService.Resources
 
             // Deliberately the same resolution SetRolesAsync uses, not the stricter default-org-only
             // idiom the list queries use. A preview scoped to a different organization than the
-            // write would describe a change that never happens.
-            var organizationId = ResolveOrganizationId(request.OrganizationId);
+            // write would describe a change that never happens -- which is why this moved from
+            // ResolveOrganizationId to the shared write-scope rule at the same time the write did.
+            var scope = ResourceWriteOrganizationScope.Resolve(
+                BlocksContext.GetContext()?.OrganizationId,
+                request.OrganizationId);
+
+            if (scope.Kind == ResourceWriteScopeKind.Denied)
+            {
+                _logger.LogInformation("Role permission change impact end -- Organization Not Resolved");
+                return new RolePermissionChangeImpactResponse
+                {
+                    IsSuccess = false,
+                    Errors = new Dictionary<string, string> { { "unauthorized", "Organization_Not_Resolved" } }
+                };
+            }
+
+            var organizationId = scope.OrganizationId;
 
             var role = await _resourceRepository.GetRoleBySlugAsync(request.Slug, organizationId);
             if (role == null)
@@ -373,6 +392,11 @@ namespace Iam.DomainService.Resources
             var otherOrgIds = canPropagate
                 ? (await _resourceRepository.GetNonArchivedRolesBySlugAsync(role.Slug))
                     .Where(x => x.ItemId != role.ItemId
+                        // Only copies. PropagateSetPermissionsAsync skips an organization's own
+                        // role under the same slug, so counting it would both overstate
+                        // OrganizationCount and understate SkippedOrganizationCount, which is
+                        // derived from it below.
+                        && x.CreatedFromDefault
                         && !string.Equals(x.OrganizationId, organizationId, StringComparison.OrdinalIgnoreCase))
                     .Select(x => x.OrganizationId)
                     .Distinct(StringComparer.OrdinalIgnoreCase)

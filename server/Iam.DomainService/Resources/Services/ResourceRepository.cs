@@ -1060,6 +1060,59 @@ var filter = Builders<Permission>.Filter.Eq(x => x.OrganizationId, resolvedOrgId
             return await collection.Find(filter).ToListAsync();
         }
 
+        public async Task<bool> HasOwnedRoleWithNameAsync(string name, string organizationId, string? excludeItemId = null)
+        {
+            if (string.IsNullOrWhiteSpace(name) || string.IsNullOrWhiteSpace(organizationId))
+            {
+                return false;
+            }
+
+            var collection = _identityAccessManagementRepository.GetCollection<Role>();
+
+            // Anchored and escaped: an unanchored pattern would make "Manager" collide with
+            // "Regional Manager", and an unescaped one would let a name containing regex
+            // metacharacters match rows it has nothing to do with.
+            var exactNameCaseInsensitive = new BsonRegularExpression($"^{Regex.Escape(name.Trim())}$", "i");
+
+            // Ne(..., true) on both flags, never Eq(..., false): CreatedFromDefault and IsArchived
+            // are both newer than the earliest role documents, and a missing field does not match
+            // false -- Eq would silently ignore every pre-existing role.
+            var filter = Builders<Role>.Filter.Regex(x => x.Name, exactNameCaseInsensitive)
+                & Builders<Role>.Filter.Eq(x => x.OrganizationId, organizationId)
+                & Builders<Role>.Filter.Ne(x => x.CreatedFromDefault, true)
+                & Builders<Role>.Filter.Ne(x => x.IsArchived, true);
+
+            if (!string.IsNullOrWhiteSpace(excludeItemId))
+            {
+                filter &= Builders<Role>.Filter.Ne(x => x.ItemId, excludeItemId);
+            }
+
+            return await collection.Find(filter).AnyAsync();
+        }
+
+        public async Task<List<Role>> GetOwnedRolesWithNameInOtherOrganizationsAsync(string name, string excludeOrganizationId)
+        {
+            if (string.IsNullOrWhiteSpace(name))
+            {
+                return [];
+            }
+
+            var collection = _identityAccessManagementRepository.GetCollection<Role>();
+
+            var exactNameCaseInsensitive = new BsonRegularExpression($"^{Regex.Escape(name.Trim())}$", "i");
+
+            var filter = Builders<Role>.Filter.Regex(x => x.Name, exactNameCaseInsensitive)
+                & Builders<Role>.Filter.Ne(x => x.CreatedFromDefault, true)
+                & Builders<Role>.Filter.Ne(x => x.IsArchived, true);
+
+            if (!string.IsNullOrWhiteSpace(excludeOrganizationId))
+            {
+                filter &= Builders<Role>.Filter.Ne(x => x.OrganizationId, excludeOrganizationId);
+            }
+
+            return await collection.Find(filter).ToListAsync();
+        }
+
         public async Task<bool> UpdateRolesAsync(List<Role> roles)
         {
             if (roles == null || roles.Count == 0)
