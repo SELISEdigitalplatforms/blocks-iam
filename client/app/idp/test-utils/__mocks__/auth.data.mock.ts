@@ -57,10 +57,11 @@ export const mockSigninResponse = {
 };
 
 export const mockSigninMfaResponse = {
-  enable_mfa: true,
-  message: "MFA required",
-  mfaType: 1,
-  mfaId: "mfa-id-123",
+  error: "mfa_enabled",
+  error_description: "Mfa code required",
+  mfa_required: true,
+  mfa_type: 1,
+  mfa_id: "mfa-id-123",
 };
 
 export const mockSignupPayload: ISignupByEmailPayload = {
@@ -113,10 +114,7 @@ export const mockSigninBySSOResponse = {
   expires_in: 3600,
   refresh_token: "mock-sso-refresh-token",
   token_type: "Bearer",
-  enable_mfa: false,
-  message: "",
-  mfaId: "",
-  mfaType: "",
+  mfa_required: false,
 };
 
 // ─── Client Credentials Mocks ────────────────────────────────────────────────

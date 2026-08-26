@@ -96,6 +96,84 @@ namespace XUnitTest.Auth
             obj.StatusCode.Should().Be(StatusCodes.Status500InternalServerError);
         }
 
+        // An MFA challenge rides in the `Error` slot but is a prompt, not a failure. The
+        // payload used to be trimmed to error/error_description/redirect_url, which dropped
+        // the MfaId the challenge had just minted -- leaving a /auth/login client with no way
+        // to build the grant_type=mfa_code second leg. These pin the handle to the response.
+        [Fact]
+        public async Task BuildFlowResult_MfaChallenge_CarriesMfaIdTypeAndMethods()
+        {
+            var result = await Create().BuildFlowResultAsync(new AuthenticationFlowResult
+            {
+                TokenResponse = new TokenResponse
+                {
+                    Error = OAuthError.MfaEnabled,
+                    ErrorDescription = "Mfa code required",
+                    MfaRequired = true,
+                    MfaId = "mfa-1",
+                    UserMfa = UserMfaType.Email,
+                    MfaMethods = "Email",
+                    StatusCode = StatusCodes.Status200OK
+                }
+            }, new DefaultHttpContext());
+
+            var obj = result.Should().BeOfType<ObjectResult>().Subject;
+            obj.StatusCode.Should().Be(StatusCodes.Status200OK);
+
+            var payload = obj.Value.Should().BeAssignableTo<IDictionary<string, object?>>().Subject;
+            payload["error"].Should().Be(OAuthError.MfaEnabled);
+            payload["mfa_required"].Should().Be(true);
+            payload["mfa_id"].Should().Be("mfa-1");
+            payload["mfa_type"].Should().Be((int)UserMfaType.Email);
+            payload["mfa_methods"].Should().Be("Email");
+        }
+
+        [Fact]
+        public async Task BuildFlowResult_MfaEnrollmentRequired_OmitsMfaId()
+        {
+            var result = await Create().BuildFlowResultAsync(new AuthenticationFlowResult
+            {
+                TokenResponse = new TokenResponse
+                {
+                    Error = OAuthError.MfaEnrollmentRequired,
+                    ErrorDescription = "Mfa enrollment is required before authentication can complete",
+                    MfaRequired = true,
+                    MfaMethods = "Email,TOTP",
+                    StatusCode = StatusCodes.Status403Forbidden
+                }
+            }, new DefaultHttpContext());
+
+            var obj = result.Should().BeOfType<ObjectResult>().Subject;
+            obj.StatusCode.Should().Be(StatusCodes.Status403Forbidden);
+
+            var payload = obj.Value.Should().BeAssignableTo<IDictionary<string, object?>>().Subject;
+            payload["mfa_required"].Should().Be(true);
+            payload["mfa_methods"].Should().Be("Email,TOTP");
+            // No challenge was issued, so there is no handle to answer with. Omitted rather
+            // than null so a client cannot mistake it for a completable challenge.
+            payload.Should().NotContainKey("mfa_id");
+        }
+
+        [Fact]
+        public async Task BuildFlowResult_NonMfaError_CarriesNoMfaKeys()
+        {
+            var result = await Create().BuildFlowResultAsync(new AuthenticationFlowResult
+            {
+                TokenResponse = new TokenResponse
+                {
+                    Error = OAuthError.InValidUseNamePassword,
+                    ErrorDescription = "Invalid username or password",
+                    StatusCode = StatusCodes.Status401Unauthorized
+                }
+            }, new DefaultHttpContext());
+
+            var obj = result.Should().BeOfType<ObjectResult>().Subject;
+            obj.StatusCode.Should().Be(StatusCodes.Status401Unauthorized);
+
+            var payload = obj.Value.Should().BeAssignableTo<IDictionary<string, object?>>().Subject;
+            payload.Keys.Should().BeEquivalentTo(new[] { "error", "error_description", "redirect_url" });
+        }
+
         // ---------- UpdateIdpSessionForLogoutAsync ----------
 
         [Fact]

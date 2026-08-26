@@ -61,7 +61,7 @@ describe("useSsoActivation", () => {
       key === "code" ? "auth-code" : key === "state" ? "state-token" : null,
     );
     mockMutateAsync.mockResolvedValue({
-      enable_mfa: false,
+      mfa_required: false,
       access_token: "token",
     });
 
@@ -84,9 +84,10 @@ describe("useSsoActivation", () => {
       key === "code" ? "auth-code" : key === "state" ? "mfa-state" : null,
     );
     mockMutateAsync.mockResolvedValue({
-      enable_mfa: true,
-      mfaId: "mfa-123",
-      mfaType: 1,
+      error: "mfa_enabled",
+      mfa_required: true,
+      mfa_id: "mfa-123",
+      mfa_type: 1,
     });
 
     renderHook(() => useSsoActivation(), {

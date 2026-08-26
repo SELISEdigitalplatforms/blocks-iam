@@ -62,14 +62,19 @@ export const OIDCSignin = () => {
           clientId: oidcContext.clientId,
         });
 
-        setAuthenticated();
-
-        if ((response as any)?.enable_mfa) {
-          const mfaId = (response as any)?.mfaId;
-          const mfaType = (response as any)?.mfaType;
-          navigate(buildOIDCNavigationUrl(`/mfa-check?mfa_id=${mfaId}&mfa_type=${mfaType}`));
+        // Not authenticated until the second factor clears -- the store is marked
+        // after the MFA branch, not before it. The other two callers of this response
+        // (signin-form, use-sso-activation) already order it this way.
+        if (response?.mfa_required && response.mfa_id) {
+          navigate(
+            buildOIDCNavigationUrl(
+              `/mfa-check?mfa_id=${encodeURIComponent(response.mfa_id)}&mfa_type=${response.mfa_type ?? 0}`,
+            ),
+          );
           return;
         }
+
+        setAuthenticated();
 
         const redirectUrl = (response as any)?.redirect_url || (response as any)?.sso_user_redirect_url;
         if (redirectUrl) {
