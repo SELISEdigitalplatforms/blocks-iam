@@ -1,4 +1,4 @@
-import { getRuntimeEnv } from "@/lib/runtime-env";
+import { getRuntimeEnv, getSelfBaseUrl } from "@/lib/runtime-env";
 import { HttpClient } from "@seliseblocks/genesis-os/lib";
 
 export const serviceInstances = {
@@ -7,7 +7,9 @@ export const serviceInstances = {
     blocksKey: getRuntimeEnv("BLOCKS_X_BLOCKS_KEY") || "",
   }),
   idpService: new HttpClient({
-    baseURL: getRuntimeEnv("BLOCKS_IAM_BASE_URL") || "",
+    // IAM's own API is same-origin with this SPA. Resolved per request rather
+    // than at module load, so nothing depends on script ordering.
+    baseURL: () => getSelfBaseUrl(),
     blocksKey: getRuntimeEnv("BLOCKS_X_BLOCKS_KEY") || "",
   }),
 };
