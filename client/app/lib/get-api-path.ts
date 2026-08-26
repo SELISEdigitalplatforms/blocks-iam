@@ -1,4 +1,4 @@
-import { getRuntimeEnv } from "@/lib/runtime-env";
+import { getSelfBaseUrl } from "@/lib/runtime-env";
 
 /**
  * Returns the global API path prefix. All app API routes use `/api` (same in every environment).
@@ -14,7 +14,7 @@ export const getApiPath = (_servicePath: string): string => {
  * @param endpoint - The path after `/api` (e.g. `Authentication/Login`, `.well-known/jwks.json`)
  */
 export const getApiUrl = (_servicePath: string, endpoint: string): string => {
-  const baseUrl = getRuntimeEnv("BLOCKS_IAM_BASE_URL");
+  const baseUrl = getSelfBaseUrl();
   const apiPath = getApiPath(_servicePath);
   return `${baseUrl}${apiPath}/${endpoint}`;
 };

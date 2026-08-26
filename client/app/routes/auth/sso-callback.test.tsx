@@ -2,12 +2,12 @@ import { render, waitFor } from "@testing-library/react";
 import { Routes, Route, MemoryRouter } from "react-router";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-const h = vi.hoisted(() => ({ setAuthenticated: vi.fn(), getRuntimeEnv: vi.fn() }));
+const h = vi.hoisted(() => ({ setAuthenticated: vi.fn(), getSelfBaseUrl: vi.fn() }));
 
 vi.mock("@seliseblocks/genesis-os", () => ({
   useAuthStore: () => ({ setAuthenticated: h.setAuthenticated }),
 }));
-vi.mock("@/lib/runtime-env", () => ({ getRuntimeEnv: h.getRuntimeEnv }));
+vi.mock("@/lib/runtime-env", () => ({ getSelfBaseUrl: h.getSelfBaseUrl }));
 vi.mock("@blocks-idp/authentication/utils/oidc-utils", () => ({
   getCurrentOIDCParams: () => new URLSearchParams(),
   OIDC_DEVICE_RETURN_URL_STORAGE_KEY: "oidc-device-return-url",
@@ -27,7 +27,7 @@ const renderAt = (entry: string) =>
 const originalLocation = window.location;
 beforeEach(() => {
   vi.clearAllMocks();
-  h.getRuntimeEnv.mockReturnValue("https://iam.example.com");
+  h.getSelfBaseUrl.mockReturnValue("https://iam.example.com");
   Object.defineProperty(window, "location", {
     configurable: true,
     writable: true,

@@ -1,7 +1,7 @@
 import { serviceInstances } from "@/lib/http-client";
-import { getRuntimeEnv } from "@/lib/runtime-env";
+import { getSelfBaseUrl } from "@/lib/runtime-env";
 
-const toIamUrl = (path: string) => `${getRuntimeEnv("BLOCKS_IAM_BASE_URL")}${path}`;
+const toIamUrl = (path: string) => `${getSelfBaseUrl()}${path}`;
 import {
   IGenerateUserMFA_OtpPayload,
   IGenerateUserMFA_OtpResponse,
