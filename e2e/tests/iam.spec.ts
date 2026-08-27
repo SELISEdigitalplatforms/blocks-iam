@@ -155,7 +155,7 @@ test.describe("profile", () => {
       const editIcon = page.locator("button:has(svg.lucide-pen)").first();
       await editIcon.click();
 
-      const newFirstName = `Meraj${Date.now()}`;
+      const newFirstName = `TestUser${Date.now()}`;
       await page.getByLabel("First name").fill(newFirstName);
       await page.getByLabel("Last name").fill("Zoarder");
       await page.getByRole("button", { name: /save/i }).last().click();

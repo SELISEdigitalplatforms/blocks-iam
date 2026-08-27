@@ -5,15 +5,17 @@ import path from "path";
 // Load credentials + target host from the gitignored .env.e2e file.
 dotenv.config({ path: path.resolve(__dirname, ".env.e2e") });
 
-const baseURL = process.env.E2E_BASE_URL;
+const rawBaseURL = process.env.E2E_BASE_URL;
 
 // No localhost fallback on purpose: the app is served on a named domain, so a
 // missing value should fail loudly instead of silently hitting the wrong host.
-if (!baseURL) {
+if (!rawBaseURL) {
   throw new Error(
     "E2E_BASE_URL is not set. Copy e2e/.env.e2e.example to e2e/.env.e2e and set E2E_BASE_URL to your named domain.",
   );
 }
+
+const baseURL = rawBaseURL.replace(/\/$/, "");
 
 // Set E2E_NO_WEBSERVER=1 to skip auto-start (e.g. when you already have the app
 // running yourself, or on a machine without Git Bash's `bash` on PATH).
