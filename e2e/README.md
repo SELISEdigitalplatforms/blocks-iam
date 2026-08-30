@@ -10,8 +10,9 @@ login redirect flow.
    cd e2e
    cp .env.e2e.example .env.e2e
    ```
-   Set `E2E_BASE_URL`, `E2E_USERNAME`, `E2E_PASSWORD`. `.env.e2e` is gitignored -
-   never commit real credentials.
+   Set `E2E_BASE_URL` (Dev or Prod IAM host), `E2E_USERNAME`, `E2E_PASSWORD`.
+   `.env.e2e` is gitignored - never commit real credentials. OS is derived from
+   IAM when `E2E_OS_BASE_URL` is omitted (see `SPEC-multi-env.md`).
 
 2. **Install** Playwright + the browser:
    ```bash
@@ -38,11 +39,20 @@ Headless is the default; the post-test pause only engages with `--headed`.
 
 ### Target modes
 
-**Remote dev**: drives the deployed host directly. No hosts entry, no certs, no
-port conflict:
+**Remote Dev / Prod**: drives the deployed host directly. No hosts entry, no
+certs, no port conflict. Switch by changing `E2E_BASE_URL` only — OS is derived
+automatically (`dev-iam` → `dev-os`, `iam.` → `os.`). Override with
+`E2E_OS_BASE_URL` when needed.
 
 ```ini
+# Dev
 E2E_BASE_URL=https://dev-iam.blocksdevelopers.com
+# E2E_OS_BASE_URL=https://dev-os.blocksdevelopers.com
+
+# Prod
+# E2E_BASE_URL=https://iam.seliseblocks.com
+# E2E_OS_BASE_URL=https://os.seliseblocks.com
+
 E2E_NO_WEBSERVER=1
 ```
 
@@ -82,8 +92,9 @@ npm run report        # open the last HTML report
 
 | Variable | Effect |
 |---|---|
-| `E2E_BASE_URL` | Host under test. No default; a missing value fails loudly. |
-| `E2E_USERNAME` / `E2E_PASSWORD` | Dev-IAM test account. |
+| `E2E_BASE_URL` | Blocks **IAM** host. Dev: `https://dev-iam.blocksdevelopers.com`. Prod: `https://iam.seliseblocks.com`. Trailing slashes stripped. |
+| `E2E_OS_BASE_URL` | Blocks **OS** host (optional). Derived from IAM when omitted: `dev-iam`→`dev-os`, `iam.`→`os.`. |
+| `E2E_USERNAME` / `E2E_PASSWORD` | IAM test account for the target env. |
 | `E2E_NO_WEBSERVER=1` | Don't auto-start the app; you manage the server. |
 | `E2E_PAUSE_MS` | How long the browser holds after **each** test. Defaults to 10 s headed, 0 headless; `0` disables. |
 | `E2E_SLOWMO` | Milliseconds of delay per action, to watch the steps themselves. |
@@ -104,11 +115,13 @@ npm run codegen -- <E2E_BASE_URL>/login
 e2e/
   tests/auth/login.spec.ts   # setup project: login once -> fixtures/auth.json
   tests/iam.spec.ts          # authenticated suite (reuses the saved session)
-  support/env.ts             # required E2E_* helpers
+  support/env.ts             # IAM URL + OS derivation
   support/login-helper.ts    # OIDC login + ensureAuthenticated
   support/test-base.ts       # shared test/expect with the headed pause
   fixtures/auth.json         # auth storage state (gitignored; live token)
   fixtures/images/           # avatar upload fixtures (not env — drop files here)
   playwright.config.ts       # setup + chromium projects, creds from .env.e2e
   global-setup.ts            # repoints BLOCKS_IAM_BASE_URL for local builds
+  SPEC-multi-env.md          # Dev/Prod env contract
+  .env.e2e.example           # Dev/Prod template (copy to .env.e2e)
 ```

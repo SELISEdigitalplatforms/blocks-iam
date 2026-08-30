@@ -985,12 +985,36 @@ namespace Authentication.DomainService.Authentication
             if (!string.IsNullOrWhiteSpace(response.Error))
             {
                 var statusCode = response.StatusCode > 0 ? response.StatusCode : StatusCodes.Status400BadRequest;
-                return new ObjectResult(new
+                var errorPayload = new Dictionary<string, object?>
                 {
-                    error = response.Error,
-                    error_description = response.ErrorDescription,
-                    redirect_url = response.SsoUserRedirectUrl
-                })
+                    ["error"] = response.Error,
+                    ["error_description"] = response.ErrorDescription,
+                    ["redirect_url"] = response.SsoUserRedirectUrl
+                };
+
+                // An MFA challenge travels in the `Error` slot (`mfa_enabled`, HTTP 200) but it is
+                // not a failure -- it is a prompt the caller has to be able to answer. Emitting only
+                // the three keys above discarded the MfaId that HandleMfaAuthenticationAsync had just
+                // minted, so a client on /auth/login could never build the second leg
+                // (grant_type=mfa_code needs mfa_id + mfa_code + mfa_type) and MFA was a dead end on
+                // this surface. Names match /oidc/login's contract and the mfa_* request fields on
+                // EmbeddedLoginRequest.
+                if (response.MfaRequired)
+                {
+                    errorPayload["mfa_required"] = true;
+                    errorPayload["mfa_type"] = (int)response.UserMfa;
+                    errorPayload["mfa_methods"] = response.MfaMethods;
+
+                    // Absent on the enrollment branch (403 mfa_enrollment_required): no challenge was
+                    // issued, so there is no handle to answer with. Omitted rather than sent null so a
+                    // client cannot mistake it for a completable challenge.
+                    if (!string.IsNullOrWhiteSpace(response.MfaId))
+                    {
+                        errorPayload["mfa_id"] = response.MfaId;
+                    }
+                }
+
+                return new ObjectResult(errorPayload)
                 {
                     StatusCode = statusCode
                 };

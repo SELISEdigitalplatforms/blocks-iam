@@ -15,6 +15,7 @@ import { useAuthStore } from "@seliseblocks/genesis-os";
 import { useResendOtp } from "@blocks-idp/mfa/hooks/use-resend-otp";
 import { AUTH_ENDPOINTS } from "@blocks-idp/authentication/constants/endpoint.constant";
 import { useOidcAuthAnimation } from "@blocks-idp/authentication/pages/oidc/oidc-auth-shell";
+import { extractOIDCParams } from "@blocks-idp/authentication/utils/oidc-utils";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useNavigate } from "react-router";
 import { parseAsInteger, parseAsString, useQueryStates } from "nuqs";
@@ -70,8 +71,16 @@ export const MfaCheckFrom = () => {
     animCtx?.startAnimation();
 
     try {
+      // The tenant of the login being completed, NOT the tenant of the IdP serving
+      // this page. `BLOCKS_X_BLOCKS_KEY` is this bundle's own build-time project key
+      // -- always the root IdP -- so using it alone sent every construct's second leg
+      // to the root tenant. CompleteMfaLoginAsync resolves the user against the
+      // tenant named by x-blocks-key, so the construct's user id was looked up in the
+      // root database and the verification failed with `invalid_credentials`.
+      // /oidc/login's first leg already prefers the URL's tenant (see oidc-login-form);
+      // this keeps the second leg on the same tenant.
       const finalTenantId =
-        getRuntimeEnv("BLOCKS_X_BLOCKS_KEY") || undefined;
+        extractOIDCParams().tenantId || getRuntimeEnv("BLOCKS_X_BLOCKS_KEY") || undefined;
 
       const payload = {
         mfa_id,

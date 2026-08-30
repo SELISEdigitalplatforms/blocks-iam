@@ -49,3 +49,17 @@ export const getRuntimeEnv = (key: RuntimeKey): string => {
 
   return import.meta.env[key] || "";
 };
+
+/**
+ * Base URL for calls to IAM's *own* API. The SPA is always served by the same
+ * host that serves `/api/*` (the client is built into `server/Api/wwwroot` and
+ * one Kestrel serves both), so the browser origin is authoritative.
+ *
+ * Prefer this over `getRuntimeEnv("BLOCKS_IAM_BASE_URL")` for self-calls:
+ * that value is baked into wwwroot at container start, when the app cannot yet
+ * know which host it will be served on, so it is wrong on any host other than
+ * the canonical one — notably per-PR preview environments. Cross-service URLs
+ * (BLOCKS_LOGIC_BASE_URL etc.) must still come from `getRuntimeEnv`.
+ */
+export const getSelfBaseUrl = (): string =>
+  typeof window !== "undefined" ? window.location.origin : "";

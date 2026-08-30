@@ -64,7 +64,7 @@ describe("SigninForm", () => {
   });
 
   it("signs in and navigates to the profile page on success", async () => {
-    h.mutateAsync.mockResolvedValue({ enable_mfa: false });
+    h.mutateAsync.mockResolvedValue({ mfa_required: false });
     renderForm();
     fillCredentials();
     fireEvent.click(screen.getByRole("button", { name: "Log in" }));
@@ -77,13 +77,38 @@ describe("SigninForm", () => {
     await waitFor(() => expect(h.navigate).toHaveBeenCalledWith("/app/profile"));
   });
 
+  // The challenge is a 200 carrying `error: "mfa_enabled"`, so it resolves rather
+  // than throwing. Previously this asserted `enable_mfa`/`mfaId`/`mfaType`, keys the
+  // server never emitted -- the branch could not fire against a real response.
   it("redirects to the mfa-check page when mfa is required", async () => {
-    h.mutateAsync.mockResolvedValue({ enable_mfa: true, mfaId: "m1", mfaType: "totp" });
+    h.mutateAsync.mockResolvedValue({
+      error: "mfa_enabled",
+      error_description: "Mfa code required",
+      mfa_required: true,
+      mfa_id: "m1",
+      mfa_type: 1,
+    });
     renderForm();
     fillCredentials();
     fireEvent.click(screen.getByRole("button", { name: "Log in" }));
     await waitFor(() =>
-      expect(h.navigate).toHaveBeenCalledWith("/mfa-check?mfa_id=m1&mfa_type=totp"),
+      expect(h.navigate).toHaveBeenCalledWith("/mfa-check?mfa_id=m1&mfa_type=1"),
+    );
+    expect(h.setAuthenticated).not.toHaveBeenCalled();
+  });
+
+  it("url-encodes the mfa_id it carries into the mfa-check url", async () => {
+    h.mutateAsync.mockResolvedValue({
+      error: "mfa_enabled",
+      mfa_required: true,
+      mfa_id: "m/1 +2",
+      mfa_type: 2,
+    });
+    renderForm();
+    fillCredentials();
+    fireEvent.click(screen.getByRole("button", { name: "Log in" }));
+    await waitFor(() =>
+      expect(h.navigate).toHaveBeenCalledWith("/mfa-check?mfa_id=m%2F1%20%2B2&mfa_type=2"),
     );
   });
 
@@ -96,7 +121,7 @@ describe("SigninForm", () => {
   });
 
   it("navigates to the oidc permission page on success in oidc mode", async () => {
-    h.mutateAsync.mockResolvedValue({ enable_mfa: false });
+    h.mutateAsync.mockResolvedValue({ mfa_required: false });
     renderForm({ mode: "oidc", oidcContext: { clientId: "c1", scope: "openid" } });
     fillCredentials();
     fireEvent.click(screen.getByRole("button", { name: "Log in" }));
@@ -109,13 +134,18 @@ describe("SigninForm", () => {
   });
 
   it("redirects to the oidc mfa-check page in oidc mode", async () => {
-    h.mutateAsync.mockResolvedValue({ enable_mfa: true, mfaId: "m2", mfaType: "sms" });
+    h.mutateAsync.mockResolvedValue({
+      error: "mfa_enabled",
+      mfa_required: true,
+      mfa_id: "m2",
+      mfa_type: 2,
+    });
     renderForm({ mode: "oidc", oidcContext: { clientId: "c1" } });
     fillCredentials();
     fireEvent.click(screen.getByRole("button", { name: "Log in" }));
     await waitFor(() =>
       expect(h.navigate).toHaveBeenCalledWith(
-        expect.stringContaining("/oidc/mfa-check?mfa_id=m2&mfa_type=sms"),
+        expect.stringContaining("/oidc/mfa-check?mfa_id=m2&mfa_type=2"),
       ),
     );
   });

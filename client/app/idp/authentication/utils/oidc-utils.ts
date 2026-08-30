@@ -239,7 +239,20 @@ export const buildOIDCNavigationUrl = (path: string): string => {
   if (params.tenantId) searchParams.set("tenant_id", params.tenantId);
 
   const queryString = searchParams.toString();
-  return queryString ? `${safePath}?${queryString}` : safePath;
+  if (!queryString) return safePath;
+
+  // `path` may already carry its own query -- the MFA hand-off passes
+  // `/oidc/mfa-check?mfa_id=...&mfa_type=...`. Joining with a second `?` produced
+  // `...&mfa_type=2?clientId=...`, which swallowed clientId into mfa_type's value:
+  // clientId stopped being a parameter at all, and mfa_type only still parsed as 2
+  // because parseInt stops at the `?`. Merge into the existing query instead, and
+  // keep any fragment last so the query never lands after the `#`.
+  const hashIndex = safePath.indexOf("#");
+  const base = hashIndex >= 0 ? safePath.slice(0, hashIndex) : safePath;
+  const hash = hashIndex >= 0 ? safePath.slice(hashIndex) : "";
+  const separator = base.includes("?") ? "&" : "?";
+
+  return `${base}${separator}${queryString}${hash}`;
 };
 
 /**

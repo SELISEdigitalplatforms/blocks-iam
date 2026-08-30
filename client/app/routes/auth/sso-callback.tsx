@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef } from "react";
 import { useParams, useSearchParams } from "react-router";
 import { useAuthStore } from "@seliseblocks/genesis-os";
-import { getRuntimeEnv } from "@/lib/runtime-env";
+import { getSelfBaseUrl } from "@/lib/runtime-env";
 import { showErrorToast } from "@/hooks/use-toast";
 import {
   getCurrentOIDCParams,
@@ -24,10 +24,7 @@ export default function SSOCallbackPage() {
 
     hasProcessed.current = true;
 
-    const callbackUrl = new URL(
-      "/api/oidc/callback",
-      getRuntimeEnv("BLOCKS_IAM_BASE_URL"),
-    );
+    const callbackUrl = new URL("/api/oidc/callback", getSelfBaseUrl());
     if (code) callbackUrl.searchParams.set("code", code);
     if (state) callbackUrl.searchParams.set("state", state);
     if (tenantId) callbackUrl.searchParams.set("tenant_id", tenantId);
