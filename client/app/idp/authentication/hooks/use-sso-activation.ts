@@ -95,7 +95,10 @@ export function useSsoActivation() {
         const activationPath = res.sso_user_redirect_url ? getSsoActivationPath(res.sso_user_redirect_url) : null;
         if (activationPath) return navigate(activationPath);
 
-        if (res.enable_mfa) return navigate(`/mfa-check?mfa_id=${res.mfaId}&mfa_type=${res.mfaType}`);
+        if (res.mfa_required && res.mfa_id)
+          return navigate(
+            `/mfa-check?mfa_id=${encodeURIComponent(res.mfa_id)}&mfa_type=${res.mfa_type ?? 0}`,
+          );
 
         setAuthenticated();
         navigate("/app/profile");

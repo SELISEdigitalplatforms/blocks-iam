@@ -26,17 +26,26 @@ export interface ISigninByEmailPayload {
   redirectUri?: string;
   captchaCode?: string;
 }
-export interface ISigninByEmailResponse {
+/**
+ * An MFA challenge is delivered as a 200 whose body carries `error: "mfa_enabled"`
+ * plus the handle needed to answer it. The HTTP client only rejects non-2xx, so a
+ * challenge resolves like a success and callers must check `mfa_required` before
+ * treating the response as a completed login.
+ */
+export interface IMfaChallengeFields {
+  error?: string;
+  error_description?: string;
+  mfa_required?: boolean;
+  mfa_id?: string;
+  mfa_type?: number;
+  mfa_methods?: string | null;
+}
+
+export interface ISigninByEmailResponse extends IMfaChallengeFields {
   access_token: string;
   token_type: string;
   expires_in: number;
   refresh_token: string;
-}
-export interface ISigninByEmailResponse {
-  enable_mfa: boolean;
-  message: string;
-  mfaType: number;
-  mfaId: string;
 }
 export interface IVerifyMfaPayload {
   code: string;
