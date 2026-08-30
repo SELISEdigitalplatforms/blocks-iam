@@ -48,6 +48,13 @@ namespace Authentication.DomainService.Services
         {
             var collection = GetCollection<User>();
             email = NormalizeIdentity(email);
+            // A blank identity would otherwise filter on Email == "" and match unrelated
+            // documents that legitimately store an empty email (e.g. externally provisioned
+            // or seed accounts). Return no user instead of a spurious match.
+            if (string.IsNullOrEmpty(email))
+            {
+                return null!;
+            }
             var options = new FindOptions<User>
             {
                 Collation = new Collation("en", strength: CollationStrength.Secondary)
@@ -60,6 +67,13 @@ namespace Authentication.DomainService.Services
         {
             var collection = GetCollection<User>();
             username = NormalizeIdentity(username);
+            // A blank identity would otherwise filter on UserName == "" OR Email == "" and match
+            // unrelated documents that legitimately store an empty value. Return no user instead
+            // of a spurious match.
+            if (string.IsNullOrEmpty(username))
+            {
+                return null!;
+            }
 
             var filter = Builders<User>.Filter.Eq(u => u.UserName, username) | Builders<User>.Filter.Eq(u => u.Email, username);
             var options = new FindOptions
