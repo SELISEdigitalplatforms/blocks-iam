@@ -1,6 +1,7 @@
 using Blocks.Genesis;
 using Blocks.MailDriver;
 using FluentAssertions;
+using Iam.DomainService.Entities;
 using Iam.DomainService.Utilities;
 using Mfa.DomainService.Configuration;
 using Mfa.DomainService.Entities;
@@ -103,10 +104,75 @@ namespace XUnitTest.Mfa.EmailOTP
         }
 
         [Fact]
+        public async Task ResendAsync_WhenKeyMissing_ReturnsInvalidTwoFactorId()
+        {
+            var service = CreateService(out var cache, out _, out _);
+            cache.Setup(c => c.KeyExistsAsync("gone")).ReturnsAsync(false);
+
+            var result = await service.ResendAsync("gone", new UserInfo { ItemId = "u1", Email = "u1@e.com" });
+
+            result.IsSuccess.Should().BeFalse();
+            result.Errors["message"].Should().Be("invalid_two_factor_id");
+        }
+
+        [Fact]
+        public async Task ResendAsync_AfterCooldown_PreservesMfaId_RegeneratesCode_AndResends()
+        {
+            var service = CreateService(out var cache, out _, out var message);
+            // Original challenge sent more than the cooldown ago.
+            var context = MfaAuthenticationContext.Create("m1", "u1", UserMfaType.Email);
+            var originalCode = context.MfaCode;
+            context.LastSentUtc = DateTime.UtcNow.AddSeconds(-120);
+            cache.Setup(c => c.KeyExistsAsync("m1")).ReturnsAsync(true);
+            cache.Setup(c => c.GetStringValueAsync("m1")).ReturnsAsync(context.Sterilize());
+
+            string? storedKey = null;
+            string? storedValue = null;
+            long? storedTtl = null;
+            cache.Setup(c => c.AddStringValueAsync("m1", It.IsAny<string>(), It.IsAny<long>()))
+                .Callback<string, string, long>((k, v, t) => { storedKey = k; storedValue = v; storedTtl = t; })
+                .ReturnsAsync(true);
+            ConsumerMessage<SendMail>? captured = null;
+            message.Setup(m => m.SendToConsumerAsync(It.IsAny<ConsumerMessage<SendMail>>()))
+                .Callback<ConsumerMessage<SendMail>>(c => captured = c)
+                .Returns(Task.CompletedTask);
+
+            var result = await service.ResendAsync("m1", new UserInfo { ItemId = "u1", Email = "u1@e.com", Language = "en-US" });
+
+            result.IsSuccess.Should().BeTrue();
+            result.MfaId.Should().Be("m1");                     // same id preserved
+            storedKey.Should().Be("m1");
+            storedTtl.Should().Be(300);                         // TTL reset
+            var updated = MfaAuthenticationContext.Deserialize(storedValue!);
+            updated.MfaCode.Should().NotBe(originalCode);        // new code minted
+            captured.Should().NotBeNull();
+            captured!.Payload.To.Should().ContainSingle().Which.Should().Be("u1@e.com");
+        }
+
+        [Fact]
+        public async Task ResendAsync_WithinCooldown_ReturnsTooSoon_WithRetryAfter_AndDoesNotResend()
+        {
+            var service = CreateService(out var cache, out _, out var message);
+            var context = MfaAuthenticationContext.Create("m1", "u1", UserMfaType.Email);
+            context.LastSentUtc = DateTime.UtcNow.AddSeconds(-5);   // still inside the 60s window
+            cache.Setup(c => c.KeyExistsAsync("m1")).ReturnsAsync(true);
+            cache.Setup(c => c.GetStringValueAsync("m1")).ReturnsAsync(context.Sterilize());
+
+            var result = await service.ResendAsync("m1", new UserInfo { ItemId = "u1", Email = "u1@e.com" });
+
+            result.IsSuccess.Should().BeFalse();
+            result.MfaId.Should().Be("m1");
+            result.Errors["message"].Should().Be("resend_too_soon");
+            result.Errors.Should().ContainKey("retry_after_seconds");
+            cache.Verify(c => c.AddStringValueAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<long>()), Times.Never);
+            message.Verify(m => m.SendToConsumerAsync(It.IsAny<ConsumerMessage<SendMail>>()), Times.Never);
+        }
+
+        [Fact]
         public async Task VerifyAsync_WhenCodeMatches_RemovesKeyAndReturnsValid()
         {
             var service = CreateService(out var cache, out _, out _);
-            var context = MfaAuthenticationContext.Create("m1", "u1");
+            var context = MfaAuthenticationContext.Create("m1", "u1", UserMfaType.Email);
             cache.Setup(c => c.KeyExistsAsync("m1")).ReturnsAsync(true);
             cache.Setup(c => c.GetStringValueAsync("m1")).ReturnsAsync(context.Sterilize());
             cache.Setup(c => c.RemoveKeyAsync("m1")).ReturnsAsync(true);
@@ -122,7 +188,7 @@ namespace XUnitTest.Mfa.EmailOTP
         public async Task VerifyAsync_WhenCodeMismatch_ReturnsInvalidCodeError()
         {
             var service = CreateService(out var cache, out _, out _);
-            var context = MfaAuthenticationContext.Create("m1", "u1");
+            var context = MfaAuthenticationContext.Create("m1", "u1", UserMfaType.Email);
             cache.Setup(c => c.KeyExistsAsync("m1")).ReturnsAsync(true);
             cache.Setup(c => c.GetStringValueAsync("m1")).ReturnsAsync(context.Sterilize());
 

@@ -269,24 +269,77 @@ namespace XUnitTest.Mfa.Shared.Services
         }
 
         [Fact]
-        public async Task ResendOtpAsync_WhenKeyPresent_DelegatesToGenerate()
+        public async Task ResendOtpAsync_WhenKeyPresent_ResolvesMethodFromContext_AndPreservesMfaId()
         {
             var service = CreateService(out var factory, out var repo, out var config, out var cache, out _);
-            var context = MfaAuthenticationContext.Create("mfa-1", "user-1");
+            var context = MfaAuthenticationContext.Create("mfa-1", "user-1", UserMfaType.Email);
             cache.Setup(c => c.KeyExistsAsync("mfa-1")).ReturnsAsync(true);
             cache.Setup(c => c.GetStringValueAsync("mfa-1")).ReturnsAsync(context.Sterilize());
-            config.Setup(c => c.GetAsync()).ReturnsAsync(new global::Mfa.DomainService.Configuration.Configuration { EnableMfa = true });
             repo.Setup(r => r.GetItemAsync<UserInfo>(It.IsAny<System.Linq.Expressions.Expression<Func<UserInfo, bool>>>(), It.IsAny<string>()))
                 .ReturnsAsync(new UserInfo { ItemId = "user-1", UserMfaType = UserMfaType.Email });
             var otpService = new Mock<IOtpService>();
-            otpService.Setup(s => s.GenerateAsync(It.IsAny<UserInfo>(), It.IsAny<string>()))
-                .ReturnsAsync(new OtpGenerationResponse { IsSuccess = true });
+            otpService.Setup(s => s.ResendAsync("mfa-1", It.IsAny<UserInfo>(), It.IsAny<string>()))
+                .ReturnsAsync(new OtpGenerationResponse { IsSuccess = true, MfaId = "mfa-1" });
             factory.Setup(f => f.GetOTPService(UserMfaType.Email)).Returns(otpService.Object);
 
             var result = await service.ResendOtpAsync("mfa-1", "");
 
-            result.Should().NotBeNull();
             result.IsSuccess.Should().BeTrue();
+            result.MfaId.Should().Be("mfa-1");
+            otpService.Verify(s => s.ResendAsync("mfa-1", It.Is<UserInfo>(u => u.ItemId == "user-1"), It.IsAny<string>()), Times.Once);
+            factory.Verify(f => f.GetOTPService(UserMfaType.Email), Times.Once);
+        }
+
+        [Fact]
+        public async Task ResendOtpAsync_WhenContextNotCodeBased_ReturnsResendNotSupported()
+        {
+            // A TOTP session stores a bare user id string, not the JSON context — nothing to resend.
+            var service = CreateService(out var factory, out _, out _, out var cache, out _);
+            cache.Setup(c => c.KeyExistsAsync("totp-mfa")).ReturnsAsync(true);
+            cache.Setup(c => c.GetStringValueAsync("totp-mfa")).ReturnsAsync("user-1");
+
+            var result = await service.ResendOtpAsync("totp-mfa", "");
+
+            result.Errors.Should().ContainKey("message");
+            result.Errors!["message"].Should().Be("resend_not_supported");
+            factory.Verify(f => f.GetOTPService(It.IsAny<UserMfaType>()), Times.Never);
+        }
+
+        [Fact]
+        public async Task ResendOtpAsync_LegacyContextWithoutMfaType_FallsBackToEmail()
+        {
+            // A challenge created before MfaType was persisted deserializes with MfaType = None.
+            var service = CreateService(out var factory, out var repo, out _, out var cache, out _);
+            var context = MfaAuthenticationContext.Create("mfa-1", "user-1", UserMfaType.None);
+            cache.Setup(c => c.KeyExistsAsync("mfa-1")).ReturnsAsync(true);
+            cache.Setup(c => c.GetStringValueAsync("mfa-1")).ReturnsAsync(context.Sterilize());
+            repo.Setup(r => r.GetItemAsync<UserInfo>(It.IsAny<System.Linq.Expressions.Expression<Func<UserInfo, bool>>>(), It.IsAny<string>()))
+                .ReturnsAsync(new UserInfo { ItemId = "user-1", UserMfaType = UserMfaType.Email });
+            var otpService = new Mock<IOtpService>();
+            otpService.Setup(s => s.ResendAsync("mfa-1", It.IsAny<UserInfo>(), It.IsAny<string>()))
+                .ReturnsAsync(new OtpGenerationResponse { IsSuccess = true, MfaId = "mfa-1" });
+            factory.Setup(f => f.GetOTPService(UserMfaType.Email)).Returns(otpService.Object);
+
+            var result = await service.ResendOtpAsync("mfa-1", "");
+
+            result.IsSuccess.Should().BeTrue();
+            factory.Verify(f => f.GetOTPService(UserMfaType.Email), Times.Once);
+            factory.Verify(f => f.GetOTPService(UserMfaType.None), Times.Never);
+        }
+
+        [Fact]
+        public async Task ResendOtpAsync_WhenUserMissing_ReturnsUserNotFound()
+        {
+            var service = CreateService(out _, out var repo, out _, out var cache, out _);
+            var context = MfaAuthenticationContext.Create("mfa-1", "user-1", UserMfaType.Email);
+            cache.Setup(c => c.KeyExistsAsync("mfa-1")).ReturnsAsync(true);
+            cache.Setup(c => c.GetStringValueAsync("mfa-1")).ReturnsAsync(context.Sterilize());
+            repo.Setup(r => r.GetItemAsync<UserInfo>(It.IsAny<System.Linq.Expressions.Expression<Func<UserInfo, bool>>>(), It.IsAny<string>()))
+                .ReturnsAsync((UserInfo)null!);
+
+            var result = await service.ResendOtpAsync("mfa-1", "");
+
+            result.Errors.Should().ContainKey("user_not_found");
         }
     }
 }

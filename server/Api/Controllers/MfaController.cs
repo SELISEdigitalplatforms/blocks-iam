@@ -184,8 +184,12 @@ public class MfaController : ControllerBase
         return Ok(new { mfaId = result.MfaId });
     }
 
+    // Anonymous: this is invoked during the login MFA step, before the user holds an access
+    // token. The live mfa_id (a short-lived, single-challenge Redis key) is the authorization
+    // — possession of a valid one proves a challenge is in flight, the same model used by
+    // "backup-codes/use" and the login verify itself.
     [HttpPost("resend")]
-    [Authorize]
+    [AllowAnonymous]
     public async Task<IActionResult> ResendOtp([FromBody] ResendOtpApiRequest request)
     {
         if (request == null || string.IsNullOrWhiteSpace(request.MfaId))
@@ -197,6 +201,13 @@ public class MfaController : ControllerBase
 
         if (result.Errors != null && result.Errors.Count > 0)
         {
+            // Cooldown is not a client error — signal it as a rate limit so the FE can drive its
+            // countdown from retry_after_seconds.
+            if (result.Errors.ContainsKey("message") && result.Errors["message"] == "resend_too_soon")
+            {
+                return StatusCode(StatusCodes.Status429TooManyRequests, new { errors = result.Errors });
+            }
+
             return BadRequest(new { errors = result.Errors });
         }
 
