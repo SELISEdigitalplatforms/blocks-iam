@@ -3,11 +3,10 @@ using Authentication.DomainService.OAuth;
 using Authentication.DomainService.Oidc.Services;
 using Authentication.DomainService.Services;
 using Authentication.DomainService.Shared.Dtos;
+using Authentication.DomainService.Shared.Services;
 using Blocks.Genesis;
 using FluentAssertions;
 using Iam.DomainService.Entities;
-using Iam.DomainService.Resources;
-using Iam.DomainService.Users;
 using Microsoft.Extensions.Logging.Abstractions;
 using Moq;
 
@@ -18,31 +17,60 @@ namespace XUnitTest.Auth.Oidc
         private static OidcCallbackHandler Create(
             out Mock<IAuthenticationRepository> authRepo,
             out Mock<ICacheClient> cache,
-            out Mock<IUserRepository> userRepo,
+            out Mock<ISsoUserProvisioningService> provisioning,
             out Mock<ISocialLogInServiceProvider> socialProvider)
-        {
-            return Create(out authRepo, out cache, out userRepo, out socialProvider, out _, out _);
-        }
-
-        private static OidcCallbackHandler Create(
-            out Mock<IAuthenticationRepository> authRepo,
-            out Mock<ICacheClient> cache,
-            out Mock<IUserRepository> userRepo,
-            out Mock<ISocialLogInServiceProvider> socialProvider,
-            out Mock<IResourceMutationService> resourceMutation,
-            out Mock<IResourceRepository> resourceRepo)
         {
             authRepo = new Mock<IAuthenticationRepository>();
             cache = new Mock<ICacheClient>();
-            userRepo = new Mock<IUserRepository>();
+            provisioning = new Mock<ISsoUserProvisioningService>();
             socialProvider = new Mock<ISocialLogInServiceProvider>();
-            resourceMutation = new Mock<IResourceMutationService>();
-            resourceRepo = new Mock<IResourceRepository>();
 
             return new OidcCallbackHandler(
                 NullLogger<OidcCallbackHandler>.Instance,
-                authRepo.Object, cache.Object, userRepo.Object, socialProvider.Object,
-                resourceMutation.Object, resourceRepo.Object);
+                authRepo.Object, cache.Object, socialProvider.Object, provisioning.Object);
+        }
+
+        private static string SocialStateJson(string oidcState = "oidc-state-1", string provider = "google")
+            => JsonSerializer.Serialize(new OidcSocialStateContext { OidcState = oidcState, Provider = provider });
+
+        private static string ContextJson(string? tenantId = null)
+            => JsonSerializer.Serialize(new OidcContext
+            {
+                ClientId = "client-1",
+                RedirectUri = "https://redirect.com",
+                State = "state-1",
+                Scope = "openid",
+                Nonce = "nonce-1",
+                CodeChallenge = "challenge",
+                CodeChallengeMethod = "S256",
+                TenantId = tenantId
+            });
+
+        /// <summary>
+        /// Drives the handler as far as the provisioning call, with the given result waiting there.
+        /// </summary>
+        private static OidcCallbackHandler ArrangeUpToProvisioning(
+            SsoProvisioningResult provisioningResult,
+            out Mock<ICacheClient> cache,
+            out Mock<ISsoUserProvisioningService> provisioning,
+            string? tenantId = null)
+        {
+            var handler = Create(out _, out cache, out provisioning, out var social);
+
+            cache.Setup(c => c.GetStringValueAsync(It.IsAny<string>())).ReturnsAsync(SocialStateJson());
+            cache.Setup(c => c.GetStringValueAsync("oidc_context:oidc-state-1")).ReturnsAsync(ContextJson(tenantId));
+
+            social.Setup(s => s.HandleSocialLoginCallback(It.IsAny<StateInfo>()))
+                .ReturnsAsync(new SocialCallbackResult
+                {
+                    ExternalUserData = new BYOSsoUserData { Email = "u@example.com", FirstName = "U", LastName = "S" }
+                });
+
+            provisioning
+                .Setup(p => p.ResolveOrProvisionAsync(It.IsAny<IExternalUserData>(), It.IsAny<string>()))
+                .ReturnsAsync(provisioningResult);
+
+            return handler;
         }
 
         [Fact]
@@ -61,8 +89,7 @@ namespace XUnitTest.Auth.Oidc
         public async Task HandleCallbackAsync_ReturnsError_WhenOidcStateNull()
         {
             var handler = Create(out _, out var cache, out _, out _);
-            var stateJson = JsonSerializer.Serialize(new OidcSocialStateContext { OidcState = "", Provider = "google" });
-            cache.Setup(c => c.GetStringValueAsync(It.IsAny<string>())).ReturnsAsync(stateJson);
+            cache.Setup(c => c.GetStringValueAsync(It.IsAny<string>())).ReturnsAsync(SocialStateJson(oidcState: ""));
 
             var result = await handler.HandleCallbackAsync("code-1", "state-1");
 
@@ -74,8 +101,7 @@ namespace XUnitTest.Auth.Oidc
         public async Task HandleCallbackAsync_ReturnsError_WhenProviderMissing()
         {
             var handler = Create(out _, out var cache, out _, out _);
-            var stateJson = JsonSerializer.Serialize(new OidcSocialStateContext { OidcState = "oidc-state-1", Provider = "" });
-            cache.Setup(c => c.GetStringValueAsync(It.IsAny<string>())).ReturnsAsync(stateJson);
+            cache.Setup(c => c.GetStringValueAsync(It.IsAny<string>())).ReturnsAsync(SocialStateJson(provider: ""));
 
             var result = await handler.HandleCallbackAsync("code-1", "state-1");
 
@@ -87,9 +113,8 @@ namespace XUnitTest.Auth.Oidc
         public async Task HandleCallbackAsync_ReturnsError_WhenOidcContextMissing()
         {
             var handler = Create(out _, out var cache, out _, out _);
-            var stateJson = JsonSerializer.Serialize(new OidcSocialStateContext { OidcState = "oidc-state-1", Provider = "google" });
             cache.SetupSequence(c => c.GetStringValueAsync(It.IsAny<string>()))
-                .ReturnsAsync(stateJson)
+                .ReturnsAsync(SocialStateJson())
                 .ReturnsAsync((string?)null);
 
             var result = await handler.HandleCallbackAsync("code-1", "state-1");
@@ -102,18 +127,8 @@ namespace XUnitTest.Auth.Oidc
         public async Task HandleCallbackAsync_ReturnsError_WhenExternalUserMissingEmail()
         {
             var handler = Create(out _, out var cache, out _, out var social);
-            var stateJson = JsonSerializer.Serialize(new OidcSocialStateContext { OidcState = "oidc-state-1", Provider = "google" });
-            var contextJson = JsonSerializer.Serialize(new OidcContext
-            {
-                ClientId = "client-1",
-                RedirectUri = "https://redirect.com",
-                State = "state-1",
-                Scope = "openid",
-                Nonce = "nonce-1"
-            });
-
-            cache.Setup(c => c.GetStringValueAsync(It.IsAny<string>())).ReturnsAsync(stateJson);
-            cache.Setup(c => c.GetStringValueAsync("oidc_context:oidc-state-1")).ReturnsAsync(contextJson);
+            cache.Setup(c => c.GetStringValueAsync(It.IsAny<string>())).ReturnsAsync(SocialStateJson());
+            cache.Setup(c => c.GetStringValueAsync("oidc_context:oidc-state-1")).ReturnsAsync(ContextJson());
             social.Setup(s => s.HandleSocialLoginCallback(It.IsAny<StateInfo>()))
                 .ReturnsAsync(new SocialCallbackResult { ExternalUserData = new BYOSsoUserData() });
 
@@ -126,28 +141,11 @@ namespace XUnitTest.Auth.Oidc
         [Fact]
         public async Task HandleCallbackAsync_ReturnsSuccess_AndCleansUpCache_WhenExistingUser()
         {
-            var handler = Create(out _, out var cache, out var userRepo, out var social);
-            var stateJson = JsonSerializer.Serialize(new OidcSocialStateContext { OidcState = "oidc-state-1", Provider = "google" });
-            var contextJson = JsonSerializer.Serialize(new OidcContext
-            {
-                ClientId = "client-1",
-                RedirectUri = "https://redirect.com",
-                State = "state-1",
-                Scope = "openid",
-                Nonce = "nonce-1",
-                CodeChallenge = "challenge",
-                CodeChallengeMethod = "S256"
-            });
-
-            cache.Setup(c => c.GetStringValueAsync(It.IsAny<string>())).ReturnsAsync(stateJson);
-            cache.Setup(c => c.GetStringValueAsync("oidc_context:oidc-state-1")).ReturnsAsync(contextJson);
-
-            var externalUser = new BYOSsoUserData { Email = "u@example.com", FirstName = "U", LastName = "S" };
-            social.Setup(s => s.HandleSocialLoginCallback(It.IsAny<StateInfo>()))
-                .ReturnsAsync(new SocialCallbackResult { ExternalUserData = externalUser });
-
-            userRepo.Setup(r => r.GetUserByEmailAsync("u@example.com"))
-                .ReturnsAsync(new User { ItemId = "existing-user", Email = "u@example.com", Active = true });
+            var existing = new User { ItemId = "existing-user", Email = "u@example.com", Active = true };
+            var handler = ArrangeUpToProvisioning(
+                SsoProvisioningResult.From(SsoProvisioningOutcome.ExistingUser, existing),
+                out var cache,
+                out _);
 
             var result = await handler.HandleCallbackAsync("code-1", "state-1");
 
@@ -162,63 +160,75 @@ namespace XUnitTest.Auth.Oidc
         }
 
         [Fact]
-        public async Task HandleCallbackAsync_CreatesNewUser_WhenEmailNotFound()
+        public async Task HandleCallbackAsync_ReturnsSuccess_WhenUserProvisioned()
         {
-            var handler = Create(out _, out var cache, out var userRepo, out var social);
-            var stateJson = JsonSerializer.Serialize(new OidcSocialStateContext { OidcState = "oidc-state-1", Provider = "google" });
-            var contextJson = JsonSerializer.Serialize(new OidcContext
-            {
-                ClientId = "client-1",
-                RedirectUri = "https://redirect.com",
-                State = "state-1",
-                Scope = "openid",
-                Nonce = "nonce-1"
-            });
-
-            cache.Setup(c => c.GetStringValueAsync(It.IsAny<string>())).ReturnsAsync(stateJson);
-            cache.Setup(c => c.GetStringValueAsync("oidc_context:oidc-state-1")).ReturnsAsync(contextJson);
-
-            var externalUser = new BYOSsoUserData
-            {
-                Email = "new@example.com",
-                FirstName = "New",
-                LastName = "User"
-            };
-            social.Setup(s => s.HandleSocialLoginCallback(It.IsAny<StateInfo>()))
-                .ReturnsAsync(new SocialCallbackResult { ExternalUserData = externalUser });
-
-            userRepo.Setup(r => r.GetUserByEmailAsync("new@example.com")).ReturnsAsync((User?)null);
-            userRepo.Setup(r => r.CreateUserAsync(It.IsAny<User>())).Returns(Task.FromResult(true));
+            var created = new User { ItemId = "new-user", Email = "u@example.com", Active = true };
+            var handler = ArrangeUpToProvisioning(
+                SsoProvisioningResult.From(SsoProvisioningOutcome.Provisioned, created),
+                out _,
+                out var provisioning);
 
             var result = await handler.HandleCallbackAsync("code-1", "state-1");
 
             result.IsSuccess.Should().BeTrue();
-            userRepo.Verify(r => r.CreateUserAsync(It.IsAny<User>()), Times.Once);
+            result.BlocksUserId.Should().Be("new-user");
+            provisioning.Verify(
+                p => p.ResolveOrProvisionAsync(It.IsAny<IExternalUserData>(), "google"),
+                Times.Once);
+        }
+
+        [Fact]
+        public async Task HandleCallbackAsync_ReturnsError_WhenSsoSignupDisabled()
+        {
+            var handler = ArrangeUpToProvisioning(
+                SsoProvisioningResult.From(SsoProvisioningOutcome.SignupDisabled),
+                out _,
+                out _);
+
+            var result = await handler.HandleCallbackAsync("code-1", "state-1");
+
+            result.IsSuccess.Should().BeFalse();
+            result.ErrorMessage.Should().Contain("No account exists");
+        }
+
+        [Fact]
+        public async Task HandleCallbackAsync_ReturnsError_WhenProvisioningFails()
+        {
+            var handler = ArrangeUpToProvisioning(
+                SsoProvisioningResult.From(SsoProvisioningOutcome.Failed),
+                out _,
+                out _);
+
+            var result = await handler.HandleCallbackAsync("code-1", "state-1");
+
+            result.IsSuccess.Should().BeFalse();
+            result.ErrorMessage.Should().Contain("Failed to create user account");
+        }
+
+        [Fact]
+        public async Task HandleCallbackAsync_ReturnsError_WhenUserInactive()
+        {
+            var inactive = new User { ItemId = "u1", Email = "u@example.com", Active = false };
+            var handler = ArrangeUpToProvisioning(
+                SsoProvisioningResult.From(SsoProvisioningOutcome.ExistingUser, inactive),
+                out _,
+                out _);
+
+            var result = await handler.HandleCallbackAsync("code-1", "state-1");
+
+            result.IsSuccess.Should().BeFalse();
+            result.ErrorMessage.Should().Contain("not active");
         }
 
         [Fact]
         public async Task HandleCallbackAsync_DefaultsTenantId_ToDefault()
         {
-            var handler = Create(out _, out var cache, out var userRepo, out var social);
-            var stateJson = JsonSerializer.Serialize(new OidcSocialStateContext { OidcState = "oidc-state-1", Provider = "google" });
-            var contextJson = JsonSerializer.Serialize(new OidcContext
-            {
-                ClientId = "client-1",
-                RedirectUri = "https://redirect.com",
-                State = "state-1",
-                Scope = "openid",
-                TenantId = ""
-            });
-
-            cache.Setup(c => c.GetStringValueAsync(It.IsAny<string>())).ReturnsAsync(stateJson);
-            cache.Setup(c => c.GetStringValueAsync("oidc_context:oidc-state-1")).ReturnsAsync(contextJson);
-
-            var externalUser = new BYOSsoUserData { Email = "u@example.com" };
-            social.Setup(s => s.HandleSocialLoginCallback(It.IsAny<StateInfo>()))
-                .ReturnsAsync(new SocialCallbackResult { ExternalUserData = externalUser });
-
-            userRepo.Setup(r => r.GetUserByEmailAsync("u@example.com"))
-                .ReturnsAsync(new User { ItemId = "u1", Email = "u@example.com", Active = true });
+            var existing = new User { ItemId = "u1", Email = "u@example.com", Active = true };
+            var handler = ArrangeUpToProvisioning(
+                SsoProvisioningResult.From(SsoProvisioningOutcome.ExistingUser, existing),
+                out _,
+                out _,
+                tenantId: "");
 
             var result = await handler.HandleCallbackAsync("code-1", "state-1");
 
