@@ -13,7 +13,7 @@ vi.mock("./use-mfa-config", () => ({
 const mockReset = vi.fn();
 vi.mock("@/hooks/use-count-down", () => ({
   useCountDown: vi.fn(() => ({
-    remainingTime: 300,
+    remainingTime: 60,
     reset: mockReset,
   })),
 }));
@@ -30,7 +30,7 @@ describe("useResendOtp", () => {
       wrapper: createWrapper(),
     });
 
-    expect(result.current.remainingTime).toBe(300);
+    expect(result.current.remainingTime).toBe(60);
     expect(typeof result.current.resend).toBe("function");
     expect(typeof result.current.reset).toBe("function");
   });

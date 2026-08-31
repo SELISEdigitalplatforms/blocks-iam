@@ -57,7 +57,7 @@ export class MFAService {
   }
 
   resendOtp(payload: IResendMfaOtpPayload): Promise<IResendMfaOtpResponse> {
-    return serviceInstances.idpService.post(MFA_ENDPOINTS.RESEND_OTP, payload.mfaId);
+    return serviceInstances.idpService.post(toIamUrl(MFA_ENDPOINTS.RESEND_OTP), payload, undefined, { absoluteUrl: true });
   }
   disableMFA(payload: IDisableMFAPayload): Promise<IDisableMFAResponse> {
     return serviceInstances.idpService.post(toIamUrl(MFA_ENDPOINTS.DISABLE_MFA), payload, undefined, { absoluteUrl: true });
