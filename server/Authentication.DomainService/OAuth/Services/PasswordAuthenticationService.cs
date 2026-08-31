@@ -1,6 +1,7 @@
 using Blocks.Genesis;
 using Authentication.DomainService.Entities;
 using Authentication.DomainService.OAuth.RequestModel;
+using Authentication.DomainService.Utilities;
 using Authentication.DomainService.OAuth.ResponseModel;
 using Authentication.DomainService.Services;
 using Iam.DomainService.Dtos;
@@ -106,7 +107,7 @@ namespace Authentication.DomainService.OAuth
                 return new TokenResponse { Error = OAuthError.InValidUseNamePassword, ErrorDescription = "Invalid username or password", StatusCode = 401 };
             }
 
-            request.OrganizationId = ResolveSignInOrganizationId(user, request.OrganizationId);
+            request.OrganizationId = OrganizationAccessResolver.ResolveSignInOrganizationId(user, request.OrganizationId);
             var tokenResponse = await _oAuthJwtAccessTokenManager.ManageTokenAsync(request, authenticationConfiguration, user);
 
             if (tokenResponse != null
@@ -220,41 +221,5 @@ namespace Authentication.DomainService.OAuth
                 Metadata = new Dictionary<string, string> { { "actionBy", actionBy } }
             });
         }
-
-        private static string ResolveSignInOrganizationId(User user, string? requestedOrganizationId)
-        {
-            if (HasOrganizationAccess(user, requestedOrganizationId))
-            {
-                return requestedOrganizationId!;
-            }
-
-            if (HasOrganizationAccess(user, user.LastUsedOrganizationId))
-            {
-                return user.LastUsedOrganizationId!;
-            }
-
-            if (HasOrganizationAccess(user, "default"))
-            {
-                return "default";
-            }
-
-            return user.OrganizationIds.FirstOrDefault(id => !string.IsNullOrWhiteSpace(id))
-                ?? user.Roles.Keys.FirstOrDefault(key => !string.IsNullOrWhiteSpace(key))
-                ?? user.Permissions.Keys.FirstOrDefault(key => !string.IsNullOrWhiteSpace(key))
-                ?? "default";
-        }
-
-        private static bool HasOrganizationAccess(User user, string? organizationId)
-        {
-            if (string.IsNullOrWhiteSpace(organizationId))
-            {
-                return false;
-            }
-
-            return user.OrganizationIds.Contains(organizationId)
-                || user.Roles.ContainsKey(organizationId)
-                || user.Permissions.ContainsKey(organizationId);
-        }
-
     }
 }

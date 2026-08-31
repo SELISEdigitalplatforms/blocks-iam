@@ -29,8 +29,23 @@ namespace XUnitTest.Auth.Shared
             _resourceMutation.Object,
             _resourceRepository.Object);
 
-        private static BYOSsoUserData ExternalUser(string email = "New@Example.com")
-            => new() { Email = email, FirstName = "Ada", LastName = "Lovelace", ExternalProviderUserId = "ext-1" };
+        /// <summary>
+        /// The login services have already stamped the identity provider's InitialRoles /
+        /// InitialPermissions onto the external user by the time provisioning sees it.
+        /// </summary>
+        private static BYOSsoUserData ExternalUser(
+            string email = "New@Example.com",
+            List<string>? roles = null,
+            List<string>? permissions = null)
+            => new()
+            {
+                Email = email,
+                FirstName = "Ada",
+                LastName = "Lovelace",
+                ExternalProviderUserId = "ext-1",
+                Roles = roles ?? new List<string> { "idp-role" },
+                Permissions = permissions ?? new List<string> { "idp-permission" }
+            };
 
         private void TenantConfig(bool ssoSignup, bool multiOrg = false, bool orgFromSignup = false)
         {
@@ -40,8 +55,10 @@ namespace XUnitTest.Auth.Shared
                     IsSSoSignUpEnabled = ssoSignup,
                     IsMultiOrgEnabled = multiOrg,
                     AllowOrgCreationFromSignup = orgFromSignup,
-                    DefaultRolesForNewUserOnSignUp = new List<string> { "member" },
-                    DefaultPermissionsForNewUserOnSignUp = new List<string> { "read" }
+                    // Deliberately populated: an SSO user must NOT pick these up. They describe
+                    // the email-signup route, not what an identity provider grants.
+                    DefaultRolesForNewUserOnSignUp = new List<string> { "signup-default-role" },
+                    DefaultPermissionsForNewUserOnSignUp = new List<string> { "signup-default-permission" }
                 });
         }
 
@@ -102,8 +119,8 @@ namespace XUnitTest.Auth.Shared
 
             var created = CapturedUser();
             created.OrganizationIds.Should().Equal(DefaultOrganizationId);
-            created.Roles.Should().ContainKey(DefaultOrganizationId);
-            created.Permissions.Should().ContainKey(DefaultOrganizationId);
+            created.Roles[DefaultOrganizationId].Should().Equal("idp-role");
+            created.Permissions[DefaultOrganizationId].Should().Equal("idp-permission");
             _resourceMutation.Verify(
                 r => r.CreateOrganizationAsync(It.IsAny<CreateOrganizationRequest>(), It.IsAny<string>()),
                 Times.Never);
@@ -144,8 +161,8 @@ namespace XUnitTest.Auth.Shared
 
             var created = CapturedUser();
             created.OrganizationIds.Should().Equal("org-77");
-            created.Roles["org-77"].Should().Equal("member");
-            created.Permissions["org-77"].Should().Equal("read");
+            created.Roles["org-77"].Should().Equal("idp-role");
+            created.Permissions["org-77"].Should().Equal("idp-permission");
 
             _resourceMutation.Verify(
                 r => r.CreateOrganizationAsync(
@@ -187,6 +204,38 @@ namespace XUnitTest.Auth.Shared
             result.Outcome.Should().Be(SsoProvisioningOutcome.ExistingUser);
             result.User.Should().BeSameAs(raced);
             _userRepository.Verify(r => r.CreateUserAsync(It.IsAny<User>()), Times.Never);
+        }
+
+        [Fact]
+        public async Task Roles_ComeFromTheIdentityProvider_NotTheTenantSignupDefaults()
+        {
+            NoExistingUser();
+            TenantConfig(ssoSignup: true, multiOrg: false);
+
+            await Create().ResolveOrProvisionAsync(
+                ExternalUser(roles: new List<string> { "idp-admin" }, permissions: new List<string> { "idp-write" }),
+                "google");
+
+            var created = CapturedUser();
+            created.Roles[DefaultOrganizationId].Should().Equal("idp-admin");
+            created.Permissions[DefaultOrganizationId].Should().Equal("idp-write");
+            created.Roles[DefaultOrganizationId].Should().NotContain("signup-default-role");
+            created.Permissions[DefaultOrganizationId].Should().NotContain("signup-default-permission");
+        }
+
+        [Fact]
+        public async Task UnconfiguredIdentityProvider_GrantsNothing()
+        {
+            NoExistingUser();
+            TenantConfig(ssoSignup: true, multiOrg: false);
+
+            await Create().ResolveOrProvisionAsync(
+                ExternalUser(roles: new List<string>(), permissions: new List<string>()),
+                "google");
+
+            var created = CapturedUser();
+            created.Roles[DefaultOrganizationId].Should().BeEmpty();
+            created.Permissions[DefaultOrganizationId].Should().BeEmpty();
         }
 
         [Fact]
