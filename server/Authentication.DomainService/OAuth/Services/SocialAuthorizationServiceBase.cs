@@ -4,7 +4,6 @@ using Authentication.DomainService.OAuth.ResponseModel;
 using Authentication.DomainService.Services;
 using Blocks.Genesis;
 using Iam.DomainService.Entities;
-using Iam.DomainService.Users;
 using Microsoft.Extensions.Logging;
 using System.Text.Json;
 
@@ -17,22 +16,19 @@ namespace Authentication.DomainService.OAuth.Services
         protected readonly IAuthenticationRepository _oAuthRepository;
         protected readonly ICacheClient _cacheClient;
         protected readonly ISocialLogInServiceProvider _socialLogInServiceProvider;
-        protected readonly IUserManagementMutationService _userManagementMutationService;
 
         protected SocialAuthorizationServiceBase(
             ILogger logger,
             IOAuthJwtAccessTokenManager oAuthJwtAccessTokenManager,
             IAuthenticationRepository oAuthRepository,
             ICacheClient cacheClient,
-            ISocialLogInServiceProvider socialLogInServiceProvider,
-            IUserManagementMutationService userManagementMutationService)
+            ISocialLogInServiceProvider socialLogInServiceProvider)
         {
             _logger = logger;
             _oAuthJwtAccessTokenManager = oAuthJwtAccessTokenManager;
             _oAuthRepository = oAuthRepository;
             _cacheClient = cacheClient;
             _socialLogInServiceProvider = socialLogInServiceProvider;
-            _userManagementMutationService = userManagementMutationService;
         }
 
         public async Task<TokenResponse> AuthenticateAsync(TokenRequest request, IdentityConfiguration authenticationConfiguration, User? user = null)

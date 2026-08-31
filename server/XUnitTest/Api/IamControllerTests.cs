@@ -1,4 +1,4 @@
-using Api.Controllers;
+﻿using Api.Controllers;
 using Authentication.DomainService.Authentication;
 using Blocks.Genesis;
 using FluentAssertions;
@@ -30,6 +30,7 @@ namespace XUnitTest.ApiTests
         private readonly Mock<IResourceMutationService> _resourceMutation = new();
         private readonly Mock<IResourceQueryService> _resourceQuery = new();
         private readonly Mock<IAuthenticationService> _authService = new();
+        private readonly Mock<IOrganizationNameResolver> _organizationNameResolver = new();
 
         public IamControllerTests()
         {
@@ -56,7 +57,8 @@ namespace XUnitTest.ApiTests
                 _resourceQuery.Object,
                 _userQuery.Object,
                 _userMutation.Object,
-                _authService.Object);
+                _authService.Object,
+                _organizationNameResolver.Object);
             controller.ControllerContext = new ControllerContext
             {
                 HttpContext = new DefaultHttpContext()
@@ -607,6 +609,61 @@ namespace XUnitTest.ApiTests
         }
 
         // ---------- Organizations ----------
+
+        [Fact]
+        public async Task IsOrganizationNameAvailable_FreeName_ReturnsAvailableWithNoSuggestions()
+        {
+            _organizationNameResolver.Setup(r => r.CheckAvailabilityAsync("Acme", It.IsAny<int>()))
+                .ReturnsAsync(new OrganizationNameAvailability { MultiOrgEnabled = true, IsAvailable = true });
+
+            var result = await CreateController().IsOrganizationNameAvailable(
+                new IsOrganizationNameAvailableRequest { Name = "Acme" });
+
+            var payload = result.Should().BeOfType<OkObjectResult>().Subject
+                .Value.Should().BeOfType<IsOrganizationNameAvailableResponse>().Subject;
+
+            payload.IsSuccess.Should().BeTrue();
+            payload.IsAvailable.Should().BeTrue();
+            payload.Suggestions.Should().BeEmpty();
+        }
+
+        [Fact]
+        public async Task IsOrganizationNameAvailable_TakenName_ReturnsSuggestions()
+        {
+            _organizationNameResolver.Setup(r => r.CheckAvailabilityAsync("Acme", It.IsAny<int>()))
+                .ReturnsAsync(new OrganizationNameAvailability
+                {
+                    MultiOrgEnabled = true,
+                    IsAvailable = false,
+                    Suggestions = new List<string> { "Acme 4821", "Acme 7204" }
+                });
+
+            var result = await CreateController().IsOrganizationNameAvailable(
+                new IsOrganizationNameAvailableRequest { Name = "Acme" });
+
+            var payload = result.Should().BeOfType<OkObjectResult>().Subject
+                .Value.Should().BeOfType<IsOrganizationNameAvailableResponse>().Subject;
+
+            payload.IsAvailable.Should().BeFalse();
+            payload.Suggestions.Should().Equal("Acme 4821", "Acme 7204");
+        }
+
+        [Fact]
+        public async Task IsOrganizationNameAvailable_MultiOrgDisabled_RefusesToAnswer()
+        {
+            _organizationNameResolver.Setup(r => r.CheckAvailabilityAsync(It.IsAny<string>(), It.IsAny<int>()))
+                .ReturnsAsync(new OrganizationNameAvailability { MultiOrgEnabled = false });
+
+            var result = await CreateController().IsOrganizationNameAvailable(
+                new IsOrganizationNameAvailableRequest { Name = "Acme" });
+
+            var payload = result.Should().BeOfType<BadRequestObjectResult>().Subject
+                .Value.Should().BeOfType<IsOrganizationNameAvailableResponse>().Subject;
+
+            payload.IsSuccess.Should().BeFalse();
+            payload.Errors.Should().ContainKey("multi_org_disabled");
+            payload.Suggestions.Should().BeEmpty();
+        }
 
         [Fact]
         public async Task CreateOrganization_DelegatesToMutationService()

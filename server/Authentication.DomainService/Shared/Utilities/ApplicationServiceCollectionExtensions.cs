@@ -1,4 +1,4 @@
-using Authentication.DomainService.Authentication;
+﻿using Authentication.DomainService.Authentication;
 using Authentication.DomainService.OAuth;
 using Authentication.DomainService.OAuth.Services;
 using Authentication.DomainService.OAuth.SocialServices;
@@ -69,6 +69,7 @@ namespace Authentication.DomainService.Utilities
             serviceCollection.AddSingleton<IDiscoveryService, DiscoveryService>();
             serviceCollection.AddSingleton<IJwksService, JwksService>();
             serviceCollection.AddSingleton<IOidcCallbackHandler, OidcCallbackHandler>();
+            serviceCollection.AddSingleton<ISsoUserProvisioningService, SsoUserProvisioningService>();
 
             serviceCollection.AddSingleton<IAuthorizationCodeRepository, AuthorizationCodeRepository>();
             serviceCollection.AddSingleton<IRefreshTokenRepository, RefreshTokenRepository>();
@@ -168,6 +169,7 @@ namespace Authentication.DomainService.Utilities
 
             serviceCollection.AddSingleton<IResourceMutationService, ResourceMutationService>();
             serviceCollection.AddSingleton<IResourceRepository, ResourceRepository>();
+            serviceCollection.AddSingleton<IOrganizationNameResolver, OrganizationNameResolver>();
 
             serviceCollection.AddSingleton<ITenantPermissionPropagator, TenantPermissionPropagator>();
             // ITenantEnumeration / IMongoDatabase (root) must be registered by every host that
@@ -195,6 +197,7 @@ namespace Authentication.DomainService.Utilities
             serviceCollection.AddSingleton<IValidator<CreateRoleRequest>, RoleValidator>();
             serviceCollection.AddSingleton<IValidator<UpdatePermissionRequest>, UpdatePermissionValidator>();
             serviceCollection.AddSingleton<IValidator<RecoveryUserRequest>, RecoveryUserRequestValidator>();
+            serviceCollection.AddSingleton<IValidator<SignupOrganizationInfo>, SignupOrganizationValidator>();
 
             #endregion
 

@@ -1,4 +1,4 @@
-using Blocks.CaptchaDriver;
+﻿using Blocks.CaptchaDriver;
 using Blocks.Genesis;
 using FluentAssertions;
 using FluentValidation;
@@ -37,6 +37,10 @@ namespace XUnitTest.IamTests.Accounts.Services
         private readonly Mock<ICaptchaService> _captchaServiceMock = new();
         private readonly Mock<IDbContextProvider> _dbContextProviderMock = new();
         private readonly Mock<IUserActivityDispatcher> _userActivityDispatcherMock = new();
+        private readonly Mock<IOrganizationNameResolver> _organizationNameResolverMock = new();
+        // The real validator, not a mock: these tests are partly about which payloads the
+        // anonymous signup surface actually accepts.
+        private readonly SignupOrganizationValidator _signupOrganizationValidator = new();
 
         public AccountServiceTests()
         {
@@ -102,7 +106,10 @@ namespace XUnitTest.IamTests.Accounts.Services
                 _captchaConfigurationServiceMock.Object,
                 _dbContextProviderMock.Object,
                 _userActivityDispatcherMock.Object,
-                http);
+                http,
+                null,
+                _signupOrganizationValidator,
+                _organizationNameResolverMock.Object);
 
         private static Mock<IMongoCollection<T>> MockMongoCollection<T>(IEnumerable<T> items)
         {
@@ -1501,6 +1508,334 @@ namespace XUnitTest.IamTests.Accounts.Services
         }
 
         #endregion
+
+        #region Signup organization profile
+
+        /// <summary>
+        /// Arranges the happy path for a signup that creates an organization.
+        /// </summary>
+        private void ArrangeOrgSignup(string orgId = "org-xyz")
+        {
+            _repositoryMock.Setup(r => r.GetTenantConfigurationAsync())
+                .ReturnsAsync(TestDataBuilder.CreateTenantConfiguration());
+            _repositoryMock.Setup(r => r.GetUserByEmailAsync(It.IsAny<string>())).ReturnsAsync((User?)null);
+            _resourceMutationMock.Setup(r => r.CreateOrganizationAsync(It.IsAny<CreateOrganizationRequest>(), It.IsAny<string?>()))
+                .ReturnsAsync(new BaseMutationResponse { IsSuccess = true, ItemId = orgId });
+            _userMutationMock.Setup(m => m.CreateUserAsync(It.IsAny<CreateUserRequest>()))
+                .ReturnsAsync(new BaseMutationResponse { IsSuccess = true, ItemId = "u-new" });
+            _iamServiceMock.Setup(s => s.SendActivationToEmailAsync(It.IsAny<User>(), It.IsAny<string>(), It.IsAny<string>()))
+                .ReturnsAsync(true);
+            _repositoryMock.Setup(r => r.GetUserByIdAsync("u-new")).ReturnsAsync(TestDataBuilder.CreateUser());
+        }
+
+        /// <summary>The CreateOrganizationRequest the service actually built.</summary>
+        private CreateOrganizationRequest CapturedOrgRequest()
+        {
+            var captured = _resourceMutationMock.Invocations
+                .Where(i => i.Method.Name == nameof(IResourceMutationService.CreateOrganizationAsync))
+                .Select(i => i.Arguments[0] as CreateOrganizationRequest)
+                .LastOrDefault();
+
+            captured.Should().NotBeNull("the service should have called CreateOrganizationAsync");
+            return captured!;
+        }
+
+        [Fact]
+        public async Task Signup_NestedOrganizationProfile_MapsEveryAllowedField()
+        {
+            var service = CreateService();
+            ArrangeOrgSignup();
+
+            var result = await service.SignupAccountAsync(new SignupUserRequest
+            {
+                Email = "u@example.com",
+                CreateOrganizationDuringSignup = true,
+                Organization = new SignupOrganizationInfo
+                {
+                    Name = "Acme",
+                    Description = "Org desc",
+                    Email = "billing@acme.com",
+                    PhoneNumber = "+8801700000000",
+                    WebsiteUrl = "https://acme.com",
+                    Industry = "Software",
+                    TimeZone = "UTC",
+                    Currency = "CHF",
+                    DateFormat = "dd/MM/yyyy",
+                    TimeFormat = "hh:mm tt",
+                    Locale = "de-CH",
+                    LogoUrl = "https://acme.com/logo.png",
+                    Addresses = new List<Address> { new() { Name = "HQ", City = "Zurich", Country = "CH", IsPrimary = true } },
+                    Theme = new Theme { Name = "default", PrimaryColor = "#124091" }
+                }
+            });
+
+            result.IsSuccess.Should().BeTrue();
+
+            var org = CapturedOrgRequest();
+            org.Name.Should().Be("Acme");
+            org.Description.Should().Be("Org desc");
+            org.Email.Should().Be("billing@acme.com");
+            org.PhoneNumber.Should().Be("+8801700000000");
+            org.WebsiteUrl.Should().Be("https://acme.com");
+            org.Industry.Should().Be("Software");
+            org.TimeZone.Should().Be("UTC");
+            org.Currency.Should().Be("CHF");
+            org.DateFormat.Should().Be("dd/MM/yyyy");
+            org.TimeFormat.Should().Be("hh:mm tt");
+            org.Locale.Should().Be("de-CH");
+            org.LogoUrl.Should().Be("https://acme.com/logo.png");
+            org.Addresses.Should().ContainSingle(a => a.City == "Zurich");
+            org.Theme!.PrimaryColor.Should().Be("#124091");
+            org.CreatedFrom.Should().Be(CreatedFrom.ConstructSignup);
+        }
+
+        [Fact]
+        public async Task Signup_OrganizationProfile_NeverSetsMemberRoleDefaults()
+        {
+            // The escalation guard: DefaultRoleForMembers is inherited by every user created into
+            // the org, so nothing an anonymous caller sends may ever reach it.
+            var service = CreateService();
+            ArrangeOrgSignup();
+
+            await service.SignupAccountAsync(new SignupUserRequest
+            {
+                Email = "u@example.com",
+                CreateOrganizationDuringSignup = true,
+                Organization = new SignupOrganizationInfo { Name = "Acme" }
+            });
+
+            var org = CapturedOrgRequest();
+            org.DefaultRoleForMembers.Should().BeEmpty();
+            org.DefaultPermissionsForMembers.Should().BeEmpty();
+        }
+
+        [Fact]
+        public async Task Signup_OrganizationAttributes_AreNormalizedNotStoredAsJsonElement()
+        {
+            var service = CreateService();
+            ArrangeOrgSignup();
+
+            // Exactly how the values arrive after ASP.NET model binding.
+            var bound = System.Text.Json.JsonSerializer.Deserialize<Dictionary<string, object>>(
+                "{\"plan\":\"pro\",\"seats\":10,\"trial\":true,\"revenue\":1250.5}")!;
+
+            await service.SignupAccountAsync(new SignupUserRequest
+            {
+                Email = "u@example.com",
+                CreateOrganizationDuringSignup = true,
+                Organization = new SignupOrganizationInfo { Name = "Acme", Attributes = bound }
+            });
+
+            var attributes = CapturedOrgRequest().Attributes;
+            attributes["plan"].Should().Be("pro");
+            attributes["seats"].Should().Be(10L, "integers must not be widened to double");
+            attributes["trial"].Should().Be(true);
+            attributes["revenue"].Should().Be(1250.5);
+            attributes.Values.Should().NotContain(v => v is System.Text.Json.JsonElement);
+        }
+
+        [Fact]
+        public async Task Signup_LegacyFlatOrganizationName_StillWorks()
+        {
+            var service = CreateService();
+            ArrangeOrgSignup();
+
+            var result = await service.SignupAccountAsync(new SignupUserRequest
+            {
+                Email = "u@example.com",
+                CreateOrganizationDuringSignup = true,
+                OrganizationName = "Legacy Org",
+                OrganizationDescription = "Legacy desc"
+            });
+
+            result.IsSuccess.Should().BeTrue();
+            CapturedOrgRequest().Name.Should().Be("Legacy Org");
+            CapturedOrgRequest().Description.Should().Be("Legacy desc");
+        }
+
+        [Fact]
+        public async Task Signup_NestedNameWinsOverLegacyFlatName()
+        {
+            var service = CreateService();
+            ArrangeOrgSignup();
+
+            await service.SignupAccountAsync(new SignupUserRequest
+            {
+                Email = "u@example.com",
+                CreateOrganizationDuringSignup = true,
+                OrganizationName = "Legacy Org",
+                Organization = new SignupOrganizationInfo { Name = "Nested Org" }
+            });
+
+            CapturedOrgRequest().Name.Should().Be("Nested Org");
+        }
+
+        [Fact]
+        public async Task Signup_OrgNameOnlyInNestedObject_PassesRequiredNameValidation()
+        {
+            var service = CreateService();
+            ArrangeOrgSignup();
+
+            var result = await service.SignupAccountAsync(new SignupUserRequest
+            {
+                Email = "u@example.com",
+                CreateOrganizationDuringSignup = true,
+                Organization = new SignupOrganizationInfo { Name = "Acme" }
+            });
+
+            // A successful signup returns a null Errors dictionary, so success itself is the
+            // assertion that the required-name rule was satisfied by the nested object alone.
+            result.IsSuccess.Should().BeTrue();
+            CapturedOrgRequest().Name.Should().Be("Acme");
+        }
+
+        [Fact]
+        public async Task Signup_NoOrganizationNameAnywhere_ReturnsRequiredError()
+        {
+            var service = CreateService();
+
+            var result = await service.SignupAccountAsync(new SignupUserRequest
+            {
+                Email = "u@example.com",
+                CreateOrganizationDuringSignup = true,
+                Organization = new SignupOrganizationInfo { Description = "no name" }
+            });
+
+            result.IsSuccess.Should().BeFalse();
+            result.Errors.Should().ContainKey("OrganizationName");
+        }
+
+        [Fact]
+        public async Task Signup_InvalidOrganizationProfile_IsRejectedBeforeAnythingIsCreated()
+        {
+            var service = CreateService();
+            ArrangeOrgSignup();
+
+            var result = await service.SignupAccountAsync(new SignupUserRequest
+            {
+                Email = "u@example.com",
+                CreateOrganizationDuringSignup = true,
+                Organization = new SignupOrganizationInfo { Name = "Acme", Email = "not-an-email" }
+            });
+
+            result.IsSuccess.Should().BeFalse();
+            result.Errors.Should().ContainKey("Email");
+            _resourceMutationMock.Verify(r => r.CreateOrganizationAsync(It.IsAny<CreateOrganizationRequest>(), It.IsAny<string?>()), Times.Never);
+            _userMutationMock.Verify(m => m.CreateUserAsync(It.IsAny<CreateUserRequest>()), Times.Never);
+        }
+
+        [Fact]
+        public async Task Signup_Success_ReportsOrganizationIdSeparatelyFromUserId()
+        {
+            var service = CreateService();
+            ArrangeOrgSignup("org-xyz");
+
+            var result = await service.SignupAccountAsync(new SignupUserRequest
+            {
+                Email = "u@example.com",
+                CreateOrganizationDuringSignup = true,
+                Organization = new SignupOrganizationInfo { Name = "Acme" }
+            });
+
+            result.IsSuccess.Should().BeTrue();
+            result.OrganizationId.Should().Be("org-xyz");
+            result.ItemId.Should().Be("u-new", "ItemId stays the user id");
+        }
+
+        [Fact]
+        public async Task Signup_WithoutOrgCreation_ReportsNoOrganizationId()
+        {
+            var service = CreateService();
+            _repositoryMock.Setup(r => r.GetTenantConfigurationAsync())
+                .ReturnsAsync(TestDataBuilder.CreateTenantConfiguration());
+            _repositoryMock.Setup(r => r.GetUserByEmailAsync(It.IsAny<string>())).ReturnsAsync((User?)null);
+            _userMutationMock.Setup(m => m.CreateUserAsync(It.IsAny<CreateUserRequest>()))
+                .ReturnsAsync(new BaseMutationResponse { IsSuccess = true, ItemId = "u-new" });
+
+            var result = await service.SignupAccountAsync(new SignupUserRequest { Email = "u@example.com" });
+
+            result.IsSuccess.Should().BeTrue();
+            result.OrganizationId.Should().BeNull();
+        }
+
+        [Fact]
+        public async Task Signup_DuplicateOrgName_ReturnsSuggestionsAndCreatesNothing()
+        {
+            var service = CreateService();
+            _repositoryMock.Setup(r => r.GetTenantConfigurationAsync())
+                .ReturnsAsync(TestDataBuilder.CreateTenantConfiguration());
+            _repositoryMock.Setup(r => r.GetUserByEmailAsync(It.IsAny<string>())).ReturnsAsync((User?)null);
+            _resourceMutationMock.Setup(r => r.CreateOrganizationAsync(It.IsAny<CreateOrganizationRequest>(), It.IsAny<string?>()))
+                .ReturnsAsync(new BaseMutationResponse
+                {
+                    IsSuccess = false,
+                    Errors = new Dictionary<string, string> { { "name_already_exists", "Organization with same name already exists." } }
+                });
+            _organizationNameResolverMock.Setup(r => r.SuggestAvailableNamesAsync("Acme", It.IsAny<int>()))
+                .ReturnsAsync(new List<string> { "Acme 4821", "Acme 7204" });
+
+            var result = await service.SignupAccountAsync(new SignupUserRequest
+            {
+                Email = "u@example.com",
+                CreateOrganizationDuringSignup = true,
+                Organization = new SignupOrganizationInfo { Name = "Acme" }
+            });
+
+            result.IsSuccess.Should().BeFalse();
+            result.Errors.Should().ContainKey("name_already_exists");
+            result.OrganizationNameSuggestions.Should().Equal("Acme 4821", "Acme 7204");
+            _userMutationMock.Verify(m => m.CreateUserAsync(It.IsAny<CreateUserRequest>()), Times.Never,
+                "a duplicate name must leave no user behind");
+        }
+
+        [Fact]
+        public async Task Signup_NonDuplicateOrgFailure_ReturnsNoSuggestions()
+        {
+            var service = CreateService();
+            _repositoryMock.Setup(r => r.GetTenantConfigurationAsync())
+                .ReturnsAsync(TestDataBuilder.CreateTenantConfiguration());
+            _repositoryMock.Setup(r => r.GetUserByEmailAsync(It.IsAny<string>())).ReturnsAsync((User?)null);
+            _resourceMutationMock.Setup(r => r.CreateOrganizationAsync(It.IsAny<CreateOrganizationRequest>(), It.IsAny<string?>()))
+                .ReturnsAsync(new BaseMutationResponse
+                {
+                    IsSuccess = false,
+                    Errors = new Dictionary<string, string> { { "org_creation_disabled", "disabled" } }
+                });
+
+            var result = await service.SignupAccountAsync(new SignupUserRequest
+            {
+                Email = "u@example.com",
+                CreateOrganizationDuringSignup = true,
+                Organization = new SignupOrganizationInfo { Name = "Acme" }
+            });
+
+            result.OrganizationNameSuggestions.Should().BeEmpty();
+            _organizationNameResolverMock.Verify(r => r.SuggestAvailableNamesAsync(It.IsAny<string>(), It.IsAny<int>()), Times.Never);
+        }
+
+        [Fact]
+        public async Task Signup_UserCreationFails_StillRollsBackTheOrganization()
+        {
+            var service = CreateService();
+            _repositoryMock.Setup(r => r.GetTenantConfigurationAsync())
+                .ReturnsAsync(TestDataBuilder.CreateTenantConfiguration());
+            _repositoryMock.Setup(r => r.GetUserByEmailAsync(It.IsAny<string>())).ReturnsAsync((User?)null);
+            _resourceMutationMock.Setup(r => r.CreateOrganizationAsync(It.IsAny<CreateOrganizationRequest>(), It.IsAny<string?>()))
+                .ReturnsAsync(new BaseMutationResponse { IsSuccess = true, ItemId = "org-xyz" });
+            _userMutationMock.Setup(m => m.CreateUserAsync(It.IsAny<CreateUserRequest>()))
+                .ReturnsAsync(new BaseMutationResponse { IsSuccess = false, Errors = new Dictionary<string, string> { { "creation_failed", "x" } } });
+
+            var result = await service.SignupAccountAsync(new SignupUserRequest
+            {
+                Email = "u@example.com",
+                CreateOrganizationDuringSignup = true,
+                Organization = new SignupOrganizationInfo { Name = "Acme" }
+            });
+
+            result.IsSuccess.Should().BeFalse();
+            _resourceMutationMock.Verify(r => r.DeleteOrganizationAsync("org-xyz"), Times.Once);
+        }
+
+        #endregion
     }
 }
-

@@ -1,7 +1,6 @@
 using Blocks.Genesis;
 using Authentication.DomainService.Services;
 using Iam.DomainService.Entities;
-using Iam.DomainService.Users;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
 
@@ -14,9 +13,8 @@ namespace Authentication.DomainService.OAuth.Services
             IOAuthJwtAccessTokenManager oAuthJwtAccessTokenManager,
             IAuthenticationRepository oAuthRepository,
             ICacheClient cacheClient,
-            ISocialLogInServiceProvider socialLogInServiceProvider,
-            IUserManagementMutationService userManagementMutationService)
-            : base(logger, oAuthJwtAccessTokenManager, oAuthRepository, cacheClient, socialLogInServiceProvider, userManagementMutationService)
+            ISocialLogInServiceProvider socialLogInServiceProvider)
+            : base(logger, oAuthJwtAccessTokenManager, oAuthRepository, cacheClient, socialLogInServiceProvider)
         {
         }
 
