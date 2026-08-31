@@ -69,8 +69,11 @@ export const SigninForm = ({ mode = "default", oidcContext }: SigninFormProps) =
       setCaptchaSiteKey(undefined);
       resetCaptcha();
 
-      if (res.enable_mfa) {
-        const mfaPath = `/mfa-check?mfa_id=${res.mfaId}&mfa_type=${res.mfaType}`;
+      // The challenge is a 200 carrying `error: "mfa_enabled"`, so it resolves here
+      // rather than throwing into the catch below. Gate on mfa_id: the enrollment
+      // branch (403 mfa_enrollment_required) issues no challenge and does throw.
+      if (res.mfa_required && res.mfa_id) {
+        const mfaPath = `/mfa-check?mfa_id=${encodeURIComponent(res.mfa_id)}&mfa_type=${res.mfa_type ?? 0}`;
         return navigate(mode === "oidc" ? buildOIDCNavigationUrl(mfaPath) : mfaPath);
       }
 

@@ -21,6 +21,10 @@ import {
 
 vi.mock("@/lib/http-client", () => mockHttpClientFactory());
 
+// The service prefixes its absolute-URL calls with the serving origin
+// (getSelfBaseUrl), which under jsdom is the test document's origin.
+const iamUrl = (path: string) => `${window.location.origin}${path}`;
+
 describe("MFAService", () => {
   let service: MFAService;
 
@@ -40,7 +44,7 @@ describe("MFAService", () => {
 
       const result = await service.getConfigurations();
 
-      expect(http.get).toHaveBeenCalledWith(MFA_CONFIG_ENDPOINTS.GET, undefined, {
+      expect(http.get).toHaveBeenCalledWith(iamUrl(MFA_CONFIG_ENDPOINTS.GET), undefined, {
         absoluteUrl: true,
       });
       expect(result).toEqual(mockMfaConfigResponse);
@@ -61,7 +65,7 @@ describe("MFAService", () => {
       const result = await service.saveMFAConfiguration(mockSaveMfaConfigPayload);
 
       expect(http.post).toHaveBeenCalledWith(
-        MFA_CONFIG_ENDPOINTS.SAVE,
+        iamUrl(MFA_CONFIG_ENDPOINTS.SAVE),
         mockSaveMfaConfigPayload,
         undefined,
         { absoluteUrl: true },
@@ -86,7 +90,7 @@ describe("MFAService", () => {
       const result = await service.generateUserMfaOTP(mockGenerateOtpPayload);
 
       expect(http.post).toHaveBeenCalledWith(
-        MFA_ENDPOINTS.GENERATE_OTP,
+        iamUrl(MFA_ENDPOINTS.GENERATE_OTP),
         mockGenerateOtpPayload,
         undefined,
         { absoluteUrl: true },
@@ -133,7 +137,7 @@ describe("MFAService", () => {
 
       const result = await service.setupUserTotp(mockSetupTotpPayload);
 
-      expect(http.post).toHaveBeenCalledWith(MFA_ENDPOINTS.SETUP_TOTP, {}, undefined, {
+      expect(http.post).toHaveBeenCalledWith(iamUrl(MFA_ENDPOINTS.SETUP_TOTP), {}, undefined, {
         absoluteUrl: true,
       });
       expect(result).toEqual(mockSetupTotpResponse);
@@ -153,7 +157,7 @@ describe("MFAService", () => {
 
       const result = await service.verifyOtp(mockVerifyOtpPayload);
 
-      expect(http.post).toHaveBeenCalledWith(MFA_ENDPOINTS.VERIFY_OTP, mockVerifyOtpPayload, undefined, {
+      expect(http.post).toHaveBeenCalledWith(iamUrl(MFA_ENDPOINTS.VERIFY_OTP), mockVerifyOtpPayload, undefined, {
         absoluteUrl: true,
       });
       expect(result).toEqual(mockVerifyOtpResponse);
@@ -168,12 +172,14 @@ describe("MFAService", () => {
 
   // ─── resendOtp ────────────────────────────────────────────────────────────
   describe("resendOtp", () => {
-    it("should POST the mfaId to the correct endpoint", async () => {
+    it("should POST the payload to the correct absolute endpoint", async () => {
       vi.mocked(http.post).mockResolvedValue(mockSuccessResponse);
 
       const result = await service.resendOtp(mockResendOtpPayload);
 
-      expect(http.post).toHaveBeenCalledWith(MFA_ENDPOINTS.RESEND_OTP, mockResendOtpPayload.mfaId);
+      expect(http.post).toHaveBeenCalledWith(iamUrl(MFA_ENDPOINTS.RESEND_OTP), mockResendOtpPayload, undefined, {
+        absoluteUrl: true,
+      });
       expect(result).toEqual(mockSuccessResponse);
     });
 
@@ -192,7 +198,7 @@ describe("MFAService", () => {
       const result = await service.disableMFA(mockDisableMfaPayload);
 
       expect(http.post).toHaveBeenCalledWith(
-        MFA_ENDPOINTS.DISABLE_MFA,
+        iamUrl(MFA_ENDPOINTS.DISABLE_MFA),
         mockDisableMfaPayload,
         undefined,
         { absoluteUrl: true },

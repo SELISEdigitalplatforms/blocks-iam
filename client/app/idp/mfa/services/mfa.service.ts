@@ -1,7 +1,7 @@
 import { serviceInstances } from "@/lib/http-client";
-import { getRuntimeEnv } from "@/lib/runtime-env";
+import { getSelfBaseUrl } from "@/lib/runtime-env";
 
-const toIamUrl = (path: string) => `${getRuntimeEnv("BLOCKS_IAM_BASE_URL")}${path}`;
+const toIamUrl = (path: string) => `${getSelfBaseUrl()}${path}`;
 import {
   IGenerateUserMFA_OtpPayload,
   IGenerateUserMFA_OtpResponse,
@@ -57,7 +57,7 @@ export class MFAService {
   }
 
   resendOtp(payload: IResendMfaOtpPayload): Promise<IResendMfaOtpResponse> {
-    return serviceInstances.idpService.post(MFA_ENDPOINTS.RESEND_OTP, payload.mfaId);
+    return serviceInstances.idpService.post(toIamUrl(MFA_ENDPOINTS.RESEND_OTP), payload, undefined, { absoluteUrl: true });
   }
   disableMFA(payload: IDisableMFAPayload): Promise<IDisableMFAResponse> {
     return serviceInstances.idpService.post(toIamUrl(MFA_ENDPOINTS.DISABLE_MFA), payload, undefined, { absoluteUrl: true });

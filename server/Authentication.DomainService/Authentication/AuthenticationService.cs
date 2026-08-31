@@ -104,18 +104,30 @@ namespace Authentication.DomainService.Authentication
             var bc = BlocksContext.GetContext();
             var sessionId = httpContext.Request.Cookies[IdpConstants.BuildIdpSessionCookieKey(bc!.TenantId)];
 
-            // The cookie is authoritative when it carries a session: the fallback ids exist only to
-            // cover the case where the cookie is missing. Enumerable.Append was used here, which is
-            // a pure LINQ operator -- it returns a new sequence rather than mutating, so its result
-            // was discarded and the cookie's session id never reached the list. That left sessionIds
-            // empty on every cookie-based logout, so the method returned at the guard below without
-            // ever revoking the session or removing the account.
-            var sessionIds = !string.IsNullOrWhiteSpace(sessionId)
-                ? new List<string> { sessionId }
-                : fallbackSessionIds?
-                    .Where(id => !string.IsNullOrWhiteSpace(id))
-                    .Distinct(StringComparer.Ordinal)
-                    .ToList() ?? new List<string>();
+            // Logout covers every session it can identify: the fallback ids the caller resolved,
+            // plus the one named by the cookie. The cookie does not replace the fallbacks -- both
+            // are revoked -- so a logout cannot leave a session behind just because it was not the
+            // one carrying the cookie.
+            //
+            // The assignment below is load-bearing. Enumerable.Append is a pure LINQ operator: it
+            // returns a new sequence instead of mutating, so `fallbackSessionIds.Append(sessionId);`
+            // discarded its own result and the cookie's id never entered the list. That left
+            // sessionIds empty on every cookie-based logout -- the normal path -- and the method
+            // returned at the count guard below without revoking the session or removing the
+            // account, leaving the IdP session live after logout.
+            fallbackSessionIds ??= [];
+
+            if (!string.IsNullOrWhiteSpace(sessionId))
+            {
+                fallbackSessionIds = fallbackSessionIds.Append(sessionId);
+            }
+
+            // Blanks dropped and comparison made ordinal: a caller-supplied list can carry an empty
+            // entry, and revoking "" would be a wasted call against a session that cannot exist.
+            var sessionIds = fallbackSessionIds
+                .Where(id => !string.IsNullOrWhiteSpace(id))
+                .Distinct(StringComparer.Ordinal)
+                .ToList();
 
             if (sessionIds.Count == 0)
             {
@@ -141,8 +153,12 @@ namespace Authentication.DomainService.Authentication
                 return false;
             }
 
+            foreach(var id in sessionIds)
+            {
+                await _authSession.RemoveAccountAsync(id, userId, bc.TenantId);
+            }
+
             var selectedSessionId = sessionIds[0];
-            await _authSession.RemoveAccountAsync(selectedSessionId, userId, bc.TenantId);
             var session = await _authSession.GetSessionAsync(selectedSessionId);
 
             if (session == null || session.RevokedAt.HasValue || session.IsExpired())
@@ -969,12 +985,36 @@ namespace Authentication.DomainService.Authentication
             if (!string.IsNullOrWhiteSpace(response.Error))
             {
                 var statusCode = response.StatusCode > 0 ? response.StatusCode : StatusCodes.Status400BadRequest;
-                return new ObjectResult(new
+                var errorPayload = new Dictionary<string, object?>
                 {
-                    error = response.Error,
-                    error_description = response.ErrorDescription,
-                    redirect_url = response.SsoUserRedirectUrl
-                })
+                    ["error"] = response.Error,
+                    ["error_description"] = response.ErrorDescription,
+                    ["redirect_url"] = response.SsoUserRedirectUrl
+                };
+
+                // An MFA challenge travels in the `Error` slot (`mfa_enabled`, HTTP 200) but it is
+                // not a failure -- it is a prompt the caller has to be able to answer. Emitting only
+                // the three keys above discarded the MfaId that HandleMfaAuthenticationAsync had just
+                // minted, so a client on /auth/login could never build the second leg
+                // (grant_type=mfa_code needs mfa_id + mfa_code + mfa_type) and MFA was a dead end on
+                // this surface. Names match /oidc/login's contract and the mfa_* request fields on
+                // EmbeddedLoginRequest.
+                if (response.MfaRequired)
+                {
+                    errorPayload["mfa_required"] = true;
+                    errorPayload["mfa_type"] = (int)response.UserMfa;
+                    errorPayload["mfa_methods"] = response.MfaMethods;
+
+                    // Absent on the enrollment branch (403 mfa_enrollment_required): no challenge was
+                    // issued, so there is no handle to answer with. Omitted rather than sent null so a
+                    // client cannot mistake it for a completable challenge.
+                    if (!string.IsNullOrWhiteSpace(response.MfaId))
+                    {
+                        errorPayload["mfa_id"] = response.MfaId;
+                    }
+                }
+
+                return new ObjectResult(errorPayload)
                 {
                     StatusCode = statusCode
                 };

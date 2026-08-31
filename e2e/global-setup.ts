@@ -17,7 +17,7 @@ import path from "path";
  * playwright.config.ts is `run.sh -b` (no FE rebuild), nothing overwrites it.
  */
 export default function globalSetup() {
-  const baseURL = process.env.E2E_BASE_URL;
+  const baseURL = process.env.E2E_BASE_URL?.replace(/\/$/, "");
   if (!baseURL) return; // playwright.config.ts already throws when unset
 
   const indexHtml = path.resolve(__dirname, "../server/Api/wwwroot/index.html");

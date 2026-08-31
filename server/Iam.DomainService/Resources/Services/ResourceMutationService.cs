@@ -18,6 +18,17 @@ namespace Iam.DomainService.Resources
         private const string DefaultOrganizationId = "default";
 
         /// <summary>
+        /// How deep a role's ancestor chain may go before it is treated as non-terminating.
+        /// </summary>
+        /// <remarks>
+        /// No maximum role depth is defined anywhere in the product, so this is a safety bound
+        /// rather than a modelled limit: a visited-set alone stops a cycle, but not a chain that is
+        /// merely absurdly long, and each level costs one repository read. Well above any plausible
+        /// organizational hierarchy.
+        /// </remarks>
+        private const int MaxRoleHierarchyDepth = 32;
+
+        /// <summary>
         /// Display name for the built-in "default" organization. Matches the label the
         /// blocks-os organization pickers already show for the same sentinel, so the two
         /// surfaces do not disagree about what it is called.
@@ -145,19 +156,67 @@ namespace Iam.DomainService.Resources
         public async Task<BaseMutationResponse> CreateRoleAsync(CreateRoleRequest command)
         {
             var blocksContext = BlocksContext.GetContext();
-            if (!IsDefaultOrgScope(blocksContext?.OrganizationId))
-            {
-                return new BaseMutationResponse
-                {
-                    IsSuccess = false,
-                    Errors = new Dictionary<string, string>
-                    {
-                        { "forbidden", "Not allowed to create role in this organization" }
-                    }
-                };
-            }
 
             _logger.LogInformation("Role creation start");
+
+            // Replaces a flat refusal for any non-default caller. The organization now comes from
+            // the signed claim through the shared write-scope rule, which also confirms the
+            // organization still exists and is enabled -- a token outlives its organization.
+            var (writeOrganizationId, scopeFailure) = await ResolveWriteOrganizationAsync(null);
+            if (scopeFailure != null)
+            {
+                _logger.LogInformation("Role creation end -- Organization Scope Rejected");
+                return scopeFailure;
+            }
+
+            var organizationId = writeOrganizationId!;
+
+            // A non-default organization only exists when multi-org is on, so a non-default caller
+            // in a single-org tenant is a stale token or a misconfiguration, not a request to serve.
+            if (!IsDefaultOrgScope(organizationId) && !await IsMultiOrgEnabledAsync())
+            {
+                _logger.LogInformation("Role creation end -- Multi Org Disabled");
+                return Failure("forbidden", "Multi_Org_Required_For_Organization_Role");
+            }
+
+            // Name is checked before the slug because it is the thing the administrator typed and
+            // recognises; failing on the derived slug first would report a value they never chose.
+            if (!string.IsNullOrWhiteSpace(command.Name)
+                && await _resourceRepository.HasOwnedRoleWithNameAsync(command.Name, organizationId))
+            {
+                _logger.LogInformation("Role creation end -- Duplicate Name In Organization");
+                return Failure("Name", "Role_Name_Already_Exists_In_Organization");
+            }
+
+            // The stored slug is derived here, never taken from the request verbatim, so a caller
+            // cannot mint a slug attributed to another organization. Runs before validation so the
+            // validator's org-scoped uniqueness check sees the value that will actually be stored.
+            if (!string.IsNullOrWhiteSpace(command.Slug))
+            {
+                var (resolvedSlug, slugError) = await ResolveRoleSlugAsync(command.Slug, organizationId);
+                if (slugError != null)
+                {
+                    _logger.LogInformation("Role creation end -- Slug Unavailable");
+                    return Failure("Slug", slugError);
+                }
+
+                command.Slug = resolvedSlug!;
+            }
+
+            // Advisory, default-organization callers only, and only when the caller has not already
+            // acknowledged it. A child organization is never told about a sibling: its own name rule
+            // has already decided the request, and a sibling's role inventory is not its business.
+            if (IsDefaultOrgScope(organizationId)
+                && !command.ConfirmDuplicateName
+                && await IsMultiOrgEnabledAsync())
+            {
+                var duplicateNameAdvisory = await BuildDuplicateNameAdvisoryAsync(command.Name, command.Slug, organizationId);
+                if (duplicateNameAdvisory != null)
+                {
+                    _logger.LogInformation("Role creation end -- Duplicate Name Confirmation Required");
+                    return duplicateNameAdvisory;
+                }
+            }
 
             var validationResult = await _roleValidator.ValidateAsync(command);
             if (!validationResult.IsValid)
@@ -171,6 +230,7 @@ namespace Iam.DomainService.Resources
             // An archived parent is still resolvable by slug -- deliberately, since the duplicate
             // check during organization provisioning depends on that. Hanging a live role off one
             // would build a hierarchy whose parent is hidden from every roles list.
+            List<string>? ancestorRoleSlugs = null;
             if (!string.IsNullOrWhiteSpace(command.ParentRoleSlug))
             {
                 var parent = await _resourceRepository.GetRoleBySlugAsync(command.ParentRoleSlug.ToLower());
@@ -185,9 +245,21 @@ namespace Iam.DomainService.Resources
                         }
                     };
                 }
+
+                // Resolved before the insert, so a parent that does not exist in the caller's
+                // organization or a chain that does not terminate is a validation error rather than
+                // a stored role whose hierarchy nobody can walk.
+                var (resolved, ancestorError) = await ResolveAncestorRoleSlugsAsync(command.ParentRoleSlug);
+                if (ancestorError != null)
+                {
+                    _logger.LogInformation("Role creation end -- Parent Chain Unresolvable");
+                    return Failure("ParentRoleSlug", ancestorError);
+                }
+
+                ancestorRoleSlugs = resolved;
             }
 
-            var itemId = await ProcessRoleAsync(command);
+            var itemId = await ProcessRoleAsync(command, ancestorRoleSlugs);
 
             await SendResourceMutationEventAsync(
                 new ResourceMutationEvent
@@ -198,7 +270,9 @@ namespace Iam.DomainService.Resources
                 }
             );
 
-            if (IsDefaultOrgScope(blocksContext?.OrganizationId) && await IsMultiOrgEnabledAsync())
+            // Only a default-organization create fans out. An organization-specific role stays
+            // where it was made, which is the whole point of it.
+            if (IsDefaultOrgScope(organizationId) && await IsMultiOrgEnabledAsync())
             {
                 await _identityAccessManagementService.SendToQueueAsync(
                     IdpConstants.IamOrgQueue,
@@ -212,14 +286,17 @@ namespace Iam.DomainService.Resources
             }
 
             _logger.LogInformation("Role creation end -- Success");
-            return new BaseMutationResponse
+
+            // Always the richer type on this endpoint, so a client can read the advisory fields
+            // without branching on which shape came back. Zeroes on success.
+            return new CreateRoleResponse
             {
                 IsSuccess = true,
                 ItemId = itemId
             };
         }
 
-        public async Task<string> ProcessRoleAsync(CreateRoleRequest command)
+        public async Task<string> ProcessRoleAsync(CreateRoleRequest command, List<string>? ancestorRoleSlugs = null)
         {
             var blocksContext = BlocksContext.GetContext();
             var tenantId = blocksContext?.TenantId;
@@ -247,22 +324,24 @@ namespace Iam.DomainService.Resources
                 CanCreateOwn = command.CanCreateOwn
             };
 
+            // The chain is normally resolved and validated by CreateRoleAsync before this method is
+            // reached, so an unresolvable parent is a 400 rather than a half-built role. Recomputed
+            // here only if a caller passes nothing, and unresolvable then is a programming error.
             if (!string.IsNullOrWhiteSpace(command.ParentRoleSlug))
             {
-                var ancestorRoleSlugs = new List<string>() { command.ParentRoleSlug.ToLower() };
-                while (true)
+                if (ancestorRoleSlugs == null)
                 {
-                    var roleParent = await _resourceRepository.GetRoleBySlugAsync(command.ParentRoleSlug.ToLower());
-                    if (string.IsNullOrWhiteSpace(roleParent.ParentRoleSlug))
+                    var (resolved, resolveError) = await ResolveAncestorRoleSlugsAsync(command.ParentRoleSlug);
+                    if (resolveError != null)
                     {
-                        break;
+                        throw new InvalidOperationException(
+                            $"Parent role chain for '{command.ParentRoleSlug}' is not resolvable: {resolveError}");
                     }
-                    else
-                    {
-                        ancestorRoleSlugs.Add(roleParent.ParentRoleSlug);
-                    }
+
+                    ancestorRoleSlugs = resolved;
                 }
-                role.AncestorRoleSlugs = ancestorRoleSlugs;
+
+                role.AncestorRoleSlugs = ancestorRoleSlugs ?? [];
             }
 
             await _resourceRepository.InsertRoleAsync(role);
@@ -764,9 +843,18 @@ namespace Iam.DomainService.Resources
                 {
                     Errors = new Dictionary<string, string>
                     {
-                        { "Name", "Maximum_Character_Limit_100" }
+                        { "Name", "Maximum_Character_Limit_150" }
                     }
                 };
+            }
+
+            // The same rule creation enforces, or a rename would walk straight past it. Scoped to
+            // the role's own organization and excluding itself, so re-saving a role without
+            // changing its name is not a conflict with itself.
+            if (await _resourceRepository.HasOwnedRoleWithNameAsync(command.Name, role.OrganizationId, role.ItemId))
+            {
+                _logger.LogInformation("Role update end -- Duplicate Name In Organization");
+                return Failure("Name", "Role_Name_Already_Exists_In_Organization");
             }
 
             var blocksContext = BlocksContext.GetContext();
@@ -784,20 +872,14 @@ namespace Iam.DomainService.Resources
 
             if (!string.IsNullOrWhiteSpace(command.ParentRoleSlug))
             {
-                var ancestorRoleSlugs = new List<string>() { command.ParentRoleSlug.ToLower() };
-                while (true)
+                var (ancestorRoleSlugs, ancestorError) = await ResolveAncestorRoleSlugsAsync(command.ParentRoleSlug);
+                if (ancestorError != null)
                 {
-                    var roleParent = await _resourceRepository.GetRoleBySlugAsync(command.ParentRoleSlug.ToLower());
-                    if (string.IsNullOrWhiteSpace(roleParent.ParentRoleSlug))
-                    {
-                        break;
-                    }
-                    else
-                    {
-                        ancestorRoleSlugs.Add(roleParent.ParentRoleSlug);
-                    }
+                    _logger.LogInformation("Role update end -- Parent Chain Unresolvable");
+                    return Failure("ParentRoleSlug", ancestorError);
                 }
-                role.AncestorRoleSlugs = ancestorRoleSlugs;
+
+                role.AncestorRoleSlugs = ancestorRoleSlugs!;
             }
 
             var result = await _resourceRepository.UpdateRoleAsync(role);
@@ -864,7 +946,23 @@ namespace Iam.DomainService.Resources
                 };
             }
 
-            var currentOrganizationId = ResolveOrganizationId(command?.OrganizationId ?? "");
+            // The token decides, not the payload. Previously this was ResolveOrganizationId, which
+            // took command.OrganizationId at face value with no membership test -- so a caller
+            // holding mutate-roles in one organization could rebind another organization's role by
+            // naming it here.
+            var (writeOrganizationId, scopeFailure) = await ResolveWriteOrganizationAsync(command?.OrganizationId);
+            if (scopeFailure != null)
+            {
+                _logger.LogInformation("SetRole end -- Organization Scope Rejected");
+                return new SetRolesResponse
+                {
+                    Errors = scopeFailure.Errors is null
+                        ? new Dictionary<string, string>()
+                        : new Dictionary<string, string>(scopeFailure.Errors)
+                };
+            }
+
+            var currentOrganizationId = writeOrganizationId!;
             var isExist = await _resourceRepository.GetRoleBySlugAsync(command.Slug, currentOrganizationId);
 
             if (isExist == null)
@@ -1679,10 +1777,16 @@ namespace Iam.DomainService.Resources
                 // either order.
                 var orgRole = await _resourceRepository.GetRoleBySlugAsync(command.Slug, orgId);
 
-                if (orgRole == null || orgRole.IsArchived)
+                // CreatedFromDefault is the third condition, and it is the one that was missing.
+                // This lookup matches on slug alone, so an organization that owns a role of its own
+                // carrying the same slug -- a private role created before the create guard existed,
+                // and so still bare-slugged -- was resolved here and had the default organization's
+                // permissions written onto it. The same predicate UpdateRoleForAllOrg and
+                // DeleteRoleForAllOrg already use: propagation touches copies, never originals.
+                if (orgRole == null || orgRole.IsArchived || !orgRole.CreatedFromDefault)
                 {
                     _logger.LogWarning(
-                        "Role permission propagation skipped '{Slug}' in organization '{OrganizationId}': the copy is missing or archived there. Every other organization is unaffected.",
+                        "Role permission propagation skipped '{Slug}' in organization '{OrganizationId}': the copy is missing, archived, or is that organization's own role. Every other organization is unaffected.",
                         command.Slug,
                         orgId);
                     continue;
@@ -2265,6 +2369,265 @@ namespace Iam.DomainService.Resources
         private static bool IsDefaultOrgScope(string? organizationId)
         {
             return organizationId == DefaultOrganizationId;
+        }
+
+        /// <summary>
+        /// Walks a parent role's ancestor chain, innermost first, and returns it or the reason it
+        /// could not be resolved.
+        /// </summary>
+        /// <remarks>
+        /// Replaces two copies of a loop that never advanced its cursor: it re-read the same
+        /// <c>ParentRoleSlug</c> on every pass, so a parent that itself had a parent appended the
+        /// same grandparent forever and the request never returned. It also dereferenced the lookup
+        /// result without a null check, so a slug absent from the caller's organization was a
+        /// NullReferenceException rather than a validation error.
+        /// <para>
+        /// The lookup is deliberately the single-argument overload: the repository resolves the
+        /// organization from <c>BlocksContext</c>, which is exactly the caller's own organization,
+        /// so a parent in another organization is invisible here and reports as not found.
+        /// </para>
+        /// <para>
+        /// Two independent stops. The visited set catches a cycle, which is data that already
+        /// exists and would otherwise loop forever. The depth ceiling catches a chain that is
+        /// merely pathological rather than circular -- no maximum role depth is defined anywhere,
+        /// so without it a long chain would issue one read per level with no bound.
+        /// </para>
+        /// </remarks>
+        private async Task<(List<string>? Ancestors, string? Error)> ResolveAncestorRoleSlugsAsync(string parentRoleSlug)
+        {
+            var ancestors = new List<string>();
+            var visited = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            var current = parentRoleSlug.ToLower();
+
+            while (!string.IsNullOrWhiteSpace(current))
+            {
+                if (!visited.Add(current) || ancestors.Count >= MaxRoleHierarchyDepth)
+                {
+                    _logger.LogWarning(
+                        "Role hierarchy for parent '{ParentRoleSlug}' does not terminate (stopped at depth {Depth}).",
+                        parentRoleSlug,
+                        ancestors.Count);
+
+                    return (null, "Role_Hierarchy_Cycle_Detected");
+                }
+
+                var parent = await _resourceRepository.GetRoleBySlugAsync(current);
+                if (parent == null)
+                {
+                    return (null, "Parent_Role_Not_Found");
+                }
+
+                ancestors.Add(current);
+                current = string.IsNullOrWhiteSpace(parent.ParentRoleSlug)
+                    ? null
+                    : parent.ParentRoleSlug.ToLower();
+            }
+
+            return (ancestors, null);
+        }
+
+        /// <summary>
+        /// Builds the duplicate-name refusal, or null when nothing needs confirming.
+        /// </summary>
+        /// <remarks>
+        /// Counts, never identities: naming the organizations would hand one administrator another
+        /// organization's role inventory, and a number is all a confirmation needs.
+        /// <para>
+        /// The slug-conflict count is the one piece of "will not receive this role" information that
+        /// survives, because <c>InsertRoleForAllOrg</c> skips any organization already holding the
+        /// slug. It is reported as an exception rather than as a per-organization breakdown.
+        /// </para>
+        /// <para>
+        /// A failed count refuses rather than proceeding. The whole point of the advisory is that
+        /// the same-name pair is not created unnoticed, so an unavailable count must not be read as
+        /// "no collision".
+        /// </para>
+        /// </remarks>
+        private async Task<CreateRoleResponse?> BuildDuplicateNameAdvisoryAsync(
+            string name, string slug, string organizationId)
+        {
+            List<Role> others;
+            try
+            {
+                others = await _resourceRepository.GetOwnedRolesWithNameInOtherOrganizationsAsync(name, organizationId)
+                    ?? [];
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(
+                    ex,
+                    "Could not count organizations already using the role name '{Name}'. Refusing the create rather than risking an unnoticed duplicate; the caller may confirm to proceed.",
+                    name);
+
+                return new CreateRoleResponse
+                {
+                    IsSuccess = false,
+                    RequiresDuplicateNameConfirmation = true,
+                    Errors = new Dictionary<string, string>
+                    {
+                        { "duplicate_name", "Role_Name_Exists_In_Other_Organizations" }
+                    }
+                };
+            }
+
+            if (others.Count == 0)
+            {
+                return null;
+            }
+
+            var duplicateNameOrganizations = others
+                .Select(x => x.OrganizationId)
+                .Where(x => !string.IsNullOrWhiteSpace(x))
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .ToList();
+
+            if (duplicateNameOrganizations.Count == 0)
+            {
+                return null;
+            }
+
+            var slugConflictOrganizations = others
+                .Where(x => string.Equals(x.Slug, slug, StringComparison.OrdinalIgnoreCase))
+                .Select(x => x.OrganizationId)
+                .Where(x => !string.IsNullOrWhiteSpace(x))
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .Count();
+
+            return new CreateRoleResponse
+            {
+                IsSuccess = false,
+                RequiresDuplicateNameConfirmation = true,
+                DuplicateNameOrganizationCount = duplicateNameOrganizations.Count,
+                SlugConflictOrganizationCount = slugConflictOrganizations,
+                Errors = new Dictionary<string, string>
+                {
+                    { "duplicate_name", "Role_Name_Exists_In_Other_Organizations" }
+                }
+            };
+        }
+
+        /// <summary>
+        /// Derives the slug a new role will actually be stored under, and confirms it is free.
+        /// </summary>
+        /// <remarks>
+        /// A default-organization role keeps the submitted base unchanged, because propagation and
+        /// every existing consumer match default roles by their bare slug. An organization-specific
+        /// role gets the base plus an underscore and a fragment of the organization id, which makes
+        /// a cross-organization slug collision structurally impossible: default propagation can no
+        /// longer be shadowed by a private role, and a private role can no longer be reached by a
+        /// slug-matching lookup meant for copies.
+        /// <para>
+        /// The fragment starts at 8 hexadecimal characters -- a full GUID would add 37 characters to
+        /// a value that travels in role claims -- and lengthens only when ANOTHER organization
+        /// already holds the candidate, which is the birthday collision between two organization
+        /// ids sharing a prefix. A collision inside the caller's OWN organization is a genuine
+        /// duplicate and is reported, never worked around: the caller chose the base and can choose
+        /// another.
+        /// </para>
+        /// <para>
+        /// The lookup is the archive-inclusive one on purpose. A slug is the binding held in
+        /// <c>User.Roles[orgId]</c> and <c>Permission.Roles</c>, so an archived role keeps
+        /// reserving it -- and because that role is hidden from every list, the error has to say so
+        /// or it reads as a phantom conflict.
+        /// </para>
+        /// </remarks>
+        private async Task<(string? Slug, string? Error)> ResolveRoleSlugAsync(string baseSlug, string organizationId)
+        {
+            var normalizedBase = baseSlug.Trim().ToLower();
+
+            if (IsDefaultOrgScope(organizationId))
+            {
+                var takenBy = await _resourceRepository.GetRolesBySlugAsync(normalizedBase);
+                return takenBy is { Count: > 0 }
+                    ? (null, "Role_Slug_Already_In_Use_Including_Archived_Roles")
+                    : (normalizedBase, null);
+            }
+
+            var fragmentSource = organizationId.Replace("-", string.Empty, StringComparison.Ordinal).ToLower();
+
+            for (var length = 8; length <= fragmentSource.Length; length += 4)
+            {
+                var candidate = $"{normalizedBase}_{fragmentSource[..Math.Min(length, fragmentSource.Length)]}";
+                var holders = await _resourceRepository.GetRolesBySlugAsync(candidate);
+
+                if (holders == null || holders.Count == 0)
+                {
+                    return (candidate, null);
+                }
+
+                if (holders.Any(x => string.Equals(x.OrganizationId, organizationId, StringComparison.OrdinalIgnoreCase)))
+                {
+                    return (null, "Role_Slug_Already_In_Use_Including_Archived_Roles");
+                }
+
+                _logger.LogWarning(
+                    "Role slug '{Candidate}' is already held by another organization; lengthening the organization fragment.",
+                    candidate);
+            }
+
+            return (null, "Role_Slug_Already_In_Use_Including_Archived_Roles");
+        }
+
+        /// <summary>
+        /// Resolves which organization a role or permission write may target, and confirms that
+        /// organization is one the caller can still act in.
+        /// </summary>
+        /// <remarks>
+        /// Two separate questions, answered in order. <see cref="ResourceWriteOrganizationScope"/>
+        /// decides scope from the signed claim and discards any organization named in the payload
+        /// unless the caller is tenant-wide, so a request body can never widen what a token
+        /// authorises. Then the organization is confirmed to exist and be enabled, because an
+        /// access token outlives its organization: <c>DeleteOrganizationAsync</c> hard-deletes the
+        /// document and <c>IsDisabled</c> flips through update, while the claim stays valid until
+        /// expiry. <c>GetMyOrganizations</c> already hides disabled organizations on the grounds
+        /// that they are not somewhere a member can act; writes agree with it here.
+        /// <para>
+        /// "default" is exempt from the existence lookup: it is a scope sentinel, not a row in the
+        /// organizations collection, so looking it up would fail every tenant-wide write.
+        /// </para>
+        /// <para>
+        /// A lookup that throws is left to propagate rather than being swallowed into a "valid"
+        /// answer -- failing closed is the point of the check.
+        /// </para>
+        /// </remarks>
+        private async Task<(string? OrganizationId, BaseMutationResponse? Failure)> ResolveWriteOrganizationAsync(
+            string? requestedOrganizationId)
+        {
+            var scope = ResourceWriteOrganizationScope.Resolve(
+                BlocksContext.GetContext()?.OrganizationId,
+                requestedOrganizationId);
+
+            if (scope.Kind == ResourceWriteScopeKind.Denied)
+            {
+                _logger.LogWarning("Rejected a role/permission write: the caller's token carries no organization.");
+                return (null, Failure("unauthorized", "Organization_Not_Resolved"));
+            }
+
+            if (IsDefaultOrgScope(scope.OrganizationId))
+            {
+                return (scope.OrganizationId, null);
+            }
+
+            var organization = await _resourceRepository.GetOrganizationById(scope.OrganizationId);
+            if (organization == null)
+            {
+                _logger.LogWarning(
+                    "Rejected a role/permission write: organization '{OrganizationId}' has no document.",
+                    scope.OrganizationId);
+
+                return (null, Failure("forbidden", "Organization_Not_Found"));
+            }
+
+            if (organization.IsDisabled)
+            {
+                _logger.LogWarning(
+                    "Rejected a role/permission write: organization '{OrganizationId}' is disabled.",
+                    scope.OrganizationId);
+
+                return (null, Failure("forbidden", "Organization_Disabled"));
+            }
+
+            return (scope.OrganizationId, null);
         }
 
         /// <summary>

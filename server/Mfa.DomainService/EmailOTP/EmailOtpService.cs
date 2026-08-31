@@ -1,5 +1,6 @@
 ﻿using Blocks.Genesis;
 using Blocks.MailDriver;
+using Iam.DomainService.Entities;
 using Iam.DomainService.Utilities;
 using Mfa.DomainService.Configuration;
 using Mfa.DomainService.Entities;
@@ -15,6 +16,7 @@ namespace Mfa.DomainService.OTP.Services
         private readonly IMessageClient _messageClient;
 
         private const int DefaultLifeCycleInSecond = 300;
+        private const int ResendCooldownInSecond = 60;
         private const string DefaultMfaTemplate = "MfaViaEmail";
 
         public EmailOtpService(ICacheClient cacheClient,
@@ -28,25 +30,92 @@ namespace Mfa.DomainService.OTP.Services
 
         public async Task<OtpGenerationResponse> GenerateAsync(UserInfo userInfo, string? sendPhoneNumberAsEmailDomain = null)
         {
-            var context = MfaAuthenticationContext.Create(Guid.NewGuid().ToString(), userInfo.ItemId ?? string.Empty);
-            var code = context.MfaCode;
-
-            await _cacheClient.AddStringValueAsync(context.MfaId ?? string.Empty, context.Sterilize(), DefaultLifeCycleInSecond);
-            var email = userInfo.Email;
-            var sendPhoneNumberAsEmail = false;
-
-            if (!string.IsNullOrWhiteSpace(sendPhoneNumberAsEmailDomain))
+            var (email, sendPhoneNumberAsEmail, deliveryError) = ResolveDelivery(userInfo, sendPhoneNumberAsEmailDomain);
+            if (deliveryError != null)
             {
-                if (string.IsNullOrWhiteSpace(userInfo.PhoneNumber))
-                    return new OtpGenerationResponse { IsSuccess = false, Errors = new Dictionary<string, string> { { "phonenumber_not_exist", "PhoneNumber not exist in user for mfa" } } };
-
-                email = $"{userInfo.PhoneNumber.Replace(" ", string.Empty, StringComparison.Ordinal).Replace("+", "00", StringComparison.Ordinal)}@{sendPhoneNumberAsEmailDomain}";
-                sendPhoneNumberAsEmail = true;
+                return deliveryError;
             }
 
-            var result = await SendMfaCodeAsync(email ?? string.Empty, code ?? string.Empty, userInfo.Language ?? "en-US", sendPhoneNumberAsEmail);
+            var context = MfaAuthenticationContext.Create(Guid.NewGuid().ToString(), userInfo.ItemId ?? string.Empty, UserMfaType.Email);
+            context.SendPhoneNumberAsEmailDomain = sendPhoneNumberAsEmail ? sendPhoneNumberAsEmailDomain : null;
+
+            await _cacheClient.AddStringValueAsync(context.MfaId ?? string.Empty, context.Sterilize(), DefaultLifeCycleInSecond);
+
+            var result = await SendMfaCodeAsync(email ?? string.Empty, context.MfaCode ?? string.Empty, userInfo.Language ?? "en-US", sendPhoneNumberAsEmail);
 
             return new OtpGenerationResponse { MfaId = context.MfaId, IsSuccess = result };
+        }
+
+        public async Task<OtpGenerationResponse> ResendAsync(string mfaId, UserInfo userInfo, string? sendPhoneNumberAsEmailDomain = null)
+        {
+            if (string.IsNullOrWhiteSpace(mfaId) || !await _cacheClient.KeyExistsAsync(mfaId))
+            {
+                return new OtpGenerationResponse { IsSuccess = false, Errors = new Dictionary<string, string> { { "message", "invalid_two_factor_id" } } };
+            }
+
+            var raw = await _cacheClient.GetStringValueAsync(mfaId);
+            if (!MfaAuthenticationContext.TryDeserialize(raw, out var context))
+            {
+                // Not a code-based challenge (e.g. a TOTP session) — nothing to resend.
+                return new OtpGenerationResponse { IsSuccess = false, Errors = new Dictionary<string, string> { { "message", "resend_not_supported" } } };
+            }
+
+            var cooldown = TimeSpan.FromSeconds(ResendCooldownInSecond);
+            var elapsed = DateTime.UtcNow - context.LastSentUtc;
+            if (elapsed < cooldown)
+            {
+                var retryAfter = (int)Math.Ceiling((cooldown - elapsed).TotalSeconds);
+                return new OtpGenerationResponse
+                {
+                    IsSuccess = false,
+                    MfaId = mfaId,
+                    Errors = new Dictionary<string, string>
+                    {
+                        { "message", "resend_too_soon" },
+                        { "retry_after_seconds", retryAfter.ToString(System.Globalization.CultureInfo.InvariantCulture) }
+                    }
+                };
+            }
+
+            // The stored domain takes precedence so a resend re-routes to SMS even when the
+            // caller omits it; an explicit caller value still wins when provided.
+            var effectiveDomain = !string.IsNullOrWhiteSpace(sendPhoneNumberAsEmailDomain)
+                ? sendPhoneNumberAsEmailDomain
+                : context.SendPhoneNumberAsEmailDomain;
+
+            var (email, sendPhoneNumberAsEmail, deliveryError) = ResolveDelivery(userInfo, effectiveDomain);
+            if (deliveryError != null)
+            {
+                return deliveryError;
+            }
+
+            // Regenerate the code under the SAME mfa_id and reset the TTL, so the caller keeps
+            // using the id it already has and the newly delivered code verifies against it.
+            context.MfaCode = MfaAuthenticationContext.GenerateSecureRandomNumber();
+            context.LastSentUtc = DateTime.UtcNow;
+            context.SendPhoneNumberAsEmailDomain = sendPhoneNumberAsEmail ? effectiveDomain : null;
+
+            await _cacheClient.AddStringValueAsync(mfaId, context.Sterilize(), DefaultLifeCycleInSecond);
+
+            var result = await SendMfaCodeAsync(email ?? string.Empty, context.MfaCode ?? string.Empty, userInfo.Language ?? "en-US", sendPhoneNumberAsEmail);
+
+            return new OtpGenerationResponse { MfaId = mfaId, IsSuccess = result };
+        }
+
+        private static (string? Email, bool SendPhoneNumberAsEmail, OtpGenerationResponse? Error) ResolveDelivery(UserInfo userInfo, string? sendPhoneNumberAsEmailDomain)
+        {
+            if (string.IsNullOrWhiteSpace(sendPhoneNumberAsEmailDomain))
+            {
+                return (userInfo.Email, false, null);
+            }
+
+            if (string.IsNullOrWhiteSpace(userInfo.PhoneNumber))
+            {
+                return (null, false, new OtpGenerationResponse { IsSuccess = false, Errors = new Dictionary<string, string> { { "phonenumber_not_exist", "PhoneNumber not exist in user for mfa" } } });
+            }
+
+            var email = $"{userInfo.PhoneNumber.Replace(" ", string.Empty, StringComparison.Ordinal).Replace("+", "00", StringComparison.Ordinal)}@{sendPhoneNumberAsEmailDomain}";
+            return (email, true, null);
         }
 
         private async Task<bool> SendMfaCodeAsync(string email, string code, string language, bool sendPhoneNumberAsEmail = false)

@@ -1,4 +1,5 @@
 import { SSO_PROVIDERS } from "@blocks-idp/authentication/constants/sso-providers.constant";
+import { IMfaChallengeFields } from "@blocks-idp/authentication/models/auth.model";
 
 export interface IGetSocialLoginEndpointPayload {
   provider: SSO_PROVIDERS;
@@ -15,14 +16,10 @@ export interface ISigninBySSOPayload {
   code: string;
   state: string;
 }
-export interface ISigninBySSOResponse {
+export interface ISigninBySSOResponse extends IMfaChallengeFields {
   access_token: string;
   expires_in: number;
   refresh_token: string;
   token_type: string;
-  enable_mfa: boolean;
-  message: string;
-  mfaId: string;
-  mfaType: string;
   sso_user_redirect_url?: string;
 }

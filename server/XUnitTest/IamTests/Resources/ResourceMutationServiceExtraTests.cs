@@ -1,4 +1,4 @@
-using Blocks.Genesis;
+﻿using Blocks.Genesis;
 using FluentAssertions;
 using FluentValidation;
 using FluentValidation.Results;
@@ -498,7 +498,7 @@ namespace XUnitTest.IamTests.Resources
             _repo.Setup(r => r.GetPermissionsByIdsAsync(It.IsAny<List<string>>()))
                 .ReturnsAsync(new List<Permission> { new() { ItemId = "p-default", Resource = "reports::export" } });
             _repo.Setup(r => r.GetRoleBySlugAsync("manager", It.IsAny<string>()))
-                .ReturnsAsync((string slug, string org) => new Role { ItemId = "r-" + org, Slug = slug, OrganizationId = org });
+                .ReturnsAsync((string slug, string org) => new Role { ItemId = "r-" + org, Slug = slug, OrganizationId = org, CreatedFromDefault = true });
             _repo.Setup(r => r.GetPermissionsByResourcesAsync(It.IsAny<List<string>>(), "acme"))
                 .ReturnsAsync(new List<Permission> { new() { ItemId = "p-acme", Resource = "reports::export", OrganizationId = "acme" } });
             _repo.Setup(r => r.GetPermissionsByResourcesAsync(It.IsAny<List<string>>(), "globex"))
@@ -584,7 +584,7 @@ namespace XUnitTest.IamTests.Resources
         {
             GivenTwoOrgsHoldingTheSameResource();
             _repo.Setup(r => r.GetRoleBySlugAsync("manager", "globex"))
-                .ReturnsAsync(new Role { ItemId = "r-globex", Slug = "manager", OrganizationId = "globex", IsArchived = true });
+                .ReturnsAsync(new Role { ItemId = "r-globex", Slug = "manager", OrganizationId = "globex", IsArchived = true, CreatedFromDefault = true });
 
             await Create().ProcessPermissionAsync(SetPermissionsEvent(propagate: true));
 
@@ -643,7 +643,7 @@ namespace XUnitTest.IamTests.Resources
         {
             ResourceSetToPermissionMutationEvent? sent = null;
             _repo.Setup(r => r.GetRoleBySlugAsync("manager", It.IsAny<string>()))
-                .ReturnsAsync(new Role { ItemId = "r1", Slug = "manager", OrganizationId = "default" });
+                .ReturnsAsync(new Role { ItemId = "r1", Slug = "manager", OrganizationId = "default", CreatedFromDefault = true });
             _repo.Setup(r => r.UpdateRolePermissionByIdsAsync(It.IsAny<string>(), It.IsAny<List<string>>(), It.IsAny<string>())).ReturnsAsync(true);
             _iam.Setup(i => i.SendToQueueAsync(It.IsAny<string>(), It.IsAny<ResourceSetToPermissionMutationEvent>()))
                 .Callback<string, ResourceSetToPermissionMutationEvent>((_, e) => sent = e)
@@ -719,7 +719,7 @@ namespace XUnitTest.IamTests.Resources
         {
             GivenTwoOrgsHoldingTheSameResource();
             _repo.Setup(r => r.GetRoleBySlugAsync("manager", "globex"))
-                .ReturnsAsync(new Role { ItemId = "r-globex", Slug = "manager", OrganizationId = "globex", IsArchived = true });
+                .ReturnsAsync(new Role { ItemId = "r-globex", Slug = "manager", OrganizationId = "globex", IsArchived = true, CreatedFromDefault = true });
 
             await Create().ProcessPermissionAsync(SetPermissionsEvent(propagate: true));
 

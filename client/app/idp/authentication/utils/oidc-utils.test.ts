@@ -124,6 +124,48 @@ describe("oidc-utils", () => {
       expect(url.startsWith("/oidc/login")).toBe(true);
       expect(url).not.toContain("evil.com");
     });
+
+    // Regression: the MFA hand-off passes a path that already carries a query, and
+    // joining with a second `?` folded every following param into the preceding
+    // value -- `mfa_type=2?clientId=...` meant clientId was not a parameter at all.
+    it("merges into a query the path already carries instead of opening a second one", () => {
+      Object.defineProperty(window, "location", {
+        value: {
+          search: "?clientId=client-123&tenant_id=tenant-9",
+          hash: "",
+          href: "http://localhost:3000/oidc/login?clientId=client-123&tenant_id=tenant-9",
+        },
+        writable: true,
+        configurable: true,
+      });
+
+      const url = buildOIDCNavigationUrl("/oidc/mfa-check?mfa_id=m1&mfa_type=2");
+
+      expect(url.split("?").length - 1).toBe(1);
+
+      const params = new URLSearchParams(url.slice(url.indexOf("?") + 1));
+      expect(params.get("mfa_id")).toBe("m1");
+      expect(params.get("mfa_type")).toBe("2");
+      expect(params.get("clientId")).toBe("client-123");
+      expect(params.get("tenant_id")).toBe("tenant-9");
+    });
+
+    it("keeps a fragment last so the merged query never lands after the hash", () => {
+      Object.defineProperty(window, "location", {
+        value: {
+          search: "?clientId=client-123",
+          hash: "",
+          href: "http://localhost:3000/oidc/login?clientId=client-123",
+        },
+        writable: true,
+        configurable: true,
+      });
+
+      const url = buildOIDCNavigationUrl("/oidc/mfa-check?mfa_id=m1#section");
+
+      expect(url.indexOf("clientId=client-123")).toBeLessThan(url.indexOf("#section"));
+      expect(url.endsWith("#section")).toBe(true);
+    });
   });
 
   // ─── getCurrentOIDCParams ───────────────────────────────────────────────────

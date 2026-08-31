@@ -53,6 +53,23 @@ namespace Authentication.DomainService.OAuth.Services
 
             if (response.IsValid)
             {
+                // The verified mfa_id is the only authoritative identity for this MFA session.
+                // A caller-supplied user (resolved upstream from a request-body username) must
+                // never select the account: honoring it let a caller pair their own valid
+                // mfa_id/code with a different account's username and mint that victim's tokens.
+                if (string.IsNullOrWhiteSpace(response.UserId))
+                {
+                    return new TokenResponse { Error = "invalid_request", ErrorDescription = "User not found for mfa session", StatusCode = 400 };
+                }
+
+                if (user != null && !string.Equals(user.ItemId, response.UserId, StringComparison.Ordinal))
+                {
+                    _logger.LogWarning(
+                        "MFA identity mismatch: supplied user {SuppliedUserId} does not own mfa session user {SessionUserId}",
+                        user.ItemId, response.UserId);
+                    return new TokenResponse { Error = "invalid_request", ErrorDescription = "User not found for mfa session", StatusCode = 400 };
+                }
+
                 user ??= await _oAuthRepository.GetUserByIdAsync(response.UserId);
                 if (user == null)
                 {

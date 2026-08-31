@@ -96,6 +96,84 @@ namespace XUnitTest.Auth
             obj.StatusCode.Should().Be(StatusCodes.Status500InternalServerError);
         }
 
+        // An MFA challenge rides in the `Error` slot but is a prompt, not a failure. The
+        // payload used to be trimmed to error/error_description/redirect_url, which dropped
+        // the MfaId the challenge had just minted -- leaving a /auth/login client with no way
+        // to build the grant_type=mfa_code second leg. These pin the handle to the response.
+        [Fact]
+        public async Task BuildFlowResult_MfaChallenge_CarriesMfaIdTypeAndMethods()
+        {
+            var result = await Create().BuildFlowResultAsync(new AuthenticationFlowResult
+            {
+                TokenResponse = new TokenResponse
+                {
+                    Error = OAuthError.MfaEnabled,
+                    ErrorDescription = "Mfa code required",
+                    MfaRequired = true,
+                    MfaId = "mfa-1",
+                    UserMfa = UserMfaType.Email,
+                    MfaMethods = "Email",
+                    StatusCode = StatusCodes.Status200OK
+                }
+            }, new DefaultHttpContext());
+
+            var obj = result.Should().BeOfType<ObjectResult>().Subject;
+            obj.StatusCode.Should().Be(StatusCodes.Status200OK);
+
+            var payload = obj.Value.Should().BeAssignableTo<IDictionary<string, object?>>().Subject;
+            payload["error"].Should().Be(OAuthError.MfaEnabled);
+            payload["mfa_required"].Should().Be(true);
+            payload["mfa_id"].Should().Be("mfa-1");
+            payload["mfa_type"].Should().Be((int)UserMfaType.Email);
+            payload["mfa_methods"].Should().Be("Email");
+        }
+
+        [Fact]
+        public async Task BuildFlowResult_MfaEnrollmentRequired_OmitsMfaId()
+        {
+            var result = await Create().BuildFlowResultAsync(new AuthenticationFlowResult
+            {
+                TokenResponse = new TokenResponse
+                {
+                    Error = OAuthError.MfaEnrollmentRequired,
+                    ErrorDescription = "Mfa enrollment is required before authentication can complete",
+                    MfaRequired = true,
+                    MfaMethods = "Email,TOTP",
+                    StatusCode = StatusCodes.Status403Forbidden
+                }
+            }, new DefaultHttpContext());
+
+            var obj = result.Should().BeOfType<ObjectResult>().Subject;
+            obj.StatusCode.Should().Be(StatusCodes.Status403Forbidden);
+
+            var payload = obj.Value.Should().BeAssignableTo<IDictionary<string, object?>>().Subject;
+            payload["mfa_required"].Should().Be(true);
+            payload["mfa_methods"].Should().Be("Email,TOTP");
+            // No challenge was issued, so there is no handle to answer with. Omitted rather
+            // than null so a client cannot mistake it for a completable challenge.
+            payload.Should().NotContainKey("mfa_id");
+        }
+
+        [Fact]
+        public async Task BuildFlowResult_NonMfaError_CarriesNoMfaKeys()
+        {
+            var result = await Create().BuildFlowResultAsync(new AuthenticationFlowResult
+            {
+                TokenResponse = new TokenResponse
+                {
+                    Error = OAuthError.InValidUseNamePassword,
+                    ErrorDescription = "Invalid username or password",
+                    StatusCode = StatusCodes.Status401Unauthorized
+                }
+            }, new DefaultHttpContext());
+
+            var obj = result.Should().BeOfType<ObjectResult>().Subject;
+            obj.StatusCode.Should().Be(StatusCodes.Status401Unauthorized);
+
+            var payload = obj.Value.Should().BeAssignableTo<IDictionary<string, object?>>().Subject;
+            payload.Keys.Should().BeEquivalentTo(new[] { "error", "error_description", "redirect_url" });
+        }
+
         // ---------- UpdateIdpSessionForLogoutAsync ----------
 
         [Fact]
@@ -118,12 +196,19 @@ namespace XUnitTest.Auth
             _session.Verify(s => s.RevokeSessionAsync("sess-1", "logout_all"), Times.Once);
         }
 
+        /// <summary>
+        /// Replaces UpdateIdpSessionForLogout_CookieWinsOverFallback, which asserted the opposite:
+        /// that a fallback session must NOT be revoked when a cookie is present. The cookie's
+        /// session is added to the fallbacks rather than replacing them, so a logout cannot leave a
+        /// session live merely because it was not the one carrying the cookie.
+        /// </summary>
         [Fact]
-        public async Task UpdateIdpSessionForLogout_CookieWinsOverFallback()
+        public async Task UpdateIdpSessionForLogout_RevokesTheCookieSessionAndEveryFallback()
         {
             var cookieKey = IdpConstants.BuildIdpSessionCookieKey(TenantId);
             var ctx = HttpContextWithCookie(cookieKey, "sess-cookie");
             _session.Setup(s => s.RevokeSessionAsync("sess-cookie", "logout_all")).ReturnsAsync(true);
+            _session.Setup(s => s.RevokeSessionAsync("sess-fallback", "logout_all")).ReturnsAsync(true);
 
             var result = await Create().UpdateIdpSessionForLogoutAsync(
                 ctx,
@@ -133,7 +218,42 @@ namespace XUnitTest.Auth
 
             result.Should().BeTrue();
             _session.Verify(s => s.RevokeSessionAsync("sess-cookie", "logout_all"), Times.Once);
-            _session.Verify(s => s.RevokeSessionAsync("sess-fallback", "logout_all"), Times.Never);
+            _session.Verify(s => s.RevokeSessionAsync("sess-fallback", "logout_all"), Times.Once);
+        }
+
+        [Fact]
+        public async Task UpdateIdpSessionForLogout_CookieAlsoListedAsFallback_IsRevokedOnce()
+        {
+            var cookieKey = IdpConstants.BuildIdpSessionCookieKey(TenantId);
+            var ctx = HttpContextWithCookie(cookieKey, "sess-shared");
+            _session.Setup(s => s.RevokeSessionAsync("sess-shared", "logout_all")).ReturnsAsync(true);
+
+            var result = await Create().UpdateIdpSessionForLogoutAsync(
+                ctx,
+                new System.Security.Claims.ClaimsPrincipal(),
+                true,
+                new[] { "sess-shared" });
+
+            result.Should().BeTrue();
+            _session.Verify(s => s.RevokeSessionAsync("sess-shared", "logout_all"), Times.Once);
+        }
+
+        [Fact]
+        public async Task UpdateIdpSessionForLogout_BlankFallbackEntries_AreIgnored()
+        {
+            var cookieKey = IdpConstants.BuildIdpSessionCookieKey(TenantId);
+            var ctx = HttpContextWithCookie(cookieKey, "sess-cookie");
+            _session.Setup(s => s.RevokeSessionAsync("sess-cookie", "logout_all")).ReturnsAsync(true);
+
+            var result = await Create().UpdateIdpSessionForLogoutAsync(
+                ctx,
+                new System.Security.Claims.ClaimsPrincipal(),
+                true,
+                new[] { "", "   " });
+
+            result.Should().BeTrue();
+            _session.Verify(s => s.RevokeSessionAsync("sess-cookie", "logout_all"), Times.Once);
+            _session.Verify(s => s.RevokeSessionAsync(It.Is<string>(id => string.IsNullOrWhiteSpace(id)), It.IsAny<string>()), Times.Never);
         }
 
         [Fact]
@@ -169,6 +289,29 @@ namespace XUnitTest.Auth
 
             result.Should().BeTrue();
             _session.Verify(s => s.RemoveAccountAsync("sess-1", "actor-1", TenantId), Times.Once);
+        }
+
+        [Fact]
+        public async Task UpdateIdpSessionForLogout_MultipleFallbackSessions_RemovesAccountFromEach()
+        {
+            var principal = new System.Security.Claims.ClaimsPrincipal(
+                new System.Security.Claims.ClaimsIdentity(new[]
+                {
+                    new System.Security.Claims.Claim("user_id", "actor-1")
+                }));
+            _session.Setup(s => s.RemoveAccountAsync("sess-fallback-1", "actor-1", TenantId)).ReturnsAsync(true);
+            _session.Setup(s => s.RemoveAccountAsync("sess-fallback-2", "actor-1", TenantId)).ReturnsAsync(true);
+            _session.Setup(s => s.GetSessionAsync("sess-fallback-1")).ReturnsAsync((IdpSessionModel)null!);
+
+            var result = await Create().UpdateIdpSessionForLogoutAsync(
+                new DefaultHttpContext(),
+                principal,
+                false,
+                new[] { "sess-fallback-1", "sess-fallback-2" });
+
+            result.Should().BeTrue();
+            _session.Verify(s => s.RemoveAccountAsync("sess-fallback-1", "actor-1", TenantId), Times.Once);
+            _session.Verify(s => s.RemoveAccountAsync("sess-fallback-2", "actor-1", TenantId), Times.Once);
         }
 
         [Fact]

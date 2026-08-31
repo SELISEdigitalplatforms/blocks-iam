@@ -65,6 +65,22 @@ namespace Authentication.DomainService.Authentication
                 };
             }
 
+            // MFA verification is identified solely by the mfa_id/mfa_code, and the account is
+            // resolved from that verified mfa session downstream — never from a request-body
+            // username. Handle it before any username lookup so a caller cannot pair a valid
+            // mfa_id/code of their own with a different account's username and mint that
+            // account's tokens. The mfa session user's own lockout is still enforced inside
+            // MfaAuthorizationService after the mfa_id is verified.
+            if (IsEmbeddedMfaVerificationRequest(request))
+            {
+                return await ExecuteMfaVerificationAsync(
+                    request.MfaId,
+                    request.MfaCode,
+                    request.MfaType,
+                    httpRequest,
+                    configuration);
+            }
+
             var user = await _authenticationRepository.GetUserByUsernameAsync(request.Username);
 
             if (user != null
@@ -78,11 +94,6 @@ namespace Authentication.DomainService.Authentication
                     Error = OAuthError.AccountLocked,
                     ErrorDescription = "Account is temporarily locked due to failed authentication attempts"
                 };
-            }
-
-            if (IsEmbeddedMfaVerificationRequest(request))
-            {
-                return await ExecuteEmbeddedMfaVerificationAsync(request, httpRequest, configuration, user);
             }
 
             var captchaValidationResult = await ValidateCaptchaIfRequiredAsync(user, request.CaptchaCode);
@@ -203,21 +214,6 @@ namespace Authentication.DomainService.Authentication
             return !string.IsNullOrWhiteSpace(request.MfaId)
                 || !string.IsNullOrWhiteSpace(request.MfaCode)
                 || request.MfaType.HasValue;
-        }
-
-        private async Task<AuthenticationFlowResult> ExecuteEmbeddedMfaVerificationAsync(
-            EmbeddedLoginRequest request,
-            HttpRequest httpRequest,
-            IdentityConfiguration configuration,
-            User? user)
-        {
-            return await ExecuteMfaVerificationAsync(
-                request.MfaId,
-                request.MfaCode,
-                request.MfaType,
-                httpRequest,
-                configuration,
-                user);
         }
 
         private async Task<AuthenticationFlowResult> ExecuteMfaVerificationAsync(

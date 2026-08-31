@@ -23,6 +23,8 @@ env:
   HELM_REPO: SELISEdigitalplatforms/l0-yml-argo-helm
   CHART_PATH: blocks-template/blocks-client
   VALUES_FILE: aks-blocks-dev/blocks-iam.values.yaml
+  PREVIEW_REGISTRAR_URL: https://dev-api.blocksdevelopers.com/preview/v1/api/preview
+  IAM_DEPLOYMENT: dev-blocks-iam-iam-client
 
 jobs:
   deploy-preview:
@@ -45,7 +47,7 @@ jobs:
         id: vars
         run: |
           PR="${{ github.event.pull_request.number }}"
-          HOST="dev--${SERVICE}-${PR}.blocksdevelopers.com"
+          HOST="dev-${SERVICE}-${PR}.blocksdevelopers.com"
           RELEASE="pr-${PR}-blocks-iam"
           IMAGE_TAG="pr-${PR}-${{ github.event.pull_request.head.sha }}"
           echo "pr=${PR}"               >> "$GITHUB_OUTPUT"
@@ -118,6 +120,17 @@ jobs:
             --set-string healthCheckPolicy.default.http.host="${HOST}" \
             --wait --timeout 5m
 
+      - name: Register preview with IAM
+        run: |
+          curl -sS -f -X POST "${PREVIEW_REGISTRAR_URL}/register" \
+            -H "Content-Type: application/json" \
+            -d "{\"secret\":\"${{ secrets.PREVIEW_REGISTRAR_SECRET }}\",\"repoName\":\"blocks-iam\",\"prNumber\":${{ steps.vars.outputs.pr }}}"
+
+      - name: Restart iam-client to reload cache
+        run: |
+          kubectl rollout restart deployment "${IAM_DEPLOYMENT}" -n "${NAMESPACE}"
+          kubectl rollout status deployment "${IAM_DEPLOYMENT}" -n "${NAMESPACE}" --timeout=120s
+
       - name: Comment preview URL on PR
         uses: actions/github-script@v7
         with:
@@ -152,8 +165,7 @@ jobs:
   destroy-preview:
     if: |
       github.event.action == 'closed' ||
-      (github.event.action == 'unlabeled' && github.event.label.name == 'deploy-preview') ||
-      (github.event.action == 'labeled' && github.event.label.name == 'destroy-preview')
+      (github.event.action == 'unlabeled' && github.event.label.name == 'deploy-preview')
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -162,7 +174,9 @@ jobs:
     steps:
       - name: Compute release name
         id: vars
-        run: echo "release=pr-${{ github.event.pull_request.number }}-blocks-iam" >> "$GITHUB_OUTPUT"
+        run: |
+          echo "release=pr-${{ github.event.pull_request.number }}-blocks-iam" >> "$GITHUB_OUTPUT"
+          echo "pr=${{ github.event.pull_request.number }}" >> "$GITHUB_OUTPUT"
 
       - name: Azure login
         uses: azure/login@v2
@@ -188,6 +202,12 @@ jobs:
 
       - name: Uninstall preview release
         run: helm uninstall "${{ steps.vars.outputs.release }}" --namespace "${NAMESPACE}" --ignore-not-found
+
+      - name: Deregister preview from IAM
+        run: |
+          curl -sS -f -X POST "${PREVIEW_REGISTRAR_URL}/deregister" \
+            -H "Content-Type: application/json" \
+            -d "{\"secret\":\"${{ secrets.PREVIEW_REGISTRAR_SECRET }}\",\"repoName\":\"blocks-iam\",\"prNumber\":${{ steps.vars.outputs.pr }}}"
 
       - name: Comment teardown on PR
         uses: actions/github-script@v7

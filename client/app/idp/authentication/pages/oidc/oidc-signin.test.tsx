@@ -128,12 +128,19 @@ describe("OIDCSignin", () => {
 
   it("redirects to the MFA check when the SSO response requires MFA", async () => {
     h.context = { clientId: "client-1" };
-    h.signinBySSO.mockResolvedValue({ enable_mfa: true, mfaId: "m1", mfaType: 2 });
+    h.signinBySSO.mockResolvedValue({
+      error: "mfa_enabled",
+      mfa_required: true,
+      mfa_id: "m1",
+      mfa_type: 2,
+    });
     renderAt("/oidc/callback?code=abc&state=xyz");
 
     await waitFor(() =>
       expect(h.navigate).toHaveBeenCalledWith("built:/mfa-check?mfa_id=m1&mfa_type=2"),
     );
+    // The session is only marked authenticated once the second factor clears.
+    expect(h.setAuthenticated).not.toHaveBeenCalled();
   });
 
   it("follows the SSO redirect url when the response supplies one", async () => {
