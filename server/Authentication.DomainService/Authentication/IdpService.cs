@@ -183,6 +183,7 @@ namespace Authentication.DomainService.Authentication
 
             return new OidcUiTemplate
             {
+                ItemId = saved?.ItemId,
                 Branding = new OidcUiTemplateBranding
                 {
                     LogoUrl = saved?.Branding?.LogoUrl ?? defaults.Branding!.LogoUrl,

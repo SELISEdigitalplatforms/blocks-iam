@@ -360,6 +360,15 @@
             <response code="400">clientId is required or client not found</response>
             <response code="401">Authentication required</response>
         </member>
+        <member name="T:Api.Controllers.OidcTemplateController">
+            <summary>Protected tenant-level OIDC UI template management API.</summary>
+        </member>
+        <member name="M:Api.Controllers.OidcTemplateController.GetOidcTemplate">
+            <summary>Returns the tenant's effective, default-filled OIDC UI template.</summary>
+        </member>
+        <member name="M:Api.Controllers.OidcTemplateController.SaveOidcTemplate(Authentication.DomainService.Shared.RequestModel.SaveOidcUiTemplateRequest)">
+            <summary>Validates and completely replaces the tenant's OIDC UI template.</summary>
+        </member>
         <member name="T:Api.Controllers.SecurityController">
             <summary>
             Self-service security endpoints.

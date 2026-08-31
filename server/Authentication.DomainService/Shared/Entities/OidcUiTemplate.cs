@@ -1,4 +1,5 @@
 using MongoDB.Bson.Serialization.Attributes;
+using System.Text.Json.Serialization;
 
 namespace Authentication.DomainService.Entities
 {
@@ -10,6 +11,13 @@ namespace Authentication.DomainService.Entities
     [BsonIgnoreExtraElements]
     public sealed class OidcUiTemplate
     {
+        /// <summary>
+        /// Identifies the persisted template value for mutation responses. This is storage
+        /// metadata and is deliberately excluded from both public and management GET payloads.
+        /// </summary>
+        [JsonIgnore]
+        public string? ItemId { get; set; }
+
         public OidcUiTemplateBranding? Branding { get; set; }
         public OidcUiTemplateTheme? Theme { get; set; }
         public OidcUiTemplatePages? Pages { get; set; }

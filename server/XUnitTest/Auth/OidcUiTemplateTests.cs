@@ -1,6 +1,7 @@
 using Authentication.DomainService.Authentication;
 using Authentication.DomainService.Entities;
 using FluentAssertions;
+using System.Text.Json;
 using System.Reflection;
 
 namespace XUnitTest.Auth
@@ -106,6 +107,18 @@ namespace XUnitTest.Auth
             };
 
             IdpService.CreateDefaultOidcUiTemplate().Should().BeEquivalentTo(expected);
+        }
+
+        [Fact]
+        public void ItemId_IsStorageMetadataAndNeverAppearsInTemplateJson()
+        {
+            var template = IdpService.CreateDefaultOidcUiTemplate();
+            template.ItemId = "internal-id";
+
+            var json = JsonSerializer.Serialize(template, new JsonSerializerOptions(JsonSerializerDefaults.Web));
+
+            json.Should().NotContain("itemId");
+            json.Should().Contain("brandName");
         }
 
         [Fact]

@@ -154,6 +154,7 @@ namespace Authentication.DomainService.Utilities
             serviceCollection.AddSingleton<IIamConfigurationRepository, IamConfigurationRepository>();
             serviceCollection.AddTransient<IValidator<SaveSsoCredentialRequest>, SaveSsoCredentialRequestValidator>();
             serviceCollection.AddTransient<IValidator<SaveOIDCClientRequest>, SaveOIDCClientRequestValidator>();
+            serviceCollection.AddTransient<IValidator<SaveOidcUiTemplateRequest>, SaveOidcUiTemplateRequestValidator>();
             serviceCollection.AddTransient<IValidator<SaveIdentityProviderRequest>, SaveIdentityProviderRequestValidator>();
             serviceCollection.AddTransient<IValidator<UpdateIdentityProviderRequest>, UpdateIdentityProviderRequestValidator>();
 

@@ -17,6 +17,8 @@ namespace Authentication.DomainService.Services
         Task SendToQueueAsync<T>(string queue, T payload) where T : class;
         DeviceInformation? GetDeviceInfo(string userAgent);
         Task<SaveOIDCClientResponse> SaveOIDCClientAsync(SaveOIDCClientRequest request);
+        Task<OidcUiTemplate> GetOidcTemplateForManagementAsync();
+        Task<SaveOidcUiTemplateResponse> SaveOidcUiTemplateRequestAsync(SaveOidcUiTemplateRequest request);
         Task<BaseResponse> DeleteOidcClientAsync(DeleteOIDCClientRequest request);
         Task<BaseResponse> GenerateUserCodeByClientAsync(GenerateUserCodeRequest request);
         Task<GetOIDCClientResponse> GetOidcClientAsync(string tenantId);

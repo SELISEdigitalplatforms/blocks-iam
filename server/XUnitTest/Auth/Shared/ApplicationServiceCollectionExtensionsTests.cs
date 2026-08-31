@@ -1,7 +1,10 @@
 using Authentication.DomainService.Authentication;
+using Authentication.DomainService.OAuth;
 using Authentication.DomainService.Services;
+using Authentication.DomainService.Shared.RequestModel;
 using Authentication.DomainService.Utilities;
 using FluentAssertions;
+using FluentValidation;
 using Iam.DomainService.Resources;
 using Iam.DomainService.Services;
 using Iam.DomainService.Users;
@@ -31,6 +34,10 @@ namespace XUnitTest.Auth.Shared
 
             services.Should().Contain(d => d.ServiceType == typeof(IAuthenticationRepository) && d.Lifetime == ServiceLifetime.Singleton);
             services.Should().Contain(d => d.ServiceType == typeof(IAuthenticationService) && d.Lifetime == ServiceLifetime.Singleton);
+            services.Should().Contain(d =>
+                d.ServiceType == typeof(IValidator<SaveOidcUiTemplateRequest>) &&
+                d.ImplementationType == typeof(SaveOidcUiTemplateRequestValidator) &&
+                d.Lifetime == ServiceLifetime.Transient);
         }
 
         [Fact]
