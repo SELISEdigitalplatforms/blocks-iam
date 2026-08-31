@@ -69,6 +69,7 @@ namespace Authentication.DomainService.Utilities
             serviceCollection.AddSingleton<IDiscoveryService, DiscoveryService>();
             serviceCollection.AddSingleton<IJwksService, JwksService>();
             serviceCollection.AddSingleton<IOidcCallbackHandler, OidcCallbackHandler>();
+            serviceCollection.AddSingleton<ISsoUserProvisioningService, SsoUserProvisioningService>();
 
             serviceCollection.AddSingleton<IAuthorizationCodeRepository, AuthorizationCodeRepository>();
             serviceCollection.AddSingleton<IRefreshTokenRepository, RefreshTokenRepository>();

@@ -8,7 +8,6 @@ using Authentication.DomainService.Services;
 using Blocks.Genesis;
 using FluentAssertions;
 using Iam.DomainService.Entities;
-using Iam.DomainService.Users;
 using Microsoft.Extensions.Logging.Abstractions;
 using Moq;
 
@@ -20,7 +19,6 @@ namespace XUnitTest.Auth.OAuth
         private readonly Mock<IAuthenticationRepository> _repo = new();
         private readonly Mock<ICacheClient> _cache = new();
         private readonly Mock<ISocialLogInServiceProvider> _provider = new();
-        private readonly Mock<IUserManagementMutationService> _userMutation = new();
 
         // Concrete test double: exposes the abstract GetUser via an injected delegate.
         private sealed class TestSocialAuthorizationService : SocialAuthorizationServiceBase
@@ -32,9 +30,8 @@ namespace XUnitTest.Auth.OAuth
                 IAuthenticationRepository repo,
                 ICacheClient cache,
                 ISocialLogInServiceProvider provider,
-                IUserManagementMutationService userMutation,
                 Func<StateInfo, IExternalUserData, (User?, string)> getUser)
-                : base(NullLogger.Instance, tokenManager, repo, cache, provider, userMutation)
+                : base(NullLogger.Instance, tokenManager, repo, cache, provider)
             {
                 _getUser = getUser;
             }
@@ -44,7 +41,7 @@ namespace XUnitTest.Auth.OAuth
         }
 
         private TestSocialAuthorizationService Create(Func<StateInfo, IExternalUserData, (User?, string)> getUser)
-            => new(_tokenManager.Object, _repo.Object, _cache.Object, _provider.Object, _userMutation.Object, getUser);
+            => new(_tokenManager.Object, _repo.Object, _cache.Object, _provider.Object, getUser);
 
         private static TokenRequest Request() => new() { Code = "auth-code", State = "state-1", OrganizationId = "org-9" };
 
