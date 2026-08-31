@@ -184,6 +184,17 @@ namespace Mfa.DomainService.TOTP
             };
         }
 
+        public Task<OtpGenerationResponse> ResendAsync(string mfaId, UserInfo userInfo, string? sendPhoneNumberAsEmailDomain = null)
+        {
+            // TOTP codes are produced by the user's authenticator app; there is nothing for the
+            // server to re-deliver, so resend is not applicable to this method.
+            return Task.FromResult(new OtpGenerationResponse
+            {
+                IsSuccess = false,
+                Errors = new Dictionary<string, string> { { "message", "resend_not_supported" } }
+            });
+        }
+
         public async Task<OtpVerificationResponse> VerifyAsync(VerifyOtpRequest request)
         {
             var validator = await _validator.ValidateAsync(request);

@@ -172,12 +172,14 @@ describe("MFAService", () => {
 
   // ─── resendOtp ────────────────────────────────────────────────────────────
   describe("resendOtp", () => {
-    it("should POST the mfaId to the correct endpoint", async () => {
+    it("should POST the payload to the correct absolute endpoint", async () => {
       vi.mocked(http.post).mockResolvedValue(mockSuccessResponse);
 
       const result = await service.resendOtp(mockResendOtpPayload);
 
-      expect(http.post).toHaveBeenCalledWith(MFA_ENDPOINTS.RESEND_OTP, mockResendOtpPayload.mfaId);
+      expect(http.post).toHaveBeenCalledWith(iamUrl(MFA_ENDPOINTS.RESEND_OTP), mockResendOtpPayload, undefined, {
+        absoluteUrl: true,
+      });
       expect(result).toEqual(mockSuccessResponse);
     });
 

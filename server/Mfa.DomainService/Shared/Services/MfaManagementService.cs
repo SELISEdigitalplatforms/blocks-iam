@@ -124,17 +124,32 @@ namespace Mfa.DomainService.Services
 
         public async Task<OtpGenerationResponse> ResendOtpAsync(string mfaId, string sendPhoneNumberAsEmailDomain)
         {
-            var isKeyExist = await _cacheClient.KeyExistsAsync(mfaId);
-
-            if (!isKeyExist)
+            if (string.IsNullOrWhiteSpace(mfaId) || !await _cacheClient.KeyExistsAsync(mfaId))
             {
                 return new OtpGenerationResponse { Errors = new Dictionary<string, string> { { "message", "invalid_two_factor_id" } } };
             }
 
             var keyValue = await _cacheClient.GetStringValueAsync(mfaId);
-            var mfaContext = MfaAuthenticationContext.Deserialize(keyValue);
+            if (!MfaAuthenticationContext.TryDeserialize(keyValue, out var mfaContext))
+            {
+                // The mfa_id belongs to a method with no code to re-deliver (e.g. TOTP).
+                return new OtpGenerationResponse { Errors = new Dictionary<string, string> { { "message", "resend_not_supported" } } };
+            }
 
-            return await GenerateOTPAsync(new OtpGenerationRequest { UserId = mfaContext.UserId, MfaType = UserMfaType.Email, SendPhoneNumberAsEmailDomain = sendPhoneNumberAsEmailDomain });
+            var userInfo = await _mfaRepository.GetItemAsync<UserInfo>(u => u.ItemId == mfaContext.UserId, "Users");
+            if (userInfo is null)
+            {
+                return new OtpGenerationResponse { Errors = new Dictionary<string, string> { { "user_not_found", "User not found for mfa" } } };
+            }
+
+            // Resolve the OTP service from the challenge's own recorded method — never a hardcoded
+            // one — and preserve the same mfa_id so the caller keeps using the id it already has.
+            // Back-compat: a challenge created before MfaType was persisted (e.g. an in-flight
+            // session during a rolling deploy) deserializes with MfaType = None. Email is the only
+            // code-based delivery, so fall back to it rather than throwing on an unmapped method.
+            var mfaType = mfaContext.MfaType == UserMfaType.None ? UserMfaType.Email : mfaContext.MfaType;
+            var otpService = _otpServiceFactory.GetOTPService(mfaType);
+            return await otpService.ResendAsync(mfaId, userInfo, sendPhoneNumberAsEmailDomain);
         }
 
         private async Task WriteAuditAsync(string eventType, string? userId, UserMfaType? mfaType, string status, IDictionary<string, string>? details = null)

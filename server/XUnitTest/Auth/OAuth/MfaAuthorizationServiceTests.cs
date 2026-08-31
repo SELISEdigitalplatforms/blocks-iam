@@ -67,6 +67,53 @@ namespace XUnitTest.Auth.OAuth
         }
 
         [Fact]
+        public async Task Authenticate_ValidOtp_SuppliedUserDiffersFromMfaSessionUser_ReturnsInvalidRequest_AndDoesNotMintToken()
+        {
+            // Attacker pairs their own valid mfa_id/code (session user "attacker") with a victim
+            // account object resolved upstream from a request-body username. The mfa session user
+            // must win and the request must be rejected — never a token for the victim.
+            var victim = new User { ItemId = "victim", IsMfaVerified = true };
+            _otpService.Setup(o => o.VerifyAsync(It.IsAny<VerifyOtpRequest>()))
+                .ReturnsAsync(new OtpVerificationResponse { IsValid = true, UserId = "attacker" });
+
+            var result = await Create().AuthenticateAsync(Request(), Config(), victim);
+
+            result.Error.Should().Be("invalid_request");
+            result.StatusCode.Should().Be(400);
+            _tokenManager.Verify(m => m.ManageTokenAsync(It.IsAny<TokenRequest>(), It.IsAny<IdentityConfiguration>(), It.IsAny<User>(), It.IsAny<StateInfo?>()), Times.Never);
+        }
+
+        [Fact]
+        public async Task Authenticate_ValidOtp_NoSuppliedUser_ResolvesFromMfaSession_AndMintsToken()
+        {
+            // Mirrors the embedded flow after the fix: no user is passed in, so the account is
+            // resolved solely from the verified mfa_id. Guards the prod regression where a wrong
+            // upstream user object had blocked a legitimate, MFA-verified login.
+            var sessionUser = new User { ItemId = "u1", IsMfaVerified = true };
+            _otpService.Setup(o => o.VerifyAsync(It.IsAny<VerifyOtpRequest>()))
+                .ReturnsAsync(new OtpVerificationResponse { IsValid = true, UserId = "u1" });
+            _repo.Setup(r => r.GetUserByIdAsync("u1")).ReturnsAsync(sessionUser);
+            _tokenManager.Setup(m => m.ManageTokenAsync(It.IsAny<TokenRequest>(), It.IsAny<IdentityConfiguration>(), sessionUser, It.IsAny<StateInfo?>()))
+                .ReturnsAsync(new TokenResponse { AccessToken = "tok", StatusCode = 200 });
+
+            var result = await Create().AuthenticateAsync(Request(), Config());
+
+            result.AccessToken.Should().Be("tok");
+        }
+
+        [Fact]
+        public async Task Authenticate_ValidOtp_BlankSessionUserId_ReturnsInvalidRequest()
+        {
+            _otpService.Setup(o => o.VerifyAsync(It.IsAny<VerifyOtpRequest>()))
+                .ReturnsAsync(new OtpVerificationResponse { IsValid = true, UserId = null });
+
+            var result = await Create().AuthenticateAsync(Request(), Config());
+
+            result.Error.Should().Be("invalid_request");
+            result.StatusCode.Should().Be(400);
+        }
+
+        [Fact]
         public async Task Authenticate_ValidOtp_UserNotMfaVerified_ReturnsUnverified()
         {
             var user = new User { ItemId = "u1", IsMfaVerified = false };
