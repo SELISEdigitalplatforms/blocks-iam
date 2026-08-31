@@ -116,8 +116,7 @@ namespace Authentication.DomainService.Shared.Services
                     normalizedEmail,
                     externalUser,
                     provider,
-                    organizationId,
-                    tenantConfig);
+                    organizationId);
 
                 if (createdUser.user == null)
                 {
@@ -209,8 +208,7 @@ namespace Authentication.DomainService.Shared.Services
             string normalizedEmail,
             IExternalUserData externalUser,
             string provider,
-            string? organizationId,
-            TenantConfiguration? tenantConfig)
+            string? organizationId)
         {
             var raced = await _userRepository.GetUserByEmailAsync(normalizedEmail);
             if (raced != null)
@@ -221,8 +219,16 @@ namespace Authentication.DomainService.Shared.Services
                 return (raced, false);
             }
 
-            var roles = tenantConfig?.DefaultRolesForNewUserOnSignUp ?? new List<string>();
-            var permissions = tenantConfig?.DefaultPermissionsForNewUserOnSignUp ?? new List<string>();
+            // The identity provider is the authority on what an SSO user may do. The login
+            // services have already resolved these from IdentityProvider.InitialRoles /
+            // InitialPermissions -- and, for a provider whose token carries roles, from the
+            // token as well. An unconfigured provider means no roles and no permissions, not
+            // the tenant's email-signup defaults: those describe a different way in.
+            // Copied, not aliased: the login services hand back the IdentityProvider's own
+            // InitialRoles list by reference when the provider token carried no roles of its
+            // own, and this list is about to be persisted on the user.
+            var roles = new List<string>(externalUser.Roles ?? []);
+            var permissions = new List<string>(externalUser.Permissions ?? []);
 
             var user = new User
             {

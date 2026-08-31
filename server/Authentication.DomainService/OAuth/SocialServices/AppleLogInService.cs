@@ -66,6 +66,7 @@ namespace Authentication.DomainService.OAuth.SocialServices
                 Email = deserializeAppleIdToken?.Email,
                 ExternalProviderUserId = deserializeAppleIdToken?.ExternalProviderUserId,
                 Roles = identityProvider?.InitialRoles ?? [],
+                Permissions = identityProvider?.InitialPermissions ?? [],
                 Platform = stateInfo.Provider
             };
             return new SocialCallbackResult
