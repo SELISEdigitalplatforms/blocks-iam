@@ -1981,6 +1981,18 @@ namespace Iam.DomainService.Resources
                 Attributes = request.Attributes,
             };
 
+            // Branding and localisation are applied through the same guard the update path uses,
+            // so a request that omits them keeps the entity's own defaults instead of blanking
+            // TimeZone/DateFormat/TimeFormat/Locale to empty strings.
+            ApplyProperty(request.Theme, value => organization.Theme = value, v => v != null);
+            ApplyProperty(request.LogoUrl, value => organization.LogoUrl = value, v => !string.IsNullOrWhiteSpace(v));
+            ApplyProperty(request.Industry, value => organization.Industry = value, v => !string.IsNullOrWhiteSpace(v));
+            ApplyProperty(request.TimeZone, value => organization.TimeZone = value, v => !string.IsNullOrWhiteSpace(v));
+            ApplyProperty(request.Currency, value => organization.Currency = value, v => !string.IsNullOrWhiteSpace(v));
+            ApplyProperty(request.DateFormat, value => organization.DateFormat = value, v => !string.IsNullOrWhiteSpace(v));
+            ApplyProperty(request.TimeFormat, value => organization.TimeFormat = value, v => !string.IsNullOrWhiteSpace(v));
+            ApplyProperty(request.Locale, value => organization.Locale = value, v => !string.IsNullOrWhiteSpace(v));
+
             await _resourceRepository.SaveOrganizationAsync(organization);
 
             await _userActivityDispatcher.SendUserActivityAsync(new UserActivityEvent
