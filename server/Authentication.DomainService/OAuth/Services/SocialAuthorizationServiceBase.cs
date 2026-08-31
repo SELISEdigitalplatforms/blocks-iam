@@ -1,5 +1,6 @@
 using Authentication.DomainService.Entities;
 using Authentication.DomainService.OAuth.RequestModel;
+using Authentication.DomainService.Utilities;
 using Authentication.DomainService.OAuth.ResponseModel;
 using Authentication.DomainService.Services;
 using Blocks.Genesis;
@@ -108,7 +109,7 @@ namespace Authentication.DomainService.OAuth.Services
                 };
             }
 
-            request.OrganizationId = ResolveSignInOrganizationId(user, request.OrganizationId);
+            request.OrganizationId = OrganizationAccessResolver.ResolveSignInOrganizationId(user, request.OrganizationId);
             var tokenResponse = await _oAuthJwtAccessTokenManager.ManageTokenAsync(request, authenticationConfiguration, user);
 
             if (string.IsNullOrWhiteSpace(tokenResponse.Error)
@@ -145,41 +146,6 @@ namespace Authentication.DomainService.OAuth.Services
         }
 
         public abstract Task<(User? user, string redirectUrl)> GetUser(StateInfo stateInfo, IExternalUserData externalUser);
-
-        private static string ResolveSignInOrganizationId(User user, string? requestedOrganizationId)
-        {
-            if (HasOrganizationAccess(user, requestedOrganizationId))
-            {
-                return requestedOrganizationId!;
-            }
-
-            if (HasOrganizationAccess(user, user.LastUsedOrganizationId))
-            {
-                return user.LastUsedOrganizationId!;
-            }
-
-            if (HasOrganizationAccess(user, "default"))
-            {
-                return "default";
-            }
-
-            return user.OrganizationIds.FirstOrDefault(id => !string.IsNullOrWhiteSpace(id))
-                ?? user.Roles.Keys.FirstOrDefault(key => !string.IsNullOrWhiteSpace(key))
-                ?? user.Permissions.Keys.FirstOrDefault(key => !string.IsNullOrWhiteSpace(key))
-                ?? "default";
-        }
-
-        private static bool HasOrganizationAccess(User user, string? organizationId)
-        {
-            if (string.IsNullOrWhiteSpace(organizationId))
-            {
-                return false;
-            }
-
-            return user.OrganizationIds.Contains(organizationId)
-                || user.Roles.ContainsKey(organizationId)
-                || user.Permissions.ContainsKey(organizationId);
-        }
 
         protected static string NormalizeEmail(string? email)
         {
