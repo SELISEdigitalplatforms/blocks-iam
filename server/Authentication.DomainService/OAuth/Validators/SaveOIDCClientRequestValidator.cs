@@ -28,10 +28,6 @@ namespace Authentication.DomainService.OAuth
                 .Must(BeValidHttpsUrl)
                 .When(x => !string.IsNullOrWhiteSpace(x.ExternalDiscoveryEndpoint));
 
-            RuleFor(x => x.ClientLogoUrl)
-                .Must(BeValidHttpsUrl)
-                .When(x => !string.IsNullOrWhiteSpace(x.ClientLogoUrl));
-
             RuleFor(x => x.FrontChannelLogoutUri)
                 .Must(BeValidHttpsUrl)
                 .When(x => !string.IsNullOrWhiteSpace(x.FrontChannelLogoutUri));

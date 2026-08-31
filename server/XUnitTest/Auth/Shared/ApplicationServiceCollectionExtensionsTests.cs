@@ -1,4 +1,5 @@
 using Authentication.DomainService.Authentication;
+using Authentication.DomainService.Migrations;
 using Authentication.DomainService.OAuth;
 using Authentication.DomainService.Services;
 using Authentication.DomainService.Shared.RequestModel;
@@ -34,6 +35,13 @@ namespace XUnitTest.Auth.Shared
 
             services.Should().Contain(d => d.ServiceType == typeof(IAuthenticationRepository) && d.Lifetime == ServiceLifetime.Singleton);
             services.Should().Contain(d => d.ServiceType == typeof(IAuthenticationService) && d.Lifetime == ServiceLifetime.Singleton);
+            services.Should().Contain(d =>
+                d.ServiceType == typeof(ILegacyOidcClientBrandingReader) &&
+                d.ImplementationType == typeof(MongoLegacyOidcClientBrandingReader) &&
+                d.Lifetime == ServiceLifetime.Singleton);
+            services.Should().Contain(d =>
+                d.ServiceType == typeof(OidcUiTemplateMigrationService) &&
+                d.Lifetime == ServiceLifetime.Singleton);
             services.Should().Contain(d =>
                 d.ServiceType == typeof(IValidator<SaveOidcUiTemplateRequest>) &&
                 d.ImplementationType == typeof(SaveOidcUiTemplateRequestValidator) &&

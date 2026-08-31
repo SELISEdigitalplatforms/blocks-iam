@@ -317,9 +317,7 @@ namespace Authentication.DomainService.Services
             credential.AllowedMfaMethods = request.AllowedMfaMethods;
             credential.LastUpdatedBy = BlocksContext.GetContext()?.UserId;
             credential.LastUpdatedDate = DateTime.UtcNow;
-            credential.LogoUri = request.ClientLogoUrl;
             credential.ClientName = request.ClientDisplayName;
-            credential.UiBrandColor = request.ClientBrandColor;
             credential.IsDeviceFlowClient = request.IsDeviceFlowClient;
             // Federating this client as an upstream IdentityProvider hardcodes the
             // authorization_code grant and reuses RedirectUris, which device-flow clients
