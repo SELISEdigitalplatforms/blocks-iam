@@ -1,16 +1,13 @@
-import { render, screen, act, waitFor } from "@testing-library/react";
+import { render, screen, act } from "@testing-library/react";
 import { beforeEach, afterEach, describe, expect, it, vi } from "vitest";
 
-// The heavy background and mode toggle are irrelevant to the shell's behaviour.
+// The heavy background is irrelevant to the shell's behaviour.
 vi.mock("./sci-fi-background-oidc", () => ({
   SciFiBackgroundOidc: () => <div data-testid="scifi-bg" />,
 }));
-vi.mock("@/components/mode-toggle/mode-toggle", () => ({
-  ModeToggle: () => <button type="button">toggle theme</button>,
-}));
-
 import { OidcAuthShell, useOidcAuthAnimation } from "./oidc-auth-shell";
 import { OIDC_LOGIN_PANEL } from "./oidc-panel-config";
+import { DEFAULT_OIDC_UI_TEMPLATE } from "@blocks-idp/authentication/models/oidc-ui-template";
 
 // A child that surfaces the animation context so we can drive the phases.
 function Driver() {
@@ -36,7 +33,17 @@ function Driver() {
 
 const renderShell = (props: Partial<React.ComponentProps<typeof OidcAuthShell>> = {}) =>
   render(
-    <OidcAuthShell panelConfig={OIDC_LOGIN_PANEL} heading="Sign in to Blocks" {...props}>
+    <OidcAuthShell
+      panelConfig={OIDC_LOGIN_PANEL}
+      theme={DEFAULT_OIDC_UI_TEMPLATE.theme}
+      logoUrl={null}
+      brandName="Blocks IAM"
+      heading="Sign in to Blocks"
+      footerNote={<span>footer</span>}
+      successTitle="Access Granted"
+      successSubtitle="Redirecting…"
+      {...props}
+    >
       <Driver />
     </OidcAuthShell>,
   );
@@ -72,13 +79,6 @@ describe("OidcAuthShell", () => {
     expect(screen.getByText("Blocks")).toBeInTheDocument();
     expect(screen.getByTestId("phase")).toHaveTextContent("idle");
     expect(screen.getByTestId("scifi-bg")).toBeInTheDocument();
-  });
-
-  it("renders the default copyright footer when no footerNote is given", () => {
-    renderShell();
-    expect(
-      screen.getByText(/SELISE Digital Platforms\. Secure OIDC flow\./),
-    ).toBeInTheDocument();
   });
 
   it("renders a custom footer note when provided", () => {
@@ -122,14 +122,35 @@ describe("OidcAuthShell", () => {
     expect(screen.getByTestId("phase")).toHaveTextContent("idle");
   });
 
-  it("reacts to the dark class toggling on the html element", async () => {
-    const { container } = renderShell();
-    const root = container.querySelector(".oidc-scifi-root") as HTMLElement;
-    expect(root.getAttribute("data-theme")).toBe("light");
-
-    await act(async () => {
-      document.documentElement.classList.add("dark");
+  it("applies template CSS variables and omits nullable optional variables", () => {
+    const { container } = renderShell({
+      theme: {
+        ...DEFAULT_OIDC_UI_TEMPLATE.theme,
+        primary: "#123456",
+        border: null,
+        borderStrong: null,
+        accentSoft: null,
+      },
     });
-    await waitFor(() => expect(root.getAttribute("data-theme")).toBe("dark"));
+    const root = container.querySelector(".oidc-scifi-root") as HTMLElement;
+    expect(root.style.getPropertyValue("--accent")).toBe("#123456");
+    expect(root.style.getPropertyValue("--bg")).toBe("#050510");
+    expect(root.style.getPropertyValue("--border")).toBe("");
+    expect(root.style.getPropertyValue("--border-strong")).toBe("");
+    expect(root.style.getPropertyValue("--accent-soft")).toBe("");
+    expect(root).not.toHaveAttribute("data-theme");
+  });
+
+  it("renders a custom logo and brand name without a theme toggle", () => {
+    renderShell({
+      logoUrl: "https://example.test/acme.png",
+      brandName: "Acme Identity",
+    });
+    expect(screen.getByRole("img", { name: "Acme Identity logo" })).toHaveAttribute(
+      "src",
+      "https://example.test/acme.png",
+    );
+    expect(screen.getByText("Acme Identity")).toBeInTheDocument();
+    expect(screen.queryByText("toggle theme")).not.toBeInTheDocument();
   });
 });

@@ -4,10 +4,14 @@ import { useGetSignUpSetting } from "@blocks-idp/iam/hooks/use-user";
 import { useGetSignupOrganizationConfig } from "@blocks-idp/iam/hooks/use-organization";
 import { Skeleton } from "@/components/ui-kits/skeleton/skeleton";
 import { LoginReturnLink } from "@blocks-idp/authentication/components/login-return-link";
-import { OidcAuthShell } from "@blocks-idp/authentication/pages/oidc/oidc-auth-shell";
+import { OidcAuthShell, OidcFooter } from "@blocks-idp/authentication/pages/oidc/oidc-auth-shell";
 import { SIGNUP_PANEL } from "@blocks-idp/authentication/pages/oidc/oidc-panel-config";
+import { useOidcUiConfig } from "@blocks-idp/authentication/hooks/use-oidc-ui-config";
+import { DEFAULT_OIDC_UI_TEMPLATE } from "@blocks-idp/authentication/models/oidc-ui-template";
 
 export const Signup = ({ tenantId }: { tenantId?: string } = {}) => {
+  const { data: oidcUiConfig } = useOidcUiConfig(tenantId);
+  const template = oidcUiConfig?.template ?? DEFAULT_OIDC_UI_TEMPLATE;
   const { data: signUpSetting, isLoading: isSignUpSettingLoading } =
     useGetSignUpSetting(tenantId);
 
@@ -43,16 +47,24 @@ export const Signup = ({ tenantId }: { tenantId?: string } = {}) => {
   return (
     <OidcAuthShell
       panelConfig={SIGNUP_PANEL}
-      heading="Create Your Blocks Account"
+      theme={template.theme}
+      logoUrl={template.branding.logoUrl}
+      brandName={template.branding.brandName}
+      heading={template.pages.signup.heading}
       headingDimFirst={3}
-      successTitle="Account Created"
-      successSubtitle="Check your inbox for the activation link…"
+      successTitle={template.pages.signup.successTitle}
+      successSubtitle={template.pages.signup.successSubtitle}
       showCorners={false}
       footerNote={
-        <p className="text-xs" style={{ color: "var(--muted)", fontFamily: "system-ui, sans-serif" }}>
-          Already a member?{" "}
-          <LoginReturnLink className="oidc-sci-fi-link">Sign in</LoginReturnLink>
-        </p>
+        <div className="flex flex-col gap-2">
+          <p className="text-xs" style={{ color: "var(--muted)", fontFamily: "system-ui, sans-serif" }}>
+            {template.pages.signup.loginPrompt}{" "}
+            <LoginReturnLink className="oidc-sci-fi-link">
+              {template.pages.signup.loginLink}
+            </LoginReturnLink>
+          </p>
+          <OidcFooter footerText={template.pages.shared.footerText} />
+        </div>
       }
     >
       {isLoading ? (

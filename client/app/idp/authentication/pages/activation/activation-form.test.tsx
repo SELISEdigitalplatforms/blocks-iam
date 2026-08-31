@@ -7,6 +7,7 @@ const h = vi.hoisted(() => ({
   mutateAsync: vi.fn(),
   resetCaptcha: vi.fn(),
   animCtx: null as Record<string, unknown> | null,
+  oidcUiConfig: undefined as unknown,
 }));
 
 vi.mock("react-router", () => ({ useNavigate: () => h.navigateMock }));
@@ -18,7 +19,7 @@ vi.mock("@blocks-idp/captcha/hooks/use-captcha", () => ({
   useCaptcha: vi.fn(() => ({ captcha: {}, code: "", reset: h.resetCaptcha })),
 }));
 vi.mock("@blocks-idp/authentication/hooks/use-oidc-ui-config", () => ({
-  useOidcUiConfig: vi.fn(() => ({ data: undefined, captchaEnabled: false })),
+  useOidcUiConfig: vi.fn(() => ({ data: h.oidcUiConfig, captchaEnabled: false })),
 }));
 vi.mock("../../components/password-strength-checker/password-strength-checker", () => ({
   PasswordStrengthChecker: () => null,
@@ -26,6 +27,7 @@ vi.mock("../../components/password-strength-checker/password-strength-checker", 
 vi.mock("../oidc/oidc-auth-shell", () => ({ useOidcAuthAnimation: vi.fn(() => h.animCtx) }));
 
 import { ActivationForm } from "./activation-form";
+import { DEFAULT_OIDC_UI_TEMPLATE } from "@blocks-idp/authentication/models/oidc-ui-template";
 
 const passwordInputs = (container: HTMLElement) =>
   Array.from(container.querySelectorAll('input[type="password"]')) as HTMLInputElement[];
@@ -33,6 +35,7 @@ const passwordInputs = (container: HTMLElement) =>
 beforeEach(() => {
   vi.clearAllMocks();
   h.animCtx = null;
+  h.oidcUiConfig = undefined;
 });
 
 const fillValidPasswords = (container: HTMLElement) => {
@@ -52,6 +55,28 @@ describe("ActivationForm", () => {
     expect(screen.getByText("Confirm Password")).toBeInTheDocument();
     expect(passwordInputs(container)).toHaveLength(2);
     expect(screen.getByRole("button", { name: /activate/i })).toBeDisabled();
+  });
+
+  it("renders tenant-defined activation labels", () => {
+    h.oidcUiConfig = {
+      captcha: null,
+      template: {
+        ...DEFAULT_OIDC_UI_TEMPLATE,
+        pages: {
+          ...DEFAULT_OIDC_UI_TEMPLATE.pages,
+          activation: {
+            ...DEFAULT_OIDC_UI_TEMPLATE.pages.activation,
+            passwordLabel: "Create passphrase",
+            confirmPasswordLabel: "Confirm passphrase",
+            submitButton: "Enable account",
+          },
+        },
+      },
+    };
+    render(<ActivationForm code="activation-code" tenantId="tenant-1" />);
+    expect(screen.getByText("Create passphrase")).toBeInTheDocument();
+    expect(screen.getByText("Confirm passphrase")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /Enable account/ })).toBeInTheDocument();
   });
 
   it("requires first and last name before the form is valid", async () => {
