@@ -26,13 +26,15 @@ namespace Api.Controllers
         private readonly IResourceMutationService _resourceMutationService;
         private readonly IResourceQueryService _resourceQueryService;
         private readonly IAuthenticationService _authenticationService;
+        private readonly IOrganizationNameResolver _organizationNameResolver;
 
         public IamController(IAccountService accountService,
                              IResourceMutationService resourceMutationService,
                              IResourceQueryService resourceQueryService,
                              IUserManagementQueryService userManagementQueryService,
                              IUserManagementMutationService userManagementMutationService,
-                             IAuthenticationService authenticationService)
+                             IAuthenticationService authenticationService,
+                             IOrganizationNameResolver organizationNameResolver)
         {
             _resourceMutationService = resourceMutationService;
             _resourceQueryService = resourceQueryService;
@@ -40,6 +42,7 @@ namespace Api.Controllers
             _userManagementMutationService = userManagementMutationService;
             _accountService = accountService;
             _authenticationService = authenticationService;
+            _organizationNameResolver = organizationNameResolver;
         }
 
 
@@ -304,6 +307,49 @@ namespace Api.Controllers
         #endregion
 
         #region Organization
+
+        /// <summary>
+        /// Whether an organization name is free, with alternatives when it is not.
+        /// <para>
+        /// Anonymous because it exists for the signup flow, which is itself anonymous: a
+        /// multi-step signup can check the name on the organization step instead of failing the
+        /// user at final submit. This matches the posture of <c>GET iam/email/available</c>.
+        /// </para>
+        /// <para>
+        /// Advisory only — nothing is reserved, so a name reported available can still be taken
+        /// by the time signup runs. The authoritative check stays in
+        /// <c>CreateOrganizationAsync</c>, and the signup response carries suggestions of its own
+        /// for exactly that race.
+        /// </para>
+        /// <para>
+        /// Gated on multi-organization mode, like every other organization operation: a tenant
+        /// that cannot create organizations gets <c>multi_org_disabled</c> rather than an answer.
+        /// </para>
+        /// </summary>
+        [HttpGet("organizations/name/available")]
+        [AllowAnonymous]
+        public async Task<IActionResult> IsOrganizationNameAvailable([FromQuery] IsOrganizationNameAvailableRequest query)
+        {
+            var availability = await _organizationNameResolver.CheckAvailabilityAsync(query.Name);
+
+            if (!availability.MultiOrgEnabled)
+            {
+                return BadRequest(new IsOrganizationNameAvailableResponse
+                {
+                    IsSuccess = false,
+                    Errors = new Dictionary<string, string>
+                    {
+                        { "multi_org_disabled", "Organization creation is disabled because multi-organization mode is off." }
+                    }
+                });
+            }
+
+            return Ok(new IsOrganizationNameAvailableResponse
+            {
+                IsAvailable = availability.IsAvailable,
+                Suggestions = availability.Suggestions
+            });
+        }
 
         [HttpPost("organizations/create")]
         [ProtectedEndPoint("blocks-iam::iam::mutate-organizations")]

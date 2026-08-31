@@ -65,6 +65,8 @@ namespace Iam.DomainService.Accounts
         private readonly IHttpContextAccessor? _httpContextAccessor;
         private readonly IUserActivityDispatcher _userActivityDispatcher;
         private readonly IDefaultOidcClientResolver? _defaultOidcClientResolver;
+        private readonly IValidator<SignupOrganizationInfo>? _signupOrganizationValidator;
+        private readonly IOrganizationNameResolver? _organizationNameResolver;
 
         public AccountService(
             ILogger<AccountService> logger,
@@ -82,7 +84,11 @@ namespace Iam.DomainService.Accounts
             IDbContextProvider dbContextProvider,
             IUserActivityDispatcher userActivityDispatcher,
             IHttpContextAccessor? httpContextAccessor = null,
-            IDefaultOidcClientResolver? defaultOidcClientResolver = null)
+            IDefaultOidcClientResolver? defaultOidcClientResolver = null,
+            // Trailing and optional, matching the two above, so the many existing call sites and
+            // test fixtures that construct this service keep compiling. DI supplies both.
+            IValidator<SignupOrganizationInfo>? signupOrganizationValidator = null,
+            IOrganizationNameResolver? organizationNameResolver = null)
         {
             _logger = logger;
             _repository = repository;
@@ -100,6 +106,8 @@ namespace Iam.DomainService.Accounts
             _userActivityDispatcher = userActivityDispatcher;
             _httpContextAccessor = httpContextAccessor;
             _defaultOidcClientResolver = defaultOidcClientResolver;
+            _signupOrganizationValidator = signupOrganizationValidator;
+            _organizationNameResolver = organizationNameResolver;
         }
 
         public async Task<BaseAccountResponse> SignupAccountAsync(SignupUserRequest signupUserRequest)
@@ -176,6 +184,12 @@ namespace Iam.DomainService.Accounts
             {
                 await RollbackSignupOrganizationAsync(createdOrganizationId, normalizedEmail);
             }
+            else if (result.IsSuccess)
+            {
+                // ItemId stays the user id; the organization is reported separately so the
+                // caller does not have to look it up by name afterwards.
+                result.OrganizationId = createdOrganizationId;
+            }
 
             return result;
         }
@@ -228,7 +242,9 @@ namespace Iam.DomainService.Accounts
                 };
             }
 
-            if (signupUserRequest.CreateOrganizationDuringSignup && string.IsNullOrWhiteSpace(signupUserRequest.OrganizationName))
+            // Reads the nested organization object as well as the legacy flat field, so a caller
+            // that only sends organization.name still satisfies the requirement.
+            if (signupUserRequest.CreateOrganizationDuringSignup && signupUserRequest.ResolveOrganizationName() == null)
             {
                 return new BaseAccountResponse
                 {
@@ -343,9 +359,10 @@ namespace Iam.DomainService.Accounts
             // The account exists but was never activated, so this is effectively a repeat
             // signup. Honour the organization the user asked for here too — otherwise the
             // name they typed is silently discarded and they activate into "default".
+            string? pendingOrganizationId = null;
             if (signupUserRequest.CreateOrganizationDuringSignup)
             {
-                var pendingOrgResult = await AttachOrganizationToPendingUserAsync(
+                var (pendingOrgFailure, attachedOrganizationId) = await AttachOrganizationToPendingUserAsync(
                     signupUserRequest,
                     tenantConfiguration,
                     existingUser);
@@ -353,10 +370,12 @@ namespace Iam.DomainService.Accounts
                 // Org failures (name taken, creation disabled) are returned as-is: a brand
                 // new signup with the same name gets the identical error, so this leaks
                 // nothing about whether the account already existed.
-                if (pendingOrgResult != null)
+                if (pendingOrgFailure != null)
                 {
-                    return pendingOrgResult;
+                    return pendingOrgFailure;
                 }
+
+                pendingOrganizationId = attachedOrganizationId;
             }
 
             // Direct call, not a queue hop — the signup request's OIDC context is still in
@@ -369,6 +388,7 @@ namespace Iam.DomainService.Accounts
             {
                 IsSuccess = reactivationSent,
                 ItemId = existingUser.ItemId,
+                OrganizationId = pendingOrganizationId,
                 Errors = reactivationSent
                     ? new Dictionary<string, string>()
                     : new Dictionary<string, string>
@@ -383,31 +403,33 @@ namespace Iam.DomainService.Accounts
         /// moves that account into it. Returns a response only on failure; null means the
         /// caller should carry on with the normal reactivation path.
         /// </summary>
-        private async Task<BaseAccountResponse?> AttachOrganizationToPendingUserAsync(
+        private async Task<(BaseAccountResponse? Failure, string? OrganizationId)> AttachOrganizationToPendingUserAsync(
             SignupUserRequest signupUserRequest,
             TenantConfiguration tenantConfiguration,
             User existingUser)
         {
             // A previous attempt already placed them in a real org; creating a second one
             // would orphan the first and burn another name.
-            var alreadyInNonDefaultOrg = existingUser.OrganizationIds?
-                .Any(id => !string.IsNullOrWhiteSpace(id) && id != DefaultOrganizationId) ?? false;
+            var existingOrganizationId = existingUser.OrganizationIds?
+                .FirstOrDefault(id => !string.IsNullOrWhiteSpace(id) && id != DefaultOrganizationId);
 
-            if (alreadyInNonDefaultOrg)
+            if (!string.IsNullOrWhiteSpace(existingOrganizationId))
             {
-                return null;
+                // Report the org they are already in; the profile on this request is not
+                // applied to it — signup creates organizations, it never updates them.
+                return (null, existingOrganizationId);
             }
 
             var orgResult = await CreateOrganizationForSignupAsync(signupUserRequest, existingUser.ItemId);
             if (!orgResult.IsSuccess)
             {
-                return orgResult;
+                return (orgResult, null);
             }
 
             var organizationId = orgResult.ItemId;
             if (string.IsNullOrWhiteSpace(organizationId))
             {
-                return null;
+                return (null, null);
             }
 
             var roles = tenantConfiguration.DefaultRolesForNewUserOnSignUp ?? new List<string>();
@@ -423,38 +445,48 @@ namespace Iam.DomainService.Accounts
             if (!updated)
             {
                 await RollbackSignupOrganizationAsync(organizationId, existingUser.Email ?? string.Empty);
-                return new BaseAccountResponse
+                return (new BaseAccountResponse
                 {
                     IsSuccess = false,
                     Errors = new Dictionary<string, string>
                     {
                         { "organization_creation_failed", "Organization creation failed during signup." }
                     }
-                };
+                }, null);
             }
 
-            return null;
+            return (null, organizationId);
         }
 
         private async Task<BaseAccountResponse> CreateOrganizationForSignupAsync(SignupUserRequest signupUserRequest, string creatorUserId)
         {
-            var orgRequest = new CreateOrganizationRequest
+            var organizationName = signupUserRequest.ResolveOrganizationName()!;
+
+            var validationErrors = await ValidateSignupOrganizationAsync(signupUserRequest, organizationName);
+            if (validationErrors != null)
             {
-                Name = signupUserRequest.OrganizationName!,
-                Description = signupUserRequest.OrganizationDescription,
-                CreatedFrom = CreatedFrom.ConstructSignup
-            };
+                return new BaseAccountResponse { IsSuccess = false, Errors = validationErrors };
+            }
+
+            var orgRequest = BuildSignupOrganizationRequest(signupUserRequest, organizationName);
 
             var orgResponse = await _resourceMutationService.CreateOrganizationAsync(orgRequest, creatorUserId);
             if (!orgResponse.IsSuccess)
             {
+                var errors = (orgResponse.Errors as Dictionary<string, string>) ?? new Dictionary<string, string>
+                {
+                    { "organization_creation_failed", "Organization creation failed during signup." }
+                };
+
                 return new BaseAccountResponse
                 {
                     IsSuccess = false,
-                    Errors = (orgResponse.Errors as Dictionary<string, string>) ?? new Dictionary<string, string>
-                    {
-                        { "organization_creation_failed", "Organization creation failed during signup." }
-                    }
+                    Errors = errors,
+                    // Only for a name clash, and only as a convenience: the caller gets usable
+                    // alternatives instead of sending the user back to invent another name.
+                    OrganizationNameSuggestions = errors.ContainsKey("name_already_exists")
+                        ? await SuggestOrganizationNamesAsync(organizationName)
+                        : new List<string>()
                 };
             }
 
@@ -463,6 +495,106 @@ namespace Iam.DomainService.Accounts
                 IsSuccess = true,
                 ItemId = orgResponse.ItemId
             };
+        }
+
+        /// <summary>
+        /// Shape/size checks on the optional organization profile. Returns null when there is
+        /// nothing to validate or everything passed. Name availability is deliberately not
+        /// checked here — <c>CreateOrganizationAsync</c> owns that, without a check-then-act gap.
+        /// </summary>
+        private async Task<Dictionary<string, string>?> ValidateSignupOrganizationAsync(
+            SignupUserRequest signupUserRequest,
+            string organizationName)
+        {
+            if (signupUserRequest.Organization == null || _signupOrganizationValidator == null)
+            {
+                return null;
+            }
+
+            // Validate the name that will actually be used, which may have come from the legacy
+            // flat field rather than the nested object.
+            var toValidate = signupUserRequest.Organization;
+            toValidate.Name = organizationName;
+
+            var result = await _signupOrganizationValidator.ValidateAsync(toValidate);
+            if (result.IsValid)
+            {
+                return null;
+            }
+
+            return result.Errors
+                .GroupBy(e => e.PropertyName)
+                .ToDictionary(g => g.Key, g => g.First().ErrorMessage);
+        }
+
+        private async Task<List<string>> SuggestOrganizationNamesAsync(string organizationName)
+        {
+            if (_organizationNameResolver == null)
+            {
+                return new List<string>();
+            }
+
+            try
+            {
+                return await _organizationNameResolver.SuggestAvailableNamesAsync(organizationName);
+            }
+            catch (Exception ex)
+            {
+                // Suggestions are a nicety layered on top of an error that is already being
+                // returned; failing to produce them must not change what the caller sees.
+                _logger.LogWarning(ex, "Could not generate organization name suggestions for {OrganizationName}", organizationName);
+                return new List<string>();
+            }
+        }
+
+        /// <summary>
+        /// Maps the allowlisted signup profile onto a create request, field by field.
+        /// <para>
+        /// Deliberately explicit rather than a spread or an object-mapper: signup is anonymous,
+        /// and <c>CreateOrganizationRequest</c> also carries <c>DefaultRoleForMembers</c> /
+        /// <c>DefaultPermissionsForMembers</c>, which new members inherit. Copying wholesale —
+        /// now or after someone adds a field later — would hand an unauthenticated caller the
+        /// ability to set the roles every member of their new organization receives.
+        /// </para>
+        /// </summary>
+        private static CreateOrganizationRequest BuildSignupOrganizationRequest(
+            SignupUserRequest signupUserRequest,
+            string organizationName)
+        {
+            var request = new CreateOrganizationRequest
+            {
+                Name = organizationName,
+                Description = signupUserRequest.ResolveOrganizationDescription(),
+                CreatedFrom = CreatedFrom.ConstructSignup
+            };
+
+            var profile = signupUserRequest.Organization;
+            if (profile == null)
+            {
+                // No nested object: honour the top-level attributes bag so the legacy shape can
+                // still carry extras.
+                request.Attributes = SignupAttributeNormalizer.Normalize(signupUserRequest.Attributes);
+                return request;
+            }
+
+            request.Email = profile.Email;
+            request.PhoneNumber = profile.PhoneNumber;
+            request.WebsiteUrl = profile.WebsiteUrl;
+            request.Addresses = profile.Addresses ?? new List<Address>();
+            request.Theme = profile.Theme;
+            request.LogoUrl = profile.LogoUrl;
+            request.Industry = profile.Industry;
+            request.TimeZone = profile.TimeZone;
+            request.Currency = profile.Currency;
+            request.DateFormat = profile.DateFormat;
+            request.TimeFormat = profile.TimeFormat;
+            request.Locale = profile.Locale;
+
+            // organization.attributes wins; the top-level bag is the legacy fallback.
+            request.Attributes = SignupAttributeNormalizer.Normalize(
+                profile.Attributes is { Count: > 0 } ? profile.Attributes : signupUserRequest.Attributes);
+
+            return request;
         }
 
         private async Task<BaseAccountResponse> CreateEmailSignupUserAsync(

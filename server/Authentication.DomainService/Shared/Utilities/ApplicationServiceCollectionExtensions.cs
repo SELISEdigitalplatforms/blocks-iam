@@ -1,4 +1,4 @@
-using Authentication.DomainService.Authentication;
+﻿using Authentication.DomainService.Authentication;
 using Authentication.DomainService.OAuth;
 using Authentication.DomainService.OAuth.Services;
 using Authentication.DomainService.OAuth.SocialServices;
@@ -168,6 +168,7 @@ namespace Authentication.DomainService.Utilities
 
             serviceCollection.AddSingleton<IResourceMutationService, ResourceMutationService>();
             serviceCollection.AddSingleton<IResourceRepository, ResourceRepository>();
+            serviceCollection.AddSingleton<IOrganizationNameResolver, OrganizationNameResolver>();
 
             serviceCollection.AddSingleton<ITenantPermissionPropagator, TenantPermissionPropagator>();
             // ITenantEnumeration / IMongoDatabase (root) must be registered by every host that
@@ -195,6 +196,7 @@ namespace Authentication.DomainService.Utilities
             serviceCollection.AddSingleton<IValidator<CreateRoleRequest>, RoleValidator>();
             serviceCollection.AddSingleton<IValidator<UpdatePermissionRequest>, UpdatePermissionValidator>();
             serviceCollection.AddSingleton<IValidator<RecoveryUserRequest>, RecoveryUserRequestValidator>();
+            serviceCollection.AddSingleton<IValidator<SignupOrganizationInfo>, SignupOrganizationValidator>();
 
             #endregion
 

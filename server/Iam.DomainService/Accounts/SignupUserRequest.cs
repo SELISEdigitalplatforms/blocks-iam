@@ -26,8 +26,42 @@ namespace Iam.DomainService.Accounts
 
         // Optional org creation during signup
         public bool CreateOrganizationDuringSignup { get; set; }
+
+        // Kept for backward compatibility: the IAM signup form posts these two flat fields.
+        // Organization.Name wins when both are supplied.
         public string? OrganizationName { get; set; }
         public string? OrganizationDescription { get; set; }
+
+        /// <summary>
+        /// Full organization profile, for callers that collect it (a Construct multi-step
+        /// signup, for example). Only <see cref="SignupOrganizationInfo.Name"/> is required, and
+        /// only when <see cref="CreateOrganizationDuringSignup"/> is set.
+        /// </summary>
+        public SignupOrganizationInfo? Organization { get; set; }
+
         public Dictionary<string, object> Attributes { get; set; } = new Dictionary<string, object>(); // For any additional info from client that doesn't fit into existing properties
+
+        /// <summary>
+        /// The organization name to create, from either the nested object or the legacy flat
+        /// field. Trimmed; null when neither was supplied.
+        /// </summary>
+        public string? ResolveOrganizationName()
+        {
+            var name = !string.IsNullOrWhiteSpace(Organization?.Name)
+                ? Organization!.Name
+                : OrganizationName;
+
+            return string.IsNullOrWhiteSpace(name) ? null : name.Trim();
+        }
+
+        /// <summary>
+        /// The organization description, from either the nested object or the legacy flat field.
+        /// </summary>
+        public string? ResolveOrganizationDescription()
+        {
+            return !string.IsNullOrWhiteSpace(Organization?.Description)
+                ? Organization!.Description
+                : OrganizationDescription;
+        }
     }
 }
