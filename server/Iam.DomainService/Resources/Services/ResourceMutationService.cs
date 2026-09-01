@@ -7,6 +7,7 @@ using Iam.DomainService.Resources.ResponseModel;
 using Iam.DomainService.Resources.TenantPropagation;
 using Iam.DomainService.Services;
 using Iam.DomainService.Shared.Entities;
+using Iam.DomainService.Shared.Serialization;
 using Iam.DomainService.Utilities;
 using Microsoft.Extensions.Logging;
 using System.Runtime.CompilerServices;
@@ -1978,7 +1979,7 @@ namespace Iam.DomainService.Resources
                 PhoneNumber = request.PhoneNumber,
                 WebsiteUrl = request.WebsiteUrl,
                 Addresses = request.Addresses,
-                Attributes = request.Attributes,
+                Attributes = AttributeNormalizer.Normalize(request.Attributes, AttributePolicy.Internal),
             };
 
             // Branding and localisation are applied through the same guard the update path uses,
@@ -2173,7 +2174,12 @@ namespace Iam.DomainService.Resources
             ApplyProperty(request.PhoneNumber, value => organization.PhoneNumber = value, v => !string.IsNullOrWhiteSpace(v));
             ApplyProperty(request.WebsiteUrl, value => organization.WebsiteUrl = value, v => !string.IsNullOrWhiteSpace(v));
             ApplyProperty(request.Addresses, value => organization.Addresses = value, v => v?.Count > 0);
-            ApplyProperty(request.Attributes, value => organization.Attributes = value, v => v?.Count > 0);
+            // Not routed through ApplyProperty: its guard treats an empty bag as "no change",
+            // which left callers with no way to clear attributes once set.
+            if (request.Attributes is not null)
+            {
+                organization.Attributes = AttributeNormalizer.Normalize(request.Attributes, AttributePolicy.Internal);
+            }
             ApplyProperty(request.Theme, value => organization.Theme = value, v => v != null);
             ApplyProperty(request.LogoUrl, value => organization.LogoUrl = value, v => !string.IsNullOrWhiteSpace(v));
             ApplyProperty(request.LogoId, value => organization.LogoId = value, v => !string.IsNullOrWhiteSpace(v));

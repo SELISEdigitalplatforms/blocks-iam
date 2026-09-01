@@ -1,3 +1,4 @@
+﻿using System.Text.Json;
 using Blocks.Genesis;
 using FluentAssertions;
 using FluentValidation;
@@ -203,6 +204,88 @@ namespace XUnitTest.IamTests.Users
             var result = await Create().UpdateUserAsync(new UpdateUserRequest { ItemId = "u1", OrganizationId = "default" });
 
             result.IsSuccess.Should().BeFalse();
+        }
+
+        // ---------- UpdateUserAsync: attributes ----------
+        //
+        // Attributes were previously write-once: UpdateUserRequest had no such field at all, so
+        // Construct could not edit a user's bag once created. The tri-state below is what the FE
+        // relies on to render and save that bag.
+
+        private static Dictionary<string, object> Bind(string json) =>
+            JsonSerializer.Deserialize<Dictionary<string, object>>(json, new JsonSerializerOptions(JsonSerializerDefaults.Web))!;
+
+        private User ExistingUser(Dictionary<string, object>? attributes = null)
+        {
+            var user = new User
+            {
+                ItemId = "u1",
+                OrganizationIds = new List<string> { "default" },
+                Attributes = attributes ?? new Dictionary<string, object> { { "existing", "kept" } }
+            };
+            _userRepo.Setup(r => r.GetUserByIdAsync("u1")).ReturnsAsync(user);
+            return user;
+        }
+
+        [Fact]
+        public async Task UpdateUser_AttributesOmitted_LeavesStoredBagUntouched()
+        {
+            var user = ExistingUser();
+
+            await Create().UpdateUserAsync(new UpdateUserRequest { ItemId = "u1", OrganizationId = "default" });
+
+            user.Attributes.Should().ContainKey("existing");
+        }
+
+        [Fact]
+        public async Task UpdateUser_AttributesEmpty_ClearsBag()
+        {
+            var user = ExistingUser();
+
+            await Create().UpdateUserAsync(new UpdateUserRequest
+            {
+                ItemId = "u1",
+                OrganizationId = "default",
+                Attributes = new Dictionary<string, object>()
+            });
+
+            user.Attributes.Should().BeEmpty();
+        }
+
+        [Fact]
+        public async Task UpdateUser_AttributesProvided_ReplaceBagWholesale()
+        {
+            var user = ExistingUser();
+
+            await Create().UpdateUserAsync(new UpdateUserRequest
+            {
+                ItemId = "u1",
+                OrganizationId = "default",
+                Attributes = Bind("{\"plan\":\"pro\",\"seats\":10}")
+            });
+
+            // Wholesale replace, not a per-key merge: "existing" is gone.
+            user.Attributes.Should().NotContainKey("existing");
+            user.Attributes["plan"].Should().Be("pro");
+            user.Attributes["seats"].Should().Be(10L);
+        }
+
+        [Fact]
+        public async Task UpdateUser_AttributesAreNormalized_NotStoredAsJsonElement()
+        {
+            // The regression: an unnormalized bag persists as { "_t": "JsonElement" } and then
+            // throws "Unknown discriminator value" on every subsequent read.
+            var user = ExistingUser();
+
+            await Create().UpdateUserAsync(new UpdateUserRequest
+            {
+                ItemId = "u1",
+                OrganizationId = "default",
+                Attributes = Bind("{\"meta\":{\"region\":\"eu\"}}")
+            });
+
+            user.Attributes.Values.Should().NotContain(v => v is JsonElement);
+            ((Dictionary<string, object>)user.Attributes["meta"])["region"].Should().Be("eu");
         }
 
         // ---------- DeactivateUserAsync ----------

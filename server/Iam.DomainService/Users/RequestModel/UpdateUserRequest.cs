@@ -17,5 +17,12 @@ namespace Iam.DomainService.Users
         public List<string> Roles { get; set; } = new();
         public List<string> Permissions { get; set; } = new();
         public string? OrganizationId { get; set; }
+
+        /// <summary>
+        /// Free-form extras. Tri-state: omitted (null) leaves the stored bag untouched, an empty
+        /// object clears it, and a populated object replaces it wholesale. There is no per-key
+        /// merge, so a client sends the complete bag it wants persisted.
+        /// </summary>
+        public Dictionary<string, object>? Attributes { get; set; }
     }
 }

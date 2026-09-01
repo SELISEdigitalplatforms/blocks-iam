@@ -1,4 +1,4 @@
-using Blocks.Genesis;
+﻿using Blocks.Genesis;
 using FluentValidation;
 using Iam.DomainService.Dtos;
 using Iam.DomainService.Entities;
@@ -7,6 +7,7 @@ using Iam.DomainService.Resources;
 using Iam.DomainService.Services;
 using Iam.DomainService.Shared.Dtos;
 using Iam.DomainService.Shared.Entities;
+using Iam.DomainService.Shared.Serialization;
 using Iam.DomainService.Utilities;
 using Iam.DomainService.Users.RequestModel;
 using Microsoft.AspNetCore.Http;
@@ -219,7 +220,7 @@ namespace Iam.DomainService.Users
                 TermsAcceptedAtUtc = null,
                 PrivacyAcceptedAtUtc = null,
                 ExternalIdentities = new List<ExternalIdentity>(),
-                Attributes = command.Attributes ?? new Dictionary<string, object>(),
+                Attributes = AttributeNormalizer.Normalize(command.Attributes, AttributePolicy.Internal),
             };
 
             if (!string.IsNullOrWhiteSpace(command.OrganizationId) && !user.OrganizationIds.Contains(command.OrganizationId)) 
@@ -289,6 +290,11 @@ namespace Iam.DomainService.Users
             user.ProfileImageId = command.ProfileImageId ?? string.Empty;
             user.ProfileImageUrl = command.ProfileImageUrl ?? string.Empty;
             user.MfaEnabled = command.MfaEnabled;
+
+            if (command.Attributes is not null)
+            {
+                user.Attributes = AttributeNormalizer.Normalize(command.Attributes, AttributePolicy.Internal);
+            }
 
             user.Roles[organizationId] = command.Roles ?? user.Roles.GetValueOrDefault(organizationId, new List<string>());
             user.Permissions[organizationId] = command.Permissions ?? user.Permissions.GetValueOrDefault(organizationId, new List<string>());
@@ -1157,7 +1163,7 @@ namespace Iam.DomainService.Users
                             LinkedAtUtc = DateTime.UtcNow
                         }
                     },
-                Attributes = command.Attributes ?? new Dictionary<string, object>(),
+                Attributes = AttributeNormalizer.Normalize(command.Attributes, AttributePolicy.Internal),
             };
             await _userRepository.CreateUserAsync(user);
 
