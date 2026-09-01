@@ -81,6 +81,7 @@ namespace Authentication.DomainService.Authentication
         {
             return new OidcUiTemplate
             {
+                SchemaVersion = OidcUiTemplate.CurrentSchemaVersion,
                 Branding = new OidcUiTemplateBranding
                 {
                     LogoUrl = null,
@@ -88,17 +89,34 @@ namespace Authentication.DomainService.Authentication
                 },
                 Theme = new OidcUiTemplateTheme
                 {
-                    Primary = "#0066b2",
-                    Secondary = "#00b2ff",
-                    Background = "#050510",
-                    Surface = "#0a0a1a",
-                    Text = "#e8e8f0",
-                    MutedText = "#5e5e7a",
-                    Success = "#17a34a",
-                    Danger = "#f87171",
-                    Border = "#16162a",
-                    BorderStrong = "rgba(0, 102, 178, 0.35)",
-                    AccentSoft = "rgba(0, 102, 178, 0.10)"
+                    Light = new OidcUiThemePalette
+                    {
+                        Primary = "#0066b2",
+                        Secondary = "#0084d4",
+                        Background = "#f5f7fb",
+                        Surface = "#ffffff",
+                        Text = "#0c1024",
+                        MutedText = "#5b6378",
+                        Success = "#16a34a",
+                        Danger = "#dc2626",
+                        Border = "#dde2ec",
+                        BorderStrong = "rgba(0, 102, 178, 0.45)",
+                        AccentSoft = "rgba(0, 102, 178, 0.08)"
+                    },
+                    Dark = new OidcUiThemePalette
+                    {
+                        Primary = "#0066b2",
+                        Secondary = "#00b2ff",
+                        Background = "#050510",
+                        Surface = "#0a0a1a",
+                        Text = "#e8e8f0",
+                        MutedText = "#5e5e7a",
+                        Success = "#17a34a",
+                        Danger = "#f87171",
+                        Border = "#16162a",
+                        BorderStrong = "rgba(0, 102, 178, 0.35)",
+                        AccentSoft = "rgba(0, 102, 178, 0.10)"
+                    }
                 },
                 Pages = new OidcUiTemplatePages
                 {
@@ -186,6 +204,7 @@ namespace Authentication.DomainService.Authentication
             return new OidcUiTemplate
             {
                 ItemId = saved?.ItemId,
+                SchemaVersion = OidcUiTemplate.CurrentSchemaVersion,
                 Branding = new OidcUiTemplateBranding
                 {
                     LogoUrl = saved?.Branding?.LogoUrl ?? defaults.Branding!.LogoUrl,
@@ -193,17 +212,10 @@ namespace Authentication.DomainService.Authentication
                 },
                 Theme = new OidcUiTemplateTheme
                 {
-                    Primary = saved?.Theme?.Primary ?? defaults.Theme!.Primary,
-                    Secondary = saved?.Theme?.Secondary ?? defaults.Theme!.Secondary,
-                    Background = saved?.Theme?.Background ?? defaults.Theme!.Background,
-                    Surface = saved?.Theme?.Surface ?? defaults.Theme!.Surface,
-                    Text = saved?.Theme?.Text ?? defaults.Theme!.Text,
-                    MutedText = saved?.Theme?.MutedText ?? defaults.Theme!.MutedText,
-                    Success = saved?.Theme?.Success ?? defaults.Theme!.Success,
-                    Danger = saved?.Theme?.Danger ?? defaults.Theme!.Danger,
-                    Border = saved?.Theme?.Border ?? defaults.Theme!.Border,
-                    BorderStrong = saved?.Theme?.BorderStrong ?? defaults.Theme!.BorderStrong,
-                    AccentSoft = saved?.Theme?.AccentSoft ?? defaults.Theme!.AccentSoft
+                    Light = MergeThemePalette(saved?.Theme?.Light, defaults.Theme!.Light!),
+                    Dark = MergeThemePalette(
+                        saved?.Theme?.Dark ?? CreateLegacyThemePalette(saved?.Theme),
+                        defaults.Theme.Dark!)
                 },
                 Pages = new OidcUiTemplatePages
                 {
@@ -277,6 +289,62 @@ namespace Authentication.DomainService.Authentication
                         FooterText = saved?.Pages?.Shared?.FooterText ?? defaults.Pages!.Shared!.FooterText
                     }
                 }
+            };
+        }
+
+        private static OidcUiThemePalette MergeThemePalette(
+            OidcUiThemePalette? saved,
+            OidcUiThemePalette defaults)
+        {
+            return new OidcUiThemePalette
+            {
+                Primary = saved?.Primary ?? defaults.Primary,
+                Secondary = saved?.Secondary ?? defaults.Secondary,
+                Background = saved?.Background ?? defaults.Background,
+                Surface = saved?.Surface ?? defaults.Surface,
+                Text = saved?.Text ?? defaults.Text,
+                MutedText = saved?.MutedText ?? defaults.MutedText,
+                Success = saved?.Success ?? defaults.Success,
+                Danger = saved?.Danger ?? defaults.Danger,
+                Border = saved?.Border ?? defaults.Border,
+                BorderStrong = saved?.BorderStrong ?? defaults.BorderStrong,
+                AccentSoft = saved?.AccentSoft ?? defaults.AccentSoft
+            };
+        }
+
+        private static OidcUiThemePalette? CreateLegacyThemePalette(OidcUiTemplateTheme? legacy)
+        {
+            if (legacy is null || new[]
+                {
+                    legacy.Primary,
+                    legacy.Secondary,
+                    legacy.Background,
+                    legacy.Surface,
+                    legacy.Text,
+                    legacy.MutedText,
+                    legacy.Success,
+                    legacy.Danger,
+                    legacy.Border,
+                    legacy.BorderStrong,
+                    legacy.AccentSoft
+                }.All(value => value is null))
+            {
+                return null;
+            }
+
+            return new OidcUiThemePalette
+            {
+                Primary = legacy.Primary,
+                Secondary = legacy.Secondary,
+                Background = legacy.Background,
+                Surface = legacy.Surface,
+                Text = legacy.Text,
+                MutedText = legacy.MutedText,
+                Success = legacy.Success,
+                Danger = legacy.Danger,
+                Border = legacy.Border,
+                BorderStrong = legacy.BorderStrong,
+                AccentSoft = legacy.AccentSoft
             };
         }
 

@@ -17,13 +17,10 @@ namespace XUnitTest.Auth
         }
 
         [Fact]
-        public async Task OptionalFields_CanAllBeNull()
+        public async Task OptionalNonThemeFields_CanAllBeNull()
         {
             var request = OidcUiTemplateTestData.ValidRequest();
             request.Branding!.LogoUrl = null;
-            request.Theme!.Border = null;
-            request.Theme.BorderStrong = null;
-            request.Theme.AccentSoft = null;
             request.Pages!.Mfa!.ResendButton = null;
             request.Pages.AccountSelector!.Subheading = null;
 
@@ -66,7 +63,7 @@ namespace XUnitTest.Auth
         public async Task RequiredColors_AcceptThreeOrSixDigitHex(string value)
         {
             var request = OidcUiTemplateTestData.ValidRequest();
-            request.Theme!.Primary = value;
+            request.Theme!.Dark!.Primary = value;
 
             (await _validator.ValidateAsync(request)).IsValid.Should().BeTrue();
         }
@@ -99,9 +96,9 @@ namespace XUnitTest.Auth
         [InlineData("rgba(0, 102, 178, 0.35)")]
         [InlineData("RGBA(255,0,1,1)")]
         [InlineData("rgba(1, 2, 3, .5)")]
-        public async Task OptionalColors_AcceptSupportedHexAndRgbaFormats(string value)
+        public async Task RequiredFlexibleColors_AcceptSupportedHexAndRgbaFormats(string value)
         {
-            foreach (var (_, setValue) in OptionalColorFields())
+            foreach (var (_, setValue) in RequiredFlexibleColorFields())
             {
                 var request = OidcUiTemplateTestData.ValidRequest();
                 setValue(request, value);
@@ -118,9 +115,9 @@ namespace XUnitTest.Auth
         [InlineData("rgba(256,0,0,1)")]
         [InlineData("rgba(0,0,0,1.1)")]
         [InlineData("rgba(0,0,0,-0.1)")]
-        public async Task EveryOptionalColor_RejectsMalformedOrOutOfRangeValues(string value)
+        public async Task EveryRequiredFlexibleColor_RejectsMalformedOrOutOfRangeValues(string value)
         {
-            foreach (var (path, setValue) in OptionalColorFields())
+            foreach (var (path, setValue) in RequiredFlexibleColorFields())
             {
                 var request = OidcUiTemplateTestData.ValidRequest();
                 setValue(request, value);
@@ -128,6 +125,20 @@ namespace XUnitTest.Auth
                 var result = await _validator.ValidateAsync(request);
 
                 result.Errors.Should().Contain(e => e.PropertyName == path, $"{path} must reject '{value}'");
+            }
+        }
+
+        [Fact]
+        public async Task EveryRequiredFlexibleColor_RejectsNull()
+        {
+            foreach (var (path, setValue) in RequiredFlexibleColorFields())
+            {
+                var request = OidcUiTemplateTestData.ValidRequest();
+                setValue(request, null);
+
+                var result = await _validator.ValidateAsync(request);
+
+                result.Errors.Should().Contain(e => e.PropertyName == path, $"{path} must be present");
             }
         }
 
@@ -220,6 +231,8 @@ namespace XUnitTest.Auth
             rootResult.Errors.Select(e => e.PropertyName).Should().BeEquivalentTo("Branding", "Theme", "Pages");
 
             request = OidcUiTemplateTestData.ValidRequest();
+            request.Theme!.Light = null;
+            request.Theme.Dark = null;
             request.Pages!.Login = null;
             request.Pages.Signup = null;
             request.Pages.ForgotPassword = null;
@@ -231,6 +244,7 @@ namespace XUnitTest.Auth
 
             var pageResult = await _validator.ValidateAsync(request);
             pageResult.Errors.Select(e => e.PropertyName).Should().BeEquivalentTo(
+                "Theme.Light", "Theme.Dark",
                 "Pages.Login", "Pages.Signup", "Pages.ForgotPassword", "Pages.ResetPassword",
                 "Pages.Activation", "Pages.Mfa", "Pages.AccountSelector", "Pages.Shared");
         }
@@ -241,34 +255,45 @@ namespace XUnitTest.Auth
             var request = OidcUiTemplateTestData.ValidRequest();
             request.Branding!.BrandName = null;
             request.Branding.LogoUrl = "relative.svg";
-            request.Theme!.Primary = "blue";
+            request.Theme!.Dark!.Primary = "blue";
             request.Pages!.Login!.Heading = new string('x', 201);
 
             var result = await _validator.ValidateAsync(request);
 
             result.Errors.Select(e => e.PropertyName).Should().Contain(new[]
             {
-                "Branding.BrandName", "Branding.LogoUrl", "Theme.Primary", "Pages.Login.Heading"
+                "Branding.BrandName", "Branding.LogoUrl", "Theme.Dark.Primary", "Pages.Login.Heading"
             });
         }
 
         private static IReadOnlyList<(string Path, Action<SaveOidcUiTemplateRequest, string?> SetValue)> RequiredColorFields() =>
         [
-            ("Theme.Primary", (r, v) => r.Theme!.Primary = v),
-            ("Theme.Secondary", (r, v) => r.Theme!.Secondary = v),
-            ("Theme.Background", (r, v) => r.Theme!.Background = v),
-            ("Theme.Surface", (r, v) => r.Theme!.Surface = v),
-            ("Theme.Text", (r, v) => r.Theme!.Text = v),
-            ("Theme.MutedText", (r, v) => r.Theme!.MutedText = v),
-            ("Theme.Success", (r, v) => r.Theme!.Success = v),
-            ("Theme.Danger", (r, v) => r.Theme!.Danger = v)
+            ("Theme.Light.Primary", (r, v) => r.Theme!.Light!.Primary = v),
+            ("Theme.Light.Secondary", (r, v) => r.Theme!.Light!.Secondary = v),
+            ("Theme.Light.Background", (r, v) => r.Theme!.Light!.Background = v),
+            ("Theme.Light.Surface", (r, v) => r.Theme!.Light!.Surface = v),
+            ("Theme.Light.Text", (r, v) => r.Theme!.Light!.Text = v),
+            ("Theme.Light.MutedText", (r, v) => r.Theme!.Light!.MutedText = v),
+            ("Theme.Light.Success", (r, v) => r.Theme!.Light!.Success = v),
+            ("Theme.Light.Danger", (r, v) => r.Theme!.Light!.Danger = v),
+            ("Theme.Dark.Primary", (r, v) => r.Theme!.Dark!.Primary = v),
+            ("Theme.Dark.Secondary", (r, v) => r.Theme!.Dark!.Secondary = v),
+            ("Theme.Dark.Background", (r, v) => r.Theme!.Dark!.Background = v),
+            ("Theme.Dark.Surface", (r, v) => r.Theme!.Dark!.Surface = v),
+            ("Theme.Dark.Text", (r, v) => r.Theme!.Dark!.Text = v),
+            ("Theme.Dark.MutedText", (r, v) => r.Theme!.Dark!.MutedText = v),
+            ("Theme.Dark.Success", (r, v) => r.Theme!.Dark!.Success = v),
+            ("Theme.Dark.Danger", (r, v) => r.Theme!.Dark!.Danger = v)
         ];
 
-        private static IReadOnlyList<(string Path, Action<SaveOidcUiTemplateRequest, string?> SetValue)> OptionalColorFields() =>
+        private static IReadOnlyList<(string Path, Action<SaveOidcUiTemplateRequest, string?> SetValue)> RequiredFlexibleColorFields() =>
         [
-            ("Theme.Border", (r, v) => r.Theme!.Border = v),
-            ("Theme.BorderStrong", (r, v) => r.Theme!.BorderStrong = v),
-            ("Theme.AccentSoft", (r, v) => r.Theme!.AccentSoft = v)
+            ("Theme.Light.Border", (r, v) => r.Theme!.Light!.Border = v),
+            ("Theme.Light.BorderStrong", (r, v) => r.Theme!.Light!.BorderStrong = v),
+            ("Theme.Light.AccentSoft", (r, v) => r.Theme!.Light!.AccentSoft = v),
+            ("Theme.Dark.Border", (r, v) => r.Theme!.Dark!.Border = v),
+            ("Theme.Dark.BorderStrong", (r, v) => r.Theme!.Dark!.BorderStrong = v),
+            ("Theme.Dark.AccentSoft", (r, v) => r.Theme!.Dark!.AccentSoft = v)
         ];
 
         private static IReadOnlyList<(string Path, Action<SaveOidcUiTemplateRequest, string?> SetValue)> OptionalPageTextFields() =>

@@ -2,7 +2,9 @@ using Authentication.DomainService.Authentication;
 using Authentication.DomainService.Entities;
 using FluentAssertions;
 using System.Text.Json;
+using System.Text.Json.Serialization;
 using System.Reflection;
+using MongoDB.Bson;
 
 namespace XUnitTest.Auth
 {
@@ -13,6 +15,7 @@ namespace XUnitTest.Auth
         {
             var expected = new OidcUiTemplate
             {
+                SchemaVersion = OidcUiTemplate.CurrentSchemaVersion,
                 Branding = new OidcUiTemplateBranding
                 {
                     LogoUrl = null,
@@ -20,17 +23,34 @@ namespace XUnitTest.Auth
                 },
                 Theme = new OidcUiTemplateTheme
                 {
-                    Primary = "#0066b2",
-                    Secondary = "#00b2ff",
-                    Background = "#050510",
-                    Surface = "#0a0a1a",
-                    Text = "#e8e8f0",
-                    MutedText = "#5e5e7a",
-                    Success = "#17a34a",
-                    Danger = "#f87171",
-                    Border = "#16162a",
-                    BorderStrong = "rgba(0, 102, 178, 0.35)",
-                    AccentSoft = "rgba(0, 102, 178, 0.10)"
+                    Light = new OidcUiThemePalette
+                    {
+                        Primary = "#0066b2",
+                        Secondary = "#0084d4",
+                        Background = "#f5f7fb",
+                        Surface = "#ffffff",
+                        Text = "#0c1024",
+                        MutedText = "#5b6378",
+                        Success = "#16a34a",
+                        Danger = "#dc2626",
+                        Border = "#dde2ec",
+                        BorderStrong = "rgba(0, 102, 178, 0.45)",
+                        AccentSoft = "rgba(0, 102, 178, 0.08)"
+                    },
+                    Dark = new OidcUiThemePalette
+                    {
+                        Primary = "#0066b2",
+                        Secondary = "#00b2ff",
+                        Background = "#050510",
+                        Surface = "#0a0a1a",
+                        Text = "#e8e8f0",
+                        MutedText = "#5e5e7a",
+                        Success = "#17a34a",
+                        Danger = "#f87171",
+                        Border = "#16162a",
+                        BorderStrong = "rgba(0, 102, 178, 0.35)",
+                        AccentSoft = "rgba(0, 102, 178, 0.10)"
+                    }
                 },
                 Pages = new OidcUiTemplatePages
                 {
@@ -118,7 +138,25 @@ namespace XUnitTest.Auth
             var json = JsonSerializer.Serialize(template, new JsonSerializerOptions(JsonSerializerDefaults.Web));
 
             json.Should().NotContain("itemId");
+            json.Should().NotContain("schemaVersion");
             json.Should().Contain("brandName");
+            json.Should().Contain("\"light\"");
+            json.Should().Contain("\"dark\"");
+            json.Should().NotContain("\"primary\":null");
+        }
+
+        [Fact]
+        public void CompleteTemplate_PersistsVersionedLightAndDarkPalettesWithoutLegacyFields()
+        {
+            var document = IdpService.CreateDefaultOidcUiTemplate().ToBsonDocument();
+            var theme = document["Theme"].AsBsonDocument;
+
+            document["SchemaVersion"].AsInt32.Should().Be(OidcUiTemplate.CurrentSchemaVersion);
+            theme.Contains("Light").Should().BeTrue();
+            theme.Contains("Dark").Should().BeTrue();
+            theme.Contains("Primary").Should().BeFalse();
+            theme["Light"].AsBsonDocument["Background"].AsString.Should().Be("#f5f7fb");
+            theme["Dark"].AsBsonDocument["Background"].AsString.Should().Be("#050510");
         }
 
         [Fact]
@@ -169,9 +207,10 @@ namespace XUnitTest.Auth
 
             merged.Branding!.BrandName.Should().Be("Acme Corp");
             merged.Branding.LogoUrl.Should().BeNull();
-            merged.Theme!.Primary.Should().Be("#ff0000");
-            merged.Theme.Border.Should().Be("#16162a");
-            merged.Theme.Secondary.Should().Be("#00b2ff");
+            merged.Theme!.Dark!.Primary.Should().Be("#ff0000");
+            merged.Theme.Dark.Border.Should().Be("#16162a");
+            merged.Theme.Dark.Secondary.Should().Be("#00b2ff");
+            merged.Theme.Light!.Background.Should().Be("#f5f7fb");
             merged.Pages!.Login!.Heading.Should().Be("Acme login");
             merged.Pages.Login.EmailLabel.Should().BeEmpty("only null values are default-filled");
             merged.Pages.Signup!.Heading.Should().Be("Create Your Blocks Account");
@@ -236,6 +275,11 @@ namespace XUnitTest.Auth
         {
             foreach (var property in value.GetType().GetProperties(BindingFlags.Instance | BindingFlags.Public))
             {
+                if (property.GetCustomAttribute<JsonIgnoreAttribute>() is not null)
+                {
+                    continue;
+                }
+
                 if (property.PropertyType == typeof(string))
                 {
                     property.SetValue(value, $"custom:{path}.{property.Name}");

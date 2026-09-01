@@ -9,7 +9,10 @@ import {
 } from "./nodes-panel-oidc";
 import { ModeToggle } from "@/components/mode-toggle/mode-toggle";
 import { Separator } from "@/components/ui-kits/separator/separator";
-import type { IOidcUiTemplate } from "@blocks-idp/authentication/hooks/use-oidc-ui-config";
+import type {
+  IOidcUiTemplate,
+} from "@blocks-idp/authentication/hooks/use-oidc-ui-config";
+import type { IOidcUiThemePalette } from "@blocks-idp/authentication/models/oidc-ui-template";
 import "./sci-fi-oidc.css";
 
 /* ── Animation context ──────────────────────────────────────── */
@@ -26,6 +29,27 @@ const OidcAuthAnimContext = createContext<OidcAuthAnimContextValue | null>(null)
 
 export function useOidcAuthAnimation() {
   return useContext(OidcAuthAnimContext);
+}
+
+export function useOidcResolvedTheme(): "dark" | "light" {
+  const [htmlTheme, setHtmlTheme] = useState<"dark" | "light">(() =>
+    typeof document !== "undefined" && document.documentElement.classList.contains("dark")
+      ? "dark"
+      : "light",
+  );
+
+  useEffect(() => {
+    const observer = new MutationObserver(() => {
+      setHtmlTheme(document.documentElement.classList.contains("dark") ? "dark" : "light");
+    });
+    observer.observe(document.documentElement, {
+      attributes: true,
+      attributeFilter: ["class"],
+    });
+    return () => observer.disconnect();
+  }, []);
+
+  return htmlTheme;
 }
 
 /* ── Blocks logo ────────────────────────────────────────────── */
@@ -50,7 +74,7 @@ export function BlocksLogo() {
 
 type OidcThemeStyle = CSSProperties & Record<`--${string}`, string>;
 
-export function buildOidcThemeStyle(theme: IOidcUiTemplate["theme"]): OidcThemeStyle {
+export function buildOidcThemeStyle(theme: IOidcUiThemePalette): OidcThemeStyle {
   return {
     "--bg": theme.background,
     "--surface": theme.surface,
@@ -173,21 +197,7 @@ export function OidcAuthShell({
   successSubtitle,
   showCorners = true,
 }: OidcAuthShellProps) {
-  const [htmlTheme, setHtmlTheme] = useState<"dark" | "light">(() =>
-    typeof document !== "undefined" && document.documentElement.classList.contains("dark")
-      ? "dark"
-      : "light",
-  );
-  useEffect(() => {
-    const observer = new MutationObserver(() => {
-      setHtmlTheme(document.documentElement.classList.contains("dark") ? "dark" : "light");
-    });
-    observer.observe(document.documentElement, {
-      attributes: true,
-      attributeFilter: ["class"],
-    });
-    return () => observer.disconnect();
-  }, []);
+  const htmlTheme = useOidcResolvedTheme();
 
   const [phase, setPhase] = useState<OidcAnimPhase>("idle");
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
@@ -268,7 +278,7 @@ export function OidcAuthShell({
         className="oidc-scifi-root h-screen overflow-hidden flex flex-col bg-[var(--bg)]"
         data-theme={htmlTheme}
         data-anim-phase={phase}
-        style={htmlTheme === "dark" ? buildOidcThemeStyle(theme) : undefined}
+        style={buildOidcThemeStyle(theme[htmlTheme])}
       >
         <SciFiBackgroundOidc showCorners={showCorners} />
 

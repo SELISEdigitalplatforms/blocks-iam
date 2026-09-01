@@ -11,12 +11,17 @@ namespace Authentication.DomainService.Entities
     [BsonIgnoreExtraElements]
     public sealed class OidcUiTemplate
     {
+        public const int CurrentSchemaVersion = 2;
+
         /// <summary>
         /// Identifies the persisted template value for mutation responses. This is storage
         /// metadata and is deliberately excluded from both public and management GET payloads.
         /// </summary>
         [JsonIgnore]
         public string? ItemId { get; set; }
+
+        [JsonIgnore]
+        public int SchemaVersion { get; set; }
 
         public OidcUiTemplateBranding? Branding { get; set; }
         public OidcUiTemplateTheme? Theme { get; set; }
@@ -32,6 +37,38 @@ namespace Authentication.DomainService.Entities
 
     [BsonIgnoreExtraElements]
     public sealed class OidcUiTemplateTheme
+    {
+        public OidcUiThemePalette? Light { get; set; }
+        public OidcUiThemePalette? Dark { get; set; }
+
+        // Transitional read-only compatibility for documents written before the
+        // light/dark palette split. New API payloads and writes use Light/Dark.
+        [JsonIgnore, BsonIgnoreIfNull]
+        public string? Primary { get; set; }
+        [JsonIgnore, BsonIgnoreIfNull]
+        public string? Secondary { get; set; }
+        [JsonIgnore, BsonIgnoreIfNull]
+        public string? Background { get; set; }
+        [JsonIgnore, BsonIgnoreIfNull]
+        public string? Surface { get; set; }
+        [JsonIgnore, BsonIgnoreIfNull]
+        public string? Text { get; set; }
+        [JsonIgnore, BsonIgnoreIfNull]
+        public string? MutedText { get; set; }
+        [JsonIgnore, BsonIgnoreIfNull]
+        public string? Success { get; set; }
+        [JsonIgnore, BsonIgnoreIfNull]
+        public string? Danger { get; set; }
+        [JsonIgnore, BsonIgnoreIfNull]
+        public string? Border { get; set; }
+        [JsonIgnore, BsonIgnoreIfNull]
+        public string? BorderStrong { get; set; }
+        [JsonIgnore, BsonIgnoreIfNull]
+        public string? AccentSoft { get; set; }
+    }
+
+    [BsonIgnoreExtraElements]
+    public sealed class OidcUiThemePalette
     {
         public string? Primary { get; set; }
         public string? Secondary { get; set; }

@@ -161,8 +161,9 @@ namespace XUnitTest.Auth
 
             var response = ((OkObjectResult)result).Value.Should().BeOfType<OidcUiConfigResponse>().Subject;
             response.Template!.Branding!.BrandName.Should().Be("Acme Corp");
-            response.Template.Theme!.Primary.Should().Be("#ff0000");
-            response.Template.Theme.Border.Should().Be("#16162a");
+            response.Template.Theme!.Dark!.Primary.Should().Be("#ff0000");
+            response.Template.Theme.Dark.Border.Should().Be("#16162a");
+            response.Template.Theme.Light!.Background.Should().Be("#f5f7fb");
             response.Template.Pages!.Login!.Heading.Should().Be("Welcome to Acme");
             response.Template.Pages.Signup!.Heading.Should().Be("Create Your Blocks Account");
         }

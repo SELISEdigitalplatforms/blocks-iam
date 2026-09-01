@@ -50,7 +50,7 @@ namespace XUnitTest.ApiTests
             var response = new SaveOidcUiTemplateResponse
             {
                 IsSuccess = false,
-                Errors = new Dictionary<string, string> { ["Theme.Primary"] = "invalid" }
+                Errors = new Dictionary<string, string> { ["Theme.Dark.Primary"] = "invalid" }
             };
             _service.Setup(s => s.SaveOidcUiTemplateRequestAsync(request)).ReturnsAsync(response);
 

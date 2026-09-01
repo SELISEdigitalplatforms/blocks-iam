@@ -1,4 +1,5 @@
 using Authentication.DomainService.Authentication;
+using Authentication.DomainService.Entities;
 using Authentication.DomainService.Services;
 using Blocks.Genesis;
 using Microsoft.Extensions.Logging;
@@ -48,9 +49,19 @@ namespace Authentication.DomainService.Migrations
                 {
                     SetMigrationContext(tenant.Key);
 
-                    if (await _repository.GetOidcUiTemplateAsync() is not null)
+                    var existingTemplate = await _repository.GetOidcUiTemplateAsync();
+                    if (existingTemplate is not null)
                     {
-                        summary.TenantsSkipped++;
+                        if (existingTemplate.SchemaVersion >= OidcUiTemplate.CurrentSchemaVersion)
+                        {
+                            summary.TenantsSkipped++;
+                            continue;
+                        }
+
+                        var upgradedTemplate = IdpService.MergeOidcUiTemplateWithDefaults(existingTemplate);
+                        upgradedTemplate.ItemId ??= Guid.NewGuid().ToString();
+                        await _repository.SaveOidcUiTemplateAsync(upgradedTemplate);
+                        summary.TenantsMigrated++;
                         continue;
                     }
 
@@ -75,7 +86,8 @@ namespace Authentication.DomainService.Migrations
 
                     if (source.LegacyBrandColor is not null && HexColorRegex.IsMatch(source.LegacyBrandColor))
                     {
-                        template.Theme!.Primary = source.LegacyBrandColor;
+                        template.Theme!.Light!.Primary = source.LegacyBrandColor;
+                        template.Theme.Dark!.Primary = source.LegacyBrandColor;
                     }
 
                     await _repository.SaveOidcUiTemplateAsync(template);

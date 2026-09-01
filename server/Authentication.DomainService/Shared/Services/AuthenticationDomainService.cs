@@ -369,6 +369,7 @@ namespace Authentication.DomainService.Services
             var template = new OidcUiTemplate
             {
                 ItemId = Guid.NewGuid().ToString(),
+                SchemaVersion = OidcUiTemplate.CurrentSchemaVersion,
                 Branding = request.Branding,
                 Theme = request.Theme,
                 Pages = request.Pages
