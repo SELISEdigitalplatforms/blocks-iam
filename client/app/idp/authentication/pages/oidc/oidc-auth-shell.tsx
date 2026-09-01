@@ -7,6 +7,7 @@ import {
   type OidcAnimPhase,
   type OidcPanelConfig,
 } from "./nodes-panel-oidc";
+import { ModeToggle } from "@/components/mode-toggle/mode-toggle";
 import { Separator } from "@/components/ui-kits/separator/separator";
 import type { IOidcUiTemplate } from "@blocks-idp/authentication/hooks/use-oidc-ui-config";
 import "./sci-fi-oidc.css";
@@ -172,6 +173,22 @@ export function OidcAuthShell({
   successSubtitle,
   showCorners = true,
 }: OidcAuthShellProps) {
+  const [htmlTheme, setHtmlTheme] = useState<"dark" | "light">(() =>
+    typeof document !== "undefined" && document.documentElement.classList.contains("dark")
+      ? "dark"
+      : "light",
+  );
+  useEffect(() => {
+    const observer = new MutationObserver(() => {
+      setHtmlTheme(document.documentElement.classList.contains("dark") ? "dark" : "light");
+    });
+    observer.observe(document.documentElement, {
+      attributes: true,
+      attributeFilter: ["class"],
+    });
+    return () => observer.disconnect();
+  }, []);
+
   const [phase, setPhase] = useState<OidcAnimPhase>("idle");
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [cascadeDone, setCascadeDone] = useState(false);
@@ -249,8 +266,9 @@ export function OidcAuthShell({
     <OidcAuthAnimContext.Provider value={ctx}>
       <div
         className="oidc-scifi-root h-screen overflow-hidden flex flex-col bg-[var(--bg)]"
+        data-theme={htmlTheme}
         data-anim-phase={phase}
-        style={buildOidcThemeStyle(theme)}
+        style={htmlTheme === "dark" ? buildOidcThemeStyle(theme) : undefined}
       >
         <SciFiBackgroundOidc showCorners={showCorners} />
 
@@ -261,9 +279,10 @@ export function OidcAuthShell({
           >
               {/* Left — form / success */}
               <div className="w-full md:w-1/2 px-6 pt-5 pb-4 sm:px-7 md:px-8 flex flex-col min-h-0 overflow-y-auto">
-                {/* Topbar: logo + brand label */}
+                {/* Topbar: logo + brand label + theme toggle */}
                 <div className="flex items-center justify-between mb-4">
                   <OidcBrand logoUrl={logoUrl} brandName={brandName} />
+                  <ModeToggle />
                 </div>
 
                 {/* Form / success body */}
