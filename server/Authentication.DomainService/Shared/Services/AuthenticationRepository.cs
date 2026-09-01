@@ -15,13 +15,21 @@ namespace Authentication.DomainService.Services
         private const string OidcClientRegistrationsCollectionName = "OidcClientRegistrations";
         private const string SocialLoginScopes = "openid profile email";
 
+        /// <summary>The singleton key used for each tenant's OIDC UI template.</summary>
+        public const string OidcUiTemplateStoreKey = "oidcUiTemplate";
+
         private readonly IDbContextProvider _dbContextProvider;
         private readonly OidcDiscoveryClient _oidcDiscoveryClient;
+        private readonly IKeyValueStore _keyValueStore;
 
-        public AuthenticationRepository(IDbContextProvider dbContextProvider, OidcDiscoveryClient oidcDiscoveryClient)
+        public AuthenticationRepository(
+            IDbContextProvider dbContextProvider,
+            OidcDiscoveryClient oidcDiscoveryClient,
+            IKeyValueStore keyValueStore)
         {
             _dbContextProvider = dbContextProvider;
             _oidcDiscoveryClient = oidcDiscoveryClient;
+            _keyValueStore = keyValueStore;
         }
 
         public IMongoCollection<T> GetCollection<T>()
@@ -451,6 +459,16 @@ namespace Authentication.DomainService.Services
         {
             var collection = GetCollectionByName<OidcClientRegistration>(OidcClientRegistrationsCollectionName);
             var result = await collection.ReplaceOneAsync(x => x.ItemId == credential.ItemId, credential, new ReplaceOptions { IsUpsert = true });
+        }
+
+        public Task<OidcUiTemplate?> GetOidcUiTemplateAsync()
+        {
+            return _keyValueStore.GetAsync<OidcUiTemplate>(OidcUiTemplateStoreKey);
+        }
+
+        public Task SaveOidcUiTemplateAsync(OidcUiTemplate template)
+        {
+            return _keyValueStore.SetAsync(OidcUiTemplateStoreKey, template);
         }
 
         public async Task<OidcClientRegistration> GetOIDCCredentialByIdAsync(string itemId)

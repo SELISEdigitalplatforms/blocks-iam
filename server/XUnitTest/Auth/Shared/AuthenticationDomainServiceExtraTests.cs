@@ -21,6 +21,7 @@ namespace XUnitTest.Auth.Shared
         private readonly Mock<IMessageClient> _message = new();
         private readonly Mock<IAuthenticationRepository> _repo = new();
         private readonly Mock<IValidator<SaveOIDCClientRequest>> _oidcValidator = new();
+        private readonly Mock<IValidator<SaveOidcUiTemplateRequest>> _oidcUiTemplateValidator = new();
         private readonly Mock<IValidator<SaveIdentityProviderRequest>> _saveIdpValidator = new();
         private readonly Mock<IValidator<UpdateIdentityProviderRequest>> _updateIdpValidator = new();
         private readonly Mock<ITenants> _tenants = new();
@@ -36,6 +37,7 @@ namespace XUnitTest.Auth.Shared
                 userName: "tester", phoneNumber: null, displayName: "T", oauthToken: null,
                 originalTenantId: "tenant-1", impersonationSessionId: null, applicationDomain: "test"));
             _oidcValidator.Setup(v => v.ValidateAsync(It.IsAny<SaveOIDCClientRequest>(), It.IsAny<CancellationToken>())).ReturnsAsync(new ValidationResult());
+            _oidcUiTemplateValidator.Setup(v => v.ValidateAsync(It.IsAny<SaveOidcUiTemplateRequest>(), It.IsAny<CancellationToken>())).ReturnsAsync(new ValidationResult());
         }
 
         public void Dispose()
@@ -46,7 +48,8 @@ namespace XUnitTest.Auth.Shared
 
         private AuthenticationDomainService Create() =>
             new(_message.Object, _repo.Object,
-                _oidcValidator.Object, _saveIdpValidator.Object, _updateIdpValidator.Object, _tenants.Object, _httpFactory.Object);
+                _oidcValidator.Object, _oidcUiTemplateValidator.Object, _saveIdpValidator.Object,
+                _updateIdpValidator.Object, _tenants.Object, _httpFactory.Object);
 
         private static IdentityProvider Idp(string provider = "google", string clientId = "cid", string id = "idp-1") => new()
         {

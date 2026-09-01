@@ -22,6 +22,7 @@ namespace XUnitTest.Auth.Shared
     {
         private readonly Mock<IDbContextProvider> _db = new();
         private readonly Mock<IHttpClientFactory> _httpFactory = new();
+        private readonly Mock<IKeyValueStore> _keyValueStore = new();
 
         public AuthenticationRepositoryTests()
         {
@@ -41,7 +42,7 @@ namespace XUnitTest.Auth.Shared
         }
 
         private AuthenticationRepository Sut() =>
-            new(_db.Object, new OidcDiscoveryClient(_httpFactory.Object));
+            new(_db.Object, new OidcDiscoveryClient(_httpFactory.Object), _keyValueStore.Object);
 
         private Mock<IMongoCollection<T>> Register<T>(IEnumerable<T>? items = null)
         {
@@ -302,6 +303,65 @@ namespace XUnitTest.Auth.Shared
             col.Verify(c => c.ReplaceOneAsync(
                 It.IsAny<FilterDefinition<OidcClientRegistration>>(), It.IsAny<OidcClientRegistration>(),
                 It.Is<ReplaceOptions>(o => o.IsUpsert), It.IsAny<CancellationToken>()), Times.Once);
+        }
+
+        [Fact]
+        public async Task GetOidcUiTemplateAsync_ReturnsStoredTemplate()
+        {
+            var stored = new OidcUiTemplate
+            {
+                Branding = new OidcUiTemplateBranding { BrandName = "Acme" }
+            };
+            _keyValueStore
+                .Setup(s => s.GetAsync<OidcUiTemplate>(AuthenticationRepository.OidcUiTemplateStoreKey))
+                .ReturnsAsync(stored);
+
+            var result = await Sut().GetOidcUiTemplateAsync();
+
+            result.Should().BeSameAs(stored);
+            _keyValueStore.Verify(
+                s => s.GetAsync<OidcUiTemplate>("oidcUiTemplate"),
+                Times.Once);
+        }
+
+        [Fact]
+        public async Task GetOidcUiTemplateAsync_ReturnsNull_WhenStoreHasNoEntry()
+        {
+            _keyValueStore
+                .Setup(s => s.GetAsync<OidcUiTemplate>(It.IsAny<string>()))
+                .ReturnsAsync((OidcUiTemplate?)null);
+
+            var result = await Sut().GetOidcUiTemplateAsync();
+
+            result.Should().BeNull();
+        }
+
+        [Fact]
+        public async Task GetOidcUiTemplateAsync_PropagatesStoreFailure()
+        {
+            _keyValueStore
+                .Setup(s => s.GetAsync<OidcUiTemplate>(It.IsAny<string>()))
+                .ThrowsAsync(new InvalidOperationException("store unavailable"));
+
+            var action = () => Sut().GetOidcUiTemplateAsync();
+
+            await action.Should().ThrowAsync<InvalidOperationException>()
+                .WithMessage("store unavailable");
+        }
+
+        [Fact]
+        public async Task SaveOidcUiTemplateAsync_UsesSingletonStoreKeyAndSetAsync()
+        {
+            var template = new OidcUiTemplate
+            {
+                Branding = new OidcUiTemplateBranding { BrandName = "Acme" }
+            };
+
+            await Sut().SaveOidcUiTemplateAsync(template);
+
+            _keyValueStore.Verify(
+                s => s.SetAsync("oidcUiTemplate", template),
+                Times.Once);
         }
 
         [Fact]

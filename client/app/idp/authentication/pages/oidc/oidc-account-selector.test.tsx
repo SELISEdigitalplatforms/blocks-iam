@@ -1,12 +1,16 @@
 import { render, screen, fireEvent, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-const h = vi.hoisted(() => ({ showErrorToast: vi.fn() }));
+const h = vi.hoisted(() => ({ showErrorToast: vi.fn(), oidcUiConfig: undefined as unknown }));
 
 vi.mock("@/hooks/use-toast", () => ({ showErrorToast: h.showErrorToast }));
 vi.mock("@blocks-idp/authentication/services/auth.service", () => ({ authService: {} }));
+vi.mock("@blocks-idp/authentication/hooks/use-oidc-ui-config", () => ({
+  useOidcUiConfig: () => ({ data: h.oidcUiConfig }),
+}));
 
 import { OidcAccountSelector } from "./oidc-account-selector";
+import { DEFAULT_OIDC_UI_TEMPLATE } from "@blocks-idp/authentication/models/oidc-ui-template";
 
 const accounts = [
   { user_id: "u1", tenant_id: "t1", email: "a@x.com", display_name: "Alice" },
@@ -15,6 +19,7 @@ const accounts = [
 
 beforeEach(() => {
   vi.clearAllMocks();
+  h.oidcUiConfig = undefined;
 });
 
 describe("OidcAccountSelector", () => {
@@ -31,6 +36,22 @@ describe("OidcAccountSelector", () => {
     expect(screen.getByText("Alice")).toBeInTheDocument();
     expect(screen.getByText("a@x.com")).toBeInTheDocument();
     expect(screen.getByText("b@x.com")).toBeInTheDocument();
+  });
+
+  it("renders tenant-defined account-selector headings", () => {
+    h.oidcUiConfig = {
+      captcha: null,
+      template: {
+        ...DEFAULT_OIDC_UI_TEMPLATE,
+        pages: {
+          ...DEFAULT_OIDC_UI_TEMPLATE.pages,
+          accountSelector: { heading: "Acme Identity", subheading: "Choose your workspace" },
+        },
+      },
+    };
+    render(<OidcAccountSelector accounts={accounts} onAccountSelect={vi.fn()} />);
+    expect(screen.getByText("Acme Identity")).toBeInTheDocument();
+    expect(screen.getByText("Choose your workspace")).toBeInTheDocument();
   });
 
   it("invokes onAccountSelect when an account is chosen", async () => {

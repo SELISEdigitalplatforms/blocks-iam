@@ -11,6 +11,8 @@ const h = vi.hoisted(() => ({
   context: {} as Record<string, unknown>,
   getCurrentOIDCParams: vi.fn(),
   buildOIDCNavigationUrl: vi.fn((p: string) => `built:${p}`),
+  oidcUiConfig: undefined as unknown,
+  shellProps: null as Record<string, unknown> | null,
 }));
 
 vi.mock("react-router", async (importOriginal) => {
@@ -40,9 +42,11 @@ vi.mock("@blocks-idp/authentication/pages/login", () => ({
   ),
 }));
 vi.mock("./oidc-auth-shell", () => ({
-  OidcAuthShell: ({ children }: { children: React.ReactNode }) => (
-    <div data-testid="auth-shell">{children}</div>
-  ),
+  OidcAuthShell: (props: Record<string, unknown>) => {
+    h.shellProps = props;
+    return <div data-testid="auth-shell">{props.children as React.ReactNode}</div>;
+  },
+  OidcFooter: ({ footerText }: { footerText: string }) => <span>{footerText}</span>,
 }));
 vi.mock("./oidc-login-form", () => ({
   OidcLoginForm: (props: { clientId: string; redirectUri: string }) => (
@@ -51,8 +55,12 @@ vi.mock("./oidc-login-form", () => ({
     </div>
   ),
 }));
+vi.mock("@blocks-idp/authentication/hooks/use-oidc-ui-config", () => ({
+  useOidcUiConfig: () => ({ data: h.oidcUiConfig }),
+}));
 
 import { OIDCSignin } from "./oidc-signin";
+import { DEFAULT_OIDC_UI_TEMPLATE } from "@blocks-idp/authentication/models/oidc-ui-template";
 
 const setPath = (pathname: string) => {
   Object.defineProperty(window, "location", {
@@ -72,6 +80,8 @@ beforeEach(() => {
   vi.clearAllMocks();
   h.context = {};
   h.getCurrentOIDCParams.mockReturnValue(new URLSearchParams());
+  h.oidcUiConfig = undefined;
+  h.shellProps = null;
   setPath("/oidc/callback");
 });
 
@@ -95,6 +105,29 @@ describe("OIDCSignin", () => {
     expect(screen.getByTestId("auth-shell")).toBeInTheDocument();
     const form = screen.getByTestId("login-form");
     expect(form).toHaveTextContent("client=client-1");
+  });
+
+  it("passes tenant-defined login heading, theme and branding to the shell", () => {
+    setPath("/oidc/login");
+    h.context = { clientId: "client-1", redirectUri: "https://app/cb" };
+    h.oidcUiConfig = {
+      captcha: null,
+      template: {
+        ...DEFAULT_OIDC_UI_TEMPLATE,
+        branding: { logoUrl: "https://example.test/logo.svg", brandName: "Acme" },
+        pages: {
+          ...DEFAULT_OIDC_UI_TEMPLATE.pages,
+          login: { ...DEFAULT_OIDC_UI_TEMPLATE.pages.login, heading: "Welcome to Acme" },
+        },
+      },
+    };
+    renderAt("/oidc/login?client_id=client-1&redirect_uri=https://app/cb");
+    expect(h.shellProps).toEqual(expect.objectContaining({
+      heading: "Welcome to Acme",
+      logoUrl: "https://example.test/logo.svg",
+      brandName: "Acme",
+      theme: DEFAULT_OIDC_UI_TEMPLATE.theme,
+    }));
   });
 
   it("uses url client_id / redirect_uri when the context lacks them", () => {

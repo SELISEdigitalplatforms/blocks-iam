@@ -8,8 +8,10 @@ import { oauthService } from "@blocks-idp/authentication/services/oauth.service"
 import { useOIDCContext } from "@/layouts/oidc-layout";
 import { buildOIDCNavigationUrl, getCurrentOIDCParams } from "@blocks-idp/authentication/utils/oidc-utils";
 import { OidcLoginForm } from "./oidc-login-form";
-import { OidcAuthShell } from "./oidc-auth-shell";
+import { OidcAuthShell, OidcFooter } from "./oidc-auth-shell";
 import { OIDC_LOGIN_PANEL } from "./oidc-panel-config";
+import { useOidcUiConfig } from "@blocks-idp/authentication/hooks/use-oidc-ui-config";
+import { DEFAULT_OIDC_UI_TEMPLATE } from "@blocks-idp/authentication/models/oidc-ui-template";
 
 export const OIDCSignin = () => {
   const [searchParams] = useSearchParams();
@@ -17,6 +19,9 @@ export const OIDCSignin = () => {
   const { setAuthenticated, setTokens } = useAuthStore();
   const [isActivatingSocial, setIsActivatingSocial] = useState(false);
   const oidcContext = useOIDCContext();
+  const tenantId = oidcContext.tenantId || searchParams.get("tenant_id") || undefined;
+  const { data: oidcUiConfig } = useOidcUiConfig(tenantId);
+  const template = oidcUiConfig?.template ?? DEFAULT_OIDC_UI_TEMPLATE;
 
   const code = searchParams.get("code") || "";
   const state = searchParams.get("state") || "";
@@ -114,14 +119,15 @@ export const OIDCSignin = () => {
     return (
       <OidcAuthShell
         panelConfig={OIDC_LOGIN_PANEL}
-        heading="Sign in to continue to your application"
+        theme={template.theme}
+        logoUrl={template.branding.logoUrl}
+        brandName={template.branding.brandName}
+        heading={template.pages.login.heading}
         headingDimFirst={3}
+        successTitle="Access Granted"
+        successSubtitle="Redirecting to your application…"
         showCorners={false}
-        footerNote={
-          <p className="text-xs" style={{ fontFamily: "'Rajdhani', sans-serif", color: "var(--muted)" }}>
-            © {new Date().getFullYear()} SELISE Digital Platforms. All rights reserved.
-          </p>
-        }
+        footerNote={<OidcFooter footerText={template.pages.shared.footerText} />}
       >
         <OidcLoginForm
           clientId={effectiveClientId}
@@ -130,7 +136,7 @@ export const OIDCSignin = () => {
           scope={oidcContext.scope || searchParams.get("scope") || undefined}
           state={oidcContext.state || searchParams.get("state") || undefined}
           nonce={oidcContext.nonce || searchParams.get("nonce") || undefined}
-          tenantId={oidcContext.tenantId || searchParams.get("tenant_id") || undefined}
+          tenantId={tenantId}
           codeChallenge={searchParams.get("code_challenge") || undefined}
           codeChallengeMethod={searchParams.get("code_challenge_method") || "S256"}
         />

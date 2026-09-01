@@ -21,6 +21,7 @@ vi.mock("@blocks-idp/authentication/pages/oidc/oidc-auth-shell", () => ({
       {children}
     </div>
   ),
+  OidcFooter: ({ footerText }: { footerText: string }) => <span>{footerText}</span>,
   useOidcAuthAnimation: () => ({
     phase: "idle" as const,
     startAnimation: () => {},
@@ -30,6 +31,9 @@ vi.mock("@blocks-idp/authentication/pages/oidc/oidc-auth-shell", () => ({
   }),
 }));
 vi.mock("./panel-config", () => ({ DEVICE_CONSENT_PANEL: {} }));
+vi.mock("@blocks-idp/authentication/hooks/use-oidc-ui-config", () => ({
+  useOidcUiConfig: () => ({ data: undefined }),
+}));
 
 import { DeviceSuccessPage } from "./success";
 

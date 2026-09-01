@@ -4,6 +4,7 @@ using Authentication.DomainService.OAuth;
 using Authentication.DomainService.Oidc.Repositories;
 using Authentication.DomainService.Services;
 using Authentication.DomainService.Shared.RequestModel;
+using Authentication.DomainService.Shared.ResponseModel;
 using Blocks.CaptchaDriver;
 using Blocks.Genesis;
 using FluentAssertions;
@@ -40,6 +41,7 @@ namespace XUnitTest.Auth
                 originalTenantId: TenantId, impersonationSessionId: null, applicationDomain: "test"));
 
             _tokenExchange = new IdpTokenExchangeClient(_httpService.Object);
+            _authRepo.Setup(r => r.GetOidcUiTemplateAsync()).ReturnsAsync((OidcUiTemplate?)null);
         }
 
         public void Dispose()
@@ -104,7 +106,9 @@ namespace XUnitTest.Auth
             var result = await Create().GetUiConfigAsync();
 
             var ok = result.Should().BeOfType<OkObjectResult>().Subject;
-            Prop(ok.Value, "Captcha").Should().BeNull();
+            var response = ok.Value.Should().BeOfType<OidcUiConfigResponse>().Subject;
+            response.Captcha.Should().BeNull();
+            response.Template.Should().BeEquivalentTo(IdpService.CreateDefaultOidcUiTemplate());
         }
 
         [Fact]
@@ -116,7 +120,8 @@ namespace XUnitTest.Auth
             var result = await Create().GetUiConfigAsync();
 
             var ok = result.Should().BeOfType<OkObjectResult>().Subject;
-            Prop(ok.Value, "Captcha").Should().BeNull();
+            var response = ok.Value.Should().BeOfType<OidcUiConfigResponse>().Subject;
+            response.Captcha.Should().BeNull();
         }
 
         [Fact]
@@ -128,10 +133,75 @@ namespace XUnitTest.Auth
             var result = await Create().GetUiConfigAsync();
 
             var ok = result.Should().BeOfType<OkObjectResult>().Subject;
-            var captcha = Prop(ok.Value, "Captcha");
-            captcha.Should().NotBeNull();
-            Prop(captcha, "Key").Should().Be("site-key");
-            Prop(captcha, "Provider").Should().Be("recaptcha");
+            var response = ok.Value.Should().BeOfType<OidcUiConfigResponse>().Subject;
+            response.Captcha.Should().BeEquivalentTo(new OidcUiCaptchaResponse
+            {
+                Key = "site-key",
+                Provider = "recaptcha",
+                Generator = "gen"
+            });
+            response.Template.Should().NotBeNull();
+        }
+
+        [Fact]
+        public async Task GetUiConfigAsync_MergesSavedTemplatePerLeaf()
+        {
+            _authRepo.Setup(r => r.GetOidcUiTemplateAsync()).ReturnsAsync(new OidcUiTemplate
+            {
+                Branding = new OidcUiTemplateBranding { BrandName = "Acme Corp" },
+                Theme = new OidcUiTemplateTheme { Primary = "#ff0000", Border = null },
+                Pages = new OidcUiTemplatePages
+                {
+                    Login = new OidcUiLoginPage { Heading = "Welcome to Acme" }
+                }
+            });
+
+            var result = await Create().GetUiConfigAsync();
+
+            var response = ((OkObjectResult)result).Value.Should().BeOfType<OidcUiConfigResponse>().Subject;
+            response.Template.Branding!.BrandName.Should().Be("Acme Corp");
+            response.Template.Theme!.Primary.Should().Be("#ff0000");
+            response.Template.Theme.Border.Should().Be("#16162a");
+            response.Template.Pages!.Login!.Heading.Should().Be("Welcome to Acme");
+            response.Template.Pages.Signup!.Heading.Should().Be("Create Your Blocks Account");
+        }
+
+        [Fact]
+        public async Task GetUiConfigAsync_PropagatesTemplateLookupFailure()
+        {
+            _authRepo.Setup(r => r.GetOidcUiTemplateAsync())
+                .ThrowsAsync(new InvalidOperationException("store unavailable"));
+
+            var action = () => Create().GetUiConfigAsync();
+
+            await action.Should().ThrowAsync<InvalidOperationException>()
+                .WithMessage("store unavailable");
+        }
+
+        [Fact]
+        public async Task GetUiConfigAsync_PreservesCaptchaJsonContract()
+        {
+            var configuration = new CaptchaConfiguration
+            {
+                IsEnable = true,
+                CaptchaKey = "site-key",
+                Provider = "recaptcha",
+                CaptchaGenerator = "gen"
+            };
+            _captchaRepo.Setup(c => c.GetCaptchaConfigurationAsync()).ReturnsAsync(configuration);
+
+            var result = await Create().GetUiConfigAsync();
+
+            var response = ((OkObjectResult)result).Value.Should().BeOfType<OidcUiConfigResponse>().Subject;
+            var options = new JsonSerializerOptions(JsonSerializerDefaults.Web);
+            var actualCaptcha = JsonSerializer.Serialize(response.Captcha, options);
+            var previousCaptcha = JsonSerializer.Serialize(new
+            {
+                Key = configuration.CaptchaKey,
+                Provider = configuration.Provider,
+                Generator = configuration.CaptchaGenerator
+            }, options);
+            actualCaptcha.Should().Be(previousCaptcha);
         }
 
         // ---------- StartAuthenticationFlowAsync ----------

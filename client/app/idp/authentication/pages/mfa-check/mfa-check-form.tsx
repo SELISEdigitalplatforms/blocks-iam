@@ -15,6 +15,8 @@ import { useAuthStore } from "@seliseblocks/genesis-os";
 import { useResendOtp } from "@blocks-idp/mfa/hooks/use-resend-otp";
 import { AUTH_ENDPOINTS } from "@blocks-idp/authentication/constants/endpoint.constant";
 import { useOidcAuthAnimation } from "@blocks-idp/authentication/pages/oidc/oidc-auth-shell";
+import { useOidcUiConfig } from "@blocks-idp/authentication/hooks/use-oidc-ui-config";
+import { DEFAULT_OIDC_UI_TEMPLATE } from "@blocks-idp/authentication/models/oidc-ui-template";
 import { extractOIDCParams } from "@blocks-idp/authentication/utils/oidc-utils";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useNavigate } from "react-router";
@@ -40,6 +42,8 @@ const getFormSchema = (type: number) =>
 export const MfaCheckFrom = () => {
   const navigate = useNavigate();
   const animCtx = useOidcAuthAnimation();
+  const { data: oidcUiConfig } = useOidcUiConfig();
+  const mfaCopy = (oidcUiConfig?.template ?? DEFAULT_OIDC_UI_TEMPLATE).pages.mfa;
   const [{ mfa_id, mfa_type, returnUrl }] = useQueryStates({
     mfa_id: parseAsString.withDefault(""),
     mfa_type: parseAsInteger.withDefault(0),
@@ -179,7 +183,7 @@ export const MfaCheckFrom = () => {
           )}
         />
 
-        {mfa_type === 2 && (
+        {mfa_type === 2 && mfaCopy.resendButton && (
           <div className="flex items-center justify-end text-sm">
             <Button
               type="button"
@@ -189,7 +193,7 @@ export const MfaCheckFrom = () => {
               disabled={!!remainingTime}
             >
               <RotateCcw size={14} />
-              Resend Code
+              {mfaCopy.resendButton}
               {remainingTime > 0 &&
                 ` (${Math.floor(remainingTime / 60)}:${String(remainingTime % 60).padStart(2, "0")})`}
             </Button>
@@ -216,11 +220,11 @@ export const MfaCheckFrom = () => {
           {isAuthenticating ? (
             <>
               <Loader size={16} className="oidc-spin-slow" />
-              <span>Verifying...</span>
+              <span>{mfaCopy.submitButton === "Verify" ? "Verifying..." : `${mfaCopy.submitButton}...`}</span>
             </>
           ) : (
             <>
-              <span>Verify</span>
+              <span>{mfaCopy.submitButton}</span>
               <ArrowRight size={16} />
             </>
           )}

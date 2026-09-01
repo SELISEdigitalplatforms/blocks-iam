@@ -8,6 +8,7 @@ const h = vi.hoisted(() => ({
   isPending: false,
   resetCaptcha: vi.fn(),
   captchaEnabled: false,
+  oidcUiConfig: undefined as unknown,
 }));
 
 vi.mock("react-router", async (importOriginal) => {
@@ -16,7 +17,7 @@ vi.mock("react-router", async (importOriginal) => {
 });
 vi.mock("@/lib/runtime-env", () => ({ getRuntimeEnv: () => "" }));
 vi.mock("@blocks-idp/authentication/hooks/use-oidc-ui-config", () => ({
-  useOidcUiConfig: () => ({ data: undefined, captchaEnabled: h.captchaEnabled }),
+  useOidcUiConfig: () => ({ data: h.oidcUiConfig, captchaEnabled: h.captchaEnabled }),
 }));
 vi.mock("@blocks-idp/authentication/hooks/use-auth", () => ({
   useSignupByEmail: () => ({ isPending: h.isPending, mutateAsync: h.mutateAsync }),
@@ -33,6 +34,7 @@ vi.mock("../login/sso-signin", () => ({
 }));
 
 import { SignupForm } from "./signup-form";
+import { DEFAULT_OIDC_UI_TEMPLATE } from "@blocks-idp/authentication/models/oidc-ui-template";
 
 const renderForm = (props: Partial<Parameters<typeof SignupForm>[0]> = {}) =>
   render(
@@ -59,6 +61,7 @@ beforeEach(() => {
   vi.clearAllMocks();
   h.isPending = false;
   h.captchaEnabled = false;
+  h.oidcUiConfig = undefined;
 });
 
 describe("SignupForm", () => {
@@ -66,6 +69,35 @@ describe("SignupForm", () => {
     renderForm();
     expect(screen.getByPlaceholderText("Jane")).toBeInTheDocument();
     expect(screen.getByPlaceholderText("name@company.com")).toBeInTheDocument();
+  });
+
+  it("renders tenant-defined signup labels and legal copy", () => {
+    h.oidcUiConfig = {
+      captcha: null,
+      template: {
+        ...DEFAULT_OIDC_UI_TEMPLATE,
+        pages: {
+          ...DEFAULT_OIDC_UI_TEMPLATE.pages,
+          signup: {
+            ...DEFAULT_OIDC_UI_TEMPLATE.pages.signup,
+            firstNameLabel: "Given name",
+            lastNameLabel: "Family name",
+            emailLabel: "Business address",
+            termsPrefix: "I accept",
+            termsLinkText: "Service Rules",
+            privacyLinkText: "Data Policy",
+            submitButton: "Join Acme",
+          },
+        },
+      },
+    };
+    renderForm();
+    expect(screen.getByText("Given name")).toBeInTheDocument();
+    expect(screen.getByText("Family name")).toBeInTheDocument();
+    expect(screen.getByText("Business address")).toBeInTheDocument();
+    expect(screen.getByText("Service Rules")).toBeInTheDocument();
+    expect(screen.getByText("Data Policy")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /Join Acme/ })).toBeInTheDocument();
   });
 
   it("hides the form when email signup is disabled", () => {

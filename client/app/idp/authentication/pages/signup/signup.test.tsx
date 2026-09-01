@@ -9,6 +9,8 @@ const h = vi.hoisted(() => ({
   isLoginOptionLoading: false,
   orgConfig: undefined as Record<string, boolean> | undefined,
   isOrgConfigLoading: false,
+  oidcUiConfig: undefined as unknown,
+  shellProps: null as Record<string, unknown> | null,
 }));
 
 vi.mock("@blocks-idp/authentication/hooks/use-auth", () => ({
@@ -22,16 +24,19 @@ vi.mock("@blocks-idp/iam/hooks/use-organization", () => ({
 }));
 vi.mock("./signup-form", () => ({ SignupForm: () => <div data-testid="signup-form" /> }));
 vi.mock("@blocks-idp/authentication/pages/oidc/oidc-auth-shell", () => ({
-  OidcAuthShell: ({ children, footerNote }: { children: React.ReactNode; footerNote: React.ReactNode }) => (
-    <div>
-      {footerNote}
-      {children}
-    </div>
-  ),
+  OidcAuthShell: (props: Record<string, unknown>) => {
+    h.shellProps = props;
+    return <div>{props.footerNote as React.ReactNode}{props.children as React.ReactNode}</div>;
+  },
+  OidcFooter: ({ footerText }: { footerText: string }) => <span>{footerText}</span>,
 }));
 vi.mock("@blocks-idp/authentication/pages/oidc/oidc-panel-config", () => ({ SIGNUP_PANEL: {} }));
+vi.mock("@blocks-idp/authentication/hooks/use-oidc-ui-config", () => ({
+  useOidcUiConfig: () => ({ data: h.oidcUiConfig }),
+}));
 
 import { Signup } from "./signup";
+import { DEFAULT_OIDC_UI_TEMPLATE } from "@blocks-idp/authentication/models/oidc-ui-template";
 
 const renderSignup = (props = {}) =>
   render(
@@ -48,6 +53,8 @@ beforeEach(() => {
   h.isLoginOptionLoading = false;
   h.orgConfig = undefined;
   h.isOrgConfigLoading = false;
+  h.oidcUiConfig = undefined;
+  h.shellProps = null;
 });
 
 describe("Signup", () => {
@@ -74,5 +81,33 @@ describe("Signup", () => {
     h.signUpSetting = { isSignUpEnable: true, isEmailPasswordSignUpEnabled: true };
     renderSignup();
     expect(screen.getByRole("link", { name: "Sign in" })).toHaveAttribute("href", "/login");
+  });
+
+  it("passes tenant-defined signup and success copy to the shell", () => {
+    h.oidcUiConfig = {
+      captcha: null,
+      template: {
+        ...DEFAULT_OIDC_UI_TEMPLATE,
+        pages: {
+          ...DEFAULT_OIDC_UI_TEMPLATE.pages,
+          signup: {
+            ...DEFAULT_OIDC_UI_TEMPLATE.pages.signup,
+            heading: "Join Acme",
+            successTitle: "Welcome aboard",
+            successSubtitle: "Check your Acme inbox",
+            loginPrompt: "Have an Acme account?",
+            loginLink: "Return to sign in",
+          },
+        },
+      },
+    };
+    renderSignup();
+    expect(h.shellProps).toEqual(expect.objectContaining({
+      heading: "Join Acme",
+      successTitle: "Welcome aboard",
+      successSubtitle: "Check your Acme inbox",
+    }));
+    expect(screen.getByText("Have an Acme account?")).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Return to sign in" })).toBeInTheDocument();
   });
 });

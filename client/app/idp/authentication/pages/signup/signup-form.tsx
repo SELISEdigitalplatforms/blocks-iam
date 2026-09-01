@@ -9,6 +9,7 @@ import { Captcha } from "@/components/captcha";
 import { isErrorWithErrors } from "@/lib/error";
 import { getRuntimeEnv } from "@/lib/runtime-env";
 import { useOidcUiConfig } from "@blocks-idp/authentication/hooks/use-oidc-ui-config";
+import { DEFAULT_OIDC_UI_TEMPLATE } from "@blocks-idp/authentication/models/oidc-ui-template";
 import { useSignupByEmail } from "@blocks-idp/authentication/hooks/use-auth";
 import { LoginOption } from "@blocks-idp/authentication/models/auth.model";
 import { useCaptcha } from "@blocks-idp/captcha/hooks/use-captcha";
@@ -58,6 +59,7 @@ export const SignupForm = ({
   });
   const { isPending, mutateAsync } = useSignupByEmail();
   const { data: oidcUiConfig, captchaEnabled } = useOidcUiConfig(tenantId);
+  const signupCopy = (oidcUiConfig?.template ?? DEFAULT_OIDC_UI_TEMPLATE).pages.signup;
 
   const googleSiteKey =
     oidcUiConfig?.captcha?.key || getRuntimeEnv("BLOCKS_GOOGLE_SITE_KEY") || "";
@@ -186,7 +188,7 @@ export const SignupForm = ({
                   <FormItem className="flex-1">
                     <div className="flex flex-col gap-2">
                       <label htmlFor="signup-first-name" className="oidc-sci-fi-label">
-                        First Name
+                        {signupCopy.firstNameLabel}
                       </label>
                       <FormControl>
                         <input
@@ -212,7 +214,7 @@ export const SignupForm = ({
                   <FormItem className="flex-1">
                     <div className="flex flex-col gap-2">
                       <label htmlFor="signup-last-name" className="oidc-sci-fi-label">
-                        Last Name
+                        {signupCopy.lastNameLabel}
                       </label>
                       <FormControl>
                         <input
@@ -241,7 +243,7 @@ export const SignupForm = ({
                 <FormItem>
                   <div className="flex flex-col gap-2">
                     <label htmlFor="signup-email" className="oidc-sci-fi-label">
-                      Work Email
+                      {signupCopy.emailLabel}
                     </label>
                     <FormControl>
                       <input
@@ -320,14 +322,14 @@ export const SignupForm = ({
                 className="text-xs oidc-font-rajdhani"
                 style={{ color: "var(--muted)", lineHeight: 1.5, cursor: "pointer" }}
               >
-                I agree to the{" "}
+                {signupCopy.termsPrefix}{" "}
                 <Link
                   to="https://selisegroup.com/software-development-terms/"
                   className="oidc-sci-fi-link"
                   target="_blank"
                   rel="noopener noreferrer"
                 >
-                  Terms of Service
+                  {signupCopy.termsLinkText}
                 </Link>{" "}
                 and the{" "}
                 <Link
@@ -336,7 +338,7 @@ export const SignupForm = ({
                   target="_blank"
                   rel="noopener noreferrer"
                 >
-                  Privacy Policy
+                  {signupCopy.privacyLinkText}
                 </Link>
                 .
               </label>
@@ -366,7 +368,7 @@ export const SignupForm = ({
                 </>
               ) : (
                 <>
-                  <span>Create Account</span>
+                  <span>{signupCopy.submitButton}</span>
                   <ArrowRight size={16} />
                 </>
               )}

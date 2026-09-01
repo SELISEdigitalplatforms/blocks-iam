@@ -4,6 +4,9 @@ import { Button } from "@/components/ui-kits/button/button";
 import { showErrorToast } from "@/hooks/use-toast";
 import { authService } from "@blocks-idp/authentication/services/auth.service";
 import { Loader } from "lucide-react";
+import { useOidcUiConfig } from "@blocks-idp/authentication/hooks/use-oidc-ui-config";
+import { DEFAULT_OIDC_UI_TEMPLATE } from "@blocks-idp/authentication/models/oidc-ui-template";
+import { OidcFooter } from "./oidc-auth-shell";
 
 export interface OidcAccountInfo {
   user_id: string;
@@ -20,6 +23,8 @@ export interface OidcAccountSelectorProps {
 }
 
 export const OidcAccountSelector = ({ accounts, onAccountSelect, isLoading = false }: OidcAccountSelectorProps) => {
+  const { data: oidcUiConfig } = useOidcUiConfig();
+  const template = oidcUiConfig?.template ?? DEFAULT_OIDC_UI_TEMPLATE;
   const [selectedAccount, setSelectedAccount] = useState<OidcAccountInfo | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
@@ -44,12 +49,13 @@ export const OidcAccountSelector = ({ accounts, onAccountSelect, isLoading = fal
     return (
       <Card className="flex h-full flex-col rounded border-solid border-background shadow-none md:min-w-[448px] md:border-[#95ADC4] lg:max-w-md">
         <CardHeader className="text-center">
-          <CardTitle className="text-3xl">Blocks IAM</CardTitle>
-          <CardDescription className="text-xl text-foreground">Select Account</CardDescription>
+          <CardTitle className="text-3xl">{template.pages.accountSelector.heading}</CardTitle>
+          <CardDescription className="text-xl text-foreground">{template.pages.accountSelector.subheading}</CardDescription>
         </CardHeader>
         <CardContent className="flex flex-1 flex-col items-center justify-center">
           <Loader className="h-12 w-12 animate-spin text-gray-500" />
         </CardContent>
+        <OidcFooter footerText={template.pages.shared.footerText} />
       </Card>
     );
   }
@@ -57,8 +63,8 @@ export const OidcAccountSelector = ({ accounts, onAccountSelect, isLoading = fal
   return (
     <Card className="flex h-full flex-col rounded border-solid border-background shadow-none md:min-w-[448px] md:border-[#95ADC4] lg:max-w-md">
       <CardHeader className="text-center">
-        <CardTitle className="text-3xl">Blocks IAM</CardTitle>
-        <CardDescription className="text-xl text-foreground">Select Account</CardDescription>
+        <CardTitle className="text-3xl">{template.pages.accountSelector.heading}</CardTitle>
+        <CardDescription className="text-xl text-foreground">{template.pages.accountSelector.subheading}</CardDescription>
       </CardHeader>
       <CardContent className="flex flex-1 flex-col justify-between">
         <div className="flex flex-1 flex-col gap-3">
@@ -87,6 +93,7 @@ export const OidcAccountSelector = ({ accounts, onAccountSelect, isLoading = fal
           ))}
         </div>
       </CardContent>
+      <OidcFooter footerText={template.pages.shared.footerText} />
     </Card>
   );
 };

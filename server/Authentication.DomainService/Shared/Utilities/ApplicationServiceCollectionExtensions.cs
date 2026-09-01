@@ -1,4 +1,5 @@
-﻿using Authentication.DomainService.Authentication;
+using Authentication.DomainService.Authentication;
+using Authentication.DomainService.Migrations;
 using Authentication.DomainService.OAuth;
 using Authentication.DomainService.OAuth.Services;
 using Authentication.DomainService.OAuth.SocialServices;
@@ -49,6 +50,8 @@ namespace Authentication.DomainService.Utilities
             serviceCollection.AddSingleton<OidcDiscoveryClient>();
             serviceCollection.AddSingleton<IAuthenticationDomainService, AuthenticationDomainService>();
             serviceCollection.AddSingleton<IAuthenticationRepository, AuthenticationRepository>();
+            serviceCollection.AddSingleton<ILegacyOidcClientBrandingReader, MongoLegacyOidcClientBrandingReader>();
+            serviceCollection.AddSingleton<OidcUiTemplateMigrationService>();
 
             // Satisfies Iam.DomainService's account-action email builders, which need the
             // tenant's default OIDC client but cannot reference this assembly.
@@ -155,6 +158,7 @@ namespace Authentication.DomainService.Utilities
             serviceCollection.AddSingleton<IIamConfigurationRepository, IamConfigurationRepository>();
             serviceCollection.AddTransient<IValidator<SaveSsoCredentialRequest>, SaveSsoCredentialRequestValidator>();
             serviceCollection.AddTransient<IValidator<SaveOIDCClientRequest>, SaveOIDCClientRequestValidator>();
+            serviceCollection.AddTransient<IValidator<SaveOidcUiTemplateRequest>, SaveOidcUiTemplateRequestValidator>();
             serviceCollection.AddTransient<IValidator<SaveIdentityProviderRequest>, SaveIdentityProviderRequestValidator>();
             serviceCollection.AddTransient<IValidator<UpdateIdentityProviderRequest>, UpdateIdentityProviderRequestValidator>();
 

@@ -63,6 +63,7 @@ vi.mock("@blocks-idp/captcha/hooks/use-captcha", () => ({
 }));
 
 import { OidcLoginForm } from "./oidc-login-form";
+import { DEFAULT_OIDC_UI_TEMPLATE } from "@blocks-idp/authentication/models/oidc-ui-template";
 
 const renderForm = (props: Partial<React.ComponentProps<typeof OidcLoginForm>> = {}) =>
   render(
@@ -136,6 +137,30 @@ describe("OidcLoginForm", () => {
     expect(screen.getByText("Password")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /login/i })).toBeInTheDocument();
     expect(screen.getByRole("link", { name: /forgot/i })).toBeInTheDocument();
+  });
+
+  it("renders tenant-defined login labels and actions", () => {
+    h.oidcUiConfig = {
+      captcha: null,
+      template: {
+        ...DEFAULT_OIDC_UI_TEMPLATE,
+        pages: {
+          ...DEFAULT_OIDC_UI_TEMPLATE.pages,
+          login: {
+            ...DEFAULT_OIDC_UI_TEMPLATE.pages.login,
+            emailLabel: "Corporate Email",
+            passwordLabel: "Secret Phrase",
+            forgotPasswordLink: "Recover access",
+            submitButton: "Continue securely",
+          },
+        },
+      },
+    };
+    renderForm();
+    expect(screen.getByText("Corporate Email")).toBeInTheDocument();
+    expect(screen.getByText("Secret Phrase")).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Recover access" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /Continue securely/ })).toBeInTheDocument();
   });
 
   it("shows validation errors when submitting empty", async () => {
