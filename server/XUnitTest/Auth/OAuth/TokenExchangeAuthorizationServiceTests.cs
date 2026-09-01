@@ -14,6 +14,8 @@ using System.Security.Claims;
 using System.Security.Cryptography;
 using System.Security.Cryptography.X509Certificates;
 using System.Text.Json;
+using Iam.DomainService.Utilities;
+using Authentication.DomainService.Utilities;
 
 namespace XUnitTest.Auth.OAuth
 {
@@ -181,7 +183,8 @@ namespace XUnitTest.Auth.OAuth
                     var resolved = resolver.ResolveAsync(user, tokenRequest.OrganizationId).GetAwaiter().GetResult();
 
                     var claimsIdentity = new ClaimsIdentity("seliseblocks-authentication");
-                    JwtAccessTokenProvider.AddClaims(claimsIdentity, tenant, user, resolved, tokenRequest);
+                    JwtAccessTokenProvider.AddClaims(claimsIdentity, tenant, user, resolved, tokenRequest,
+                        OrganizationAccessResolver.Resolve(user, tokenRequest.OrganizationId, isMultiOrgEnabled: true));
 
                     return new JwtAccessToken
                     {

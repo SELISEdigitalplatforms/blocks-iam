@@ -10,6 +10,8 @@ using Iam.DomainService.Entities;
 using Microsoft.Extensions.Logging.Abstractions;
 using Moq;
 using StackExchange.Redis;
+using Iam.DomainService.Resources;
+using Iam.DomainService.Utilities;
 
 namespace XUnitTest.Auth.OAuth
 {
@@ -28,6 +30,7 @@ namespace XUnitTest.Auth.OAuth
         private readonly Mock<ICertificateProviderFactory> _certificateProviderFactory = new();
         private readonly Mock<ICertificateProvider> _certificateProvider = new();
         private readonly Mock<IAuthorizationClaimsResolver> _claimsResolver = new();
+        private readonly Mock<IResourceRepository> _resourceRepository = new();
 
         public JwtAccessTokenProviderTests()
         {
@@ -38,7 +41,13 @@ namespace XUnitTest.Auth.OAuth
 
         private JwtAccessTokenProvider Sut() => new(
             NullLogger<JwtAccessTokenProvider>.Instance, _cacheClient.Object, _cryptoService.Object,
-            _certificateProviderFactory.Object, _claimsResolver.Object);
+            _certificateProviderFactory.Object, _claimsResolver.Object, _resourceRepository.Object);
+
+        private static OrganizationScope Scope(string organizationId) =>
+            new(OrganizationScopeKind.Organization, organizationId);
+
+        private static OrganizationScope TenantWideScope() =>
+            new(OrganizationScopeKind.TenantWide, IdpConstants.DefaultOrganizationId);
 
         private static byte[] GenerateCertificate()
         {
@@ -83,7 +92,7 @@ namespace XUnitTest.Auth.OAuth
             var claims = new ResolvedAuthorizationClaims { Roles = { "admin" }, Permissions = { "read" } };
             var request = new TokenRequest { OrganizationId = "org1", IsImpersonation = false };
 
-            JwtAccessTokenProvider.AddClaims(identity, MakeTenant(), MakeUser(), claims, request);
+            JwtAccessTokenProvider.AddClaims(identity, MakeTenant(), MakeUser(), claims, request, Scope("org1"));
 
             identity.FindFirst(BlocksContext.TENANT_ID_CLAIM)!.Value.Should().Be("tenant-1");
             identity.FindFirst(BlocksContext.ORGANIZATION_ID_CLAIM)!.Value.Should().Be("org1");
@@ -91,13 +100,15 @@ namespace XUnitTest.Auth.OAuth
             identity.FindAll(BlocksContext.PERMISSION_CLAIM).Should().ContainSingle(c => c.Value == "read");
         }
 
-        [Fact]
-        public void AddClaims_UnknownOrg_FallsBackToDefault()
+        [Fact] // The unknown-organization fallback now lives in OrganizationScopeResolver
+        // (OrganizationScopeResolverTests.UnauthorisedRequestedOrganization_IsDiscarded_NotEchoed);
+        // AddClaims only mirrors whatever scope it is handed.
+        public void AddClaims_EmitsTheScopeItIsGiven_IgnoringTheRequestedOrganization()
         {
             var identity = new ClaimsIdentity();
             var request = new TokenRequest { OrganizationId = "not-a-member", IsImpersonation = false };
 
-            JwtAccessTokenProvider.AddClaims(identity, MakeTenant(), MakeUser(), new ResolvedAuthorizationClaims(), request);
+            JwtAccessTokenProvider.AddClaims(identity, MakeTenant(), MakeUser(), new ResolvedAuthorizationClaims(), request, TenantWideScope());
 
             identity.FindFirst(BlocksContext.ORGANIZATION_ID_CLAIM)!.Value.Should().Be("default");
         }
@@ -115,7 +126,7 @@ namespace XUnitTest.Auth.OAuth
             };
             var state = new StateInfo { ClientId = "c", Provider = "p", Audience = "a", Nonce = "nonce-1" };
 
-            JwtAccessTokenProvider.AddClaims(identity, MakeTenant(), MakeUser(), new ResolvedAuthorizationClaims(), request, state);
+            JwtAccessTokenProvider.AddClaims(identity, MakeTenant(), MakeUser(), new ResolvedAuthorizationClaims(), request, TenantWideScope(), state);
 
             identity.FindFirst(BlocksContext.IMPERSONATED_CLAIM)!.Value.Should().Be("true");
             identity.FindFirst(BlocksContext.ORIGINAL_TENANT_ID_CLAIM)!.Value.Should().Be("orig");
@@ -145,7 +156,7 @@ namespace XUnitTest.Auth.OAuth
             var token = Sut().MapJwtAccessToken(
                 Config(), MakeTenant(), MakeUser(), GenerateCertificate(),
                 new ResolvedAuthorizationClaims { Roles = { "admin" } },
-                new TokenRequest { OrganizationId = "org1" });
+                new TokenRequest { OrganizationId = "org1" }, Scope("org1"));
 
             token.Issuer.Should().Be("https://issuer");
             token.AccessTokenValidForNumberMinute.Should().Be(10);

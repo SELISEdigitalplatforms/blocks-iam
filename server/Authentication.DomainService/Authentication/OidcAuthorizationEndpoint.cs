@@ -3,6 +3,7 @@ using Authentication.DomainService.OAuth.RequestModel;
 using Authentication.DomainService.Oidc.Repositories;
 using Authentication.DomainService.Services;
 using Iam.DomainService.Utilities;
+using Iam.DomainService.Resources;
 using Blocks.Genesis;
 using Iam.DomainService.Entities;
 using Iam.DomainService.Users;
@@ -31,6 +32,7 @@ namespace Authentication.DomainService.Authentication
         private readonly IAuthenticationService _authenticationService;
         private readonly ITenants _tenants;
         private readonly ICacheClient _cacheClient;
+        private readonly IResourceRepository _resourceRepository;
         private readonly ILogger<OidcAuthorizationEndpoint> _logger;
 
         public OidcAuthorizationEndpoint(
@@ -42,6 +44,7 @@ namespace Authentication.DomainService.Authentication
             IAuthenticationService authenticationService,
             ITenants tenants,
             ICacheClient cacheClient,
+            IResourceRepository resourceRepository,
             ILogger<OidcAuthorizationEndpoint> logger)
         {
             _authCodeRepo = authCodeRepo;
@@ -52,6 +55,7 @@ namespace Authentication.DomainService.Authentication
             _authenticationService = authenticationService;
             _tenants = tenants;
             _cacheClient = cacheClient;
+            _resourceRepository = resourceRepository;
             _logger = logger;
         }
 
@@ -233,7 +237,13 @@ namespace Authentication.DomainService.Authentication
                     return BuildAuthorizeError("account_locked", "Account is temporarily locked due to failed authentication attempts");
                 }
 
-                var effectiveOrganizationId = OrganizationAccessResolver.ResolveEffectiveOrganizationId(user);
+                // Authoritative on this path: the value is stored on the authorization code and
+                // becomes the claim at exchange time without being re-validated, so the tenant's
+                // real multi-organization mode has to be read here.
+                var tenantConfiguration = await _resourceRepository.GetTenantConfigurationAsync();
+                var effectiveOrganizationId = OrganizationAccessResolver.ResolveEffectiveOrganizationId(
+                    user,
+                    tenantConfiguration?.IsMultiOrgEnabled ?? false);
                 await PersistLastUsedOrganizationAsync(user, effectiveOrganizationId);
 
                 var authCode = _pkceService.GenerateRandomCode(32);
@@ -443,7 +453,11 @@ namespace Authentication.DomainService.Authentication
 
         private async Task PersistLastUsedOrganizationAsync(User user, string? organizationId)
         {
+            // "default" and "no-org" are scope sentinels, not organizations, so there is nothing to
+            // remember: persisting one would leave the field claiming a membership the user does not
+            // have. Revoking the last membership sets "no-org" here deliberately; a sign-in must not.
             if (string.IsNullOrWhiteSpace(organizationId)
+                || OrganizationScopeResolver.IsReservedOrganizationId(organizationId)
                 || string.Equals(user.LastUsedOrganizationId, organizationId, StringComparison.OrdinalIgnoreCase))
             {
                 return;
