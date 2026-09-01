@@ -72,8 +72,9 @@ namespace XUnitTest.Auth.Shared
             var result = await Create().GetOidcTemplateForManagementAsync();
 
             result.Branding!.BrandName.Should().Be("Acme");
-            result.Theme!.Primary.Should().Be("#123456");
-            result.Theme.Secondary.Should().Be("#00b2ff");
+            result.Theme!.Dark!.Primary.Should().Be("#123456");
+            result.Theme.Dark.Secondary.Should().Be("#00b2ff");
+            result.Theme.Light!.Background.Should().Be("#f5f7fb");
             result.Pages!.Login!.Heading.Should().Be("Welcome");
             result.Pages.Signup!.Heading.Should().Be("Create Your Blocks Account");
         }
@@ -95,6 +96,7 @@ namespace XUnitTest.Auth.Shared
             Guid.TryParse(result.ItemId, out _).Should().BeTrue();
             persisted.Should().NotBeNull();
             persisted!.ItemId.Should().Be(result.ItemId);
+            persisted.SchemaVersion.Should().Be(OidcUiTemplate.CurrentSchemaVersion);
             persisted.Branding.Should().BeSameAs(request.Branding);
             persisted.Theme.Should().BeSameAs(request.Theme);
             persisted.Pages.Should().BeSameAs(request.Pages);
@@ -109,9 +111,6 @@ namespace XUnitTest.Auth.Shared
                 .Returns(Task.CompletedTask);
             var request = OidcUiTemplateTestData.ValidRequest();
             request.Branding!.LogoUrl = null;
-            request.Theme!.Border = null;
-            request.Theme.BorderStrong = null;
-            request.Theme.AccentSoft = null;
             request.Pages!.Mfa!.ResendButton = null;
             request.Pages.AccountSelector!.Subheading = null;
 
@@ -119,9 +118,6 @@ namespace XUnitTest.Auth.Shared
 
             result.IsSuccess.Should().BeTrue();
             persisted!.Branding!.LogoUrl.Should().BeNull();
-            persisted.Theme!.Border.Should().BeNull();
-            persisted.Theme.BorderStrong.Should().BeNull();
-            persisted.Theme.AccentSoft.Should().BeNull();
             persisted.Pages!.Mfa!.ResendButton.Should().BeNull();
             persisted.Pages.AccountSelector!.Subheading.Should().BeNull();
         }
@@ -133,7 +129,7 @@ namespace XUnitTest.Auth.Shared
                 .Setup(v => v.ValidateAsync(It.IsAny<SaveOidcUiTemplateRequest>(), It.IsAny<CancellationToken>()))
                 .ReturnsAsync(new ValidationResult(
                 [
-                    new ValidationFailure("Theme.Primary", "invalid color"),
+                    new ValidationFailure("Theme.Dark.Primary", "invalid color"),
                     new ValidationFailure("Pages.Login.Heading", "too long"),
                     new ValidationFailure("Branding.BrandName", "required")
                 ]));
@@ -144,7 +140,7 @@ namespace XUnitTest.Auth.Shared
             result.ItemId.Should().BeNull();
             result.Errors.Should().BeEquivalentTo(new Dictionary<string, string>
             {
-                ["Theme.Primary"] = "invalid color",
+                ["Theme.Dark.Primary"] = "invalid color",
                 ["Pages.Login.Heading"] = "too long",
                 ["Branding.BrandName"] = "required"
             });

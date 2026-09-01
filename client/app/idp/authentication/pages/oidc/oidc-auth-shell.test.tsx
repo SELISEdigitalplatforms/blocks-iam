@@ -122,23 +122,21 @@ describe("OidcAuthShell", () => {
     expect(screen.getByTestId("phase")).toHaveTextContent("idle");
   });
 
-  it("applies template CSS variables and omits nullable optional variables", () => {
+  it("applies the stored dark palette CSS variables", () => {
     document.documentElement.classList.add("dark");
     const { container } = renderShell({
       theme: {
         ...DEFAULT_OIDC_UI_TEMPLATE.theme,
-        primary: "#123456",
-        border: null,
-        borderStrong: null,
-        accentSoft: null,
+        dark: {
+          ...DEFAULT_OIDC_UI_TEMPLATE.theme.dark,
+          primary: "#123456",
+        },
       },
     });
     const root = container.querySelector(".oidc-scifi-root") as HTMLElement;
     expect(root.style.getPropertyValue("--accent")).toBe("#123456");
     expect(root.style.getPropertyValue("--bg")).toBe("#050510");
-    expect(root.style.getPropertyValue("--border")).toBe("");
-    expect(root.style.getPropertyValue("--border-strong")).toBe("");
-    expect(root.style.getPropertyValue("--accent-soft")).toBe("");
+    expect(root.style.getPropertyValue("--border")).toBe("#16162a");
     expect(root).toHaveAttribute("data-theme", "dark");
   });
 
@@ -157,7 +155,7 @@ describe("OidcAuthShell", () => {
     expect(screen.getByRole("tab", { name: "Dark" })).toBeInTheDocument();
   });
 
-  it("reacts to the resolved html theme and removes dark template colors in light mode", async () => {
+  it("reacts to the resolved html theme and applies the stored light palette", async () => {
     document.documentElement.classList.add("dark");
     const { container } = renderShell();
     const root = container.querySelector(".oidc-scifi-root") as HTMLElement;
@@ -170,6 +168,6 @@ describe("OidcAuthShell", () => {
     });
 
     await waitFor(() => expect(root).toHaveAttribute("data-theme", "light"));
-    expect(root.style.getPropertyValue("--bg")).toBe("");
+    expect(root.style.getPropertyValue("--bg")).toBe("#f5f7fb");
   });
 });

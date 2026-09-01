@@ -38,6 +38,20 @@ namespace Authentication.DomainService.OAuth
         {
             public ThemeValidator()
             {
+                RuleFor(x => x.Light).NotNull().WithMessage("is required");
+                RuleFor(x => x.Dark).NotNull().WithMessage("is required");
+
+                When(x => x.Light is not null, () =>
+                    RuleFor(x => x.Light!).SetValidator(new ThemePaletteValidator()));
+                When(x => x.Dark is not null, () =>
+                    RuleFor(x => x.Dark!).SetValidator(new ThemePaletteValidator()));
+            }
+        }
+
+        private sealed class ThemePaletteValidator : AbstractValidator<OidcUiThemePalette>
+        {
+            public ThemePaletteValidator()
+            {
                 RuleFor(x => x.Primary).RequiredHexColor();
                 RuleFor(x => x.Secondary).RequiredHexColor();
                 RuleFor(x => x.Background).RequiredHexColor();
@@ -47,9 +61,9 @@ namespace Authentication.DomainService.OAuth
                 RuleFor(x => x.Success).RequiredHexColor();
                 RuleFor(x => x.Danger).RequiredHexColor();
 
-                RuleFor(x => x.Border).OptionalHexOrRgbaColor();
-                RuleFor(x => x.BorderStrong).OptionalHexOrRgbaColor();
-                RuleFor(x => x.AccentSoft).OptionalHexOrRgbaColor();
+                RuleFor(x => x.Border).RequiredHexOrRgbaColor();
+                RuleFor(x => x.BorderStrong).RequiredHexOrRgbaColor();
+                RuleFor(x => x.AccentSoft).RequiredHexOrRgbaColor();
             }
         }
 
@@ -219,10 +233,10 @@ namespace Authentication.DomainService.OAuth
                 .WithMessage(HexColorMessage);
         }
 
-        public static IRuleBuilderOptions<T, string?> OptionalHexOrRgbaColor<T>(this IRuleBuilder<T, string?> rule)
+        public static IRuleBuilderOptions<T, string?> RequiredHexOrRgbaColor<T>(this IRuleBuilder<T, string?> rule)
         {
             return rule
-                .Must(value => value is null || HexColorRegex.IsMatch(value) || IsRgbaColor(value))
+                .Must(value => value is not null && (HexColorRegex.IsMatch(value) || IsRgbaColor(value)))
                 .WithMessage(HexOrRgbaColorMessage);
         }
 

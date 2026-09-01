@@ -54,8 +54,9 @@ namespace XUnitTest.Auth.Shared
             summary.TenantsMigrated.Should().Be(1);
             var migrated = _templates["tenant-1"];
             migrated.Branding!.LogoUrl.Should().Be("https://t1.example/logo.png");
-            migrated.Theme!.Primary.Should().Be("#123456");
-            migrated.Theme.Secondary.Should().Be(IdpService.CreateDefaultOidcUiTemplate().Theme!.Secondary);
+            migrated.Theme!.Light!.Primary.Should().Be("#123456");
+            migrated.Theme.Dark!.Primary.Should().Be("#123456");
+            migrated.Theme.Dark.Secondary.Should().Be(IdpService.CreateDefaultOidcUiTemplate().Theme!.Dark!.Secondary);
             migrated.Pages.Should().BeEquivalentTo(IdpService.CreateDefaultOidcUiTemplate().Pages);
             Guid.TryParse(migrated.ItemId, out _).Should().BeTrue();
         }
@@ -74,7 +75,7 @@ namespace XUnitTest.Auth.Shared
             await Create().RunAsync();
 
             _templates["tenant-1"].Branding!.LogoUrl.Should().Be("https://winner.example/logo.png");
-            _templates["tenant-1"].Theme!.Primary.Should().Be("#222222");
+            _templates["tenant-1"].Theme!.Dark!.Primary.Should().Be("#222222");
         }
 
         [Fact]
@@ -89,7 +90,7 @@ namespace XUnitTest.Auth.Shared
 
             await Create().RunAsync();
 
-            _templates["tenant-1"].Theme!.Primary.Should().Be("#123456");
+            _templates["tenant-1"].Theme!.Dark!.Primary.Should().Be("#123456");
             _templates["tenant-1"].Branding!.LogoUrl.Should().BeNull();
         }
 
@@ -106,7 +107,7 @@ namespace XUnitTest.Auth.Shared
 
             await Create().RunAsync();
 
-            _templates["tenant-1"].Theme!.Primary.Should().Be("#111111");
+            _templates["tenant-1"].Theme!.Dark!.Primary.Should().Be("#111111");
         }
 
         [Theory]
@@ -125,7 +126,7 @@ namespace XUnitTest.Auth.Shared
 
             var migrated = _templates["tenant-1"];
             migrated.Branding!.LogoUrl.Should().Be("https://t1.example/logo.png");
-            migrated.Theme!.Primary.Should().Be("#0066b2");
+            migrated.Theme!.Dark!.Primary.Should().Be("#0066b2");
         }
 
         [Fact]
@@ -157,6 +158,36 @@ namespace XUnitTest.Auth.Shared
             _templates["tenant-1"].Should().BeSameAs(existing);
             _reader.Verify(r => r.ReadAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<CancellationToken>()), Times.Never);
             _repository.Verify(r => r.SaveOidcUiTemplateAsync(It.IsAny<OidcUiTemplate>()), Times.Never);
+        }
+
+        [Fact]
+        public async Task ExistingV1Template_IsUpgradedToCompleteLightAndDarkV2Document()
+        {
+            ConfigureTenants("tenant-1");
+            _templates["tenant-1"] = new OidcUiTemplate
+            {
+                ItemId = "existing-id",
+                Branding = new OidcUiTemplateBranding { BrandName = "Legacy brand" },
+                Theme = new OidcUiTemplateTheme { Primary = "#123456" },
+                Pages = new OidcUiTemplatePages
+                {
+                    Login = new OidcUiLoginPage { Heading = "Legacy heading" }
+                }
+            };
+
+            var summary = await Create().RunAsync();
+
+            summary.TenantsMigrated.Should().Be(1);
+            var upgraded = _templates["tenant-1"];
+            upgraded.ItemId.Should().Be("existing-id");
+            upgraded.SchemaVersion.Should().Be(OidcUiTemplate.CurrentSchemaVersion);
+            upgraded.Theme!.Dark!.Primary.Should().Be("#123456");
+            upgraded.Theme.Light!.Background.Should().Be("#f5f7fb");
+            upgraded.Pages!.Login!.Heading.Should().Be("Legacy heading");
+            upgraded.Pages.Signup!.Heading.Should().Be("Create Your Blocks Account");
+            _reader.Verify(
+                r => r.ReadAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<CancellationToken>()),
+                Times.Never);
         }
 
         [Fact]
@@ -199,7 +230,7 @@ namespace XUnitTest.Auth.Shared
 
             summary.TenantsFailed.Should().Be(1);
             summary.TenantsMigrated.Should().Be(1);
-            _templates.Should().ContainKey("tenant-good").WhoseValue.Theme!.Primary.Should().Be("#222222");
+            _templates.Should().ContainKey("tenant-good").WhoseValue.Theme!.Dark!.Primary.Should().Be("#222222");
             _templates.Should().NotContainKey("tenant-bad");
             _logger.Verify(logger => logger.Log(
                 LogLevel.Error,
