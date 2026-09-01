@@ -10,6 +10,7 @@ using System.Security.Cryptography;
 using System.Security.Cryptography.X509Certificates;
 using System.Text;
 using Iam.DomainService.Utilities;
+using Iam.DomainService.Resources;
 using Authentication.DomainService.OAuth.RequestModel;
 
 namespace Authentication.DomainService.OAuth
@@ -21,6 +22,7 @@ namespace Authentication.DomainService.OAuth
         private readonly ICryptoService _cryptoService;
         private readonly ICertificateProviderFactory _certificateProviderFactory;
         private readonly IAuthorizationClaimsResolver _authorizationClaimsResolver;
+        private readonly IResourceRepository _resourceRepository;
         private string? _key;
 
 
@@ -29,7 +31,8 @@ namespace Authentication.DomainService.OAuth
             ICacheClient cacheClient,
             ICryptoService cryptoService,
             ICertificateProviderFactory certificateProviderFactory,
-            IAuthorizationClaimsResolver authorizationClaimsResolver
+            IAuthorizationClaimsResolver authorizationClaimsResolver,
+            IResourceRepository resourceRepository
         )
         {
             _logger = logger;
@@ -37,6 +40,7 @@ namespace Authentication.DomainService.OAuth
             _cryptoService = cryptoService;
             _certificateProviderFactory = certificateProviderFactory;
             _authorizationClaimsResolver = authorizationClaimsResolver;
+            _resourceRepository = resourceRepository;
 
         }
 
@@ -50,11 +54,48 @@ namespace Authentication.DomainService.OAuth
             _key = _cryptoService.Hash(Encoding.UTF8.GetBytes($"{tenant.TenantId}::{tenant.ItemId}"));
             var certificate = await GetOrRetrieveCertAsync(tenant);
             if (certificate == null) return new JwtAccessToken();
-            var resolvedClaims = await _authorizationClaimsResolver.ResolveAsync(user, tokenRequest.OrganizationId, state?.Scope);
-            return MapJwtAccessToken(authenticationConfiguration, tenant, user, certificate, resolvedClaims, tokenRequest, stateInfo: state);
+
+            // The authoritative organization decision for every OAuth-family token: password,
+            // social, mfa, embedded login, refresh and token exchange all arrive here. The sign-in
+            // legs only pre-fill TokenRequest.OrganizationId; it is re-validated against current
+            // membership below, so a stale or unauthorised value cannot survive into a token.
+            var organizationScope = await ResolveOrganizationScopeAsync(user, tokenRequest.OrganizationId);
+
+            // Roles and permissions are read out of the SAME scope that becomes the claim. Passing
+            // the requested organization here instead would mint a token whose claim and whose
+            // role set disagree.
+            var resolvedClaims = await _authorizationClaimsResolver.ResolveAsync(user, organizationScope.ClaimValue, state?.Scope);
+            return MapJwtAccessToken(authenticationConfiguration, tenant, user, certificate, resolvedClaims, tokenRequest, organizationScope, stateInfo: state);
         }
 
-        public JwtAccessToken MapJwtAccessToken(IdentityConfiguration authenticationConfiguration, Tenant tenant, User user, byte[] certificate, ResolvedAuthorizationClaims resolvedClaims, TokenRequest tokenRequest, StateInfo? stateInfo = null)
+        /// <summary>
+        /// Resolves the organization scope a token is minted for, reading the tenant's
+        /// multi-organization mode so a single-organization project always lands on "default".
+        /// </summary>
+        /// <remarks>
+        /// A configuration that cannot be read is treated as multi-org disabled, which resolves to
+        /// "default" and therefore preserves the behavior every caller had before the three-state
+        /// claim existed. Failing the other way would drop every caller into "no-org" on a
+        /// transient read failure and lock them out of their own organization.
+        /// </remarks>
+        private async Task<OrganizationScope> ResolveOrganizationScopeAsync(User user, string? requestedOrganizationId)
+        {
+            var isMultiOrgEnabled = false;
+
+            try
+            {
+                var tenantConfiguration = await _resourceRepository.GetTenantConfigurationAsync();
+                isMultiOrgEnabled = tenantConfiguration?.IsMultiOrgEnabled ?? false;
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "Could not read the tenant configuration while minting a token for user {UserId}; treating multi-organization mode as disabled.", user.ItemId);
+            }
+
+            return OrganizationAccessResolver.Resolve(user, requestedOrganizationId, isMultiOrgEnabled);
+        }
+
+        public JwtAccessToken MapJwtAccessToken(IdentityConfiguration authenticationConfiguration, Tenant tenant, User user, byte[] certificate, ResolvedAuthorizationClaims resolvedClaims, TokenRequest tokenRequest, OrganizationScope organizationScope, StateInfo? stateInfo = null)
         {
             var jwtAccessToken = new JwtAccessToken
             {
@@ -69,33 +110,25 @@ namespace Authentication.DomainService.OAuth
             };
 
             var claimsIdentity = new ClaimsIdentity("seliseblocks-authentication");
-            AddClaims(claimsIdentity, tenant, user, resolvedClaims, tokenRequest, stateInfo: stateInfo);
+            AddClaims(claimsIdentity, tenant, user, resolvedClaims, tokenRequest, organizationScope, stateInfo: stateInfo);
             jwtAccessToken.Claims = claimsIdentity.Claims;
 
             return jwtAccessToken;
         }
 
-        public static void AddClaims(ClaimsIdentity claimsIdentity, Tenant tenant, User user, ResolvedAuthorizationClaims resolvedClaims, TokenRequest tokenRequest, StateInfo? stateInfo = null)
+        public static void AddClaims(ClaimsIdentity claimsIdentity, Tenant tenant, User user, ResolvedAuthorizationClaims resolvedClaims, TokenRequest tokenRequest, OrganizationScope organizationScope, StateInfo? stateInfo = null)
         {
 
             claimsIdentity.AddClaim(new Claim(BlocksContext.SUBJECT_CLAIM, $"blocks|{user.ItemId}"));
             claimsIdentity.AddClaim(new Claim(BlocksContext.USER_ID_CLAIM, user.ItemId));
             claimsIdentity.AddClaim(new Claim(BlocksContext.ISSUED_AT_TIME_CLAIM, EpochTime.GetIntDate(DateTime.UtcNow).ToString(), ClaimValueTypes.Integer64));
-            var resolvedOrgId = "default";
-            // The same three-way membership test that switch-org already authorises the switch with
-            // (AuthenticationFlowService.ExecuteSwitchOrganizationAsync). Accepting only
-            // OrganizationIds here let a switch granted through Roles or Permissions succeed while
-            // silently minting a "default" claim, dropping that user into the tenant-wide scope
-            // instead of the organization they switched into. Impersonation is unaffected: the cloud
-            // user matches none of the three, so its claim still resolves to "default".
-            if (!string.IsNullOrWhiteSpace(tokenRequest.OrganizationId)
-                && (user.OrganizationIds.Contains(tokenRequest.OrganizationId)
-                    || user.Roles.ContainsKey(tokenRequest.OrganizationId)
-                    || user.Permissions.ContainsKey(tokenRequest.OrganizationId)))
-            {
-                resolvedOrgId = tokenRequest.OrganizationId;
-            }
-            claimsIdentity.AddClaim(new Claim(BlocksContext.ORGANIZATION_ID_CLAIM, resolvedOrgId));
+            // Decided by OrganizationScopeResolver, the one place that owns the three-state contract
+            // ("default" / <orgId> / "no-org"). This used to default to "default" and re-run the
+            // membership test inline, which meant an unresolvable organization silently became the
+            // tenant-wide scope -- the most privileged one there is. Impersonation is unaffected:
+            // the cloud user matches none of the membership tests, and a single-organization tenant
+            // short-circuits to "default", so both still resolve exactly as before.
+            claimsIdentity.AddClaim(new Claim(BlocksContext.ORGANIZATION_ID_CLAIM, organizationScope.ClaimValue));
             claimsIdentity.AddClaim(new Claim("token_version", user.TokenVersion.ToString(), ClaimValueTypes.Integer32));
             claimsIdentity.AddClaim(new Claim("security_stamp", user.SecurityStamp ?? string.Empty));
 

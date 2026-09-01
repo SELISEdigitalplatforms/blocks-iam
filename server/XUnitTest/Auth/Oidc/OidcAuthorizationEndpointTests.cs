@@ -13,6 +13,8 @@ using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.Logging.Abstractions;
 using Moq;
+using Iam.DomainService.Resources;
+using Iam.DomainService.Shared.Entities;
 
 namespace XUnitTest.Auth.Oidc
 {
@@ -31,6 +33,7 @@ namespace XUnitTest.Auth.Oidc
         private readonly Mock<Authentication.DomainService.Authentication.IAuthenticationService> _authService = new();
         private readonly Mock<ITenants> _tenants = new();
         private readonly Mock<ICacheClient> _cache = new();
+        private readonly Mock<IResourceRepository> _resourceRepo = new();
 
         private readonly OidcAuthorizationEndpoint _endpoint;
 
@@ -64,6 +67,7 @@ namespace XUnitTest.Auth.Oidc
                 _authService.Object,
                 _tenants.Object,
                 _cache.Object,
+                _resourceRepo.Object,
                 NullLogger<OidcAuthorizationEndpoint>.Instance);
         }
 
@@ -442,6 +446,10 @@ namespace XUnitTest.Auth.Oidc
             user.OrganizationIds = new List<string> { "org-1" };
             user.LastUsedOrganizationId = null;
             _userRepo.Setup(u => u.GetUserByIdAsync(It.IsAny<string>())).ReturnsAsync(user);
+            // Only a real organization is worth remembering, and only multi-org tenants have any:
+            // with the mode off the scope is "default", a sentinel, which is never persisted here.
+            _resourceRepo.Setup(r => r.GetTenantConfigurationAsync())
+                .ReturnsAsync(new TenantConfiguration { IsMultiOrgEnabled = true });
 
             var result = await Authorize(blocksUserId: "user-1");
 

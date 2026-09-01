@@ -45,6 +45,18 @@ namespace Iam.DomainService.Utilities
 
         public const string DefaultOrganizationId = "default";
 
+        /// <summary>
+        /// The organization scope of a caller who is authenticated but belongs to no organization.
+        /// <para>
+        /// A sentinel rather than an absent or empty claim on purpose: a blank organization is
+        /// collapsed back to <see cref="DefaultOrganizationId"/> in more than one place -- Genesis's
+        /// endpoint authorization handler and the OIDC refresh path both do it -- which would hand
+        /// the tenant-wide scope, the most privileged one there is, to exactly the callers who are
+        /// meant to hold none. A non-empty value cannot be collapsed that way.
+        /// </para>
+        /// </summary>
+        public const string NoOrganizationId = "no-org";
+
         #endregion
 
         #region Severity

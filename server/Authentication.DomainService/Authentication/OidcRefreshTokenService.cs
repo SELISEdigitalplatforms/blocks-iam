@@ -91,7 +91,11 @@ namespace Authentication.DomainService.Authentication
             var tokenRequest = new TokenRequest
             {
                 GrantType = GrantTypes.RefreshToken,
-                OrganizationId = string.IsNullOrWhiteSpace(tokenCache.OrganizationId) ? "default" : tokenCache.OrganizationId,
+                // A HINT only, no longer a replay: JwtAccessTokenProvider re-resolves the scope
+                // against the user's current membership, so a revoked organization cannot survive
+                // a refresh. The blank -> "default" collapse that used to live here handed the
+                // tenant-wide scope to any cache entry that had lost its organization.
+                OrganizationId = tokenCache.OrganizationId ?? string.Empty,
                 ClientId = tokenCache.ClientId,
                 RefreshToken = refreshToken,
                 Request = request,
