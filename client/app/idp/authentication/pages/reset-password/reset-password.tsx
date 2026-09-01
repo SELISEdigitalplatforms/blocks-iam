@@ -4,7 +4,6 @@ import { OidcAuthShell, OidcFooter } from "../oidc/oidc-auth-shell";
 import { RESET_PASSWORD_PANEL } from "../oidc/oidc-panel-config";
 import { ResetPasswordForm } from "./reset-password-form";
 import { useOidcUiConfig } from "@blocks-idp/authentication/hooks/use-oidc-ui-config";
-import { DEFAULT_OIDC_UI_TEMPLATE } from "@blocks-idp/authentication/models/oidc-ui-template";
 
 type ResetPasswordProps = {
   code?: string;
@@ -14,7 +13,7 @@ type ResetPasswordProps = {
 
 export const ResetPassword = ({ code, tenantId }: ResetPasswordProps) => {
   const { data: oidcUiConfig } = useOidcUiConfig(tenantId);
-  const template = oidcUiConfig?.template ?? DEFAULT_OIDC_UI_TEMPLATE;
+  const template = oidcUiConfig?.template;
 
   return (
     <OidcAuthShell

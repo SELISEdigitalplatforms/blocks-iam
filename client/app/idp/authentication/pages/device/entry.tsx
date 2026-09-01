@@ -4,7 +4,6 @@ import { Loader } from "lucide-react";
 
 import { OidcAuthShell, OidcFooter, useOidcAuthAnimation } from "@blocks-idp/authentication/pages/oidc/oidc-auth-shell";
 import { useOidcUiConfig } from "@blocks-idp/authentication/hooks/use-oidc-ui-config";
-import { DEFAULT_OIDC_UI_TEMPLATE } from "@blocks-idp/authentication/models/oidc-ui-template";
 import { DEVICE_ENTRY_PANEL, DEVICE_CONSENT_PANEL } from "./panel-config";
 import {
   formatUserCodeForDisplay,
@@ -30,7 +29,7 @@ export function DeviceEntryPage() {
   const tenantId = (params.tenantId ?? "").trim();
   const animCtx = useOidcAuthAnimation();
   const { data: oidcUiConfig } = useOidcUiConfig(tenantId);
-  const template = oidcUiConfig?.template ?? DEFAULT_OIDC_UI_TEMPLATE;
+  const template = oidcUiConfig?.template;
   const shellTemplateProps = {
     theme: template.theme,
     logoUrl: template.branding.logoUrl,

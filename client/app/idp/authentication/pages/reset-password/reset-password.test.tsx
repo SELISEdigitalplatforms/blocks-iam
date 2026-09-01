@@ -1,7 +1,7 @@
 import { render, screen } from "@testing-library/react";
 import { MemoryRouter } from "react-router";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { DEFAULT_OIDC_UI_TEMPLATE } from "@blocks-idp/authentication/models/oidc-ui-template";
+import { OIDC_UI_TEMPLATE_FIXTURE } from "@blocks-idp/authentication/test-utils/oidc-ui-template-fixture";
 
 const h = vi.hoisted(() => ({
   oidcUiConfig: undefined as unknown,
@@ -52,11 +52,11 @@ describe("ResetPassword", () => {
     h.oidcUiConfig = {
       captcha: null,
       template: {
-        ...DEFAULT_OIDC_UI_TEMPLATE,
+        ...OIDC_UI_TEMPLATE_FIXTURE,
         pages: {
-          ...DEFAULT_OIDC_UI_TEMPLATE.pages,
+          ...OIDC_UI_TEMPLATE_FIXTURE.pages,
           resetPassword: {
-            ...DEFAULT_OIDC_UI_TEMPLATE.pages.resetPassword,
+            ...OIDC_UI_TEMPLATE_FIXTURE.pages.resetPassword,
             heading: "Choose a new Acme secret",
             successTitle: "Secret changed",
             successSubtitle: "Your Acme sessions are protected",

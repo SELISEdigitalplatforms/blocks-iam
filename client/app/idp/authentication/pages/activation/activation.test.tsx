@@ -37,7 +37,7 @@ vi.mock("@blocks-idp/authentication/hooks/use-oidc-ui-config", () => ({
 }));
 
 import { Activation } from "./activation";
-import { DEFAULT_OIDC_UI_TEMPLATE } from "@blocks-idp/authentication/models/oidc-ui-template";
+import { OIDC_UI_TEMPLATE_FIXTURE } from "@blocks-idp/authentication/test-utils/oidc-ui-template-fixture";
 
 const renderCmp = (props: Parameters<typeof Activation>[0] = {}) =>
   render(
@@ -72,11 +72,11 @@ describe("Activation", () => {
     h.oidcUiConfig = {
       captcha: null,
       template: {
-        ...DEFAULT_OIDC_UI_TEMPLATE,
+        ...OIDC_UI_TEMPLATE_FIXTURE,
         pages: {
-          ...DEFAULT_OIDC_UI_TEMPLATE.pages,
+          ...OIDC_UI_TEMPLATE_FIXTURE.pages,
           activation: {
-            ...DEFAULT_OIDC_UI_TEMPLATE.pages.activation,
+            ...OIDC_UI_TEMPLATE_FIXTURE.pages.activation,
             heading: "Enable Acme account",
             successTitle: "Acme account enabled",
             successSubtitle: "You can now continue",

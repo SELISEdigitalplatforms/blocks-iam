@@ -34,7 +34,7 @@ vi.mock("../login/sso-signin", () => ({
 }));
 
 import { SignupForm } from "./signup-form";
-import { DEFAULT_OIDC_UI_TEMPLATE } from "@blocks-idp/authentication/models/oidc-ui-template";
+import { OIDC_UI_TEMPLATE_FIXTURE } from "@blocks-idp/authentication/test-utils/oidc-ui-template-fixture";
 
 const renderForm = (props: Partial<Parameters<typeof SignupForm>[0]> = {}) =>
   render(
@@ -75,11 +75,11 @@ describe("SignupForm", () => {
     h.oidcUiConfig = {
       captcha: null,
       template: {
-        ...DEFAULT_OIDC_UI_TEMPLATE,
+        ...OIDC_UI_TEMPLATE_FIXTURE,
         pages: {
-          ...DEFAULT_OIDC_UI_TEMPLATE.pages,
+          ...OIDC_UI_TEMPLATE_FIXTURE.pages,
           signup: {
-            ...DEFAULT_OIDC_UI_TEMPLATE.pages.signup,
+            ...OIDC_UI_TEMPLATE_FIXTURE.pages.signup,
             firstNameLabel: "Given name",
             lastNameLabel: "Family name",
             emailLabel: "Business address",

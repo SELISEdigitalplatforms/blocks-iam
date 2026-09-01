@@ -14,7 +14,6 @@ import { useAccountResetPassword } from "@blocks-idp/iam/hooks/use-account";
 import { isErrorWithErrors } from "@/lib/error";
 import { useCaptcha } from "@blocks-idp/captcha/hooks/use-captcha";
 import { useOidcUiConfig } from "@blocks-idp/authentication/hooks/use-oidc-ui-config";
-import { DEFAULT_OIDC_UI_TEMPLATE } from "@blocks-idp/authentication/models/oidc-ui-template";
 import { PasswordStrengthChecker } from "@blocks-idp/authentication/components/password-strength-checker/password-strength-checker";
 import { Switch } from "@/components/ui-kits/switch/switch";
 import { ArrowRight, Eye, EyeOff, Loader } from "lucide-react";
@@ -40,7 +39,7 @@ export const ResetPasswordForm = ({ code, tenantId }: ResetPasswordFormProps) =>
   });
 
   const { data: oidcUiConfig, captchaEnabled } = useOidcUiConfig(tenantId);
-  const resetPasswordCopy = (oidcUiConfig?.template ?? DEFAULT_OIDC_UI_TEMPLATE).pages.resetPassword;
+  const resetPasswordCopy = (oidcUiConfig?.template).pages.resetPassword;
   const googleSiteKey =
     oidcUiConfig?.captcha?.key || getRuntimeEnv("BLOCKS_GOOGLE_SITE_KEY") || "";
   const { captcha, code: captchaCode, reset: resetCaptcha } = useCaptcha({

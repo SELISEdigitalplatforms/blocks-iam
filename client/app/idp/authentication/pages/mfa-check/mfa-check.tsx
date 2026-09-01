@@ -8,12 +8,11 @@ import {
   useOidcResolvedTheme,
 } from "../oidc/oidc-auth-shell";
 import { useOidcUiConfig } from "@blocks-idp/authentication/hooks/use-oidc-ui-config";
-import { DEFAULT_OIDC_UI_TEMPLATE } from "@blocks-idp/authentication/models/oidc-ui-template";
 import "../oidc/sci-fi-oidc.css";
 
 export const MfaCheck = () => {
   const { data: oidcUiConfig } = useOidcUiConfig();
-  const template = oidcUiConfig?.template ?? DEFAULT_OIDC_UI_TEMPLATE;
+  const template = oidcUiConfig?.template;
   const resolvedTheme = useOidcResolvedTheme();
   const [{ mfa_type }] = useQueryStates({
     mfa_type: parseAsInteger.withDefault(0),

@@ -10,7 +10,7 @@ vi.mock("@blocks-idp/authentication/hooks/use-oidc-ui-config", () => ({
 }));
 
 import { OidcAccountSelector } from "./oidc-account-selector";
-import { DEFAULT_OIDC_UI_TEMPLATE } from "@blocks-idp/authentication/models/oidc-ui-template";
+import { OIDC_UI_TEMPLATE_FIXTURE } from "@blocks-idp/authentication/test-utils/oidc-ui-template-fixture";
 
 const accounts = [
   { user_id: "u1", tenant_id: "t1", email: "a@x.com", display_name: "Alice" },
@@ -42,9 +42,9 @@ describe("OidcAccountSelector", () => {
     h.oidcUiConfig = {
       captcha: null,
       template: {
-        ...DEFAULT_OIDC_UI_TEMPLATE,
+        ...OIDC_UI_TEMPLATE_FIXTURE,
         pages: {
-          ...DEFAULT_OIDC_UI_TEMPLATE.pages,
+          ...OIDC_UI_TEMPLATE_FIXTURE.pages,
           accountSelector: { heading: "Acme Identity", subheading: "Choose your workspace" },
         },
       },

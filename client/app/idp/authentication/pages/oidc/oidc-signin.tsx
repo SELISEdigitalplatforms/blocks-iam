@@ -11,7 +11,6 @@ import { OidcLoginForm } from "./oidc-login-form";
 import { OidcAuthShell, OidcFooter } from "./oidc-auth-shell";
 import { OIDC_LOGIN_PANEL } from "./oidc-panel-config";
 import { useOidcUiConfig } from "@blocks-idp/authentication/hooks/use-oidc-ui-config";
-import { DEFAULT_OIDC_UI_TEMPLATE } from "@blocks-idp/authentication/models/oidc-ui-template";
 
 export const OIDCSignin = () => {
   const [searchParams] = useSearchParams();
@@ -21,7 +20,7 @@ export const OIDCSignin = () => {
   const oidcContext = useOIDCContext();
   const tenantId = oidcContext.tenantId || searchParams.get("tenant_id") || undefined;
   const { data: oidcUiConfig } = useOidcUiConfig(tenantId);
-  const template = oidcUiConfig?.template ?? DEFAULT_OIDC_UI_TEMPLATE;
+  const template = oidcUiConfig?.template;
 
   const code = searchParams.get("code") || "";
   const state = searchParams.get("state") || "";

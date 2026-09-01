@@ -36,7 +36,7 @@ vi.mock("@blocks-idp/authentication/hooks/use-oidc-ui-config", () => ({
 }));
 
 import { Signup } from "./signup";
-import { DEFAULT_OIDC_UI_TEMPLATE } from "@blocks-idp/authentication/models/oidc-ui-template";
+import { OIDC_UI_TEMPLATE_FIXTURE } from "@blocks-idp/authentication/test-utils/oidc-ui-template-fixture";
 
 const renderSignup = (props = {}) =>
   render(
@@ -87,11 +87,11 @@ describe("Signup", () => {
     h.oidcUiConfig = {
       captcha: null,
       template: {
-        ...DEFAULT_OIDC_UI_TEMPLATE,
+        ...OIDC_UI_TEMPLATE_FIXTURE,
         pages: {
-          ...DEFAULT_OIDC_UI_TEMPLATE.pages,
+          ...OIDC_UI_TEMPLATE_FIXTURE.pages,
           signup: {
-            ...DEFAULT_OIDC_UI_TEMPLATE.pages.signup,
+            ...OIDC_UI_TEMPLATE_FIXTURE.pages.signup,
             heading: "Join Acme",
             successTitle: "Welcome aboard",
             successSubtitle: "Check your Acme inbox",

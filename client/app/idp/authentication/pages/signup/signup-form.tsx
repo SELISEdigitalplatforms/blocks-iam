@@ -9,7 +9,6 @@ import { Captcha } from "@/components/captcha";
 import { isErrorWithErrors } from "@/lib/error";
 import { getRuntimeEnv } from "@/lib/runtime-env";
 import { useOidcUiConfig } from "@blocks-idp/authentication/hooks/use-oidc-ui-config";
-import { DEFAULT_OIDC_UI_TEMPLATE } from "@blocks-idp/authentication/models/oidc-ui-template";
 import { useSignupByEmail } from "@blocks-idp/authentication/hooks/use-auth";
 import { LoginOption } from "@blocks-idp/authentication/models/auth.model";
 import { useCaptcha } from "@blocks-idp/captcha/hooks/use-captcha";
@@ -59,7 +58,7 @@ export const SignupForm = ({
   });
   const { isPending, mutateAsync } = useSignupByEmail();
   const { data: oidcUiConfig, captchaEnabled } = useOidcUiConfig(tenantId);
-  const signupCopy = (oidcUiConfig?.template ?? DEFAULT_OIDC_UI_TEMPLATE).pages.signup;
+  const signupCopy = (oidcUiConfig?.template).pages.signup;
 
   const googleSiteKey =
     oidcUiConfig?.captcha?.key || getRuntimeEnv("BLOCKS_GOOGLE_SITE_KEY") || "";

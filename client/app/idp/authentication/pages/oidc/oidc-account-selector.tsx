@@ -5,7 +5,6 @@ import { showErrorToast } from "@/hooks/use-toast";
 import { authService } from "@blocks-idp/authentication/services/auth.service";
 import { Loader } from "lucide-react";
 import { useOidcUiConfig } from "@blocks-idp/authentication/hooks/use-oidc-ui-config";
-import { DEFAULT_OIDC_UI_TEMPLATE } from "@blocks-idp/authentication/models/oidc-ui-template";
 import { OidcFooter } from "./oidc-auth-shell";
 
 export interface OidcAccountInfo {
@@ -24,7 +23,7 @@ export interface OidcAccountSelectorProps {
 
 export const OidcAccountSelector = ({ accounts, onAccountSelect, isLoading = false }: OidcAccountSelectorProps) => {
   const { data: oidcUiConfig } = useOidcUiConfig();
-  const template = oidcUiConfig?.template ?? DEFAULT_OIDC_UI_TEMPLATE;
+  const template = oidcUiConfig?.template;
   const [selectedAccount, setSelectedAccount] = useState<OidcAccountInfo | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
 

@@ -6,7 +6,6 @@ import { OidcAuthShell, OidcFooter } from "../oidc/oidc-auth-shell";
 import { ACTIVATE_PANEL } from "../oidc/oidc-panel-config";
 import { useAccountActivationCodeExpiration, useAccountResendActivation } from "@blocks-idp/iam/hooks/use-account";
 import { useOidcUiConfig } from "@blocks-idp/authentication/hooks/use-oidc-ui-config";
-import { DEFAULT_OIDC_UI_TEMPLATE } from "@blocks-idp/authentication/models/oidc-ui-template";
 
 type ActivationProps = {
   code?: string;
@@ -16,7 +15,7 @@ type ActivationProps = {
 
 export const Activation = ({ code, tenantId }: ActivationProps) => {
   const { data: oidcUiConfig } = useOidcUiConfig(tenantId);
-  const template = oidcUiConfig?.template ?? DEFAULT_OIDC_UI_TEMPLATE;
+  const template = oidcUiConfig?.template;
   const {
     isPending: isActivationPending,
     mutateAsync: activationCodeValidation,

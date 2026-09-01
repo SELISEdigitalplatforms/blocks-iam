@@ -12,7 +12,6 @@ import { useAccountRecover } from "@blocks-idp/iam/hooks/use-account";
 import { isErrorWithErrors } from "@/lib/error";
 import { useCaptcha } from "@blocks-idp/captcha/hooks/use-captcha";
 import { useOidcUiConfig } from "@blocks-idp/authentication/hooks/use-oidc-ui-config";
-import { DEFAULT_OIDC_UI_TEMPLATE } from "@blocks-idp/authentication/models/oidc-ui-template";
 import {
   appendTenantId,
   buildOIDCNavigationUrl,
@@ -45,7 +44,7 @@ export const OIDCForgotPasswordForm = () => {
   const { isPending, mutateAsync } = useAccountRecover();
 
   const { data: oidcUiConfig, captchaEnabled } = useOidcUiConfig();
-  const forgotPasswordCopy = (oidcUiConfig?.template ?? DEFAULT_OIDC_UI_TEMPLATE).pages.forgotPassword;
+  const forgotPasswordCopy = (oidcUiConfig?.template).pages.forgotPassword;
   const googleSiteKey =
     oidcUiConfig?.captcha?.key || getRuntimeEnv("BLOCKS_GOOGLE_SITE_KEY") || "";
 

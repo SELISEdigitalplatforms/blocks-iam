@@ -60,7 +60,7 @@ vi.mock("@blocks-idp/authentication/hooks/use-oidc-ui-config", () => ({
 }));
 
 import { OIDCSignin } from "./oidc-signin";
-import { DEFAULT_OIDC_UI_TEMPLATE } from "@blocks-idp/authentication/models/oidc-ui-template";
+import { OIDC_UI_TEMPLATE_FIXTURE } from "@blocks-idp/authentication/test-utils/oidc-ui-template-fixture";
 
 const setPath = (pathname: string) => {
   Object.defineProperty(window, "location", {
@@ -113,11 +113,11 @@ describe("OIDCSignin", () => {
     h.oidcUiConfig = {
       captcha: null,
       template: {
-        ...DEFAULT_OIDC_UI_TEMPLATE,
+        ...OIDC_UI_TEMPLATE_FIXTURE,
         branding: { logoUrl: "https://example.test/logo.svg", brandName: "Acme" },
         pages: {
-          ...DEFAULT_OIDC_UI_TEMPLATE.pages,
-          login: { ...DEFAULT_OIDC_UI_TEMPLATE.pages.login, heading: "Welcome to Acme" },
+          ...OIDC_UI_TEMPLATE_FIXTURE.pages,
+          login: { ...OIDC_UI_TEMPLATE_FIXTURE.pages.login, heading: "Welcome to Acme" },
         },
       },
     };
@@ -126,7 +126,7 @@ describe("OIDCSignin", () => {
       heading: "Welcome to Acme",
       logoUrl: "https://example.test/logo.svg",
       brandName: "Acme",
-      theme: DEFAULT_OIDC_UI_TEMPLATE.theme,
+      theme: OIDC_UI_TEMPLATE_FIXTURE.theme,
     }));
   });
 
