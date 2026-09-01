@@ -1,6 +1,5 @@
 using System.Reflection;
 using Api.Controllers;
-using Authentication.DomainService.Authentication;
 using Authentication.DomainService.Services;
 using Authentication.DomainService.Shared.RequestModel;
 using Authentication.DomainService.Shared.ResponseModel;
@@ -19,15 +18,25 @@ namespace XUnitTest.ApiTests
         private OidcTemplateController Create() => new(_service.Object);
 
         [Fact]
-        public async Task Get_ReturnsEffectiveTemplateWithOk()
+        public async Task Get_ReturnsStoredTemplateWithOk()
         {
-            var template = IdpService.CreateDefaultOidcUiTemplate();
+            var template = OidcUiTemplateTestData.ValidTemplate();
             _service.Setup(s => s.GetOidcTemplateForManagementAsync()).ReturnsAsync(template);
 
             var result = await Create().GetOidcTemplate();
 
             var ok = result.Should().BeOfType<OkObjectResult>().Subject;
             ok.Value.Should().BeSameAs(template);
+        }
+
+        [Fact]
+        public async Task Get_WithoutStoredTemplate_ReturnsNotFound()
+        {
+            _service.Setup(s => s.GetOidcTemplateForManagementAsync()).ReturnsAsync((Authentication.DomainService.Entities.OidcUiTemplate?)null);
+
+            var result = await Create().GetOidcTemplate();
+
+            result.Should().BeOfType<NotFoundResult>();
         }
 
         [Fact]

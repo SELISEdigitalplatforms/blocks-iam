@@ -346,10 +346,9 @@ namespace Authentication.DomainService.Services
             };
         }
 
-        public async Task<OidcUiTemplate> GetOidcTemplateForManagementAsync()
+        public async Task<OidcUiTemplate?> GetOidcTemplateForManagementAsync()
         {
-            var savedTemplate = await _authenticationRepository.GetOidcUiTemplateAsync();
-            return IdpService.MergeOidcUiTemplateWithDefaults(savedTemplate);
+            return await _authenticationRepository.GetOidcUiTemplateAsync();
         }
 
         public async Task<SaveOidcUiTemplateResponse> SaveOidcUiTemplateRequestAsync(SaveOidcUiTemplateRequest request)
