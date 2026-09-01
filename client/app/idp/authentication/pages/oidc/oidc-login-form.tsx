@@ -98,7 +98,6 @@ export const OidcLoginForm = ({
   const animCtx = useOidcAuthAnimation();
   const { data: loginOption } = useGetLoginOptions(tenantId, true);
   const { data: oidcUiConfig, captchaEnabled } = useOidcUiConfig(tenantId);
-  const loginCopy = (oidcUiConfig?.template).pages.login;
   const { data: signUpSetting } = useGetSignUpSetting(tenantId);
   const isSignUpEnabled = signUpSetting?.isSignUpEnable ?? false;
   const [token, setToken] = useState("");
@@ -400,6 +399,9 @@ shake();
   useEffect(() => {
     if (!isValid && captchaCode) resetCaptcha();
   }, [captchaCode, isValid, resetCaptcha]);
+
+  if (!oidcUiConfig?.template) return null;
+  const loginCopy = oidcUiConfig.template.pages.login;
 
   if (isSelectingAccount && accounts.length > 0) {
     return (

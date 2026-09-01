@@ -39,7 +39,6 @@ export const ResetPasswordForm = ({ code, tenantId }: ResetPasswordFormProps) =>
   });
 
   const { data: oidcUiConfig, captchaEnabled } = useOidcUiConfig(tenantId);
-  const resetPasswordCopy = (oidcUiConfig?.template).pages.resetPassword;
   const googleSiteKey =
     oidcUiConfig?.captcha?.key || getRuntimeEnv("BLOCKS_GOOGLE_SITE_KEY") || "";
   const { captcha, code: captchaCode, reset: resetCaptcha } = useCaptcha({
@@ -83,6 +82,9 @@ export const ResetPasswordForm = ({ code, tenantId }: ResetPasswordFormProps) =>
   useEffect(() => {
     if (!isValid && !requirementsMet && captchaCode) resetCaptcha();
   }, [captchaCode, isValid, requirementsMet, resetCaptcha]);
+
+  if (!oidcUiConfig?.template) return null;
+  const resetPasswordCopy = oidcUiConfig.template.pages.resetPassword;
 
   const onSubmitHandler = async (values: ResetPasswordFormValuesType) => {
     setServerError(null);

@@ -1,3 +1,4 @@
+import { Loader } from "lucide-react";
 import { SciFiBackgroundOidc } from "../oidc/sci-fi-background-oidc";
 import { OIDCForgotPasswordForm } from "./oidc-forgot-password-form";
 import {
@@ -13,6 +14,14 @@ export const OIDCForgotPassword = () => {
   const { data: oidcUiConfig } = useOidcUiConfig();
   const template = oidcUiConfig?.template;
   const resolvedTheme = useOidcResolvedTheme();
+
+  if (!template) {
+    return (
+      <div className="oidc-scifi-root min-h-screen flex items-center justify-center bg-[var(--bg)]">
+        <Loader className="h-8 w-8 animate-spin" style={{ color: "var(--accent)" }} />
+      </div>
+    );
+  }
 
   return (
     <div

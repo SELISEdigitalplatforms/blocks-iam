@@ -34,7 +34,10 @@ vi.mock("../login/sso-signin", () => ({
 }));
 
 import { SignupForm } from "./signup-form";
-import { OIDC_UI_TEMPLATE_FIXTURE } from "@blocks-idp/authentication/test-utils/oidc-ui-template-fixture";
+import {
+  DEFAULT_OIDC_UI_TEMPLATE_FIXTURE,
+  OIDC_UI_TEMPLATE_FIXTURE,
+} from "@blocks-idp/authentication/test-utils/oidc-ui-template-fixture";
 
 const renderForm = (props: Partial<Parameters<typeof SignupForm>[0]> = {}) =>
   render(
@@ -61,7 +64,7 @@ beforeEach(() => {
   vi.clearAllMocks();
   h.isPending = false;
   h.captchaEnabled = false;
-  h.oidcUiConfig = undefined;
+  h.oidcUiConfig = { captcha: null, template: DEFAULT_OIDC_UI_TEMPLATE_FIXTURE };
 });
 
 describe("SignupForm", () => {

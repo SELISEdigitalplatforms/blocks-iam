@@ -28,7 +28,10 @@ vi.mock("@blocks-idp/authentication/hooks/use-oidc-ui-config", () => ({
 vi.mock("@/components/captcha", () => ({ Captcha: () => <div data-testid="captcha" /> }));
 
 import { OIDCForgotPasswordForm } from "./oidc-forgot-password-form";
-import { OIDC_UI_TEMPLATE_FIXTURE } from "@blocks-idp/authentication/test-utils/oidc-ui-template-fixture";
+import {
+  DEFAULT_OIDC_UI_TEMPLATE_FIXTURE,
+  OIDC_UI_TEMPLATE_FIXTURE,
+} from "@blocks-idp/authentication/test-utils/oidc-ui-template-fixture";
 
 const renderForm = () =>
   render(
@@ -46,7 +49,7 @@ beforeEach(() => {
   vi.clearAllMocks();
   h.isPending = false;
   h.captchaEnabled = false;
-  h.oidcUiConfig = undefined;
+  h.oidcUiConfig = { captcha: null, template: DEFAULT_OIDC_UI_TEMPLATE_FIXTURE };
 });
 
 describe("OIDCForgotPasswordForm", () => {

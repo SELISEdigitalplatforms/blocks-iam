@@ -18,11 +18,14 @@ vi.mock("@blocks-idp/authentication/hooks/use-oidc-ui-config", () => ({
 }));
 
 import { MfaCheck } from "./mfa-check";
-import { OIDC_UI_TEMPLATE_FIXTURE } from "@blocks-idp/authentication/test-utils/oidc-ui-template-fixture";
+import {
+  DEFAULT_OIDC_UI_TEMPLATE_FIXTURE,
+  OIDC_UI_TEMPLATE_FIXTURE,
+} from "@blocks-idp/authentication/test-utils/oidc-ui-template-fixture";
 
 beforeEach(() => {
   h.mfaType = 0;
-  h.oidcUiConfig = undefined;
+  h.oidcUiConfig = { captcha: null, template: DEFAULT_OIDC_UI_TEMPLATE_FIXTURE };
 });
 
 describe("MfaCheck", () => {

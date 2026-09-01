@@ -51,7 +51,6 @@ export const ActivationForm = ({
   });
 
   const { data: oidcUiConfig, captchaEnabled } = useOidcUiConfig(tenantId);
-  const activationCopy = (oidcUiConfig?.template).pages.activation;
   const googleSiteKey =
     oidcUiConfig?.captcha?.key || getRuntimeEnv("BLOCKS_GOOGLE_SITE_KEY") || "";
   const {
@@ -95,6 +94,9 @@ export const ActivationForm = ({
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [password, confirmPassword, setPanelIdleSlot]);
+
+  if (!oidcUiConfig?.template) return null;
+  const activationCopy = oidcUiConfig.template.pages.activation;
 
   const isAuthenticating =
     isPending ||

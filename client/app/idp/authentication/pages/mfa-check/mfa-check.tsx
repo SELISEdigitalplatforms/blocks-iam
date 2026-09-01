@@ -1,3 +1,4 @@
+import { Loader } from "lucide-react";
 import { SciFiBackgroundOidc } from "../oidc/sci-fi-background-oidc";
 import { parseAsInteger, useQueryStates } from "nuqs";
 import { MfaCheckFrom } from "./mfa-check-form";
@@ -21,6 +22,14 @@ export const MfaCheck = () => {
     mfa_type == 1
       ? "Open your authenticator app and enter the verification code."
       : "Check your email for the verification code and enter it here to continue.";
+
+  if (!template) {
+    return (
+      <div className="oidc-scifi-root min-h-screen flex items-center justify-center bg-[var(--bg)]">
+        <Loader className="h-8 w-8 animate-spin" style={{ color: "var(--accent)" }} />
+      </div>
+    );
+  }
 
   return (
     <div

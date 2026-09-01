@@ -42,7 +42,6 @@ export const MfaCheckFrom = () => {
   const navigate = useNavigate();
   const animCtx = useOidcAuthAnimation();
   const { data: oidcUiConfig } = useOidcUiConfig();
-  const mfaCopy = (oidcUiConfig?.template).pages.mfa;
   const [{ mfa_id, mfa_type, returnUrl }] = useQueryStates({
     mfa_id: parseAsString.withDefault(""),
     mfa_type: parseAsInteger.withDefault(0),
@@ -62,6 +61,9 @@ export const MfaCheckFrom = () => {
       code: "",
     },
   });
+
+  if (!oidcUiConfig?.template) return null;
+  const mfaCopy = oidcUiConfig.template.pages.mfa;
 
   const isAuthenticating =
     isLoading ||

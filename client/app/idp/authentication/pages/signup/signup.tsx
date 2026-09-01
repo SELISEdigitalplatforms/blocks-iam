@@ -2,6 +2,7 @@ import { SignupForm } from "./signup-form";
 import { useGetLoginOptions } from "@blocks-idp/authentication/hooks/use-auth";
 import { useGetSignUpSetting } from "@blocks-idp/iam/hooks/use-user";
 import { useGetSignupOrganizationConfig } from "@blocks-idp/iam/hooks/use-organization";
+import { Loader } from "lucide-react";
 import { Skeleton } from "@/components/ui-kits/skeleton/skeleton";
 import { LoginReturnLink } from "@blocks-idp/authentication/components/login-return-link";
 import { OidcAuthShell, OidcFooter } from "@blocks-idp/authentication/pages/oidc/oidc-auth-shell";
@@ -42,6 +43,14 @@ export const Signup = ({ tenantId }: { tenantId?: string } = {}) => {
     isSignUpSettingLoading ||
     (isSignUpEnabled && isOrgConfigLoading) ||
     (ssoSignUpEnabled && isLoginOptionLoading);
+
+  if (!template) {
+    return (
+      <div className="oidc-scifi-root min-h-screen flex items-center justify-center bg-[var(--bg)]">
+        <Loader className="h-8 w-8 animate-spin" style={{ color: "var(--accent)" }} />
+      </div>
+    );
+  }
 
   return (
     <OidcAuthShell

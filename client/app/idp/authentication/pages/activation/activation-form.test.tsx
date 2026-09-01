@@ -27,7 +27,10 @@ vi.mock("../../components/password-strength-checker/password-strength-checker", 
 vi.mock("../oidc/oidc-auth-shell", () => ({ useOidcAuthAnimation: vi.fn(() => h.animCtx) }));
 
 import { ActivationForm } from "./activation-form";
-import { OIDC_UI_TEMPLATE_FIXTURE } from "@blocks-idp/authentication/test-utils/oidc-ui-template-fixture";
+import {
+  DEFAULT_OIDC_UI_TEMPLATE_FIXTURE,
+  OIDC_UI_TEMPLATE_FIXTURE,
+} from "@blocks-idp/authentication/test-utils/oidc-ui-template-fixture";
 
 const passwordInputs = (container: HTMLElement) =>
   Array.from(container.querySelectorAll('input[type="password"]')) as HTMLInputElement[];
@@ -35,7 +38,7 @@ const passwordInputs = (container: HTMLElement) =>
 beforeEach(() => {
   vi.clearAllMocks();
   h.animCtx = null;
-  h.oidcUiConfig = undefined;
+  h.oidcUiConfig = { captcha: null, template: DEFAULT_OIDC_UI_TEMPLATE_FIXTURE };
 });
 
 const fillValidPasswords = (container: HTMLElement) => {

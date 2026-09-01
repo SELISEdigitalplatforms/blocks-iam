@@ -1,4 +1,4 @@
-import { AlertTriangle } from "lucide-react";
+import { AlertTriangle, Loader } from "lucide-react";
 import { Link } from "react-router";
 import { OidcAuthShell, OidcFooter } from "../oidc/oidc-auth-shell";
 import { RESET_PASSWORD_PANEL } from "../oidc/oidc-panel-config";
@@ -14,6 +14,14 @@ type ResetPasswordProps = {
 export const ResetPassword = ({ code, tenantId }: ResetPasswordProps) => {
   const { data: oidcUiConfig } = useOidcUiConfig(tenantId);
   const template = oidcUiConfig?.template;
+
+  if (!template) {
+    return (
+      <div className="oidc-scifi-root min-h-screen flex items-center justify-center bg-[var(--bg)]">
+        <Loader className="h-8 w-8 animate-spin" style={{ color: "var(--accent)" }} />
+      </div>
+    );
+  }
 
   return (
     <OidcAuthShell

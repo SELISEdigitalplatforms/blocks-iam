@@ -37,7 +37,10 @@ vi.mock("@blocks-idp/authentication/hooks/use-oidc-ui-config", () => ({
 }));
 
 import { Activation } from "./activation";
-import { OIDC_UI_TEMPLATE_FIXTURE } from "@blocks-idp/authentication/test-utils/oidc-ui-template-fixture";
+import {
+  DEFAULT_OIDC_UI_TEMPLATE_FIXTURE,
+  OIDC_UI_TEMPLATE_FIXTURE,
+} from "@blocks-idp/authentication/test-utils/oidc-ui-template-fixture";
 
 const renderCmp = (props: Parameters<typeof Activation>[0] = {}) =>
   render(
@@ -50,7 +53,7 @@ beforeEach(() => {
   vi.clearAllMocks();
   h.isActivationPending = false;
   h.isResendPending = false;
-  h.oidcUiConfig = undefined;
+  h.oidcUiConfig = { captcha: null, template: DEFAULT_OIDC_UI_TEMPLATE_FIXTURE };
   h.shellProps = null;
 });
 

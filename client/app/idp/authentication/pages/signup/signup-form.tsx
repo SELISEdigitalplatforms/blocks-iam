@@ -58,7 +58,6 @@ export const SignupForm = ({
   });
   const { isPending, mutateAsync } = useSignupByEmail();
   const { data: oidcUiConfig, captchaEnabled } = useOidcUiConfig(tenantId);
-  const signupCopy = (oidcUiConfig?.template).pages.signup;
 
   const googleSiteKey =
     oidcUiConfig?.captcha?.key || getRuntimeEnv("BLOCKS_GOOGLE_SITE_KEY") || "";
@@ -161,6 +160,9 @@ export const SignupForm = ({
   useEffect(() => {
     if (!isValid && captchaCode) resetCaptcha();
   }, [captchaCode, isValid, resetCaptcha]);
+
+  if (!oidcUiConfig?.template) return null;
+  const signupCopy = oidcUiConfig.template.pages.signup;
 
   const showSocialLogin = ssoSignUpEnabled && !!loginOption?.ssoInfo?.length;
 

@@ -135,8 +135,8 @@ describe("OidcAuthShell", () => {
     });
     const root = container.querySelector(".oidc-scifi-root") as HTMLElement;
     expect(root.style.getPropertyValue("--accent")).toBe("#123456");
-    expect(root.style.getPropertyValue("--bg")).toBe("#050510");
-    expect(root.style.getPropertyValue("--border")).toBe("#16162a");
+    expect(root.style.getPropertyValue("--bg")).toBe("#080b14");
+    expect(root.style.getPropertyValue("--border")).toBe("#273142");
     expect(root).toHaveAttribute("data-theme", "dark");
   });
 
@@ -161,13 +161,13 @@ describe("OidcAuthShell", () => {
     const root = container.querySelector(".oidc-scifi-root") as HTMLElement;
 
     expect(root).toHaveAttribute("data-theme", "dark");
-    expect(root.style.getPropertyValue("--bg")).toBe("#050510");
+    expect(root.style.getPropertyValue("--bg")).toBe("#080b14");
 
     await act(async () => {
       document.documentElement.classList.remove("dark");
     });
 
     await waitFor(() => expect(root).toHaveAttribute("data-theme", "light"));
-    expect(root.style.getPropertyValue("--bg")).toBe("#f5f7fb");
+    expect(root.style.getPropertyValue("--bg")).toBe("#f7f8fa");
   });
 });

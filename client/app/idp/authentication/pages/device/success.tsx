@@ -1,6 +1,6 @@
 import { useLayoutEffect, useMemo, useRef } from "react";
 import { useSearchParams } from "react-router";
-import { XCircle } from "lucide-react";
+import { Loader, XCircle } from "lucide-react";
 
 import { OidcAuthShell, OidcFooter, useOidcAuthAnimation } from "@blocks-idp/authentication/pages/oidc/oidc-auth-shell";
 import { useOidcUiConfig } from "@blocks-idp/authentication/hooks/use-oidc-ui-config";
@@ -92,6 +92,14 @@ export function DeviceSuccessPage() {
         };
     }
   }, [outcome]);
+
+  if (!template) {
+    return (
+      <div className="oidc-scifi-root min-h-screen flex items-center justify-center bg-[var(--bg)]">
+        <Loader className="h-8 w-8 animate-spin" style={{ color: "var(--accent)" }} />
+      </div>
+    );
+  }
 
   return (
     <OidcAuthShell

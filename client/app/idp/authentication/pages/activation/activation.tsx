@@ -85,6 +85,14 @@ export const Activation = ({ code, tenantId }: ActivationProps) => {
     validateCode();
   }, [code, tenantId, activationCodeValidation]);
 
+  if (!template) {
+    return (
+      <div className="oidc-scifi-root min-h-screen flex items-center justify-center bg-[var(--bg)]">
+        <Loader className="h-8 w-8 animate-spin" style={{ color: "var(--accent)" }} />
+      </div>
+    );
+  }
+
   const handleResendActivation = async () => {
     if (!activationUserId || isResendPending) return;
 

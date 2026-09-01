@@ -44,7 +44,6 @@ export const OIDCForgotPasswordForm = () => {
   const { isPending, mutateAsync } = useAccountRecover();
 
   const { data: oidcUiConfig, captchaEnabled } = useOidcUiConfig();
-  const forgotPasswordCopy = (oidcUiConfig?.template).pages.forgotPassword;
   const googleSiteKey =
     oidcUiConfig?.captcha?.key || getRuntimeEnv("BLOCKS_GOOGLE_SITE_KEY") || "";
 
@@ -102,6 +101,9 @@ export const OIDCForgotPasswordForm = () => {
   useEffect(() => {
     if (!isValid && captchaCode) resetCaptcha();
   }, [captchaCode, isValid, resetCaptcha]);
+
+  if (!oidcUiConfig?.template) return null;
+  const forgotPasswordCopy = oidcUiConfig.template.pages.forgotPassword;
 
   return (
     <div className="flex flex-col gap-6">

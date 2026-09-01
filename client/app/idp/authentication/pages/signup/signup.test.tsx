@@ -36,7 +36,10 @@ vi.mock("@blocks-idp/authentication/hooks/use-oidc-ui-config", () => ({
 }));
 
 import { Signup } from "./signup";
-import { OIDC_UI_TEMPLATE_FIXTURE } from "@blocks-idp/authentication/test-utils/oidc-ui-template-fixture";
+import {
+  DEFAULT_OIDC_UI_TEMPLATE_FIXTURE,
+  OIDC_UI_TEMPLATE_FIXTURE,
+} from "@blocks-idp/authentication/test-utils/oidc-ui-template-fixture";
 
 const renderSignup = (props = {}) =>
   render(
@@ -53,7 +56,7 @@ beforeEach(() => {
   h.isLoginOptionLoading = false;
   h.orgConfig = undefined;
   h.isOrgConfigLoading = false;
-  h.oidcUiConfig = undefined;
+  h.oidcUiConfig = { captcha: null, template: DEFAULT_OIDC_UI_TEMPLATE_FIXTURE };
   h.shellProps = null;
 });
 

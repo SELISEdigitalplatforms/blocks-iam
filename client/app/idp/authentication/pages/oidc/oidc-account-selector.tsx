@@ -27,6 +27,8 @@ export const OidcAccountSelector = ({ accounts, onAccountSelect, isLoading = fal
   const [selectedAccount, setSelectedAccount] = useState<OidcAccountInfo | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
+  if (!template) return null;
+
   const handleSelect = async (account: OidcAccountInfo) => {
     setSelectedAccount(account);
     setIsSubmitting(true);

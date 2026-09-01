@@ -10,7 +10,10 @@ vi.mock("@blocks-idp/authentication/hooks/use-oidc-ui-config", () => ({
 }));
 
 import { OidcAccountSelector } from "./oidc-account-selector";
-import { OIDC_UI_TEMPLATE_FIXTURE } from "@blocks-idp/authentication/test-utils/oidc-ui-template-fixture";
+import {
+  DEFAULT_OIDC_UI_TEMPLATE_FIXTURE,
+  OIDC_UI_TEMPLATE_FIXTURE,
+} from "@blocks-idp/authentication/test-utils/oidc-ui-template-fixture";
 
 const accounts = [
   { user_id: "u1", tenant_id: "t1", email: "a@x.com", display_name: "Alice" },
@@ -19,7 +22,7 @@ const accounts = [
 
 beforeEach(() => {
   vi.clearAllMocks();
-  h.oidcUiConfig = undefined;
+  h.oidcUiConfig = { captcha: null, template: DEFAULT_OIDC_UI_TEMPLATE_FIXTURE };
 });
 
 describe("OidcAccountSelector", () => {

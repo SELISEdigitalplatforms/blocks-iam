@@ -1,5 +1,5 @@
 import { render, screen } from "@testing-library/react";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const h = vi.hoisted(() => ({ oidcUiConfig: undefined as unknown }));
 
@@ -14,7 +14,14 @@ vi.mock("@blocks-idp/authentication/hooks/use-oidc-ui-config", () => ({
 }));
 
 import { OIDCForgotPassword } from "./oidc-forgot-password";
-import { OIDC_UI_TEMPLATE_FIXTURE } from "@blocks-idp/authentication/test-utils/oidc-ui-template-fixture";
+import {
+  DEFAULT_OIDC_UI_TEMPLATE_FIXTURE,
+  OIDC_UI_TEMPLATE_FIXTURE,
+} from "@blocks-idp/authentication/test-utils/oidc-ui-template-fixture";
+
+beforeEach(() => {
+  h.oidcUiConfig = { captcha: null, template: DEFAULT_OIDC_UI_TEMPLATE_FIXTURE };
+});
 
 afterEach(() => {
   document.documentElement.classList.remove("dark");

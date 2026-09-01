@@ -30,14 +30,6 @@ export function DeviceEntryPage() {
   const animCtx = useOidcAuthAnimation();
   const { data: oidcUiConfig } = useOidcUiConfig(tenantId);
   const template = oidcUiConfig?.template;
-  const shellTemplateProps = {
-    theme: template.theme,
-    logoUrl: template.branding.logoUrl,
-    brandName: template.branding.brandName,
-    successTitle: "Device Verified",
-    successSubtitle: "Continuing the device flow…",
-    footerNote: <OidcFooter footerText={template.pages.shared.footerText} />,
-  };
 
   const initialCode = useMemo(() => {
     const fromQuery = searchParams.get("user_code") ?? "";
@@ -77,6 +69,23 @@ export function DeviceEntryPage() {
     void runSubmit(normalizeUserCode(initialCode), true);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [initialCode, invalidTenant]);
+
+  if (!template) {
+    return (
+      <div className="oidc-scifi-root min-h-screen flex items-center justify-center bg-[var(--bg)]">
+        <Loader className="h-8 w-8 animate-spin" style={{ color: "var(--accent)" }} />
+      </div>
+    );
+  }
+
+  const shellTemplateProps = {
+    theme: template.theme,
+    logoUrl: template.branding.logoUrl,
+    brandName: template.branding.brandName,
+    successTitle: "Device Verified",
+    successSubtitle: "Continuing the device flow…",
+    footerNote: <OidcFooter footerText={template.pages.shared.footerText} />,
+  };
 
   async function runSubmit(code: string, isAutoSubmit = false) {
     setServerError(null);

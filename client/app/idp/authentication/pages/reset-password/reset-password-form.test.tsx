@@ -32,7 +32,10 @@ vi.mock(
 vi.mock("../oidc/oidc-auth-shell", () => ({ useOidcAuthAnimation: vi.fn(() => h.animCtx) }));
 
 import { ResetPasswordForm } from "./reset-password-form";
-import { OIDC_UI_TEMPLATE_FIXTURE } from "@blocks-idp/authentication/test-utils/oidc-ui-template-fixture";
+import {
+  DEFAULT_OIDC_UI_TEMPLATE_FIXTURE,
+  OIDC_UI_TEMPLATE_FIXTURE,
+} from "@blocks-idp/authentication/test-utils/oidc-ui-template-fixture";
 
 const renderForm = () =>
   render(
@@ -47,7 +50,7 @@ const passwordInputs = (container: HTMLElement) =>
 beforeEach(() => {
   vi.clearAllMocks();
   h.animCtx = null;
-  h.oidcUiConfig = undefined;
+  h.oidcUiConfig = { captcha: null, template: DEFAULT_OIDC_UI_TEMPLATE_FIXTURE };
 });
 
 describe("ResetPasswordForm", () => {

@@ -63,7 +63,10 @@ vi.mock("@blocks-idp/captcha/hooks/use-captcha", () => ({
 }));
 
 import { OidcLoginForm } from "./oidc-login-form";
-import { OIDC_UI_TEMPLATE_FIXTURE } from "@blocks-idp/authentication/test-utils/oidc-ui-template-fixture";
+import {
+  DEFAULT_OIDC_UI_TEMPLATE_FIXTURE,
+  OIDC_UI_TEMPLATE_FIXTURE,
+} from "@blocks-idp/authentication/test-utils/oidc-ui-template-fixture";
 
 const renderForm = (props: Partial<React.ComponentProps<typeof OidcLoginForm>> = {}) =>
   render(
@@ -106,7 +109,7 @@ const originalLocation = window.location;
 beforeEach(() => {
   vi.clearAllMocks();
   h.loginOption = undefined;
-  h.oidcUiConfig = undefined;
+  h.oidcUiConfig = { captcha: null, template: DEFAULT_OIDC_UI_TEMPLATE_FIXTURE };
   h.captchaEnabled = false;
   h.signUpSetting = { isSignUpEnable: false };
   h.captchaCode = "";
