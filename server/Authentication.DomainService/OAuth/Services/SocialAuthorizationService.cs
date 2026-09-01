@@ -2,18 +2,15 @@ using Blocks.Genesis;
 using Authentication.DomainService.OAuth.ResponseModel;
 using Authentication.DomainService.OAuth.Services;
 using Authentication.DomainService.Services;
+using Authentication.DomainService.Shared.Services;
 using Iam.DomainService.Entities;
-using Iam.DomainService.Services;
-using Iam.DomainService.Users;
-using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
 
 namespace Authentication.DomainService.OAuth
 {
     public class SocialAuthorizationService : SocialAuthorizationServiceBase
     {
-        private readonly IIdentityAccessManagementRepository _repository;
-        private readonly IUserRepository _userRepository;
+        private readonly ISsoUserProvisioningService _ssoUserProvisioningService;
 
         public SocialAuthorizationService(
             ILogger<SocialAuthorizationService> logger,
@@ -21,13 +18,10 @@ namespace Authentication.DomainService.OAuth
             IAuthenticationRepository oAuthRepository,
             ICacheClient cacheClient,
             ISocialLogInServiceProvider socialLogInServiceProvider,
-            IUserManagementMutationService userManagementMutationService,
-            IIdentityAccessManagementRepository repository,
-            IUserRepository userRepository)
-            : base(logger, oAuthJwtAccessTokenManager, oAuthRepository, cacheClient, socialLogInServiceProvider, userManagementMutationService)
+            ISsoUserProvisioningService ssoUserProvisioningService)
+            : base(logger, oAuthJwtAccessTokenManager, oAuthRepository, cacheClient, socialLogInServiceProvider)
         {
-            _repository = repository;
-            _userRepository = userRepository;
+            _ssoUserProvisioningService = ssoUserProvisioningService;
         }
 
         protected override void NormalizeExternalUserEmail(IExternalUserData externalUser)
@@ -48,17 +42,18 @@ namespace Authentication.DomainService.OAuth
             return new TokenResponse { Error = "user_not_found", ErrorDescription = $"{userName} does not exist", StatusCode = 401 };
         }
 
+        /// <summary>
+        /// Resolves the signing-in user, provisioning one when the email is new and the tenant
+        /// allows SSO signup. Shared with the OIDC social callback so both behave identically.
+        /// A null user still means <c>user_not_found</c> to the caller -- whether the tenant
+        /// refused the signup or the write failed is a server-side distinction, not one to
+        /// hand an unauthenticated caller.
+        /// </summary>
         public override async Task<(User? user, string redirectUrl)> GetUser(StateInfo stateInfo, IExternalUserData externalUser)
         {
-            var user = await _oAuthRepository.GetUserByEmailAsync(externalUser.Email);
+            var result = await _ssoUserProvisioningService.ResolveOrProvisionAsync(externalUser, stateInfo.Provider);
 
-            if (user == null)
-            {
-                // return await CreateUser(stateInfo, externalUser); // for now, we will not auto create user, return error instead. Will add auto create user in the future if needed.   
-                return (null, string.Empty);
-            }
-
-            return (user, string.Empty);
+            return (result.User, string.Empty);
         }
     }
 }

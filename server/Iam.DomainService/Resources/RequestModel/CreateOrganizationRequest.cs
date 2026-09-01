@@ -14,6 +14,18 @@ namespace Iam.DomainService.Resources
         public List<Address> Addresses { get; set; } = new List<Address>();
         public Dictionary<string, object> Attributes { get; set; } = new Dictionary<string, object>();
 
+        // Branding and localisation. Null or blank leaves the Organization entity default in
+        // place (TimeZone "UTC", DateFormat "yyyy-MM-dd", TimeFormat "HH:mm", Locale "en-US")
+        // rather than writing an empty string over it.
+        public Theme? Theme { get; set; }
+        public string? LogoUrl { get; set; }
+        public string? Industry { get; set; }
+        public string? TimeZone { get; set; }
+        public string? Currency { get; set; }
+        public string? DateFormat { get; set; }
+        public string? TimeFormat { get; set; }
+        public string? Locale { get; set; }
+
         public CreatedFrom CreatedFrom { get; set; } = CreatedFrom.Cloud;
     }
 

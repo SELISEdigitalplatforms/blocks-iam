@@ -260,6 +260,26 @@
             change before deciding to ask someone else to make it.
             </remarks>
         </member>
+        <member name="M:Api.Controllers.IamController.IsOrganizationNameAvailable(Iam.DomainService.Resources.RequestModel.IsOrganizationNameAvailableRequest)">
+            <summary>
+            Whether an organization name is free, with alternatives when it is not.
+            <para>
+            Anonymous because it exists for the signup flow, which is itself anonymous: a
+            multi-step signup can check the name on the organization step instead of failing the
+            user at final submit. This matches the posture of <c>GET iam/email/available</c>.
+            </para>
+            <para>
+            Advisory only — nothing is reserved, so a name reported available can still be taken
+            by the time signup runs. The authoritative check stays in
+            <c>CreateOrganizationAsync</c>, and the signup response carries suggestions of its own
+            for exactly that race.
+            </para>
+            <para>
+            Gated on multi-organization mode, like every other organization operation: a tenant
+            that cannot create organizations gets <c>multi_org_disabled</c> rather than an answer.
+            </para>
+            </summary>
+        </member>
         <member name="M:Api.Controllers.IamController.GetOrganizationConfig">
             <summary>
             Anonymous: the public signup page reads this before rendering, to decide

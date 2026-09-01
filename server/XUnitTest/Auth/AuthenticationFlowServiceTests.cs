@@ -403,6 +403,83 @@ namespace XUnitTest.Auth
                 && t.RefreshToken == "rt"), It.IsAny<IdentityConfiguration>(), It.IsAny<User>()), Times.Once);
         }
 
+        [Fact]
+        public async Task SwitchOrg_HappyPath_PersistsLastUsedOrganization()
+        {
+            // Without this the switch was invisible to the next sign-in: password, social and mfa
+            // logins all resolve the organization from LastUsedOrganizationId, so a user who
+            // switched to org-x and logged back in silently landed on their previous organization.
+            _repo.Setup(r => r.GetUserByIdAsync("user-1"))
+                .ReturnsAsync(new User { ItemId = "user-1", LastUsedOrganizationId = "org-old", OrganizationIds = new() { "org-old", "org-x" } });
+            _authService.Setup(a => a.CookieToken(It.IsAny<HttpRequest>())).Returns("rt");
+            Resolves(Session());
+            _refresher.Setup(r => r.AuthenticateAsync(It.IsAny<TokenRequest>(), It.IsAny<IdentityConfiguration>(), It.IsAny<User>()))
+                .ReturnsAsync(new TokenResponse { AccessToken = "switch-at" });
+
+            await Create().ExecuteSwitchOrganizationAsync(
+                new SwitchOrganizationRequest { OrganizationId = "org-x" }, Principal(), Req());
+
+            _repo.Verify(r => r.UpdatePartialAsync<User>("user-1",
+                It.Is<Dictionary<string, object>>(d =>
+                    d.ContainsKey(nameof(User.LastUsedOrganizationId))
+                    && (string)d[nameof(User.LastUsedOrganizationId)] == "org-x"),
+                It.IsAny<string>()), Times.Once);
+        }
+
+        [Fact]
+        public async Task SwitchOrg_AlreadyOnThatOrganization_SkipsTheWrite()
+        {
+            _repo.Setup(r => r.GetUserByIdAsync("user-1"))
+                .ReturnsAsync(new User { ItemId = "user-1", LastUsedOrganizationId = "org-x", OrganizationIds = new() { "org-x" } });
+            _authService.Setup(a => a.CookieToken(It.IsAny<HttpRequest>())).Returns("rt");
+            Resolves(Session());
+            _refresher.Setup(r => r.AuthenticateAsync(It.IsAny<TokenRequest>(), It.IsAny<IdentityConfiguration>(), It.IsAny<User>()))
+                .ReturnsAsync(new TokenResponse { AccessToken = "switch-at" });
+
+            await Create().ExecuteSwitchOrganizationAsync(
+                new SwitchOrganizationRequest { OrganizationId = "org-x" }, Principal(), Req());
+
+            _repo.Verify(r => r.UpdatePartialAsync<User>(It.IsAny<string>(),
+                It.IsAny<Dictionary<string, object>>(), It.IsAny<string>()), Times.Never);
+        }
+
+        [Fact]
+        public async Task SwitchOrg_TokenIssuanceFailed_DoesNotPersistLastUsedOrganization()
+        {
+            _repo.Setup(r => r.GetUserByIdAsync("user-1"))
+                .ReturnsAsync(new User { ItemId = "user-1", OrganizationIds = new() { "org-x" } });
+            _authService.Setup(a => a.CookieToken(It.IsAny<HttpRequest>())).Returns("rt");
+            Resolves(Session());
+            _refresher.Setup(r => r.AuthenticateAsync(It.IsAny<TokenRequest>(), It.IsAny<IdentityConfiguration>(), It.IsAny<User>()))
+                .ReturnsAsync(new TokenResponse { Error = OAuthError.InvalidRefreshToken, StatusCode = 400 });
+
+            await Create().ExecuteSwitchOrganizationAsync(
+                new SwitchOrganizationRequest { OrganizationId = "org-x" }, Principal(), Req());
+
+            _repo.Verify(r => r.UpdatePartialAsync<User>(It.IsAny<string>(),
+                It.IsAny<Dictionary<string, object>>(), It.IsAny<string>()), Times.Never);
+        }
+
+        [Fact]
+        public async Task SwitchOrg_StickinessWriteThrows_StillReturnsTheIssuedTokens()
+        {
+            // The switch has already succeeded by this point. A failed convenience write must not
+            // discard tokens the caller is entitled to.
+            _repo.Setup(r => r.GetUserByIdAsync("user-1"))
+                .ReturnsAsync(new User { ItemId = "user-1", OrganizationIds = new() { "org-x" } });
+            _authService.Setup(a => a.CookieToken(It.IsAny<HttpRequest>())).Returns("rt");
+            Resolves(Session());
+            _refresher.Setup(r => r.AuthenticateAsync(It.IsAny<TokenRequest>(), It.IsAny<IdentityConfiguration>(), It.IsAny<User>()))
+                .ReturnsAsync(new TokenResponse { AccessToken = "switch-at" });
+            _repo.Setup(r => r.UpdatePartialAsync<User>(It.IsAny<string>(), It.IsAny<Dictionary<string, object>>(), It.IsAny<string>()))
+                .ThrowsAsync(new InvalidOperationException("mongo down"));
+
+            var result = await Create().ExecuteSwitchOrganizationAsync(
+                new SwitchOrganizationRequest { OrganizationId = "org-x" }, Principal(), Req());
+
+            result.TokenResponse!.AccessToken.Should().Be("switch-at");
+        }
+
         // ==================== ExecuteRefreshAsync ====================
 
         [Fact]

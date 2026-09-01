@@ -1,10 +1,10 @@
 using Authentication.DomainService.Entities;
 using Authentication.DomainService.OAuth.RequestModel;
+using Authentication.DomainService.Utilities;
 using Authentication.DomainService.OAuth.ResponseModel;
 using Authentication.DomainService.Services;
 using Blocks.Genesis;
 using Iam.DomainService.Entities;
-using Iam.DomainService.Users;
 using Microsoft.Extensions.Logging;
 using System.Text.Json;
 
@@ -17,22 +17,19 @@ namespace Authentication.DomainService.OAuth.Services
         protected readonly IAuthenticationRepository _oAuthRepository;
         protected readonly ICacheClient _cacheClient;
         protected readonly ISocialLogInServiceProvider _socialLogInServiceProvider;
-        protected readonly IUserManagementMutationService _userManagementMutationService;
 
         protected SocialAuthorizationServiceBase(
             ILogger logger,
             IOAuthJwtAccessTokenManager oAuthJwtAccessTokenManager,
             IAuthenticationRepository oAuthRepository,
             ICacheClient cacheClient,
-            ISocialLogInServiceProvider socialLogInServiceProvider,
-            IUserManagementMutationService userManagementMutationService)
+            ISocialLogInServiceProvider socialLogInServiceProvider)
         {
             _logger = logger;
             _oAuthJwtAccessTokenManager = oAuthJwtAccessTokenManager;
             _oAuthRepository = oAuthRepository;
             _cacheClient = cacheClient;
             _socialLogInServiceProvider = socialLogInServiceProvider;
-            _userManagementMutationService = userManagementMutationService;
         }
 
         public async Task<TokenResponse> AuthenticateAsync(TokenRequest request, IdentityConfiguration authenticationConfiguration, User? user = null)
@@ -112,7 +109,7 @@ namespace Authentication.DomainService.OAuth.Services
                 };
             }
 
-            request.OrganizationId = ResolveSignInOrganizationId(user, request.OrganizationId);
+            request.OrganizationId = OrganizationAccessResolver.ResolveSignInOrganizationId(user, request.OrganizationId);
             var tokenResponse = await _oAuthJwtAccessTokenManager.ManageTokenAsync(request, authenticationConfiguration, user);
 
             if (string.IsNullOrWhiteSpace(tokenResponse.Error)
@@ -149,41 +146,6 @@ namespace Authentication.DomainService.OAuth.Services
         }
 
         public abstract Task<(User? user, string redirectUrl)> GetUser(StateInfo stateInfo, IExternalUserData externalUser);
-
-        private static string ResolveSignInOrganizationId(User user, string? requestedOrganizationId)
-        {
-            if (HasOrganizationAccess(user, requestedOrganizationId))
-            {
-                return requestedOrganizationId!;
-            }
-
-            if (HasOrganizationAccess(user, user.LastUsedOrganizationId))
-            {
-                return user.LastUsedOrganizationId!;
-            }
-
-            if (HasOrganizationAccess(user, "default"))
-            {
-                return "default";
-            }
-
-            return user.OrganizationIds.FirstOrDefault(id => !string.IsNullOrWhiteSpace(id))
-                ?? user.Roles.Keys.FirstOrDefault(key => !string.IsNullOrWhiteSpace(key))
-                ?? user.Permissions.Keys.FirstOrDefault(key => !string.IsNullOrWhiteSpace(key))
-                ?? "default";
-        }
-
-        private static bool HasOrganizationAccess(User user, string? organizationId)
-        {
-            if (string.IsNullOrWhiteSpace(organizationId))
-            {
-                return false;
-            }
-
-            return user.OrganizationIds.Contains(organizationId)
-                || user.Roles.ContainsKey(organizationId)
-                || user.Permissions.ContainsKey(organizationId);
-        }
 
         protected static string NormalizeEmail(string? email)
         {

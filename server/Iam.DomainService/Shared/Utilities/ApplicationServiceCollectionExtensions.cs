@@ -22,6 +22,7 @@ namespace Iam.DomainService.Utilities
 
             services.AddSingleton<IResourceMutationService, ResourceMutationService>();
             services.AddSingleton<IResourceRepository, ResourceRepository>();
+            services.AddSingleton<IOrganizationNameResolver, OrganizationNameResolver>();
 
             services.AddSingleton<IUserManagementQueryService, UserManagementQueryService>();
             services.AddSingleton<IResourceQueryService, ResourceQueryService>();
@@ -43,6 +44,7 @@ namespace Iam.DomainService.Utilities
             services.AddTransient<IValidator<CreateRoleRequest>, RoleValidator>();
             services.AddTransient<IValidator<UpdatePermissionRequest>, UpdatePermissionValidator>();
             services.AddTransient<IValidator<RecoveryUserRequest>, RecoveryUserRequestValidator>();
+            services.AddTransient<IValidator<SignupOrganizationInfo>, SignupOrganizationValidator>();
             #endregion
 
         }

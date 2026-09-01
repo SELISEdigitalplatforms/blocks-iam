@@ -1,5 +1,6 @@
 using Authentication.DomainService.Authentication;
 using Iam.DomainService.Utilities;
+using Authentication.DomainService.Utilities;
 using Authentication.DomainService.Entities;
 using Authentication.DomainService.OAuth.RequestModel;
 using Authentication.DomainService.OAuth.ResponseModel;
@@ -91,27 +92,52 @@ namespace Authentication.DomainService.OAuth.Services
                     return new TokenResponse { Error = "unverified_user_mfa", ErrorDescription = "Unverified user mfa please verify the mfa first", StatusCode = 400 };
                 }
 
+                // The mfa leg carries no organization of its own: the login that issued the challenge
+                // returns before it persists one, and the mfa session stores only the user id. Resolve
+                // it here, from the session user, exactly as PasswordAuthenticationService and
+                // SocialAuthorizationServiceBase do for their own legs. Leaving it null let the request
+                // fall through to the "default" bucket in AuthorizationClaimsResolver, so an org-scoped
+                // account completed its login with organization_id "default" and no roles or
+                // permissions at all — while the same account logging in without mfa got the right ones.
+                request.OrganizationId = OrganizationAccessResolver.ResolveSignInOrganizationId(user, request.OrganizationId);
+
                 var tokenResponse = await _oAuthJwtAccessTokenManager.ManageTokenAsync(request, authenticationConfiguration, user);
-                if (string.IsNullOrWhiteSpace(tokenResponse.Error)
-                    && (user.FailedLoginCount > 0
+                if (string.IsNullOrWhiteSpace(tokenResponse.Error))
+                {
+                    // The counter reset and the organization stickiness the password leg writes
+                    // separately are collected into one partial update here: this runs on every
+                    // successful mfa login, so a second round trip would be paid on each one.
+                    var postLoginUpdates = new Dictionary<string, object>();
+
+                    if (user.FailedLoginCount > 0
                         || user.LastFailedLoginUtc.HasValue
                         || user.FailedMfaCount > 0
                         || user.LastFailedMfaUtc.HasValue
-                        || user.LockoutUntilUtc.HasValue))
-                {
-                    await _oAuthRepository.UpdatePartialAsync<User>(
-                        user.ItemId,
-                        new Dictionary<string, object>
-                        {
-                            { nameof(User.FailedLoginCount), 0 },
-                            { nameof(User.LastFailedLoginUtc), null! },
-                            { nameof(User.FailedMfaCount), 0 },
-                            { nameof(User.LastFailedMfaUtc), null! },
-                            { nameof(User.LockoutUntilUtc), null! },
-                            { nameof(User.LockoutCount), 0 },
-                            { nameof(User.LastUpdatedDate), DateTime.UtcNow },
-                            { nameof(User.LastUpdatedBy), user.ItemId }
-                        });
+                        || user.LockoutUntilUtc.HasValue)
+                    {
+                        postLoginUpdates[nameof(User.FailedLoginCount)] = 0;
+                        postLoginUpdates[nameof(User.LastFailedLoginUtc)] = null!;
+                        postLoginUpdates[nameof(User.FailedMfaCount)] = 0;
+                        postLoginUpdates[nameof(User.LastFailedMfaUtc)] = null!;
+                        postLoginUpdates[nameof(User.LockoutUntilUtc)] = null!;
+                        postLoginUpdates[nameof(User.LockoutCount)] = 0;
+                    }
+
+                    // Same stickiness the password leg persists, so the organization this account
+                    // just signed into is the one its next login resolves to by default. Without it
+                    // an mfa user's LastUsedOrganizationId would never advance.
+                    if (!string.IsNullOrWhiteSpace(request.OrganizationId)
+                        && !string.Equals(user.LastUsedOrganizationId, request.OrganizationId, StringComparison.OrdinalIgnoreCase))
+                    {
+                        postLoginUpdates[nameof(User.LastUsedOrganizationId)] = request.OrganizationId;
+                    }
+
+                    if (postLoginUpdates.Count > 0)
+                    {
+                        postLoginUpdates[nameof(User.LastUpdatedDate)] = DateTime.UtcNow;
+                        postLoginUpdates[nameof(User.LastUpdatedBy)] = user.ItemId;
+                        await _oAuthRepository.UpdatePartialAsync<User>(user.ItemId, postLoginUpdates);
+                    }
                 }
 
                 await _auditService.WriteAsync(new MfaAuditEvent
