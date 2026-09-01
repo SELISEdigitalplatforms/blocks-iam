@@ -127,6 +127,48 @@
   --radius-frame: 24px;
 }
 
+/* ─── Light-mode override ─── */
+.oidc-scifi-root[data-theme="light"] {
+  --bg:      #f5f7fb;
+  --surface: #ffffff;
+
+  --fg:    #0c1024;
+  --muted: #5b6378;
+
+  --border:       #dde2ec;
+  --border-hover: rgba(0, 102, 178, 0.28);
+  --border-strong: rgba(0, 102, 178, 0.45);
+
+  --accent:       #0066b2;
+  --accent2:      #0084d4;
+  --accent2-glow: rgba(0, 132, 212, 0.18);
+  --accent-soft:  rgba(0, 102, 178, 0.08);
+  --accent-softer: rgba(0, 102, 178, 0.04);
+
+  --success:        #16a34a;
+  --success-soft:   rgba(22, 163, 74, 0.12);
+  --success-border: rgba(22, 163, 74, 0.30);
+  --danger:         #dc2626;
+  --danger-soft:    rgba(220, 38, 38, 0.08);
+  --danger-border:  rgba(220, 38, 38, 0.30);
+
+  --input-bg:       rgba(255, 255, 255, 0.70);
+  --node-bg:        rgba(255, 255, 255, 0.85);
+  --node-tint:      rgba(12, 16, 36, 0.03);
+  --node-divider:   rgba(12, 16, 36, 0.08);
+  --terminal-bg:    rgba(12, 16, 36, 0.92);
+  --grid-line:      rgba(0, 102, 178, 0.06);
+  --button-shimmer: rgba(255, 255, 255, 0.45);
+
+  --atm-grid-opacity:       0.5;
+  --atm-scan-opacity:       0;
+  --atm-canvas-opacity:     0.35;
+  --atm-webgl-opacity:      0;
+  --atm-corner-opacity:     0.28;
+  --atm-corner-dot-opacity: 0.45;
+  --atm-canvas-blend:       multiply;
+}
+
 /* ─────────────────────────────────────────────────────────────
    Utility classes (scoped to .oidc-scifi-root children)
    ───────────────────────────────────────────────────────────── */
@@ -354,6 +396,14 @@
   border-radius: calc(1.25rem - 1px);
   position: relative;
   overflow: hidden;
+}
+.oidc-scifi-root[data-theme="light"] .oidc-sci-fi-panel-inner {
+  background: linear-gradient(
+    160deg,
+    rgba(0, 102, 178, 0.18) 0%,
+    rgba(0, 178, 255, 0.08) 60%,
+    rgba(255, 255, 255, 0.40) 100%
+  );
 }
 /* Shimmer */
 .oidc-scifi-root .oidc-shimmer {

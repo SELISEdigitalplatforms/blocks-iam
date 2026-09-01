@@ -68,7 +68,9 @@ namespace Authentication.DomainService.Authentication
                     Provider = captchaConfiguration.Provider,
                     Generator = captchaConfiguration.CaptchaGenerator
                 },
-                Template = MergeOidcUiTemplateWithDefaults(savedTemplate)
+                Template = savedTemplate is null
+                    ? null
+                    : MergeOidcUiTemplateWithDefaults(savedTemplate)
             });
         }
 

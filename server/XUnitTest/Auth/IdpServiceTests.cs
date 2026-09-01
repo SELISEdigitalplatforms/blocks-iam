@@ -99,16 +99,17 @@ namespace XUnitTest.Auth
         // ---------- GetUiConfigAsync ----------
 
         [Fact]
-        public async Task GetUiConfigAsync_ReturnsNullCaptcha_WhenConfigNull()
+        public async Task GetUiConfigAsync_ReturnsNullCaptchaAndTemplate_WhenNeitherIsConfigured()
         {
             _captchaRepo.Setup(c => c.GetCaptchaConfigurationAsync()).ReturnsAsync((CaptchaConfiguration)null!);
+            _authRepo.Setup(r => r.GetOidcUiTemplateAsync()).ReturnsAsync((OidcUiTemplate?)null);
 
             var result = await Create().GetUiConfigAsync();
 
             var ok = result.Should().BeOfType<OkObjectResult>().Subject;
             var response = ok.Value.Should().BeOfType<OidcUiConfigResponse>().Subject;
             response.Captcha.Should().BeNull();
-            response.Template.Should().BeEquivalentTo(IdpService.CreateDefaultOidcUiTemplate());
+            response.Template.Should().BeNull();
         }
 
         [Fact]
@@ -140,7 +141,7 @@ namespace XUnitTest.Auth
                 Provider = "recaptcha",
                 Generator = "gen"
             });
-            response.Template.Should().NotBeNull();
+            response.Template.Should().BeNull();
         }
 
         [Fact]
@@ -159,7 +160,7 @@ namespace XUnitTest.Auth
             var result = await Create().GetUiConfigAsync();
 
             var response = ((OkObjectResult)result).Value.Should().BeOfType<OidcUiConfigResponse>().Subject;
-            response.Template.Branding!.BrandName.Should().Be("Acme Corp");
+            response.Template!.Branding!.BrandName.Should().Be("Acme Corp");
             response.Template.Theme!.Primary.Should().Be("#ff0000");
             response.Template.Theme.Border.Should().Be("#16162a");
             response.Template.Pages!.Login!.Heading.Should().Be("Welcome to Acme");

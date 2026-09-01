@@ -6,7 +6,7 @@ namespace Authentication.DomainService.Shared.ResponseModel
     public sealed class OidcUiConfigResponse
     {
         public OidcUiCaptchaResponse? Captcha { get; set; }
-        public OidcUiTemplate Template { get; set; } = null!;
+        public OidcUiTemplate? Template { get; set; }
     }
 
     /// <summary>

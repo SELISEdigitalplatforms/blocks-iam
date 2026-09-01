@@ -1,4 +1,4 @@
-import { render, screen, act } from "@testing-library/react";
+import { render, screen, act, waitFor } from "@testing-library/react";
 import { beforeEach, afterEach, describe, expect, it, vi } from "vitest";
 
 // The heavy background is irrelevant to the shell's behaviour.
@@ -123,6 +123,7 @@ describe("OidcAuthShell", () => {
   });
 
   it("applies template CSS variables and omits nullable optional variables", () => {
+    document.documentElement.classList.add("dark");
     const { container } = renderShell({
       theme: {
         ...DEFAULT_OIDC_UI_TEMPLATE.theme,
@@ -138,10 +139,10 @@ describe("OidcAuthShell", () => {
     expect(root.style.getPropertyValue("--border")).toBe("");
     expect(root.style.getPropertyValue("--border-strong")).toBe("");
     expect(root.style.getPropertyValue("--accent-soft")).toBe("");
-    expect(root).not.toHaveAttribute("data-theme");
+    expect(root).toHaveAttribute("data-theme", "dark");
   });
 
-  it("renders a custom logo and brand name without a theme toggle", () => {
+  it("renders a custom logo and brand name with the auto, light and dark switcher", () => {
     renderShell({
       logoUrl: "https://example.test/acme.png",
       brandName: "Acme Identity",
@@ -151,6 +152,24 @@ describe("OidcAuthShell", () => {
       "https://example.test/acme.png",
     );
     expect(screen.getByText("Acme Identity")).toBeInTheDocument();
-    expect(screen.queryByText("toggle theme")).not.toBeInTheDocument();
+    expect(screen.getByRole("tab", { name: "Auto" })).toBeInTheDocument();
+    expect(screen.getByRole("tab", { name: "Light" })).toBeInTheDocument();
+    expect(screen.getByRole("tab", { name: "Dark" })).toBeInTheDocument();
+  });
+
+  it("reacts to the resolved html theme and removes dark template colors in light mode", async () => {
+    document.documentElement.classList.add("dark");
+    const { container } = renderShell();
+    const root = container.querySelector(".oidc-scifi-root") as HTMLElement;
+
+    expect(root).toHaveAttribute("data-theme", "dark");
+    expect(root.style.getPropertyValue("--bg")).toBe("#050510");
+
+    await act(async () => {
+      document.documentElement.classList.remove("dark");
+    });
+
+    await waitFor(() => expect(root).toHaveAttribute("data-theme", "light"));
+    expect(root.style.getPropertyValue("--bg")).toBe("");
   });
 });
