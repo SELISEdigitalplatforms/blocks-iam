@@ -2,10 +2,7 @@ import { useQuery } from "@tanstack/react-query";
 import { serviceInstances } from "@/lib/http-client";
 import { getRuntimeEnv } from "@/lib/runtime-env";
 import { extractOIDCParams } from "@blocks-idp/authentication/utils/oidc-utils";
-import {
-  DEFAULT_OIDC_UI_TEMPLATE,
-  type IOidcUiTemplate,
-} from "@blocks-idp/authentication/models/oidc-ui-template";
+import type { IOidcUiTemplate } from "@blocks-idp/authentication/models/oidc-ui-template";
 
 export { DEFAULT_OIDC_UI_TEMPLATE } from "@blocks-idp/authentication/models/oidc-ui-template";
 export type { IOidcUiTemplate } from "@blocks-idp/authentication/models/oidc-ui-template";
@@ -18,7 +15,7 @@ export interface IOidcUiCaptchaConfig {
 
 export interface IOidcUiConfig {
   captcha: IOidcUiCaptchaConfig | null;
-  template: IOidcUiTemplate;
+  template: IOidcUiTemplate | null;
 }
 
 const OIDC_UI_CONFIG_ENDPOINT = "/api/idp/oidc-ui-config";
@@ -65,8 +62,8 @@ export const useOidcUiConfig = (tenantIdOverride?: string) => {
   });
 
   const data: IOidcUiConfig = query.data
-    ? { ...query.data, template: query.data.template ?? DEFAULT_OIDC_UI_TEMPLATE }
-    : { captcha: null, template: DEFAULT_OIDC_UI_TEMPLATE };
+    ? { ...query.data, template: query.data.template ?? null }
+    : { captcha: null, template: null };
 
   return { ...query, data, captchaEnabled: data.captcha != null };
 };
