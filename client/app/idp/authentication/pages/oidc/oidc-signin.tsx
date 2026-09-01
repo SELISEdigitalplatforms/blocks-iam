@@ -139,6 +139,7 @@ export const OIDCSignin = () => {
           tenantId={tenantId}
           codeChallenge={searchParams.get("code_challenge") || undefined}
           codeChallengeMethod={searchParams.get("code_challenge_method") || "S256"}
+          initialError={ssoError}
         />
       </OidcAuthShell>
     );

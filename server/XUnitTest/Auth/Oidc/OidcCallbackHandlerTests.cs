@@ -121,6 +121,9 @@ namespace XUnitTest.Auth.Oidc
 
             result.IsSuccess.Should().BeFalse();
             result.ErrorMessage.Should().Contain("OIDC flow expired");
+            result.ErrorCode.Should().Be("oidc_flow_expired");
+            // Nothing was recovered, so there is no login page to send the browser back to.
+            result.ClientId.Should().BeNull();
         }
 
         [Fact]
@@ -189,6 +192,12 @@ namespace XUnitTest.Auth.Oidc
 
             result.IsSuccess.Should().BeFalse();
             result.ErrorMessage.Should().Contain("No account exists");
+            result.ErrorCode.Should().Be("signup_disabled");
+            // The refusal carries the original request so the controller can return the user to
+            // the login page instead of leaving them on an error body.
+            result.ClientId.Should().Be("client-1");
+            result.RedirectUri.Should().Be("https://redirect.com");
+            result.OriginalState.Should().Be("state-1");
         }
 
         [Fact]

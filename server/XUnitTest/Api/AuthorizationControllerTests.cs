@@ -193,5 +193,74 @@ namespace XUnitTest.ApiTests
 
             result.Should().BeSameAs(sentinel);
         }
+
+        private static DefaultHttpContext GetContext()
+        {
+            var httpContext = new DefaultHttpContext();
+            httpContext.Request.Method = HttpMethods.Get;
+            return httpContext;
+        }
+
+        private static OidcCallbackResult SignupDisabledFailure()
+        {
+            return new OidcCallbackResult
+            {
+                IsSuccess = false,
+                ErrorCode = "signup_disabled",
+                ErrorMessage = "No account exists for this email",
+                ClientId = "client",
+                RedirectUri = "https://cb",
+                OriginalState = "state-1",
+                Scope = "openid",
+                TenantId = "tenant-1"
+            };
+        }
+
+        [Fact]
+        public async Task HandleOidcCallback_BrowserFailureWithContext_RedirectsToLoginWithError()
+        {
+            _callbackHandler.Setup(h => h.HandleCallbackAsync("code", "state"))
+                .ReturnsAsync(SignupDisabledFailure());
+
+            var result = await CreateController(GetContext()).HandleOidcCallbackGet("code", "state");
+
+            var redirect = result.Should().BeOfType<RedirectResult>().Subject;
+            redirect.Url.Should().StartWith("/oidc/login?");
+            redirect.Url.Should().Contain("error=signup_disabled");
+            redirect.Url.Should().Contain("error_description=No%20account%20exists%20for%20this%20email");
+            redirect.Url.Should().Contain("client_id=client");
+            redirect.Url.Should().Contain("state=state-1");
+            redirect.Url.Should().Contain("tenant_id=tenant-1");
+        }
+
+        [Fact]
+        public async Task HandleOidcCallback_BrowserFailureWithoutContext_ReturnsErrorBody()
+        {
+            _callbackHandler.Setup(h => h.HandleCallbackAsync("code", "state"))
+                .ReturnsAsync(new OidcCallbackResult
+                {
+                    IsSuccess = false,
+                    ErrorCode = "invalid_state",
+                    ErrorMessage = "Invalid or expired OIDC state"
+                });
+
+            var result = await CreateController(GetContext()).HandleOidcCallbackGet("code", "state");
+
+            result.Should().BeOfType<BadRequestObjectResult>();
+        }
+
+        [Fact]
+        public async Task HandleOidcCallback_PostedFailure_ReturnsErrorBodyRatherThanRedirect()
+        {
+            _callbackHandler.Setup(h => h.HandleCallbackAsync("code", "state"))
+                .ReturnsAsync(SignupDisabledFailure());
+            var httpContext = new DefaultHttpContext();
+            httpContext.Request.Method = HttpMethods.Post;
+
+            var result = await CreateController(httpContext).HandleOidcCallbackGet("code", "state");
+
+            // A POST here is an API caller, not a browser — a 302 would be useless to it.
+            result.Should().BeOfType<BadRequestObjectResult>();
+        }
     }
 }
