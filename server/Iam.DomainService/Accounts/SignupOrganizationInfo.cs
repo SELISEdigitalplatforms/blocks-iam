@@ -1,4 +1,4 @@
-using Iam.DomainService.Shared.Entities;
+﻿using Iam.DomainService.Shared.Entities;
 
 namespace Iam.DomainService.Accounts
 {
@@ -46,7 +46,7 @@ namespace Iam.DomainService.Accounts
         public string? Locale { get; set; }
 
         /// <summary>
-        /// Free-form extras. Never persisted as received — see <see cref="SignupAttributeNormalizer"/>.
+        /// Free-form extras. Never persisted as received — see <see cref="Iam.DomainService.Shared.Serialization.AttributeNormalizer"/>.
         /// </summary>
         public Dictionary<string, object> Attributes { get; set; } = new Dictionary<string, object>();
     }

@@ -81,6 +81,11 @@ interface OidcLoginFormProps {
   codeChallenge?: string;
   codeChallengeMethod?: string;
   tenantId?: string;
+  // Error the user is arriving with rather than one they just caused — a failed
+  // SSO round trip (e.g. signup disabled for the tenant) sends the browser back
+  // here with `error_description`, and it belongs in the same inline slot as a
+  // failed password attempt instead of being dropped.
+  initialError?: string;
 }
 
 export const OidcLoginForm = ({
@@ -93,6 +98,7 @@ export const OidcLoginForm = ({
   codeChallenge,
   codeChallengeMethod,
   tenantId,
+  initialError,
 }: OidcLoginFormProps) => {
   const navigate = useNavigate();
   const animCtx = useOidcAuthAnimation();
@@ -105,7 +111,7 @@ export const OidcLoginForm = ({
   const [isSelectingAccount, setIsSelectingAccount] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
-  const [serverError, setServerError] = useState<string | null>(null);
+  const [serverError, setServerError] = useState<string | null>(initialError ?? null);
   const [lastAttemptedEmail, setLastAttemptedEmail] = useState("");
   const [showActivationError, setShowActivationError] = useState(false);
   const [activeCodeChallenge, setActiveCodeChallenge] = useState(codeChallenge);

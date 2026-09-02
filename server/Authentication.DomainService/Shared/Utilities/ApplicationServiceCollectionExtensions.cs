@@ -193,6 +193,7 @@ namespace Authentication.DomainService.Utilities
             serviceCollection.AddSingleton<IValidator<ChangePasswordRequest>, ChangePasswordValidator>();
             serviceCollection.AddSingleton<IValidator<CreateUserRequest>, CreateUserValidator>();
             serviceCollection.AddSingleton<IValidator<UpdateUserRequest>, UpdateUserValidator>();
+            serviceCollection.AddSingleton<IValidator<UpdateMyAccountRequest>, UpdateMyAccountValidator>();
             serviceCollection.AddSingleton<IValidator<CreatePermissionRequest>, CreatePermissionValidator>();
             serviceCollection.AddSingleton<IValidator<CreateRoleRequest>, RoleValidator>();
             serviceCollection.AddSingleton<IValidator<UpdatePermissionRequest>, UpdatePermissionValidator>();

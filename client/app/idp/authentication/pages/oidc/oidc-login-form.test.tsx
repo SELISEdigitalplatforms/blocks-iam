@@ -80,6 +80,7 @@ const renderForm = (props: Partial<React.ComponentProps<typeof OidcLoginForm>> =
         scope={props.scope}
         state={props.state}
         nonce={props.nonce}
+        initialError={props.initialError}
       />
     </MemoryRouter>,
   );
@@ -454,5 +455,20 @@ describe("OidcLoginForm", () => {
     h.signUpSetting = { isSignUpEnable: true };
     renderForm();
     expect(screen.getByText("Create an account")).toBeInTheDocument();
+  });
+
+  it("shows an error carried back from a failed SSO round trip", () => {
+    h.loginOption = { ssoInfo: [{ provider: "microsoft" }] };
+    renderForm({
+      initialError:
+        "No account exists for this email, and signing up with SSO is turned off.",
+    });
+    expect(
+      screen.getByText(
+        "No account exists for this email, and signing up with SSO is turned off.",
+      ),
+    ).toBeInTheDocument();
+    // The SSO buttons stay available so another provider can be tried.
+    expect(screen.getByTestId("sso-signin")).toBeInTheDocument();
   });
 });

@@ -1,4 +1,4 @@
-using Blocks.Genesis;
+﻿using Blocks.Genesis;
 using FluentAssertions;
 using FluentValidation;
 using FluentValidation.Results;
@@ -22,6 +22,7 @@ namespace XUnitTest.IamTests.Users
     {
         private readonly Mock<IValidator<CreateUserRequest>> _createValidator = new();
         private readonly Mock<IValidator<UpdateUserRequest>> _updateValidator = new();
+        private readonly Mock<IValidator<UpdateMyAccountRequest>> _myAccountValidator = new();
         private readonly Mock<IIdentityAccessManagementService> _iam = new();
         private readonly Mock<IUserRepository> _userRepo = new();
         private readonly Mock<IMessageClient> _message = new();
@@ -37,6 +38,8 @@ namespace XUnitTest.IamTests.Users
             _createValidator.Setup(v => v.ValidateAsync(It.IsAny<CreateUserRequest>(), It.IsAny<CancellationToken>()))
                 .ReturnsAsync(new ValidationResult());
             _updateValidator.Setup(v => v.Validate(It.IsAny<UpdateUserRequest>()))
+                .Returns(new ValidationResult());
+            _myAccountValidator.Setup(v => v.Validate(It.IsAny<UpdateMyAccountRequest>()))
                 .Returns(new ValidationResult());
             _message.Setup(m => m.SendToConsumerAsync(It.IsAny<ConsumerMessage<UserMutationEvent>>())).Returns(Task.CompletedTask);
             _message.Setup(m => m.SendToConsumerAsync(It.IsAny<ConsumerMessage<UserStatusChangedEvent>>())).Returns(Task.CompletedTask);
@@ -66,7 +69,7 @@ namespace XUnitTest.IamTests.Users
         }
 
         private UserManagementMutationService Create() =>
-            new(NullLogger<UserManagementMutationService>.Instance, _createValidator.Object, _updateValidator.Object,
+            new(NullLogger<UserManagementMutationService>.Instance, _createValidator.Object, _updateValidator.Object, _myAccountValidator.Object,
                 _iam.Object, _userRepo.Object, _message.Object, _cache.Object, _tenants.Object, _activity.Object,
                 null, _resourceRepo.Object, null);
 
@@ -89,20 +92,23 @@ namespace XUnitTest.IamTests.Users
         // ---------- UpdateUserAsync org resolution from context (non-default org) ----------
 
         [Fact]
-        public async Task UpdateUser_NoCommandOrg_UsesContextOrganization()
+        public async Task UpdateUser_NoCommandOrg_ResolvesContextOrgWithoutEnrollingTheUser()
         {
+            // The context organization is still resolved for the guard below, but a profile edit
+            // no longer grants membership as a side effect - UpdateUserAccessControlAsync owns that.
             InstallContext(orgId: "org-5");
             var user = new User { ItemId = "u1", OrganizationIds = new List<string>() };
             _userRepo.Setup(r => r.GetUserByIdAsync("u1")).ReturnsAsync(user);
 
             var result = await Create().UpdateUserAsync(new UpdateUserRequest
             {
-                ItemId = "u1", FirstName = "Ann", Roles = new List<string> { "member" }
+                ItemId = "u1", FirstName = "Ann"
             });
 
             result.IsSuccess.Should().BeTrue();
-            user.OrganizationIds.Should().Contain("org-5");
-            user.Roles["org-5"].Should().Contain("member");
+            user.FirstName.Should().Be("Ann");
+            user.OrganizationIds.Should().BeEmpty();
+            user.Roles.Should().NotContainKey("org-5");
         }
 
         // ---------- GetTenantConfigurationAsync (explicit interface implementation) ----------

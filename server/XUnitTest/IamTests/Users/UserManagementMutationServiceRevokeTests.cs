@@ -1,4 +1,4 @@
-using Blocks.Genesis;
+﻿using Blocks.Genesis;
 using FluentAssertions;
 using FluentValidation;
 using Iam.DomainService.Dtos;
@@ -22,6 +22,7 @@ namespace XUnitTest.IamTests.Users
     {
         private readonly Mock<IValidator<CreateUserRequest>> _createValidator = new();
         private readonly Mock<IValidator<UpdateUserRequest>> _updateValidator = new();
+        private readonly Mock<IValidator<UpdateMyAccountRequest>> _myAccountValidator = new();
         private readonly Mock<IIdentityAccessManagementService> _iam = new();
         private readonly Mock<IUserRepository> _userRepo = new();
         private readonly Mock<IMessageClient> _message = new();
@@ -56,7 +57,7 @@ namespace XUnitTest.IamTests.Users
         }
 
         private UserManagementMutationService Create() =>
-            new(NullLogger<UserManagementMutationService>.Instance, _createValidator.Object, _updateValidator.Object,
+            new(NullLogger<UserManagementMutationService>.Instance, _createValidator.Object, _updateValidator.Object, _myAccountValidator.Object,
                 _iam.Object, _userRepo.Object, _message.Object, _cache.Object, _tenants.Object, _activity.Object,
                 null, _resourceRepo.Object, null);
 

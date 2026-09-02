@@ -9,6 +9,7 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.Logging.Abstractions;
 using Moq;
 using System.Security.Cryptography;
+using Iam.DomainService.Resources;
 
 namespace XUnitTest.Auth
 {
@@ -17,11 +18,12 @@ namespace XUnitTest.Auth
         private readonly Mock<IDeviceAuthorizationRepository> _repo = new();
         private readonly Mock<IIdpSessionRepository> _sessionRepo = new();
         private readonly Mock<IAuthenticationRepository> _authRepo = new();
+        private readonly Mock<IResourceRepository> _resourceRepo = new();
 
         private const string TenantId = "tenant-1";
 
         private DeviceVerificationService Create() =>
-            new(_repo.Object, _sessionRepo.Object, _authRepo.Object,
+            new(_repo.Object, _sessionRepo.Object, _authRepo.Object, _resourceRepo.Object,
                 NullLogger<DeviceVerificationService>.Instance);
 
         private static object? Prop(object? value, string name) =>

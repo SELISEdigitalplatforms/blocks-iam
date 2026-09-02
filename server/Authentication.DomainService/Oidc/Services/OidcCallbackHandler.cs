@@ -24,6 +24,13 @@ namespace Authentication.DomainService.Oidc.Services
         public string? RefreshToken { get; set; }
         public Dictionary<string, object>? TokenPayload { get; set; }
         public string? ErrorMessage { get; set; }
+
+        /// <summary>
+        /// Machine-readable reason a callback failed, e.g. <c>signup_disabled</c>. The callback
+        /// lands in the browser, so the controller needs to tell a policy refusal (send the user
+        /// back to the login screen with something to read) from a broken flow.
+        /// </summary>
+        public string? ErrorCode { get; set; }
         
         // OIDC flow specific fields
         public bool IsOidcFlow { get; set; } = false;
@@ -73,7 +80,7 @@ namespace Authentication.DomainService.Oidc.Services
                 if (string.IsNullOrWhiteSpace(oidcSocialStateJson))
                 {
                     _logger.LogWarning("Invalid OIDC state: {State}", state);
-                    return new OidcCallbackResult { IsSuccess = false, ErrorMessage = "Invalid or expired OIDC state" };
+                    return new OidcCallbackResult { IsSuccess = false, ErrorCode = "invalid_state", ErrorMessage = "Invalid or expired OIDC state" };
                 }
 
                 // OIDC SOCIAL FLOW - User authenticated via social provider within OIDC
@@ -83,7 +90,7 @@ namespace Authentication.DomainService.Oidc.Services
             catch (Exception ex)
             {
                 _logger.LogError(ex, "Error handling OIDC callback");
-                return new OidcCallbackResult { IsSuccess = false, ErrorMessage = "An error occurred during token exchange" };
+                return new OidcCallbackResult { IsSuccess = false, ErrorCode = "server_error", ErrorMessage = "An error occurred during token exchange" };
             }
         }
 
@@ -94,6 +101,28 @@ namespace Authentication.DomainService.Oidc.Services
         /// </summary>
         private async Task<OidcCallbackResult> HandleOidcSocialCallbackAsync(string code, string state, string oidcSocialStateJson)
         {
+            // Lives outside the try so every failure path -- the catch included -- can hand the
+            // original OIDC request back to the controller. This callback is a browser redirect,
+            // not a fetch: without the request context there is nowhere to send the user except
+            // a bare error body rendered in the address bar.
+            OidcContext? recoveredContext = null;
+
+            OidcCallbackResult Failure(string errorCode, string message) => new()
+            {
+                IsSuccess = false,
+                ErrorCode = errorCode,
+                ErrorMessage = message,
+                IsOidcFlow = true,
+                ClientId = recoveredContext?.ClientId,
+                RedirectUri = recoveredContext?.RedirectUri,
+                OriginalState = recoveredContext?.State,
+                Scope = recoveredContext?.Scope,
+                Nonce = recoveredContext?.Nonce,
+                CodeChallenge = recoveredContext?.CodeChallenge,
+                CodeChallengeMethod = recoveredContext?.CodeChallengeMethod,
+                TenantId = recoveredContext?.TenantId
+            };
+
             try
             {
                 // Parse OIDC social state to get context
@@ -101,13 +130,13 @@ namespace Authentication.DomainService.Oidc.Services
                 if (oidcSocialState == null || string.IsNullOrWhiteSpace(oidcSocialState.OidcState))
                 {
                     _logger.LogWarning("Invalid OIDC state in social callback");
-                    return new OidcCallbackResult { IsSuccess = false, ErrorMessage = "Invalid OIDC context" };
+                    return Failure("invalid_request", "Invalid OIDC context");
                 }
 
                 if (string.IsNullOrWhiteSpace(oidcSocialState.Provider))
                 {
                     _logger.LogWarning("Provider not found in OIDC social state");
-                    return new OidcCallbackResult { IsSuccess = false, ErrorMessage = "Provider not found in OIDC state" };
+                    return Failure("invalid_request", "Provider not found in OIDC state");
                 }
 
                 var oidcState = oidcSocialState.OidcState;
@@ -119,15 +148,18 @@ namespace Authentication.DomainService.Oidc.Services
                 if (string.IsNullOrWhiteSpace(contextJson))
                 {
                     _logger.LogWarning("OIDC context not found for state {OidcState}", oidcState);
-                    return new OidcCallbackResult { IsSuccess = false, ErrorMessage = "OIDC flow expired" };
+                    return Failure("oidc_flow_expired", "OIDC flow expired");
                 }
 
                 var context = JsonSerializer.Deserialize<OidcContext>(contextJson);
                 if (context == null)
                 {
                     _logger.LogWarning("Failed to deserialize OIDC context for state {OidcState}", oidcState);
-                    return new OidcCallbackResult { IsSuccess = false, ErrorMessage = "OIDC flow expired" };
+                    return Failure("oidc_flow_expired", "OIDC flow expired");
                 }
+
+                // From here on a failure can be shown on the login page the user started from.
+                recoveredContext = context;
 
                 // 3. Reuse social folder callback handling for provider token exchange + user extraction
                 var stateInfo = new StateInfo
@@ -146,7 +178,7 @@ namespace Authentication.DomainService.Oidc.Services
                 if (externalUserData == null || string.IsNullOrWhiteSpace(externalUserData.Email))
                 {
                     _logger.LogError("Social provider callback did not return user email for provider {Provider}", provider);
-                    return new OidcCallbackResult { IsSuccess = false, ErrorMessage = "Provider did not return a valid user email" };
+                    return Failure("provider_email_missing", "Provider did not return a valid user email");
                 }
 
                 // 5. Resolve the Blocks user behind the external identity, provisioning one when
@@ -157,7 +189,9 @@ namespace Authentication.DomainService.Oidc.Services
                 if (provisioning.Outcome == SsoProvisioningOutcome.SignupDisabled)
                 {
                     _logger.LogWarning("SSO signup is disabled for this tenant; refusing unknown user from {Provider}", provider);
-                    return new OidcCallbackResult { IsSuccess = false, ErrorMessage = "No account exists for this email" };
+                    return Failure(
+                        "signup_disabled",
+                        "No account exists for this email, and signing up with SSO is turned off. Contact your administrator to get access.");
                 }
 
                 var ssoUser = provisioning.User;
@@ -165,13 +199,13 @@ namespace Authentication.DomainService.Oidc.Services
                 if (ssoUser == null || string.IsNullOrWhiteSpace(ssoUser.ItemId))
                 {
                     _logger.LogError("Failed to create/update user for provider {Provider}", provider);
-                    return new OidcCallbackResult { IsSuccess = false, ErrorMessage = "Failed to create user account" };
+                    return Failure("user_provisioning_failed", "Failed to create user account. Please try again.");
                 }
 
                 if (!ssoUser.Active)
                 {
                     _logger.LogError("User with id {UserId} is not active for provider {Provider}", ssoUser.ItemId, provider);
-                    return new OidcCallbackResult { IsSuccess = false, ErrorMessage = "user is not active" };
+                    return Failure("user_inactive", "This account is not active. Contact your administrator to get access.");
                 }
 
                 // 6. Clean up temporary states. The actual authorization code must be created
@@ -199,7 +233,7 @@ namespace Authentication.DomainService.Oidc.Services
             catch (Exception ex)
             {
                 _logger.LogError(ex, "Error handling OIDC social callback for provider");
-                return new OidcCallbackResult { IsSuccess = false, ErrorMessage = "An error occurred during OIDC processing" };
+                return Failure("server_error", "An error occurred during OIDC processing");
             }
         }
 

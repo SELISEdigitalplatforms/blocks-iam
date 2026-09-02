@@ -2,6 +2,7 @@ using Authentication.DomainService.Authentication;
 using Authentication.DomainService.OAuth.RequestModel;
 using Authentication.DomainService.Oidc.Services;
 using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using System.Text.Json.Serialization;
 
@@ -134,11 +135,7 @@ namespace Blocks.Api.Controllers
 
             if (!result.IsSuccess)
             {
-                return BadRequest(new
-                {
-                    error = "token_exchange_failed",
-                    error_description = result.ErrorMessage
-                });
+                return BuildCallbackFailure(result);
             }
 
             return await _authorizationFlowService.AuthorizeAsync(
@@ -156,6 +153,49 @@ namespace Blocks.Api.Controllers
                 Response,
                 result.BlocksUserId,
                 true);
+        }
+
+        /// <summary>
+        /// A failed provider callback arrives as a browser navigation, so a JSON body leaves the
+        /// user looking at raw error text in the address bar. When the OIDC request context
+        /// survived the failure we send them back to the login page they started from, carrying
+        /// <c>error</c> and <c>error_description</c> — the same way <c>/oidc/authorize</c> hands
+        /// its errors to a login screen. Callers that POST here are APIs, not browsers, and keep
+        /// getting the JSON body.
+        /// </summary>
+        private IActionResult BuildCallbackFailure(OidcCallbackResult result)
+        {
+            var canReturnToLogin = HttpMethods.IsGet(Request.Method)
+                && !string.IsNullOrWhiteSpace(result.ClientId)
+                && !string.IsNullOrWhiteSpace(result.RedirectUri);
+
+            if (canReturnToLogin)
+            {
+                var loginUrl = OidcRedirectUrlBuilder.BuildLoginUrl(
+                    result.ClientId!,
+                    "code",
+                    result.RedirectUri!,
+                    result.Scope ?? "openid profile email offline_access",
+                    result.OriginalState ?? string.Empty,
+                    result.Nonce ?? string.Empty,
+                    result.CodeChallenge ?? string.Empty,
+                    result.CodeChallengeMethod ?? "S256",
+                    result.TenantId);
+
+                var errorParams = new Dictionary<string, string>
+                {
+                    { "error", result.ErrorCode ?? "access_denied" },
+                    { "error_description", result.ErrorMessage ?? "Sign-in could not be completed." }
+                };
+
+                return Redirect(OidcRedirectUrlBuilder.BuildRedirectUri(loginUrl, errorParams));
+            }
+
+            return BadRequest(new
+            {
+                error = result.ErrorCode ?? "token_exchange_failed",
+                error_description = result.ErrorMessage
+            });
         }
 
         #endregion

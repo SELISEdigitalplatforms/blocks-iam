@@ -10,6 +10,7 @@ using Mfa.DomainService.Services;
 using Mfa.DomainService.Shared;
 using Microsoft.Extensions.Logging.Abstractions;
 using Moq;
+using Iam.DomainService.Utilities;
 
 namespace XUnitTest.Auth.OAuth
 {
@@ -265,11 +266,13 @@ namespace XUnitTest.Auth.OAuth
 
             await Create().AuthenticateAsync(Request(), Config());
 
-            captured!.OrganizationId.Should().Be("default");
+            // Still "default", and now for the right reason: the user is literally a member of it,
+            // so the resolver returns it as a membership rather than as a fallback.
+            captured!.OrganizationId.Should().Be(IdpConstants.DefaultOrganizationId);
         }
 
         [Fact]
-        public async Task Authenticate_UserWithNoOrganizationAnywhere_FallsBackToDefault()
+        public async Task Authenticate_UserWithNoOrganizationAnywhere_ResolvesToNoOrg()
         {
             var user = new User { ItemId = "u1", IsMfaVerified = true };
             _otpService.Setup(o => o.VerifyAsync(It.IsAny<VerifyOtpRequest>()))
@@ -283,7 +286,9 @@ namespace XUnitTest.Auth.OAuth
 
             await Create().AuthenticateAsync(Request(), Config());
 
-            captured!.OrganizationId.Should().Be("default");
+            // H5: this used to fall back to "default" -- the tenant-wide scope -- handing the widest
+            // authority in the system to a user with no organization at all.
+            captured!.OrganizationId.Should().Be(IdpConstants.NoOrganizationId);
         }
 
         [Fact]

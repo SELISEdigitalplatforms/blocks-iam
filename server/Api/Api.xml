@@ -428,6 +428,16 @@
             RFC 6749: OAuth 2.0 | RFC 3986: OpenID Connect | RFC 7519: JWT | RFC 5280: X.509
             </summary>
         </member>
+        <member name="M:Blocks.Api.Controllers.AuthorizationController.BuildCallbackFailure(Authentication.DomainService.Oidc.Services.OidcCallbackResult)">
+            <summary>
+            A failed provider callback arrives as a browser navigation, so a JSON body leaves the
+            user looking at raw error text in the address bar. When the OIDC request context
+            survived the failure we send them back to the login page they started from, carrying
+            <c>error</c> and <c>error_description</c> — the same way <c>/oidc/authorize</c> hands
+            its errors to a login screen. Callers that POST here are APIs, not browsers, and keep
+            getting the JSON body.
+            </summary>
+        </member>
         <!-- Badly formed XML comment ignored for member "T:Blocks.Api.Controllers.IdpSessionController" -->
         <member name="M:Blocks.Api.Controllers.IdpSessionController.GetSession">
             <summary>
