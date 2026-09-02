@@ -1,9 +1,8 @@
 import type { IOidcUiTemplate } from "@blocks-idp/authentication/models/oidc-ui-template";
 
-// The baseline template most tests render with. Its copy mirrors what used to be
-// the app's built-in DEFAULT_OIDC_UI_TEMPLATE (removed once the backend started
-// always supplying a real per-tenant template) -- kept here so the many tests that
-// locate elements by that copy (e.g. a "Login" button) don't all need rewriting.
+// The baseline template most tests render with. Its copy mirrors the app's
+// built-in DEFAULT_OIDC_UI_TEMPLATE so tests that locate elements by that copy
+// (e.g. a "Login" button) don't all need rewriting.
 // Tests that specifically verify tenant customization override with
 // OIDC_UI_TEMPLATE_FIXTURE below instead.
 export const DEFAULT_OIDC_UI_TEMPLATE_FIXTURE: IOidcUiTemplate = {
