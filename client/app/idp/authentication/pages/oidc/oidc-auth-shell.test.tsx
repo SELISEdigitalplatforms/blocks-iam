@@ -74,7 +74,11 @@ describe("OidcAuthShell", () => {
   it("renders the heading, brand label and children, starting idle", () => {
     renderShell();
     expect(screen.getByText("Blocks IAM")).toBeInTheDocument();
-    expect(screen.getByTestId("blocks-default-logo")).toBeInTheDocument();
+    expect(screen.getByTestId("blocks-default-logo")).toHaveAttribute(
+      "src",
+      "https://az-cdn.selise.biz/selisecdn/cdn/blocks/logos/selise_blocks_logo_small.svg",
+    );
+    expect(screen.getByTestId("blocks-default-logo")).toHaveClass("h-7", "w-auto");
     // The heading is split word by word.
     expect(screen.getByText("Sign")).toBeInTheDocument();
     expect(screen.getByText("Blocks")).toBeInTheDocument();
