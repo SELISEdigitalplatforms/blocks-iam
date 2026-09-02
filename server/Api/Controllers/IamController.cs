@@ -349,8 +349,16 @@ namespace Api.Controllers
             });
         }
 
+        /// <summary>
+        /// Creating an organization is a tenant-level act -- the new organization is a sibling at
+        /// the top level, belonging to no one -- so it carries its own permission rather than
+        /// sharing <c>mutate-organizations</c> with the update below. Sharing meant that granting
+        /// an organization administrator the right to edit its own organization also granted the
+        /// right to create new ones. Unlike the update, this endpoint has no organization scope to
+        /// apply: the permission is the whole gate.
+        /// </summary>
         [HttpPost("organizations/create")]
-        [ProtectedEndPoint("blocks-iam::iam::mutate-organizations")]
+        [ProtectedEndPoint("blocks-iam::iam::create-organization")]
         public async Task<BaseMutationResponse> CreateOrganization([FromBody] CreateOrganizationRequest request)
         {
             return await _resourceMutationService.CreateOrganizationAsync(request);

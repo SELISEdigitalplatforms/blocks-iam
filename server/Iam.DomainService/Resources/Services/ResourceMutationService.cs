@@ -2149,6 +2149,55 @@ namespace Iam.DomainService.Resources
                 };
             }
 
+            // "default" is a scope sentinel, not a document, so there has never been anything to
+            // write. Reported on its own rather than falling through to the null lookup below,
+            // whose "not found" would read as "wrong id" instead of "not an editable thing".
+            if (string.Equals(id, DefaultOrganizationId, StringComparison.Ordinal))
+            {
+                return new BaseResponse
+                {
+                    IsSuccess = false,
+                    Errors = new Dictionary<string, string>
+                    {
+                        { "default_organization_immutable", "The default organization cannot be updated." }
+                    }
+                };
+            }
+
+            var scope = OrganizationAccessScopeResolver.Resolve(BlocksContext.GetContext()?.OrganizationId);
+            if (scope.Kind == OrganizationAccessScopeKind.Denied)
+            {
+                _logger.LogWarning("Rejected an organization update: the caller's token carries no organization.");
+                return new BaseResponse
+                {
+                    IsSuccess = false,
+                    Errors = new Dictionary<string, string>
+                    {
+                        { "organization_scope_denied", "The caller's token carries no organization." }
+                    }
+                };
+            }
+
+            // Reported as "not found", not "forbidden", so the caller learns nothing about whether
+            // an organization it may not reach exists. Tested BEFORE the document is read, so an
+            // out-of-scope id is indistinguishable from one that does not exist.
+            if (!scope.Allows(id))
+            {
+                _logger.LogWarning(
+                    "Rejected an organization update targeting {RequestedOrganizationId}: the caller is scoped to {ScopedOrganizationId}.",
+                    id,
+                    scope.OrganizationId);
+
+                return new BaseResponse
+                {
+                    IsSuccess = false,
+                    Errors = new Dictionary<string, string>
+                    {
+                        { "not_found", "Organization not found" }
+                    }
+                };
+            }
+
             var organization = await _resourceRepository.GetOrganizationById(id);
             if (organization == null)
             {
@@ -2168,8 +2217,18 @@ namespace Iam.DomainService.Resources
 
             ApplyProperty(request.Name, value => organization.Name = value, v => !string.IsNullOrWhiteSpace(v));
             ApplyProperty(request.Description, value => organization.Description = value, v => !string.IsNullOrWhiteSpace(v));
-            ApplyProperty(request.DefaultRoleForMembers, value => organization.DefaultRoleForMembers = value, v => v?.Count > 0);
-            ApplyProperty(request.DefaultPermissionsForMembers, value => organization.DefaultPermissionsForMembers = value, v => v?.Count > 0);
+
+            // These two decide what EVERY future member of the organization is granted on join, and
+            // nothing validates the strings, so they are a grant of privilege rather than a
+            // description of the organization. An organization-scoped administrator editing its own
+            // organization would otherwise be able to name permissions it does not itself hold. Only
+            // the tenant-wide caller may set them; for anyone else they are dropped, not rejected, so
+            // a client that echoes back the values it just read keeps working.
+            if (scope.Kind == OrganizationAccessScopeKind.AllOrganizations)
+            {
+                ApplyProperty(request.DefaultRoleForMembers, value => organization.DefaultRoleForMembers = value, v => v?.Count > 0);
+                ApplyProperty(request.DefaultPermissionsForMembers, value => organization.DefaultPermissionsForMembers = value, v => v?.Count > 0);
+            }
             ApplyProperty(request.Email, value => organization.Email = value, v => !string.IsNullOrWhiteSpace(v));
             ApplyProperty(request.PhoneNumber, value => organization.PhoneNumber = value, v => !string.IsNullOrWhiteSpace(v));
             ApplyProperty(request.WebsiteUrl, value => organization.WebsiteUrl = value, v => !string.IsNullOrWhiteSpace(v));
@@ -2216,6 +2275,30 @@ namespace Iam.DomainService.Resources
                 };
             }
 
+            var scope = OrganizationAccessScopeResolver.Resolve(BlocksContext.GetContext()?.OrganizationId);
+            if (scope.Kind == OrganizationAccessScopeKind.Denied)
+            {
+                _logger.LogWarning("Rejected an organization list: the caller's token carries no organization.");
+                return new GetOrganizationsResponse
+                {
+                    IsSuccess = false,
+                    Errors = new Dictionary<string, string>
+                    {
+                        { "organization_scope_denied", "The caller's token carries no organization." }
+                    }
+                };
+            }
+
+            // Here the organization is a filter that narrows a query, not a route id naming a
+            // target, so the same discard-rather-than-reject rule UserListOrganizationScope uses
+            // applies: a scoped caller's requested ids are replaced by its own organization, and a
+            // client asking for one it may not see is answered with what it may see.
+            if (scope.Kind == OrganizationAccessScopeKind.Organization)
+            {
+                request.Filter ??= new GetOrganizationsFilter();
+                request.Filter.Ids = [scope.OrganizationId];
+            }
+
             var response = await _resourceRepository.GetOrganizationsAsync(request);
             return response;
         }
@@ -2242,6 +2325,41 @@ namespace Iam.DomainService.Resources
                     Organization = null,
                     Errors = new Dictionary<string, string>                    {
                         { "invalid_request", "Organization ID is required" }
+                    }
+                };
+            }
+
+            var scope = OrganizationAccessScopeResolver.Resolve(BlocksContext.GetContext()?.OrganizationId);
+            if (scope.Kind == OrganizationAccessScopeKind.Denied)
+            {
+                _logger.LogWarning("Rejected an organization read: the caller's token carries no organization.");
+                return new GetOrganizationResponse
+                {
+                    IsSuccess = false,
+                    Organization = null,
+                    Errors = new Dictionary<string, string>
+                    {
+                        { "organization_scope_denied", "The caller's token carries no organization." }
+                    }
+                };
+            }
+
+            // Same "not found" as an id that does not exist, and decided before the read, so an
+            // out-of-scope organization is not confirmed to exist by the shape of the answer.
+            if (!scope.Allows(id))
+            {
+                _logger.LogWarning(
+                    "Rejected an organization read of {RequestedOrganizationId}: the caller is scoped to {ScopedOrganizationId}.",
+                    id,
+                    scope.OrganizationId);
+
+                return new GetOrganizationResponse
+                {
+                    IsSuccess = false,
+                    Organization = null,
+                    Errors = new Dictionary<string, string>
+                    {
+                        { "not_found", "Organization not found" }
                     }
                 };
             }
