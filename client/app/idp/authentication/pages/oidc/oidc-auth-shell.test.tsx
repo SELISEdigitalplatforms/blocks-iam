@@ -7,7 +7,7 @@ vi.mock("./sci-fi-background-oidc", () => ({
 }));
 import { OidcAuthShell, useOidcAuthAnimation } from "./oidc-auth-shell";
 import { OIDC_LOGIN_PANEL } from "./oidc-panel-config";
-import { DEFAULT_OIDC_UI_TEMPLATE } from "@blocks-idp/authentication/models/oidc-ui-template";
+import { OIDC_UI_TEMPLATE_FIXTURE } from "@blocks-idp/authentication/test-utils/oidc-ui-template-fixture";
 
 // A child that surfaces the animation context so we can drive the phases.
 function Driver() {
@@ -35,7 +35,7 @@ const renderShell = (props: Partial<React.ComponentProps<typeof OidcAuthShell>> 
   render(
     <OidcAuthShell
       panelConfig={OIDC_LOGIN_PANEL}
-      theme={DEFAULT_OIDC_UI_TEMPLATE.theme}
+      theme={OIDC_UI_TEMPLATE_FIXTURE.theme}
       logoUrl={null}
       brandName="Blocks IAM"
       heading="Sign in to Blocks"
@@ -74,6 +74,11 @@ describe("OidcAuthShell", () => {
   it("renders the heading, brand label and children, starting idle", () => {
     renderShell();
     expect(screen.getByText("Blocks IAM")).toBeInTheDocument();
+    expect(screen.getByTestId("blocks-default-logo")).toHaveAttribute(
+      "src",
+      "https://az-cdn.selise.biz/selisecdn/cdn/blocks/logos/selise_blocks_logo_small.svg",
+    );
+    expect(screen.getByTestId("blocks-default-logo")).toHaveClass("h-7", "w-auto");
     // The heading is split word by word.
     expect(screen.getByText("Sign")).toBeInTheDocument();
     expect(screen.getByText("Blocks")).toBeInTheDocument();
@@ -126,17 +131,17 @@ describe("OidcAuthShell", () => {
     document.documentElement.classList.add("dark");
     const { container } = renderShell({
       theme: {
-        ...DEFAULT_OIDC_UI_TEMPLATE.theme,
+        ...OIDC_UI_TEMPLATE_FIXTURE.theme,
         dark: {
-          ...DEFAULT_OIDC_UI_TEMPLATE.theme.dark,
+          ...OIDC_UI_TEMPLATE_FIXTURE.theme.dark,
           primary: "#123456",
         },
       },
     });
     const root = container.querySelector(".oidc-scifi-root") as HTMLElement;
     expect(root.style.getPropertyValue("--accent")).toBe("#123456");
-    expect(root.style.getPropertyValue("--bg")).toBe("#050510");
-    expect(root.style.getPropertyValue("--border")).toBe("#16162a");
+    expect(root.style.getPropertyValue("--bg")).toBe("#080b14");
+    expect(root.style.getPropertyValue("--border")).toBe("#273142");
     expect(root).toHaveAttribute("data-theme", "dark");
   });
 
@@ -149,6 +154,7 @@ describe("OidcAuthShell", () => {
       "src",
       "https://example.test/acme.png",
     );
+    expect(screen.queryByTestId("blocks-default-logo")).not.toBeInTheDocument();
     expect(screen.getByText("Acme Identity")).toBeInTheDocument();
     expect(screen.getByRole("tab", { name: "Auto" })).toBeInTheDocument();
     expect(screen.getByRole("tab", { name: "Light" })).toBeInTheDocument();
@@ -161,13 +167,13 @@ describe("OidcAuthShell", () => {
     const root = container.querySelector(".oidc-scifi-root") as HTMLElement;
 
     expect(root).toHaveAttribute("data-theme", "dark");
-    expect(root.style.getPropertyValue("--bg")).toBe("#050510");
+    expect(root.style.getPropertyValue("--bg")).toBe("#080b14");
 
     await act(async () => {
       document.documentElement.classList.remove("dark");
     });
 
     await waitFor(() => expect(root).toHaveAttribute("data-theme", "light"));
-    expect(root.style.getPropertyValue("--bg")).toBe("#f5f7fb");
+    expect(root.style.getPropertyValue("--bg")).toBe("#f7f8fa");
   });
 });

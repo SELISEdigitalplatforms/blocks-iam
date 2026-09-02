@@ -28,7 +28,10 @@ vi.mock("@blocks-idp/authentication/hooks/use-oidc-ui-config", () => ({
 vi.mock("@/components/captcha", () => ({ Captcha: () => <div data-testid="captcha" /> }));
 
 import { OIDCForgotPasswordForm } from "./oidc-forgot-password-form";
-import { DEFAULT_OIDC_UI_TEMPLATE } from "@blocks-idp/authentication/models/oidc-ui-template";
+import {
+  DEFAULT_OIDC_UI_TEMPLATE_FIXTURE,
+  OIDC_UI_TEMPLATE_FIXTURE,
+} from "@blocks-idp/authentication/test-utils/oidc-ui-template-fixture";
 
 const renderForm = () =>
   render(
@@ -46,7 +49,7 @@ beforeEach(() => {
   vi.clearAllMocks();
   h.isPending = false;
   h.captchaEnabled = false;
-  h.oidcUiConfig = undefined;
+  h.oidcUiConfig = { captcha: null, template: DEFAULT_OIDC_UI_TEMPLATE_FIXTURE };
 });
 
 describe("OIDCForgotPasswordForm", () => {
@@ -60,9 +63,9 @@ describe("OIDCForgotPasswordForm", () => {
     h.oidcUiConfig = {
       captcha: null,
       template: {
-        ...DEFAULT_OIDC_UI_TEMPLATE,
+        ...OIDC_UI_TEMPLATE_FIXTURE,
         pages: {
-          ...DEFAULT_OIDC_UI_TEMPLATE.pages,
+          ...OIDC_UI_TEMPLATE_FIXTURE.pages,
           forgotPassword: {
             heading: "Restore access",
             emailLabel: "Account email",

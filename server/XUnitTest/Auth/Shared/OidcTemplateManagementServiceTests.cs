@@ -47,19 +47,19 @@ namespace XUnitTest.Auth.Shared
             _httpClientFactory.Object);
 
         [Fact]
-        public async Task ManagementGet_WithoutSavedTemplate_ReturnsCompleteDefaults()
+        public async Task ManagementGet_WithoutSavedTemplate_ReturnsNull()
         {
             _repository.Setup(r => r.GetOidcUiTemplateAsync()).ReturnsAsync((OidcUiTemplate?)null);
 
             var result = await Create().GetOidcTemplateForManagementAsync();
 
-            result.Should().BeEquivalentTo(IdpService.CreateDefaultOidcUiTemplate());
+            result.Should().BeNull();
         }
 
         [Fact]
-        public async Task ManagementGet_MergesSavedValuesWithDefaultsPerLeaf()
+        public async Task ManagementGet_ReturnsStoredTemplateWithoutChangingIt()
         {
-            _repository.Setup(r => r.GetOidcUiTemplateAsync()).ReturnsAsync(new OidcUiTemplate
+            var stored = new OidcUiTemplate
             {
                 Branding = new OidcUiTemplateBranding { BrandName = "Acme" },
                 Theme = new OidcUiTemplateTheme { Primary = "#123456" },
@@ -67,16 +67,12 @@ namespace XUnitTest.Auth.Shared
                 {
                     Login = new OidcUiLoginPage { Heading = "Welcome" }
                 }
-            });
+            };
+            _repository.Setup(r => r.GetOidcUiTemplateAsync()).ReturnsAsync(stored);
 
             var result = await Create().GetOidcTemplateForManagementAsync();
 
-            result.Branding!.BrandName.Should().Be("Acme");
-            result.Theme!.Dark!.Primary.Should().Be("#123456");
-            result.Theme.Dark.Secondary.Should().Be("#00b2ff");
-            result.Theme.Light!.Background.Should().Be("#f5f7fb");
-            result.Pages!.Login!.Heading.Should().Be("Welcome");
-            result.Pages.Signup!.Heading.Should().Be("Create Your Blocks Account");
+            result.Should().BeSameAs(stored);
         }
 
         [Fact]

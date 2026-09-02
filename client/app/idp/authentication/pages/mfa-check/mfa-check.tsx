@@ -1,3 +1,4 @@
+import { Loader } from "lucide-react";
 import { SciFiBackgroundOidc } from "../oidc/sci-fi-background-oidc";
 import { parseAsInteger, useQueryStates } from "nuqs";
 import { MfaCheckFrom } from "./mfa-check-form";
@@ -8,12 +9,11 @@ import {
   useOidcResolvedTheme,
 } from "../oidc/oidc-auth-shell";
 import { useOidcUiConfig } from "@blocks-idp/authentication/hooks/use-oidc-ui-config";
-import { DEFAULT_OIDC_UI_TEMPLATE } from "@blocks-idp/authentication/models/oidc-ui-template";
 import "../oidc/sci-fi-oidc.css";
 
 export const MfaCheck = () => {
   const { data: oidcUiConfig } = useOidcUiConfig();
-  const template = oidcUiConfig?.template ?? DEFAULT_OIDC_UI_TEMPLATE;
+  const template = oidcUiConfig?.template;
   const resolvedTheme = useOidcResolvedTheme();
   const [{ mfa_type }] = useQueryStates({
     mfa_type: parseAsInteger.withDefault(0),
@@ -22,6 +22,14 @@ export const MfaCheck = () => {
     mfa_type == 1
       ? "Open your authenticator app and enter the verification code."
       : "Check your email for the verification code and enter it here to continue.";
+
+  if (!template) {
+    return (
+      <div className="oidc-scifi-root min-h-screen flex items-center justify-center bg-[var(--bg)]">
+        <Loader className="h-8 w-8 animate-spin" style={{ color: "var(--accent)" }} />
+      </div>
+    );
+  }
 
   return (
     <div

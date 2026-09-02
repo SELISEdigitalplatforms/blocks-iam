@@ -18,11 +18,14 @@ vi.mock("@blocks-idp/authentication/hooks/use-oidc-ui-config", () => ({
 }));
 
 import { MfaCheck } from "./mfa-check";
-import { DEFAULT_OIDC_UI_TEMPLATE } from "@blocks-idp/authentication/models/oidc-ui-template";
+import {
+  DEFAULT_OIDC_UI_TEMPLATE_FIXTURE,
+  OIDC_UI_TEMPLATE_FIXTURE,
+} from "@blocks-idp/authentication/test-utils/oidc-ui-template-fixture";
 
 beforeEach(() => {
   h.mfaType = 0;
-  h.oidcUiConfig = undefined;
+  h.oidcUiConfig = { captcha: null, template: DEFAULT_OIDC_UI_TEMPLATE_FIXTURE };
 });
 
 describe("MfaCheck", () => {
@@ -42,11 +45,11 @@ describe("MfaCheck", () => {
     h.oidcUiConfig = {
       captcha: null,
       template: {
-        ...DEFAULT_OIDC_UI_TEMPLATE,
+        ...OIDC_UI_TEMPLATE_FIXTURE,
         branding: { logoUrl: null, brandName: "Acme Identity" },
         pages: {
-          ...DEFAULT_OIDC_UI_TEMPLATE.pages,
-          mfa: { ...DEFAULT_OIDC_UI_TEMPLATE.pages.mfa, heading: "Confirm your identity" },
+          ...OIDC_UI_TEMPLATE_FIXTURE.pages,
+          mfa: { ...OIDC_UI_TEMPLATE_FIXTURE.pages.mfa, heading: "Confirm your identity" },
         },
       },
     };

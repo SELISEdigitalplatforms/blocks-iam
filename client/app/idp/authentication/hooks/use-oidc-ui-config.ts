@@ -4,7 +4,6 @@ import { getRuntimeEnv } from "@/lib/runtime-env";
 import { extractOIDCParams } from "@blocks-idp/authentication/utils/oidc-utils";
 import type { IOidcUiTemplate } from "@blocks-idp/authentication/models/oidc-ui-template";
 
-export { DEFAULT_OIDC_UI_TEMPLATE } from "@blocks-idp/authentication/models/oidc-ui-template";
 export type { IOidcUiTemplate } from "@blocks-idp/authentication/models/oidc-ui-template";
 
 export interface IOidcUiCaptchaConfig {

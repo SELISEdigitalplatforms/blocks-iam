@@ -3,7 +3,8 @@ import { renderHook, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { mockHttpClientFactory } from "@/test-utils/__mocks__";
 import { getRuntimeEnv } from "@/lib/runtime-env";
-import { DEFAULT_OIDC_UI_TEMPLATE, useOidcUiConfig } from "./use-oidc-ui-config";
+import { useOidcUiConfig } from "./use-oidc-ui-config";
+import { OIDC_UI_TEMPLATE_FIXTURE } from "@blocks-idp/authentication/test-utils/oidc-ui-template-fixture";
 
 vi.mock("@/lib/http-client", () => mockHttpClientFactory());
 vi.mock("@/lib/runtime-env", () => ({ getRuntimeEnv: vi.fn(() => "") }));
@@ -98,7 +99,7 @@ describe("useOidcUiConfig", () => {
 
   it("uses the template returned by the public endpoint", async () => {
     const customTemplate = {
-      ...DEFAULT_OIDC_UI_TEMPLATE,
+      ...OIDC_UI_TEMPLATE_FIXTURE,
       branding: { logoUrl: "https://example.test/logo.png", brandName: "Acme" },
     };
     vi.mocked(http.get).mockResolvedValue({ captcha: null, template: customTemplate });

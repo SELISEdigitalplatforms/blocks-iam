@@ -384,7 +384,7 @@
             <summary>Protected tenant-level OIDC UI template management API.</summary>
         </member>
         <member name="M:Api.Controllers.OidcTemplateController.GetOidcTemplate">
-            <summary>Returns the tenant's effective, default-filled OIDC UI template.</summary>
+            <summary>Returns the tenant's stored OIDC UI template.</summary>
         </member>
         <member name="M:Api.Controllers.OidcTemplateController.SaveOidcTemplate(Authentication.DomainService.Shared.RequestModel.SaveOidcUiTemplateRequest)">
             <summary>Validates and completely replaces the tenant's OIDC UI template.</summary>

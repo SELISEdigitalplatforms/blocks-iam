@@ -6,6 +6,7 @@ import { beforeEach, afterEach, describe, expect, it, vi } from "vitest";
 const h = vi.hoisted(() => ({
   verify: vi.fn(),
   decide: vi.fn(),
+  oidcUiConfig: undefined as unknown,
 }));
 
 vi.mock("@blocks-idp/authentication/services/device.service", () => ({
@@ -37,10 +38,11 @@ vi.mock("@blocks-idp/authentication/pages/oidc/oidc-auth-shell", () => ({
   }),
 }));
 vi.mock("@blocks-idp/authentication/hooks/use-oidc-ui-config", () => ({
-  useOidcUiConfig: () => ({ data: undefined }),
+  useOidcUiConfig: () => ({ data: h.oidcUiConfig }),
 }));
 
 import { DeviceEntryPage } from "./entry";
+import { DEFAULT_OIDC_UI_TEMPLATE_FIXTURE } from "@blocks-idp/authentication/test-utils/oidc-ui-template-fixture";
 
 const readyPayload = {
   clientName: "Acme CLI",
@@ -66,6 +68,7 @@ const renderPage = (tenantId = "tenant-1", search = "") =>
 
 beforeEach(() => {
   vi.clearAllMocks();
+  h.oidcUiConfig = { captcha: null, template: DEFAULT_OIDC_UI_TEMPLATE_FIXTURE };
   assignSpy = vi.fn();
   Object.defineProperty(window, "location", {
     configurable: true,
