@@ -545,15 +545,18 @@ namespace XUnitTest.ApiTests
         }
 
         [Fact]
-        public async Task UpdateMyAccount_Success_SetsItemIdFromContextAndReturnsOk()
+        public async Task UpdateMyAccount_Success_RoutesToSelfServiceAndReturnsOk()
         {
-            _userMutation.Setup(s => s.UpdateUserAsync(It.Is<UpdateUserRequest>(c => c.ItemId == ActorUserId)))
+            // The controller no longer copies an ItemId onto the command: UpdateMyAccountRequest has
+            // no such field, so the subject can only come from the authenticated context.
+            _userMutation.Setup(s => s.UpdateMyAccountAsync(It.IsAny<UpdateMyAccountRequest>()))
                 .ReturnsAsync(new BaseMutationResponse { IsSuccess = true });
 
-            var result = await CreateController().UpdateMyAccount(new UpdateUserRequest());
+            var result = await CreateController().UpdateMyAccount(new UpdateMyAccountRequest());
 
             result.Should().BeOfType<OkObjectResult>();
-            _userMutation.Verify(s => s.UpdateUserAsync(It.Is<UpdateUserRequest>(c => c.ItemId == ActorUserId)), Times.Once);
+            _userMutation.Verify(s => s.UpdateMyAccountAsync(It.IsAny<UpdateMyAccountRequest>()), Times.Once);
+            _userMutation.Verify(s => s.UpdateUserAsync(It.IsAny<UpdateUserRequest>()), Times.Never);
         }
 
         [Fact]

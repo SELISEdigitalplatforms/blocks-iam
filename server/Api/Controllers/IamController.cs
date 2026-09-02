@@ -1,4 +1,4 @@
-using Authentication.DomainService.Authentication;
+﻿using Authentication.DomainService.Authentication;
 using Authentication.DomainService.Utilities;
 using Iam.DomainService.Utilities;
 using Blocks.Genesis;
@@ -257,12 +257,10 @@ namespace Api.Controllers
 
         [HttpPost("me")]
         [Authorize]
-        public async Task<IActionResult> UpdateMyAccount([FromBody] UpdateUserRequest command)
+        public async Task<IActionResult> UpdateMyAccount([FromBody] UpdateMyAccountRequest command)
         {
             DomainResolver.ResetToOriginalBlocksContextForImpersonation();
-            var bc = BlocksContext.GetContext();
-            command.ItemId = bc?.UserId;
-            var result = await _userManagementMutationService.UpdateUserAsync(command);
+            var result = await _userManagementMutationService.UpdateMyAccountAsync(command);
             return result.IsSuccess ? Ok(result) : BadRequest(result);
         }
 
