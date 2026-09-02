@@ -303,37 +303,12 @@ namespace Authentication.DomainService.Authentication
 
         private static string ResolveOrgIdFromUser(User? user)
         {
-            if (user == null)
-            {
-                return "default";
-            }
-
-            if (HasOrganizationAccess(user, user.LastUsedOrganizationId))
-            {
-                return user.LastUsedOrganizationId!;
-            }
-
-            if (HasOrganizationAccess(user, "default"))
-            {
-                return "default";
-            }
-
-            return user.OrganizationIds.FirstOrDefault(id => !string.IsNullOrWhiteSpace(id))
-                ?? user.Roles.Keys.FirstOrDefault(key => !string.IsNullOrWhiteSpace(key))
-                ?? user.Permissions.Keys.FirstOrDefault(key => !string.IsNullOrWhiteSpace(key))
-                ?? "default";
-        }
-
-        private static bool HasOrganizationAccess(User user, string? organizationId)
-        {
-            if (string.IsNullOrWhiteSpace(organizationId))
-            {
-                return false;
-            }
-
-            return user.OrganizationIds.Contains(organizationId)
-                || user.Roles.ContainsKey(organizationId)
-                || user.Permissions.ContainsKey(organizationId);
+            // No request-supplied organization on this surface: EmbeddedLoginRequest has no such
+            // field, so the sign-in organization is derived from the user alone. Shared with the
+            // password, social and mfa legs so every one of them scopes the token identically.
+            return user == null
+                ? IdpConstants.DefaultOrganizationId
+                : OrganizationAccessResolver.ResolveSignInOrganizationId(user, null);
         }
 
         public async Task<AuthenticationFlowResult> ExecuteSwitchOrganizationAsync(SwitchOrganizationRequest request, ClaimsPrincipal principal, HttpRequest httpRequest)
@@ -463,9 +438,43 @@ namespace Authentication.DomainService.Authentication
                 Request = httpRequest
             };
 
+            var tokenResponse = await _tokenRefresher.AuthenticateAsync(tokenRequest, configuration, user!);
+
+            // The organization the user just switched into is the one their next sign-in should land
+            // on. Every other organization-selecting leg persists this — password, social, mfa and the
+            // oidc authorize endpoint — but switch-org, whose entire purpose is choosing an
+            // organization, did not: a logout and login silently reverted the user to whichever
+            // organization they last signed in through.
+            if (tokenResponse != null
+                && string.IsNullOrWhiteSpace(tokenResponse.Error)
+                && !string.Equals(user!.LastUsedOrganizationId, request.OrganizationId, StringComparison.OrdinalIgnoreCase))
+            {
+                try
+                {
+                    await _authenticationRepository.UpdatePartialAsync<User>(
+                        user.ItemId,
+                        new Dictionary<string, object>
+                        {
+                            { nameof(User.LastUsedOrganizationId), request.OrganizationId },
+                            { nameof(User.LastUpdatedDate), DateTime.UtcNow },
+                            { nameof(User.LastUpdatedBy), user.ItemId }
+                        });
+                }
+                catch (Exception ex)
+                {
+                    // Stickiness is a convenience, and the switch itself has already succeeded — the
+                    // caller is about to receive tokens scoped to the new organization. Failing the
+                    // response over this write would discard a completed switch to avoid landing on
+                    // the old organization at the next login, which is the worse of the two outcomes.
+                    _logger.LogWarning(ex,
+                        "Failed to persist last used organization {OrganizationId} for user {UserId} after switch",
+                        request.OrganizationId, user.ItemId);
+                }
+            }
+
             return new AuthenticationFlowResult
             {
-                TokenResponse = await _tokenRefresher.AuthenticateAsync(tokenRequest, configuration, user!)
+                TokenResponse = tokenResponse
             };
         }
 

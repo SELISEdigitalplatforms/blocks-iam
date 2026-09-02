@@ -11,6 +11,7 @@ using Authentication.DomainService.Shared.ResponseModel;
 using FluentValidation;
 using Authentication.DomainService.Shared.RequestModel;
 using Iam.DomainService.Dtos;
+using Authentication.DomainService.Authentication;
 
 
 namespace Authentication.DomainService.Services
@@ -20,6 +21,7 @@ namespace Authentication.DomainService.Services
         private readonly IMessageClient _messageClient;
         private readonly IAuthenticationRepository _authenticationRepository;
         private readonly IValidator<SaveOIDCClientRequest> _oidcClientValidator;
+        private readonly IValidator<SaveOidcUiTemplateRequest> _oidcUiTemplateValidator;
         private readonly IValidator<SaveIdentityProviderRequest> _saveIdpValidator;
         private readonly IValidator<UpdateIdentityProviderRequest> _updateIdpValidator;
         private readonly ITenants _tenants;
@@ -33,6 +35,7 @@ namespace Authentication.DomainService.Services
         public AuthenticationDomainService(IMessageClient messageClient,
                                            IAuthenticationRepository authenticationRepository,
                                            IValidator<SaveOIDCClientRequest> oidcClientValidator,
+                                           IValidator<SaveOidcUiTemplateRequest> oidcUiTemplateValidator,
                                            IValidator<SaveIdentityProviderRequest> saveIdpValidator,
                                            IValidator<UpdateIdentityProviderRequest> updateIdpValidator,
                                            ITenants tenants,
@@ -41,6 +44,7 @@ namespace Authentication.DomainService.Services
             _messageClient = messageClient;
             _authenticationRepository = authenticationRepository;
             _oidcClientValidator = oidcClientValidator;
+            _oidcUiTemplateValidator = oidcUiTemplateValidator;
             _saveIdpValidator = saveIdpValidator;
             _updateIdpValidator = updateIdpValidator;
             _tenants = tenants;
@@ -313,9 +317,7 @@ namespace Authentication.DomainService.Services
             credential.AllowedMfaMethods = request.AllowedMfaMethods;
             credential.LastUpdatedBy = BlocksContext.GetContext()?.UserId;
             credential.LastUpdatedDate = DateTime.UtcNow;
-            credential.LogoUri = request.ClientLogoUrl;
             credential.ClientName = request.ClientDisplayName;
-            credential.UiBrandColor = request.ClientBrandColor;
             credential.IsDeviceFlowClient = request.IsDeviceFlowClient;
             // Federating this client as an upstream IdentityProvider hardcodes the
             // authorization_code grant and reuses RedirectUris, which device-flow clients
@@ -341,6 +343,58 @@ namespace Authentication.DomainService.Services
             {
                 oIDCClientCredentials = clients ?? [],
                 IsSuccess = true
+            };
+        }
+
+        public async Task<OidcUiTemplate> GetOidcTemplateForManagementAsync()
+        {
+            var savedTemplate = await _authenticationRepository.GetOidcUiTemplateAsync();
+            return IdpService.MergeOidcUiTemplateWithDefaults(savedTemplate);
+        }
+
+        public async Task<SaveOidcUiTemplateResponse> SaveOidcUiTemplateRequestAsync(SaveOidcUiTemplateRequest request)
+        {
+            var validation = await _oidcUiTemplateValidator.ValidateAsync(request);
+            if (!validation.IsValid)
+            {
+                return new SaveOidcUiTemplateResponse
+                {
+                    IsSuccess = false,
+                    Errors = validation.Errors
+                        .GroupBy(e => e.PropertyName)
+                        .ToDictionary(g => g.Key, g => g.First().ErrorMessage)
+                };
+            }
+
+            var template = new OidcUiTemplate
+            {
+                ItemId = Guid.NewGuid().ToString(),
+                SchemaVersion = OidcUiTemplate.CurrentSchemaVersion,
+                Branding = request.Branding,
+                Theme = request.Theme,
+                Pages = request.Pages
+            };
+
+            try
+            {
+                await _authenticationRepository.SaveOidcUiTemplateAsync(template);
+            }
+            catch (Exception)
+            {
+                return new SaveOidcUiTemplateResponse
+                {
+                    IsSuccess = false,
+                    Errors = new Dictionary<string, string>
+                    {
+                        { "Template", "Failed to save OIDC UI template." }
+                    }
+                };
+            }
+
+            return new SaveOidcUiTemplateResponse
+            {
+                IsSuccess = true,
+                ItemId = template.ItemId
             };
         }
 

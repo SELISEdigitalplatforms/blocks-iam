@@ -14,7 +14,6 @@ namespace Authentication.DomainService.Entities
         public List<string> AllowedScopes { get; set; } = new();
         public List<string> AllowedResponseTypes { get; set; } = new() { "code" };
         public string? ClientName { get; set; }
-        public string? LogoUri { get; set; }
         public string? TokenEndpointAuthMethod { get; set; }
         public bool RequirePkce { get; set; } = true;
         public bool RequireConsent { get; set; }
@@ -25,7 +24,6 @@ namespace Authentication.DomainService.Entities
         public bool IsActive { get; set; } = true;
         public string? LoginMode { get; set; }
         public string? ClientType { get; set; }
-        public string? UiBrandColor { get; set; }
         public bool UseTokensCookie { get; set; } = true; // Default: tokens in cookies
         public bool RequireMfa { get; set; }
         public List<UserMfaType>? AllowedMfaMethods { get; set; }
@@ -48,20 +46,6 @@ namespace Authentication.DomainService.Entities
         {
             get => ClientName;
             set => ClientName = value;
-        }
-
-        [BsonIgnore]
-        public string? ClientLogoUrl
-        {
-            get => LogoUri;
-            set => LogoUri = value;
-        }
-
-        [BsonIgnore]
-        public string? ClientBrandColor
-        {
-            get => UiBrandColor;
-            set => UiBrandColor = value;
         }
 
         public bool RegisterAsIdentityProvider { get; set; }

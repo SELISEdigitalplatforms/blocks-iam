@@ -166,10 +166,15 @@ public sealed class OidcSigningKeyMaterial
             new(JwtRegisteredClaimNames.Jti, Guid.NewGuid().ToString("n"))
         };
 
-        if (!string.IsNullOrWhiteSpace(claims.OrgId))
-        {
-            jwtClaims.Add(new Claim(BlocksContext.ORGANIZATION_ID_CLAIM, claims.OrgId));
-        }
+        // Always emitted. This used to be conditional, so a user who belonged to no organization
+        // got a token with no organization claim at all -- and a blank organization is read as
+        // "default", the tenant-wide scope, by Genesis's endpoint authorization. A blank value
+        // here now falls to the explicit "no-org" sentinel rather than being omitted; the only
+        // way to reach that branch is an authorization code issued before this change and still
+        // inside its ten-minute window.
+        jwtClaims.Add(new Claim(
+            BlocksContext.ORGANIZATION_ID_CLAIM,
+            string.IsNullOrWhiteSpace(claims.OrgId) ? IdpConstants.NoOrganizationId : claims.OrgId));
 
         if (!string.IsNullOrWhiteSpace(claims.ClientId))
         {

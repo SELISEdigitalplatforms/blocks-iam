@@ -1,8 +1,10 @@
 import { AlertTriangle } from "lucide-react";
 import { Link } from "react-router";
-import { OidcAuthShell } from "../oidc/oidc-auth-shell";
+import { OidcAuthShell, OidcFooter } from "../oidc/oidc-auth-shell";
 import { RESET_PASSWORD_PANEL } from "../oidc/oidc-panel-config";
 import { ResetPasswordForm } from "./reset-password-form";
+import { useOidcUiConfig } from "@blocks-idp/authentication/hooks/use-oidc-ui-config";
+import { DEFAULT_OIDC_UI_TEMPLATE } from "@blocks-idp/authentication/models/oidc-ui-template";
 
 type ResetPasswordProps = {
   code?: string;
@@ -11,19 +13,21 @@ type ResetPasswordProps = {
 };
 
 export const ResetPassword = ({ code, tenantId }: ResetPasswordProps) => {
+  const { data: oidcUiConfig } = useOidcUiConfig(tenantId);
+  const template = oidcUiConfig?.template ?? DEFAULT_OIDC_UI_TEMPLATE;
+
   return (
     <OidcAuthShell
       panelConfig={RESET_PASSWORD_PANEL}
-      heading="Set a new password"
+      theme={template.theme}
+      logoUrl={template.branding.logoUrl}
+      brandName={template.branding.brandName}
+      heading={template.pages.resetPassword.heading}
       headingDimFirst={3}
-      successTitle="Password Updated"
-      successSubtitle="Your password has been reset successfully."
+      successTitle={template.pages.resetPassword.successTitle}
+      successSubtitle={template.pages.resetPassword.successSubtitle}
       showCorners={false}
-      footerNote={
-        <p className="text-xs" style={{ color: "var(--muted)", fontFamily: "system-ui, sans-serif" }}>
-          © {new Date().getFullYear()} SELISE Digital Platforms. All rights reserved.
-        </p>
-      }
+      footerNote={<OidcFooter footerText={template.pages.shared.footerText} />}
     >
       {code ? (
         <ResetPasswordForm code={code} tenantId={tenantId} />

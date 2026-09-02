@@ -8,6 +8,7 @@ const h = vi.hoisted(() => ({
   isPending: false,
   resetCaptcha: vi.fn(),
   captchaEnabled: false,
+  oidcUiConfig: undefined as unknown,
 }));
 
 vi.mock("react-router", async (importOriginal) => {
@@ -22,11 +23,12 @@ vi.mock("@blocks-idp/captcha/hooks/use-captcha", () => ({
   useCaptcha: () => ({ captcha: {}, code: "", reset: h.resetCaptcha }),
 }));
 vi.mock("@blocks-idp/authentication/hooks/use-oidc-ui-config", () => ({
-  useOidcUiConfig: () => ({ data: undefined, captchaEnabled: h.captchaEnabled }),
+  useOidcUiConfig: () => ({ data: h.oidcUiConfig, captchaEnabled: h.captchaEnabled }),
 }));
 vi.mock("@/components/captcha", () => ({ Captcha: () => <div data-testid="captcha" /> }));
 
 import { OIDCForgotPasswordForm } from "./oidc-forgot-password-form";
+import { DEFAULT_OIDC_UI_TEMPLATE } from "@blocks-idp/authentication/models/oidc-ui-template";
 
 const renderForm = () =>
   render(
@@ -44,6 +46,7 @@ beforeEach(() => {
   vi.clearAllMocks();
   h.isPending = false;
   h.captchaEnabled = false;
+  h.oidcUiConfig = undefined;
 });
 
 describe("OIDCForgotPasswordForm", () => {
@@ -51,6 +54,27 @@ describe("OIDCForgotPasswordForm", () => {
     renderForm();
     expect(screen.getByText("Reset Password")).toBeInTheDocument();
     expect(screen.getByText("Back to login")).toBeInTheDocument();
+  });
+
+  it("renders tenant-defined recovery copy", () => {
+    h.oidcUiConfig = {
+      captcha: null,
+      template: {
+        ...DEFAULT_OIDC_UI_TEMPLATE,
+        pages: {
+          ...DEFAULT_OIDC_UI_TEMPLATE.pages,
+          forgotPassword: {
+            heading: "Restore access",
+            emailLabel: "Account email",
+            submitButton: "Email recovery instructions",
+          },
+        },
+      },
+    };
+    renderForm();
+    expect(screen.getByText("Restore access")).toBeInTheDocument();
+    expect(screen.getByText("Account email")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /Email recovery instructions/ })).toBeInTheDocument();
   });
 
   it("submits recovery and navigates to the oidc confirmation page", async () => {

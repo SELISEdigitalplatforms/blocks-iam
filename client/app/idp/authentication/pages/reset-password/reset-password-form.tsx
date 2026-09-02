@@ -14,6 +14,7 @@ import { useAccountResetPassword } from "@blocks-idp/iam/hooks/use-account";
 import { isErrorWithErrors } from "@/lib/error";
 import { useCaptcha } from "@blocks-idp/captcha/hooks/use-captcha";
 import { useOidcUiConfig } from "@blocks-idp/authentication/hooks/use-oidc-ui-config";
+import { DEFAULT_OIDC_UI_TEMPLATE } from "@blocks-idp/authentication/models/oidc-ui-template";
 import { PasswordStrengthChecker } from "@blocks-idp/authentication/components/password-strength-checker/password-strength-checker";
 import { Switch } from "@/components/ui-kits/switch/switch";
 import { ArrowRight, Eye, EyeOff, Loader } from "lucide-react";
@@ -39,6 +40,7 @@ export const ResetPasswordForm = ({ code, tenantId }: ResetPasswordFormProps) =>
   });
 
   const { data: oidcUiConfig, captchaEnabled } = useOidcUiConfig(tenantId);
+  const resetPasswordCopy = (oidcUiConfig?.template ?? DEFAULT_OIDC_UI_TEMPLATE).pages.resetPassword;
   const googleSiteKey =
     oidcUiConfig?.captcha?.key || getRuntimeEnv("BLOCKS_GOOGLE_SITE_KEY") || "";
   const { captcha, code: captchaCode, reset: resetCaptcha } = useCaptcha({
@@ -141,7 +143,7 @@ export const ResetPasswordForm = ({ code, tenantId }: ResetPasswordFormProps) =>
         className="flex flex-col gap-5"
       >
         <div className="flex flex-col gap-2">
-          <label className="oidc-sci-fi-label">New Password</label>
+          <label className="oidc-sci-fi-label">{resetPasswordCopy.passwordLabel}</label>
           <div className="relative">
             <input
               type={showPassword ? "text" : "password"}
@@ -170,7 +172,7 @@ export const ResetPasswordForm = ({ code, tenantId }: ResetPasswordFormProps) =>
         </div>
 
         <div className="flex flex-col gap-2">
-          <label className="oidc-sci-fi-label">Confirm Password</label>
+          <label className="oidc-sci-fi-label">{resetPasswordCopy.confirmPasswordLabel}</label>
           <div className="relative">
             <input
               type={showConfirmPassword ? "text" : "password"}
@@ -203,7 +205,7 @@ export const ResetPasswordForm = ({ code, tenantId }: ResetPasswordFormProps) =>
           style={{ border: "1px solid var(--border)", background: "var(--accent-softer)" }}
         >
           <p className="text-sm font-medium" style={{ color: "var(--fg)", fontFamily: "system-ui, sans-serif" }}>
-            Logout from all devices
+            {resetPasswordCopy.logoutFromDevicesLabel}
           </p>
           <Switch
             checked={logoutFromAllDevices ?? true}
@@ -227,7 +229,7 @@ export const ResetPasswordForm = ({ code, tenantId }: ResetPasswordFormProps) =>
           {isAuthenticating ? (
             <><Loader size={16} style={{ animation: "oidc-spin 1s linear infinite" }} /><span>Resetting…</span></>
           ) : (
-            <><span>Set Password</span><ArrowRight size={16} /></>
+            <><span>{resetPasswordCopy.submitButton}</span><ArrowRight size={16} /></>
           )}
         </button>
       </form>

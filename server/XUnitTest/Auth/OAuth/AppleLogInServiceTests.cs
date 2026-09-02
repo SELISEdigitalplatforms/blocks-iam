@@ -113,6 +113,9 @@ namespace XUnitTest.Auth.OAuth
             user.ExternalProviderUserId.Should().Be("apple-sub-1");
             user.Platform.Should().Be("apple");
             user.Roles.Should().ContainSingle().Which.Should().Be("init-role");
+            // Apple mapped roles but not permissions until this was fixed, so an Apple SSO user
+            // was provisioned with roles and no permissions whatever the provider configured.
+            user.Permissions.Should().ContainSingle().Which.Should().Be("perm-1");
             result.AccessToken.Should().Be("at-1");
             result.RefreshToken.Should().Be("rt-1");
         }

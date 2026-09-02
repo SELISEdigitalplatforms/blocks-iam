@@ -1,4 +1,4 @@
-using Blocks.Genesis;
+﻿using Blocks.Genesis;
 using FluentValidation;
 using Iam.DomainService.Dtos;
 using Iam.DomainService.Entities;
@@ -7,6 +7,7 @@ using Iam.DomainService.Resources;
 using Iam.DomainService.Services;
 using Iam.DomainService.Shared.Dtos;
 using Iam.DomainService.Shared.Entities;
+using Iam.DomainService.Shared.Serialization;
 using Iam.DomainService.Utilities;
 using Iam.DomainService.Users.RequestModel;
 using Microsoft.AspNetCore.Http;
@@ -22,6 +23,7 @@ namespace Iam.DomainService.Users
         private readonly ILogger<UserManagementMutationService> _logger;
         private readonly IValidator<CreateUserRequest> _createValidator;
         private readonly IValidator<UpdateUserRequest> _updateValidator;
+        private readonly IValidator<UpdateMyAccountRequest> _myAccountValidator;
         private readonly IIdentityAccessManagementService _identityAccessManagementService;
         private readonly IUserRepository _userRepository;
         private readonly IIdentityAccessManagementRepository? _identityAccessManagementRepository;
@@ -36,6 +38,7 @@ namespace Iam.DomainService.Users
             ILogger<UserManagementMutationService> logger,
             IValidator<CreateUserRequest> createValidator,
             IValidator<UpdateUserRequest> updateValidator,
+            IValidator<UpdateMyAccountRequest> myAccountValidator,
             IIdentityAccessManagementService identityAccessManagementService,
             IUserRepository userRepository,
             IMessageClient messageClient,
@@ -51,6 +54,7 @@ namespace Iam.DomainService.Users
             _logger = logger;
             _createValidator = createValidator;
             _updateValidator = updateValidator;
+            _myAccountValidator = myAccountValidator;
             _identityAccessManagementService = identityAccessManagementService;
             _userRepository = userRepository;
             _messageClient = messageClient;
@@ -219,7 +223,7 @@ namespace Iam.DomainService.Users
                 TermsAcceptedAtUtc = null,
                 PrivacyAcceptedAtUtc = null,
                 ExternalIdentities = new List<ExternalIdentity>(),
-                Attributes = command.Attributes ?? new Dictionary<string, object>(),
+                Attributes = AttributeNormalizer.Normalize(command.Attributes, AttributePolicy.Internal),
             };
 
             if (!string.IsNullOrWhiteSpace(command.OrganizationId) && !user.OrganizationIds.Contains(command.OrganizationId)) 
@@ -279,29 +283,19 @@ namespace Iam.DomainService.Users
                 };
             }
 
-            user.Salutation = command.Salutation ?? string.Empty;
-            user.FirstName = command.FirstName ?? string.Empty;
-            user.LastName = command.LastName ?? string.Empty;
-            user.PhoneNumber = command.PhoneNumber ?? string.Empty;
-            user.LastUpdatedDate = DateTime.Now;
+            WarnOnRetiredFields(command.UnmappedFields, command.ItemId);
+
+            ApplyProfileFields(user, new ProfilePatch(
+                command.Salutation, command.FirstName, command.LastName, command.PhoneNumber,
+                command.Language, command.ProfileImageUrl, command.ProfileImageId,
+                command.Tags, command.Attributes));
+
+            user.LastUpdatedDate = DateTime.UtcNow;
             user.LastUpdatedBy = blocksContext?.UserId ?? user.ItemId;
-            user.Tags = command.Tags ?? user.Tags;
-            user.ProfileImageId = command.ProfileImageId ?? string.Empty;
-            user.ProfileImageUrl = command.ProfileImageUrl ?? string.Empty;
-            user.MfaEnabled = command.MfaEnabled;
 
-            user.Roles[organizationId] = command.Roles ?? user.Roles.GetValueOrDefault(organizationId, new List<string>());
-            user.Permissions[organizationId] = command.Permissions ?? user.Permissions.GetValueOrDefault(organizationId, new List<string>());
-
-            if (command.MfaEnabled)
-            {
-                user.UserMfaType = command.UserMfaType;
-            }
-
-            if (!user.OrganizationIds.Contains(organizationId))
-            {
-                user.OrganizationIds.Add(organizationId);
-            }
+            // Membership is not a side effect of editing a profile. Adding the context
+            // organization here enrolled users as a by-product of a name change;
+            // UpdateUserAccessControlAsync owns OrganizationIds.
 
             var result = await _userRepository.UpdateUserAsync(user);
 
@@ -319,6 +313,134 @@ namespace Iam.DomainService.Users
                 ItemId = user.ItemId
             };
         }
+
+        /// <summary>
+        /// Sparse update of the caller's own profile. Same apply routine as
+        /// <see cref="UpdateUserAsync"/>, so the guard semantics cannot drift between the admin and
+        /// self-service surfaces; the subject is taken from the context rather than the payload.
+        /// </summary>
+        public async Task<BaseMutationResponse> UpdateMyAccountAsync(UpdateMyAccountRequest command)
+        {
+            ArgumentNullException.ThrowIfNull(command);
+
+            _logger.LogInformation("My account update start");
+
+            var blocksContext = BlocksContext.GetContext();
+            var userId = blocksContext?.UserId;
+
+            if (string.IsNullOrWhiteSpace(userId))
+            {
+                _logger.LogInformation("My account update end -- No authenticated user");
+                return new BaseMutationResponse
+                {
+                    Errors = new Dictionary<string, string> { { "ItemId", "Not found" } }
+                };
+            }
+
+            var validationResult = _myAccountValidator.Validate(command);
+            if (!validationResult.IsValid)
+            {
+                _logger.LogInformation("My account update end -- Validation Error");
+                return new BaseMutationResponse
+                {
+                    Errors = validationResult.Errors.ToDictionary(x => x.PropertyName, x => x.ErrorMessage)
+                };
+            }
+
+            var user = await _userRepository.GetUserByIdAsync(userId);
+            if (user == null)
+            {
+                _logger.LogInformation("My account update end -- Not found");
+                return new BaseMutationResponse
+                {
+                    Errors = new Dictionary<string, string> { { "ItemId", "Not found" } }
+                };
+            }
+
+            WarnOnRetiredFields(command.UnmappedFields, userId);
+
+            ApplyProfileFields(user, new ProfilePatch(
+                command.Salutation, command.FirstName, command.LastName, command.PhoneNumber,
+                command.Language, command.ProfileImageUrl, command.ProfileImageId,
+                Tags: null, command.Attributes));
+
+            user.LastUpdatedDate = DateTime.UtcNow;
+            user.LastUpdatedBy = userId;
+
+            if (!await _userRepository.UpdateUserAsync(user))
+            {
+                _logger.LogInformation("My account update end -- Error");
+                return new BaseMutationResponse();
+            }
+
+            _logger.LogInformation("My account update end -- Success");
+
+            return new BaseMutationResponse { IsSuccess = true, ItemId = user.ItemId };
+        }
+
+        /// <summary>
+        /// One field of a sparse profile update. <c>null</c> means the caller did not mention the
+        /// field; an empty string, list or dictionary means they asked for it to be cleared.
+        /// </summary>
+        private sealed record ProfilePatch(
+            string? Salutation,
+            string? FirstName,
+            string? LastName,
+            string? PhoneNumber,
+            string? Language,
+            string? ProfileImageUrl,
+            string? ProfileImageId,
+            List<string>? Tags,
+            Dictionary<string, object>? Attributes);
+
+        /// <summary>
+        /// The single place the sparse contract is enforced. Every line is a null guard rather than
+        /// a <c>?? string.Empty</c>: the coalescing form wrote an empty string over a field the
+        /// caller never mentioned, which is what made an omission destructive.
+        /// </summary>
+        private static void ApplyProfileFields(User user, ProfilePatch patch)
+        {
+            if (patch.Salutation is not null) user.Salutation = patch.Salutation;
+            if (patch.FirstName is not null) user.FirstName = patch.FirstName;
+            if (patch.LastName is not null) user.LastName = patch.LastName;
+            if (patch.PhoneNumber is not null) user.PhoneNumber = patch.PhoneNumber;
+            if (patch.Language is not null) user.Language = patch.Language;
+            if (patch.ProfileImageUrl is not null) user.ProfileImageUrl = patch.ProfileImageUrl;
+            if (patch.ProfileImageId is not null) user.ProfileImageId = patch.ProfileImageId;
+            if (patch.Tags is not null) user.Tags = patch.Tags;
+
+            if (patch.Attributes is not null)
+            {
+                user.Attributes = AttributeNormalizer.Normalize(patch.Attributes, AttributePolicy.Internal);
+            }
+        }
+
+        /// <summary>
+        /// Roles, permissions and MFA state left this endpoint for the services that own them. The
+        /// binder skips unmatched properties, so a caller still sending them would get a 200 and no
+        /// change at all - this turns that silence into a log line.
+        /// </summary>
+        private void WarnOnRetiredFields(Dictionary<string, JsonElement>? unmapped, string? userId)
+        {
+            if (unmapped is null || unmapped.Count == 0)
+            {
+                return;
+            }
+
+            var retired = unmapped.Keys
+                .Where(key => RetiredUpdateFields.Contains(key))
+                .ToList();
+
+            if (retired.Count > 0)
+            {
+                _logger.LogWarning(
+                    "User update for {UserId} carried retired field(s) {Fields}; ignored. Roles and permissions belong to POST users/access, MFA state to the MFA endpoints.",
+                    userId, string.Join(", ", retired));
+            }
+        }
+
+        private static readonly HashSet<string> RetiredUpdateFields =
+            new(StringComparer.OrdinalIgnoreCase) { "roles", "permissions", "mfaEnabled", "userMfaType", "itemId", "organizationId" };
 
         public async Task<BaseResponse> DeactivateUserAsync(DeactivateUserRequest request)
         {
@@ -1153,7 +1275,7 @@ namespace Iam.DomainService.Users
                             LinkedAtUtc = DateTime.UtcNow
                         }
                     },
-                Attributes = command.Attributes ?? new Dictionary<string, object>(),
+                Attributes = AttributeNormalizer.Normalize(command.Attributes, AttributePolicy.Internal),
             };
             await _userRepository.CreateUserAsync(user);
 

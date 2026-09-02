@@ -27,6 +27,7 @@ vi.mock("@blocks-idp/authentication/pages/oidc/oidc-auth-shell", () => ({
       {children}
     </div>
   ),
+  OidcFooter: ({ footerText }: { footerText: string }) => <span>{footerText}</span>,
   useOidcAuthAnimation: () => ({
     phase: "idle",
     startAnimation: vi.fn(),
@@ -34,6 +35,9 @@ vi.mock("@blocks-idp/authentication/pages/oidc/oidc-auth-shell", () => ({
     failAnimation: vi.fn().mockResolvedValue(undefined),
     resetAnimation: vi.fn(),
   }),
+}));
+vi.mock("@blocks-idp/authentication/hooks/use-oidc-ui-config", () => ({
+  useOidcUiConfig: () => ({ data: undefined }),
 }));
 
 import { DeviceEntryPage } from "./entry";

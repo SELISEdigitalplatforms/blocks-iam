@@ -380,6 +380,15 @@
             <response code="400">clientId is required or client not found</response>
             <response code="401">Authentication required</response>
         </member>
+        <member name="T:Api.Controllers.OidcTemplateController">
+            <summary>Protected tenant-level OIDC UI template management API.</summary>
+        </member>
+        <member name="M:Api.Controllers.OidcTemplateController.GetOidcTemplate">
+            <summary>Returns the tenant's effective, default-filled OIDC UI template.</summary>
+        </member>
+        <member name="M:Api.Controllers.OidcTemplateController.SaveOidcTemplate(Authentication.DomainService.Shared.RequestModel.SaveOidcUiTemplateRequest)">
+            <summary>Validates and completely replaces the tenant's OIDC UI template.</summary>
+        </member>
         <member name="T:Api.Controllers.SecurityController">
             <summary>
             Self-service security endpoints.
@@ -417,6 +426,16 @@
             Receives authorization code from provider via browser redirect
             Exchanges code for tokens, validates JWT signature and claims
             RFC 6749: OAuth 2.0 | RFC 3986: OpenID Connect | RFC 7519: JWT | RFC 5280: X.509
+            </summary>
+        </member>
+        <member name="M:Blocks.Api.Controllers.AuthorizationController.BuildCallbackFailure(Authentication.DomainService.Oidc.Services.OidcCallbackResult)">
+            <summary>
+            A failed provider callback arrives as a browser navigation, so a JSON body leaves the
+            user looking at raw error text in the address bar. When the OIDC request context
+            survived the failure we send them back to the login page they started from, carrying
+            <c>error</c> and <c>error_description</c> — the same way <c>/oidc/authorize</c> hands
+            its errors to a login screen. Callers that POST here are APIs, not browsers, and keep
+            getting the JSON body.
             </summary>
         </member>
         <!-- Badly formed XML comment ignored for member "T:Blocks.Api.Controllers.IdpSessionController" -->

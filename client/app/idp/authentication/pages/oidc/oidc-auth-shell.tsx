@@ -1,4 +1,4 @@
-import { createContext, useCallback, useContext, useEffect, useRef, useState } from "react";
+import { createContext, useCallback, useContext, useEffect, useRef, useState, type CSSProperties } from "react";
 import { SciFiBackgroundOidc } from "./sci-fi-background-oidc";
 import {
   NodesPanelOidc,
@@ -9,6 +9,10 @@ import {
 } from "./nodes-panel-oidc";
 import { ModeToggle } from "@/components/mode-toggle/mode-toggle";
 import { Separator } from "@/components/ui-kits/separator/separator";
+import type {
+  IOidcUiTemplate,
+} from "@blocks-idp/authentication/hooks/use-oidc-ui-config";
+import type { IOidcUiThemePalette } from "@blocks-idp/authentication/models/oidc-ui-template";
 import "./sci-fi-oidc.css";
 
 /* ── Animation context ──────────────────────────────────────── */
@@ -27,8 +31,29 @@ export function useOidcAuthAnimation() {
   return useContext(OidcAuthAnimContext);
 }
 
+export function useOidcResolvedTheme(): "dark" | "light" {
+  const [htmlTheme, setHtmlTheme] = useState<"dark" | "light">(() =>
+    typeof document !== "undefined" && document.documentElement.classList.contains("dark")
+      ? "dark"
+      : "light",
+  );
+
+  useEffect(() => {
+    const observer = new MutationObserver(() => {
+      setHtmlTheme(document.documentElement.classList.contains("dark") ? "dark" : "light");
+    });
+    observer.observe(document.documentElement, {
+      attributes: true,
+      attributeFilter: ["class"],
+    });
+    return () => observer.disconnect();
+  }, []);
+
+  return htmlTheme;
+}
+
 /* ── Blocks logo ────────────────────────────────────────────── */
-function BlocksLogo() {
+export function BlocksLogo() {
   return (
     <svg
       className="h-7 w-auto"
@@ -44,6 +69,51 @@ function BlocksLogo() {
       <path d="M160.122 360L5.07166 297.619L79.9639 272.343L240.144 335.743L160.122 360Z" />
       <path d="M245.454 330.315L83.6569 266.175V203.57L164.34 237.395V171.93L245.454 207.262V330.315Z" />
     </svg>
+  );
+}
+
+type OidcThemeStyle = CSSProperties & Record<`--${string}`, string>;
+
+export function buildOidcThemeStyle(theme: IOidcUiThemePalette): OidcThemeStyle {
+  return {
+    "--bg": theme.background,
+    "--surface": theme.surface,
+    "--accent": theme.primary,
+    "--accent2": theme.secondary,
+    "--fg": theme.text,
+    "--muted": theme.mutedText,
+    "--success": theme.success,
+    "--danger": theme.danger,
+    ...(theme.border ? { "--border": theme.border } : {}),
+    ...(theme.borderStrong ? { "--border-strong": theme.borderStrong } : {}),
+    ...(theme.accentSoft ? { "--accent-soft": theme.accentSoft } : {}),
+  };
+}
+
+export function OidcBrand({
+  logoUrl,
+  brandName,
+}: Pick<IOidcUiTemplate["branding"], "logoUrl" | "brandName">) {
+  return (
+    <div className="flex items-center gap-3">
+      {logoUrl ? (
+        <img src={logoUrl} alt={`${brandName} logo`} className="h-7 w-auto max-w-28 object-contain" />
+      ) : (
+        <BlocksLogo />
+      )}
+      <Separator orientation="vertical" className="h-4 bg-[var(--border)]" />
+      <span className="text-xs font-semibold tracking-[.18em] uppercase text-[var(--fg)] font-sans">
+        {brandName}
+      </span>
+    </div>
+  );
+}
+
+export function OidcFooter({ footerText }: { footerText: string }) {
+  return (
+    <p className="text-xs font-sans" style={{ color: "var(--muted)" }}>
+      {footerText.replaceAll("{year}", String(new Date().getFullYear()))}
+    </p>
   );
 }
 
@@ -97,15 +167,18 @@ function SuccessState({ title, subtitle }: { title: string; subtitle: string }) 
 }
 
 /* ── Shell props ────────────────────────────────────────────── */
-interface OidcAuthShellProps {
+export interface OidcAuthShellProps {
   children: React.ReactNode;
   panelConfig: OidcPanelConfig;
+  theme: IOidcUiTemplate["theme"];
+  logoUrl: string | null;
+  brandName: string;
   heading: string;
   headingDimFirst?: number;
   headingAlign?: "left" | "center";
-  footerNote?: React.ReactNode;
-  successTitle?: string;
-  successSubtitle?: string;
+  footerNote: React.ReactNode;
+  successTitle: string;
+  successSubtitle: string;
   showCorners?: boolean;
 }
 
@@ -113,28 +186,18 @@ interface OidcAuthShellProps {
 export function OidcAuthShell({
   children,
   panelConfig,
+  theme,
+  logoUrl,
+  brandName,
   heading,
   headingDimFirst = 3,
   headingAlign = "left",
   footerNote,
-  successTitle    = "Access Granted",
-  successSubtitle = "Redirecting to your application…",
+  successTitle,
+  successSubtitle,
   showCorners = true,
 }: OidcAuthShellProps) {
-  /* Track html.dark class reactively via MutationObserver */
-  const [htmlTheme, setHtmlTheme] = useState<"dark" | "light">(() =>
-    typeof document !== "undefined" && document.documentElement.classList.contains("dark")
-      ? "dark" : "light"
-  );
-  useEffect(() => {
-    const observer = new MutationObserver(() => {
-      setHtmlTheme(
-        document.documentElement.classList.contains("dark") ? "dark" : "light"
-      );
-    });
-    observer.observe(document.documentElement, { attributes: true, attributeFilter: ["class"] });
-    return () => observer.disconnect();
-  }, []);
+  const htmlTheme = useOidcResolvedTheme();
 
   const [phase, setPhase] = useState<OidcAnimPhase>("idle");
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
@@ -215,6 +278,7 @@ export function OidcAuthShell({
         className="oidc-scifi-root h-screen overflow-hidden flex flex-col bg-[var(--bg)]"
         data-theme={htmlTheme}
         data-anim-phase={phase}
+        style={buildOidcThemeStyle(theme[htmlTheme])}
       >
         <SciFiBackgroundOidc showCorners={showCorners} />
 
@@ -227,13 +291,7 @@ export function OidcAuthShell({
               <div className="w-full md:w-1/2 px-6 pt-5 pb-4 sm:px-7 md:px-8 flex flex-col min-h-0 overflow-y-auto">
                 {/* Topbar: logo + brand label + theme toggle */}
                 <div className="flex items-center justify-between mb-4">
-                  <div className="flex items-center gap-3">
-                    <BlocksLogo />
-                    <Separator orientation="vertical" className="h-4 bg-[var(--border)]" />
-                    <span className="text-xs font-semibold tracking-[.18em] uppercase text-[var(--fg)] font-sans">
-                      Blocks IAM
-                    </span>
-                  </div>
+                  <OidcBrand logoUrl={logoUrl} brandName={brandName} />
                   <ModeToggle />
                 </div>
 
@@ -253,11 +311,7 @@ export function OidcAuthShell({
 
                 {/* Footer */}
                 <div className="mt-4">
-                  {footerNote ?? (
-                    <p className="text-xs text-[var(--muted)] font-sans">
-                      © {new Date().getFullYear()} SELISE Digital Platforms. Secure OIDC flow.
-                    </p>
-                  )}
+                  {footerNote}
                 </div>
               </div>
 

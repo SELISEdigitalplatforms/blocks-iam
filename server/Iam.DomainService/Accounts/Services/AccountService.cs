@@ -1,4 +1,4 @@
-
+﻿
 #pragma warning disable CA1303
 
 using Blocks.CaptchaDriver;
@@ -10,6 +10,7 @@ using Iam.DomainService.Entities;
 using Iam.DomainService.Resources;
 using Iam.DomainService.Services;
 using Iam.DomainService.Shared.Entities;
+using Iam.DomainService.Shared.Serialization;
 using Iam.DomainService.Users;
 using Iam.DomainService.Users.RequestModel;
 using Iam.DomainService.Users.ResponseModel;
@@ -573,7 +574,7 @@ namespace Iam.DomainService.Accounts
             {
                 // No nested object: honour the top-level attributes bag so the legacy shape can
                 // still carry extras.
-                request.Attributes = SignupAttributeNormalizer.Normalize(signupUserRequest.Attributes);
+                request.Attributes = AttributeNormalizer.Normalize(signupUserRequest.Attributes, AttributePolicy.Public);
                 return request;
             }
 
@@ -591,8 +592,9 @@ namespace Iam.DomainService.Accounts
             request.Locale = profile.Locale;
 
             // organization.attributes wins; the top-level bag is the legacy fallback.
-            request.Attributes = SignupAttributeNormalizer.Normalize(
-                profile.Attributes is { Count: > 0 } ? profile.Attributes : signupUserRequest.Attributes);
+            request.Attributes = AttributeNormalizer.Normalize(
+                profile.Attributes is { Count: > 0 } ? profile.Attributes : signupUserRequest.Attributes,
+                AttributePolicy.Public);
 
             return request;
         }
@@ -669,7 +671,9 @@ namespace Iam.DomainService.Accounts
                 Roles = tenantConfiguration.DefaultRolesForNewUserOnSignUp ?? new List<string> { },
                 Permissions = tenantConfiguration.DefaultPermissionsForNewUserOnSignUp ?? new List<string> { },
                 OrganizationId = organizationId,
-                Attributes = signupUserRequest.Attributes
+                // Signup is anonymous, so the user bag gets the same treatment the organization
+                // bag above already had. Passing it raw wrote { "_t": "JsonElement" } instead.
+                Attributes = AttributeNormalizer.Normalize(signupUserRequest.Attributes, AttributePolicy.Public)
             };
 
             var result = await _userManagementMutationService.CreateUserFromSsoAsync(ssoRequest);

@@ -5,6 +5,7 @@ using Authentication.DomainService.Services;
 using Authentication.DomainService.Utilities;
 using Blocks.Genesis;
 using Iam.DomainService.Utilities;
+using Iam.DomainService.Resources;
 using Idp.DomainService.Oidc.Contracts;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
@@ -29,17 +30,20 @@ namespace Authentication.DomainService.Authentication
         private readonly IDeviceAuthorizationRepository _repository;
         private readonly IIdpSessionRepository _sessionRepository;
         private readonly IAuthenticationRepository _authenticationRepository;
+        private readonly IResourceRepository _resourceRepository;
         private readonly ILogger<DeviceVerificationService> _logger;
 
         public DeviceVerificationService(
             IDeviceAuthorizationRepository repository,
             IIdpSessionRepository sessionRepository,
             IAuthenticationRepository authenticationRepository,
+            IResourceRepository resourceRepository,
             ILogger<DeviceVerificationService> logger)
         {
             _repository = repository;
             _sessionRepository = sessionRepository;
             _authenticationRepository = authenticationRepository;
+            _resourceRepository = resourceRepository;
             _logger = logger;
         }
 
@@ -229,8 +233,11 @@ namespace Authentication.DomainService.Authentication
                 // (OidcAuthorizationEndpoint), so a device-flow token carries the org the user
                 // actually has access to instead of minting with no OrganizationId at all.
                 var approvingUser = await _authenticationRepository.GetUserByIdAsync(approver.UserId);
+                var tenantConfiguration = await _resourceRepository.GetTenantConfigurationAsync();
                 var organizationId = approvingUser != null
-                    ? OrganizationAccessResolver.ResolveEffectiveOrganizationId(approvingUser)
+                    ? OrganizationAccessResolver.ResolveEffectiveOrganizationId(
+                        approvingUser,
+                        tenantConfiguration?.IsMultiOrgEnabled ?? false)
                     : null;
 
                 ok = await _repository.MarkApprovedAsync(entity.Id, approver.UserId, now, ct, organizationId);

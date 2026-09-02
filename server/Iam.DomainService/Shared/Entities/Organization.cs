@@ -1,4 +1,5 @@
 ﻿using Blocks.Genesis;
+using Iam.DomainService.Shared.Serialization;
 using MongoDB.Bson.Serialization.Attributes;
 
 namespace Iam.DomainService.Shared.Entities
@@ -32,6 +33,7 @@ namespace Iam.DomainService.Shared.Entities
         public string Locale { get; set; } = "en-US";
 
         // Add custom attributes to the organization
+        [BsonSerializer(typeof(AttributeBagSerializer))]
         public Dictionary<string, object> Attributes { get; set; } = new Dictionary<string, object>();
     }
 
@@ -42,6 +44,7 @@ namespace Iam.DomainService.Shared.Entities
         public string? PrimaryColor { get; set; }
         public string? SecondaryColor { get; set; }
         public string? TertiaryColor { get; set; }
+        [BsonSerializer(typeof(AttributeBagSerializer))]
         public Dictionary<string, object> Attributes { get; set; } = new Dictionary<string, object>();
     }
 

@@ -1,4 +1,5 @@
 ﻿using Blocks.Genesis;
+using Iam.DomainService.Shared.Serialization;
 using MongoDB.Bson.Serialization.Attributes;
 
 namespace Iam.DomainService.Entities
@@ -60,6 +61,7 @@ namespace Iam.DomainService.Entities
         public string? ExternalUserId { get; set; }
         public List<ExternalIdentity> ExternalIdentities { get; set; } = new List<ExternalIdentity>();
         public List<string> OrganizationIds { get; set; } = [];
+        [BsonSerializer(typeof(AttributeBagSerializer))]
         public Dictionary<string, object> Attributes { get; set; } = new Dictionary<string, object>(); // For any additional info that doesn't fit into existing properties
 
         #region BaseEntity

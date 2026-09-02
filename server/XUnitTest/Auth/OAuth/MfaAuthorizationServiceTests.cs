@@ -10,6 +10,7 @@ using Mfa.DomainService.Services;
 using Mfa.DomainService.Shared;
 using Microsoft.Extensions.Logging.Abstractions;
 using Moq;
+using Iam.DomainService.Utilities;
 
 namespace XUnitTest.Auth.OAuth
 {
@@ -184,6 +185,180 @@ namespace XUnitTest.Auth.OAuth
 
             result.Error.Should().Be(OAuthError.AccountLocked);
             result.StatusCode.Should().Be(423);
+        }
+
+        [Fact]
+        public async Task Authenticate_OrgScopedUser_ScopesTokenRequestToThatOrganization()
+        {
+            // The regression this guards: the mfa leg used to leave OrganizationId null, so
+            // AuthorizationClaimsResolver fell back to the "default" bucket. For a user whose roles
+            // and permissions live only under "org-x" that produced a token with organization_id
+            // "default" and no roles at all — while the same account logging in without mfa got
+            // the right organization and the right claims.
+            var user = new User
+            {
+                ItemId = "u1",
+                IsMfaVerified = true,
+                LastUsedOrganizationId = "org-x",
+                OrganizationIds = ["org-x"],
+                Roles = { ["org-x"] = ["admin"] },
+                Permissions = { ["org-x"] = ["blocks-iam::users::read"] }
+            };
+            _otpService.Setup(o => o.VerifyAsync(It.IsAny<VerifyOtpRequest>()))
+                .ReturnsAsync(new OtpVerificationResponse { IsValid = true, UserId = "u1" });
+            _repo.Setup(r => r.GetUserByIdAsync("u1")).ReturnsAsync(user);
+
+            TokenRequest? captured = null;
+            _tokenManager.Setup(m => m.ManageTokenAsync(It.IsAny<TokenRequest>(), It.IsAny<IdentityConfiguration>(), user, It.IsAny<StateInfo?>()))
+                .Callback<TokenRequest, IdentityConfiguration, User, StateInfo?>((r, _, _, _) => captured = r)
+                .ReturnsAsync(new TokenResponse { AccessToken = "tok", StatusCode = 200 });
+
+            var result = await Create().AuthenticateAsync(Request(), Config());
+
+            result.AccessToken.Should().Be("tok");
+            captured!.OrganizationId.Should().Be("org-x");
+        }
+
+        [Fact]
+        public async Task Authenticate_OrgGrantedOnlyThroughRoles_StillScopesToThatOrganization()
+        {
+            // Membership is the three-way test: an organization can be granted through a role or
+            // permission assignment without ever landing in OrganizationIds.
+            var user = new User
+            {
+                ItemId = "u1",
+                IsMfaVerified = true,
+                LastUsedOrganizationId = "org-y",
+                Roles = { ["org-y"] = ["member"] }
+            };
+            _otpService.Setup(o => o.VerifyAsync(It.IsAny<VerifyOtpRequest>()))
+                .ReturnsAsync(new OtpVerificationResponse { IsValid = true, UserId = "u1" });
+            _repo.Setup(r => r.GetUserByIdAsync("u1")).ReturnsAsync(user);
+
+            TokenRequest? captured = null;
+            _tokenManager.Setup(m => m.ManageTokenAsync(It.IsAny<TokenRequest>(), It.IsAny<IdentityConfiguration>(), user, It.IsAny<StateInfo?>()))
+                .Callback<TokenRequest, IdentityConfiguration, User, StateInfo?>((r, _, _, _) => captured = r)
+                .ReturnsAsync(new TokenResponse { AccessToken = "tok", StatusCode = 200 });
+
+            await Create().AuthenticateAsync(Request(), Config());
+
+            captured!.OrganizationId.Should().Be("org-y");
+        }
+
+        [Fact]
+        public async Task Authenticate_DefaultOrgUser_StillResolvesToDefault()
+        {
+            var user = new User
+            {
+                ItemId = "u1",
+                IsMfaVerified = true,
+                OrganizationIds = ["default"],
+                Roles = { ["default"] = ["admin"] }
+            };
+            _otpService.Setup(o => o.VerifyAsync(It.IsAny<VerifyOtpRequest>()))
+                .ReturnsAsync(new OtpVerificationResponse { IsValid = true, UserId = "u1" });
+            _repo.Setup(r => r.GetUserByIdAsync("u1")).ReturnsAsync(user);
+
+            TokenRequest? captured = null;
+            _tokenManager.Setup(m => m.ManageTokenAsync(It.IsAny<TokenRequest>(), It.IsAny<IdentityConfiguration>(), user, It.IsAny<StateInfo?>()))
+                .Callback<TokenRequest, IdentityConfiguration, User, StateInfo?>((r, _, _, _) => captured = r)
+                .ReturnsAsync(new TokenResponse { AccessToken = "tok", StatusCode = 200 });
+
+            await Create().AuthenticateAsync(Request(), Config());
+
+            // Still "default", and now for the right reason: the user is literally a member of it,
+            // so the resolver returns it as a membership rather than as a fallback.
+            captured!.OrganizationId.Should().Be(IdpConstants.DefaultOrganizationId);
+        }
+
+        [Fact]
+        public async Task Authenticate_UserWithNoOrganizationAnywhere_ResolvesToNoOrg()
+        {
+            var user = new User { ItemId = "u1", IsMfaVerified = true };
+            _otpService.Setup(o => o.VerifyAsync(It.IsAny<VerifyOtpRequest>()))
+                .ReturnsAsync(new OtpVerificationResponse { IsValid = true, UserId = "u1" });
+            _repo.Setup(r => r.GetUserByIdAsync("u1")).ReturnsAsync(user);
+
+            TokenRequest? captured = null;
+            _tokenManager.Setup(m => m.ManageTokenAsync(It.IsAny<TokenRequest>(), It.IsAny<IdentityConfiguration>(), user, It.IsAny<StateInfo?>()))
+                .Callback<TokenRequest, IdentityConfiguration, User, StateInfo?>((r, _, _, _) => captured = r)
+                .ReturnsAsync(new TokenResponse { AccessToken = "tok", StatusCode = 200 });
+
+            await Create().AuthenticateAsync(Request(), Config());
+
+            // H5: this used to fall back to "default" -- the tenant-wide scope -- handing the widest
+            // authority in the system to a user with no organization at all.
+            captured!.OrganizationId.Should().Be(IdpConstants.NoOrganizationId);
+        }
+
+        [Fact]
+        public async Task Authenticate_RequestedOrganizationTheUserDoesNotBelongTo_IsIgnored()
+        {
+            // OrganizationId is request-controlled on the grant surfaces that carry one, so the
+            // resolver must never honour an organization the mfa session user has no access to.
+            var user = new User
+            {
+                ItemId = "u1",
+                IsMfaVerified = true,
+                OrganizationIds = ["org-x"],
+                Roles = { ["org-x"] = ["member"] }
+            };
+            _otpService.Setup(o => o.VerifyAsync(It.IsAny<VerifyOtpRequest>()))
+                .ReturnsAsync(new OtpVerificationResponse { IsValid = true, UserId = "u1" });
+            _repo.Setup(r => r.GetUserByIdAsync("u1")).ReturnsAsync(user);
+
+            TokenRequest? captured = null;
+            _tokenManager.Setup(m => m.ManageTokenAsync(It.IsAny<TokenRequest>(), It.IsAny<IdentityConfiguration>(), user, It.IsAny<StateInfo?>()))
+                .Callback<TokenRequest, IdentityConfiguration, User, StateInfo?>((r, _, _, _) => captured = r)
+                .ReturnsAsync(new TokenResponse { AccessToken = "tok", StatusCode = 200 });
+
+            var request = Request();
+            request.OrganizationId = "someone-elses-org";
+
+            await Create().AuthenticateAsync(request, Config());
+
+            captured!.OrganizationId.Should().Be("org-x");
+        }
+
+        [Fact]
+        public async Task Authenticate_Success_PersistsLastUsedOrganizationId_WhenItChanged()
+        {
+            var user = new User
+            {
+                ItemId = "u1",
+                IsMfaVerified = true,
+                LastUsedOrganizationId = null,
+                OrganizationIds = ["org-x"],
+                Roles = { ["org-x"] = ["admin"] }
+            };
+            _otpService.Setup(o => o.VerifyAsync(It.IsAny<VerifyOtpRequest>()))
+                .ReturnsAsync(new OtpVerificationResponse { IsValid = true, UserId = "u1" });
+            _repo.Setup(r => r.GetUserByIdAsync("u1")).ReturnsAsync(user);
+            _tokenManager.Setup(m => m.ManageTokenAsync(It.IsAny<TokenRequest>(), It.IsAny<IdentityConfiguration>(), user, It.IsAny<StateInfo?>()))
+                .ReturnsAsync(new TokenResponse { AccessToken = "tok", StatusCode = 200 });
+
+            await Create().AuthenticateAsync(Request(), Config());
+
+            _repo.Verify(r => r.UpdatePartialAsync<User>("u1",
+                It.Is<Dictionary<string, object>>(d =>
+                    d.ContainsKey(nameof(User.LastUsedOrganizationId))
+                    && (string)d[nameof(User.LastUsedOrganizationId)] == "org-x"),
+                It.IsAny<string>()), Times.Once);
+        }
+
+        [Fact]
+        public async Task Authenticate_FailedMfa_DoesNotPersistLastUsedOrganizationId()
+        {
+            _otpService.Setup(o => o.VerifyAsync(It.IsAny<VerifyOtpRequest>()))
+                .ReturnsAsync(new OtpVerificationResponse { IsValid = false, UserId = "u1" });
+            _repo.Setup(r => r.IncrementFailedMfaAndApplyLockoutAsync("u1", It.IsAny<int>(), It.IsAny<int>(), It.IsAny<DateTime>()))
+                .ReturnsAsync(new User { ItemId = "u1", FailedMfaCount = 1 });
+
+            await Create().AuthenticateAsync(Request(), Config());
+
+            _repo.Verify(r => r.UpdatePartialAsync<User>(It.IsAny<string>(),
+                It.Is<Dictionary<string, object>>(d => d.ContainsKey(nameof(User.LastUsedOrganizationId))),
+                It.IsAny<string>()), Times.Never);
         }
     }
 }

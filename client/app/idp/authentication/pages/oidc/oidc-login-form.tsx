@@ -16,6 +16,7 @@ import React, { useEffect, useRef, useState } from "react";
 import { Captcha } from "@/components/captcha";
 import { useCaptcha } from "@blocks-idp/captcha/hooks/use-captcha";
 import { useOidcUiConfig } from "@blocks-idp/authentication/hooks/use-oidc-ui-config";
+import { DEFAULT_OIDC_UI_TEMPLATE } from "@blocks-idp/authentication/models/oidc-ui-template";
 import { isErrorWithErrors } from "@/lib/error";
 import {
   getCurrentOIDCParams,
@@ -81,6 +82,11 @@ interface OidcLoginFormProps {
   codeChallenge?: string;
   codeChallengeMethod?: string;
   tenantId?: string;
+  // Error the user is arriving with rather than one they just caused — a failed
+  // SSO round trip (e.g. signup disabled for the tenant) sends the browser back
+  // here with `error_description`, and it belongs in the same inline slot as a
+  // failed password attempt instead of being dropped.
+  initialError?: string;
 }
 
 export const OidcLoginForm = ({
@@ -93,11 +99,13 @@ export const OidcLoginForm = ({
   codeChallenge,
   codeChallengeMethod,
   tenantId,
+  initialError,
 }: OidcLoginFormProps) => {
   const navigate = useNavigate();
   const animCtx = useOidcAuthAnimation();
   const { data: loginOption } = useGetLoginOptions(tenantId, true);
   const { data: oidcUiConfig, captchaEnabled } = useOidcUiConfig(tenantId);
+  const loginCopy = (oidcUiConfig?.template ?? DEFAULT_OIDC_UI_TEMPLATE).pages.login;
   const { data: signUpSetting } = useGetSignUpSetting(tenantId);
   const isSignUpEnabled = signUpSetting?.isSignUpEnable ?? false;
   const [token, setToken] = useState("");
@@ -105,7 +113,7 @@ export const OidcLoginForm = ({
   const [isSelectingAccount, setIsSelectingAccount] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
-  const [serverError, setServerError] = useState<string | null>(null);
+  const [serverError, setServerError] = useState<string | null>(initialError ?? null);
   const [lastAttemptedEmail, setLastAttemptedEmail] = useState("");
   const [showActivationError, setShowActivationError] = useState(false);
   const [activeCodeChallenge, setActiveCodeChallenge] = useState(codeChallenge);
@@ -421,10 +429,10 @@ shake();
           style={{ background: "var(--danger-soft)", border: "1px solid var(--danger-border)" }}
         >
           <p className="mb-1 text-sm font-semibold oidc-font-orbitron" style={{ color: "var(--danger)" }}>
-            Account Not Verified
+            {loginCopy.activationErrorTitle}
           </p>
           <p className="text-xs oidc-font-rajdhani" style={{ color: "var(--danger)" }}>
-            Your account needs to be activated. Check your email for the activation link.
+            {loginCopy.activationErrorMessage}
           </p>
         </div>
         <div className="flex flex-col gap-2">
@@ -433,7 +441,7 @@ shake();
             onClick={() => (window.location.href = activationUrl)}
             className="oidc-sci-fi-btn-outline w-full"
           >
-            Activate Account
+            {loginCopy.activateAccountButton}
           </button>
           <button
             type="button"
@@ -441,7 +449,7 @@ shake();
             className="oidc-sci-fi-btn-outline w-full"
             style={{ opacity: 0.7 }}
           >
-            Back to Login
+            {loginCopy.backToLoginButton}
           </button>
         </div>
       </div>
@@ -466,7 +474,7 @@ shake();
                 <FormItem>
                   <div className="flex flex-col gap-2">
                     <label htmlFor="oidc-email" className="oidc-sci-fi-label">
-                      Work Email
+                      {loginCopy.emailLabel}
                     </label>
                     <FormControl>
                       <input
@@ -495,14 +503,14 @@ shake();
                   <div className="flex flex-col gap-2">
                     <div className="flex justify-between items-center">
                       <label htmlFor="oidc-password" className="oidc-sci-fi-label">
-                        Password
+                        {loginCopy.passwordLabel}
                       </label>
                       <Link
                         to={forgotPasswordUrl}
                         className="oidc-sci-fi-link"
                         style={{ fontSize: "0.75rem" }}
                       >
-                        Forgot?
+                        {loginCopy.forgotPasswordLink}
                       </Link>
                     </div>
                     <FormControl>
@@ -559,7 +567,7 @@ shake();
                 </>
               ) : (
                 <>
-                  <span>Login</span>
+                  <span>{loginCopy.submitButton}</span>
                   <ArrowRight size={16} />
                 </>
               )}
@@ -599,7 +607,7 @@ shake();
       {isSignUpEnabled && (
         <div className="mt-4">
           <p className="text-xs oidc-font-rajdhani" style={{ color: "var(--muted)" }}>
-            Not a member?{" "}
+            {loginCopy.signupPrompt}{" "}
             <Link
               to={
                 tenantId
@@ -613,7 +621,7 @@ shake();
               className="oidc-sci-fi-link"
               style={{ fontSize: "0.75rem" }}
             >
-              Create an account
+              {loginCopy.signupLink}
             </Link>
           </p>
         </div>
