@@ -3,7 +3,7 @@ import { renderHook, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { mockHttpClientFactory } from "@/test-utils/__mocks__";
 import { getRuntimeEnv } from "@/lib/runtime-env";
-import { useOidcUiConfig } from "./use-oidc-ui-config";
+import { DEFAULT_OIDC_UI_TEMPLATE, useOidcUiConfig } from "./use-oidc-ui-config";
 import { OIDC_UI_TEMPLATE_FIXTURE } from "@blocks-idp/authentication/test-utils/oidc-ui-template-fixture";
 
 vi.mock("@/lib/http-client", () => mockHttpClientFactory());
@@ -41,7 +41,10 @@ describe("useOidcUiConfig", () => {
       { "X-Blocks-Key": "tenant-x" },
       REQUEST_OPTIONS,
     );
-    expect(result.current.data).toEqual(mockConfigWithCaptcha);
+    expect(result.current.data).toEqual({
+      ...mockConfigWithCaptcha,
+      template: DEFAULT_OIDC_UI_TEMPLATE,
+    });
     expect(result.current.captchaEnabled).toBe(true);
   });
 
@@ -53,6 +56,7 @@ describe("useOidcUiConfig", () => {
     await waitFor(() => expect(result.current.isSuccess).toBe(true));
 
     expect(http.get).toHaveBeenCalledWith(OIDC_UI_CONFIG_ENDPOINT, {}, REQUEST_OPTIONS);
+    expect(result.current.data.template).toEqual(DEFAULT_OIDC_UI_TEMPLATE);
     expect(result.current.captchaEnabled).toBe(false);
   });
 
@@ -80,10 +84,10 @@ describe("useOidcUiConfig", () => {
 
     await waitFor(() => expect(result.current.isError).toBe(true));
     expect(result.current.captchaEnabled).toBe(false);
-    expect(result.current.data.template).toBeNull();
+    expect(result.current.data.template).toEqual(DEFAULT_OIDC_UI_TEMPLATE);
   });
 
-  it("does not expose a template while the request is loading", () => {
+  it("provides the frontend fallback template while the request is loading", () => {
     vi.mocked(http.get).mockReturnValue(new Promise(() => undefined));
 
     const { result } = renderHook(() => useOidcUiConfig("tenant-x"), {
@@ -93,7 +97,7 @@ describe("useOidcUiConfig", () => {
     expect(result.current.isLoading).toBe(true);
     expect(result.current.data).toEqual({
       captcha: null,
-      template: null,
+      template: DEFAULT_OIDC_UI_TEMPLATE,
     });
   });
 
