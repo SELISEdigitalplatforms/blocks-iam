@@ -2,9 +2,11 @@ import { useEffect, useState } from "react";
 import { AlertTriangle, CheckCircle2, Loader } from "lucide-react";
 import { LoginReturnLink } from "@blocks-idp/authentication/components/login-return-link";
 import { ActivationForm } from "./activation-form";
-import { OidcAuthShell } from "../oidc/oidc-auth-shell";
+import { OidcAuthShell, OidcFooter } from "../oidc/oidc-auth-shell";
 import { ACTIVATE_PANEL } from "../oidc/oidc-panel-config";
 import { useAccountActivationCodeExpiration, useAccountResendActivation } from "@blocks-idp/iam/hooks/use-account";
+import { useOidcUiConfig } from "@blocks-idp/authentication/hooks/use-oidc-ui-config";
+import { DEFAULT_OIDC_UI_TEMPLATE } from "@blocks-idp/authentication/models/oidc-ui-template";
 
 type ActivationProps = {
   code?: string;
@@ -13,6 +15,8 @@ type ActivationProps = {
 };
 
 export const Activation = ({ code, tenantId }: ActivationProps) => {
+  const { data: oidcUiConfig } = useOidcUiConfig(tenantId);
+  const template = oidcUiConfig?.template ?? DEFAULT_OIDC_UI_TEMPLATE;
   const {
     isPending: isActivationPending,
     mutateAsync: activationCodeValidation,
@@ -114,19 +118,23 @@ export const Activation = ({ code, tenantId }: ActivationProps) => {
       ? "Invalid Activation Link"
       : activationError === "expired"
         ? "Link Expired"
-        : "Activate Your Account";
+        : template.pages.activation.heading;
 
   const headingDimFirst = 2;
 
   return (
     <OidcAuthShell
       panelConfig={ACTIVATE_PANEL}
+      theme={template.theme}
+      logoUrl={template.branding.logoUrl}
+      brandName={template.branding.brandName}
       heading={heading}
       headingDimFirst={headingDimFirst}
       headingAlign={heading === "Invalid Activation Link" ? "center" : "left"}
-      successTitle="Account Activated"
-      successSubtitle="Your account is ready to use."
+      successTitle={template.pages.activation.successTitle}
+      successSubtitle={template.pages.activation.successSubtitle}
       showCorners={false}
+      footerNote={<OidcFooter footerText={template.pages.shared.footerText} />}
     >
       {isActivationPending || isValidCode === null ? (
         <div className="flex items-center justify-center py-8">

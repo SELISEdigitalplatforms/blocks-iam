@@ -8,6 +8,7 @@ using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.Logging.Abstractions;
 using Moq;
+using Iam.DomainService.Resources;
 
 namespace XUnitTest.ApiTests
 {
@@ -23,12 +24,15 @@ namespace XUnitTest.ApiTests
         private readonly Mock<IIdpSessionRepository> _sessionRepo = new();
         private readonly Mock<IAuthenticationRepository> _authRepo = new();
 
+        private readonly Mock<IResourceRepository> _resourceRepo = new();
+
         private DeviceController CreateController()
         {
             var verification = new DeviceVerificationService(
                 _deviceRepo.Object,
                 _sessionRepo.Object,
                 _authRepo.Object,
+                _resourceRepo.Object,
                 NullLogger<DeviceVerificationService>.Instance);
 
             var controller = new DeviceController(verification);

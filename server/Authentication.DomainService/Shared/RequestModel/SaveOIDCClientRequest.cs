@@ -19,9 +19,7 @@ namespace Authentication.DomainService.RequestModel
         public string? LoginMode { get; set; }
         public string? ClientType { get; set; }
         public string? ItemId { get; set; }
-        public string? ClientLogoUrl { get; set; }
         public string? ClientDisplayName { get; set; }
-        public string? ClientBrandColor { get; set; }
         public bool UseTokensCookie { get; set; } = true;
         public bool RequireMfa { get; set; }
         public List<UserMfaType>? AllowedMfaMethods { get; set; }

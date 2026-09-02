@@ -10,6 +10,7 @@ const h = vi.hoisted(() => ({
   envTenant: "root-project-key" as string | undefined,
   // The tenant of the login being completed, as carried by the /oidc/mfa-check URL.
   urlTenant: undefined as string | undefined,
+  oidcUiConfig: undefined as unknown,
 }));
 
 vi.mock("react-router", () => ({ useNavigate: () => h.navigateMock }));
@@ -28,17 +29,22 @@ vi.mock("@blocks-idp/mfa/hooks/use-resend-otp", () => ({
 vi.mock("@blocks-idp/authentication/pages/oidc/oidc-auth-shell", () => ({
   useOidcAuthAnimation: vi.fn(() => null),
 }));
+vi.mock("@blocks-idp/authentication/hooks/use-oidc-ui-config", () => ({
+  useOidcUiConfig: () => ({ data: h.oidcUiConfig }),
+}));
 vi.mock("@/lib/runtime-env", () => ({ getRuntimeEnv: () => h.envTenant }));
 vi.mock("@blocks-idp/authentication/utils/oidc-utils", () => ({
   extractOIDCParams: () => ({ tenantId: h.urlTenant, themeColor: "#124091" }),
 }));
 
 import { MfaCheckFrom } from "./mfa-check-form";
+import { DEFAULT_OIDC_UI_TEMPLATE } from "@blocks-idp/authentication/models/oidc-ui-template";
 
 beforeEach(() => {
   vi.clearAllMocks();
   h.envTenant = "root-project-key";
   h.urlTenant = undefined;
+  h.oidcUiConfig = undefined;
 });
 
 describe("MfaCheckFrom", () => {
@@ -47,6 +53,37 @@ describe("MfaCheckFrom", () => {
     expect(container.querySelector("input")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /resend code/i })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /verify/i })).toBeDisabled();
+  });
+
+  it("renders tenant-defined MFA actions", () => {
+    h.oidcUiConfig = {
+      captcha: null,
+      template: {
+        ...DEFAULT_OIDC_UI_TEMPLATE,
+        pages: {
+          ...DEFAULT_OIDC_UI_TEMPLATE.pages,
+          mfa: { heading: "Confirm identity", submitButton: "Confirm code", resendButton: "Send again" },
+        },
+      },
+    };
+    render(<MfaCheckFrom />);
+    expect(screen.getByRole("button", { name: /Send again/ })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /Confirm code/ })).toBeDisabled();
+  });
+
+  it("hides the optional resend action when its template value is null", () => {
+    h.oidcUiConfig = {
+      captcha: null,
+      template: {
+        ...DEFAULT_OIDC_UI_TEMPLATE,
+        pages: {
+          ...DEFAULT_OIDC_UI_TEMPLATE.pages,
+          mfa: { ...DEFAULT_OIDC_UI_TEMPLATE.pages.mfa, resendButton: null },
+        },
+      },
+    };
+    render(<MfaCheckFrom />);
+    expect(screen.queryByRole("button", { name: /resend/i })).not.toBeInTheDocument();
   });
 
   it("posts the entered code to the login endpoint and surfaces an invalid-code error", async () => {

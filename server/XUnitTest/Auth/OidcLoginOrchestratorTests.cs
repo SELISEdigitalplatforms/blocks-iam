@@ -17,6 +17,7 @@ using Mfa.DomainService.Services;
 using Mfa.DomainService.Shared;
 using Moq;
 using System.Text.Json;
+using Iam.DomainService.Resources;
 
 namespace XUnitTest.Auth
 {
@@ -66,6 +67,7 @@ namespace XUnitTest.Auth
                 _authService.Object,
                 _tenants.Object,
                 _cache.Object,
+                new Mock<IResourceRepository>().Object,
                 NullLogger<OidcAuthorizationEndpoint>.Instance);
         }
 

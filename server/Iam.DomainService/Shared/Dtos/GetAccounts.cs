@@ -1,4 +1,5 @@
 ﻿using Iam.DomainService.Entities;
+using Iam.DomainService.Shared.Serialization;
 using MongoDB.Bson.Serialization.Attributes;
 
 namespace Iam.DomainService.Dtos
@@ -41,6 +42,7 @@ namespace Iam.DomainService.Dtos
         /// </summary>
         public DateTime? LockoutUntilUtc { get; set; }
         public string LastLoggedInDeviceInfo { get; set; } = string.Empty;
+        [BsonSerializer(typeof(AttributeBagSerializer))]
         public Dictionary<string, object> Attributes { get; set; } = new Dictionary<string, object>();
     }
 

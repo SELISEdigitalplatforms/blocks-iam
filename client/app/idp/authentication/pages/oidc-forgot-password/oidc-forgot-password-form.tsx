@@ -12,6 +12,7 @@ import { useAccountRecover } from "@blocks-idp/iam/hooks/use-account";
 import { isErrorWithErrors } from "@/lib/error";
 import { useCaptcha } from "@blocks-idp/captcha/hooks/use-captcha";
 import { useOidcUiConfig } from "@blocks-idp/authentication/hooks/use-oidc-ui-config";
+import { DEFAULT_OIDC_UI_TEMPLATE } from "@blocks-idp/authentication/models/oidc-ui-template";
 import {
   appendTenantId,
   buildOIDCNavigationUrl,
@@ -44,6 +45,7 @@ export const OIDCForgotPasswordForm = () => {
   const { isPending, mutateAsync } = useAccountRecover();
 
   const { data: oidcUiConfig, captchaEnabled } = useOidcUiConfig();
+  const forgotPasswordCopy = (oidcUiConfig?.template ?? DEFAULT_OIDC_UI_TEMPLATE).pages.forgotPassword;
   const googleSiteKey =
     oidcUiConfig?.captcha?.key || getRuntimeEnv("BLOCKS_GOOGLE_SITE_KEY") || "";
 
@@ -106,7 +108,7 @@ export const OIDCForgotPasswordForm = () => {
     <div className="flex flex-col gap-6">
       <div>
         <h2 className="text-xl font-semibold mb-2 font-sans text-[var(--fg)]">
-          Reset Password
+          {forgotPasswordCopy.heading}
         </h2>
         <p className="text-sm font-sans text-[var(--muted)]">
           Enter your email and we&apos;ll dispatch a recovery link.
@@ -120,7 +122,7 @@ export const OIDCForgotPasswordForm = () => {
             name="email"
             render={({ field }) => (
               <FormItem>
-                <FormLabel className="oidc-sci-fi-label">Email</FormLabel>
+                <FormLabel className="oidc-sci-fi-label">{forgotPasswordCopy.emailLabel}</FormLabel>
                 <FormControl>
                   <input
                     type="email"
@@ -149,7 +151,7 @@ export const OIDCForgotPasswordForm = () => {
               disabled={!isValid || (captchaEnabled && !captchaCode)}
               className="oidc-sci-fi-btn w-full flex items-center justify-center gap-2"
             >
-              <span>Send Recovery Link</span><ArrowRight size={16} />
+              <span>{forgotPasswordCopy.submitButton}</span><ArrowRight size={16} />
             </button>
           )}
         </form>

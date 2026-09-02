@@ -2,6 +2,10 @@ import { useQuery } from "@tanstack/react-query";
 import { serviceInstances } from "@/lib/http-client";
 import { getRuntimeEnv } from "@/lib/runtime-env";
 import { extractOIDCParams } from "@blocks-idp/authentication/utils/oidc-utils";
+import type { IOidcUiTemplate } from "@blocks-idp/authentication/models/oidc-ui-template";
+
+export { DEFAULT_OIDC_UI_TEMPLATE } from "@blocks-idp/authentication/models/oidc-ui-template";
+export type { IOidcUiTemplate } from "@blocks-idp/authentication/models/oidc-ui-template";
 
 export interface IOidcUiCaptchaConfig {
   key: string;
@@ -11,10 +15,10 @@ export interface IOidcUiCaptchaConfig {
 
 export interface IOidcUiConfig {
   captcha: IOidcUiCaptchaConfig | null;
+  template: IOidcUiTemplate | null;
 }
 
 const OIDC_UI_CONFIG_ENDPOINT = "/api/idp/oidc-ui-config";
-
 const TENANT_PATH_PATTERNS: RegExp[] = [
   /^\/oidc\/recover\/([^/?#]+)/,
   /^\/oidc\/activate\/([^/?#]+)/,
@@ -46,10 +50,7 @@ export const useOidcUiConfig = (tenantIdOverride?: string) => {
   const url = tenantId
     ? `${OIDC_UI_CONFIG_ENDPOINT}?tenantId=${encodeURIComponent(tenantId)}`
     : OIDC_UI_CONFIG_ENDPOINT;
-
-  const headers: Record<string, string> = tenantId
-    ? { "X-Blocks-Key": tenantId }
-    : {};
+  const headers: Record<string, string> = tenantId ? { "X-Blocks-Key": tenantId } : {};
 
   const query = useQuery<IOidcUiConfig>({
     queryKey: ["oidc-ui-config", tenantId],
@@ -60,10 +61,9 @@ export const useOidcUiConfig = (tenantIdOverride?: string) => {
       }) as Promise<IOidcUiConfig>,
   });
 
-  const captchaEnabled = query.data?.captcha != null;
+  const data: IOidcUiConfig = query.data
+    ? { ...query.data, template: query.data.template ?? null }
+    : { captcha: null, template: null };
 
-  return {
-    ...query,
-    captchaEnabled,
-  };
+  return { ...query, data, captchaEnabled: data.captcha != null };
 };

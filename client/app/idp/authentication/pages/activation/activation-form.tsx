@@ -10,6 +10,7 @@ import { useAccountActivation } from "@blocks-idp/iam/hooks/use-account";
 import { isErrorWithErrors } from "@/lib/error";
 import { useCaptcha } from "@blocks-idp/captcha/hooks/use-captcha";
 import { useOidcUiConfig } from "@blocks-idp/authentication/hooks/use-oidc-ui-config";
+import { DEFAULT_OIDC_UI_TEMPLATE } from "@blocks-idp/authentication/models/oidc-ui-template";
 import { PasswordStrengthChecker } from "../../components/password-strength-checker/password-strength-checker";
 import { ArrowRight, Eye, EyeOff, Loader } from "lucide-react";
 import { useOidcAuthAnimation } from "../oidc/oidc-auth-shell";
@@ -51,6 +52,7 @@ export const ActivationForm = ({
   });
 
   const { data: oidcUiConfig, captchaEnabled } = useOidcUiConfig(tenantId);
+  const activationCopy = (oidcUiConfig?.template ?? DEFAULT_OIDC_UI_TEMPLATE).pages.activation;
   const googleSiteKey =
     oidcUiConfig?.captcha?.key || getRuntimeEnv("BLOCKS_GOOGLE_SITE_KEY") || "";
   const {
@@ -203,7 +205,7 @@ export const ActivationForm = ({
       </div>
 
       <div className="flex flex-col gap-2">
-        <label className="oidc-sci-fi-label">Password</label>
+        <label className="oidc-sci-fi-label">{activationCopy.passwordLabel}</label>
         <div className="relative">
           <input
             type={showPassword ? "text" : "password"}
@@ -239,7 +241,7 @@ export const ActivationForm = ({
       </div>
 
       <div className="flex flex-col gap-2">
-        <label className="oidc-sci-fi-label">Confirm Password</label>
+        <label className="oidc-sci-fi-label">{activationCopy.confirmPasswordLabel}</label>
         <div className="relative">
           <input
             type={showConfirmPassword ? "text" : "password"}
@@ -297,7 +299,7 @@ export const ActivationForm = ({
           </>
         ) : (
           <>
-            <span>Activate</span>
+            <span>{activationCopy.submitButton}</span>
             <ArrowRight size={16} />
           </>
         )}

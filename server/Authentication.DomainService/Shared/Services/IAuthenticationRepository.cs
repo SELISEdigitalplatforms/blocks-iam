@@ -35,6 +35,8 @@ namespace Authentication.DomainService.Services
         Task<OidcClientRegistration> GetOidcClientRegistrationAsync(string clientId);
         Task<List<OidcClientRegistration>> GetOIDCCredentialsByTenantAsync();
         Task SaveOidcClientRegistrationAsync(OidcClientRegistration credential);
+        Task<OidcUiTemplate?> GetOidcUiTemplateAsync();
+        Task SaveOidcUiTemplateAsync(OidcUiTemplate template);
         Task<OidcClientRegistration> GetOIDCCredentialByIdAsync(string id);
         Task DeleteOidcClientAsync(DeleteOIDCClientRequest request);
         Task<BiometricCredential> AuthenticateBiometricCredentialAsync(string biometricId, string biometricKey);

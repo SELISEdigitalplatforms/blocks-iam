@@ -1,4 +1,5 @@
 using Authentication.DomainService.Utilities;
+using Authentication.DomainService.Migrations;
 using Iam.DomainService.Utilities;
 using Blocks.Genesis;
 using Iam.DomainService.Accounts;
@@ -58,6 +59,7 @@ IHostBuilder CreateHostBuilder(string[] args) =>
       //  services.AddHostedService<PeriodicPingBackgroundService>();
 
         services.RegisterAllServices();
+        services.AddHostedService<OidcUiTemplateMigrationHostedService>();
 
 
 

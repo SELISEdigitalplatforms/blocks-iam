@@ -2,7 +2,9 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { Link, useParams, useSearchParams } from "react-router";
 import { Loader } from "lucide-react";
 
-import { OidcAuthShell, useOidcAuthAnimation } from "@blocks-idp/authentication/pages/oidc/oidc-auth-shell";
+import { OidcAuthShell, OidcFooter, useOidcAuthAnimation } from "@blocks-idp/authentication/pages/oidc/oidc-auth-shell";
+import { useOidcUiConfig } from "@blocks-idp/authentication/hooks/use-oidc-ui-config";
+import { DEFAULT_OIDC_UI_TEMPLATE } from "@blocks-idp/authentication/models/oidc-ui-template";
 import { DEVICE_ENTRY_PANEL, DEVICE_CONSENT_PANEL } from "./panel-config";
 import {
   formatUserCodeForDisplay,
@@ -27,6 +29,16 @@ export function DeviceEntryPage() {
   const [searchParams, setSearchParams] = useSearchParams();
   const tenantId = (params.tenantId ?? "").trim();
   const animCtx = useOidcAuthAnimation();
+  const { data: oidcUiConfig } = useOidcUiConfig(tenantId);
+  const template = oidcUiConfig?.template ?? DEFAULT_OIDC_UI_TEMPLATE;
+  const shellTemplateProps = {
+    theme: template.theme,
+    logoUrl: template.branding.logoUrl,
+    brandName: template.branding.brandName,
+    successTitle: "Device Verified",
+    successSubtitle: "Continuing the device flow…",
+    footerNote: <OidcFooter footerText={template.pages.shared.footerText} />,
+  };
 
   const initialCode = useMemo(() => {
     const fromQuery = searchParams.get("user_code") ?? "";
@@ -197,6 +209,7 @@ export function DeviceEntryPage() {
     return (
       <OidcAuthShell
         panelConfig={DEVICE_ENTRY_PANEL}
+        {...shellTemplateProps}
         heading="Device Verification"
         headingDimFirst={2}
         showCorners={false}
@@ -229,6 +242,7 @@ export function DeviceEntryPage() {
     return (
       <OidcAuthShell
         panelConfig={DEVICE_ENTRY_PANEL}
+        {...shellTemplateProps}
         heading="Please sign in"
         headingDimFirst={2}
         showCorners={false}
@@ -253,6 +267,7 @@ export function DeviceEntryPage() {
     return (
       <OidcAuthShell
         panelConfig={DEVICE_ENTRY_PANEL}
+        {...shellTemplateProps}
         heading="Device code expired"
         headingDimFirst={3}
         showCorners={false}
@@ -273,6 +288,7 @@ export function DeviceEntryPage() {
     return (
       <OidcAuthShell
         panelConfig={DEVICE_CONSENT_PANEL}
+        {...shellTemplateProps}
         heading="Tenant mismatch"
         headingDimFirst={2}
         showCorners={false}
@@ -302,6 +318,7 @@ export function DeviceEntryPage() {
     return (
       <OidcAuthShell
         panelConfig={DEVICE_CONSENT_PANEL}
+        {...shellTemplateProps}
         heading="Authorize device"
         headingDimFirst={2}
         showCorners={false}
@@ -422,6 +439,7 @@ export function DeviceEntryPage() {
     return (
       <OidcAuthShell
         panelConfig={DEVICE_ENTRY_PANEL}
+        {...shellTemplateProps}
         heading="Device Verification"
         headingDimFirst={2}
         showCorners={false}
@@ -449,6 +467,7 @@ export function DeviceEntryPage() {
   return (
     <OidcAuthShell
       panelConfig={DEVICE_ENTRY_PANEL}
+      {...shellTemplateProps}
       heading="Enter your device code"
       headingDimFirst={3}
       showCorners={false}

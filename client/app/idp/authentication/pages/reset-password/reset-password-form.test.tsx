@@ -8,6 +8,7 @@ const h = vi.hoisted(() => ({
   mutateAsync: vi.fn(),
   resetCaptcha: vi.fn(),
   animCtx: null as Record<string, unknown> | null,
+  oidcUiConfig: undefined as unknown,
 }));
 
 vi.mock("react-router", async (importOriginal) => {
@@ -22,7 +23,7 @@ vi.mock("@blocks-idp/captcha/hooks/use-captcha", () => ({
   useCaptcha: vi.fn(() => ({ captcha: {}, code: "", reset: h.resetCaptcha })),
 }));
 vi.mock("@blocks-idp/authentication/hooks/use-oidc-ui-config", () => ({
-  useOidcUiConfig: vi.fn(() => ({ data: undefined, captchaEnabled: false })),
+  useOidcUiConfig: vi.fn(() => ({ data: h.oidcUiConfig, captchaEnabled: false })),
 }));
 vi.mock(
   "@blocks-idp/authentication/components/password-strength-checker/password-strength-checker",
@@ -31,6 +32,7 @@ vi.mock(
 vi.mock("../oidc/oidc-auth-shell", () => ({ useOidcAuthAnimation: vi.fn(() => h.animCtx) }));
 
 import { ResetPasswordForm } from "./reset-password-form";
+import { DEFAULT_OIDC_UI_TEMPLATE } from "@blocks-idp/authentication/models/oidc-ui-template";
 
 const renderForm = () =>
   render(
@@ -45,6 +47,7 @@ const passwordInputs = (container: HTMLElement) =>
 beforeEach(() => {
   vi.clearAllMocks();
   h.animCtx = null;
+  h.oidcUiConfig = undefined;
 });
 
 describe("ResetPasswordForm", () => {
@@ -56,6 +59,30 @@ describe("ResetPasswordForm", () => {
     expect(passwordInputs(container)).toHaveLength(2);
     expect(screen.getByRole("button", { name: /set password/i })).toBeDisabled();
     expect(screen.getByRole("link", { name: /back to login/i })).toBeInTheDocument();
+  });
+
+  it("renders tenant-defined reset-password labels", () => {
+    h.oidcUiConfig = {
+      captcha: null,
+      template: {
+        ...DEFAULT_OIDC_UI_TEMPLATE,
+        pages: {
+          ...DEFAULT_OIDC_UI_TEMPLATE.pages,
+          resetPassword: {
+            ...DEFAULT_OIDC_UI_TEMPLATE.pages.resetPassword,
+            passwordLabel: "Choose secret",
+            confirmPasswordLabel: "Repeat secret",
+            logoutFromDevicesLabel: "End other sessions",
+            submitButton: "Save secret",
+          },
+        },
+      },
+    };
+    renderForm();
+    expect(screen.getByText("Choose secret")).toBeInTheDocument();
+    expect(screen.getByText("Repeat secret")).toBeInTheDocument();
+    expect(screen.getByText("End other sessions")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /Save secret/ })).toBeInTheDocument();
   });
 
   it("flags mismatched passwords", async () => {
