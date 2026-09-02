@@ -145,9 +145,9 @@ namespace XUnitTest.Auth
         }
 
         [Fact]
-        public async Task GetUiConfigAsync_MergesSavedTemplatePerLeaf()
+        public async Task GetUiConfigAsync_ReturnsStoredTemplateWithoutModification()
         {
-            _authRepo.Setup(r => r.GetOidcUiTemplateAsync()).ReturnsAsync(new OidcUiTemplate
+            var storedTemplate = new OidcUiTemplate
             {
                 Branding = new OidcUiTemplateBranding { BrandName = "Acme Corp" },
                 Theme = new OidcUiTemplateTheme { Primary = "#ff0000", Border = null },
@@ -155,17 +155,13 @@ namespace XUnitTest.Auth
                 {
                     Login = new OidcUiLoginPage { Heading = "Welcome to Acme" }
                 }
-            });
+            };
+            _authRepo.Setup(r => r.GetOidcUiTemplateAsync()).ReturnsAsync(storedTemplate);
 
             var result = await Create().GetUiConfigAsync();
 
             var response = ((OkObjectResult)result).Value.Should().BeOfType<OidcUiConfigResponse>().Subject;
-            response.Template!.Branding!.BrandName.Should().Be("Acme Corp");
-            response.Template.Theme!.Dark!.Primary.Should().Be("#ff0000");
-            response.Template.Theme.Dark.Border.Should().Be("#16162a");
-            response.Template.Theme.Light!.Background.Should().Be("#f5f7fb");
-            response.Template.Pages!.Login!.Heading.Should().Be("Welcome to Acme");
-            response.Template.Pages.Signup!.Heading.Should().Be("Create Your Blocks Account");
+            response.Template.Should().BeSameAs(storedTemplate);
         }
 
         [Fact]

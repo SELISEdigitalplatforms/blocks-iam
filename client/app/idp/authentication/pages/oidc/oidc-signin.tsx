@@ -80,7 +80,11 @@ export const OIDCSignin = () => {
 
         setAuthenticated();
 
-        const redirectUrl = (response as any)?.redirect_url || (response as any)?.sso_user_redirect_url;
+        const redirectResult = response as typeof response & {
+          redirect_url?: string;
+          sso_user_redirect_url?: string;
+        };
+        const redirectUrl = redirectResult?.redirect_url || redirectResult?.sso_user_redirect_url;
         if (redirectUrl) {
           window.location.href = redirectUrl;
           return;
@@ -108,6 +112,15 @@ export const OIDCSignin = () => {
       </div>
     );
   }
+
+  if (isOidcPasswordFlow && !template) {
+    return (
+      <div className="min-h-screen flex items-center justify-center">
+        <Loader className="h-8 w-8 animate-spin" />
+      </div>
+    );
+  }
+
   // Pure OIDC password/email flow — sci-fi shell with nodes panel. Also covers the
   // device-flow return trip, which has returnUrl instead of redirect_uri.
   if (

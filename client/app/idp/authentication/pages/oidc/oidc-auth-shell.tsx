@@ -56,6 +56,7 @@ export function useOidcResolvedTheme(): "dark" | "light" {
 export function BlocksLogo() {
   return (
     <svg
+      data-testid="blocks-default-logo"
       className="h-7 w-auto"
       viewBox="0 0 246 360"
       xmlns="http://www.w3.org/2000/svg"
@@ -84,9 +85,9 @@ export function buildOidcThemeStyle(theme: IOidcUiThemePalette): OidcThemeStyle 
     "--muted": theme.mutedText,
     "--success": theme.success,
     "--danger": theme.danger,
-    ...(theme.border ? { "--border": theme.border } : {}),
-    ...(theme.borderStrong ? { "--border-strong": theme.borderStrong } : {}),
-    ...(theme.accentSoft ? { "--accent-soft": theme.accentSoft } : {}),
+    "--border": theme.border,
+    "--border-strong": theme.borderStrong,
+    "--accent-soft": theme.accentSoft,
   };
 }
 

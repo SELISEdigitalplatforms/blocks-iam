@@ -5,8 +5,8 @@ namespace Authentication.DomainService.Entities
 {
     /// <summary>
     /// Tenant-level copy and branding used by the public OIDC user interface.
-    /// Properties are nullable so older, partial, or manually edited documents can be
-    /// default-filled at the service boundary.
+    /// Properties remain nullable for BSON compatibility with older documents. Runtime
+    /// reads return the stored document unchanged; validated writes require the complete shape.
     /// </summary>
     [BsonIgnoreExtraElements]
     public sealed class OidcUiTemplate

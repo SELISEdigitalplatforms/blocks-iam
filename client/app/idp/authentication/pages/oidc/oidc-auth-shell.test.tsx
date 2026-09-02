@@ -74,6 +74,7 @@ describe("OidcAuthShell", () => {
   it("renders the heading, brand label and children, starting idle", () => {
     renderShell();
     expect(screen.getByText("Blocks IAM")).toBeInTheDocument();
+    expect(screen.getByTestId("blocks-default-logo")).toBeInTheDocument();
     // The heading is split word by word.
     expect(screen.getByText("Sign")).toBeInTheDocument();
     expect(screen.getByText("Blocks")).toBeInTheDocument();
@@ -149,6 +150,7 @@ describe("OidcAuthShell", () => {
       "src",
       "https://example.test/acme.png",
     );
+    expect(screen.queryByTestId("blocks-default-logo")).not.toBeInTheDocument();
     expect(screen.getByText("Acme Identity")).toBeInTheDocument();
     expect(screen.getByRole("tab", { name: "Auto" })).toBeInTheDocument();
     expect(screen.getByRole("tab", { name: "Light" })).toBeInTheDocument();
