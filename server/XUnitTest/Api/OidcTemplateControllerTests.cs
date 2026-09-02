@@ -5,7 +5,6 @@ using Authentication.DomainService.Shared.RequestModel;
 using Authentication.DomainService.Shared.ResponseModel;
 using Blocks.Genesis;
 using FluentAssertions;
-using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Moq;
 using XUnitTest.Auth;
@@ -27,19 +26,20 @@ namespace XUnitTest.ApiTests
             var result = await Create().GetOidcTemplate();
 
             var ok = result.Should().BeOfType<OkObjectResult>().Subject;
-            ok.Value.Should().BeSameAs(template);
+            var response = ok.Value.Should().BeOfType<GetOidcUiTemplateResponse>().Subject;
+            response.Template.Should().BeSameAs(template);
         }
 
         [Fact]
-        public async Task Get_WithoutStoredTemplate_ReturnsJsonNullWithOk()
+        public async Task Get_WithoutStoredTemplate_ReturnsResponseWithNullTemplate()
         {
             _service.Setup(s => s.GetOidcTemplateForManagementAsync()).ReturnsAsync((Authentication.DomainService.Entities.OidcUiTemplate?)null);
 
             var result = await Create().GetOidcTemplate();
 
-            var json = result.Should().BeOfType<JsonResult>().Subject;
-            json.StatusCode.Should().Be(StatusCodes.Status200OK);
-            json.Value.Should().BeNull();
+            var ok = result.Should().BeOfType<OkObjectResult>().Subject;
+            var response = ok.Value.Should().BeOfType<GetOidcUiTemplateResponse>().Subject;
+            response.Template.Should().BeNull();
         }
 
         [Fact]
