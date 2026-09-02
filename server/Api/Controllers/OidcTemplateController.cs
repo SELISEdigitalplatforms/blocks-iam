@@ -24,7 +24,12 @@ public sealed class OidcTemplateController : ControllerBase
     public async Task<IActionResult> GetOidcTemplate()
     {
         var template = await _authenticationDomainService.GetOidcTemplateForManagementAsync();
-        return template is null ? NotFound() : Ok(template);
+        // JsonResult is intentional: Ok(null) is formatted as 204 No Content by
+        // ASP.NET Core, while this endpoint's contract should explicitly return
+        // HTTP 200 with a JSON null when the tenant has not stored a template yet.
+        return template is null
+            ? new JsonResult(null) { StatusCode = StatusCodes.Status200OK }
+            : Ok(template);
     }
 
     /// <summary>Validates and completely replaces the tenant's OIDC UI template.</summary>
