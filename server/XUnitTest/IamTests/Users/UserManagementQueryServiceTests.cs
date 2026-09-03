@@ -3,6 +3,8 @@ using FluentAssertions;
 using Iam.DomainService.Dtos;
 using Iam.DomainService.Utilities;
 using Iam.DomainService.Entities;
+using Iam.DomainService.Services;
+using Iam.DomainService.Shared.Entities;
 using Iam.DomainService.Users;
 using Iam.DomainService.Users.RequestModel;
 using Microsoft.AspNetCore.Mvc;
@@ -19,9 +21,10 @@ namespace XUnitTest.IamTests.Users
     public class UserManagementQueryServiceTests : IDisposable
     {
         private readonly Mock<IUserRepository> _repo = new();
+        private readonly Mock<IIdentityAccessManagementRepository> _iam = new();
 
         private UserManagementQueryService Create() =>
-            new(NullLogger<UserManagementQueryService>.Instance, _repo.Object);
+            new(NullLogger<UserManagementQueryService>.Instance, _repo.Object, identityAccessManagementRepository: _iam.Object);
 
         private static void InstallContext(string userId = "user-1", string orgId = "default")
         {
@@ -105,6 +108,7 @@ namespace XUnitTest.IamTests.Users
             result.Data.Should().BeEmpty();
             _repo.Verify(r => r.GetUsersAsync<GetAccounts, GetUsersRequest>(
                 It.IsAny<GetUsersRequest>(), It.IsAny<UserListScope>()), Times.Never);
+            _iam.Verify(r => r.GetTenantConfigurationAsync(), Times.Never);
         }
 
         [Fact] // H1 -- a "default" caller that requests nothing reaches the repository tenant-wide
@@ -157,6 +161,89 @@ namespace XUnitTest.IamTests.Users
             });
 
             captured!.OrganizationIds.Should().Equal("org-a");
+        }
+
+        [Fact]
+        public async Task GetUsers_DeniedScopeWithRoles_ReturnsNothingWithoutTenantConfigOrRepository()
+        {
+            InstallContext(orgId: " ");
+            _repo.Setup(r => r.GetUsersAsync<GetAccounts, GetUsersRequest>(
+                    It.IsAny<GetUsersRequest>(), It.IsAny<UserListScope>()))
+                .ThrowsAsync(new InvalidOperationException("the repository must not be reached"));
+            _iam.Setup(r => r.GetTenantConfigurationAsync())
+                .ThrowsAsync(new InvalidOperationException("tenant config must not be fetched"));
+
+            var result = await Create().GetUsersAsync(new GetUsersRequest
+            {
+                Filter = new GetUsersFilter { Roles = ["admin"] }
+            });
+
+            result.TotalCount.Should().Be(0);
+            result.Data.Should().BeEmpty();
+            result.Errors.Should().BeNull();
+            _repo.Verify(r => r.GetUsersAsync<GetAccounts, GetUsersRequest>(
+                It.IsAny<GetUsersRequest>(), It.IsAny<UserListScope>()), Times.Never);
+            _iam.Verify(r => r.GetTenantConfigurationAsync(), Times.Never);
+        }
+
+        [Fact]
+        public async Task GetUsers_AllOrganizationsWithRolesAndMultiOrgEnabled_ReturnsOrganizationRequiredError()
+        {
+            InstallContext();
+            _iam.Setup(r => r.GetTenantConfigurationAsync())
+                .ReturnsAsync(new TenantConfiguration { IsMultiOrgEnabled = true });
+            _repo.Setup(r => r.GetUsersAsync<GetAccounts, GetUsersRequest>(
+                    It.IsAny<GetUsersRequest>(), It.IsAny<UserListScope>()))
+                .ThrowsAsync(new InvalidOperationException("the repository must not be reached"));
+
+            var result = await Create().GetUsersAsync(new GetUsersRequest
+            {
+                Filter = new GetUsersFilter { Roles = ["admin"] }
+            });
+
+            result.TotalCount.Should().Be(0);
+            result.Data.Should().BeEmpty();
+            result.Errors.Should().ContainSingle();
+            result.Errors!["OrganizationIds"].Should().Be("OrganizationIds_Required_For_Role_Filter");
+            _repo.Verify(r => r.GetUsersAsync<GetAccounts, GetUsersRequest>(
+                It.IsAny<GetUsersRequest>(), It.IsAny<UserListScope>()), Times.Never);
+        }
+
+        [Fact]
+        public async Task GetUsers_AllOrganizationsWithRolesAndMultiOrgDisabled_SubstitutesDefaultOrganizationScope()
+        {
+            InstallContext();
+            _iam.Setup(r => r.GetTenantConfigurationAsync())
+                .ReturnsAsync(new TenantConfiguration { IsMultiOrgEnabled = false });
+            UserListScope? captured = null;
+            _repo.Setup(r => r.GetUsersAsync<GetAccounts, GetUsersRequest>(
+                    It.IsAny<GetUsersRequest>(), It.IsAny<UserListScope>()))
+                .Callback<GetUsersRequest, UserListScope>((_, scope) => captured = scope)
+                .ReturnsAsync((Enumerable.Empty<GetAccounts>().AsQueryable(), 0L));
+
+            await Create().GetUsersAsync(new GetUsersRequest
+            {
+                Filter = new GetUsersFilter { Roles = ["manager"] }
+            });
+
+            captured!.Kind.Should().Be(UserListScopeKind.Organizations);
+            captured.OrganizationIds.Should().Equal("default");
+        }
+
+        [Fact]
+        public async Task GetUsers_AllOrganizationsWithoutRoles_DoesNotFetchTenantConfig()
+        {
+            InstallContext();
+            _repo.Setup(r => r.GetUsersAsync<GetAccounts, GetUsersRequest>(
+                    It.IsAny<GetUsersRequest>(), It.IsAny<UserListScope>()))
+                .ReturnsAsync((Enumerable.Empty<GetAccounts>().AsQueryable(), 0L));
+
+            await Create().GetUsersAsync(new GetUsersRequest
+            {
+                Filter = new GetUsersFilter { Roles = [] }
+            });
+
+            _iam.Verify(r => r.GetTenantConfigurationAsync(), Times.Never);
         }
 
         [Fact]
@@ -235,7 +322,7 @@ namespace XUnitTest.IamTests.Users
         private static readonly DateTime Now = new(2026, 8, 19, 12, 0, 0, DateTimeKind.Utc);
 
         private UserManagementQueryService CreateAt(DateTime utcNow) =>
-            new(NullLogger<UserManagementQueryService>.Instance, _repo.Object, new FixedClock(utcNow));
+            new(NullLogger<UserManagementQueryService>.Instance, _repo.Object, new FixedClock(utcNow), _iam.Object);
 
         private static GetAccounts Account(string id, DateTime? lockoutUntilUtc) => new()
         {
@@ -368,7 +455,7 @@ namespace XUnitTest.IamTests.Users
                 .ReturnsAsync((Enumerable.Empty<GetAccounts>().AsQueryable(), 0L));
 
             var svc = new UserManagementQueryService(
-                NullLogger<UserManagementQueryService>.Instance, _repo.Object, new ThrowingClock());
+                NullLogger<UserManagementQueryService>.Instance, _repo.Object, new ThrowingClock(), _iam.Object);
 
             var result = await svc.GetUsersAsync(new GetUsersRequest());
 
@@ -384,7 +471,7 @@ namespace XUnitTest.IamTests.Users
             _repo.Setup(r => r.GetUserByIdAsync<GetAccounts>("nope")).ReturnsAsync((GetAccounts)null!);
 
             var svc = new UserManagementQueryService(
-                NullLogger<UserManagementQueryService>.Instance, _repo.Object, new ThrowingClock());
+                NullLogger<UserManagementQueryService>.Instance, _repo.Object, new ThrowingClock(), _iam.Object);
 
             // Non-default org: the default-org path dereferences null before returning, which is the
             // pre-existing defect this phase deliberately leaves alone.
