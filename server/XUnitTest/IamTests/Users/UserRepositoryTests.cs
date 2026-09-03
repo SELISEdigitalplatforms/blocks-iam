@@ -517,6 +517,96 @@ namespace XUnitTest.IamTests.Users
             AllStrings(rendered).Should().NotContain("org-b").And.NotContain("org-c");
         }
 
+        [Fact]
+        public async Task GetUsersAsync_RoleFilter_MatchesRolesInTheSameScopedOrganization()
+        {
+            var rendered = await CaptureUserFilterAsync(
+                new GetUsersFilter { Roles = ["billing-admin"] },
+                Scope("org-a"));
+
+            Clause(rendered, "OrganizationIds").Should().NotBeNull();
+            Clause(rendered, "Roles.org-a")!["$in"].AsBsonArray.Select(v => v.AsString)
+                .Should().Equal("billing-admin");
+            AllStrings(rendered).Should().Contain("org-a");
+        }
+
+        [Fact]
+        public async Task GetUsersAsync_RoleFilter_UsesUnionAcrossOrganizationsAndRoles()
+        {
+            var rendered = await CaptureUserFilterAsync(
+                new GetUsersFilter { Roles = ["admin", "auditor"] },
+                Scope("org-a", "org-b"));
+
+            Clause(rendered, "Roles.org-a")!["$in"].AsBsonArray.Select(v => v.AsString)
+                .Should().Equal("admin", "auditor");
+            Clause(rendered, "Roles.org-b")!["$in"].AsBsonArray.Select(v => v.AsString)
+                .Should().Equal("admin", "auditor");
+        }
+
+        [Fact]
+        public async Task GetUsersAsync_RoleFilter_CombinesWithOtherFilters()
+        {
+            var rendered = await CaptureUserFilterAsync(
+                new GetUsersFilter
+                {
+                    Email = "doe",
+                    Name = "john",
+                    Status = new Status { Active = true },
+                    Mfa = new MFA { Enabled = true },
+                    JoinedOn = DateTime.UtcNow.AddDays(-10),
+                    LastLogin = DateTime.UtcNow.AddDays(-1),
+                    UserIds = new List<string> { "u1" },
+                    Roles = ["admin"]
+                });
+
+            Regex(rendered, "Email").Pattern.Should().Be("doe");
+            Regex(rendered, "FirstName").Pattern.Should().Be("john");
+            Clause(rendered, "Active")!.AsBoolean.Should().BeTrue();
+            Clause(rendered, "MfaEnabled")!.AsBoolean.Should().BeTrue();
+            Clause(rendered, "CreatedDate")!["$gte"].Should().NotBeNull();
+            Clause(rendered, "LastLoggedInTime")!["$gte"].Should().NotBeNull();
+            Clause(rendered, "_id")!["$in"].AsBsonArray.Select(v => v.AsString).Should().Equal("u1");
+            Clause(rendered, "Roles.org-a")!["$in"].AsBsonArray.Select(v => v.AsString)
+                .Should().Equal("admin");
+        }
+
+        [Fact]
+        public async Task GetUsersAsync_RoleFilter_SkipsUnsafeOrganizationIds()
+        {
+            var rendered = await CaptureUserFilterAsync(
+                new GetUsersFilter { Roles = ["admin"] },
+                Scope("org-a", "bad.$org", "bad\0org"));
+
+            Clause(rendered, "Roles.org-a")!["$in"].AsBsonArray.Select(v => v.AsString)
+                .Should().Equal("admin");
+            rendered.ToJson().Should().NotContain("Roles.bad.$org");
+            rendered.ToJson().Should().NotContain("Roles.bad");
+        }
+
+        [Fact]
+        public async Task GetUsersAsync_RoleFilter_WithOnlyUnsafeOrganizationIds_BuildsNoMatchPredicate()
+        {
+            var rendered = await CaptureUserFilterAsync(
+                new GetUsersFilter { Roles = ["admin"] },
+                Scope("bad.$org"));
+
+            Clause(rendered, "_id")!["$exists"].AsBoolean.Should().BeFalse();
+            rendered.ToJson().Should().NotContain("Roles.bad.$org");
+        }
+
+        [Theory]
+        [InlineData(null)]
+        [InlineData(false)]
+        public async Task GetUsersAsync_RoleFilter_NullOrEmptyRolesApplyNoRoleClause(bool? hasRoles)
+        {
+            var roles = hasRoles is null ? null : new List<string>();
+            var rendered = await CaptureUserFilterAsync(
+                new GetUsersFilter { Roles = roles! },
+                Scope("org-a"));
+
+            rendered.ToJson().Should().NotContain("Roles.org-a");
+        }
+
         [Fact] // C7 -- tenant-wide plus a null filter must not build a zero-clause conjunction
         public async Task GetUsersAsync_AllOrganizationsScope_WithNullFilter_BuildsAnEmptyFilter()
         {
@@ -549,7 +639,7 @@ namespace XUnitTest.IamTests.Users
                 .ReturnsAsync(() => MongoMock.Cursor(new[] { new User { ItemId = "u1" } }));
 
             await Sut().GetUsersAsync<User, BaseGetsRequest<GetUsersFilter>>(
-                new BaseGetsRequest<GetUsersFilter> { Filter = new GetUsersFilter { Email = "doe" } },
+                new BaseGetsRequest<GetUsersFilter> { Filter = new GetUsersFilter { Email = "doe", Roles = ["admin"] } },
                 Scope("org-a", "org-b"));
 
             var registry = BsonSerializer.SerializerRegistry;

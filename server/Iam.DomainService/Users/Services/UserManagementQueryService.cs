@@ -1,5 +1,6 @@
 using Blocks.Genesis;
 using Iam.DomainService.Dtos;
+using Iam.DomainService.Services;
 using Iam.DomainService.Utilities;
 using Microsoft.Extensions.Logging;
 
@@ -10,6 +11,7 @@ namespace Iam.DomainService.Users
         private readonly ILogger<UserManagementQueryService> _logger;
         private readonly IUserRepository _userRepository;
         private readonly TimeProvider _timeProvider;
+        private readonly IIdentityAccessManagementRepository? _identityAccessManagementRepository;
 
         public UserManagementQueryService(
             ILogger<UserManagementQueryService> logger,
@@ -18,12 +20,14 @@ namespace Iam.DomainService.Users
             // registered from Authentication.DomainService's RegisterAllServices (the root the API
             // actually calls), so a required dependency registered elsewhere would be unresolvable
             // at runtime while every unit test still passed.
-            TimeProvider? timeProvider = null
+            TimeProvider? timeProvider = null,
+            IIdentityAccessManagementRepository? identityAccessManagementRepository = null
         )
         {
             _logger = logger;
             _userRepository = userRepository;
             _timeProvider = timeProvider ?? TimeProvider.System;
+            _identityAccessManagementRepository = identityAccessManagementRepository;
         }
 
         public async Task<bool> IsUserAvailableAsync(IsEmailAvailableRequest query)
@@ -69,6 +73,33 @@ namespace Iam.DomainService.Users
                     Data = Enumerable.Empty<Dictionary<string, object>>().AsQueryable(),
                     TotalCount = 0
                 };
+            }
+
+            if (scope.Kind == UserListScopeKind.AllOrganizations && query.Filter.Roles is { Count: > 0 })
+            {
+                if (_identityAccessManagementRepository is null)
+                {
+                    throw new InvalidOperationException(
+                        $"{nameof(IIdentityAccessManagementRepository)} is required to filter users by role from an all-organizations scope.");
+                }
+
+                var tenantConfig = await _identityAccessManagementRepository.GetTenantConfigurationAsync();
+                if (MultiOrgMode.IsEnabled(tenantConfig, _logger))
+                {
+                    _logger.LogInformation("User get end -- organization ids are required to filter users by role in multi-org mode");
+
+                    return new GetUsersResponse
+                    {
+                        Data = Enumerable.Empty<Dictionary<string, object>>().AsQueryable(),
+                        TotalCount = 0,
+                        Errors = new Dictionary<string, string>
+                        {
+                            ["OrganizationIds"] = "OrganizationIds_Required_For_Role_Filter"
+                        }
+                    };
+                }
+
+                scope = new UserListScope(UserListScopeKind.Organizations, [IdpConstants.DefaultOrganizationId]);
             }
 
             var (data, count) = await _userRepository.GetUsersAsync<GetAccounts, GetUsersRequest>(query, scope);
