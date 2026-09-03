@@ -546,7 +546,9 @@ public class AuthenticationController : ControllerBase
     [ProtectedEndPoint("blocks-iam::auth::client-credentials")]
     public async Task<List<ClientCredential>> GetClientCredentials()
     {
-        return await _authenticationRepository.GetClientCredentialsAsync();
+        // Through the domain service rather than the repository, because that is where the
+        // caller's organization scope is applied.
+        return await _authenticationDomainService.GetClientCredentialsAsync(new GetAllClientCredentialsRequest());
     }
 
     #endregion

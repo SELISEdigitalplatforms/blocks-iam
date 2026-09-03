@@ -747,14 +747,17 @@ namespace XUnitTest.ApiTests
         }
 
         [Fact]
-        public async Task GetClientCredentials_DelegatesToRepository()
+        public async Task GetClientCredentials_DelegatesToDomainService()
         {
+            // Through the domain service, not the repository: that is where the caller's
+            // organization scope is applied, and the listed documents carry ClientSecret.
             var list = new List<ClientCredential>();
-            _authRepo.Setup(r => r.GetClientCredentialsAsync()).ReturnsAsync(list);
+            _domainService.Setup(d => d.GetClientCredentialsAsync(It.IsAny<GetAllClientCredentialsRequest>())).ReturnsAsync(list);
 
             var result = await CreateController().GetClientCredentials();
 
             result.Should().BeSameAs(list);
+            _authRepo.Verify(r => r.GetClientCredentialsAsync(It.IsAny<string?>()), Times.Never);
         }
     }
 }

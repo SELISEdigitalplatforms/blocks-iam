@@ -458,26 +458,37 @@ namespace Authentication.DomainService.Services
                 return new BaseResponse { IsSuccess = false, Errors = new Dictionary<string, string> { { "invalid_request", "At least one role or permission is required." } } };
 
             var blocksContext = BlocksContext.GetContext();
+            var scope = OrganizationAccessScopeResolver.Resolve(blocksContext?.OrganizationId);
+            if (scope.Kind == OrganizationAccessScopeKind.Denied)
+                return ClientCredentialForbidden();
 
             var isUpdate = !string.IsNullOrWhiteSpace(request.ItemId);
             if (isUpdate)
             {
                 var existing = await _authenticationRepository.GetClientCredentialByIdAsync(request.ItemId!);
-                if (existing == null)
-                    return new BaseResponse { IsSuccess = false, Errors = new Dictionary<string, string> { { "not_found", $"Client credential '{request.ItemId}' not found." } } };
+
+                // Out of scope is reported as "not found", decided before anything is written, so a
+                // caller learns nothing about credentials belonging to another organization.
+                if (existing == null || !scope.Allows(existing.OrganizationId))
+                    return ClientCredentialNotFound(request.ItemId);
 
                 existing.Name = request.Name;
                 existing.IsActive = request.IsActive;
                 existing.AccessTokenValidForNumberMinutes = request.AccessTokenValidForNumberMinutes;
                 existing.LastUpdatedBy = blocksContext?.UserId;
                 existing.LastUpdatedDate = DateTime.UtcNow;
-                existing.Roles = request.Roles;
-                existing.Permissions = request.Permissions;
+                existing.Roles = roles;
+                existing.Permissions = permissions;
 
+                // OrganizationId is deliberately not updated. Re-scoping a live credential would
+                // change the reach of tokens that running services already hold, without those
+                // services ever asking for it.
                 return await _authenticationRepository.SaveClientCredentialAsync(existing);
             }
 
-            var organizationId = blocksContext?.OrganizationId ?? "default";
+            var (organizationId, organizationError) = ResolveNewCredentialOrganization(scope, request.OrganizationId);
+            if (organizationError != null)
+                return organizationError;
 
             var clientCredential = new ClientCredential
             {
@@ -488,15 +499,68 @@ namespace Authentication.DomainService.Services
                 LastUpdatedBy = blocksContext?.UserId,
                 CreatedDate = DateTime.UtcNow,
                 LastUpdatedDate = DateTime.UtcNow,
-                OrganizationId = organizationId,
+                OrganizationId = organizationId!,
                 AccessTokenValidForNumberMinutes = request.AccessTokenValidForNumberMinutes,
                 Roles = roles,
                 Permissions = permissions,
-                IsActive = true
+                IsActive = request.IsActive
             };
 
             return await _authenticationRepository.SaveClientCredentialAsync(clientCredential);
         }
+
+        /// <summary>
+        /// Which organization a newly created client credential is issued for.
+        /// </summary>
+        /// <remarks>
+        /// The credential's organization becomes the <c>organization_id</c> claim on every token the
+        /// client_credentials grant later mints for it, so it is exactly as privileged as the value
+        /// stored here. The token endpoint authenticates a client id and secret with no caller
+        /// context of its own, and therefore cannot re-check any of this -- which makes create the
+        /// only place the decision can be made.
+        /// <para>
+        /// A caller pinned to one organization cannot issue outside it, and its payload is discarded
+        /// rather than rejected, matching <see cref="ResourceWriteOrganizationScope"/>. Only the
+        /// tenant-wide caller may choose, and choosing nothing keeps the previous behaviour of a
+        /// tenant-wide credential.
+        /// </para>
+        /// </remarks>
+        private static (string? OrganizationId, BaseResponse? Error) ResolveNewCredentialOrganization(
+            OrganizationAccessScope scope,
+            string? requestedOrganizationId)
+        {
+            if (scope.Kind == OrganizationAccessScopeKind.Organization)
+                return (scope.OrganizationId, null);
+
+            var requested = requestedOrganizationId?.Trim();
+            if (string.IsNullOrWhiteSpace(requested))
+                return (IdpConstants.DefaultOrganizationId, null);
+
+            // "no-org" is the sentinel for "belongs to nothing". It is a real stored claim value, so
+            // accepting it here would mint tokens carrying it as though it named a place.
+            if (string.Equals(requested, IdpConstants.NoOrganizationId, StringComparison.Ordinal))
+                return (null, new BaseResponse
+                {
+                    IsSuccess = false,
+                    Errors = new Dictionary<string, string> { { "invalid_request", $"'{IdpConstants.NoOrganizationId}' is not a selectable organization." } }
+                });
+
+            return (requested, null);
+        }
+
+        private static BaseResponse ClientCredentialNotFound(string? itemId) =>
+            new()
+            {
+                IsSuccess = false,
+                Errors = new Dictionary<string, string> { { "not_found", $"Client credential '{itemId}' not found." } }
+            };
+
+        private static BaseResponse ClientCredentialForbidden() =>
+            new()
+            {
+                IsSuccess = false,
+                Errors = new Dictionary<string, string> { { "forbidden", "Your token names no organization, so client credentials cannot be managed." } }
+            };
 
         private static string GenerateClientSecret()
         {
@@ -513,9 +577,13 @@ namespace Authentication.DomainService.Services
             if (string.IsNullOrWhiteSpace(request.ItemId))
                 return new BaseResponse { IsSuccess = false, Errors = new Dictionary<string, string> { { "invalid_request", "ItemId is required." } } };
 
+            var scope = OrganizationAccessScopeResolver.Resolve(BlocksContext.GetContext()?.OrganizationId);
+            if (scope.Kind == OrganizationAccessScopeKind.Denied)
+                return ClientCredentialForbidden();
+
             var existing = await _authenticationRepository.GetClientCredentialByIdAsync(request.ItemId);
-            if (existing == null)
-                return new BaseResponse { IsSuccess = false, Errors = new Dictionary<string, string> { { "not_found", $"Client credential '{request.ItemId}' not found." } } };
+            if (existing == null || !scope.Allows(existing.OrganizationId))
+                return ClientCredentialNotFound(request.ItemId);
 
             await _authenticationRepository.DeleteClientCredentialAsync(request);
             return new BaseResponse { IsSuccess = true };
@@ -523,7 +591,16 @@ namespace Authentication.DomainService.Services
 
         public async Task<List<ClientCredential>> GetClientCredentialsAsync(GetAllClientCredentialsRequest request)
         {
-            return await _authenticationRepository.GetClientCredentialsAsync();
+            // The listed documents carry ClientSecret, so an unscoped list would hand one
+            // organization's administrator the secrets of every other organization in the tenant.
+            var scope = OrganizationAccessScopeResolver.Resolve(BlocksContext.GetContext()?.OrganizationId);
+
+            return scope.Kind switch
+            {
+                OrganizationAccessScopeKind.AllOrganizations => await _authenticationRepository.GetClientCredentialsAsync(null),
+                OrganizationAccessScopeKind.Organization => await _authenticationRepository.GetClientCredentialsAsync(scope.OrganizationId),
+                _ => []
+            };
         }
 
         public async Task<BaseResponse> CreateIdentityProviderAsync(SaveIdentityProviderRequest request)

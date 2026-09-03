@@ -563,10 +563,16 @@ namespace Authentication.DomainService.Services
             await collection.DeleteOneAsync(filter);
         }
 
-        public async Task<List<ClientCredential>> GetClientCredentialsAsync()
+        /// <param name="organizationId">
+        /// The organization to restrict the list to, or null for every organization in the tenant.
+        /// Null is the tenant-wide scope and must only be passed for a caller that resolved to it.
+        /// </param>
+        public async Task<List<ClientCredential>> GetClientCredentialsAsync(string? organizationId)
         {
             var collection = GetCollection<ClientCredential>();
-            var filter = Builders<ClientCredential>.Filter.Where(_ => true);
+            var filter = organizationId == null
+                ? Builders<ClientCredential>.Filter.Where(_ => true)
+                : Builders<ClientCredential>.Filter.Eq(it => it.OrganizationId, organizationId);
             var cursor = await collection.FindAsync(filter);
             return await cursor.ToListAsync();
         }

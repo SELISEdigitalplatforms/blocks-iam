@@ -458,8 +458,49 @@ namespace XUnitTest.Auth.Shared
         public async Task GetClientCredentialsAsync_ReturnsList()
         {
             Register(new[] { new ClientCredential { ItemId = "cc1" } });
-            (await Sut().GetClientCredentialsAsync()).Should().HaveCount(1);
+            (await Sut().GetClientCredentialsAsync(null)).Should().HaveCount(1);
         }
+
+        // The collection mock hands back its seeded items whatever the filter says, so a
+        // seeded-document assertion would pass even with no organization clause at all. The
+        // rendered filter is the only thing that actually proves the scoping reached the database.
+
+        [Fact]
+        public async Task GetClientCredentialsAsync_ScopedToOrganization_FiltersOnOrganizationId()
+        {
+            var col = Register(new[] { new ClientCredential { ItemId = "cc1", OrganizationId = "org-a" } });
+
+            await Sut().GetClientCredentialsAsync("org-a");
+
+            col.Verify(c => c.FindAsync(
+                It.Is<FilterDefinition<ClientCredential>>(f => FiltersOnOrganization(f, "org-a")),
+                It.IsAny<FindOptions<ClientCredential, ClientCredential>>(),
+                It.IsAny<CancellationToken>()), Times.Once);
+        }
+
+        [Fact]
+        public async Task GetClientCredentialsAsync_TenantWide_DoesNotFilterOnOrganization()
+        {
+            var col = Register(new[] { new ClientCredential { ItemId = "cc1", OrganizationId = "org-a" } });
+
+            await Sut().GetClientCredentialsAsync(null);
+
+            col.Verify(c => c.FindAsync(
+                It.Is<FilterDefinition<ClientCredential>>(f => !RenderFilter(f).Contains("OrganizationId")),
+                It.IsAny<FindOptions<ClientCredential, ClientCredential>>(),
+                It.IsAny<CancellationToken>()), Times.Once);
+        }
+
+        private static BsonDocument RenderFilter<T>(FilterDefinition<T> filter)
+        {
+            var registry = MongoDB.Bson.Serialization.BsonSerializer.SerializerRegistry;
+            return filter.Render(new RenderArgs<T>(registry.GetSerializer<T>(), registry));
+        }
+
+        private static bool FiltersOnOrganization<T>(FilterDefinition<T> filter, string organizationId) =>
+            RenderFilter(filter).TryGetValue("OrganizationId", out var value)
+            && value.IsString
+            && value.AsString == organizationId;
 
         [Fact]
         public async Task InsertImpersonationSessionAsync_ReturnsTrue()
