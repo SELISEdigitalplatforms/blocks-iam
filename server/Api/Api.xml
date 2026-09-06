@@ -321,8 +321,9 @@
              but no authorize request is begun.
              </para>
              <para>
-             <paramref name="forwardedTo"/> applies to the login flow only. It survives the
-             round trip in the cached flow context, which the signup flow does not create.
+             Both flows cache the same OIDC flow context, so <paramref name="forwardedTo"/>
+             survives either round trip: a user who signs up, follows the signup page's link
+             back to the login page and signs in still lands on the page they asked for.
              </para>
              </summary>
         </member>

@@ -339,17 +339,40 @@ namespace XUnitTest.Auth
         }
 
         [Fact]
-        public async Task StartAuthenticationFlow_SignupWritesNoFlowContext()
+        public async Task StartAuthenticationFlow_SignupCachesTheFlowContext()
         {
-            // Nothing on the signup path reaches /api/idp/callback to redeem one; a cache write
-            // here would leave an orphan entry per click for the full TTL.
+            // The signup page links back to /oidc/login, which replays this state. Without a
+            // cached context the user would sign in successfully and then be turned away at
+            // /api/idp/callback with invalid_state.
             _authRepo.Setup(r => r.GetIdentityProviderByClientIdAsync(It.IsAny<string>())).ReturnsAsync(ActiveProvider());
+            _cache.Setup(c => c.AddStringValueAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<long>())).ReturnsAsync(true);
             SignupEnabled();
 
             await Create().StartAuthenticationFlowAsync(
                 "client-1", "https://app.example.com/callback", null, "signup", IamRequest());
 
-            _cache.Verify(c => c.AddStringValueAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<long>()), Times.Never);
+            _cache.Verify(c => c.AddStringValueAsync(
+                It.Is<string>(k => k.StartsWith("idp_flow:")), It.IsAny<string>(), It.IsAny<long>()), Times.Once);
+        }
+
+        [Fact]
+        public async Task StartAuthenticationFlow_SignupCachesTheSameStateItReturns()
+        {
+            // The state in the URL and the state in the cache key have to be the same value,
+            // or the round trip through /oidc/login cannot resolve.
+            _authRepo.Setup(r => r.GetIdentityProviderByClientIdAsync(It.IsAny<string>())).ReturnsAsync(ActiveProvider());
+            string? cacheKey = null;
+            _cache.Setup(c => c.AddStringValueAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<long>()))
+                .Callback<string, string, long>((k, _, _) => cacheKey = k)
+                .ReturnsAsync(true);
+            SignupEnabled();
+
+            var result = await Create().StartAuthenticationFlowAsync(
+                "client-1", "https://app.example.com/callback", null, "signup", IamRequest());
+
+            var redirect = Prop((result as OkObjectResult)!.Value, "redirect_uri") as string;
+            var state = cacheKey!.Replace("idp_flow:", string.Empty);
+            redirect.Should().Contain($"state={Uri.EscapeDataString(state)}");
         }
 
         [Theory]
