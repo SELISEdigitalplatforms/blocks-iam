@@ -8,6 +8,7 @@ using Authentication.DomainService.Shared;
 using Authentication.DomainService.Shared.RequestModel;
 using Authentication.DomainService.Shared.ResponseModel;
 using Authentication.DomainService.Shared.Services;
+using Iam.DomainService.Services;
 using Iam.DomainService.Utilities;
 using Blocks.CaptchaDriver;
 using Blocks.Genesis;
@@ -33,6 +34,7 @@ namespace Authentication.DomainService.Authentication
         private readonly IdpTokenExchangeClient _idpTokenExchangeClient;
         private readonly ITenants _tenants;
         private readonly ICaptchaConfigurationRepository _captchaConfigurationRepository;
+        private readonly IIdentityAccessManagementRepository _iamRepository;
         private readonly ILogger<IdpService> _logger;
 
         public IdpService(
@@ -43,6 +45,7 @@ namespace Authentication.DomainService.Authentication
             IdpTokenExchangeClient idpTokenExchangeClient,
             ITenants tenants,
             ICaptchaConfigurationRepository captchaConfigurationRepository,
+            IIdentityAccessManagementRepository iamRepository,
             ILogger<IdpService> logger)
         {
             _authenticationRepository = authenticationRepository;
@@ -52,6 +55,7 @@ namespace Authentication.DomainService.Authentication
             _idpTokenExchangeClient = idpTokenExchangeClient;
             _tenants = tenants;
             _captchaConfigurationRepository = captchaConfigurationRepository;
+            _iamRepository = iamRepository;
             _logger = logger;
         }
 
@@ -72,7 +76,7 @@ namespace Authentication.DomainService.Authentication
             });
         }
 
-        public async Task<IActionResult> StartAuthenticationFlowAsync(string clientId, string redirectUri, string? forwardedTo)
+        public async Task<IActionResult> StartAuthenticationFlowAsync(string clientId, string redirectUri, string? forwardedTo, string? flow = null, HttpRequest? httpRequest = null)
         {
             try
             {
@@ -99,6 +103,7 @@ namespace Authentication.DomainService.Authentication
                 // Generate OIDC flow parameters
                 var state = GenerateRandomBase64Url(16);
                 var nonce = GenerateRandomBase64Url(16);
+
                 var codeVerifier = identityProvider.RequirePkce ? GenerateRandomBase64Url(32) : null;
                 var codeChallenge = codeVerifier != null ? GenerateCodeChallenge(codeVerifier) : null;
 
@@ -117,6 +122,17 @@ namespace Authentication.DomainService.Authentication
                 };
                 var cacheKey = $"idp_flow:{state}";
                 await _cacheClient.AddStringValueAsync(cacheKey, System.Text.Json.JsonSerializer.Serialize(flowContext), IdpConstants.IdpFlowCacheTtlSeconds);
+
+                // Signup only differs in where the browser is sent: everything above is the
+                // same prologue, so the state minted here is redeemable at /api/idp/callback
+                // either way. That matters because the signup page offers a "sign in" link
+                // back to /oidc/login, which posts this same state and nonce -- with no cached
+                // flow context the user would log in successfully and then be rejected at the
+                // callback with invalid_state.
+                if (IsSignupFlow(flow))
+                {
+                    return await BuildSignupResultAsync(identityProvider, redirectUri, state, nonce, effectiveTenantId, httpRequest);
+                }
 
                 // Build authorization URL
                 var authorizeUrl = BuildAuthorizeUrl(identityProvider, redirectUri, state, nonce, codeChallenge);
@@ -403,6 +419,95 @@ namespace Authentication.DomainService.Authentication
             int? timeoutSeconds = null)
         {
             return await _idpTokenExchangeClient.ExchangeCodeForTokenAsync(tokenEndpoint, form, cancellationToken, timeoutSeconds);
+        }
+
+        private static bool IsSignupFlow(string? flow)
+        {
+            return string.Equals(flow, IdpConstants.InitiateFlowSignup, StringComparison.OrdinalIgnoreCase);
+        }
+
+        /// <summary>
+        /// Builds the response for <c>flow=signup</c>: a link straight to the IAM signup page,
+        /// carrying the clientId and redirect_uri this request already validated.
+        ///
+        /// <para>
+        /// Those two are not decoration. <c>signup-form</c> reads them back off the query and
+        /// posts them to register, which is what lets the activation email return the user to
+        /// the application they signed up from. Without them the email builder falls back to
+        /// the tenant's first active OIDC client -- a confident link to the wrong project.
+        /// </para>
+        /// </summary>
+        private async Task<IActionResult> BuildSignupResultAsync(
+            IdentityProvider provider,
+            string redirectUri,
+            string state,
+            string nonce,
+            string? tenantId,
+            HttpRequest? httpRequest)
+        {
+            if (string.IsNullOrWhiteSpace(tenantId))
+            {
+                return new BadRequestObjectResult(new { error = "invalid_request", error_description = "Tenant could not be resolved for this request" });
+            }
+
+            if (httpRequest == null)
+            {
+                _logger.LogError("Signup flow requested without an HttpRequest; cannot resolve the public IAM base URL");
+                return new ObjectResult(new { error = "server_error", error_description = "Failed to start signup flow" })
+                {
+                    StatusCode = 500
+                };
+            }
+
+            if (!await IsSignupOpenAsync())
+            {
+                return new BadRequestObjectResult(new { error = "signup_disabled", error_description = "Self-service signup is not enabled for this tenant" });
+            }
+
+            var signupUrl = OidcRedirectUrlBuilder.BuildSignupUrl(
+                OidcRedirectUrlBuilder.ResolvePublicBaseUrl(httpRequest),
+                tenantId,
+                provider.ClientId,
+                redirectUri,
+                provider.Scope ?? IdpConstants.OpenIdProfileEmailScope,
+                state,
+                nonce);
+
+            _logger.LogInformation("Started signup flow for client {ClientId} on tenant {TenantId}", provider.ClientId, tenantId);
+
+            return new OkObjectResult(new { redirect_uri = signupUrl, flow = IdpConstants.InitiateFlowSignup });
+        }
+
+        /// <summary>
+        /// Whether the signup page would actually render a form for this tenant.
+        ///
+        /// <para>
+        /// Mirrors the condition the signup page itself applies: email signup on, or SSO signup
+        /// on <em>with at least one active social provider</em>. The tenant flag alone is not
+        /// enough -- SSO-only signup with no provider configured passes the flag and renders an
+        /// empty card, and the caller has no way to see that from outside.
+        /// </para>
+        /// </summary>
+        private async Task<bool> IsSignupOpenAsync()
+        {
+            var tenantConfiguration = await _iamRepository.GetTenantConfigurationAsync();
+            if (tenantConfiguration == null)
+            {
+                return false;
+            }
+
+            if (tenantConfiguration.IsEmailPasswordSignUpEnabled)
+            {
+                return true;
+            }
+
+            if (!tenantConfiguration.IsSSoSignUpEnabled)
+            {
+                return false;
+            }
+
+            var identityProviders = await _authenticationRepository.GetIdentityProvidersAsync();
+            return identityProviders?.Any(p => p.IsActive && p.ProviderType == "social") ?? false;
         }
 
         private string BuildAuthorizeUrl(IdentityProvider provider, string redirectUri, string state, string nonce, string? codeChallenge)

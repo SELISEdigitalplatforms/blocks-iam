@@ -8,6 +8,8 @@ using Authentication.DomainService.Shared.ResponseModel;
 using Blocks.CaptchaDriver;
 using Blocks.Genesis;
 using FluentAssertions;
+using Iam.DomainService.Services;
+using Iam.DomainService.Shared.Entities;
 using Idp.DomainService.Oidc.Contracts;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
@@ -26,6 +28,7 @@ namespace XUnitTest.Auth
         private readonly Mock<IHttpService> _httpService = new();
         private readonly Mock<ITenants> _tenants = new();
         private readonly Mock<ICaptchaConfigurationRepository> _captchaRepo = new();
+        private readonly Mock<IIdentityAccessManagementRepository> _iamRepo = new();
         private readonly IdpTokenExchangeClient _tokenExchange;
 
         private const string TenantId = "tenant-1";
@@ -52,7 +55,7 @@ namespace XUnitTest.Auth
 
         private IdpService Create() =>
             new(_authRepo.Object, _authCodeRepo.Object, _flowService.Object, _cache.Object,
-                _tokenExchange, _tenants.Object, _captchaRepo.Object,
+                _tokenExchange, _tenants.Object, _captchaRepo.Object, _iamRepo.Object,
                 NullLogger<IdpService>.Instance);
 
         private static object? Prop(object? value, string name) =>
@@ -278,6 +281,184 @@ namespace XUnitTest.Auth
 
             var ok = result.Should().BeOfType<OkObjectResult>().Subject;
             (Prop(ok.Value, "redirect_uri") as string).Should().Contain("code_challenge=").And.Contain("code_challenge_method=S256");
+        }
+
+        // ---------- StartAuthenticationFlowAsync: flow=signup ----------
+
+        private static HttpRequest IamRequest()
+        {
+            var context = new DefaultHttpContext();
+            context.Request.Scheme = "https";
+            context.Request.Host = new HostString("iam.example.com");
+            return context.Request;
+        }
+
+        private void SignupEnabled(bool email = true, bool sso = false)
+        {
+            _iamRepo.Setup(r => r.GetTenantConfigurationAsync()).ReturnsAsync(new TenantConfiguration
+            {
+                IsEmailPasswordSignUpEnabled = email,
+                IsSSoSignUpEnabled = sso
+            });
+        }
+
+        [Theory]
+        [InlineData("signup")]
+        [InlineData("SIGNUP")]
+        public async Task StartAuthenticationFlow_ReturnsSignupUrl_WhenFlowIsSignup(string flow)
+        {
+            _authRepo.Setup(r => r.GetIdentityProviderByClientIdAsync(It.IsAny<string>())).ReturnsAsync(ActiveProvider());
+            SignupEnabled();
+
+            var result = await Create().StartAuthenticationFlowAsync(
+                "client-1", "https://app.example.com/callback", null, flow, IamRequest());
+
+            var ok = result.Should().BeOfType<OkObjectResult>().Subject;
+            var redirect = Prop(ok.Value, "redirect_uri") as string;
+            redirect.Should().StartWith($"https://iam.example.com/oidc/signup/{TenantId}");
+            Prop(ok.Value, "flow").Should().Be("signup");
+        }
+
+        [Fact]
+        public async Task StartAuthenticationFlow_SignupUrl_CarriesTheSpellingsTheSpaReads()
+        {
+            // extractOIDCParams reads redirect_uri in snake case only, and the activation-email
+            // builder emits the same clientId + redirect_uri pair. Diverging here fails silently.
+            _authRepo.Setup(r => r.GetIdentityProviderByClientIdAsync(It.IsAny<string>())).ReturnsAsync(ActiveProvider());
+            SignupEnabled();
+
+            var result = await Create().StartAuthenticationFlowAsync(
+                "client-1", "https://app.example.com/callback", null, "signup", IamRequest());
+
+            var redirect = Prop((result as OkObjectResult)!.Value, "redirect_uri") as string;
+            redirect.Should().Contain("clientId=client-1");
+            redirect.Should().Contain($"redirect_uri={Uri.EscapeDataString("https://app.example.com/callback")}");
+            redirect.Should().Contain($"tenant_id={TenantId}");
+            redirect.Should().Contain("scope=").And.Contain("state=").And.Contain("nonce=");
+            redirect.Should().NotContain("redirectUri=");
+        }
+
+        [Fact]
+        public async Task StartAuthenticationFlow_SignupCachesTheFlowContext()
+        {
+            // The signup page links back to /oidc/login, which replays this state. Without a
+            // cached context the user would sign in successfully and then be turned away at
+            // /api/idp/callback with invalid_state.
+            _authRepo.Setup(r => r.GetIdentityProviderByClientIdAsync(It.IsAny<string>())).ReturnsAsync(ActiveProvider());
+            _cache.Setup(c => c.AddStringValueAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<long>())).ReturnsAsync(true);
+            SignupEnabled();
+
+            await Create().StartAuthenticationFlowAsync(
+                "client-1", "https://app.example.com/callback", null, "signup", IamRequest());
+
+            _cache.Verify(c => c.AddStringValueAsync(
+                It.Is<string>(k => k.StartsWith("idp_flow:")), It.IsAny<string>(), It.IsAny<long>()), Times.Once);
+        }
+
+        [Fact]
+        public async Task StartAuthenticationFlow_SignupCachesTheSameStateItReturns()
+        {
+            // The state in the URL and the state in the cache key have to be the same value,
+            // or the round trip through /oidc/login cannot resolve.
+            _authRepo.Setup(r => r.GetIdentityProviderByClientIdAsync(It.IsAny<string>())).ReturnsAsync(ActiveProvider());
+            string? cacheKey = null;
+            _cache.Setup(c => c.AddStringValueAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<long>()))
+                .Callback<string, string, long>((k, _, _) => cacheKey = k)
+                .ReturnsAsync(true);
+            SignupEnabled();
+
+            var result = await Create().StartAuthenticationFlowAsync(
+                "client-1", "https://app.example.com/callback", null, "signup", IamRequest());
+
+            var redirect = Prop((result as OkObjectResult)!.Value, "redirect_uri") as string;
+            var state = cacheKey!.Replace("idp_flow:", string.Empty);
+            redirect.Should().Contain($"state={Uri.EscapeDataString(state)}");
+        }
+
+        [Theory]
+        [InlineData(null)]
+        [InlineData("")]
+        [InlineData("login")]
+        public async Task StartAuthenticationFlow_KeepsLoginBehaviour_WhenFlowIsNotSignup(string? flow)
+        {
+            _authRepo.Setup(r => r.GetIdentityProviderByClientIdAsync(It.IsAny<string>())).ReturnsAsync(ActiveProvider());
+            _cache.Setup(c => c.AddStringValueAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<long>())).ReturnsAsync(true);
+
+            var result = await Create().StartAuthenticationFlowAsync(
+                "client-1", "https://app.example.com/callback", "next", flow, IamRequest());
+
+            var ok = result.Should().BeOfType<OkObjectResult>().Subject;
+            (Prop(ok.Value, "redirect_uri") as string).Should().StartWith("https://idp.example.com/authorize");
+            _cache.Verify(c => c.AddStringValueAsync(It.Is<string>(k => k.StartsWith("idp_flow:")), It.IsAny<string>(), It.IsAny<long>()), Times.Once);
+        }
+
+        [Theory]
+        [InlineData("signup")]
+        [InlineData(null)]
+        public async Task StartAuthenticationFlow_ValidatesClientOnBothFlows(string? flow)
+        {
+            _authRepo.Setup(r => r.GetIdentityProviderByClientIdAsync(It.IsAny<string>()))
+                .ReturnsAsync((IdentityProvider)null!);
+            SignupEnabled();
+
+            var result = await Create().StartAuthenticationFlowAsync(
+                "client-1", "https://app.example.com/callback", null, flow, IamRequest());
+
+            Prop(result.Should().BeOfType<BadRequestObjectResult>().Subject.Value, "error").Should().Be("invalid_client");
+        }
+
+        [Fact]
+        public async Task StartAuthenticationFlow_SignupRejectsUnregisteredRedirectUri()
+        {
+            _authRepo.Setup(r => r.GetIdentityProviderByClientIdAsync(It.IsAny<string>())).ReturnsAsync(ActiveProvider());
+            SignupEnabled();
+
+            var result = await Create().StartAuthenticationFlowAsync(
+                "client-1", "https://evil.example.com/callback", null, "signup", IamRequest());
+
+            Prop(result.Should().BeOfType<BadRequestObjectResult>().Subject.Value, "error").Should().Be("invalid_redirect_uri");
+        }
+
+        [Fact]
+        public async Task StartAuthenticationFlow_SignupDisabled_WhenTenantHasNoSignupMethod()
+        {
+            _authRepo.Setup(r => r.GetIdentityProviderByClientIdAsync(It.IsAny<string>())).ReturnsAsync(ActiveProvider());
+            SignupEnabled(email: false, sso: false);
+
+            var result = await Create().StartAuthenticationFlowAsync(
+                "client-1", "https://app.example.com/callback", null, "signup", IamRequest());
+
+            Prop(result.Should().BeOfType<BadRequestObjectResult>().Subject.Value, "error").Should().Be("signup_disabled");
+        }
+
+        [Fact]
+        public async Task StartAuthenticationFlow_SignupDisabled_WhenSsoOnlyAndNoProviderConfigured()
+        {
+            // The tenant flag alone is not enough: SSO-only signup with no social provider
+            // renders an empty card, and the caller cannot see that from outside.
+            _authRepo.Setup(r => r.GetIdentityProviderByClientIdAsync(It.IsAny<string>())).ReturnsAsync(ActiveProvider());
+            _authRepo.Setup(r => r.GetIdentityProvidersAsync()).ReturnsAsync(new List<IdentityProvider>());
+            SignupEnabled(email: false, sso: true);
+
+            var result = await Create().StartAuthenticationFlowAsync(
+                "client-1", "https://app.example.com/callback", null, "signup", IamRequest());
+
+            Prop(result.Should().BeOfType<BadRequestObjectResult>().Subject.Value, "error").Should().Be("signup_disabled");
+        }
+
+        [Fact]
+        public async Task StartAuthenticationFlow_SignupAllowed_WhenSsoOnlyWithAnActiveSocialProvider()
+        {
+            var social = ActiveProvider();
+            social.ProviderType = "social";
+            _authRepo.Setup(r => r.GetIdentityProviderByClientIdAsync(It.IsAny<string>())).ReturnsAsync(ActiveProvider());
+            _authRepo.Setup(r => r.GetIdentityProvidersAsync()).ReturnsAsync(new List<IdentityProvider> { social });
+            SignupEnabled(email: false, sso: true);
+
+            var result = await Create().StartAuthenticationFlowAsync(
+                "client-1", "https://app.example.com/callback", null, "signup", IamRequest());
+
+            result.Should().BeOfType<OkObjectResult>();
         }
 
         [Fact]
