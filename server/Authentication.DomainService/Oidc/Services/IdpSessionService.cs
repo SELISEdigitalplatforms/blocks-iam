@@ -1,5 +1,7 @@
 using Idp.DomainService.Oidc.Contracts;
+using Authentication.DomainService.Dtos;
 using Authentication.DomainService.Utilities;
+using System.Text.Json;
 using Authentication.DomainService.Authentication;
 using Authentication.DomainService.Oidc.Repositories;
 using Authentication.DomainService.Services;
@@ -41,6 +43,7 @@ namespace Authentication.DomainService.Oidc.Services
         private readonly IRefreshTokenRepository _refreshTokenRepo;
         private readonly ICacheClient _cacheClient;
         private readonly IUserActivityDispatcher _userActivityDispatcher;
+        private readonly ITenants _tenants;
         private readonly ILogger<IdpSessionService> _logger;
 
         public IdpSessionService(
@@ -49,6 +52,7 @@ namespace Authentication.DomainService.Oidc.Services
             IRefreshTokenRepository refreshTokenRepo,
             ICacheClient cacheClient,
             IUserActivityDispatcher userActivityDispatcher,
+            ITenants tenants,
             ILogger<IdpSessionService> logger)
         {
             _sessionRepo = sessionRepo;
@@ -56,6 +60,7 @@ namespace Authentication.DomainService.Oidc.Services
             _refreshTokenRepo = refreshTokenRepo;
             _cacheClient = cacheClient;
             _userActivityDispatcher = userActivityDispatcher;
+            _tenants = tenants;
             _logger = logger;
         }
 
@@ -293,6 +298,77 @@ namespace Authentication.DomainService.Oidc.Services
         }
 
         /// <summary>
+        /// Re-points the refresh tokens of a rotated session at its new id, in MongoDB and in the
+        /// refresh-token cache. Without this, every token minted before the rotation kept naming the
+        /// soft-deleted row, so a logout driven by the token revoked a dead session and left the live
+        /// one untouched. Cache updates are best-effort: MongoDB is the source of truth and readers
+        /// fall back to it on a miss.
+        /// </summary>
+        private async Task MigrateRefreshTokensAsync(string fromSessionId, string toSessionId)
+        {
+            var activeTokens = await _refreshTokenRepo.GetActiveTokensBySessionIdAsync(fromSessionId)
+                ?? Array.Empty<RefreshTokenModel>();
+
+            await _refreshTokenRepo.ReassignSessionAsync(fromSessionId, toSessionId);
+
+            foreach (var token in activeTokens)
+            {
+                if (string.IsNullOrWhiteSpace(token.TokenId))
+                {
+                    continue;
+                }
+
+                try
+                {
+                    var cached = await _cacheClient.GetStringValueAsync(token.TokenId);
+                    if (string.IsNullOrWhiteSpace(cached))
+                    {
+                        continue;
+                    }
+
+                    var entry = JsonSerializer.Deserialize<RefreshTokenCache>(cached);
+                    if (entry == null)
+                    {
+                        continue;
+                    }
+
+                    entry.SessionId = toSessionId;
+
+                    // Same rule as the mint: the sliding window, never past the lineage's absolute cap.
+                    // An entry whose remaining lifetime cannot be established is evicted instead of
+                    // rewritten with a guessed TTL; readers fall back to MongoDB on a miss.
+                    var ttlSeconds = RemainingCacheTtlSeconds(entry, DateTime.UtcNow);
+                    if (ttlSeconds <= 0)
+                    {
+                        await _cacheClient.RemoveKeyAsync(token.TokenId);
+                        continue;
+                    }
+
+                    await _cacheClient.AddStringValueAsync(token.TokenId, JsonSerializer.Serialize(entry), ttlSeconds);
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogWarning(ex, "Could not re-point cached refresh token {TokenId} from session {From} to {To}", token.TokenId, fromSessionId, toSessionId);
+                }
+            }
+        }
+
+        private static int RemainingCacheTtlSeconds(RefreshTokenCache entry, DateTime now)
+        {
+            var deadlines = new[] { entry.ExpiresUtc, entry.AbsoluteExpiresUtc }
+                .Where(d => d != default)
+                .ToList();
+
+            if (deadlines.Count == 0)
+            {
+                return 0;
+            }
+
+            var remaining = (deadlines.Min() - now).TotalSeconds;
+            return remaining <= 0 ? 0 : (int)Math.Max(1, Math.Ceiling(remaining));
+        }
+
+        /// <summary>
         /// Rotate session ID while preserving accounts and expiration windows.
         /// </summary>
         public async Task<string?> RotateSessionAsync(string sessionId, string reason)
@@ -318,6 +394,7 @@ namespace Authentication.DomainService.Oidc.Services
                 };
 
                 await _sessionRepo.CreateAsync(rotated);
+                await MigrateRefreshTokensAsync(sessionId, rotated.SessionId);
                 await _sessionRepo.DeleteAsync(sessionId);
 
                 foreach (var account in rotated.Accounts)
@@ -449,13 +526,13 @@ namespace Authentication.DomainService.Oidc.Services
 
             if (httpContext?.Response != null)
             {
-                httpContext.Response.Cookies.Append(cookieKey, newId, new CookieOptions
-                {
-                    HttpOnly = true,
-                    Secure = true,
-                    SameSite = SameSiteMode.Lax,
-                    Expires = DateTime.UtcNow.AddDays(IdpConstants.IdpSessionCookieTtlDays)
-                });
+                IdpSessionCookie.Append(
+                    httpContext.Request,
+                    httpContext.Response,
+                    _tenants.GetTenantByID(tenantId),
+                    tenantId,
+                    newId,
+                    DateTime.UtcNow.AddDays(IdpConstants.IdpSessionCookieTtlDays));
             }
 
             return newId;

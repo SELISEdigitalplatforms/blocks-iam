@@ -57,6 +57,9 @@ namespace Authentication.DomainService.Shared
         public Task<bool> RevokeSessionAsync(string sessionId, string reason)
             => _idpSessionService.RevokeSessionAsync(sessionId, reason);
 
+        public Task<IEnumerable<IdpSessionModel>> GetUserSessionsAsync(string userId, string tenantId)
+            => _idpSessionService.GetUserSessionsAsync(userId, tenantId);
+
         public Task<string> CreateAndBackupImpersonationSessionAsync(string userId, string rootTenantId, string targetTenantId, string clientId, string organizationId)
             => _impersonationFlowHelper.CreateAndBackupImpersonationSessionAsync(userId, rootTenantId, targetTenantId, clientId, organizationId);
 
