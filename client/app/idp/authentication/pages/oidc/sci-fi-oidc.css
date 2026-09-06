@@ -18,8 +18,8 @@
   50%       { opacity: 0.25; transform: scale(1.15); }
 }
 @keyframes oidc-dotPulse {
-  0%, 100% { box-shadow: 0 0 4px #0066b2;  }
-  50%       { box-shadow: 0 0 10px #0066b2; }
+  0%, 100% { box-shadow: 0 0 4px var(--accent);  }
+  50%       { box-shadow: 0 0 10px var(--accent); }
 }
 @keyframes oidc-shimmer {
   0%   { background-position: -200% 0; }
@@ -56,40 +56,22 @@
   50%       { opacity: 0.6; transform: translate(-50%, -50%) scale(1.08); }
 }
 
-/* ─── Token scope — dark (default) ─── */
+/* Core branding/theme tokens are injected from oidc-ui-config. */
 .oidc-scifi-root {
-  /* Surfaces */
-  --bg:               #050510;
-  --surface:          #0a0a1a;
-  --surface-elevated: #0f0f22;
-
-  /* Text */
-  --fg:    #e8e8f0;
-  --muted: #5e5e7a;
-
-  /* Borders */
-  --border:       #16162a;
-  --border-hover: rgba(0, 102, 178, 0.18);
-  --border-strong: rgba(0, 102, 178, 0.35);
-
-  /* Brand */
-  --accent:       #0066b2;
-  --accent-glow:  rgba(0, 102, 178, 0.35);
-  --accent2:      #00b2ff;
-  --accent2-glow: rgba(0, 178, 255, 0.3);
-  --accent-soft:  rgba(0, 102, 178, 0.10);
-  --accent-softer: rgba(0, 102, 178, 0.06);
+  --surface-elevated: color-mix(in srgb, var(--surface) 94%, var(--fg));
+  --border-hover: color-mix(in srgb, var(--accent) 18%, transparent);
+  --accent-glow: color-mix(in srgb, var(--accent) 35%, transparent);
+  --accent2-glow: color-mix(in srgb, var(--accent2) 30%, transparent);
+  --accent-softer: color-mix(in srgb, var(--accent) 6%, transparent);
 
   /* Semantic */
-  --success:        #17a34a;
-  --success-soft:   rgba(23, 163, 74, 0.15);
-  --success-border: rgba(23, 163, 74, 0.30);
+  --success-soft:   color-mix(in srgb, var(--success) 15%, transparent);
+  --success-border: color-mix(in srgb, var(--success) 30%, transparent);
   --warn:           #eab308;
   --warn-soft:      rgba(234, 179, 8, 0.10);
   --warn-border:    rgba(234, 179, 8, 0.20);
-  --danger:         #f87171;
-  --danger-soft:    rgba(248, 113, 113, 0.10);
-  --danger-border:  rgba(248, 113, 113, 0.30);
+  --danger-soft:    color-mix(in srgb, var(--danger) 10%, transparent);
+  --danger-border:  color-mix(in srgb, var(--danger) 30%, transparent);
 
   /* Component-specific */
   --input-bg:          rgba(0, 0, 0, 0.25);
@@ -97,10 +79,10 @@
   --node-tint:         rgba(255, 255, 255, 0.03);
   --node-divider:      rgba(255, 255, 255, 0.06);
   --terminal-bg:       rgba(0, 0, 0, 0.30);
-  --terminal-fg:       #e8e8f0;
-  --terminal-muted:    #8a8aaa;
-  --terminal-border:   #1a1a3a;
-  --grid-line:         rgba(0, 102, 178, 0.035);
+  --terminal-fg:       var(--fg);
+  --terminal-muted:    var(--muted);
+  --terminal-border:   var(--border);
+  --grid-line:         color-mix(in srgb, var(--accent) 3.5%, transparent);
   --button-text:       #ffffff;
   --button-shimmer:    rgba(255, 255, 255, 0.25);
 
@@ -129,35 +111,18 @@
 
 /* ─── Light-mode override ─── */
 .oidc-scifi-root[data-theme="light"] {
-  --bg:      #f5f7fb;
-  --surface: #ffffff;
-
-  --fg:    #0c1024;
-  --muted: #5b6378;
-
-  --border:       #dde2ec;
-  --border-hover: rgba(0, 102, 178, 0.28);
-  --border-strong: rgba(0, 102, 178, 0.45);
-
-  --accent:       #0066b2;
-  --accent2:      #0084d4;
-  --accent2-glow: rgba(0, 132, 212, 0.18);
-  --accent-soft:  rgba(0, 102, 178, 0.08);
-  --accent-softer: rgba(0, 102, 178, 0.04);
-
-  --success:        #16a34a;
-  --success-soft:   rgba(22, 163, 74, 0.12);
-  --success-border: rgba(22, 163, 74, 0.30);
-  --danger:         #dc2626;
-  --danger-soft:    rgba(220, 38, 38, 0.08);
-  --danger-border:  rgba(220, 38, 38, 0.30);
+  --border-hover: color-mix(in srgb, var(--accent) 28%, transparent);
+  --accent2-glow: color-mix(in srgb, var(--accent2) 18%, transparent);
+  --accent-softer: color-mix(in srgb, var(--accent) 4%, transparent);
+  --success-soft: color-mix(in srgb, var(--success) 12%, transparent);
+  --danger-soft: color-mix(in srgb, var(--danger) 8%, transparent);
 
   --input-bg:       rgba(255, 255, 255, 0.70);
   --node-bg:        rgba(255, 255, 255, 0.85);
   --node-tint:      rgba(12, 16, 36, 0.03);
   --node-divider:   rgba(12, 16, 36, 0.08);
   --terminal-bg:    rgba(12, 16, 36, 0.92);
-  --grid-line:      rgba(0, 102, 178, 0.06);
+  --grid-line:      color-mix(in srgb, var(--accent) 6%, transparent);
   --button-shimmer: rgba(255, 255, 255, 0.45);
 
   --atm-grid-opacity:       0.5;

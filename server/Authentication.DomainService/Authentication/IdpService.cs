@@ -8,6 +8,7 @@ using Authentication.DomainService.Shared;
 using Authentication.DomainService.Shared.RequestModel;
 using Authentication.DomainService.Shared.ResponseModel;
 using Authentication.DomainService.Shared.Services;
+using Iam.DomainService.Services;
 using Iam.DomainService.Utilities;
 using Blocks.CaptchaDriver;
 using Blocks.Genesis;
@@ -33,6 +34,7 @@ namespace Authentication.DomainService.Authentication
         private readonly IdpTokenExchangeClient _idpTokenExchangeClient;
         private readonly ITenants _tenants;
         private readonly ICaptchaConfigurationRepository _captchaConfigurationRepository;
+        private readonly IIdentityAccessManagementRepository _iamRepository;
         private readonly ILogger<IdpService> _logger;
 
         public IdpService(
@@ -43,6 +45,7 @@ namespace Authentication.DomainService.Authentication
             IdpTokenExchangeClient idpTokenExchangeClient,
             ITenants tenants,
             ICaptchaConfigurationRepository captchaConfigurationRepository,
+            IIdentityAccessManagementRepository iamRepository,
             ILogger<IdpService> logger)
         {
             _authenticationRepository = authenticationRepository;
@@ -52,6 +55,7 @@ namespace Authentication.DomainService.Authentication
             _idpTokenExchangeClient = idpTokenExchangeClient;
             _tenants = tenants;
             _captchaConfigurationRepository = captchaConfigurationRepository;
+            _iamRepository = iamRepository;
             _logger = logger;
         }
 
@@ -68,287 +72,11 @@ namespace Authentication.DomainService.Authentication
                     Provider = captchaConfiguration.Provider,
                     Generator = captchaConfiguration.CaptchaGenerator
                 },
-                Template = savedTemplate is null
-                    ? null
-                    : MergeOidcUiTemplateWithDefaults(savedTemplate)
+                Template = savedTemplate
             });
         }
 
-        /// <summary>
-        /// Creates the complete, dependency-free template that reproduces the current OIDC UI.
-        /// </summary>
-        public static OidcUiTemplate CreateDefaultOidcUiTemplate()
-        {
-            return new OidcUiTemplate
-            {
-                SchemaVersion = OidcUiTemplate.CurrentSchemaVersion,
-                Branding = new OidcUiTemplateBranding
-                {
-                    LogoUrl = null,
-                    BrandName = "Blocks IAM"
-                },
-                Theme = new OidcUiTemplateTheme
-                {
-                    Light = new OidcUiThemePalette
-                    {
-                        Primary = "#0066b2",
-                        Secondary = "#0084d4",
-                        Background = "#f5f7fb",
-                        Surface = "#ffffff",
-                        Text = "#0c1024",
-                        MutedText = "#5b6378",
-                        Success = "#16a34a",
-                        Danger = "#dc2626",
-                        Border = "#dde2ec",
-                        BorderStrong = "rgba(0, 102, 178, 0.45)",
-                        AccentSoft = "rgba(0, 102, 178, 0.08)"
-                    },
-                    Dark = new OidcUiThemePalette
-                    {
-                        Primary = "#0066b2",
-                        Secondary = "#00b2ff",
-                        Background = "#050510",
-                        Surface = "#0a0a1a",
-                        Text = "#e8e8f0",
-                        MutedText = "#5e5e7a",
-                        Success = "#17a34a",
-                        Danger = "#f87171",
-                        Border = "#16162a",
-                        BorderStrong = "rgba(0, 102, 178, 0.35)",
-                        AccentSoft = "rgba(0, 102, 178, 0.10)"
-                    }
-                },
-                Pages = new OidcUiTemplatePages
-                {
-                    Login = new OidcUiLoginPage
-                    {
-                        Heading = "Sign in to continue to your application",
-                        EmailLabel = "Work Email",
-                        PasswordLabel = "Password",
-                        ForgotPasswordLink = "Forgot?",
-                        SubmitButton = "Login",
-                        SignupPrompt = "Not a member?",
-                        SignupLink = "Create an account",
-                        ActivationErrorTitle = "Account Not Verified",
-                        ActivationErrorMessage = "Your account needs to be activated. Check your email for the activation link.",
-                        ActivateAccountButton = "Activate Account",
-                        BackToLoginButton = "Back to Login"
-                    },
-                    Signup = new OidcUiSignupPage
-                    {
-                        Heading = "Create Your Blocks Account",
-                        FirstNameLabel = "First Name",
-                        LastNameLabel = "Last Name",
-                        EmailLabel = "Work Email",
-                        SubmitButton = "Create Account",
-                        TermsPrefix = "I agree to the",
-                        TermsLinkText = "Terms of Service",
-                        PrivacyLinkText = "Privacy Policy",
-                        LoginPrompt = "Already a member?",
-                        LoginLink = "Sign in",
-                        SuccessTitle = "Account Created",
-                        SuccessSubtitle = "Check your inbox for the activation link…"
-                    },
-                    ForgotPassword = new OidcUiForgotPasswordPage
-                    {
-                        Heading = "Reset Password",
-                        EmailLabel = "Email",
-                        SubmitButton = "Send Recovery Link"
-                    },
-                    ResetPassword = new OidcUiResetPasswordPage
-                    {
-                        Heading = "Set a new password",
-                        PasswordLabel = "New Password",
-                        ConfirmPasswordLabel = "Confirm Password",
-                        LogoutFromDevicesLabel = "Logout from all devices",
-                        SubmitButton = "Set Password",
-                        SuccessTitle = "Password Updated",
-                        SuccessSubtitle = "Your password has been reset successfully."
-                    },
-                    Activation = new OidcUiActivationPage
-                    {
-                        Heading = "Activate Your Account",
-                        PasswordLabel = "Password",
-                        ConfirmPasswordLabel = "Confirm Password",
-                        SubmitButton = "Activate",
-                        SuccessTitle = "Account Activated",
-                        SuccessSubtitle = "Your account is ready to use."
-                    },
-                    Mfa = new OidcUiMfaPage
-                    {
-                        Heading = "Verify it's you",
-                        SubmitButton = "Verify",
-                        ResendButton = "Resend Code"
-                    },
-                    AccountSelector = new OidcUiAccountSelectorPage
-                    {
-                        Heading = "Blocks IAM",
-                        Subheading = "Select Account"
-                    },
-                    Shared = new OidcUiSharedPage
-                    {
-                        FooterText = "© {year} SELISE Digital Platforms. All rights reserved."
-                    }
-                }
-            };
-        }
-
-        /// <summary>
-        /// Returns a new effective template, choosing the saved value at each leaf and the
-        /// compiled-in value whenever that saved leaf is null or absent.
-        /// </summary>
-        public static OidcUiTemplate MergeOidcUiTemplateWithDefaults(OidcUiTemplate? saved)
-        {
-            var defaults = CreateDefaultOidcUiTemplate();
-
-            return new OidcUiTemplate
-            {
-                ItemId = saved?.ItemId,
-                SchemaVersion = OidcUiTemplate.CurrentSchemaVersion,
-                Branding = new OidcUiTemplateBranding
-                {
-                    LogoUrl = saved?.Branding?.LogoUrl ?? defaults.Branding!.LogoUrl,
-                    BrandName = saved?.Branding?.BrandName ?? defaults.Branding!.BrandName
-                },
-                Theme = new OidcUiTemplateTheme
-                {
-                    Light = MergeThemePalette(saved?.Theme?.Light, defaults.Theme!.Light!),
-                    Dark = MergeThemePalette(
-                        saved?.Theme?.Dark ?? CreateLegacyThemePalette(saved?.Theme),
-                        defaults.Theme.Dark!)
-                },
-                Pages = new OidcUiTemplatePages
-                {
-                    Login = new OidcUiLoginPage
-                    {
-                        Heading = saved?.Pages?.Login?.Heading ?? defaults.Pages!.Login!.Heading,
-                        EmailLabel = saved?.Pages?.Login?.EmailLabel ?? defaults.Pages!.Login!.EmailLabel,
-                        PasswordLabel = saved?.Pages?.Login?.PasswordLabel ?? defaults.Pages!.Login!.PasswordLabel,
-                        ForgotPasswordLink = saved?.Pages?.Login?.ForgotPasswordLink ?? defaults.Pages!.Login!.ForgotPasswordLink,
-                        SubmitButton = saved?.Pages?.Login?.SubmitButton ?? defaults.Pages!.Login!.SubmitButton,
-                        SignupPrompt = saved?.Pages?.Login?.SignupPrompt ?? defaults.Pages!.Login!.SignupPrompt,
-                        SignupLink = saved?.Pages?.Login?.SignupLink ?? defaults.Pages!.Login!.SignupLink,
-                        ActivationErrorTitle = saved?.Pages?.Login?.ActivationErrorTitle ?? defaults.Pages!.Login!.ActivationErrorTitle,
-                        ActivationErrorMessage = saved?.Pages?.Login?.ActivationErrorMessage ?? defaults.Pages!.Login!.ActivationErrorMessage,
-                        ActivateAccountButton = saved?.Pages?.Login?.ActivateAccountButton ?? defaults.Pages!.Login!.ActivateAccountButton,
-                        BackToLoginButton = saved?.Pages?.Login?.BackToLoginButton ?? defaults.Pages!.Login!.BackToLoginButton
-                    },
-                    Signup = new OidcUiSignupPage
-                    {
-                        Heading = saved?.Pages?.Signup?.Heading ?? defaults.Pages!.Signup!.Heading,
-                        FirstNameLabel = saved?.Pages?.Signup?.FirstNameLabel ?? defaults.Pages!.Signup!.FirstNameLabel,
-                        LastNameLabel = saved?.Pages?.Signup?.LastNameLabel ?? defaults.Pages!.Signup!.LastNameLabel,
-                        EmailLabel = saved?.Pages?.Signup?.EmailLabel ?? defaults.Pages!.Signup!.EmailLabel,
-                        SubmitButton = saved?.Pages?.Signup?.SubmitButton ?? defaults.Pages!.Signup!.SubmitButton,
-                        TermsPrefix = saved?.Pages?.Signup?.TermsPrefix ?? defaults.Pages!.Signup!.TermsPrefix,
-                        TermsLinkText = saved?.Pages?.Signup?.TermsLinkText ?? defaults.Pages!.Signup!.TermsLinkText,
-                        PrivacyLinkText = saved?.Pages?.Signup?.PrivacyLinkText ?? defaults.Pages!.Signup!.PrivacyLinkText,
-                        LoginPrompt = saved?.Pages?.Signup?.LoginPrompt ?? defaults.Pages!.Signup!.LoginPrompt,
-                        LoginLink = saved?.Pages?.Signup?.LoginLink ?? defaults.Pages!.Signup!.LoginLink,
-                        SuccessTitle = saved?.Pages?.Signup?.SuccessTitle ?? defaults.Pages!.Signup!.SuccessTitle,
-                        SuccessSubtitle = saved?.Pages?.Signup?.SuccessSubtitle ?? defaults.Pages!.Signup!.SuccessSubtitle
-                    },
-                    ForgotPassword = new OidcUiForgotPasswordPage
-                    {
-                        Heading = saved?.Pages?.ForgotPassword?.Heading ?? defaults.Pages!.ForgotPassword!.Heading,
-                        EmailLabel = saved?.Pages?.ForgotPassword?.EmailLabel ?? defaults.Pages!.ForgotPassword!.EmailLabel,
-                        SubmitButton = saved?.Pages?.ForgotPassword?.SubmitButton ?? defaults.Pages!.ForgotPassword!.SubmitButton
-                    },
-                    ResetPassword = new OidcUiResetPasswordPage
-                    {
-                        Heading = saved?.Pages?.ResetPassword?.Heading ?? defaults.Pages!.ResetPassword!.Heading,
-                        PasswordLabel = saved?.Pages?.ResetPassword?.PasswordLabel ?? defaults.Pages!.ResetPassword!.PasswordLabel,
-                        ConfirmPasswordLabel = saved?.Pages?.ResetPassword?.ConfirmPasswordLabel ?? defaults.Pages!.ResetPassword!.ConfirmPasswordLabel,
-                        LogoutFromDevicesLabel = saved?.Pages?.ResetPassword?.LogoutFromDevicesLabel ?? defaults.Pages!.ResetPassword!.LogoutFromDevicesLabel,
-                        SubmitButton = saved?.Pages?.ResetPassword?.SubmitButton ?? defaults.Pages!.ResetPassword!.SubmitButton,
-                        SuccessTitle = saved?.Pages?.ResetPassword?.SuccessTitle ?? defaults.Pages!.ResetPassword!.SuccessTitle,
-                        SuccessSubtitle = saved?.Pages?.ResetPassword?.SuccessSubtitle ?? defaults.Pages!.ResetPassword!.SuccessSubtitle
-                    },
-                    Activation = new OidcUiActivationPage
-                    {
-                        Heading = saved?.Pages?.Activation?.Heading ?? defaults.Pages!.Activation!.Heading,
-                        PasswordLabel = saved?.Pages?.Activation?.PasswordLabel ?? defaults.Pages!.Activation!.PasswordLabel,
-                        ConfirmPasswordLabel = saved?.Pages?.Activation?.ConfirmPasswordLabel ?? defaults.Pages!.Activation!.ConfirmPasswordLabel,
-                        SubmitButton = saved?.Pages?.Activation?.SubmitButton ?? defaults.Pages!.Activation!.SubmitButton,
-                        SuccessTitle = saved?.Pages?.Activation?.SuccessTitle ?? defaults.Pages!.Activation!.SuccessTitle,
-                        SuccessSubtitle = saved?.Pages?.Activation?.SuccessSubtitle ?? defaults.Pages!.Activation!.SuccessSubtitle
-                    },
-                    Mfa = new OidcUiMfaPage
-                    {
-                        Heading = saved?.Pages?.Mfa?.Heading ?? defaults.Pages!.Mfa!.Heading,
-                        SubmitButton = saved?.Pages?.Mfa?.SubmitButton ?? defaults.Pages!.Mfa!.SubmitButton,
-                        ResendButton = saved?.Pages?.Mfa?.ResendButton ?? defaults.Pages!.Mfa!.ResendButton
-                    },
-                    AccountSelector = new OidcUiAccountSelectorPage
-                    {
-                        Heading = saved?.Pages?.AccountSelector?.Heading ?? defaults.Pages!.AccountSelector!.Heading,
-                        Subheading = saved?.Pages?.AccountSelector?.Subheading ?? defaults.Pages!.AccountSelector!.Subheading
-                    },
-                    Shared = new OidcUiSharedPage
-                    {
-                        FooterText = saved?.Pages?.Shared?.FooterText ?? defaults.Pages!.Shared!.FooterText
-                    }
-                }
-            };
-        }
-
-        private static OidcUiThemePalette MergeThemePalette(
-            OidcUiThemePalette? saved,
-            OidcUiThemePalette defaults)
-        {
-            return new OidcUiThemePalette
-            {
-                Primary = saved?.Primary ?? defaults.Primary,
-                Secondary = saved?.Secondary ?? defaults.Secondary,
-                Background = saved?.Background ?? defaults.Background,
-                Surface = saved?.Surface ?? defaults.Surface,
-                Text = saved?.Text ?? defaults.Text,
-                MutedText = saved?.MutedText ?? defaults.MutedText,
-                Success = saved?.Success ?? defaults.Success,
-                Danger = saved?.Danger ?? defaults.Danger,
-                Border = saved?.Border ?? defaults.Border,
-                BorderStrong = saved?.BorderStrong ?? defaults.BorderStrong,
-                AccentSoft = saved?.AccentSoft ?? defaults.AccentSoft
-            };
-        }
-
-        private static OidcUiThemePalette? CreateLegacyThemePalette(OidcUiTemplateTheme? legacy)
-        {
-            if (legacy is null || new[]
-                {
-                    legacy.Primary,
-                    legacy.Secondary,
-                    legacy.Background,
-                    legacy.Surface,
-                    legacy.Text,
-                    legacy.MutedText,
-                    legacy.Success,
-                    legacy.Danger,
-                    legacy.Border,
-                    legacy.BorderStrong,
-                    legacy.AccentSoft
-                }.All(value => value is null))
-            {
-                return null;
-            }
-
-            return new OidcUiThemePalette
-            {
-                Primary = legacy.Primary,
-                Secondary = legacy.Secondary,
-                Background = legacy.Background,
-                Surface = legacy.Surface,
-                Text = legacy.Text,
-                MutedText = legacy.MutedText,
-                Success = legacy.Success,
-                Danger = legacy.Danger,
-                Border = legacy.Border,
-                BorderStrong = legacy.BorderStrong,
-                AccentSoft = legacy.AccentSoft
-            };
-        }
-
-        public async Task<IActionResult> StartAuthenticationFlowAsync(string clientId, string redirectUri, string? forwardedTo)
+        public async Task<IActionResult> StartAuthenticationFlowAsync(string clientId, string redirectUri, string? forwardedTo, string? flow = null, HttpRequest? httpRequest = null)
         {
             try
             {
@@ -375,6 +103,17 @@ namespace Authentication.DomainService.Authentication
                 // Generate OIDC flow parameters
                 var state = GenerateRandomBase64Url(16);
                 var nonce = GenerateRandomBase64Url(16);
+
+                // Signup deep-links into the SPA instead of starting an authorize request.
+                // The client validation above ran identically -- that is the whole point of
+                // routing signup through here rather than letting the caller build the URL --
+                // but everything below this branch would be an orphan: there is no PKCE
+                // exchange to verify and no callback to redeem a cached flow context.
+                if (IsSignupFlow(flow))
+                {
+                    return await BuildSignupResultAsync(identityProvider, redirectUri, state, nonce, effectiveTenantId, httpRequest);
+                }
+
                 var codeVerifier = identityProvider.RequirePkce ? GenerateRandomBase64Url(32) : null;
                 var codeChallenge = codeVerifier != null ? GenerateCodeChallenge(codeVerifier) : null;
 
@@ -679,6 +418,95 @@ namespace Authentication.DomainService.Authentication
             int? timeoutSeconds = null)
         {
             return await _idpTokenExchangeClient.ExchangeCodeForTokenAsync(tokenEndpoint, form, cancellationToken, timeoutSeconds);
+        }
+
+        private static bool IsSignupFlow(string? flow)
+        {
+            return string.Equals(flow, IdpConstants.InitiateFlowSignup, StringComparison.OrdinalIgnoreCase);
+        }
+
+        /// <summary>
+        /// Builds the response for <c>flow=signup</c>: a link straight to the IAM signup page,
+        /// carrying the clientId and redirect_uri this request already validated.
+        ///
+        /// <para>
+        /// Those two are not decoration. <c>signup-form</c> reads them back off the query and
+        /// posts them to register, which is what lets the activation email return the user to
+        /// the application they signed up from. Without them the email builder falls back to
+        /// the tenant's first active OIDC client -- a confident link to the wrong project.
+        /// </para>
+        /// </summary>
+        private async Task<IActionResult> BuildSignupResultAsync(
+            IdentityProvider provider,
+            string redirectUri,
+            string state,
+            string nonce,
+            string? tenantId,
+            HttpRequest? httpRequest)
+        {
+            if (string.IsNullOrWhiteSpace(tenantId))
+            {
+                return new BadRequestObjectResult(new { error = "invalid_request", error_description = "Tenant could not be resolved for this request" });
+            }
+
+            if (httpRequest == null)
+            {
+                _logger.LogError("Signup flow requested without an HttpRequest; cannot resolve the public IAM base URL");
+                return new ObjectResult(new { error = "server_error", error_description = "Failed to start signup flow" })
+                {
+                    StatusCode = 500
+                };
+            }
+
+            if (!await IsSignupOpenAsync())
+            {
+                return new BadRequestObjectResult(new { error = "signup_disabled", error_description = "Self-service signup is not enabled for this tenant" });
+            }
+
+            var signupUrl = OidcRedirectUrlBuilder.BuildSignupUrl(
+                OidcRedirectUrlBuilder.ResolvePublicBaseUrl(httpRequest),
+                tenantId,
+                provider.ClientId,
+                redirectUri,
+                provider.Scope ?? IdpConstants.OpenIdProfileEmailScope,
+                state,
+                nonce);
+
+            _logger.LogInformation("Started signup flow for client {ClientId} on tenant {TenantId}", provider.ClientId, tenantId);
+
+            return new OkObjectResult(new { redirect_uri = signupUrl, flow = IdpConstants.InitiateFlowSignup });
+        }
+
+        /// <summary>
+        /// Whether the signup page would actually render a form for this tenant.
+        ///
+        /// <para>
+        /// Mirrors the condition the signup page itself applies: email signup on, or SSO signup
+        /// on <em>with at least one active social provider</em>. The tenant flag alone is not
+        /// enough -- SSO-only signup with no provider configured passes the flag and renders an
+        /// empty card, and the caller has no way to see that from outside.
+        /// </para>
+        /// </summary>
+        private async Task<bool> IsSignupOpenAsync()
+        {
+            var tenantConfiguration = await _iamRepository.GetTenantConfigurationAsync();
+            if (tenantConfiguration == null)
+            {
+                return false;
+            }
+
+            if (tenantConfiguration.IsEmailPasswordSignUpEnabled)
+            {
+                return true;
+            }
+
+            if (!tenantConfiguration.IsSSoSignUpEnabled)
+            {
+                return false;
+            }
+
+            var identityProviders = await _authenticationRepository.GetIdentityProvidersAsync();
+            return identityProviders?.Any(p => p.IsActive && p.ProviderType == "social") ?? false;
         }
 
         private string BuildAuthorizeUrl(IdentityProvider provider, string redirectUri, string state, string nonce, string? codeChallenge)

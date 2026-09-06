@@ -1,5 +1,5 @@
 import { render, screen } from "@testing-library/react";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const h = vi.hoisted(() => ({ oidcUiConfig: undefined as unknown }));
 
@@ -14,7 +14,14 @@ vi.mock("@blocks-idp/authentication/hooks/use-oidc-ui-config", () => ({
 }));
 
 import { OIDCForgotPassword } from "./oidc-forgot-password";
-import { DEFAULT_OIDC_UI_TEMPLATE } from "@blocks-idp/authentication/models/oidc-ui-template";
+import {
+  DEFAULT_OIDC_UI_TEMPLATE_FIXTURE,
+  OIDC_UI_TEMPLATE_FIXTURE,
+} from "@blocks-idp/authentication/test-utils/oidc-ui-template-fixture";
+
+beforeEach(() => {
+  h.oidcUiConfig = { captcha: null, template: DEFAULT_OIDC_UI_TEMPLATE_FIXTURE };
+});
 
 afterEach(() => {
   document.documentElement.classList.remove("dark");
@@ -41,14 +48,14 @@ describe("OIDCForgotPassword", () => {
     h.oidcUiConfig = {
       captcha: null,
       template: {
-        ...DEFAULT_OIDC_UI_TEMPLATE,
+        ...OIDC_UI_TEMPLATE_FIXTURE,
         branding: { logoUrl: "https://example.test/acme.svg", brandName: "Acme Identity" },
         theme: {
-          ...DEFAULT_OIDC_UI_TEMPLATE.theme,
-          dark: { ...DEFAULT_OIDC_UI_TEMPLATE.theme.dark, background: "#101820" },
+          ...OIDC_UI_TEMPLATE_FIXTURE.theme,
+          dark: { ...OIDC_UI_TEMPLATE_FIXTURE.theme.dark, background: "#101820" },
         },
         pages: {
-          ...DEFAULT_OIDC_UI_TEMPLATE.pages,
+          ...OIDC_UI_TEMPLATE_FIXTURE.pages,
           shared: { footerText: "© {year} Acme Corp" },
         },
       },

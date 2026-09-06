@@ -44,6 +44,15 @@ namespace XUnitTest.Auth.Shared
             BlocksContext.IsTestMode = false;
         }
 
+        /// <summary>Re-mint the ambient context with a different organization claim.</summary>
+        private static void SetOrganization(string organizationId) =>
+            BlocksContext.SetContext(BlocksContext.Create(
+                tenantId: "tenant-1", roles: null, userId: "actor-1", impersonated: false,
+                isAuthenticated: true, requestUri: "https://test", organizationId: organizationId,
+                permissions: null, expireOn: DateTime.UtcNow.AddHours(1), email: "a@b.com",
+                userName: "tester", phoneNumber: null, displayName: "T", oauthToken: null,
+                originalTenantId: "tenant-1", impersonationSessionId: null, applicationDomain: "test"));
+
         private AuthenticationDomainService Create() =>
             new(_message.Object, _repo.Object,
                 _oidcValidator.Object, _oidcUiTemplateValidator.Object, _saveIdpValidator.Object,
@@ -653,12 +662,218 @@ namespace XUnitTest.Auth.Shared
         public async Task GetClientCredentials_ReturnsRepositoryResult()
         {
             var credentials = new List<ClientCredential> { new() { ItemId = "cc-1" } };
-            _repo.Setup(r => r.GetClientCredentialsAsync()).ReturnsAsync(credentials);
+            _repo.Setup(r => r.GetClientCredentialsAsync(null)).ReturnsAsync(credentials);
 
             var result = await Create().GetClientCredentialsAsync(new GetAllClientCredentialsRequest());
 
             result.Should().HaveCount(1);
             result[0].ItemId.Should().Be("cc-1");
+        }
+
+        [Fact]
+        public async Task GetClientCredentials_TenantWideCaller_ListsEveryOrganization()
+        {
+            _repo.Setup(r => r.GetClientCredentialsAsync(It.IsAny<string?>())).ReturnsAsync([]);
+
+            await Create().GetClientCredentialsAsync(new GetAllClientCredentialsRequest());
+
+            _repo.Verify(r => r.GetClientCredentialsAsync(null), Times.Once);
+        }
+
+        [Fact]
+        public async Task GetClientCredentials_OrganizationCaller_ListsOnlyItsOwn()
+        {
+            // The listed documents carry ClientSecret, so an unscoped list would hand one
+            // organization's administrator every other organization's secrets.
+            SetOrganization("org-a");
+            _repo.Setup(r => r.GetClientCredentialsAsync(It.IsAny<string?>())).ReturnsAsync([]);
+
+            await Create().GetClientCredentialsAsync(new GetAllClientCredentialsRequest());
+
+            _repo.Verify(r => r.GetClientCredentialsAsync("org-a"), Times.Once);
+            _repo.Verify(r => r.GetClientCredentialsAsync(null), Times.Never);
+        }
+
+        [Fact]
+        public async Task GetClientCredentials_CallerWithNoOrganization_ReturnsNothing()
+        {
+            SetOrganization("no-org");
+
+            var result = await Create().GetClientCredentialsAsync(new GetAllClientCredentialsRequest());
+
+            result.Should().BeEmpty();
+            _repo.Verify(r => r.GetClientCredentialsAsync(It.IsAny<string?>()), Times.Never);
+        }
+
+        // ---------- Client credential organization scope ----------
+
+        [Fact]
+        public async Task SaveClientCredential_TenantWideCaller_IssuesForRequestedOrganization()
+        {
+            ClientCredential? saved = null;
+            _repo.Setup(r => r.SaveClientCredentialAsync(It.IsAny<ClientCredential>()))
+                .Callback<ClientCredential>(c => saved = c)
+                .ReturnsAsync(new BaseResponse { IsSuccess = true });
+
+            var result = await Create().SaveClientCredentialAsync(new SaveClientCredentialRequest
+            {
+                Name = "svc",
+                Roles = new() { "r" },
+                OrganizationId = "org-a"
+            });
+
+            result.IsSuccess.Should().BeTrue();
+            saved!.OrganizationId.Should().Be("org-a");
+        }
+
+        [Fact]
+        public async Task SaveClientCredential_TenantWideCaller_WithNoOrganization_StaysTenantWide()
+        {
+            ClientCredential? saved = null;
+            _repo.Setup(r => r.SaveClientCredentialAsync(It.IsAny<ClientCredential>()))
+                .Callback<ClientCredential>(c => saved = c)
+                .ReturnsAsync(new BaseResponse { IsSuccess = true });
+
+            await Create().SaveClientCredentialAsync(new SaveClientCredentialRequest { Name = "svc", Roles = new() { "r" } });
+
+            saved!.OrganizationId.Should().Be("default");
+        }
+
+        [Fact]
+        public async Task SaveClientCredential_OrganizationCaller_CannotIssueForAnotherOrganization()
+        {
+            // The payload is discarded rather than rejected, so a caller that redundantly sends its
+            // own id keeps working and one that sends someone else's gets its own instead.
+            SetOrganization("org-a");
+            ClientCredential? saved = null;
+            _repo.Setup(r => r.SaveClientCredentialAsync(It.IsAny<ClientCredential>()))
+                .Callback<ClientCredential>(c => saved = c)
+                .ReturnsAsync(new BaseResponse { IsSuccess = true });
+
+            await Create().SaveClientCredentialAsync(new SaveClientCredentialRequest
+            {
+                Name = "svc",
+                Roles = new() { "r" },
+                OrganizationId = "org-b"
+            });
+
+            saved!.OrganizationId.Should().Be("org-a");
+        }
+
+        [Fact]
+        public async Task SaveClientCredential_OrganizationCaller_CannotEscalateToTenantWide()
+        {
+            SetOrganization("org-a");
+            ClientCredential? saved = null;
+            _repo.Setup(r => r.SaveClientCredentialAsync(It.IsAny<ClientCredential>()))
+                .Callback<ClientCredential>(c => saved = c)
+                .ReturnsAsync(new BaseResponse { IsSuccess = true });
+
+            await Create().SaveClientCredentialAsync(new SaveClientCredentialRequest
+            {
+                Name = "svc",
+                Roles = new() { "r" },
+                OrganizationId = "default"
+            });
+
+            saved!.OrganizationId.Should().Be("org-a");
+        }
+
+        [Fact]
+        public async Task SaveClientCredential_RejectsNoOrgAsATarget()
+        {
+            var result = await Create().SaveClientCredentialAsync(new SaveClientCredentialRequest
+            {
+                Name = "svc",
+                Roles = new() { "r" },
+                OrganizationId = "no-org"
+            });
+
+            result.IsSuccess.Should().BeFalse();
+            result.Errors.Should().ContainKey("invalid_request");
+            _repo.Verify(r => r.SaveClientCredentialAsync(It.IsAny<ClientCredential>()), Times.Never);
+        }
+
+        [Fact]
+        public async Task SaveClientCredential_CallerWithNoOrganization_IsDenied()
+        {
+            SetOrganization("no-org");
+
+            var result = await Create().SaveClientCredentialAsync(new SaveClientCredentialRequest { Name = "svc", Roles = new() { "r" } });
+
+            result.IsSuccess.Should().BeFalse();
+            result.Errors.Should().ContainKey("forbidden");
+            _repo.Verify(r => r.SaveClientCredentialAsync(It.IsAny<ClientCredential>()), Times.Never);
+        }
+
+        [Fact]
+        public async Task SaveClientCredential_HonoursRequestedInactiveStatus()
+        {
+            ClientCredential? saved = null;
+            _repo.Setup(r => r.SaveClientCredentialAsync(It.IsAny<ClientCredential>()))
+                .Callback<ClientCredential>(c => saved = c)
+                .ReturnsAsync(new BaseResponse { IsSuccess = true });
+
+            await Create().SaveClientCredentialAsync(new SaveClientCredentialRequest
+            {
+                Name = "svc",
+                Roles = new() { "r" },
+                IsActive = false
+            });
+
+            saved!.IsActive.Should().BeFalse();
+        }
+
+        [Fact]
+        public async Task SaveClientCredential_Update_OtherOrganization_ReportsNotFound()
+        {
+            SetOrganization("org-a");
+            _repo.Setup(r => r.GetClientCredentialByIdAsync("cc-1"))
+                .ReturnsAsync(new ClientCredential { ItemId = "cc-1", OrganizationId = "org-b" });
+
+            var result = await Create().SaveClientCredentialAsync(new SaveClientCredentialRequest
+            {
+                ItemId = "cc-1",
+                Name = "new",
+                Roles = new() { "r" }
+            });
+
+            result.Errors.Should().ContainKey("not_found");
+            _repo.Verify(r => r.SaveClientCredentialAsync(It.IsAny<ClientCredential>()), Times.Never);
+        }
+
+        [Fact]
+        public async Task SaveClientCredential_Update_DoesNotChangeOrganization()
+        {
+            ClientCredential? saved = null;
+            _repo.Setup(r => r.GetClientCredentialByIdAsync("cc-1"))
+                .ReturnsAsync(new ClientCredential { ItemId = "cc-1", OrganizationId = "org-a" });
+            _repo.Setup(r => r.SaveClientCredentialAsync(It.IsAny<ClientCredential>()))
+                .Callback<ClientCredential>(c => saved = c)
+                .ReturnsAsync(new BaseResponse { IsSuccess = true });
+
+            await Create().SaveClientCredentialAsync(new SaveClientCredentialRequest
+            {
+                ItemId = "cc-1",
+                Name = "new",
+                Roles = new() { "r" },
+                OrganizationId = "org-b"
+            });
+
+            saved!.OrganizationId.Should().Be("org-a");
+        }
+
+        [Fact]
+        public async Task DeleteClientCredential_OtherOrganization_ReportsNotFound()
+        {
+            SetOrganization("org-a");
+            _repo.Setup(r => r.GetClientCredentialByIdAsync("cc-1"))
+                .ReturnsAsync(new ClientCredential { ItemId = "cc-1", OrganizationId = "org-b" });
+
+            var result = await Create().DeleteClientCredentialAsync(new DeleteClientCredentialRequest { ItemId = "cc-1" });
+
+            result.Errors.Should().ContainKey("not_found");
+            _repo.Verify(r => r.DeleteClientCredentialAsync(It.IsAny<DeleteClientCredentialRequest>()), Times.Never);
         }
 
         private sealed class FakeHandler : HttpMessageHandler

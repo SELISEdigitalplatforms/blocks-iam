@@ -10,6 +10,7 @@
         public DateTime? JoinedOn { get; set; }
         public DateTime? LastLogin { get; set; }
         public List<string> OrganizationIds { get; set; } = [];
+        public List<string> Roles { get; set; } = [];
     }
 
     public class Status

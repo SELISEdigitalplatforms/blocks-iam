@@ -1,6 +1,8 @@
 import { render, screen } from "@testing-library/react";
 import { MemoryRouter, Route, Routes } from "react-router";
-import { describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
+
+const h = vi.hoisted(() => ({ oidcUiConfig: undefined as unknown }));
 
 vi.mock("@blocks-idp/authentication/pages/oidc/oidc-auth-shell", () => ({
   OidcAuthShell: ({
@@ -32,10 +34,11 @@ vi.mock("@blocks-idp/authentication/pages/oidc/oidc-auth-shell", () => ({
 }));
 vi.mock("./panel-config", () => ({ DEVICE_CONSENT_PANEL: {} }));
 vi.mock("@blocks-idp/authentication/hooks/use-oidc-ui-config", () => ({
-  useOidcUiConfig: () => ({ data: undefined }),
+  useOidcUiConfig: () => ({ data: h.oidcUiConfig }),
 }));
 
 import { DeviceSuccessPage } from "./success";
+import { DEFAULT_OIDC_UI_TEMPLATE_FIXTURE } from "@blocks-idp/authentication/test-utils/oidc-ui-template-fixture";
 
 const renderAt = (path: string) =>
   render(
@@ -45,6 +48,10 @@ const renderAt = (path: string) =>
       </Routes>
     </MemoryRouter>,
   );
+
+beforeEach(() => {
+  h.oidcUiConfig = { captcha: null, template: DEFAULT_OIDC_UI_TEMPLATE_FIXTURE };
+});
 
 describe("DeviceSuccessPage", () => {
   it("shows the approved copy", () => {

@@ -11,7 +11,6 @@ import { OidcLoginForm } from "./oidc-login-form";
 import { OidcAuthShell, OidcFooter } from "./oidc-auth-shell";
 import { OIDC_LOGIN_PANEL } from "./oidc-panel-config";
 import { useOidcUiConfig } from "@blocks-idp/authentication/hooks/use-oidc-ui-config";
-import { DEFAULT_OIDC_UI_TEMPLATE } from "@blocks-idp/authentication/models/oidc-ui-template";
 
 export const OIDCSignin = () => {
   const [searchParams] = useSearchParams();
@@ -21,7 +20,7 @@ export const OIDCSignin = () => {
   const oidcContext = useOIDCContext();
   const tenantId = oidcContext.tenantId || searchParams.get("tenant_id") || undefined;
   const { data: oidcUiConfig } = useOidcUiConfig(tenantId);
-  const template = oidcUiConfig?.template ?? DEFAULT_OIDC_UI_TEMPLATE;
+  const template = oidcUiConfig?.template;
 
   const code = searchParams.get("code") || "";
   const state = searchParams.get("state") || "";
@@ -81,7 +80,11 @@ export const OIDCSignin = () => {
 
         setAuthenticated();
 
-        const redirectUrl = (response as any)?.redirect_url || (response as any)?.sso_user_redirect_url;
+        const redirectResult = response as typeof response & {
+          redirect_url?: string;
+          sso_user_redirect_url?: string;
+        };
+        const redirectUrl = redirectResult?.redirect_url || redirectResult?.sso_user_redirect_url;
         if (redirectUrl) {
           window.location.href = redirectUrl;
           return;
@@ -109,10 +112,20 @@ export const OIDCSignin = () => {
       </div>
     );
   }
+
+  if (isOidcPasswordFlow && !template) {
+    return (
+      <div className="min-h-screen flex items-center justify-center">
+        <Loader className="h-8 w-8 animate-spin" />
+      </div>
+    );
+  }
+
   // Pure OIDC password/email flow — sci-fi shell with nodes panel. Also covers the
   // device-flow return trip, which has returnUrl instead of redirect_uri.
   if (
     isOidcPasswordFlow &&
+    template &&
     effectiveClientId &&
     (oidcContext.redirectUri || urlRedirectUri || effectiveReturnUrl)
   ) {

@@ -25,12 +25,24 @@ public class IdpController : ControllerBase
     /// <summary>
     /// Initiate identity provider authentication flow for a specific client
     /// Delegates to IDP service for OIDC param generation and URL building
+    ///
+    /// <para>
+    /// <paramref name="flow"/> selects what the returned <c>redirect_uri</c> points at.
+    /// Omitted (or anything other than <c>signup</c>) keeps today's behaviour: an
+    /// authorize URL that starts a full OIDC request. <c>signup</c> returns a link
+    /// straight to the IAM signup page instead — the client is validated identically,
+    /// but no authorize request is begun.
+    /// </para>
+    /// <para>
+    /// <paramref name="forwardedTo"/> applies to the login flow only. It survives the
+    /// round trip in the cached flow context, which the signup flow does not create.
+    /// </para>
     /// </summary>
     [HttpGet("initiate")]
     [AllowAnonymous]
-    public async Task<IActionResult> InitiateAuthenticationFlow([FromQuery] string clientId, [FromQuery] string redirectUri, [FromQuery] string? forwardedTo)
+    public async Task<IActionResult> InitiateAuthenticationFlow([FromQuery] string clientId, [FromQuery] string redirectUri, [FromQuery] string? forwardedTo, [FromQuery] string? flow)
     {
-        return await _idpService.StartAuthenticationFlowAsync(clientId, redirectUri, forwardedTo);
+        return await _idpService.StartAuthenticationFlowAsync(clientId, redirectUri, forwardedTo, flow, Request);
     }
 
     /// <summary>

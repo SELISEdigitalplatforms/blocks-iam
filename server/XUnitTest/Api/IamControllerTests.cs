@@ -797,5 +797,53 @@ namespace XUnitTest.ApiTests
             attribute.Should().NotBeNull($"{action} must stay behind an explicit permission");
             attribute!.ResourceName.Should().Be("blocks-iam::iam::users");
         }
+
+        // ---------------------------------------------------------------------------------
+        // Creating an organization is a tenant-level act; updating one is scoped to the
+        // caller's own organization. They must not share a permission string.
+        // ---------------------------------------------------------------------------------
+
+        [Fact]
+        public void CreateOrganization_IsGuardedByItsOwnCreatePermission()
+        {
+            var guard = typeof(IamController).GetMethod(nameof(IamController.CreateOrganization))!
+                .GetCustomAttribute<ProtectedEndPointAttribute>();
+
+            guard.Should().NotBeNull("organization creation must stay behind an explicit permission");
+            guard!.ResourceName.Should().Be("blocks-iam::iam::create-organization");
+        }
+
+        [Fact]
+        public void UpdateOrganization_KeepsTheMutatePermission()
+        {
+            var guard = typeof(IamController).GetMethod(nameof(IamController.UpdateOrganization))!
+                .GetCustomAttribute<ProtectedEndPointAttribute>();
+
+            guard!.ResourceName.Should().Be("blocks-iam::iam::mutate-organizations");
+        }
+
+        [Fact]
+        public void CreateAndUpdateOrganization_DoNotShareAPermission()
+        {
+            // The whole point of the split: granting an organization administrator the right to
+            // edit its own organization must not also grant the right to create new ones.
+            static string? PermissionOf(string methodName) =>
+                typeof(IamController).GetMethod(methodName)!
+                    .GetCustomAttribute<ProtectedEndPointAttribute>()?.ResourceName;
+
+            PermissionOf(nameof(IamController.CreateOrganization))
+                .Should().NotBe(PermissionOf(nameof(IamController.UpdateOrganization)));
+        }
+
+        [Fact]
+        public void GetMyOrganization_StaysOnPlainAuthorization()
+        {
+            // The switcher list is membership-driven and must remain reachable by any authenticated
+            // member -- it is the one organization endpoint with no permission and no scope guard.
+            var method = typeof(IamController).GetMethod(nameof(IamController.GetMyOrganization))!;
+
+            method.GetCustomAttribute<ProtectedEndPointAttribute>()
+                .Should().BeNull("organizations/my must not require an administrative permission");
+        }
     }
 }
