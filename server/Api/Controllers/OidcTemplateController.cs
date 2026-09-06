@@ -18,12 +18,16 @@ public sealed class OidcTemplateController : ControllerBase
         _authenticationDomainService = authenticationDomainService;
     }
 
-    /// <summary>Returns the tenant's effective, default-filled OIDC UI template.</summary>
+    /// <summary>Returns the tenant's stored OIDC UI template.</summary>
     [HttpGet]
     [ProtectedEndPoint("blocks-iam::iam::oidc-clients")]
     public async Task<IActionResult> GetOidcTemplate()
     {
-        return Ok(await _authenticationDomainService.GetOidcTemplateForManagementAsync());
+        var template = await _authenticationDomainService.GetOidcTemplateForManagementAsync();
+        return Ok(new GetOidcUiTemplateResponse
+        {
+            Template = template
+        });
     }
 
     /// <summary>Validates and completely replaces the tenant's OIDC UI template.</summary>

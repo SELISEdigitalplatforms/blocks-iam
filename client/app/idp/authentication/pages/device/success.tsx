@@ -1,10 +1,9 @@
 import { useLayoutEffect, useMemo, useRef } from "react";
 import { useSearchParams } from "react-router";
-import { XCircle } from "lucide-react";
+import { Loader, XCircle } from "lucide-react";
 
 import { OidcAuthShell, OidcFooter, useOidcAuthAnimation } from "@blocks-idp/authentication/pages/oidc/oidc-auth-shell";
 import { useOidcUiConfig } from "@blocks-idp/authentication/hooks/use-oidc-ui-config";
-import { DEFAULT_OIDC_UI_TEMPLATE } from "@blocks-idp/authentication/models/oidc-ui-template";
 import { DEVICE_CONSENT_PANEL } from "./panel-config";
 
 type Outcome = "approved" | "denied" | "expired" | "neutral";
@@ -63,7 +62,7 @@ function DeviceSuccessBody({ outcome }: { outcome: Outcome }) {
 export function DeviceSuccessPage() {
   const [searchParams] = useSearchParams();
   const { data: oidcUiConfig } = useOidcUiConfig();
-  const template = oidcUiConfig?.template ?? DEFAULT_OIDC_UI_TEMPLATE;
+  const template = oidcUiConfig?.template;
   const outcome = useMemo<Outcome>(
     () => resolveOutcome(searchParams.get("outcome")),
     [searchParams],
@@ -93,6 +92,14 @@ export function DeviceSuccessPage() {
         };
     }
   }, [outcome]);
+
+  if (!template) {
+    return (
+      <div className="oidc-scifi-root min-h-screen flex items-center justify-center bg-[var(--bg)]">
+        <Loader className="h-8 w-8 animate-spin" style={{ color: "var(--accent)" }} />
+      </div>
+    );
+  }
 
   return (
     <OidcAuthShell

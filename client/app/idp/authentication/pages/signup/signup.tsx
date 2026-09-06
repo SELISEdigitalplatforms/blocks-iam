@@ -2,16 +2,16 @@ import { SignupForm } from "./signup-form";
 import { useGetLoginOptions } from "@blocks-idp/authentication/hooks/use-auth";
 import { useGetSignUpSetting } from "@blocks-idp/iam/hooks/use-user";
 import { useGetSignupOrganizationConfig } from "@blocks-idp/iam/hooks/use-organization";
+import { Loader } from "lucide-react";
 import { Skeleton } from "@/components/ui-kits/skeleton/skeleton";
 import { LoginReturnLink } from "@blocks-idp/authentication/components/login-return-link";
 import { OidcAuthShell, OidcFooter } from "@blocks-idp/authentication/pages/oidc/oidc-auth-shell";
 import { SIGNUP_PANEL } from "@blocks-idp/authentication/pages/oidc/oidc-panel-config";
 import { useOidcUiConfig } from "@blocks-idp/authentication/hooks/use-oidc-ui-config";
-import { DEFAULT_OIDC_UI_TEMPLATE } from "@blocks-idp/authentication/models/oidc-ui-template";
 
 export const Signup = ({ tenantId }: { tenantId?: string } = {}) => {
   const { data: oidcUiConfig } = useOidcUiConfig(tenantId);
-  const template = oidcUiConfig?.template ?? DEFAULT_OIDC_UI_TEMPLATE;
+  const template = oidcUiConfig?.template;
   const { data: signUpSetting, isLoading: isSignUpSettingLoading } =
     useGetSignUpSetting(tenantId);
 
@@ -44,6 +44,14 @@ export const Signup = ({ tenantId }: { tenantId?: string } = {}) => {
     (isSignUpEnabled && isOrgConfigLoading) ||
     (ssoSignUpEnabled && isLoginOptionLoading);
 
+  if (!template) {
+    return (
+      <div className="oidc-scifi-root min-h-screen flex items-center justify-center bg-[var(--bg)]">
+        <Loader className="h-8 w-8 animate-spin" style={{ color: "var(--accent)" }} />
+      </div>
+    );
+  }
+
   return (
     <OidcAuthShell
       panelConfig={SIGNUP_PANEL}
@@ -59,7 +67,7 @@ export const Signup = ({ tenantId }: { tenantId?: string } = {}) => {
         <div className="flex flex-col gap-2">
           <p className="text-xs" style={{ color: "var(--muted)", fontFamily: "system-ui, sans-serif" }}>
             {template.pages.signup.loginPrompt}{" "}
-            <LoginReturnLink className="oidc-sci-fi-link">
+            <LoginReturnLink className="oidc-sci-fi-link" preferOidcLogin>
               {template.pages.signup.loginLink}
             </LoginReturnLink>
           </p>

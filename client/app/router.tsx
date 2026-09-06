@@ -134,6 +134,13 @@ export const router = createBrowserRouter([
             path: "/login/callback",
             element: <CallbackPage defaultRedirectUrl="/app/profile" />,
           },
+          // The login launcher must remain reachable even when an IAM session already
+          // exists. AuthResolver marks that session authenticated and PublicGuard then
+          // redirects to /app/profile, so /login deliberately lives outside both.
+          {
+            path: "/login",
+            element: <LoginPage />,
+          },
           // { path: "/sso/:provider/callback", element: <SSOCallbackPage /> },
         ],
       },
@@ -184,8 +191,6 @@ export const router = createBrowserRouter([
             ),
 
             children: [
-              { path: "login", element: <LoginPage /> },
-
               {
                 element: <AuthLayout />,
                 children: [
