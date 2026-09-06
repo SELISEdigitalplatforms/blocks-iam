@@ -810,7 +810,7 @@ namespace XUnitTest.ApiTests
                 .GetCustomAttribute<ProtectedEndPointAttribute>();
 
             guard.Should().NotBeNull("organization creation must stay behind an explicit permission");
-            guard!.ResourceName.Should().Be("blocks-iam::iam::create-organization");
+            guard!.ResourceName.Should().Be("blocks-iam::iam::create-organizations");
         }
 
         [Fact]
