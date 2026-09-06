@@ -358,7 +358,7 @@ namespace Api.Controllers
         /// apply: the permission is the whole gate.
         /// </summary>
         [HttpPost("organizations/create")]
-        [ProtectedEndPoint("blocks-iam::iam::create-organization")]
+        [ProtectedEndPoint("blocks-iam::iam::create-organizations")]
         public async Task<BaseMutationResponse> CreateOrganization([FromBody] CreateOrganizationRequest request)
         {
             return await _resourceMutationService.CreateOrganizationAsync(request);
