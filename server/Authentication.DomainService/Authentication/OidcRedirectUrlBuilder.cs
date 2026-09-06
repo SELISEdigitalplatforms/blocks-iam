@@ -68,6 +68,46 @@ namespace Authentication.DomainService.Authentication
             return loginUrl.ToString();
         }
 
+        /// <summary>
+        /// Link to the signup page for a tenant, used by <c>/api/idp/initiate?flow=signup</c>.
+        ///
+        /// <para>
+        /// Unlike <see cref="BuildLoginUrl"/> this returns an <em>absolute</em> URL. That one
+        /// feeds a same-origin redirect out of <c>/api/oidc/authorize</c>, so a path is enough;
+        /// this one is handed back to an application on a different origin, which has no way to
+        /// resolve a bare path against the IAM host.
+        /// </para>
+        /// <para>
+        /// Parameter spellings are not free choice. <c>extractOIDCParams</c> in the SPA reads
+        /// <c>redirect_uri</c> in snake case only, and the activation-email builder emits the
+        /// same <c>clientId</c> + <c>redirect_uri</c> pair -- diverging here fails silently,
+        /// leaving a signup page that works and an activation email that returns the user to
+        /// the wrong application.
+        /// </para>
+        /// </summary>
+        public static string BuildSignupUrl(
+            string publicBaseUrl,
+            string tenantId,
+            string? clientId,
+            string redirectUri,
+            string scope,
+            string state,
+            string nonce)
+        {
+            var baseUrl = TrimTrailingSlash(publicBaseUrl);
+            var signupUrl = $"{baseUrl}/oidc/signup/{Uri.EscapeDataString(tenantId)}";
+
+            return BuildRedirectUri(signupUrl, new Dictionary<string, string>
+            {
+                { "clientId", clientId ?? string.Empty },
+                { "redirect_uri", redirectUri },
+                { "scope", scope },
+                { "state", state },
+                { "nonce", nonce },
+                { "tenant_id", tenantId }
+            });
+        }
+
         public static void TryReadBasicClientAuthentication(HttpRequest request, out string clientId, out string clientSecret)
         {
             clientId = string.Empty;
