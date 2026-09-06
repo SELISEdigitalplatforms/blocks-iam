@@ -104,16 +104,6 @@ namespace Authentication.DomainService.Authentication
                 var state = GenerateRandomBase64Url(16);
                 var nonce = GenerateRandomBase64Url(16);
 
-                // Signup deep-links into the SPA instead of starting an authorize request.
-                // The client validation above ran identically -- that is the whole point of
-                // routing signup through here rather than letting the caller build the URL --
-                // but everything below this branch would be an orphan: there is no PKCE
-                // exchange to verify and no callback to redeem a cached flow context.
-                if (IsSignupFlow(flow))
-                {
-                    return await BuildSignupResultAsync(identityProvider, redirectUri, state, nonce, effectiveTenantId, httpRequest);
-                }
-
                 var codeVerifier = identityProvider.RequirePkce ? GenerateRandomBase64Url(32) : null;
                 var codeChallenge = codeVerifier != null ? GenerateCodeChallenge(codeVerifier) : null;
 
@@ -132,6 +122,17 @@ namespace Authentication.DomainService.Authentication
                 };
                 var cacheKey = $"idp_flow:{state}";
                 await _cacheClient.AddStringValueAsync(cacheKey, System.Text.Json.JsonSerializer.Serialize(flowContext), IdpConstants.IdpFlowCacheTtlSeconds);
+
+                // Signup only differs in where the browser is sent: everything above is the
+                // same prologue, so the state minted here is redeemable at /api/idp/callback
+                // either way. That matters because the signup page offers a "sign in" link
+                // back to /oidc/login, which posts this same state and nonce -- with no cached
+                // flow context the user would log in successfully and then be rejected at the
+                // callback with invalid_state.
+                if (IsSignupFlow(flow))
+                {
+                    return await BuildSignupResultAsync(identityProvider, redirectUri, state, nonce, effectiveTenantId, httpRequest);
+                }
 
                 // Build authorization URL
                 var authorizeUrl = BuildAuthorizeUrl(identityProvider, redirectUri, state, nonce, codeChallenge);

@@ -294,9 +294,17 @@ export const getApplicationOrigin = (redirectUri?: string): string | undefined =
  * see getApplicationOrigin for why IAM must not start one on its behalf.
  *
  * Order of preference:
+ *   0. `/oidc/login`, when the caller passes `preferOidcLogin` — see below;
  *   1. the originating application's origin, when `redirect_uri` told us what it is;
  *   2. `/oidc/login` with the OIDC params carried across, when we still hold a clientId;
  *   3. IAM's own `/login`.
+ *
+ * `preferOidcLogin` is for pages reached from inside a live flow rather than from an
+ * email — today only signup. There the params came from an initiate call that cached a
+ * flow context, so the state is redeemable and `/oidc/login` can complete on its own;
+ * handing the user back to the application would just make them start over from its
+ * landing page. Do not set it on the emailed-link pages: the reasoning above is exactly
+ * what they must not do.
  *
  * Step 3 matters because `/oidc/login` without a clientId renders "this sign-in link is
  * missing the application it belongs to" — a dead end. `/login` is a relative path, so it
@@ -305,9 +313,18 @@ export const getApplicationOrigin = (redirectUri?: string): string | undefined =
  */
 export const resolveLoginReturnTarget = (
   isOidc: boolean,
+  options?: { preferOidcLogin?: boolean },
 ): { href: string; external: boolean } => {
   const { redirectUri, clientId } = extractOIDCParams();
   const applicationOrigin = getApplicationOrigin(redirectUri);
+
+  // Pages reached from inside a live flow (signup) opt out of the hand-back above.
+  // Their params came from an initiate call that cached a flow context, so the state
+  // they carry is redeemable and /oidc/login can complete on its own — bouncing to the
+  // application would only make the user start over from its landing page.
+  if (options?.preferOidcLogin && isOidc && clientId) {
+    return { href: buildOIDCNavigationUrl("/oidc/login"), external: false };
+  }
 
   if (applicationOrigin) {
     return { href: applicationOrigin, external: true };
