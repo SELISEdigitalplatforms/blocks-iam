@@ -13,6 +13,7 @@ using Authentication.DomainService.Shared.ResponseModel;
 using Iam.DomainService.Dtos;
 using Iam.DomainService.Services;
 using Iam.DomainService.Utilities;
+using Idp.DomainService.Oidc.Contracts;
 using Blocks.Genesis;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
@@ -102,29 +103,40 @@ namespace Authentication.DomainService.Authentication
         public async Task<bool> UpdateIdpSessionForLogoutAsync(HttpContext httpContext, ClaimsPrincipal user, bool isGlobalLogout, IEnumerable<string>? fallbackSessionIds)
         {
             var bc = BlocksContext.GetContext();
-            var sessionId = httpContext.Request.Cookies[IdpConstants.BuildIdpSessionCookieKey(bc!.TenantId)];
+            var tenantId = bc!.TenantId;
+            var cookieSessionId = httpContext.Request.Cookies[IdpConstants.BuildIdpSessionCookieKey(tenantId)];
 
-            // Logout covers every session it can identify: the fallback ids the caller resolved,
-            // plus the one named by the cookie. The cookie does not replace the fallbacks -- both
-            // are revoked -- so a logout cannot leave a session behind just because it was not the
-            // one carrying the cookie.
+            var userId = user.FindFirst(BlocksContext.USER_ID_CLAIM)?.Value
+                ?? user.FindFirst(ClaimTypes.NameIdentifier)?.Value
+                ?? bc?.UserId;
+
+            // Logout covers every session it can identify: the fallback ids the caller resolved
+            // (from the refresh token) plus the one named by the cookie. Both pointers are kept
+            // accurate elsewhere: the login flow reuses the session the token mint recorded, and
+            // rotation re-points the tokens at the new id.
             //
-            // The assignment below is load-bearing. Enumerable.Append is a pure LINQ operator: it
-            // returns a new sequence instead of mutating, so `fallbackSessionIds.Append(sessionId);`
-            // discarded its own result and the cookie's id never entered the list. That left
-            // sessionIds empty on every cookie-based logout -- the normal path -- and the method
-            // returned at the count guard below without revoking the session or removing the
-            // account, leaving the IdP session live after logout.
-            fallbackSessionIds ??= [];
+            // A global logout additionally revokes every live session holding this user for the
+            // tenant. That sweep is deliberately NOT applied to a normal logout: those sessions
+            // include the user's other browsers and devices, and signing out on one device must
+            // not sign the user out everywhere.
+            var candidateIds = (fallbackSessionIds ?? []).ToList();
 
-            if (!string.IsNullOrWhiteSpace(sessionId))
+            if (!string.IsNullOrWhiteSpace(cookieSessionId))
             {
-                fallbackSessionIds = fallbackSessionIds.Append(sessionId);
+                candidateIds.Add(cookieSessionId);
+            }
+
+            if (isGlobalLogout && !string.IsNullOrWhiteSpace(userId))
+            {
+                var userSessions = await _authSession.GetUserSessionsAsync(userId, tenantId) ?? [];
+                candidateIds.AddRange(userSessions
+                    .Where(s => s != null && !s.RevokedAt.HasValue && !s.IsExpired())
+                    .Select(s => s.SessionId));
             }
 
             // Blanks dropped and comparison made ordinal: a caller-supplied list can carry an empty
             // entry, and revoking "" would be a wasted call against a session that cannot exist.
-            var sessionIds = fallbackSessionIds
+            var sessionIds = candidateIds
                 .Where(id => !string.IsNullOrWhiteSpace(id))
                 .Distinct(StringComparer.Ordinal)
                 .ToList();
@@ -144,43 +156,95 @@ namespace Authentication.DomainService.Authentication
                 return true;
             }
 
-            var userId = user.FindFirst(BlocksContext.USER_ID_CLAIM)?.Value
-                ?? user.FindFirst(ClaimTypes.NameIdentifier)?.Value
-                ?? bc?.UserId;
-
             if (string.IsNullOrWhiteSpace(userId))
             {
                 return false;
             }
 
-            foreach(var id in sessionIds)
+            foreach (var id in sessionIds)
             {
-                await _authSession.RemoveAccountAsync(id, userId, bc.TenantId);
+                await LogoutAccountFromSessionAsync(id, userId, tenantId);
             }
 
-            var selectedSessionId = sessionIds[0];
-            var session = await _authSession.GetSessionAsync(selectedSessionId);
-
-            if (session == null || session.RevokedAt.HasValue || session.IsExpired())
+            // The cookie is cleared unless the session it names is still live for another user's
+            // account (multi-account SSO). With no cookie there is nothing to preserve.
+            if (string.IsNullOrWhiteSpace(cookieSessionId))
             {
                 return true;
             }
 
-            return session.Accounts.Count == 0;
+            var cookieSession = await _authSession.GetSessionAsync(cookieSessionId);
+            return cookieSession == null
+                || cookieSession.RevokedAt.HasValue
+                || cookieSession.IsExpired()
+                || !cookieSession.Accounts.Any(a => !IsUser(a, userId));
         }
+
+        /// <summary>
+        /// Signs <paramref name="userId"/> out of one IdP session. Accounts are matched by user across
+        /// tenants: an impersonating admin holds accounts under both the root and the target tenant,
+        /// and the logout request arrives with the context reset to the root tenant, so a tenant-scoped
+        /// match would leave the target-tenant account behind.
+        ///
+        /// When no other user's account remains, the whole session is revoked, which also
+        /// cascade-revokes its refresh tokens. RemoveAccountAsync's delete-if-last path only
+        /// soft-deletes the row and leaves the tokens live.
+        /// </summary>
+        private async Task LogoutAccountFromSessionAsync(string sessionId, string userId, string tenantId)
+        {
+            var session = await _authSession.GetSessionAsync(sessionId);
+
+            if (session == null || session.RevokedAt.HasValue)
+            {
+                // Unknown or already-revoked row: nothing to revoke, but keep the account removal so a
+                // stale pointer still gets its best-effort cleanup and a failure is visible in the log.
+                await RemoveAccountLoggedAsync(sessionId, userId, tenantId);
+                return;
+            }
+
+            var ownAccounts = session.Accounts.Where(a => IsUser(a, userId)).ToList();
+            var otherUsersRemain = session.Accounts.Any(a => !IsUser(a, userId));
+
+            if (!otherUsersRemain)
+            {
+                var revoked = await _authSession.RevokeSessionAsync(sessionId, "logout");
+                if (!revoked)
+                {
+                    _logger.LogWarning("IdP session revoke returned false during logout: {SessionId}", sessionId);
+                }
+
+                return;
+            }
+
+            if (ownAccounts.Count == 0)
+            {
+                _logger.LogWarning("IdP session {SessionId} holds no account for user {UserId}; nothing removed during logout", sessionId, userId);
+                return;
+            }
+
+            foreach (var account in ownAccounts)
+            {
+                await RemoveAccountLoggedAsync(sessionId, userId, account.TenantId ?? tenantId);
+            }
+        }
+
+        private async Task RemoveAccountLoggedAsync(string sessionId, string userId, string tenantId)
+        {
+            var removed = await _authSession.RemoveAccountAsync(sessionId, userId, tenantId);
+            if (!removed)
+            {
+                _logger.LogWarning("IdP session account removal returned false during logout: session {SessionId}, user {UserId}, tenant {TenantId}", sessionId, userId, tenantId);
+            }
+        }
+
+        private static bool IsUser(IdpSessionAccount account, string userId) =>
+            string.Equals(account.UserId, userId, StringComparison.OrdinalIgnoreCase);
 
         public void ClearIdpSessionCookie(HttpResponse response)
         {
             var bc = BlocksContext.GetContext();
-            var cookieKey = IdpConstants.BuildIdpSessionCookieKey(bc!.TenantId);
-            response.Cookies.Delete(cookieKey);
-
-            var tenant = _tenants.GetTenantByID(bc.TenantId);
-            var (_, cookieDomain, isResolved) = DomainResolver.ResolveDomain(tenant, response.HttpContext.Request);
-            if (isResolved)
-            {
-                response.Cookies.Delete(cookieKey, CreateCookieOptions(cookieDomain, DateTime.UtcNow.AddDays(-1)));
-            }
+            var tenant = _tenants.GetTenantByID(bc!.TenantId);
+            IdpSessionCookie.Clear(response.HttpContext.Request, response, tenant, bc.TenantId);
         }
 
         public async Task<LogoutResponse> LogoutUser(string refreshToken, HttpRequest httpRequest)
@@ -1181,7 +1245,23 @@ namespace Authentication.DomainService.Authentication
                 return;
             }
             var bc = BlocksContext.GetContext();
-            var sessionId = httpContext.Request.Cookies[IdpConstants.BuildIdpSessionCookieKey(bc?.TenantId)];
+
+            // The token mint has already resolved-or-created the IdP session for this login (using the
+            // same request cookie, and replacing it when it named a dead session) and recorded the id
+            // on the refresh token. That id is authoritative here. The mint only wrote its cookie to
+            // the response, so the request cookie is stale or absent; consulting it first created a
+            // second live session that logout could never reach.
+            string? sessionId = null;
+            if (!string.IsNullOrWhiteSpace(tokenResponse.RefreshToken))
+            {
+                sessionId = (await ReadRefreshTokenCacheAsync(tokenResponse.RefreshToken))?.SessionId;
+            }
+
+            if (string.IsNullOrWhiteSpace(sessionId))
+            {
+                sessionId = httpContext.Request.Cookies[IdpConstants.BuildIdpSessionCookieKey(bc?.TenantId)];
+            }
+
             if (string.IsNullOrWhiteSpace(sessionId))
             {
                 sessionId = await _authSession.CreateSessionAsync(userId, tenantId, httpContext.Connection.RemoteIpAddress?.ToString() ?? "unknown");
@@ -1209,11 +1289,19 @@ namespace Authentication.DomainService.Authentication
                     }
 
                     // Rotate session id on successful login transition to reduce fixation risk.
+                    // Rotation re-points the refresh tokens at the new id, so the token issued above
+                    // keeps resolving to the live session.
                     sessionId = await _authSession.RotateSessionAsync(sessionId, LoginAuditEvents.LoginSuccess) ?? sessionId;
                 }
             }
 
-            httpContext.Response.Cookies.Append(IdpConstants.BuildIdpSessionCookieKey(bc?.TenantId), sessionId, CreateCookieOptions(tokenResponse.CookieDomain, tokenResponse.RefreshExpiresUtc));
+            IdpSessionCookie.Append(
+                httpContext.Request,
+                httpContext.Response,
+                _tenants.GetTenantByID(bc?.TenantId ?? string.Empty),
+                bc?.TenantId,
+                sessionId,
+                tokenResponse.RefreshExpiresUtc);
         }
 
         public async Task<bool> EnsureIdpSessionForOidcCallbackAsync(HttpContext httpContext, string userId, string tenantId)
@@ -1264,8 +1352,13 @@ namespace Authentication.DomainService.Authentication
                 }
 
                 // Set session cookie
-                var domain = DomainResolver.ResolveDomain(_tenants.GetTenantByID(tenantId), httpContext.Request).domain;
-                httpContext.Response.Cookies.Append(IdpConstants.BuildIdpSessionCookieKey(bc?.TenantId), sessionId, CreateCookieOptions(null, DateTime.UtcNow.AddDays(IdpConstants.IdpSessionCookieTtlDays)));
+                IdpSessionCookie.Append(
+                    httpContext.Request,
+                    httpContext.Response,
+                    _tenants.GetTenantByID(tenantId),
+                    bc?.TenantId,
+                    sessionId,
+                    DateTime.UtcNow.AddDays(IdpConstants.IdpSessionCookieTtlDays));
                 return true;
             }
             catch (Exception ex)

@@ -28,6 +28,7 @@ namespace XUnitTest.Auth.Oidc.IdpSessionService
                 refreshRepo.Object,
                 cache.Object,
                 Mock.Of<IUserActivityDispatcher>(),
+                Mock.Of<ITenants>(),
                 NullLogger<Authentication.DomainService.Oidc.Services.IdpSessionService>.Instance);
         }
 
