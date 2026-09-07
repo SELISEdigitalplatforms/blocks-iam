@@ -21,6 +21,11 @@ type ActivationFormProps = {
   /** Prefilled from the account when it already has them — see validate-activation. */
   firstName?: string;
   lastName?: string;
+  /**
+   * Whether to ask for a password. Resolved by the parent from the tenant's IAM
+   * configuration; when false, confirming this form is all the activation needs.
+   */
+  collectPassword?: boolean;
 };
 
 export const ActivationForm = ({
@@ -28,6 +33,7 @@ export const ActivationForm = ({
   tenantId,
   firstName,
   lastName,
+  collectPassword = true,
 }: ActivationFormProps) => {
   const navigate = useNavigate();
   const animCtx = useOidcAuthAnimation();
@@ -64,9 +70,11 @@ export const ActivationForm = ({
   });
   const { isPending, mutateAsync } = useAccountActivation();
 
+  // Without a password there are no strength requirements to meet, and this guard would
+  // otherwise throw away every solved captcha the moment it arrives.
   useEffect(() => {
-    if (!requirementsMet && captchaCode) resetCaptcha();
-  }, [captchaCode, requirementsMet, resetCaptcha]);
+    if (collectPassword && !requirementsMet && captchaCode) resetCaptcha();
+  }, [captchaCode, collectPassword, requirementsMet, resetCaptcha]);
 
   useEffect(() => {
     if (!code) {
@@ -79,9 +87,18 @@ export const ActivationForm = ({
   const confirmPassword = form.watch("confirmPassword");
   const { isValid } = form.formState;
 
+  /** Nothing to satisfy when the password step is off. */
+  const passwordRequirementsMet = !collectPassword || requirementsMet;
+  const canSubmit = isValid && passwordRequirementsMet;
+
   /* Inject PasswordStrengthChecker into the right panel's idle slot */
   const setPanelIdleSlot = animCtx?.setPanelIdleSlot;
   useEffect(() => {
+    if (!collectPassword) {
+      setPanelIdleSlot?.(null);
+      return;
+    }
+
     setPanelIdleSlot?.(
       <PasswordStrengthChecker
         password={password}
@@ -93,7 +110,7 @@ export const ActivationForm = ({
       setPanelIdleSlot?.(null);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [password, confirmPassword, setPanelIdleSlot]);
+  }, [password, confirmPassword, setPanelIdleSlot, collectPassword]);
 
   if (!oidcUiConfig?.template) return null;
   const activationCopy = oidcUiConfig.template.pages.activation;
@@ -118,7 +135,7 @@ export const ActivationForm = ({
         preventPostEvent: true,
         firstName: values.firstname,
         lastName: values.lastname,
-        password: values.password,
+        password: collectPassword ? values.password : undefined,
         captchaCode,
         tenantId,
       });
@@ -199,78 +216,77 @@ export const ActivationForm = ({
         )}
       </div>
 
-      <div className="flex flex-col gap-2">
-        <label className="oidc-sci-fi-label">{activationCopy.passwordLabel}</label>
-        <div className="relative">
-          <input
-            type={showPassword ? "text" : "password"}
-            placeholder="••••••••"
-            autoComplete="new-password"
-            className="oidc-sci-fi-input"
-            style={{ paddingRight: "2.75rem" }}
-            aria-invalid={!!form.formState.errors.password}
-            disabled={isAuthenticating}
-            {...form.register("password")}
-          />
-          <button
-            type="button"
-            tabIndex={-1}
-            onClick={() => setShowPassword((v) => !v)}
-            className="absolute right-3 top-1/2 -translate-y-1/2"
-            style={{ color: "var(--muted)", background: "none", border: "none", cursor: "pointer", padding: 0 }}
-            aria-label={showPassword ? "Hide password" : "Show password"}
-          >
-            {showPassword ? <EyeOff size={16} /> : <Eye size={16} />}
-          </button>
-        </div>
-        {form.formState.errors.password && (
-          <p className="text-xs" style={{ color: "var(--danger)" }}>
-            {form.formState.errors.password.message}
-          </p>
-        )}
-      </div>
+      {collectPassword && (
+        <>
+          <div className="flex flex-col gap-2">
+            <label className="oidc-sci-fi-label">{activationCopy.passwordLabel}</label>
+            <div className="relative">
+              <input
+                type={showPassword ? "text" : "password"}
+                placeholder="••••••••"
+                autoComplete="new-password"
+                className="oidc-sci-fi-input"
+                style={{ paddingRight: "2.75rem" }}
+                aria-invalid={!!form.formState.errors.password}
+                disabled={isAuthenticating}
+                {...form.register("password")}
+              />
+              <button
+                type="button"
+                tabIndex={-1}
+                onClick={() => setShowPassword((v) => !v)}
+                className="absolute right-3 top-1/2 -translate-y-1/2"
+                style={{ color: "var(--muted)", background: "none", border: "none", cursor: "pointer", padding: 0 }}
+                aria-label={showPassword ? "Hide password" : "Show password"}
+              >
+                {showPassword ? <EyeOff size={16} /> : <Eye size={16} />}
+              </button>
+            </div>
+            {form.formState.errors.password && (
+              <p className="text-xs" style={{ color: "var(--danger)" }}>
+                {form.formState.errors.password.message}
+              </p>
+            )}
+          </div>
 
-      <div className="flex flex-col gap-2">
-        <label className="oidc-sci-fi-label">{activationCopy.confirmPasswordLabel}</label>
-        <div className="relative">
-          <input
-            type={showConfirmPassword ? "text" : "password"}
-            placeholder="••••••••"
-            autoComplete="new-password"
-            className="oidc-sci-fi-input"
-            style={{ paddingRight: "2.75rem" }}
-            aria-invalid={!!form.formState.errors.confirmPassword}
-            disabled={isAuthenticating}
-            {...form.register("confirmPassword")}
-          />
-          <button
-            type="button"
-            tabIndex={-1}
-            onClick={() => setShowConfirmPassword((v) => !v)}
-            className="absolute right-3 top-1/2 -translate-y-1/2"
-            style={{ color: "var(--muted)", background: "none", border: "none", cursor: "pointer", padding: 0 }}
-            aria-label={showConfirmPassword ? "Hide password" : "Show password"}
-          >
-            {showConfirmPassword ? <EyeOff size={16} /> : <Eye size={16} />}
-          </button>
-        </div>
-        {form.formState.errors.confirmPassword && (
-          <p className="text-xs" style={{ color: "var(--danger)" }}>
-            {form.formState.errors.confirmPassword.message}
-          </p>
-        )}
-      </div>
+          <div className="flex flex-col gap-2">
+            <label className="oidc-sci-fi-label">{activationCopy.confirmPasswordLabel}</label>
+            <div className="relative">
+              <input
+                type={showConfirmPassword ? "text" : "password"}
+                placeholder="••••••••"
+                autoComplete="new-password"
+                className="oidc-sci-fi-input"
+                style={{ paddingRight: "2.75rem" }}
+                aria-invalid={!!form.formState.errors.confirmPassword}
+                disabled={isAuthenticating}
+                {...form.register("confirmPassword")}
+              />
+              <button
+                type="button"
+                tabIndex={-1}
+                onClick={() => setShowConfirmPassword((v) => !v)}
+                className="absolute right-3 top-1/2 -translate-y-1/2"
+                style={{ color: "var(--muted)", background: "none", border: "none", cursor: "pointer", padding: 0 }}
+                aria-label={showConfirmPassword ? "Hide password" : "Show password"}
+              >
+                {showConfirmPassword ? <EyeOff size={16} /> : <Eye size={16} />}
+              </button>
+            </div>
+            {form.formState.errors.confirmPassword && (
+              <p className="text-xs" style={{ color: "var(--danger)" }}>
+                {form.formState.errors.confirmPassword.message}
+              </p>
+            )}
+          </div>
+        </>
+      )}
 
-      {captchaEnabled && isValid && requirementsMet && <Captcha {...captcha} />}
+      {captchaEnabled && canSubmit && <Captcha {...captcha} />}
 
       <button
         type="submit"
-        disabled={
-          isAuthenticating ||
-          (captchaEnabled && !captchaCode) ||
-          !requirementsMet ||
-          !isValid
-        }
+        disabled={isAuthenticating || (captchaEnabled && !captchaCode) || !canSubmit}
         className="oidc-sci-fi-btn mt-1 w-full flex items-center justify-center gap-2"
       >
         {isAuthenticating ? (

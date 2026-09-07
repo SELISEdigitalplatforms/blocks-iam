@@ -3,7 +3,7 @@ import { AlertTriangle, CheckCircle2, Loader } from "lucide-react";
 import { LoginReturnLink } from "@blocks-idp/authentication/components/login-return-link";
 import { ActivationForm } from "./activation-form";
 import { OidcAuthShell, OidcFooter } from "../oidc/oidc-auth-shell";
-import { ACTIVATE_PANEL } from "../oidc/oidc-panel-config";
+import { getActivatePanel } from "../oidc/oidc-panel-config";
 import { useAccountActivationCodeExpiration, useAccountResendActivation } from "@blocks-idp/iam/hooks/use-account";
 import { useOidcUiConfig } from "@blocks-idp/authentication/hooks/use-oidc-ui-config";
 
@@ -14,7 +14,14 @@ type ActivationProps = {
 };
 
 export const Activation = ({ code, tenantId }: ActivationProps) => {
-  const { data: oidcUiConfig } = useOidcUiConfig(tenantId);
+  // `collectPasswordOnActivation` decides whether this page is a password form or a plain
+  // confirmation, so the form is held back until the configuration query has settled --
+  // the fallback template makes `template` truthy immediately, loaded or not.
+  const {
+    data: oidcUiConfig,
+    collectPasswordOnActivation,
+    isLoading: isUiConfigLoading,
+  } = useOidcUiConfig(tenantId);
   const template = oidcUiConfig?.template;
   const {
     isPending: isActivationPending,
@@ -131,7 +138,7 @@ export const Activation = ({ code, tenantId }: ActivationProps) => {
 
   return (
     <OidcAuthShell
-      panelConfig={ACTIVATE_PANEL}
+      panelConfig={getActivatePanel(collectPasswordOnActivation)}
       theme={template.theme}
       logoUrl={template.branding.logoUrl}
       brandName={template.branding.brandName}
@@ -143,7 +150,7 @@ export const Activation = ({ code, tenantId }: ActivationProps) => {
       showCorners={false}
       footerNote={<OidcFooter footerText={template.pages.shared.footerText} />}
     >
-      {isActivationPending || isValidCode === null ? (
+      {isActivationPending || isValidCode === null || isUiConfigLoading ? (
         <div className="flex items-center justify-center py-8">
           <Loader size={28} className="animate-spin" style={{ color: "var(--accent)" }} />
         </div>
@@ -153,6 +160,7 @@ export const Activation = ({ code, tenantId }: ActivationProps) => {
           tenantId={tenantId}
           firstName={knownName.firstName}
           lastName={knownName.lastName}
+          collectPassword={collectPasswordOnActivation}
         />
       ) : activationError === "invalid" ? (
         <div className="flex flex-col items-center gap-3 py-2 text-center">

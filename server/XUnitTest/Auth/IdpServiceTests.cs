@@ -148,6 +148,61 @@ namespace XUnitTest.Auth
         }
 
         [Fact]
+        public async Task GetUiConfigAsync_ReturnsCollectPasswordOnActivationFalse_WhenOidcEnabledAndFlagOff()
+        {
+            _captchaRepo.Setup(c => c.GetCaptchaConfigurationAsync()).ReturnsAsync((CaptchaConfiguration)null!);
+            _authRepo.Setup(r => r.GetAuthenticationConfigurationAsync())
+                .ReturnsAsync(new IdentityConfiguration { IsOidcEnabled = true, CollectPasswordOnActivation = false });
+
+            var result = await Create().GetUiConfigAsync();
+
+            var ok = result.Should().BeOfType<OkObjectResult>().Subject;
+            var response = ok.Value.Should().BeOfType<OidcUiConfigResponse>().Subject;
+            response.CollectPasswordOnActivation.Should().BeFalse();
+        }
+
+        [Fact]
+        public async Task GetUiConfigAsync_ReturnsCollectPasswordOnActivationTrue_WhenOidcEnabledAndFlagOn()
+        {
+            _captchaRepo.Setup(c => c.GetCaptchaConfigurationAsync()).ReturnsAsync((CaptchaConfiguration)null!);
+            _authRepo.Setup(r => r.GetAuthenticationConfigurationAsync())
+                .ReturnsAsync(new IdentityConfiguration { IsOidcEnabled = true, CollectPasswordOnActivation = true });
+
+            var result = await Create().GetUiConfigAsync();
+
+            var ok = result.Should().BeOfType<OkObjectResult>().Subject;
+            var response = ok.Value.Should().BeOfType<OidcUiConfigResponse>().Subject;
+            response.CollectPasswordOnActivation.Should().BeTrue();
+        }
+
+        [Fact]
+        public async Task GetUiConfigAsync_IgnoresStoredFlag_WhenOidcDisabled()
+        {
+            _captchaRepo.Setup(c => c.GetCaptchaConfigurationAsync()).ReturnsAsync((CaptchaConfiguration)null!);
+            _authRepo.Setup(r => r.GetAuthenticationConfigurationAsync())
+                .ReturnsAsync(new IdentityConfiguration { IsOidcEnabled = false, CollectPasswordOnActivation = false });
+
+            var result = await Create().GetUiConfigAsync();
+
+            var ok = result.Should().BeOfType<OkObjectResult>().Subject;
+            var response = ok.Value.Should().BeOfType<OidcUiConfigResponse>().Subject;
+            response.CollectPasswordOnActivation.Should().BeTrue();
+        }
+
+        [Fact]
+        public async Task GetUiConfigAsync_DefaultsCollectPasswordOnActivationTrue_WhenNoConfigurationStored()
+        {
+            _captchaRepo.Setup(c => c.GetCaptchaConfigurationAsync()).ReturnsAsync((CaptchaConfiguration)null!);
+            _authRepo.Setup(r => r.GetAuthenticationConfigurationAsync()).ReturnsAsync((IdentityConfiguration)null!);
+
+            var result = await Create().GetUiConfigAsync();
+
+            var ok = result.Should().BeOfType<OkObjectResult>().Subject;
+            var response = ok.Value.Should().BeOfType<OidcUiConfigResponse>().Subject;
+            response.CollectPasswordOnActivation.Should().BeTrue();
+        }
+
+        [Fact]
         public async Task GetUiConfigAsync_ReturnsStoredTemplateWithoutModification()
         {
             var storedTemplate = new OidcUiTemplate

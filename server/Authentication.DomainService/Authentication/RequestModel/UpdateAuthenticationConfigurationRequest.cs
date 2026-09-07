@@ -37,5 +37,7 @@ namespace Authentication.DomainService.Authentication.RequestModel
         public bool? LogoutOnPasswordChange { get; set; }
 
         public string PasswordStrengthCheckerRegex { get; set; }
+
+        public bool? CollectPasswordOnActivation { get; set; }
     }
 }

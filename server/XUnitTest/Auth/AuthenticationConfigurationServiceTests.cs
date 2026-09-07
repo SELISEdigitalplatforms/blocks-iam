@@ -160,5 +160,73 @@ namespace XUnitTest.Auth
             saved.Should().NotBeNull();
             saved!.AccessTokenValidForNumberMinutes.Should().Be(42);
         }
+
+        [Fact]
+        public async Task Update_PersistsCollectPasswordOnActivation_WhenRequestSetsIt()
+        {
+            _repo.Setup(r => r.GetAuthenticationConfigurationAsync()).ReturnsAsync((IdentityConfiguration)null!);
+            _tenants.Setup(t => t.GetTenantByID(It.IsAny<string>())).Returns((Tenant?)null);
+            IdentityConfiguration? saved = null;
+            _repo.Setup(r => r.UpdateAuthenticationConfigurationAsync(It.IsAny<IdentityConfiguration>()))
+                .Callback<IdentityConfiguration>(c => saved = c)
+                .Returns(Task.CompletedTask);
+
+            var result = await Create().UpdateAuthenticationConfigAsync(new UpdateAuthenticationConfigurationRequest
+            {
+                ItemId = "507f1f77bcf86cd799439011",
+                IsOidcEnabled = true,
+                CollectPasswordOnActivation = false
+            });
+
+            result.IsSuccess.Should().BeTrue();
+            saved.Should().NotBeNull();
+            saved!.CollectPasswordOnActivation.Should().BeFalse();
+        }
+
+        [Fact]
+        public async Task Update_KeepsStoredCollectPasswordOnActivation_WhenRequestOmitsIt()
+        {
+            var current = new IdentityConfiguration
+            {
+                ItemId = ObjectId.GenerateNewId(),
+                AccountActionBaseUrl = "https://app.example.com",
+                IsOidcEnabled = true,
+                CollectPasswordOnActivation = false
+            };
+            _repo.Setup(r => r.GetAuthenticationConfigurationAsync()).ReturnsAsync(current);
+            _tenants.Setup(t => t.GetTenantByID(It.IsAny<string>())).Returns(TenantWithApps("https://app.example.com"));
+            IdentityConfiguration? saved = null;
+            _repo.Setup(r => r.UpdateAuthenticationConfigurationAsync(It.IsAny<IdentityConfiguration>()))
+                .Callback<IdentityConfiguration>(c => saved = c)
+                .Returns(Task.CompletedTask);
+
+            var result = await Create().UpdateAuthenticationConfigAsync(new UpdateAuthenticationConfigurationRequest
+            {
+                ItemId = "507f1f77bcf86cd799439011"
+            });
+
+            result.IsSuccess.Should().BeTrue();
+            saved!.CollectPasswordOnActivation.Should().BeFalse();
+        }
+
+        [Fact]
+        public async Task Update_DefaultsCollectPasswordOnActivationToTrue_WhenNeitherRequestNorCurrentHasIt()
+        {
+            _repo.Setup(r => r.GetAuthenticationConfigurationAsync()).ReturnsAsync((IdentityConfiguration)null!);
+            _tenants.Setup(t => t.GetTenantByID(It.IsAny<string>())).Returns((Tenant?)null);
+            IdentityConfiguration? saved = null;
+            _repo.Setup(r => r.UpdateAuthenticationConfigurationAsync(It.IsAny<IdentityConfiguration>()))
+                .Callback<IdentityConfiguration>(c => saved = c)
+                .Returns(Task.CompletedTask);
+
+            var result = await Create().UpdateAuthenticationConfigAsync(new UpdateAuthenticationConfigurationRequest
+            {
+                ItemId = "507f1f77bcf86cd799439011",
+                IsOidcEnabled = true
+            });
+
+            result.IsSuccess.Should().BeTrue();
+            saved!.CollectPasswordOnActivation.Should().BeTrue();
+        }
     }
 }

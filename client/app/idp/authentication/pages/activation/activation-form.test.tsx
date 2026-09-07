@@ -8,6 +8,8 @@ const h = vi.hoisted(() => ({
   resetCaptcha: vi.fn(),
   animCtx: null as Record<string, unknown> | null,
   oidcUiConfig: undefined as unknown,
+  captchaCode: "",
+  captchaEnabled: false,
 }));
 
 vi.mock("react-router", () => ({ useNavigate: () => h.navigateMock }));
@@ -16,10 +18,13 @@ vi.mock("@blocks-idp/iam/hooks/use-account", () => ({
   useAccountActivation: vi.fn(() => ({ isPending: false, mutateAsync: h.mutateAsync })),
 }));
 vi.mock("@blocks-idp/captcha/hooks/use-captcha", () => ({
-  useCaptcha: vi.fn(() => ({ captcha: {}, code: "", reset: h.resetCaptcha })),
+  useCaptcha: vi.fn(() => ({ captcha: {}, code: h.captchaCode, reset: h.resetCaptcha })),
 }));
 vi.mock("@blocks-idp/authentication/hooks/use-oidc-ui-config", () => ({
-  useOidcUiConfig: vi.fn(() => ({ data: h.oidcUiConfig, captchaEnabled: false })),
+  useOidcUiConfig: vi.fn(() => ({
+    data: h.oidcUiConfig,
+    captchaEnabled: h.captchaEnabled,
+  })),
 }));
 vi.mock("../../components/password-strength-checker/password-strength-checker", () => ({
   PasswordStrengthChecker: () => null,
@@ -38,8 +43,15 @@ const passwordInputs = (container: HTMLElement) =>
 beforeEach(() => {
   vi.clearAllMocks();
   h.animCtx = null;
+  h.captchaCode = "";
+  h.captchaEnabled = false;
   h.oidcUiConfig = { captcha: null, template: DEFAULT_OIDC_UI_TEMPLATE_FIXTURE };
 });
+
+const fillNames = () => {
+  fireEvent.change(screen.getByPlaceholderText("First name"), { target: { value: "Grace" } });
+  fireEvent.change(screen.getByPlaceholderText("Last name"), { target: { value: "Hopper" } });
+};
 
 const fillValidPasswords = (container: HTMLElement) => {
   fireEvent.change(screen.getByPlaceholderText("First name"), { target: { value: "Grace" } });
@@ -128,6 +140,63 @@ describe("ActivationForm", () => {
     await vi.waitFor(() =>
       expect(h.navigateMock).toHaveBeenCalledWith(expect.stringContaining("/oidc/activate-success")),
     );
+  });
+
+  describe("when the tenant turns the activation password step off", () => {
+    it("renders no password fields", () => {
+      const { container } = render(
+        <ActivationForm code="activation-code" tenantId="tenant-1" collectPassword={false} />,
+      );
+      expect(screen.getByText("First Name")).toBeInTheDocument();
+      expect(screen.getByText("Last Name")).toBeInTheDocument();
+      expect(passwordInputs(container)).toHaveLength(0);
+      expect(screen.queryByText("Password")).not.toBeInTheDocument();
+      expect(screen.queryByText("Confirm Password")).not.toBeInTheDocument();
+    });
+
+    it("enables the activate button on the names alone", async () => {
+      render(<ActivationForm code="activation-code" tenantId="tenant-1" collectPassword={false} />);
+      expect(screen.getByRole("button", { name: /activate/i })).toBeDisabled();
+
+      fillNames();
+
+      await vi.waitFor(() =>
+        expect(screen.getByRole("button", { name: /activate/i })).toBeEnabled(),
+      );
+    });
+
+    it("activates without sending a password", async () => {
+      h.mutateAsync.mockResolvedValue({ isSuccess: true });
+      const { container } = render(
+        <ActivationForm code="activation-code" tenantId="tenant-1" collectPassword={false} />,
+      );
+      fillNames();
+      fireEvent.submit(container.querySelector("form") as HTMLFormElement);
+
+      await vi.waitFor(() => expect(h.mutateAsync).toHaveBeenCalled());
+      expect(h.mutateAsync).toHaveBeenCalledWith(
+        expect.objectContaining({
+          code: "activation-code",
+          firstName: "Grace",
+          lastName: "Hopper",
+          password: undefined,
+        }),
+      );
+      await vi.waitFor(() =>
+        expect(h.navigateMock).toHaveBeenCalledWith(
+          expect.stringContaining("/oidc/activate-success"),
+        ),
+      );
+    });
+
+    it("keeps a solved captcha instead of discarding it for unmet password rules", () => {
+      h.captchaEnabled = true;
+      h.captchaCode = "solved-captcha";
+
+      render(<ActivationForm code="activation-code" tenantId="tenant-1" collectPassword={false} />);
+
+      expect(h.resetCaptcha).not.toHaveBeenCalled();
+    });
   });
 
   it("runs the fail animation and resets the captcha when activation fails", async () => {
